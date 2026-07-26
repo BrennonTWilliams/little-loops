@@ -461,10 +461,9 @@ states:
           -e "s|{{cli_path}}|$${CLI_PATH}|g" \
           "$TEMPLATE" > "$OUT"
       echo "TASK_LOOP_EMITTED: $OUT"
-    next: done
+    next: finalize_done
 
-  done:
-    # HARNESS: terminal — both artifacts produced (cached CLI + generated task loop).
+  finalize_done:
     action_type: prompt
     action: |
       The cli-anything-bootstrap loop completed successfully.
@@ -478,6 +477,10 @@ states:
 
       Tell the operator they can now run the task loop with:
         ll-loop run <target_name>-task --input "<their goal in natural language>"
+    next: done
+    on_error: failed
+  done:
+    # HARNESS: terminal — both artifacts produced (cached CLI + generated task loop).
     terminal: true
 
   count-refine-cycle:

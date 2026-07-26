@@ -12,7 +12,7 @@ initial: init
 max_steps: 50
 timeout: 7200
 import:
-  - lib/common.yaml
+- lib/common.yaml
 
 context:
   task: ""           # populated from positional CLI arg via input_key: task
@@ -177,13 +177,11 @@ states:
 
   score:
     fragment: plan_rubric_score
-    on_yes: done
+    on_yes: finalize_done
     on_no: research_iteration
     on_error: diagnose
 
-  done:
-    # Terminal — reached when all 8 rubric dimensions score VERY-HIGH or max_iterations
-    # is exhausted. Reports the final output file locations.
+  finalize_done:
     action_type: prompt
     action: |
       The rn-plan recursive planning loop has completed.
@@ -195,6 +193,11 @@ states:
 
       Read ${captured.run_dir.output}/plan-rubric.md and report the final dimension scores
       and aggregate verdict to the user. Confirm the plan is ready for implementation.
+    next: done
+    on_error: failed
+  done:
+    # Terminal — reached when all 8 rubric dimensions score VERY-HIGH or max_iterations
+    # is exhausted. Reports the final output file locations.
     terminal: true
 
   diagnose:

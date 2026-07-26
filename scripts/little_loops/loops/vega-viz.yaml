@@ -54,7 +54,7 @@ context:
   hard_gate: 7
 
 import:
-  - lib/common.yaml
+- lib/common.yaml
 
 states:
 
@@ -531,7 +531,7 @@ states:
     evaluate:
       type: output_contains
       pattern: "EVAL_PASS"
-    on_yes: done
+    on_yes: finalize_done
     on_no: check_stall
     on_error: generate
 
@@ -547,7 +547,7 @@ states:
     evaluate:
       max_stall: 3
     on_yes: generate
-    on_no: done
+    on_no: finalize_done
     on_error: generate
 
   max_steps_summary:
@@ -576,10 +576,7 @@ states:
       pattern: "SUMMARY_EMITTED"
     terminal: true
 
-  done:
-    # HARNESS: Success terminal — all criteria passed. best.html is the highest
-    # scoring iteration (== the passing one). Iter snapshots and per-iteration
-    # scores remain for inspection / picking a different favorite.
+  finalize_done:
     action_type: prompt
     action: |
       The Vega visualization loop passed.
@@ -593,6 +590,12 @@ states:
 
       If the loop instead ended by exhausting max_iterations, best.html still
       holds the highest-scoring version produced.
+    next: done
+    on_error: failed
+  done:
+    # HARNESS: Success terminal — all criteria passed. best.html is the highest
+    # scoring iteration (== the passing one). Iter snapshots and per-iteration
+    # scores remain for inspection / picking a different favorite.
     terminal: true
 
   failed:

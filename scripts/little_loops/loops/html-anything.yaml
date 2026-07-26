@@ -178,13 +178,11 @@ states:
         If ALL criterion scores are >= their individual rubric thresholds, output exactly: ALL_PASS
         Otherwise output: ITERATE
       pass_threshold: 7
-    on_yes: done
+    on_yes: finalize_done
     on_no: diagnose
     on_error: diagnose
 
-  done:
-    # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
-    # Reports all five output file locations before ending.
+  finalize_done:
     action_type: prompt
     action: |
       The html-anything loop has completed successfully.
@@ -197,6 +195,11 @@ states:
       - ${captured.run_dir.output}/screenshot.png — the last Playwright-captured render
 
       Report these paths to the user and confirm the artifact is ready.
+    next: done
+    on_error: failed
+  done:
+    # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
+    # Reports all five output file locations before ending.
     terminal: true
 
   diagnose:

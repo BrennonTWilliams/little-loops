@@ -269,10 +269,11 @@ class TestCheckBuildOutcomeGate:
 
     def test_check_build_outcome_routes_zero_work_to_build_failed(self, loop_data: dict) -> None:
         state = loop_data["states"]["check_build_outcome"]
-        assert state.get("on_no") == "build_failed", (
-            "zero successful work must route to the build_failed terminal, not be masked"
+        assert state.get("on_no") == "finalize_build_failed", (
+            "zero successful work must route to the build_failed terminal (via "
+            "finalize_build_failed, BUG-2813), not be masked"
         )
-        assert state.get("on_error") == "build_failed", (
+        assert state.get("on_error") == "finalize_build_failed", (
             "a gate error must fail safe to build_failed, not silently continue"
         )
 
@@ -287,9 +288,10 @@ class TestCheckBuildOutcomeGate:
         assert "build_failed" in loop_data["states"]
 
     def test_build_failed_emits_resume_command(self, loop_data: dict) -> None:
-        action = loop_data["states"]["build_failed"].get("action", "")
+        """BUG-2813: the action lives on finalize_build_failed, not the bare terminal."""
+        action = loop_data["states"]["finalize_build_failed"].get("action", "")
         assert "resume_command" in action, (
-            "build_failed must emit a resume_command so the build stays resumable"
+            "finalize_build_failed must emit a resume_command so the build stays resumable"
         )
 
 
@@ -575,8 +577,9 @@ class TestRnBuildResumeState:
         assert state.get("on_yes") == "resume_read_harness", (
             "resume on_yes must route to resume_read_harness"
         )
-        assert state.get("on_no") == "failed", (
-            "resume on_no must route to failed (resume_epic is required)"
+        assert state.get("on_no") == "finalize_failed", (
+            "resume on_no must route to failed (via finalize_failed, BUG-2813; "
+            "resume_epic is required)"
         )
 
     def test_resume_uses_exit_code_evaluator(self, loop_data: dict) -> None:

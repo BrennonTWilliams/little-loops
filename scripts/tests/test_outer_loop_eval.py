@@ -87,7 +87,7 @@ class TestOuterLoopEvalStates:
 
     def test_validate_input_routes_error_to_fail_missing_input(self, loop_data: dict) -> None:
         state = loop_data["states"]["validate_input"]
-        assert state.get("on_error") == "fail_missing_input"
+        assert state.get("on_error") == "finalize_fail_missing_input"
 
     def test_validate_input_routes_next_to_load_definition(self, loop_data: dict) -> None:
         state = loop_data["states"]["validate_input"]
@@ -107,8 +107,8 @@ class TestOuterLoopEvalStates:
         assert "context.input" in state.get("loop", ""), "loop field must reference context.input"
         assert state.get("capture") == "sub_loop_output"
         assert state.get("on_yes") == "analyze_execution"
-        assert state.get("on_no") == "handle_sub_loop_failed"
-        assert state.get("on_error") == "handle_sub_loop_error"
+        assert state.get("on_no") == "finalize_handle_sub_loop_failed"
+        assert state.get("on_error") == "finalize_handle_sub_loop_error"
         with_ = state.get("with", {})
         assert "input" in with_, "run_sub_loop must bind input via with:"
 

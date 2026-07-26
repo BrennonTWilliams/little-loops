@@ -359,6 +359,11 @@
       "type": "boolean",
       "default": false,
       "description": "ENH-2714 MR-12: suppresses the self-contradictory-allowlist (ERROR) and catalog-suppressed-but-skill-invoking (WARN) pruning-profile validation rule."
+    },
+    "terminal_action_ok": {
+      "type": "boolean",
+      "default": false,
+      "description": "BUG-2813: suppresses the terminal-state-has-action (WARN) validation rule. A terminal: true state's action never executes (the executor finishes the run before running it); move the action to a penultimate non-terminal state instead of suppressing this."
     }
   },
   "additionalProperties": false,

@@ -19,7 +19,7 @@ timeout: 345600
 on_handoff: spawn
 
 import:
-  - lib/composer.yaml
+- lib/composer.yaml
 
 context:
   goal: "" # populated via input_key: the natural language goal to decompose
@@ -36,7 +36,7 @@ states:
     fragment: discover_loops
     timeout: 60
     next: decompose_goal
-    on_error: failed
+    on_error: finalize_failed
 
   # ─── Phase 2: Goal Decomposition ─────────────────────────────────────────────
 
@@ -81,7 +81,7 @@ states:
     # parse_plan). parse_plan is the real, deterministic gate. Using next: skips
     # a wasted llm_structured grading call.
     next: parse_plan
-    on_error: failed
+    on_error: finalize_failed
 
   # ─── Phase 3: Plan Parsing & Display ─────────────────────────────────────────
 
@@ -173,8 +173,8 @@ states:
       operator: lt
       target: "3"
     on_yes: decompose_goal
-    on_no: failed
-    on_error: failed
+    on_no: finalize_failed
+    on_error: finalize_failed
 
   # ─── Phase 5: Auto-Approve Gate ───────────────────────────────────────────────
 
@@ -193,9 +193,9 @@ states:
 
   present_plan:
     fragment: present_plan
-    on_yes: present_result
+    on_yes: finalize_present_result
     on_no: execute_plan
-    on_error: present_result
+    on_error: finalize_present_result
 
   # ─── Phase 7: Sequential DAG Execution ───────────────────────────────────────
 
@@ -269,7 +269,7 @@ states:
       type: exit_code
     on_yes: read_step_loop
     on_no: read_checkpoints
-    on_error: failed
+    on_error: finalize_failed
 
   read_step_loop:
     action_type: shell
@@ -277,7 +277,7 @@ states:
       cat "${context.run_dir}/current-step-loop.txt" 2>/dev/null || echo "loop-router"
     capture: next_step_loop
     next: read_step_input
-    on_error: failed
+    on_error: finalize_failed
 
   read_step_input:
     action_type: shell
@@ -285,7 +285,7 @@ states:
       cat "${context.run_dir}/current-step-input.txt" 2>/dev/null || echo ${context.goal:shell}
     capture: next_step_input
     next: dispatch_step
-    on_error: failed
+    on_error: finalize_failed
 
   dispatch_step:
     loop: "${captured.next_step_loop.output}"
@@ -364,7 +364,7 @@ states:
       PYEOF
     capture: checkpoint_success
     next: execute_plan
-    on_error: failed
+    on_error: finalize_failed
 
   write_step_failed:
     action_type: shell
@@ -425,7 +425,7 @@ states:
       PYEOF
     capture: checkpoint_failed
     next: read_completed_summaries
-    on_error: abort_composer
+    on_error: finalize_abort_composer
 
   # ─── Phase 8: Adaptive Re-Plan Machinery ─────────────────────────────────────
 
@@ -438,7 +438,7 @@ states:
       echo "$COUNT"
     capture: replan_count_updated
     next: apply_replan
-    on_error: abort_composer
+    on_error: finalize_abort_composer
 
   check_replan_budget:
     action_type: shell
@@ -452,8 +452,8 @@ states:
     # BEFORE increment so max_replans=2 permits exactly 2 replans. CONTINUE /
     # ABORT decisions never reach here, so they do not consume budget.
     on_yes: increment_replan_count
-    on_no: abort_composer
-    on_error: abort_composer
+    on_no: finalize_abort_composer
+    on_error: finalize_abort_composer
 
   read_completed_summaries:
     action_type: shell
@@ -484,7 +484,7 @@ states:
       PYEOF
     capture: completed_step_summaries
     next: read_last_verdict
-    on_error: abort_composer
+    on_error: finalize_abort_composer
 
   read_last_verdict:
     action_type: shell
@@ -492,14 +492,14 @@ states:
       cat "${context.run_dir}/last-verdict.json" 2>/dev/null || echo '{"success":false,"confidence":0.0,"terminal_state":"failed"}'
     capture: last_verdict
     next: reassess
-    on_error: abort_composer
+    on_error: finalize_abort_composer
 
   reassess:
     fragment: reassess
     on_yes: parse_reassess_decision
     on_no: parse_reassess_decision
     on_partial: parse_reassess_decision
-    on_error: abort_composer
+    on_error: finalize_abort_composer
 
   parse_reassess_decision:
     action_type: shell
@@ -530,7 +530,7 @@ states:
       PYEOF
     capture: reassess_token
     next: route_reassess_continue
-    on_error: abort_composer
+    on_error: finalize_abort_composer
 
   route_reassess_continue:
     evaluate:
@@ -539,7 +539,7 @@ states:
       pattern: "CONTINUE"
     on_yes: execute_plan
     on_no: route_reassess_replan
-    on_error: abort_composer
+    on_error: finalize_abort_composer
 
   route_reassess_replan:
     evaluate:
@@ -548,8 +548,8 @@ states:
       pattern: "REPLAN_TAIL"
     # Only an actual REPLAN_TAIL consults the replan budget.
     on_yes: check_replan_budget
-    on_no: abort_composer
-    on_error: abort_composer
+    on_no: finalize_abort_composer
+    on_error: finalize_abort_composer
 
   apply_replan:
     action_type: shell
@@ -629,7 +629,7 @@ states:
       PYEOF
     capture: replan_applied
     next: validate_replan
-    on_error: abort_composer
+    on_error: finalize_abort_composer
 
   validate_replan:
     # Re-run the same validation the initial plan passed, now over the merged
@@ -639,8 +639,8 @@ states:
     # dispatching a malformed plan.
     fragment: validate_plan
     on_yes: execute_plan
-    on_no: abort_composer
-    on_error: abort_composer
+    on_no: finalize_abort_composer
+    on_error: finalize_abort_composer
 
   # ─── Phase 9: Review & Synthesize ────────────────────────────────────────────
 
@@ -688,14 +688,13 @@ states:
     # No evaluate block: the LLM verdict was discarded (all branches went to
     # present_result). present_result tolerates an empty chain_review, so a
     # plain next: avoids a wasted llm_structured grading call.
-    next: present_result
-    on_error: present_result
+    next: finalize_present_result
+    on_error: finalize_present_result
 
   # ─── Terminal States ──────────────────────────────────────────────────────────
 
-  present_result:
+  finalize_present_result:
     action_type: shell
-    terminal: true
     action: |
       python3 << 'PYEOF'
       import json, os, glob
@@ -748,10 +747,12 @@ states:
       }
       print(json.dumps(result, indent=2))
       PYEOF
-
-  abort_composer:
-    action_type: shell
+    next: present_result
+    on_error: finalize_failed
+  present_result:
     terminal: true
+  finalize_abort_composer:
+    action_type: shell
     action: |
       python3 -c "
       import json
@@ -764,13 +765,19 @@ states:
       }, indent=2))
       "
       exit 1
-
-  failed:
-    action_type: shell
+    next: abort_composer
+    on_error: finalize_failed
+  abort_composer:
     terminal: true
+  finalize_failed:
+    action_type: shell
     action: |
       python3 -c "
       import json
       print(json.dumps({'plan': [], 'step_results': {}, 'success': False, 'plan_versions': 0, 'summary': 'loop-composer-adaptive encountered a fatal error during catalog discovery, decomposition, or plan validation.'}, indent=2))
       "
       exit 1
+    next: failed
+    on_error: failed
+  failed:
+    terminal: true

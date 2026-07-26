@@ -4076,3 +4076,41 @@ class TestSessionMode:
             {"name": "test", "initial": "s", "states": {"s": {"terminal": True}}}
         )
         assert fsm.session_mode_ok is False
+
+
+class TestTerminalActionOk:
+    """BUG-2813: terminal_action_ok field round-trip serialization."""
+
+    def test_terminal_action_ok_true_round_trips(self) -> None:
+        """terminal_action_ok=True is present in to_dict() and restored by from_dict()."""
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            terminal_action_ok=True,
+        )
+        d = fsm.to_dict()
+        assert d.get("terminal_action_ok") is True
+        restored = FSMLoop.from_dict(d)
+        assert restored.terminal_action_ok is True
+
+    def test_terminal_action_ok_false_omitted_from_dict(self) -> None:
+        """terminal_action_ok=False (default) is omitted from to_dict()."""
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+        )
+        d = fsm.to_dict()
+        assert "terminal_action_ok" not in d
+
+    def test_terminal_action_ok_defaults_false(self) -> None:
+        """FSMLoop.from_dict() without terminal_action_ok defaults to False."""
+        fsm = FSMLoop.from_dict(
+            {
+                "name": "test",
+                "initial": "s",
+                "states": {"s": {"terminal": True}},
+            }
+        )
+        assert fsm.terminal_action_ok is False

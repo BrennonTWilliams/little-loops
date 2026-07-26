@@ -57,7 +57,7 @@ max_steps: 50
 timeout: 28800
 on_handoff: spawn
 import:
-  - lib/common.yaml
+- lib/common.yaml
 context:
   max_issues: 100
   scope: ""   # optional: sprint name (.sprints/<name>.yaml) or EPIC-NNN; empty → rank backlog
@@ -977,12 +977,18 @@ states:
       esac
     fragment: shell_exit
     on_yes: done
-    on_no: incomplete
-    on_error: incomplete
+    on_no: finalize_incomplete
+    on_error: finalize_incomplete
 
   done:
     terminal: true
 
+  finalize_incomplete:
+    action_type: shell
+    action: |
+      echo "auto-refine-and-implement: incomplete — see summary.json verdict. phantom: dispatched work closed nothing (parked / not-closed / in-flight / errored). incomplete-abandoned: autodev abandoned N issues left in autodev-queue.txt at timeout/max_steps (see the 'abandoned' count and auto-refine-and-implement-abandoned.txt); re-run to drain the remainder. Re-run after resolving blockers."
+    next: incomplete
+    on_error: incomplete
   incomplete:
     # BUG-2636: non-success terminal for phantom runs. Reached only when finalize
     # exits non-zero (verdict=phantom) or errors. Its own stdout is redundant with
@@ -993,7 +999,4 @@ states:
     # never refined/implemented/parked. The abandoned count and the residual-ID
     # artifact are in summary.json / auto-refine-and-implement-abandoned.txt so a
     # re-run to drain the remainder is obvious.
-    action: |
-      echo "auto-refine-and-implement: incomplete — see summary.json verdict. phantom: dispatched work closed nothing (parked / not-closed / in-flight / errored). incomplete-abandoned: autodev abandoned N issues left in autodev-queue.txt at timeout/max_steps (see the 'abandoned' count and auto-refine-and-implement-abandoned.txt); re-run to drain the remainder. Re-run after resolving blockers."
-    action_type: shell
     terminal: true

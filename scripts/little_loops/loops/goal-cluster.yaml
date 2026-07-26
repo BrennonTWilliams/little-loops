@@ -22,8 +22,8 @@ on_handoff: spawn
 capture_reachability_ok: true
 
 import:
-  - lib/composer.yaml
-  - lib/common.yaml
+- lib/composer.yaml
+- lib/common.yaml
 
 context:
   goals: ""            # raw multi-line | sprint name | EPIC-NNN | JSON list
@@ -139,8 +139,8 @@ states:
     evaluate:
       type: exit_code
     on_yes: dedup_and_batch
-    on_no: failed
-    on_error: failed
+    on_no: finalize_failed
+    on_error: finalize_failed
 
   # ─── Phase 2: Dedup & Batch ────────────────────────────────────────────────────
 
@@ -190,7 +190,7 @@ states:
     on_yes: parse_batch_plan
     on_no: parse_batch_plan
     on_partial: parse_batch_plan
-    on_error: failed
+    on_error: finalize_failed
 
   parse_batch_plan:
     action_type: shell
@@ -248,8 +248,8 @@ states:
     evaluate:
       type: exit_code
     on_yes: check_auto_plan
-    on_no: failed
-    on_error: failed
+    on_no: finalize_failed
+    on_error: finalize_failed
 
   check_auto_plan:
     action_type: shell
@@ -282,7 +282,7 @@ states:
     evaluate:
       type: output_contains
       pattern: "CANCEL"
-    on_yes: present_result
+    on_yes: finalize_present_result
     on_no: init_cluster_queue
     on_error: init_cluster_queue
 
@@ -310,7 +310,7 @@ states:
       PYEOF
     capture: queue_init
     next: execute_cluster
-    on_error: failed
+    on_error: finalize_failed
 
   execute_cluster:
     action_type: shell
@@ -362,7 +362,7 @@ states:
       cat "${context.run_dir}/current-batch-loop.txt" 2>/dev/null || echo "loop-router"
     capture: cluster_batch_loop
     next: read_cluster_input
-    on_error: failed
+    on_error: finalize_failed
 
   read_cluster_input:
     action_type: shell
@@ -400,7 +400,7 @@ states:
       PYEOF
     capture: cluster_batch_input
     next: dispatch_cluster
-    on_error: failed
+    on_error: finalize_failed
 
   dispatch_cluster:
     loop: "${captured.cluster_batch_loop.output}"
@@ -469,7 +469,7 @@ states:
       PYEOF
     capture: batch_success_record
     next: propagate_context
-    on_error: failed
+    on_error: finalize_failed
 
   write_cluster_failed:
     action_type: shell
@@ -514,7 +514,7 @@ states:
       PYEOF
     capture: batch_failed_record
     next: check_cluster_replan_budget
-    on_error: abort_cluster
+    on_error: finalize_abort_cluster
 
   check_cluster_replan_budget:
     action_type: shell
@@ -528,8 +528,8 @@ states:
       operator: lt
       target: "${context.max_replans}"
     on_yes: read_cluster_summaries
-    on_no: abort_cluster
-    on_error: abort_cluster
+    on_no: finalize_abort_cluster
+    on_error: finalize_abort_cluster
 
   read_cluster_summaries:
     action_type: shell
@@ -537,7 +537,7 @@ states:
       cat "${context.run_dir}/cluster-state.json" 2>/dev/null || echo "[]"
     capture: completed_step_summaries
     next: read_cluster_verdict
-    on_error: abort_cluster
+    on_error: finalize_abort_cluster
 
   read_cluster_verdict:
     action_type: shell
@@ -545,14 +545,14 @@ states:
       cat "${context.run_dir}/last-verdict.json" 2>/dev/null || echo '{"success":false,"confidence":0.0,"terminal_state":"failed"}'
     capture: last_verdict
     next: reassess
-    on_error: abort_cluster
+    on_error: finalize_abort_cluster
 
   reassess:
     fragment: reassess
     on_yes: parse_cluster_reassess
     on_no: parse_cluster_reassess
     on_partial: parse_cluster_reassess
-    on_error: abort_cluster
+    on_error: finalize_abort_cluster
 
   parse_cluster_reassess:
     action_type: shell
@@ -576,7 +576,7 @@ states:
       PYEOF
     capture: cluster_reassess_token
     next: route_cluster_reassess
-    on_error: abort_cluster
+    on_error: finalize_abort_cluster
 
   route_cluster_reassess:
     evaluate:
@@ -584,8 +584,8 @@ states:
       source: "${captured.cluster_reassess_token.output}"
       pattern: "CONTINUE"
     on_yes: propagate_context
-    on_no: abort_cluster
-    on_error: abort_cluster
+    on_no: finalize_abort_cluster
+    on_error: finalize_abort_cluster
 
   # ─── Phase 5: Propagate Context ───────────────────────────────────────────────
 
@@ -681,16 +681,15 @@ states:
       type: llm_structured
       prompt: "Does the response contain a substantive summary of goal cluster execution with accomplishments and recommendations?"
       min_confidence: 0.5
-    on_yes: present_result
-    on_no: present_result
-    on_partial: present_result
-    on_error: present_result
+    on_yes: finalize_present_result
+    on_no: finalize_present_result
+    on_partial: finalize_present_result
+    on_error: finalize_present_result
 
   # ─── Phase 7: Terminal Output ─────────────────────────────────────────────────
 
-  present_result:
+  finalize_present_result:
     action_type: shell
-    terminal: true
     action: |
       python3 << 'PYEOF'
       import json, os
@@ -740,10 +739,12 @@ states:
       }
       print(json.dumps(result, indent=2))
       PYEOF
-
-  abort_cluster:
-    action_type: shell
+    next: present_result
+    on_error: finalize_failed
+  present_result:
     terminal: true
+  finalize_abort_cluster:
+    action_type: shell
     action: |
       python3 -c "
       import json
@@ -756,10 +757,12 @@ states:
       }, indent=2))
       "
       exit 1
-
-  failed:
-    action_type: shell
+    next: abort_cluster
+    on_error: finalize_failed
+  abort_cluster:
     terminal: true
+  finalize_failed:
+    action_type: shell
     action: |
       python3 -c "
       import json
@@ -772,3 +775,7 @@ states:
       }, indent=2))
       "
       exit 1
+    next: failed
+    on_error: failed
+  failed:
+    terminal: true

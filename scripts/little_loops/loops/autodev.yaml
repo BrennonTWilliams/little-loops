@@ -24,7 +24,7 @@ on_handoff: spawn
 # (check_size_review_ran_this_pass) the static validator can't model.
 capture_reachability_ok: true
 scope:
-  - "${context.run_dir}"
+- "${context.run_dir}"
 # BUG-2526: serialize loop-name conflicts at the lock layer so two concurrent
 # `ll-loop run autodev` instances do not both shell out to `ll-auto --only`
 # on the main working tree (corrupts .auto-manage-state.json and git state).
@@ -41,7 +41,7 @@ context:
   #   ll-loop run autodev <ids> --context skip_learning_gate=1
   skip_learning_gate: ""
 import:
-  - lib/common.yaml
+- lib/common.yaml
 
 states:
   init:
@@ -74,8 +74,8 @@ states:
       echo "Queued $COUNT issue(s) for autodev"
     fragment: shell_exit
     on_yes: dequeue_next
-    on_no: done
-    on_error: done
+    on_no: finalize_done
+    on_error: finalize_done
 
   dequeue_next:
     # Pop the head of the unified queue; snapshot current active issue IDs as
@@ -137,8 +137,8 @@ states:
     fragment: queue_pop
     capture: input
     on_yes: check_decision_at_dequeue
-    on_no: done
-    on_error: done
+    on_no: finalize_done
+    on_error: finalize_done
 
   check_decision_at_dequeue:
     # BUG-2513: route decision_needed:true issues to run_decide on first dequeue,
@@ -687,7 +687,7 @@ states:
     action_type: shell
     action: |
       echo "Aborting: host auth not configured — set the host credential or run the host login, then re-run"
-    next: done
+    next: finalize_done
 
   detect_children:
     # Diff current issue IDs against the pre-refinement baseline to find any
@@ -1582,12 +1582,8 @@ states:
     on_no: reconcile_current
     on_error: reconcile_current
 
-  done:
-    # Emit a structured summary of passed and skipped issues for this run.
-    # BUG-1226: also surface any still-in-flight issue recorded by dequeue_next,
-    # so if the loop reaches `done` with a stale autodev-inflight (e.g. the
-    # executor flushed copy_broke_down but the wall-clock timeout fired before
-    # resolution completed), the user knows which issue needs re-queueing.
+  finalize_done:
+    action_type: shell
     action: |
       PASSED_IDS=$(cat ${context.run_dir}/autodev-passed.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
@@ -1632,5 +1628,12 @@ states:
         printf 'WARNING: in-flight issue not resolved: %s (re-queue to retry)\n' "$INFLIGHT"
       fi
       printf '\n'
-    action_type: shell
+    next: done
+    on_error: done
+  done:
+    # Emit a structured summary of passed and skipped issues for this run.
+    # BUG-1226: also surface any still-in-flight issue recorded by dequeue_next,
+    # so if the loop reaches `done` with a stale autodev-inflight (e.g. the
+    # executor flushed copy_broke_down but the wall-clock timeout fired before
+    # resolution completed), the user knows which issue needs re-queueing.
     terminal: true

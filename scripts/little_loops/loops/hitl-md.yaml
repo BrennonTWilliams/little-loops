@@ -246,8 +246,8 @@ states:
         Otherwise output: ITERATE
       pass_threshold: 7
     on_yes: finalize
-    on_no: failed
-    on_error: failed
+    on_no: finalize_failed
+    on_error: finalize_failed
 
   finalize:
     # HARNESS: Final-copy step — promotes the working index.html out of the
@@ -261,15 +261,11 @@ states:
     evaluate:
       type: output_contains
       pattern: "FINALIZED"
-    on_yes: done
-    on_no: done
-    on_error: done
+    on_yes: finalize_done
+    on_no: finalize_done
+    on_error: finalize_done
 
-  done:
-    # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
-    # Reports all output file paths and explains how to use the interactive review page.
-    # The primary artifact is ./hitl-md-review.html in the invocation cwd; build
-    # artifacts under ${captured.run_dir.output}/ are kept for reference/debugging.
+  finalize_done:
     action_type: prompt
     action: |
       The hitl-md loop has completed successfully.
@@ -301,12 +297,16 @@ states:
          to reconstruct the full document from the live segment list. Paste it back over your source file.
 
       Round trip: a single focused review pass with preserved segment-level context.
+    next: done
+    on_error: finalize_failed
+  done:
+    # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
+    # Reports all output file paths and explains how to use the interactive review page.
+    # The primary artifact is ./hitl-md-review.html in the invocation cwd; build
+    # artifacts under ${captured.run_dir.output}/ are kept for reference/debugging.
     terminal: true
 
-  failed:
-    # HARNESS: Explicit failure terminal — reached when an unrecoverable error occurs
-    # (e.g. LLM failure in the score state). Provides a clear signal distinct from a
-    # max_iterations timeout, making failure mode visible in ll-loop history.
+  finalize_failed:
     action_type: prompt
     action: |
       The hitl-md loop has terminated with an unrecoverable error.
@@ -318,4 +318,10 @@ states:
         malformed segments.json preventing the generate state from producing valid HTML).
 
       Write a one-paragraph diagnostic summary so the operator can diagnose and re-run.
+    next: failed
+    on_error: failed
+  failed:
+    # HARNESS: Explicit failure terminal — reached when an unrecoverable error occurs
+    # (e.g. LLM failure in the score state). Provides a clear signal distinct from a
+    # max_iterations timeout, making failure mode visible in ll-loop history.
     terminal: true

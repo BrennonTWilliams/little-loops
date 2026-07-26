@@ -83,7 +83,7 @@ states:
       pattern: "RESUME_MODE:"
     on_yes: resume
     on_no: check_structure
-    on_error: failed
+    on_error: finalize_failed
 
   # ─── Phase 1.5: Normalize malformed spec (pre-gate before tech_research) ─────
   # check_structure: non-LLM exit_code gate — satisfies MR-1 for llm_normalize.
@@ -150,8 +150,8 @@ states:
     evaluate:
       type: exit_code
     on_yes: load_normalized
-    on_no: abort_normalize
-    on_error: abort_normalize
+    on_no: finalize_abort_normalize
+    on_error: finalize_abort_normalize
 
   load_normalized:
     action_type: shell
@@ -164,9 +164,8 @@ states:
     on_no: tech_research
     on_error: tech_research
 
-  abort_normalize:
+  finalize_abort_normalize:
     action_type: shell
-    terminal: true
     action: |
       echo "ERROR: Spec normalization failed."
       echo ""
@@ -176,13 +175,10 @@ states:
       echo "Please provide a more complete spec or start from the template:"
       echo "  specs/SPEC_TEMPLATE.md"
       exit 1
-
-  # ─── Phase 0 (resume only): Re-enter cluster_execute from a prior run ─────────
-  # ENH-2016: Entered when init detects resume_epic is non-empty. Writes the
-  # caller-supplied EPIC ID and optional harness name to run_dir so that
-  # cluster_execute and check_harness_name can read them via captured variables,
-  # exactly as the normal scope_project → eval_harness path would have done.
-
+    next: abort_normalize
+    on_error: finalize_failed
+  abort_normalize:
+    terminal: true
   resume:
     action_type: shell
     action: |
@@ -201,8 +197,8 @@ states:
     evaluate:
       type: exit_code
     on_yes: resume_read_harness
-    on_no: failed
-    on_error: failed
+    on_no: finalize_failed
+    on_error: finalize_failed
 
   resume_read_harness:
     action_type: shell
@@ -435,8 +431,8 @@ states:
     evaluate:
       type: exit_code
     on_yes: enumerate_epic_children
-    on_no: failed
-    on_error: failed
+    on_no: finalize_failed
+    on_error: finalize_failed
 
   # ─── Phase 6: Refine seed issues to readiness ─────────────────────────────────
 
@@ -601,8 +597,8 @@ states:
     evaluate:
       type: exit_code
     on_yes: check_harness_name
-    on_no: build_failed
-    on_error: build_failed
+    on_no: finalize_build_failed
+    on_error: finalize_build_failed
 
   # ─── Phase 8.5: Guard — skip eval_gate if harness name was never captured ──────
   # eval_harness on_error bypasses read_harness_name, leaving harness_name empty.
@@ -730,9 +726,8 @@ states:
   # codebase convention (mirrors `failed:`, goal-cluster `failed:`/`abort_cluster`). The
   # trailing `exit 1` is cosmetic: ll-loop's process exit code derives from terminated_by,
   # not the shell exit. Emits resume_command so the build stays resumable.
-  build_failed:
+  finalize_build_failed:
     action_type: shell
-    terminal: true
     action: |
       RUN_DIR="${context.run_dir}"
       EPIC=$(cat "$RUN_DIR/epic-id.txt" 2>/dev/null || echo "")
@@ -756,10 +751,12 @@ states:
       print(json.dumps(d, indent=2))
       " "$EPIC" "$HARNESS"
       exit 1
-
-  failed:
-    action_type: shell
+    next: build_failed
+    on_error: finalize_failed
+  build_failed:
     terminal: true
+  finalize_failed:
+    action_type: shell
     action: |
       python3 -c "
       import json
@@ -773,3 +770,7 @@ states:
       }, indent=2))
       "
       exit 1
+    next: failed
+    on_error: failed
+  failed:
+    terminal: true

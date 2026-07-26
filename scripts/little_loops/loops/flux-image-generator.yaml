@@ -18,7 +18,7 @@ timeout: 7200
 # HARNESS: Context variables control quality threshold and sampling parameters.
 context:
   description: ""             # populated from loop_input via input_key: description
-  pass_threshold: 6           # minimum score per criterion (1-10) to pass
+  pass_threshold: 8           # minimum score per criterion (1-10) to pass
   steps: 4                    # diffusion steps per generation
   base_seed: 1                # seed basis; the per-iteration seed derives from this
   design_tokens_context: ""   # runner-injected; resolved semantic token values or empty
@@ -151,15 +151,19 @@ states:
         ```
 
         After writing the file, evaluate the scores:
-        - prompt_adherence threshold 6
-        - subject_clarity threshold 6
-        - composition threshold 6
-        - artifact_freedom threshold 6
-        - style_adherence threshold 6
+        - prompt_adherence threshold 8
+        - subject_clarity threshold 8
+        - composition threshold 8
+        - artifact_freedom threshold 8
+        - style_adherence threshold 8
 
-        If ALL five individual scores are >= 6, output exactly: ALL_PASS
+        A criterion whose explanation names a real defect must not be scored at or
+        above threshold on the strength of the image's other qualities — score the
+        defect, then let the refinement pass fix it.
+
+        If ALL five individual scores are >= 8, output exactly: ALL_PASS
         Otherwise output: ITERATE
-      pass_threshold: 6
+      pass_threshold: 8
     on_yes: vision_gate
     on_no: diagnose
     on_error: diagnose
@@ -189,9 +193,14 @@ states:
         echo "VISION_PASS: skipped (no image.png)"; exit 0
       fi
       export ABS_DIR
+      export VISION_THRESHOLD="${context.pass_threshold}"
       python3 <<'PY'
       import os, re, sys, json, base64, urllib.request
       abs_dir = os.environ["ABS_DIR"]
+      try:
+          THRESHOLD = int(os.environ.get("VISION_THRESHOLD") or 8)
+      except ValueError:
+          THRESHOLD = 8
       img_path = os.path.join(abs_dir, "image.png")
       rc_file = os.path.join(abs_dir, ".vision_rounds")
       crit = os.path.join(abs_dir, "critique.md")
@@ -225,7 +234,9 @@ states:
           "garbled lettering, smeared edges, obvious diffusion artifacts.\n"
           "- style_adherence: does the rendering style match the brief? A "
           "photorealistic render for a flat-vector brief scores 1-3 here.\n"
-          "Threshold: every criterion must be >= 6.\n"
+          "Threshold: every criterion must be >= %d. Score the defects you "
+          "actually see; do not round a flawed criterion up to threshold "
+          "because the image is attractive overall.\n" % THRESHOLD +
           "The visual brief follows between triple backticks:\n"
           "```\n" + brief + "\n```\n"
           'Reply with ONE JSON object only, no prose: {"scores": '
@@ -259,14 +270,14 @@ states:
       except Exception:
           print("VISION_PASS: unparseable vision verdict, not blocking"); sys.exit(0)
       failing = {k: v for k, v in scores.items()
-                 if isinstance(v, (int, float)) and v < 6}
+                 if isinstance(v, (int, float)) and v < THRESHOLD}
       print("VISION scores: " + json.dumps(scores))
       if not failing:
           print("VISION_PASS"); sys.exit(0)
       open(rc_file, "w").write(str(rc + 1))
       lines = ["", "## Issues to Address (external vision critique, round %d)" % (rc + 1)]
       for k, v in failing.items():
-          lines.append("- %s scored %s/10 (below threshold 6)" % (k, v))
+          lines.append("- %s scored %s/10 (below threshold %d)" % (k, v, THRESHOLD))
       for i in issues:
           lines.append("- %s" % i)
       with open(crit, "a") as f:
@@ -276,12 +287,11 @@ states:
     evaluate:
       type: output_contains
       pattern: "VISION_PASS"
-    on_yes: done
+    on_yes: finalize_done
     on_no: run_gen_eval
-    on_error: done
+    on_error: finalize_done
 
-  done:
-    # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
+  finalize_done:
     action_type: prompt
     action: |
       The FLUX image generation loop has completed successfully.
@@ -296,6 +306,10 @@ states:
 
       Report these paths to the user, note which iteration scored best, and quote the
       seed for the accepted image so it can be reproduced.
+    next: done
+    on_error: failed
+  done:
+    # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
     terminal: true
 
   diagnose:

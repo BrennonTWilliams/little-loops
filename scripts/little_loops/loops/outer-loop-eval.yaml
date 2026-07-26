@@ -25,12 +25,15 @@ states:
       test -n "$INPUT" \
         && echo "loop: $INPUT" \
         || (echo "ERROR: target loop name is required. Pass as positional arg: ll-loop run outer-loop-eval <name>" >&2; exit 1)
-    on_error: fail_missing_input
+    on_error: finalize_fail_missing_input
     next: load_definition
 
-  fail_missing_input:
+  finalize_fail_missing_input:
     action_type: shell
     action: "echo 'outer-loop-eval: missing required context variable input' >&2; exit 1"
+    next: fail_missing_input
+    on_error: fail_missing_input
+  fail_missing_input:
     terminal: true
 
   load_definition:
@@ -60,21 +63,27 @@ states:
       input: "${context.loop_input}"
     capture: sub_loop_output
     on_yes: analyze_execution
-    on_no: handle_sub_loop_failed
-    on_error: handle_sub_loop_error
+    on_no: finalize_handle_sub_loop_failed
+    on_error: finalize_handle_sub_loop_error
 
-  handle_sub_loop_failed:
+  finalize_handle_sub_loop_failed:
     action_type: shell
     action: |
       echo "SUB_LOOP_FAILED: child loop reached non-done terminal state" >&2
       exit 0
+    next: handle_sub_loop_failed
+    on_error: handle_sub_loop_failed
+  handle_sub_loop_failed:
     terminal: true
 
-  handle_sub_loop_error:
+  finalize_handle_sub_loop_error:
     action_type: shell
     action: |
       echo "SUB_LOOP_ERROR: child loop terminated with error" >&2
       exit 0
+    next: handle_sub_loop_error
+    on_error: handle_sub_loop_error
+  handle_sub_loop_error:
     terminal: true
 
   analyze_execution:
@@ -94,7 +103,6 @@ states:
     action: "/ll:audit-loop-run ${context.input} --auto"
     capture: improvement_report
     on_blocked: $current
-    on_error: refine_analysis
     max_retries: 2
     on_retry_exhausted: done
     evaluate:

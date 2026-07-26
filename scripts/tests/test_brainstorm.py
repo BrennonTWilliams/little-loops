@@ -105,9 +105,11 @@ class TestBrainstormYaml:
         assert data["states"]["failed"].get("terminal") is True
 
     def test_failed_has_diagnostic_action(self, data: dict) -> None:
-        failed = data["states"]["failed"]
-        assert failed.get("action_type") == "prompt"
-        assert failed.get("action"), "failed state must have a diagnostic action"
+        """BUG-2813: the diagnostic action lives on finalize_failed now (the bare
+        `failed` terminal never executes its own action)."""
+        finalize_failed = data["states"]["finalize_failed"]
+        assert finalize_failed.get("action_type") == "prompt"
+        assert finalize_failed.get("action"), "finalize_failed state must have a diagnostic action"
 
     def test_no_issue_system_writes_in_core_states(self, data: dict) -> None:
         """Core states must not reference .issues/ — Issue writes are opt-in via sinks only."""
@@ -263,8 +265,8 @@ class TestBrainstormShellStates:
     def test_cluster_and_rank_route_to_failed_on_error(self, data: dict) -> None:
         for state_name in ("cluster", "rank"):
             state = data["states"][state_name]
-            assert state.get("on_error") == "failed", (
-                f"{state_name} must route to failed on LLM error"
+            assert state.get("on_error") == "finalize_failed", (
+                f"{state_name} must route to failed (via finalize_failed, BUG-2813) on LLM error"
             )
 
 
@@ -282,8 +284,9 @@ class TestPopLensEmptyQueue:
 
     def test_pop_lens_has_on_error_route(self, data: dict) -> None:
         state = data["states"]["pop_lens"]
-        assert state.get("on_error") == "failed", (
-            "pop_lens must route to failed when lenses.txt is missing (BUG-2435)"
+        assert state.get("on_error") == "finalize_failed", (
+            "pop_lens must route to failed (via finalize_failed, BUG-2813) when lenses.txt "
+            "is missing (BUG-2435)"
         )
 
     def test_pop_lens_action_checks_file_existence(self, data: dict) -> None:
@@ -646,15 +649,15 @@ class TestBug2468ErrorRouting:
 
     def test_dedup_novelty_on_error_routes_to_failed(self, data: dict) -> None:
         """A dedup_novelty crash must terminate in failed, never route to cluster."""
-        assert data["states"]["dedup_novelty"].get("on_error") == "failed"
+        assert data["states"]["dedup_novelty"].get("on_error") == "finalize_failed"
 
     def test_verify_artifacts_routes(self, data: dict) -> None:
         state = data["states"]["verify_artifacts"]
         assert state.get("action_type") == "shell"
         assert state.get("evaluate", {}).get("type") == "exit_code"
-        assert state.get("on_yes") == "done"
-        assert state.get("on_no") == "failed"
-        assert state.get("on_error") == "failed"
+        assert state.get("on_yes") == "finalize_done"
+        assert state.get("on_no") == "finalize_failed"
+        assert state.get("on_error") == "finalize_failed"
 
     def test_all_success_paths_route_through_verify_artifacts(self, data: dict) -> None:
         """Every path into the terminal done state must pass the artifact gate."""

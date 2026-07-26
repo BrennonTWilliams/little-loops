@@ -41,7 +41,7 @@ context:
   commit_every: 0           # commit every N completed refinements; 0 = disabled
   no_recursion: false       # true = skip child detection / size-review (flat one-pass alias mode)
 import:
-  - lib/common.yaml
+- lib/common.yaml
 
 states:
   parse_input:
@@ -156,7 +156,7 @@ states:
     capture: input
     on_yes: check_attempt_budget
     on_no: aggregate_decomposition
-    on_error: done
+    on_error: finalize_done
 
   check_attempt_budget:
     # Gate: skip this issue if it has consumed its per-issue refinement budget.
@@ -770,11 +770,11 @@ states:
           print(f'  {parent_id} → [{child_list}]{status}')
       PYEOF
     action_type: shell
-    next: done
-    on_error: done
+    next: finalize_done
+    on_error: finalize_done
 
-  done:
-    # Emit a structured summary of passed and skipped issues for this run.
+  finalize_done:
+    action_type: shell
     action: |
       PASSED_IDS=$(cat ${context.run_dir}/recursive-refine-passed.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
@@ -920,7 +920,11 @@ states:
       PYEOF
       fi
       printf '\n'
-    action_type: shell
+    next: done
+    on_error: failed
+  done:
+    # Bare terminal (BUG-2813): the structured summary of passed/skipped
+    # issues is emitted by the preceding `finalize_done` state.
     terminal: true
 
   diagnose:

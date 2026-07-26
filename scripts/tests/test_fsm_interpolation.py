@@ -764,10 +764,14 @@ class TestSafeInterpolation:
     # ── Real-loop bypass-path guards (BUG-2094) ──────────────────────────────
 
     def test_loop_composer_present_result_safe_with_empty_captured(self) -> None:
-        """present_result must not raise when user_plan_decision was bypassed."""
+        """finalize_present_result must not raise when user_plan_decision was bypassed.
+
+        BUG-2813: the action lives on the penultimate finalize_present_result state,
+        not the bare present_result terminal (which never executes its action).
+        """
         loop_path = Path("scripts/little_loops/loops/loop-composer.yaml")
         data = yaml.safe_load(loop_path.read_text())
-        action = data["states"]["present_result"]["action"]
+        action = data["states"]["finalize_present_result"]["action"]
         ctx = InterpolationContext(captured={}, context={"run_dir": "/tmp/test-run"})
         interpolate(action, ctx)
 
@@ -806,10 +810,11 @@ class TestSafeInterpolation:
         interpolate(action, ctx)
 
     def test_loop_router_present_result_safe_with_empty_captured(self) -> None:
-        """present_result must not raise when new_loop_proposal/review_result were bypassed."""
+        """finalize_present_result must not raise when new_loop_proposal/review_result
+        were bypassed (BUG-2813: action moved off the bare present_result terminal)."""
         loop_path = Path("scripts/little_loops/loops/loop-router.yaml")
         data = yaml.safe_load(loop_path.read_text())
-        action = data["states"]["present_result"]["action"]
+        action = data["states"]["finalize_present_result"]["action"]
         ctx = InterpolationContext(captured={}, context={"run_dir": "/tmp"})
         interpolate(action, ctx)
 

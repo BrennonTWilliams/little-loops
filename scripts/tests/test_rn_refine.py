@@ -1163,8 +1163,10 @@ class TestFinalizeSafety:
         assert fsm.states["finalize_aborted"].terminal is True
 
     def test_finalize_aborted_action_is_shell(self) -> None:
+        """BUG-2813: the diagnostic action lives on record_finalize_aborted now (the
+        bare finalize_aborted terminal never executes its own action)."""
         fsm = _load_rn_refine()
-        assert fsm.states["finalize_aborted"].action_type == "shell"
+        assert fsm.states["record_finalize_aborted"].action_type == "shell"
 
     def test_preflight_routes_to_finalize_on_ok(self) -> None:
         fsm = _load_rn_refine()
@@ -1172,11 +1174,11 @@ class TestFinalizeSafety:
 
     def test_preflight_routes_to_finalize_aborted_on_fail(self) -> None:
         fsm = _load_rn_refine()
-        assert fsm.states["preflight_check"].on_no == "finalize_aborted"
+        assert fsm.states["preflight_check"].on_no == "record_finalize_aborted"
 
     def test_preflight_routes_to_finalize_aborted_on_error(self) -> None:
         fsm = _load_rn_refine()
-        assert fsm.states["preflight_check"].on_error == "finalize_aborted"
+        assert fsm.states["preflight_check"].on_error == "record_finalize_aborted"
 
     def test_final_score_routes_to_preflight_check(self) -> None:
         fsm = _load_rn_refine()
@@ -1437,7 +1439,7 @@ class TestRunSummaryArtifacts:
         return _load_rn_refine().states["finalize"].action
 
     def _aborted_action(self) -> str:
-        return _load_rn_refine().states["finalize_aborted"].action
+        return _load_rn_refine().states["record_finalize_aborted"].action
 
     def _seed(self, tmp_path: Path, *, with_source: bool = True) -> Path:
         rd = tmp_path / "run"

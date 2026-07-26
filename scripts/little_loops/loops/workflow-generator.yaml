@@ -488,7 +488,7 @@ states:
     evaluate:
       type: exit_code
     on_yes: promote
-    on_no: await_confirmation
+    on_no: finalize_await_confirmation
 
   promote:
     # HARNESS: resolve the target name against both the built-in loop set and
@@ -523,10 +523,7 @@ states:
       echo "PROMOTED: $LOOPS_DIR/$CANDIDATE.yaml"
     next: done
 
-  await_confirmation:
-    # HARNESS: terminal, non-error — the validated draft is ready but not
-    # promoted. Reports the path so the operator can review, then re-run with
-    # auto_promote: "true", or promote by hand.
+  finalize_await_confirmation:
     action_type: prompt
     action: |
       A validated workflow draft is ready at
@@ -537,6 +534,12 @@ states:
       `--set auto_promote=true`, or manually copy the file into
       ${context.loops_dir}/ under a name that doesn't collide with an
       existing built-in or project loop.
+    next: await_confirmation
+    on_error: failed
+  await_confirmation:
+    # HARNESS: terminal, non-error — the validated draft is ready but not
+    # promoted. Reports the path so the operator can review, then re-run with
+    # auto_promote: "true", or promote by hand.
     terminal: true
 
   diagnose:

@@ -43,7 +43,7 @@ context:
   design_tokens_context: ""   # runner-injected; resolved semantic token values or empty
 
 import:
-  - lib/common.yaml
+- lib/common.yaml
 
 states:
 
@@ -358,11 +358,9 @@ states:
         cp "$RUN_DIR/index.html" "$RUN_DIR/best.html" 2>/dev/null || true
         echo "Best iteration: (fallback to latest)"
       fi
-    next: done
+    next: finalize_done
 
-  done:
-    # HARNESS: Success terminal — reached when a render passes the threshold gate or
-    # max_iterations is exhausted; finalize has published the strongest artifact.
+  finalize_done:
     action_type: prompt
     action: |
       The canvas-sketch generation loop has completed.
@@ -376,6 +374,11 @@ states:
 
       Report these paths to the user, name which iteration won, and confirm the
       sketch is ready.
+    next: done
+    on_error: failed
+  done:
+    # HARNESS: Success terminal — reached when a render passes the threshold gate or
+    # max_iterations is exhausted; finalize has published the strongest artifact.
     terminal: true
 
   failed:

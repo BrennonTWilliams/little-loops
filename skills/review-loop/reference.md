@@ -49,6 +49,7 @@ These are surfaced by running `ll-loop validate <name>`. The review skill presen
 | MR-10 | `shell` state's inline Python calls `json.loads`/`json.load`, catches `JSONDecodeError`/`ValueError`/bare `Exception`, and explicitly exits 0 without an `on_error:` route — silently discards parse failures as an empty success. Add `on_error:` to route explicitly; suppress with `parse_swallow_ok: true` (BUG-2383) | Warning |
 | MR-11 | `shell` state pastes a user-controlled `${context.input\|goal\|description\|task\|prompt\|query\|topic}` value raw into the action body outside a safe position (single-quoted string, quoted heredoc `<<'EOF'`, or the `:shell` suffix) — a value containing `"`, `$`, `` ` ``, `\`, or `!` breaks bash tokenizing or injects commands. Wrap in single quotes, write through a quoted heredoc, or use `${context.input:shell}` to shlex-quote it; suppress with `unsafe_context_interpolation_ok: true` (BUG-2622) | Warning |
 | V-18 | State's `loop:` reference does not resolve to any file (typo, renamed loop, missing sibling) — fails at runtime after expensive setup; caught at definition time (BUG-2305) | Warning |
+| terminal-action-ok | `terminal: true` state has a non-empty `action` — the executor finishes the run before that action would run, so it's dead code; move it to a new penultimate non-terminal state with `next: <terminal>` and `on_error:` routing (the `rn-implement::report` shape). Exempts a terminal doubling as the loop's `on_max_steps`/`on_max_iterations` handler; suppress with `terminal_action_ok: true` (BUG-2813) | Warning |
 
 ---
 

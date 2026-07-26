@@ -29,7 +29,7 @@ context:
   design_tokens_context: ""   # runner-injected; resolved semantic token values or empty
 
 import:
-  - lib/common.yaml
+- lib/common.yaml
 
 states:
 
@@ -297,7 +297,7 @@ states:
     evaluate:
       type: output_contains
       pattern: "ALL_PASS"
-    on_yes: done
+    on_yes: finalize_done
     on_no: check_stall
     on_error: failed
 
@@ -313,15 +313,10 @@ states:
     evaluate:
       max_stall: 3
     on_yes: generate
-    on_no: done
+    on_no: finalize_done
     on_error: generate
 
-  done:
-    # HARNESS: Success terminal — reached when all criteria pass or
-    # max_iterations exhausted. The final visualization is at
-    # ${captured.run_dir.output}/index.html and can be opened directly in a
-    # browser. The frame strip and critique remain in the run dir for
-    # reference.
+  finalize_done:
     action_type: prompt
     action: |
       The PixiJS data viz loop has completed successfully.
@@ -333,6 +328,14 @@ states:
       - ${captured.run_dir.output}/frame_*.png  — the last captured frame strip
 
       Report these paths to the user and confirm the visualization is ready.
+    next: done
+    on_error: failed
+  done:
+    # HARNESS: Success terminal — reached when all criteria pass or
+    # max_iterations exhausted. The final visualization is at
+    # ${captured.run_dir.output}/index.html and can be opened directly in a
+    # browser. The frame strip and critique remain in the run dir for
+    # reference.
     terminal: true
 
   failed:

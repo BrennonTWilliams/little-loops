@@ -46,8 +46,8 @@ states:
     evaluate:
       type: exit_code
     on_yes: load_context
-    on_no: failed
-    on_error: failed
+    on_no: finalize_failed
+    on_error: finalize_failed
 
   # ─── Phase 2: Load project context ────────────────────────────────────────────
 
@@ -102,8 +102,8 @@ states:
     evaluate:
       type: exit_code
     on_yes: extract_and_score
-    on_no: report
-    on_error: report
+    on_no: finalize_report
+    on_error: finalize_report
 
   extract_and_score:
     action_type: prompt
@@ -355,14 +355,13 @@ states:
     evaluate:
       type: exit_code
     on_yes: read_file
-    on_no: report
-    on_error: report
+    on_no: finalize_report
+    on_error: finalize_report
 
   # ─── Phase 4: Report ──────────────────────────────────────────────────────────
 
-  report:
+  finalize_report:
     action_type: shell
-    terminal: true
     action: |
       python3 << 'PYEOF'
       import os
@@ -401,10 +400,16 @@ states:
       print(f'Run artifacts    : {run_dir}')
       print('=' * 60)
       PYEOF
-
-  failed:
-    action_type: shell
+    next: report
+    on_error: finalize_failed
+  report:
     terminal: true
+  finalize_failed:
+    action_type: shell
     action: |
       echo "apply-research: fatal error during initialization." >&2
       exit 1
+    next: failed
+    on_error: failed
+  failed:
+    terminal: true

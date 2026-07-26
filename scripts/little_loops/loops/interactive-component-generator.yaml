@@ -36,7 +36,7 @@ context:
   design_tokens_context: ""   # runner-injected; resolved semantic token values or empty
 
 import:
-  - lib/common.yaml           # provides the shell_exit fragment (exit-code routing)
+- lib/common.yaml             # provides the shell_exit fragment (exit-code routing)
 
 states:
 
@@ -568,12 +568,11 @@ states:
     evaluate:
       type: output_contains
       pattern: "VISION_PASS"
-    on_yes: done
-    on_no: done
-    on_error: done
+    on_yes: finalize_done
+    on_no: finalize_done
+    on_error: finalize_done
 
-  done:
-    # HARNESS: Terminal — the combined interactive artifact is ready.
+  finalize_done:
     action_type: prompt
     action: |
       The interactive-component-generator loop completed.
@@ -585,6 +584,10 @@ states:
       - ${captured.run_dir.output}/scoreboard.jsonl — per-component smoke + rubric results
       - ${captured.run_dir.output}/screenshot.png  — final render
       Built components remain at ${captured.run_dir.output}/comp-<id>/ for inspection.
+    next: done
+    on_error: failed
+  done:
+    # HARNESS: Terminal — the combined interactive artifact is ready.
     terminal: true
 
   diagnose:

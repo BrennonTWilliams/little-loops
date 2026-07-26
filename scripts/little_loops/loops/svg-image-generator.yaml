@@ -234,13 +234,11 @@ states:
     evaluate:
       type: output_contains
       pattern: "VISION_PASS"
-    on_yes: done
+    on_yes: finalize_done
     on_no: run_gen_eval
-    on_error: done
+    on_error: finalize_done
 
-  done:
-    # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
-    # Reports the final output file locations before ending.
+  finalize_done:
     action_type: prompt
     action: |
       The SVG generation loop has completed successfully.
@@ -252,6 +250,11 @@ states:
       - ${captured.run_dir.output}/screenshot.png — the last Playwright-captured render
 
       Report these paths to the user and confirm the SVG is ready.
+    next: done
+    on_error: failed
+  done:
+    # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
+    # Reports the final output file locations before ending.
     terminal: true
 
   diagnose:

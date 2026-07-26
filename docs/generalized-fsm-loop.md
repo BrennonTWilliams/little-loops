@@ -1703,6 +1703,8 @@ A `terminal: true` state that signals failure (as opposed to a successful `done`
 
 **Important**: do NOT put `action_type: prompt` directly on the `terminal: true` state. The FSM runner calls `_finish("terminal")` before executing any terminal-state action, so the action is silently skipped. The correct pattern is the same two-state split used for successful completion (`report → done`): a non-terminal `diagnose` state runs the prompt and routes `next: failed`, while `failed` stays as a bare `terminal: true` anchor.
 
+This is no longer just convention — `ll-loop validate` enforces it directly (BUG-2813): a non-empty `action` on *any* `terminal: true` state (success or failure) emits a WARNING naming the exact `next:`/`on_error:` split to apply, exempting only a terminal doubling as the loop's `on_max_steps`/`on_max_iterations` handler. Suppress with `terminal_action_ok: true` at the loop top-level for a reviewed exception.
+
 ```yaml
   diagnose:
     action_type: prompt

@@ -1,0 +1,11 @@
+{
+  "id": "191b74e5-6329-45a3-9a1b-5973bf409c6c",
+  "type": "decision",
+  "timestamp": "2026-07-26T01:58:20Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Audited run's rubric failures were sampler-quality signatures (soft shadows, edge gradients, gloss on a flat-vector brief), not prompt-semantics failures; prompt refinement cannot reach them at any iteration count.",
+  "rule": "Captured: Raise flux-image-generator diffusion steps default from 4 to ~20",
+  "scope": "issue",
+  "issue": "ENH-2823"
+}

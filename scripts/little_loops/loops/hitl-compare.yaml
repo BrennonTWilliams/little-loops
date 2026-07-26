@@ -248,13 +248,11 @@ states:
         If ALL five criterion scores meet their individual thresholds, output exactly: ALL_PASS
         Otherwise output: ITERATE
       pass_threshold: 7
-    on_yes: done
-    on_no: failed
-    on_error: failed
+    on_yes: finalize_done
+    on_no: finalize_failed
+    on_error: finalize_failed
 
-  done:
-    # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
-    # Reports all output file paths and explains how to feed selections back to the coding agent.
+  finalize_done:
     action_type: prompt
     action: |
       The hitl-compare loop has completed successfully.
@@ -275,12 +273,14 @@ states:
 
       If the page shows "nothing to review", all decisions in the inputs were implementation-level
       or had obvious winners — the pruning step resolved them and no human input is needed.
+    next: done
+    on_error: finalize_failed
+  done:
+    # HARNESS: Terminal state — reached when all criteria pass or max_iterations exhausted.
+    # Reports all output file paths and explains how to feed selections back to the coding agent.
     terminal: true
 
-  failed:
-    # HARNESS: Explicit failure terminal — reached when an unrecoverable error occurs
-    # (e.g. LLM failure in score state). Provides a clear signal distinct from a
-    # max_iterations timeout, making failure mode visible in ll-loop history.
+  finalize_failed:
     action_type: prompt
     action: |
       The hitl-compare loop has terminated with an unrecoverable error.
@@ -291,4 +291,10 @@ states:
       - Identify the most likely failure cause (most commonly: LLM error in the score state).
 
       Write a one-paragraph diagnostic summary so the operator can diagnose and re-run.
+    next: failed
+    on_error: failed
+  failed:
+    # HARNESS: Explicit failure terminal — reached when an unrecoverable error occurs
+    # (e.g. LLM failure in score state). Provides a clear signal distinct from a
+    # max_iterations timeout, making failure mode visible in ll-loop history.
     terminal: true

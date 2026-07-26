@@ -184,8 +184,8 @@ class TestReplanBudget:
 
     def test_budget_exhaustion_routes_to_abort(self, states: dict) -> None:
         state = states["check_replan_budget"]
-        assert state.get("on_no") == "abort_composer"
-        assert state.get("on_error") == "abort_composer"
+        assert state.get("on_no") == "finalize_abort_composer"
+        assert state.get("on_error") == "finalize_abort_composer"
 
     def test_budget_ok_routes_to_increment(self, states: dict) -> None:
         # On the REPLAN_TAIL branch the budget is checked BEFORE increment, so
@@ -233,7 +233,7 @@ class TestReassessState:
         assert state.get("on_yes") == "parse_reassess_decision"
         assert state.get("on_no") == "parse_reassess_decision"
         assert state.get("on_partial") == "parse_reassess_decision"
-        assert state.get("on_error") == "abort_composer"
+        assert state.get("on_error") == "finalize_abort_composer"
 
     def test_reassess_is_paired_with_output_numeric_gate(self, states: dict) -> None:
         """MR-1: the llm_structured reassess state must be paired with a non-LLM
@@ -272,7 +272,7 @@ class TestVerdictGateRouting:
         assert states["route_reassess_replan"].get("on_yes") == "check_replan_budget"
 
     def test_route_reassess_replan_routes_to_abort_on_no(self, states: dict) -> None:
-        assert states["route_reassess_replan"].get("on_no") == "abort_composer"
+        assert states["route_reassess_replan"].get("on_no") == "finalize_abort_composer"
 
     def test_apply_replan_validates_before_executing(self, states: dict) -> None:
         # The replanned (succeeded + new tail) plan is re-validated (catalog
@@ -282,8 +282,8 @@ class TestVerdictGateRouting:
         vr = states["validate_replan"]
         assert vr.get("fragment") == "validate_plan"
         assert vr.get("on_yes") == "execute_plan"
-        assert vr.get("on_no") == "abort_composer"
-        assert vr.get("on_error") == "abort_composer"
+        assert vr.get("on_no") == "finalize_abort_composer"
+        assert vr.get("on_error") == "finalize_abort_composer"
 
     def test_apply_replan_uses_succeeded_steps_as_immutable_boundary(self, states: dict) -> None:
         # Fix #8: the immutable prefix is succeeded-steps.txt (not completed-steps),

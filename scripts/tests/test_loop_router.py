@@ -107,7 +107,7 @@ class TestLoopRouterStates:
         assert "ll-loop list" in state.get("action", "")
         assert state.get("capture") == "catalog"
         assert state.get("next") == "classify_goal"
-        assert state.get("on_error") == "failed"
+        assert state.get("on_error") == "finalize_failed"
 
     def test_discover_loops_excludes_self(self, loop_data: dict) -> None:
         state = loop_data["states"]["discover_loops"]
@@ -195,7 +195,7 @@ class TestLoopRouterStates:
         assert evaluate.get("pattern") == "CANCEL", (
             "present_choices must use CANCEL sentinel (not PASS/ALL_PASS)"
         )
-        assert state.get("on_yes") == "present_result"
+        assert state.get("on_yes") == "finalize_present_result"
         assert state.get("on_no") == "apply_user_choice"
 
     def test_present_result_is_terminal(self, loop_data: dict) -> None:
@@ -215,7 +215,7 @@ class TestLoopRouterStates:
     def test_check_auto_create_routes_to_invoke_or_result(self, loop_data: dict) -> None:
         state = loop_data["states"]["check_auto_create"]
         assert state.get("on_yes") == "invoke_create_loop"
-        assert state.get("on_no") == "present_result"
+        assert state.get("on_no") == "finalize_present_result"
 
     def test_discover_loops_handles_include_allowlist(self, loop_data: dict) -> None:
         action = loop_data["states"]["discover_loops"].get("action", "")

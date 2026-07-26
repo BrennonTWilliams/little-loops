@@ -32,7 +32,7 @@ parameters:
     description: "Gates academic-specific behaviors: recency scoring axis, arxiv ID dedup, BibTeX section in synthesize, academic query terminology"
 
 import:
-  - lib/common.yaml
+- lib/common.yaml
 
 context:
   source_filter: ""
@@ -392,11 +392,9 @@ states:
 
       After writing report.md, output the absolute path to the report:
       ${context.run_dir}/report.md
-    next: done
+    next: finalize_done
 
-  done:
-    # Terminal — reports final output file locations and facet coverage summary.
-    # academic_mode gates the BibTeX copy note.
+  finalize_done:
     action_type: prompt
     action: |
       The research loop has completed.
@@ -412,4 +410,9 @@ states:
 
       If academic_mode is ${context.academic_mode} and true: also note that the
       ## BibTeX section in report.md can be copied directly into a .bib file.
+    next: done
+    on_error: done
+  done:
+    # Terminal — reports final output file locations and facet coverage summary.
+    # academic_mode gates the BibTeX copy note.
     terminal: true

@@ -323,11 +323,9 @@ states:
       DIR="${captured.run_dir.output}"
       [ -f "$DIR/best.svg" ] || cp "$DIR/image.svg" "$DIR/best.svg"
       [ -f "$DIR/best-brief.md" ] || cp "$DIR/brief.md" "$DIR/best-brief.md"
-    next: done
+    next: finalize_done
 
-  done:
-    # HARNESS: Terminal state — reached when all criteria pass, convergence is detected,
-    # or max_iterations exhausted. Reports final and best-scoring artifacts.
+  finalize_done:
     action_type: prompt
     action: |
       The SVG generation loop has completed successfully.
@@ -343,6 +341,11 @@ states:
       - ${captured.run_dir.output}/best-brief.md  — best-scoring iteration brief (present if at least one score was recorded)
 
       Report these paths to the user and confirm the SVG is ready.
+    next: done
+    on_error: failed
+  done:
+    # HARNESS: Terminal state — reached when all criteria pass, convergence is detected,
+    # or max_iterations exhausted. Reports final and best-scoring artifacts.
     terminal: true
 
   diagnose:

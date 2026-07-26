@@ -108,7 +108,7 @@ class TestRnPlanYaml:
         assert state.get("fragment") == "plan_rubric_score", (
             "score state must use plan_rubric_score fragment (which provides ALL_VERY_HIGH evaluator)"
         )
-        assert state.get("on_yes") == "done"
+        assert state.get("on_yes") == "finalize_done"
         assert state.get("on_no") == "research_iteration"
         assert state.get("on_error") == "diagnose"
 

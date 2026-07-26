@@ -295,6 +295,32 @@ class TestBuiltinLoopFiles:
             "the BUG-1606 regression guard is vacuous (all diagnose states removed?)."
         )
 
+    def test_no_plain_terminal_has_action(self, builtin_loops: list[Path]) -> None:
+        """BUG-2813: a `terminal: true` state's action never executes — dead code.
+
+        Exempts a terminal doubling as the loop's `on_max_steps`/`on_max_iterations`
+        handler (BUG-158 fallthrough executes its action once before finishing).
+        """
+        violations: list[str] = []
+        for loop_file in builtin_loops:
+            with open(loop_file) as f:
+                data = yaml.safe_load(f)
+            states = data.get("states") or {}
+            exempt = {data.get("on_max_steps"), data.get("on_max_iterations")} - {None}
+            for state_name, cfg in states.items():
+                if not isinstance(cfg, dict):
+                    continue
+                if state_name in exempt:
+                    continue
+                if cfg.get("terminal") and cfg.get("action"):
+                    violations.append(f"{loop_file.name}::{state_name}")
+        assert not violations, (
+            "Terminal state(s) with a non-empty action (never executes — the executor "
+            f"finishes before running it, BUG-2813): {violations}. Move the action into "
+            "a new penultimate non-terminal state with 'next: <terminal>' and an "
+            "'on_error:' route (see rn-implement::report)."
+        )
+
 
 class TestExamplesMinerNestedCapturePath:
     """BUG-2812: positive fixture for the already-correct nested sub-loop
@@ -1888,8 +1914,8 @@ class TestVegaVizScoringGate:
         )
 
     def test_record_on_yes_routes_to_done(self, data: dict) -> None:
-        """record.on_yes must still route to done on a genuine EVAL_PASS."""
-        assert data["states"]["record"].get("on_yes") == "done"
+        """record.on_yes must still route to done (via finalize_done) on a genuine EVAL_PASS."""
+        assert data["states"]["record"].get("on_yes") == "finalize_done"
 
     def test_record_on_no_routes_to_check_stall(self, data: dict) -> None:
         """record.on_no must route to check_stall (diff-stall guard) before regenerating."""
@@ -3203,8 +3229,9 @@ class TestAutoRefineAndImplementLoop:
         phantom run must land on a terminal != `done`."""
         state = data["states"].get("finalize", {})
         assert state.get("on_yes") == "done", "finalize must route success/no-op to done"
-        assert state.get("on_no") == "incomplete", (
-            "finalize must route a phantom (non-zero exit) to the incomplete terminal"
+        assert state.get("on_no") == "finalize_incomplete", (
+            "finalize must route a phantom (non-zero exit) to the incomplete terminal "
+            "(via the finalize_incomplete penultimate state, BUG-2813)"
         )
         # shell_exit fragment supplies exit-code evaluation; a bare `next` would
         # ignore the routing entirely.
@@ -4817,11 +4844,15 @@ class TestAutodevLoop:
         assert "git mv" not in action, "the completed/ move is owned by finalize-decomposition now"
 
     def test_done_surfaces_autodev_inflight_warning(self, data: dict) -> None:
-        """done must read autodev-inflight and emit a warning when non-empty."""
-        state = data["states"].get("done", {})
+        """finalize_done must read autodev-inflight and emit a warning when non-empty.
+
+        BUG-2813: the action moved off the bare `done` terminal (never executes)
+        onto the penultimate `finalize_done` state.
+        """
+        state = data["states"].get("finalize_done", {})
         action = state.get("action", "")
         assert "autodev-inflight" in action, (
-            "done must read autodev-inflight so the user knows which issue "
+            "finalize_done must read autodev-inflight so the user knows which issue "
             "was in-flight at loop termination (BUG-1226)"
         )
 
@@ -5837,9 +5868,9 @@ class TestRecursiveRefineLoop:
         assert state.get("on_no") == "diagnose"
 
     def test_aggregate_decomposition_routes_to_done(self, data: dict) -> None:
-        """aggregate_decomposition.next must route to done."""
+        """aggregate_decomposition.next must route to done (via finalize_done, BUG-2813)."""
         state = data["states"].get("aggregate_decomposition", {})
-        assert state.get("next") == "done"
+        assert state.get("next") == "finalize_done"
 
     def test_check_attempt_budget_routes_to_capture_baseline(self, data: dict) -> None:
         """check_attempt_budget.on_yes must route to capture_baseline."""
@@ -6763,9 +6794,9 @@ class TestP5jsSketchGeneratorLoop:
         assert noloop_pos < screenshot_pos, "noLoop() must come before page.screenshot()"
 
     def test_score_state_routes_to_done_on_pass(self, resolved_data: dict) -> None:
-        """score state must route to done when all criteria pass."""
+        """score state must route to done (via finalize_done, BUG-2813) when all criteria pass."""
         state = resolved_data["states"].get("score", {})
-        assert state.get("on_yes") == "done"
+        assert state.get("on_yes") == "finalize_done"
 
     def test_context_has_sample_frames(self, resolved_data: dict) -> None:
         """context block must define sample_frames for multi-frame capture."""
@@ -6883,9 +6914,9 @@ class TestPixiGenerativeArtLoop:
         )
 
     def test_score_state_routes_to_done_on_pass(self, resolved_data: dict) -> None:
-        """score state must route to done when all criteria pass."""
+        """score state must route to done (via finalize_done, BUG-2813) when all criteria pass."""
         state = resolved_data["states"].get("score", {})
-        assert state.get("on_yes") == "done"
+        assert state.get("on_yes") == "finalize_done"
 
     def test_context_has_sample_frames(self, resolved_data: dict) -> None:
         """context block must define sample_frames for multi-frame capture."""
@@ -7015,9 +7046,9 @@ class TestPixiDataVizLoop:
         )
 
     def test_score_state_routes_to_done_on_pass(self, data: dict) -> None:
-        """score state must route to done when all criteria pass."""
+        """score state must route to done (via finalize_done, BUG-2813) when all criteria pass."""
         state = data["states"].get("score", {})
-        assert state.get("on_yes") == "done"
+        assert state.get("on_yes") == "finalize_done"
 
     def test_max_steps_and_timeout_defined(self, data: dict) -> None:
         """Loop must define max_steps and timeout."""
@@ -7408,12 +7439,16 @@ class TestSvgTextgradLoop:
         assert "on_error" in state
 
     def test_done_reports_scores_md_and_best_artifacts(self, data: dict) -> None:
-        """done state action must reference scores.md, best.svg, and best-brief.md."""
-        state = data["states"].get("done", {})
+        """finalize_done state action must reference scores.md, best.svg, and best-brief.md.
+
+        BUG-2813: the action lives on the penultimate finalize_done state now,
+        not the bare `done` terminal (which never executes its action).
+        """
+        state = data["states"].get("finalize_done", {})
         action = state.get("action", "")
-        assert "scores.md" in action, "done.action must reference scores.md"
-        assert "best.svg" in action, "done.action must reference best.svg"
-        assert "best-brief.md" in action, "done.action must reference best-brief.md"
+        assert "scores.md" in action, "finalize_done.action must reference scores.md"
+        assert "best.svg" in action, "finalize_done.action must reference best.svg"
+        assert "best-brief.md" in action, "finalize_done.action must reference best-brief.md"
 
     def test_init_touches_scores_md(self, data: dict) -> None:
         """init action must touch scores.md so compute_gradient can read it on iteration 1."""
@@ -7478,9 +7513,9 @@ class TestSvgTextgradLoop:
         assert state.get("action_type") == "shell"
 
     def test_seal_artifacts_routes_to_done(self, data: dict) -> None:
-        """seal_artifacts state must route unconditionally to done."""
+        """seal_artifacts state must route unconditionally to done (via finalize_done)."""
         state = data["states"].get("seal_artifacts", {})
-        assert state.get("next") == "done"
+        assert state.get("next") == "finalize_done"
 
     def test_generate_on_error_routes_to_diagnose(self, data: dict) -> None:
         """generate state must route to diagnose on error."""
@@ -7639,10 +7674,10 @@ class TestHtmlAnythingLoop:
         assert "pass_threshold" in with_, "run_gen_eval.with must contain 'pass_threshold'"
 
     def test_run_gen_eval_routes_to_done_on_yes(self, data: dict) -> None:
-        """run_gen_eval must route to done when sub-loop succeeds (ALL_PASS)."""
+        """run_gen_eval must route to done (via finalize_done) when sub-loop succeeds (ALL_PASS)."""
         state = data["states"].get("run_gen_eval", {})
-        assert state.get("on_yes") == "done", (
-            f"run_gen_eval.on_yes should be 'done', got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "finalize_done", (
+            f"run_gen_eval.on_yes should be 'finalize_done', got {state.get('on_yes')!r}"
         )
 
     def test_run_gen_eval_routes_to_diagnose_on_failure(self, data: dict) -> None:
@@ -7700,14 +7735,16 @@ class TestHtmlAnythingLoop:
         assert data.get("timeout", 0) > 0
 
     def test_done_reports_all_five_output_files(self, data: dict) -> None:
-        """done state must reference all 5 output files: index.html, brief.md, rubric.md, critique.md, screenshot.png."""
-        state = data["states"].get("done", {})
+        """finalize_done state must reference all 5 output files: index.html, brief.md,
+        rubric.md, critique.md, screenshot.png (BUG-2813: action moved off the bare
+        `done` terminal onto the penultimate finalize_done state)."""
+        state = data["states"].get("finalize_done", {})
         action = state.get("action", "")
-        assert "index.html" in action, "done.action must reference index.html"
-        assert "brief.md" in action, "done.action must reference brief.md"
-        assert "rubric.md" in action, "done.action must reference rubric.md"
-        assert "critique.md" in action, "done.action must reference critique.md"
-        assert "screenshot.png" in action, "done.action must reference screenshot.png"
+        assert "index.html" in action, "finalize_done.action must reference index.html"
+        assert "brief.md" in action, "finalize_done.action must reference brief.md"
+        assert "rubric.md" in action, "finalize_done.action must reference rubric.md"
+        assert "critique.md" in action, "finalize_done.action must reference critique.md"
+        assert "screenshot.png" in action, "finalize_done.action must reference screenshot.png"
 
 
 class TestHitlCompareLoop:
@@ -7794,20 +7831,21 @@ class TestHitlCompareLoop:
         assert "pass_threshold" in with_, "run_gen_eval.with must contain 'pass_threshold'"
 
     def test_run_gen_eval_routes_to_done_on_yes(self, data: dict) -> None:
-        """run_gen_eval must route to done when sub-loop succeeds (ALL_PASS)."""
+        """run_gen_eval must route to done (via finalize_done) when sub-loop succeeds (ALL_PASS)."""
         state = data["states"].get("run_gen_eval", {})
-        assert state.get("on_yes") == "done", (
-            f"run_gen_eval.on_yes should be 'done', got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "finalize_done", (
+            f"run_gen_eval.on_yes should be 'finalize_done', got {state.get('on_yes')!r}"
         )
 
     def test_run_gen_eval_routes_to_failed_on_failure(self, data: dict) -> None:
-        """run_gen_eval must route to failed when sub-loop fails or exhausts iterations."""
+        """run_gen_eval must route to failed (via finalize_failed) when sub-loop fails or
+        exhausts iterations."""
         state = data["states"].get("run_gen_eval", {})
-        assert state.get("on_no") == "failed", (
-            f"run_gen_eval.on_no should be 'failed', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "finalize_failed", (
+            f"run_gen_eval.on_no should be 'finalize_failed', got {state.get('on_no')!r}"
         )
-        assert state.get("on_error") == "failed", (
-            f"run_gen_eval.on_error should be 'failed', got {state.get('on_error')!r}"
+        assert state.get("on_error") == "finalize_failed", (
+            f"run_gen_eval.on_error should be 'finalize_failed', got {state.get('on_error')!r}"
         )
 
     def test_prune_routes_to_run_gen_eval(self, data: dict) -> None:
@@ -7871,14 +7909,15 @@ class TestHitlCompareLoop:
         )
 
     def test_done_reports_all_output_files(self, data: dict) -> None:
-        """done state must reference all key output files."""
-        state = data["states"].get("done", {})
+        """finalize_done state must reference all key output files (BUG-2813: action
+        moved off the bare `done` terminal onto the penultimate finalize_done state)."""
+        state = data["states"].get("finalize_done", {})
         action = state.get("action", "")
-        assert "index.html" in action, "done.action must reference index.html"
-        assert "items.md" in action, "done.action must reference items.md"
-        assert "review.md" in action, "done.action must reference review.md"
-        assert "critique.md" in action, "done.action must reference critique.md"
-        assert "screenshot.png" in action, "done.action must reference screenshot.png"
+        assert "index.html" in action, "finalize_done.action must reference index.html"
+        assert "items.md" in action, "finalize_done.action must reference items.md"
+        assert "review.md" in action, "finalize_done.action must reference review.md"
+        assert "critique.md" in action, "finalize_done.action must reference critique.md"
+        assert "screenshot.png" in action, "finalize_done.action must reference screenshot.png"
 
 
 class TestHitlMdLoop:
@@ -7984,13 +8023,14 @@ class TestHitlMdLoop:
         )
 
     def test_run_gen_eval_routes_to_failed_on_failure(self, data: dict) -> None:
-        """run_gen_eval must route to failed when sub-loop fails or exhausts iterations."""
+        """run_gen_eval must route to failed (via finalize_failed) when sub-loop fails or
+        exhausts iterations."""
         state = data["states"].get("run_gen_eval", {})
-        assert state.get("on_no") == "failed", (
-            f"run_gen_eval.on_no should be 'failed', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "finalize_failed", (
+            f"run_gen_eval.on_no should be 'finalize_failed', got {state.get('on_no')!r}"
         )
-        assert state.get("on_error") == "failed", (
-            f"run_gen_eval.on_error should be 'failed', got {state.get('on_error')!r}"
+        assert state.get("on_error") == "finalize_failed", (
+            f"run_gen_eval.on_error should be 'finalize_failed', got {state.get('on_error')!r}"
         )
 
     def test_segment_routes_to_run_gen_eval(self, data: dict) -> None:
@@ -8001,9 +8041,9 @@ class TestHitlMdLoop:
         )
 
     def test_finalize_state_routes_to_done(self, data: dict) -> None:
-        """finalize state must route to done after copying the output HTML."""
+        """finalize state must route to done (via finalize_done) after copying the output HTML."""
         state = data["states"].get("finalize", {})
-        assert state.get("on_yes") == "done"
+        assert state.get("on_yes") == "finalize_done"
 
     def test_context_has_input(self, data: dict) -> None:
         """context block must define input (singular); output_dir is runner-injected run_dir."""
@@ -8035,13 +8075,14 @@ class TestHitlMdLoop:
         assert "index.html" in generate_prompt, "generate_prompt binding must write index.html"
 
     def test_done_reports_all_output_files(self, data: dict) -> None:
-        """done state must reference all key output files."""
-        state = data["states"].get("done", {})
+        """finalize_done state must reference all key output files (BUG-2813: action
+        moved off the bare `done` terminal onto the penultimate finalize_done state)."""
+        state = data["states"].get("finalize_done", {})
         action = state.get("action", "")
-        assert "index.html" in action, "done.action must reference index.html"
-        assert "segments.json" in action, "done.action must reference segments.json"
-        assert "critique.md" in action, "done.action must reference critique.md"
-        assert "screenshot.png" in action, "done.action must reference screenshot.png"
+        assert "index.html" in action, "finalize_done.action must reference index.html"
+        assert "segments.json" in action, "finalize_done.action must reference segments.json"
+        assert "critique.md" in action, "finalize_done.action must reference critique.md"
+        assert "screenshot.png" in action, "finalize_done.action must reference screenshot.png"
 
     # Simplified 2026-06: the ENH-1770 sensemaking layer (staged highlighting, density
     # slider, multi-channel saliency, schema-switching, minimap, full trust-calibration
@@ -9943,7 +9984,7 @@ class TestApplyResearchLoop:
         state = data["states"]["init"]
         assert state.get("evaluate", {}).get("type") == "exit_code"
         assert state.get("on_yes") == "load_context"
-        assert state.get("on_no") == "failed"
+        assert state.get("on_no") == "finalize_failed"
 
     def test_validate_scores_is_non_llm_evaluator(self, data: dict) -> None:
         state = data["states"]["validate_scores"]
@@ -9983,13 +10024,13 @@ class TestApplyResearchLoop:
     def test_read_file_routes_to_extract_or_report(self, data: dict) -> None:
         state = data["states"]["read_file"]
         assert state.get("on_yes") == "extract_and_score"
-        assert state.get("on_no") == "report"
-        assert state.get("on_error") == "report"
+        assert state.get("on_no") == "finalize_report"
+        assert state.get("on_error") == "finalize_report"
 
     def test_next_file_loops_back_to_read_file(self, data: dict) -> None:
         state = data["states"]["next_file"]
         assert state.get("on_yes") == "read_file"
-        assert state.get("on_no") == "report"
+        assert state.get("on_no") == "finalize_report"
 
     def test_capture_issues_uses_prompt_with_next(self, data: dict) -> None:
         state = data["states"]["capture_issues"]
@@ -11632,9 +11673,9 @@ class TestOpenSCADModelGeneratorLoop:
         assert state.get("next") == "vision_gate"
 
     def test_vision_gate_routes_to_done_on_yes(self, data: dict) -> None:
-        """vision_gate must route to done when external vision passes."""
+        """vision_gate must route to done (via finalize_done) when external vision passes."""
         state = data["states"].get("vision_gate", {})
-        assert state.get("on_yes") == "done"
+        assert state.get("on_yes") == "finalize_done"
 
     def test_vision_gate_routes_to_generate_on_no(self, data: dict) -> None:
         """vision_gate must route to generate when external vision fails (vision critique retry)."""
@@ -12501,7 +12542,7 @@ class TestWorkflowGeneratorLoop:
         assert ctx.get("auto_promote") == "false"
         state = data["states"]["promotion_gate"]
         assert state.get("evaluate", {}).get("type") == "exit_code"
-        assert state.get("on_no") == "await_confirmation"
+        assert state.get("on_no") == "finalize_await_confirmation"
         assert state.get("on_yes") == "promote"
 
     @pytest.mark.parametrize(

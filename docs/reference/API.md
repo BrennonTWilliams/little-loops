@@ -4923,6 +4923,7 @@ class FSMLoop:
     parse_swallow_ok: bool = False        # Suppress MR-10 inline-Python parse-swallow lint rule
     unsafe_context_interpolation_ok: bool = False  # Suppress MR-11 unsafe raw context interpolation lint rule (BUG-2622)
     policy_dims_scored_ok: bool = False   # Suppress policy-table inactive-rubric-dim lint rule
+    terminal_action_ok: bool = False      # Suppress terminal-action-ok (BUG-2813: dead action on terminal: true) lint rule
     imports: list[str] = []               # Raw `import:` list from YAML (fragment metadata, not serialized by to_dict)
 ```
 
@@ -5612,6 +5613,7 @@ Validate FSM structure and return list of errors.
 - **MR-9 (ERROR)**: a shell action string contains `$$(` or `$$VAR` — over-escaped bash; the FSM interpolator only rewrites the brace form `$${...}` → `${...}`, so bare `$(...)` / `$VAR` doubled with `$$` expand to the runner's PID at runtime, silently corrupting every downstream `${captured.*}` reference; use single `$` for command substitution and variables, reserve `$$` exclusively for the `$${VAR}` brace escape that collides with `${ns.path}` interpolation; set `shell_pid_ok: true` to suppress (BUG-2368)
 - **MR-10 (WARNING)**: a `shell`-type state's inline Python calls `json.loads`/`json.load`, catches `JSONDecodeError`/`ValueError`/bare `Exception`, and explicitly exits 0 — without an `on_error:` route — silently discarding parse failures as an empty success; add `on_error:` to route parse failures explicitly, or set `parse_swallow_ok: true` to suppress when an empty result is intentional (BUG-2383)
 - **MR-11 (WARNING)**: a `shell`-type state pastes a user-controlled `${context.input|goal|description|task|prompt|query|topic}` value raw into the action body outside a safe position (single-quoted string, quoted heredoc `<<'EOF'`, or the `:shell` suffix) — `interpolate()` substitutes with a bare `str(value)` and no shell escaping, so a value containing `"`, `$`, `` ` ``, `\`, or `!` breaks bash tokenizing or injects commands; wrap the placeholder in single quotes, write it through a quoted heredoc, or use `${context.input:shell}` to shlex-quote it, or set `unsafe_context_interpolation_ok: true` to suppress (BUG-2622)
+- **terminal-action-ok (WARNING)**: a non-empty `action` on a `terminal: true` state — the executor finishes the run the instant a terminal is entered, before its `action` would run, so it's dead code; move the action into a new penultimate non-terminal state with `next: <terminal>` and an `on_error:` route, leaving the terminal bare (the `rn-implement::report` shape); exempts a terminal doubling as the loop's `on_max_steps`/`on_max_iterations` handler (BUG-158); set `terminal_action_ok: true` to suppress (BUG-2813)
 
 **Example:**
 ```python

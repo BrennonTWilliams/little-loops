@@ -30,8 +30,8 @@ context:
   export_stl: "false"     # set to "true" to export model.stl after generation
 
 import:
-  - lib/harness.yaml
-  - lib/common.yaml
+- lib/harness.yaml
+- lib/common.yaml
 
 states:
 
@@ -269,7 +269,7 @@ states:
     evaluate:
       max_stall: 3
     on_yes: generate
-    on_no: done
+    on_no: finalize_done
     on_error: generate
 
   maybe_stl:
@@ -438,15 +438,11 @@ states:
     evaluate:
       type: output_contains
       pattern: "VISION_PASS"
-    on_yes: done
+    on_yes: finalize_done
     on_no: generate
-    on_error: done
+    on_error: finalize_done
 
-  done:
-    # HARNESS: Terminal state — reached when all criteria pass (via vision_gate)
-    # or max_iterations exhausted (via check_stall). Reports the final output
-    # file locations before ending. If export_stl was true, model.stl was created
-    # by maybe_stl and is reported here.
+  finalize_done:
     action_type: prompt
     action: |
       The OpenSCAD model generation loop has completed successfully.
@@ -466,6 +462,13 @@ states:
       Slice model.stl directly in Cura, PrusaSlicer, or Bambu Studio.
 
       Report these paths to the user and confirm the model is ready.
+    next: done
+    on_error: failed
+  done:
+    # HARNESS: Terminal state — reached when all criteria pass (via vision_gate)
+    # or max_iterations exhausted (via check_stall). Reports the final output
+    # file locations before ending. If export_stl was true, model.stl was created
+    # by maybe_stl and is reported here.
     terminal: true
 
   diagnose:

@@ -14,7 +14,7 @@ max_steps: 60
 timeout: 3600
 on_handoff: spawn   # autonomous loop (no human-in-the-loop states) — auto-continue on context handoff
 import:
-  - lib/common.yaml
+- lib/common.yaml
 
 context:
   brief: ""              # populated from positional CLI arg via input_key: brief
@@ -71,7 +71,7 @@ states:
 
       The file must contain only lens names, one per line.
     next: pop_lens
-    on_error: failed
+    on_error: finalize_failed
 
   pop_lens:
     # Atomically pops the head of lenses.txt; exits 1 when the queue is empty
@@ -93,7 +93,7 @@ states:
     capture: current_lens
     on_yes: diverge
     on_no: cluster
-    on_error: failed
+    on_error: finalize_failed
 
   diverge:
     # Generates ideas_per_round ideas under the current lens.
@@ -119,7 +119,7 @@ states:
       JSON object with "text" and "rationale" keys.
     capture: round_ideas
     next: dedup_novelty
-    on_error: failed
+    on_error: finalize_failed
 
   dedup_novelty:
     # Collects all IDEAS_JSON lines (NDJSON: one object per line), deduplicates via
@@ -212,7 +212,7 @@ states:
       type: exit_code
     on_yes: saturation_gate
     on_no: cluster
-    on_error: failed
+    on_error: finalize_failed
 
   saturation_gate:
     # Reads the saturation counter and routes: if below max_saturation, continue
@@ -245,7 +245,7 @@ states:
       - <idea text>
       (one cluster per section)
     next: rank
-    on_error: failed
+    on_error: finalize_failed
 
   rank:
     # Relative ranking of the full idea set — no absolute scores.
@@ -272,7 +272,7 @@ states:
 
       (continue for all ${context.top_k} ideas)
     next: converge
-    on_error: failed
+    on_error: finalize_failed
 
   converge:
     # Synthesizes a best-of hybrid from the ranked shortlist and writes brainstorm.md.
@@ -305,7 +305,7 @@ states:
       Also write ${captured.run_dir.output}/winners.md with exactly the top ${context.top_k} ideas
       as a JSON array (one object per line, same schema as ideas.jsonl) for downstream sinks.
     next: route_sink
-    on_error: failed
+    on_error: finalize_failed
 
   route_sink:
     # Routes to the appropriate sink handler based on context.sink.
@@ -388,11 +388,11 @@ states:
       echo "brainstorm.md present and non-empty"
     evaluate:
       type: exit_code
-    on_yes: done
-    on_no: failed
-    on_error: failed
+    on_yes: finalize_done
+    on_no: finalize_failed
+    on_error: finalize_failed
 
-  done:
+  finalize_done:
     action_type: prompt
     action: |
       The brainstorm loop has completed for brief: "${context.brief}"
@@ -407,9 +407,12 @@ states:
 
       Read ${captured.run_dir.output}/brainstorm.md and summarise the Top Idea
       and its rationale for the user.
+    next: done
+    on_error: finalize_failed
+  done:
     terminal: true
 
-  failed:
+  finalize_failed:
     action_type: prompt
     action: |
       The brainstorm loop encountered an unrecoverable error. Possible sources:
@@ -427,4 +430,7 @@ states:
 
       The divergence phase may have completed successfully; check
       ${captured.run_dir.output}/ideas.jsonl for partial results that can be reused.
+    next: failed
+    on_error: failed
+  failed:
     terminal: true

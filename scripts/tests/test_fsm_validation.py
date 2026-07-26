@@ -47,6 +47,7 @@ from little_loops.fsm.validation import (
     _validate_pruning_profile,
     _validate_session_mode_evaluator_inheritance,
     _validate_state_action,
+    _validate_terminal_action_ok,
     _validate_unsafe_context_interpolation,
     _validate_zero_retry_counter,
     load_and_validate,
@@ -4894,3 +4895,88 @@ class TestPruningProfileCoverageValidation:
         all_errors = validate_fsm(fsm)
         warnings = self._mr12_coverage_warnings(all_errors)
         assert len(warnings) == 1, f"Expected one MR-12 coverage WARNING, got: {warnings}"
+
+
+class TestTerminalActionOk:
+    """BUG-2813: non-empty `action` on a `terminal: true` state is dead code."""
+
+    def _simple_fsm(self, *, terminal_action_ok: bool = False) -> FSMLoop:
+        return FSMLoop(
+            name="test-loop",
+            initial="work",
+            states={
+                "work": make_state(action="run.sh", on_yes="done", on_no="work"),
+                "done": make_state(action="echo done summary", terminal=True),
+            },
+            terminal_action_ok=terminal_action_ok,
+        )
+
+    def test_fires_for_terminal_with_action(self) -> None:
+        """A terminal state with a non-empty action produces a finding."""
+        fsm = self._simple_fsm()
+        errors = _validate_terminal_action_ok(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+        assert "done" in errors[0].message
+        assert errors[0].path == "states.done.action"
+
+    def test_does_not_fire_for_bare_terminal(self) -> None:
+        """A terminal state with no action produces no finding."""
+        fsm = FSMLoop(
+            name="test-loop",
+            initial="work",
+            states={
+                "work": make_state(action="run.sh", on_yes="done", on_no="work"),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_terminal_action_ok(fsm)
+        assert errors == []
+
+    def test_suppressed_by_terminal_action_ok(self) -> None:
+        """terminal_action_ok: true suppresses the rule."""
+        fsm = self._simple_fsm(terminal_action_ok=True)
+        errors = _validate_terminal_action_ok(fsm)
+        assert errors == []
+
+    def test_wired_into_validate_fsm(self) -> None:
+        """validate_fsm() includes the terminal-action-ok finding."""
+        fsm = self._simple_fsm()
+        errors = validate_fsm(fsm)
+        matches = [e for e in errors if "BUG-2813" in e.message]
+        assert len(matches) == 1
+
+    def test_terminal_action_ok_recognized_as_top_level_key(self, tmp_path: Path) -> None:
+        """A YAML with top-level terminal_action_ok produces no Unknown-top-level warning."""
+        loop_yaml = tmp_path / "loop.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: A loop that intentionally keeps a terminal action\n"
+            "initial: work\n"
+            "terminal_action_ok: true\n"
+            "states:\n"
+            "  work:\n"
+            "    action: run.sh\n"
+            "    on_yes: done\n"
+            "  done:\n"
+            "    action: echo done summary\n"
+            "    terminal: true\n"
+        )
+        _, warnings = load_and_validate(loop_yaml)
+        unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
+        assert unknown_warnings == []
+
+    def test_does_not_fire_for_on_max_steps_handler_terminal(self) -> None:
+        """A terminal doubling as the on_max_steps handler is exempt (BUG-158)."""
+        fsm = FSMLoop(
+            name="test-loop",
+            initial="work",
+            on_max_steps="capped",
+            states={
+                "work": make_state(action="run.sh", on_yes="done", on_no="work"),
+                "done": make_state(terminal=True),
+                "capped": make_state(action="echo capped summary", terminal=True),
+            },
+        )
+        errors = _validate_terminal_action_ok(fsm)
+        assert errors == []

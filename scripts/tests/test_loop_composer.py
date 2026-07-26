@@ -36,7 +36,9 @@ REQUIRED_STATES = {
     "write_step_failed",
     "read_checkpoints",
     "review_chain",
+    "finalize_present_result",
     "present_result",
+    "finalize_failed",
     "failed",
 }
 
@@ -138,7 +140,9 @@ class TestLoopComposerStates:
             "present_plan must reference the present_plan fragment or be a prompt type"
         )
         # Routing: CANCEL → abort, APPROVE → execute
-        assert present.get("on_yes") == "present_result", "CANCEL path must go to present_result"
+        assert present.get("on_yes") == "finalize_present_result", (
+            "CANCEL path must go to present_result (via finalize_present_result, BUG-2813)"
+        )
         assert present.get("on_no") == "execute_plan", "APPROVE path must go to execute_plan"
 
     def test_present_result_is_terminal(self, states: dict) -> None:

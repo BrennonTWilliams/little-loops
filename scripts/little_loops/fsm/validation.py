@@ -257,6 +257,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "session_mode_ok",
         "haiku_generator_ok",
         "capture_reachability_ok",
+        "terminal_action_ok",
         "import",
         "fragments",
         "from",
@@ -1144,6 +1145,52 @@ def _validate_failure_terminal_action(fsm: FSMLoop) -> list[ValidationError]:
     return errors
 
 
+def _validate_terminal_action_ok(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate rule BUG-2813: non-empty ``action`` on a ``terminal: true`` state.
+
+    The executor returns ``_finish("terminal")`` the instant a terminal state is
+    entered — before that state's own ``action:`` (if any) ever runs. Any inline
+    action on a plain terminal is therefore dead code. The fix is to move the
+    action into a new penultimate non-terminal state with ``next: <terminal>``
+    and an ``on_error:`` route, leaving the terminal bare (the
+    ``rn-implement::report`` shape).
+
+    Exemption: a terminal state named as the loop's ``on_max_steps`` or
+    ``on_max_iterations`` handler IS reachable with its action executed (BUG-158
+    fallthrough in the executor), so it is not dead code and is skipped.
+
+    Suppressed by ``terminal_action_ok: true`` at the loop top-level.
+    """
+    if fsm.terminal_action_ok:
+        return []
+
+    exempt_terminal_names: set[str] = {fsm.on_max_steps, fsm.on_max_iterations} - {None}
+
+    errors: list[ValidationError] = []
+    terminal_states = fsm.get_terminal_states()
+    for state_name in terminal_states:
+        if state_name in exempt_terminal_names:
+            continue
+        state = fsm.states[state_name]
+        if state.action:
+            errors.append(
+                ValidationError(
+                    message=(
+                        f"Terminal state '{state_name}' has a non-empty 'action', which "
+                        "never executes: the executor finishes the run the instant a "
+                        "terminal: true state is entered, before its action would run. "
+                        "Move the action into a new penultimate non-terminal state with "
+                        f"'next: {state_name}' and an 'on_error:' route (see "
+                        "rn-implement::report), leaving the terminal bare. Set "
+                        "`terminal_action_ok: true` to suppress. (BUG-2813)"
+                    ),
+                    path=f"states.{state_name}.action",
+                    severity=ValidationSeverity.WARNING,
+                )
+            )
+    return errors
+
+
 def validate_fsm(
     fsm: FSMLoop, orchestration_request_path: str | None = None
 ) -> list[ValidationError]:
@@ -1294,6 +1341,8 @@ def validate_fsm(
         )
 
     errors.extend(_validate_failure_terminal_action(fsm))
+
+    errors.extend(_validate_terminal_action_ok(fsm))
 
     errors.extend(_validate_meta_loop_evaluation(fsm))
 
