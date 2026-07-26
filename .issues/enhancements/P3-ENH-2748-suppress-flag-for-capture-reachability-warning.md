@@ -284,6 +284,19 @@ each bypass, and removed the now-empty `TestValidatorWarningBudget.ALLOWLIST`
 table. Full suite (`python -m pytest scripts/tests/`, 15911 passed), `ruff check`,
 and `mypy` all pass; `ll-loop validate` confirms all 5 migrated loops are clean.
 
+**Stale as of BUG-2812**: the claim above that all 5 `capture_reachability_ok: true`
+loops were legitimate false positives does not hold for 2 of them.
+`integrate-sdk.yaml` and `adopt-third-party-api.yaml` were suppressing a real
+bug — both referenced their sub-loop's captures at the wrong namespace path
+(`${captured.targets.output}`/`${captured.enumeration.output}` instead of the
+correct `${captured.prove.<var>.output}`), which crashed every successful run
+with `InterpolationError`. BUG-2812 fixed both YAML references, dropped their
+`capture_reachability_ok: true` flags (no longer needed — the corrected
+references validate cleanly), and made the reachability rule itself
+nested-path-aware so this class of error is caught going forward.
+`autodev.yaml` and `goal-cluster.yaml` remain legitimate suppressions per
+BUG-2812's refine-pass research (different, unrelated justifying mechanisms).
+
 ## Impact
 
 - **Priority**: P3 - Cosmetic/DX noise, not a correctness bug; all currently

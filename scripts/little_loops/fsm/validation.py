@@ -164,9 +164,16 @@ _CAPTURED_REF_RE = re.compile(r"\$\{captured\.(\w+)")
 # check. _CAPTURED_REF_RE alone can't see the guard.
 _CAPTURED_REF_FULL_RE = re.compile(r"\$\{captured\.(\w+)([^}]*)\}")
 
+# Fields exposed on the event-stream dict a sub-loop-delegating state's own
+# `capture:` name resolves to (executor.py: capture stores {"output": ...,
+# "exit_code": ...} for a `loop:` state, NOT the child's captures). A path
+# with any other second segment (e.g. `.extracted.output`) is referencing a
+# field that doesn't exist there (BUG-2812).
+_SUB_LOOP_CAPTURE_OWN_FIELDS: frozenset[str] = frozenset({"output", "exit_code"})
 
-def _unguarded_captured_refs(text: str) -> set[str]:
-    """Return captured var names that have at least one reference WITHOUT a
+
+def _unguarded_captured_refs(text: str) -> set[tuple[str, ...]]:
+    """Return dotted-path tuples for `${captured...}` refs WITHOUT a
     `:default=` or `?` guard. Vars referenced only via
     `${captured.x...:default=...}` or `${captured.x...?}` (nullable) are omitted:
     both make a missing value safe (default substituted, or resolved to ""), so
@@ -174,11 +181,17 @@ def _unguarded_captured_refs(text: str) -> set[str]:
     the shared idiom for a state like refine-to-ready-issue's `diagnose` that is
     reachable from many failure sources, only one of whose captures is populated
     on any given run (BUG-2726).
+
+    Each returned tuple is the full dotted path segments after `captured.`,
+    e.g. `${captured.prove.targets.output}` -> `("prove", "targets", "output")`
+    (BUG-2812: nested sub-loop capture paths, not just the first segment).
     """
-    refs: set[str] = set()
+    refs: set[tuple[str, ...]] = set()
     for var_name, remainder in _CAPTURED_REF_FULL_RE.findall(text):
-        if ":default=" not in remainder and not remainder.endswith("?"):
-            refs.add(var_name)
+        if ":default=" in remainder or remainder.endswith("?"):
+            continue
+        extra_segments = [seg for seg in remainder.split(".") if seg]
+        refs.add((var_name, *extra_segments))
     return refs
 
 
@@ -2902,8 +2915,16 @@ def _validate_capture_reachability(fsm: FSMLoop) -> list[ValidationError]:
         if state.capture:
             capture_map.setdefault(state.capture, set()).add(state_name)
 
-    # Step 2: Build reference map (state_name → set of captured var names referenced)
-    reference_map: dict[str, set[str]] = {}
+    # BUG-2812: names of states that delegate to a sub-loop (`loop:` set).
+    # A reference of the form `${captured.<state_name>.<var>...}` where
+    # <state_name> is one of these is the CORRECT nested-namespace form —
+    # executor.py merges the child's captures under the invoking state's own
+    # name (`self.captured[self.current_state] = child_executor.captured`),
+    # not under any locally-declared `capture:` name.
+    loop_state_names = {name for name, state in fsm.states.items() if state.loop is not None}
+
+    # Step 2: Build reference map (state_name → set of dotted-path tuples referenced)
+    reference_map: dict[str, set[tuple[str, ...]]] = {}
     for state_name, state in fsm.states.items():
         # Skip sub-loop delegation states — their action is a loop name,
         # and captured vars belong to the child loop's namespace.
@@ -2912,7 +2933,7 @@ def _validate_capture_reachability(fsm: FSMLoop) -> list[ValidationError]:
 
         # Only collect references NOT guarded by `:default=` — a guarded
         # reference is safe even when the capture is missing on some path.
-        refs: set[str] = set()
+        refs: set[tuple[str, ...]] = set()
         if state.action:
             refs.update(_unguarded_captured_refs(state.action))
         if state.evaluate is not None and state.evaluate.source:
@@ -2924,8 +2945,32 @@ def _validate_capture_reachability(fsm: FSMLoop) -> list[ValidationError]:
         return errors
 
     # Step 3: For each reference, check dominance of capturing state
-    for ref_state_name, ref_vars in reference_map.items():
-        for var_name in ref_vars:
+    for ref_state_name, ref_paths in reference_map.items():
+        for path in ref_paths:
+            var_name = path[0]
+            nested = path[1:]
+
+            if var_name in loop_state_names:
+                # Correct nested sub-loop form: ${captured.<sub_loop_state>.<var>...}.
+                # Validate dominance of the delegating state itself (still must
+                # execute on every path reaching ref_state_name).
+                cap_states = {var_name}
+                if not _dominated_by_any(fsm, cap_states, ref_state_name):
+                    bypass_path = _find_bypass_path_any(fsm, cap_states, ref_state_name)
+                    path_str = " → ".join(bypass_path) if bypass_path else "unknown path"
+                    errors.append(
+                        ValidationError(
+                            message=(
+                                f"References ${{captured.{'.'.join(path)}}} but sub-loop "
+                                f"state '{var_name}' may not execute on all paths to "
+                                f"'{ref_state_name}'. Path(s) bypassing it: {path_str}"
+                            ),
+                            path=f"states.{ref_state_name}.action",
+                            severity=ValidationSeverity.WARNING,
+                        )
+                    )
+                continue
+
             if var_name not in capture_map:
                 # Referenced capture variable has no capturing state in this FSM.
                 # ENH-1998: downgrade to WARNING (not silent skip) when sub-loops
@@ -2964,6 +3009,32 @@ def _validate_capture_reachability(fsm: FSMLoop) -> list[ValidationError]:
             cap_states = {s for s in capture_map[var_name] if s in fsm.states}
             if not cap_states:
                 continue
+
+            # BUG-2812: if var_name is itself a sub-loop-delegating state's own
+            # `capture:` name, its value is the event-stream dict
+            # {"output": ..., "exit_code": ...} — NOT the child's captures.
+            # A nested path beyond that shape (e.g. `.extracted.output`)
+            # references a field that doesn't exist there.
+            delegating_cap_states = {s for s in cap_states if s in loop_state_names}
+            if delegating_cap_states and nested:
+                if len(nested) > 1 or nested[0] not in _SUB_LOOP_CAPTURE_OWN_FIELDS:
+                    names = ", ".join(f"'{s}'" for s in sorted(delegating_cap_states))
+                    errors.append(
+                        ValidationError(
+                            message=(
+                                f"References ${{captured.{'.'.join(path)}}} but "
+                                f"'{var_name}' is the sub-loop-delegating state "
+                                f"{names}'s own `capture:` name — its value is only "
+                                f"{{output, exit_code}} (the child's event stream), not "
+                                f"the child's captures. Use "
+                                f"${{captured.<sub_loop_state_name>.{'.'.join(nested)}}} "
+                                f"to reference a captured value from the child loop."
+                            ),
+                            path=f"states.{ref_state_name}.action",
+                            severity=ValidationSeverity.ERROR,
+                        )
+                    )
+                    continue
 
             # Group dominance check: do the capturing states collectively
             # dominate ref_state_name (does at least one run on every path)?

@@ -11,10 +11,6 @@ initial: scan_existing_usage
 max_steps: 150
 timeout: 7200
 on_handoff: spawn
-# ENH-2748: scaffold_integration references a targets capture injected by the
-# oracles/enumerate-and-prove sub-loop on the success path, which the static
-# dominance analysis can't see.
-capture_reachability_ok: true
 import:
   - lib/common.yaml
 
@@ -142,7 +138,7 @@ states:
 
       INTEGRATION GOAL: ${context.goal}
       SCAFFOLD DIRECTORY: ${context.scaffold_dir}
-      PROVEN SURFACES: ${captured.targets.output}
+      PROVEN SURFACES: ${captured.prove.targets.output}
 
       Instructions:
       1. Read the Learning Test Records from .ll/learning-tests/ for each proven surface.
@@ -199,8 +195,8 @@ states:
       INTEGRATION GOAL: ${context.goal}
 
       Available context (use whatever is non-empty):
-      - Enumeration: ${captured.enumeration.output:default=not-reached}
-      - Targets: ${captured.targets.output:default=not-reached}
+      - Enumeration: ${captured.prove.enumeration.output:default=not-reached}
+      - Targets: ${captured.prove.targets.output:default=not-reached}
       - Scaffold result: ${captured.scaffold_result.output:default=not-reached}
       - Verify result: ${captured.verify_result.output:default=not-reached}
 

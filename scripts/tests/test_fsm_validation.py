@@ -3033,6 +3033,90 @@ class TestCaptureReachabilityValidation:
         missing = [e for e in errors if "local_result" in e.message]
         assert missing == [], f"Locally-captured var should not be flagged, got: {missing}"
 
+    # --- BUG-2812: nested-path-aware sub-loop capture references ---
+
+    def test_qualified_sub_loop_state_reference_no_warning(self) -> None:
+        """${captured.<sub_loop_state>.<var>.<field>} is the correct nested form.
+
+        executor.py merges a child loop's captures under the invoking state's
+        own NAME, not any locally-declared `capture:` name. Referencing it via
+        the delegating state's name (e.g. examples-miner.yaml's
+        `${captured.run_optimizer.gradient.output}`) must not be flagged.
+        """
+        fsm = FSMLoop(
+            name="test-sub-loop-qualified-ref",
+            initial="prove",
+            states={
+                "prove": make_state(
+                    loop="oracles/enumerate-and-prove",
+                    action="oracles/enumerate-and-prove",
+                    on_yes="use_result",
+                ),
+                "use_result": make_state(
+                    action="echo ${captured.prove.targets.output}",
+                    on_yes="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_capture_reachability(fsm)
+        assert errors == [], f"Qualified sub-loop-state reference should not be flagged: {errors}"
+
+    def test_sub_loop_delegating_state_own_capture_nested_field_is_error(self) -> None:
+        """BUG-2812: `${captured.<own_capture_name>.<field>.output}` is invalid.
+
+        A sub-loop-delegating state's own `capture:` name resolves to the
+        child's event-stream dict {"output", "exit_code"} — NOT the child's
+        captures. Referencing a nested field beyond that shape (mirroring the
+        proof-first-task.yaml `gate_result.extracted.output` bug) must be an
+        ERROR, since it can never resolve at runtime.
+        """
+        fsm = FSMLoop(
+            name="test-sub-loop-own-capture-bad-nesting",
+            initial="gate",
+            states={
+                "gate": make_state(
+                    loop="assumption-firewall",
+                    action="assumption-firewall",
+                    capture="gate_result",
+                    on_no="check_blocked",
+                ),
+                "check_blocked": make_state(
+                    action="echo ${captured.gate_result.extracted.output}",
+                    on_yes="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_capture_reachability(fsm)
+        error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert len(error_list) >= 1, f"Expected ERROR for invalid nested field, got: {errors}"
+        assert any("gate_result" in e.message and "event stream" in e.message for e in error_list)
+
+    def test_sub_loop_delegating_state_own_capture_output_field_ok(self) -> None:
+        """`${captured.<own_capture_name>.output}` is valid — matches the actual
+        event-stream shape a sub-loop-delegating state's own capture: exposes.
+        """
+        fsm = FSMLoop(
+            name="test-sub-loop-own-capture-ok",
+            initial="gate",
+            states={
+                "gate": make_state(
+                    loop="assumption-firewall",
+                    action="assumption-firewall",
+                    capture="gate_result",
+                    on_yes="check_output",
+                ),
+                "check_output": make_state(
+                    action="echo ${captured.gate_result.output}",
+                    on_yes="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_capture_reachability(fsm)
+        assert errors == [], f"Referencing the event-stream's own .output field should be fine: {errors}"
+
     # --- Missing capture state → ERROR ---
 
     def test_missing_capture_state_emits_error(self) -> None:

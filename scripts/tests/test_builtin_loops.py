@@ -296,6 +296,30 @@ class TestBuiltinLoopFiles:
         )
 
 
+class TestExamplesMinerNestedCapturePath:
+    """BUG-2812: positive fixture for the already-correct nested sub-loop
+    capture idiom, so the fix doesn't regress it. examples-miner.yaml is the
+    one loop in the corpus that already referenced a sub-loop capture under
+    the delegating state's NAME (not its own `capture:` name)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "examples-miner.yaml"
+
+    def test_run_optimizer_gradient_reference_uses_delegating_state_name(self) -> None:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        data = yaml.safe_load(self.LOOP_FILE.read_text())
+        found = False
+        for state in data["states"].values():
+            action = state.get("action", "") or ""
+            if "${captured.run_optimizer.gradient.output}" in action:
+                found = True
+                break
+        assert found, (
+            "Expected some state's action to reference "
+            "'${captured.run_optimizer.gradient.output}' (the correct nested "
+            "sub-loop-state form)"
+        )
+
+
 class TestSubloopSidecarContract:
     """The sub-loop → parent outcome-channel sidecar contract (ENH-1977).
 
@@ -8643,6 +8667,21 @@ class TestProofFirstTaskLoop:
         with_ = state.get("with", {})
         assert "input" in with_, f"gate.with must contain 'input', got {list(with_.keys())}"
 
+    def test_check_gate_blocked_uses_correct_nested_capture_path(self, data: dict) -> None:
+        """BUG-2812: gate.capture ('gate_result') is the sub-loop-delegating
+        state's OWN capture: name — it resolves to the child's event-stream
+        dict {output, exit_code}, not the child's captures. The extract from
+        assumption-firewall's `extracted` capture lives at
+        `captured.gate.extracted` (namespaced under the delegating state's
+        NAME, per executor.py's child-capture merge), not
+        `captured.gate_result.extracted`."""
+        action = data["states"].get("check_gate_blocked", {}).get("action", "")
+        assert "${captured.gate.extracted.output}" in action, (
+            f"check_gate_blocked.action must reference "
+            f"${{captured.gate.extracted.output}}, got: {action!r}"
+        )
+        assert "${captured.gate_result.extracted.output}" not in action
+
     def test_run_impl_uses_dynamic_loop(self, data: dict) -> None:
         """run_impl must use dynamic loop dispatch from context.impl_loop."""
         state = data["states"].get("run_impl", {})
@@ -8859,6 +8898,26 @@ class TestAdoptThirdPartyApiLoop:
             f"prove.with must contain 'max_retries', got {list(with_.keys())}"
         )
 
+    def test_no_capture_reachability_ok_suppression(self, data: dict) -> None:
+        """BUG-2812: the loop no longer needs to suppress the reachability
+        rule now that build_playbook/build_playbook_partial reference the
+        correct nested sub-loop-state path."""
+        assert data.get("capture_reachability_ok") is not True
+
+    def test_build_playbook_uses_correct_nested_capture_path(self, data: dict) -> None:
+        """BUG-2812: 'enumeration' is prove's child (enumerate-and-prove)
+        capture — it namespaces under the delegating state's NAME ('prove'),
+        not a bare top-level 'enumeration'."""
+        action = data["states"].get("build_playbook", {}).get("action", "")
+        assert "${captured.prove.enumeration.output}" in action
+        assert "${captured.enumeration.output}" not in action
+
+    def test_build_playbook_partial_uses_correct_nested_capture_path(self, data: dict) -> None:
+        """BUG-2812: same nested-path fix as build_playbook, partial-coverage branch."""
+        action = data["states"].get("build_playbook_partial", {}).get("action", "")
+        assert "${captured.prove.enumeration.output}" in action
+        assert "${captured.enumeration.output}" not in action
+
     def test_done_is_terminal(self, data: dict) -> None:
         """done state must have terminal: true."""
         state = data["states"].get("done", {})
@@ -8946,6 +9005,30 @@ class TestIntegrateSdkLoop:
         assert state.get("terminal") is True, (
             f"done.terminal should be True, got {state.get('terminal')!r}"
         )
+
+    def test_no_capture_reachability_ok_suppression(self, data: dict) -> None:
+        """BUG-2812: the loop no longer needs to suppress the reachability
+        rule now that scaffold_integration/diagnose_and_block reference the
+        correct nested sub-loop-state path ('prove', not a bare top-level
+        'targets'/'enumeration')."""
+        assert data.get("capture_reachability_ok") is not True
+
+    def test_scaffold_integration_uses_correct_nested_capture_path(self, data: dict) -> None:
+        """BUG-2812: 'targets' is prove's child (enumerate-and-prove) capture
+        — it namespaces under the delegating state's NAME ('prove'), not a
+        bare top-level 'targets'."""
+        action = data["states"].get("scaffold_integration", {}).get("action", "")
+        assert "${captured.prove.targets.output}" in action
+        assert "${captured.targets.output}" not in action
+
+    def test_diagnose_and_block_uses_correct_nested_capture_paths(self, data: dict) -> None:
+        """BUG-2812: same nested-path fix as scaffold_integration, on the
+        diagnosis prompt's default-guarded references."""
+        action = data["states"].get("diagnose_and_block", {}).get("action", "")
+        assert "${captured.prove.enumeration.output:default=not-reached}" in action
+        assert "${captured.prove.targets.output:default=not-reached}" in action
+        assert "${captured.enumeration.output:default=not-reached}" not in action
+        assert "${captured.targets.output:default=not-reached}" not in action
 
     def test_scan_branches_to_both_enumerate_states(self, data: dict) -> None:
         """scan_existing_usage must branch to both enumerate_from_code and enumerate_from_docs."""

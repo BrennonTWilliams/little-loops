@@ -51,7 +51,7 @@ states:
       python3 << 'PYEOF'
       import json, sys
       try:
-          data = json.loads("""${captured.gate_result.extracted.output}""")
+          data = json.loads("""${captured.gate.extracted.output}""")
           count = data.get("count", -1)
       except Exception:
           count = -1
