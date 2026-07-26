@@ -1,0 +1,11 @@
+{
+  "id": "e6593c55-1ad4-441e-88b4-17bf032cad65",
+  "type": "decision",
+  "timestamp": "2026-07-26T16:27:49Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Supersession is modeled as a derived reverse edge over the existing supersedes frontmatter field rather than a sixth issue status value; a new terminal status would fail silently across ~33 files that hardcode the done/cancelled pair, and a bare enum label cannot carry the by-what pointer.",
+  "rule": "Captured: Derive superseded_by as a reverse edge of supersedes (no new status value)",
+  "scope": "issue",
+  "issue": "ENH-2829"
+}

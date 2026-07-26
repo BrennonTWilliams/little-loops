@@ -248,7 +248,80 @@ class TestAnthropicClientCredentials:
         with patch("anthropic.Anthropic") as mock_client:
             _anthropic_client()
 
-        mock_client.assert_called_once_with(auth_token="sk-ant-oat-test")
+        mock_client.assert_called_once_with(
+            auth_token="sk-ant-oat-test",
+            default_headers={"anthropic-beta": "oauth-2025-04-20"},
+        )
+
+    def test_oauth_request_prepends_claude_code_identity_system_block(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Subscription-OAuth requests must open with the Claude Code identity line."""
+        from little_loops.host_runner import (
+            _CLAUDE_CODE_IDENTITY,
+            build_anthropic_request,
+        )
+        from little_loops.prompts.fragment_store import FragmentStore
+
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat-test")
+
+        request = build_anthropic_request(
+            skill_body="body",
+            system_prompt="be terse",
+            tools=None,
+            messages=[{"role": "user", "content": "hi"}],
+            model="claude-sonnet-4-5",
+            fragment_store=FragmentStore(),
+        )
+
+        assert request["system"][0] == {"type": "text", "text": _CLAUDE_CODE_IDENTITY}
+        assert request["system"][1]["text"] == "be terse"
+
+    def test_oauth_request_gets_identity_block_even_without_system_prompt(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.host_runner import (
+            _CLAUDE_CODE_IDENTITY,
+            build_anthropic_request,
+        )
+        from little_loops.prompts.fragment_store import FragmentStore
+
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat-test")
+
+        request = build_anthropic_request(
+            skill_body="body",
+            system_prompt=None,
+            tools=None,
+            messages=[{"role": "user", "content": "hi"}],
+            model="claude-sonnet-4-5",
+            fragment_store=FragmentStore(),
+        )
+
+        assert request["system"] == [{"type": "text", "text": _CLAUDE_CODE_IDENTITY}]
+
+    def test_api_key_request_has_no_identity_block(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.host_runner import build_anthropic_request
+        from little_loops.prompts.fragment_store import FragmentStore
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-api-test")
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat-test")
+
+        request = build_anthropic_request(
+            skill_body="body",
+            system_prompt=None,
+            tools=None,
+            messages=[{"role": "user", "content": "hi"}],
+            model="claude-sonnet-4-5",
+            fragment_store=FragmentStore(),
+        )
+
+        assert "system" not in request
 
     def test_sdk_native_env_credential_wins_over_oauth_token(
         self, monkeypatch: pytest.MonkeyPatch

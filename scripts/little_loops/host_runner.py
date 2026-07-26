@@ -1444,11 +1444,19 @@ def build_anthropic_request(
 
     request: dict[str, Any] = {"model": model, "messages": messages, "max_tokens": max_tokens}
 
+    system_blocks: list[dict[str, Any]] = []
+    if _active_oauth_token():
+        # Subscription-OAuth requests must open with the Claude Code identity
+        # line or the API rejects them (see _CLAUDE_CODE_IDENTITY). Prepended as
+        # its own block so a cache mark on the trailing block still covers it.
+        system_blocks.append({"type": "text", "text": _CLAUDE_CODE_IDENTITY})
     if system_prompt:
         system_block: dict[str, Any] = {"type": "text", "text": system_prompt}
         if decision.should_mark:
             system_block["cache_control"] = {"type": "ephemeral"}
-        request["system"] = [system_block]
+        system_blocks.append(system_block)
+    if system_blocks:
+        request["system"] = system_blocks
 
     if tools:
         tool_dicts = to_anthropic_tools(tools, defer_loading_threshold=defer_loading_threshold)
@@ -1507,24 +1515,47 @@ def build_batch_request(
     return {"requests": [{"custom_id": custom_id, "params": params}]}
 
 
-def _anthropic_client() -> Any:
-    """Construct an ``anthropic.Anthropic`` client, honoring Claude Code's OAuth token.
+# The Messages API only honors subscription OAuth tokens (``sk-ant-oat01…``)
+# when the request presents as Claude Code: the OAuth beta header AND a system
+# prompt whose first block is the Claude Code identity line. A bare Bearer
+# request is rejected with a header-less generic ``429 rate_limit_error``
+# ("Error"), not an honest 401/403 — which autodev's failure classifier then
+# reads as transient infra (live-verified 2026-07-26).
+_OAUTH_BETA_HEADER = "oauth-2025-04-20"
+_CLAUDE_CODE_IDENTITY = "You are Claude Code, Anthropic's official CLI for Claude."
+
+
+def _active_oauth_token() -> str | None:
+    """Return ``CLAUDE_CODE_OAUTH_TOKEN`` iff it is the credential the SDK path will use.
 
     The SDK natively reads ``ANTHROPIC_API_KEY`` / ``ANTHROPIC_AUTH_TOKEN`` (then
-    its profile/federation chain). ``CLAUDE_CODE_OAUTH_TOKEN`` — the var
-    ``claude setup-token`` tells subscription users to set — is CLI-namespaced
-    and invisible to the SDK, but the Messages API accepts it as a Bearer
-    credential (live-verified 2026-07-25), so pass it as ``auth_token``
-    explicitly when no SDK-native env credential is present.
+    its profile/federation chain); those win. ``CLAUDE_CODE_OAUTH_TOKEN`` — the
+    var ``claude setup-token`` tells subscription users to set — is
+    CLI-namespaced and invisible to the SDK, so it is the fallback.
     """
     import os
 
+    if os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
+        return None
+    return os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") or None
+
+
+def _anthropic_client() -> Any:
+    """Construct an ``anthropic.Anthropic`` client, honoring Claude Code's OAuth token.
+
+    When falling back to the subscription OAuth token, pass it as ``auth_token``
+    and attach the OAuth beta header — required for the API to accept the token
+    at all (see ``_OAUTH_BETA_HEADER``). The identity system block is the request
+    builder's half of that contract (``build_anthropic_request``).
+    """
     import anthropic
 
-    if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
-        oauth_token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
-        if oauth_token:
-            return anthropic.Anthropic(auth_token=oauth_token)
+    oauth_token = _active_oauth_token()
+    if oauth_token:
+        return anthropic.Anthropic(
+            auth_token=oauth_token,
+            default_headers={"anthropic-beta": _OAUTH_BETA_HEADER},
+        )
     return anthropic.Anthropic()
 
 
