@@ -19,6 +19,7 @@ import base64
 import http.server
 import json
 import os
+import re
 import subprocess
 import threading
 from pathlib import Path
@@ -195,6 +196,28 @@ class TestLoopStructure:
                     assert token not in action, (
                         f"{path.name}/{name} splices {token} into a shell body (MR-11)"
                     )
+
+    def test_steps_default_agrees_across_wrapper_and_oracle(self) -> None:
+        """ENH-2823: the wrapper's context.steps, the oracle's own context.steps,
+        and the FLUX_STEPS fallback literal (both branches) must all agree —
+        a mismatch silently reintroduces the fast-preview ceiling in one path."""
+        wrapper_raw = yaml.safe_load(WRAPPER.read_text())
+        oracle_raw = yaml.safe_load(ORACLE.read_text())
+        wrapper_steps = wrapper_raw["context"]["steps"]
+        oracle_steps = oracle_raw["context"]["steps"]
+        assert wrapper_steps == oracle_steps, (
+            f"wrapper context.steps={wrapper_steps} != "
+            f"oracle context.steps={oracle_steps}"
+        )
+        synth_action = oracle_raw["states"]["synthesize"]["action"]
+        fallback_literals = re.findall(
+            r'FLUX_STEPS"\) or (\d+)\)', synth_action
+        ) + re.findall(r"steps = (\d+)", synth_action)
+        assert fallback_literals, "no FLUX_STEPS fallback literal found in synthesize"
+        assert all(int(lit) == wrapper_steps for lit in fallback_literals), (
+            f"FLUX_STEPS fallback literals {fallback_literals} disagree with "
+            f"context.steps={wrapper_steps}"
+        )
 
     def test_registered_in_builtin_catalog_test(self) -> None:
         src = (Path(__file__).parent / "test_builtin_loops.py").read_text()

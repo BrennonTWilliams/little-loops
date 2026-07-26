@@ -1752,7 +1752,7 @@ ll-loop run flux-image-generator "a clean vector illustration of a server rack, 
 | `description` | (from `loop_input`) | Natural language image description |
 | `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/flux-image-generator-{instance_id}/`) for `image.png`, `image-iter-N.png`, `seeds.txt`, `image-prompt.txt`, `brief.md`, `critique.md` |
 | `pass_threshold` | `6` | Minimum score per criterion (1–10); **all five** must clear it |
-| `steps` | `4` | Diffusion steps per generation |
+| `steps` | `20` | Diffusion steps per generation |
 | `base_seed` | `1` | Seed basis; the per-iteration seed derives from it so a regenerate re-samples the latent instead of re-rendering the same image |
 | `design_tokens_context` | runner-injected | Resolved semantic design-token values, or empty |
 

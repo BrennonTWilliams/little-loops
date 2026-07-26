@@ -29,7 +29,7 @@ parameters:
   steps:
     type: string
     required: false
-    description: Diffusion step count sent to the FLUX endpoint (default 4).
+    description: Diffusion step count sent to the FLUX endpoint (default 20).
   base_seed:
     type: string
     required: false
@@ -41,7 +41,8 @@ parameters:
 context:
   artifact_path: "image.png"
   prompt_file: "image-prompt.txt"
-  steps: 4
+  steps: 20                   # ENH-2823; kept in sync with the wrapper's
+                               # context.steps and the FLUX_STEPS fallback below
   base_seed: 1
 
 states:
@@ -91,9 +92,9 @@ states:
       abs_dir = os.environ["ABS_DIR"]
       artifact = os.environ.get("FLUX_ARTIFACT") or "image.png"
       try:
-          steps = int(os.environ.get("FLUX_STEPS") or 4)
+          steps = int(os.environ.get("FLUX_STEPS") or 20)
       except ValueError:
-          steps = 4
+          steps = 20
       try:
           base_seed = int(os.environ.get("FLUX_BASE_SEED") or 1)
       except ValueError:

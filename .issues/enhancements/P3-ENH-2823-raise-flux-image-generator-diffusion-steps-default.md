@@ -2,12 +2,24 @@
 id: ENH-2823
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-26T01:54:53Z'
+completed_at: 2026-07-26T04:57:47Z
 discovered_date: 2026-07-26
 discovered_by: capture-issue
-labels: [loops, flux, defaults]
-relates_to: [BUG-2822, FEAT-2817]
+labels:
+- loops
+- flux
+- defaults
+relates_to:
+- BUG-2822
+- FEAT-2817
+confidence_score: 98
+outcome_confidence: 92
+score_complexity: 23
+score_test_coverage: 22
+score_ambiguity: 22
+score_change_surface: 25
 ---
 
 # ENH-2823: Raise `flux-image-generator`'s `steps` default from 4 to ~20
@@ -116,13 +128,74 @@ default.
 | `scripts/little_loops/loops/oracles/generator-evaluator-flux.yaml` | `context.steps` default + the `int(... or 4)` fallback in `synthesize` |
 | `docs/guides/LOOPS_REFERENCE.md` | update the documented default if it is stated there |
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+There are **four** literal `4`s across two files, not two — all must move together:
+
+1. `scripts/little_loops/loops/flux-image-generator.yaml:31` — `context.steps: 4`,
+   the wrapper default actually exercised at runtime; interpolated into the
+   child oracle at `flux-image-generator.yaml:106` (`run_gen_eval` state's
+   `with: steps: "${context.steps}"`).
+2. `scripts/little_loops/loops/oracles/generator-evaluator-flux.yaml:44` — the
+   oracle's own `context.steps: 4`. Dead in the normal call chain (always
+   overridden by the parent's `with:` above) but should still track the new
+   value to avoid a misleading default if the oracle is ever invoked
+   standalone.
+3. `scripts/little_loops/loops/oracles/generator-evaluator-flux.yaml:94,96` —
+   inside the `synthesize` state's Python heredoc: `steps =
+   int(os.environ.get("FLUX_STEPS") or 4)` with `except ValueError: steps = 4`
+   on the parse-failure branch. This is the literal the issue names.
+4. `scripts/little_loops/loops/oracles/generator-evaluator-flux.yaml:32` — the
+   `parameters.steps` doc string reads `"Diffusion step count sent to the FLUX
+   endpoint (default 4)."` — comment-only, but should track for accuracy.
+
+`docs/guides/LOOPS_REFERENCE.md:1755` also documents the default in a table
+row: `| \`steps\` | \`4\` | Diffusion steps per generation |` — this is the
+doc location referenced above; `scripts/little_loops/loops/README.md`'s
+catalog entries for `flux-image-generator` (line 154) and
+`oracles/generator-evaluator-flux` (line 185) do **not** state the numeric
+`steps` default, so no change needed there.
+
+No shared-constants mechanism exists in this repo for keeping cross-file
+numeric defaults in sync (`scripts/little_loops/loops/lib/common.yaml` only
+shares state-shape fragments, never scalar context defaults) — each of the
+four locations is a plain literal a human must update by hand. The nearest
+precedent for a "keep two files' related numeric defaults aligned" comment
+convention is `flux-image-generator.yaml:14-24`'s `max_steps: 24` comment
+(BUG-2822), which cross-references the oracle's separate `max_steps` budget
+inline — worth following that comment style here too.
+
+**Test coverage gap**: no existing test asserts the numeric value of
+`steps`/`FLUX_STEPS` agree across the two YAMLs — existing tests
+(`scripts/tests/test_flux_image_generator.py`) only cover `max_steps` budget
+shape (`test_oracle_max_steps_covers_intended_cycle_count`, lines 79–88) and
+shell-safety invariants (`test_no_raw_user_input_in_shell_actions`, lines
+178–197, which scans `action` text across `WRAPPER`/`ORACLE` in one loop).
+That same multi-file-literal-scan shape is the closest reusable pattern for a
+new test asserting `flux-image-generator.yaml`'s `context.steps`,
+`generator-evaluator-flux.yaml`'s `context.steps`, and the `int(... or N)`
+fallback literal all agree.
+
 ## Implementation Steps
 
 1. Run the 4 / 12 / 20 comparison at a fixed `base_seed` on a representative
    flat-vector brief; record the rubric means.
-2. Set the default to the knee of that curve.
-3. Align the `synthesize` fallback literal with the new default.
-4. Update the loop docs.
+2. Set the default to the knee of that curve in
+   `flux-image-generator.yaml:31` (`context.steps`).
+3. Align all three remaining literals in
+   `oracles/generator-evaluator-flux.yaml`: the oracle's own `context.steps:
+   4` (line 44), the `int(os.environ.get("FLUX_STEPS") or 4)` fallback and its
+   `except ValueError: steps = 4` branch (lines 94/96), and the `parameters.steps`
+   doc string's `"(default 4)"` (line 32).
+4. Update `docs/guides/LOOPS_REFERENCE.md:1755`'s `| \`steps\` | \`4\` | ...
+   |` table row to the new value.
+5. Add a structural test to `scripts/tests/test_flux_image_generator.py`
+   asserting the wrapper's `context.steps`, the oracle's `context.steps`, and
+   the `FLUX_STEPS` fallback literal all agree — modeled on
+   `test_no_raw_user_input_in_shell_actions` (lines 178–197), which already
+   scans both YAMLs' raw text in one loop.
 
 ## Impact
 
@@ -141,10 +214,26 @@ default.
 | `docs/guides/LOOPS_REFERENCE.md` | Loop catalog entry |
 
 ## Session Log
+- `/ll:refine-issue` - 2026-07-26T04:45:44 - `2ca0b61d-4edd-42bd-b915-6d91da270cf5.jsonl`
+- `/ll:confidence-check` - 2026-07-26T04:50:58Z - `747d4550-e10b-4f7d-9bd3-89aca082390a.jsonl`
 - `/ll:capture-issue` - 2026-07-26T01:54:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3bbb9637-e022-4716-b2c1-d8b3f35b1152.jsonl`
+- `/ll:manage-issue` - 2026-07-26T04:57:47Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cad1d6a7-80e5-4672-ad11-a4019142d60a.jsonl`
+
+## Resolution
+
+Raised `steps` from `4` to `20` in `flux-image-generator.yaml` and all three
+tracking literals in `oracles/generator-evaluator-flux.yaml` (own
+`context.steps`, both `FLUX_STEPS` fallback branches, and the parameter doc
+string), updated the documented default in `docs/guides/LOOPS_REFERENCE.md`,
+and added `test_steps_default_agrees_across_wrapper_and_oracle` to
+`scripts/tests/test_flux_image_generator.py` asserting all four literals stay
+in sync. The empirical 4/12/20 comparison run described in the issue's
+Implementation Steps was not executed (no FLUX endpoint available in this
+environment) — shipped the issue's own recommended value of 20 directly per
+its Proposed Solution.
 
 ---
 
 ## Status
 
-- [ ] Open
+- [x] Done

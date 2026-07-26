@@ -28,7 +28,12 @@ timeout: 7200
 context:
   description: ""             # populated from loop_input via input_key: description
   pass_threshold: 8           # minimum score per criterion (1-10) to pass
-  steps: 4                    # diffusion steps per generation
+  steps: 20                   # diffusion steps per generation; 4 is a
+                               # fast-preview setting that cannot reach the
+                               # flat-vector crispness most briefs ask for
+                               # (ENH-2823) — keep in sync with
+                               # oracles/generator-evaluator-flux.yaml's
+                               # context.steps and FLUX_STEPS fallback
   base_seed: 1                # seed basis; the per-iteration seed derives from this
   design_tokens_context: ""   # runner-injected; resolved semantic token values or empty
 
