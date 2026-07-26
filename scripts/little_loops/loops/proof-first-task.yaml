@@ -20,7 +20,7 @@ states:
     fragment: shell_exit
     action: test -n "${context.issue_file}" && test -f "${context.issue_file}"
     on_yes: check_targets_csv
-    on_no: run_impl
+    on_no: resolve_task
 
   check_targets_csv:
     fragment: shell_exit
@@ -32,7 +32,7 @@ states:
     loop: ready-to-implement-gate
     with:
       targets: "${context.targets_csv}"
-    on_success: run_impl
+    on_success: resolve_task
     on_failure: blocked
     on_error: blocked
 
@@ -41,7 +41,7 @@ states:
     with:
       input: "${context.issue_file}"
     capture: gate_result
-    on_success: run_impl
+    on_success: resolve_task
     on_failure: check_gate_blocked
     on_error: blocked
 
@@ -59,13 +59,33 @@ states:
       PYEOF
     evaluate:
       type: exit_code
-    on_yes: run_impl
+    on_yes: resolve_task
     on_no: blocked
+
+  resolve_task:
+    # Synthesizes a fallback task from issue_file when the caller (e.g. the
+    # learning gate, ENH-2834) passes issue_file without task — prevents
+    # general-task from silently improvising a plan against ambient repo
+    # state on an empty input.
+    action_type: shell
+    action: |
+      task=${context.task:shell}
+      issue_file=${context.issue_file:shell}
+      if [ -n "$task" ]; then
+        printf '%s' "$task"
+      elif [ -n "$issue_file" ]; then
+        printf 'Implement the issue described in %s. Read the issue file for full requirements and acceptance criteria.' "$issue_file"
+      else
+        exit 1
+      fi
+    capture: resolved_task
+    on_error: task_missing
+    next: run_impl
 
   run_impl:
     loop: "${context.impl_loop}"
     with:
-      input: "${context.task}"
+      input: "${captured.resolve_task.output}"
     on_success: done
     on_failure: impl_failed
     on_error: impl_failed
@@ -78,5 +98,9 @@ states:
     failure: true
 
   impl_failed:
+    terminal: true
+    failure: true
+
+  task_missing:
     terminal: true
     failure: true

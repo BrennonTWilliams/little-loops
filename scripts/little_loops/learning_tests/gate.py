@@ -62,9 +62,25 @@ def run_learning_gate_for_issue(
     cwd: Path | None = None,
     targets: list[str] | None = None,
 ) -> Literal["passed", "blocked", "impl_failed", "skipped"]:
-    """Invoke proof-first-task loop for an issue and return the gate verdict.
+    """Determine the learning-gate verdict for an issue and return it.
 
     ``skip=True`` short-circuits to "skipped" (honours --skip-learning-gate).
+
+    When ``targets`` is non-empty (ENH-2834), the ``learning_tests_required``
+    registry has already been resolved by the caller, so this invokes
+    ``ready-to-implement-gate`` directly instead of chaining through
+    ``proof-first-task``'s redundant impl-loop delegation (any impl work
+    there is thrown away — ``issue_manager.py`` implements the issue itself
+    afterwards). ``ready-to-implement-gate`` has exactly two terminals
+    (``done``/``blocked``), so the subprocess exit code alone is sufficient:
+    non-zero always means ``"blocked"``, with no ``impl_failed``-equivalent
+    terminal to conflate it with (structurally eliminates BUG-2833's
+    discrimination need for this branch). This mirrors the proven
+    ``_run_learning_gate_preflight()`` pattern in
+    ``little_loops.cli.sprint.run``.
+
+    When ``targets`` is empty, the JIT-extraction fallback (assumption-firewall
+    path) is still needed, so this falls back to ``proof-first-task``.
     ``proof-first-task``'s two failure terminals (``blocked``, ``impl_failed``)
     both carry ``failure: true`` and share the same subprocess exit code
     (``FAILURE_TERMINAL_EXIT_CODE``), so the exit code alone cannot
@@ -83,15 +99,31 @@ def run_learning_gate_for_issue(
         cwd: Working directory for the subprocess (and state-file lookup).
             Defaults to ``Path.cwd()`` when None.
         targets: The already-resolved ``learning_tests_required`` registry
-            (ENH-2209). When non-empty, forwarded as a ``targets_csv``
-            context input so ``proof-first-task`` proves this exact list
-            instead of re-extracting one via ``assumption-firewall``
-            (ENH-2405). ``None``/empty preserves the JIT extraction fallback.
+            (ENH-2209). When non-empty, proves this exact list directly via
+            ``ready-to-implement-gate`` (ENH-2834). ``None``/empty preserves
+            the JIT extraction fallback through ``proof-first-task``.
     """
     if skip:
         return "skipped"
 
     working_dir = cwd or Path.cwd()
+
+    if targets:
+        cmd = [
+            "ll-loop",
+            "run",
+            "ready-to-implement-gate",
+            "--context",
+            f"targets={','.join(targets)}",
+        ]
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=working_dir,
+        )
+        return "passed" if proc.returncode == 0 else "blocked"
+
     cmd = [
         "ll-loop",
         "run",
@@ -99,8 +131,6 @@ def run_learning_gate_for_issue(
         "--context",
         f"issue_file={issue_path}",
     ]
-    if targets:
-        cmd += ["--context", f"targets_csv={','.join(targets)}"]
     proc = subprocess.run(
         cmd,
         capture_output=True,

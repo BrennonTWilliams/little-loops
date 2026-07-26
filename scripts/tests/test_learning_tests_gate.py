@@ -34,8 +34,11 @@ class TestRunLearningGateForIssueTargetsThreading:
         cmd = mock_sub.call_args[0][0]
         assert not any("targets_csv" in part for part in cmd)
 
-    def test_targets_provided_forwards_targets_csv_context(self, tmp_path: Path) -> None:
-        """A populated targets list must be forwarded as --context targets_csv=<csv>."""
+    def test_targets_provided_invokes_ready_to_implement_gate_directly(
+        self, tmp_path: Path
+    ) -> None:
+        """ENH-2834: a populated targets list must invoke ready-to-implement-gate
+        directly (not proof-first-task) with --context targets=<csv>."""
         issue_path = tmp_path / "ENH-2.md"
         issue_path.write_text("---\nid: ENH-2\n---\n")
 
@@ -45,7 +48,8 @@ class TestRunLearningGateForIssueTargetsThreading:
             run_learning_gate_for_issue(issue_path, cwd=tmp_path, targets=["stripe"])
 
         cmd = mock_sub.call_args[0][0]
-        assert "targets_csv=stripe" in " ".join(cmd)
+        assert cmd[2] == "ready-to-implement-gate"
+        assert "targets=stripe" in " ".join(cmd)
 
     def test_multiple_targets_joined_by_comma(self, tmp_path: Path) -> None:
         issue_path = tmp_path / "ENH-3.md"
@@ -57,7 +61,7 @@ class TestRunLearningGateForIssueTargetsThreading:
             run_learning_gate_for_issue(issue_path, cwd=tmp_path, targets=["stripe", "anthropic"])
 
         cmd = mock_sub.call_args[0][0]
-        assert "targets_csv=stripe,anthropic" in " ".join(cmd)
+        assert "targets=stripe,anthropic" in " ".join(cmd)
 
     def test_empty_targets_list_omits_targets_csv_context(self, tmp_path: Path) -> None:
         """An empty (but non-None) list must behave like None — no targets_csv forwarded."""
@@ -167,3 +171,62 @@ class TestRunLearningGateForIssueTerminalDiscrimination:
             verdict = run_learning_gate_for_issue(issue_path, cwd=tmp_path)
 
         assert verdict == "impl_failed"
+
+
+class TestRunLearningGateForIssueDirectInvocation:
+    """ENH-2834: with resolved targets, the gate proves via ready-to-implement-gate
+    directly and never spawns proof-first-task's impl loop — a proven-registry
+    issue whose impl chain is broken must still pass (BUG-2831 regression)."""
+
+    def _ok_result(self) -> MagicMock:
+        mock = MagicMock()
+        mock.returncode = 0
+        mock.stdout = ""
+        mock.stderr = ""
+        return mock
+
+    def _failed_result(self) -> MagicMock:
+        mock = MagicMock()
+        mock.returncode = 1
+        mock.stdout = ""
+        mock.stderr = ""
+        return mock
+
+    def test_proven_target_with_broken_impl_chain_still_passes(self, tmp_path: Path) -> None:
+        """BUG-2831 scenario: registry target is proven (exit 0), but the
+        general-task impl loop the old proof-first-task path would have
+        chained into is broken/unreachable. The gate must still pass, and
+        must never consult list_run_history — there is no impl_failed
+        terminal on this path to discriminate against."""
+        issue_path = tmp_path / "ENH-9.md"
+        issue_path.write_text("---\nid: ENH-9\n---\n")
+
+        with (
+            patch(
+                "little_loops.learning_tests.gate.subprocess.run",
+                return_value=self._ok_result(),
+            ),
+            patch("little_loops.fsm.persistence.list_run_history") as mock_history,
+        ):
+            verdict = run_learning_gate_for_issue(issue_path, cwd=tmp_path, targets=["stripe"])
+
+        assert verdict == "passed"
+        mock_history.assert_not_called()
+
+    def test_unproven_target_yields_blocked_without_history_lookup(
+        self, tmp_path: Path
+    ) -> None:
+        issue_path = tmp_path / "ENH-10.md"
+        issue_path.write_text("---\nid: ENH-10\n---\n")
+
+        with (
+            patch(
+                "little_loops.learning_tests.gate.subprocess.run",
+                return_value=self._failed_result(),
+            ),
+            patch("little_loops.fsm.persistence.list_run_history") as mock_history,
+        ):
+            verdict = run_learning_gate_for_issue(issue_path, cwd=tmp_path, targets=["stripe"])
+
+        assert verdict == "blocked"
+        mock_history.assert_not_called()

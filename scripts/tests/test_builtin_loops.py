@@ -8857,11 +8857,12 @@ class TestProofFirstTaskLoop:
         )
 
     def test_gate_direct_routes_to_run_impl_and_blocked(self, data: dict) -> None:
-        """ENH-2405: gate_direct must route success to run_impl, failure/error to blocked
+        """ENH-2834: gate_direct must route success to resolve_task (the
+        empty-task guard ahead of run_impl), failure/error to blocked
         (mirroring the gate state's existing terminal routing)."""
         state = data["states"].get("gate_direct", {})
-        assert state.get("on_success") == "run_impl", (
-            f"gate_direct.on_success should be 'run_impl', got {state.get('on_success')!r}"
+        assert state.get("on_success") == "resolve_task", (
+            f"gate_direct.on_success should be 'resolve_task', got {state.get('on_success')!r}"
         )
         assert state.get("on_failure") == "blocked", (
             f"gate_direct.on_failure should be 'blocked', got {state.get('on_failure')!r}"
@@ -8913,10 +8914,42 @@ class TestProofFirstTaskLoop:
         )
 
     def test_run_impl_with_binds_input(self, data: dict) -> None:
-        """run_impl with: must bind input from context.task."""
+        """run_impl with: must bind input from the resolve_task capture."""
         state = data["states"].get("run_impl", {})
         with_ = state.get("with", {})
         assert "input" in with_, f"run_impl.with must contain 'input', got {list(with_.keys())}"
+        assert with_.get("input") == "${captured.resolve_task.output}", (
+            f"run_impl.with.input should be '${{captured.resolve_task.output}}', "
+            f"got {with_.get('input')!r}"
+        )
+
+    def test_resolve_task_synthesizes_fallback_and_guards_empty_task(self, data: dict) -> None:
+        """ENH-2834: resolve_task must fall back to a synthesized task derived
+        from issue_file when context.task is empty, and fail fast (not run
+        general-task with an empty input) when neither is set."""
+        state = data["states"].get("resolve_task", {})
+        assert state.get("capture") == "resolved_task", (
+            f"resolve_task.capture should be 'resolved_task', got {state.get('capture')!r}"
+        )
+        assert state.get("next") == "run_impl", (
+            f"resolve_task.next should be 'run_impl', got {state.get('next')!r}"
+        )
+        assert state.get("on_error") == "task_missing", (
+            f"resolve_task.on_error should be 'task_missing', got {state.get('on_error')!r}"
+        )
+        action = state.get("action", "")
+        assert "${context.issue_file:shell}" in action
+        assert "exit 1" in action
+
+    def test_task_missing_is_terminal_failure(self, data: dict) -> None:
+        """task_missing state must be a failure terminal."""
+        state = data["states"].get("task_missing", {})
+        assert state.get("terminal") is True, (
+            f"task_missing.terminal should be True, got {state.get('terminal')!r}"
+        )
+        assert state.get("failure") is True, (
+            f"task_missing.failure should be True, got {state.get('failure')!r}"
+        )
 
     def test_done_is_terminal(self, data: dict) -> None:
         """done state must have terminal: true."""
