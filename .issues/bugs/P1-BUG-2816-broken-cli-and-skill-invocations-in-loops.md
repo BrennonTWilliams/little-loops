@@ -11,16 +11,13 @@ labels:
 - cli
 - docs
 - skills
-confidence_score: 88
-outcome_confidence: 68
+confidence_score: 100
+outcome_confidence: 64
 score_complexity: 18
-score_test_coverage: 15
-score_ambiguity: 15
-score_change_surface: 20
-decision_needed: true
-deferred_by: automation
-deferred_date: '2026-07-26T03:24:56Z'
-deferred_reason: decision_unresolved
+score_test_coverage: 10
+score_ambiguity: 18
+score_change_surface: 18
+decision_needed: false
 reconcile_attempted: true
 ---
 
@@ -70,8 +67,14 @@ never fires.
    (or set `pipefail`).
 2. `lib/cli.yaml:94` — `ll-deps check` → `ll-deps validate`.
 3. `brainstorm.yaml:373` — replace `set-flag` with `set-scores`/`set-status`.
-4. `adopt-third-party-api.yaml:21` — either package `scrape-docs` as a plugin
-   skill or drop the `ll:` prefix / remove the step.
+4. `adopt-third-party-api.yaml:21` — **Selected: drop the `ll:` prefix** on the
+   `/ll:scrape-docs` call (not packaging `scrape-docs` as a plugin skill).
+   Rationale: `skills/explore-api/SKILL.md:109` already calls it prefix-free
+   and works today, so this is a 1-line fix matching a proven precedent;
+   packaging it as a full plugin skill is more work (manifest registration,
+   `ll-verify-skill-budget`, `ll-generate-skill-descriptions`) for a public
+   surface with no demonstrated demand beyond this repo, and can be a
+   follow-on issue if that changes.
 5. Two `--auto` sites — either declare `--auto` in `commands/create-sprint.md`
    and `commands/tradeoff-review-issues.md`, or drop the flag from the loops.
 6. `prompt-across-issues.yaml:19` — `--quick` → `--auto` (or remove).
@@ -298,23 +301,36 @@ isn't lost if item 9 is picked up.
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-07-25_
+_Added by `/ll:confidence-check` on 2026-07-26_
 
-**Readiness Score**: 88/100 → READY
-**Outcome Confidence**: 68/100 → MODERATE
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 64/100 → MODERATE
 
 ### Concerns
-- Item 4 (`scrape-docs` packaging) is an open either/or decision (package as plugin skill vs. drop the `ll:` prefix) not yet resolved in the issue.
-- Item 4's `adopt-third-party-api.yaml:21` fix is noted as "moot ... until BUG-2812's crash is fixed" — a soft dependency on another open bug.
+- None outstanding. The prior soft dependency on BUG-2812 (whose crash made `adopt-third-party-api.yaml:21` "moot") is resolved — BUG-2812 is `done` as of 2026-07-26T02:18:21Z. The `scrape-docs` packaging/namespace decision is also resolved (see Decision Rationale below).
 
 ### Gaps to Address
-_(none — the refine/wire passes already closed the major gaps)_
+_(none)_
 
 ### Outcome Risk Factors
-- Open decision on `scrape-docs` packaging (either package as a plugin skill or drop the `ll:` prefix) — resolve before implementing that sub-item.
-- New CLI-invocation validator (item 9) is broad enumeration across ~14 loop files with no dedicated regression tests written yet for most of the affected loops (only `test_brainstorm.py` and the generic FSM-validity sweep exist today).
+- Test coverage is thin relative to the ~14-file fanout: only `test_brainstorm.py` and the generic FSM-validity sweep (`test_builtin_loops.py`) exist today; most of the 12 affected loops have no dedicated regression test yet for their specific fix.
+- Item 9 (new CLI-invocation validator) still has an open implementation-shape question (MR-rule vs. standalone `ll-verify-*`) — non-blocking for the core fix (items 1-8) but adds minor ambiguity if picked up in the same pass.
+
+### Decision Rationale (`/ll:decide-issue`)
+- **Selected**: drop the `ll:` prefix on `adopt-third-party-api.yaml:21`'s
+  `/ll:scrape-docs` call (Option B), not packaging `scrape-docs` as a plugin
+  skill (Option A).
+- **Reasoning**: `skills/explore-api/SKILL.md:109` already invokes it
+  prefix-free and works today, so B is a proven 1-line fix. A requires
+  manifest registration, `ll-verify-skill-budget`, and
+  `ll-generate-skill-descriptions` work to support a public surface with no
+  demonstrated demand beyond this repo — deferrable to a follow-on issue if
+  that changes.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-26T04:02:25 - `1114bd32-b748-4086-8c2f-851399bc987d.jsonl`
+- `/ll:refine-issue` - 2026-07-26T03:59:56 - `c8adaf43-9d19-4fde-a9e2-a2f097a4b53b.jsonl`
+- `/ll:decide-issue` - 2026-07-26T03:51:20 - `56153c04-bfa0-42c4-a1b0-515afa72cee7.jsonl`
 - `/ll:decide-issue` - 2026-07-26T03:46:33 - `8e7d2c8e-89fd-4b78-a923-3530d55d8695.jsonl`
 - `/ll:reconcile-issue` - 2026-07-26T03:44:39 - `9c569214-a4ba-4915-a53d-dcaf022d30fc.jsonl`
 - `/ll:decide-issue` - 2026-07-26T03:42:04 - `52b78b43-eea9-4ce2-9628-3de02955a2a1.jsonl`

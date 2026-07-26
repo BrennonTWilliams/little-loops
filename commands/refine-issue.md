@@ -296,9 +296,19 @@ below can recognize them:
 **Recommended**: Option [X] — [existing rationale, preserved verbatim]
 ```
 
-Place this block under a `### Codebase Research Findings` addendum near the
-original prose (per the Preservation Rule below) — additive, not a rewrite
-of existing text. This applies only to refine-issue's own freshly-written
+Place this block **inside `## Proposed Solution`** (append a `### Codebase
+Research Findings` subsection there — any depth is fine, but it must live
+under that exact H2, since that is the only section
+`count_enumerable_options()`/`count_unresolved_options()` scan along with
+the `_OPTION_FALLBACK_SECTIONS` fallbacks), additive, not a rewrite of
+existing text — this is true regardless of where the original prose that
+prompted the decision point lived (e.g. `## Open Questions`). If the
+original prose sits outside `## Proposed Solution`, leave a one-line
+cross-reference at its original location (e.g. "See Option A/B decision
+under Proposed Solution → Codebase Research Findings") so the Preservation
+Rule's intent — don't orphan human context — is still met. Do not add any
+`— suffix` decoration to generated heading text; the probes match headings
+by exact name. This applies only to refine-issue's own freshly-written
 research findings; it does not rewrite pre-existing human-authored prose it
 didn't write.
 
@@ -310,7 +320,14 @@ Count distinct implementation options deposited. Detect by any of these patterns
 - Bold options: `**Option A**`, `**Option B**`, `**Option 1**`, `**Option 2**` (etc.)
 
 Then update `decision_needed` in the issue's YAML frontmatter using the Edit tool (inline `---` block replacement, following `skills/confidence-check/SKILL.md` in section "Phase 4: Update Frontmatter"):
-- If option count >= 2: set `decision_needed: true`
+- If option count >= 2: before setting `decision_needed: true`, run
+  `ll-issues check-decidable <ID>` to verify the deposited options are
+  actually machine-visible to the same probe the decision gate uses. If it
+  exits 0, set `decision_needed: true`. If it exits 1 (`OPTIONS_MISSING`),
+  the options were deposited somewhere the probe cannot see — fix the
+  placement (move the block into `## Proposed Solution` per the rule above)
+  and re-check rather than setting a flag the downstream gate can never
+  satisfy.
 - If option count < 2: set `decision_needed: false` (or remove if absent — prevents stale `true` from a prior pass)
 
 **Idempotency**: skip the write if `decision_needed` already has the same value (follow `skills/format-issue/SKILL.md` in section "2.5a. Testable Inference (doc-only detection)").

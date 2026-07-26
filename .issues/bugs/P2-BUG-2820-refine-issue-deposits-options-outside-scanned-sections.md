@@ -2,12 +2,29 @@
 id: BUG-2820
 type: BUG
 priority: P2
-status: open
-captured_at: "2026-07-25T22:53:35Z"
+status: done
+captured_at: '2026-07-25T22:53:35Z'
+completed_at: '2026-07-26T04:09:11Z'
 discovered_date: 2026-07-25
 discovered_by: capture-issue
-labels: [refine-issue, decision-gate, skills, autodev]
-relates_to: [ENH-2607, ENH-2443, ENH-2446, BUG-2605, FEAT-2817]
+labels:
+- refine-issue
+- decision-gate
+- skills
+- autodev
+relates_to:
+- ENH-2607
+- ENH-2443
+- ENH-2446
+- BUG-2605
+- FEAT-2817
+- BUG-2520
+confidence_score: 100
+outcome_confidence: 85
+score_complexity: 20
+score_test_coverage: 20
+score_ambiguity: 23
+score_change_surface: 22
 ---
 
 # BUG-2820: refine-issue deposits Option A/B into a section the decidability probes never scan
@@ -146,15 +163,102 @@ either alone fixes FEAT-2817; landing both closes the class.
   Detection (lines ~305-315)
 - `scripts/tests/` — a skill-contract test asserting the placement/verification rule is present
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **`skills/ll-refine-issue/SKILL.md` needs no separate edit.** It is a thin Codex-bridge
+  wrapper ("Bridged from `commands/refine-issue.md` for Codex Skills API discovery. See the
+  source command file for the full prompt body.") with no Decision-Point Formatting or
+  Option-Count Detection prose of its own — fixing `commands/refine-issue.md` alone covers both
+  invocation surfaces.
+- **An existing skill-contract test already asserts the placement text this bug changes** —
+  `scripts/tests/test_refine_issue_command.py::TestOptionCountDetectionInCommand::test_decision_point_formatting_rule_documented`
+  slices `commands/refine-issue.md` between the `### 5a.` and `### 5b.` headers and asserts
+  `"Decision-Point Formatting"` and `"**Option A**"`/`"**Recommended**"` are present in that
+  span. This test does not currently pin the placement location (only the template text), so it
+  will keep passing after the fix, but the new placement rule (`## Proposed Solution` instead of
+  "near the original prose") and the `check-decidable` verification call should be added as new
+  assertions in this same file/class rather than a new file, per the established
+  slice-and-assert pattern.
+- **`ll-issues check-decidable` has no subprocess-level CLI contract test today.**
+  `scripts/tests/test_ll_issues_check_open_questions.py`'s docstring explicitly notes this gap and
+  is the template to copy: temp `.issues/` project dir, `_write_issue()` filename-glob helper,
+  `_invoke()` subprocess wrapper (`ll-issues` binary or `python -m little_loops.cli` fallback),
+  exit-code assertions (0 clean / 1 `OPTIONS_MISSING`).
+- **`ll-issues check-decidable <ID>` is a plain, already-shell-out-able CLI** —
+  `scripts/little_loops/cli/issues/check_decidable.py::cmd_check_decidable()` resolves the issue
+  path, calls `count_enumerable_options()`, and exits 0 (stdout `"Decidable: {id} has {count}
+  enumerable option(s)"`) or 1 (stderr `OPTIONS_MISSING: ...`). This confirms the Proposed
+  Solution's step 2 (verify via `ll-issues check-decidable <ID>` before setting
+  `decision_needed: true`) is directly implementable with no new CLI surface needed.
+- **`rn-remediate.yaml`'s `check_decision_decidable` state (lines 275-298) is the closest
+  existing prior art for "verify a deterministic probe before trusting a flag,"** but it verifies
+  the *reader's* view one loop-cycle *after* `refine-issue` already ran (via a
+  `deposit_options` → re-check retry loop bounded by a run-dir marker file), not *inside*
+  `refine-issue` before the frontmatter write. Its own comment names the precedent this mirrors:
+  `ensure_formatted → ll-issues format-check` (ENH-2426) — "skill documents behavior, CLI is the
+  real non-LLM evaluator." There is currently no example anywhere in `commands/*.md` of a
+  markdown command shelling out to a verification CLI mid-execution before writing frontmatter —
+  BUG-2820's proposed step 2 would be the first instance of this pattern living inside a command
+  file rather than a loop YAML.
+- **Marker-vocabulary collision check**: any new heading text this fix introduces (e.g. an
+  `### Options` subsection inside `## Proposed Solution`) must not collide with the option-level
+  *resolution* marker vocabulary already reserved by `decide-issue` —
+  `_RESOLVED_OPTION_MARKER_RE` (`scripts/little_loops/issue_parser.py:334-337`) matches
+  `> **Selected:** ...` or `### Decision Rationale`. Those two strings are reserved for
+  post-decision state and must not appear in the pre-decision deposit template.
+
 ### Similar Patterns
 - `skills/decide-issue/SKILL.md` Phase 3b-i — the resolved-marker vocabulary the probes mirror
 - ENH-2446's `check-open-questions` — precedent for a coverage-aware deterministic probe
+- `rn-remediate.yaml:275-298` `check_decision_decidable` — FSM-level check-decidable/
+  check-open-questions chain with a marker-bounded single retry (see Codebase Research Findings
+  above for why it's precedent, not a template, for an in-skill pre-write check)
+- `autodev.yaml`'s own `check_decision_decidable` state is the sibling consumer of the same
+  `ll-issues check-open-questions || ll-issues check-decidable` chain (mirrors `rn-remediate.yaml`).
+  Its routing/action-string tests (`test_builtin_loops.py`, e.g. lines ~5304-5341) assert only on
+  state graph and the literal CLI-invocation string — not on issue-file scanning behavior — so this
+  fix requires no edit there; it is listed here only as the second place the deferral this bug
+  produces (`decision_unresolved`) currently originates from. _Wiring pass added by
+  `/ll:wire-issue`._
+
+### Related Issues
+- **BUG-2520** — `autodev` `deposit_options` remedy doesn't observe whether options were actually
+  deposited into a scanned section before retrying `check-decidable`; same failure class as this
+  bug's "the remedy re-runs the same `refine-issue --auto` ... and the gate would fail identically
+  on the retry" observation in Current Behavior. Worth checking after this fix lands whether
+  BUG-2520 is subsumed. _Wiring pass added by `/ll:wire-issue`._
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue` — no edits required, but these already describe the
+end-state this fix moves the writer toward; double-check they stay accurate (a natural
+`/ll:audit-docs` or `ll-verify-docs` check point) rather than needing a rewrite:_
+- `docs/reference/COMMANDS.md` — `### /ll:refine-issue` "Frontmatter write-back" paragraph and
+  `### /ll:decide-issue` "Decidability gate (ENH-2443)" paragraph already describe options landing
+  in `## Proposed Solution`.
+- `docs/reference/API.md` — `count_enumerable_options`/`count_unresolved_options` docstring
+  mirrors describing the `## Proposed Solution` + `_OPTION_FALLBACK_SECTIONS` scan scope.
+- `docs/reference/CLI.md` — `ll-issues check-decidable` / `ll-issues check-open-questions` entries
+  document the `OPTIONS_MISSING`/`OPEN_QUESTIONS_REMAIN` exit-1 messages this fix does not change.
+- `docs/guides/LOOPS_REFERENCE.md` — `check_decision_decidable` shell-action documentation and the
+  `decision_needed` routing table.
+- `docs/guides/DECISIONS_LOG_GUIDE.md` — the `decision_needed` handshake narrative.
+- `docs/reference/ISSUE_TEMPLATE.md` — `decision_needed` field description already matches the new
+  placement rule.
 
 ### Tests
 - Fixture issue with decision prose under `## Open Questions`, run the placement rule, assert
   `count_enumerable_options() >= 2` afterwards.
 - Assert the `decision_needed: true` + `check-decidable == 1` combination is not producible from
   a refine-written fixture.
+- Extend `scripts/tests/test_refine_issue_command.py::TestOptionCountDetectionInCommand` with new
+  assertions: placement text must reference `"## Proposed Solution"` (not just "near the original
+  prose"), and step 5a text must reference `check-decidable` as the pre-write verification call.
+- New subprocess-level contract test file for `ll-issues check-decidable`, modeled on
+  `scripts/tests/test_ll_issues_check_open_questions.py` (closes the test-coverage gap that
+  file's own docstring flags).
 
 ## Implementation Steps
 
@@ -179,6 +283,11 @@ either alone fixes FEAT-2817; landing both closes the class.
 | `skills/decide-issue/SKILL.md` | resolved-option marker vocabulary |
 
 ## Session Log
+- `/ll:manage-issue` (fix) - 2026-07-26T04:08:44Z - `6345541c-f50f-466a-ac51-047d43d1cf9c.jsonl`
+- `/ll:ready-issue` - 2026-07-26T04:04:17 - `6c6c1c8d-6c41-4139-bcad-7f5c8618bd09.jsonl`
+- `/ll:confidence-check` - 2026-07-25T22:53:35Z - `1114bd32-b748-4086-8c2f-851399bc987d.jsonl`
+- `/ll:wire-issue` - 2026-07-26T04:02:03 - `c8adaf43-9d19-4fde-a9e2-a2f097a4b53b.jsonl`
+- `/ll:refine-issue` - 2026-07-26T03:57:22 - `c5f80e42-22c9-4cef-815d-b808a9c87eea.jsonl`
 - `/ll:capture-issue` - 2026-07-25T22:53:35Z - `ae9c212c-ff4e-4576-a5c4-7457be6284e5.jsonl`
 
 ---

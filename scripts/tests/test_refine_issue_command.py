@@ -63,6 +63,26 @@ class TestOptionCountDetectionInCommand:
             "Step 5a must document that the frontmatter write is skipped in --dry-run mode"
         )
 
+    def test_placement_targets_proposed_solution(self) -> None:
+        content = COMMAND_FILE.read_text()
+        step_5a_start = content.index("### 5a. Fill Gaps with Research Findings")
+        step_5b_start = content.index("### 5b. Interactive Refinement")
+        step_5a_text = content[step_5a_start:step_5b_start]
+        assert "## Proposed Solution" in step_5a_text, (
+            "Step 5a must document that the Option block is placed inside "
+            "`## Proposed Solution`, not just 'near the original prose' (BUG-2820)"
+        )
+
+    def test_check_decidable_verification_documented(self) -> None:
+        content = COMMAND_FILE.read_text()
+        step_5a_start = content.index("### 5a. Fill Gaps with Research Findings")
+        step_5b_start = content.index("### 5b. Interactive Refinement")
+        step_5a_text = content[step_5a_start:step_5b_start]
+        assert "check-decidable" in step_5a_text, (
+            "Step 5a must document verifying via `ll-issues check-decidable <ID>` "
+            "before setting decision_needed: true (BUG-2820)"
+        )
+
     def test_no_ask_user_question_in_step_5a(self) -> None:
         content = COMMAND_FILE.read_text()
         step_5a_start = content.index("### 5a. Fill Gaps with Research Findings")
