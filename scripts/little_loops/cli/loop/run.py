@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import atexit
-import hashlib
 import json
 import os
 import re
@@ -200,8 +199,9 @@ def cmd_run(
 
     # Inject input hash for checkpoint fingerprinting.
     # --context input_hash=VALUE (already applied above) takes precedence.
-    if "input_hash" not in fsm.context and isinstance(fsm.context.get("input"), str):
-        fsm.context["input_hash"] = hashlib.sha256(fsm.context["input"].encode()).hexdigest()[:12]
+    from little_loops.cli.loop._helpers import derive_input_hash
+
+    derive_input_hash(fsm.context)
 
     # Inject loop metadata into context so templates can reference
     # ${context.max_steps} in state actions and evaluator prompts.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -5772,6 +5773,43 @@ class TestSubLoopExecution:
         assert received_output.strip() == "ENH-999", (
             f"Expected plain string 'ENH-999', got: {received_output!r}"
         )
+
+    def test_sub_loop_input_hash_injected(self, tmp_path: Path) -> None:
+        """BUG-2832: a sub-loop child gets input_hash derived from its resolved
+        input, matching the top-level cli/loop/run.py derivation, so states
+        like resume_check that interpolate ${context.input_hash} don't crash."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "hash-child.yaml").write_text(
+            "name: hash-child\ninitial: step\nstates:\n"
+            "  step:\n"
+            "    action: 'echo ${context.input_hash}'\n"
+            "    capture: child_out\n"
+            "    next: done\n"
+            "  done:\n    terminal: true"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            context={"input": "some task description"},
+            states={
+                "run_child": StateConfig(
+                    loop="hash-child",
+                    context_passthrough=True,
+                    on_yes="success",
+                    on_no="fail",
+                ),
+                "success": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.final_state == "success"
+        child_captures = executor.captured.get("run_child", {})
+        received_output = child_captures.get("child_out", {}).get("output", "")
+        expected_hash = hashlib.sha256(b"some task description").hexdigest()[:12]
+        assert received_output.strip() == expected_hash
 
     def test_sub_loop_capture_shape_has_no_stderr_key(self, tmp_path: Path) -> None:
         """BUG-2726: a `capture:`-bearing `loop:` state stores the child event

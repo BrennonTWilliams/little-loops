@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import json
 import os
 import signal
@@ -1366,6 +1367,23 @@ def seed_confidence_thresholds(context: dict[str, Any], config: Any = None) -> N
         context["readiness_threshold"] = gate.readiness_threshold
     if "outcome_threshold" not in context:
         context["outcome_threshold"] = gate.outcome_threshold
+
+
+def derive_input_hash(context: dict[str, Any]) -> None:
+    """Seed ``input_hash`` from ``context["input"]`` (BUG-2832).
+
+    Derives a stable 12-char sha256 prefix of the string ``input`` context
+    value so states that interpolate ``${context.input_hash}`` (e.g.
+    ``resume_check``) work whether the loop was launched by the CLI, resumed,
+    simulated, or spawned as a sub-loop child. An explicit ``input_hash``
+    already bound (``--context input_hash=...``, ``with:``, or a loop's own
+    ``context:`` literal) always wins.
+
+    Args:
+        context: The FSM context dict, mutated in place.
+    """
+    if "input_hash" not in context and isinstance(context.get("input"), str):
+        context["input_hash"] = hashlib.sha256(context["input"].encode()).hexdigest()[:12]
 
 
 def resolve_loop_path(name_or_path: str, loops_dir: Path) -> Path:

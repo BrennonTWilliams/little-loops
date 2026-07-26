@@ -215,10 +215,9 @@ def cmd_simulate(
     # simulation — the real runner does this in run.py before FSMExecutor is created.
     if "run_dir" not in fsm.context:
         fsm.context["run_dir"] = str(loops_dir / "runs" / f"{loop_name}-simulate") + "/"
-    if "input_hash" not in fsm.context and isinstance(fsm.context.get("input"), str):
-        import hashlib
+    from little_loops.cli.loop._helpers import derive_input_hash
 
-        fsm.context["input_hash"] = hashlib.sha256(fsm.context["input"].encode()).hexdigest()[:12]
+    derive_input_hash(fsm.context)
 
     # Create simulation runner
     sim_runner = SimulationActionRunner(scenario=args.scenario)

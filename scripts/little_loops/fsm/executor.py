@@ -886,9 +886,15 @@ class FSMExecutor:
         # so it must seed its own confidence-gate thresholds from config. Anything
         # already bound (with:, passthrough, or the child's own context: literals)
         # wins, matching the CLI path's precedence.
-        from little_loops.cli.loop._helpers import seed_confidence_thresholds
+        from little_loops.cli.loop._helpers import derive_input_hash, seed_confidence_thresholds
 
         seed_confidence_thresholds(child_fsm.context)
+
+        # BUG-2832: a child loop launched here never passes through cli/loop/run.py
+        # either, so it never gets the input_hash derivation states like
+        # resume_check rely on (${context.input_hash}). Anything already bound
+        # (with:, passthrough, or the child's own context: literals) wins.
+        derive_input_hash(child_fsm.context)
 
         # ENH-2609: per-state worktree attach. state.worktree is a branch-name
         # template; empty after interpolation is a strict no-op so loop YAMLs can

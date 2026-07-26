@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import atexit
-import hashlib
 import json
 import os
 import signal
@@ -524,8 +523,9 @@ def cmd_resume(
         fsm.context["run_dir"] = str(loops_dir / "runs" / instance_id) + "/"
 
     # Re-inject input hash for checkpoint fingerprinting during resumed runs.
-    if "input_hash" not in fsm.context and isinstance(fsm.context.get("input"), str):
-        fsm.context["input_hash"] = hashlib.sha256(fsm.context["input"].encode()).hexdigest()[:12]
+    from little_loops.cli.loop._helpers import derive_input_hash
+
+    derive_input_hash(fsm.context)
 
     # Seed confidence-gate thresholds from config (BUG-2767). This is a separate
     # FSM-launch path from cmd_run and does not delegate to it. On resume the
