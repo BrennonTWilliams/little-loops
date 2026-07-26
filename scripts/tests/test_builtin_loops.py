@@ -9343,6 +9343,36 @@ class TestGeneratorEvaluatorOracle:
         imports = data.get("import", [])
         assert "lib/harness.yaml" in imports, "must import lib/harness.yaml"
 
+    def test_max_steps_covers_intended_cycle_count(self, data: dict) -> None:
+        """BUG-2824: the oracle's cycle is 7 states; the budget must buy several
+        full scored cycles, not silently cap out at ~2.8 (the observed defect)."""
+        INTENDED_CYCLES = 5
+        max_steps = data.get("max_steps", 0)
+        assert max_steps >= 7 * INTENDED_CYCLES, (
+            f"max_steps={max_steps} does not buy {INTENDED_CYCLES} full 7-state "
+            "cycles (generate -> evaluate -> snapshot -> score -> record_score -> "
+            "check_stall -> check_diff_stall)"
+        )
+
+    def test_has_on_max_steps_summary_handler(self, data: dict) -> None:
+        """BUG-2824: budget exhaustion must be a reported outcome, not a silent
+        crash that discards a generated-but-unscored artifact."""
+        states = data.get("states", {})
+        on_max_steps = data.get("on_max_steps")
+        assert on_max_steps, "oracle must declare on_max_steps"
+        assert on_max_steps in states, f"on_max_steps={on_max_steps!r} does not name a real state"
+        summary = states[on_max_steps]
+        assert summary.get("terminal") is True, (
+            "the on_max_steps handler must be terminal-doubling (BUG-158 shape) "
+            "so its action actually runs"
+        )
+
+    def test_record_score_has_on_error(self, data: dict) -> None:
+        """BUG-2824 (audit §3.5): a silently failing record_score must not leave
+        check_stall's plateau detector armed with a permanently short history."""
+        state = data["states"].get("record_score", {})
+        assert state.get("on_error"), "record_score must declare on_error"
+
 
 class TestGeneratorEvaluatorCliOracle:
     """Structural tests for the generator-evaluator-cli oracle sub-loop (FEAT-2269).
@@ -9389,6 +9419,15 @@ class TestGeneratorEvaluatorCliOracle:
         states = resolved_data.get("states", {})
         for name in ("generate", "evaluate", "snapshot", "score", "done", "failed"):
             assert name in states, f"inherited state '{name}' missing after resolution"
+
+    def test_resolved_inherits_on_max_steps_summary_state(self, resolved_data: dict) -> None:
+        """BUG-2824: from: inheritors must pick up the base oracle's on_max_steps
+        summary-state fix for free."""
+        on_max_steps = resolved_data.get("on_max_steps")
+        assert on_max_steps, "on_max_steps must survive inheritance resolution"
+        states = resolved_data.get("states", {})
+        assert on_max_steps in states, f"on_max_steps={on_max_steps!r} missing from resolved states"
+        assert states[on_max_steps].get("terminal") is True
 
     def test_resolved_has_all_parameters(self, resolved_data: dict) -> None:
         """After inheritance resolution, both parent and child parameters must exist."""

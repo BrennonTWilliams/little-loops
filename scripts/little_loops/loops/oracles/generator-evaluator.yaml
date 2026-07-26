@@ -11,7 +11,13 @@ description: |
 initial: generate
 on_handoff: spawn
 timeout: 7200
-max_steps: 20
+# 7-state cycle (generate -> evaluate -> snapshot -> score -> record_score ->
+# check_stall -> check_diff_stall); 40 >= 7 full scored iterations (BUG-2824 —
+# the inherited max_steps: 20 capped this oracle at ~2.8 cycles, well short of
+# check_diff_stall's own max_stall: 3, so the plateau detector was structurally
+# unreachable). See generator-evaluator-flux.yaml for the sibling calibration.
+max_steps: 40
+on_max_steps: max_steps_summary
 artifact_versioning: true
 
 parameters:
@@ -144,6 +150,7 @@ states:
       print(f"recorded score={score}")
       PYEOF
     next: check_stall
+    on_error: check_stall
 
   check_stall:
     # HARNESS (ENH-2428): score-plateau guard (primary stall axis). If the rubric
@@ -184,4 +191,30 @@ states:
     terminal: true
 
   failed:
+    terminal: true
+
+  max_steps_summary:
+    # HARNESS (BUG-2824): terminal-doubling summary state fired when the engine
+    # hits max_steps before ALL_PASS/done is reached. Per BUG-158 semantics
+    # (executor.py:590-601), a terminal: true state named by on_max_steps DOES
+    # still execute its action, so this is the sanctioned shape (precedent:
+    # generator-evaluator-flux.yaml, vega-viz.yaml:553-577,
+    # cua-agent-desktop.yaml:1213-1264) — surface the best-scoring iteration
+    # already on disk instead of silently discarding it.
+    action_type: prompt
+    action: |
+      The generator-evaluator oracle exhausted its max_steps budget before
+      reaching ALL_PASS.
+
+      Score history: $(cat ${context.run_dir}/.score_history 2>/dev/null || echo "no scores recorded")
+      Iterations completed: $(cat ${context.run_dir}/.iter_counter 2>/dev/null || echo "0")
+
+      Identify the highest-scoring iteration from the score history above (the
+      Nth line of .score_history corresponds to iter-N/ under run_dir) and name
+      it explicitly, along with its score. If no scores were recorded, say so.
+
+      SUMMARY_EMITTED
+    evaluate:
+      type: output_contains
+      pattern: "SUMMARY_EMITTED"
     terminal: true

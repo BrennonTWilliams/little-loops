@@ -501,6 +501,8 @@ score  (fragment: ll_rubric_score; local numeric-score override — emits SCORE:
 
 record_score  (shell: append parsed SCORE to ${run_dir}/.score_history)
   → check_stall  (unconditional)
+  on_error → check_stall  # BUG-2824: a parse/write failure must not permanently
+                          # starve check_stall's plateau detector of history
 
 check_stall  (fragment: score_stall_gate; max_stall=2 — primary: score plateau)
   on_yes (score still improving) → check_diff_stall
@@ -512,6 +514,15 @@ check_diff_stall  (fragment: diff_stall_gate; max_stall=3 — secondary/OR: byte
   on_no  (plateaued)            → done  (accept best-so-far)
   on_error                      → generate
 ```
+
+**Budget** (BUG-2824): `max_steps: 40` — the cycle above costs 7 states, so 40
+buys 5+ full scored iterations, enough for `check_diff_stall`'s `max_stall: 3`
+to actually be reachable before the step cap (the previous `max_steps: 20`
+capped the loop at ~2.8 cycles, making the plateau detector structurally
+unreachable). `on_max_steps: max_steps_summary` fires a terminal-doubling
+summary state (BUG-158 shape) on exhaustion, so callers can distinguish
+"ran out of budget with usable output on disk" from a genuine crash, instead
+of silently discarding a generated-but-unscored artifact.
 
 ### Fragment dependency
 
@@ -587,6 +598,7 @@ score      (fragment: ll_rubric_score; inherited — numeric-score override + ca
 
 record_score (shell: append parsed SCORE to ${run_dir}/.score_history; inherited)
   → check_stall  (unconditional)
+  on_error → check_stall  # BUG-2824: inherited from the parent's fix
 
 check_stall (fragment: score_stall_gate; inherited — primary: score plateau)
   on_yes → check_diff_stall
@@ -598,6 +610,11 @@ check_diff_stall (fragment: diff_stall_gate; inherited — secondary/OR: byte pl
   on_no  → done
   on_error → generate
 ```
+
+**Budget** (BUG-2824): `max_steps: 40` and `on_max_steps: max_steps_summary`
+are inherited unchanged from the parent — the `-cli` oracle picks up the
+recalibrated budget and the terminal-doubling summary state for free via
+`from:` resolution.
 
 ### Snapshot behavior difference from parent
 
