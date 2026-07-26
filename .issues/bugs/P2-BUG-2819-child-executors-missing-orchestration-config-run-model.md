@@ -8,6 +8,7 @@ discovered_date: 2026-07-25
 discovered_by: capture-issue
 labels: [fsm, sdk, executor, sub-loops]
 relates_to: [BUG-2818, FEAT-2716, ENH-2714, ENH-2073, ENH-2197]
+blocked_by: [BUG-2818]
 ---
 
 # BUG-2819: Child FSM executors are not threaded with `orchestration_config` / `run_model`
@@ -175,6 +176,7 @@ would then also dispatch with an empty model — so land BUG-2818 first.
 | `.claude/CLAUDE.md` § Loop Authoring | MR-12 / `pruning_profile` resolution |
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-26T00:54:33 - `1286c2b1-65d4-4230-b501-25c3ae70b53c.jsonl`
 - `/ll:capture-issue` - 2026-07-25T22:53:35Z - `ae9c212c-ff4e-4576-a5c4-7457be6284e5.jsonl`
 
 ---

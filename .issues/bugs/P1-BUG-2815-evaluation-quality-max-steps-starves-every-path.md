@@ -7,6 +7,7 @@ captured_at: '2026-07-25T22:08:07Z'
 discovered_date: 2026-07-25
 discovered_by: capture-issue
 labels: [fsm, loops, max-steps]
+blocked_by: [ENH-2814]
 ---
 
 # BUG-2815: `evaluation-quality` can never reach `done` — its only exit-0 path is an evaluator error
@@ -119,6 +120,7 @@ fits the budget.
    steps against `max_steps: 5` (`evaluation-quality.yaml:10`).
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-26T00:54:34 - `1286c2b1-65d4-4230-b501-25c3ae70b53c.jsonl`
 - `/ll:capture-issue` - 2026-07-25T22:08:07Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a36a68e-d365-4ea1-9394-a9e5904b5739.jsonl`
 
 ---
