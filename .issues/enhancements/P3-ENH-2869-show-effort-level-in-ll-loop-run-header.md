@@ -18,7 +18,7 @@ discovered_by: capture-issue
 
 ## Expected Behavior
 
-When a run has an effort level set (state-level override, run-level override, or loop default — mirroring the existing `state.model or self.run_model or self.fsm.llm.model` precedence pattern used for `_resolve_action_model()`), the header shows an `effort:` field directly after `model:`. When no effort level is set anywhere in that chain, the field is omitted entirely (no blank/`None` placeholder) — matching how `model:` itself is only shown when non-`None` (`_render_artifact_header_lines` line 1323/1326).
+When a run has an effort level set (state-level override, run-level override, or loop default — mirroring the existing `state.model or self.run_model or self.fsm.llm.model` precedence pattern used for `_resolve_action_model()`), the header shows the effort level appended directly to the `model:` value — not as its own labeled field. Unlike the other header fields, effort gets no `effort:` label: it's shown one space after the model name, in brackets and upper-cased, e.g. `Model: claude-sonnet-5 [LOW]`. When no effort level is set anywhere in that chain, nothing is appended — the `model:` value is shown bare, matching current behavior.
 
 ## Motivation
 
@@ -29,7 +29,7 @@ Loops can already invoke agents/subagents with a `low`/`medium`/`high`/`xhigh`/`
 1. Add an `effort` field to `StateConfig` and `FSMLoop.llm`/run-level config in `scripts/little_loops/fsm/schema.py` (near the existing `model` fields), accepting the same `low|medium|high|xhigh|max` vocabulary used elsewhere in the harness.
 2. Add a `_resolve_action_effort(self, state)` in `fsm/executor.py` mirroring `_resolve_action_model()` (`fsm/executor.py:2249`): `state.effort or self.run_effort or self.fsm.llm.effort`.
 3. Thread the resolved effort value into the header renderer the same way `model` is threaded today — via the constructor param at `_helpers.py:859` and the live-event refresh at `_helpers.py:1084-1086` (reading an `effort` key from the action event, if the host CLI/SDK reports one).
-4. In `_render_artifact_header_lines()` (`_helpers.py:1294-1340`), add an `effort` parameter and append `effort: <value>` immediately after the `model:` text on whichever row currently carries `model:` — only when `effort is not None`, following the exact same present/absent pattern already used for `model`.
+4. In `_render_artifact_header_lines()` (`_helpers.py:1294-1340`), add an `effort` parameter and, when `effort is not None`, append it to the existing `model:` value — no separate label, one space after the model name, upper-cased and bracketed: `model: <model_value> [<EFFORT>]` (e.g. `model: claude-sonnet-5 [LOW]`). When `effort is None`, the `model:` value is unchanged from current output.
 
 ## Integration Map
 
@@ -45,7 +45,7 @@ Loops can already invoke agents/subagents with a `low`/`medium`/`high`/`xhigh`/`
 - `_resolve_action_model()` (`fsm/executor.py:2249`) is the precedence pattern to mirror for effort resolution.
 
 ### Tests
-- `scripts/tests/` — add/extend header-rendering tests asserting `effort:` appears only when set, and its precedence order (state > run > loop default).
+- `scripts/tests/` — add/extend header-rendering tests asserting the bracketed effort suffix (e.g. `[LOW]`) appears on the `model:` value only when set, and its precedence order (state > run > loop default).
 
 ### Documentation
 - N/A — internal CLI display and FSM schema; update `docs/reference/API.md` if `StateConfig`/`FSMLoop` schema docs enumerate fields explicitly.
