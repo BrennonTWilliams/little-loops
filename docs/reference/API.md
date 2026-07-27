@@ -840,23 +840,50 @@ An issue is considered formatted if either:
 #### check_format_gaps
 
 ```python
-def check_format_gaps(issue_path: Path, templates_dir: Path | None = None) -> FormatGaps
+def check_format_gaps(
+    issue_path: Path,
+    templates_dir: Path | None = None,
+    issue_statuses: dict[str, str] | None = None,
+) -> FormatGaps
 ```
 
 Grade an issue's structural format gaps against its type template (ENH-2426). Deterministic (no LLM) — backs the `ll-issues format-check` subcommand and the `ensure_formatted` gate in `rn-remediate.yaml`. Unlike `is_formatted()`, this always runs the structural analysis; it does not honor the `/ll:format-issue` session-log shortcut, since every issue reaching the gate has already run that command.
 
-Reports five gap classes on the returned `FormatGaps` dataclass (`missing`, `renamed`, `empty`, `boilerplate`, `malformed_id` — each a `list[str]`, plus a derived `has_gaps` property and a `to_dict()` for JSON output):
+Reports seven gap classes on the returned `FormatGaps` dataclass (`missing`, `renamed`, `empty`, `boilerplate`, `malformed_id`, `prose_dep_drift`, `stale_prose_dep` — each a `list[str]`, plus a derived `has_gaps` property and a `to_dict()` for JSON output):
 - **missing** — a required section header is absent from the body.
 - **renamed** — a present section header is `deprecated: true` in the template with an extractable canonical replacement in its `deprecation_reason` (e.g. `"Proposed Fix" -> "Proposed Solution"`).
 - **empty** — a required section header is present but its body is whitespace-only.
 - **boilerplate** — a required section's body still equals its `creation_template` (whole-body match only, to avoid false positives on partially-filled sections).
 - **malformed_id** — frontmatter `id` is present but does not match the filename-derived `TYPE-NNN` (BUG-2769), e.g. a bare int (`id: 2756`) or quoted numeric (`id: "1294"`) instead of `id: BUG-2756`.
+- **prose_dep_drift** (FEAT-2849) — the body claims a dependency in prose (`extract_prose_deps()`, see below) on an **active** issue absent from `blocked_by`/`depends_on`.
+- **stale_prose_dep** (FEAT-2849) — the body's prose dependency claim names a `done`/`cancelled` issue — the remedy is deleting the stale text, not adding an edge.
 
 **Parameters:**
 - `issue_path` - Path to the issue markdown file
 - `templates_dir` - Optional override for the templates directory
+- `issue_statuses` - Optional `issue_id -> status` mapping used to distinguish `prose_dep_drift` from `stale_prose_dep`. When `None` (default), both prose-dependency gap classes fail open (report no gaps) — matching this module's existing convention.
 
 **Returns:** A `FormatGaps` instance. Fails open (no gaps reported) when the file is unreadable, its type cannot be determined, or its template cannot be loaded — mirroring `is_formatted()`'s fail-open behavior.
+
+#### extract_prose_deps
+
+```python
+def extract_prose_deps(body: str) -> set[str]
+```
+
+Extracts issue IDs claimed as dependencies in prose (FEAT-2849,
+`little_loops/issues/prose_deps.py`). Matches canonical phrasings only —
+"Depends on `<ID>`", "Blocked by `<ID>`", "Requires `<ID>`", and IDs listed
+in the body of a `## Blocked By` section — normalizing `P\d-TYPE-NNN` /
+`TYPE-NNN` forms to `TYPE-NNN` and stripping case. Ignores IDs inside fenced
+code blocks. Deliberately conservative: recall matters less than not crying
+wolf. Callers pass the issue *body only* (post `strip_frontmatter()`) — this
+function does not parse frontmatter itself.
+
+**Parameters:**
+- `body` - Issue markdown body (frontmatter already stripped)
+
+**Returns:** Set of normalized issue IDs, e.g. `{"FEAT-109"}`.
 
 #### count_enumerable_options
 
@@ -929,9 +956,13 @@ class QuestionGaps:
     open_questions: list[str]
 ```
 
-Typed return-value mirroring the `FormatGaps` shape (ENH-2446). Each list carries the
-respective markers/headings; `has_gaps` is derived; `to_dict()` serializes for
-`--format json`. Companion to `FormatGaps` for the coverage-aware decidability probe.
+Typed return-value mirroring the two-field-per-category `FormatGaps` convention
+(ENH-2446) — note `FormatGaps` itself has since grown to seven categories
+(FEAT-2849) that `QuestionGaps` does not mirror; only the dataclass shape
+(`list[str]` fields + derived `has_gaps` + `to_dict()`) is shared, not the gap
+count. Each list carries the respective markers/headings; `has_gaps` is
+derived; `to_dict()` serializes for `--format json`. Companion to `FormatGaps`
+for the coverage-aware decidability probe.
 
 #### find_issues
 

@@ -211,17 +211,29 @@ exists on the EPIC's intended base can read as absent, producing a false
      the absence a genuine blocker.
 
 #### Dependency Status
-- [ ] If `## Blocked By` section exists:
-  - Check each referenced issue ID
-  - Check each blocker's frontmatter `status` field using `ll-issues list --id [BLOCKER-ID] --json`
-  - If any blocker has `status: open`, `status: in_progress`, or `status: blocked`:
-    - Flag as BLOCKED: "Blocked by [ID] which is still open"
-    - **Set verdict to BLOCKED** — this overrides READY and CORRECTED
-  - If all blockers have `status: done`, `status: cancelled`, or don't exist: PASS
-- [ ] If `## Blocked By` section is empty or absent: PASS (no blockers)
+Run `ll-issues format-check [ISSUE-ID] --format json` (FEAT-2849) instead of
+independently re-parsing a `## Blocked By` section — this reconciles with the
+same `prose_dep_drift`/`stale_prose_dep` taxonomy `/ll:refine-issue` and
+`/ll:wire-issue` gate on, rather than running a second, unrelated prose check.
 
-**Note**: Open blockers force the verdict to `BLOCKED`. This overrides any corrections made.
-Record corrections in `CORRECTIONS_MADE` as usual, but the top-level verdict must be `BLOCKED`.
+- [ ] `prose_dep_drift` non-empty (prose names an active issue absent from
+      `blocked_by`/`depends_on`):
+  - Flag as BLOCKED: "Blocked by [ID] (prose dependency not reflected in
+    frontmatter) which is still open"
+  - **Set verdict to BLOCKED** — this overrides READY and CORRECTED
+- [ ] `stale_prose_dep` non-empty (prose names a `done`/`cancelled` issue):
+  - Not a blocker. Auto-correct by removing/updating the stale prose text and
+    record the correction in `CORRECTIONS_MADE`.
+- [ ] Also check each structured `blocked_by`/`depends_on` entry's frontmatter
+  `status` field using `ll-issues list --id [BLOCKER-ID] --json`:
+  - If any has `status: open`, `status: in_progress`, or `status: blocked`:
+    flag as BLOCKED and **set verdict to BLOCKED** (overrides READY/CORRECTED).
+  - If all have `status: done`, `status: cancelled`, or don't exist: PASS.
+- [ ] No `prose_dep_drift`, no open structured blocker: PASS (no blockers).
+
+**Note**: Open blockers (structured or prose-drift) force the verdict to
+`BLOCKED`. This overrides any corrections made. Record corrections in
+`CORRECTIONS_MADE` as usual, but the top-level verdict must be `BLOCKED`.
 
 #### Learning Test Gate
 - [ ] Check if `learning_tests_required` exists in frontmatter:
@@ -294,7 +306,7 @@ fi
 |---------|---------|-------------|
 | READY | Issue is complete and accurate | No changes needed |
 | CORRECTED | Auto-corrections made, now ready | Fixed issues, proceed to implementation |
-| BLOCKED | Issue has unresolved blocking dependencies | Any Blocked By entry resolves to an active issue |
+| BLOCKED | Issue has unresolved blocking dependencies | Any structured blocker or `prose_dep_drift` entry resolves to an active issue |
 | NOT_READY | Cannot auto-correct | Needs manual intervention (use sparingly) |
 | CLOSE | Issue should not be implemented | See closure conditions above |
 | REGRESSION_LIKELY | Matches completed issue with evidence | Files modified since original fix |
@@ -302,7 +314,7 @@ fi
 
 **Priority order**:
 1. First, try to auto-correct any issues
-2. If any `## Blocked By` entry resolves to an active issue, use BLOCKED (overrides READY/CORRECTED)
+2. If any structured blocker or `prose_dep_drift` entry resolves to an active issue, use BLOCKED (overrides READY/CORRECTED)
 3. If issue is invalid/obsolete, use CLOSE
 4. If issue matches completed issue, analyze for regression (see Regression Detection below)
 5. Only use NOT_READY if manual intervention is truly required

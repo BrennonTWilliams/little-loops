@@ -17,7 +17,7 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
     p = subs.add_parser(
         "format-check",
         help="Deterministic structural linter for issue formatting "
-        "(missing/renamed/empty/boilerplate/malformed_id)",
+        "(missing/renamed/empty/boilerplate/malformed_id/prose_dep_drift/stale_prose_dep)",
     )
     p.set_defaults(command="format-check")
     p.add_argument("issue_id", help="Issue ID (e.g., 2426, ENH-2426, P3-ENH-2426)")
@@ -33,14 +33,18 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
 
 
 def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
-    """Report structural format gaps (missing/renamed/empty/boilerplate/malformed_id) for an issue.
+    """Report structural format gaps for an issue.
+
+    Gap classes: missing/renamed/empty/boilerplate/malformed_id/
+    prose_dep_drift/stale_prose_dep.
 
     Returns:
         0 when structurally compliant, 1 when gaps were found or the issue is not found.
     """
     from little_loops.cli.issues.show import _resolve_issue_id
     from little_loops.cli.output import print_json
-    from little_loops.issue_parser import check_format_gaps
+    from little_loops.issue_parser import check_format_gaps, find_issues
+    from little_loops.issue_progress import _ALL_STATUSES
     from little_loops.issue_template import resolve_templates_dir
 
     path = _resolve_issue_id(config, args.issue_id)
@@ -48,7 +52,15 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
         print(f"Error: Issue '{args.issue_id}' not found.", file=sys.stderr)
         return 1
 
-    gaps = check_format_gaps(path, templates_dir=resolve_templates_dir(config))
+    issue_statuses = {
+        info.issue_id: info.status for info in find_issues(config, status_filter=set(_ALL_STATUSES))
+    }
+
+    gaps = check_format_gaps(
+        path,
+        templates_dir=resolve_templates_dir(config),
+        issue_statuses=issue_statuses,
+    )
     fmt = getattr(args, "format", "text") or "text"
 
     if fmt == "json":
@@ -70,4 +82,8 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
         print(f"  boilerplate: {name}")
     for entry in gaps.malformed_id:
         print(f"  malformed_id: {entry}")
+    for entry in gaps.prose_dep_drift:
+        print(f"  prose_dep_drift: {entry}")
+    for entry in gaps.stale_prose_dep:
+        print(f"  stale_prose_dep: {entry}")
     return 1

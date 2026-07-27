@@ -146,12 +146,20 @@ class FormatGaps:
     empty: list[str] = field(default_factory=list)
     boilerplate: list[str] = field(default_factory=list)
     malformed_id: list[str] = field(default_factory=list)
+    prose_dep_drift: list[str] = field(default_factory=list)
+    stale_prose_dep: list[str] = field(default_factory=list)
 
     @property
     def has_gaps(self) -> bool:
         """True when any gap category is non-empty."""
         return bool(
-            self.missing or self.renamed or self.empty or self.boilerplate or self.malformed_id
+            self.missing
+            or self.renamed
+            or self.empty
+            or self.boilerplate
+            or self.malformed_id
+            or self.prose_dep_drift
+            or self.stale_prose_dep
         )
 
     def to_dict(self) -> dict[str, list[str]]:
@@ -162,6 +170,8 @@ class FormatGaps:
             "empty": self.empty,
             "boilerplate": self.boilerplate,
             "malformed_id": self.malformed_id,
+            "prose_dep_drift": self.prose_dep_drift,
+            "stale_prose_dep": self.stale_prose_dep,
         }
 
 
@@ -188,7 +198,11 @@ class QuestionGaps:
         }
 
 
-def check_format_gaps(issue_path: Path, templates_dir: Path | None = None) -> FormatGaps:
+def check_format_gaps(
+    issue_path: Path,
+    templates_dir: Path | None = None,
+    issue_statuses: dict[str, str] | None = None,
+) -> FormatGaps:
     """Grade an issue's structural format gaps against its type template.
 
     Deterministic (no LLM) structural linter for the ``ensure_formatted`` gate.
@@ -207,10 +221,21 @@ def check_format_gaps(issue_path: Path, templates_dir: Path | None = None) -> Fo
             filename-derived ``TYPE-NNN`` (BUG-2769) — e.g. a bare int
             (``id: 2756``) or quoted numeric (``id: "1294"``) instead of
             ``id: BUG-2756``.
+        prose_dep_drift: the body claims a dependency in prose (FEAT-2849,
+            :func:`little_loops.issues.prose_deps.extract_prose_deps`) on an
+            **active** issue absent from ``blocked_by``/``depends_on``.
+        stale_prose_dep: the body claims a prose dependency on an issue whose
+            status is ``done``/``cancelled`` — the remedy is deleting the
+            stale text, not adding an edge.
 
     Args:
         issue_path: Path to the issue markdown file.
         templates_dir: Optional override for the templates directory.
+        issue_statuses: Optional mapping of issue_id -> status, used to
+            distinguish ``prose_dep_drift`` (active target) from
+            ``stale_prose_dep`` (done/cancelled target). When absent, prose
+            dependency checking fails open (no gaps reported for that class),
+            matching this module's existing convention.
 
     Returns:
         A FormatGaps instance. Fails open (empty FormatGaps, no gaps) when the
@@ -279,6 +304,33 @@ def check_format_gaps(issue_path: Path, templates_dir: Path | None = None) -> Fo
         canonical = f"{filename_id_match.group(1)}-{filename_id_match.group(2)}"
         if raw_str.upper() != canonical:
             gaps.malformed_id.append(f"id: {raw_str} (expected {canonical})")
+
+    if issue_statuses is not None:
+        from little_loops.frontmatter import strip_frontmatter
+        from little_loops.issues.prose_deps import extract_prose_deps
+
+        own_id = (
+            f"{filename_id_match.group(1)}-{filename_id_match.group(2)}"
+            if filename_id_match
+            else None
+        )
+        structured_deps: set[str] = set()
+        for key in ("blocked_by", "depends_on"):
+            value = fm.get(key)
+            if isinstance(value, list):
+                structured_deps.update(str(v).strip().upper() for v in value)
+            elif isinstance(value, str) and value.strip():
+                structured_deps.add(value.strip().upper())
+
+        body_only = strip_frontmatter(content)
+        for prose_id in sorted(extract_prose_deps(body_only)):
+            if prose_id == own_id:
+                continue
+            status = issue_statuses.get(prose_id)
+            if status in ("done", "cancelled"):
+                gaps.stale_prose_dep.append(prose_id)
+            elif prose_id not in structured_deps:
+                gaps.prose_dep_drift.append(prose_id)
 
     return gaps
 

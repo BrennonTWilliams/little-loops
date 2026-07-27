@@ -273,6 +273,8 @@ class TestFormatCheckJsonOutput:
             "empty": [],
             "boilerplate": [],
             "malformed_id": [],
+            "prose_dep_drift": [],
+            "stale_prose_dep": [],
         }
 
     def test_gapped_issue_json_output(
@@ -356,6 +358,104 @@ class TestFormatCheckFailOpen:
 
         result = _invoke(
             ["ll-issues", "format-check", "BUG-9108", "--config", str(temp_project_dir)]
+        )
+
+        assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# TestFormatCheckProseDeps (FEAT-2849)
+# ---------------------------------------------------------------------------
+
+
+def _write_feature(issues_dir: Path, filename: str, body: str) -> Path:
+    path = issues_dir / "features" / filename
+    path.write_text(body)
+    return path
+
+
+class TestFormatCheckProseDeps:
+    """prose_dep_drift / stale_prose_dep gap kinds (FEAT-2849)."""
+
+    def test_prose_dep_on_active_issue_reports_drift(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        _write_feature(
+            format_check_dir,
+            "P2-FEAT-9200-blocker.md",
+            "---\nid: FEAT-9200\nstatus: open\n---\n\n# FEAT-9200: Blocker\n",
+        )
+        body = _CLEAN_BUG_BODY.replace(
+            "id: BUG-9101",
+            "id: BUG-9109",
+        ).replace(
+            "## Summary\nA real problem happens under specific conditions.",
+            "## Summary\nDepends on FEAT-9200 for the underlying fix.",
+        )
+        _write_issue(format_check_dir, "P3-BUG-9109-test-bug.md", body)
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9109", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "prose_dep_drift: FEAT-9200" in out
+
+    def test_prose_dep_on_done_issue_reports_stale(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        _write_feature(
+            format_check_dir,
+            "P2-FEAT-9201-blocker.md",
+            "---\nid: FEAT-9201\nstatus: done\n---\n\n# FEAT-9201: Blocker\n",
+        )
+        body = _CLEAN_BUG_BODY.replace(
+            "id: BUG-9101",
+            "id: BUG-9110",
+        ).replace(
+            "## Summary\nA real problem happens under specific conditions.",
+            "## Summary\nBlocked by FEAT-9201 until it ships.",
+        )
+        _write_issue(format_check_dir, "P3-BUG-9110-test-bug.md", body)
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9110", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "stale_prose_dep: FEAT-9201" in out
+        assert "prose_dep_drift" not in out
+
+    def test_prose_dep_already_in_blocked_by_is_clean(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        _write_feature(
+            format_check_dir,
+            "P2-FEAT-9202-blocker.md",
+            "---\nid: FEAT-9202\nstatus: open\n---\n\n# FEAT-9202: Blocker\n",
+        )
+        body = _CLEAN_BUG_BODY.replace(
+            "id: BUG-9101",
+            "id: BUG-9111\nblocked_by:\n- FEAT-9202",
+        ).replace(
+            "## Summary\nA real problem happens under specific conditions.",
+            "## Summary\nDepends on FEAT-9202 for the underlying fix.",
+        )
+        _write_issue(format_check_dir, "P3-BUG-9111-test-bug.md", body)
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9111", "--config", str(temp_project_dir)]
         )
 
         assert result == 0

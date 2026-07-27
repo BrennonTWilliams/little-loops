@@ -101,7 +101,7 @@ Sub-commands:
   skip             Deprioritize an issue by bumping its priority prefix
   anchor-sweep     Rewrite file:line references in active issue files to anchor form
   fingerprint      Extract structured fingerprint (id, files, key_terms) from an issue file
-  format-check     Deterministic structural linter for issue formatting (missing/renamed/empty/boilerplate)
+  format-check     Deterministic structural linter for issue formatting (missing/renamed/empty/boilerplate/malformed_id/prose_dep_drift/stale_prose_dep)
   decisions        Manage rules, decisions, and exceptions log (list/add/outcome/generate/sync)
 
 Examples:

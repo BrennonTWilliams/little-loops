@@ -542,6 +542,22 @@ Run /ll:ready-issue [ISSUE-ID] to validate.
 4. Add new sections in appropriate locations following v2.0 template ordering
 5. Ensure all added file paths and references are from actual research (no placeholders in auto mode)
 
+### 6.5. Prose Dependency Gate (FEAT-2849)
+
+After updating the issue file, run `ll-issues format-check [ISSUE-ID] --format json`
+and inspect the `prose_dep_drift`/`stale_prose_dep` keys:
+
+- **`prose_dep_drift` non-empty**: the body claims a dependency in prose
+  ("Depends on ID", "Blocked by ID", "Requires ID", or a `## Blocked By`
+  section) on an active issue not reflected in `blocked_by`/`depends_on`
+  frontmatter. Add the missing edge via `ll-issues link [ISSUE-ID] blocked_by
+  [BLOCKER-ID]` (do not silently drop the prose) and re-run `format-check` to
+  confirm the drift clears.
+- **`stale_prose_dep` non-empty**: the body names a `done`/`cancelled` issue
+  as a blocker. Edit the prose to remove/update the stale reference — this is
+  a text fix, not a frontmatter edge to add.
+- Skip this gate if `DRY_RUN` is true.
+
 ### 7. Append Session Log
 
 After updating the issue, use the Bash tool to append a session log entry:
