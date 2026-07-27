@@ -5,9 +5,74 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.152.0] - 2026-07-26
+## [1.152.0] - 2026-07-27
+
+### Added
+
+- FEAT-2846 / FEAT-2849 / FEAT-2850 / FEAT-2851: prose dependency drift
+  detection. A prose dependency extractor plus a `format-check` gap taxonomy
+  surface dependency claims made in an issue's body that never made it into
+  frontmatter; `--all` runs the sweep repo-wide (gated in the pytest suite) and
+  `--fix` backfills `blocked_by` from the extracted prose claims.
+- FEAT-2842: `ll-issues link` — an idempotent dependency-edge writer, so
+  `blocked_by` / `depends_on` / `relates_to` edges can be added from automation
+  without hand-editing frontmatter or duplicating existing edges.
+- FEAT-2817: new built-in `flux-image-generator` generator-evaluator loop.
+- ENH-2847: `ll-issues sequence` now surfaces unverified prose dependencies
+  alongside the frontmatter-declared graph.
+
+### Fixed
+
+- BUG-2831 / BUG-2832 / BUG-2833 / ENH-2834: the autodev learning-gate and
+  sub-loop path. `request_path: sdk`/`batch` silently no-opped agentic skill
+  states (every issue skipped as `refine_failed`) — those states are now
+  force-downgraded to `cli`; `input_hash` is injected into sub-loop child
+  context so `general-task` works as a sub-loop; the learning gate no longer
+  conflates `impl_failed` with `blocked`, and invokes `ready-to-implement-gate`
+  directly instead of chaining a redundant impl loop with an empty task.
+- BUG-2830 / BUG-2828 / BUG-2818 / BUG-2819: SDK request-path plumbing. OAuth
+  subscription tokens are accepted (Claude Code identity header + system block),
+  host-CLI model aliases are resolved before dispatch instead of 404ing against
+  the Messages API, an omitted `--model` no longer sends an empty `model`, and
+  child FSM executors are threaded with `orchestration_config` / `run_model`.
+- BUG-2812 / BUG-2813 / BUG-2815 / BUG-2816 / BUG-2822 / BUG-2824 / BUG-2827:
+  built-in loop repairs — sub-loop capture namespace (`captured.<state>.<var>`),
+  ~40 dead terminal-state actions (now caught by a validator rule),
+  `evaluation-quality`'s unreachable `done`, broken CLI/skill invocations,
+  generator-evaluator budget starvation and image discard, and the
+  two-line `grep -c ... || echo 0` counter bug.
+- BUG-2826: `classify_terminal` now recognizes API/config failures as infra
+  rather than ledgering them as refine-quality failures.
+- BUG-2844 / BUG-2848 / BUG-2820 / BUG-2811 / BUG-2840: `/ll:audit-issue-conflicts`
+  supersession writes `cancelled` + `supersedes:` instead of `status: done`;
+  `depends_on` edges are visible to `ll-issues sequence` and folded into
+  `topological_sort`; `refine-issue` deposits decision options where the
+  decidability probes actually scan; `test_spawn_behavior` no longer asserts a
+  hardcoded `claude` binary (xdist flake); `ll-doctor` reports
+  `claude_md_suppression` as unsupported rather than fatal.
+- ENH-2835: `MODEL_PRICING` models the Sonnet 5 introductory rate through
+  2026-08-31, so `est_cost` is no longer inflated.
+- ENH-2836: `ll-check-links` distinguishes genuinely broken links from network
+  timeouts — unreachable links are reported but no longer fail the exit code
+  unless `--strict-network` is set.
 
 ### Changed
+
+- ENH-2841: `<example>` blocks moved out of agent descriptions, cutting ~1.9K
+  tokens from every agent invocation. ENH-2839 measures ENH-2714's realized
+  static-prefix savings per component.
+- ENH-2829: `superseded_by` is derived as the reverse edge of `supersedes` —
+  no new status value, and no hand-maintained frontmatter field.
+- ENH-2821: option-counting probes fall back to a whole-document scan instead of
+  three exact H2 headings.
+- ENH-2810 / ENH-2748: MR-12 Check 3 honors the config-level `request_path: sdk`
+  exemption, and the capture-reachability validator warning gains a suppress flag.
+- ENH-2843: learning-target extraction excludes contract-stable stdlib modules.
+- ENH-2845: `/ll:audit-issue-conflicts` replaces non-persistent bash state with
+  CLI + git idioms, widens its tool declarations, and drops the contradictory
+  auto mode. ENH-2823 raises `flux-image-generator`'s `steps` default to 20.
+- ENH-2838: SGR test assertions no longer silently under-match multi-segment
+  256-color codes; the CLI color palette is portable across terminal themes.
 
 - ENH-2825: built-in loops no longer report failures as success. 31 edges across
   26 loops routed `on_error` / `on_failure` / `on_retry_exhausted` directly into
@@ -303,6 +368,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ENH-2655: Standardize a .ll/ artifact directory for /ll:spike plan docs
 - refactor(runners): extract shared RunnerType/ActionSpec dispatch abstraction (c835911a)
 
+[1.152.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.151.1...v1.152.0
 [1.151.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.151.0...v1.151.1
 [1.151.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.150.0...v1.151.0
 [1.150.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.149.0...v1.150.0
