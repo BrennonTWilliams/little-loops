@@ -1,7 +1,27 @@
-<!-- Last updated: 2026-03-15 -->
+<!-- Last updated: 2026-07-27 -->
 # little-loops (ll) - Claude Code Plugin
 
 Development workflow toolkit for Claude Code with issue management, code quality commands, and automated processing.
+
+## Distribution
+
+little-loops ships two ways into a consuming project:
+
+- **pip package** — `pip install little-loops` (PyPI), providing the `ll-*` CLI entry points
+- **Claude Code plugin** — via the marketplace, providing `/ll:*` commands, skills, agents, and hooks
+
+`ll-init` sets both up and records which one is in play as `install_source` in the
+project's `.ll/ll-config.json` (`pypi`, `local-editable`, `global-claude-code`,
+`project-claude-code`).
+
+**This repo is the source, not a consumer.** Everything below describes developing
+little-loops itself; install here with `pip install -e "./scripts[dev]"`.
+
+**All little-loops projects on this machine are `local-editable` against this
+checkout** — they exist to exercise and inform little-loops development. Consequence:
+uncommitted changes here are immediately live in every one of them, with no reinstall
+step. A broken `main` breaks those projects' tooling silently, and a defect that shows
+up "in another project" is usually a working-tree change here, not a released bug.
 
 ## Project Configuration
 
@@ -164,6 +184,7 @@ taxonomy, and the canonical shape live in
 | capture-reachability | WARN/ERROR | a `${captured.*}` reference whose capturing state doesn't dominate it (may run on a path that bypasses the capture), or references a never-captured var; nested-path-aware (BUG-2812) — distinguishes the correct `${captured.<sub_loop_state_name>.<var>...}` form (child captures namespace under the delegating state's own name) from an ERROR-worthy reference to a sub-loop-delegating state's own `capture:` name plus a nested field beyond `.output`/`.exit_code` (that name only ever resolves to the child's event-stream dict) | `capture_reachability_ok` |
 | session-mode-eval | WARN | a `check_semantic`/`llm_structured` (or default-LLM-judged) state resolves to `session_mode: continue` (state override or loop default), breaking independent evaluator judgment (FEAT-2711) | `session_mode_ok` |
 | terminal-action-ok | WARN | a non-empty `action` on a `terminal: true` state — the executor finishes the run the instant a terminal is entered, before its `action` would run, so it's dead code; move it into a new penultimate non-terminal state with `next: <terminal>` and `on_error:` routing (the `rn-implement::report` shape). Exempts a terminal doubling as the loop's `on_max_steps`/`on_max_iterations` handler (BUG-158) (BUG-2813) | `terminal_action_ok` |
+| MR-13 | WARN | abandonment must reach summary.json and downgrade the verdict: a loop with an abandonment mechanism (checkbox rewrite to `[!]`/`[x]`+"abandoned" annotation, or a `max_step_attempts`-style attempt cap) but no state emitting an `"abandoned"` key into its summary JSON; or a shell action hardcoding `"verdict":"success"`/`verdict=success` with no conditional branch on an abandonment/failure counter and no `"abandoned"` key in that state (ENH-2860) | `abandonment_verdict_ok` |
 
 The `loop-specialist` agent (`agents/loop-specialist.md`) diagnoses violations
 post-hoc as `self-evaluation bias` / `feature-stubbing`; these gates shift the
@@ -240,8 +261,6 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-ctx-stats` - Show context-window analytics for the current project (per-tool byte vs. context savings from `.ll/history.db`; JSONL-based session cache hit rate; skill-health signals)
 - `ll-config` - Resolve and print a single dot-path config value (`ll-config get <key>`, e.g. `ll-config get history.go_no_go.correction_penalty`); wraps `BRConfig.resolve_variable()` with a never-raise, config-or-default contract — the CLI a markdown skill shells out to instead of referencing `{{config...}}` template tokens directly (those only expand under `ll-auto`'s `skill_expander.py` pre-expansion pass)
 - `ll-queue` - Persisted work-item queue backed by `.ll/queue.db` (`add`/`list`/`status`/`remove`/`run` subcommands; FEAT-2682, FEAT-2683). `add <target>` classifies a bare string into an FSM loop name, a skill/command name, or a raw CLI invocation (override with `--runner`); distinct from `ll-loop queue`'s PID-liveness marker mechanism, which FEAT-2684 preserves unchanged as a compat shim rather than migrating. `run` serially dequeues `pending` entries in priority/FIFO order and dispatches each through ENH-2668's `run_action()`, writing back real `status`/`result` (`SKILL`/`CMD`/`MCP`/`PROMPT` kinds only — `RunnerType.LOOP` stays on `PersistentExecutor`)
-
-Install: `pip install -e "./scripts[dev]"`
 
 ## Host CLI Abstraction
 
