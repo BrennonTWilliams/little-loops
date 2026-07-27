@@ -63,3 +63,13 @@ This is deliberately *not* a design doc stage. It is a short, concrete section �
 - [ ] Implementation-time deviations from the design are recorded in the issue as a visible `Deviations` note rather than overwriting the original section.
 - [ ] A rollout decision for pre-existing issues (grandfathering or bulk-populate) is implemented, so shipping the gate does not mass-defer the current backlog.
 - [ ] Tests cover: missing section, prose-only section, valid section (including unresolvable-but-signature-shaped new identifiers), and the escape hatch.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): EPIC-2856 requires a one-off pre-intervention baseline sample of FEAT-2855's maintainability signals — captured manually under `thoughts/` — *before* this issue's gate ships, so "did any of this work" is answerable against a pre-intervention reference. FEAT-2855 is scheduled last in the EPIC and does not own producing that snapshot. Capturing it is a prerequisite of this issue, not part of FEAT-2855's scope.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-27T15:59:42 - `29cf17b6-04b4-4b01-9444-64f1bfdbdaa5.jsonl`

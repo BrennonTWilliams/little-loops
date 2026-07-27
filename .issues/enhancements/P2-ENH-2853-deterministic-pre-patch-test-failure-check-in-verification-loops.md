@@ -11,6 +11,8 @@ parent: EPIC-2856
 labels:
 - rework
 - verification
+blocked_by:
+- '2854'
 ---
 
 # ENH-2853: Deterministic pre-patch test-failure check in verification loops
@@ -64,3 +66,7 @@ The check is deterministic, cheap, and has no false-positive mode that matters: 
 - [ ] The user's working tree is unchanged after the check runs, including on failure paths.
 - [ ] The check makes no LLM calls.
 - [ ] Tests cover: a fake test that passes pre-patch, a genuine test that fails pre-patch, a test that errors pre-patch, and the zero-test case.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-27T15:59:42 - `29cf17b6-04b4-4b01-9444-64f1bfdbdaa5.jsonl`
