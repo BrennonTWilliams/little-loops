@@ -1,6 +1,7 @@
 ---
 id: ENH-2852
-title: Add a program-design stage to issue refinement naming types, signatures, and call path
+title: Add a program-design stage to issue refinement naming types, signatures, and
+  call path
 type: ENH
 priority: P2
 status: open
@@ -11,6 +12,15 @@ parent: EPIC-2856
 labels:
 - rework
 - verification
+confidence_score: 90
+outcome_confidence: 64
+score_complexity: 10
+score_test_coverage: 22
+score_ambiguity: 22
+score_change_surface: 10
+spike_needed: true
+spike_attempted: true
+spike_completed: true
 ---
 
 # ENH-2852: Add a program-design stage to issue refinement naming types, signatures, and call path
@@ -53,7 +63,7 @@ This is deliberately *not* a design doc stage. It is a short, concrete section �
 ## Design Notes
 
 - Keep the gate cheap and mostly deterministic. A grep/parse for identifiers that exist in the repo carries more signal than asking a model whether a section is "specific enough".
-- **New identifiers cannot resolve against the repo by definition.** The repo-resolution requirement targets the *call-path anchors* — the existing callers, modules, and types the new code hooks into. The new names being introduced only need to be signature-*shaped* (parseable `name(params) -> ret` / dataclass-field lines), not resolvable. Conflating these would make the gate unpassable for any issue that adds code.
+- **New identifiers are never *required* to resolve — and never required *not* to.** The repo-resolution requirement targets the *call-path anchors* — the existing callers, modules, and types the new code hooks into. The new names being introduced only need to be signature-*shaped* (parseable `name(params) -> ret` / dataclass-field lines), not resolvable. Conflating these would make the gate unpassable for any issue that adds code. Equally important (surfaced by the spike's own promotion failure): the resolver contract must be **resolution-indifferent for new identifiers** — a new identifier that *happens* to resolve (because its defining code lands in the repo between refinement and gate re-check, or because the name collides with an existing symbol) must never flip the verdict. Do NOT implement this as "exclude symbols defined in the diff/PR under review": at format-check time (refinement, the autodev gate) no diff exists yet, so diff-exclusion is undefined exactly when the gate runs. The rule is simply: anchors extracted from `Call Path` must have ≥1 resolving; everything else is graded on shape alone, with resolution status recorded as informational only.
 - **The mechanical check lives in a CLI, not in skill prose.** **Decided (epic review, 2026-07-27): implement inside `check_format_gaps()` as an `ll-issues format-check` extension — not a standalone `ll-verify-*` binary.** `/ll:confidence-check` shells out to `ll-issues format-check` — matching the project's deterministic-CLI-plus-skill pattern and making it independently testable. This drops the standalone-binary wiring (`_LL_PERMISSIONS`, `areas.md` allowlist, new `[project.scripts]` entry) from scope entirely.
 - Small mechanical issues (a one-line config change, a docs fix) should be able to satisfy the section trivially or declare it not applicable — the gate must not become a tax on trivial work. Provide an explicit escape hatch and make it visible in the issue rather than silent.
 - **Amendment path, not a prohibition.** The section is written during refinement, but a hard "the implementing agent must not rewrite it" rule contradicts existing machinery (`/ll:reconcile-issue` rewrites directive sections by design) and ignores queue-latency staleness — a design fixed at refine time can be invalidated by codebase changes before implementation starts. Instead: the implementing agent may deviate, but the deviation is *recorded* in the issue (a `Deviations` note under the section stating what changed and why), never silently rewritten over the original.
@@ -62,7 +72,7 @@ This is deliberately *not* a design doc stage. It is a short, concrete section �
 - **`ready-issue` scope — decided (epic review, 2026-07-27): confidence-check only.** `commands/ready-issue.md` reads `prose_dep_drift`/`stale_prose_dep` individually from `format-check --format json` and must *not* add the Program Design gap to its blocking set. `ready-issue`'s job is to make an issue implementation-ready, and a missing program design is something it should surface and help fill, not something it should refuse on — the blocking decision happens once, at the confidence gate, where the reconcile-before-defer remedy path exists. Two gates enforcing the same requirement with different remedies is how an issue gets stuck between them.
 - **The `Deviations` note needs a writer, or it is dead convention** (added epic review, 2026-07-27). As originally written, nothing in the system would ever produce one: `skills/manage-issue/SKILL.md`'s "Mismatch Handling Protocol" (~L325-331) handles plan/reality divergence interactively but persists nothing structured to the issue file. **Decided: give it a writer in `manage-issue`** — the amendment path is what makes the section survivable under queue latency (a design fixed at refine time can be invalidated before implementation starts), and without a writer the "may deviate, but it is recorded" contract is unenforced prose.
 - **Rollout for the existing backlog.** Every currently open issue lacks the section; a hard gate would mass-defer the backlog on day one. **Decided (epic review, 2026-07-27): grandfather.** Issues refined before the gate ships are exempt from the gate; bulk-populate is not pursued — it is more expensive, and grandfathering is reversible per-issue by simply re-refining.
-- **The grandfather cutoff IS the cutover stamp — one date, one file** (decided 2026-07-27; path pinned 2026-07-27). The stamp lives at **`.ll/program-design-cutover.json`** — NOT under `thoughts/`, which is a convention of this repo that target projects are not guaranteed to have; `.ll/` is the one directory little-loops guarantees in any installed project (it holds `ll-config.json` and `decisions.d/`, both committed, so the stamp is shared via git like they are). Schema: `{"sha": "<full 40-char SHA>", "date": "YYYY-MM-DD"}` — exactly these two keys, ISO date, machine-readable. This is the single source of truth for "before the gate shipped": `check_format_gaps()` reads the stamped date and exempts issues whose `discovered_date` (or refine timestamp from the Session Log, which takes precedence when both exist) predates it. Do not introduce a second cutoff constant in code or config — two dates that can diverge is how a grandfathered issue trips the gate anyway. FEAT-2867 and FEAT-2855 parse the same stamp file at the same path for their window comparisons, so the exemption boundary and the measurement boundary are guaranteed identical.
+- **The grandfather cutoff IS the cutover stamp — one date, one file** (decided 2026-07-27; path pinned 2026-07-27). The stamp lives at **`.ll/program-design-cutover.json`** — NOT under `thoughts/`, which is a convention of this repo that target projects are not guaranteed to have; `.ll/` is the one directory little-loops guarantees in any installed project (it holds `ll-config.json` and `decisions.d/`, both committed, so the stamp is shared via git like they are). Schema: `{"sha": "<full 40-char SHA>", "date": "YYYY-MM-DD"}` — exactly these two keys, ISO date, machine-readable. This is the single source of truth for "before the gate shipped": `check_format_gaps()` reads the stamped date and exempts issues whose `discovered_date` (or refine timestamp from the Session Log, which takes precedence when both exist) predates it. Do not introduce a second cutoff constant in code or config — two dates that can diverge is how a grandfathered issue trips the gate anyway. FEAT-2867 and FEAT-2855 parse the same stamp file at the same path for their window comparisons, so the exemption boundary and the measurement boundary are guaranteed identical. **Boundary comparison pinned (2026-07-27): exemption applies iff the issue's timestamp is strictly earlier than the stamped `date`** (`issue_date < stamp_date`; same-day issues are NOT exempt). Because most of this epic's issues share a `discovered_date` equal to the likely stamp date, the stamp must be written with a `date` of the day *after* the gate merges (the SHA still records the exact commit) — this makes every pre-gate issue strictly earlier and avoids same-day ambiguity without SHA-ancestry lookups in `check_format_gaps()`. If the refine timestamp from the Session Log is present but unparseable, fall back to `discovered_date` rather than failing the exemption check.
 - **No stamp → gate off (fail open), decided 2026-07-27.** `check_format_gaps()` is package code, but the stamp is a per-project file — every downstream install and fresh `ll-init` project starts without one. When `.ll/program-design-cutover.json` is absent (or unparseable), the Program Design gap check is skipped entirely for all issues: the gate is opt-in per project, armed by writing the stamp. This matches `check_format_gaps()`'s existing fail-open convention (cf. its `issue_statuses=None` handling) and prevents the mass-deferral failure mode in consumer projects. Arming is a documented manual step (write the file with the current SHA + date); wiring it into `ll-init`/`/ll:configure` is optional follow-up, not in scope here. For this repo, writing the stamp is part of shipping this issue.
 
 ### Codebase Research Findings
@@ -86,12 +96,12 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - [ ] The refinement chain populates that section with identifiers drawn from the actual codebase, not placeholders.
 - [ ] `/ll:confidence-check` fails an issue with a missing or empty `## Program Design` section.
 - [ ] `/ll:confidence-check` fails an issue whose section contains only prose with no repo-resolvable call-path anchors or signature-shaped lines.
-- [ ] `/ll:confidence-check` passes an issue naming concrete types, signatures, and a call path — where repo-resolution is required only of call-path anchors, and new identifiers need only be signature-shaped.
+- [ ] `/ll:confidence-check` passes an issue naming concrete types, signatures, and a call path — where repo-resolution is required only of call-path anchors, and new identifiers need only be signature-shaped; a new identifier that happens to resolve (e.g. after its code is committed) must not change the verdict, and a test covers this.
 - [ ] The specificity check is implemented deterministically inside `check_format_gaps()` / `ll-issues format-check` (decided — no standalone `ll-verify-*` binary), shelled out to by the skill and testable without an LLM.
 - [ ] An explicit not-applicable escape hatch exists for trivial issues and is recorded in the issue body when used.
 - [ ] Implementation-time deviations from the design are recorded in the issue as a visible `Deviations` note rather than overwriting the original section, and `skills/manage-issue/SKILL.md` has an explicit step that writes it — the convention ships with a writer, not as an unproduced section.
 - [ ] The grandfathering rollout (decided) is implemented: issues refined before the gate ships are exempt, so shipping the gate does not mass-defer the current backlog.
-- [ ] The grandfather cutoff is read from the `.ll/program-design-cutover.json` cutover stamp (decided: no second cutoff constant anywhere); grandfathering is implemented inside `check_format_gaps()` so every consumer inherits it; a test asserts a grandfathered issue produces no Program Design gap through `ll-issues format-check`, and therefore does not trip `rn-remediate.yaml`'s `ensure_formatted` or `ll-issues sequence` drift detection.
+- [ ] The grandfather cutoff is read from the `.ll/program-design-cutover.json` cutover stamp (decided: no second cutoff constant anywhere) using strictly-earlier-than-stamp-date comparison (decided; the stamp is dated the day after the gate merges); grandfathering is implemented inside `check_format_gaps()` so every consumer inherits it; a test asserts a grandfathered issue produces no Program Design gap through `ll-issues format-check`, and therefore does not trip `rn-remediate.yaml`'s `ensure_formatted` or `ll-issues sequence` drift detection.
 - [ ] When the cutover stamp is absent or unparseable, the Program Design gap check is skipped for all issues (gate off, fail open — decided); a test asserts an unstamped project produces no Program Design gap for a section-less issue.
 - [ ] `commands/ready-issue.md`'s blocking set is unchanged (decided: confidence-check only); `ready-issue` may surface a missing Program Design section but does not refuse on it.
 - [ ] Tests cover: missing section, prose-only section, valid section (including unresolvable-but-signature-shaped new identifiers), and the escape hatch.
@@ -169,7 +179,60 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 **Open** | Created: 2026-07-27 | Priority: P2
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-07-27_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 64/100 → MODERATE
+
+### Concerns
+- Large, multi-subsystem change (9+ files: three section-schema JSONs, `issue_parser.py`/`FormatGaps`, `format_check.py`, `confidence-check/SKILL.md`, `issue_lifecycle.py`'s `DeferReason`, `autodev.yaml` routing, `deferred_triage.py`) with a shared cutover-stamp contract two other issues (FEAT-2855, FEAT-2867) depend on at the same path — a schema or timing mismatch there ripples beyond this issue.
+- ~~Re-running the spike suite showed **10/11 passing**: `TestRealRepoResolution::test_real_repo_anchors_resolve_via_git_grep` failed because `grade_program_design` — asserted as the "genuinely new, must stay unresolved" identifier — is itself defined and git-tracked inside the spike file, so `git grep` resolves it.~~ **Resolved 2026-07-27**: the failing assertion tested the wrong property. The contract is now resolution-indifference for new identifiers (see Design Notes) — a new identifier that happens to resolve must never flip the verdict; only Call Path anchors carry a resolution *requirement*. The spike test was corrected to assert this and the suite is back to 11/11. (The earlier suggestion to "exclude symbols defined in the diff/PR" was rejected: no diff exists at format-check time.)
+
+### Outcome Risk Factors
+- Broad enumeration across 9+ change sites spanning section schema, gate logic, and `autodev.yaml`'s deferral routing — moderate per-site depth since the new content-shape validator (not just heading presence) and the reconcile-before-defer discriminator are genuinely new logic, not uniform mechanical edits.
+- The signature-shape parser and grading split are now spike-proven (10/11 spike tests pass), substantially retiring the "no precedent" risk from the prior check; residual risk is narrower — specifically the git-grep-resolves-newly-committed-identifiers edge case surfaced by the failing spike test above, which must be resolved before promoting `grade_program_design` out of the spike into `check_format_gaps()`.
+
+## Spike Results
+
+_Added by `/ll:spike` on 2026-07-27_
+
+**Retired risks**
+
+| Risk (from Outcome Risk Factors) | Proven by | Result |
+|----------------------------------|-----------|--------|
+| No precedent for the signature-shape prose parser; regex may be too strict (mass-defers good issues) | `TestSignatureShape::test_accepts_varied_real_signature_shapes` | ✓ pass |
+| ...or too loose (gate inert — English prose parses as signatures) | `TestSignatureShape::test_rejects_prose_that_merely_contains_parentheses`, `TestGrading::test_prose_only_section_is_not_specific` | ✓ pass |
+| New-vs-anchor split may be mechanically unimplementable (AC-3 vs AC-5 conflict) | `TestGrading::test_new_identifiers_need_only_be_shape_valid`, `TestGrading::test_unresolvable_call_path_anchors_fail` | ✓ pass |
+| Repo-resolution reuse of `defines_scan_for()`'s git-grep shape may not resolve real anchors | `TestRealRepoResolution::test_real_repo_anchors_resolve_via_git_grep` (resolves `check_format_gaps`/`cmd_format_check` in this repo; verdict is indifferent to whether the new `grade_program_design` resolves) | ✓ pass |
+| Missing/empty section handling | `TestGrading::test_missing_or_empty_section_is_not_specific` | ✓ pass |
+| isolation guard (AST sniff: no `little_loops` import) | `TestIsolation::test_spike_does_not_import_production_core` | ✓ pass |
+
+**Proven contract**: a `## Program Design` body is *specific* iff it carries ≥1
+signature-shaped line **and** ≥1 `Call Path` anchor that resolves against the repo.
+Whole-line anchoring is what separates signatures from prose; anchors are extracted from
+the `Call Path` subsection only, so newly-introduced identifiers are never required to
+resolve — **and never required *not* to** (amended 2026-07-27): a new identifier's
+resolution status is informational only and must never flip the verdict, since the
+identifier starts resolving the moment its implementation is committed.
+
+**Finding worth carrying into implementation**: the first regex draft rejected
+`dict[str, list[int]]` — a flat `\[[^\]]*\]` subscript stops at the inner bracket. Nested
+generics must be handled (one nesting level suffices) or the gate is unpassable for any
+issue naming a realistic return type.
+
+**Spike location**: `scripts/tests/spike/program_design_specificity/`
+**Plan**: `.ll/spikes/spike-ENH-2852.md`
+**Verification**: 11 spike tests + 239 regression tests pass across 2 commands.
+**Promotion**: move to `scripts/little_loops/spike/program_design_specificity/` (or fold
+directly into `check_format_gaps()`) in a separate PR.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-07-27T21:58:00 - `05f19764-4660-46a7-81ad-bef2f66b9679.jsonl`
+- `/ll:confidence-check` - 2026-07-27T00:00:00 - `ea02e551-ac6e-4d98-ac1d-084d06c96d7c.jsonl`
+- `/ll:spike` - 2026-07-27T21:45:42 - `d2141626-0669-4971-b4bc-52d0bc74f1e2.jsonl`
+- `/ll:confidence-check` - 2026-07-27T00:00:00 - `85951f3a-b89e-434d-8a30-06b6640ed45e.jsonl`
 - `/ll:format-issue` - 2026-07-27T20:01:45 - `5d7e896c-f17c-402a-875f-cf4d9906c0a7.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-27T19:42:08 - `e2303183-4e52-4649-af90-4b53254bbda4.jsonl`
 - `/ll:wire-issue` - 2026-07-27T16:52:50 - `633b73fa-0e52-4f41-a802-c8a7e1eea54d.jsonl`
