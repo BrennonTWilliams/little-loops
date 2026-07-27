@@ -1252,6 +1252,12 @@ and `--json` adds an `"unverified_prose_deps"` array field to each record.
 This never changes topological order; it only flags rows worth a human check
 (ENH-2847).
 
+Ordering itself is constrained by both `blocked_by` (hard) and `depends_on`
+(soft) edges — an issue is placed only after every prerequisite from either
+field is scheduled ahead of it (BUG-2848). Earlier versions of `sequence`
+honored `blocked_by` only, so a `depends_on`-only prerequisite could sort
+after its dependent; `topological_sort()` now folds both into the same pass.
+
 #### `ll-issues impact-effort` / `ll-issues ie`
 
 Display an impact vs. effort matrix for active issues.

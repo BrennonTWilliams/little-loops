@@ -1225,7 +1225,10 @@ waves = graph.get_execution_waves()
 def topological_sort(self) -> list[IssueInfo]
 ```
 
-Return issues in dependency order (Kahn's algorithm).
+Return issues in dependency order (Kahn's algorithm). Both `blocked_by`
+(hard) and `depends_on` (soft) edges constrain ordering — an issue is
+scheduled only after every prerequisite named by either field, not
+`blocked_by` alone (BUG-2848).
 
 **Returns:** List of `IssueInfo` in topological order
 
