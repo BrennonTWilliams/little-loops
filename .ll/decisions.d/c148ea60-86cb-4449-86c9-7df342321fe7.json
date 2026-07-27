@@ -1,0 +1,11 @@
+{
+  "id": "099fd6f3-d071-4514-86d3-4ef592b8e47c",
+  "type": "decision",
+  "timestamp": "2026-07-27T20:25:10Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "autodev refines done/cancelled/deferred issues before any downstream guard catches them; add a check_issue_status-shaped gate between dequeue_next and check_decision_at_dequeue",
+  "rule": "Captured: autodev status pre-flight gate at dequeue",
+  "scope": "issue",
+  "issue": "ENH-2868"
+}

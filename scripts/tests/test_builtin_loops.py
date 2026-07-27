@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -4232,12 +4233,33 @@ class TestAutodevLoop:
         assert state.get("capture") == "input"
 
     def test_dequeue_next_routes_to_check_decision_at_dequeue(self, data: dict) -> None:
-        """BUG-2513: dequeue_next must route to check_decision_at_dequeue on success
-        (NOT directly to refine_current) so the decision_needed gate intercepts every
-        dequeue. check_decision_at_dequeue then routes to refine_current on_no/on_error
-        after consulting ll-issues check-flag."""
-        state = data["states"].get("dequeue_next", {})
-        assert state.get("on_yes") == "check_decision_at_dequeue"
+        """BUG-2513: every dequeue must reach check_decision_at_dequeue before
+        refine_current, so the decision_needed gate intercepts each issue.
+
+        ENH-2868 inserted check_status_at_dequeue between the two; the BUG-2513
+        invariant is the *reachability* of the decision gate on the processing
+        path (and that dequeue_next never jumps straight to refine_current), not
+        the literal edge. Assert the chain, allowing pre-flight gates that fall
+        through to the decision gate.
+        """
+        states = data["states"]
+        node = states.get("dequeue_next", {}).get("on_yes")
+        assert node != "refine_current", "dequeue_next must not bypass the decision gate (BUG-2513)"
+        # Walk the on_no/on_error fall-through chain of any pre-flight gates.
+        seen: set[str] = set()
+        while node and node != "check_decision_at_dequeue" and node not in seen:
+            seen.add(node)
+            state = states.get(node, {})
+            assert state, f"dangling route to unknown state {node!r}"
+            nxt = state.get("on_no") or state.get("next")
+            assert state.get("on_error") in (nxt, "check_decision_at_dequeue", None), (
+                f"pre-flight gate {node!r} must fail open toward the decision gate"
+            )
+            node = nxt
+        assert node == "check_decision_at_dequeue", (
+            "the processing path from dequeue_next must reach "
+            f"check_decision_at_dequeue (BUG-2513); chain stalled at {node!r}"
+        )
 
     def test_check_decision_at_dequeue_on_yes_routes_to_check_decision_decidable(
         self, data: dict
@@ -4495,6 +4517,185 @@ class TestAutodevLoop:
             f"skip_inflight_infra must write 'ID  refine_failed_infra', got {skipped!r}"
         )
         assert not (run_dir / "autodev-inflight").exists()
+
+    # ---------------------------------------------------------------
+    # ENH-2868: status pre-flight gate at dequeue
+    # ---------------------------------------------------------------
+
+    def test_dequeue_next_routes_through_status_gate(self, data: dict) -> None:
+        """ENH-2868: dequeue_next must route to the status pre-flight gate, not
+        straight to check_decision_at_dequeue — otherwise a stale (done/cancelled/
+        deferred) ID burns a full refine-to-ready-issue delegation."""
+        state = data["states"].get("dequeue_next", {})
+        assert state.get("on_yes") == "check_status_at_dequeue", (
+            "dequeue_next.on_yes must be 'check_status_at_dequeue' so the status "
+            f"gate runs before refinement, got {state.get('on_yes')!r}"
+        )
+
+    def test_check_status_at_dequeue_routing(self, data: dict) -> None:
+        """ENH-2868: SKIP_CLOSED → skip_already_resolved; otherwise continue to the
+        decision gate. on_error must fail open (process, never block the queue)."""
+        state = data["states"].get("check_status_at_dequeue", {})
+        assert state, "check_status_at_dequeue state must exist (ENH-2868)"
+        assert state.get("action_type") == "shell"
+        assert state.get("on_yes") == "skip_already_resolved"
+        assert state.get("on_no") == "check_decision_at_dequeue"
+        assert state.get("on_error") == "check_decision_at_dequeue", (
+            "on_error must fail open to check_decision_at_dequeue so a gate error "
+            f"never blocks the queue, got {state.get('on_error')!r}"
+        )
+        evaluate = state.get("evaluate", {})
+        assert evaluate.get("type") == "output_contains"
+        assert evaluate.get("pattern") == "SKIP_CLOSED"
+
+    @pytest.mark.parametrize(
+        ("status_json", "expected"),
+        [
+            # ll-issues show --json reports status display-cased; 'done' surfaces
+            # as "Completed", which is why the completed arm does the real work.
+            ('{"status": "Completed"}', "SKIP_CLOSED"),
+            ('{"status": "done"}', "SKIP_CLOSED"),
+            ('{"status": "Cancelled"}', "SKIP_CLOSED"),
+            ('{"status": "Deferred"}', "SKIP_CLOSED"),
+            ('{"status": "Open"}', "PROCESS"),
+            ('{"status": "In Progress"}', "PROCESS"),
+            # `blocked` is deliberately NOT skipped: the status value is distinct
+            # from unmet blocked_by deps, and refining a blocked issue often
+            # unblocks it.
+            ('{"status": "Blocked"}', "PROCESS"),
+            # Fail-open cases: missing status, null status, malformed JSON, no output.
+            ('{"id": "ENH-1"}', "PROCESS"),
+            ('{"status": null}', "PROCESS"),
+            ("not json at all", "PROCESS"),
+            ("", "PROCESS"),
+        ],
+    )
+    def test_check_status_at_dequeue_classifies(
+        self, data: dict, tmp_path: Path, status_json: str, expected: str
+    ) -> None:
+        """ENH-2868: exercise the gate's shell body against a stubbed ll-issues,
+        covering the display-casing quirk and every fail-open path."""
+        state = data["states"].get("check_status_at_dequeue", {})
+        action = state.get("action", "")
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir(parents=True)
+        stub = bin_dir / "ll-issues"
+        stub.write_text(f"#!/bin/sh\ncat <<'LL_EOF'\n{status_json}\nLL_EOF\n")
+        stub.chmod(0o755)
+        script = action.replace("${captured.input.output}", "ENH-0100")
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, env=env
+        )
+        assert result.returncode == 0, f"gate must not error: {result.stderr}"
+        assert expected in result.stdout, (
+            f"status {status_json!r} should classify as {expected}, got {result.stdout!r}"
+        )
+
+    def test_check_status_at_dequeue_fails_open_when_cli_missing(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """ENH-2868: an unresolvable ID (ll-issues exits non-zero) must yield PROCESS."""
+        state = data["states"].get("check_status_at_dequeue", {})
+        action = state.get("action", "")
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir(parents=True)
+        stub = bin_dir / "ll-issues"
+        stub.write_text("#!/bin/sh\nexit 1\n")
+        stub.chmod(0o755)
+        script = action.replace("${captured.input.output}", "ZZZ-9999")
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, env=env
+        )
+        assert result.returncode == 0
+        assert "PROCESS" in result.stdout, (
+            f"unresolvable ID must fail open to PROCESS, got {result.stdout!r}"
+        )
+
+    def test_skip_already_resolved_ledgers_stem_and_clears_inflight(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """ENH-2868: skip_already_resolved writes 'ID  already_<status>' and clears
+        autodev-inflight so BUG-1226's stale-inflight warning is not triggered."""
+        state = data["states"].get("skip_already_resolved", {})
+        assert state, "skip_already_resolved state must exist (ENH-2868)"
+        assert state.get("next") == "dequeue_next"
+        assert state.get("on_error") == "dequeue_next"
+        action = state.get("action", "")
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        (run_dir / "autodev-inflight").write_text("BUG-0200")
+        (run_dir / "autodev-skipped.txt").write_text("")
+        script = action.replace("${captured.input.output}", "BUG-0200")
+        script = script.replace("${captured.dequeue_status.output}", "SKIP_CLOSED completed")
+        script = script.replace("${context.run_dir}", str(run_dir))
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
+        )
+        assert result.returncode == 0, f"skip_already_resolved failed: {result.stderr}"
+        skipped = (run_dir / "autodev-skipped.txt").read_text()
+        assert "BUG-0200  already_completed" in skipped, (
+            f"must ledger 'ID  already_<status>', got {skipped!r}"
+        )
+        assert not (run_dir / "autodev-inflight").exists()
+
+    def test_skip_already_resolved_falls_back_when_status_unparsed(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """ENH-2868: if the captured verdict has no parseable status token, the
+        ledger still records a well-formed already_* stem rather than 'already_'."""
+        state = data["states"].get("skip_already_resolved", {})
+        action = state.get("action", "")
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        (run_dir / "autodev-skipped.txt").write_text("")
+        script = action.replace("${captured.input.output}", "BUG-0201")
+        script = script.replace("${captured.dequeue_status.output}", "")
+        script = script.replace("${context.run_dir}", str(run_dir))
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
+        )
+        assert result.returncode == 0
+        skipped = (run_dir / "autodev-skipped.txt").read_text()
+        assert "BUG-0201  already_resolved" in skipped, (
+            f"must fall back to 'already_resolved', got {skipped!r}"
+        )
+
+    def test_finalize_done_buckets_already_resolved_separately(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """ENH-2868: pre-flight skips get their own summary bucket and are excluded
+        from the generic Skipped bucket (mirrors ENH-2727's infra split), so a
+        closed issue is never misreported as a refinement failure."""
+        state = data["states"].get("finalize_done", {})
+        action = state.get("action", "")
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        (run_dir / "autodev-skipped.txt").write_text(
+            "ENH-1001  refine_failed\n"
+            "ENH-1002  refine_failed_infra\n"
+            "BUG-2865  already_completed\n"
+            "FEAT-1003  already_deferred\n"
+        )
+        script = action.replace("${context.run_dir}", str(run_dir))
+        script = script.replace("$${", "${")
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
+        )
+        assert result.returncode == 0, f"finalize_done failed: {result.stderr}"
+        out = result.stdout
+        already_line = [ln for ln in out.splitlines() if ln.startswith("Already-resolved")]
+        assert already_line, f"expected an 'Already-resolved' bucket line, got:\n{out}"
+        assert "(2)" in already_line[0]
+        assert "BUG-2865 (completed)" in already_line[0]
+        assert "FEAT-1003 (deferred)" in already_line[0]
+        skipped_line = [ln for ln in out.splitlines() if ln.startswith("Skipped")][0]
+        assert "ENH-1001" in skipped_line
+        for closed_id in ("BUG-2865", "FEAT-1003", "ENH-1002"):
+            assert closed_id not in skipped_line, (
+                f"{closed_id} must not double-count in the generic Skipped bucket: {skipped_line!r}"
+            )
 
     def test_implement_current_uses_shell_exit_fragment(self, data: dict) -> None:
         """implement_current must use shell_exit fragment for exit-code-aware routing."""
@@ -11820,6 +12021,125 @@ class TestGeneralTaskLoop:
         action = state.get("action", "")
         assert "diagnose" in action.lower(), (
             "continue_work prompt must mention 'diagnose' in the OOM branch (ENH-2293)"
+        )
+
+    # ENH-2857: abandonment visibility and blocking
+    def test_select_step_marks_abandoned_step_with_bang_not_x(self, data: dict) -> None:
+        """select_step's abandonment rewrite must use [!], never [x] (ENH-2857)."""
+        state = data["states"].get("select_step", {})
+        action = state.get("action", "")
+        assert 'sub(/^- \\[ \\]/, "- [!]")' in action, (
+            "select_step must rewrite abandoned steps to '- [!]', not '- [x]' (ENH-2857)"
+        )
+        assert 'sub(/^- \\[ \\]/, "- [x]")' not in action, (
+            "select_step must not still contain the old '- [x]' abandonment rewrite (ENH-2857)"
+        )
+
+    def test_select_step_checks_two_direction_blocker_before_rewrite(self, data: dict) -> None:
+        """select_step must check both blocker directions before abandoning (ENH-2857)."""
+        state = data["states"].get("select_step", {})
+        action = state.get("action", "")
+        assert "STEP_BLOCKER_HALT" in action, (
+            "select_step must emit STEP_BLOCKER_HALT on a blocker-direction hit (ENH-2857)"
+        )
+        assert "Blocker|" in action or "[Bb]locker" in action, (
+            "select_step must match Blocker/Gated/Prerequisite in the abandoned step's own text (ENH-2857)"
+        )
+
+    def test_select_step_routes_no_to_check_step_halt(self, data: dict) -> None:
+        """select_step.on_no must route to check_step_halt, not directly to spin_gate (ENH-2857)."""
+        state = data["states"].get("select_step", {})
+        assert state.get("on_no") == "check_step_halt", (
+            f"select_step.on_no should be 'check_step_halt', got {state.get('on_no')!r}"
+        )
+
+    def test_check_step_halt_state_exists_and_routes(self, data: dict) -> None:
+        """check_step_halt must route a blocker halt to summarize_partial, else spin_gate (ENH-2857)."""
+        state = data["states"].get("check_step_halt")
+        assert state is not None, "check_step_halt state must exist (ENH-2857)"
+        assert state.get("on_yes") == "summarize_partial", (
+            f"check_step_halt.on_yes should be 'summarize_partial', got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_no") == "spin_gate", (
+            f"check_step_halt.on_no should be 'spin_gate', got {state.get('on_no')!r}"
+        )
+        evaluate = state.get("evaluate", {})
+        assert evaluate.get("type") == "output_contains", (
+            "check_step_halt must use an output_contains evaluator (ENH-2857)"
+        )
+        assert evaluate.get("pattern") == "STEP_BLOCKER_HALT", (
+            "check_step_halt evaluator must match on STEP_BLOCKER_HALT (ENH-2857)"
+        )
+
+    def test_check_done_prompt_defines_bang_marker_semantics(self, data: dict) -> None:
+        """check_done prompt must define [!] as abandoned-not-done (ENH-2857)."""
+        state = data["states"].get("check_done", {})
+        action = state.get("action", "")
+        assert "[!]" in action, "check_done prompt must mention the [!] marker (ENH-2857)"
+        assert "abandoned" in action.lower(), (
+            "check_done prompt must explain [!] means abandoned, not done (ENH-2857)"
+        )
+
+    def test_summarize_success_emits_abandoned_count_and_incomplete_abandoned_verdict(
+        self, data: dict
+    ) -> None:
+        """summarize_success must count [!] steps and branch verdict (ENH-2857)."""
+        state = data["states"].get("summarize_success", {})
+        action = state.get("action", "")
+        assert "ABANDONED_COUNT" in action, (
+            "summarize_success must compute ABANDONED_COUNT (ENH-2857)"
+        )
+        assert "^[[:space:]]*- \\[!\\]" in action, (
+            "summarize_success's abandoned-count grep must be whitespace-tolerant (ENH-2857)"
+        )
+        assert "incomplete-abandoned" in action, (
+            "summarize_success must emit incomplete-abandoned when abandoned > 0 (ENH-2857)"
+        )
+        assert '"abandoned"' in action, (
+            "summarize_success's summary.json must include an 'abandoned' key (ENH-2857)"
+        )
+
+    def test_summarize_success_routes_to_check_abandoned_route_not_done_directly(
+        self, data: dict
+    ) -> None:
+        """summarize_success.next must route through the routing state, not straight to done (ENH-2857)."""
+        state = data["states"].get("summarize_success", {})
+        assert state.get("next") == "check_abandoned_route", (
+            f"summarize_success.next should be 'check_abandoned_route', got {state.get('next')!r}"
+        )
+
+    def test_check_abandoned_route_is_non_terminal_and_routes_on_count(self, data: dict) -> None:
+        """check_abandoned_route must be non-terminal and route done/partial on the count (ENH-2857)."""
+        state = data["states"].get("check_abandoned_route")
+        assert state is not None, "check_abandoned_route state must exist (ENH-2857)"
+        assert not state.get("terminal"), (
+            "check_abandoned_route must not be terminal:true (terminal-action-ok, ENH-2857)"
+        )
+        assert state.get("on_yes") == "done", (
+            f"check_abandoned_route.on_yes should be 'done', got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_no") == "partial", (
+            f"check_abandoned_route.on_no should be 'partial', got {state.get('on_no')!r}"
+        )
+        evaluate = state.get("evaluate", {})
+        assert evaluate.get("type") == "output_numeric", (
+            "check_abandoned_route must use output_numeric to branch on the abandoned count (ENH-2857)"
+        )
+
+    def test_write_partial_summary_emits_abandoned_count_and_incomplete_abandoned_verdict(
+        self, data: dict
+    ) -> None:
+        """write_partial_summary must count [!] steps and branch verdict (ENH-2857)."""
+        state = data["states"].get("write_partial_summary", {})
+        action = state.get("action", "")
+        assert "^[[:space:]]*- \\[!\\]" in action, (
+            "write_partial_summary's abandoned-count grep must be whitespace-tolerant (ENH-2857)"
+        )
+        assert "incomplete-abandoned" in action, (
+            "write_partial_summary must emit incomplete-abandoned when abandoned > 0 (ENH-2857)"
+        )
+        assert '"verdict":"%s"' in action, (
+            "write_partial_summary must interpolate $VERDICT into the printf (ENH-2857)"
         )
 
 

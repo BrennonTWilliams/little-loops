@@ -136,9 +136,74 @@ states:
       echo "$CURRENT"
     fragment: queue_pop
     capture: input
-    on_yes: check_decision_at_dequeue
+    on_yes: check_status_at_dequeue
     on_no: finalize_done
     on_error: finalize_done
+
+  check_status_at_dequeue:
+    # ENH-2868: status pre-flight gate. autodev is invoked with explicit
+    # comma-separated ID lists (by hand, by auto-refine-and-implement, and by
+    # the sprint path) and those lists go stale — an issue completed
+    # out-of-band in a parallel worktree, cancelled during triage, or deferred
+    # by a prior run. Without this gate the stale ID burns a full
+    # refine-to-ready-issue delegation (format → refine → wire →
+    # confidence-check, four LLM calls) before any downstream guard notices:
+    # every existing status check is downstream (rn-implement's
+    # check_issue_status, BUG-2201; issue_manager's active-status filter under
+    # implement_current's inner `ll-auto --only`), and autodev's own
+    # [SKIP-DEFER] guards only defend the status *write* side.
+    #
+    # `deferred` is in the skip set deliberately: ENH-2666 made `deferred` the
+    # unified not-ready exit for autodev's own gates, with visibility owned by
+    # `ll-issues deferred-triage` rather than by re-evaluating the issue on
+    # every run. Re-passing a deferred ID therefore skips by policy; clear it
+    # with `ll-issues set-status <ID> open` to force a retry. `blocked` is NOT
+    # skipped — the status value is distinct from unmet `blocked_by` deps
+    # (which rn-implement's check_blocked_by already gates), and refining a
+    # blocked issue is often what unblocks it.
+    #
+    # `ll-issues show --json` reports status display-cased ("Done", "Deferred")
+    # — lowercase before comparing, the same idiom as record_decision_unresolved
+    # and mark_gate_blocked. Fail-open: an unresolvable ID, missing status, or
+    # parse error yields PROCESS so a gate error never blocks the queue.
+    action_type: shell
+    action: |
+      ID="${captured.input.output}"
+      STATUS=$(ll-issues show "$ID" --json 2>/dev/null \
+        | python3 -c "import json,sys; print((json.load(sys.stdin).get('status') or '').lower())" \
+        2>/dev/null || echo "")
+      case "$STATUS" in
+        done|completed|cancelled|deferred)
+          echo "SKIP_CLOSED $STATUS" ;;
+        *)
+          echo "PROCESS" ;;
+      esac
+    evaluate:
+      type: output_contains
+      pattern: "SKIP_CLOSED"
+    capture: dequeue_status
+    on_yes: skip_already_resolved
+    on_no: check_decision_at_dequeue
+    on_error: check_decision_at_dequeue
+
+  skip_already_resolved:
+    # ENH-2868: ledger a pre-flight status skip and advance the queue. Uses the
+    # `already_<status>` reason stem so finalize_done can surface it as its own
+    # bucket rather than misattributing it as a refine-quality failure (the
+    # same separate-bucket rationale as ENH-2727's refine_failed_infra).
+    # Clears autodev-inflight like skip_inflight so BUG-1226's done-state
+    # warning is not triggered for an issue that resolved cleanly.
+    action: |
+      STATUS=$(printf '%s' "${captured.dequeue_status.output}" \
+        | awk '/SKIP_CLOSED/ {print $2; exit}')
+      [ -n "$STATUS" ] || STATUS=resolved
+      echo "${captured.input.output}  already_$STATUS" >> ${context.run_dir}/autodev-skipped.txt
+      rm -f ${context.run_dir}/autodev-inflight
+      echo "[SKIP-CLOSED] ${captured.input.output} already $STATUS; no refinement attempted"
+    fragment: queue_track
+    action_type: shell
+    next: dequeue_next
+    on_error: dequeue_next
 
   check_decision_at_dequeue:
     # BUG-2513: route decision_needed:true issues to run_decide on first dequeue,
@@ -1589,10 +1654,17 @@ states:
         | grep -v '^[[:space:]]*$' | sort -u || true)
       # ENH-2727: exclude infra-class skips from the generic Skipped bucket so
       # they are surfaced separately (re-runnable) below and not double-counted.
+      # ENH-2868: likewise exclude pre-flight status skips (already_done /
+      # already_cancelled / already_deferred) — these never entered refinement
+      # at all and are not a failure signal.
       SKIPPED_IDS=$(cat ${context.run_dir}/autodev-skipped.txt 2>/dev/null \
-        | grep -v '^[[:space:]]*$' | grep -v 'refine_failed_infra' | sort -u || true)
+        | grep -v '^[[:space:]]*$' | grep -v 'refine_failed_infra' \
+        | grep -v '[[:space:]]already_' | sort -u || true)
       INFRA_SKIPPED_IDS=$(grep 'refine_failed_infra' ${context.run_dir}/autodev-skipped.txt 2>/dev/null \
         | awk '{print $1}' | grep -v '^[[:space:]]*$' | sort -u || true)
+      ALREADY_RESOLVED_IDS=$(grep '[[:space:]]already_' ${context.run_dir}/autodev-skipped.txt 2>/dev/null \
+        | awk '{print $1" ("$2")"}' | sed 's/already_//' \
+        | grep -v '^[[:space:]]*$' | sort -u || true)
       GATE_BLOCKED_IDS=$(cat ${context.run_dir}/autodev-gate-blocked.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
       DECISION_UNRESOLVED_IDS=$(cat ${context.run_dir}/autodev-decision-unresolved.txt 2>/dev/null \
@@ -1604,6 +1676,8 @@ states:
       [ -z "$SKIPPED_COUNT" ] && SKIPPED_COUNT=0
       INFRA_SKIPPED_COUNT=$(echo "$INFRA_SKIPPED_IDS" | grep -c '[^[:space:]]' || true)
       [ -z "$INFRA_SKIPPED_COUNT" ] && INFRA_SKIPPED_COUNT=0
+      ALREADY_RESOLVED_COUNT=$(echo "$ALREADY_RESOLVED_IDS" | grep -c '[^[:space:]]' || true)
+      [ -z "$ALREADY_RESOLVED_COUNT" ] && ALREADY_RESOLVED_COUNT=0
       GATE_BLOCKED_COUNT=$(echo "$GATE_BLOCKED_IDS" | grep -c '[^[:space:]]' || true)
       [ -z "$GATE_BLOCKED_COUNT" ] && GATE_BLOCKED_COUNT=0
       DECISION_UNRESOLVED_COUNT=$(echo "$DECISION_UNRESOLVED_IDS" | grep -c '[^[:space:]]' || true)
@@ -1612,6 +1686,7 @@ states:
       PASSED_LIST=$(echo "$PASSED_IDS" | tr '\n' ',' | sed 's/,$//')
       SKIPPED_LIST=$(echo "$SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
       INFRA_SKIPPED_LIST=$(echo "$INFRA_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
+      ALREADY_RESOLVED_LIST=$(echo "$ALREADY_RESOLVED_IDS" | tr '\n' ',' | sed 's/,$//')
       GATE_BLOCKED_LIST=$(echo "$GATE_BLOCKED_IDS" | tr '\n' ',' | sed 's/,$//')
       DECISION_UNRESOLVED_LIST=$(echo "$DECISION_UNRESOLVED_IDS" | tr '\n' ',' | sed 's/,$//')
 
@@ -1622,6 +1697,9 @@ states:
       printf 'Skipped      (%d): %s\n' "$SKIPPED_COUNT" "$${SKIPPED_LIST:-none}"
       if [ "$INFRA_SKIPPED_COUNT" -gt 0 ]; then
         printf 'Infra-skipped (%d): %s  (transient kill — just re-run)\n' "$INFRA_SKIPPED_COUNT" "$INFRA_SKIPPED_LIST"
+      fi
+      if [ "$ALREADY_RESOLVED_COUNT" -gt 0 ]; then
+        printf 'Already-resolved (%d): %s  (pre-flight skip — no refinement attempted)\n' "$ALREADY_RESOLVED_COUNT" "$ALREADY_RESOLVED_LIST"
       fi
       if [ "$GATE_BLOCKED_COUNT" -gt 0 ]; then
         printf 'Gate-blocked (%d): %s  (prove deps with /ll:explore-api, then re-run)\n' "$GATE_BLOCKED_COUNT" "$GATE_BLOCKED_LIST"

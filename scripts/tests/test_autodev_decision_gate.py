@@ -168,13 +168,28 @@ class TestCheckDecisionAtDequeueStructural:
         )
 
     def test_dequeue_next_routes_to_check_decision_at_dequeue(self, data: dict[str, Any]) -> None:
-        """dequeue_next.on_yes must route to check_decision_at_dequeue
-        (not directly to refine_current) so the gate fires on every dequeue."""
-        state = data["states"]["dequeue_next"]
-        assert state.get("on_yes") == "check_decision_at_dequeue", (
-            f"dequeue_next.on_yes should be 'check_decision_at_dequeue' "
-            f"(BUG-2513: gate must intercept every dequeue), "
-            f"got {state.get('on_yes')!r}"
+        """Every dequeue must reach check_decision_at_dequeue before refine_current,
+        so the decision gate fires on each issue.
+
+        ENH-2868 inserted check_status_at_dequeue between dequeue_next and the
+        decision gate. BUG-2513's invariant is that the decision gate is reachable
+        on the processing path (and that dequeue_next never jumps straight to
+        refine_current) — assert the chain, not the literal edge.
+        """
+        states = data["states"]
+        node = states["dequeue_next"].get("on_yes")
+        assert node != "refine_current", (
+            "dequeue_next must not bypass the decision gate (BUG-2513)"
+        )
+        seen: set[str] = set()
+        while node and node != "check_decision_at_dequeue" and node not in seen:
+            seen.add(node)
+            state = states.get(node, {})
+            assert state, f"dangling route to unknown state {node!r}"
+            node = state.get("on_no") or state.get("next")
+        assert node == "check_decision_at_dequeue", (
+            "the processing path from dequeue_next must reach "
+            f"check_decision_at_dequeue (BUG-2513); chain stalled at {node!r}"
         )
 
 
