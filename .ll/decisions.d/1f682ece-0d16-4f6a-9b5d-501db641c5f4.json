@@ -1,0 +1,12 @@
+{
+  "id": "186c796b-7a2f-47a1-9ed6-8c542d7b9c99",
+  "type": "decision",
+  "timestamp": "2026-07-27T02:36:52Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches extractor.py's own module-constant style and the codebase's broader hardcoded-denylist convention; Option B's config-surfaced mechanism is proven (skip_packages precedent) but has no demonstrated demand for extraction-denylist extension.",
+  "rule": "Option A: hardcoded _STDLIB_EXCLUDED frozenset, no config surface",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: config-surfaced learning_tests.excluded_targets merged with hardcoded default",
+  "issue": "ENH-2843"
+}

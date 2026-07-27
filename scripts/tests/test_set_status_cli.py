@@ -464,6 +464,43 @@ class TestIssuesCLISetStatus:
         fm = parse_frontmatter(issue_file.read_text())
         assert fm.get("closed_reason") == "already_fixed"
 
+    def test_set_status_cancelled_superseded_stamps_closed_reason(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+    ) -> None:
+        """A cancelled transition with --reason superseded writes closed_reason (BUG-2844)."""
+        from little_loops.frontmatter import parse_frontmatter
+
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        issue_file.write_text("---\nid: BUG-001\nstatus: open\n---\n# BUG-001: Crash\n")
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "set-status",
+                "BUG-001",
+                "cancelled",
+                "--reason",
+                "superseded",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            assert main_issues() == 0
+
+        fm = parse_frontmatter(issue_file.read_text())
+        assert fm.get("closed_reason") == "superseded"
+        assert fm.get("status") == "cancelled"
+
     def test_set_status_cancelled_without_reason_omits_closed_reason(
         self,
         temp_project_dir: Path,

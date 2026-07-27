@@ -783,6 +783,7 @@ Examples:
                 "oversized_atomic",
                 "readiness_stagnated",
                 "already_fixed",
+                "superseded",
             ],
             default=None,
             dest="reason",

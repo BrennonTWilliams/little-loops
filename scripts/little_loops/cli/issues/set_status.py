@@ -20,7 +20,7 @@ _DEFERRAL_REASON_CODES = frozenset(
         "readiness_stagnated",
     }
 )
-_CLOSED_REASON_CODES = frozenset({"already_fixed"})
+_CLOSED_REASON_CODES = frozenset({"already_fixed", "superseded"})
 
 
 def cmd_set_status(config: BRConfig, args: argparse.Namespace) -> int:
