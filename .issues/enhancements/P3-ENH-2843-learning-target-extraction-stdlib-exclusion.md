@@ -2,15 +2,26 @@
 id: ENH-2843
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-27T00:43:13Z'
+completed_at: '2026-07-27T02:44:16Z'
 discovered_date: 2026-07-27
 discovered_by: capture-issue
-relates_to: [ENH-2836, FEAT-1283, ENH-2209]
+relates_to:
+- ENH-2836
+- FEAT-1283
+- ENH-2209
+decision_needed: false
 labels:
 - learning-tests
 - fsm
 - automation
+confidence_score: 100
+outcome_confidence: 95
+score_complexity: 24
+score_test_coverage: 25
+score_ambiguity: 24
+score_change_surface: 22
 ---
 
 # ENH-2843: Widen learning-target extraction exclusion list to cover contract-stable stdlib
@@ -142,10 +153,52 @@ does not have to fire:
 ### Open question for refinement
 
 Should the denylist be config-surfaced (e.g. `learning_tests.excluded_targets`)
-so a project can extend it for its own vendored/internal names? Defaulting to a
-hardcoded frozenset is simpler and matches how `_EXTRACTION_PROMPT` is already
-treated; config-surfacing is the safer long-term shape but adds a config-schema
-change. Recommend hardcoded for this issue, config as a follow-up if requested.
+so a project can extend it for its own vendored/internal names?
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+> **Selected:** Option A — hardcoded `_STDLIB_EXCLUDED` frozenset in `extractor.py`, matching the local module-constant style and avoiding a config surface with no demonstrated demand.
+
+**Option A**: Hardcoded `_STDLIB_EXCLUDED` frozenset in `extractor.py`, no
+config surface. Simpler and matches how `_EXTRACTION_PROMPT` itself is already
+treated (module-level constant, not config-driven).
+
+**Option B**: Config-surfaced as `learning_tests.excluded_targets` in
+`config-schema.json`, merged with the hardcoded default so a project can
+extend it for its own vendored/internal names without a code change. Safer
+long-term shape but adds a config-schema change and a merge-precedence
+decision (extend vs. replace the default list).
+
+**Recommended**: Option A for this issue, config as a follow-up if requested.
+
+### Decision Rationale
+
+**Selected**: Option A — hardcoded `_STDLIB_EXCLUDED` frozenset, no config surface.
+
+Option A matches `extractor.py`'s own existing style (private module-level
+constants like `_TARGETS_JSON_RE`, `_LLM_TIMEOUT_S`) and the broader codebase
+convention of hardcoded denylist/allowlist frozensets for filtering automated
+extraction/classification output (`text_utils._COMMON_WORDS`,
+`file_hints._SECTION_KEYWORDS`, `dependency_mapper._DEPRECATED_RELATIONSHIP_KEYS`).
+Option B's mechanism is cheap to replicate — `learning_tests.discoverability.skip_packages`
+already implements the identical union-with-hardcoded-default shape in the same
+config namespace — but no demand for extending the extraction denylist
+specifically has been demonstrated, and the issue's own text already defers
+config-surfacing to "a follow-up if requested." Config adds schema, dataclass,
+docs, and test surface for a speculative need; a hardcoded constant is the
+right size for the problem as stated.
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|:-:|:-:|:-:|:-:|:-:|
+| A — hardcoded frozenset | 2 | 3 | 3 | 3 | **11/12** |
+| B — config-surfaced | 3 | 1 | 2 | 2 | 8/12 |
+
+Key evidence:
+- `dependency_mapper.analysis.COMMON_FILES_EXCLUDE` / `config-schema.json:exclude_common_files` shows config-surfacing precedent exists for a similar "filter noise from automated results" case (Option A's one point of friction).
+- `learning_tests.discoverability.skip_packages` (`hooks/learning_tests_gate.py:114`, unioned with hardcoded `_BUILTIN_SKIP`) proves Option B's merge mechanism works, but was built to spec for FEAT-1742 — not evolved from a hardcoded start on demonstrated demand.
+- No issue, TODO, or user request found asking to extend the extraction denylist specifically.
 
 ## Integration Map
 
@@ -154,23 +207,28 @@ change. Recommend hardcoded for this issue, config as a follow-up if requested.
   new `_STDLIB_EXCLUDED`, filter inside `extract_learning_targets()`
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/learning_tests/extractor.py::resolve_learning_targets` —
-  the field-first wrapper; unaffected when `learning_tests_required` is set
-- `scripts/little_loops/issue_manager.py` (~line 876) — `ll-auto` per-issue gate
-- `scripts/little_loops/cli/sprint/run.py` (~line 216) — sprint pre-flight
-- `scripts/little_loops/parallel/worker_pool.py` (~line 83) — `ll-parallel` gate
+- `scripts/little_loops/learning_tests/extractor.py::resolve_learning_targets`
+  (line 197) — field-first wrapper; falls through to `extract_learning_targets`
+  at line 218 whenever `issue.learning_tests_required is None`, so the filter
+  applies transitively to its callers too
+- `scripts/little_loops/issue_manager.py:875` — `ll-auto` per-issue gate; calls
+  `resolve_learning_targets(info)`, not `extract_learning_targets` directly
+- `scripts/little_loops/cli/sprint/run.py:204` — sprint pre-flight; also calls
+  `resolve_learning_targets(info)`
+- `scripts/little_loops/parallel/worker_pool.py:78` — `ll-parallel` gate; the
+  only one of the three that calls `extract_learning_targets()` directly
 
 Note the filter must live in `extract_learning_targets()`, not in any one caller
-— all three gates share it.
+— all three gates share it (two indirectly via `resolve_learning_targets`).
 
 ### Similar Patterns
 - The stopword denylist in `skills/capture-issue/SKILL.md`'s history-DB keyword
   extraction is the same shape (deterministic filter over LLM/regex output)
 
 ### Tests
-- `scripts/tests/test_learning_extractor.py` (if present; else the extractor's
-  existing test module) — add cases asserting `urllib`, `urllib.request`,
-  `subprocess` are dropped and `asyncio`, `requests`, `anthropic` survive
+- `scripts/tests/test_learning_tests_extractor.py` — add cases asserting
+  `urllib`, `urllib.request`, `subprocess` are dropped and `asyncio`,
+  `requests`, `anthropic` survive
 - Cases inject `llm_call` returning a canned `TARGETS_JSON:` line, per the
   existing mock-injection pattern documented in the module docstring
 
@@ -228,11 +286,16 @@ Note the filter must live in `extract_learning_targets()`, not in any one caller
 | `docs/reference/API.md` | `little_loops.learning_tests` module reference |
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-27T02:43:49 - `6b493b2d-7fea-497d-8ece-55071295060a.jsonl`
+- `/ll:ready-issue` - 2026-07-27T02:39:21 - `57796255-810f-48df-a3d8-67ff457126fc.jsonl`
+- `/ll:confidence-check` - 2026-07-27T02:38:18 - `b2e13cc6-cc6d-4f47-88fc-bdd0ddda72e8.jsonl`
+- `/ll:decide-issue` - 2026-07-27T02:36:52 - `75ca6086-ddd3-4d9d-a6f2-a54427eeb19f.jsonl`
+- `/ll:refine-issue` - 2026-07-27T02:34:15 - `0682060b-a845-4d3b-9c8c-3152b8a6f3dc.jsonl`
 - `/ll:capture-issue` - 2026-07-27T00:43:13Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d34e8adf-b030-413f-88bd-1c3c4ef7a366.jsonl`
 
 ---
 
 ## Status
 
-- **Status**: open
+- **Status**: done
 - **Created**: 2026-07-27

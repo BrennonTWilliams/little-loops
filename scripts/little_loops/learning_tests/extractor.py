@@ -43,7 +43,11 @@ Include:
 Exclude:
 - Code internal to the project being built
 - Standard Python builtins (str, dict, list, int, etc.)
-- Contract-stable stdlib modules (os, sys, pathlib, json, re, datetime)
+- Contract-stable stdlib modules — anything in the Python standard library whose
+  API is stable and fully described by its type stubs (os, sys, pathlib, json,
+  re, datetime, urllib, http, socket, subprocess, csv, sqlite3, logging,
+  argparse, shutil, tempfile). Only include stdlib when its *runtime* behavior
+  is genuinely non-obvious (asyncio, multiprocessing, concurrent.futures).
 
 For each identified dependency, provide its canonical short name only \
 (no version qualifier, no description).
@@ -61,6 +65,49 @@ Issue text to analyze:
 """
 
 _TARGETS_JSON_RE = re.compile(r"TARGETS_JSON:(\{.*\})", re.MULTILINE)
+
+# Contract-stable stdlib: proving these teaches nothing an implementer does not
+# already get from the type stubs. Kept as a deterministic filter rather than
+# prompt wording alone, because the LLM cannot be relied on to honour an
+# open-ended "contract-stable" judgement (ENH-2843: `urllib` slipped through a
+# prompt that already excluded os/sys/pathlib/json/re/datetime).
+_STDLIB_EXCLUDED = frozenset(
+    {
+        "argparse",
+        "collections",
+        "copy",
+        "csv",
+        "dataclasses",
+        "datetime",
+        "enum",
+        "functools",
+        "glob",
+        "hashlib",
+        "http",
+        "io",
+        "itertools",
+        "json",
+        "logging",
+        "math",
+        "os",
+        "pathlib",
+        "random",
+        "re",
+        "shutil",
+        "socket",
+        "sqlite3",
+        "string",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "textwrap",
+        "time",
+        "typing",
+        "urllib",
+        "uuid",
+        "warnings",
+    }
+)
 
 # Host-call timeout for the default extraction call (seconds), matching
 # session_store._call_llm_for_summary.
@@ -186,6 +233,9 @@ def extract_learning_targets(
     for t in raw_targets:
         name = t.strip()
         if not name:
+            continue
+        if name.split(".", 1)[0].lower() in _STDLIB_EXCLUDED:
+            logger.debug("extract_learning_targets: dropped stdlib target %r", name)
             continue
         slug = slugify(name)
         if slug not in seen:

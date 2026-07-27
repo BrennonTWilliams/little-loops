@@ -99,6 +99,42 @@ class TestExtractLearningTargets:
         result = extract_learning_targets("uses httpx", llm_call=mock)
         assert result == ["httpx"]
 
+    def test_drops_contract_stable_stdlib_target(self) -> None:
+        resp = 'TARGETS_JSON:{"targets": ["urllib", "requests"], "count": 2}'
+        mock = _make_llm(resp)
+        result = extract_learning_targets("uses urllib and requests", llm_call=mock)
+        assert result == ["requests"]
+
+    def test_drops_dotted_stdlib_target(self) -> None:
+        resp = 'TARGETS_JSON:{"targets": ["urllib.request", "http.client", "subprocess"], "count": 3}'
+        mock = _make_llm(resp)
+        result = extract_learning_targets("uses urllib.request", llm_call=mock)
+        assert result == []
+
+    def test_drops_stdlib_target_case_insensitively(self) -> None:
+        resp = 'TARGETS_JSON:{"targets": ["Urllib", "SUBPROCESS"], "count": 2}'
+        mock = _make_llm(resp)
+        result = extract_learning_targets("uses urllib and subprocess", llm_call=mock)
+        assert result == []
+
+    def test_keeps_nontrivial_stdlib_target(self) -> None:
+        resp = 'TARGETS_JSON:{"targets": ["asyncio", "multiprocessing"], "count": 2}'
+        mock = _make_llm(resp)
+        result = extract_learning_targets("uses asyncio and multiprocessing", llm_call=mock)
+        assert result == ["asyncio", "multiprocessing"]
+
+    def test_keeps_third_party_target(self) -> None:
+        resp = 'TARGETS_JSON:{"targets": ["requests", "anthropic"], "count": 2}'
+        mock = _make_llm(resp)
+        result = extract_learning_targets("uses requests and anthropic", llm_call=mock)
+        assert result == ["requests", "anthropic"]
+
+    def test_keeps_phrase_target_with_no_dot(self) -> None:
+        resp = 'TARGETS_JSON:{"targets": ["GitHub API rate limits"], "count": 1}'
+        mock = _make_llm(resp)
+        result = extract_learning_targets("uses the GitHub API", llm_call=mock)
+        assert result == ["GitHub API rate limits"]
+
 
 def _make_issue_stub(
     tmp_path: Path,
