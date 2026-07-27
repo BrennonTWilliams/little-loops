@@ -432,6 +432,13 @@ states:
         KEEP [x] without re-running their commands.
       - For previously-[ ] criteria NOT plausibly affected by LAST_STEP or LAST_FILES:
         leave [ ] with their existing one-line note.
+      - Harness-workaround flag: if the delta (LAST_FILES) touches only test files AND
+        a previously-failing verification now passes, OR the diff adds an autouse
+        fixture that resets global/module-level state, do NOT mark the criterion [x]
+        without also appending a one-line justification noting *why*. A justification
+        describing production behavior (e.g. masking or working around a real defect)
+        rather than test isolation is a failed criterion — leave it unmarked [ ] with
+        a note instead of [x].
 
       Step 3 — Sample re-verification:
       Pick up to min(3, total_checked) already-[x] DoD criteria and INDEPENDENTLY
@@ -559,6 +566,16 @@ states:
       For any criterion that fails re-verification, flip its mark in the
       Verification Criteria list from [x] back to [ ] with a one-line note
       "(final_verify: failed — <reason>)".
+
+      Closing consistency sweep:
+      - Check that no documentation, docstring, or comment touched or read during this
+        run states a count or enumeration contradicted by the current code (the "six
+        tools" class — a stated count that drifted stale after the code changed).
+      - For any module written before its corresponding verification doc landed, diff
+        the code against that doc now and reconcile any mismatch (knowledge
+        back-propagation — the stale-doc-vs-later-verified-facts class).
+      Append any failure found by this sweep to the `## Final Verification` section
+      above in the same `FAILED — <reason>` format.
 
       Print the full DoD file to stdout.
     action_type: prompt

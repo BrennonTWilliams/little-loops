@@ -2107,3 +2107,44 @@ class TestENH2858StandingCriteria:
         _, violations = load_and_validate(LOOP_FILE, raise_on_error=False)
         errors = [v for v in violations if v.severity == ValidationSeverity.ERROR]
         assert not errors, f"general-task.yaml has validation errors: {errors}"
+
+
+class TestENH2859HarnessWorkaroundAndConsistencySweep:
+    """ENH-2859: check_done harness-workaround flag and final_verify consistency sweep."""
+
+    def test_check_done_flags_test_only_diff_and_autouse_fixture(self, raw_data: dict) -> None:
+        action = raw_data["states"]["check_done"]["action"]
+        assert "harness-workaround" in action.lower()
+        assert "autouse" in action
+        assert "justification" in action
+
+    def test_check_done_workaround_justification_must_not_describe_production(
+        self, raw_data: dict
+    ) -> None:
+        action = raw_data["states"]["check_done"]["action"]
+        assert "production behavior" in action
+        assert "test isolation" in action
+
+    def test_final_verify_checks_count_enumeration_consistency(self, raw_data: dict) -> None:
+        action = raw_data["states"]["final_verify"]["action"]
+        assert "count or enumeration" in action
+
+    def test_final_verify_checks_doc_reconciliation(self, raw_data: dict) -> None:
+        action = raw_data["states"]["final_verify"]["action"]
+        assert "back-propagation" in action
+        assert "reconcile" in action
+
+    def test_final_verify_sweep_failures_use_existing_format(self, raw_data: dict) -> None:
+        action = raw_data["states"]["final_verify"]["action"]
+        assert "FAILED — <reason>" in action
+
+    def test_existing_substrings_still_present(self, raw_data: dict) -> None:
+        check_done_action = raw_data["states"]["check_done"]["action"]
+        final_verify_action = raw_data["states"]["final_verify"]["action"]
+        assert "dod.md" in check_done_action
+        assert "plan.md" in check_done_action
+        assert "## Sample Verification" in check_done_action
+        assert "plausibly affected" in check_done_action
+        assert "LAST_STEP" in check_done_action
+        assert "LAST_FILES" in check_done_action
+        assert "## Final Verification" in final_verify_action

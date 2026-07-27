@@ -1,14 +1,28 @@
 ---
 id: ENH-2859
-status: open
+status: done
 priority: P3
-captured_at: "2026-07-27T16:17:56Z"
+captured_at: '2026-07-27T16:17:56Z'
+completed_at: '2026-07-27T21:22:26Z'
 discovered_date: 2026-07-27
 discovered_by: capture-issue
-labels: [loops, general-task, verification]
+labels:
+- loops
+- general-task
+- verification
 parent: EPIC-2861
-relates_to: [ENH-2857, ENH-2858, ENH-2860]
-blocked_by: [ENH-2857]
+relates_to:
+- ENH-2857
+- ENH-2858
+- ENH-2860
+blocked_by:
+- ENH-2857
+confidence_score: 95
+outcome_confidence: 88
+score_complexity: 22
+score_test_coverage: 22
+score_ambiguity: 20
+score_change_surface: 24
 ---
 
 # ENH-2859: general-task — flag harness-side workarounds in check_done and add a closing consistency sweep to final_verify
@@ -48,6 +62,17 @@ earlier-written `_hermes_compat.py`.
 - For any module written before its corresponding verification doc landed, diff the code
   against the doc and reconcile (knowledge back-propagation; the stale-`PROVISIONAL`-vs-docs class).
 
+## Impact
+
+Prompt-only change confined to `general-task.yaml`'s `check_done`/`final_verify` states;
+no execution-path or schema changes. Improves defect-detection fidelity for future
+general-task runs by making harness-workaround masking and stale-doc rot visible in the
+DoD/final-verification record instead of silently passing.
+
+## Status
+
+Open — refined and wired; unblocked (ENH-2857 is done). Ready for implementation.
+
 ## Motivation
 
 Finding 4's fixture would have surfaced Hermes defect 1 a month earlier; Finding 5's
@@ -58,6 +83,15 @@ Known limitation: the harness-workaround flag is still the same agent grading it
 the weakness this epic elsewhere works around. That's accepted for this prompt-only
 scope; the eventual stronger fix is an independent evaluator via FEAT-2711's
 `session_mode` machinery (fresh-session judgment for check states).
+
+## Scope Boundaries
+
+In scope: prompt-text edits to `check_done` and `final_verify` in
+`scripts/little_loops/loops/general-task.yaml`, plus structural tests in
+`scripts/tests/test_general_task_loop.py` asserting the new language is present.
+Out of scope: adding a new FSM state, shell-side enforcement, or an independent
+(non-self-grading) evaluator — the latter is deferred to FEAT-2711's `session_mode`
+machinery per the Motivation section's known limitation.
 
 ## Proposed Solution
 
@@ -95,6 +129,17 @@ so no MR-4 routing branch is needed for this change):**
   `## Final Verification` fenced block with `FAILED — <reason>` exactly as today (line
   464-469), so `count_final` (line 518-540, awk-counts `FAILED` occurrences) picks up
   the failure with no changes needed on the shell side.
+
+> ⚠ Anchor update (`/ll:refine-issue`, 2026-07-27): `general-task.yaml` has grown
+> since the anchors above were recorded (ENH-2857/ENH-2860 landed in between,
+> both touching this file). Current locations: `check_done` is now at
+> `general-task.yaml:393-458` (Step 2 bullet to extend is at line ~423-424,
+> the "For DoD criteria that mention or depend on any file in LAST_FILES..."
+> bullet), and `final_verify` is now at `general-task.yaml:540-570`
+> (insertion point before "Print the full DoD file to stdout." at line ~561).
+> `ENH-2857` (the `blocked_by` dependency) is now `done`, so this issue is
+> unblocked. Re-verify exact line numbers again before implementing, since
+> ENH-2860 may shift them further.
 
 **No local precedent for the workaround-flag language** — grepping
 `scripts/little_loops/loops/*.yaml` for `autouse`/`test-only`/`workaround` returns
@@ -150,11 +195,30 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Acceptance Criteria
 
-- [ ] `check_done` prompt contains the harness-workaround flag rules (test-only diff, autouse global-state fixture, justification requirement)
-- [ ] `final_verify` prompt contains the count/enumeration consistency check and the code-vs-later-doc reconciliation check
-- [ ] `ll-loop validate general-task` passes; structural tests added and green in `scripts/tests/test_general_task_loop.py` (the file with existing check_done/final_verify substring assertions, not `test_builtin_loops.py`)
+- [x] `check_done` prompt contains the harness-workaround flag rules (test-only diff, autouse global-state fixture, justification requirement)
+- [x] `final_verify` prompt contains the count/enumeration consistency check and the code-vs-later-doc reconciliation check
+- [x] `ll-loop validate general-task` passes; structural tests added and green in `scripts/tests/test_general_task_loop.py` (the file with existing check_done/final_verify substring assertions, not `test_builtin_loops.py`)
+
+## Resolution
+
+Added the harness-workaround flag as a new bullet in `check_done`'s Step 2 (delta-scoped
+criterion verification), and the closing consistency sweep as new prose in `final_verify`
+before the existing "Append a new section..." instruction, in
+`scripts/little_loops/loops/general-task.yaml`. Both are pure prompt-text additions — no
+new states, no shell changes; sweep failures feed the existing `## Final Verification`
+`FAILED — <reason>` format already consumed by `count_final`. Added
+`TestENH2859HarnessWorkaroundAndConsistencySweep` (6 tests) to
+`scripts/tests/test_general_task_loop.py`, and updated
+`docs/guides/LOOPS_REFERENCE.md` to describe both additions in the verification-policy
+narrative. `ll-loop validate general-task` passes; full suite green except 4 pre-existing
+failures on `main` unrelated to this change (`test_no_failure_edge_routes_to_a_success_terminal`,
+two `TestSelectStepShellAction` tests, `test_no_prose_dependency_drift_in_repo` — confirmed
+via `git stash` before implementing).
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-27T21:22:00Z - `0f986a55-aa7a-4af5-9738-3911a3d11406.jsonl`
+- `/ll:ready-issue` - 2026-07-27T21:16:22 - `09439c75-b854-4a23-bf3e-5fe5c561f1b4.jsonl`
+- `/ll:refine-issue` - 2026-07-27T21:09:09 - `1364ef69-3d20-4292-84bc-fe1627d39068.jsonl`
 - `/ll:wire-issue` - 2026-07-27T17:49:37 - `9188e54f-5830-4cf3-b9ff-2c70903a6916.jsonl`
 - `/ll:refine-issue` - 2026-07-27T17:46:49 - `f5467fde-e024-4ec9-87d2-6176113f6da9.jsonl`
 - `/ll:capture-issue` - 2026-07-27T16:17:56Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3601f984-5d3e-4c48-a9b5-5cb709fc86b3.jsonl`
