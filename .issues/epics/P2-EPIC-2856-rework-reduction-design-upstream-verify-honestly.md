@@ -92,13 +92,14 @@ and independently testable, and together they close the two cheapest holes in
 the verification story. ENH-2852 next; FEAT-2855 last, as it is the largest and
 benefits from the others being in place to measure.
 
-**Baseline before intervention:** the epic's thesis is measurable rework
-reduction, but ordering FEAT-2855 last means no baseline exists before the
-interventions land. The signals are cheap (`git log` only), so capture a
-one-off baseline sample of the FEAT-2855 signals *before* ENH-2852 ships —
-even a manually-run snapshot stored under `thoughts/` — so "did any of this
-work" is answerable against a pre-intervention reference, not just against
-gate-behavior success metrics.
+**Baseline before intervention** (revised 2026-07-27): FEAT-2855's signals are
+computed from `git log`, which is immutable — the tool can retroactively
+compute any pre-intervention window once it ships. No manual signal sampling is
+needed up front. What ENH-2852 must record before its gate is enabled is the
+**cutover point**: a note under `thoughts/` with the SHA/date at which the
+interventions begin (plus the caveat that `.ll/history.db` attribution for old
+windows depends on manual retention). "Did any of this work" is then answered
+by FEAT-2855 comparing windows either side of that stamp.
 
 ## Success Metrics
 

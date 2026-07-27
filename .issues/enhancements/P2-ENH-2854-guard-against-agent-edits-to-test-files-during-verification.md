@@ -33,7 +33,7 @@ Detecting it is mechanical: diff the test files across the step and compare agai
 
 1. **Snapshot** test-file state at the start of a verification step (content hashes over the paths matching the project's test patterns).
 2. **Compare** at the end of the step. Any modified, deleted, or newly-skipped test file is a tamper candidate.
-3. **Policy** — configurable per loop, with a safe default:
+3. **Policy** — configurable per loop; **default is `fail`** (decided, epic review 2026-07-27 — least surprising: a guard silently rewriting files mid-run is confusing in telemetry; `revert` is an explicit opt-in for loops wanting score-the-code-alone semantics):
    - `revert` — restore test files to their pre-step state, then score. Scoring then reflects the code change alone.
    - `fail` — fail the transition and report which files were touched.
    - `allow` — permit the edits but record them prominently in the run's evidence (for steps whose *purpose* is editing tests).
@@ -107,7 +107,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - [ ] `revert` policy restores pre-existing test files to their pre-step state before scoring; it never deletes a test file newly added during the step, and ENH-2853's pre-patch check (when present) runs on the diff before any revert.
 - [ ] `fail` policy fails the transition and names the touched files.
 - [ ] `allow` policy is opt-in per loop and still records the edits in the run evidence.
-- [ ] The default policy is not `allow`.
+- [ ] The default policy is `fail` (decided); `revert` and `allow` are explicit per-loop opt-ins.
 - [ ] Touched-file details appear in the run's verification evidence under every policy.
 - [ ] The guard makes no LLM calls.
 - [ ] Tests cover: commented-out assertion, added skip marker, deleted test file, untouched tests, and each of the three policies.

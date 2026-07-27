@@ -1,0 +1,17 @@
++ echo '=== status before ==='
+=== status before ===
++ codegraph status -j .
+{"initialized":true,"projectPath":"/Users/brennon/AIProjects/brenentech/little-loops","fileCount":906,"nodeCount":28505,"edgeCount":65625,"dbSizeBytes":68734976,"backend":"node-sqlite","journalMode":"wal","nodesByKind":{"class":3052,"constant":9,"file":674,"function":3019,"import":3735,"interface":1,"method":16985,"type_alias":1,"variable":1029},"languages":["javascript","python","typescript","xml","yaml"],"pendingChanges":{"added":0,"modified":0,"removed":0},"worktreeMismatch":null}
++ echo '=== sync --quiet (no changes) ==='
+=== sync --quiet (no changes) ===
++ codegraph sync --quiet .
+
+real	0m0.175s
+user	0m0.154s
+sys	0m0.036s
++ echo 'sync exit: 0'
+sync exit: 0
++ echo '=== status after ==='
+=== status after ===
++ codegraph status -j .
+{"initialized":true,"projectPath":"/Users/brennon/AIProjects/brenentech/little-loops","fileCount":906,"nodeCount":28505,"edgeCount":65625,"dbSizeBytes":68734976,"backend":"node-sqlite","journalMode":"wal","nodesByKind":{"class":3052,"constant":9,"file":674,"function":3019,"import":3735,"interface":1,"method":16985,"type_alias":1,"variable":1029},"languages":["javascript","python","typescript","xml","yaml"],"pendingChanges":{"added":0,"modified":0,"removed":0},"worktreeMismatch":null}

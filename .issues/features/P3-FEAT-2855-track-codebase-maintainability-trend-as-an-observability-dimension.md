@@ -44,7 +44,7 @@ Output:
 
 1. A command that reports each signal as a time series across sampling points, over any repo with history.
 2. A join against `.ll/history.db` so sampling windows can be labeled by the agent runs that occurred in them.
-3. A summary verdict per signal: improving / flat / degrading, with the magnitude and the window compared.
+3. A summary verdict per signal: improving / stable / degrading (conforming to the existing `issue_history` verdict vocabulary — see Advisory), with the magnitude and the window compared.
 
 ## Design Notes
 
@@ -130,7 +130,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - [ ] The command ships as an `ll-history` subcommand, not a new top-level CLI.
 - [ ] The logical-change unit is the issue where `.ll/history.db` attribution exists, per-commit otherwise, and the output labels which unit applied.
 - [ ] File identity survives renames (git rename detection); a synthetic-repo test with a renamed hot file shows continuity.
-- [ ] Each signal reports a verdict (improving / flat / degrading) with magnitude and comparison window.
+- [ ] Each signal reports a verdict (improving / stable / degrading — matching `analyze_rejection_rates()`'s vocabulary) with magnitude and comparison window.
 - [ ] A repo below the minimum-history threshold gets an explicit "insufficient history" result, not a computed trend.
 - [ ] Output states that agent-run attribution is correlational.
 - [ ] All source data is opened read-only; no source DB or repo state is mutated.

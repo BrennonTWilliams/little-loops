@@ -8,6 +8,7 @@ discovered_by: capture-issue
 labels: [loops, general-task, verification]
 parent: EPIC-2861
 relates_to: [ENH-2857, ENH-2858, ENH-2860]
+blocked_by: [ENH-2857]
 ---
 
 # ENH-2859: general-task — flag harness-side workarounds in check_done and add a closing consistency sweep to final_verify
@@ -65,11 +66,95 @@ Extend the `check_done` and `final_verify` prompt actions in
 `final_verify` rather than adding a new state. Add structural tests asserting the
 instructions are present (test_builtin_loops.py general-task class).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Target states (both prompt-only, no `evaluate`/`on_yes`/`on_no` — verdict is
+expressed by editing `dod.md`, consumed downstream by mechanical shell parsers,
+so no MR-4 routing branch is needed for this change):**
+
+- `scripts/little_loops/loops/general-task.yaml:312-367` — `check_done`. Add the
+  harness-workaround flag as a new bullet under **Step 2 — Delta-scoped criterion
+  verification** (line 337), following the existing "For DoD criteria that..."
+  bullet style. Suggested trigger condition text: "If the delta (LAST_FILES) touches
+  only test files AND a previously-failing verification now passes, OR the diff adds
+  an autouse fixture that resets global/module-level state, do NOT mark the criterion
+  [x] without also appending a one-line justification noting *why* — a justification
+  describing production behavior (e.g. masking/working around a real defect) rather
+  than test isolation must leave the criterion unmarked [ ] with a note." Verdict is
+  consumed by `count_done` (line 380-441) the same way `## Sample Verification`
+  failures already are — no new evaluator field is required.
+- `scripts/little_loops/loops/general-task.yaml:452-483` — `final_verify`. Add the
+  consistency sweep as new prose before the existing "Append a new section..."
+  instruction (~line 464), instructing the worker to (a) grep code/docstrings/comments
+  changed or read during this run for count/enumeration claims ("six tools" class) and
+  cross-check against the actual current count, and (b) for any module written before
+  its corresponding verification doc landed (`docs/hermes-api-verification.md` class),
+  diff the code against the doc and reconcile. Failures append to the existing
+  `## Final Verification` fenced block with `FAILED — <reason>` exactly as today (line
+  464-469), so `count_final` (line 518-540, awk-counts `FAILED` occurrences) picks up
+  the failure with no changes needed on the shell side.
+
+**No local precedent for the workaround-flag language** — grepping
+`scripts/little_loops/loops/*.yaml` for `autouse`/`test-only`/`workaround` returns
+zero hits outside the issue file itself; this is genuinely new prompt text. The
+nearest structural analog for a new fenced justification block is `check_done`'s
+existing `## Sample Verification` section (lines 351-359).
+
+**Nearest precedent for the count/enumeration check** is `docs-sync.yaml`'s
+`fix_docs` state (`scripts/little_loops/loops/docs-sync.yaml:40-59`, "Update counts
+that don't match actual file counts"), which is a separate loop invoking
+`ll-verify-docs` (`scripts/little_loops/cli/docs.py`) as its own shell state — not
+embedded prose in another prompt, and `general-task.yaml` does not reference
+`ll-verify-docs` anywhere. ENH-2859's check is scoped as pure prose folded into
+`final_verify`, not a new shell state.
+
+**Structural test pattern to follow** (`TestGeneralTaskLoop`,
+`scripts/tests/test_builtin_loops.py:11637-11794`): each new test reads the target
+state's `action` string and asserts required substrings, e.g.:
+```python
+def test_check_done_flags_harness_workarounds(self, data: dict) -> None:
+    """check_done must flag test-only diffs / autouse global-state fixtures (ENH-2859)."""
+    state = data["states"].get("check_done", {})
+    action = state.get("action", "")
+    assert "autouse" in action and "justification" in action
+```
+Add one test asserting `check_done`'s workaround-flag language and one (or two)
+asserting `final_verify`'s count/enumeration and doc-reconciliation language,
+mirroring existing tests like `test_run_final_tests_reads_baseline_exit` and
+`test_continue_work_prompt_detects_oom_exit_code` in the same class.
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/loops/general-task.yaml` — `check_done` (line 312-367) and `final_verify` (line 452-483) prompt bodies
+- `scripts/tests/test_builtin_loops.py` — `TestGeneralTaskLoop` class (line 11637-11794) — new structural assertions
+
+### Similar Patterns
+- `scripts/little_loops/loops/general-task.yaml:351-359` — `## Sample Verification` fenced-block convention, nearest analog for a new justification/flag block
+- `scripts/little_loops/loops/docs-sync.yaml:40-59` (`fix_docs` state) — nearest existing "counts that don't match" prose, though implemented as its own shell state calling `ll-verify-docs`, not embedded prompt text
+
+### Tests
+- `scripts/tests/test_builtin_loops.py:11637` — `TestGeneralTaskLoop`, add assertions per Proposed Solution → Codebase Research Findings
+
+_Wiring pass added by `/ll:wire-issue`:_
+- **Correction to the target above**: `scripts/tests/test_general_task_loop.py` — not `test_builtin_loops.py` — is the dedicated file with existing substring assertions against `raw_data["states"]["check_done"]["action"]` / `["final_verify"]["action"]` (e.g. `TestChange2CheckDoneReconcileAndSampleVerify`, `TestChange8FinalVerifyGate`). `test_builtin_loops.py`'s `TestGeneralTaskLoop` only covers `check_baseline_tests`/`capture_work_exit`/`continue_work` and has never asserted on `check_done`/`final_verify` content — adding the new assertions there would be a stray addition to an unrelated class. Prefer a new class in `test_general_task_loop.py`; optionally mirror in `test_builtin_loops.py` too, but the former is load-bearing.
+- New assertions must not break existing substrings in `test_general_task_loop.py`: `"dod.md"`, `"plan.md"`, `"## Sample Verification"`, `"plausibly affected"`, `"LAST_STEP"`, `"LAST_FILES"`, `"## Final Verification"`, and must avoid introducing `"append a"` adjacent to `"sample verification"` (breaks `test_check_done_replaces_not_appends_sample_verification`).
+- `test_builtin_loops.py`'s generic `test_all_validate_as_valid_fsm` and `test_general_task_loop.py`'s scoped `test_validates_as_fsm` re-run FSM structural validation on general-task.yaml; both must keep passing (structural only, unaffected by prompt-text content).
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md` (~lines 107-132) — narrates the current `check_done`/`final_verify` three-step verification policy in prose; not test-enforced, but will describe stale behavior once the harness-workaround flag and consistency sweep are added unless updated alongside the YAML change.
+
 ## Acceptance Criteria
 
 - [ ] `check_done` prompt contains the harness-workaround flag rules (test-only diff, autouse global-state fixture, justification requirement)
 - [ ] `final_verify` prompt contains the count/enumeration consistency check and the code-vs-later-doc reconciliation check
-- [ ] `ll-loop validate general-task` passes; structural tests added and green
+- [ ] `ll-loop validate general-task` passes; structural tests added and green in `scripts/tests/test_general_task_loop.py` (the file with existing check_done/final_verify substring assertions, not `test_builtin_loops.py`)
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-27T17:49:37 - `9188e54f-5830-4cf3-b9ff-2c70903a6916.jsonl`
+- `/ll:refine-issue` - 2026-07-27T17:46:49 - `f5467fde-e024-4ec9-87d2-6176113f6da9.jsonl`
 - `/ll:capture-issue` - 2026-07-27T16:17:56Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3601f984-5d3e-4c48-a9b5-5cb709fc86b3.jsonl`

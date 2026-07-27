@@ -46,11 +46,11 @@ This is deliberately *not* a design doc stage. It is a short, concrete section �
 
 - Keep the gate cheap and mostly deterministic. A grep/parse for identifiers that exist in the repo carries more signal than asking a model whether a section is "specific enough".
 - **New identifiers cannot resolve against the repo by definition.** The repo-resolution requirement targets the *call-path anchors* — the existing callers, modules, and types the new code hooks into. The new names being introduced only need to be signature-*shaped* (parseable `name(params) -> ret` / dataclass-field lines), not resolvable. Conflating these would make the gate unpassable for any issue that adds code.
-- **The mechanical check lives in a CLI, not in skill prose.** Implement it `ll-verify-*`-style (or as an `ll-issues format-check` extension) that `/ll:confidence-check` shells out to — matching the project's deterministic-CLI-plus-skill pattern and making it independently testable.
+- **The mechanical check lives in a CLI, not in skill prose.** **Decided (epic review, 2026-07-27): implement inside `check_format_gaps()` as an `ll-issues format-check` extension — not a standalone `ll-verify-*` binary.** `/ll:confidence-check` shells out to `ll-issues format-check` — matching the project's deterministic-CLI-plus-skill pattern and making it independently testable. This drops the standalone-binary wiring (`_LL_PERMISSIONS`, `areas.md` allowlist, new `[project.scripts]` entry) from scope entirely.
 - Small mechanical issues (a one-line config change, a docs fix) should be able to satisfy the section trivially or declare it not applicable — the gate must not become a tax on trivial work. Provide an explicit escape hatch and make it visible in the issue rather than silent.
 - **Amendment path, not a prohibition.** The section is written during refinement, but a hard "the implementing agent must not rewrite it" rule contradicts existing machinery (`/ll:reconcile-issue` rewrites directive sections by design) and ignores queue-latency staleness — a design fixed at refine time can be invalidated by codebase changes before implementation starts. Instead: the implementing agent may deviate, but the deviation is *recorded* in the issue (a `Deviations` note under the section stating what changed and why), never silently rewritten over the original.
 - **Interaction with autodev's deferral machinery.** A new hard failure mode in `/ll:confidence-check` surfaces in `autodev.yaml`'s `check_reconcile_needed` / `recheck_after_size_review` as readiness stagnation — a refined-but-design-less issue could burn a reconcile/spike remedy cycle before deferring. Decide explicitly: a missing/non-specific `## Program Design` section should route to the `/ll:reconcile-issue` remedy (it is exactly the kind of directive-section gap reconcile exists to fix), not defer immediately; only if the section is still failing after the remedy attempt should the issue defer, and then under a distinct machine reason code (e.g. `design_gate_failed`) rather than generic `low_readiness`, so `ll-issues deferred-triage` can distinguish it.
-- **Rollout for the existing backlog.** Every currently open issue lacks the section; a hard gate would mass-defer the backlog on day one. Grandfather issues refined before the gate ships (gate on `discovered_date`/refine timestamp), or bulk-populate via a one-off loop — pick one explicitly in the implementation, don't leave it to chance.
+- **Rollout for the existing backlog.** Every currently open issue lacks the section; a hard gate would mass-defer the backlog on day one. **Decided (epic review, 2026-07-27): grandfather.** Issues refined before the gate ships (determined by refine timestamp / `discovered_date`) are exempt from the gate; bulk-populate is not pursued — it is more expensive, and grandfathering is reversible per-issue by simply re-refining.
 
 ### Codebase Research Findings
 
@@ -74,12 +74,12 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - [ ] `/ll:confidence-check` fails an issue with a missing or empty `## Program Design` section.
 - [ ] `/ll:confidence-check` fails an issue whose section contains only prose with no repo-resolvable call-path anchors or signature-shaped lines.
 - [ ] `/ll:confidence-check` passes an issue naming concrete types, signatures, and a call path — where repo-resolution is required only of call-path anchors, and new identifiers need only be signature-shaped.
-- [ ] The specificity check is implemented as a deterministic CLI (`ll-verify-*` style or `ll-issues` subcommand) that the skill shells out to, testable without an LLM.
+- [ ] The specificity check is implemented deterministically inside `check_format_gaps()` / `ll-issues format-check` (decided — no standalone `ll-verify-*` binary), shelled out to by the skill and testable without an LLM.
 - [ ] An explicit not-applicable escape hatch exists for trivial issues and is recorded in the issue body when used.
 - [ ] Implementation-time deviations from the design are recorded in the issue as a visible `Deviations` note rather than overwriting the original section.
-- [ ] A rollout decision for pre-existing issues (grandfathering or bulk-populate) is implemented, so shipping the gate does not mass-defer the current backlog.
+- [ ] The grandfathering rollout (decided) is implemented: issues refined before the gate ships are exempt, so shipping the gate does not mass-defer the current backlog.
 - [ ] Tests cover: missing section, prose-only section, valid section (including unresolvable-but-signature-shaped new identifiers), and the escape hatch.
-- [ ] The pre-intervention baseline sample of FEAT-2855's maintainability signals (see Scope Boundary below) exists under `thoughts/` before this issue's gate is enabled — verified as part of this issue, since FEAT-2855 does not own it.
+- [ ] The intervention cutover point (the SHA/date at which this gate is enabled) is recorded under `thoughts/` before the gate ships, so FEAT-2855 can retroactively compute the pre-intervention window from immutable git history (see Scope Boundary below).
 - [ ] A confidence-check failure caused solely by the `## Program Design` gate routes to the reconcile remedy before any deferral, and a post-remedy deferral uses a distinct machine reason code, not generic `low_readiness`.
 
 ---
@@ -137,7 +137,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): EPIC-2856 requires a one-off pre-intervention baseline sample of FEAT-2855's maintainability signals — captured manually under `thoughts/` — *before* this issue's gate ships, so "did any of this work" is answerable against a pre-intervention reference. FEAT-2855 is scheduled last in the EPIC and does not own producing that snapshot. Capturing it is a prerequisite of this issue, not part of FEAT-2855's scope.
+**Note** (added by `/ll:audit-issue-conflicts`; revised by epic review 2026-07-27): EPIC-2856 originally required a one-off manual pre-intervention sample of FEAT-2855's maintainability signals before this gate ships. That is unnecessary: every FEAT-2855 signal is computed from `git log`, which is immutable, so the tool can retroactively compute any pre-intervention window once it exists. What must be captured up front is only the **cutover point** — a short note under `thoughts/` recording the SHA and date at which this issue's gate was enabled (plus the caveat that `.ll/history.db` attribution for old windows depends on manual retention policy). Recording that stamp is a prerequisite of this issue, not part of FEAT-2855's scope.
 
 
 ## Session Log

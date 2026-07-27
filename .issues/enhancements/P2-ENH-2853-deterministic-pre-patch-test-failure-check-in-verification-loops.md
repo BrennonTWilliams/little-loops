@@ -54,6 +54,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - Apply *only* the test-file portion of the diff to the base tree. Applying the full diff defeats the purpose; applying nothing means the tests don't exist to run.
 - A candidate test that **errors** on the pre-patch tree (import error because the new module doesn't exist yet) counts as failing — that is the expected outcome for a test of new code, not a harness problem. Distinguish error-vs-fail in the report but treat both as "did not pass".
+- **Error-category false-negative hole (epic review, 2026-07-27).** "Errors pre-patch is accepted as evidence" also accepts a fake test that errors for *infrastructure* reasons — e.g. it depends on a fixture added in `conftest.py` that wasn't applied because `conftest.py` doesn't match typical `test_*` globs. Two mitigations are required: (1) the default `project.test_patterns` and the shared identification module MUST include `conftest.py`; (2) the evidence bundle records the error *category* — a collection/import error naming a post-patch module (expected failure of new code) vs. anything else (fixture/infrastructure error, suspicious) — so an auditor can tell them apart without re-running.
+- **Diff-scope caveat, same class of hole**: applying only the test-file portion of the diff means new *non-test* helpers a test imports are absent pre-patch. Import errors referencing non-target modules should be treated with suspicion in the report, not read as clean evidence.
 - Use an isolated worktree rather than mutating the working tree in place; a verification check must never leave the user's tree in a different state than it found it.
 - Pure-refactor changes may legitimately have no new tests. Zero candidate tests is not a failure — report it explicitly rather than silently passing, so "no tests were added" is visible.
 - Keep this independent of any LLM call. The whole value is that the signal is mechanical.
@@ -141,7 +143,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - [ ] Those tests are run against the pre-patch tree with only the test changes applied, in an isolated worktree.
 - [ ] A newly *added* candidate test that passes pre-patch is hard-flagged and is not counted as verification evidence.
 - [ ] A *modified* candidate test that passes pre-patch is recorded in the evidence as soft by default, with a config option to escalate it to a hard flag.
-- [ ] A candidate test that fails or errors pre-patch is accepted as evidence.
+- [ ] A candidate test that fails or errors pre-patch is accepted as evidence; the evidence bundle records the error category (import/collection error naming a post-patch module vs. other infrastructure error).
+- [ ] The default `project.test_patterns` and the shared identification module include `conftest.py`, so conftest changes are applied to the pre-patch tree.
 - [ ] The pre-patch run resolves imports from the pre-patch worktree, not the main tree's editable install; a test proves the isolation (post-patch-only module is unimportable in the pre-patch run).
 - [ ] The base state is the dequeue-time SHA when recorded, else the merge-base with the base branch; the chosen base is named in the evidence bundle.
 - [ ] A dequeue-time SHA stamp is added at the orchestrator dequeue/worktree-creation points (`autodev.yaml` `dequeue_next`, `ll-parallel`), so the primary base-state path is exercised rather than always falling back to merge-base.
