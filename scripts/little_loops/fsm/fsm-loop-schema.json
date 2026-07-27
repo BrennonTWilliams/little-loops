@@ -385,12 +385,12 @@
         "suppress_catalog": {
           "type": "boolean",
           "default": false,
-          "description": "Narrow the skill/command catalog via tools: allowlist mapped to the host's narrowing flags (only on hosts confirming tool_allowlist via ll-doctor)."
+          "description": "DECLARATIVE-ONLY (not yet implemented): intended to narrow the skill/command catalog via tools: allowlist mapped to the host's narrowing flags, gated on tool_allowlist. No runtime consumer reads this field — it currently only triggers an MR-12 validator warning and does not change what the host loads."
         },
         "suppress_claude_md": {
           "type": "boolean",
           "default": false,
-          "description": "Suppress CLAUDE.md loading for this invocation (only on hosts confirming claude_md_suppression via ll-doctor)."
+          "description": "DECLARATIVE-ONLY (not yet implemented): intended to suppress CLAUDE.md loading, gated on claude_md_suppression — a capability every host reports as unsupported (the claude CLI has no flag to skip CLAUDE.md). No runtime consumer reads this field; setting it changes nothing."
         }
       },
       "additionalProperties": false

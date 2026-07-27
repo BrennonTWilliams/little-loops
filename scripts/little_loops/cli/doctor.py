@@ -61,10 +61,28 @@ def register_check(fn: Callable[[], list[CheckResult]]) -> Callable[[], list[Che
     return fn
 
 
+# Capabilities that are optimizations rather than correctness requirements.
+# An `unsupported` here is reported but must NOT fail the run: automation is
+# fully functional without them, just more token-expensive. Folding these at
+# "error" severity would make an honest `unsupported` (e.g. claude-code has no
+# flag to skip CLAUDE.md) fail the primary host's own health check.
+_ADVISORY_CAPABILITIES = frozenset({"claude_md_suppression"})
+
+
 def _capability_check_results(report: CapabilityReport) -> list[CheckResult]:
-    """Fold a CapabilityReport's entries into CheckResult (error severity)."""
+    """Fold a CapabilityReport's entries into CheckResult.
+
+    Error severity by default; advisory capabilities (see
+    ``_ADVISORY_CAPABILITIES``) are informational so an unsupported
+    optimization does not fail the exit code.
+    """
     return [
-        CheckResult(name=c.name, status=c.status, note=c.note, severity="error")
+        CheckResult(
+            name=c.name,
+            status=c.status,
+            note=c.note,
+            severity="informational" if c.name in _ADVISORY_CAPABILITIES else "error",
+        )
         for c in report.capabilities
     ]
 

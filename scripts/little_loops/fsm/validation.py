@@ -2167,9 +2167,13 @@ def _validate_pruning_profile(
        may fail depending on host behavior.
     3. WARN (ENH-2805, narrowed by BUG-2831) — a skill/command-invoking state
        has NO resolvable ``pruning_profile`` at all (neither state override
-       nor loop default). Every such state pays the full automation-context
-       static prefix (catalog + SessionStart digest + CLAUDE.md) on every
-       invocation, which is the dominant share of fleet token spend
+       nor loop default). Every such state pays the SessionStart digest on
+       every invocation. (The catalog and CLAUDE.md are also re-sent, but a
+       profile does NOT currently prune them — ``suppress_catalog`` and
+       ``suppress_claude_md`` are declarative-only with no runtime consumer,
+       so the realized saving from a profile is the hook output alone,
+       ~1K tokens.) Static-prefix cost overall is the dominant share of
+       fleet token spend
        (session-level traffic, not the FSM-state-tagged ~1% `request_path:
        sdk` touches). ``request_path: sdk``/``batch`` states used to be
        exempt on the theory that they bypass ``action_runner`` entirely via
@@ -2247,12 +2251,14 @@ def _validate_pruning_profile(
                     message=(
                         f"[state: {state_name}] invokes /ll:{skill} with no "
                         "resolvable pruning_profile (state override or loop "
-                        "default) — this state pays the full automation-context "
-                        "static prefix (catalog + SessionStart digest + "
-                        "CLAUDE.md) on every invocation. Consider setting a "
+                        "default) — this state pays the SessionStart digest "
+                        "on every invocation (~1K tokens). Consider setting a "
                         "`pruning_profile:` for high-volume repeated states, or "
                         "set `pruning_profile_ok: true` at the loop top-level "
-                        "to suppress. (ENH-2805 MR-12)"
+                        "to suppress. Note: the catalog and CLAUDE.md are NOT "
+                        "prunable today — suppress_catalog/suppress_claude_md "
+                        "are declarative-only, so a profile saves only the hook "
+                        "output. (ENH-2805 MR-12)"
                     ),
                     path=f"states.{state_name}.pruning_profile",
                     severity=ValidationSeverity.WARNING,

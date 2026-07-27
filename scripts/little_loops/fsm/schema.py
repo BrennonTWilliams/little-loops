@@ -431,25 +431,38 @@ class PruningProfileConfig:
     process environment (``host_runner.py`` ``build_streaming(...,
     automation_profile=...)``), which automation-aware hooks
     (``session_start.py``, ``history_context.py``) check to suppress their
-    static-prefix output. ``suppress_catalog``/``suppress_claude_md`` are
-    narrowing flags consulted only on hosts whose capability is confirmed via
-    ``ll-doctor`` (``HostCapabilities.tool_allowlist`` /
-    ``claude_md_suppression``); unconfirmed hosts no-op cleanly. Default is
-    unset (``None`` on both loop and state) — full unpruned behavior.
+    static-prefix output. Default is unset (``None`` on both loop and state)
+    — full unpruned behavior.
+
+    .. warning::
+
+       **Only the env-signal path is implemented.** ``suppress_catalog`` and
+       ``suppress_claude_md`` are declarative-only today: no runtime consumer
+       reads them, so neither reaches a host invocation. ``suppress_catalog``
+       is read solely by the MR-12 validator (to emit a WARN);
+       ``suppress_claude_md`` is read nowhere at all. Setting either changes
+       nothing about what the host loads. The realized saving from any profile
+       is therefore just the hook-output pruning (~1K tokens), not the catalog
+       (~6.4K) or CLAUDE.md (~7.7K). No host currently reports
+       ``claude_md_suppression`` as supported — the claude CLI has no flag to
+       skip CLAUDE.md. Treat both fields as forward-declarations.
 
     Attributes:
         enabled: Master switch. When False, the profile is inert even if
             other fields are set (mirrors ``PromptSizeGuardConfig.enabled``).
+            This is the only field with runtime effect beyond ``name``.
         name: Profile name propagated as ``LL_AUTOMATION_PROFILE``. Purely
             informational for hooks that don't branch on profile identity
             today; reserved for future per-profile tuning.
-        suppress_catalog: When True (and the resolved host confirms
-            ``tool_allowlist``), narrow the skill/command catalog via the
-            state/loop ``tools:`` allowlist mapped to the host's narrowing
-            flags.
-        suppress_claude_md: When True (and the resolved host confirms
-            ``claude_md_suppression``), suppress CLAUDE.md loading for this
-            invocation.
+        suppress_catalog: Declarative-only (see warning above). Intended to
+            narrow the skill/command catalog via the state/loop ``tools:``
+            allowlist mapped to the host's narrowing flags, gated on
+            ``HostCapabilities.tool_allowlist``. Not yet wired to any
+            invocation; currently only triggers an MR-12 validator WARN.
+        suppress_claude_md: Declarative-only (see warning above). Intended to
+            suppress CLAUDE.md loading, gated on the ``claude_md_suppression``
+            capability — which every host currently reports as
+            ``unsupported``. Not yet wired to any invocation.
     """
 
     enabled: bool = True

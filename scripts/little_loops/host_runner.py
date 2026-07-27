@@ -409,16 +409,24 @@ class ClaudeCodeRunner:
                     "claude CLI honors an inline --json-schema flag; FSM evaluators "
                     "append it for schema-constrained verdicts",
                 ),
-                # ENH-2714: automation-profile invocations rely on CLAUDE.md still
-                # loading normally (suppression is via env-gated hook output, not a
-                # host flag that skips CLAUDE.md itself) — confirmed via the
-                # LL_AUTOMATION signal path, not a dedicated CLI flag.
+                # ENH-2714: the claude CLI exposes no flag that skips CLAUDE.md, so
+                # this capability is genuinely unsupported. It was previously marked
+                # "full" on the grounds that claude-code honors the LL_AUTOMATION
+                # env signal — but that signal only gates OUR hooks' static-prefix
+                # output (~1K tokens), which is a different and much smaller thing
+                # than suppressing CLAUDE.md itself (~7.7K tokens in this repo).
+                # Reporting "full" made `ll-doctor` claim a capability the host does
+                # not have and made every `suppress_claude_md: true` state look
+                # optimized when it was not. Measured A/B (arm A vs arm B,
+                # /ll:confidence-check): first-turn cache_creation 41,099 vs 39,467
+                # — a ~1.6K delta consistent with hook output alone, not CLAUDE.md.
                 CapabilityEntry(
                     "claude_md_suppression",
-                    "full",
-                    "claude-code honors the LL_AUTOMATION/LL_AUTOMATION_PROFILE env "
-                    "signal; automation-aware hooks (SessionStart digest, "
-                    "history-context) suppress their static-prefix output",
+                    "unsupported",
+                    "the claude CLI has no flag to skip CLAUDE.md; it always loads. "
+                    "The LL_AUTOMATION/LL_AUTOMATION_PROFILE env signal IS honored, "
+                    "but it only suppresses automation-aware hook output "
+                    "(SessionStart digest, history-context) — not CLAUDE.md",
                 ),
             ],
         )
