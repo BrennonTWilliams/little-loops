@@ -572,6 +572,10 @@
           "type": "string",
           "description": "Model override for this state only. For prompt-mode states (action_type: prompt or slash_command), passed as --model to the host CLI subprocess. For llm_structured/check_semantic evaluate blocks, overrides the model used for verdict dispatch regardless of action_type (e.g. a shell action with an llm_structured evaluate block). Ignored for shell/mcp_tool/contract states with no LLM-judged evaluate block — a validation WARNING is emitted in that case. Absent = inherits the global --model/--llm-model flag or loop-level llm.model default."
         },
+        "effort": {
+          "type": "string",
+          "description": "ENH-2869: reasoning-effort level override for this state only (e.g. low/medium/high/xhigh/max). Resolved via state.effort or the run-level --effort flag or loop-level llm.effort default. Surfaced (upper-cased, bracketed) on the ll-loop run CLI header's model: line when set. Ignored for shell/mcp_tool/contract states with no LLM-judged evaluate block — mirrors the model validation WARNING in that case. Absent = no effort suffix shown."
+        },
         "request_path": {
           "type": "string",
           "enum": ["cli", "sdk", "batch"],
@@ -903,6 +907,10 @@
           "type": "string",
           "description": "Model identifier for LLM calls (default: DEFAULT_LLM_MODEL from schema.py)",
           "default": "claude-sonnet-4-20250514"
+        },
+        "effort": {
+          "type": "string",
+          "description": "ENH-2869: loop-default reasoning-effort level (e.g. low/medium/high/xhigh/max). State-level StateConfig.effort overrides it; the run-level --effort flag overrides both. No default (unset means no effort suffix shown)."
         },
         "max_tokens": {
           "type": "integer",

@@ -560,6 +560,7 @@ Run a loop.
 | `--no-host-guard` | | Disable the adaptive host memory-pressure guard (`host_guard:` block, ENH-2452). By default the guard samples host memory before each prompt-mode state and adds an extra cooldown / routes / aborts per the loop's `host_guard:` config. |
 | `--host-guard-budget-mb N` | | Override `host_guard.max_cumulative_subproc_mb`: cap on summed peak subprocess RSS (MB) across the run (ENH-2453). `0` disables the budget. |
 | `--model` | | Default model for host-CLI action states (`prompt`/`slash_command`). Per-state `model:` key overrides this. |
+| `--effort` | | Default reasoning-effort level (`low`/`medium`/`high`/`xhigh`/`max`) for host-CLI action states. Per-state `effort:` key overrides this. When set, shown appended to the header's `model:` value, e.g. `model: claude-sonnet-4-6 [LOW]` (ENH-2869). |
 | `--llm-model` | | Override model for FSM evaluator/judge states (distinct from `--model`) |
 | `--dry-run` | | Show execution plan without running. Diagram rendering is not suppressed — combine with `--show-diagrams` to preview both the FSM diagram and the execution plan. |
 | `--background` | `-b` | Run as background daemon |
@@ -612,6 +613,16 @@ ll-loop run general-task "fix the lint warnings"
 ```
 
 When `--llm-model` is passed, the header reflects the override model. When the detection fails (e.g., non-Claude host), the field shows `unknown`.
+
+When an effort level is set (state override, `--effort` run override, or loop-level `llm.effort` default), it's appended directly onto the `model:` value — bracketed, upper-cased, one space after the model name, no separate label (ENH-2869):
+
+```
+ll-loop run general-task "fix the lint warnings"
+  model: claude-sonnet-4-6 [LOW]
+  [state transitions follow]
+```
+
+When no effort level is set anywhere in that chain, the `model:` value is unchanged (bare).
 
 ##### Per-State Token/Cost Summary (ENH-1797)
 
@@ -672,7 +683,7 @@ Pass `--cost-output-json PATH` to also write the same per-state aggregates as a 
 
 State rows are sorted by name. Totals mirror the same metric keys. `cost_usd` is `0.0` for any state where at least one row used an unknown model (the `has_unknown_model` flag is surfaced only in the Python API, not the JSON). The flag is forwarded through `ll-loop run --background` re-exec so detached runs honor the same destination (BUG-1414 prevention).
 
-> **Note:** `agent:`, `tools:`, and `model:` are per-state YAML fields, not CLI flags. See [Subprocess Agent and Tool Scoping](../guides/LOOPS_GUIDE.md#subprocess-agent-and-tool-scoping) in the Loops Guide for per-state agent, tool, and model scoping options.
+> **Note:** `agent:`, `tools:`, `model:`, and `effort:` are per-state YAML fields, not CLI flags. See [Subprocess Agent and Tool Scoping](../guides/LOOPS_GUIDE.md#subprocess-agent-and-tool-scoping) in the Loops Guide for per-state agent, tool, model, and effort scoping options.
 
 ##### Failure Reason Display
 

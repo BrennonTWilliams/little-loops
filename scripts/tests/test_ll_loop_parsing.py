@@ -41,6 +41,7 @@ class TestLoopArgumentParsing:
         parser.add_argument("--no-llm", action="store_true")
         parser.add_argument("--no-lock", action="store_true")
         parser.add_argument("--model", type=str, dest="run_model")
+        parser.add_argument("--effort", type=str, dest="run_effort")
         parser.add_argument("--llm-model", type=str)
         parser.add_argument("--context", action="append", default=[], metavar="KEY=VALUE")
         parser.add_argument("--program-md", type=Path, default=None)
@@ -221,6 +222,27 @@ class TestLoopArgumentParsing:
             ["test-loop", "--model", "claude-haiku-4-5-20251001", "--llm-model", "claude-opus-4-8"]
         )
         assert args.run_model == "claude-haiku-4-5-20251001"
+        assert args.llm_model == "claude-opus-4-8"
+
+    def test_run_effort_flag_parsed_correctly(self) -> None:
+        """--effort accepts effort string and stores as run_effort."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["test-loop", "--effort", "low"])
+        assert args.run_effort == "low"
+
+    def test_run_effort_default_is_none(self) -> None:
+        """--effort defaults to None when not specified."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["test-loop"])
+        assert getattr(args, "run_effort", None) is None
+
+    def test_run_effort_independent_of_llm_model(self) -> None:
+        """--effort and --llm-model are independent flags."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(
+            ["test-loop", "--effort", "high", "--llm-model", "claude-opus-4-8"]
+        )
+        assert args.run_effort == "high"
         assert args.llm_model == "claude-opus-4-8"
 
     def test_context_single_flag(self) -> None:

@@ -106,6 +106,7 @@ def make_test_state(
     timeout: int | None = None,
     on_maintain: str | None = None,
     model: str | None = None,
+    effort: str | None = None,
 ) -> StateConfig:
     """Create a StateConfig for testing.
 
@@ -125,6 +126,7 @@ def make_test_state(
         timeout=timeout,
         on_maintain=on_maintain,
         model=model,
+        effort=effort,
     )
 
 

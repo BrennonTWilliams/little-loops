@@ -1036,6 +1036,143 @@ states:
         assert captured_model, "action runner was never called"
         assert captured_model[0] == "claude-opus-4-8", "state model should win over run_model"
 
+    def test_run_effort_flag_accepted_with_dry_run(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """--effort flag is accepted by the CLI with --dry-run."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_content = """
+name: test-loop
+initial: done
+states:
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-loop.yaml").write_text(loop_content)
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-loop", "run", "test-loop", "--effort", "low", "--dry-run"],
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+
+    def test_run_effort_propagates_to_fsm_executor(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """--effort propagates as run_effort kwarg to FSMExecutor via PersistentExecutor."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_content = """
+name: test-loop
+initial: check
+states:
+  check:
+    action: "echo test"
+    evaluate:
+      type: exit_code
+    on_yes: done
+    on_no: check
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-loop.yaml").write_text(loop_content)
+
+        monkeypatch.chdir(tmp_path)
+        captured_kwargs: dict = {}
+
+        from little_loops.fsm.executor import FSMExecutor
+
+        original_fsm_init = FSMExecutor.__init__
+
+        def capture_fsm_executor_init(self: Any, fsm: Any, **kwargs: Any) -> None:
+            captured_kwargs.update(kwargs)
+            original_fsm_init(self, fsm, **kwargs)
+
+        with patch("little_loops.fsm.executor.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["bash", "-c", "echo test"],
+                returncode=0,
+                stdout="test",
+                stderr="",
+            )
+            with patch.object(FSMExecutor, "__init__", capture_fsm_executor_init):
+                with patch.object(
+                    sys,
+                    "argv",
+                    ["ll-loop", "run", "test-loop", "--effort", "low"],
+                ):
+                    from little_loops.cli import main_loop
+
+                    main_loop()
+
+        assert captured_kwargs.get("run_effort") == "low"
+
+    def test_run_effort_used_as_fallback(self) -> None:
+        """FSMExecutor.run_effort is used when state has no per-state effort."""
+        from little_loops.fsm.executor import FSMExecutor
+        from little_loops.fsm.schema import EvaluateConfig
+
+        fsm = make_test_fsm()
+        fsm.states["start"] = make_test_state(
+            action="/ll:some-skill",
+            evaluate=EvaluateConfig(type="exit_code"),
+            on_yes="done",
+            on_no="done",
+            effort=None,  # no per-state effort
+        )
+
+        executor = FSMExecutor(fsm, run_effort="low")
+
+        assert executor._resolve_action_effort(fsm.states["start"]) == "low"
+
+    def test_state_effort_overrides_run_effort(self) -> None:
+        """Per-state StateConfig.effort takes precedence over FSMExecutor.run_effort."""
+        from little_loops.fsm.executor import FSMExecutor
+        from little_loops.fsm.schema import EvaluateConfig
+
+        fsm = make_test_fsm()
+        fsm.states["start"] = make_test_state(
+            action="/ll:some-skill",
+            evaluate=EvaluateConfig(type="exit_code"),
+            on_yes="done",
+            on_no="done",
+            effort="high",  # per-state override
+        )
+
+        executor = FSMExecutor(fsm, run_effort="low")
+
+        assert executor._resolve_action_effort(fsm.states["start"]) == "high"
+
+    def test_llm_effort_used_when_no_state_or_run_effort(self) -> None:
+        """fsm.llm.effort is the final fallback when neither state nor run effort is set."""
+        from little_loops.fsm.executor import FSMExecutor
+        from little_loops.fsm.schema import EvaluateConfig
+
+        fsm = make_test_fsm()
+        fsm.llm.effort = "medium"
+        fsm.states["start"] = make_test_state(
+            action="/ll:some-skill",
+            evaluate=EvaluateConfig(type="exit_code"),
+            on_yes="done",
+            on_no="done",
+            effort=None,
+        )
+
+        executor = FSMExecutor(fsm)
+
+        assert executor._resolve_action_effort(fsm.states["start"]) == "medium"
+
     def test_no_llm_prevents_explicit_llm_structured_evaluation(self) -> None:
         """llm.enabled=False blocks evaluate_llm_structured for explicit llm_structured config."""
         from unittest.mock import patch

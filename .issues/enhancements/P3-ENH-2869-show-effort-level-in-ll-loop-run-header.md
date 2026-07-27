@@ -1,7 +1,8 @@
 ---
 id: ENH-2869
-status: open
+status: done
 captured_at: '2026-07-27T00:00:00Z'
+completed_at: '2026-07-27T22:32:12Z'
 discovered_date: 2026-07-27
 discovered_by: capture-issue
 confidence_score: 98
@@ -122,6 +123,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-27T22:31:45Z - `a989870a-4a84-452d-b355-16a61c64b6de.jsonl`
+- `/ll:ready-issue` - 2026-07-27T22:11:17 - `770fbf22-d27b-4210-9e4d-be08369745ca.jsonl`
 - `/ll:confidence-check` - 2026-07-27T22:09:58 - `dc7b97b2-5fb5-4663-a58c-b2d0b4ed36e1.jsonl`
 - `/ll:wire-issue` - 2026-07-27T22:08:35 - `4df334c0-8486-4924-989f-828d3f4812d1.jsonl`
 - `/ll:refine-issue` - 2026-07-27T22:02:02 - `18aefba9-f220-445e-aa33-430e2cbf1440.jsonl`

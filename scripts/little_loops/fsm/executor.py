@@ -184,6 +184,7 @@ class FSMExecutor:
         loops_dir: Path | None = None,
         circuit: RateLimitCircuit | None = None,
         run_model: str | None = None,
+        run_effort: str | None = None,
         working_dir: Path | None = None,
         compression_config: CompressionConfig | None = None,
         orchestration_config: OrchestrationConfig | None = None,
@@ -201,6 +202,10 @@ class FSMExecutor:
             run_model: Run-level default model for host-CLI action states. Per-state
                 StateConfig.model overrides this value. Inherited by nested
                 sub-loop executors (BUG-2819).
+            run_effort: Run-level default reasoning-effort level (ENH-2869).
+                Per-state StateConfig.effort overrides this value; resolved via
+                ``state.effort or self.run_effort or self.fsm.llm.effort``
+                (_resolve_action_effort()).
             working_dir: Optional cwd override for this loop's subprocesses
                 (ENH-2609). The Python process itself never chdirs; only spawned
                 shell/prompt/mcp subprocesses run with this cwd. Inherited by
@@ -228,6 +233,7 @@ class FSMExecutor:
         self.loops_dir = loops_dir
         self._circuit = circuit
         self.run_model = run_model
+        self.run_effort = run_effort
         self.working_dir = working_dir
         self.orchestration_config = orchestration_config
         # FEAT-2675: project-level heuristic prompt-compression config. None (default)
@@ -992,6 +998,7 @@ class FSMExecutor:
             working_dir=child_working_dir,
             orchestration_config=self.orchestration_config,
             run_model=self.run_model,
+            run_effort=self.run_effort,
             compression_config=self.compression_config,
         )
         child_executor._depth = depth  # propagate depth for further nesting
@@ -1703,6 +1710,13 @@ class FSMExecutor:
                 **extra_kwargs,
             )
 
+        # ENH-2869: resolve the reasoning-effort level for header display. No host
+        # surface reports an "actual" effort value back, so this is always the
+        # *resolved* config value (state/run/loop-default precedence), gated to
+        # prompt-mode the same way `model` is above — shell/mcp actions have no
+        # effort concept.
+        effort_value = self._resolve_action_effort(state) if action_mode == "prompt" else None
+
         preview = result.output[-2000:].strip() if result.output else None
         # ENH-2469: surface shell-action stderr to operators. Additive field —
         # existing consumers of output_preview are unaffected.
@@ -1717,6 +1731,8 @@ class FSMExecutor:
         if action_mode == "prompt":
             session_jsonl = get_current_session_jsonl()
             payload["session_jsonl"] = str(session_jsonl) if session_jsonl else None
+        if effort_value is not None:
+            payload["effort"] = effort_value
         # Aggregate token usage from host-CLI invocations (prompt / slash_command only)
         if result.usage_events:
             total_input = sum(u.input_tokens for u in result.usage_events)
@@ -2258,6 +2274,16 @@ class FSMExecutor:
         string outright (BUG-2818).
         """
         return state.model or self.run_model or self.fsm.llm.model
+
+    def _resolve_action_effort(self, state: StateConfig) -> str | None:
+        """Resolve the action-dispatch reasoning-effort level: state override,
+        run override, else ``fsm.llm.effort`` (ENH-2869).
+
+        Mirrors ``_resolve_action_model()``'s precedence chain, but ``effort``
+        has no forced default (``LLMConfig.effort`` defaults to ``None``) —
+        the header only appends a suffix when a value is actually set.
+        """
+        return state.effort or self.run_effort or self.fsm.llm.effort
 
     def _dispatch_live(
         self, state: StateConfig, action: str, ctx: InterpolationContext

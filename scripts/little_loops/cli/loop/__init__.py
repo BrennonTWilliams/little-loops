@@ -194,6 +194,17 @@ Examples:
             help="Override model for FSM evaluator/judge states (distinct from --model).",
         )
         run_parser.add_argument(
+            "--effort",
+            type=str,
+            dest="run_effort",
+            metavar="EFFORT",
+            help=(
+                "Default reasoning-effort level for host-CLI action states "
+                "(prompt/slash-command), e.g. low/medium/high/xhigh/max. "
+                "Per-state effort: overrides this."
+            ),
+        )
+        run_parser.add_argument(
             "--dry-run", action="store_true", help="Show execution plan without running"
         )
         run_parser.add_argument(

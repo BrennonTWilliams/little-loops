@@ -1385,6 +1385,79 @@ class TestModelStateValidation:
         assert model_warnings == []
 
 
+class TestEffortStateValidation:
+    """ENH-2869: effort: override validation — mirrors TestModelStateValidation."""
+
+    def test_effort_on_shell_state_emits_warning(self) -> None:
+        """effort: on a shell state emits a validation WARNING."""
+        fsm = FSMLoop(
+            name="test-loop",
+            initial="work",
+            states={
+                "work": StateConfig(
+                    action="echo hi",
+                    action_type="shell",
+                    effort="low",
+                    next="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_state_action("work", fsm.states["work"])
+        warnings = [e for e in errors if e.severity == ValidationSeverity.WARNING]
+        assert any("effort" in w.message and "ignored" in w.message for w in warnings)
+
+    def test_effort_on_prompt_state_no_warning(self) -> None:
+        """effort: on a prompt state does not emit a warning."""
+        fsm = FSMLoop(
+            name="test-loop",
+            initial="work",
+            states={
+                "work": StateConfig(
+                    action="/ll:test",
+                    action_type="prompt",
+                    effort="low",
+                    next="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = _validate_state_action("work", fsm.states["work"])
+        effort_warnings = [
+            e for e in errors if e.severity == ValidationSeverity.WARNING and "effort" in e.message
+        ]
+        assert effort_warnings == []
+
+    def test_effort_on_mcp_tool_state_emits_warning(self) -> None:
+        """effort: on an mcp_tool state emits a validation WARNING."""
+        state = StateConfig(
+            action="server/tool",
+            action_type="mcp_tool",
+            effort="high",
+            next="done",
+        )
+        errors = _validate_state_action("check", state)
+        warnings = [e for e in errors if e.severity == ValidationSeverity.WARNING]
+        assert any("effort" in w.message and "ignored" in w.message for w in warnings)
+
+    def test_effort_on_shell_state_with_llm_structured_evaluate_no_warning(self) -> None:
+        """effort: on a shell state paired with an llm_structured evaluate block
+        does not fire the "ignored" WARNING, mirroring model's ENH-2713 exemption."""
+        state = StateConfig(
+            action="run.sh",
+            action_type="shell",
+            effort="low",
+            evaluate=EvaluateConfig(type="llm_structured"),
+            on_yes="done",
+            on_no="work",
+        )
+        errors = _validate_state_action("work", state)
+        effort_warnings = [
+            e for e in errors if e.severity == ValidationSeverity.WARNING and "effort" in e.message
+        ]
+        assert effort_warnings == []
+
+
 class TestHaikuPinnedGenerator:
     """ENH-2713: haiku-pinned generator states get a WARN — no MR-1 backstop."""
 

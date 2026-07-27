@@ -615,6 +615,7 @@ def cmd_resume(
             running_dir=running_dir,
             loop_path=loop_path,
             model=fsm.llm.model,
+            effort=fsm.llm.effort,
         )
     finally:
         executor.close_transports()
@@ -696,6 +697,7 @@ def cmd_monitor(args: argparse.Namespace, loops_dir: Path) -> int:
         loops_dir=loops_dir,
         loop_path=loop_path,
         model=fsm.llm.model,
+        effort=fsm.llm.effort,
         show_input=_config.loops.run_defaults.show_input,
     )
 

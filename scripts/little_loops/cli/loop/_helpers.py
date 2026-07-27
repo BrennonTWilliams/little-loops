@@ -468,6 +468,7 @@ def _build_pinned_pane(
     prev_state_at_depth: dict[int, str] | None = None,
     loop_path: Path | None = None,
     model: str | None = None,
+    effort: str | None = None,
     show_input: bool = True,
     rows: int | None = None,
     min_action_rows: int = MIN_ACTION_ROWS,
@@ -599,7 +600,7 @@ def _build_pinned_pane(
     # variants and collapses to the single-line `fsm:` floor (BUG: general-task).
     lines.extend(
         _render_artifact_header_lines(
-            fsm, loop_path, model, _resolve_input_value(fsm, show_input), cols
+            fsm, loop_path, model, _resolve_input_value(fsm, show_input), cols, effort=effort
         )
     )
 
@@ -637,6 +638,7 @@ def _render_pinned_pane(
     prev_state_at_depth: dict[int, str] | None = None,
     loop_path: Path | None = None,
     model: str | None = None,
+    effort: str | None = None,
     show_input: bool = True,
 ) -> int:
     """Render the pinned pane to stdout and set the scroll region beneath it.
@@ -677,6 +679,7 @@ def _render_pinned_pane(
             prev_state_at_depth=prev_map,
             loop_path=loop_path,
             model=model,
+            effort=effort,
             show_input=show_input,
             rows=rows,
             min_action_rows=effective_min_action_rows,
@@ -847,6 +850,7 @@ class StateFeedRenderer:
         loops_dir: Path | None = None,
         loop_path: Path | None = None,
         model: str | None = None,
+        effort: str | None = None,
         show_input: bool = True,
     ) -> None:
         self.fsm = fsm
@@ -857,6 +861,7 @@ class StateFeedRenderer:
         self.loops_dir = loops_dir or Path(".")
         self.loop_path = loop_path
         self.model = model
+        self.effort = effort
         self.show_input = show_input
 
         # Derived from args
@@ -901,6 +906,7 @@ class StateFeedRenderer:
             prev_state_at_depth=self.prev_state_at_depth,
             loop_path=self.loop_path,
             model=self.model,
+            effort=self.effort,
             show_input=self.show_input,
         )
 
@@ -1031,6 +1037,7 @@ class StateFeedRenderer:
                     self.model,
                     _resolve_input_value(self.fsm, self.show_input),
                     tw,
+                    effort=self.effort,
                 ):
                     print(line, flush=True)
                 print(diagram, flush=True)
@@ -1084,6 +1091,9 @@ class StateFeedRenderer:
             actual_model = event.get("model")
             if actual_model:
                 self.model = actual_model
+            actual_effort = event.get("effort")
+            if actual_effort:
+                self.effort = actual_effort
             if not self.quiet:
                 duration_ms = event.get("duration_ms", 0)
                 exit_code = event.get("exit_code", 0)
@@ -1297,21 +1307,29 @@ def _render_artifact_header_lines(
     model: str | None,
     input_value: str | None,
     cols: int,
+    *,
+    effort: str | None = None,
 ) -> list[str]:
     """Compose the diagram-header artifact lines.
 
     Packs ``input:`` onto the ``loop:`` row and ``model:`` onto the
     ``run_dir:`` row (falling back to a standalone ``model:`` line when no
     ``run_dir`` context value is present) — ``input`` never separates from
-    ``loop`` and ``model`` never separates from ``run_dir``. Adjacent rows
-    are then greedily merged onto a single line, front to back, as long as
-    the combined row still fits within ``cols`` display columns — so all
-    rows collapse to one line when there's room, and only the row(s) that
-    don't fit spill onto subsequent lines. Each resulting line is clamped to
-    ``cols`` via ``_truncate_to_width_ansi`` as a safety net for a single
-    value too long to fit even alone.
+    ``loop`` and ``model`` never separates from ``run_dir``. When ``effort``
+    is set (ENH-2869), it's appended directly onto the ``model:`` value —
+    no separate label, one space after the model name, bracketed and
+    upper-cased (``model: <model> [<EFFORT>]``); when ``effort`` is ``None``
+    the ``model:`` value is unchanged. Adjacent rows are then greedily merged
+    onto a single line, front to back, as long as the combined row still fits
+    within ``cols`` display columns — so all rows collapse to one line when
+    there's room, and only the row(s) that don't fit spill onto subsequent
+    lines. Each resulting line is clamped to ``cols`` via
+    ``_truncate_to_width_ansi`` as a safety net for a single value too long
+    to fit even alone.
     """
     from little_loops.cli.loop.layout import _display_width, _truncate_to_width_ansi
+
+    model_display = model if model is None or effort is None else f"{model} [{effort.upper()}]"
 
     artifact_pairs = _artifact_lines(fsm, loop_path)
     run_dir_present = any(key == "run_dir" for key, _ in artifact_pairs)
@@ -1320,11 +1338,11 @@ def _render_artifact_header_lines(
         line = f"  {key}: {colorize(value, '2')}"
         if key == "loop" and input_value:
             line += f"  input: {colorize(input_value, '2')}"
-        elif key == "run_dir" and model is not None:
-            line += f"  model: {colorize(model, '2')}"
+        elif key == "run_dir" and model_display is not None:
+            line += f"  model: {colorize(model_display, '2')}"
         rows.append(line)
-    if model is not None and not run_dir_present:
-        rows.append(f"  model: {colorize(model, '2')}")
+    if model_display is not None and not run_dir_present:
+        rows.append(f"  model: {colorize(model_display, '2')}")
 
     if not rows:
         return []
@@ -1593,6 +1611,9 @@ def run_background(
     run_model = getattr(args, "run_model", None)
     if run_model:
         cmd.extend(["--model", run_model])
+    run_effort = getattr(args, "run_effort", None)
+    if run_effort:
+        cmd.extend(["--effort", run_effort])
     llm_model = getattr(args, "llm_model", None)
     if llm_model:
         cmd.extend(["--llm-model", llm_model])
@@ -1684,6 +1705,7 @@ def run_foreground(
     running_dir: Path | None = None,
     loop_path: Path | None = None,
     model: str | None = None,
+    effort: str | None = None,
     show_input: bool = True,
     cost_output_json: Path | None = None,
 ) -> int:
@@ -1732,6 +1754,7 @@ def run_foreground(
             loops_dir=getattr(executor, "loops_dir", Path(".")),
             loop_path=loop_path,
             model=model,
+            effort=effort,
             show_input=show_input,
         )
         if not renderer.quiet:
@@ -1742,7 +1765,8 @@ def run_foreground(
             for key, value in _artifact_lines(fsm, loop_path):
                 print(f"  {key}: {colorize(value, '2')}")
             if model is not None:
-                print(f"  model: {colorize(model, '2')}")
+                model_line = model if effort is None else f"{model} [{effort.upper()}]"
+                print(f"  model: {colorize(model_line, '2')}")
             print()
 
         # Wire progress display via the EventBus on PersistentExecutor

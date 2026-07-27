@@ -585,6 +585,7 @@ These fields apply to `action_type: prompt` states only:
 | `agent:` | Passes `--agent <name>` to the Claude subprocess — loads `.claude/agents/<name>.md` with its system prompt and tool set. |
 | `tools:` | Passes `--tools <csv>` — scopes available tools without a full agent file (e.g. `["Read", "Bash"]`). |
 | `model:` | Passes `--model <id>` for this state only — use a cheap model for routing states, an expensive one for evaluation states. |
+| `effort:` | Reasoning-effort level for this state only (`low`/`medium`/`high`/`xhigh`/`max`), resolved via `state.effort` or the run-level `--effort` flag or the loop-level `llm.effort` default. When set, shown appended (bracketed, upper-cased) to the `model:` value in the `ll-loop run` header (ENH-2869). |
 
 **Pinning haiku on verdict states**: `model:` is most valuable on `check_semantic`/`llm_structured` verdict states — they emit a small, structured judgment (pass/fail, a routing label) rather than open-ended generation, so a cheaper model rarely changes the outcome but does cut cost:
 
@@ -735,7 +736,7 @@ After adding this block, `ll-loop run my-loop` behaves identically to `ll-loop r
 - `mode` (`string | null`, default `null`) — reserved for a future `--mode` flag; no effect currently
 - `include` (`string`, default `""`) — default loop allowlist injected into `fsm.context["include"]`; empty string = all loops visible. Accepts comma-separated selectors: `loop-name`, `builtin:*`, `project:*`, `category:<label>`. Override per-invocation with `--context include=VALUE`
 - `delay` (`number | null`, default `null`) — inject `--delay <seconds>` (a non-negative inter-iteration pause) into every `ll-loop run`. Useful for relieving host memory pressure between iterations or for consistent screen-recording cadence. Explicit `--delay` overrides; `null` disables
-- `show_input` (`boolean`, default `true`) — show the `input:` value (packed onto the `loop:` row) and the model (packed onto the `run_dir:` row) in the diagram header, in both the pinned and non-pinned render paths (ENH-2596). Previously the input value was silently dropped by the header's path-like artifact filter. Set `false` to hide it, e.g. when `input` carries sensitive data.
+- `show_input` (`boolean`, default `true`) — show the `input:` value (packed onto the `loop:` row) and the model (packed onto the `run_dir:` row) in the diagram header, in both the pinned and non-pinned render paths (ENH-2596). Previously the input value was silently dropped by the header's path-like artifact filter. Set `false` to hide it, e.g. when `input` carries sensitive data. When an effort level is set, it's appended directly onto that same model value (bracketed, upper-cased) rather than packed as its own field (ENH-2869).
 
 Only `ll-loop run` reads `run_defaults`. Other subcommands (`validate`, `list`, etc.) are unaffected.
 

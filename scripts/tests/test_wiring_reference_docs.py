@@ -177,6 +177,7 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     # REMOVED (stale/false-positive): ("docs/reference/CONFIGURATION.md", "DesignTokensConfig", "FEAT-1758"),
     ("docs/reference/API.md", "#### DesignTokensConfig", "FEAT-1758"),
     ("docs/reference/API.md", "DesignTokensConfig", "FEAT-1758"),
+    ("docs/reference/API.md", "effort: str | None = None", "ENH-2869"),
 ]
 
 

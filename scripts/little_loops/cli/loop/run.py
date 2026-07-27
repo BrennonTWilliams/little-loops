@@ -575,6 +575,7 @@ def cmd_run(
             instance_id=instance_id,
             pid=os.getpid(),
             run_model=getattr(args, "run_model", None) or None,
+            run_effort=getattr(args, "run_effort", None) or None,
             compression_config=_config.compression,
             orchestration_config=_config.orchestration,
         )
@@ -598,6 +599,7 @@ def cmd_run(
             loop_path=path,
             running_dir=running_dir,
             model=fsm.llm.model,
+            effort=fsm.llm.effort,
             show_input=_config.loops.run_defaults.show_input,
             cost_output_json=getattr(args, "cost_output_json", None),
         )

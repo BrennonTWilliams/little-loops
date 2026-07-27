@@ -670,6 +670,12 @@ class StateConfig:
     # injects the prior chained state's compact-summary into this state's
     # prompt (fsm/executor.py); never crosses a handoff/spawn boundary.
     session_mode: str | None = None
+    # ENH-2869: reasoning-effort level override. State override of the
+    # loop-default tier (LLMConfig.effort). Vocabulary: low/medium/high/xhigh/max
+    # (undocumented as a Literal, mirroring session_mode). Resolved via
+    # `state.effort or self.run_effort or self.fsm.llm.effort`
+    # (_resolve_action_effort() in fsm/executor.py).
+    effort: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -759,6 +765,8 @@ class StateConfig:
             result["pruning_profile"] = self.pruning_profile.to_dict()
         if self.session_mode is not None:
             result["session_mode"] = self.session_mode
+        if self.effort is not None:
+            result["effort"] = self.effort
 
         return result
 
@@ -863,6 +871,7 @@ class StateConfig:
             cost_ceiling=cost_ceiling,
             pruning_profile=pruning_profile,
             session_mode=data.get("session_mode"),
+            effort=data.get("effort"),
             fragment_name=data.get("fragment_name"),
             fragment_bindings=data.get("fragment_bindings", {}),
             fragment_parameters={
@@ -927,6 +936,11 @@ class LLMConfig:
     model: str = DEFAULT_LLM_MODEL
     max_tokens: int = 256
     timeout: int = 1800
+    # ENH-2869: loop-default reasoning-effort tier for _resolve_action_effort()'s
+    # `state.effort or self.run_effort or self.fsm.llm.effort` precedence chain.
+    # Vocabulary: low/medium/high/xhigh/max (undocumented as a Literal, like
+    # StateConfig.session_mode). No forced default — None means unset.
+    effort: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -940,6 +954,8 @@ class LLMConfig:
             result["max_tokens"] = self.max_tokens
         if self.timeout != 1800:
             result["timeout"] = self.timeout
+        if self.effort is not None:
+            result["effort"] = self.effort
 
         return result if result else {}
 
@@ -951,6 +967,7 @@ class LLMConfig:
             model=data.get("model", DEFAULT_LLM_MODEL),
             max_tokens=data.get("max_tokens", 256),
             timeout=data.get("timeout", 1800),
+            effort=data.get("effort"),
         )
 
 

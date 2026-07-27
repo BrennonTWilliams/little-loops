@@ -706,6 +706,22 @@ def _validate_state_action(state_name: str, state: StateConfig) -> list[Validati
             )
         )
 
+    # effort: override follows the same action-type applicability as model:
+    # (ENH-2869) — silently ignored for non-prompt action states unless an
+    # llm_structured/check_semantic evaluate block consumes it.
+    if (
+        state.effort is not None
+        and state.action_type not in ("prompt", "slash_command", None)
+        and not _is_llm_judged(state)
+    ):
+        errors.append(
+            ValidationError(
+                message="effort: override is ignored for shell/mcp_tool/contract states",
+                path=f"{path}.effort",
+                severity=ValidationSeverity.WARNING,
+            )
+        )
+
     # params field is only valid for mcp_tool states
     if state.params and state.action_type != "mcp_tool":
         errors.append(

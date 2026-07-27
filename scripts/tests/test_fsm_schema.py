@@ -4078,6 +4078,50 @@ class TestSessionMode:
         assert fsm.session_mode_ok is False
 
 
+class TestEffort:
+    """ENH-2869: effort (reasoning-effort level) field round-trip serialization.
+
+    Mirrors TestSessionMode's pattern, but the loop-default tier lives on
+    LLMConfig.effort (mirroring LLMConfig.model), not a bare FSMLoop.effort
+    field, matching the `state.effort or self.run_effort or
+    self.fsm.llm.effort` precedence chain used by _resolve_action_effort().
+    """
+
+    def test_state_effort_round_trips(self) -> None:
+        state = StateConfig(action="run.sh", effort="low")
+        d = state.to_dict()
+        assert d.get("effort") == "low"
+        restored = StateConfig.from_dict(d)
+        assert restored.effort == "low"
+
+    def test_state_effort_none_omitted_from_dict(self) -> None:
+        state = StateConfig(action="run.sh")
+        d = state.to_dict()
+        assert "effort" not in d
+
+    def test_state_effort_defaults_none(self) -> None:
+        state = StateConfig.from_dict({"action": "run.sh"})
+        assert state.effort is None
+
+    def test_llmconfig_effort_round_trips(self) -> None:
+        from little_loops.fsm.schema import LLMConfig
+
+        llm = LLMConfig(effort="high")
+        d = llm.to_dict()
+        assert d.get("effort") == "high"
+        restored = LLMConfig.from_dict(d)
+        assert restored.effort == "high"
+
+    def test_fsmloop_default_omits_effort_key(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+        )
+        d = fsm.to_dict()
+        assert "effort" not in d.get("llm", {})
+
+
 class TestTerminalActionOk:
     """BUG-2813: terminal_action_ok field round-trip serialization."""
 

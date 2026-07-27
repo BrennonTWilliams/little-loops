@@ -5093,6 +5093,7 @@ class StateConfig:
     agent: str | None = None           # Subprocess agent name; passes --agent <name> to Claude CLI (prompt states only)
     tools: list[str] | None = None     # Subprocess tool scope; passes --tools <csv> to Claude CLI (prompt states only)
     model: str | None = None           # Model override for this state's LLM action
+    effort: str | None = None          # Reasoning-effort override (low/medium/high/xhigh/max); resolved via state.effort or self.run_effort or self.fsm.llm.effort (ENH-2869)
     extra_routes: dict[str, str] = field(default_factory=dict)  # Additional on_<verdict> → state mappings
     type: str | None = None            # State type marker (e.g., "learning")
     max_rate_limit_retries: int | None = None        # Short-burst tier budget; requires on_rate_limit_exhausted
@@ -5297,6 +5298,7 @@ class LLMConfig:
     model: str = DEFAULT_LLM_MODEL  # Default from schema.py
     max_tokens: int = 256
     timeout: int = 30
+    effort: str | None = None       # Loop-default reasoning-effort tier; state.effort/--effort override it (ENH-2869)
 ```
 
 ---
