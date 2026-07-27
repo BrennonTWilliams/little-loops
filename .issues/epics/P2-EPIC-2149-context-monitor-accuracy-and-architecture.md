@@ -6,6 +6,8 @@ priority: P2
 status: open
 discovered_date: 2026-06-13
 discovered_by: research-review
+blocked_by:
+  - ENH-2148
 labels:
   - context-monitor
   - accuracy

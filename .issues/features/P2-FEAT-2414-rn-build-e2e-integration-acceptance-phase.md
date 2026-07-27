@@ -108,7 +108,7 @@ Reuse FEAT-2413's run-gate for build/service startup rather than duplicating it.
 
 ## Scope Boundaries
 
-- Depends on FEAT-2413 for build/service startup primitives.
+- Built on FEAT-2413's build/service startup primitives (shipped).
 - Does not add archetype-specific check derivation (FEAT-2416 supplies that); a
   generic derivation is sufficient here.
 
@@ -123,7 +123,7 @@ Reuse FEAT-2413's run-gate for build/service startup rather than duplicating it.
 - **Priority**: P2 - Turns the spec's acceptance criteria into an executable contract,
   closing the cross-feature integration gap that currently escapes all automated gates.
 - **Effort**: Large - Three new states plus a new terminal in `rn-build.yaml`, wired
-  into the existing eval-retry loop; depends on FEAT-2413's run-gate primitives.
+  into the existing eval-retry loop; built on FEAT-2413's run-gate primitives.
 - **Risk**: Medium - Adds a new failure terminal to the core build path; generic
   (non-archetype) check derivation limits false negatives.
 - **Breaking Change**: No

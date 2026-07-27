@@ -96,7 +96,7 @@ Archetypes to ship: `static-web`, `cli`, `api-service`, `full-stack`, `library`,
 
 - Mobile (iOS/Android/React Native) and full CD/deployment are explicitly out of
   scope for the first cut; the run-gate is a local build/start/probe.
-- Depends on FEAT-2413 (run-gate oracle) and pairs with FEAT-2414 (acceptance phase).
+- Built on FEAT-2413 (run-gate oracle, shipped) and pairs with FEAT-2414 (acceptance phase).
 
 ## Integration Map
 

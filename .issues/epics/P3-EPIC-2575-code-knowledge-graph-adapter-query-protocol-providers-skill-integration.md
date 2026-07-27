@@ -29,8 +29,8 @@ The main risk is staleness, not integration: loops mutate the codebase continuou
 ## Children
 
 - **FEAT-2576** (P3, unblocked) — `CodeQueryProvider` protocol (`callers_of`, `callees_of`, `importers_of`, `defines`, `references`, `impact_of`, `capabilities`, `status`), registry-backed resolver modeled on `adapters/core.py`, grep/AST **fallback provider** as the day-one reference implementation, and the `ll-code` CLI command skills can call via Bash allowlists.
-- **ENH-2577** (P3, blocked by FEAT-2576) — codegraph provider: read-only queries against `.codegraph/codegraph.db`, capability declaration, staleness detection (index mtime vs. git HEAD + dirty files) with a configurable `strict | warn | off` policy, and a `code_query` config block.
-- **ENH-2578** (P3, blocked by FEAT-2576 + ENH-2577) — `/ll:wire-issue` graph-first discovery phase (seed candidates via `ll-code`, confirm via targeted Grep, silent fallback to today's flow when no provider is fresh), plus before/after token/turn measurement on benchmark issues that decides whether `/ll:find-dead-code` and `/ll:audit-architecture` follow.
+- **ENH-2577** (P3, built on FEAT-2576) — codegraph provider: read-only queries against `.codegraph/codegraph.db`, capability declaration, staleness detection (index mtime vs. git HEAD + dirty files) with a configurable `strict | warn | off` policy, and a `code_query` config block.
+- **ENH-2578** (P3, built on FEAT-2576 + ENH-2577) — `/ll:wire-issue` graph-first discovery phase (seed candidates via `ll-code`, confirm via targeted Grep, silent fallback to today's flow when no provider is fresh), plus before/after token/turn measurement on benchmark issues that decides whether `/ll:find-dead-code` and `/ll:audit-architecture` follow.
 
 ## Scope
 

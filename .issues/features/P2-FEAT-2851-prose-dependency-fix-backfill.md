@@ -22,7 +22,7 @@ relates_to:
 Add an opt-in `--fix` mode to `ll-issues format-check` that backfills
 `blocked_by:` from confidently-matched prose dependency claims, staging a
 reviewable diff rather than writing silently (the `anchor-sweep --dry-run`
-posture). Decomposed from FEAT-2846; depends on FEAT-2849's extractor and
+posture). Decomposed from FEAT-2846; built on FEAT-2849's extractor and
 gap taxonomy.
 
 ## Parent Issue

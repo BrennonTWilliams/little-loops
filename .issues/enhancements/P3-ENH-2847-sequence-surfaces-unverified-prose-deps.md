@@ -46,7 +46,7 @@ prerequisites or whether an edge was simply never recorded. In the
 [P2, no blockers] FEAT-110: Smoke tests, .gitignore, plan tree sync, ...
 ```
 
-for an issue whose body reads "Depends on FEAT-109", with FEAT-109 still open.
+for an issue whose body names ENH-109 as a blocker, with ENH-109 still open.
 
 `--json` (`sequence.py:56-69`) has the same gap — consumers get
 `"blocked_by": []` with no signal that a prose claim exists.
@@ -87,7 +87,7 @@ stronger claim than the data supports.
 
 ## Implementation Steps
 
-1. Depends on FEAT-2846's `extract_prose_deps()` — this issue should not ship a
+1. Built on FEAT-2846's `extract_prose_deps()` — this issue should not ship a
    second extractor. (Recorded as `blocked_by: [FEAT-2846]`, which is exactly the
    invariant FEAT-2846 exists to enforce.)
 2. In `sequence.py`, for each shown issue with an empty `blocked_by` set,

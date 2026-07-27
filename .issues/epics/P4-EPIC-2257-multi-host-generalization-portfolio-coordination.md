@@ -68,7 +68,7 @@ epic.
     FEAT-2188 / FEAT-2189).
   - **FEAT-2387** — generic host-parameterized `ll-init --upgrade` surface
     refresh (per-host plugin update / adapter regeneration + gen-version
-    stamping; depends on BUG-2266 for scope-aware detection). The plan
+    stamping; built on BUG-2266 for scope-aware detection). The plan
     (2026-06-25) referred to this as "FEAT-2267" — when filed it received the
     real ID 2387.
 - Tracking the per-host epics as they sequence: EPIC-1463 (Codex polish),

@@ -459,3 +459,90 @@ class TestFormatCheckProseDeps:
         )
 
         assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# TestFormatCheckAll (FEAT-2850)
+# ---------------------------------------------------------------------------
+
+
+class TestFormatCheckAll:
+    """Repo-wide sweep mode via ``--all`` (FEAT-2850)."""
+
+    def test_no_issue_id_and_no_all_errors(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        result = _invoke(["ll-issues", "format-check", "--config", str(temp_project_dir)])
+        _, err = capsys.readouterr()
+
+        assert result == 1
+        assert "--all" in err
+
+    def test_all_clean_exits_zero(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        _write_issue(format_check_dir, "P3-BUG-9301-test-bug.md", _CLEAN_BUG_BODY.replace(
+            "id: BUG-9101", "id: BUG-9301"
+        ))
+
+        result = _invoke(["ll-issues", "format-check", "--all", "--config", str(temp_project_dir)])
+        out, _ = capsys.readouterr()
+
+        assert result == 0
+        assert "structurally compliant" in out
+
+    def test_all_reports_gapped_issue_only(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        _write_issue(format_check_dir, "P3-BUG-9302-test-bug.md", _CLEAN_BUG_BODY.replace(
+            "id: BUG-9101", "id: BUG-9302"
+        ))
+        gapped = _CLEAN_BUG_BODY.replace(
+            "id: BUG-9101", "id: BUG-9303"
+        ).replace("## Expected Behavior\nIt should not break.\n\n", "")
+        _write_issue(format_check_dir, "P3-BUG-9303-test-bug.md", gapped)
+
+        result = _invoke(["ll-issues", "format-check", "--all", "--config", str(temp_project_dir)])
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "BUG-9303" in out
+        assert "missing: Expected Behavior" in out
+        assert "BUG-9302" not in out
+
+    def test_all_json_output(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        gapped = _CLEAN_BUG_BODY.replace(
+            "id: BUG-9101", "id: BUG-9304"
+        ).replace("## Expected Behavior\nIt should not break.\n\n", "")
+        _write_issue(format_check_dir, "P3-BUG-9304-test-bug.md", gapped)
+
+        result = _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "--all",
+                "--format",
+                "json",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        data = json.loads(out)
+        assert data["BUG-9304"]["missing"] == ["Expected Behavior"]

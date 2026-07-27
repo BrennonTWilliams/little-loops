@@ -92,7 +92,7 @@ only "what can the host CLI do?".
 3. **BUG-2760** and **ENH-2761** are independent of each other and can proceed in
    parallel; both touch `describe_capabilities()` across all six runners, so
    coordinate to avoid conflicting edits.
-4. **FEAT-2763** last among the doctor changes — it is the largest, depends on
+4. **FEAT-2763** last among the doctor changes — it is the largest, built on
    ENH-2762, and should land after the report's existing surface is correct.
 5. **BUG-2764** is fully independent (different file, different subsystem) and can
    be done at any point.

@@ -230,7 +230,7 @@ two depend on:
 - **ENH-2580** — User-root default + project-root fallback for
   `ll-session backfill` source path; closes the asymmetry with
   `ll-logs` (which already uses `~/.claude/projects/<host>/` via
-  `host_runner.resolve_host()`). *(P3 — depends on ENH-2581's
+  `host_runner.resolve_host()`). *(P3 — built on ENH-2581's
   `raw_events` as the destination.)*
 - **ENH-2581** — `raw_events` source-of-truth + `rebuild`
   subcommand + `compact`/`prune` split + `_VALID_KINDS`
@@ -242,7 +242,7 @@ two depend on:
 - **ENH-2582** — `analytics.auto_collect` opt-in runner; wires
   ENH-2581's `compact --and-prune` to a new `SessionEnd` hook.
   Default off; **no auto-injection** of observations into prompt
-  context (defended in the issue body). *(P3 — depends on
+  context (defended in the issue body). *(P3 — built on
   ENH-2581.)*
 
 ## Children (filled post-write by `/ll:capture-issue`)
