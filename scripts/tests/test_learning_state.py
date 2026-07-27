@@ -520,3 +520,36 @@ class TestLearningStateCsvTargets:
         assert result.final_state == "blocked"
         # Only 1 explore attempt (not the default 2)
         assert len(runner.calls) == 1
+
+
+class TestLearningStateExploreApiDispatchMode:
+    """The explore-api remedy must dispatch as a slash command, not a shell exec.
+
+    Regression: a `type: learning` state carries no `action:` of its own, so
+    ``_action_mode()``'s "/"-prefix heuristic (which inspects ``state.action``)
+    fell through to shell mode and bash exec'd ``/ll:explore-api`` as a path
+    (exit 127). Every unproven target then burned its retries against a remedy
+    that never ran and blocked — ENH-2836 was deferred ``gate_blocked`` this way.
+    """
+
+    def test_explore_api_dispatched_as_slash_command(
+        self, temp_project_dir: Path, monkeypatch: Any
+    ) -> None:
+        monkeypatch.chdir(temp_project_dir)
+        base = temp_project_dir / ".ll" / "learning-tests"
+        base.mkdir(parents=True)
+
+        seen: list[bool] = []
+
+        class _ModeRecordingRunner(_MockRunner):
+            def run(self, action: str, timeout: int, is_slash_command: bool, **kwargs: Any):
+                seen.append(is_slash_command)
+                return super().run(action, timeout, is_slash_command, **kwargs)
+
+        fsm = _learning_fsm(["urllib"])
+        runner = _ModeRecordingRunner(base_dir=base, write_records=True, write_status="proven")
+        executor = FSMExecutor(fsm, action_runner=runner)
+        result = executor.run()
+
+        assert result.final_state == "planning"
+        assert seen == [True], f"explore-api must dispatch in prompt mode, got {seen!r}"

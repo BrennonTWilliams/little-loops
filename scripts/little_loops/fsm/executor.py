@@ -18,7 +18,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace as _dc_replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -1138,7 +1138,18 @@ class FSMExecutor:
                     "learning_explore_invoked",
                     {"state": self.current_state, "target": target, "attempt": attempts + 1},
                 )
-                self._run_action(f"/ll:explore-api {target}", state, ctx)
+                # BUG: a `type: learning` state has no `action:` of its own, so
+                # `_action_mode()`'s "/"-prefix heuristic (which inspects
+                # `state.action`, not the template passed here) fell through to
+                # "shell" and bash tried to exec `/ll:explore-api` as a path —
+                # exit 127 on every attempt, so the remedy never ran and every
+                # unproven target blocked after burning its retries. Pin the
+                # mode explicitly for the remedy invocation.
+                self._run_action(
+                    f"/ll:explore-api {target}",
+                    _dc_replace(state, action_type="slash_command"),
+                    ctx,
+                )
                 attempts += 1
                 record = check_learning_test(target)
 

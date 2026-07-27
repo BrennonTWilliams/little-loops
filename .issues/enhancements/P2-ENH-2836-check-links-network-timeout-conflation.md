@@ -4,10 +4,20 @@ type: ENH
 priority: P2
 status: open
 parent: EPIC-2765
-captured_at: "2026-07-27T00:08:18Z"
+captured_at: '2026-07-27T00:08:18Z'
 discovered_date: 2026-07-27
 discovered_by: capture-issue
-labels: [cli, doctor, docs, dx]
+labels:
+- cli
+- doctor
+- docs
+- dx
+confidence_score: 100
+outcome_confidence: 81
+score_complexity: 17
+score_test_coverage: 22
+score_ambiguity: 22
+score_change_surface: 20
 ---
 
 # ENH-2836: ll-check-links conflates network timeouts with broken links
@@ -103,6 +113,33 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 | `ll-doctor --full` aggregation (FEAT-2795) | consume the severity split rather than the raw exit code |
 | `scripts/tests/` | tests for each classification using a stubbed fetcher; no live network in tests |
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/__init__.py` — re-exports `main_check_links` from `cli.docs` (line 59) and lists it in `__all__` (line 107); no logic change needed but confirms the entry-point chain has exactly one re-export hop [Agent 1 finding]
+- `scripts/little_loops/loops/lib/cli.yaml` — `ll_check_links` fragment (lines 70-77) shells out `ll-check-links 2>&1` and evaluates via `type: exit_code`; inherits the new broken-only exit-code semantics automatically, but its `description` field (lines 71-73) doesn't mention the unreachable/broken split and should be updated for loop authors [Agent 1 + Agent 2 finding]
+- `scripts/little_loops/loops/docs-sync.yaml` — built-in FSM loop that consumes the `ll_check_links` fragment; no change needed but confirms one live consumer of the exit-code contract [Agent 1 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` § `### ll-check-links` (~lines 3053-3079) — flags table needs a `--strict-network` row (and `--offline`/`--skip-external` if implemented); the literal `**Exit codes:** \`0\` = all links valid, \`1\` = broken links found, \`2\` = error` line (3069) needs rewording for broken-only gating [Agent 2 finding]
+- `docs/reference/CLI.md` line ~236 (`--full` section under `ll-doctor`) — describes the `--full` JSON payload shape for `check_links` as `{status, note}`; needs `severity` added to the schema description [Agent 2 finding]
+- `docs/guides/LOOPS_REFERENCE.md` line ~3402 — "Common Fragments" table row for `ll_check_links` documents its current behavior; should note the broken-only exit-code semantics [Agent 2 finding]
+- `docs/reference/API.md` § `### main_check_links` (~lines 4143-4151) — one-line docstring summary; low risk but worth a pass if `--strict-network` warrants a flag mention for parity with other documented flags [Agent 2 finding]
+- `docs/codex/usage.md`, `docs/reference/HOST_COMPATIBILITY.md` — matched in a broad grep for `check-links`/`check_links`; not content-verified, flagged as leads to check before closing out doc work [Agent 2 finding]
+- `.claude/CLAUDE.md` line 227 (`ll-check-links` CLI Tools one-liner) — optional, but other severity-split checks (line 239, `ll-doctor --full` description) already document the error/warn split pattern; consider a matching mention [Agent 2 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_link_checker.py::TestCheckUrl` — return-tuple assertions on `check_url()` (`(is_valid, error_message)`) will need updating if the return contract changes shape to carry a `LinkOutcome`; existing `broken_links`/`has_errors` fixtures that stub `TimeoutError`/`URLError` and assert `broken_links == 1` must be re-classified to `unreachable_links` once the split lands [Agent 2 + Agent 3 finding]
+- `scripts/tests/test_link_checker.py::TestFormatters::test_format_result_json` / `test_format_result_markdown_with_errors` — construct `LinkCheckResult(...)` without an `unreachable_links`/`LinkOutcome` field; safe if defaulted, but don't exercise the new fields — extend to cover them [Agent 2 + Agent 3 finding]
+- `scripts/tests/test_cli_docs.py::TestMainCheckLinks::test_errors_returns_1` — mocks `LinkCheckResult` wholesale via `MagicMock(has_errors=True)`; still passes post-change but doesn't exercise `--strict-network` or the broken-vs-unreachable exit-code split — parametrize for both cases [Agent 2 + Agent 3 finding]
+- `scripts/tests/test_cli_doctor_full.py::TestFullAdapters::test_check_links_reports_unsupported_on_broken` — add a `severity` assertion, following the sibling pattern `test_des_audit_reports_informational_when_missing`/`test_triggers_reports_unsupported_on_failure` (asserts `data["severity"]` after mocking the underlying data function directly) [Agent 3 finding]; add a parallel new case for an unreachable-only result asserting a non-error severity, mirroring `_full_des_audit_data()`'s `"informational"` shape [Agent 2 + Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py` (line ~9434) and `scripts/tests/test_fsm_fragments.py` (lines ~895-901, ~965-988) — reference/test the `ll_check_links` fragment and `docs-sync.yaml`'s use of it; re-run after the fragment description update, no assertion changes expected since they test structural resolution, not exit-code semantics [Agent 1 finding]
+- Retry-with-backoff test pattern to model Implementation Step 5 on: `scripts/tests/test_transport.py::TestWebhookTransport::test_retry_on_5xx_then_success` / `test_retry_exhausted_logs_warning` — closure-based `side_effect` with `nonlocal call_count`, `mock.patch("time.sleep")` to neutralize delay, and separate tests for "retries then succeeds" vs. "retries exhausted" [Agent 3 finding]
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
@@ -131,6 +168,16 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 6. Add tests with an injected fake fetcher covering: 404 -> broken, timeout ->
    unreachable, 200 -> valid, and exit codes for each combination.
 7. Re-run against the real repo and record the new broken/unreachable split.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+8. Update `main_check_links()`'s argparse epilog exit-code text (`cli/docs.py:342-346`) in the same change as the new `--strict-network` argument — it hardcodes the old `0/1/2` exit-code meanings directly in `--help` output, not just in docs.
+9. Update `docs/reference/CLI.md` `### ll-check-links` (flags table + exit-codes line) and the `--full` JSON payload description for `check_links`.
+10. Update the `ll_check_links` fragment's `description` in `scripts/little_loops/loops/lib/cli.yaml` (lines 70-77) and its row in `docs/guides/LOOPS_REFERENCE.md`'s Common Fragments table to reflect broken-only exit-code semantics.
+11. Extend `test_link_checker.py::TestCheckUrl`/`TestFormatters`, `test_cli_docs.py::TestMainCheckLinks`, and `test_cli_doctor_full.py::TestFullAdapters` per the Tests subsection of the Integration Map, including a severity-split case mirroring `test_des_audit_reports_informational_when_missing`.
+12. Re-run `scripts/tests/test_builtin_loops.py` and `scripts/tests/test_fsm_fragments.py` after the fragment description change to confirm no structural regressions.
 
 ## Impact
 
@@ -174,6 +221,8 @@ new `docs/development/CLI_COLOR_PALETTE.md` contains no links, yet
 impossible to use the command to confirm the doc was clean.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-27T00:30:43 - `686c8dcb-74d5-48e6-9a23-028ec64a8dbf.jsonl`
+- `/ll:wire-issue` - 2026-07-27T00:29:44 - `8c131682-ec68-43f5-84a8-24fcb0c8b6c0.jsonl`
 - `/ll:refine-issue` - 2026-07-27T00:25:29 - `9ce371ff-4ca1-4ba2-ad6e-8b38c84db732.jsonl`
 - `/ll:capture-issue` - 2026-07-27T00:08:18Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a2c83098-37d1-4d7b-86d1-fbf55d285134.jsonl`
 
