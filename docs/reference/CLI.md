@@ -1681,7 +1681,7 @@ Transition an issue to a new status value. Validates the target status against t
 | `--cascade` | Propagate status to issues with `parent: <EPIC-ID>` (EPIC closure only; only valid with `done`/`cancelled`). Only follows `parent:` edges — `relates_to:`, `blocked_by:`, and other relationship types are not traversed. |
 | `--cascade-to <status>` | Status to apply to cascaded children (default: `deferred`) |
 | `--by <human\|automation>` | Who initiated a `deferred` transition (default: `human`). Stamped into `deferred_by`; no-op for other target statuses. |
-| `--reason <code>` | Machine-readable reason code. Deferral codes (`blocked_by_unmet`, `remediation_stalled`, `low_readiness`, `gate_blocked`, `decision_unresolved`, `oversized_atomic`, `readiness_stagnated`; ENH-2664, the last five added by ENH-2666/BUG-2734/FEAT-2751) are valid only with a `deferred` transition and stamp `deferred_reason`. Closure codes (`already_fixed`; ENH-2749) are valid only with a `done`/`cancelled` transition and stamp `closed_reason`, reusing the same key ENH-2535 introduced for closure-context prose. Passing a code with a mismatched target status is rejected (exit 1). |
+| `--reason <code>` | Machine-readable reason code. Deferral codes (`blocked_by_unmet`, `remediation_stalled`, `low_readiness`, `gate_blocked`, `decision_unresolved`, `oversized_atomic`, `readiness_stagnated`; ENH-2664, the last five added by ENH-2666/BUG-2734/FEAT-2751) are valid only with a `deferred` transition and stamp `deferred_reason`. Closure codes (`already_fixed`, `superseded`; ENH-2749, `superseded` added by BUG-2844) are valid only with a `done`/`cancelled` transition and stamp `closed_reason`, reusing the same key ENH-2535 introduced for closure-context prose. Passing a code with a mismatched target status is rejected (exit 1). |
 
 **Examples:**
 ```bash
@@ -1692,6 +1692,45 @@ ll-issues set-status EPIC-042 cancelled --cascade              # Close EPIC + de
 ll-issues set-status EPIC-042 done --cascade --cascade-to done # Close EPIC + all children
 ll-issues set-status ENH-999 deferred --by automation --reason blocked_by_unmet
 ll-issues set-status BUG-731 done --reason already_fixed        # Closed elsewhere; record why
+ll-issues set-status BUG-905 cancelled --reason superseded      # Superseded; edge lives on the replacement issue
+```
+
+---
+
+#### `ll-issues link <issue_id>` / `ll-issues lk <issue_id>`
+
+Write or remove a dependency edge in an issue's YAML frontmatter (FEAT-2842) —
+the deterministic primitive for "add this edge" the way `set-status` is the
+primitive for "change this status". Idempotent (re-running is a no-op that
+reports `unchanged`), list-aware (creates the key when absent, appends to the
+existing list when present, preserving order and the rest of the frontmatter
+byte-for-byte), validating (the target must resolve to an existing issue file
+unless `--force`), and cycle-safe (a `--blocked-by`/`--depends-on` edge that
+would introduce a cycle in the blocking graph is refused).
+
+This is a **frontmatter-key writer**. It is distinct from `ll-deps fix`/`ll-deps
+apply` (below), which write the same fields as **markdown-body sections**
+(`## Blocked By`, etc.); frontmatter takes precedence when an issue has both.
+
+| Argument/Flag | Description |
+|---------------|-------------|
+| `issue_id` | Issue ID (e.g., `518`, `FEAT-518`, `P3-FEAT-518`) |
+| `--blocked-by <ID>` | Target hard-blocks `issue_id` (mutually exclusive with the two below) |
+| `--depends-on <ID>` | Target is a soft prerequisite of `issue_id` |
+| `--relates-to <ID>` | Target is related to `issue_id` |
+| `--unlink` / `--remove` | Remove the edge instead of adding it |
+| `--reciprocal` | Also write the matching reverse edge on the target (`blocked_by` → `blocks`; `relates_to` is already bidirectional) |
+| `--force` | Skip target-existence validation |
+| `--json` | Output result as JSON |
+| `--dry-run` | Report what would change without writing |
+| `--config` | Path to project root |
+
+**Examples:**
+```bash
+ll-issues link FEAT-110 --blocked-by FEAT-109   # First run: writes the edge
+ll-issues link FEAT-110 --blocked-by FEAT-109   # Second run: no-op, exit 0
+ll-issues link FEAT-110 --blocked-by FEAT-109 --unlink   # Remove the edge
+ll-issues link FEAT-110 --depends-on FEAT-050 --dry-run  # Preview only
 ```
 
 ---

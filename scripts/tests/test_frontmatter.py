@@ -409,6 +409,39 @@ github_issue: 1
         assert "github_issue: 99" in result
         assert result.count("github_issue") == 1
 
+    def test_update_creates_new_list_key(self) -> None:
+        """A list-valued update creates the key when absent (FEAT-2842)."""
+        content = """---
+id: FEAT-110
+---
+
+# Title
+"""
+        updates: dict[str, list[str]] = {"blocked_by": ["FEAT-109"]}
+        result = update_frontmatter(content, updates)
+
+        assert "blocked_by" in result
+        assert "FEAT-109" in result
+
+    def test_update_appends_to_existing_list(self) -> None:
+        """A list-valued update replaces the key with the full merged list
+        (FEAT-2842) — callers are responsible for reading the old list and
+        passing the merged list back in, matching set_status.py's pattern."""
+        content = """---
+id: FEAT-110
+blocked_by:
+- FEAT-108
+---
+
+# Title
+"""
+        updates: dict[str, list[str]] = {"blocked_by": ["FEAT-108", "FEAT-109"]}
+        result = update_frontmatter(content, updates)
+
+        assert "FEAT-108" in result
+        assert "FEAT-109" in result
+        assert result.count("blocked_by:") == 1
+
     def test_update_preserves_body(self) -> None:
         """Body content is preserved after frontmatter update."""
         content = """---

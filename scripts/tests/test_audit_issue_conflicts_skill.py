@@ -101,6 +101,43 @@ class TestAuditIssueConflictsSkillExists:
         assert "open|in_progress|blocked" in phase4b_text, "Phase 4b must re-check status"
         assert "not in active set" in phase4b_text, "Phase 4b must log skip reason"
 
+    def test_phase4b_supersession_uses_cancelled_not_done(self) -> None:
+        """Phase 4b merge/deprecate must close via cancelled + supersedes edge, not done (BUG-2844)."""
+        content = SKILL_FILE.read_text()
+        phase4b_start = content.index("## Phase 4b")
+        phase5_start = content.index("## Phase 5")
+        phase4b_text = content[phase4b_start:phase5_start]
+        assert "Closed - Superseded" not in phase4b_text, (
+            "Phase 4b must not write the non-canonical 'Closed - Superseded' status prose"
+        )
+        assert "status: done using the Edit tool" not in phase4b_text, (
+            "Phase 4b must not hand-edit frontmatter status: done for a superseded issue"
+        )
+        assert "set-status" in phase4b_text and "cancelled" in phase4b_text, (
+            "Phase 4b must close superseded issues via ll-issues set-status ... cancelled"
+        )
+        assert "--reason" in phase4b_text and "superseded" in phase4b_text, (
+            "Phase 4b must stamp closed_reason: superseded"
+        )
+        assert "supersedes:" in phase4b_text, (
+            "Phase 4b must write the supersedes: edge onto the kept issue"
+        )
+
+    def test_add_dependency_uses_ll_issues_link(self) -> None:
+        """add_dependency must write edges via ll-issues link, not a raw Edit
+        (FEAT-2842) — the CLI is idempotent/list-aware/validating, unlike a
+        free-form frontmatter Edit."""
+        content = SKILL_FILE.read_text()
+        section_start = content.index("### add_dependency")
+        next_section = content.index("### split / update_scope")
+        section_text = content[section_start:next_section]
+        assert "ll-issues link" in section_text, (
+            "add_dependency must reference the ll-issues link CLI"
+        )
+        assert "using Edit" not in section_text, (
+            "add_dependency must not instruct a raw frontmatter Edit for dependency fields"
+        )
+
     def test_phase6_skipped_inactive_count_reported(self) -> None:
         """Phase 6 must report SKIPPED_INACTIVE_COUNT for write-side guard skips (BUG-2264)."""
         content = SKILL_FILE.read_text()

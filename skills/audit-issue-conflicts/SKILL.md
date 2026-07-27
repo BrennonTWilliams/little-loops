@@ -337,13 +337,18 @@ For each approved recommendation:
 
 ## Resolution
 
-- **Status**: Closed - Superseded
 - **Completed**: YYYY-MM-DD
 - **Reason**: Superseded by [KEPT-ID] via conflict resolution audit
 - **Proposed change**: [proposed_change from conflict record]
 ```
 
-5. Update the closed issue's frontmatter `status: done` using the Edit tool.
+5. Close the superseded issue via the canonical status writer — do not hand-edit its frontmatter `status:` field:
+
+```bash
+ll-issues set-status [CLOSED-ID] cancelled --reason superseded
+```
+
+   Then record the supersession edge on the **kept** issue: read its frontmatter and add/append `[CLOSED-ID]` to its `supersedes:` list via Edit (create it as a single-item list if absent). `ll-issues link --supersedes` doesn't exist yet (FEAT-2842 doesn't cover it), so this is a direct frontmatter Edit, not a CLI call — it's what makes `ll-issues show [CLOSED-ID]` derive the reverse `Superseded by` row.
 
 6. Track both modified files:
 
@@ -367,7 +372,7 @@ ll-issues append-log "[kept-issue-path]" /ll:audit-issue-conflicts
 
 Before appending, verify the write-side active-set guard using the ISSUE_FILES list from Phase 1 context: **(1) Membership** — the dependent issue's file path must appear in ISSUE_FILES. If not, skip and log `[skipped: TARGET not in active set (not loaded in Phase 1)]`. Increment `SKIPPED_INACTIVE_COUNT`. **(2) TOCTOU re-check** — run `awk '/^---$/{n++; next} n==1 && /^status:/{print $2; exit}' TARGET` and confirm the result matches `open|in_progress|blocked`. If terminal, skip and log `[skipped: TARGET status is CURRENT_STATUS — not active]`. Increment `SKIPPED_INACTIVE_COUNT`.
 
-Append either `blocked_by: [ISSUE-B]` (hard stop — must complete first; honoured by every consumer, including `ll-issues sequence`) or `depends_on: [ISSUE-B]` (soft ordering — non-fatal if ISSUE-B is absent or already complete) to the frontmatter of the dependent issue file using Edit, according to the user's choice from the interactive prompt. Default to `blocked_by` when unsure. Track the modified file:
+Write the edge with `ll-issues link` — idempotent/list-aware/validating, so reruns never duplicate a `blocked_by:`/`depends_on:` key or drop earlier entries (FEAT-2842). Run `ll-issues link [ISSUE-A] --blocked-by [ISSUE-B]` (hard stop — honoured by every consumer, incl. `ll-issues sequence`) or `ll-issues link [ISSUE-A] --depends-on [ISSUE-B]` (soft ordering — non-fatal if absent/complete), per the user's interactive-prompt choice. Default to `--blocked-by` when unsure. Track the modified file:
 
 ```bash
 MODIFIED_FILES+=("[issue-path]")

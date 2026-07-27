@@ -225,7 +225,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-verify-kinds` - Assert every `CREATE TABLE` in `session_store._MIGRATIONS` is registered in `_KIND_TABLE` or explicitly listed as kindless (exit 1 on any unregistered table; ENH-2581)
 - `ll-verify-cli-allowlist` - Assert `skills/configure/areas.md`'s "All ll- commands" preset and `writers._LL_PERMISSIONS` cover every `ll-` entry point in `scripts/pyproject.toml` (exit 1 on drift; BUG-2764)
 - `ll-check-links` - Check markdown documentation for broken links
-- `ll-issues` - Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, set-status, sections, anchor-sweep, fingerprint, format-check, epic-progress, epic-consistency, deferred-triage, decisions (list, add, outcome, generate, sync, suggest-rules, promote))
+- `ll-issues` - Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, set-status, link, sections, anchor-sweep, fingerprint, format-check, epic-progress, epic-consistency, deferred-triage, decisions (list, add, outcome, generate, sync, suggest-rules, promote))
 - `ll-learning-tests` - Query and manage the learning test registry (check/list/mark-stale/orphans; `prove <target>` triggers proving directly via `ready-to-implement-gate`); record creation is owned by `/ll:explore-api`
 - `ll-gitignore` - Suggest and apply `.gitignore` patterns based on untracked files
 - `ll-migrate` - One-time migration of completed/deferred issues to type-based directories (ENH-1390)

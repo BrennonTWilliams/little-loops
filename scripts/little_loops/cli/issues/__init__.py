@@ -55,6 +55,7 @@ def main_issues() -> int:
             cmd_format_check,
         )
         from little_loops.cli.issues.impact_effort import cmd_impact_effort
+        from little_loops.cli.issues.link import add_link_parser, cmd_link
         from little_loops.cli.issues.list_cmd import cmd_list
         from little_loops.cli.issues.next_action import cmd_next_action
         from little_loops.cli.issues.next_id import cmd_next_id
@@ -96,6 +97,7 @@ Sub-commands:
   check-decidable  Exit 0 if an issue has >=1 enumerable option to decide between
   set-scores       Write confidence and dimension scores to issue frontmatter
   set-status       Transition an issue to a new status value
+  link             Write or remove a dependency edge in issue frontmatter
   skip             Deprioritize an issue by bumping its priority prefix
   anchor-sweep     Rewrite file:line references in active issue files to anchor form
   fingerprint      Extract structured fingerprint (id, files, key_terms) from an issue file
@@ -792,6 +794,8 @@ Examples:
         )
         add_config_arg(sst)
 
+        add_link_parser(subs)
+
         asw = subs.add_parser(
             "anchor-sweep",
             aliases=["asw"],
@@ -900,6 +904,8 @@ Examples:
             return cmd_set_scores(config, args)
         if args.command == "set-status":
             return cmd_set_status(config, args)
+        if args.command == "link":
+            return cmd_link(config, args)
         if args.command == "anchor-sweep":
             return cmd_anchor_sweep(config, args)
         if args.command == "fingerprint":

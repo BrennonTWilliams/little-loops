@@ -17,7 +17,7 @@ questions:
       - label: "No, keep both as-is"
         description: "Leave both issues unchanged"
       - label: "Add dependency instead"
-        description: "Add blocked_by frontmatter to link them without closing either"
+        description: "Link them via ll-issues link --blocked-by without closing either"
 ```
 
 **add_dependency** conflicts:
@@ -29,9 +29,9 @@ questions:
     multiSelect: false
     options:
       - label: "blocked_by (hard stop)"
-        description: "Appends blocked_by: [ISSUE-B] to [ISSUE-A] frontmatter — ISSUE-B must complete before ISSUE-A can start; honoured by every consumer (wave planning, ll-issues sequence)"
+        description: "Runs ll-issues link [ISSUE-A] --blocked-by [ISSUE-B] — ISSUE-B must complete before ISSUE-A can start; honoured by every consumer (wave planning, ll-issues sequence)"
       - label: "depends_on (soft ordering)"
-        description: "Appends depends_on: [ISSUE-B] to [ISSUE-A] frontmatter — wave-gated ordering (ISSUE-A scheduled after ISSUE-B) but non-fatal if ISSUE-B is absent or already complete"
+        description: "Runs ll-issues link [ISSUE-A] --depends-on [ISSUE-B] — wave-gated ordering (ISSUE-A scheduled after ISSUE-B) but non-fatal if ISSUE-B is absent or already complete"
       - label: "No, skip"
         description: "Leave both issues unchanged"
 ```
