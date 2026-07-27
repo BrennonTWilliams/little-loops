@@ -1,0 +1,11 @@
+{
+  "id": "ee76a2df-0210-4a14-987d-64f59b3a9a7b",
+  "type": "decision",
+  "timestamp": "2026-07-27T16:19:34Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "[!] marker, abandoned count + incomplete-abandoned verdict in summary.json, dependency halt before abandoning a blocker step (postmortem Finding 1)",
+  "rule": "Captured: general-task: make step abandonment visible, counted, and blocking",
+  "scope": "issue",
+  "issue": "ENH-2857"
+}

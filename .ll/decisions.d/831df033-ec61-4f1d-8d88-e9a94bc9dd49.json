@@ -1,0 +1,11 @@
+{
+  "id": "6a573dc9-cae0-4137-b616-c438144b3011",
+  "type": "decision",
+  "timestamp": "2026-07-27T16:55:23Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "ll-code reports the codegraph index as stale (193 commits behind) with no builder/refresh mechanism anywhere in the repo; ENH-2577 explicitly scoped auto-reindex out as future work.",
+  "rule": "Captured: auto-reindex codegraph when staleness crosses threshold",
+  "scope": "issue",
+  "issue": "ENH-2863"
+}

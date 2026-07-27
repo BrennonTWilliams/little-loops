@@ -49,6 +49,56 @@ Detecting it is mechanical: diff the test files across the step and compare agai
 - **Ordering with ENH-2853.** `revert` must not destroy ENH-2853's evidence: the pre-patch check runs on the step's diff *before* any revert is applied. `revert` applies only to modifications/deletions of tests that existed at verify-step start; a test file newly added during the verification step is never "reverted" (deleted) by this guard — it is instead handed to ENH-2853's pre-patch check, which is the correct arbiter for new tests.
 - **Test-file identification needs a config key that does not exist yet.** Config currently has `project.test_cmd`, not file patterns. Introduce `project.test_patterns` (glob list, with a sensible per-project-type default from the templates), and implement identification as one shared module consumed by both this guard and ENH-2853.
 
+## Integration Map
+
+_Added by `/ll:refine-issue` — based on codebase analysis. No code implements this guard today; this is new machinery threaded through the FSM executor, config schema, and a new shared module._
+
+### Files to Modify
+- `scripts/little_loops/fsm/executor.py` — action-result → verdict wiring (~L1326-1420, L1954-2010); add a snapshot/compare hook scoped to a verification step's execution.
+- `scripts/little_loops/fsm/evaluators.py` — `evaluate_exit_code()` (~L220) maps a test-run state's exit code to a verdict. The nearest existing snapshot/compare idiom is `evaluate_diff_stall()` (L572-665), which persists a prior snapshot in `.loops/tmp/ll-diff-stall-<hash>.{txt,count}` keyed by an md5 of `scope`. This guard needs the same cache-key/persistence idiom but hashing test-file *content*, not `git diff --stat` output — and it currently has no concept of "revert."
+- `scripts/little_loops/config/core.py` — `ProjectConfig.test_cmd` (L149, L164) is the sibling field; add `test_patterns: list[str]` alongside it. Export via `BRConfig` (L625) and `resolve_variable()` (L886).
+- `scripts/little_loops/config-schema.json` — `project` block (L12-67, `additionalProperties: false`, so a new key must be declared here or config rejects it). Add `project.test_patterns` as an array-of-globs following `scan.focus_dirs`'s shape (L661-670: `{"type": "array", "items": {"type": "string"}, "default": [...]}`).
+- `scripts/little_loops/templates/*.json` (`python-generic.json`, `typescript.json`, `javascript.json`, `java-maven.json`, `java-gradle.json`, `go.json`, `rust.json`, `dotnet.json`, `generic.json`) — per-project-type default globs for `test_patterns`.
+- `scripts/little_loops/test_file_patterns.py` (new) — shared test-file identification module consumed by both this guard and ENH-2853, per Design Notes' shared-module requirement. Wraps `project.test_patterns` resolution and matches via the existing gitignore-style matcher `_file_matches_pattern()` in `scripts/little_loops/git_operations.py` (L266).
+- `scripts/little_loops/work_verification.py` — `filter_excluded_files()`/`EXCLUDED_DIRECTORIES` (L18-41) is the closest existing "classify changed files via git diff" precedent (exclusion predicate); this guard needs the structural inverse (inclusion predicate over test-file patterns).
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/loops/oracles/code-run-gate.yaml:run_test` (L201-249) — existing test-execution oracle state; likely host for the new snapshot/compare wrapping.
+- `scripts/little_loops/loops/rn-implement.yaml`, `scripts/little_loops/loops/autodev.yaml` — loops whose verification steps use a green-suite predicate and would opt into this guard's policy.
+- `skills/manage-issue/SKILL.md` (L184-186, L239), `skills/manage-issue/templates.md` (L130-133) — the only consumers of `commands.tdd_mode`, entirely prose/LLM-facing (a repo-wide grep of `loops/*.yaml` for `tdd_mode` returns zero matches). No FSM-level "verify-step start" event exists today — the guard's snapshot trigger is new instrumentation, not an existing hook to attach to.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_config.py` (L107, L120, L135) — constructs/asserts `ProjectConfig` fixtures alongside `test_cmd`; needs a parallel `test_patterns` fixture/assertion to keep parity once the field is added [Agent 2 finding].
+- `scripts/tests/test_builtin_loops.py:TestCodeRunGateOracle`/`TestCodeRunGateOracleWiring` (~L9699, L12576-12668) and `TestVerifyStateConfigReadShell` (~L3714, `test_verify_reads_project_test_and_lint_cmd` L2789) — assert on the literal `verify`/`code-run-gate` state `action` string and topology; if the guard's snapshot/compare hook rewrites those action strings, these literal-string assertions break [Agent 3 finding].
+
+### Similar Patterns
+- `scripts/little_loops/parallel/worker_pool.py:_cleanup_leaked_files()` (L1362) — git-based revert distinguishing tracked (`git checkout -- <files>`) vs. untracked (`unlink()`) files; directly reusable shape for the `revert` policy.
+- `scripts/little_loops/loops/test-coverage-improvement.yaml:revert` state (L186); `incremental-refactor.yaml` (L53, `git checkout -- .`); `harness-optimize.yaml` (L202, `git restore ${context.targets}`) — existing FSM-level revert precedents, but all are LLM-prompt-driven ("revert the files using..."), not deterministic — this guard must be deterministic per Design Notes, so these are shape references only.
+- `scripts/little_loops/config-schema.json:code_query.staleness` (L1296) — exact 3-mode enum precedent (`strict`/`warn`/`off`, default `warn`) for the `revert`/`fail`/`allow` policy; consumed via branching in `scripts/little_loops/codequery/codegraph.py:CodegraphProvider.status()` (~L156-224).
+- `scripts/tests/test_codequery_codegraph.py:TestStalenessMatrix` (L266), parametrized over policy — template for the three-policy test matrix. Helpers `_init_repo()`/`_git()`/`_commit_at()`/`_write_config()` (L56-213) build a real git repo in `tmp_path` rather than mocking subprocess — the established convention for file-change-detection tests in this codebase.
+- `scripts/tests/test_config_schema.py:test_health_url_in_schema()` (L337-357) — exact template for asserting a new `project.*` key's presence, type, and default in `config-schema.json`.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_evaluators.py:TestDiffStallEvaluator` (~L1461-1610), exercising `evaluate_diff_stall()` — the two-invocation "baseline call, then compare call" pattern (`test_first_iteration_returns_success` → `test_different_diff_returns_success` → threshold tests) maps directly onto snapshot-then-compare; its `clean_state_files` autouse fixture (L1474) and `test_dispatch_diff_stall` (L1581) evaluator-dispatch wiring test are the templates a new tamper-guard evaluator's tests should copy [Agent 3 finding].
+- `scripts/little_loops/fsm/executor.py`'s stall-detector integration (~L1398-1429: `self._stall_detector.record`/`.check()` → abort-or-route, applied as a side-channel check independent of the main evaluator verdict) is the closest existing structural analog for how the tamper guard should hook into `_execute_state` [Agent 3 finding].
+
+### Tests
+- `scripts/tests/test_config_schema.py` — extend with a schema-presence test for `project.test_patterns`, following `test_health_url_in_schema()`.
+- `scripts/tests/test_codequery_codegraph.py:TestStalenessMatrix` — pattern to replicate for the `revert`/`fail`/`allow` policy matrix. Confirmed the only comparable 3-mode-policy test class in the codebase [Agent 3 finding].
+- No existing test file covers this guard; a new file (e.g. `scripts/tests/test_test_file_tamper_guard.py`) is needed.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_config.py` — update `ProjectConfig` fixtures (L107, L120, L135) for `test_patterns` parity with `test_cmd` [Agent 2/3 finding].
+- `scripts/tests/test_builtin_loops.py:TestCodeRunGateOracle`, `TestCodeRunGateOracleWiring`, `TestVerifyStateConfigReadShell` — update if the guard's hook rewrites the `verify`/`code-run-gate` state `action` strings these tests assert on literally; confirmed no existing test in `test_rn_implement.py`/`test_builtin_loops.py` currently references tamper-guard concepts [Agent 3 finding].
+- Config-schema round-trip note: no existing test performs strict `additionalProperties: false` jsonschema validation against a real config fixture (`test_config_schema.py`/`test_config.py`/`test_config_properties.py` all confirmed to use structural JSON-key assertions only) — adding `project.test_patterns` cannot break an existing round-trip test; only the new `test_test_patterns_in_schema`-style test needs writing [Agent 3 finding].
+
+### Configuration
+- `project.test_patterns` — new key, no default in the current schema; needs a schema entry plus per-template defaults (see Files to Modify above).
+
+### Documentation
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CONFIGURATION.md` — the `### project` key/default/description table (~L294-305) lists every `project.*` key including `test_cmd`; needs a new row for `test_patterns` in the same shape. The surrounding prose (~L307-310) documents which fields `init/introspect.py` introspects on fresh `ll-init`; `test_patterns` is deliberately NOT one of `_COMMAND_FIELDS` (`scripts/little_loops/init/introspect.py` L38: `test_cmd`, `lint_cmd`, `format_cmd`, `type_cmd`) since it's a glob list rather than a manifest-declared command — note this is an intentional omission, not a gap, to avoid a reviewer expecting introspection support [Agent 2 finding].
+
 ## Acceptance Criteria
 
 - [ ] Test files are snapshotted at verification-step start (not issue start) and compared after it; a TDD-mode run whose implement phase added tests does not trip the guard.
@@ -61,3 +111,8 @@ Detecting it is mechanical: diff the test files across the step and compare agai
 - [ ] Touched-file details appear in the run's verification evidence under every policy.
 - [ ] The guard makes no LLM calls.
 - [ ] Tests cover: commented-out assertion, added skip marker, deleted test file, untouched tests, and each of the three policies.
+
+
+## Session Log
+- `/ll:wire-issue` - 2026-07-27T17:06:41 - `addc0661-0c81-4c9b-99bf-77c7e6079b2c.jsonl`
+- `/ll:refine-issue` - 2026-07-27T16:32:16 - `72c3b345-e826-4b46-a5ba-58f62b13e67c.jsonl`

@@ -52,6 +52,21 @@ This is deliberately *not* a design doc stage. It is a short, concrete section �
 - **Interaction with autodev's deferral machinery.** A new hard failure mode in `/ll:confidence-check` surfaces in `autodev.yaml`'s `check_reconcile_needed` / `recheck_after_size_review` as readiness stagnation — a refined-but-design-less issue could burn a reconcile/spike remedy cycle before deferring. Decide explicitly: a missing/non-specific `## Program Design` section should route to the `/ll:reconcile-issue` remedy (it is exactly the kind of directive-section gap reconcile exists to fix), not defer immediately; only if the section is still failing after the remedy attempt should the issue defer, and then under a distinct machine reason code (e.g. `design_gate_failed`) rather than generic `low_readiness`, so `ll-issues deferred-triage` can distinguish it.
 - **Rollout for the existing backlog.** Every currently open issue lacks the section; a hard gate would mass-defer the backlog on day one. Grandfather issues refined before the gate ships (gate on `discovered_date`/refine timestamp), or bulk-populate via a one-off loop — pick one explicitly in the implementation, don't leave it to chance.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Section schema is per-type JSON, already the single source of truth.** `scripts/little_loops/templates/enh-sections.json` (and sibling `bug-sections.json`/`feat-sections.json`) define `common_sections`/`type_sections`, each with `required`, `description`, `quality_guidance`, and `creation_template`. Add `Program Design` as a new `common_sections` entry (required for BUG/FEAT/ENH alike, per the issue's own scope) with `Types`/`Signatures`/`Call Path` as sub-bullets inside its `creation_template`, mirroring the existing `API/Interface` type-section's fenced-code-block placeholder shape — the closest existing analog for a signature-shaped subsection.
+- **The required-heading half of the gate already exists; the specificity half does not.** `check_format_gaps()` in `scripts/little_loops/issue_parser.py` (`FormatGaps` dataclass, ~line 136; function ~line 201) diffs actual `##` headings against `_required_sections(sections_data)` and already populates `missing`/`empty`/`boilerplate` gap lists this way — a `## Program Design` heading missing or boilerplate-only is caught for free once added to the schema. What's net-new is *content-shape* validation (identifier resolves against the repo; line is signature-shaped) — no existing gap category checks section content beyond heading presence/non-template-equality, so this needs a new `FormatGaps` list field (e.g. `program_design_nonspecific`) plus new detection logic in `check_format_gaps()`, wired through `scripts/little_loops/cli/issues/format_check.py:cmd_format_check()`.
+- **Model the CLI on `ll-verify-cli-allowlist`** (`scripts/little_loops/cli/verify_cli_allowlist.py`): pure `_run() -> tuple[int, dict]` helper (unit-testable without mocking `sys.argv`), a `main_verify_<name>()` wrapper using `cli_event_context(...)`, `stderr`-prefixed `ERROR:`, `stdout`-prefixed `OK:`, and registration in `scripts/pyproject.toml` `[project.scripts]` next to `ll-verify-decisions`. New `ll-` entry points also need a matching addition to `skills/configure/areas.md`'s "All ll- commands" preset and `little_loops.init.writers._LL_PERMISSIONS` (enforced by `ll-verify-cli-allowlist` itself, BUG-2764) — or, per the issue's Design Notes preference for an `ll-issues format-check` extension, this logic can live inside `check_format_gaps()` directly rather than as a standalone `ll-verify-*` binary.
+- **Call-path anchor resolution has two existing mechanisms to reuse**: (1) `resolve_anchor()` in `scripts/little_loops/issues/anchors.py` — regex-based, language-agnostic, returns `None` (not an exception) when unresolved, already consumed by `anchor_sweep.py:_sweep_file()`'s `skipped_refs` counter; (2) `FallbackProvider.defines()`/`defines_scan_for()` in `scripts/little_loops/codequery/fallback.py` — AST-based exact resolution via `ll-code defines`, with a `CodeRef.confidence: "exact" | "heuristic"` field that's a ready-made vocabulary for reporting anchor-resolution confidence rather than a bare pass/fail.
+- **No existing parser validates a free-text `name(params) -> ret` or dataclass-field line against nothing** (i.e., signature-*shape* independent of a real file) — this is genuinely net-new; the closest precedent (`anchors.py`'s `_ANCHOR_PATTERNS`) only matches lines inside real source files, not prose in an issue body.
+- **`DeferReason` enum** (`scripts/little_loops/issue_lifecycle.py`, lines 58–79) is the established, single place new deferral reason codes are added — each existing member (`BLOCKED_BY_UNMET`, `REMEDIATION_STALLED`, `LOW_READINESS`, `GATE_BLOCKED`, `DECISION_UNRESOLVED`, `OVERSIZED_ATOMIC`, `READINESS_STAGNATED`) carries an inline comment citing its originating issue ID; `DESIGN_GATE_FAILED = "design_gate_failed"  # ENH-2852: program-design stage failed verification` follows the same convention. Consumers to update: `scripts/little_loops/cli/issues/set_status.py` (`--reason` flag), `scripts/little_loops/cli/issues/deferred_triage.py`, and `scripts/little_loops/loops/autodev.yaml`.
+- **Reconcile-before-defer routing point**: `autodev.yaml`'s `recheck_after_size_review` state (~line 1435) already implements the exact shape this issue needs — it computes `GATE=PASS/FAIL`, checks a stagnation backstop, and (per BUG-2803's "pre-deferral remedy guarantee") arms a one-shot `reconcile`/`spike` remedy via run-dir handshake files (`autodev-pre-deferral-remedy-fired`) before any deferral write. A design-gate-caused FAIL should plug into this same discriminator chain as a new case — checked before the generic `low_readiness` write, routed once through `reconcile_current` (state defined around `check_reconcile_needed`, ~line 1165), and only deferred with `--reason design_gate_failed` if the post-remedy pass still fails. No new remedy infrastructure is needed — this reuses BUG-2803/FEAT-2751's existing machinery.
+- **Escape-hatch precedent**: `testable: false` (documented in `docs/reference/ISSUE_TEMPLATE.md`) is the closer analog for a Program-Design not-applicable hatch than `outcome_gate_waived: true` — `testable: false` fully skips a phase and is auto-inferable via keyword heuristics in `skills/capture-issue/SKILL.md`/`skills/format-issue/SKILL.md`, whereas `outcome_gate_waived` only bypasses half of an AND-gate. A `program_design_not_applicable: true` flag should follow the `testable: false` shape (full skip, auto-inferable for trivial issues, checked by the new mechanical gate).
+- **`confidence-check`'s existing hard-override pattern to extend**: `skills/confidence-check/SKILL.md` Phase 3 already has one hard override — "Learning Test Hard Override: if Phase 1.5 found any `missing`/`refuted` target, output `STOP — ADDRESS GAPS` regardless of aggregate score." A Program Design gate failure should use the identical override shape (independent of the five-criterion sum), and its frontmatter flag write-back should follow Phases 4.6–4.10's five-part convention: skip in `CHECK_MODE`, source from the new CLI's exit code (not risk-factor prose, since this must be deterministic per the issue's own Design Notes), write via `Edit` on frontmatter, be idempotent, and log a confirmation line.
+- **No existing "Deviations" section/frontmatter convention** — `skills/manage-issue/SKILL.md`'s "Mismatch Handling Protocol" (~lines 325–331) handles plan/reality divergence interactively at implementation time but doesn't persist a structured deviation record on the issue file. The `Deviations` note this issue proposes would be new markdown-section convention, not an extension of existing machinery.
+
 ## Acceptance Criteria
 
 - [ ] The issue template includes a `## Program Design` section with `Types`, `Signatures`, and `Call Path` subsections.
@@ -69,10 +84,63 @@ This is deliberately *not* a design doc stage. It is a short, concrete section �
 
 ---
 
+## Integration Map
+
+_Added by `/ll:refine-issue` — based on codebase research:_
+
+### Files to Modify
+- `scripts/little_loops/templates/enh-sections.json` (+ `bug-sections.json`, `feat-sections.json`) — add `Program Design` to `common_sections`, with `Types`/`Signatures`/`Call Path` in its `creation_template`
+- `scripts/little_loops/issue_parser.py` — extend `FormatGaps` dataclass (~line 136) with a new gap list (e.g. `program_design_nonspecific`) and add detection logic to `check_format_gaps()` (~line 201)
+- `scripts/little_loops/cli/issues/format_check.py` — `cmd_format_check()` surfaces the new gap in `--format json`/`text` output
+- `skills/confidence-check/SKILL.md` — Phase 3 gains a new hard override (alongside the existing Learning Test Hard Override); Phases 4.6–4.10's flag-write pattern gains a new phase for the Program Design gate flag
+- `scripts/little_loops/issue_lifecycle.py` — `DeferReason` enum (lines 58–79) gains `DESIGN_GATE_FAILED = "design_gate_failed"`
+- `scripts/little_loops/loops/autodev.yaml` — `recheck_after_size_review` (~line 1435) gains a design-gate-caused-FAIL discriminator that routes once through `reconcile_current` before deferring with the new reason code
+- `scripts/little_loops/cli/issues/deferred_triage.py` — recognize `design_gate_failed` for reporting; specifically the `_REASON_RANK` dict, which needs the new code inserted at an explicit rank with a dated `# ENH-2852:` rationale comment following the existing `# FEAT-2751:`/`# BUG-2734:` convention
+
+### Dependent Files (Callers/Consumers)
+- `scripts/little_loops/cli/issues/set_status.py` — `--reason` flag plumbing consumes `DeferReason` members
+- `scripts/little_loops/issue_template.py` (`load_issue_sections()`, `assemble_issue_markdown()`) — consumes the section schema for new-issue creation
+- `skills/format-issue/SKILL.md`, `skills/capture-issue/SKILL.md`, `skills/ready-issue/SKILL.md` — all read the same `*-sections.json` schema
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/issues/sequence.py` — references `check_format_gaps()` logic for drift detection; new gap category flows through here too
+- `scripts/little_loops/loops/rn-remediate.yaml` — `ensure_formatted` state gates on the exit code of `ll-issues format-check "$ID"` (i.e. `FormatGaps.has_gaps`); a new gap category participates automatically, but the state's comment block enumerating the gap taxonomy should mention the new category
+- `scripts/little_loops/issue_manager.py` — reads `deferred_reason` off issues; consumes `DeferReason` values including the new `design_gate_failed`
+- `scripts/little_loops/init/writers.py` (`_LL_PERMISSIONS` tuple) + `skills/configure/areas.md` ("All ll- commands" preset) — only relevant if the mechanical checker ships as a standalone `ll-verify-*` binary (enforced by `ll-verify-cli-allowlist`, BUG-2764); not needed if implemented inside `check_format_gaps()` per the Design Notes' stated preference
+
+### Similar Patterns
+- `scripts/little_loops/cli/verify_cli_allowlist.py` — `_run() -> (exit_code, data)` / `main_verify_*()` split, the template for a new mechanical checker if implemented as a standalone `ll-verify-*` binary
+- `scripts/little_loops/issues/anchors.py:resolve_anchor()` + `scripts/little_loops/issues/anchor_sweep.py:_sweep_file()` — existing anchor-resolution-with-skip-counting pattern for the call-path-anchor check
+- `scripts/little_loops/codequery/fallback.py:FallbackProvider.defines()`/`defines_scan_for()` — AST-based exact resolution with a `confidence: "exact"|"heuristic"` field
+
+### Tests
+- `scripts/tests/test_ll_issues_format_check.py`, `scripts/tests/test_issue_parser.py` — extend for the new gap category
+- `scripts/tests/test_confidence_check_skill.py` — extend for the new hard-override gate
+- `scripts/tests/test_autodev_loop.py`, `scripts/tests/test_autodev_decision_gate.py` — extend for the `design_gate_failed` routing
+- `scripts/tests/test_verify_cli_allowlist.py` — model for a new CLI's test file if a standalone `ll-verify-*` binary is chosen
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_issue_parser.py::TestFormatGradedChecker` — mirror `test_boilerplate_body_reports_boilerplate`: one new method asserting only the new gap field populates, all six others stay empty
+- `scripts/tests/test_ll_issues_format_check.py` — the exact-dict JSON assertions in `test_clean_issue_json_output` and the gapped-issue JSON test need the new `FormatGaps` key added or they break; add a text-mode substring test mirroring the `prose_dep_drift` block
+- `scripts/tests/test_autodev_loop.py::TestRecheckAfterSizeReviewStagnationBackstop` — add a sibling test class following the `readiness_stagnated` pattern: string-assertion that the action references `design_gate_failed` and any new marker files, plus an ordering test if the new branch must short-circuit `low_readiness`
+- `scripts/tests/test_issues_anchors.py` — closest existing pattern (per-language `resolve_anchor()` fixture classes) to follow for new signature/call-path-shape parsing tests, since no parser for `name(params) -> ret` prose currently exists
+- `scripts/tests/test_codequery_fallback.py` — real-git-repo fixture pattern (`_init_repo`/`_write_and_commit`/`monkeypatch.chdir`) to follow if call-path anchor resolution reuses `FallbackProvider.defines()`
+- `scripts/tests/test_issue_lifecycle.py` — no existing test asserts `DeferReason` enum membership directly (only string values via `test_autodev_loop.py`/`test_issues_cli.py`/`test_set_status_cli.py`/`test_builtin_loops.py`); add here if exhaustive membership coverage is wanted
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` — `#### check_format_gaps` hardcodes "seven gap classes" with one bullet per field; needs an eighth bullet and the count updated. The `#### deferred-triage` section also enumerates every `DeferReason` code by name in ranked prose; `design_gate_failed` needs slotting into that list to match `_REASON_RANK`
+- `docs/reference/ISSUE_TEMPLATE.md` § **Common Sections (All Issue Types)** — doc-of-record for required sections shared across issue types; needs a `Program Design` entry to match the new `common_sections` schema entry, or the doc drifts from the template JSON
+- `commands/ready-issue.md` § **Dependency Status** — currently reads `prose_dep_drift`/`stale_prose_dep` individually from `format-check --format json`; decide whether Program Design should also block the readiness verdict (join this checklist) or stay confidence-check-only
+- `scripts/little_loops/cli/issues/format_check.py` — `add_format_check_parser()`'s `help=` string and `cmd_format_check()`'s docstring both hardcode the literal gap-class list (`"missing/renamed/empty/boilerplate/malformed_id/prose_dep_drift/stale_prose_dep"`) as prose duplicates, independent of the dataclass fields — both need the new category name appended
+
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): EPIC-2856 requires a one-off pre-intervention baseline sample of FEAT-2855's maintainability signals — captured manually under `thoughts/` — *before* this issue's gate ships, so "did any of this work" is answerable against a pre-intervention reference. FEAT-2855 is scheduled last in the EPIC and does not own producing that snapshot. Capturing it is a prerequisite of this issue, not part of FEAT-2855's scope.
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-27T16:52:50 - `633b73fa-0e52-4f41-a802-c8a7e1eea54d.jsonl`
+- `/ll:refine-issue` - 2026-07-27T16:20:16 - `405e66e4-2b70-4b13-ac32-d29af45ab631.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-27T15:59:42 - `29cf17b6-04b4-4b01-9444-64f1bfdbdaa5.jsonl`

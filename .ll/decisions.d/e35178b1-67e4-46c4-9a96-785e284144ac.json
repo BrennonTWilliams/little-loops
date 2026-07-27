@@ -1,0 +1,11 @@
+{
+  "id": "5412c498-468e-44de-b215-19c2c68f7197",
+  "type": "decision",
+  "timestamp": "2026-07-27T16:19:34Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Standing Criteria block in define_done not derived from task text; exits-0 framing over delta gates (postmortem Findings 2-3)",
+  "rule": "Captured: general-task: plan-independent standing DoD criteria + absolute static-analysis gates",
+  "scope": "issue",
+  "issue": "ENH-2858"
+}

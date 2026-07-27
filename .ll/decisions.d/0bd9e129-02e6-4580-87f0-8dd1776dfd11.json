@@ -1,0 +1,11 @@
+{
+  "id": "19ef6d7f-901c-4c43-8e61-761420c4a15b",
+  "type": "decision",
+  "timestamp": "2026-07-27T16:19:34Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "check_done flags test-only fixes and autouse global-state fixtures; final_verify checks doc/count consistency (postmortem Findings 4-5)",
+  "rule": "Captured: general-task: harness-workaround flag + closing consistency sweep",
+  "scope": "issue",
+  "issue": "ENH-2859"
+}

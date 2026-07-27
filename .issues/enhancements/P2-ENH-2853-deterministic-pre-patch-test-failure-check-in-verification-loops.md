@@ -13,6 +13,8 @@ labels:
 - verification
 blocked_by:
 - ENH-2854
+learning_tests_required:
+- pytest
 ---
 
 # ENH-2853: Deterministic pre-patch test-failure check in verification loops
@@ -39,6 +41,15 @@ The check is deterministic, cheap, and has no false-positive mode that matters: 
 4. **Verdict** — any candidate test that *passes* against the pre-patch tree is flagged. The loop must not count it as evidence; the transition either fails or the test is excluded from the evidence set, per configuration.
 5. **Report** — emit per-test results (name, file, pre-patch outcome, post-patch outcome) into the verification evidence bundle so the check is auditable without re-running it.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Keep any `setup_worktree()`/`cleanup_worktree()` signature change additive — `scripts/little_loops/fsm/executor.py`, `scripts/little_loops/cli/loop/run.py`, and `scripts/little_loops/parallel/orchestrator.py` all call these directly today and are outside this issue's primary files.
+7. Reconcile `skills/verify-issue-loop/SKILL.md`'s explicit "no deterministic state type" boundary text (lines 211-219) with the new state type this issue introduces, adding a state-template example.
+8. Add a `test_project_test_patterns_in_schema` test in `scripts/tests/test_config_schema.py` following the existing one-test-per-key convention — no schema-presence test currently exists for the new key.
+9. Add per-language default values for `project.test_patterns` across the 8 `scripts/little_loops/templates/*.json` project-type templates, following the `declared`/`inferred`/`default` provenance convention `init/introspect.py` already uses for `test_cmd`/`lint_cmd`.
+
 ## Design Notes
 
 - Apply *only* the test-file portion of the diff to the base tree. Applying the full diff defeats the purpose; applying nothing means the tests don't exist to run.
@@ -51,6 +62,78 @@ The check is deterministic, cheap, and has no false-positive mode that matters: 
 - **Define the base state explicitly.** Under `ll-auto`/`ll-sprint` a verification step may span multiple commits. "Pre-patch" means the tree at the SHA recorded when the issue was dequeued (fall back to merge-base with the base branch when no dequeue SHA is recorded) — not simply `HEAD~1`.
 - **Nothing records a dequeue SHA today — this issue introduces the stamp.** The primary base-state path is dead code unless the SHA is written somewhere: add it at the dequeue/worktree-creation points (`autodev.yaml`'s `dequeue_next`, which already snapshots pre-refine readiness to the run dir, and `ll-parallel`'s worktree creation). Until a given orchestrator stamps it, its runs take the merge-base fallback — which is why the evidence bundle must name the base actually used.
 - **Shared test-file identification with ENH-2854.** Both this check and the tamper guard need to classify paths as test files. Implement one shared module (driven by a `project.test_patterns` config key — see ENH-2854) so the two checks cannot drift to divergent globs.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- No existing code implements this check. Each surface the issue touches has adjacent, reusable machinery rather than a blank slate:
+  - **`ll-harness`** (`scripts/little_loops/cli/harness.py`) has no per-test evidence bundle today — only a single-check `HarnessEvalOutcome` dataclass (`harness.py:242-248`) produced by `_evaluate_and_report()` (`harness.py:251-317`), with exit-code and single-LLM-semantic evaluators only (`harness.py:269-278`). `_record_harness_event()` (`harness.py:57-83`) persists a flat single-row event, not a multi-test table — any evidence bundle for this issue is new structure, not an extension of an existing one.
+  - **`/ll:verify-issue-loop`** (`skills/verify-issue-loop/SKILL.md`) synthesizes purely LLM-judged `check_semantic`/`llm_structured` states per acceptance criterion (Step 3, lines 92-112) and explicitly documents that it has no deterministic state type wired in today (lines 218-219). A pre-patch check is a net-new state type this skill's generator doesn't currently emit.
+  - **`autodev.yaml`'s `dequeue_next`** (lines 80-141) already snapshots pre-refine readiness to `${context.run_dir}/autodev-pre-readiness.txt` (lines 104-117, per FEAT-2751) — confirming the pattern this issue's dequeue-SHA stamp should follow — but captures no `git rev-parse HEAD` anywhere; the dequeue-time SHA stamp this issue calls for is genuinely new.
+  - **`ll-parallel`** (`scripts/little_loops/cli/parallel.py`) has no direct worktree calls itself; it delegates to `little_loops.parallel.worker_pool`/`orchestrator` for lifecycle and to the shared primitive `setup_worktree()` in `scripts/little_loops/worktree_utils.py:155-267`. No commit SHA is captured at the point a per-issue worker's worktree is created.
+- **Reusable worktree substrate**: `setup_worktree()` (`worktree_utils.py:155`) / `cleanup_worktree()` (`worktree_utils.py:270`) are the shared create/teardown primitives already used by `ll-parallel`, `ll-sprint`, and `ll-loop`. `setup_worktree()` accepts an optional `base_branch: str | None` validated via `git rev-parse --verify` (lines 201-208) and forks a worktree from it — this is the exact "fork from a dequeue-time SHA" hook this issue needs; no partial-diff/`git apply` helper exists anywhere in the codebase today (repo-wide `git apply` grep returns zero hits), so "apply only the test-file portion of the diff onto the base tree" is new logic to write on top of this primitive.
+- **Closest structural analog**: `verify_epic_branch_before_merge()` (`worktree_utils.py:364-494`) already implements the create → run-in-isolation → teardown-in-`finally` shape this issue's Design Notes describe (worktree at lines 433-442, test/lint run at 475-491, teardown at 493-494 regardless of outcome) — not directly reusable (it checks out an *existing branch*, not a "base SHA + partial diff" state), but it's the template to follow for "never leave the user's tree different than it found it."
+- **Editable-install import isolation — direct precedent, not a new problem**: `verify_epic_branch_before_merge()`'s `src_dir` parameter (`worktree_utils.py:399-409`, applied at 467-473) already solves exactly the failure mode this issue's Design Notes flag: an editable install's `_editable_impl_*.pth` hardcodes the main tree's absolute source path at interpreter startup regardless of `cwd`, so an unguarded pre-patch worktree run would still import main-tree modules. The fix — prepend `str(worktree_path / src_dir)` to `PYTHONPATH` ahead of the `.pth`-injected path — is the pattern to reuse directly. This was tracked as three linked bugs worth reading before implementing: `BUG-2629` (original false-negative), `BUG-2640` (stale main-tree source symptom), `BUG-2649` (added `LL_VERIFY_GATE=1` env marker at `worktree_utils.py:454-455` so tests sensitive to the injected PYTHONPATH/xdist-worktree combination can self-quarantine).
+- **Per-test pass/fail/error classification — two existing patterns to choose between, neither currently wired to a pre/post-patch comparison**:
+  - `scripts/little_loops/loops/oracles/code-run-gate.yaml`'s `run_test` state (lines 201-249) shells out to `test_cmd`, parses a `--json-report`-produced `pytest.json`'s `summary` dict (`total`/`passed`/`failed`), with a fallback to binary pass/fail when JSON reporting isn't configured. The `.ll/learning-tests/pytest-json-report.md` learning-test proof documents this exact contract (`summary.passed + failed + skipped == total`).
+  - `scripts/little_loops/pytest_history_plugin.py`'s `LLHistoryPlugin` (line 81) classifies pass/fail/error natively via the `pytest_runtest_logreport` hook, distinguishing `call`-phase failures (real test failures) from `setup`/`teardown`-phase failures (errors) — directly matches this issue's "error-vs-fail" distinction requirement in Design Notes. Registered via the `pytest11` entry point in `scripts/pyproject.toml`.
+- **No `project.test_patterns` config key exists yet** in `config-schema.json` or any template under `scripts/little_loops/templates/*.json`. ENH-2854 (the sibling issue this one shares test-file identification with) proposes introducing it as a new glob-list key, modeled on the existing `scan.focus_dirs` list-of-globs shape (resolved via `resolve_variable()` in `scripts/little_loops/config/core.py:886`). Both issues should land the shared identification module against this same new key rather than each defining its own glob list.
+- **Evidence-bundle dataclass convention**: `scripts/little_loops/issue_history/models.py`'s `Gap`/`GapAnalysis` classes (lines 259-302) and `scripts/little_loops/cli/verify_design_tokens.py`'s `ThemeViolation`/`ProfileResult` (lines 49-60) both follow the same shape — plain-field `@dataclass` + `to_dict()` method, list fields capped to a top-N for serialization — which is the convention a new per-test evidence-bundle dataclass for this issue should follow. Note: the command doc's reference to a `TestGap` class in `issue_history/models.py` does not match current code; the actual class is named `Gap`.
+
+## Integration Map
+
+### Files to Modify / Create
+- `scripts/little_loops/worktree_utils.py` — extend or wrap `setup_worktree()` (line 155) with a pre-patch variant: fork from a dequeue-time SHA / merge-base via the existing `base_branch` param, then apply only the test-file portion of the diff (new logic — no `git apply`-based partial-diff helper exists in the repo today).
+- `scripts/little_loops/cli/harness.py` — add the pre-patch evidence bundle alongside the existing `HarnessEvalOutcome` (line 242) / `_evaluate_and_report()` (line 251) single-check path.
+- `skills/verify-issue-loop/SKILL.md` — wire in the new deterministic state type; today (lines 92-127, 218-219) this skill only generates LLM-judged `llm_structured` states with no deterministic check type at all.
+- `scripts/little_loops/loops/autodev.yaml` — `dequeue_next` state (lines 80-141) needs a new `git rev-parse HEAD` stamp alongside its existing pre-readiness snapshot (lines 104-117).
+- `scripts/little_loops/cli/parallel.py` / worktree-creation call sites in `little_loops.parallel.worker_pool`/`orchestrator` — need the same dequeue-time SHA stamp at per-issue worktree creation.
+- `scripts/little_loops/config-schema.json` + `scripts/little_loops/templates/*.json` — new `project.test_patterns` key (shared with ENH-2854), following the `scan.focus_dirs` list-of-globs shape.
+- New shared module (name TBD, e.g. `scripts/little_loops/test_file_patterns.py`) for test-file identification, consumed by both this issue and ENH-2854.
+
+### Similar Patterns to Follow
+- `verify_epic_branch_before_merge()` (`worktree_utils.py:364-494`) — create → run-in-isolation → teardown-in-`finally` shape, plus its `src_dir` PYTHONPATH-injection fix (lines 399-409, 467-473) for editable-install import isolation. See precedent bugs `BUG-2629`, `BUG-2640`, `BUG-2649`.
+- `scripts/little_loops/pytest_history_plugin.py`'s `LLHistoryPlugin` (line 81) — per-test pass/fail/error classification via `pytest_runtest_logreport`, distinguishing `call`-phase failures from `setup`/`teardown`-phase errors.
+- `scripts/little_loops/loops/oracles/code-run-gate.yaml`'s `run_test` state (lines 201-249) — alternative pass/fail parsing via `pytest.json`'s `summary` dict; see `.ll/learning-tests/pytest-json-report.md` for the proven contract.
+- `scripts/little_loops/issue_history/models.py`'s `Gap`/`GapAnalysis` (lines 259-302) — dataclass + `to_dict()` convention for the new evidence-bundle structure.
+
+### Tests
+- `scripts/tests/test_worktree_utils.py` — extend for the pre-patch worktree + partial-diff-apply path.
+- `scripts/tests/test_cli_harness.py` — extend for the new evidence bundle.
+- `scripts/tests/test_verify_issue_loop.py` — extend for the new deterministic state.
+- `scripts/tests/test_autodev_loop.py` — extend for the dequeue-time SHA stamp.
+- No existing test file covers pre-patch/post-patch test comparison; a new test module is needed.
+
+### Related Issue
+- `ENH-2854` (blocking) — shares test-file identification via the new `project.test_patterns` config key; land the shared module once, consumed by both.
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/executor.py` (~line 927) — calls `worktree_utils.setup_worktree()` directly for FSM worktree-backed loop runs; any non-additive signature change to `setup_worktree()` for the pre-patch/partial-diff-apply variant breaks this call site. Not previously listed as a consumer.
+- `scripts/little_loops/cli/loop/run.py` (~line 472, `cleanup_worktree` paired via `atexit` at ~line 535/560) — `ll-loop run --worktree` path; same signature-compatibility concern as above.
+- `scripts/little_loops/parallel/merge_coordinator.py` (~line 1061) — has its own private `_cleanup_worktree` wrapper rather than calling `little_loops.worktree_utils.cleanup_worktree` directly; confirm during implementation whether it needs updating or is genuinely independent.
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` (lines ~462, ~653) — FSM states call `verify_epic_branch_before_merge()`, the closest structural analog this issue extends; a wrapper/extension should stay backward-compatible with these call sites.
+- `docs/reference/API.md:88` — module table entry for `little_loops.worktree_utils` names only ll-parallel/ll-sprint/ll-loop as consumers; does not yet mention the FSM executor as a fourth direct caller (confirmed above).
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md:3455-3473` — existing prose block documents `verify_epic_branch_before_merge` / `setup_worktree(..., checkout_existing=True)`'s exact call shape; cross-reference here when adding the pre-patch/partial-diff-apply variant.
+- `skills/verify-issue-loop/SKILL.md` lines 211-219 — the "Important rules" list explicitly forbids non-`llm_structured` state types (`check_invariants`/`check_stall`/`check_concrete` called out by name) as out of scope for verification loops. This boundary text must be reconciled with a new bullet describing when the deterministic pre-patch state type applies, alongside a new state-template example near lines 160-198.
+- `scripts/little_loops/cli/harness.py:117-128` (`--help` epilog / `_add_evaluator_flags()`) and the hard-coded JSON key set in `_evaluate_and_report()` (lines 283-294) / `_report()` (lines 320-339) — the new per-test evidence bundle is an additive key set here, not currently present; epilog text should mention it.
+- `docs/reference/CONFIGURATION.md` (if it enumerates the `project.*` block) — likely needs a `project.test_patterns` section matching the schema addition; confirm presence/absence during implementation.
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_worker_pool.py`'s `TestSetupWorktreeAndCleanup` (line ~634, e.g. `test_setup_worktree_passes_base_branch_in_feature_mode` line ~963) — closest existing analog for a dequeue-time SHA-stamp test at `ll-parallel`'s worker-creation call site; currently asserts only on `git worktree add` argv shape, not any SHA capture.
+- `scripts/tests/test_orchestrator.py` — patches `little_loops.worktree_utils.setup_worktree` at ~7 sites (lines 1761-1888) and asserts `base_branch` in merge/PR tests; extend if `setup_worktree()`'s signature changes.
+- `scripts/tests/test_cli_loop_worktree.py` — covers `ll-loop run --worktree`'s use of `setup_worktree`/`cleanup_worktree`; needs coverage if the pre-patch variant touches this path.
+- `scripts/tests/test_config_schema.py` — needs a new `test_project_test_patterns_in_schema` test following the existing one-test-per-key convention (e.g. `test_health_url_in_schema`); every `project.*` addition in this codebase gets its own schema-presence test and none currently exists for this key.
+- `scripts/tests/test_worktree_utils.py`'s `TestVerifyEpicBranchBeforeMerge` (lines 350-690), specifically `test_src_dir_prepends_worktree_source_onto_pythonpath` (line 447), `test_falsy_src_dir_leaves_pythonpath_uninjected` (line 479), `test_verify_gate_marker_set_in_child_env` (line 556) — the direct template for the new pre-patch-worktree import-isolation tests (probe-subprocess pattern via inline `python3 -c` one-liners asserting `PYTHONPATH`/`LL_VERIFY_GATE`).
+- No existing test executes `dequeue_next` live — `test_autodev_loop.py`'s `TestDequeueNextPreReadinessSnapshot` (lines 172-186) only does string-containment checks against the raw YAML `action:` block; the new SHA-stamp test should follow that same static-assertion style (`assert "git rev-parse HEAD" in action`) rather than expecting live-execution coverage.
 
 ## Acceptance Criteria
 
@@ -71,4 +154,6 @@ The check is deterministic, cheap, and has no false-positive mode that matters: 
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-07-27T16:58:09 - `8416c0b2-f15d-4605-9d27-7401bd127ac6.jsonl`
+- `/ll:refine-issue` - 2026-07-27T16:25:41 - `b315bd08-df31-4315-8e3d-4da1b2c0632d.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-27T15:59:42 - `29cf17b6-04b4-4b01-9444-64f1bfdbdaa5.jsonl`

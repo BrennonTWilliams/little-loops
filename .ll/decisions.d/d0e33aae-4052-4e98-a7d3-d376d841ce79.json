@@ -1,0 +1,11 @@
+{
+  "id": "217b8c07-7b9b-4d4c-8cbc-dcf98473f103",
+  "type": "decision",
+  "timestamp": "2026-07-27T16:19:34Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "MR-13-style WARN for abandonment without abandoned field and hardcoded success verdicts",
+  "rule": "Captured: validation lint: abandonment must reach summary.json and downgrade verdict",
+  "scope": "issue",
+  "issue": "ENH-2860"
+}
