@@ -11,6 +11,8 @@ parent: EPIC-2856
 labels:
 - rework
 - verification
+blocked_by:
+- FEAT-2867
 ---
 
 # FEAT-2855: Track codebase maintainability trend as an observability dimension
@@ -59,7 +61,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - **No existing `git log`-derived structural-signal code today.** `scripts/little_loops/issue_history/coupling.py::analyze_coupling()`, `hotspots.py::analyze_hotspots()`, and `regressions.py::analyze_regression_clustering()` already implement close analogs of "change coupling," "churn concentration," and "shotgun surgery" — but their input is **file paths mentioned in issue markdown text** (`_extract_paths_from_issue()` in `issue_history/parsing.py`), not actual `git log` diffs. This is a real gap between the existing analog and what FEAT-2855 needs: a new git-log-driven module, not a repurposing of these.
 - **`git log --numstat`/rename detection does not exist anywhere in the codebase yet.** The only existing `git log` subprocess wrapper is `_backfill_commit_events()` in `scripts/little_loops/session_store.py` (~line 2001), which runs `git log --all --name-only --pretty=format:...` (file paths touched only, no line-diff counts, no `-M`/`--follow`). It's the nearest template to copy the subprocess-invocation shape from (timeout, `cwd=repo_root`, `capture_output=True, text=True`, delimiter-based parsing via `\x1e`/`\x1f`), but a new module must add `--numstat` and `-M` itself.
-- **Commit → issue attribution already exists** via the `commit_events` table (`session_store.py`, schema ~line 677: `commit_sha` UNIQUE, `issue_id`, `files_json`, ...), written by `record_commit_event()`/`_infer_issue_id()` and read via `history_reader.py::recent_commit_events(branch, issue_id, ...)`. This is the "issue = unit of logical change" join point the Design Notes call for. There is currently no reverse lookup (commit SHA → issue); it would be a trivial `SELECT issue_id FROM commit_events WHERE commit_sha = ?` addition to `history_reader.py` if needed.
+- **Commit → issue attribution already exists** via the `commit_events` table (`session_store.py`, schema ~line 677: `commit_sha` UNIQUE, `issue_id`, `files_json`, ...), written by `record_commit_event()`/`_infer_issue_id()` and read via `history_reader.py::recent_commit_events(branch, issue_id, ...)`. This is the "issue = unit of logical change" join point the Design Notes call for. The SHA→issue reverse lookup is added by **FEAT-2867** (blocking) — reuse it, do not re-add.
 - **Verdict classification precedent**: `analyze_rejection_rates()` in `scripts/little_loops/issue_history/quality.py` (~line 197) already implements the improving/stable/degrading shape this issue asks for — bucket a metric by period, compare the most recent window against an earlier one with ratio thresholds (`rates[-1] < rates[0] * 0.8` → improving, `> 1.2` → degrading, else stable), defaulting to "stable" below a minimum bucket count (`len(sorted_months) < 3`). The three-way trend string is stored on dataclass fields in `issue_history/models.py` (`trend: str = "stable"`) and rendered via a symbol lookup in `issue_history/formatting.py`. A new maintainability verdict should mirror this ratio-threshold-vs-earliest-bucket shape rather than invent a new scheme.
 - **Minimum-history guard precedent**: `issue_history/debt.py` guards derived metrics with inline thresholds (e.g. `if len(issue_dirs) < 3:`, `if outcome.total_count >= 5:`) and always **silently omits/defaults the field** rather than raising — matching this issue's AC that a below-threshold repo gets an explicit "insufficient history" result, not an exception.
 - **Read-only DB access idiom**: `history_reader.py::_connect_readonly(db_path)` (line 417) is the established helper — `sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)`, returns `None` on failure. `issue_history/evolution.py::_open_db()` additionally sets `PRAGMA query_only = ON`. A new module should import `_connect_readonly` directly rather than re-implementing the URI-mode connect.
@@ -138,5 +140,25 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-27T19:42:09 - `e2303183-4e52-4649-af90-4b53254bbda4.jsonl`
 - `/ll:wire-issue` - 2026-07-27T17:11:17 - `ab74d852-fc92-408d-88fc-3f7779e039d6.jsonl`
 - `/ll:refine-issue` - 2026-07-27T16:36:13 - `508c9316-4962-416d-986d-9fbcbeb490a0.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): this issue's subcommand is
+**`ll-history trend`**; FEAT-2867 owns **`ll-history rework`**. FEAT-2867 lands
+first (blocking) and establishes the shared scaffolding — the SHA→issue reverse
+lookup in `history_reader.py`, the verdict vocabulary, the minimum-sample guard,
+and the duplicated docs/skill anchors (`.claude/CLAUDE.md` ~L212-213 **and**
+`scripts/little_loops/init/writers.py` ~L108; `skills/analyze-history/SKILL.md`
+~L16-24 and ~L96-103). Extend those anchors here; do not re-author them, and do
+not re-add the reverse lookup.
+
+Per EPIC-2856, rework rate (FEAT-2867) is the epic's primary "did this work"
+measure; this issue supplies the complementary maintainability dimension of the
+same comparison, reading the same ENH-2852 cutover stamp at
+`.ll/program-design-cutover.json` (`{"sha": ..., "date": ...}`; path/schema
+pinned in ENH-2852's Design Notes).

@@ -32,6 +32,22 @@ config key, its per-project-type template defaults, and a single identification
 module. ENH-2853 and ENH-2854 then both depend on this and on nothing from each
 other.
 
+## Current Behavior
+
+ENH-2853 and ENH-2854 each independently propose the same `project.test_patterns`
+config key and the same test-file identification module as part of their own
+scope. That produced a circular `blocked_by` edge between them (each needs the
+other's proposed substrate) and, left unresolved, risks two independently
+authored glob lists drifting apart silently.
+
+## Expected Behavior
+
+The config key, its per-project-type template defaults, and a single
+identification module land once, in this issue, ahead of both consumers.
+ENH-2853 and ENH-2854 each depend only on this issue and can be implemented
+independently of each other, with no risk of divergent test-file classification
+logic.
+
 ## Motivation
 
 A false negative in test-file identification (a test file the checks don't know
@@ -79,6 +95,31 @@ of forcing an arbitrary serial order between them.
 - Pure and deterministic: no git calls, no filesystem stat, no LLM. Path in,
   bool out — so both consumers can unit-test their own logic against it
   trivially.
+- `_file_matches_pattern()` is private to `git_operations.py`. Rather than a
+  cross-module private import, promote it to a public name (e.g.
+  `file_matches_pattern`, keeping the underscore name as an alias for existing
+  in-module callers) as part of this issue.
+
+## Scope Boundaries
+
+- **In scope**: `project.test_patterns` config key, `ProjectConfig` field,
+  per-project-type template defaults, `test_file_patterns.py` module, and
+  promoting `_file_matches_pattern()` to a public name.
+- **Out of scope**: Wiring the module into ENH-2853's pre-patch check or
+  ENH-2854's tamper guard — those consumers wire it in their own scope.
+
+## Impact
+
+- **Priority**: P2 - Blocks two verification-hardening issues (ENH-2853,
+  ENH-2854); not itself user-facing but on the critical path for EPIC-2856's
+  rework-reduction goal.
+- **Effort**: Small - One new pure module, one config key with per-template
+  defaults, and a promoted-to-public matcher function; no consumer wiring is in
+  this issue's scope.
+- **Risk**: Low - Purely additive (new config key + new module); no existing
+  behavior changes, and `_file_matches_pattern()` keeps its private alias for
+  existing in-module callers.
+- **Breaking Change**: No
 
 ## Acceptance Criteria
 
@@ -92,8 +133,9 @@ of forcing an arbitrary serial order between them.
       equivalent shared-fixture file where one exists).
 - [ ] `scripts/little_loops/test_file_patterns.py` exposes a single
       identification predicate and a list filter, both pure and LLM-free.
-- [ ] Matching uses `git_operations._file_matches_pattern()` rather than a
-      second glob implementation.
+- [ ] Matching uses `git_operations`' existing gitignore-style matcher rather
+      than a second glob implementation, and the matcher is promoted to a
+      public name instead of being imported under its private `_`-prefixed one.
 - [ ] Paths are matched repo-relative and POSIX-normalized.
 - [ ] Tests cover: each template's default set, `conftest.py` classification,
       a non-test file that superficially resembles one (e.g.
@@ -138,3 +180,7 @@ of forcing an arbitrary serial order between them.
 ## Status
 
 **Open** | Created: 2026-07-27 | Priority: P2
+
+
+## Session Log
+- `/ll:format-issue` - 2026-07-27T20:01:56 - `74d428f0-7103-4a58-9168-ff504878fb04.jsonl`

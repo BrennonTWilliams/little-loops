@@ -59,8 +59,9 @@ Two failure modes recur in unattended batch runs:
    detected.
 
 The observability child exists because neither fix is provable without a
-measurement: a maintainability trend is the quantity that tells you whether any
-of this worked.
+measurement: rework rate (FEAT-2867) is the quantity that tells you whether any
+of this worked; the maintainability trend (FEAT-2855) is a second, complementary
+dimension.
 
 ## Goal
 
@@ -135,7 +136,7 @@ multi-tenant reporting.
 
 ### Suggested order
 
-1. **ENH-2867** — establishes the baseline the rest are measured against. Cheap,
+1. **FEAT-2867** — establishes the baseline the rest are measured against. Cheap,
    read-only, no dependencies.
 2. **ENH-2865, ENH-2866** — small substrate, unblocks both verification children.
 3. **ENH-2853, ENH-2854** — now genuinely parallel; together they close the two
@@ -149,10 +150,11 @@ multi-tenant reporting.
 computed from `git log`, which is immutable — the tool can retroactively
 compute any pre-intervention window once it ships. No manual signal sampling is
 needed up front. What ENH-2852 must record before its gate is enabled is the
-**cutover point**: a note under `thoughts/` with the SHA/date at which the
+**cutover point**: `.ll/program-design-cutover.json` with the SHA/date at which the
 interventions begin (plus the caveat that `.ll/history.db` attribution for old
 windows depends on manual retention). "Did any of this work" is then answered
-by FEAT-2855 comparing windows either side of that stamp.
+by FEAT-2867 comparing rework windows either side of that stamp, with FEAT-2855
+supplying the maintainability dimension of the same comparison.
 
 ## Success Metrics
 
@@ -189,3 +191,7 @@ confidence-per-effort items in the set.
 ## Status
 
 **Open** | Created: 2026-07-27 | Priority: P2
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-27T19:42:09 - `e2303183-4e52-4649-af90-4b53254bbda4.jsonl`

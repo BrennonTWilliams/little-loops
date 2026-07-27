@@ -82,9 +82,13 @@ Candidate signals:
 - **Touch-back rate** — share of closed issues whose files are modified again
   within N days by a *different* issue. Distinguishes "came back to the same
   code" from "came back to the same ticket."
-- **Revert rate** — commits attributed to an issue that are later reverted
-  (`git revert` lineage, or a commit whose diff is the inverse of an earlier
-  one on the same paths).
+- **Revert rate** — commits attributed to an issue that are later reverted.
+  **First cut is message-lineage only**: `commit_events.message` already stores
+  full commit messages, so `git revert`'s "This reverts commit <sha>" lineage is
+  a pure in-store query joined through the SHA→issue reverse lookup — no `git
+  log` parsing. Diff-inverse detection (a commit whose diff undoes an earlier
+  one without `git revert`) is expensive and fuzzy; it is explicitly deferred to
+  a follow-up, not quietly in scope.
 
 Output:
 
@@ -126,6 +130,20 @@ Output:
   the ratio alone doesn't show. Report the share of the window's commits that
   were attributable, so a low-coverage window is visibly weak evidence rather
   than a clean-looking figure.
+- **Reopen detection reads `issue_events`, and its dedup shapes what is
+  countable** (verified 2026-07-27). `session_store.py`'s `issue_events` table
+  records per-transition rows (written by the EventBus producer and
+  `ll-issues set-status`), so "reached `done` and later left it" is detectable
+  from transition history — current-status-only issue files are not the source.
+  Two caveats the implementation must respect: (1) rows are idempotent per
+  `(issue_id, transition)`, so a *second* done→open→done cycle on the same issue
+  collapses into the first — reopen rate counts "issues that ever reopened," not
+  reopen *events*; state that in the output. (2) Retroactive coverage extends
+  only as far as backfilled/mirrored transition history; a pre-intervention
+  window with sparse `issue_events` coverage should surface through the same
+  attribution-coverage reporting rather than reading as a clean zero.
+  Supersession-based rework (`supersedes:` edges) is fully retroactive either
+  way.
 - Cancelled-as-superseded is rework, deferred is not. ENH-2829's model — a
   superseded issue is `cancelled`, the replacement declares `supersedes:` — is
   the edge to follow; do not treat every `cancelled` as rework, and do not count
@@ -150,6 +168,11 @@ Output:
       "insufficient history" result, not a computed ratio.
 - [ ] Output states that orchestrator attribution is correlational.
 - [ ] All sources are opened read-only; no source DB or repo state is mutated.
+- [ ] Revert rate is computed from `commit_events.message` revert lineage only;
+      no diff-inverse comparison ships in this issue.
+- [ ] Reopen rate is computed from `issue_events` transition history, counts
+      issues (not reopen events, per the dedup caveat), and the output labels it
+      accordingly.
 - [ ] No LLM calls.
 - [ ] Tests cover: a synthetic history with injected rework, one with injected
       improvement, a flat history, a below-threshold history, and a
@@ -232,7 +255,7 @@ window's commits that were attributable, and a note that orchestrator
 attribution is correlational.
 
 The second use case is the epic's own: after ENH-2852's design gate ships and
-its cutover SHA is stamped under `thoughts/`, the same command answers "did the
+its cutover SHA is stamped at `.ll/program-design-cutover.json`, the same command answers "did the
 gate reduce rework" by comparing the windows either side of that stamp. Without
 this feature that question has no instrument.
 
@@ -249,3 +272,28 @@ establishes.
 ## Status
 
 **Open** | Created: 2026-07-27 | Priority: P2
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): this issue and FEAT-2855 both add
+an `ll-history` subcommand and both edit the same duplicated anchors
+(`.claude/CLAUDE.md` ~L212-213 **and** `scripts/little_loops/init/writers.py`
+~L108; `skills/analyze-history/SKILL.md` "When to Activate" ~L16-24 and the
+intent-mapping table ~L96-103). Subcommand names are reserved as
+**`ll-history rework`** (this issue) and **`ll-history trend`** (FEAT-2855).
+FEAT-2867 lands first and establishes the shared scaffolding — the SHA→issue
+reverse lookup in `history_reader.py`, the verdict vocabulary, the
+minimum-sample guard, and the docs/skill anchors. FEAT-2855 extends those
+anchors rather than re-authoring them.
+
+Window boundaries here derive from commit timestamps. If ENH-2866's dequeue-SHA
+stamp has landed, prefer it as the window boundary — an additive refinement, not
+a prerequisite. The ENH-2852 cutover stamp at `.ll/program-design-cutover.json`
+(`{"sha": ..., "date": ...}`; path/schema pinned in ENH-2852's Design Notes) is
+a shared consumer contract with FEAT-2855.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-27T19:42:09 - `e2303183-4e52-4649-af90-4b53254bbda4.jsonl`

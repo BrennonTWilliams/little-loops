@@ -84,7 +84,11 @@ does not stamp keeps working unchanged.
    merge-base fallback once and identically rather than each rolling their own
    lookup.
 4. **Persist to `.ll/history.db`** where a run is already recorded, so the stamp
-   outlives the run directory.
+   outlives the run directory. Concretely: additive nullable columns
+   (`base_sha TEXT`, `base_dirty INTEGER`) on the existing run rows —
+   `loop_runs` for the autodev/FSM path and `orchestration_runs` for
+   `ll-parallel` — via a new `_MIGRATIONS` entry (NULL = "unstamped", matching
+   the reader's `None` contract). No new table.
 
 ## Design Notes
 
@@ -117,7 +121,9 @@ does not stamp keeps working unchanged.
 - [ ] A single reader helper resolves a run's base SHA and returns `None` when
       unstamped, so the merge-base fallback is implemented once.
 - [ ] Whether the tree was dirty at stamp time is recorded alongside the SHA.
-- [ ] The stamp is persisted to `.ll/history.db` where a run is already recorded.
+- [ ] The stamp is persisted to `.ll/history.db` as additive nullable columns on
+      the existing run rows (`loop_runs` / `orchestration_runs`), not a new
+      table; NULL means unstamped.
 - [ ] An orchestrator or hand-run loop with no stamp continues to work
       unchanged.
 - [ ] Tests cover: the stamp written by `dequeue_next`, the stamp written at
@@ -167,7 +173,7 @@ does not stamp keeps working unchanged.
 
 ### Consumers
 - `ENH-2853` — pre-patch test-failure check (primary consumer; blocked on this)
-- `FEAT-2855` / `FEAT-2867` — window attribution
+- `FEAT-2855` / `FEAT-2867` — *optional* window-attribution precision; neither is blocked on this stamp, and FEAT-2867 intentionally sequences first using commit-timestamp windows. Both must work without it.
 
 ## Scope Boundaries
 
@@ -183,11 +189,16 @@ verify path — neither dequeues work items; changing `setup_worktree()` /
 ## Impact
 
 Turns ENH-2853's base-state resolution from a fallback-only path into its
-intended one, and gives FEAT-2855 / FEAT-2867 a precise window boundary instead
-of one inferred from commit timestamps. Small and self-contained: a
+intended one, and offers FEAT-2855 / FEAT-2867 an *optional* precise window
+boundary instead of one inferred from commit timestamps — an additive refinement
+those two do not depend on. Small and self-contained: a
 `git rev-parse`, a run-dir file write in the same idiom `dequeue_next` already
 uses for its readiness snapshot, and one reader.
 
 ## Status
 
 **Open** | Created: 2026-07-27 | Priority: P2
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-27T19:42:08 - `e2303183-4e52-4649-af90-4b53254bbda4.jsonl`
