@@ -1,0 +1,11 @@
+{
+  "id": "a8990822-bcdd-47d9-a787-0b4d8f848497",
+  "type": "decision",
+  "timestamp": "2026-07-27T00:44:35Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Extraction relies solely on _EXTRACTION_PROMPT wording; urllib slipped through a prompt already excluding os/sys/pathlib/json/re/datetime. Add a deterministic stdlib post-filter so the guarantee does not depend on model compliance.",
+  "rule": "Captured: Widen learning-target extraction exclusion list to cover contract-stable stdlib",
+  "scope": "issue",
+  "issue": "ENH-2843"
+}
