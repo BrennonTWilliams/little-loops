@@ -4,9 +4,10 @@ title: Add a program-design stage to issue refinement naming types, signatures, 
   call path
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_by: ll-product-promotion
 discovered_date: 2026-07-27
+completed_at: '2026-07-27T22:51:05Z'
 epic: EPIC-2856
 parent: EPIC-2856
 labels:
@@ -104,21 +105,21 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] The issue template includes a `## Program Design` section with `Types`, `Signatures`, and `Call Path` subsections.
-- [ ] The refinement chain populates that section with identifiers drawn from the actual codebase, not placeholders.
-- [ ] `/ll:confidence-check` fails an issue with a missing or empty `## Program Design` section.
-- [ ] `/ll:confidence-check` fails an issue whose section contains only prose with no repo-resolvable call-path anchors or signature-shaped lines.
-- [ ] `/ll:confidence-check` passes an issue naming concrete types, signatures, and a call path — where repo-resolution is required only of call-path anchors, and new identifiers need only be signature-shaped; a new identifier that happens to resolve (e.g. after its code is committed) must not change the verdict, and a test covers this.
-- [ ] The specificity check is implemented deterministically inside `check_format_gaps()` / `ll-issues format-check` (decided — no standalone `ll-verify-*` binary), shelled out to by the skill and testable without an LLM.
-- [ ] An explicit not-applicable escape hatch exists for trivial issues and is recorded in the issue body when used.
-- [ ] ~~Implementation-time deviations recorded via a `Deviations` note with a writer in `manage-issue`~~ — **moved to ENH-2871**. This issue only ensures the grading logic tolerates an appended `Deviations` subsection (inert to specificity — anchors/signatures are read from `Types`/`Signatures`/`Call Path` only).
-- [ ] The grandfathering rollout (decided) is implemented: issues refined before the gate ships are exempt, so shipping the gate does not mass-defer the current backlog.
-- [ ] The grandfather cutoff is read from the `.ll/program-design-cutover.json` cutover stamp (decided: no second cutoff constant anywhere) using strictly-earlier-than-stamp-date comparison (decided; the stamp is dated the day after the gate merges); grandfathering is implemented inside `check_format_gaps()` so every consumer inherits it; a test asserts a grandfathered issue produces no Program Design gap through `ll-issues format-check`, and therefore does not trip `rn-remediate.yaml`'s `ensure_formatted` or `ll-issues sequence` drift detection.
-- [ ] When the cutover stamp is absent or unparseable, the Program Design gap check is skipped for all issues (gate off, fail open — decided); a test asserts an unstamped project produces no Program Design gap for a section-less issue.
-- [ ] `commands/ready-issue.md`'s blocking set is unchanged (decided: confidence-check only); `ready-issue` may surface a missing Program Design section but does not refuse on it.
-- [ ] Tests cover: missing section, prose-only section, valid section (including unresolvable-but-signature-shaped new identifiers), and the escape hatch.
-- [ ] The stamp-reading code in `check_format_gaps()` parses `.ll/program-design-cutover.json` (`{"sha": ..., "date": ...}`, decided path + schema) — but **writing** the stamp (arming the gate) is ENH-2870's final AC, not this issue's; this issue merges unstamped, gate off everywhere.
-- [ ] ~~Reconcile-before-defer routing with a distinct machine reason code~~ — **moved to ENH-2870** (blocked by this issue).
+- [x] The issue template includes a `## Program Design` section with `Types`, `Signatures`, and `Call Path` subsections.
+- [x] The refinement chain populates that section with identifiers drawn from the actual codebase, not placeholders.
+- [x] `/ll:confidence-check` fails an issue with a missing or empty `## Program Design` section.
+- [x] `/ll:confidence-check` fails an issue whose section contains only prose with no repo-resolvable call-path anchors or signature-shaped lines.
+- [x] `/ll:confidence-check` passes an issue naming concrete types, signatures, and a call path — where repo-resolution is required only of call-path anchors, and new identifiers need only be signature-shaped; a new identifier that happens to resolve (e.g. after its code is committed) must not change the verdict, and a test covers this.
+- [x] The specificity check is implemented deterministically inside `check_format_gaps()` / `ll-issues format-check` (decided — no standalone `ll-verify-*` binary), shelled out to by the skill and testable without an LLM.
+- [x] An explicit not-applicable escape hatch exists for trivial issues and is recorded in the issue body when used.
+- [x] ~~Implementation-time deviations recorded via a `Deviations` note with a writer in `manage-issue`~~ — **moved to ENH-2871**. This issue only ensures the grading logic tolerates an appended `Deviations` subsection (inert to specificity — anchors/signatures are read from `Types`/`Signatures`/`Call Path` only).
+- [x] The grandfathering rollout (decided) is implemented: issues refined before the gate ships are exempt, so shipping the gate does not mass-defer the current backlog.
+- [x] The grandfather cutoff is read from the `.ll/program-design-cutover.json` cutover stamp (decided: no second cutoff constant anywhere) using strictly-earlier-than-stamp-date comparison (decided; the stamp is dated the day after the gate merges); grandfathering is implemented inside `check_format_gaps()` so every consumer inherits it; a test asserts a grandfathered issue produces no Program Design gap through `ll-issues format-check`, and therefore does not trip `rn-remediate.yaml`'s `ensure_formatted` or `ll-issues sequence` drift detection.
+- [x] When the cutover stamp is absent or unparseable, the Program Design gap check is skipped for all issues (gate off, fail open — decided); a test asserts an unstamped project produces no Program Design gap for a section-less issue.
+- [x] `commands/ready-issue.md`'s blocking set is unchanged (decided: confidence-check only); `ready-issue` may surface a missing Program Design section but does not refuse on it.
+- [x] Tests cover: missing section, prose-only section, valid section (including unresolvable-but-signature-shaped new identifiers), and the escape hatch.
+- [x] The stamp-reading code in `check_format_gaps()` parses `.ll/program-design-cutover.json` (`{"sha": ..., "date": ...}`, decided path + schema) — but **writing** the stamp (arming the gate) is ENH-2870's final AC, not this issue's; this issue merges unstamped, gate off everywhere.
+- [ ] ~~Reconcile-before-defer routing with a distinct machine reason code~~ — **moved to ENH-2870** (blocked by this issue); intentionally left unchecked here, as no part of it is in this issue's scope.
 
 ---
 
@@ -185,6 +186,46 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Risk**: Low-Medium (post-split) - ships fail-open (unstamped), so the gate is off everywhere until ENH-2870 arms it; mass-deferral requires both a stamped project and broken grandfathering, and the specificity check is deterministic rather than LLM-judged.
 - **Breaking Change**: No - additive section/gate; grandfathered issues are unaffected until re-refined.
 
+## Resolution
+
+_Implemented by `/ll:manage-issue` on 2026-07-27._
+
+The core gate ships **fail-open**: this repo writes no
+`.ll/program-design-cutover.json`, and `ll-issues format-check --all` across the full
+backlog reports zero Program Design gaps. Arming it is ENH-2870's final AC.
+
+**What landed**
+
+- `scripts/little_loops/issues/program_design.py` (new) — promotes the spike's proven
+  contract to production: `parse_signature_lines()`, `extract_call_path_anchors()`,
+  `grade_program_design()`, `git_grep_resolver()`, plus the stamp/grandfathering half
+  (`read_cutover_stamp()`, `issue_design_timestamp()`, `program_design_gate_active()`).
+  Two changes beyond the spike: evidence is read from `Types`/`Signatures`/`Call Path`
+  only (so an appended `Deviations` note is inert both ways — ENH-2871's convention), and
+  `_is_true()` coerces the frontmatter flag, since `parse_frontmatter` yields strings and
+  a bare `is True` check would have made the escape hatch silently dead.
+- `issue_parser.py` — `FormatGaps.program_design_nonspecific`; `_gate_program_design()`
+  filters `Program Design` out of the *required* set for both `check_format_gaps()` and
+  `is_formatted()` when the gate is off, so grandfathering suppresses the `missing`/
+  `empty` entries too, not just the specificity one. Without that the schema change alone
+  would have flagged every pre-existing issue on day one.
+- `templates/{bug,feat,enh}-sections.json` — `Program Design` common section with a
+  `Types`/`Signatures`/`Call Path` creation template.
+- `cli/issues/format_check.py`, `skills/confidence-check/SKILL.md` (Phase 1.6 + Program
+  Design Hard Override), `loops/rn-remediate.yaml`, `commands/ready-issue.md`
+  (surface-only, non-blocking, as decided), `docs/reference/API.md`,
+  `docs/reference/ISSUE_TEMPLATE.md`.
+
+**Verification**: 29 new tests in `scripts/tests/test_program_design_gate.py` + 4 CLI
+tests in `test_ll_issues_format_check.py`; full suite 16,681 passed (the 4 failures in
+`test_builtin_loops`/`test_general_task_loop`/`test_prose_dep_sweep_gate` reproduce on a
+clean tree and are unrelated). `ruff check`, `ruff format`, `mypy` (276 files),
+`ll-verify-docs` all clean.
+
+**Deliberately not done**: the spike at `scripts/tests/spike/program_design_specificity/`
+stays in place, matching the `fsm_continuity_compaction` precedent for promoted spikes.
+
+
 ## Status
 
 **Open** | Created: 2026-07-27 | Priority: P2
@@ -240,6 +281,7 @@ issue naming a realistic return type.
 directly into `check_format_gaps()`) in a separate PR.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-27T22:50:13 - `6577d800-d15d-4962-91d5-5f38934803ff.jsonl`
 - `/ll:confidence-check` - 2026-07-27T22:30:00 - `bb61a6ce-43ed-4be8-ad81-6e1ae13a8d93.jsonl`
 - `/ll:confidence-check` - 2026-07-27T21:58:00 - `05f19764-4660-46a7-81ad-bef2f66b9679.jsonl`
 - `/ll:confidence-check` - 2026-07-27T00:00:00 - `ea02e551-ac6e-4d98-ac1d-084d06c96d7c.jsonl`

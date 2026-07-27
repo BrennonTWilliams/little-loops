@@ -27,11 +27,28 @@ The little-loops issue template has been optimized to maximize value for both AI
 | **Motivation** | | MEDIUM | Why this matters (NEW v2.0) |
 | **Proposed Solution** | | HIGH | HOW to fix with code examples |
 | **Integration Map** | | HIGH | All affected files/components (NEW v2.0) |
+| **Program Design** | ✓* | HIGH | Concrete `Types` / `Signatures` / `Call Path` the implementation will follow (NEW, ENH-2852) |
 | **Implementation Steps** | | HIGH | High-level outline (NEW v2.0) |
 | **Impact** | ✓ | HIGH | Priority/Effort/Risk with justifications |
 | **Related Key Documentation** | | LOW | Links to docs |
 | **Labels** | frontmatter | MEDIUM | Categorization — `labels:` field in frontmatter (post-ENH-1392); not a required body heading. The issue assembler no longer emits a `## Labels` body section when creating new issues (ENH-2399). |
 | **Status** | ✓ | HIGH | Status footer |
+
+\* **Program Design is required only once the gate is armed** (ENH-2852). It is enforced
+per-project by writing `.ll/program-design-cutover.json`
+(`{"sha": "<40-char SHA>", "date": "YYYY-MM-DD"}`); with no stamp the section is optional
+and `ll-issues format-check` reports nothing for it (fail open). Once armed, issues whose
+design timestamp is strictly earlier than the stamped date stay exempt (grandfathered),
+and an individual issue can opt out with `program_design_not_applicable: true` in
+frontmatter — the escape hatch for one-line config changes and docs fixes, modeled on
+`testable: false`.
+
+The section is graded mechanically, not by an LLM: it must carry at least one
+signature-shaped line (`grade(body: str) -> Verdict`, `sha: str`) and at least one
+`Call Path` anchor that resolves against the repo. New identifiers only need to be
+signature-*shaped* — they are never required to resolve, and their resolving anyway never
+changes the verdict. An appended `### Deviations` note (recorded at implementation time)
+is inert: it neither rescues a prose section nor breaks a valid one.
 
 ### Type-Specific Sections
 

@@ -275,6 +275,7 @@ class TestFormatCheckJsonOutput:
             "malformed_id": [],
             "prose_dep_drift": [],
             "stale_prose_dep": [],
+            "program_design_nonspecific": [],
         }
 
     def test_gapped_issue_json_output(
@@ -681,3 +682,104 @@ class TestFormatCheckFix:
         assert "BUG-9404" not in out or "prose_dep_drift" not in out.split("BUG-9404:")[-1]
         assert "blocked_by" in path.read_text()
         assert "FEAT-9500" in path.read_text()
+
+
+# ---------------------------------------------------------------------------
+# TestFormatCheckProgramDesign (ENH-2852)
+# ---------------------------------------------------------------------------
+
+
+class TestFormatCheckProgramDesign:
+    """The Program Design gate reaches the CLI, and is off in unstamped projects."""
+
+    @staticmethod
+    def _arm(temp_project_dir: Path, stamp_date: str) -> None:
+        (temp_project_dir / ".ll" / "program-design-cutover.json").write_text(
+            json.dumps({"sha": "0" * 40, "date": stamp_date})
+        )
+
+    def test_unstamped_project_reports_no_program_design_gap(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Fail open: the clean-bug fixture has no `## Program Design` and still passes."""
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", "id: BUG-9601")
+        _write_issue(format_check_dir, "P3-BUG-9601-test-bug.md", body)
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9601", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 0, out
+        assert "Program Design" not in out
+
+    def test_nonspecific_section_surfaces_in_text_output(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._arm(temp_project_dir, "2020-01-01")
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", "id: BUG-9602").replace(
+            "## Status\nopen",
+            "## Program Design\n\n### Types\n\nSome prose about the shape.\n\n"
+            "### Signatures\n\nA function will be added.\n\n"
+            "### Call Path\n\nThe CLI reaches the parser somehow.\n\n## Status\nopen",
+        )
+        _write_issue(format_check_dir, "P3-BUG-9602-test-bug.md", body)
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9602", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "program_design_nonspecific: Program Design:" in out
+
+    def test_missing_section_surfaces_after_cutover(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._arm(temp_project_dir, "2020-01-01")
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", "id: BUG-9603")
+        _write_issue(format_check_dir, "P3-BUG-9603-test-bug.md", body)
+
+        result = _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9603",
+                "--format",
+                "json",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "Program Design" in json.loads(out)["missing"]
+
+    def test_escape_hatch_passes_after_cutover(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._arm(temp_project_dir, "2020-01-01")
+        body = _CLEAN_BUG_BODY.replace(
+            "id: BUG-9101", "id: BUG-9604\nprogram_design_not_applicable: true"
+        )
+        _write_issue(format_check_dir, "P3-BUG-9604-test-bug.md", body)
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9604", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 0, out

@@ -122,6 +122,25 @@ If invoked within manage-issue: use the research findings already gathered in Ph
 
 See [rubric.md](rubric.md) § Phase 1.5 for the full bash invocation pattern, Learning Test Context block format, and `ll-learning-tests check` status semantics.
 
+### Phase 1.6: Pre-Fetch Program Design Gate (ENH-2852)
+
+Run the deterministic structural linter and capture only the Program Design verdict:
+
+```bash
+PD_GAP=$(ll-issues format-check {{issue_id}} --format json 2>/dev/null \
+  | python -c "import json,sys; print('; '.join(json.load(sys.stdin).get('program_design_nonspecific', [])))" 2>/dev/null || true)
+PD_MISSING=$(ll-issues format-check {{issue_id}} --format json 2>/dev/null \
+  | python -c "import json,sys; print('yes' if 'Program Design' in json.load(sys.stdin).get('missing', []) + json.load(sys.stdin).get('empty', []) else '')" 2>/dev/null || true)
+```
+
+`PD_GAP` non-empty means the section is present but non-specific (prose with no
+signature-shaped line, or no repo-resolvable `Call Path` anchor). `PD_MISSING` non-empty
+means it is absent or empty. Both are empty when the project has not armed the gate (no
+`.ll/program-design-cutover.json` stamp), when the issue is grandfathered, or when it
+carries `program_design_not_applicable: true` — the gate is off in all three cases and
+this phase contributes nothing. Do **not** re-judge specificity yourself; the CLI is the
+single source of truth so the verdict is deterministic.
+
 ### Phase 2: Five-Point Assessment
 
 Evaluate each criterion and assign a score (0-20 points each):
@@ -273,6 +292,8 @@ sites + `verification grep` + automated completeness test).
 ### Phase 3: Score and Recommend
 
 **Learning Test Hard Override**: if Phase 1.5 found any `missing` or `refuted` target, output `STOP — ADDRESS GAPS` regardless of aggregate score.
+
+**Program Design Hard Override** (ENH-2852): if Phase 1.6 set `PD_GAP` or `PD_MISSING` to a non-empty value, output `STOP — ADDRESS GAPS` regardless of aggregate score, and include the reason verbatim from `PD_GAP` under **Gaps to Address**. The remedy is to populate `## Program Design` with the concrete types, signatures, and call path (run `/ll:refine-issue` or `/ll:reconcile-issue`), or — for genuinely trivial work — to set `program_design_not_applicable: true` in the issue frontmatter. Both `PD_*` values are empty whenever the gate is off, so this override is inert in unstamped projects.
 
 Sum all readiness and outcome criterion scores (max 100 each). See [rubric.md](rubric.md) for the score-to-recommendation tables and recommendation tiers. The readiness score drives the go/no-go recommendation; outcome confidence is informational.
 

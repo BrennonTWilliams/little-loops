@@ -98,10 +98,16 @@ states:
   ensure_formatted:
     # Deterministic structural linter (ENH-2426): catches missing, renamed
     # (deprecated-with-canonical-replacement), empty, and boilerplate-but-present
-    # sections — not just missing headers. Cheap (no LLM) — only when a gap is
-    # found do we pay for the /ll:format-issue slash command. Fail-open: an
-    # unresolved template / unreadable issue -> ll-issues format-check reports
-    # no gaps (exit 0) so a tooling glitch never blocks remediation.
+    # sections — not just missing headers. Also gates on malformed_id,
+    # prose_dep_drift/stale_prose_dep, and program_design_nonspecific (ENH-2852,
+    # a `## Program Design` section that is prose rather than concrete
+    # types/signatures/call path). Cheap (no LLM) — only when a gap is found do
+    # we pay for the /ll:format-issue slash command. Fail-open: an unresolved
+    # template / unreadable issue -> ll-issues format-check reports no gaps
+    # (exit 0) so a tooling glitch never blocks remediation. The Program Design
+    # class is additionally off entirely until the project writes
+    # `.ll/program-design-cutover.json`, and exempts issues refined before it,
+    # so shipping the gate cannot mass-block the existing backlog here.
     action_type: shell
     action: |
       ID="${context.issue_id}"

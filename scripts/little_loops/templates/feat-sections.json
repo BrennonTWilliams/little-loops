@@ -78,6 +78,19 @@
       ],
       "creation_template": "### Files to Modify\n- TBD - requires codebase analysis\n\n### Dependent Files (Callers/Importers)\n- TBD - use grep to find references\n\n### Similar Patterns\n- TBD - search for consistency\n\n### Tests\n- TBD - identify test files to update\n\n### Documentation\n- TBD - docs that need updates\n\n### Configuration\n- N/A or list config files"
     },
+    "Program Design": {
+      "required": true,
+      "description": "Concrete program design: the types, signatures, and call path the implementation will follow, named at the identifier level",
+      "ai_usage": "HIGH",
+      "human_value": "HIGH",
+      "quality_guidance": [
+        "Name real identifiers, not descriptions \u2014 `grade(body: str) -> Verdict`, not \"a function that grades the body\"",
+        "Call Path must name existing callers/modules that resolve in the repo; new identifiers only need to be signature-shaped",
+        "Keep it short \u2014 a handful of signatures and one call chain, not a design doc",
+        "Set `program_design_not_applicable: true` in frontmatter for trivial issues (one-line config change, docs fix) instead of padding this section"
+      ],
+      "creation_template": "### Types\n\n- `[FieldName]: [type]`\n\n### Signatures\n\n- `[function_name]([param]: [type]) -> [ReturnType]`\n\n### Call Path\n\n`[existing_caller]` -> `[new_function]` -> `[existing_callee]`"
+    },
     "Implementation Steps": {
       "required": false,
       "description": "High-level outline/checklist for implementing this issue",

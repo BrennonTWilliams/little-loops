@@ -61,6 +61,30 @@ def _required_sections(sections_data: dict[str, Any]) -> set[str]:
     return required
 
 
+#: Title of the section graded for specificity (ENH-2852). Duplicated as a module
+#: constant so the hot path does not import the grading module on every issue.
+_PROGRAM_DESIGN_TITLE = "Program Design"
+
+
+def _gate_program_design(required: set[str], issue_path: Path, content: str) -> set[str]:
+    """Drop ``Program Design`` from *required* unless this issue is subject to the gate.
+
+    ``Program Design`` is a required ``common_sections`` entry (ENH-2852), so without
+    this filter it would report ``missing`` for every pre-existing issue in every
+    project the moment the schema ships. The gate is opt-in per project (the
+    ``.ll/program-design-cutover.json`` stamp) and grandfathers issues refined before
+    it — see :mod:`little_loops.issues.program_design`. Applying the filter here rather
+    than in skill prose means every consumer of the gap set inherits the exemption.
+    """
+    from little_loops.issues.program_design import SECTION_TITLE, program_design_gate_active
+
+    if SECTION_TITLE not in required:
+        return required
+    if program_design_gate_active(issue_path, content):
+        return required
+    return required - {SECTION_TITLE}
+
+
 def is_formatted(issue_path: Path, templates_dir: Path | None = None) -> bool:
     """Check whether an issue file has been formatted.
 
@@ -100,7 +124,7 @@ def is_formatted(issue_path: Path, templates_dir: Path | None = None) -> bool:
     except Exception:
         return False
 
-    required = _required_sections(sections_data)
+    required = _gate_program_design(_required_sections(sections_data), issue_path, content)
     if not required:
         return True
 
@@ -148,6 +172,7 @@ class FormatGaps:
     malformed_id: list[str] = field(default_factory=list)
     prose_dep_drift: list[str] = field(default_factory=list)
     stale_prose_dep: list[str] = field(default_factory=list)
+    program_design_nonspecific: list[str] = field(default_factory=list)
 
     @property
     def has_gaps(self) -> bool:
@@ -160,6 +185,7 @@ class FormatGaps:
             or self.malformed_id
             or self.prose_dep_drift
             or self.stale_prose_dep
+            or self.program_design_nonspecific
         )
 
     def to_dict(self) -> dict[str, list[str]]:
@@ -172,6 +198,7 @@ class FormatGaps:
             "malformed_id": self.malformed_id,
             "prose_dep_drift": self.prose_dep_drift,
             "stale_prose_dep": self.stale_prose_dep,
+            "program_design_nonspecific": self.program_design_nonspecific,
         }
 
 
@@ -227,6 +254,12 @@ def check_format_gaps(
         stale_prose_dep: the body claims a prose dependency on an issue whose
             status is ``done``/``cancelled`` — the remedy is deleting the
             stale text, not adding an edge.
+        program_design_nonspecific: the ``## Program Design`` section is present
+            and non-boilerplate but not *specific* (ENH-2852) — it lacks a
+            signature-shaped line, or names no ``Call Path`` anchor that resolves
+            against the repo. Only reported when the project has armed the gate
+            with a ``.ll/program-design-cutover.json`` stamp and the issue is not
+            grandfathered or opted out via ``program_design_not_applicable``.
 
     Args:
         issue_path: Path to the issue markdown file.
@@ -261,7 +294,7 @@ def check_format_gaps(
     except Exception:
         return gaps
 
-    required = _required_sections(sections_data)
+    required = _gate_program_design(_required_sections(sections_data), issue_path, content)
     headings = {m.strip() for m in re.findall(r"^##\s+(.+)$", content, re.MULTILINE)}
 
     gaps.missing = sorted(required - headings)
@@ -295,6 +328,13 @@ def check_format_gaps(
         template = section_defs.get(name, {}).get("creation_template", "")
         if template and _normalize_whitespace(stripped) == _normalize_whitespace(template):
             gaps.boilerplate.append(name)
+            continue
+        if name == _PROGRAM_DESIGN_TITLE:
+            from little_loops.issues.program_design import grade_issue_section
+
+            verdict = grade_issue_section(issue_path, body)
+            if not verdict.is_specific:
+                gaps.program_design_nonspecific.append(f"{name}: {'; '.join(verdict.reasons)}")
 
     fm = parse_frontmatter(content)
     raw_id = fm.get("id")

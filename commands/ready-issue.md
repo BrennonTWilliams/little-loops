@@ -230,6 +230,15 @@ same `prose_dep_drift`/`stale_prose_dep` taxonomy `/ll:refine-issue` and
     flag as BLOCKED and **set verdict to BLOCKED** (overrides READY/CORRECTED).
   - If all have `status: done`, `status: cancelled`, or don't exist: PASS.
 - [ ] No `prose_dep_drift`, no open structured blocker: PASS (no blockers).
+- [ ] `program_design_nonspecific` non-empty, or `missing`/`empty` contains
+      `Program Design` (ENH-2852): **surface only, never block.** Report it as an
+      advisory line ("Program Design section is prose, not concrete
+      types/signatures/call path — run `/ll:refine-issue`, or set
+      `program_design_not_applicable: true` if trivial") and offer to fill it in.
+      Do **not** set the verdict to BLOCKED or NOT_READY on this. The blocking
+      decision for program design happens once, at `/ll:confidence-check`, where
+      the reconcile-before-defer remedy path exists; two gates enforcing the same
+      requirement with different remedies is how an issue gets stuck between them.
 
 **Note**: Open blockers (structured or prose-drift) force the verdict to
 `BLOCKED`. This overrides any corrections made. Record corrections in

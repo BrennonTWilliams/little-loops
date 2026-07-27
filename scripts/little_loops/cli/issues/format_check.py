@@ -18,7 +18,8 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
     p = subs.add_parser(
         "format-check",
         help="Deterministic structural linter for issue formatting "
-        "(missing/renamed/empty/boilerplate/malformed_id/prose_dep_drift/stale_prose_dep)",
+        "(missing/renamed/empty/boilerplate/malformed_id/prose_dep_drift/"
+        "stale_prose_dep/program_design_nonspecific)",
     )
     p.set_defaults(command="format-check")
     p.add_argument(
@@ -94,13 +95,15 @@ def _print_gaps(gaps: FormatGaps) -> None:
         print(f"  prose_dep_drift: {entry}")
     for entry in gaps.stale_prose_dep:
         print(f"  stale_prose_dep: {entry}")
+    for entry in gaps.program_design_nonspecific:
+        print(f"  program_design_nonspecific: {entry}")
 
 
 def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
     """Report structural format gaps for one issue, or sweep all active issues.
 
     Gap classes: missing/renamed/empty/boilerplate/malformed_id/
-    prose_dep_drift/stale_prose_dep.
+    prose_dep_drift/stale_prose_dep/program_design_nonspecific.
 
     Returns:
         0 when structurally compliant (all issues, in --all mode), 1 when gaps
