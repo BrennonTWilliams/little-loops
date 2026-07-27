@@ -12,12 +12,15 @@ for the ``proof-first-task`` loop used by ll-auto (ENH-2319).
 from __future__ import annotations
 
 import datetime
+import logging
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from little_loops.learning_tests import LearnTestRecord
+
+logger = logging.getLogger(__name__)
 
 
 def format_nudge_message(pkg: str, stale: bool = False) -> str:
@@ -72,10 +75,12 @@ def run_learning_gate_for_issue(
     ``proof-first-task``'s redundant impl-loop delegation (any impl work
     there is thrown away — ``issue_manager.py`` implements the issue itself
     afterwards). ``ready-to-implement-gate`` has exactly two terminals
-    (``done``/``blocked``), so the subprocess exit code alone is sufficient:
-    non-zero always means ``"blocked"``, with no ``impl_failed``-equivalent
-    terminal to conflate it with (structurally eliminates BUG-2833's
-    discrimination need for this branch). This mirrors the proven
+    (``done``/``blocked``), and the subprocess exit code alone discriminates
+    between the two — but a non-``FAILURE_TERMINAL_EXIT_CODE`` non-zero exit
+    (e.g. a scope-lock conflict, BUG-2864) is neither: it means the loop
+    never ran to a terminal at all, so it is reported as ``"impl_failed"``
+    (infra failure) rather than misdiagnosed as a genuine refuted-target
+    ``"blocked"``. This mirrors the proven
     ``_run_learning_gate_preflight()`` pattern in
     ``little_loops.cli.sprint.run``.
 
@@ -122,7 +127,27 @@ def run_learning_gate_for_issue(
             text=True,
             cwd=working_dir,
         )
-        return "passed" if proc.returncode == 0 else "blocked"
+
+        # Function-local import: little_loops.fsm's package __init__ pulls in
+        # the executor, which imports little_loops.config — a cycle at
+        # module scope.
+        from little_loops.fsm.types import FAILURE_TERMINAL_EXIT_CODE
+
+        if proc.returncode == 0:
+            return "passed"
+        if proc.returncode == FAILURE_TERMINAL_EXIT_CODE:
+            return "blocked"
+        # Infra failure (scope-lock conflict, crash, missing binary) — not a
+        # refuted target (BUG-2864). Log the captured output so the reason
+        # is recoverable instead of silently collapsing to "blocked".
+        logger.error(
+            "ready-to-implement-gate failed with exit %d (not a refuted target)\n"
+            "stdout: %s\nstderr: %s",
+            proc.returncode,
+            proc.stdout,
+            proc.stderr,
+        )
+        return "impl_failed"
 
     cmd = [
         "ll-loop",

@@ -666,6 +666,72 @@ class TestMultiInstanceSameName:
             f"Both instances with dot scope should conflict; exactly one should fail, got: {results}"
         )
 
+    def test_ready_to_implement_gate_with_run_dir_scopes_both_acquire_concurrently(
+        self, tmp_loops: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Two ready-to-implement-gate instances with different run_dir scopes
+        acquire concurrently — the scope narrowing that fixes BUG-2864."""
+        run1 = tmp_path / ".loops" / "runs" / "ready-to-implement-gate-20240115T103000"
+        run2 = tmp_path / ".loops" / "runs" / "ready-to-implement-gate-20240115T103001"
+        run1.mkdir(parents=True)
+        run2.mkdir(parents=True)
+
+        manager = LockManager(tmp_loops)
+        results: list[bool] = []
+        barrier = threading.Barrier(2)
+
+        monkeypatch.chdir(tmp_path)
+
+        def try_acquire(instance_id: str, scope: list[str]) -> None:
+            barrier.wait()
+            result = manager.acquire("ready-to-implement-gate", scope, instance_id=instance_id)
+            results.append(result)
+
+        id1 = "ready-to-implement-gate-20240115T103000"
+        id2 = "ready-to-implement-gate-20240115T103001"
+        t1 = threading.Thread(target=try_acquire, args=(id1, [str(run1.relative_to(tmp_path))]))
+        t2 = threading.Thread(target=try_acquire, args=(id2, [str(run2.relative_to(tmp_path))]))
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        assert results.count(True) == 2, (
+            f"Both instances with different run_dir scopes should acquire; got: {results}"
+        )
+
+    def test_ready_to_implement_gate_with_dot_scope_still_conflicts(
+        self, tmp_loops: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Two ready-to-implement-gate instances with ["."] scope still
+        conflict (regression guard for the pre-BUG-2864 default-scope bug)."""
+        manager = LockManager(tmp_loops)
+        results: list[bool] = []
+        barrier = threading.Barrier(2)
+
+        monkeypatch.chdir(tmp_path)
+
+        def try_acquire(instance_id: str, scope: list[str]) -> None:
+            barrier.wait()
+            result = manager.acquire("ready-to-implement-gate", scope, instance_id=instance_id)
+            results.append(result)
+
+        id1 = "ready-to-implement-gate-20240115T103000"
+        id2 = "ready-to-implement-gate-20240115T103001"
+        t1 = threading.Thread(target=try_acquire, args=(id1, ["."]))
+        t2 = threading.Thread(target=try_acquire, args=(id2, ["."]))
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        assert results.count(True) == 1, (
+            f"Both instances with dot scope should conflict; exactly one should acquire, got: {results}"
+        )
+        assert results.count(False) == 1, (
+            f"Both instances with dot scope should conflict; exactly one should fail, got: {results}"
+        )
+
 
 class TestSingletonLock:
     """BUG-2526: singleton field serializes loop-name conflicts regardless of scope.

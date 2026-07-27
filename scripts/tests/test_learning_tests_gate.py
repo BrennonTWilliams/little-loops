@@ -192,6 +192,15 @@ class TestRunLearningGateForIssueDirectInvocation:
         mock.stderr = ""
         return mock
 
+    def _blocked_result(self) -> MagicMock:
+        from little_loops.fsm.types import FAILURE_TERMINAL_EXIT_CODE
+
+        mock = MagicMock()
+        mock.returncode = FAILURE_TERMINAL_EXIT_CODE
+        mock.stdout = ""
+        mock.stderr = ""
+        return mock
+
     def test_proven_target_with_broken_impl_chain_still_passes(self, tmp_path: Path) -> None:
         """BUG-2831 scenario: registry target is proven (exit 0), but the
         general-task impl loop the old proof-first-task path would have
@@ -213,7 +222,10 @@ class TestRunLearningGateForIssueDirectInvocation:
         assert verdict == "passed"
         mock_history.assert_not_called()
 
-    def test_unproven_target_yields_blocked_without_history_lookup(self, tmp_path: Path) -> None:
+    def test_infra_failure_yields_impl_failed_not_blocked(self, tmp_path: Path) -> None:
+        """BUG-2864: a non-FAILURE_TERMINAL_EXIT_CODE exit (e.g. a scope-lock
+        conflict) means the loop never reached a terminal at all, so it must
+        not be misdiagnosed as a genuine refuted-target "blocked" verdict."""
         issue_path = tmp_path / "ENH-10.md"
         issue_path.write_text("---\nid: ENH-10\n---\n")
 
@@ -221,6 +233,25 @@ class TestRunLearningGateForIssueDirectInvocation:
             patch(
                 "little_loops.learning_tests.gate.subprocess.run",
                 return_value=self._failed_result(),
+            ),
+            patch("little_loops.fsm.persistence.list_run_history") as mock_history,
+        ):
+            verdict = run_learning_gate_for_issue(issue_path, cwd=tmp_path, targets=["stripe"])
+
+        assert verdict == "impl_failed"
+        assert verdict != "blocked"
+        mock_history.assert_not_called()
+
+    def test_refuted_target_terminal_yields_blocked_without_history_lookup(
+        self, tmp_path: Path
+    ) -> None:
+        issue_path = tmp_path / "ENH-11.md"
+        issue_path.write_text("---\nid: ENH-11\n---\n")
+
+        with (
+            patch(
+                "little_loops.learning_tests.gate.subprocess.run",
+                return_value=self._blocked_result(),
             ),
             patch("little_loops.fsm.persistence.list_run_history") as mock_history,
         ):

@@ -8590,6 +8590,21 @@ class TestReadyToImplementGateLoop:
         assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
         return yaml.safe_load(self.LOOP_FILE.read_text())
 
+    def test_scope_declared(self, data: dict) -> None:
+        """ready-to-implement-gate must declare scope: [${context.run_dir}] so
+        LockManager never conflicts with unrelated concurrently running scoped
+        loops (BUG-2864).
+        """
+        scope = data.get("scope")
+        assert scope is not None, (
+            "ready-to-implement-gate.yaml must declare a 'scope' field for "
+            "per-instance lock isolation (BUG-2864)."
+        )
+        assert isinstance(scope, list), f"scope must be a list, got {type(scope).__name__}"
+        assert "${context.run_dir}" in scope, (
+            f"scope must contain '${{context.run_dir}}' template, got {scope!r}"
+        )
+
     def test_prove_state_has_type_learning(self, data: dict) -> None:
         """prove state must use type: learning (ENH-1741)."""
         state = data["states"].get("prove", {})
@@ -8799,6 +8814,21 @@ class TestProofFirstTaskLoop:
     def test_description_is_nonempty(self, data: dict) -> None:
         """Loop must have a non-empty description."""
         assert data.get("description"), "proof-first-task must have a non-empty description"
+
+    def test_scope_declared(self, data: dict) -> None:
+        """proof-first-task must declare scope: [${context.run_dir}] so
+        LockManager never conflicts with unrelated concurrently running scoped
+        loops (BUG-2864).
+        """
+        scope = data.get("scope")
+        assert scope is not None, (
+            "proof-first-task.yaml must declare a 'scope' field for "
+            "per-instance lock isolation (BUG-2864)."
+        )
+        assert isinstance(scope, list), f"scope must be a list, got {type(scope).__name__}"
+        assert "${context.run_dir}" in scope, (
+            f"scope must contain '${{context.run_dir}}' template, got {scope!r}"
+        )
 
     def test_check_issue_file_uses_shell_exit_fragment(self, data: dict) -> None:
         """check_issue_file must use the shell_exit fragment."""

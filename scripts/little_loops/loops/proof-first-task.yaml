@@ -5,6 +5,11 @@ initial: check_issue_file
 max_steps: 150
 timeout: 7200
 on_handoff: spawn
+# BUG-2864: narrow lock scope so this subprocess-shelled-out gate never
+# conflicts with unrelated concurrently running scoped loops (mirrors
+# autodev.yaml / prompt-across-issues.yaml).
+scope:
+  - "${context.run_dir}"
 import:
   - lib/common.yaml
 

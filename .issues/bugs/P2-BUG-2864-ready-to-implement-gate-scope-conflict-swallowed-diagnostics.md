@@ -1,10 +1,12 @@
 ---
 id: BUG-2864
 type: BUG
-title: "ready-to-implement-gate scope conflict + swallowed diagnostics cause spurious gate_blocked deferrals"
+title: ready-to-implement-gate scope conflict + swallowed diagnostics cause spurious
+  gate_blocked deferrals
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-27T18:31:32Z'
+completed_at: '2026-07-27T19:11:35Z'
 discovered_date: 2026-07-27
 discovered_by: capture-issue
 labels:
@@ -16,6 +18,12 @@ relates_to:
 - BUG-2833
 - BUG-1359
 - ENH-2834
+confidence_score: 98
+outcome_confidence: 89
+score_complexity: 20
+score_test_coverage: 22
+score_ambiguity: 25
+score_change_surface: 22
 ---
 
 # BUG-2864: ready-to-implement-gate scope conflict + swallowed diagnostics cause spurious gate_blocked deferrals
@@ -116,9 +124,9 @@ Three compounding issues, same shape as BUG-1359's three-part root cause:
 ## Implementation Steps
 
 1. Add the missing `scope: ["${context.run_dir}"]` field to both `ready-to-implement-gate.yaml` and `proof-first-task.yaml`.
-2. Update `run_learning_gate_for_issue()`'s targets-branch to discriminate on `FAILURE_TERMINAL_EXIT_CODE` (returning `"impl_failed"` for any other non-zero exit) and log the captured `proc.stdout`/`proc.stderr` on the infra path.
-3. Add a direct unit test on `run_learning_gate_for_issue`: with `targets` non-empty and a mocked `subprocess.run` returning exit `1`, assert the verdict is **not** `"blocked"`; with exit `2`, assert it **is** `"blocked"`. This is the actual regression guard, and mirrors the test BUG-2833 added for the fallback branch.
-4. Verify at the concurrency layer: reproduce a scope collision (two loops with disjoint `${context.run_dir}` scopes plus one defaulted to `["."]`) and confirm the narrowed scope stops `ready-to-implement-gate` from spuriously conflicting.
+2. Update `run_learning_gate_for_issue()`'s targets-branch to discriminate on `FAILURE_TERMINAL_EXIT_CODE` (returning `"impl_failed"` for any other non-zero exit) and log the captured `proc.stdout`/`proc.stderr` on the infra path. Also rewrite the function's docstring (lines 74-78) — its "no `impl_failed`-equivalent terminal" rationale becomes stale once this branch gains the discrimination.
+3. Add a direct unit test on `run_learning_gate_for_issue`: with `targets` non-empty and a mocked `subprocess.run` returning exit `1`, assert the verdict is **not** `"blocked"`; with exit `2`, assert it **is** `"blocked"`. This is the actual regression guard, and mirrors the test BUG-2833 added for the fallback branch. Update `test_unproven_target_yields_blocked_without_history_lookup` (`test_learning_tests_gate.py:216-230`) in place — its `mock_history.assert_not_called()` assertion stays correct, but the expected verdict on `returncode=1` flips from `"blocked"` to `"impl_failed"`.
+4. Verify at the concurrency layer: reproduce a scope collision (two loops with disjoint `${context.run_dir}` scopes plus one defaulted to `["."]`) and confirm the narrowed scope stops `ready-to-implement-gate` from spuriously conflicting. Mirror `test_concurrency.py`'s `TestMultiInstanceSameName` pair (`test_autodev_with_run_dir_scopes_both_acquire_concurrently` / `test_autodev_with_dot_scope_still_conflicts`) for `ready-to-implement-gate`/`proof-first-task`, and add `test_scope_declared` methods to `TestReadyToImplementGateLoop`/`TestProofFirstTaskLoop` in `test_builtin_loops.py`.
 
 ## Integration Map
 
@@ -141,6 +149,25 @@ Three compounding issues, same shape as BUG-1359's three-part root cause:
 - `scripts/tests/test_learning_tests_gate.py` (or equivalent) — exit-code discrimination on the targets-branch: exit `1` → not `"blocked"`, exit `2` → `"blocked"` (the primary regression guard)
 - FSM concurrency tests covering `ready-to-implement-gate`'s and `proof-first-task`'s scope
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_concurrency.py` — `TestMultiInstanceSameName` (lines ~605-667) is the exact pattern to mirror for the "verify at the concurrency layer" step: `test_autodev_with_run_dir_scopes_both_acquire_concurrently` (two instances with disjoint `${context.run_dir}` scopes both acquire) paired with `test_autodev_with_dot_scope_still_conflicts` (both instances with `["."]` scope conflict). Add an analogous pair substituting `"ready-to-implement-gate"` / `"proof-first-task"` for `"autodev"` — no existing test in this file references either loop by name today.
+- `scripts/tests/test_builtin_loops.py` — `TestReadyToImplementGateLoop` (`LOOP_FILE` at line ~8583) and `TestProofFirstTaskLoop` (`LOOP_FILE` at line ~8789) currently assert only `prove`/`done`/`blocked` state shape, with no assertion on the new `scope:` field. Add a `test_scope_declared` method to each, copying the assertion body already used for `prompt-across-issues.yaml` (lines ~2476-2489) and `autodev.yaml` (lines ~5894-5904): `scope` is a list containing `"${context.run_dir}"`.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **`gate.py` has no logger today.** `scripts/little_loops/learning_tests/gate.py` currently has no `import logging` / module-level `logger` at all (confirmed absent from lines 1-22). The proposed fix's `logger.error(...)` call (step 2 of Proposed Solution) needs `import logging` plus `logger = logging.getLogger(__name__)` added at module top first. Sibling modules establish the convention to copy: `scripts/little_loops/learning_tests/extractor.py:31` and `scripts/little_loops/parallel/worker_pool.py:31` (`logger = logging.getLogger(__name__)`).
+- **`worker_pool.py` line numbers**: the reference discrimination pattern actually spans lines **103-119** (function-local `FAILURE_TERMINAL_EXIT_CODE` import at line 105, the `== FAILURE_TERMINAL_EXIT_CODE` check at 111, the fallthrough `!= 0` check at 116), not 105-111 as stated elsewhere in this issue — the fallthrough branch (generic non-zero, logged via `logger.warning`) is the part to mirror for the new `"impl_failed"` path.
+- **Existing test needs updating, not just a new test added.** `scripts/tests/test_learning_tests_gate.py:216-230` — `test_unproven_target_yields_blocked_without_history_lookup` currently asserts the *old* behavior (`returncode=1` → `"blocked"`). Once the fix lands, this exact input should assert `"impl_failed"` instead; leaving it unchanged will make it a false-negative regression test rather than a genuine coverage gap. `TestRunLearningGateForIssueTerminalDiscrimination` (same file, lines 107-174, the already-fixed fallback-branch tests) is the correct pattern to mirror for the new targets-branch assertions, including the `_ok_result`/`_failed_result`-style mock helpers (lines 112-119, one for `returncode=1`, one for `returncode=FAILURE_TERMINAL_EXIT_CODE`).
+- **`"impl_failed"` is already a fully-wired verdict** — no new downstream handling is needed. `scripts/little_loops/issue_manager.py:899-916` already routes `"impl_failed"` to an `IMPLEMENT_FAILED` marker (added by BUG-2833 for the fallback branch), distinct from the `"blocked"` → `LEARNING_GATE_BLOCKED` marker at lines 884-891. Reusing `"impl_failed"` in the targets-branch plugs into this existing routing rather than requiring new autodev.yaml wiring.
+- Additional test files touching this surface, not currently listed: `scripts/tests/test_builtin_loops.py` (loop-level tests including `ready-to-implement-gate`) and `scripts/tests/test_cli_learning_tests.py` (CLI integration).
+
+_Wiring pass added by `/ll:wire-issue`:_
+- **`gate.py`'s own docstring goes stale once the fix lands.** `run_learning_gate_for_issue()`'s docstring (lines 74-78, in the same file being edited) currently states as design rationale that `ready-to-implement-gate` has "no `impl_failed`-equivalent terminal to conflate it with (structurally eliminates BUG-2833's discrimination need for this branch)." That claim becomes false once the targets-branch starts returning `"impl_failed"` for infra failures — leaving it unrewritten actively misdescribes the new behavior to future readers of the function it's attached to. Update this paragraph as part of Implementation Step 2, not as a separate file.
+- **No `list_run_history()` lookup is needed or should be added to the targets-branch.** Confirmed by reading current `gate.py`: `ready-to-implement-gate` truly has only one failure terminal (`blocked`), so unlike the fallback branch (lines 141-150, which does call `list_run_history` against `"proof-first-task"`), the fix is exit-code discrimination alone — no new import or history-lookup call in the targets-branch. `test_unproven_target_yields_blocked_without_history_lookup`'s existing `mock_history.assert_not_called()` assertion (line ~229) stays correct after the fix; only the expected verdict string on `returncode=1` changes from `"blocked"` to `"impl_failed"`.
+- **No downstream file needs modification.** Traced `issue_manager.py`'s `"impl_failed"` routing (lines 899-916, added by BUG-2833), `autodev.yaml`'s marker-based routing, and `docs/guides/LEARNING_TESTS_GUIDE.md` / `docs/guides/LOOPS_REFERENCE.md` — all already handle or describe the existing `impl_failed` verdict/marker generically and require no edits for this fix. `scope:` is an already-schema-supported FSM field (used identically by `autodev.yaml`, `prompt-across-issues.yaml`, etc.) with no `ll-loop validate` rule affected by adding it.
+
 ### Documentation
 - N/A
 
@@ -153,7 +180,33 @@ Three compounding issues, same shape as BUG-1359's three-part root cause:
 - **Effort**: Small — one YAML field, one logging addition, optional retry/queue tweak.
 - **Risk**: Low — scope narrowing is a strict improvement (matches sibling loops' existing pattern); logging addition is additive.
 
+## Resolution
+
+Fixed all three root-cause items from the Proposed Solution:
+
+1. Added `scope: ["${context.run_dir}"]` to `ready-to-implement-gate.yaml` and
+   `proof-first-task.yaml`, matching `autodev.yaml`/`prompt-across-issues.yaml`.
+2. `run_learning_gate_for_issue()`'s targets-branch now discriminates the exit
+   code (`0` → `"passed"`, `FAILURE_TERMINAL_EXIT_CODE` → `"blocked"`, any
+   other non-zero → `"impl_failed"` with the captured stdout/stderr logged via
+   a new module logger), mirroring `worker_pool.py`'s reference pattern.
+3. Updated the function's stale docstring paragraph describing the old
+   "no impl_failed-equivalent terminal" rationale.
+
+Added regression coverage: exit-code discrimination unit tests in
+`test_learning_tests_gate.py`, `scope:` structural assertions in
+`test_builtin_loops.py` for both loops, and a mirrored
+`TestMultiInstanceSameName` concurrency pair (`ready-to-implement-gate`
+run_dir-scopes-acquire / dot-scope-still-conflicts) in `test_concurrency.py`.
+
+Full suite: 16529 passed, 42 skipped, 1 pre-existing unrelated failure
+(`test_prose_dep_sweep_gate.py` — EPIC-2861 prose drift, confirmed present
+on `main` before this change via `git stash`).
+
 ## Session Log
+- `/ll:ready-issue` - 2026-07-27T19:04:23 - `3e6a394a-a182-43ca-9486-59ac42200912.jsonl`
+- `/ll:wire-issue` - 2026-07-27T19:01:55 - `96d436de-65b9-44ae-bd06-c3c03cf32bc1.jsonl`
+- `/ll:refine-issue` - 2026-07-27T18:54:57 - `b53512c1-6b4b-4d63-9711-15a3e88f6d93.jsonl`
 - `/ll:capture-issue` - 2026-07-27T18:31:32Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dcfb128-c63e-4435-9921-1c0faca51cab.jsonl`
 
 ---
