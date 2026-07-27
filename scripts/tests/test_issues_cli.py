@@ -1507,7 +1507,9 @@ class TestIssuesCLISequence:
         assert "path" in item
         assert "blocked_by" in item
         assert "blocks" in item
+        assert "depends_on" in item
         assert isinstance(item["blocked_by"], list)
+        assert isinstance(item["depends_on"], list)
 
     def test_sequence_json_no_color_codes(
         self,

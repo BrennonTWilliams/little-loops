@@ -1051,6 +1051,20 @@ class TestFormatEpicTree:
         text = format_epic_tree("EPIC-001", root, child_map, graph, use_color=False)
         assert "⮡ blocks FEAT-002" in text
 
+    def test_depends_on_orders_child_tree(self) -> None:
+        """BUG-2848 step 8: format_epic_tree() inherits topological_sort()'s
+        soft-edge semantics — a child with an active depends_on prerequisite
+        renders after it, matching blocked_by ordering."""
+        root = make_issue("EPIC-001", title="Epic")
+        child1 = make_issue("FEAT-001", title="Prerequisite", priority="P2")
+        child2 = make_issue(
+            "FEAT-002", title="Soft dependent", priority="P0", depends_on=["FEAT-001"]
+        )
+        child_map = {"FEAT-001": child1, "FEAT-002": child2}
+        graph = DependencyGraph.from_issues(list(child_map.values()))
+        text = format_epic_tree("EPIC-001", root, child_map, graph, use_color=False)
+        assert text.index("FEAT-001") < text.index("FEAT-002")
+
 
 # =============================================================================
 # validate_dependencies — new relationship field tests

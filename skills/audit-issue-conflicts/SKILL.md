@@ -367,7 +367,7 @@ ll-issues append-log "[kept-issue-path]" /ll:audit-issue-conflicts
 
 Before appending, verify the write-side active-set guard using the ISSUE_FILES list from Phase 1 context: **(1) Membership** — the dependent issue's file path must appear in ISSUE_FILES. If not, skip and log `[skipped: TARGET not in active set (not loaded in Phase 1)]`. Increment `SKIPPED_INACTIVE_COUNT`. **(2) TOCTOU re-check** — run `awk '/^---$/{n++; next} n==1 && /^status:/{print $2; exit}' TARGET` and confirm the result matches `open|in_progress|blocked`. If terminal, skip and log `[skipped: TARGET status is CURRENT_STATUS — not active]`. Increment `SKIPPED_INACTIVE_COUNT`.
 
-Append either `blocked_by: [ISSUE-B]` (hard stop — must complete first) or `depends_on: [ISSUE-B]` (soft ordering — preferred when no hard dependency exists) to the frontmatter of the dependent issue file using Edit, according to the user's choice from the interactive prompt. Track the modified file:
+Append either `blocked_by: [ISSUE-B]` (hard stop — must complete first; honoured by every consumer, including `ll-issues sequence`) or `depends_on: [ISSUE-B]` (soft ordering — non-fatal if ISSUE-B is absent or already complete) to the frontmatter of the dependent issue file using Edit, according to the user's choice from the interactive prompt. Default to `blocked_by` when unsure. Track the modified file:
 
 ```bash
 MODIFIED_FILES+=("[issue-path]")

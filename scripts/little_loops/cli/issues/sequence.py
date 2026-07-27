@@ -62,6 +62,7 @@ def cmd_sequence(config: BRConfig, args: argparse.Namespace) -> int:
                     "path": str(issue.path),
                     "blocked_by": sorted(graph.blocked_by.get(issue.issue_id, set())),
                     "blocks": issue.blocks,
+                    "depends_on": sorted(graph.get_pending_prerequisites(issue.issue_id)),
                     **({"type_filter": type_filter} if type_filter else {}),
                 }
                 for issue in shown
@@ -72,10 +73,13 @@ def cmd_sequence(config: BRConfig, args: argparse.Namespace) -> int:
     print(f"Suggested implementation sequence ({len(shown)} of {len(ordered)} issues):\n")
     for issue in shown:
         blockers = graph.blocked_by.get(issue.issue_id, set())
+        prerequisites = graph.get_pending_prerequisites(issue.issue_id)
+        parts = []
         if blockers:
-            rationale = f"blocked by: {', '.join(sorted(blockers))}"
-        else:
-            rationale = "no blockers"
+            parts.append(f"blocked by: {', '.join(sorted(blockers))}")
+        if prerequisites:
+            parts.append(f"after: {', '.join(sorted(prerequisites))}")
+        rationale = "; ".join(parts) if parts else "no blockers"
         issue_prefix = issue.issue_id.split("-", 1)[0]
         colored_id = colorize(issue.issue_id, TYPE_COLOR.get(issue_prefix, "0"))
         colored_pri = colorize(issue.priority, PRIORITY_COLOR.get(issue.priority, "0"))

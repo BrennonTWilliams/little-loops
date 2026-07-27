@@ -29,9 +29,9 @@ questions:
     multiSelect: false
     options:
       - label: "blocked_by (hard stop)"
-        description: "Appends blocked_by: [ISSUE-B] to [ISSUE-A] frontmatter — ISSUE-B must complete before ISSUE-A can start (wave-gated)"
+        description: "Appends blocked_by: [ISSUE-B] to [ISSUE-A] frontmatter — ISSUE-B must complete before ISSUE-A can start; honoured by every consumer (wave planning, ll-issues sequence)"
       - label: "depends_on (soft ordering)"
-        description: "Appends depends_on: [ISSUE-B] to [ISSUE-A] frontmatter — wave-gated ordering (ISSUE-A scheduled after ISSUE-B) but non-fatal if ISSUE-B is absent"
+        description: "Appends depends_on: [ISSUE-B] to [ISSUE-A] frontmatter — wave-gated ordering (ISSUE-A scheduled after ISSUE-B) but non-fatal if ISSUE-B is absent or already complete"
       - label: "No, skip"
         description: "Leave both issues unchanged"
 ```

@@ -448,6 +448,58 @@ class TestTopologicalSort:
         with pytest.raises(ValueError, match="cycles"):
             graph.topological_sort()
 
+    def test_depends_on_orders_after_active_prerequisite(self) -> None:
+        """BUG-2848: an active depends_on prerequisite must order the sort,
+        not just blocked_by — this pins topological_sort() to agree with
+        get_ready_issues()/get_execution_waves() on depends_on semantics."""
+        issue_a = make_issue("FEAT-001", priority="P2")
+        issue_b = make_issue("FEAT-002", priority="P0", depends_on=["FEAT-001"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b])
+
+        sorted_issues = graph.topological_sort()
+        ids = [i.issue_id for i in sorted_issues]
+
+        assert ids == ["FEAT-001", "FEAT-002"]
+
+    def test_depends_on_reverse_lookup_does_not_strand_dependent(self) -> None:
+        """A depends_on prerequisite must still exercise the decrement step —
+        without a derived reverse map the dependent's in-degree would never
+        reach zero and it would vanish from the result entirely."""
+        issue_a = make_issue("FEAT-001", priority="P2")
+        issue_b = make_issue("FEAT-002", priority="P1", depends_on=["FEAT-001"])
+        issue_c = make_issue("FEAT-003", priority="P0", depends_on=["FEAT-002"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b, issue_c])
+
+        sorted_issues = graph.topological_sort()
+        assert len(sorted_issues) == 3
+        ids = [i.issue_id for i in sorted_issues]
+        assert ids == ["FEAT-001", "FEAT-002", "FEAT-003"]
+
+    def test_absent_depends_on_prerequisite_does_not_block(self) -> None:
+        """A depends_on target absent from the graph must not defer the
+        dependent (matches get_ready_issues()'s BUG-2632 semantics)."""
+        issue_a = make_issue("FEAT-001", priority="P0", depends_on=["FEAT-999"])
+
+        graph = DependencyGraph.from_issues([issue_a])
+
+        sorted_issues = graph.topological_sort()
+        assert [i.issue_id for i in sorted_issues] == ["FEAT-001"]
+
+    def test_topological_sort_agrees_with_get_ready_issues_on_depends_on(self) -> None:
+        """Pin agreement between the two orderings per BUG-2848 AC."""
+        issue_a = make_issue("FEAT-001", priority="P2")
+        issue_b = make_issue("FEAT-002", priority="P0", depends_on=["FEAT-001"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b])
+
+        assert graph.get_pending_prerequisites("FEAT-002") == {"FEAT-001"}
+        ready = [i.issue_id for i in graph.get_ready_issues()]
+        assert ready == ["FEAT-001"]
+        sorted_ids = [i.issue_id for i in graph.topological_sort()]
+        assert sorted_ids.index("FEAT-001") < sorted_ids.index("FEAT-002")
+
 
 class TestCycleDetection:
     """Tests for detect_cycles()."""

@@ -305,6 +305,12 @@ class DependencyGraph:
         whose dependencies have been satisfied. Within each "level",
         issues are sorted by priority then issue_id.
 
+        Both hard blockers (``blocked_by``) and soft prerequisites
+        (``depends_on``) constrain ordering here, matching
+        ``get_ready_issues``/``get_execution_waves`` (BUG-2848) — a
+        ``depends_on`` prerequisite that is still active in the graph places
+        its dependent strictly after it, the same as a ``blocked_by`` edge.
+
         Returns:
             List of IssueInfo in topological order
 
@@ -314,10 +320,22 @@ class DependencyGraph:
         Example:
             If A blocks B, and B blocks C, returns [A, B, C]
         """
-        # Calculate in-degree for each node (number of blockers)
+        # Calculate in-degree for each node from the union of hard blockers
+        # and soft depends_on prerequisites.
         in_degree: dict[str, int] = {
-            issue_id: len(blockers) for issue_id, blockers in self.blocked_by.items()
+            issue_id: len(blockers | self.depends_on_edges.get(issue_id, set()))
+            for issue_id, blockers in self.blocked_by.items()
         }
+
+        # `blocks` already mirrors `blocked_by`, but `depends_on_edges` is
+        # one-directional (no reverse edge is built for it), so derive the
+        # dependent-of map here for the decrement step below.
+        dependents: dict[str, set[str]] = {
+            issue_id: set(blocked_ids) for issue_id, blocked_ids in self.blocks.items()
+        }
+        for issue_id, prereqs in self.depends_on_edges.items():
+            for prereq_id in prereqs:
+                dependents.setdefault(prereq_id, set()).add(issue_id)
 
         # Start with nodes that have no blockers, sorted by priority
         zero_degree = [
@@ -334,7 +352,7 @@ class DependencyGraph:
             # Reduce in-degree for nodes this one blocks
             # Collect newly ready nodes, then sort before adding to queue
             newly_ready: list[IssueInfo] = []
-            for blocked_id in self.blocks.get(issue_id, set()):
+            for blocked_id in dependents.get(issue_id, set()):
                 in_degree[blocked_id] -= 1
                 if in_degree[blocked_id] == 0:
                     newly_ready.append(self.issues[blocked_id])
