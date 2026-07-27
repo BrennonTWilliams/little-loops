@@ -18,7 +18,8 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, replace as _dc_replace
+from dataclasses import dataclass
+from dataclasses import replace as _dc_replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any

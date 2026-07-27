@@ -106,7 +106,9 @@ class TestExtractLearningTargets:
         assert result == ["requests"]
 
     def test_drops_dotted_stdlib_target(self) -> None:
-        resp = 'TARGETS_JSON:{"targets": ["urllib.request", "http.client", "subprocess"], "count": 3}'
+        resp = (
+            'TARGETS_JSON:{"targets": ["urllib.request", "http.client", "subprocess"], "count": 3}'
+        )
         mock = _make_llm(resp)
         result = extract_learning_targets("uses urllib.request", llm_call=mock)
         assert result == []

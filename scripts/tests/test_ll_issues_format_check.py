@@ -487,9 +487,11 @@ class TestFormatCheckAll:
         format_check_dir: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        _write_issue(format_check_dir, "P3-BUG-9301-test-bug.md", _CLEAN_BUG_BODY.replace(
-            "id: BUG-9101", "id: BUG-9301"
-        ))
+        _write_issue(
+            format_check_dir,
+            "P3-BUG-9301-test-bug.md",
+            _CLEAN_BUG_BODY.replace("id: BUG-9101", "id: BUG-9301"),
+        )
 
         result = _invoke(["ll-issues", "format-check", "--all", "--config", str(temp_project_dir)])
         out, _ = capsys.readouterr()
@@ -503,12 +505,14 @@ class TestFormatCheckAll:
         format_check_dir: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        _write_issue(format_check_dir, "P3-BUG-9302-test-bug.md", _CLEAN_BUG_BODY.replace(
-            "id: BUG-9101", "id: BUG-9302"
-        ))
-        gapped = _CLEAN_BUG_BODY.replace(
-            "id: BUG-9101", "id: BUG-9303"
-        ).replace("## Expected Behavior\nIt should not break.\n\n", "")
+        _write_issue(
+            format_check_dir,
+            "P3-BUG-9302-test-bug.md",
+            _CLEAN_BUG_BODY.replace("id: BUG-9101", "id: BUG-9302"),
+        )
+        gapped = _CLEAN_BUG_BODY.replace("id: BUG-9101", "id: BUG-9303").replace(
+            "## Expected Behavior\nIt should not break.\n\n", ""
+        )
         _write_issue(format_check_dir, "P3-BUG-9303-test-bug.md", gapped)
 
         result = _invoke(["ll-issues", "format-check", "--all", "--config", str(temp_project_dir)])
@@ -525,9 +529,9 @@ class TestFormatCheckAll:
         format_check_dir: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        gapped = _CLEAN_BUG_BODY.replace(
-            "id: BUG-9101", "id: BUG-9304"
-        ).replace("## Expected Behavior\nIt should not break.\n\n", "")
+        gapped = _CLEAN_BUG_BODY.replace("id: BUG-9101", "id: BUG-9304").replace(
+            "## Expected Behavior\nIt should not break.\n\n", ""
+        )
         _write_issue(format_check_dir, "P3-BUG-9304-test-bug.md", gapped)
 
         result = _invoke(

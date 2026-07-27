@@ -250,6 +250,5 @@ class TestAuditIssueConflictsEpicScoping:
         phase1 = self._phase("## Phase 1", "## Phase 2")
         assert "ll-issues list --status all --json" in phase1
         assert "fingerprinted too (ENH-2634)" in phase1, (
-            "Phase 1 must still document that epics/ is covered so EPIC files "
-            "are fingerprinted"
+            "Phase 1 must still document that epics/ is covered so EPIC files are fingerprinted"
         )

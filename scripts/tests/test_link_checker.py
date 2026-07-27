@@ -292,7 +292,10 @@ class TestCheckUrlOutcome:
         """If the retry succeeds, the final outcome is valid, not unreachable."""
         mock_response = Mock()
         mock_response.status = 200
-        mock_urlopen.side_effect = [TimeoutError(), Mock(__enter__=Mock(return_value=mock_response), __exit__=Mock(return_value=False))]
+        mock_urlopen.side_effect = [
+            TimeoutError(),
+            Mock(__enter__=Mock(return_value=mock_response), __exit__=Mock(return_value=False)),
+        ]
 
         outcome, _ = check_url_outcome("https://example.com", timeout=1)
 

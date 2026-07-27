@@ -55,9 +55,7 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
     return p
 
 
-def _fix_prose_deps(
-    config: BRConfig, source_id: str, targets: list[str], *, apply: bool
-) -> None:
+def _fix_prose_deps(config: BRConfig, source_id: str, targets: list[str], *, apply: bool) -> None:
     """Backfill ``blocked_by`` edges for *source_id*'s prose_dep_drift targets.
 
     Invokes ``cmd_link`` in-process (the only idempotent, cycle-safe write
@@ -173,6 +171,7 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
 
     from little_loops.cli.issues.show import _resolve_issue_id
 
+    assert issue_id is not None
     path = _resolve_issue_id(config, issue_id)
     if path is None:
         print(f"Error: Issue '{issue_id}' not found.", file=sys.stderr)
