@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 SKILL_FILE = PROJECT_ROOT / "skills" / "audit-issue-conflicts" / "SKILL.md"
+
+# Binaries this skill's fenced ```bash blocks are known to invoke as of
+# ENH-2845. If a new interpreter/binary is introduced in a fenced block, this
+# set (and the matching `allowed-tools` entry) must grow alongside it.
+_KNOWN_FENCED_BINARIES = ("git", "ll-issues", "python3")
 
 
 class TestAuditIssueConflictsSkillExists:
@@ -51,21 +57,29 @@ class TestAuditIssueConflictsSkillExists:
         assert "{{config.issues.base_dir}}" in SKILL_FILE.read_text()
 
     def test_phase1_filters_by_status(self) -> None:
-        """Phase 1 must filter to open|in_progress|blocked via awk, not bare find (BUG-1799)."""
+        """Phase 1 must filter to open|in_progress|blocked via ll-issues list --json
+        piped through python3, not awk or a bare find (BUG-1799, ENH-2845)."""
         assert SKILL_FILE.exists(), "Skill file not found"
         content = SKILL_FILE.read_text()
-        assert "awk '/^---$/{n++; next} n==1 && /^status:/" in content
-        assert "open|in_progress|blocked)" in content
+        assert "awk '/^---$/{n++; next} n==1 && /^status:/" not in content, (
+            "Phase 1 must not parse frontmatter status with awk (ENH-2845)"
+        )
+        assert "active = {'open', 'in_progress', 'blocked'}" in content
         assert "TERMINAL_COUNT" in content
         assert "excluded $TERMINAL_COUNT terminal issues" in content
 
     def test_phase5_stages_only_modified_files(self) -> None:
-        """Phase 5 must stage only Phase 4b-tracked files, not sweep untracked (BUG-1800)."""
+        """Phase 5 must stage via git add -u, not a non-persistent bash array
+        that cannot survive across separate Bash tool calls (BUG-1800, ENH-2845)."""
         assert SKILL_FILE.exists(), "Skill file not found"
         content = SKILL_FILE.read_text()
-        assert "MODIFIED_FILES=()" in content
-        assert "MODIFIED_FILES+=(" in content
-        assert 'for f in "${MODIFIED_FILES[@]}"; do' in content
+        assert "MODIFIED_FILES=()" not in content, (
+            "Phase 4b/5 must not track state in a MODIFIED_FILES array — it cannot "
+            "persist across separate Bash tool invocations (ENH-2845)"
+        )
+        assert "MODIFIED_FILES+=(" not in content
+        assert 'for f in "${MODIFIED_FILES[@]}"; do' not in content
+        assert "git add -u {{config.issues.base_dir}}/" in content
         assert "git add {{config.issues.base_dir}}/" not in content
 
     def test_phase2b_cross_theme_header_present(self) -> None:
@@ -92,13 +106,20 @@ class TestAuditIssueConflictsSkillExists:
         )
 
     def test_phase4b_write_side_guard_present(self) -> None:
-        """Phase 4b must guard writes to non-active targets (BUG-2264)."""
+        """Phase 4b must guard writes to non-active targets (BUG-2264), re-checking
+        live status via ll-issues show --json's raw_status (uncased), not a bash
+        array or an awk frontmatter parse that can't persist across Bash calls
+        (ENH-2845)."""
         content = SKILL_FILE.read_text()
         phase4b_start = content.index("## Phase 4b")
         phase5_start = content.index("## Phase 5")
         phase4b_text = content[phase4b_start:phase5_start]
-        assert "ISSUE_FILES" in phase4b_text, "Phase 4b must reference ISSUE_FILES membership"
-        assert "open|in_progress|blocked" in phase4b_text, "Phase 4b must re-check status"
+        assert "active issues collected in Phase 1" in phase4b_text, (
+            "Phase 4b must reference the active-issue roster from Phase 1"
+        )
+        assert "ll-issues show" in phase4b_text and "raw_status" in phase4b_text, (
+            "Phase 4b must re-check status via ll-issues show --json's raw_status"
+        )
         assert "not in active set" in phase4b_text, "Phase 4b must log skip reason"
 
     def test_phase4b_supersession_uses_cancelled_not_done(self) -> None:
@@ -137,6 +158,48 @@ class TestAuditIssueConflictsSkillExists:
         assert "using Edit" not in section_text, (
             "add_dependency must not instruct a raw frontmatter Edit for dependency fields"
         )
+
+    def test_allowed_tools_covers_fenced_block_binaries(self) -> None:
+        """Every interpreter/binary invoked in a ```bash fenced block must have
+        a matching Bash(<binary>:*) entry in the frontmatter allowed-tools
+        (ENH-2845) — generalizes test_issue_size_review_skill.py's
+        test_edit_in_allowed_tools single-token check into a real diff."""
+        content = SKILL_FILE.read_text()
+        fm_end = content.index("\n---", content.index("---") + 3)
+        frontmatter = content[:fm_end]
+        declared = set(re.findall(r"Bash\((\w[\w.-]*):\*\)", frontmatter))
+
+        fenced_blocks = re.findall(r"```bash\n(.*?)```", content, re.DOTALL)
+        invoked = set()
+        for block in fenced_blocks:
+            for binary in _KNOWN_FENCED_BINARIES:
+                if re.search(rf"(^|[|(`\s]){re.escape(binary)}\b", block, re.MULTILINE):
+                    invoked.add(binary)
+
+        assert invoked, "Expected at least one known binary in a fenced bash block"
+        missing = invoked - declared
+        assert not missing, (
+            f"allowed-tools is missing Bash(<binary>:*) entries for: {sorted(missing)}"
+        )
+
+    def test_phase4_phase6_auto_mode_low_severity_agree(self) -> None:
+        """Phase 4 and Phase 6 must state the same --auto low-severity policy —
+        historically Phase 4 said 'apply all' while Phase 6's example implied
+        low severity is skipped in auto mode (ENH-2845)."""
+        content = SKILL_FILE.read_text()
+        phase4_start = content.index("## Phase 4:")
+        phase4b_start = content.index("## Phase 4b")
+        phase4_text = content[phase4_start:phase4b_start]
+        phase6_start = content.index("## Phase 6")
+        phase6_text = content[phase6_start:]
+
+        assert "regardless of severity" in phase4_text, (
+            "Phase 4 auto-mode section must state severity is not a skip condition"
+        )
+        assert "low severity, skipped in auto mode" not in phase6_text, (
+            "Phase 6 must not contradict Phase 4's auto-mode-applies-all-severities policy"
+        )
+        assert "`--auto` applies every severity" in phase6_text
 
     def test_phase6_skipped_inactive_count_reported(self) -> None:
         """Phase 6 must report SKIPPED_INACTIVE_COUNT for write-side guard skips (BUG-2264)."""
@@ -180,9 +243,13 @@ class TestAuditIssueConflictsEpicScoping:
         assert "SCOPE_EPIC" in phase1, "Phase 1 must branch on SCOPE_EPIC"
         assert "--parent" in phase1, "Phase 1 must use ll-issues list --parent for scoping"
 
-    def test_phase1_glob_includes_epics(self) -> None:
-        """Phase 1's unscoped load glob must include the epics/ directory."""
+    def test_phase1_unscoped_load_includes_epics(self) -> None:
+        """Phase 1's unscoped load must include EPIC files (no --type filter),
+        not a directory glob (ENH-2845 removed the bare bash for-loop over
+        bugs/features/enhancements/epics dirs in favor of ll-issues list --json)."""
         phase1 = self._phase("## Phase 1", "## Phase 2")
-        assert "bugs,features,enhancements,epics" in phase1, (
-            "Phase 1 glob must include epics/ so EPIC files are fingerprinted"
+        assert "ll-issues list --status all --json" in phase1
+        assert "fingerprinted too (ENH-2634)" in phase1, (
+            "Phase 1 must still document that epics/ is covered so EPIC files "
+            "are fingerprinted"
         )

@@ -12,6 +12,7 @@ allowed-tools:
   - AskUserQuestion
   - Bash(git:*)
   - Bash(ll-issues:*)
+  - Bash(python3:*)
 arguments:
   - name: epic_id
     description: "Optional positional EPIC-NNNN (bare NNNN accepted). When set, scopes the audit to that EPIC's transitive children plus the EPIC file itself, instead of the full backlog."
@@ -126,21 +127,28 @@ for i in json.load(sys.stdin):
     [ -f "$EPIC_PATH" ] && ISSUE_FILES+=("$EPIC_PATH")
     echo "Scoped to $SCOPE_EPIC: ${#ISSUE_FILES[@]} issues (transitive children + EPIC file)"
 else
-    # Unscoped mode: full active backlog. epics/ is included so EPIC files are
-    # also fingerprinted (ENH-2634).
-    for dir in {{config.issues.base_dir}}/{bugs,features,enhancements,epics}/; do
-        [ -d "$dir" ] || continue
-        for f in "$dir"*.md; do
-            [ -f "$f" ] || continue
-            status=$(awk '/^---$/{n++; next} n==1 && /^status:/{print $2; exit}' "$f")
-            case "${status:-open}" in
-                open|in_progress|blocked) ISSUE_FILES+=("$f") ;;
-                *) TERMINAL_COUNT=$((TERMINAL_COUNT + 1)) ;;
-            esac
-        done
-    done
+    # Unscoped mode: full active backlog. `ll-issues list` with no --type
+    # filter covers bugs/features/enhancements/epics in one call, so EPIC
+    # files are fingerprinted too (ENH-2634).
+    while IFS= read -r f; do
+        [ -f "$f" ] || continue
+        ISSUE_FILES+=("$f")
+    done < <(
+        ll-issues list --status all --json | python3 -c "
+import json, sys
+active = {'open', 'in_progress', 'blocked'}
+for i in json.load(sys.stdin):
+    if (i.get('status') or 'open') in active and i.get('path'):
+        print(i['path'])
+"
+    )
+    TERMINAL_COUNT=$(( $(ll-issues list --status all --json | python3 -c "import json,sys; print(len(json.load(sys.stdin)))") - ${#ISSUE_FILES[@]} ))
     echo "Found ${#ISSUE_FILES[@]} active issues (excluded $TERMINAL_COUNT terminal issues)"
 fi
+
+# NOTE: ISSUE_FILES/TERMINAL_COUNT are local to this one Bash call (echo
+# summary only) — state can't persist across calls, so Phase 4b re-derives
+# active status per target via `ll-issues show --json` instead of reading this.
 
 if [[ ${#ISSUE_FILES[@]} -eq 0 ]]; then
     echo "No active issues found"
@@ -290,7 +298,11 @@ Dry-run mode: no changes applied.
 
 ### Auto Mode (`--auto`)
 
-Apply **all** recommendations without prompting. For each conflict, execute the appropriate action (see Phase 4b below).
+Apply **all** recommendations without prompting, **regardless of severity** —
+high, medium, and low-severity conflicts are all applied. For each conflict,
+execute the appropriate action (see Phase 4b below). (There is no
+severity-based skip in `--auto`; that only happens in interactive mode, and
+only when the user explicitly declines.)
 
 ### Interactive Mode (default)
 
@@ -303,19 +315,18 @@ in the companion file [interactive-prompts.md](interactive-prompts.md).
 
 ## Phase 4b: Execute Approved Changes
 
-Track every modified file path so Phase 5 stages only audit-touched files:
-
-```bash
-MODIFIED_FILES=()
-SKIPPED_INACTIVE_COUNT=0
-```
+Phase 5 stages changes with `git add -u` (see below), so no file-path list needs
+to be tracked across Bash calls. Keep a running mental tally for the Phase 6 report — **applied**, **skipped
+(idempotent)**, and **skipped (target not active)** — updated as you process
+each recommendation below; there is no shell variable for these, since state
+does not survive between separate Bash tool invocations.
 
 For each approved recommendation:
 
 ### merge / deprecate
 
 1. Identify the issue to be **kept** and the one to be **closed/superseded**
-2. Before editing either the kept or closed issue file, verify the write-side active-set guard for each target using the ISSUE_FILES list from Phase 1 context: **(1) Membership** — the target's file path must appear in ISSUE_FILES. If not, skip this action and log `[skipped: TARGET not in active set (not loaded in Phase 1)]`. Increment `SKIPPED_INACTIVE_COUNT`. **(2) TOCTOU re-check** — run `awk '/^---$/{n++; next} n==1 && /^status:/{print $2; exit}' TARGET` and confirm the result matches `open|in_progress|blocked`. If terminal, skip this action and log `[skipped: TARGET status is CURRENT_STATUS — not active]`. Increment `SKIPPED_INACTIVE_COUNT` for each skipped target.
+2. Before editing either the kept or closed issue file, verify the write-side active-set guard for each target: **(1) Membership** — the target's ID must be one of the active issues collected in Phase 1 (the roster the model read while parsing issue files). If not, skip this action and log `[skipped: TARGET not in active set (not loaded in Phase 1)]`; count it toward the "skipped (target not active)" tally. **(2) TOCTOU re-check** — run `ll-issues show TARGET-ID --json | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('raw_status') in ('open','in_progress','blocked') else 1)"` (use `raw_status`, not the display-cased `status` field). If the exit code is non-zero, skip this action and log `[skipped: TARGET status is CURRENT_STATUS — not active]`; count it toward the same tally.
 3. If merging scope: before appending, read the kept issue file and check whether `## Scope Addition` already contains a reference to `[CLOSED-ID]`. If found, skip the append and log `[idempotent: Scope Addition for CLOSED-ID already present]`. Otherwise, append a `## Scope Addition` note to the kept issue file:
 
 ```markdown
@@ -350,11 +361,7 @@ ll-issues set-status [CLOSED-ID] cancelled --reason superseded
 
    Then record the supersession edge on the **kept** issue: read its frontmatter and add/append `[CLOSED-ID]` to its `supersedes:` list via Edit (create it as a single-item list if absent). `ll-issues link --supersedes` doesn't exist yet (FEAT-2842 doesn't cover it), so this is a direct frontmatter Edit, not a CLI call — it's what makes `ll-issues show [CLOSED-ID]` derive the reverse `Superseded by` row.
 
-6. Track both modified files:
-
-```bash
-MODIFIED_FILES+=("[kept-issue-path]" "[closed-issue-path]")
-```
+6. Both files were just edited via `Edit`/`ll-issues set-status`/`ll-issues link` above — Phase 5's `git add -u` will pick them up; no separate tracking step is needed.
 
 7. Append session log to closed issue:
 
@@ -370,13 +377,9 @@ ll-issues append-log "[kept-issue-path]" /ll:audit-issue-conflicts
 
 ### add_dependency
 
-Before appending, verify the write-side active-set guard using the ISSUE_FILES list from Phase 1 context: **(1) Membership** — the dependent issue's file path must appear in ISSUE_FILES. If not, skip and log `[skipped: TARGET not in active set (not loaded in Phase 1)]`. Increment `SKIPPED_INACTIVE_COUNT`. **(2) TOCTOU re-check** — run `awk '/^---$/{n++; next} n==1 && /^status:/{print $2; exit}' TARGET` and confirm the result matches `open|in_progress|blocked`. If terminal, skip and log `[skipped: TARGET status is CURRENT_STATUS — not active]`. Increment `SKIPPED_INACTIVE_COUNT`.
+Before appending, verify the write-side active-set guard: **(1) Membership** — the dependent issue's ID must be one of the active issues collected in Phase 1. If not, skip and log `[skipped: TARGET not in active set (not loaded in Phase 1)]`; count it toward "skipped (target not active)". **(2) TOCTOU re-check** — run `ll-issues show TARGET-ID --json | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('raw_status') in ('open','in_progress','blocked') else 1)"` (`raw_status`, not the display-cased `status`). If the exit code is non-zero, skip and log `[skipped: TARGET status is CURRENT_STATUS — not active]`; count it toward the same tally.
 
-Write the edge with `ll-issues link` — idempotent/list-aware/validating, so reruns never duplicate a `blocked_by:`/`depends_on:` key or drop earlier entries (FEAT-2842). Run `ll-issues link [ISSUE-A] --blocked-by [ISSUE-B]` (hard stop — honoured by every consumer, incl. `ll-issues sequence`) or `ll-issues link [ISSUE-A] --depends-on [ISSUE-B]` (soft ordering — non-fatal if absent/complete), per the user's interactive-prompt choice. Default to `--blocked-by` when unsure. Track the modified file:
-
-```bash
-MODIFIED_FILES+=("[issue-path]")
-```
+Write the edge with `ll-issues link` — idempotent/list-aware/validating, so reruns never duplicate a `blocked_by:`/`depends_on:` key or drop earlier entries (FEAT-2842). Run `ll-issues link [ISSUE-A] --blocked-by [ISSUE-B]` (hard stop — honoured by every consumer, incl. `ll-issues sequence`) or `ll-issues link [ISSUE-A] --depends-on [ISSUE-B]` (soft ordering — non-fatal if absent/complete), per the user's interactive-prompt choice. Default to `--blocked-by` when unsure. `ll-issues link` already wrote the file — Phase 5's `git add -u` will stage it.
 
 Then append session log:
 
@@ -386,7 +389,7 @@ ll-issues append-log "[issue-path]" /ll:audit-issue-conflicts
 
 ### split / update_scope
 
-Before appending to each affected issue, apply two guards: **(1) Write-side active-set guard** — verify the target's file path appears in ISSUE_FILES (from Phase 1) and run `awk '/^---$/{n++; next} n==1 && /^status:/{print $2; exit}' TARGET` to confirm the result matches `open|in_progress|blocked`. If the membership check fails, skip and log `[skipped: TARGET not in active set (not loaded in Phase 1)]`; increment `SKIPPED_INACTIVE_COUNT`. If the status re-check fails, skip and log `[skipped: TARGET status is CURRENT_STATUS — not active]`; increment `SKIPPED_INACTIVE_COUNT`. **(2) Idempotency check** — check whether `## Scope Boundary` is already present in that file and already references `[OTHER-ID]`. If found, skip the append and log `[idempotent: Scope Boundary for OTHER-ID already present]`. Otherwise, append a scope boundary note:
+Before appending to each affected issue, apply two guards: **(1) Write-side active-set guard** — the target's ID must be one of the active issues collected in Phase 1, and `ll-issues show TARGET-ID --json | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('raw_status') in ('open','in_progress','blocked') else 1)"` must exit 0 (`raw_status`, not the display-cased `status`). If the membership check fails, skip and log `[skipped: TARGET not in active set (not loaded in Phase 1)]`; count it toward "skipped (target not active)". If the status re-check fails (non-zero exit), skip and log `[skipped: TARGET status is CURRENT_STATUS — not active]`; count it toward the same tally. **(2) Idempotency check** — check whether `## Scope Boundary` is already present in that file and already references `[OTHER-ID]`. If found, skip the append and log `[idempotent: Scope Boundary for OTHER-ID already present]`. Otherwise, append a scope boundary note:
 
 ```markdown
 
@@ -397,10 +400,9 @@ Before appending to each affected issue, apply two guards: **(1) Write-side acti
 **Note** (added by `/ll:audit-issue-conflicts`): [Specific scope clarification. E.g., "This issue covers X only. Related issue [OTHER-ID] covers Y."]
 ```
 
-Then track each modified file and append session log:
+Then append session log — Phase 5's `git add -u` will stage the edit:
 
 ```bash
-MODIFIED_FILES+=("[issue-path]")
 ll-issues append-log "[issue-path]" /ll:audit-issue-conflicts
 ```
 
@@ -408,12 +410,14 @@ ll-issues append-log "[issue-path]" /ll:audit-issue-conflicts
 
 ## Phase 5: Cleanup
 
-Stage only files that were modified during Phase 4b — never stage untracked files the audit did not touch:
+Stage only files the audit modified. Phase 4b only ever edits already-tracked
+issue files (append-only edits, status flips, frontmatter edges) — it never
+creates new ones — so `git add -u` scoped to the issues directory stages
+exactly those changes and nothing untracked (same idiom as
+`skills/map-dependencies/SKILL.md`, BUG-1976):
 
 ```bash
-for f in "${MODIFIED_FILES[@]}"; do
-    git add "$f"
-done
+git add -u {{config.issues.base_dir}}/
 ```
 
 ---
@@ -446,8 +450,7 @@ AUDIT ISSUE CONFLICTS — COMPLETE
 - [ISSUE-Y]: [skipped: TARGET status is done — not active]
 
 ## UNCHANGED
-- [ISSUE-A] vs [ISSUE-B]: user declined recommendation
-- [ISSUE-A] vs [ISSUE-B]: no action needed (low severity, skipped in auto mode)
+- [ISSUE-A] vs [ISSUE-B]: user declined recommendation (interactive mode only — `--auto` applies every severity)
 
 ## SKIPPED (evaluation errors)
 - [file]: Could not evaluate (subagent failure)
