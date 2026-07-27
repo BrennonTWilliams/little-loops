@@ -819,12 +819,14 @@ class CodeQueryCodegraphConfig:
     """Codegraph provider settings for CodeQueryConfig."""
 
     db_path: str = ".codegraph/codegraph.db"
+    auto_sync: bool = True
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CodeQueryCodegraphConfig:
         """Create CodeQueryCodegraphConfig from dictionary."""
         return cls(
             db_path=data.get("db_path", ".codegraph/codegraph.db"),
+            auto_sync=data.get("auto_sync", True),
         )
 
 

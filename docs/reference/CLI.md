@@ -2061,6 +2061,14 @@ built), `dirty_files` (uncommitted/untracked file count), and the active `policy
 `available: false` (the resolver falls through to `fallback` automatically); `warn` (default)
 serves stale results with `freshness: stale`; `off` always reports `freshness: fresh`.
 
+**Auto-sync on staleness (ENH-2863):** when `code_query.codegraph.auto_sync` is `true`
+(default), a non-fresh `status()` read synchronously shells out to `codegraph sync --quiet`
+before returning — so `stale` should be transient/rare rather than a steady-state condition.
+No-op if the `codegraph` binary isn't on `PATH`, or on sync failure/timeout; either way it
+falls through to the pre-sync `stale`-but-`available` behavior without raising. Staleness
+clears on the *next* `status()` call once the sync updates the index in place — the call that
+triggered the sync still reports the pre-sync freshness.
+
 **Examples:**
 ```bash
 ll-code status                                     # provider name, availability, freshness

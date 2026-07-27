@@ -3,12 +3,13 @@ id: ENH-2863
 title: auto-sync codegraph index on staleness via codegraph CLI sync
 type: ENH
 priority: P3
-status: open
+status: done
 labels:
 - code-intelligence
 - codegraph
 - captured
 captured_at: '2026-07-27T16:53:49Z'
+completed_at: '2026-07-27T18:49:09Z'
 discovered_date: '2026-07-27'
 discovered_by: capture-issue
 parent: EPIC-2575
@@ -311,13 +312,42 @@ Out of scope for this issue:
   mechanism) — the sync is confirmed cheap enough to run synchronously inline
   in `status()`; a background job is not part of this issue's scope.
 
+## Resolution
+
+Implemented per the Proposed Solution / Implementation Steps:
+
+- Added `_sync_if_stale()` to `codegraph.py`, wired into `status()` right after
+  `is_fresh`/`raw_freshness` is computed, before the policy branch. Gated on
+  `shutil.which("codegraph")` (no-op if absent) and `config.codegraph.auto_sync`
+  (no-op if disabled); the `codegraph sync --quiet <repo_root>` subprocess call
+  never raises (`OSError`/`TimeoutExpired` swallowed), mirroring the existing
+  `_git()` non-raising shape.
+- Added `auto_sync: bool = True` to `CodeQueryCodegraphConfig` (`from_dict` +
+  `BRConfig.to_dict()` round-trip) and the matching `config-schema.json` property.
+- Updated `resolve_provider()`'s docstring (`core.py`) to document the new
+  `"auto"`-resolution side effect.
+- Updated `docs/reference/CONFIGURATION.md`, `docs/reference/CLI.md`, and
+  `skills/wire-issue/graph-discovery-layer.md` per the Integration Map.
+- Tests: `TestAutoSync` in `test_codequery_codegraph.py` (binary-absent,
+  `auto_sync: false`, sync-invoked, sync-timeout paths); pinned
+  `TestStalenessMatrix` inert via an autouse `shutil.which` mock so its
+  stale-fixture tests don't shell out on machines with `codegraph` on `PATH`;
+  `auto_sync` round-trip cases in `test_config.py`/`test_config_schema.py`.
+
+Manually verified against this repo's live `.codegraph/codegraph.db` (`ll-code
+--json status`) — the sync shells out without error; `dirty_files` staying
+nonzero afterward reflects genuinely uncommitted working-tree changes, not a
+sync failure (staleness from uncommitted files is orthogonal to what `sync`
+catches up).
+
 ## Session Log
 - `/ll:ready-issue` - 2026-07-27T17:47:06 - `fac775ae-243f-48a2-bf9a-3431a1f5bd9b.jsonl`
 - `/ll:confidence-check` - 2026-07-27T18:15:00 - `9188e54f-5830-4cf3-b9ff-2c70903a6916.jsonl`
 - `/ll:wire-issue` - 2026-07-27T17:42:15 - `2ba79734-f873-4dfe-86fb-a252292fbd8f.jsonl`
 - `/ll:refine-issue` - 2026-07-27T17:36:13 - `fa4557f5-bd3a-4712-82e8-8be145778d32.jsonl`
 - `/ll:capture-issue` - 2026-07-27T16:53:49Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/92005058-34f6-4492-9015-3c5341fed493.jsonl`
+- `/ll:manage-issue` - 2026-07-27T18:48:27Z - `532faada-5373-48c8-b996-4421a247de12.jsonl`
 
 ---
 ## Status
-- [ ] Not Started
+- [x] Done

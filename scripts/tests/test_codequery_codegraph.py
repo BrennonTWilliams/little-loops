@@ -13,6 +13,7 @@ from __future__ import annotations
 import sqlite3
 import subprocess
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -266,6 +267,13 @@ class TestStatusMissingIndex:
 class TestStalenessMatrix:
     """fresh / commits-ahead / dirty-tree x strict / warn / off."""
 
+    @pytest.fixture(autouse=True)
+    def _no_codegraph_binary(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """ENH-2863: pin binary-absent so `status()`'s auto-sync shell-out
+        stays inert regardless of whether `codegraph` happens to be on this
+        machine's PATH."""
+        monkeypatch.setattr("little_loops.codequery.codegraph.shutil.which", lambda _name: None)
+
     # Baseline commit (config + index) lands at _BASELINE_COMMIT_ISO; the
     # index's own build timestamp (_INDEX_BUILT_MS) is 5s later, so a
     # `git log --since=<indexed_at>` never double-counts the baseline commit
@@ -355,6 +363,112 @@ class TestStalenessMatrix:
         status = CodegraphProvider().status()
         assert status.available is True
         assert status.freshness == "fresh"
+
+
+class TestAutoSync:
+    """ENH-2863: `_sync_if_stale()` shell-out triggered from `status()`."""
+
+    def _stale_repo(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        repo = _init_repo(tmp_path / "repo")
+        _write_config(repo, staleness="warn")
+        _build_index(repo / ".codegraph" / "codegraph.db", indexed_at_ms=1577836810000)
+        _git(repo, "add", "-A")
+        _commit_at(repo, "add config and codegraph index", "2020-01-01T00:00:05+00:00")
+        (repo / "new_file.txt").write_text("more\n")
+        _git(repo, "add", "new_file.txt")
+        _commit_at(repo, "a commit after index build", "2020-01-01T00:01:00+00:00")
+        monkeypatch.chdir(repo)
+        return repo
+
+    def _spy_on_sync_calls(self) -> tuple[list[list[object]], object]:
+        """Return (sync_calls, patch context manager) that lets real git calls
+        through while recording only `codegraph sync` invocations."""
+        real_run = subprocess.run
+        sync_calls: list[list[object]] = []
+
+        def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+            cmd = args[0] if args else kwargs.get("args")
+            if isinstance(cmd, list) and "sync" in cmd:
+                sync_calls.append(cmd)
+                return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+            return real_run(*args, **kwargs)  # type: ignore[arg-type]
+
+        return sync_calls, patch(
+            "little_loops.codequery.codegraph.subprocess.run", side_effect=_fake_run
+        )
+
+    def test_binary_absent_is_noop(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._stale_repo(tmp_path, monkeypatch)
+        monkeypatch.setattr(
+            "little_loops.codequery.codegraph.shutil.which", lambda _name: None
+        )
+        sync_calls, patcher = self._spy_on_sync_calls()
+        with patcher:
+            status = CodegraphProvider().status()
+
+        assert sync_calls == []
+        assert status.available is True
+        assert status.freshness == "stale"
+
+    def test_auto_sync_disabled_is_noop(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        repo = self._stale_repo(tmp_path, monkeypatch)
+        config_path = repo / ".ll" / "ll-config.json"
+        import json
+
+        config = json.loads(config_path.read_text())
+        config.setdefault("code_query", {}).setdefault("codegraph", {})["auto_sync"] = False
+        config_path.write_text(json.dumps(config))
+        monkeypatch.setattr(
+            "little_loops.codequery.codegraph.shutil.which", lambda _name: "/usr/bin/codegraph"
+        )
+
+        sync_calls, patcher = self._spy_on_sync_calls()
+        with patcher:
+            CodegraphProvider().status()
+
+        assert sync_calls == []
+
+    def test_sync_invoked_on_stale_index(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._stale_repo(tmp_path, monkeypatch)
+        monkeypatch.setattr(
+            "little_loops.codequery.codegraph.shutil.which", lambda _name: "/usr/bin/codegraph"
+        )
+
+        sync_calls, patcher = self._spy_on_sync_calls()
+        with patcher:
+            CodegraphProvider().status()
+
+        assert len(sync_calls) == 1
+        assert sync_calls[0][1:3] == ["sync", "--quiet"]
+
+    def test_sync_timeout_falls_through_without_raising(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._stale_repo(tmp_path, monkeypatch)
+        monkeypatch.setattr(
+            "little_loops.codequery.codegraph.shutil.which", lambda _name: "/usr/bin/codegraph"
+        )
+
+        real_run = subprocess.run
+
+        def _raise_timeout(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+            if args and isinstance(args[0], list) and "sync" in args[0]:
+                raise subprocess.TimeoutExpired(cmd="codegraph", timeout=30)
+            return real_run(*args, **kwargs)  # type: ignore[arg-type]
+
+        with patch(
+            "little_loops.codequery.codegraph.subprocess.run", side_effect=_raise_timeout
+        ):
+            status = CodegraphProvider().status()
+
+        assert status.available is True
+        assert status.freshness == "stale"
 
 
 class TestQueries:

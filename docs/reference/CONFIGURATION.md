@@ -1020,6 +1020,7 @@ Code-query provider selection, codegraph db path, and staleness policy, consumed
 |-----|---------|-------------|
 | `provider` | `"auto"` | Code-query provider to use for structural code lookups. One of `auto`, `codegraph`, `fallback`. |
 | `codegraph.db_path` | `".codegraph/codegraph.db"` | Path to the codegraph SQLite database. |
+| `codegraph.auto_sync` | `true` | Auto-run `codegraph sync --quiet` when the index is stale (ENH-2863). No-op if the `codegraph` binary isn't on `PATH`; never raises on failure/timeout. |
 | `staleness` | `"warn"` | How to treat a stale codegraph database relative to source changes. One of `strict`, `warn`, `off`. |
 
 ### `issues.next_issue`

@@ -1289,6 +1289,11 @@
               "type": "string",
               "description": "Path to the codegraph SQLite database",
               "default": ".codegraph/codegraph.db"
+            },
+            "auto_sync": {
+              "type": "boolean",
+              "description": "Automatically shell out to `codegraph sync --quiet` when the index is stale (no-op if the codegraph binary is not on PATH)",
+              "default": true
             }
           },
           "additionalProperties": false

@@ -25,6 +25,7 @@ kind maps to ``impact_of``; it stays out of :meth:`capabilities` and raises
 
 from __future__ import annotations
 
+import shutil
 import sqlite3
 import subprocess
 from datetime import UTC, datetime
@@ -34,6 +35,7 @@ from little_loops.codequery.core import CodeRef, Freshness, ProviderStatus, Unsu
 
 _NAME = "codegraph"
 _GIT_TIMEOUT = 10
+_SYNC_TIMEOUT = 30
 
 # codegraph edge kinds that resolve callers/callees/references.
 _CALL_KINDS = ("calls",)
@@ -129,6 +131,29 @@ def _is_scan_relevant(path: str, focus_dirs: list[str], exclude_patterns: list[s
     return any(path == d.rstrip("/") or path.startswith(d.rstrip("/") + "/") for d in focus_dirs)
 
 
+def _sync_if_stale(repo_root: Path, auto_sync: bool) -> None:
+    """Shell out to ``codegraph sync --quiet`` on a stale index, never raising.
+
+    No-op if ``auto_sync`` is disabled or the ``codegraph`` binary isn't on
+    ``PATH``. Staleness naturally clears on the caller's next ``status()``
+    read once the sync updates ``.codegraph/codegraph.db`` in place.
+    """
+    if not auto_sync:
+        return
+    binary = shutil.which("codegraph")
+    if binary is None:
+        return
+    try:
+        subprocess.run(
+            [binary, "sync", "--quiet", str(repo_root)],
+            capture_output=True,
+            text=True,
+            timeout=_SYNC_TIMEOUT,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return
+
+
 def _module_to_file_guess(module: str) -> str:
     """Best-effort conversion of a dotted module or file path to a repo-relative path."""
     if module.endswith(".py"):
@@ -205,6 +230,9 @@ class CodegraphProvider:
 
         is_fresh = head_moved == 0 and dirty_files == 0
         raw_freshness: Freshness = "fresh" if is_fresh else "stale"
+
+        if not is_fresh:
+            _sync_if_stale(root, config.codegraph.auto_sync)
 
         if policy == "off":
             return ProviderStatus(

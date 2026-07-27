@@ -60,9 +60,13 @@ ll-code --json impact-of    <path>     # transitive impact set (tests/config/doc
 ## Staleness handling
 
 If `freshness == "stale"` (an index-backed provider whose index lags the working
-tree — future ENH-2577 `codegraph` provider; the day-one `FallbackProvider` is
-always `fresh`), treat **all** candidates as leads only and widen confirmation to
-the current exploratory flow for anything wiring-critical.
+tree — the `codegraph` provider; the day-one `FallbackProvider` is always `fresh`),
+treat **all** candidates as leads only and widen confirmation to the current
+exploratory flow for anything wiring-critical. With `code_query.codegraph.auto_sync`
+enabled (default, ENH-2863), `stale` should now be transient/rare rather than a
+steady-state condition — the provider self-heals via `codegraph sync --quiet` on
+the read that observes staleness, so a run that hits `stale` here is usually the
+one-time straggler before the next `status()` read reports `fresh` again.
 
 ## Measurement note (fallback-only caveat)
 

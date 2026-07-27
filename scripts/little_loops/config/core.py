@@ -842,6 +842,7 @@ class BRConfig:
                 "provider": self._code_query.provider,
                 "codegraph": {
                     "db_path": self._code_query.codegraph.db_path,
+                    "auto_sync": self._code_query.codegraph.auto_sync,
                 },
                 "staleness": self._code_query.staleness,
             },

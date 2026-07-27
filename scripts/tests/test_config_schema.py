@@ -456,6 +456,8 @@ class TestConfigSchema:
         assert codegraph.get("additionalProperties") is False
         assert codegraph["properties"]["db_path"]["type"] == "string"
         assert codegraph["properties"]["db_path"]["default"] == ".codegraph/codegraph.db"
+        assert codegraph["properties"]["auto_sync"]["type"] == "boolean"
+        assert codegraph["properties"]["auto_sync"]["default"] is True
 
     def test_history_in_schema(self) -> None:
         """history block must be declared in config-schema.json (ENH-1913).

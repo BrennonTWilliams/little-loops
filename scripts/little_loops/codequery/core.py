@@ -108,6 +108,13 @@ def resolve_provider(name: str = "auto") -> CodeQueryProvider:
             registered provider (in registration order) whose ``status()``
             reports ``available``.
 
+    Note:
+        Under ``"auto"`` resolution, the codegraph provider's ``status()``
+        has a side effect: on a stale index it synchronously shells out to
+        ``codegraph sync --quiet`` (ENH-2863, gated by
+        ``config.code_query.codegraph.auto_sync``, no-op if the binary is
+        absent) before reporting freshness.
+
     Returns:
         A :class:`CodeQueryProvider` instance ready to answer queries.
 

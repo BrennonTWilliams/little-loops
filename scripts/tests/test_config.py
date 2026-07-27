@@ -2297,18 +2297,20 @@ class TestCodeQueryConfig:
         config = CodeQueryConfig.from_dict({})
         assert config.provider == "auto"
         assert config.codegraph.db_path == ".codegraph/codegraph.db"
+        assert config.codegraph.auto_sync is True
         assert config.staleness == "warn"
 
     def test_from_dict_with_all_fields(self) -> None:
         """Test creating CodeQueryConfig with all fields specified."""
         data = {
             "provider": "codegraph",
-            "codegraph": {"db_path": "custom/path.db"},
+            "codegraph": {"db_path": "custom/path.db", "auto_sync": False},
             "staleness": "strict",
         }
         config = CodeQueryConfig.from_dict(data)
         assert config.provider == "codegraph"
         assert config.codegraph.db_path == "custom/path.db"
+        assert config.codegraph.auto_sync is False
         assert config.staleness == "strict"
 
     def test_from_dict_partial_data(self) -> None:
@@ -2319,17 +2321,25 @@ class TestCodeQueryConfig:
         # Other fields should use defaults
         assert config.provider == "auto"
         assert config.codegraph.db_path == ".codegraph/codegraph.db"
+        assert config.codegraph.auto_sync is True
 
     def test_codegraph_from_dict_with_defaults(self) -> None:
         """Test creating CodeQueryCodegraphConfig with default values."""
         config = CodeQueryCodegraphConfig.from_dict({})
         assert config.db_path == ".codegraph/codegraph.db"
+        assert config.auto_sync is True
+
+    def test_codegraph_from_dict_with_auto_sync_disabled(self) -> None:
+        """ENH-2863: auto_sync can be explicitly disabled via config."""
+        config = CodeQueryCodegraphConfig.from_dict({"auto_sync": False})
+        assert config.auto_sync is False
 
     def test_brconfig_defaults(self, temp_project_dir: Path) -> None:
         """Test BRConfig loads code_query with defaults."""
         config = BRConfig(temp_project_dir)
         assert config.code_query.provider == "auto"
         assert config.code_query.staleness == "warn"
+        assert config.code_query.codegraph.auto_sync is True
 
     def test_brconfig_loads_from_file(
         self, temp_project_dir: Path, sample_config: dict[str, Any]
@@ -2337,7 +2347,7 @@ class TestCodeQueryConfig:
         """Test BRConfig loads code_query from config file."""
         sample_config["code_query"] = {
             "provider": "codegraph",
-            "codegraph": {"db_path": ".codegraph/custom.db"},
+            "codegraph": {"db_path": ".codegraph/custom.db", "auto_sync": False},
             "staleness": "strict",
         }
         config_path = temp_project_dir / ".ll" / "ll-config.json"
@@ -2346,6 +2356,7 @@ class TestCodeQueryConfig:
         config = BRConfig(temp_project_dir)
         assert config.code_query.provider == "codegraph"
         assert config.code_query.codegraph.db_path == ".codegraph/custom.db"
+        assert config.code_query.codegraph.auto_sync is False
         assert config.code_query.staleness == "strict"
 
     def test_code_query_in_to_dict(self, temp_project_dir: Path) -> None:
@@ -2357,6 +2368,7 @@ class TestCodeQueryConfig:
         cq = result["code_query"]
         assert cq["provider"] == "auto"
         assert cq["codegraph"]["db_path"] == ".codegraph/codegraph.db"
+        assert cq["codegraph"]["auto_sync"] is True
         assert cq["staleness"] == "warn"
 
     def test_resolve_variable_code_query(self, temp_project_dir: Path) -> None:
