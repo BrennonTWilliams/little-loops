@@ -4116,6 +4116,44 @@ class TestTerminalActionOk:
         assert fsm.terminal_action_ok is False
 
 
+class TestAbandonmentVerdictOk:
+    """ENH-2860: abandonment_verdict_ok field round-trip serialization."""
+
+    def test_abandonment_verdict_ok_true_round_trips(self) -> None:
+        """abandonment_verdict_ok=True is present in to_dict() and restored by from_dict()."""
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            abandonment_verdict_ok=True,
+        )
+        d = fsm.to_dict()
+        assert d.get("abandonment_verdict_ok") is True
+        restored = FSMLoop.from_dict(d)
+        assert restored.abandonment_verdict_ok is True
+
+    def test_abandonment_verdict_ok_false_omitted_from_dict(self) -> None:
+        """abandonment_verdict_ok=False (default) is omitted from to_dict()."""
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+        )
+        d = fsm.to_dict()
+        assert "abandonment_verdict_ok" not in d
+
+    def test_abandonment_verdict_ok_defaults_false(self) -> None:
+        """FSMLoop.from_dict() without abandonment_verdict_ok defaults to False."""
+        fsm = FSMLoop.from_dict(
+            {
+                "name": "test",
+                "initial": "s",
+                "states": {"s": {"terminal": True}},
+            }
+        )
+        assert fsm.abandonment_verdict_ok is False
+
+
 class TestStateConfigFailureFlag:
     """ENH-2814: StateConfig.failure round-trip + name-convention defaulting."""
 

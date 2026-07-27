@@ -4959,6 +4959,7 @@ class FSMLoop:
     unsafe_context_interpolation_ok: bool = False  # Suppress MR-11 unsafe raw context interpolation lint rule (BUG-2622)
     policy_dims_scored_ok: bool = False   # Suppress policy-table inactive-rubric-dim lint rule
     terminal_action_ok: bool = False      # Suppress terminal-action-ok (BUG-2813: dead action on terminal: true) lint rule
+    abandonment_verdict_ok: bool = False  # Suppress MR-13 abandonment-verdict lint rule (ENH-2860)
     imports: list[str] = []               # Raw `import:` list from YAML (fragment metadata, not serialized by to_dict)
 ```
 
@@ -5657,6 +5658,7 @@ Validate FSM structure and return list of errors.
 - **MR-10 (WARNING)**: a `shell`-type state's inline Python calls `json.loads`/`json.load`, catches `JSONDecodeError`/`ValueError`/bare `Exception`, and explicitly exits 0 — without an `on_error:` route — silently discarding parse failures as an empty success; add `on_error:` to route parse failures explicitly, or set `parse_swallow_ok: true` to suppress when an empty result is intentional (BUG-2383)
 - **MR-11 (WARNING)**: a `shell`-type state pastes a user-controlled `${context.input|goal|description|task|prompt|query|topic}` value raw into the action body outside a safe position (single-quoted string, quoted heredoc `<<'EOF'`, or the `:shell` suffix) — `interpolate()` substitutes with a bare `str(value)` and no shell escaping, so a value containing `"`, `$`, `` ` ``, `\`, or `!` breaks bash tokenizing or injects commands; wrap the placeholder in single quotes, write it through a quoted heredoc, or use `${context.input:shell}` to shlex-quote it, or set `unsafe_context_interpolation_ok: true` to suppress (BUG-2622)
 - **terminal-action-ok (WARNING)**: a non-empty `action` on a `terminal: true` state — the executor finishes the run the instant a terminal is entered, before its `action` would run, so it's dead code; move the action into a new penultimate non-terminal state with `next: <terminal>` and an `on_error:` route, leaving the terminal bare (the `rn-implement::report` shape); exempts a terminal doubling as the loop's `on_max_steps`/`on_max_iterations` handler (BUG-158); set `terminal_action_ok: true` to suppress (BUG-2813)
+- **MR-13 (WARNING)**: a loop has an abandonment mechanism (checkbox rewrite to `[!]`, or `[x]`+"abandoned" annotation, or a `max_step_attempts`-style attempt cap) but no state's action emits an `"abandoned"` key into a summary JSON printf/write; or a shell action hardcodes a literal `"verdict":"success"`/`verdict=success` with no conditional branch on an abandonment/failure counter and no `"abandoned"` key emitted in that same state — abandoned work is silently laundered into a clean success verdict (the pre-ENH-2857 `general-task.yaml` defect); set `abandonment_verdict_ok: true` to suppress (ENH-2860)
 
 **Example:**
 ```python

@@ -258,6 +258,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "haiku_generator_ok",
         "capture_reachability_ok",
         "terminal_action_ok",
+        "abandonment_verdict_ok",
         "import",
         "fragments",
         "from",
@@ -1371,6 +1372,8 @@ def validate_fsm(
 
     errors.extend(_validate_parse_swallow(fsm))
 
+    errors.extend(_validate_abandonment_verdict(fsm))
+
     errors.extend(_validate_pruning_profile(fsm, orchestration_request_path))
 
     errors.extend(_validate_unsafe_context_interpolation(fsm))
@@ -2137,6 +2140,118 @@ def _validate_parse_swallow(fsm: FSMLoop) -> list[ValidationError]:
                 severity=ValidationSeverity.WARNING,
             )
         )
+    return errors
+
+
+# MR-13 (ENH-2860): abandonment-mechanism heuristics — a shell action that
+# rewrites a checkbox line to the `[!]` abandonment marker, or rewrites a
+# checkbox to `[x]` alongside an "abandoned" annotation (the pre-ENH-2857
+# laundering shape), or consumes a `max_step_attempts`-style attempt-cap
+# context var.
+_ABANDON_BANG_MARKER_RE = re.compile(r"-\s*\\?\[!\\?\]")
+_ABANDON_CHECKED_ANNOTATION_RE = re.compile(
+    r"\\?\[x\\?\].{0,80}abandon", re.IGNORECASE | re.DOTALL
+)
+_ABANDON_ATTEMPT_CAP_RE = re.compile(r"max_step_attempts")
+# Any reference to an abandonment counter/branch in the same action — used
+# both to detect the mechanism and as the "has a guard" escape hatch for the
+# hardcoded-verdict check below.
+_ABANDON_COUNTER_REF_RE = re.compile(r"abandon", re.IGNORECASE)
+# A literal "abandoned" key emitted into a JSON summary via printf/write.
+_ABANDONED_KEY_EMIT_RE = re.compile(r'"abandoned"\s*:')
+# A hardcoded (non-interpolated) success verdict — JSON-literal or shell-var
+# assignment form.
+_HARDCODE_VERDICT_SUCCESS_RE = re.compile(
+    r'"verdict"\s*:\s*"success"|\bverdict\s*=\s*success\b', re.IGNORECASE
+)
+
+
+def _validate_abandonment_verdict(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate rule MR-13 (ENH-2860): abandonment must reach summary.json and downgrade the verdict.
+
+    Two independent conditions share this one suppress flag:
+
+    1. The loop has an abandonment mechanism — a shell action rewriting a
+       checkbox line to the ``[!]`` marker, rewriting to ``[x]`` with an
+       "abandoned" annotation, or consuming a ``max_step_attempts``-style
+       attempt-cap context var — but NO state's action emits an
+       ``"abandoned"`` key into a summary JSON printf/write. Abandoned work
+       is tracked internally but never reaches the artifact audit tooling
+       reads (the pre-ENH-2857 general-task defect: 8-of-34 abandoned steps
+       laundered into a bare "success").
+    2. A shell action contains a literal, non-interpolated
+       ``"verdict":"success"`` (or ``verdict=success``) with no conditional
+       branch referencing an abandonment/failure counter and no
+       ``"abandoned"`` key emitted in that same state. A guarded literal
+       (branches on an abandoned-count check, or emits the "abandoned" key
+       alongside it) is the correct shape and is not flagged — this is what
+       distinguishes the fix (ENH-2657/ENH-2857) from the defect.
+
+    Suppressed by ``abandonment_verdict_ok: true`` at the loop top-level.
+    """
+    if fsm.abandonment_verdict_ok:
+        return []
+    errors: list[ValidationError] = []
+
+    mechanism_state: str | None = None
+    any_state_emits_abandoned_key = False
+    for state_name, state in fsm.states.items():
+        action = state.action or ""
+        if not action:
+            continue
+        if mechanism_state is None and (
+            _ABANDON_BANG_MARKER_RE.search(action)
+            or _ABANDON_CHECKED_ANNOTATION_RE.search(action)
+            or _ABANDON_ATTEMPT_CAP_RE.search(action)
+        ):
+            mechanism_state = state_name
+        if _ABANDONED_KEY_EMIT_RE.search(action):
+            any_state_emits_abandoned_key = True
+
+    if mechanism_state is not None and not any_state_emits_abandoned_key:
+        errors.append(
+            ValidationError(
+                message=(
+                    f"[state: {mechanism_state}] loop has an abandonment mechanism "
+                    "(checkbox rewrite to [!] / abandoned annotation, or a "
+                    "max_step_attempts-style attempt cap) but no state emits an "
+                    '"abandoned" key into a summary JSON printf/write — abandoned '
+                    "work is invisible to audit tooling (general-task pre-ENH-2857 "
+                    'pattern). Emit an "abandoned" key from the summary-writing '
+                    "state, or set `abandonment_verdict_ok: true` to suppress. "
+                    "(MR-13)"
+                ),
+                path=f"states.{mechanism_state}.action",
+                severity=ValidationSeverity.WARNING,
+            )
+        )
+
+    for state_name, state in fsm.states.items():
+        action = state.action or ""
+        if not action:
+            continue
+        if not _HARDCODE_VERDICT_SUCCESS_RE.search(action):
+            continue
+        if _ABANDON_COUNTER_REF_RE.search(action):
+            continue
+        if _ABANDONED_KEY_EMIT_RE.search(action):
+            continue
+        errors.append(
+            ValidationError(
+                message=(
+                    f'[state: {state_name}] shell action hardcodes "verdict":'
+                    '"success" (or verdict=success) with no conditional branch on '
+                    'an abandonment/failure counter and no "abandoned" key emitted '
+                    "in the same state — any abandoned work is silently laundered "
+                    "into a clean success verdict. Guard the verdict on an "
+                    'abandonment counter and emit an "abandoned" key, or set '
+                    "`abandonment_verdict_ok: true` to suppress. (MR-13)"
+                ),
+                path=f"states.{state_name}.action",
+                severity=ValidationSeverity.WARNING,
+            )
+        )
+
     return errors
 
 

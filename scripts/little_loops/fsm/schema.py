@@ -1286,6 +1286,10 @@ class FSMLoop:
     # BUG-2813 suppression flag: silences the terminal-state-has-action warning
     # (the executor never runs a terminal's `action:` — dead code otherwise).
     terminal_action_ok: bool = False
+    # ENH-2860 suppression flag: silences the MR-13 abandonment-verdict warning
+    # (abandonment mechanism present but never reaches summary.json, or a
+    # hardcoded "verdict":"success" with no abandonment guard/field).
+    abandonment_verdict_ok: bool = False
     # Populated from the raw `import:` list by from_dict(); not serialized by to_dict()
     imports: list[str] = field(default_factory=list)
 
@@ -1405,6 +1409,8 @@ class FSMLoop:
             result["capture_reachability_ok"] = self.capture_reachability_ok
         if self.terminal_action_ok:
             result["terminal_action_ok"] = self.terminal_action_ok
+        if self.abandonment_verdict_ok:
+            result["abandonment_verdict_ok"] = self.abandonment_verdict_ok
 
         return result
 
@@ -1508,6 +1514,7 @@ class FSMLoop:
             haiku_generator_ok=data.get("haiku_generator_ok", False),
             capture_reachability_ok=data.get("capture_reachability_ok", False),
             terminal_action_ok=data.get("terminal_action_ok", False),
+            abandonment_verdict_ok=data.get("abandonment_verdict_ok", False),
             imports=data.get("import", []),
         )
 

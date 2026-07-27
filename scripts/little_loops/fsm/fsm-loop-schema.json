@@ -364,6 +364,11 @@
       "type": "boolean",
       "default": false,
       "description": "BUG-2813: suppresses the terminal-state-has-action (WARN) validation rule. A terminal: true state's action never executes (the executor finishes the run before running it); move the action to a penultimate non-terminal state instead of suppressing this."
+    },
+    "abandonment_verdict_ok": {
+      "type": "boolean",
+      "default": false,
+      "description": "ENH-2860 MR-13: suppresses the abandonment-verdict (WARN) validation rule. Fires when a loop has an abandonment mechanism (checkbox rewrite to a `[!]`/annotated-abandoned marker, or an attempt-cap counter) but no state emits an \"abandoned\" key into summary.json, or when a shell action hardcodes \"verdict\":\"success\" with no conditional guard on an abandonment/failure counter and no \"abandoned\" key in the same state."
     }
   },
   "additionalProperties": false,

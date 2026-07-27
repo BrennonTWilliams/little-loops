@@ -329,6 +329,67 @@ states:
         data = json.loads(capsys.readouterr().out)
         assert any("ENH-2805" in v["message"] for v in data["violations"])
 
+    def test_validate_no_json_warns_mr13_hardcoded_success_verdict(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """ENH-2860: ll-loop validate surfaces the MR-13 warning (non-JSON path)
+        for a shell action that hardcodes "verdict":"success" with no
+        abandonment guard and no "abandoned" key."""
+        from little_loops.cli.loop.config_cmds import cmd_validate
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "mr13-loop.yaml").write_text(
+            "name: mr13-loop\n"
+            "initial: summarize\n"
+            "states:\n"
+            "  summarize:\n"
+            "    action_type: shell\n"
+            '    action: |\n'
+            '      printf \'{"verdict":"success"}\\n\' > summary.json\n'
+            "    terminal: true\n"
+        )
+
+        logger = Logger(use_color=False)
+        result = cmd_validate("mr13-loop", argparse.Namespace(), loops_dir, logger)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "MR-13" in captured.out
+
+    def test_validate_json_warns_mr13_hardcoded_success_verdict(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """ENH-2860: the --json path also surfaces the MR-13 warning for a
+        hardcoded "verdict":"success" with no abandonment guard."""
+        from little_loops.cli.loop.config_cmds import cmd_validate
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "mr13-loop.yaml").write_text(
+            "name: mr13-loop\n"
+            "initial: summarize\n"
+            "states:\n"
+            "  summarize:\n"
+            "    action_type: shell\n"
+            '    action: |\n'
+            '      printf \'{"verdict":"success"}\\n\' > summary.json\n'
+            "    terminal: true\n"
+        )
+
+        logger = Logger(use_color=False)
+        args = argparse.Namespace(json=True)
+        cmd_validate("mr13-loop", args, loops_dir, logger)
+
+        data = json.loads(capsys.readouterr().out)
+        assert any("MR-13" in v["message"] for v in data["violations"])
+
     def test_validate_json_loop_reference_error(
         self,
         tmp_path: Path,
