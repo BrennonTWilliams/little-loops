@@ -21,7 +21,7 @@ Origin: ll-product #ENH-052
 
 Any loop that uses a green test suite as a transition predicate can be satisfied by editing or commenting out the tests instead of fixing the code. Detect agent modifications to test files across a verification step and either revert them before scoring or fail the transition.
 
-The natural host is ENH-025 (embedded verification in FSM transitions), which currently does not address tamper detection.
+The natural host is the embedded-verification-in-FSM-transitions mechanism (ll-product #ENH-025 — not this repo's local ENH-025, which is unrelated), which currently does not address tamper detection.
 
 ## Motivation
 

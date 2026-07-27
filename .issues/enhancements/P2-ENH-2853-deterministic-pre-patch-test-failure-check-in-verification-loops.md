@@ -12,7 +12,7 @@ labels:
 - rework
 - verification
 blocked_by:
-- '2854'
+- ENH-2854
 ---
 
 # ENH-2853: Deterministic pre-patch test-failure check in verification loops
@@ -49,6 +49,7 @@ The check is deterministic, cheap, and has no false-positive mode that matters: 
 - **Added vs. modified tests carry different contracts.** A *newly added* test must fail pre-patch — that is the clean "demonstrates the change" contract. A *modified* test routinely passes pre-patch legitimately (an assertion added to an already-passing test, a tightened comparison, a rename). Split the verdict: added-and-passes-pre-patch is a hard flag; modified-and-passes-pre-patch is recorded in the evidence but soft by default (configurable to hard). A hard flag on modified tests would punish exactly the assertion-strengthening behavior the epic wants to encourage.
 - **Import isolation is load-bearing in editable-install repos.** A worktree checkout of the pre-patch tree can still import the *main-tree* package when the project is installed editable (the install pins an absolute path — see the epic-verify false-negative history in this repo). A "pre-patch" run that imports post-patch code passes trivially and the check reports garbage. The pre-patch run must resolve imports from the worktree (PYTHONPATH injection ahead of site-packages, or a fresh non-editable install into the worktree's environment), and a test must prove the isolation.
 - **Define the base state explicitly.** Under `ll-auto`/`ll-sprint` a verification step may span multiple commits. "Pre-patch" means the tree at the SHA recorded when the issue was dequeued (fall back to merge-base with the base branch when no dequeue SHA is recorded) — not simply `HEAD~1`.
+- **Nothing records a dequeue SHA today — this issue introduces the stamp.** The primary base-state path is dead code unless the SHA is written somewhere: add it at the dequeue/worktree-creation points (`autodev.yaml`'s `dequeue_next`, which already snapshots pre-refine readiness to the run dir, and `ll-parallel`'s worktree creation). Until a given orchestrator stamps it, its runs take the merge-base fallback — which is why the evidence bundle must name the base actually used.
 - **Shared test-file identification with ENH-2854.** Both this check and the tamper guard need to classify paths as test files. Implement one shared module (driven by a `project.test_patterns` config key — see ENH-2854) so the two checks cannot drift to divergent globs.
 
 ## Acceptance Criteria
@@ -60,6 +61,7 @@ The check is deterministic, cheap, and has no false-positive mode that matters: 
 - [ ] A candidate test that fails or errors pre-patch is accepted as evidence.
 - [ ] The pre-patch run resolves imports from the pre-patch worktree, not the main tree's editable install; a test proves the isolation (post-patch-only module is unimportable in the pre-patch run).
 - [ ] The base state is the dequeue-time SHA when recorded, else the merge-base with the base branch; the chosen base is named in the evidence bundle.
+- [ ] A dequeue-time SHA stamp is added at the orchestrator dequeue/worktree-creation points (`autodev.yaml` `dequeue_next`, `ll-parallel`), so the primary base-state path is exercised rather than always falling back to merge-base.
 - [ ] Test-file identification is shared with ENH-2854's guard (one module, one `project.test_patterns` source of truth).
 - [ ] The zero-candidate-tests case is reported explicitly rather than passing silently.
 - [ ] Per-test results (name, file, pre-patch outcome, post-patch outcome) appear in the verification evidence bundle.
