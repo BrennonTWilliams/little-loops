@@ -23,6 +23,14 @@ The refinement chain (`/ll:refine-issue` → `/ll:wire-issue` → `/ll:confidenc
 
 Add a program-design stage that makes an issue name its intended shape at the signature level before it is eligible for batch processing, and gate `/ll:confidence-check` on that section being present and specific.
 
+## Current Behavior
+
+`/ll:refine-issue` and `/ll:wire-issue` populate an "Integration Map" (files, callers, patterns, tests) but stop at the architecture level — which files and integration points are involved. Neither stage requires the issue to name the concrete types, function/method signatures, or call path the implementation will follow. `/ll:confidence-check` scores readiness without checking for this content, so an issue can pass the gate and reach `ll-auto`/`ll-parallel`/`ll-sprint` with signature-level decisions still unmade, left for the implementing agent to decide unreviewed.
+
+## Expected Behavior
+
+Every BUG/FEAT/ENH issue (unless explicitly exempted via a `program_design_not_applicable: true` escape hatch, or grandfathered per the cutover stamp) carries a `## Program Design` section with `Types`, `Signatures`, and `Call Path` subsections populated with real, repo-grounded identifiers before it is eligible for batch implementation. `/ll:confidence-check` fails deterministically (via `ll-issues format-check`) when that section is missing, empty, or contains only non-specific prose, and routes such a failure through the existing reconcile-before-defer remedy rather than an immediate `low_readiness` deferral.
+
 ## Motivation
 
 Architecture-level refinement (which components, which files, which integration points) is already covered. Program design is the level below it and is the one currently skipped:
@@ -53,7 +61,8 @@ This is deliberately *not* a design doc stage. It is a short, concrete section �
 - **Grandfathering must be honored at every `check_format_gaps()` consumer, not just `/ll:confidence-check`** (added epic review, 2026-07-27). Adding `Program Design` to `common_sections` makes it required for BUG/FEAT/ENH alike, and the new gap category then propagates to every consumer of the gap set — `rn-remediate.yaml`'s `ensure_formatted` state (which gates on `ll-issues format-check`'s exit code, i.e. `FormatGaps.has_gaps`), `ll-issues sequence`'s drift detection, and `commands/ready-issue.md`. If the exemption lives only in the skill's override logic, the existing backlog trips those other consumers on day one — exactly the mass-failure the grandfathering decision exists to prevent. The exemption therefore belongs in `check_format_gaps()` itself, so every consumer inherits it from one place.
 - **`ready-issue` scope — decided (epic review, 2026-07-27): confidence-check only.** `commands/ready-issue.md` reads `prose_dep_drift`/`stale_prose_dep` individually from `format-check --format json` and must *not* add the Program Design gap to its blocking set. `ready-issue`'s job is to make an issue implementation-ready, and a missing program design is something it should surface and help fill, not something it should refuse on — the blocking decision happens once, at the confidence gate, where the reconcile-before-defer remedy path exists. Two gates enforcing the same requirement with different remedies is how an issue gets stuck between them.
 - **The `Deviations` note needs a writer, or it is dead convention** (added epic review, 2026-07-27). As originally written, nothing in the system would ever produce one: `skills/manage-issue/SKILL.md`'s "Mismatch Handling Protocol" (~L325-331) handles plan/reality divergence interactively but persists nothing structured to the issue file. **Decided: give it a writer in `manage-issue`** — the amendment path is what makes the section survivable under queue latency (a design fixed at refine time can be invalidated before implementation starts), and without a writer the "may deviate, but it is recorded" contract is unenforced prose.
-- **Rollout for the existing backlog.** Every currently open issue lacks the section; a hard gate would mass-defer the backlog on day one. **Decided (epic review, 2026-07-27): grandfather.** Issues refined before the gate ships (determined by refine timestamp / `discovered_date`) are exempt from the gate; bulk-populate is not pursued — it is more expensive, and grandfathering is reversible per-issue by simply re-refining.
+- **Rollout for the existing backlog.** Every currently open issue lacks the section; a hard gate would mass-defer the backlog on day one. **Decided (epic review, 2026-07-27): grandfather.** Issues refined before the gate ships are exempt from the gate; bulk-populate is not pursued — it is more expensive, and grandfathering is reversible per-issue by simply re-refining.
+- **The grandfather cutoff IS the cutover stamp — one date, one file** (decided 2026-07-27). The stamp this issue must record under `thoughts/` (SHA + ISO date, machine-readable, stable path) is the single source of truth for "before the gate shipped": `check_format_gaps()` reads the stamped date and exempts issues whose `discovered_date` (or refine timestamp where present) predates it. Do not introduce a second cutoff constant in code or config — two dates that can diverge is how a grandfathered issue trips the gate anyway. FEAT-2867 and FEAT-2855 parse the same stamp for their window comparisons, so the exemption boundary and the measurement boundary are guaranteed identical.
 
 ### Codebase Research Findings
 
@@ -81,10 +90,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - [ ] An explicit not-applicable escape hatch exists for trivial issues and is recorded in the issue body when used.
 - [ ] Implementation-time deviations from the design are recorded in the issue as a visible `Deviations` note rather than overwriting the original section, and `skills/manage-issue/SKILL.md` has an explicit step that writes it — the convention ships with a writer, not as an unproduced section.
 - [ ] The grandfathering rollout (decided) is implemented: issues refined before the gate ships are exempt, so shipping the gate does not mass-defer the current backlog.
-- [ ] Grandfathering is implemented inside `check_format_gaps()` so every consumer inherits it; a test asserts a grandfathered issue produces no Program Design gap through `ll-issues format-check`, and therefore does not trip `rn-remediate.yaml`'s `ensure_formatted` or `ll-issues sequence` drift detection.
+- [ ] The grandfather cutoff is read from the `thoughts/` cutover stamp (decided: no second cutoff constant anywhere); grandfathering is implemented inside `check_format_gaps()` so every consumer inherits it; a test asserts a grandfathered issue produces no Program Design gap through `ll-issues format-check`, and therefore does not trip `rn-remediate.yaml`'s `ensure_formatted` or `ll-issues sequence` drift detection.
 - [ ] `commands/ready-issue.md`'s blocking set is unchanged (decided: confidence-check only); `ready-issue` may surface a missing Program Design section but does not refuse on it.
 - [ ] Tests cover: missing section, prose-only section, valid section (including unresolvable-but-signature-shaped new identifiers), and the escape hatch.
-- [ ] The intervention cutover point (the SHA/date at which this gate is enabled) is recorded under `thoughts/` before the gate ships, so FEAT-2855 can retroactively compute the pre-intervention window from immutable git history (see Scope Boundary below).
+- [ ] The intervention cutover point (the SHA/date at which this gate is enabled) is recorded under `thoughts/` before the gate ships, so FEAT-2855 **and FEAT-2867** can retroactively compute the pre-intervention window from immutable git history; the stamp records SHA + ISO date in a fixed, machine-readable form at a stable path so both consumers parse it identically (see Scope Boundary below).
 - [ ] A confidence-check failure caused solely by the `## Program Design` gate routes to the reconcile remedy before any deferral, and a post-remedy deferral uses a distinct machine reason code, not generic `low_readiness`.
 
 ---
@@ -142,12 +151,25 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `commands/ready-issue.md` § **Dependency Status** — **decided (epic review, 2026-07-27): confidence-check only**, so its blocking set stays as-is. The only change here is optional surfacing (report the gap, don't refuse on it); see Design Notes
 - `scripts/little_loops/cli/issues/format_check.py` — `add_format_check_parser()`'s `help=` string and `cmd_format_check()`'s docstring both hardcode the literal gap-class list (`"missing/renamed/empty/boilerplate/malformed_id/prose_dep_drift/stale_prose_dep"`) as prose duplicates, independent of the dataclass fields — both need the new category name appended
 
-## Scope Boundary
+## Scope Boundaries
 
 **Note** (added by `/ll:audit-issue-conflicts`; revised by epic review 2026-07-27): EPIC-2856 originally required a one-off manual pre-intervention sample of FEAT-2855's maintainability signals before this gate ships. That is unnecessary: every FEAT-2855 signal is computed from `git log`, which is immutable, so the tool can retroactively compute any pre-intervention window once it exists. What must be captured up front is only the **cutover point** — a short note under `thoughts/` recording the SHA and date at which this issue's gate was enabled (plus the caveat that `.ll/history.db` attribution for old windows depends on manual retention policy). Recording that stamp is a prerequisite of this issue, not part of FEAT-2855's scope.
 
 
+## Impact
+
+- **Priority**: P2 - Rework-prone signature-level decisions currently reach unreviewed implementation agents; this closes the largest remaining gap in the refinement chain, but it's a process/gate change rather than a user-facing defect.
+- **Effort**: Large - touches the section schema (3 files), `check_format_gaps()`/`FormatGaps`, `/ll:confidence-check`, `autodev.yaml`'s deferral routing, `DeferReason`, `manage-issue`'s deviation writer, and grandfathering/cutover-stamp plumbing consumed by two other issues (FEAT-2855, FEAT-2867).
+- **Risk**: Medium - a new hard gate on every BUG/FEAT/ENH issue can mass-defer the backlog if grandfathering is wrong; mitigated by the decided single-cutover-stamp design and by keeping the specificity check deterministic rather than LLM-judged.
+- **Breaking Change**: No - additive section/gate; grandfathered issues are unaffected until re-refined.
+
+## Status
+
+**Open** | Created: 2026-07-27 | Priority: P2
+
 ## Session Log
+- `/ll:format-issue` - 2026-07-27T20:01:45 - `5d7e896c-f17c-402a-875f-cf4d9906c0a7.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-07-27T19:42:08 - `e2303183-4e52-4649-af90-4b53254bbda4.jsonl`
 - `/ll:wire-issue` - 2026-07-27T16:52:50 - `633b73fa-0e52-4f41-a802-c8a7e1eea54d.jsonl`
 - `/ll:refine-issue` - 2026-07-27T16:20:16 - `405e66e4-2b70-4b13-ac32-d29af45ab631.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-27T15:59:42 - `29cf17b6-04b4-4b01-9444-64f1bfdbdaa5.jsonl`
