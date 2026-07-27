@@ -1,13 +1,26 @@
 ---
 id: ENH-2857
-status: open
+status: done
 priority: P2
-captured_at: "2026-07-27T16:17:56Z"
+captured_at: '2026-07-27T16:17:56Z'
 discovered_date: 2026-07-27
 discovered_by: capture-issue
-labels: [loops, general-task, verification]
+labels:
+- loops
+- general-task
+- verification
 parent: EPIC-2861
-relates_to: [ENH-2858, ENH-2859, ENH-2860]
+relates_to:
+- ENH-2858
+- ENH-2859
+- ENH-2860
+confidence_score: 100
+outcome_confidence: 92
+score_complexity: 21
+score_test_coverage: 24
+score_ambiguity: 24
+score_change_surface: 23
+completed_at: '2026-07-27T20:20:14Z'
 ---
 
 # ENH-2857: general-task — make step abandonment visible, counted, and blocking
@@ -97,16 +110,18 @@ on guesses, shipping `_hermes_compat.py` still marked `PROVISIONAL` at v1.0.0
   on this existing terminal rather than needing a third terminal.
 
 ### Similar Patterns
-- `scripts/little_loops/loops/auto-refine-and-implement.yaml:799–990` (ENH-2657)
-  — the precedent this issue explicitly ports. Ledger diff at lines 799–815
-  (`comm -23` against a closed-union file, not a raw grep count), precedence
-  check at lines 930–953 (`if [ "$ABANDONED" -gt 0 ]; then VERDICT=incomplete-abandoned`
-  — checked *before* the closed/error/skip branches), JSON emission at 955–956,
-  and the exit-code gate at 964–982 (`case "$VERDICT" in phantom|incomplete-abandoned)
-  exit 1 ;; *) exit 0 ;; esac` combined with the `shell_exit` fragment routing
-  `on_yes: done` / `on_no: finalize_incomplete`) — this exit-code-gated
-  non-terminal-state shape is exactly what MR terminal-action-ok requires (see
-  Validation Constraints below).
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml:799–1004` (ENH-2657;
+  **note**: the issue's earlier `799–990` end-line is stale by ~15 lines,
+  confirmed against current file) — the precedent this issue explicitly ports.
+  Ledger diff at lines 799–815 (`comm -23` against a closed-union file, not a
+  raw grep count), precedence check at lines 930–953 (`if [ "$ABANDONED" -gt 0 ];
+  then VERDICT=incomplete-abandoned` — checked *before* the closed/error/skip
+  branches), JSON emission at 955–956, and the exit-code gate at 975–978
+  (`case "$VERDICT" in phantom|incomplete-abandoned) exit 1 ;; *) exit 0 ;; esac`
+  combined with the `finalize` state's `on_no`/`on_error` routing to
+  `finalize_incomplete` at 980–982, → `incomplete` terminal at 993–1004) — this
+  exit-code-gated non-terminal-state shape is exactly what MR terminal-action-ok
+  requires (see Validation Constraints below).
 - `scripts/little_loops/loops/rn-implement.yaml:1429–1462,1661–1668` (`report`
   → `next: done` → bare `done:` terminal) — the canonical "write summary in a
   penultimate non-terminal state, keep the terminal bare" shape cited by
@@ -133,6 +148,58 @@ on guesses, shipping `_hermes_compat.py` still marked `PROVISIONAL` at v1.0.0
   `(loop_file, state_name, field) -> issue_tag` on_error-exemption registry
   near `test_builtin_loops.py:72–73` if `summarize_success`/`write_partial_summary`
   on_error routing changes.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_general_task_loop.py::TestSelectStepShellAction` (445–500)
+  — no existing test seeds `step-attempts.txt` to trigger the abandonment branch
+  (`STEP_ABANDONED`, line ~181); the `[x]`→`[!]` rewrite is currently untested,
+  so it's a pure gap, not a regression risk. New test needed. [Agent 3 finding]
+- `scripts/tests/test_general_task_loop.py::TestSummarizeSuccessState` (~1530–1553)
+  and the shell-execution class (~1557–1621) — need a companion
+  `test_summarize_success_action_emits_abandoned_key` alongside the existing
+  `..._emits_implemented_key` (1545), since `summarize_success` gains a new
+  `"abandoned"` JSON key. [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py` (~2976–2993, ~3338–3360) — the ENH-2657
+  precedent test shape for `auto-refine-and-implement.yaml`'s
+  `incomplete-abandoned` verdict (seeded abandonment fixture →
+  `summary["verdict"] == "incomplete-abandoned"`, exit-code routing at
+  `expected_rc = 1 if verdict in ("phantom", "incomplete-abandoned") else 0`)
+  is the pattern the new `general-task` tests in `test_general_task_loop.py`
+  should mirror. [Agent 3 finding]
+- `scripts/tests/test_general_task_loop.py::TestCountDoneShellScript` (979+)
+  — no fixture exercises a plan containing an already-`[!]`-marked line to
+  confirm `count_done`'s `UNCHECKED_PLAN` grep excludes it; add
+  `test_abandoned_plan_step_not_counted_as_unchecked` modeled on
+  `test_all_done_emits_total_zero` (982). [Agent 3 finding]
+- Two-direction blocker-halt: confirmed no existing test references
+  "blocker" anywhere in `test_general_task_loop.py`. Model the new gate on
+  `TestSpinGateShellAction` (503–522) for the shell-execution half and
+  `test_spin_gate_routes_yes_to_check_done_no_to_summarize_partial` (353–362)
+  for the structural routing half (`evaluate.type == "output_numeric"`,
+  `operator == "lt"` shape). [Agent 3 finding]
+
+## Impact
+
+Downstream consumers of `general-task.yaml`'s `summary.json` (`proof-first-task.yaml`,
+`spike-gate.yaml`, `audit-loop-run`, and any parent loop dispatching on the sub-loop's
+verdict) currently cannot distinguish a fully-completed run from one that silently
+abandoned hard-blocker steps. Fixing this closes the exact gap that let the
+`little-loops-hermes` run ship a `PROVISIONAL` module as if it were verified — the
+change affects only `general-task.yaml`'s internal shell/routing logic and its test
+suite; no public CLI surface or config schema changes.
+
+## Scope Boundaries
+
+Out of scope: changing `auto-refine-and-implement.yaml`'s own `incomplete-abandoned`
+handling (already shipped under ENH-2657; this issue ports the same precedent to
+`general-task.yaml`, it does not modify the existing implementation). Also out of
+scope: adding a Python-side consumer that parses `summary.json`'s `verdict` field —
+confirmed by the Codebase Research Findings above that no such consumer exists today,
+and this issue does not introduce one.
+
+## Status
+
+Open — refined and wired, ready for implementation.
 
 ## Motivation
 
@@ -194,6 +261,30 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   specifies (`^[[:space:]]*- \[!\]`) is a **new** grep to add in
   `summarize_success`/`write_partial_summary`, matching `count_done`'s existing
   `[[:space:]]*` style rather than introducing a stricter pattern.
+- **Confirmed architectural gap**: `summarize_success` (542–586) and
+  `write_partial_summary` (683–728) currently derive all of their counters
+  (`implemented`/`failed_finals`/`checked`/`total`) from `dod.md`'s
+  `## Verification Criteria` section via `awk` — neither state re-reads
+  `$PLAN` (`plan.md`) at all today. The `[!]` count this issue requires is a
+  **new grep against `$PLAN`**, not a modification of an existing `dod.md`-scan
+  pattern; abandonment tracking currently lives only in `plan.md`'s inline
+  note and `${context.run_dir}/step-attempts.txt`, and is invisible to both
+  summarize states as written. Add `ABANDONED_COUNT=$(grep -c
+  '^[[:space:]]*- \[!\]' "$PLAN" 2>/dev/null || echo 0)` (or equivalent) as a
+  new line in each state, not a substitution into the existing `dod.md` awk.
+- **Confirmed no Python consumer of the verdict string**: neither
+  `fsm/persistence.py` (copies `summary.json` byte-for-byte on archive, never
+  parses it) nor `fsm/executor.py` (its `verdict` references are the FSM
+  evaluator's own `yes`/`no`/`error` namespace from `evaluate:` blocks — an
+  unrelated value space) branches on the literal `"success"`/`"partial"`
+  string. The only code that asserts on that literal string is
+  `scripts/tests/test_general_task_loop.py`. `skills/audit-loop-run/SKILL.md`
+  Step 6b derives its own `met`/`phantom`/`honest-failure`/`partial`/`degraded`
+  classification from `terminated_by`/`failure_terminal`, not by parsing
+  general-task's JSON `verdict` field literally — so adding
+  `incomplete-abandoned` needs no Python-side lookup-table update, mirroring
+  ENH-2657's own finding that no downstream consumer branches on the verdict
+  string's literal value.
 
 ## Integration Map
 
@@ -201,6 +292,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/loops/proof-first-task.yaml` — delegates to `general-task` as its `impl_loop` (line 14); the sub-loop's `summary.json` (with the new `abandoned`/`incomplete-abandoned` fields) is what this wrapper reads back for its own outcome handling. [Agent 1 finding]
+- `scripts/little_loops/loops/spike-gate.yaml` — also delegates to `general-task` as its `impl_loop` (`impl_loop: "general-task"` at line 15, dispatched via `loop: "${context.impl_loop}"` at line 77); a second, previously-uncited consumer of the same sub-loop `summary.json` verdict/abandoned fields — confirm its outcome handling around the `impl_loop` dispatch doesn't assume only `success`/`partial` verdict strings. [wire-issue pass, 2026-07-27]
 
 ### Files to Modify
 
@@ -229,6 +321,32 @@ _Wiring pass added by `/ll:wire-issue`:_
 - [ ] `ll-loop validate general-task` passes; structural tests added and green
 
 ## Session Log
+- `ll-auto` - 2026-07-27T20:20:14 - `4f2100d5-154c-4873-b273-d1b4c43bd1d6.jsonl`
+- `/ll:ready-issue` - 2026-07-27T20:08:09 - `7b4d107f-b498-4a12-8e8e-5a8036b4e79b.jsonl`
+- `/ll:confidence-check` - 2026-07-27T20:15:00Z - `4cbf42bd-a0a4-40b3-80d8-e054e63ec31a.jsonl`
+- `/ll:wire-issue` - 2026-07-27T20:04:48 - `7e0f073e-4eb9-49ca-8847-3ac806af1241.jsonl`
+- `/ll:wire-issue` - 2026-07-27T20:04:18 - `7e0f073e-4eb9-49ca-8847-3ac806af1241.jsonl`
+- `/ll:refine-issue` - 2026-07-27T19:59:26 - `5305b45d-4f63-4b77-8a7d-fcdb2726e185.jsonl`
 - `/ll:wire-issue` - 2026-07-27T17:39:44 - `82e9a15d-7cdb-4b8a-960c-07a9ad645126.jsonl`
 - `/ll:refine-issue` - 2026-07-27T17:38:22 - `df687459-c84a-4cb2-988d-1cafdba36512.jsonl`
 - `/ll:capture-issue` - 2026-07-27T16:17:56Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3601f984-5d3e-4c48-a9b5-5cb709fc86b3.jsonl`
+
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-07-27
+- **Status**: Completed (automated fallback)
+- **Implementation**: Command exited early but issue was addressed
+
+
+### Files Changed
+- See git history for details
+
+### Verification Results
+- Automated verification passed
+
+### Commits
+- See git log for details
