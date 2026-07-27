@@ -1,5 +1,5 @@
 ---
-id: 2854
+id: ENH-2854
 title: Guard against agent edits to test files during verification
 type: ENH
 priority: P2
@@ -11,6 +11,8 @@ parent: EPIC-2856
 labels:
 - rework
 - verification
+blocked_by:
+- ENH-2865
 ---
 
 # ENH-2854: Guard against agent edits to test files during verification
@@ -46,8 +48,8 @@ Detecting it is mechanical: diff the test files across the step and compare agai
 - Some legitimate steps modify tests — an issue whose whole point is fixing a broken test. That is what `allow` is for; it must be an explicit per-loop opt-in, never the default and never inferred.
 - Deterministic only. No LLM judgment about whether an edit was "reasonable".
 - **Scope the guard to the verification step, not the whole issue run.** With `commands.tdd_mode: true`, the implement phase legitimately writes tests before code. The snapshot is taken at *verify-step start*, never at issue start — otherwise every TDD run trips the guard. Make this boundary explicit in the implementation and tests.
-- **Ordering with ENH-2853.** `revert` must not destroy ENH-2853's evidence: the pre-patch check runs on the step's diff *before* any revert is applied. `revert` applies only to modifications/deletions of tests that existed at verify-step start; a test file newly added during the verification step is never "reverted" (deleted) by this guard — it is instead handed to ENH-2853's pre-patch check, which is the correct arbiter for new tests.
-- **Test-file identification needs a config key that does not exist yet.** Config currently has `project.test_cmd`, not file patterns. Introduce `project.test_patterns` (glob list, with a sensible per-project-type default from the templates), and implement identification as one shared module consumed by both this guard and ENH-2853.
+- **Ordering with ENH-2853 is a constraint, not a dependency** (clarified at epic review, 2026-07-27 — the two issues previously carried a circular `blocked_by`). `revert` must not destroy ENH-2853's evidence: where both are present, the pre-patch check reads the step's diff *before* any revert is applied. `revert` applies only to modifications/deletions of tests that existed at verify-step start; a test file newly added during the verification step is never "reverted" (deleted) by this guard — it is handed to ENH-2853's pre-patch check, which is the correct arbiter for new tests. This guard must be fully functional and testable with ENH-2853 absent.
+- **Test-file identification comes from ENH-2865.** The `project.test_patterns` config key, its per-project-type template defaults, and the shared `scripts/little_loops/test_file_patterns.py` module land there and are consumed here — not defined by this issue. A false negative in identification is this guard's worst failure mode, which is exactly why it has one owner.
 
 ## Integration Map
 
@@ -56,10 +58,6 @@ _Added by `/ll:refine-issue` — based on codebase analysis. No code implements 
 ### Files to Modify
 - `scripts/little_loops/fsm/executor.py` — action-result → verdict wiring (~L1326-1420, L1954-2010); add a snapshot/compare hook scoped to a verification step's execution.
 - `scripts/little_loops/fsm/evaluators.py` — `evaluate_exit_code()` (~L220) maps a test-run state's exit code to a verdict. The nearest existing snapshot/compare idiom is `evaluate_diff_stall()` (L572-665), which persists a prior snapshot in `.loops/tmp/ll-diff-stall-<hash>.{txt,count}` keyed by an md5 of `scope`. This guard needs the same cache-key/persistence idiom but hashing test-file *content*, not `git diff --stat` output — and it currently has no concept of "revert."
-- `scripts/little_loops/config/core.py` — `ProjectConfig.test_cmd` (L149, L164) is the sibling field; add `test_patterns: list[str]` alongside it. Export via `BRConfig` (L625) and `resolve_variable()` (L886).
-- `scripts/little_loops/config-schema.json` — `project` block (L12-67, `additionalProperties: false`, so a new key must be declared here or config rejects it). Add `project.test_patterns` as an array-of-globs following `scan.focus_dirs`'s shape (L661-670: `{"type": "array", "items": {"type": "string"}, "default": [...]}`).
-- `scripts/little_loops/templates/*.json` (`python-generic.json`, `typescript.json`, `javascript.json`, `java-maven.json`, `java-gradle.json`, `go.json`, `rust.json`, `dotnet.json`, `generic.json`) — per-project-type default globs for `test_patterns`.
-- `scripts/little_loops/test_file_patterns.py` (new) — shared test-file identification module consumed by both this guard and ENH-2853, per Design Notes' shared-module requirement. Wraps `project.test_patterns` resolution and matches via the existing gitignore-style matcher `_file_matches_pattern()` in `scripts/little_loops/git_operations.py` (L266).
 - `scripts/little_loops/work_verification.py` — `filter_excluded_files()`/`EXCLUDED_DIRECTORIES` (L18-41) is the closest existing "classify changed files via git diff" precedent (exclusion predicate); this guard needs the structural inverse (inclusion predicate over test-file patterns).
 
 ### Dependent Files (Callers/Importers)
@@ -68,7 +66,6 @@ _Added by `/ll:refine-issue` — based on codebase analysis. No code implements 
 - `skills/manage-issue/SKILL.md` (L184-186, L239), `skills/manage-issue/templates.md` (L130-133) — the only consumers of `commands.tdd_mode`, entirely prose/LLM-facing (a repo-wide grep of `loops/*.yaml` for `tdd_mode` returns zero matches). No FSM-level "verify-step start" event exists today — the guard's snapshot trigger is new instrumentation, not an existing hook to attach to.
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_config.py` (L107, L120, L135) — constructs/asserts `ProjectConfig` fixtures alongside `test_cmd`; needs a parallel `test_patterns` fixture/assertion to keep parity once the field is added [Agent 2 finding].
 - `scripts/tests/test_builtin_loops.py:TestCodeRunGateOracle`/`TestCodeRunGateOracleWiring` (~L9699, L12576-12668) and `TestVerifyStateConfigReadShell` (~L3714, `test_verify_reads_project_test_and_lint_cmd` L2789) — assert on the literal `verify`/`code-run-gate` state `action` string and topology; if the guard's snapshot/compare hook rewrites those action strings, these literal-string assertions break [Agent 3 finding].
 
 ### Similar Patterns
@@ -83,17 +80,17 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/fsm/executor.py`'s stall-detector integration (~L1398-1429: `self._stall_detector.record`/`.check()` → abort-or-route, applied as a side-channel check independent of the main evaluator verdict) is the closest existing structural analog for how the tamper guard should hook into `_execute_state` [Agent 3 finding].
 
 ### Tests
-- `scripts/tests/test_config_schema.py` — extend with a schema-presence test for `project.test_patterns`, following `test_health_url_in_schema()`.
+- `scripts/tests/test_config_schema.py` — schema-presence test for the new **policy** key (the `project.test_patterns` one belongs to ENH-2865), following `test_health_url_in_schema()`.
 - `scripts/tests/test_codequery_codegraph.py:TestStalenessMatrix` — pattern to replicate for the `revert`/`fail`/`allow` policy matrix. Confirmed the only comparable 3-mode-policy test class in the codebase [Agent 3 finding].
 - No existing test file covers this guard; a new file (e.g. `scripts/tests/test_test_file_tamper_guard.py`) is needed.
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_config.py` — update `ProjectConfig` fixtures (L107, L120, L135) for `test_patterns` parity with `test_cmd` [Agent 2/3 finding].
 - `scripts/tests/test_builtin_loops.py:TestCodeRunGateOracle`, `TestCodeRunGateOracleWiring`, `TestVerifyStateConfigReadShell` — update if the guard's hook rewrites the `verify`/`code-run-gate` state `action` strings these tests assert on literally; confirmed no existing test in `test_rn_implement.py`/`test_builtin_loops.py` currently references tamper-guard concepts [Agent 3 finding].
 - Config-schema round-trip note: no existing test performs strict `additionalProperties: false` jsonschema validation against a real config fixture (`test_config_schema.py`/`test_config.py`/`test_config_properties.py` all confirmed to use structural JSON-key assertions only) — adding `project.test_patterns` cannot break an existing round-trip test; only the new `test_test_patterns_in_schema`-style test needs writing [Agent 3 finding].
 
 ### Configuration
-- `project.test_patterns` — new key, no default in the current schema; needs a schema entry plus per-template defaults (see Files to Modify above).
+- `project.test_patterns` — owned by **ENH-2865** (schema entry, `ProjectConfig` field, per-template defaults, `CONFIGURATION.md` row). Consumed here; not defined here.
+- The `revert` / `fail` / `allow` policy key **is** this issue's, per loop. Follow `config-schema.json:code_query.staleness` (~L1296), the exact 3-mode enum precedent (`strict`/`warn`/`off`, default `warn`), consumed via branching in `codequery/codegraph.py:CodegraphProvider.status()` (~L156-224).
 
 ### Documentation
 _Wiring pass added by `/ll:wire-issue`:_
@@ -102,7 +99,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 ## Acceptance Criteria
 
 - [ ] Test files are snapshotted at verification-step start (not issue start) and compared after it; a TDD-mode run whose implement phase added tests does not trip the guard.
-- [ ] Test discovery reuses a `project.test_patterns` config key (new; template-defaulted) via a module shared with ENH-2853, rather than a hardcoded list.
+- [ ] Test discovery goes through ENH-2865's shared `test_file_patterns` module / `project.test_patterns` key, not a hardcoded list defined here.
+- [ ] The guard is functional and fully tested with ENH-2853 absent; where ENH-2853 is present, `revert` runs only after the pre-patch check has read the step's diff.
 - [ ] Modified, deleted, and newly-added test files are all detected.
 - [ ] `revert` policy restores pre-existing test files to their pre-step state before scoring; it never deletes a test file newly added during the step, and ENH-2853's pre-patch check (when present) runs on the diff before any revert.
 - [ ] `fail` policy fails the transition and names the touched files.

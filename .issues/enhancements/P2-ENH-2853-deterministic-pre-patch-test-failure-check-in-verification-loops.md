@@ -1,5 +1,5 @@
 ---
-id: 2853
+id: ENH-2853
 title: Deterministic pre-patch test-failure check in verification loops
 type: ENH
 priority: P2
@@ -12,7 +12,8 @@ labels:
 - rework
 - verification
 blocked_by:
-- ENH-2854
+- ENH-2865
+- ENH-2866
 learning_tests_required:
 - pytest
 ---
@@ -47,8 +48,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 6. Keep any `setup_worktree()`/`cleanup_worktree()` signature change additive — `scripts/little_loops/fsm/executor.py`, `scripts/little_loops/cli/loop/run.py`, and `scripts/little_loops/parallel/orchestrator.py` all call these directly today and are outside this issue's primary files.
 7. Reconcile `skills/verify-issue-loop/SKILL.md`'s explicit "no deterministic state type" boundary text (lines 211-219) with the new state type this issue introduces, adding a state-template example.
-8. Add a `test_project_test_patterns_in_schema` test in `scripts/tests/test_config_schema.py` following the existing one-test-per-key convention — no schema-presence test currently exists for the new key.
-9. Add per-language default values for `project.test_patterns` across the 8 `scripts/little_loops/templates/*.json` project-type templates, following the `declared`/`inferred`/`default` provenance convention `init/introspect.py` already uses for `test_cmd`/`lint_cmd`.
+8. ~~Schema-presence test for `project.test_patterns`~~ — moved to **ENH-2865**.
+9. ~~Per-language `project.test_patterns` template defaults~~ — moved to **ENH-2865**.
 
 ## Design Notes
 
@@ -62,8 +63,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Added vs. modified tests carry different contracts.** A *newly added* test must fail pre-patch — that is the clean "demonstrates the change" contract. A *modified* test routinely passes pre-patch legitimately (an assertion added to an already-passing test, a tightened comparison, a rename). Split the verdict: added-and-passes-pre-patch is a hard flag; modified-and-passes-pre-patch is recorded in the evidence but soft by default (configurable to hard). A hard flag on modified tests would punish exactly the assertion-strengthening behavior the epic wants to encourage.
 - **Import isolation is load-bearing in editable-install repos.** A worktree checkout of the pre-patch tree can still import the *main-tree* package when the project is installed editable (the install pins an absolute path — see the epic-verify false-negative history in this repo). A "pre-patch" run that imports post-patch code passes trivially and the check reports garbage. The pre-patch run must resolve imports from the worktree (PYTHONPATH injection ahead of site-packages, or a fresh non-editable install into the worktree's environment), and a test must prove the isolation.
 - **Define the base state explicitly.** Under `ll-auto`/`ll-sprint` a verification step may span multiple commits. "Pre-patch" means the tree at the SHA recorded when the issue was dequeued (fall back to merge-base with the base branch when no dequeue SHA is recorded) — not simply `HEAD~1`.
-- **Nothing records a dequeue SHA today — this issue introduces the stamp.** The primary base-state path is dead code unless the SHA is written somewhere: add it at the dequeue/worktree-creation points (`autodev.yaml`'s `dequeue_next`, which already snapshots pre-refine readiness to the run dir, and `ll-parallel`'s worktree creation). Until a given orchestrator stamps it, its runs take the merge-base fallback — which is why the evidence bundle must name the base actually used.
-- **Shared test-file identification with ENH-2854.** Both this check and the tamper guard need to classify paths as test files. Implement one shared module (driven by a `project.test_patterns` config key — see ENH-2854) so the two checks cannot drift to divergent globs.
+- **The dequeue-SHA stamp is ENH-2866, not this issue** (split at epic review, 2026-07-27). Nothing records a dequeue SHA today, so this issue's primary base-state path would be dead code without it; ENH-2866 adds the stamp at `autodev.yaml`'s `dequeue_next` and `ll-parallel`'s worktree creation, plus a reader helper that returns `None` when unstamped. This issue *consumes* that helper and implements the merge-base fallback behind it. Until a given orchestrator stamps, its runs take the fallback — which is why the evidence bundle must name the base actually used.
+- **Test-file identification is ENH-2865, not this issue** (split at epic review, 2026-07-27). Both this check and ENH-2854's tamper guard need to classify paths as test files; the `project.test_patterns` config key, its template defaults (including the load-bearing `conftest.py` entry), and the shared `test_file_patterns.py` module land once in ENH-2865 and are consumed here. This removes the former circular `blocked_by` between this issue and ENH-2854 — neither depends on the other now; both depend on ENH-2865.
 
 ### Codebase Research Findings
 
@@ -89,10 +90,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/little_loops/worktree_utils.py` — extend or wrap `setup_worktree()` (line 155) with a pre-patch variant: fork from a dequeue-time SHA / merge-base via the existing `base_branch` param, then apply only the test-file portion of the diff (new logic — no `git apply`-based partial-diff helper exists in the repo today).
 - `scripts/little_loops/cli/harness.py` — add the pre-patch evidence bundle alongside the existing `HarnessEvalOutcome` (line 242) / `_evaluate_and_report()` (line 251) single-check path.
 - `skills/verify-issue-loop/SKILL.md` — wire in the new deterministic state type; today (lines 92-127, 218-219) this skill only generates LLM-judged `llm_structured` states with no deterministic check type at all.
-- `scripts/little_loops/loops/autodev.yaml` — `dequeue_next` state (lines 80-141) needs a new `git rev-parse HEAD` stamp alongside its existing pre-readiness snapshot (lines 104-117).
-- `scripts/little_loops/cli/parallel.py` / worktree-creation call sites in `little_loops.parallel.worker_pool`/`orchestrator` — need the same dequeue-time SHA stamp at per-issue worktree creation.
-- `scripts/little_loops/config-schema.json` + `scripts/little_loops/templates/*.json` — new `project.test_patterns` key (shared with ENH-2854), following the `scan.focus_dirs` list-of-globs shape.
-- New shared module (name TBD, e.g. `scripts/little_loops/test_file_patterns.py`) for test-file identification, consumed by both this issue and ENH-2854.
+
+_Split out at epic review (2026-07-27) — no longer this issue's scope, consumed as dependencies:_
+- `scripts/little_loops/loops/autodev.yaml` `dequeue_next` + `ll-parallel` worktree-creation SHA stamps → **ENH-2866**
+- `project.test_patterns` config key, template defaults, and `scripts/little_loops/test_file_patterns.py` → **ENH-2865**
 
 ### Similar Patterns to Follow
 - `verify_epic_branch_before_merge()` (`worktree_utils.py:364-494`) — create → run-in-isolation → teardown-in-`finally` shape, plus its `src_dir` PYTHONPATH-injection fix (lines 399-409, 467-473) for editable-install import isolation. See precedent bugs `BUG-2629`, `BUG-2640`, `BUG-2649`.
@@ -107,8 +108,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `scripts/tests/test_autodev_loop.py` — extend for the dequeue-time SHA stamp.
 - No existing test file covers pre-patch/post-patch test comparison; a new test module is needed.
 
-### Related Issue
-- `ENH-2854` (blocking) — shares test-file identification via the new `project.test_patterns` config key; land the shared module once, consumed by both.
+### Related Issues
+- `ENH-2865` (blocking) — `project.test_patterns` + shared `test_file_patterns.py`.
+- `ENH-2866` (blocking) — dequeue-time SHA stamp and its reader helper.
+- `ENH-2854` (peer, **not** a dependency in either direction as of the 2026-07-27 epic review) — consumes the same ENH-2865 module. The two interact only at ordering: ENH-2854's `revert` policy must run *after* this check has read the step's diff, which is stated as a constraint in ENH-2854 rather than a blocking edge.
 
 ### Dependent Files (Callers/Importers)
 
@@ -133,7 +136,6 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_worker_pool.py`'s `TestSetupWorktreeAndCleanup` (line ~634, e.g. `test_setup_worktree_passes_base_branch_in_feature_mode` line ~963) — closest existing analog for a dequeue-time SHA-stamp test at `ll-parallel`'s worker-creation call site; currently asserts only on `git worktree add` argv shape, not any SHA capture.
 - `scripts/tests/test_orchestrator.py` — patches `little_loops.worktree_utils.setup_worktree` at ~7 sites (lines 1761-1888) and asserts `base_branch` in merge/PR tests; extend if `setup_worktree()`'s signature changes.
 - `scripts/tests/test_cli_loop_worktree.py` — covers `ll-loop run --worktree`'s use of `setup_worktree`/`cleanup_worktree`; needs coverage if the pre-patch variant touches this path.
-- `scripts/tests/test_config_schema.py` — needs a new `test_project_test_patterns_in_schema` test following the existing one-test-per-key convention (e.g. `test_health_url_in_schema`); every `project.*` addition in this codebase gets its own schema-presence test and none currently exists for this key.
 - `scripts/tests/test_worktree_utils.py`'s `TestVerifyEpicBranchBeforeMerge` (lines 350-690), specifically `test_src_dir_prepends_worktree_source_onto_pythonpath` (line 447), `test_falsy_src_dir_leaves_pythonpath_uninjected` (line 479), `test_verify_gate_marker_set_in_child_env` (line 556) — the direct template for the new pre-patch-worktree import-isolation tests (probe-subprocess pattern via inline `python3 -c` one-liners asserting `PYTHONPATH`/`LL_VERIFY_GATE`).
 - No existing test executes `dequeue_next` live — `test_autodev_loop.py`'s `TestDequeueNextPreReadinessSnapshot` (lines 172-186) only does string-containment checks against the raw YAML `action:` block; the new SHA-stamp test should follow that same static-assertion style (`assert "git rev-parse HEAD" in action`) rather than expecting live-execution coverage.
 
@@ -144,11 +146,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - [ ] A newly *added* candidate test that passes pre-patch is hard-flagged and is not counted as verification evidence.
 - [ ] A *modified* candidate test that passes pre-patch is recorded in the evidence as soft by default, with a config option to escalate it to a hard flag.
 - [ ] A candidate test that fails or errors pre-patch is accepted as evidence; the evidence bundle records the error category (import/collection error naming a post-patch module vs. other infrastructure error).
-- [ ] The default `project.test_patterns` and the shared identification module include `conftest.py`, so conftest changes are applied to the pre-patch tree.
+- [ ] `conftest.py` changes are applied to the pre-patch tree (guaranteed by ENH-2865's default patterns; assert it here rather than re-implementing it).
 - [ ] The pre-patch run resolves imports from the pre-patch worktree, not the main tree's editable install; a test proves the isolation (post-patch-only module is unimportable in the pre-patch run).
-- [ ] The base state is the dequeue-time SHA when recorded, else the merge-base with the base branch; the chosen base is named in the evidence bundle.
-- [ ] A dequeue-time SHA stamp is added at the orchestrator dequeue/worktree-creation points (`autodev.yaml` `dequeue_next`, `ll-parallel`), so the primary base-state path is exercised rather than always falling back to merge-base.
-- [ ] Test-file identification is shared with ENH-2854's guard (one module, one `project.test_patterns` source of truth).
+- [ ] The base state is the dequeue-time SHA when ENH-2866's reader returns one, else the merge-base with the base branch; the chosen base is named in the evidence bundle, and a test covers the unstamped fallback path.
+- [ ] Test-file identification is done via ENH-2865's shared module, not a glob list defined here.
 - [ ] The zero-candidate-tests case is reported explicitly rather than passing silently.
 - [ ] Per-test results (name, file, pre-patch outcome, post-patch outcome) appear in the verification evidence bundle.
 - [ ] The user's working tree is unchanged after the check runs, including on failure paths.

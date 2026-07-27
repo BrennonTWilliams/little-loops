@@ -12,6 +12,9 @@ relates_to:
 - ENH-2853
 - ENH-2854
 - FEAT-2855
+- ENH-2865
+- ENH-2866
+- FEAT-2867
 labels:
 - epic
 - rework
@@ -34,7 +37,7 @@ This epic attacks rework from both ends: make an issue commit to its
 program-level shape *before* an agent starts, and make a loop's "verified"
 signal impossible to fake once it has.
 
-The four children are independently shippable and share one premise: throughput
+The children are independently shippable and share one premise: throughput
 without a quality-adjustment term is a misleading number, and the cheapest
 quality wins are deterministic, not model-graded.
 
@@ -70,7 +73,9 @@ sustained agent activity is measurable.
 
 **In scope:** a program-design stage in the refinement chain and its confidence
 gate; deterministic pre-patch test-failure checking; test-file tamper detection
-during verification; maintainability-trend metrics over repo history joined
+during verification; the shared substrate both verification checks need
+(test-file identification, dequeue-time SHA stamping); rework-rate metrics over
+issue/commit attribution; maintainability-trend metrics over repo history joined
 with `.ll/history.db`.
 
 **Out of scope:** replacing semantic/LLM criteria in `ll-harness` — these checks
@@ -79,18 +84,66 @@ multi-tenant reporting.
 
 ## Children
 
+**Substrate**
+
+- **ENH-2865** — Shared test-file identification module and `project.test_patterns`
+  config key
+- **ENH-2866** — Record dequeue-time commit SHA at orchestrator dequeue and
+  worktree creation
+
+**Verification**
+
+- **ENH-2853** — Deterministic pre-patch test-failure check in verification
+  loops *(consumes both substrate children)*
+- **ENH-2854** — Guard against agent edits to test files during verification
+  *(consumes the identification module)*
+
+**Design**
+
 - **ENH-2852** — Add a program-design stage to issue refinement naming types,
   signatures, and call path
-- **ENH-2853** — Deterministic pre-patch test-failure check in verification
-  loops
-- **ENH-2854** — Guard against agent edits to test files during verification
+
+**Measurement**
+
+- **FEAT-2867** — Measure rework rate as the quality-adjustment term on batch
+  throughput
 - **FEAT-2855** — Track codebase maintainability trend as an observability
   dimension
 
-Suggested order: ENH-2853 and ENH-2854 first — both are small, deterministic,
-and independently testable, and together they close the two cheapest holes in
-the verification story. ENH-2852 next; FEAT-2855 last, as it is the largest and
-benefits from the others being in place to measure.
+### Revisions from the 2026-07-27 epic review
+
+- **ENH-2853 was oversized and is split.** It carried eight workstreams; the two
+  that were independently landable and independently useful — the shared
+  test-file identification substrate and the dequeue-SHA stamp — are now
+  ENH-2865 and ENH-2866. The stamp in particular had to come first: without it,
+  ENH-2853's primary base-state path is dead code and every run silently takes
+  the merge-base fallback.
+- **The ENH-2853 ↔ ENH-2854 dependency was circular and is removed.** ENH-2853
+  declared a hard `blocked_by: ENH-2854` while ENH-2854's `revert` policy
+  depended on ENH-2853's semantics, and both proposed introducing the same
+  config key. Both now depend on ENH-2865 and on nothing from each other; their
+  only remaining interaction is an ordering constraint stated in ENH-2854
+  (`revert` runs after the pre-patch check has read the step's diff), and each
+  must be functional with the other absent.
+- **FEAT-2867 is new — the epic had no measurement of its own subject.** The
+  epic opens on "the share of work that has to be redone" and promises
+  quality-adjusted throughput, but FEAT-2855 measures *codebase
+  maintainability*, a different quantity. Rework itself was unmeasured. It is
+  also the cheapest item in the set — joins and ratios over `commit_events`
+  attribution that already exists, with no `git log` parsing — which is why it
+  sequences first rather than last.
+
+### Suggested order
+
+1. **ENH-2867** — establishes the baseline the rest are measured against. Cheap,
+   read-only, no dependencies.
+2. **ENH-2865, ENH-2866** — small substrate, unblocks both verification children.
+3. **ENH-2853, ENH-2854** — now genuinely parallel; together they close the two
+   cheapest holes in the verification story.
+4. **ENH-2852** — the design gate, whose effect FEAT-2867 can then detect either
+   side of its cutover stamp.
+5. **FEAT-2855** — largest, and benefits from the others being in place to
+   measure.
 
 **Baseline before intervention** (revised 2026-07-27): FEAT-2855's signals are
 computed from `git log`, which is immutable — the tool can retroactively
@@ -112,6 +165,10 @@ by FEAT-2855 comparing windows either side of that stamp.
   before scoring or fails the transition, and reports which files were touched.
 - A maintainability trend is reportable across ≥2 sampling points from repo
   history without LLM judgment.
+- Rework rate is reportable per window alongside raw closed-issue count, so
+  throughput and quality-adjusted throughput are visibly different numbers — and
+  the design gate's effect is answerable by comparing windows either side of its
+  cutover stamp.
 
 ## Integration Map
 
