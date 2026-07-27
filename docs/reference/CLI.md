@@ -1612,13 +1612,18 @@ Deterministic (no-LLM) structural linter for issue formatting (ENH-2426). Grades
 
 | Argument/Flag | Default | Description |
 |---------------|---------|-------------|
-| `issue_id` | _(required)_ | Issue ID (e.g., `2426`, `ENH-2426`, `P3-ENH-2426`) |
+| `issue_id` | _(required unless `--all`)_ | Issue ID (e.g., `2426`, `ENH-2426`, `P3-ENH-2426`) |
+| `--all` / `-a` | `false` | Sweep every active issue instead of one (FEAT-2850) |
 | `--format {text,json}` | `text` | Output format |
+| `--fix` | `false` | Preview backfilling `blocked_by` from `prose_dep_drift` gaps via `ll-issues link`'s idempotent, cycle-safe write path (dry-run; FEAT-2851) |
+| `--apply` | `false` | With `--fix`, write the proposed edges instead of previewing them |
 
 **Examples:**
 ```bash
 ll-issues format-check ENH-2426               # text report, exit 0/1
 ll-issues format-check ENH-2426 --format json # {"missing": [...], "renamed": [...], "empty": [...], "boilerplate": [...], "malformed_id": [...], "prose_dep_drift": [...], "stale_prose_dep": [...]}
+ll-issues format-check --all --fix            # preview blocked_by backfills for every drifting issue (dry-run)
+ll-issues format-check --all --fix --apply    # write the previewed edges via `ll-issues link`
 ```
 
 **FSM loop use**: The `ensure_formatted` gate in `rn-remediate.yaml` calls this as a shell action with `evaluate: {type: exit_code}`, routing to `/ll:format-issue` only when a gap is found — replacing the older missing-headers-only inline check.

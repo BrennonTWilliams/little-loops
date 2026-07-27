@@ -546,3 +546,134 @@ class TestFormatCheckAll:
         assert result == 1
         data = json.loads(out)
         assert data["BUG-9304"]["missing"] == ["Expected Behavior"]
+
+
+# ---------------------------------------------------------------------------
+# TestFormatCheckFix (FEAT-2851)
+# ---------------------------------------------------------------------------
+
+
+class TestFormatCheckFix:
+    """``--fix``/``--apply`` backfills blocked_by from prose_dep_drift via link.py."""
+
+    def _write_drifting_bug(self, format_check_dir: Path, bug_id: str, filename: str) -> Path:
+        _write_feature(
+            format_check_dir,
+            "P2-FEAT-9500-blocker.md",
+            "---\nid: FEAT-9500\nstatus: open\n---\n\n# FEAT-9500: Blocker\n",
+        )
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", f"id: {bug_id}").replace(
+            "## Summary\nA real problem happens under specific conditions.",
+            "## Summary\nDepends on FEAT-9500 for the underlying fix.",
+        )
+        return _write_issue(format_check_dir, filename, body)
+
+    def test_fix_without_apply_previews_and_does_not_write(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        path = self._write_drifting_bug(format_check_dir, "BUG-9401", "P3-BUG-9401-test-bug.md")
+        before = path.read_text()
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9401", "--fix", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "would link (dry-run)" in out
+        assert "prose_dep_drift: FEAT-9500" in out
+        assert path.read_text() == before
+
+    def test_fix_apply_writes_blocked_by_and_clears_drift(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        path = self._write_drifting_bug(format_check_dir, "BUG-9402", "P3-BUG-9402-test-bug.md")
+
+        result = _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9402",
+                "--fix",
+                "--apply",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        out, _ = capsys.readouterr()
+
+        assert "linked" in out
+        assert "blocked_by" in path.read_text()
+        assert "FEAT-9500" in path.read_text()
+        assert result == 0
+        assert "prose_dep_drift" not in out
+
+    def test_fix_apply_is_idempotent(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        path = self._write_drifting_bug(format_check_dir, "BUG-9403", "P3-BUG-9403-test-bug.md")
+
+        _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9403",
+                "--fix",
+                "--apply",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        capsys.readouterr()
+        after_first = path.read_text()
+
+        result = _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9403",
+                "--fix",
+                "--apply",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 0
+        assert "prose_dep_drift" not in out
+        assert path.read_text() == after_first
+
+    def test_fix_all_mode_applies_across_sweep(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        path = self._write_drifting_bug(format_check_dir, "BUG-9404", "P3-BUG-9404-test-bug.md")
+
+        _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "--all",
+                "--fix",
+                "--apply",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        out, _ = capsys.readouterr()
+
+        assert "BUG-9404" not in out or "prose_dep_drift" not in out.split("BUG-9404:")[-1]
+        assert "blocked_by" in path.read_text()
+        assert "FEAT-9500" in path.read_text()

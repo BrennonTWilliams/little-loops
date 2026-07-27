@@ -40,8 +40,45 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
         default="text",
         help="Output format (default: text)",
     )
+    p.add_argument(
+        "--fix",
+        action="store_true",
+        help="Preview backfilling blocked_by from prose_dep_drift gaps via "
+        "`ll-issues link` (dry-run by default; combine with --apply to write)",
+    )
+    p.add_argument(
+        "--apply",
+        action="store_true",
+        help="With --fix, write the proposed edges instead of previewing them",
+    )
     add_config_arg(p)
     return p
+
+
+def _fix_prose_deps(
+    config: BRConfig, source_id: str, targets: list[str], *, apply: bool
+) -> None:
+    """Backfill ``blocked_by`` edges for *source_id*'s prose_dep_drift targets.
+
+    Invokes ``cmd_link`` in-process (the only idempotent, cycle-safe write
+    path — FEAT-2851) rather than editing frontmatter directly. Dry-run by
+    default; pass ``apply=True`` to actually write.
+    """
+    from little_loops.cli.issues.link import cmd_link
+
+    for target_id in targets:
+        ns = argparse.Namespace(
+            issue_id=source_id,
+            blocked_by=target_id,
+            depends_on=None,
+            relates_to=None,
+            unlink=False,
+            reciprocal=False,
+            force=False,
+            json_output=False,
+            dry_run=not apply,
+        )
+        cmd_link(config, ns)
 
 
 def _print_gaps(gaps: FormatGaps) -> None:
@@ -79,6 +116,8 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
     issue_id: str | None = getattr(args, "issue_id", None)
     check_all: bool = getattr(args, "all", False)
     fmt = getattr(args, "format", "text") or "text"
+    fix: bool = getattr(args, "fix", False)
+    apply_fix: bool = getattr(args, "apply", False)
 
     if not issue_id and not check_all:
         print("Error: provide an issue ID or --all", file=sys.stderr)
@@ -105,6 +144,14 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
             except OSError as exc:
                 print(f"Warning: skipping {info.path}: {exc}", file=sys.stderr)
                 continue
+            if fix and gaps.prose_dep_drift:
+                _fix_prose_deps(config, info.issue_id, gaps.prose_dep_drift, apply=apply_fix)
+                if apply_fix:
+                    gaps = check_format_gaps(
+                        info.path,
+                        templates_dir=templates_dir,
+                        issue_statuses=issue_statuses,
+                    )
             if gaps.has_gaps:
                 results[info.issue_id] = gaps
 
@@ -136,6 +183,17 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
         templates_dir=templates_dir,
         issue_statuses=issue_statuses,
     )
+
+    if fix and gaps.prose_dep_drift:
+        resolved = next((info for info in all_issues if info.path == path), None)
+        source_id = resolved.issue_id if resolved is not None else issue_id
+        _fix_prose_deps(config, source_id, gaps.prose_dep_drift, apply=apply_fix)
+        if apply_fix:
+            gaps = check_format_gaps(
+                path,
+                templates_dir=templates_dir,
+                issue_statuses=issue_statuses,
+            )
 
     if fmt == "json":
         print_json(gaps.to_dict())
