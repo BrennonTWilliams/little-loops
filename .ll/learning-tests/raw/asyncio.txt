@@ -1,0 +1,13 @@
+coro-start
+loop-obtained:True
+task-order:['before-create-task', 'after-create-task', 'child-ran', 'after-yield']
+task-done-after-await0:True
+loop-closed-after-run:True
+gather-order-result:[1, 2, 3]
+gather-exception-raised:boom
+sibling-cancelled:False
+wait_for-timeout-raised:TimeoutError
+wait_for-cancelled-inner:True
+cancel-propagated-to-awaiter:True
+caught-by-bare-except-Exception:False
+PYTHON_VERSION:3.12.10 | packaged by conda-forge | (main, Apr 10 2025, 22:19:24) [Clang 18.1.8 ]

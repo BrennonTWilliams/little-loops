@@ -1,0 +1,12 @@
+{
+  "id": "9ce90424-03c8-43f8-8995-fe73055dea5f",
+  "type": "decision",
+  "timestamp": "2026-07-27T03:43:43Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Zero new integration surface (no pyproject.toml/cli-registry/permissions changes); epic-consistency --all is a direct in-family precedent; matches parent FEAT-2846's stated no-new-command-surface preference.",
+  "rule": "format-check --all mode (Option B)",
+  "scope": "issue",
+  "alternatives_rejected": "standalone ll-verify-prose-deps entry point (Option A) \u2014 consistent with ll-verify-* family but requires 4+ extra integration touch points and an unenforced doctor.py --full adapter",
+  "issue": "FEAT-2850"
+}

@@ -22,6 +22,7 @@ score_test_coverage: 22
 score_ambiguity: 10
 score_change_surface: 10
 size: Very Large
+completed_at: '2026-07-27T03:06:47Z'
 ---
 
 # FEAT-2846: Detect prose dependency claims that are missing from frontmatter
@@ -336,3 +337,13 @@ _Added by `/ll:confidence-check` on 2026-07-26_
 ## Status
 
 done
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Closed**: 2026-07-27
+- **Decomposed into**: FEAT-2849, FEAT-2850, FEAT-2851
+
+Work for FEAT-2846 is now carried by its child issues; this parent was closed by rn-decompose.
