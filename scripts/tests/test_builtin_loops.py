@@ -11907,6 +11907,48 @@ class TestGeneralTaskLoop:
             "check_baseline_tests action must write to ${context.run_dir}/baseline-exit.txt"
         )
 
+    def test_check_baseline_tests_writes_baseline_ref_to_run_dir(self, data: dict) -> None:
+        """check_baseline_tests must capture the init-time git ref (ENH-2858)."""
+        state = data["states"].get("check_baseline_tests", {})
+        action = state.get("action", "")
+        assert "${context.run_dir}/baseline-ref.txt" in action, (
+            "check_baseline_tests action must write to ${context.run_dir}/baseline-ref.txt"
+        )
+        assert "git rev-parse HEAD" in action
+
+    def test_define_done_has_standing_criteria_block(self, data: dict) -> None:
+        """define_done must inject the fixed Standing Criteria block (ENH-2858)."""
+        state = data["states"].get("define_done", {})
+        action = state.get("action", "")
+        assert "## Standing Criteria" in action
+        assert "not derived from the task description" in action
+
+    def test_check_provisional_markers_state_exists(self, data: dict) -> None:
+        """The new marker-grep gate state must exist (ENH-2858)."""
+        assert "check_provisional_markers" in data["states"]
+
+    def test_check_provisional_markers_reads_baseline_ref(self, data: dict) -> None:
+        state = data["states"].get("check_provisional_markers", {})
+        action = state.get("action", "")
+        assert "baseline-ref.txt" in action
+
+    def test_check_provisional_markers_routes_to_summarize_partial_on_hit(
+        self, data: dict
+    ) -> None:
+        state = data["states"].get("check_provisional_markers", {})
+        assert state.get("on_no") == "summarize_partial"
+
+    def test_check_provisional_markers_routes_to_summarize_success_on_clean(
+        self, data: dict
+    ) -> None:
+        state = data["states"].get("check_provisional_markers", {})
+        assert state.get("on_yes") == "summarize_success"
+
+    def test_count_final_routes_to_check_provisional_markers(self, data: dict) -> None:
+        """count_final.on_yes must repoint to the new grep-gate state (ENH-2858)."""
+        state = data["states"].get("count_final", {})
+        assert state.get("on_yes") == "check_provisional_markers"
+
     def test_run_final_tests_reads_baseline_exit(self, data: dict) -> None:
         """run_final_tests must read baseline-exit.txt for regression comparison (ENH-2244)."""
         state = data["states"].get("run_final_tests", {})

@@ -35,6 +35,7 @@ states:
       CMD=$(python3 -c "import json,pathlib; p=pathlib.Path('.ll/ll-config.json'); cfg=json.loads(p.read_text()) if p.exists() else {}; print(cfg.get('project',{}).get('test_cmd','pytest'))")
       eval "$CMD" > "${context.run_dir}/baseline-test-output.txt" 2>&1
       echo $? > "${context.run_dir}/baseline-exit.txt"
+      git rev-parse HEAD > "${context.run_dir}/baseline-ref.txt" 2>/dev/null || echo "" > "${context.run_dir}/baseline-ref.txt"
     action_type: shell
     next: define_done
     on_error: define_done
@@ -74,6 +75,37 @@ states:
       behavior (e.g., "dry-run exits 0", "service plist loads without launchd errors",
       "first injection produces expected output"). Static file/import checks alone
       are insufficient when the task has a runtime surface.
+
+      In addition to the criteria above, ALWAYS include this fixed block verbatim
+      (with criterion 4 included only when it applies) in ${context.run_dir}/dod.md.
+      These criteria are not derived from the task description; apply to every
+      changed module on every run:
+
+      ```
+      ## Standing Criteria
+      - [ ] Every parameter of every changed public function is read on every code path. [hard]
+      - [ ] Contract-over-mechanism: any criterion naming a data structure or library
+        (e.g. "threading.local()", "a cache", "a lock") is accompanied by a behavioral
+        criterion phrased over inputs and outputs, not just the mechanism's presence. [hard]
+      - [ ] Any model- or user-supplied string interpolated into a filesystem path, shell
+        command, or SQL statement is validated before use. [hard]
+      - [ ] Conditional — include only if this task produces an installable package: any
+        file the package must read at runtime is reachable from a built artifact,
+        verified by building a wheel and importing from it in a tmpdir (not an editable
+        install). [hard]
+      - [ ] No module carrying a PROVISIONAL/TODO/GUESS/REPLACE BEFORE SHIPPING marker
+        survives without removal or an explicit deferral criterion. This is enforced
+        separately as a mechanical shell grep over files changed since the run's
+        baseline git ref — not by LLM judgment against this criterion text. [hard]
+      ```
+
+      Lint/type criteria (ruff, mypy, or equivalent) MUST be phrased as an absolute
+      gate — "ruff check exits 0", "mypy exits 0" — never as a delta claim like "no new
+      errors" or "no new lint failures introduced." If a legacy baseline of pre-existing
+      errors genuinely must be tolerated, the criterion must reference an enumerated
+      allowlist file checked into the repo (specific error IDs/locations) whose set can
+      only shrink over time, not a fuzzy "no new" comparison — a new instance of an
+      already-allowlisted error class still fails the criterion.
 
       Do NOT start any work. Only write the DoD file.
     action_type: prompt
@@ -174,11 +206,42 @@ states:
       ATTEMPTS="${context.run_dir}/step-attempts.txt"
       PRIOR=$(grep -Fx -- "$STEP" "$ATTEMPTS" 2>/dev/null | wc -l | tr -d ' ')
       if [ "$PRIOR" -ge "${context.max_step_attempts}" ]; then
+        # ENH-2857: two-direction blocker check BEFORE the abandonment rewrite,
+        # so a hard-blocker step (Hermes defect 5: the abandoned step's own text
+        # said "Hard blocker for Steps 13, 16, 27", and none of those dependents
+        # ever mentioned it back) halts the run instead of silently continuing
+        # on guesses. Direction (a): the abandoned step's own line names itself
+        # a blocker/gate/prerequisite alongside a step reference. Direction (b):
+        # any remaining unchecked step textually references this step's number,
+        # tolerating comma-separated lists ("Steps 13, 16, 27"), not just the
+        # first number in the list.
+        HALT=0
+        if printf '%s' "$STEP" | grep -Eq '([Bb]locker|[Gg]ated|[Pp]rerequisite).*[Ss]teps?[[:space:]]+[0-9]+|[Ss]teps?[[:space:]]+[0-9]+.*([Bb]locker|[Gg]ated|[Pp]rerequisite)'; then
+          HALT=1
+        fi
+        STEP_NUM=$(printf '%s' "$STEP" | grep -Eo 'Step[[:space:]]+[0-9]+' | grep -Eo '[0-9]+' | head -1)
+        if [ -n "$STEP_NUM" ] && [ "$HALT" -eq 0 ]; then
+          while IFS= read -r line; do
+            NUMS=$(printf '%s' "$line" | grep -Eo '[Ss]teps?[[:space:]]+[0-9]+([,][[:space:]]*[0-9]+)*' | grep -Eo '[0-9]+')
+            if printf '%s\n' "$NUMS" | grep -qx "$STEP_NUM"; then
+              HALT=1
+              break
+            fi
+          done < <(grep '^- \[ \]' "$PLAN")
+        fi
+        # Still rewrite to [!] first — the step DID exhaust its attempts; the
+        # halt only changes what happens to the remaining steps. Without this
+        # rewrite, write_partial_summary's abandoned count would read 0 for the
+        # exact run that halted because of an abandonment.
         awk -v target="$STEP" -v n="${context.max_step_attempts}" \
-          'found==0 && $0==target && /^- \[ \]/ { sub(/^- \[ \]/, "- [x]"); $0=$0 "  (abandoned: verify failed after " n " attempts)"; found=1 } 1' \
+          'found==0 && $0==target && /^- \[ \]/ { sub(/^- \[ \]/, "- [!]"); $0=$0 "  (abandoned: verify failed after " n " attempts)"; found=1 } 1' \
           "$PLAN" > "$PLAN.tmp" && mv "$PLAN.tmp" "$PLAN"
         rm -f "${context.run_dir}/current-step.txt" "${context.run_dir}/checkpoint.json"
-        echo "STEP_ABANDONED: $STEP"
+        if [ "$HALT" -eq 1 ]; then
+          echo "STEP_BLOCKER_HALT: $STEP"
+        else
+          echo "STEP_ABANDONED: $STEP"
+        fi
         exit 0
       fi
       echo "$STEP" >> "$ATTEMPTS"
@@ -195,8 +258,26 @@ states:
       source: "${captured.selected_step.output}"
       pattern: "SELECTED_STEP:"
     on_yes: do_work
-    on_no: spin_gate
+    on_no: check_step_halt
     on_error: diagnose
+
+  # ENH-2857: distinguishes a plain STEP_ABANDONED (fall through to spin_gate
+  # as before) from a STEP_BLOCKER_HALT (the just-abandoned step was a hard
+  # blocker for other steps — halt via summarize_partial rather than
+  # continuing on guesses). ${captured.selected_step} is captured by the
+  # immediately-preceding select_step on every path that reaches this state,
+  # so the reference is dominated.
+  check_step_halt:
+    action: |
+      printf '%s' "${captured.selected_step.output}"
+    action_type: shell
+    evaluate:
+      type: output_contains
+      source: "${captured.selected_step.output}"
+      pattern: "STEP_BLOCKER_HALT"
+    on_yes: summarize_partial
+    on_no: spin_gate
+    on_error: spin_gate
 
   # Guards the NO_UNCHECKED_STEPS spin (ENH-2585): once every remaining plan
   # step has been abandoned (max_step_attempts exhausted), select_step returns
@@ -328,6 +409,13 @@ states:
       Read both task artifacts:
       - ${context.run_dir}/dod.md — Definition of Done (criteria)
       - ${context.run_dir}/plan.md — Task Plan (steps)
+
+      A plan step marked `- [!]` is ABANDONED, not done: it exhausted its verify-attempt
+      budget and was never actually completed (see ${context.run_dir}/plan.md for any
+      "(abandoned: ...)" note on the line). Do NOT treat a `[!]` step as satisfying its
+      DoD criterion. If a DoD criterion depends on an abandoned step, leave that
+      criterion [ ] (or flip it back to [ ] if previously marked [x]) with a note that
+      the step was abandoned, so it surfaces as unmet rather than silently passing.
 
       Step 1 — Plan-vs-DoD coverage reconciliation:
       For EVERY plan step, confirm at least one DoD criterion covers it. If a plan step
@@ -535,14 +623,40 @@ states:
       path: ".failed_finals"
       operator: eq
       target: 0
-    on_yes: summarize_success
+    on_yes: check_provisional_markers
     on_no: continue_work
     on_error: diagnose
+
+  check_provisional_markers:
+    action: |
+      BASELINE_REF_FILE="${context.run_dir}/baseline-ref.txt"
+      BASELINE_REF=$(cat "$BASELINE_REF_FILE" 2>/dev/null || echo "")
+      if [ -z "$BASELINE_REF" ] || ! git rev-parse --git-dir >/dev/null 2>&1; then
+        printf '{"markers_found": 0, "skipped": true}\n'
+        exit 0
+      fi
+      CHANGED=$(git diff --name-only "$BASELINE_REF" -- . 2>/dev/null)
+      HITS=0
+      if [ -n "$CHANGED" ]; then
+        HITS=$(grep -lE 'PROVISIONAL|TODO|GUESS|REPLACE BEFORE SHIPPING' $CHANGED 2>/dev/null | wc -l | tr -d ' ')
+      fi
+      printf '{"markers_found": %d, "skipped": false}\n' "$HITS"
+    action_type: shell
+    capture: provisional_marker_counts
+    evaluate:
+      type: output_json
+      path: ".markers_found"
+      operator: eq
+      target: 0
+    on_yes: summarize_success
+    on_no: summarize_partial
+    on_error: summarize_partial
 
   summarize_success:
     action: |
       RUN_DIR="${context.run_dir}"
       DOD="$RUN_DIR/dod.md"
+      PLAN="$RUN_DIR/plan.md"
       # BUG-2608: report the count of CHECKED Verification Criteria, not the
       # leftover-unchecked count. done_counts.total is ALWAYS 0 on the success
       # path (count_done routes here only when total==0), so sourcing
@@ -575,14 +689,58 @@ states:
       except Exception:
           print(0)
       " 2>/dev/null || echo 0)
-      printf '{"verdict":"success","implemented":%s,"failed_finals":%s}\n' \
-        "$IMPLEMENTED" "$FAILED_FINALS" > "$RUN_DIR/summary.json"
-      printf 'general-task: verdict=success implemented=%s failed_finals=%s\n' \
-        "$IMPLEMENTED" "$FAILED_FINALS"
+      # ENH-2857: [!]-marked plan steps are abandoned, not done — count them
+      # (whitespace-tolerant, matching count_done's UNCHECKED_PLAN style) so a
+      # run that reached "all DoD criteria satisfied" over abandoned steps
+      # doesn't render identically to a genuinely clean run. This is a NEW
+      # grep against $PLAN, not a modification of the dod.md awk scans above.
+      ABANDONED_COUNT=$(grep -c '^[[:space:]]*- \[!\]' "$PLAN" 2>/dev/null || true)
+      [ -z "$ABANDONED_COUNT" ] && ABANDONED_COUNT=0
+      # ENH-2657 precedent: abandoned takes precedence over the success verdict
+      # so a run that nominally satisfied every DoD criterion but abandoned a
+      # hard-blocker step along the way is never reported as a clean success.
+      if [ "$ABANDONED_COUNT" -gt 0 ]; then
+        VERDICT=incomplete-abandoned
+      else
+        VERDICT=success
+      fi
+      printf '{"verdict":"%s","implemented":%s,"failed_finals":%s,"abandoned":%s}\n' \
+        "$VERDICT" "$IMPLEMENTED" "$FAILED_FINALS" "$ABANDONED_COUNT" > "$RUN_DIR/summary.json"
+      printf 'general-task: verdict=%s implemented=%s failed_finals=%s abandoned=%s\n' \
+        "$VERDICT" "$IMPLEMENTED" "$FAILED_FINALS" "$ABANDONED_COUNT"
     action_type: shell
-    next: done
+    next: check_abandoned_route
     # ENH-2365: a failure to write the summary file does not retract the verdict
     # the run already earned. Deliberately NOT repointed by the ENH-2825 sweep.
+    on_error: done
+
+  # ENH-2857: penultimate routing state (the rn-implement::report shape) —
+  # summarize_success itself is non-terminal, so this keeps the abandoned-count
+  # branch off the `done`/`partial` terminals (terminal-action-ok). Reads the
+  # count back from summary.json on disk (written by summarize_success just
+  # before this state runs) rather than a ${captured.*} reference, sidestepping
+  # any capture-reachability concern entirely.
+  check_abandoned_route:
+    action: |
+      python3 -c "
+      import json
+      try:
+          with open('${context.run_dir}/summary.json') as f:
+              print(json.load(f).get('abandoned', 0))
+      except Exception:
+          print(0)
+      "
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: eq
+      target: 0
+    on_yes: done
+    # incomplete-abandoned: at least one hard-blocker step was abandoned even
+    # though every DoD criterion nominally passed — route to the non-`done`
+    # `partial` terminal so parent sub-loop dispatch treats it as on_failure,
+    # matching the ENH-2657 precedent's precedence ordering.
+    on_no: partial
     on_error: done
 
   continue_work:
@@ -715,10 +873,22 @@ states:
         ' "$DOD")
       fi
       CHECKED=$(($TOTAL - $HARD_UNCHECKED - $SOFT_UNCHECKED))
-      printf '{"verdict":"partial","checked":%d,"total":%d,"hard_unchecked":%d,"soft_unchecked":%d}\n' \
-        "$CHECKED" "$TOTAL" "$HARD_UNCHECKED" "$SOFT_UNCHECKED" > "${context.run_dir}/summary.json"
-      printf 'general-task: verdict=partial checked=%d/%d hard_unchecked=%d\n' \
-        "$CHECKED" "$TOTAL" "$HARD_UNCHECKED"
+      # ENH-2857: same whitespace-tolerant [!] count as summarize_success, and
+      # the same ENH-2657 precedence — abandoned wins over the plain "partial"
+      # verdict. Interpolated via $VERDICT rather than a substring replace, so
+      # the literal "verdict":"partial" string survives for the N=0 case.
+      PLAN="${context.run_dir}/plan.md"
+      ABANDONED=$(grep -c '^[[:space:]]*- \[!\]' "$PLAN" 2>/dev/null || true)
+      [ -z "$ABANDONED" ] && ABANDONED=0
+      if [ "$ABANDONED" -gt 0 ]; then
+        VERDICT=incomplete-abandoned
+      else
+        VERDICT=partial
+      fi
+      printf '{"verdict":"%s","checked":%d,"total":%d,"hard_unchecked":%d,"soft_unchecked":%d,"abandoned":%d}\n' \
+        "$VERDICT" "$CHECKED" "$TOTAL" "$HARD_UNCHECKED" "$SOFT_UNCHECKED" "$ABANDONED" > "${context.run_dir}/summary.json"
+      printf 'general-task: verdict=%s checked=%d/%d hard_unchecked=%d abandoned=%d\n' \
+        "$VERDICT" "$CHECKED" "$TOTAL" "$HARD_UNCHECKED" "$ABANDONED"
     action_type: shell
     next: partial
     # ENH-2575: the partial verdict the run earned must survive a failed summary

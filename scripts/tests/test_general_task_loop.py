@@ -347,8 +347,21 @@ class TestENH1732StateSplit:
     def test_select_step_routes_yes_to_do_work(self, raw_data: dict) -> None:
         assert raw_data["states"]["select_step"]["on_yes"] == "do_work"
 
-    def test_select_step_routes_no_to_spin_gate(self, raw_data: dict) -> None:
-        assert raw_data["states"]["select_step"]["on_no"] == "spin_gate"
+    def test_select_step_routes_no_to_check_step_halt(self, raw_data: dict) -> None:
+        # ENH-2857: NO_UNCHECKED_STEPS/STEP_ABANDONED/STEP_BLOCKER_HALT all route
+        # through check_step_halt first, which discriminates a blocker halt from
+        # the plain no-progress case before falling through to spin_gate.
+        assert raw_data["states"]["select_step"]["on_no"] == "check_step_halt"
+
+    def test_check_step_halt_routes_yes_to_summarize_partial_no_to_spin_gate(
+        self, raw_data: dict
+    ) -> None:
+        check_step_halt = raw_data["states"]["check_step_halt"]
+        assert check_step_halt["on_yes"] == "summarize_partial"
+        assert check_step_halt["on_no"] == "spin_gate"
+        assert check_step_halt["on_error"] == "spin_gate"
+        assert check_step_halt["evaluate"]["type"] == "output_contains"
+        assert check_step_halt["evaluate"]["pattern"] == "STEP_BLOCKER_HALT"
 
     def test_spin_gate_routes_yes_to_check_done_no_to_summarize_partial(
         self, raw_data: dict
@@ -487,6 +500,75 @@ class TestSelectStepShellAction:
         self._run(tmp_path)
         assert counter_file.read_text().strip() == "2"
 
+    # --- ENH-2857: abandonment marker + two-direction blocker halt ---------
+
+    def _run_with_attempts(self, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+        """Like _run, but also interpolates ${context.max_step_attempts} (=3),
+        which the abandonment branch reads and no prior test needed."""
+        run_dir = _setup_run_dir(tmp_path)
+        script = _load_state_script("select_step")
+        script = script.replace("${context.run_dir}", str(run_dir))
+        script = script.replace("${context.input_hash}", "abc123def456")
+        script = script.replace("${context.max_step_attempts}", "3")
+        return _bash(script, cwd=tmp_path)
+
+    def test_exhausted_step_marked_bang_not_x(self, tmp_path: Path) -> None:
+        run_dir = _setup_run_dir(tmp_path)
+        step_line = "- [ ] Step 1: flaky step"
+        (run_dir / "plan.md").write_text(f"# Task Plan\n{step_line}\n")
+        (run_dir / "step-attempts.txt").write_text(f"{step_line}\n" * 3)
+        result = self._run_with_attempts(tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        assert "STEP_ABANDONED:" in result.stdout
+        plan_text = (run_dir / "plan.md").read_text()
+        assert "- [!] Step 1: flaky step" in plan_text, (
+            f"abandoned step must be rewritten to '- [!]', not '- [x]'; got: {plan_text!r}"
+        )
+        assert "- [x] Step 1" not in plan_text
+
+    def test_blocker_halt_direction_a_self_declared_blocker(self, tmp_path: Path) -> None:
+        # Hermes shape: the abandoned step's OWN text names itself a blocker,
+        # with none of the dependent steps mentioning it back.
+        run_dir = _setup_run_dir(tmp_path)
+        step_line = "- [ ] Step 5: Hard blocker for Steps 13, 16, 27"
+        (run_dir / "plan.md").write_text(
+            f"# Task Plan\n{step_line}\n- [ ] Step 13: unrelated text\n"
+        )
+        (run_dir / "step-attempts.txt").write_text(f"{step_line}\n" * 3)
+        result = self._run_with_attempts(tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        assert "STEP_BLOCKER_HALT:" in result.stdout
+        assert "- [!] Step 5:" in (run_dir / "plan.md").read_text()
+
+    def test_blocker_halt_direction_b_remaining_step_references_number(
+        self, tmp_path: Path
+    ) -> None:
+        # The abandoned step's own text says nothing about being a blocker, but
+        # a REMAINING unchecked step references its number in a comma-list.
+        run_dir = _setup_run_dir(tmp_path)
+        step_line = "- [ ] Step 5: minor prep work"
+        (run_dir / "plan.md").write_text(
+            "# Task Plan\n"
+            f"{step_line}\n"
+            "- [ ] Step 13: needs output from Steps 5, 6\n"
+        )
+        (run_dir / "step-attempts.txt").write_text(f"{step_line}\n" * 3)
+        result = self._run_with_attempts(tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        assert "STEP_BLOCKER_HALT:" in result.stdout
+
+    def test_abandonment_without_blocker_reference_does_not_halt(self, tmp_path: Path) -> None:
+        run_dir = _setup_run_dir(tmp_path)
+        step_line = "- [ ] Step 5: minor helper"
+        (run_dir / "plan.md").write_text(
+            f"# Task Plan\n{step_line}\n- [ ] Step 20: unrelated to anything\n"
+        )
+        (run_dir / "step-attempts.txt").write_text(f"{step_line}\n" * 3)
+        result = self._run_with_attempts(tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        assert "STEP_ABANDONED:" in result.stdout
+        assert "STEP_BLOCKER_HALT:" not in result.stdout
+
     def test_selected_step_resets_spin_counter(self, tmp_path: Path) -> None:
         # ENH-2585: a genuine step selection must reset the spin counter — a real
         # step selected is the progress signal that re-arms the no-progress budget.
@@ -498,6 +580,25 @@ class TestSelectStepShellAction:
         assert not counter_file.exists(), (
             "select_step must clear the spin counter on a real SELECTED_STEP:"
         )
+
+
+class TestCheckStepHaltShellAction:
+    """Shell execution tests for the check_step_halt action (ENH-2857)."""
+
+    def _run(self, tmp_path: Path, selected_step_output: str) -> subprocess.CompletedProcess[str]:
+        script = _load_state_script("check_step_halt")
+        script = script.replace("${captured.selected_step.output}", selected_step_output)
+        return _bash(script, cwd=tmp_path)
+
+    def test_blocker_halt_output_matches_pattern(self, tmp_path: Path) -> None:
+        result = self._run(tmp_path, "STEP_BLOCKER_HALT: - [ ] Step 5: Hard blocker for Step 13")
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        assert "STEP_BLOCKER_HALT" in result.stdout
+
+    def test_plain_abandoned_output_does_not_match_pattern(self, tmp_path: Path) -> None:
+        result = self._run(tmp_path, "STEP_ABANDONED: - [ ] Step 5: minor helper")
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        assert "STEP_BLOCKER_HALT" not in result.stdout
 
 
 class TestSpinGateShellAction:
@@ -993,6 +1094,30 @@ class TestCountDoneShellScript:
         assert data["unchecked_plan"] == 0
         assert data["failed_samples"] == 0
 
+    def test_abandoned_plan_step_not_counted_as_unchecked(self, tmp_path: Path) -> None:
+        # ENH-2857: a [!]-marked (abandoned) plan step must NOT match
+        # count_done's UNCHECKED_PLAN grep (`^[[:space:]]*-[[:space:]]*\\[[[:space:]]\\]`,
+        # literal-space-inside-brackets only) the same way an already-[x] step
+        # doesn't — otherwise an abandoned step would spin the loop forever.
+        plan_with_abandoned = (
+            "# Task Plan\n"
+            "- [x] Step 1: write code\n"
+            "- [!] Step 2: verify kept failing  (abandoned: verify failed after 3 attempts)\n"
+        )
+        run_dir = _setup_dod_plan(
+            tmp_path, dod_content=_ALL_DONE_DOD, plan_content=plan_with_abandoned
+        )
+        script = _load_count_done_script(run_dir=run_dir)
+        result = _bash(script, cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        import json
+
+        data = json.loads(result.stdout.strip())
+        assert data["unchecked_plan"] == 0, (
+            "an abandoned [!] plan step must not be counted as an unchecked plan step"
+        )
+        assert data["total"] == 0
+
     def test_unchecked_criterion_emits_nonzero_total(self, tmp_path: Path) -> None:
         run_dir = _setup_dod_plan(
             tmp_path, dod_content=_UNCHECKED_DOD, plan_content=_UNCHECKED_PLAN
@@ -1179,7 +1304,9 @@ class TestChange8FinalVerifyGate:
         assert evaluate["target"] == 0
 
     def test_count_final_routes_yes_to_summarize_success(self, raw_data: dict) -> None:
-        assert raw_data["states"]["count_final"]["on_yes"] == "summarize_success"
+        # ENH-2858: count_final now routes to the check_provisional_markers
+        # grep-gate before reaching summarize_success.
+        assert raw_data["states"]["count_final"]["on_yes"] == "check_provisional_markers"
 
     def test_count_final_routes_no_to_continue_work(self, raw_data: dict) -> None:
         assert raw_data["states"]["count_final"]["on_no"] == "continue_work"
@@ -1533,7 +1660,9 @@ class TestENH2365SummarizeSuccess:
         assert "summarize_success" in raw_data.get("states", {})
 
     def test_count_final_routes_yes_to_summarize_success(self, raw_data: dict) -> None:
-        assert raw_data["states"]["count_final"]["on_yes"] == "summarize_success"
+        # ENH-2858: count_final now routes to the check_provisional_markers
+        # grep-gate before reaching summarize_success.
+        assert raw_data["states"]["count_final"]["on_yes"] == "check_provisional_markers"
 
     def test_summarize_success_action_type_is_shell(self, raw_data: dict) -> None:
         assert raw_data["states"]["summarize_success"]["action_type"] == "shell"
@@ -1546,11 +1675,29 @@ class TestENH2365SummarizeSuccess:
         action = raw_data["states"]["summarize_success"]["action"]
         assert "implemented" in action
 
-    def test_summarize_success_routes_next_to_done(self, raw_data: dict) -> None:
-        assert raw_data["states"]["summarize_success"]["next"] == "done"
+    def test_summarize_success_routes_next_to_check_abandoned_route(self, raw_data: dict) -> None:
+        # ENH-2857: summarize_success no longer routes straight to done; the
+        # abandoned-count routing lives in the non-terminal check_abandoned_route
+        # state inserted before done/partial (terminal-action-ok).
+        assert raw_data["states"]["summarize_success"]["next"] == "check_abandoned_route"
 
     def test_summarize_success_on_error_routes_to_done(self, raw_data: dict) -> None:
         assert raw_data["states"]["summarize_success"]["on_error"] == "done"
+
+    def test_summarize_success_action_emits_abandoned_key(self, raw_data: dict) -> None:
+        # ENH-2857: companion to test_summarize_success_action_emits_implemented_key.
+        action = raw_data["states"]["summarize_success"]["action"]
+        assert '"abandoned"' in action
+        assert "ABANDONED_COUNT" in action
+        assert "incomplete-abandoned" in action
+
+    def test_check_abandoned_route_state_exists_and_is_non_terminal(self, raw_data: dict) -> None:
+        state = raw_data["states"].get("check_abandoned_route")
+        assert state is not None, "check_abandoned_route state must exist (ENH-2857)"
+        assert not state.get("terminal"), "check_abandoned_route must not be terminal:true"
+        assert state.get("on_yes") == "done"
+        assert state.get("on_no") == "partial"
+        assert state["evaluate"]["type"] == "output_numeric"
 
     # --- BUG-2608: shell execution — implemented reflects CHECKED count -------
 
@@ -1620,6 +1767,44 @@ class TestENH2365SummarizeSuccess:
         assert data["verdict"] == "success"
         assert data["implemented"] == 0
 
+    # --- ENH-2857: abandoned-count and incomplete-abandoned verdict --------
+
+    def test_zero_abandoned_steps_verdict_stays_success(self, tmp_path: Path) -> None:
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "dod.md").write_text(
+            "# Definition of Done\n## Verification Criteria\n- [x] Tests pass [hard]\n"
+        )
+        (run_dir / "plan.md").write_text("# Task Plan\n- [x] Step 1: done\n")
+        result = _bash(self._load_script(run_dir), cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        import json
+
+        data = json.loads((run_dir / "summary.json").read_text())
+        assert data["verdict"] == "success"
+        assert data["abandoned"] == 0
+
+    def test_abandoned_steps_verdict_is_incomplete_abandoned(self, tmp_path: Path) -> None:
+        # ENH-2857: even though every DoD criterion nominally passed (the only
+        # way summarize_success is reached), an abandoned hard-blocker step
+        # must still flip the verdict away from a clean "success".
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "dod.md").write_text(
+            "# Definition of Done\n## Verification Criteria\n- [x] Tests pass [hard]\n"
+        )
+        (run_dir / "plan.md").write_text(
+            "# Task Plan\n"
+            "- [x] Step 1: done\n"
+            "- [!] Step 2: hard blocker  (abandoned: verify failed after 3 attempts)\n"
+        )
+        result = _bash(self._load_script(run_dir), cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        import json
+
+        data = json.loads((run_dir / "summary.json").read_text())
+        assert data["verdict"] == "incomplete-abandoned"
+        assert data["abandoned"] == 1
+        assert "verdict=incomplete-abandoned" in result.stdout
+
 
 # ---------------------------------------------------------------------------
 # ENH-2575: final_verify timeout must not forfeit partial progress
@@ -1647,9 +1832,16 @@ class TestENH2575PartialCredit:
         assert raw_data["states"]["write_partial_summary"]["action_type"] == "shell"
 
     def test_write_partial_summary_emits_partial_verdict_json(self, raw_data: dict) -> None:
+        # ENH-2857: the verdict is no longer a hardcoded literal — it's
+        # interpolated via $VERDICT so incomplete-abandoned can take precedence
+        # (ported ENH-2657 precedent). The shell-execution tests below confirm
+        # the zero-abandoned case still produces the literal "partial" string
+        # in the *written JSON output*, not the YAML action text.
         action = raw_data["states"]["write_partial_summary"]["action"]
         assert "summary.json" in action
-        assert '"verdict":"partial"' in action
+        assert '"verdict":"%s"' in action
+        assert "VERDICT=partial" in action
+        assert "VERDICT=incomplete-abandoned" in action
 
     def test_write_partial_summary_on_error_still_reaches_partial(self, raw_data: dict) -> None:
         assert raw_data["states"]["write_partial_summary"]["on_error"] == "partial"
@@ -1705,3 +1897,213 @@ class TestENH2575PartialCredit:
         data = json.loads((run_dir / "summary.json").read_text())
         assert data["verdict"] == "partial"
         assert data["total"] == 0
+
+    def test_zero_abandoned_steps_verdict_stays_partial(self, tmp_path: Path) -> None:
+        # ENH-2857: no [!]-marked plan step → verdict remains the plain "partial",
+        # not "incomplete-abandoned". Explicit zero-abandoned coverage alongside
+        # the pre-existing no-plan-file cases above.
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "dod.md").write_text(
+            "# Definition of Done\n"
+            "## Verification Criteria\n"
+            "- [x] Tests pass [hard]\n"
+            "- [ ] Coverage met [hard]\n"
+        )
+        (run_dir / "plan.md").write_text(
+            "# Task Plan\n- [x] Step 1: done\n- [ ] Step 2: pending\n"
+        )
+        result = _bash(self._load_script(run_dir), cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        import json
+
+        data = json.loads((run_dir / "summary.json").read_text())
+        assert data["verdict"] == "partial"
+        assert data["abandoned"] == 0
+        assert "verdict=partial" in result.stdout
+
+    def test_abandoned_steps_verdict_is_incomplete_abandoned(self, tmp_path: Path) -> None:
+        # ENH-2857: at least one [!]-marked plan step → verdict is
+        # incomplete-abandoned instead of partial, mirroring the ENH-2657
+        # precedent's precedence ordering (abandoned wins over every bucket).
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "dod.md").write_text(
+            "# Definition of Done\n"
+            "## Verification Criteria\n"
+            "- [x] Tests pass [hard]\n"
+            "- [ ] Coverage met [hard]\n"
+        )
+        (run_dir / "plan.md").write_text(
+            "# Task Plan\n"
+            "- [x] Step 1: done\n"
+            "- [!] Step 2: pending  (abandoned: verify failed after 3 attempts)\n"
+        )
+        result = _bash(self._load_script(run_dir), cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        import json
+
+        data = json.loads((run_dir / "summary.json").read_text())
+        assert data["verdict"] == "incomplete-abandoned"
+        assert data["abandoned"] == 1
+        assert "verdict=incomplete-abandoned" in result.stdout
+
+    def test_whitespace_tolerant_abandoned_marker_is_counted(self, tmp_path: Path) -> None:
+        # Matches count_done's whitespace-tolerant style, not a bare ^- \[!\].
+        run_dir = _setup_run_dir(tmp_path)
+        (run_dir / "plan.md").write_text("# Task Plan\n  - [!] Step 1: indented abandoned\n")
+        result = _bash(self._load_script(run_dir), cwd=tmp_path)
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        import json
+
+        data = json.loads((run_dir / "summary.json").read_text())
+        assert data["abandoned"] == 1
+        assert data["verdict"] == "incomplete-abandoned"
+
+
+def _load_state_action_script(state_name: str, run_dir: Path | None = None) -> str:
+    """Extract a shell action from an arbitrary state, substituting run_dir."""
+    with open(LOOP_FILE) as f:
+        data = yaml.safe_load(f)
+    script = data["states"][state_name]["action"]
+    if run_dir is not None:
+        script = script.replace("${context.run_dir}", str(run_dir))
+    return script
+
+
+def _run_shell(script: str, cwd: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(["bash", "-c", script], cwd=cwd, capture_output=True, text=True)
+
+
+def _git(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=True)
+
+
+def _init_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(["init"], repo)
+    _git(["config", "user.email", "test@example.com"], repo)
+    _git(["config", "user.name", "Test"], repo)
+    (repo / "README.md").write_text("hello\n")
+    _git(["add", "."], repo)
+    _git(["commit", "-m", "initial"], repo)
+    return repo
+
+
+class TestENH2858StandingCriteria:
+    """ENH-2858: standing DoD criteria, exits-0 phrasing, and marker-grep gate."""
+
+    def test_define_done_contains_standing_criteria_heading(self, raw_data: dict) -> None:
+        action = raw_data["states"]["define_done"]["action"]
+        assert "## Standing Criteria" in action
+        assert "not derived from the task description" in action
+
+    def test_define_done_standing_criteria_cover_all_five(self, raw_data: dict) -> None:
+        action = raw_data["states"]["define_done"]["action"]
+        assert "read on every code path" in action
+        assert "Contract-over-mechanism" in action
+        assert "validated before use" in action
+        assert "reachable from a built artifact" in action
+        assert "PROVISIONAL" in action and "TODO" in action and "GUESS" in action
+
+    def test_define_done_wheel_criterion_is_conditional(self, raw_data: dict) -> None:
+        action = raw_data["states"]["define_done"]["action"]
+        assert "Conditional" in action
+        assert "installable package" in action
+
+    def test_define_done_marker_criterion_notes_mechanical_grep(self, raw_data: dict) -> None:
+        action = raw_data["states"]["define_done"]["action"]
+        assert "mechanical shell grep" in action
+        assert "not by LLM judgment" in action
+
+    def test_define_done_requires_exits_0_phrasing(self, raw_data: dict) -> None:
+        action = raw_data["states"]["define_done"]["action"]
+        assert "exits 0" in action
+        # "no new errors" appears only as the forbidden phrasing example, negated
+        # by "never" immediately before it — never bare/unqualified in the prompt.
+        assert "never as a delta claim like \"no new errors\"" in action
+        assert "enumerated allowlist" in action
+
+    def test_check_baseline_tests_writes_baseline_ref_to_run_dir(self, raw_data: dict) -> None:
+        action = raw_data["states"]["check_baseline_tests"]["action"]
+        assert "${context.run_dir}/baseline-ref.txt" in action
+        assert "git rev-parse HEAD" in action
+
+    def test_check_provisional_markers_state_exists(self, raw_data: dict) -> None:
+        assert "check_provisional_markers" in raw_data["states"]
+
+    def test_check_provisional_markers_action_type_is_shell(self, raw_data: dict) -> None:
+        assert raw_data["states"]["check_provisional_markers"]["action_type"] == "shell"
+
+    def test_check_provisional_markers_reads_baseline_ref(self, raw_data: dict) -> None:
+        action = raw_data["states"]["check_provisional_markers"]["action"]
+        assert "baseline-ref.txt" in action
+
+    def test_check_provisional_markers_evaluate_is_mechanical(self, raw_data: dict) -> None:
+        evaluate = raw_data["states"]["check_provisional_markers"]["evaluate"]
+        assert evaluate["type"] == "output_json"
+        assert evaluate["path"] == ".markers_found"
+        assert evaluate["operator"] == "eq"
+        assert evaluate["target"] == 0
+
+    def test_check_provisional_markers_routes_no_to_summarize_partial(self, raw_data: dict) -> None:
+        assert raw_data["states"]["check_provisional_markers"]["on_no"] == "summarize_partial"
+
+    def test_check_provisional_markers_routes_yes_to_summarize_success(self, raw_data: dict) -> None:
+        assert raw_data["states"]["check_provisional_markers"]["on_yes"] == "summarize_success"
+
+    def test_check_provisional_markers_routes_error_to_summarize_partial(self, raw_data: dict) -> None:
+        assert raw_data["states"]["check_provisional_markers"]["on_error"] == "summarize_partial"
+
+    def test_marker_grep_skips_with_note_outside_git_repo(self, tmp_path: Path) -> None:
+        # No git repo at all: state must degrade to skip, not error.
+        non_repo = tmp_path / "not-a-repo"
+        non_repo.mkdir()
+        run_dir = non_repo / "run"
+        run_dir.mkdir()
+        (run_dir / "baseline-ref.txt").write_text("")
+        script = _load_state_action_script("check_provisional_markers", run_dir=run_dir)
+        result = _run_shell(script, cwd=non_repo)
+        assert result.returncode == 0
+        assert '"skipped": true' in result.stdout
+        assert '"markers_found": 0' in result.stdout
+
+    def test_marker_grep_finds_marker_in_changed_file_only(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path)
+        run_dir = repo / "run"
+        run_dir.mkdir()
+        baseline_ref = _git(["rev-parse", "HEAD"], repo).stdout.strip()
+        (run_dir / "baseline-ref.txt").write_text(baseline_ref)
+
+        # Pre-existing marker in an UNCHANGED file must not trip the gate.
+        (repo / "unchanged.py").write_text("# TODO: pre-existing, not part of this run\n")
+        _git(["add", "."], repo)
+        _git(["commit", "-m", "pre-existing todo"], repo)
+
+        # New changed file with a marker must trip the gate.
+        (repo / "changed.py").write_text("# PROVISIONAL: replace before shipping\n")
+
+        script = _load_state_action_script("check_provisional_markers", run_dir=run_dir)
+        result = _run_shell(script, cwd=repo)
+        assert result.returncode == 0
+        assert '"markers_found": 1' in result.stdout
+        assert '"skipped": false' in result.stdout
+
+    def test_marker_grep_clean_when_no_markers_in_changed_files(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path)
+        run_dir = repo / "run"
+        run_dir.mkdir()
+        baseline_ref = _git(["rev-parse", "HEAD"], repo).stdout.strip()
+        (run_dir / "baseline-ref.txt").write_text(baseline_ref)
+
+        (repo / "clean.py").write_text("print('hello')\n")
+
+        script = _load_state_action_script("check_provisional_markers", run_dir=run_dir)
+        result = _run_shell(script, cwd=repo)
+        assert result.returncode == 0
+        assert '"markers_found": 0' in result.stdout
+        assert '"skipped": false' in result.stdout
+
+    def test_general_task_loop_validates(self) -> None:
+        _, violations = load_and_validate(LOOP_FILE, raise_on_error=False)
+        errors = [v for v in violations if v.severity == ValidationSeverity.ERROR]
+        assert not errors, f"general-task.yaml has validation errors: {errors}"

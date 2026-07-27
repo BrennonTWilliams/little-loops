@@ -26,6 +26,7 @@ from little_loops.fsm.schema import (
 )
 from little_loops.fsm.validation import (
     ValidationSeverity,
+    _validate_abandonment_verdict,
     _validate_artifact_isolation,
     _validate_artifact_overwrite,
     _validate_bash_default_interpolation,
@@ -5074,3 +5075,211 @@ class TestFailureTerminalActionFlagDriven:
             }
         )
         assert [e.path for e in _validate_failure_terminal_action(fsm)] == ["states.failed"]
+
+
+# ---------------------------------------------------------------------------
+# MR-13 (ENH-2860) — abandonment must reach summary.json and downgrade verdict
+# ---------------------------------------------------------------------------
+
+
+class TestAbandonmentVerdict:
+    """MR-13: abandonment mechanism must emit an "abandoned" key; a hardcoded
+    "verdict":"success" must be guarded by an abandonment/failure counter."""
+
+    def _simple_fsm(self, states: dict, **kwargs) -> FSMLoop:
+        defaults: dict = {
+            "name": "test-loop",
+            "initial": "work",
+            "states": states,
+        }
+        defaults.update(kwargs)
+        return FSMLoop(**defaults)
+
+    def test_mr13_fires_for_mechanism_without_abandoned_key(self) -> None:
+        """MR-13 fires when a checkbox-abandonment mechanism exists but no
+        state emits an "abandoned" key into the summary JSON."""
+        fsm = self._simple_fsm(
+            {
+                "select_step": make_state(
+                    action=(
+                        "awk 'sub(/^- \\[ \\]/, \"- [!]\")' plan.md > plan.tmp && "
+                        "mv plan.tmp plan.md"
+                    ),
+                    action_type="shell",
+                    on_yes="done",
+                ),
+                "done": make_state(
+                    action='printf \'{"verdict":"%s"}\\n\' "$V"',
+                    action_type="shell",
+                    terminal=True,
+                ),
+            }
+        )
+        errors = _validate_abandonment_verdict(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+        assert "MR-13" in errors[0].message
+
+    def test_mr13_fires_for_attempt_cap_mechanism_without_abandoned_key(self) -> None:
+        """MR-13 also detects the max_step_attempts-style attempt-cap heuristic."""
+        fsm = self._simple_fsm(
+            {
+                "select_step": make_state(
+                    action='PRIOR=$(cat attempts.txt); '
+                    'if [ "$PRIOR" -ge "${context.max_step_attempts}" ]; then echo cap; fi',
+                    action_type="shell",
+                    on_yes="done",
+                ),
+                "done": make_state(action="echo done", action_type="shell", terminal=True),
+            }
+        )
+        errors = _validate_abandonment_verdict(fsm)
+        assert len(errors) == 1
+        assert "MR-13" in errors[0].message
+
+    def test_mr13_clean_when_mechanism_emits_abandoned_key(self) -> None:
+        """MR-13 does not fire when a state emits the "abandoned" key (the
+        general-task.yaml post-ENH-2857 shape)."""
+        fsm = self._simple_fsm(
+            {
+                "select_step": make_state(
+                    action="awk 'sub(/^- \\[ \\]/, \"- [!]\")' plan.md",
+                    action_type="shell",
+                    on_yes="summarize",
+                ),
+                "summarize": make_state(
+                    action=(
+                        'printf \'{"verdict":"%s","abandoned":%s}\\n\' "$VERDICT" "$ABANDONED"'
+                    ),
+                    action_type="shell",
+                    terminal=True,
+                ),
+            }
+        )
+        errors = _validate_abandonment_verdict(fsm)
+        assert errors == []
+
+    def test_mr13_fires_for_hardcoded_success_verdict_without_guard(self) -> None:
+        """MR-13 fires on a hardcoded "verdict":"success" with no abandonment guard."""
+        fsm = self._simple_fsm(
+            {
+                "summarize": make_state(
+                    action='printf \'{"verdict":"success"}\\n\' > summary.json',
+                    action_type="shell",
+                    terminal=True,
+                ),
+            }
+        )
+        errors = _validate_abandonment_verdict(fsm)
+        assert len(errors) == 1
+        assert "MR-13" in errors[0].message
+
+    def test_mr13_clean_for_hardcoded_success_guarded_by_abandoned_counter(self) -> None:
+        """MR-13 does not fire on a literal verdict=success guarded by an
+        abandonment counter branch (the auto-refine-and-implement.yaml shape)."""
+        fsm = self._simple_fsm(
+            {
+                "finalize": make_state(
+                    action=(
+                        'ABANDONED=$(count abandoned.txt); '
+                        'if [ "$ABANDONED" -gt 0 ]; then VERDICT=incomplete-abandoned; '
+                        "else VERDICT=success; fi; "
+                        'printf \'{"verdict":"%s","abandoned":%s}\\n\' "$VERDICT" "$ABANDONED"'
+                    ),
+                    action_type="shell",
+                    terminal=True,
+                ),
+            }
+        )
+        errors = _validate_abandonment_verdict(fsm)
+        assert errors == []
+
+    def test_mr13_suppressed_by_abandonment_verdict_ok(self) -> None:
+        """abandonment_verdict_ok: true suppresses both MR-13 sub-checks."""
+        fsm = self._simple_fsm(
+            {
+                "select_step": make_state(
+                    action="awk 'sub(/^- \\[ \\]/, \"- [!]\")' plan.md",
+                    action_type="shell",
+                    on_yes="summarize",
+                ),
+                "summarize": make_state(
+                    action='printf \'{"verdict":"success"}\\n\'',
+                    action_type="shell",
+                    terminal=True,
+                ),
+            },
+            abandonment_verdict_ok=True,
+        )
+        errors = _validate_abandonment_verdict(fsm)
+        assert errors == []
+
+    def test_mr13_wired_into_validate_fsm(self) -> None:
+        """validate_fsm() includes MR-13 WARNING for a hardcoded success verdict."""
+        fsm = self._simple_fsm(
+            {
+                "summarize": make_state(
+                    action='printf \'{"verdict":"success"}\\n\'',
+                    action_type="shell",
+                    terminal=True,
+                ),
+            }
+        )
+        all_errors = validate_fsm(fsm)
+        mr13 = [
+            e
+            for e in all_errors
+            if e.severity == ValidationSeverity.WARNING and "(MR-13)" in e.message
+        ]
+        assert len(mr13) == 1
+
+    def test_mr13_abandonment_verdict_ok_recognized_as_top_level_key(
+        self, tmp_path: Path
+    ) -> None:
+        """A YAML with top-level abandonment_verdict_ok produces no Unknown-top-level warning."""
+        loop_yaml = tmp_path / "loop.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: Intentionally hardcodes a success verdict\n"
+            "initial: work\n"
+            "abandonment_verdict_ok: true\n"
+            "states:\n"
+            "  work:\n"
+            "    action: run.sh\n"
+            "    on_yes: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        _, warnings = load_and_validate(loop_yaml, raise_on_error=False)
+        unknown = [w for w in warnings if "Unknown top-level" in w.message]
+        assert unknown == [], f"abandonment_verdict_ok flagged as unknown: {unknown}"
+
+    def test_mr13_general_task_yaml_passes_clean(self) -> None:
+        """general-task.yaml (post-ENH-2857) triggers no MR-13 warnings."""
+        loop_path = BUILTIN_LOOPS_DIR / "general-task.yaml"
+        if not loop_path.exists():
+            pytest.skip("general-task.yaml not found in builtin loops")
+        fsm, _ = load_and_validate(loop_path)
+        errors = _validate_abandonment_verdict(fsm)
+        assert errors == [], f"general-task.yaml triggered MR-13: {errors}"
+
+    def test_enh2858_general_task_yaml_validates_with_no_errors(self) -> None:
+        """general-task.yaml (post-ENH-2858 marker-grep gate) has no ERROR-severity
+        validation issues — the new check_provisional_markers shell state must be
+        MR-3/MR-7/MR-9/MR-11 clean (bash escaping, run_dir artifact isolation, no
+        unsafe interpolation)."""
+        loop_path = BUILTIN_LOOPS_DIR / "general-task.yaml"
+        if not loop_path.exists():
+            pytest.skip("general-task.yaml not found in builtin loops")
+        _, violations = load_and_validate(loop_path, raise_on_error=False)
+        errors = [v for v in violations if v.severity == ValidationSeverity.ERROR]
+        assert errors == [], f"general-task.yaml has validation errors: {errors}"
+
+    def test_mr13_auto_refine_and_implement_yaml_passes_clean(self) -> None:
+        """auto-refine-and-implement.yaml (the ENH-2657 reference shape) triggers no MR-13 warnings."""
+        loop_path = BUILTIN_LOOPS_DIR / "auto-refine-and-implement.yaml"
+        if not loop_path.exists():
+            pytest.skip("auto-refine-and-implement.yaml not found in builtin loops")
+        fsm, _ = load_and_validate(loop_path)
+        errors = _validate_abandonment_verdict(fsm)
+        assert errors == [], f"auto-refine-and-implement.yaml triggered MR-13: {errors}"
