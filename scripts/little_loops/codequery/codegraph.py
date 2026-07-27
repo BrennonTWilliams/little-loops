@@ -25,6 +25,7 @@ kind maps to ``impact_of``; it stays out of :meth:`capabilities` and raises
 
 from __future__ import annotations
 
+import hashlib
 import shutil
 import sqlite3
 import subprocess
@@ -36,6 +37,11 @@ from little_loops.codequery.core import CodeRef, Freshness, ProviderStatus, Unsu
 _NAME = "codegraph"
 _GIT_TIMEOUT = 10
 _SYNC_TIMEOUT = 30
+
+# BUG-2865: bound per-status() hashing cost. Above this many touched paths,
+# fall back to the cheap (and conservative) commit-count heuristic instead of
+# hashing every file.
+_HEAD_MOVED_PATH_CAP = 500
 
 # codegraph edge kinds that resolve callers/callees/references.
 _CALL_KINDS = ("calls",)
@@ -131,6 +137,54 @@ def _is_scan_relevant(path: str, focus_dirs: list[str], exclude_patterns: list[s
     return any(path == d.rstrip("/") or path.startswith(d.rstrip("/") + "/") for d in focus_dirs)
 
 
+def _sha256_file(path: Path) -> str | None:
+    """Return the sha256 hex digest of *path*'s on-disk bytes, or None if unreadable."""
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+    return hashlib.sha256(data).hexdigest()
+
+
+def _touched_paths_since(root: Path, indexed_at: str) -> list[str]:
+    """Return the deduped set of paths touched by commits since *indexed_at*."""
+    raw = _git(root, "log", f"--since={indexed_at}", "--name-only", "--pretty=format:")
+    if not raw:
+        return []
+    return sorted({line.strip() for line in raw.splitlines() if line.strip()})
+
+
+def _content_aware_head_moved(
+    root: Path,
+    indexed_at: str,
+    content_hashes: dict[str, str],
+    focus_dirs: list[str],
+    exclude_patterns: list[str],
+    fallback_count: int,
+) -> int:
+    """Count paths touched since *indexed_at* whose content actually differs
+    from the index (BUG-2865).
+
+    A commit landing content that was already indexed (edit -> index -> commit,
+    the normal development order) must not count as staleness -- only a path
+    whose on-disk bytes differ from ``files.content_hash`` (or that's missing
+    from the index entirely) genuinely needs a re-sync. Bounded by
+    ``_HEAD_MOVED_PATH_CAP``: beyond that many touched paths, hashing every
+    file is too expensive, so fall back to the cheap commit-count heuristic.
+    """
+    touched = _touched_paths_since(root, indexed_at)
+    relevant = [p for p in touched if _is_scan_relevant(p, focus_dirs, exclude_patterns)]
+    if len(relevant) > _HEAD_MOVED_PATH_CAP:
+        return fallback_count
+    changed = 0
+    for path in relevant:
+        expected_hash = content_hashes.get(path)
+        actual_hash = _sha256_file(root / path)
+        if expected_hash is None or actual_hash is None or expected_hash != actual_hash:
+            changed += 1
+    return changed
+
+
 def _sync_if_stale(repo_root: Path, auto_sync: bool) -> None:
     """Shell out to ``codegraph sync --quiet`` on a stale index, never raising.
 
@@ -198,6 +252,10 @@ class CodegraphProvider:
             if indexed_ms is None:
                 row = conn.execute("SELECT MAX(applied_at) AS ts FROM schema_versions").fetchone()
                 indexed_ms = row["ts"] if row and row["ts"] is not None else None
+            content_hashes = {
+                r["path"]: r["content_hash"]
+                for r in conn.execute("SELECT path, content_hash FROM files").fetchall()
+            }
         finally:
             conn.close()
 
@@ -212,7 +270,7 @@ class CodegraphProvider:
         indexed_at = _epoch_ms_to_iso(int(indexed_ms))
         root = _git_root()
         head_moved_raw = _git(root, "log", f"--since={indexed_at}", "--oneline")
-        head_moved = len(head_moved_raw.splitlines()) if head_moved_raw else 0
+        commit_count = len(head_moved_raw.splitlines()) if head_moved_raw else 0
         dirty_raw = _git(root, "status", "--porcelain")
 
         from little_loops.config import BRConfig
@@ -225,6 +283,13 @@ class CodegraphProvider:
                 if _is_scan_relevant(path, scan.focus_dirs, scan.exclude_patterns)
             )
             if dirty_raw
+            else 0
+        )
+        head_moved = (
+            _content_aware_head_moved(
+                root, indexed_at, content_hashes, scan.focus_dirs, scan.exclude_patterns, commit_count
+            )
+            if commit_count
             else 0
         )
 

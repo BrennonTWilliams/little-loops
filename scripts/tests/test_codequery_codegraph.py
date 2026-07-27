@@ -317,8 +317,14 @@ class TestStalenessMatrix:
         expect_available: bool,
     ) -> None:
         repo = self._repo_with_fresh_index(tmp_path, policy)
-        (repo / "new_file.txt").write_text("more\n")
-        _git(repo, "add", "new_file.txt")
+        # BUG-2865: the new content-hash-aware head_moved only flags paths
+        # under scan.focus_dirs (default ["src/", "tests/"]) that are either
+        # unindexed or hash-differ from the index. Land the new file under
+        # src/ so it counts as genuinely unindexed content.
+        src_dir = repo / "src"
+        src_dir.mkdir(exist_ok=True)
+        (src_dir / "new_file.py").write_text("more\n")
+        _git(repo, "add", "src/new_file.py")
         _commit_at(repo, "a commit after index build", self._T2)
         monkeypatch.chdir(repo)
 
@@ -365,6 +371,129 @@ class TestStalenessMatrix:
         assert status.freshness == "fresh"
 
 
+class TestContentAwareHeadMoved:
+    """BUG-2865: a commit landing already-indexed content must not report stale."""
+
+    @pytest.fixture(autouse=True)
+    def _no_codegraph_binary(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("little_loops.codequery.codegraph.shutil.which", lambda _name: None)
+
+    def test_commit_of_already_indexed_content_stays_fresh(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Edit -> index -> commit (the normal dev order): content hash in the
+        index matches the on-disk bytes, so HEAD moving past indexed_at must
+        not flip freshness to stale even though `head_moved`'s naive
+        commit-count would be >= 1."""
+        import hashlib
+        import sqlite3
+
+        repo = _init_repo(tmp_path / "repo")
+        _write_config(repo, staleness="warn")
+        src_dir = repo / "src"
+        src_dir.mkdir(exist_ok=True)
+        tracked = src_dir / "a.py"
+        tracked.write_text("def a(): pass\n")
+        _git(repo, "add", "-A", "src")
+        _commit_at(repo, "add src/a.py", "2020-01-01T00:00:05+00:00")
+
+        db_path = repo / ".codegraph" / "codegraph.db"
+        indexed_ms = 1577836810000  # 2020-01-01T00:00:10Z, after the src/a.py commit
+        _build_index(db_path, indexed_at_ms=indexed_ms)
+        conn = sqlite3.connect(db_path)
+        content_hash = hashlib.sha256(tracked.read_bytes()).hexdigest()
+        conn.execute(
+            "INSERT INTO files (path, content_hash, language, size, modified_at, indexed_at) "
+            "VALUES ('src/a.py', ?, 'python', 1, ?, ?)",
+            (content_hash, indexed_ms, indexed_ms),
+        )
+        conn.commit()
+        conn.close()
+
+        # Commit the index itself, well after indexed_at, without touching
+        # src/a.py's content -- mirrors a "commit lands already-indexed bytes".
+        _git(repo, "add", "-A")
+        _commit_at(repo, "add codegraph index", "2020-01-01T00:01:00+00:00")
+        monkeypatch.chdir(repo)
+
+        status = CodegraphProvider().status()
+        assert status.available is True
+        assert status.freshness == "fresh"
+
+    def test_commit_of_genuinely_new_content_reports_stale(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        _write_config(repo, staleness="warn")
+        _build_index(repo / ".codegraph" / "codegraph.db", indexed_at_ms=1577836810000)
+        _git(repo, "add", "-A")
+        _commit_at(repo, "add config and codegraph index", "2020-01-01T00:00:05+00:00")
+
+        src_dir = repo / "src"
+        src_dir.mkdir(exist_ok=True)
+        (src_dir / "new_file.py").write_text("def b(): pass\n")
+        _git(repo, "add", "src/new_file.py")
+        _commit_at(repo, "add unindexed file", "2020-01-01T00:01:00+00:00")
+        monkeypatch.chdir(repo)
+
+        status = CodegraphProvider().status()
+        assert status.available is True
+        assert status.freshness == "stale"
+
+    def test_auto_sync_not_triggered_when_content_matches(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import hashlib
+        import sqlite3
+
+        repo = _init_repo(tmp_path / "repo")
+        _write_config(repo, staleness="warn")
+        src_dir = repo / "src"
+        src_dir.mkdir(exist_ok=True)
+        tracked = src_dir / "a.py"
+        tracked.write_text("def a(): pass\n")
+        _git(repo, "add", "-A", "src")
+        _commit_at(repo, "add src/a.py", "2020-01-01T00:00:05+00:00")
+
+        db_path = repo / ".codegraph" / "codegraph.db"
+        indexed_ms = 1577836810000
+        _build_index(db_path, indexed_at_ms=indexed_ms)
+        conn = sqlite3.connect(db_path)
+        content_hash = hashlib.sha256(tracked.read_bytes()).hexdigest()
+        conn.execute(
+            "INSERT INTO files (path, content_hash, language, size, modified_at, indexed_at) "
+            "VALUES ('src/a.py', ?, 'python', 1, ?, ?)",
+            (content_hash, indexed_ms, indexed_ms),
+        )
+        conn.commit()
+        conn.close()
+
+        _git(repo, "add", "-A")
+        _commit_at(repo, "add codegraph index", "2020-01-01T00:01:00+00:00")
+        monkeypatch.chdir(repo)
+        monkeypatch.setattr(
+            "little_loops.codequery.codegraph.shutil.which", lambda _name: "/usr/bin/codegraph"
+        )
+
+        real_run = subprocess.run
+        sync_calls: list[list[object]] = []
+
+        def _fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+            cmd = args[0] if args else kwargs.get("args")
+            if isinstance(cmd, list) and "sync" in cmd:
+                sync_calls.append(cmd)
+                return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+            return real_run(*args, **kwargs)  # type: ignore[arg-type]
+
+        with patch(
+            "little_loops.codequery.codegraph.subprocess.run", side_effect=_fake_run
+        ):
+            status = CodegraphProvider().status()
+
+        assert sync_calls == []
+        assert status.freshness == "fresh"
+
+
 class TestAutoSync:
     """ENH-2863: `_sync_if_stale()` shell-out triggered from `status()`."""
 
@@ -374,8 +503,10 @@ class TestAutoSync:
         _build_index(repo / ".codegraph" / "codegraph.db", indexed_at_ms=1577836810000)
         _git(repo, "add", "-A")
         _commit_at(repo, "add config and codegraph index", "2020-01-01T00:00:05+00:00")
-        (repo / "new_file.txt").write_text("more\n")
-        _git(repo, "add", "new_file.txt")
+        src_dir = repo / "src"
+        src_dir.mkdir(exist_ok=True)
+        (src_dir / "new_file.py").write_text("more\n")
+        _git(repo, "add", "src/new_file.py")
         _commit_at(repo, "a commit after index build", "2020-01-01T00:01:00+00:00")
         monkeypatch.chdir(repo)
         return repo

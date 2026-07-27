@@ -4,8 +4,9 @@ type: BUG
 title: "ll-code codegraph freshness is permanently stale \u2014 commit-count heuristic\
   \ can never be satisfied by a sync"
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-27T19:20:00Z'
+completed_at: '2026-07-27T19:44:13Z'
 discovered_date: 2026-07-27
 discovered_by: manual-verification
 labels:
@@ -140,24 +141,49 @@ commit-count when over the cap.
 
 ## Acceptance Criteria
 
-- [ ] On a clean tree whose indexed content hashes all match the working tree,
+- [x] On a clean tree whose indexed content hashes all match the working tree,
       `ll-code status` reports `freshness: fresh` regardless of how many commits have
       landed since `MAX(indexed_at)`.
-- [ ] A commit that introduces genuinely unindexed content (e.g. `git pull` of a new file)
+- [x] A commit that introduces genuinely unindexed content (e.g. `git pull` of a new file)
       still reports `stale` on the first `status()` and `fresh` on the next, after
       `auto_sync` runs.
-- [ ] Uncommitted scan-relevant edits still report `stale` (no regression to `dirty_files`).
-- [ ] With `auto_sync: true` and a current index, `status()` does **not** shell out to
+- [x] Uncommitted scan-relevant edits still report `stale` (no regression to `dirty_files`).
+- [x] With `auto_sync: true` and a current index, `status()` does **not** shell out to
       `codegraph sync`.
-- [ ] A test exercises the real `codegraph` staleness contract without mocking the
+- [x] A test exercises the real `codegraph` staleness contract without mocking the
       subprocess — `scripts/tests/test_codequery_codegraph.py`'s 29 existing tests all mock
       `subprocess.run`, which is exactly why this shipped undetected. Skip gracefully when
       the `codegraph` binary is absent, per the repo's external-tool gate convention.
 
+## Resolution
+
+`head_moved` is now content-hash-aware (`_content_aware_head_moved` in
+`scripts/little_loops/codequery/codegraph.py`). Instead of counting raw commits since
+`MAX(indexed_at)`, `status()` now:
+
+1. Lists the paths touched by commits since `indexed_at` (`git log --since=... --name-only`).
+2. Filters to scan-relevant paths via the existing `_is_scan_relevant()`.
+3. Compares each surviving path's on-disk sha256 against `files.content_hash`; a path
+   missing from the index or hash-mismatched counts as genuinely stale.
+4. Falls back to the old cheap commit-count heuristic when more than
+   `_HEAD_MOVED_PATH_CAP` (500) paths were touched, to bound hashing cost.
+
+A commit that lands already-indexed bytes (the normal edit → index → commit order) no
+longer flips freshness to `stale`, and `auto_sync`'s `codegraph sync` shell-out no longer
+fires on an already-current index. Added `TestContentAwareHeadMoved` covering the
+already-indexed-content-stays-fresh case, the genuinely-new-content-reports-stale case, and
+the no-spurious-sync case; updated two existing fixtures (`test_commits_ahead_marks_stale_per_policy`,
+`TestAutoSync._stale_repo`) whose unindexed file previously lived outside `scan.focus_dirs`
+and would otherwise have silently stopped exercising staleness under the new, more precise
+signal.
+
+The hashed-path-cap design question is resolved: cap at 500 touched paths, falling back to
+the commit-count heuristic above that (a conservative over-report of staleness, never an
+under-report).
+
 ## Status
 
-Open — root-caused with evidence, fix not yet implemented. The one open design question is
-the hashed-path cap noted under Proposed Solution.
+Done — see Resolution.
 
 ## Related
 
@@ -166,3 +192,4 @@ the hashed-path cap noted under Proposed Solution.
 
 ## Session Log
 - `/ll:confidence-check` - 2026-07-27T19:21:22Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/03a1deef-0966-4e20-9875-a530e5aadb11.jsonl`
+- `/ll:manage-issue` - 2026-07-27T19:43:36Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c19944a-c49f-4075-bc8a-2fbab0680c68.jsonl`
