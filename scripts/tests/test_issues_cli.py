@@ -1675,6 +1675,163 @@ class TestIssuesCLISequence:
         assert all(item["id"].startswith("BUG-") for item in data)
 
 
+class TestSequenceProseDeps:
+    """Tests for ENH-2847: sequence surfacing unverified prose dependencies."""
+
+    def _write(self, path: Path, text: str) -> None:
+        path.write_text(text)
+
+    def test_sequence_annotates_drifting_prose_dep(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """An open target referenced only in prose is annotated, not silent."""
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        self._write(
+            bugs_dir / "P1-BUG-101-target.md",
+            "---\nstatus: open\n---\n# BUG-101: Target\n\n## Summary\nBlocker target.",
+        )
+        self._write(
+            bugs_dir / "P1-BUG-100-drifter.md",
+            "---\nstatus: open\n---\n# BUG-100: Drifter\n\n"
+            "## Summary\nDepends on BUG-101 to land first.",
+        )
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "sequence", "--json", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        by_id = {item["id"]: item for item in data}
+        assert by_id["BUG-100"]["blocked_by"] == []
+        assert by_id["BUG-100"]["unverified_prose_deps"] == ["BUG-101"]
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "sequence", "--config", str(temp_project_dir)]
+        ):
+            result = main_issues()
+        text_out = capsys.readouterr().out
+        assert "⚠ prose dep BUG-101, not in blocked_by" in text_out
+
+    def test_sequence_no_annotation_when_edge_structured(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A prose claim already backed by blocked_by is not flagged."""
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        self._write(
+            bugs_dir / "P1-BUG-101-target.md",
+            "---\nstatus: open\n---\n# BUG-101: Target\n\n## Summary\nBlocker target.",
+        )
+        self._write(
+            bugs_dir / "P1-BUG-100-drifter.md",
+            "---\nstatus: open\nblocked_by:\n- BUG-101\n---\n# BUG-100: Drifter\n\n"
+            "## Summary\nDepends on BUG-101 to land first.",
+        )
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "sequence", "--json", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        by_id = {item["id"]: item for item in data}
+        assert by_id["BUG-100"]["unverified_prose_deps"] == []
+
+    def test_sequence_no_annotation_when_target_terminal(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A prose reference to a done issue is not flagged as unverified."""
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        self._write(
+            bugs_dir / "P1-BUG-101-target.md",
+            "---\nstatus: done\n---\n# BUG-101: Target\n\n## Summary\nBlocker target.",
+        )
+        self._write(
+            bugs_dir / "P1-BUG-100-drifter.md",
+            "---\nstatus: open\n---\n# BUG-100: Drifter\n\n"
+            "## Summary\nDepends on BUG-101 to land first.",
+        )
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "sequence", "--json", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        by_id = {item["id"]: item for item in data}
+        assert by_id["BUG-100"]["unverified_prose_deps"] == []
+
+    def test_sequence_order_unaffected_by_prose_deps(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Prose-only deps never change topological order."""
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        self._write(
+            bugs_dir / "P1-BUG-101-target.md",
+            "---\nstatus: open\n---\n# BUG-101: Target\n\n## Summary\nBlocker target.",
+        )
+        self._write(
+            bugs_dir / "P1-BUG-100-drifter.md",
+            "---\nstatus: open\n---\n# BUG-100: Drifter\n\n"
+            "## Summary\nDepends on BUG-101 to land first.",
+        )
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "sequence", "--json", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            main_issues()
+        with_prose_order = [item["id"] for item in json.loads(capsys.readouterr().out)]
+
+        # Remove the prose claim entirely; order (driven only by priority/id,
+        # since there is no structured edge either way) must be unchanged.
+        self._write(
+            bugs_dir / "P1-BUG-100-drifter.md",
+            "---\nstatus: open\n---\n# BUG-100: Drifter\n\n## Summary\nNo dependency claim.",
+        )
+        with patch.object(
+            sys, "argv", ["ll-issues", "sequence", "--json", "--config", str(temp_project_dir)]
+        ):
+            main_issues()
+        without_prose_order = [item["id"] for item in json.loads(capsys.readouterr().out)]
+
+        assert with_prose_order == without_prose_order
+
+
 class TestIssuesCLIImpactEffort:
     """Tests for ll-issues impact-effort sub-command."""
 

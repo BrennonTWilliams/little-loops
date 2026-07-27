@@ -1244,6 +1244,14 @@ Suggest a dependency-ordered implementation sequence.
 | `--json` / `-j` | Output sequence as JSON array |
 | `--config` | Path to project root |
 
+For an issue with an empty structured `blocked_by` set, a prose dependency
+claim (e.g. "Depends on FEAT-109" in the body) that references a non-terminal
+issue is surfaced as an annotation rather than silently reported as
+`no blockers` — text output appends `⚠ prose dep FEAT-109, not in blocked_by`,
+and `--json` adds an `"unverified_prose_deps"` array field to each record.
+This never changes topological order; it only flags rows worth a human check
+(ENH-2847).
+
 #### `ll-issues impact-effort` / `ll-issues ie`
 
 Display an impact vs. effort matrix for active issues.
