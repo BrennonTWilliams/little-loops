@@ -98,6 +98,43 @@ class TestMainDoctor:
 
         assert result == 0
 
+    def test_advisory_capability_unsupported_does_not_fail(self) -> None:
+        """An unsupported *advisory* capability is reported but must not fail
+        the exit code. claude_md_suppression is an optimization, not a
+        correctness requirement — claude-code honestly reports it unsupported
+        (the CLI has no flag to skip CLAUDE.md), and that must not make the
+        primary host fail its own health check."""
+        report = CapabilityReport(
+            host="claude-code",
+            binary="claude",
+            version="",
+            capabilities=[
+                CapabilityEntry("streaming", "full"),
+                CapabilityEntry("claude_md_suppression", "unsupported", "no flag exists"),
+            ],
+        )
+        runner = _make_runner(report)
+
+        with (
+            patch("sys.argv", ["ll-doctor"]),
+            patch("little_loops.host_runner.resolve_host", return_value=runner),
+            patch("little_loops.host_runner.apply_host_cli_from_config"),
+            patch("little_loops.config.BRConfig"),
+            patch("builtins.print"),
+        ):
+            result = main_doctor()
+
+        assert result == 0
+
+    def test_claude_md_suppression_reported_unsupported(self) -> None:
+        """The claude CLI exposes no flag that skips CLAUDE.md, so the
+        capability must report 'unsupported'. It was previously 'full' on the
+        grounds that the LL_AUTOMATION env signal is honored — but that signal
+        only prunes our own hook output, a different and much smaller thing.
+        Reporting 'full' made ll-doctor claim a capability the host lacks."""
+        entries = {c.name: c for c in ClaudeCodeRunner().describe_capabilities().capabilities}
+        assert entries["claude_md_suppression"].status == "unsupported"
+
     def test_exit_one_when_critical_capability_missing(self) -> None:
         """Returns 1 when any capability status is 'unsupported'."""
         report = CapabilityReport(
