@@ -28,7 +28,7 @@ from little_loops.fsm.schema import (
     StateConfig,
 )
 from little_loops.fsm.types import FAILURE_TERMINAL_EXIT_CODE
-from tests.helpers import make_test_fsm, make_test_state
+from tests.helpers import make_test_fsm, make_test_state, sgr_codes
 
 if TYPE_CHECKING:
     pass
@@ -1346,10 +1346,11 @@ class TestRenderFsmDiagram:
         with patch.object(output_mod, "_USE_COLOR", True):
             result = _render_fsm_diagram(fsm)
 
-        # State names should be bold — accept bare (\\033[1m) or colored (\\033[X;1m).
-        # ``[\d;]+`` not ``\d+``: kind colors may be multi-segment indexed-256
-        # codes, so the compounded form is e.g. ``\033[38;5;240;1m``.
-        assert "\033[1m" in result or re.search(r"\033\[[\d;]+;1m", result) is not None, (
+        # State names should be bold — accept bare ("1") or colored/compounded
+        # (any code ending in ";1", including multi-segment indexed-256 codes
+        # like "38;5;240;1").
+        codes = sgr_codes(result)
+        assert "1" in codes or any(code.endswith(";1") for code in codes), (
             "Non-highlighted state names should use bold (ANSI code 1, bare or compounded)"
         )
 

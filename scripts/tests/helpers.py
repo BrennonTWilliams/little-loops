@@ -1,13 +1,14 @@
-"""Shared test helpers for FSM loop tests.
+"""Shared test helpers.
 
-These were previously duplicated across 6 test files. They live here so
-all loop/FSM tests can import them from a single source.
+Includes helpers for FSM loop tests, previously duplicated across 6 test
+files, plus general-purpose test utilities such as ``sgr_codes()``.
 """
 
 from __future__ import annotations
 
 import atexit
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -73,6 +74,23 @@ def copy_git_template(dst: Path, initial_branch: str = "main") -> Path:
             check=True,
         )
     return dst
+
+
+# ``[0-9;]*`` matches the production ``_ANSI_RE`` in
+# ``little_loops.cli.output.strip_ansi`` — the same grammar, but capturing
+# the parameter group instead of discarding it.
+_SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
+
+
+def sgr_codes(text: str) -> set[str]:
+    """Return the distinct SGR parameter strings (e.g. ``"38;5;240;1"``) in *text*.
+
+    Use in assertions instead of hand-rolled regexes, which are prone to
+    silently under-matching multi-segment indexed-256 codes (e.g. matching
+    ``\\d+`` against a code like ``38;5;240;1``): ``assert "38;5;240;1" in
+    sgr_codes(result)``.
+    """
+    return set(_SGR_RE.findall(text))
 
 
 def make_test_state(

@@ -569,6 +569,19 @@ from little_loops.cli.output import strip_ansi
 assert snapshot == strip_ansi(result)
 ```
 
+When asserting on a *specific* SGR code rather than normalizing the whole
+string, use `sgr_codes()` (from `tests.helpers`) instead of a hand-rolled
+regex. Indexed-256 codes are multi-segment (e.g. `38;5;240;1`), and an
+assertion like `re.search(r"\d+;1m", result)` silently under-matches them —
+it only catches basic-16 codes, degrading into a weaker check than intended
+without ever failing:
+
+```python
+from tests.helpers import sgr_codes
+
+assert "38;5;240;1" in sgr_codes(result)
+```
+
 ### Integration Tests
 
 Mark tests with `@pytest.mark.integration` for component-level testing:
