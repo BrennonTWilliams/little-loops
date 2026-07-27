@@ -1,0 +1,11 @@
+{
+  "id": "c3c9f067-22c8-4dfc-9c0e-a3b3de8f2ba7",
+  "type": "decision",
+  "timestamp": "2026-07-27T00:11:26Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Single-segment regexes cannot match 38;5;NNN codes and silently degrade to weaker checks; widen to [\\d;]+ and add a shared sgr_codes() test helper.",
+  "rule": "Captured: SGR test assertions under-match multi-segment 256 codes",
+  "scope": "issue",
+  "issue": "ENH-2838"
+}

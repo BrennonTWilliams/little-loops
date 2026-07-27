@@ -17,6 +17,7 @@ relates_to:
 - FEAT-2794
 - FEAT-2795
 - FEAT-2796
+- ENH-2836
 labels:
 - cli
 - doctor
@@ -80,6 +81,7 @@ only "what can the host CLI do?".
 - **ENH-2762** — `ll-doctor --json` omits the Analytics Capture and Issues config sections
 - **FEAT-2763** — Expand ll-doctor to validate little-loops' own install surface and aggregate the `ll-verify-*` family
 - **BUG-2764** — The configure skill's ll- CLI permission allowlist is stale (31 of 46 tools)
+- **ENH-2836** — `ll-check-links` conflates network timeouts with broken links and exits 1, so `ll-doctor --full` fails on ambient network conditions
 
 ### Suggested sequencing
 

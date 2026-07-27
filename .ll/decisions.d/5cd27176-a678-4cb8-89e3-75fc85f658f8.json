@@ -1,0 +1,11 @@
+{
+  "id": "7fc18d4b-1d7c-4d7e-ad8d-8a9aea848ba4",
+  "type": "decision",
+  "timestamp": "2026-07-27T00:11:26Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Timeout/DNS failures are reported as Broken and exit 1, poisoning ll-doctor --full; classify unreachable separately and gate exit on genuine breakage only.",
+  "rule": "Captured: ll-check-links conflates network timeouts with broken links",
+  "scope": "issue",
+  "issue": "ENH-2836"
+}
