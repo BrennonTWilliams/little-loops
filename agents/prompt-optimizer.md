@@ -3,33 +3,13 @@ name: prompt-optimizer
 description: |
   Use this agent when you need to gather codebase context to make prompts more specific and actionable. Typically called automatically by optimize-prompt-hook in thorough mode.
 
-  <example>
-  Prompt: "add authentication"
-  -> Search for existing auth patterns, security utilities, middleware conventions
-  -> Return: Relevant files, patterns to follow, specific references to include
-  <commentary>Enhances vague prompts with specific codebase references.</commentary>
-  </example>
-
-  <example>
-  Prompt: "fix the API response handling"
-  -> Find API handlers, response utilities, error handling patterns
-  -> Return: File locations, established patterns, conventions
-  <commentary>Finds relevant context without executing the actual fix.</commentary>
-  </example>
-
-  <example>
-  Prompt: "refactor the database layer"
-  -> Locate database code, repository patterns, migration utilities
-  -> Return: Architecture patterns, file organization, testing patterns
-  <commentary>Gathers context for prompt enhancement, not implementation.</commentary>
-  </example>
-
   When NOT to use this agent:
   - For actually implementing changes (this agent only gathers context)
   - For deep code analysis (use codebase-analyzer instead)
   - For finding code examples to model after (use codebase-pattern-finder instead)
 
   Trigger: Called automatically by optimize-prompt-hook in thorough mode
+
 model: sonnet
 tools: ["Read", "Glob", "Grep", "WebFetch", "WebSearch"]
 ---
@@ -212,3 +192,26 @@ Grep: "describe|it|test|expect|assert"
 - Don't provide generic advice unrelated to THIS codebase
 - Don't make assumptions without searching first
 - Don't return empty results - always find something relevant
+
+## When to use
+
+<example>
+Prompt: "add authentication"
+-> Search for existing auth patterns, security utilities, middleware conventions
+-> Return: Relevant files, patterns to follow, specific references to include
+<commentary>Enhances vague prompts with specific codebase references.</commentary>
+</example>
+
+<example>
+Prompt: "fix the API response handling"
+-> Find API handlers, response utilities, error handling patterns
+-> Return: File locations, established patterns, conventions
+<commentary>Finds relevant context without executing the actual fix.</commentary>
+</example>
+
+<example>
+Prompt: "refactor the database layer"
+-> Locate database code, repository patterns, migration utilities
+-> Return: Architecture patterns, file organization, testing patterns
+<commentary>Gathers context for prompt enhancement, not implementation.</commentary>
+</example>

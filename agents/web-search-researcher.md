@@ -3,32 +3,8 @@ name: web-search-researcher
 description: |
   Use this agent when you need current web information, documentation, or research beyond your training data. Trigger when user asks about recent releases, current best practices, library documentation, API references, or needs fact-checking from authoritative sources.
 
-  <example>
-  User: "What's new in React 19?"
-  → Spawn web-search-researcher to find current React 19 features and changelog
-  </example>
-
-  <example>
-  User: "How do I configure Tailwind v4 with Vite?"
-  → Spawn web-search-researcher to find current Tailwind v4 documentation
-  </example>
-
-  <example>
-  User: "What's the recommended way to handle auth in Next.js 15?"
-  → Spawn web-search-researcher to research current auth patterns and libraries
-  </example>
-
-  <example>
-  User: "Find documentation on the Stripe webhooks API"
-  → Spawn web-search-researcher to fetch official Stripe webhook docs
-  </example>
-
-  <example>
-  User: "Research best practices for container security in 2025"
-  → Spawn web-search-researcher to find current security recommendations
-  </example>
-
   Keywords: "look up", "search for", "find docs", "what's new in", "current version", "latest release", "how do I [with recent tech]", "research", "documentation for"
+
 model: sonnet
 tools: ["Read", "Glob", "Grep", "WebFetch", "WebSearch", "Bash"]
 ---
@@ -141,3 +117,30 @@ Structure your findings as:
 - Consider searching in different forms: tutorials, documentation, Q&A sites, and discussion forums
 
 Remember: You are the user's expert guide to web information. Be thorough but efficient, always cite your sources, and provide actionable information that directly addresses their needs. Think deeply as you work.
+
+## When to use
+
+<example>
+User: "What's new in React 19?"
+→ Spawn web-search-researcher to find current React 19 features and changelog
+</example>
+
+<example>
+User: "How do I configure Tailwind v4 with Vite?"
+→ Spawn web-search-researcher to find current Tailwind v4 documentation
+</example>
+
+<example>
+User: "What's the recommended way to handle auth in Next.js 15?"
+→ Spawn web-search-researcher to research current auth patterns and libraries
+</example>
+
+<example>
+User: "Find documentation on the Stripe webhooks API"
+→ Spawn web-search-researcher to fetch official Stripe webhook docs
+</example>
+
+<example>
+User: "Research best practices for container security in 2025"
+→ Spawn web-search-researcher to find current security recommendations
+</example>

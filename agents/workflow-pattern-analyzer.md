@@ -5,32 +5,13 @@ description: |
 
   Note: This agent uses Write to output analysis results (step1-patterns.yaml), not to modify source code.
 
-  <example>
-  Input: user-messages.jsonl with 200 messages
-  → Categorize each message by action type
-  → Identify repeated request patterns
-  → Output step1-patterns.yaml
-  <commentary>Agent reads message data, performs categorization analysis, and writes structured YAML output for downstream processing.</commentary>
-  </example>
-
-  <example>
-  Prompt: "Analyze the user messages in .ll/user-messages-20260112.jsonl"
-  → Spawn workflow-pattern-analyzer to categorize messages and detect patterns
-  <commentary>Use when you have extracted user messages and want pattern analysis.</commentary>
-  </example>
-
-  <example>
-  Prompt: "Run step 1 of workflow analysis on the extracted messages"
-  → Spawn workflow-pattern-analyzer to produce step1-patterns.yaml
-  <commentary>First step in the 3-step analysis pipeline.</commentary>
-  </example>
-
   When NOT to use this agent:
   - For ad-hoc message searches (use Grep instead)
   - For modifying source code files
   - When you need steps 2 or 3 of workflow analysis
 
   Trigger keywords: "analyze workflow", "categorize messages", "pattern analysis", "step 1 workflow", "message categorization"
+
 model: sonnet
 tools: ["Read", "Glob", "Grep", "WebFetch", "WebSearch", "Write"]
 ---
@@ -222,3 +203,25 @@ entity_inventory:
 Your job is to objectively categorize messages and identify patterns. You are creating structured data that feeds into Step 2 (workflow-sequence-analyzer) of the analysis pipeline. Focus on accuracy and completeness, not interpretation or recommendations.
 
 The output should be a factual inventory of what patterns exist in the user's workflow history, enabling downstream analysis to identify automation opportunities.
+
+## When to use
+
+<example>
+Input: user-messages.jsonl with 200 messages
+→ Categorize each message by action type
+→ Identify repeated request patterns
+→ Output step1-patterns.yaml
+<commentary>Agent reads message data, performs categorization analysis, and writes structured YAML output for downstream processing.</commentary>
+</example>
+
+<example>
+Prompt: "Analyze the user messages in .ll/user-messages-20260112.jsonl"
+→ Spawn workflow-pattern-analyzer to categorize messages and detect patterns
+<commentary>Use when you have extracted user messages and want pattern analysis.</commentary>
+</example>
+
+<example>
+Prompt: "Run step 1 of workflow analysis on the extracted messages"
+→ Spawn workflow-pattern-analyzer to produce step1-patterns.yaml
+<commentary>First step in the 3-step analysis pipeline.</commentary>
+</example>

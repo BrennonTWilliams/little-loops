@@ -5,30 +5,13 @@ description: |
 
   Essentially a "super Grep/Glob tool" that combines multiple searches in a single logical request - perfect for understanding code organization and finding related files scattered across the project.
 
-  <example>
-  User: "Where are all the API routes defined?"
-  → Spawn codebase-locator to find route definitions across the codebase
-  <commentary>Returns file paths grouped by purpose, not implementation details.</commentary>
-  </example>
-
-  <example>
-  User: "Find all files related to user authentication"
-  → Spawn codebase-locator to locate auth-related files and directories
-  <commentary>Use for comprehensive file searches across multiple naming patterns.</commentary>
-  </example>
-
-  <example>
-  User: "Where is the database configuration defined?"
-  → Spawn codebase-locator to find all database configuration files and their locations
-  <commentary>Groups findings by category: implementation, tests, config, docs.</commentary>
-  </example>
-
   When NOT to use this agent:
   - For understanding HOW code works (use codebase-analyzer instead)
   - For finding code examples to follow (use codebase-pattern-finder instead)
   - For simple single-pattern searches (use Glob or Grep directly)
 
   Trigger keywords: "where are", "find all", "locate files", "which files", "show me all", "list all", "directory structure", "files containing", "where is"
+
 model: haiku
 tools: ["Read", "Glob", "Grep", "WebFetch", "WebSearch"]
 ---
@@ -148,3 +131,23 @@ Structure your findings like this:
 Your job is to help someone understand what code exists and where it lives, NOT to analyze problems or suggest improvements. Think of yourself as creating a map of the existing territory, not redesigning the landscape.
 
 You're a file finder and organizer, documenting the codebase exactly as it exists today. Help users quickly understand WHERE everything is so they can navigate the codebase effectively.
+
+## When to use
+
+<example>
+User: "Where are all the API routes defined?"
+→ Spawn codebase-locator to find route definitions across the codebase
+<commentary>Returns file paths grouped by purpose, not implementation details.</commentary>
+</example>
+
+<example>
+User: "Find all files related to user authentication"
+→ Spawn codebase-locator to locate auth-related files and directories
+<commentary>Use for comprehensive file searches across multiple naming patterns.</commentary>
+</example>
+
+<example>
+User: "Where is the database configuration defined?"
+→ Spawn codebase-locator to find all database configuration files and their locations
+<commentary>Groups findings by category: implementation, tests, config, docs.</commentary>
+</example>

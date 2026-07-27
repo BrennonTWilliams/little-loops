@@ -3,30 +3,13 @@ name: plugin-config-auditor
 description: |
   Use this agent when you need to audit Claude Code plugin component definitions for quality, consistency, and best practices - analyzing agents, skills, commands, and hooks individually.
 
-  <example>
-  Prompt: "Audit all agents in agents/*.md for description quality and tool accuracy"
-  -> Analyzes each agent's description, trigger keywords, and model settings
-  <commentary>Checks individual component quality, not cross-references.</commentary>
-  </example>
-
-  <example>
-  Prompt: "Audit hooks configuration in hooks/hooks.json"
-  -> Validates event types, timeout values, script existence, and prompt file references
-  <commentary>Verifies hooks follow best practices and have reasonable timeouts.</commentary>
-  </example>
-
-  <example>
-  Prompt: "Audit all commands in commands/*.md for frontmatter completeness"
-  -> Checks description, arguments, examples, and integration sections
-  <commentary>Returns structured audit with severity ratings per issue.</commentary>
-  </example>
-
   When NOT to use this agent:
   - For cross-component consistency (use consistency-checker instead)
   - For modifying configurations (this agent audits only)
   - For general codebase analysis (use codebase-analyzer instead)
 
   Trigger: Called by /ll:audit-claude-config for Wave 1 component audits
+
 model: sonnet
 tools: ["Read", "Glob", "Grep", "WebFetch", "WebSearch"]
 ---
@@ -231,3 +214,23 @@ Structure your audit like this:
 - Don't suggest rewrites unless specifically broken
 - Don't evaluate business logic, only structure and quality
 - Don't modify any files - audit only
+
+## When to use
+
+<example>
+Prompt: "Audit all agents in agents/*.md for description quality and tool accuracy"
+-> Analyzes each agent's description, trigger keywords, and model settings
+<commentary>Checks individual component quality, not cross-references.</commentary>
+</example>
+
+<example>
+Prompt: "Audit hooks configuration in hooks/hooks.json"
+-> Validates event types, timeout values, script existence, and prompt file references
+<commentary>Verifies hooks follow best practices and have reasonable timeouts.</commentary>
+</example>
+
+<example>
+Prompt: "Audit all commands in commands/*.md for frontmatter completeness"
+-> Checks description, arguments, examples, and integration sections
+<commentary>Returns structured audit with severity ratings per issue.</commentary>
+</example>

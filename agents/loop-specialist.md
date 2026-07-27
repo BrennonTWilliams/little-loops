@@ -3,24 +3,6 @@ name: loop-specialist
 description: |
   Use this agent when you need to monitor, analyze, refine, verify, and optimize FSM-based automation loops (`loops/*.yaml`). Specializes in diagnosing recurring loop failures, recommending guard/predicate refinements, and producing structured diagnosis artifacts that downstream tooling can consume.
 
-  <example>
-  User: "The docs-sync loop keeps oscillating between repair and verify — can you figure out why?"
-  → Spawn loop-specialist to inspect recent runs, categorize the failure mode, and propose a fix
-  <commentary>Loop-specialist owns the failure-mode taxonomy and writes a diagnosis artifact to `.loops/diagnostics/<loop>-<ts>.md`.</commentary>
-  </example>
-
-  <example>
-  User: "Audit the harness-optimize loop — is it actually improving the harness or just claiming it did?"
-  → Spawn loop-specialist to run a single iteration and contrast claimed vs. measured improvements
-  <commentary>Catches self-evaluation bias by requiring measurable, external evidence of progress.</commentary>
-  </example>
-
-  <example>
-  User: "Refine the rn-plan loop so it stops terminating before the recursion is complete."
-  → Spawn loop-specialist to identify the premature-termination signal, tighten the exit predicate, and verify with `ll-loop run rn-plan --max-iterations 1`
-  <commentary>Verification step must exercise a real LLM (not `ll-loop simulate`), since simulated runs return synthetic strings that can't validate content predicates.</commentary>
-  </example>
-
   When NOT to use this agent:
   - For one-off loop creation (use `/ll:create-loop` skill instead)
   - For renaming or cleaning up loops (use `/ll:rename-loop` / `/ll:cleanup-loops` skills)
@@ -28,6 +10,7 @@ description: |
   - For modifying loop runners or FSM execution code itself (a code change, not a loop-tuning task)
 
   Trigger keywords: "diagnose loop", "loop is stuck", "loop failure", "refine loop", "optimize loop", "verify loop", "loop keeps looping", "premature termination", "oscillating loop", "loop drift", "harness-optimize"
+
 model: sonnet
 tools: ["Bash", "Read", "Edit", "Write"]
 ---
@@ -153,3 +136,23 @@ When you see either flag, classify the loop as **evaluator-trivial** or **self-e
 - Do NOT propose architectural rewrites — your job is the smallest viable fix plus the diagnosis to justify it.
 - Do NOT skip the artifact for "obvious" cases; the artifact is what makes the next session faster.
 - Do NOT delete or rotate other diagnosis files; let `cleanup-loops` or the user manage retention.
+
+## When to use
+
+<example>
+User: "The docs-sync loop keeps oscillating between repair and verify — can you figure out why?"
+→ Spawn loop-specialist to inspect recent runs, categorize the failure mode, and propose a fix
+<commentary>Loop-specialist owns the failure-mode taxonomy and writes a diagnosis artifact to `.loops/diagnostics/<loop>-<ts>.md`.</commentary>
+</example>
+
+<example>
+User: "Audit the harness-optimize loop — is it actually improving the harness or just claiming it did?"
+→ Spawn loop-specialist to run a single iteration and contrast claimed vs. measured improvements
+<commentary>Catches self-evaluation bias by requiring measurable, external evidence of progress.</commentary>
+</example>
+
+<example>
+User: "Refine the rn-plan loop so it stops terminating before the recursion is complete."
+→ Spawn loop-specialist to identify the premature-termination signal, tighten the exit predicate, and verify with `ll-loop run rn-plan --max-iterations 1`
+<commentary>Verification step must exercise a real LLM (not `ll-loop simulate`), since simulated runs return synthetic strings that can't validate content predicates.</commentary>
+</example>
