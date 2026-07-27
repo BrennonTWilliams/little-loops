@@ -4177,7 +4177,7 @@ Entry point for `ll-verify-des-audit` command (ENH-2475). Walk the source tree, 
 def main_check_links() -> int
 ```
 
-Entry point for `ll-check-links` command. Check markdown documentation for broken links.
+Entry point for `ll-check-links` command. Check markdown documentation for broken links, classifying failures as broken (host answered, said no) or unreachable (network timeout/DNS/connection - broken-only gates the exit code by default; `--strict-network` restores the old behavior).
 
 **Returns:** Exit code
 

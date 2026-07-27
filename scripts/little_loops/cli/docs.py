@@ -316,7 +316,8 @@ def main_check_links() -> int:
     Check markdown documentation for broken links.
 
     Returns:
-        Exit code (0 = all links valid, 1 = broken links found, 2 = error)
+        Exit code (0 = no broken links (unreachable links don't fail the gate
+        unless --strict-network is set), 1 = broken links found, 2 = error)
     """
     with cli_event_context(DEFAULT_DB_PATH, "ll-check-links", sys.argv[1:]):
         from little_loops.link_checker import (
@@ -338,10 +339,12 @@ Examples:
   %(prog)s --format markdown  # Markdown report
   %(prog)s docs/              # Check specific directory
   %(prog)s --ignore 'http://localhost.*'  # Ignore pattern
+  %(prog)s --strict-network   # Also fail on unreachable (timeout/DNS) links
 
 Exit codes:
-  0 - All links valid
-  1 - Broken links found
+  0 - No broken links (unreachable/timed-out links are reported but don't fail
+      the gate, unless --strict-network is set)
+  1 - Broken links found (or unreachable links found, with --strict-network)
   2 - Error occurred
 """,
         )
@@ -399,6 +402,12 @@ Exit codes:
             help="Show verbose output",
         )
 
+        parser.add_argument(
+            "--strict-network",
+            action="store_true",
+            help="Also fail the exit code on unreachable (timeout/DNS/connection) links",
+        )
+
         args = parser.parse_args()
 
         configure_output()
@@ -425,7 +434,11 @@ Exit codes:
 
         print(output)
 
-        # Return exit code based on results
+        # Return exit code based on results. Unreachable (network) links are
+        # reported for visibility but don't fail the gate by default - only a
+        # genuine broken link (host answered "no") does.
         if result.has_errors:
+            return 1
+        if args.strict_network and result.unreachable_links > 0:
             return 1
         return 0

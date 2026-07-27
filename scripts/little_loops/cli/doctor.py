@@ -721,15 +721,36 @@ def _full_check_links_data() -> dict:
     base_dir = Path.cwd()
     ignore_patterns = load_ignore_patterns(base_dir)
     result = check_markdown_links(base_dir, ignore_patterns)
-    if not result.has_errors:
-        return {"status": "full", "note": f"{result.valid_links} valid link(s)"}
-    return {"status": "unsupported", "note": f"{result.broken_links} broken link(s)"}
+    if result.broken_links > 0:
+        return {
+            "status": "unsupported",
+            "severity": "error",
+            "note": f"{result.broken_links} broken link(s)",
+        }
+    if result.unreachable_links > 0:
+        return {
+            "status": "unsupported",
+            "severity": "informational",
+            "note": f"{result.unreachable_links} unreachable link(s) (network)",
+        }
+    return {
+        "status": "full",
+        "severity": "error",
+        "note": f"{result.valid_links} valid link(s)",
+    }
 
 
 @register_full_check
 def _full_check_links_check() -> list[CheckResult]:
     data = _full_check_links_data()
-    return [CheckResult(name="full:check_links", status=data["status"], note=data["note"])]
+    return [
+        CheckResult(
+            name="full:check_links",
+            status=data["status"],
+            note=data["note"],
+            severity=data.get("severity", "error"),
+        )
+    ]
 
 
 def _print_full_section() -> None:

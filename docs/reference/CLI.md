@@ -233,7 +233,7 @@ Beyond the host-capability table, `ll-doctor` always runs 5 default install-surf
 
 **Flags:**
 - `-j`, `--json` — emit the report as JSON instead of the human-readable table. The JSON payload is a superset of the `CapabilityReport` dataclass: alongside `host`/`binary`/`version`/`capabilities` it includes `analytics_capture` (`{skills, cli_commands, corrections, file_events, correction_patterns}`), `issues` (`{auto_commit, auto_commit_prefix}`), and the install-surface keys `entry_points` (list of `{name, status, note}`), `skills_commands` (`{status, note, total}`), `decisions_store` (`{status, note}`), `history_db` (`{status, note}`), and `loop_validity` (`{status, note, total, invalid}`) — the same config/check state the text output prints under their respective sections (ENH-2762, FEAT-2793).
-- `--full` — additionally run the full `ll-verify-*` / `ll-check-links` checker family (FEAT-2795) under a "Full Verification (--full)" section: `docs`, `skill_budget`, `skills`, `triggers`, `decisions`, `package_data`, `kinds`, `design_tokens`, `des_audit`, `check_links` (does not wrap `ll-verify-cli-allowlist`). Adds a `full` key (dict keyed by verifier name → `{status, note}`) to the `--json` payload when combined with `-j`/`--json`.
+- `--full` — additionally run the full `ll-verify-*` / `ll-check-links` checker family (FEAT-2795) under a "Full Verification (--full)" section: `docs`, `skill_budget`, `skills`, `triggers`, `decisions`, `package_data`, `kinds`, `design_tokens`, `des_audit`, `check_links` (does not wrap `ll-verify-cli-allowlist`). Adds a `full` key (dict keyed by verifier name → `{status, note, severity}`) to the `--json` payload when combined with `-j`/`--json`. `check_links` reports `severity: "error"` on genuinely broken links and `severity: "informational"` when the only failures are unreachable (network timeout/DNS) links (ENH-2836), so a flaky or offline network doesn't fail this check.
 
 **Exit codes:** `0` = all error-tier checks passed, `1` = an error-tier check failed. `ll-doctor` folds the host-capability report and any registered install-surface checks (FEAT-2793's `CheckResult` registry) — including the `--full` verifier family when requested — into a single severity split: `unsupported` capabilities/checks are error-tier (fail the exit code, as before); informational checks — e.g. an absent-but-optional subsystem — never affect it regardless of status.
 
@@ -3104,7 +3104,7 @@ ll-verify-des-audit -C /path/to/root         # Discover under a specific project
 
 ### ll-check-links
 
-Check markdown documentation for broken links.
+Check markdown documentation for broken links. External link failures are classified into two distinct outcomes (ENH-2836): **broken** (the host answered and said no — HTTP 404/410/500/etc.) and **unreachable** (no usable answer — timeout, DNS failure, connection reset/refused). A single retry with a short backoff runs before a result is finalized as unreachable, to smooth over one slow host. Only broken links fail the exit code by default, so a flaky or offline network doesn't turn this into a red gate for reasons unrelated to the repo's correctness.
 
 **Flags:**
 
@@ -3117,8 +3117,9 @@ Check markdown documentation for broken links.
 | `--timeout` | | HTTP request timeout in seconds (default: 10) |
 | `--workers` | `-w` | Maximum concurrent HTTP requests (default: 10) |
 | `--verbose` | `-v` | Show verbose output |
+| `--strict-network` | | Also fail the exit code on unreachable (timeout/DNS/connection) links, restoring the pre-ENH-2836 behavior |
 
-**Exit codes:** `0` = all links valid, `1` = broken links found, `2` = error
+**Exit codes:** `0` = no broken links (unreachable links are reported but don't fail the gate, unless `--strict-network` is set), `1` = broken links found (or unreachable links found, with `--strict-network`), `2` = error
 
 **Examples:**
 ```bash
@@ -3127,6 +3128,7 @@ ll-check-links --json                     # Output as JSON
 ll-check-links --format markdown          # Markdown report
 ll-check-links -C docs/                   # Check specific directory
 ll-check-links --ignore 'http://localhost.*'  # Ignore pattern
+ll-check-links --strict-network           # Also fail on unreachable (network) links
 ll-check-links --timeout 30 --workers 5   # Custom timeout and concurrency
 ```
 

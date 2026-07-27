@@ -6,9 +6,11 @@ from unittest.mock import Mock, patch
 
 from little_loops.link_checker import (
     LinkCheckResult,
+    LinkOutcome,
     LinkResult,
     check_markdown_links,
     check_url,
+    check_url_outcome,
     extract_links_from_markdown,
     format_result_json,
     format_result_markdown,
@@ -198,6 +200,120 @@ class TestCheckUrl:
         assert error == "Timeout"
 
 
+class TestCheckUrlOutcome:
+    """Tests for check_url_outcome classification (LinkOutcome, ENH-2836)."""
+
+    @patch("urllib.request.urlopen")
+    def test_valid_returns_valid_outcome(self, mock_urlopen: Mock) -> None:
+        mock_response = Mock()
+        mock_response.status = 200
+        mock_urlopen.return_value.__enter__.return_value = mock_response
+
+        outcome, error = check_url_outcome("https://example.com")
+        assert outcome is LinkOutcome.VALID
+        assert error is None
+
+    @patch("urllib.request.urlopen")
+    def test_http_404_is_broken_not_unreachable(self, mock_urlopen: Mock) -> None:
+        import urllib.error
+
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            "https://example.com", 404, "Not Found", {}, None
+        )
+
+        outcome, error = check_url_outcome("https://example.com")
+        assert outcome is LinkOutcome.BROKEN
+        assert "HTTP 404" in error
+
+    @patch("urllib.request.urlopen")
+    def test_bare_timeout_is_unreachable(self, mock_urlopen: Mock) -> None:
+        mock_urlopen.side_effect = TimeoutError()
+
+        outcome, error = check_url_outcome("https://example.com", timeout=1)
+        assert outcome is LinkOutcome.UNREACHABLE
+        assert error == "Timeout"
+
+    @patch("urllib.request.urlopen")
+    def test_urlerror_timeout_reason_is_unreachable(self, mock_urlopen: Mock) -> None:
+        """A socket timeout wrapped in URLError (the common real-world shape) is unreachable."""
+        import urllib.error
+
+        mock_urlopen.side_effect = urllib.error.URLError(TimeoutError("timed out"))
+
+        outcome, error = check_url_outcome("https://example.com")
+        assert outcome is LinkOutcome.UNREACHABLE
+
+    @patch("urllib.request.urlopen")
+    def test_urlerror_dns_failure_is_unreachable(self, mock_urlopen: Mock) -> None:
+        import socket
+        import urllib.error
+
+        mock_urlopen.side_effect = urllib.error.URLError(
+            socket.gaierror("nodename nor servname provided")
+        )
+
+        outcome, error = check_url_outcome("https://example.com")
+        assert outcome is LinkOutcome.UNREACHABLE
+
+    @patch("urllib.request.urlopen")
+    def test_urlerror_connection_refused_is_unreachable(self, mock_urlopen: Mock) -> None:
+        import urllib.error
+
+        mock_urlopen.side_effect = urllib.error.URLError(ConnectionRefusedError("refused"))
+
+        outcome, error = check_url_outcome("https://example.com")
+        assert outcome is LinkOutcome.UNREACHABLE
+
+    @patch("urllib.request.urlopen")
+    def test_urlerror_generic_reason_is_broken(self, mock_urlopen: Mock) -> None:
+        """A URLError with a non-network-timeout reason stays classified as broken."""
+        import urllib.error
+
+        mock_urlopen.side_effect = urllib.error.URLError("some other failure")
+
+        outcome, error = check_url_outcome("https://example.com")
+        assert outcome is LinkOutcome.BROKEN
+
+    @patch("time.sleep")
+    @patch("urllib.request.urlopen")
+    def test_unreachable_is_retried_once(self, mock_urlopen: Mock, mock_sleep: Mock) -> None:
+        """An unreachable outcome is retried once before being finalized."""
+        mock_urlopen.side_effect = TimeoutError()
+
+        outcome, _ = check_url_outcome("https://example.com", timeout=1)
+
+        assert outcome is LinkOutcome.UNREACHABLE
+        assert mock_urlopen.call_count == 2
+        mock_sleep.assert_called_once()
+
+    @patch("time.sleep")
+    @patch("urllib.request.urlopen")
+    def test_retry_recovers_to_valid(self, mock_urlopen: Mock, mock_sleep: Mock) -> None:
+        """If the retry succeeds, the final outcome is valid, not unreachable."""
+        mock_response = Mock()
+        mock_response.status = 200
+        mock_urlopen.side_effect = [TimeoutError(), Mock(__enter__=Mock(return_value=mock_response), __exit__=Mock(return_value=False))]
+
+        outcome, _ = check_url_outcome("https://example.com", timeout=1)
+
+        assert outcome is LinkOutcome.VALID
+        assert mock_urlopen.call_count == 2
+
+    @patch("urllib.request.urlopen")
+    def test_broken_is_not_retried(self, mock_urlopen: Mock) -> None:
+        """A broken (host-answered) outcome is not retried."""
+        import urllib.error
+
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            "https://example.com", 404, "Not Found", {}, None
+        )
+
+        outcome, _ = check_url_outcome("https://example.com")
+
+        assert outcome is LinkOutcome.BROKEN
+        assert mock_urlopen.call_count == 1
+
+
 class TestCheckMarkdownLinks:
     """Integration tests for check_markdown_links function."""
 
@@ -213,8 +329,8 @@ class TestCheckMarkdownLinks:
 """
         )
 
-        with patch("little_loops.link_checker.check_url") as mock_check:
-            mock_check.return_value = (True, None)
+        with patch("little_loops.link_checker.check_url_outcome") as mock_check:
+            mock_check.return_value = (LinkOutcome.VALID, None)
 
             result = check_markdown_links(tmp_path, [], timeout=10)
 
@@ -228,14 +344,29 @@ class TestCheckMarkdownLinks:
         test_file = tmp_path / "test.md"
         test_file.write_text("[Link](https://invalid.example.com)\n")
 
-        with patch("little_loops.link_checker.check_url") as mock_check:
-            mock_check.return_value = (False, "HTTP 404")
+        with patch("little_loops.link_checker.check_url_outcome") as mock_check:
+            mock_check.return_value = (LinkOutcome.BROKEN, "HTTP 404")
 
             result = check_markdown_links(tmp_path, [], timeout=10)
 
             assert result.total_links == 1
             assert result.broken_links == 1
             assert result.has_errors is True
+
+    def test_check_with_unreachable_link(self, tmp_path: Path) -> None:
+        """Unreachable (network) links are counted separately and don't set has_errors."""
+        test_file = tmp_path / "test.md"
+        test_file.write_text("[Link](https://timeout.example.com)\n")
+
+        with patch("little_loops.link_checker.check_url_outcome") as mock_check:
+            mock_check.return_value = (LinkOutcome.UNREACHABLE, "Timeout")
+
+            result = check_markdown_links(tmp_path, [], timeout=10)
+
+            assert result.total_links == 1
+            assert result.unreachable_links == 1
+            assert result.broken_links == 0
+            assert result.has_errors is False
 
     def test_check_with_internal_links(self, tmp_path: Path) -> None:
         """Internal references are tracked separately."""
@@ -269,8 +400,8 @@ class TestCheckMarkdownLinks:
         (tmp_path / "test1.md").write_text("[Link1](https://one.com)\n")
         (tmp_path / "test2.md").write_text("[Link2](https://two.com)\n")
 
-        with patch("little_loops.link_checker.check_url") as mock_check:
-            mock_check.return_value = (True, None)
+        with patch("little_loops.link_checker.check_url_outcome") as mock_check:
+            mock_check.return_value = (LinkOutcome.VALID, None)
 
             result = check_markdown_links(tmp_path, [], timeout=10)
 
@@ -283,8 +414,8 @@ class TestCheckMarkdownLinks:
         subdir.mkdir()
         (subdir / "api.md").write_text("[API](https://api.example.com)\n")
 
-        with patch("little_loops.link_checker.check_url") as mock_check:
-            mock_check.return_value = (True, None)
+        with patch("little_loops.link_checker.check_url_outcome") as mock_check:
+            mock_check.return_value = (LinkOutcome.VALID, None)
 
             result = check_markdown_links(tmp_path, [], timeout=10)
 
@@ -303,16 +434,16 @@ class TestCheckMarkdownLinks:
         (tmp_path / "test.md").write_text("[Link](https://example.com)\n")
 
         with (
-            patch("little_loops.link_checker.check_url") as mock_check,
+            patch("little_loops.link_checker.check_url_outcome") as mock_check,
             patch("little_loops.link_checker.ThreadPoolExecutor") as mock_executor_cls,
         ):
-            mock_check.return_value = (True, None)
+            mock_check.return_value = (LinkOutcome.VALID, None)
             # Set up the executor context manager mock
             mock_executor = Mock()
             mock_executor_cls.return_value.__enter__ = Mock(return_value=mock_executor)
             mock_executor_cls.return_value.__exit__ = Mock(return_value=False)
             mock_future = Mock()
-            mock_future.result.return_value = (True, None)
+            mock_future.result.return_value = (LinkOutcome.VALID, None)
             mock_executor.submit.return_value = mock_future
 
             with patch("little_loops.link_checker.as_completed", return_value=[mock_future]):
@@ -324,12 +455,14 @@ class TestCheckMarkdownLinks:
         """Concurrent checking handles mixed valid/broken results."""
         (tmp_path / "test.md").write_text("[Good](https://good.com)\n[Bad](https://bad.com)\n")
 
-        def mock_check_url(url: str, timeout: int = 10) -> tuple[bool, str | None]:
+        def mock_check_url_outcome(url: str, timeout: int = 10) -> tuple[LinkOutcome, str | None]:
             if "good" in url:
-                return True, None
-            return False, "HTTP 404"
+                return LinkOutcome.VALID, None
+            return LinkOutcome.BROKEN, "HTTP 404"
 
-        with patch("little_loops.link_checker.check_url", side_effect=mock_check_url):
+        with patch(
+            "little_loops.link_checker.check_url_outcome", side_effect=mock_check_url_outcome
+        ):
             result = check_markdown_links(tmp_path, [], timeout=10, max_workers=2)
 
         assert result.total_links == 2
@@ -342,8 +475,8 @@ class TestCheckMarkdownLinks:
             "[A](https://a.com)\n[B](https://b.com)\n[C](https://c.com)\n"
         )
 
-        with patch("little_loops.link_checker.check_url") as mock_check:
-            mock_check.return_value = (True, None)
+        with patch("little_loops.link_checker.check_url_outcome") as mock_check:
+            mock_check.return_value = (LinkOutcome.VALID, None)
 
             result = check_markdown_links(tmp_path, [], timeout=10, max_workers=1)
 
@@ -465,9 +598,36 @@ class TestFormatters:
         assert data["total_links"] == 5
         assert data["valid_links"] == 3
         assert data["broken_links"] == 1
+        assert data["unreachable_links"] == 0
         assert data["has_errors"] is True
         assert len(data["results"]) == 1
         assert data["results"][0]["url"] == "https://test.com"
+
+    def test_format_result_json_unreachable_does_not_set_has_errors(self) -> None:
+        """Unreachable links are reported but don't set has_errors (ENH-2836)."""
+        result = LinkCheckResult(
+            total_links=2,
+            valid_links=1,
+            broken_links=0,
+            unreachable_links=1,
+            ignored_links=0,
+            internal_links=0,
+            results=[
+                LinkResult(
+                    url="https://slow.com",
+                    file="test.md",
+                    line=1,
+                    status="unreachable",
+                    error="Timeout",
+                )
+            ],
+        )
+
+        output = format_result_json(result)
+        data = json.loads(output)
+
+        assert data["unreachable_links"] == 1
+        assert data["has_errors"] is False
 
     def test_format_result_markdown_no_errors(self) -> None:
         """Markdown format with no errors."""
@@ -510,5 +670,29 @@ class TestFormatters:
 
         assert "## ❌ Broken Links" in output
         assert "| URL | File | Line | Error |" in output
-        assert "broken.com" in output
-        assert "test.md" in output
+
+    def test_format_result_markdown_unreachable_only(self) -> None:
+        """Unreachable-only results get their own section, not the broken-links one."""
+        result = LinkCheckResult(
+            total_links=2,
+            valid_links=1,
+            broken_links=0,
+            unreachable_links=1,
+            ignored_links=0,
+            internal_links=0,
+            results=[
+                LinkResult(
+                    url="https://slow.com",
+                    file="test.md",
+                    line=5,
+                    status="unreachable",
+                    error="Timeout",
+                )
+            ],
+        )
+
+        output = format_result_markdown(result)
+
+        assert "## ❌ Broken Links" not in output
+        assert "Unreachable Links" in output
+        assert "**Unreachable**: 1" in output

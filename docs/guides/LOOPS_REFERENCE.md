@@ -3399,7 +3399,7 @@ states:
 | `ll_issues_next` | `ll-issues next-action` | Get next recommended action. Override `action` to add `--skip "..."`. |
 | `ll_issues_next_issue` | `ll-issues next-issue` | Get next-priority issue file path. Selection order is config-driven via `issues.next_issue.strategy` (default: `confidence_first`). Since ENH-2436, `next-issue` excludes issues with unresolved blockers by default; override the action with `"ll-issues next-issue --include-blocked"` to preserve legacy behavior. |
 | `ll_history_summary` | `ll-history summary` | Print completed issue history summary. Override `action` to add `2>/dev/null` fallback. |
-| `ll_check_links` | `ll-check-links 2>&1` | Check markdown docs for broken links. |
+| `ll_check_links` | `ll-check-links 2>&1` | Check markdown docs for broken links. Exit code is broken-only (ENH-2836); unreachable/timeout links are reported but don't fail. |
 | `ll_messages` | `ll-messages --stdout` | Extract user messages from session logs. Override `action` to add `--skill`, `--examples-format`, etc. |
 | `ll_deps` | `ll-deps check` | Validate cross-issue dependency references. |
 | `ll_sprint_list` | `ll-sprint list` | List all defined sprint files. |

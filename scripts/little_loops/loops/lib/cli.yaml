@@ -69,7 +69,10 @@ fragments:
 
   ll_check_links:
     description: |
-      Check all markdown documentation for broken links.
+      Check all markdown documentation for broken links. Exit code is gated on
+      genuinely broken links only (host answered, said no); unreachable links
+      (timeout/DNS/connection reset) are reported but don't fail this check
+      unless invoked with --strict-network.
       State must supply: on_yes, on_no (and optionally capture for storing output).
     action_type: shell
     action: "ll-check-links 2>&1"

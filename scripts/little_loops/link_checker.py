@@ -8,11 +8,18 @@ from __future__ import annotations
 
 import json
 import re
+import socket
+import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
+
+# Retry-with-backoff before classifying a transient network failure as
+# unreachable (a chunk of "broken" results can be one slow host hit serially).
+_RETRY_BACKOFF_SECONDS = 0.2
 
 # Markdown link patterns
 MARKDOWN_LINK_PATTERN = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
@@ -36,6 +43,20 @@ DEFAULT_DOC_FILES = [
 ]
 
 
+class LinkOutcome(Enum):
+    """Classification of an external link check result.
+
+    BROKEN means the host answered and said no (HTTP error status).
+    UNREACHABLE means no usable answer came back (timeout, DNS failure,
+    connection reset/refused) - ambient network noise, not a repo defect.
+    """
+
+    VALID = "valid"
+    BROKEN = "broken"
+    UNREACHABLE = "unreachable"
+    IGNORED = "ignored"
+
+
 @dataclass
 class LinkResult:
     """Result of checking a single link.
@@ -44,7 +65,7 @@ class LinkResult:
         url: The URL that was checked
         file: File containing the link
         line: Line number where link appears
-        status: Status of the link ("valid", "broken", "timeout", "ignored", "internal")
+        status: Status of the link ("valid", "broken", "unreachable", "ignored", "internal")
         error: Error message if link is broken
         link_text: The link text from markdown [text](url)
     """
@@ -64,7 +85,9 @@ class LinkCheckResult:
     Attributes:
         total_links: Total number of links found
         valid_links: Number of valid links
-        broken_links: Number of broken links
+        broken_links: Number of broken links (host answered, said no)
+        unreachable_links: Number of unreachable links (timeout, DNS, connection reset -
+            ambient network noise, not a repo defect)
         ignored_links: Number of ignored links
         internal_links: Number of internal file references
         results: List of individual link results
@@ -73,13 +96,14 @@ class LinkCheckResult:
     total_links: int = 0
     valid_links: int = 0
     broken_links: int = 0
+    unreachable_links: int = 0
     ignored_links: int = 0
     internal_links: int = 0
     results: list[LinkResult] = field(default_factory=list)
 
     @property
     def has_errors(self) -> bool:
-        """Check if any broken links were found."""
+        """Check if any broken links were found (unreachable links don't count)."""
         return self.broken_links > 0
 
 
@@ -152,36 +176,72 @@ def should_ignore_url(url: str, ignore_patterns: list[str]) -> bool:
     return False
 
 
+_UNREACHABLE_REASON_TYPES = (TimeoutError, socket.timeout, socket.gaierror, ConnectionError)
+
+
+def _classify_url_error(reason: object) -> bool:
+    """Return True if a urllib.error.URLError reason indicates unreachable (not broken)."""
+    return isinstance(reason, _UNREACHABLE_REASON_TYPES)
+
+
+def _check_url_once(url: str, timeout: int) -> tuple[LinkOutcome, str | None]:
+    """Single-attempt URL check, no retry."""
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "little-loops-link-checker/1.0"})
+        req.get_method = lambda: "HEAD"  # type: ignore[method-assign]
+
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            if 200 <= response.status < 400:
+                return LinkOutcome.VALID, None
+            return LinkOutcome.BROKEN, f"HTTP {response.status}"
+
+    except urllib.error.HTTPError as e:
+        return LinkOutcome.BROKEN, f"HTTP {e.code}"
+    except urllib.error.URLError as e:
+        if _classify_url_error(e.reason):
+            return LinkOutcome.UNREACHABLE, f"Connection error: {e.reason}"
+        return LinkOutcome.BROKEN, f"Connection error: {e.reason}"
+    except TimeoutError:
+        return LinkOutcome.UNREACHABLE, "Timeout"
+    except Exception as e:
+        return LinkOutcome.BROKEN, str(e)
+
+
 def check_url(url: str, timeout: int = 10) -> tuple[bool, str | None]:
     """Check if a URL is reachable.
+
+    Retries once (with a short backoff) before classifying a transient
+    network failure as unreachable, to smooth over one slow host rather than
+    reporting every link to it as unreachable.
 
     Args:
         url: URL to check
         timeout: Request timeout in seconds
 
     Returns:
-        Tuple of (is_valid, error_message)
+        Tuple of (is_valid, error_message). `is_valid` is True only for a
+        confirmed-reachable URL; both broken and unreachable outcomes return
+        False. Use `check_url_outcome()` to distinguish the two.
     """
-    try:
-        # Create request with user agent
-        req = urllib.request.Request(url, headers={"User-Agent": "little-loops-link-checker/1.0"})
-        # Use HEAD request for efficiency
-        req.get_method = lambda: "HEAD"  # type: ignore[method-assign]
+    outcome, error = check_url_outcome(url, timeout)
+    return outcome is LinkOutcome.VALID, error
 
-        with urllib.request.urlopen(req, timeout=timeout) as response:
-            # Accept 2xx and 3xx status codes
-            if 200 <= response.status < 400:
-                return True, None
-            return False, f"HTTP {response.status}"
 
-    except urllib.error.HTTPError as e:
-        return False, f"HTTP {e.code}"
-    except urllib.error.URLError as e:
-        return False, f"Connection error: {e.reason}"
-    except TimeoutError:
-        return False, "Timeout"
-    except Exception as e:
-        return False, str(e)
+def check_url_outcome(url: str, timeout: int = 10) -> tuple[LinkOutcome, str | None]:
+    """Check a URL and classify the result as VALID, BROKEN, or UNREACHABLE.
+
+    Args:
+        url: URL to check
+        timeout: Request timeout in seconds
+
+    Returns:
+        Tuple of (outcome, error_message)
+    """
+    outcome, error = _check_url_once(url, timeout)
+    if outcome is LinkOutcome.UNREACHABLE:
+        time.sleep(_RETRY_BACKOFF_SECONDS)
+        outcome, error = _check_url_once(url, timeout)
+    return outcome, error
 
 
 def check_markdown_links(
@@ -285,15 +345,20 @@ def check_markdown_links(
     if http_checks:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_meta = {
-                executor.submit(check_url, url, timeout): (url, link_text, line_num, file_str)
+                executor.submit(check_url_outcome, url, timeout): (
+                    url,
+                    link_text,
+                    line_num,
+                    file_str,
+                )
                 for url, link_text, line_num, file_str in http_checks
             }
 
             for future in as_completed(future_to_meta):
                 url, link_text, line_num, file_str = future_to_meta[future]
-                is_valid, error = future.result()
+                outcome, error = future.result()
 
-                if is_valid:
+                if outcome is LinkOutcome.VALID:
                     result.valid_links += 1
                     result.results.append(
                         LinkResult(
@@ -301,6 +366,18 @@ def check_markdown_links(
                             file=file_str,
                             line=line_num,
                             status="valid",
+                            link_text=link_text,
+                        )
+                    )
+                elif outcome is LinkOutcome.UNREACHABLE:
+                    result.unreachable_links += 1
+                    result.results.append(
+                        LinkResult(
+                            url=url,
+                            file=file_str,
+                            line=line_num,
+                            status="unreachable",
+                            error=error,
                             link_text=link_text,
                         )
                     )
@@ -383,19 +460,35 @@ def format_result_text(result: LinkCheckResult) -> str:
                     lines.append(f"    Error: {r.error}")
                 lines.append("")
 
-        # Summary
-        lines.append("Summary:")
-        lines.append(f"  Total links: {result.total_links}")
-        lines.append(f"  Valid: {result.valid_links}")
-        lines.append(f"  Broken: {result.broken_links}")
-        lines.append(f"  Internal refs: {result.internal_links}")
-        lines.append(f"  Ignored: {result.ignored_links}")
+    elif result.unreachable_links > 0:
+        lines.append(
+            f"⚠ {result.unreachable_links} link(s) unreachable (network - not a broken link):"
+        )
+        lines.append("")
+
+        for r in result.results:
+            if r.status == "unreachable":
+                text_part = f"[{r.link_text}]" if r.link_text else ""
+                lines.append(f"  {text_part}({r.url})")
+                lines.append(f"    at {r.file}:{r.line}")
+                if r.error:
+                    lines.append(f"    Error: {r.error}")
+                lines.append("")
 
     else:
         lines.append(
             f"✓ All {result.total_links} link(s) valid! "
             f"({result.internal_links} internal, {result.ignored_links} ignored)"
         )
+
+    if result.has_errors or result.unreachable_links > 0:
+        lines.append("Summary:")
+        lines.append(f"  Total links: {result.total_links}")
+        lines.append(f"  Valid: {result.valid_links}")
+        lines.append(f"  Broken: {result.broken_links}")
+        lines.append(f"  Unreachable: {result.unreachable_links}")
+        lines.append(f"  Internal refs: {result.internal_links}")
+        lines.append(f"  Ignored: {result.ignored_links}")
 
     return "\n".join(lines)
 
@@ -413,6 +506,7 @@ def format_result_json(result: LinkCheckResult) -> str:
         "total_links": result.total_links,
         "valid_links": result.valid_links,
         "broken_links": result.broken_links,
+        "unreachable_links": result.unreachable_links,
         "ignored_links": result.ignored_links,
         "internal_links": result.internal_links,
         "has_errors": result.has_errors,
@@ -447,6 +541,7 @@ def format_result_markdown(result: LinkCheckResult) -> str:
     lines.append(f"- **Total links**: {result.total_links}")
     lines.append(f"- **Valid**: {result.valid_links}")
     lines.append(f"- **Broken**: {result.broken_links}")
+    lines.append(f"- **Unreachable**: {result.unreachable_links}")
     lines.append(f"- **Internal references**: {result.internal_links}")
     lines.append(f"- **Ignored**: {result.ignored_links}")
     lines.append("")
@@ -462,7 +557,22 @@ def format_result_markdown(result: LinkCheckResult) -> str:
                 url_display = r.url[:60] + "..." if len(r.url) > 60 else r.url
                 error_display = r.error or "Unknown"
                 lines.append(f"| `{url_display}` | `{r.file}` | {r.line} | {error_display} |")
-    else:
+        lines.append("")
+
+    if result.unreachable_links > 0:
+        lines.append("## ⚠️ Unreachable Links (network - not a broken link)")
+        lines.append("")
+        lines.append("| URL | File | Line | Error |")
+        lines.append("|-----|------|------|-------|")
+
+        for r in result.results:
+            if r.status == "unreachable":
+                url_display = r.url[:60] + "..." if len(r.url) > 60 else r.url
+                error_display = r.error or "Unknown"
+                lines.append(f"| `{url_display}` | `{r.file}` | {r.line} | {error_display} |")
+        lines.append("")
+
+    if not result.has_errors and result.unreachable_links == 0:
         lines.append("## ✅ All Links Valid")
         lines.append("")
         lines.append(

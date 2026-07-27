@@ -149,7 +149,19 @@ class TestFullAdapters:
         with patch.object(link_checker, "check_markdown_links", return_value=result):
             data = _full_check_links_data()
         assert data["status"] == "unsupported"
+        assert data["severity"] == "error"
         assert "2" in data["note"]
+
+    def test_check_links_reports_informational_on_unreachable_only(self) -> None:
+        """Unreachable (network) links are warn-tier, not error-tier (ENH-2836)."""
+        from little_loops import link_checker
+
+        result = link_checker.LinkCheckResult(unreachable_links=3)
+        with patch.object(link_checker, "check_markdown_links", return_value=result):
+            data = _full_check_links_data()
+        assert data["status"] == "unsupported"
+        assert data["severity"] == "informational"
+        assert "3" in data["note"]
 
 
 class TestFullSection:

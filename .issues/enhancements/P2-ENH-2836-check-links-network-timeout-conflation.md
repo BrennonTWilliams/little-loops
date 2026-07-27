@@ -2,9 +2,10 @@
 id: ENH-2836
 type: ENH
 priority: P2
-status: open
+status: done
 parent: EPIC-2765
 captured_at: '2026-07-27T00:08:18Z'
+completed_at: '2026-07-27T05:27:43Z'
 discovered_date: 2026-07-27
 discovered_by: capture-issue
 labels:
@@ -156,6 +157,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **`ll-doctor --full` adapter gap**: `_full_check_links_data()` / `_full_check_links_check()` (`scripts/little_loops/cli/doctor.py:717-732`) construct `CheckResult` **without** passing `severity=`, so it silently defaults to `severity="error"` (`CheckResult.severity` default, line 47) — unlike sibling adapters `_full_triggers_check()` (561-570), `_full_design_tokens_check()` (665-674), and `_full_des_audit_check()` (704-712), which all explicitly thread `severity=data.get("severity", "error")` from their own data function. Proposed Solution point 4 (register at warn/error split) requires *adding* this missing `severity=` passthrough, mirroring the `_full_des_audit_check` shape exactly.
 - **No retry logic exists today** anywhere in `check_url()`/`check_markdown_links()` — confirms Proposed Solution point 5 is greenfield, not a modification of existing retry code.
 - **Test files already covering this surface**: `scripts/tests/test_link_checker.py` (`TestCheckUrl`, lines 142-198) and `scripts/tests/test_cli_docs.py`; doctor-side coverage in `scripts/tests/test_cli_doctor_full.py`. All three will need new cases per Implementation Step 6.
+- **Check-registry protocol mechanics (FEAT-2793), precise** — `scripts/little_loops/cli/doctor.py`: `register_check`/`_CHECKS` (55-61) and `register_full_check`/`_FULL_CHECKS` (458-469) are decorator/list pairs that collect no-arg `Callable[[], list[CheckResult]]` functions; `_run_registered_checks()` (90-95) flattens results; `_exit_code_for()` (98-101) is the exact fold: `1 if any(r.severity == "error" and r.status == "unsupported" for r in results) else 0`. This confirms Proposed Solution point 4's target shape precisely: a timeout-only result should resolve to `severity="informational"` (not just `status` alone) to avoid tripping `_exit_code_for()`.
+- **No per-host concurrency precedent exists** for Implementation Step 5's "bounded per-host concurrency cap" — the only concurrency-limiting code in the repo is a flat, non-host-keyed `asyncio.Semaphore` in `scripts/doc_scraper.py` (`PageProcessor.__init__`, line 539-543, default `concurrent=3`, acquired per-fetch at line 600-602). If a genuine per-host cap is implemented, there's no existing host-keyed-semaphore pattern to model it on — it would be new structure, not an adaptation of prior art.
 
 ## Implementation Steps
 
@@ -221,6 +224,10 @@ new `docs/development/CLI_COLOR_PALETTE.md` contains no links, yet
 impossible to use the command to confirm the doc was clean.
 
 ## Session Log
+- `/ll:manage-issue` (improve) - 2026-07-27T05:27:15 - `408c91f3-d756-4de2-84b7-308806c714f6.jsonl`
+- `/ll:ready-issue` - 2026-07-27T05:07:54 - `429a86aa-f713-4ede-b9b3-3906a2c7c3c2.jsonl`
+- `/ll:confidence-check` - 2026-07-27T00:35:00 - `c21a4ad9-40fa-4eac-ac93-516f6a21f2df.jsonl`
+- `/ll:refine-issue` - 2026-07-27T05:03:46 - `442a68cf-215e-4533-9698-0a63d93d25b2.jsonl`
 - `/ll:confidence-check` - 2026-07-27T00:30:43 - `686c8dcb-74d5-48e6-9a23-028ec64a8dbf.jsonl`
 - `/ll:wire-issue` - 2026-07-27T00:29:44 - `8c131682-ec68-43f5-84a8-24fcb0c8b6c0.jsonl`
 - `/ll:refine-issue` - 2026-07-27T00:25:29 - `9ce371ff-4ca1-4ba2-ad6e-8b38c84db732.jsonl`
