@@ -290,7 +290,7 @@ All cross-reference links valid. Inventory counts updated. Zero open findings. A
 | `docs/claude-code/automate-workflows-with-hooks.md` | Exists ✓ |
 | `docs/research/Towards-Direct-Evaluation-of-Harness-Optimizers.md` | Exists ✓ |
 | `pip install little-loops` | Matches `pyproject.toml` ✓ |
-| History DB schema version: 12 | Matches `session_store.py:89` ✓ |
+| History DB schema version: 12 | Matches `session_store/schema.py` (`SCHEMA_VERSION`) ✓ |
 | `ll-workflows analyze --input` default | Matches `_DEFAULT_INPUT_PATH` in `workflow_sequence/__init__.py:50` ✓ |
 | APO loop count — "Eight built-in APO loops" (`LOOPS_GUIDE.md:2817`) | Matches 8 files in loops dir ✓ |
 | Commands: 28 | Confirmed ✓ |

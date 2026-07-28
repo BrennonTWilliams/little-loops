@@ -6809,3 +6809,35 @@ class TestExportContextPressureEvent:
         rows = list(export_history(db, tables=["context_pressure_event"]))
         assert len(rows) == 1
         assert rows[0]["session_id"] == "s1"
+
+
+class TestPackageReexportSurface:
+    """ENH-2890: session_store.py -> session_store/ package split.
+
+    The public import path ``little_loops.session_store`` must stay fully
+    transparent to every external importer. Every name in ``__all__``, the
+    additional private names required for test/CLI access, and ``sqlite3``
+    itself (patched by conftest's ``_guard_real_history_db`` autouse fixture)
+    must resolve as an attribute of the package object.
+    """
+
+    def test_all_and_required_private_names_resolve(self) -> None:
+        import little_loops.session_store as session_store
+
+        required_private = [
+            "_MIGRATIONS",
+            "_KIND_TABLE",
+            "_KINDLESS_TABLES",
+            "_split_sql_statements",
+            "SCHEMA_VERSION",
+            "_call_llm_for_summary",
+            "_estimate_tokens",
+            "compact_session_with_reasoning",
+            "_summarize_block",
+            "_derive_transition",
+            "_pack_payload",
+            "_unpack_payload",
+        ]
+        names = list(session_store.__all__) + required_private + ["sqlite3"]
+        missing = [name for name in names if not hasattr(session_store, name)]
+        assert not missing, f"missing session_store package attributes: {missing}"

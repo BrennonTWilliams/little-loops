@@ -610,7 +610,7 @@ little-loops includes an extension architecture built on a structured event bus.
 | Component | File | Purpose |
 |-----------|------|---------|
 | `LLEvent` | `events.py` | Structured event dataclass (type, timestamp, payload) |
-| `EventBus` | `events.py` | Multi-observer dispatcher with pluggable Transport sinks (defined in `transport.py`; `SQLiteTransport` in `session_store.py`): `JsonlTransport`, `UnixSocketTransport`, `OTelTransport`, `WebhookTransport`, `SQLiteTransport` |
+| `EventBus` | `events.py` | Multi-observer dispatcher with pluggable Transport sinks (defined in `transport.py`; `SQLiteTransport` in `session_store/writers.py`): `JsonlTransport`, `UnixSocketTransport`, `OTelTransport`, `WebhookTransport`, `SQLiteTransport` |
 | `LLExtension` | `extension.py` | Runtime-checkable protocol for event consumers |
 | `ExtensionLoader` | `extension.py` | Discovers extensions from config paths and entry points |
 | `InterceptorExtension` | `extension.py` | Protocol for plugins providing `before_route`/`after_route` hooks; stored in `FSMExecutor._interceptors` |
@@ -660,7 +660,7 @@ The transport layer fans events out additively: every event emitted on the `Even
 | v5 | `issue_sessions` VIEW | Joins `issue_events` to `message_events` via overlapping timestamps; enables `ll-history sessions <ID>` and `ll-session recent --issue <ID>` (ENH-1711) |
 | v6 | `last_backfill_ts` meta key | Enables incremental JSONL backfill at session start; `session_start` hook records the last-run timestamp so only newly-modified JSONL files are processed on subsequent starts (ENH-1830) |
 | v7 | `skill_events` | Records `/ll:` skill invocations at dispatch time via the `user_prompt_submit` hook; enables `ll-session recent --kind skill` and FTS search with `kind='skill'` (ENH-1833) |
-| v8 | `cli_events` | Records `ll-` CLI invocations via `cli_event_context()` in `session_store.py`; enables `ll-session recent --kind cli` (ENH-1848) |
+| v8 | `cli_events` | Records `ll-` CLI invocations via `cli_event_context()` in `session_store/writers.py`; enables `ll-session recent --kind cli` (ENH-1848) |
 | v9 | `idx_corrections_dedup` | Unique index on `user_corrections(session_id, content)` enabling idempotent `INSERT OR IGNORE` during correction mining; `backfill()` and `backfill_incremental()` call `mine_corrections_from_messages()` to retroactively populate corrections from `message_events` (ENH-1904) |
 | v10 | `summary_nodes`, `summary_spans` | LCM-style hierarchical summary DAG (FEAT-1712): `summary_nodes` stores three-level LCM Algorithm 3 summaries (normal LLM → aggressive bullet-point LLM → deterministic truncation) as leaf and condensed nodes over `message_events` blocks; `summary_spans` links each node back to its source messages for lossless drill-down. Enables `ll-session grep`, `ll-session expand`, and `ll-session describe`. Compaction is opt-in via `history.compaction.enabled` in `ll-config.json`. |
 | v11 | `assistant_messages` | Stores concatenated text blocks from assistant responses so the SFT pipeline can read conversation turn-pairs from the database instead of re-parsing JSONL (ENH-1942). Includes `tool_use_count` for filter predicates and `idx_assistant_messages_dedup` for idempotent backfill. |
@@ -757,21 +757,21 @@ flowchart TB
 
 | Component | File | Role |
 |-----------|------|------|
-| `ensure_db()` | `session_store.py` | Bootstrap schema (v1–v34 migrations) at session start |
-| `backfill_incremental()` | `session_store.py` | Background JSONL → DB seed thread |
-| `compact_session()` | `session_store.py` | LCM-style compaction: groups `message_events` into blocks and creates `summary_nodes`/`summary_spans`; opt-in via `history.compaction.enabled` (FEAT-1712). After per-session passes, cross-session recursive condensation (ENH-1954) groups condensed nodes level-by-level into a multi-level DAG terminating at a single project-root summary node (`session_id=NULL`, `level=max`); gated by `history.compaction.cross_session_enabled`. Once the session's message total crosses the 7,500-token soft threshold, `_maybe_soft_threshold_summary()` fires a background thread that bounds its input via `compaction.instant.evict_sink_and_window()` (always-on, structural, no LLM cost) and produces a 6-section (`compaction.instant.summarize_6_section()`) summary, updating the existing per-session condensed node in place — no schema change (FEAT-2598). |
+| `ensure_db()` | `session_store/schema.py` | Bootstrap schema (v1–v34 migrations) at session start |
+| `backfill_incremental()` | `session_store/lifecycle.py` | Background JSONL → DB seed thread |
+| `compact_session()` | `session_store/lifecycle.py` | LCM-style compaction: groups `message_events` into blocks and creates `summary_nodes`/`summary_spans`; opt-in via `history.compaction.enabled` (FEAT-1712). After per-session passes, cross-session recursive condensation (ENH-1954) groups condensed nodes level-by-level into a multi-level DAG terminating at a single project-root summary node (`session_id=NULL`, `level=max`); gated by `history.compaction.cross_session_enabled`. Once the session's message total crosses the 7,500-token soft threshold, `_maybe_soft_threshold_summary()` fires a background thread that bounds its input via `compaction.instant.evict_sink_and_window()` (always-on, structural, no LLM cost) and produces a 6-section (`compaction.instant.summarize_6_section()`) summary, updating the existing per-session condensed node in place — no schema change (FEAT-2598). |
 | `compaction.instant` / `compaction.result` | `compaction/instant.py`, `compaction/result.py` | StreamingLLM-style sink+window eviction, Letta-style sliding-window selection, and the `CompactResult` dataclass wrapper over `summary_nodes` rows. Manually triggerable via `ll-compact-session` (FEAT-2598). |
 | `compression.heuristic` | `compression/heuristic.py` | **Token-cost layer (EPIC-2456 Tier 3, FEAT-2675).** Zero-dependency heuristic prompt compressor hooked into `FSMExecutor._run_action()`: three extractive passes (drop stale tool results, dedupe stable `system` blocks, tail-truncate assistant turns) behind a window-relative trigger (`trigger_pct * context_window` vs `trigger_tokens`, lower wins). Adapts the eviction/boundary logic proven in `compaction/instant.py` but operates on the live FSM prompt. Runs after the ENH-2486 `prompt_size_guard` measurement and only for prompt-mode actions; project-configured via `compression.*`. The LLMLingua-gated benchmark comparator is FEAT-2676. |
 | `cache_marking_oracle.decide_cache_marking()` | `cache_marking_oracle.py` | **Cache-marking cost oracle (EPIC-2456 F1, FEAT-2673).** Decides whether a stable prompt block is safe to mark `cache_control: ephemeral` via two gates: a per-model cacheable-prefix token minimum (1024 Sonnet / 4096 Opus), and a reuse-stability signal from `prompts.fragment_store.FragmentStore` (FEAT-2671) — a block is marked only after its content-hash key has already been observed once, avoiding the unamortized 1.25x write premium on never-reused blocks. |
 | `PruningProfileConfig` | `fsm/schema.py` | **Automation-context static-prefix pruning (EPIC-2456, ENH-2714).** Opt-in per-loop/per-state profile (default off) that sets `LL_AUTOMATION=1` / `LL_AUTOMATION_PROFILE=<name>` in the child process env (`host_runner.py` `build_streaming(..., automation_profile=...)`); automation-aware hooks (`session_start.py`, `history_context.py`) check the signal and suppress their static-prefix output (config dump, `project_context` digest). `suppress_catalog`/`suppress_claude_md` are **declarative-only forward-declarations** — no runtime consumer reads them, so the catalog (~6.4K tokens) and CLAUDE.md (~7.7K tokens) still load in full; `suppress_catalog` only triggers an MR-12 validator WARN, and `claude_md_suppression` is `unsupported` on every host (the claude CLI has no flag to skip CLAUDE.md). Realized saving is the hook-output pruning alone (~1K tokens/invocation). See [Loops Guide § Automation-Context Pruning](guides/LOOPS_GUIDE.md#automation-context-pruning). |
-| `SQLiteTransport.send()` | `session_store.py` | Routes `issue.*` / `loop.*` events to DB |
+| `SQLiteTransport.send()` | `session_store/writers.py` | Routes `issue.*` / `loop.*` events to DB |
 | `EventBus.emit()` | `events.py` | Dispatches events to registered transports |
 | `post_tool_use` hook | `hooks/post_tool_use.py` | Writes `tool_events` / `file_events` per call |
 | `user_prompt_submit` hook | `hooks/user_prompt_submit.py` | Writes `user_corrections` / `skill_events` via `is_correction()` heuristic |
 | `context-monitor.sh` | `hooks/scripts/context-monitor.sh` | Writes a `handoff_needed` `session_lifecycle_events` row on the first 80%-threshold crossing per pressure episode (bash shell-out with `\|\| true`, ENH-2495) |
 | `pre_compact` hook | `hooks/pre_compact.py` | Writes a `compaction` `session_lifecycle_events` row after `.ll/ll-precompact-state.json` persists (ENH-2495) |
 | `sweep_stale_refs` hook | `hooks/sweep_stale_refs.py` | Writes one `stale_ref_sweep` `session_lifecycle_events` row per invocation, including zero findings (ENH-2495) |
-| `cli_event_context()` | `session_store.py` | Context manager that records `ll-` CLI entry-point invocations to `cli_events` (ENH-1849). Honors `LL_HISTORY_DB` env var for path override. |
+| `cli_event_context()` | `session_store/writers.py` | Context manager that records `ll-` CLI entry-point invocations to `cli_events` (ENH-1849). Honors `LL_HISTORY_DB` env var for path override. |
 | `history_reader.py` | `history_reader.py` | Public read API: 10 query functions, 7 dataclasses, `ll_grep` / `ll_expand` / `ll_describe` (FEAT-1712), `project_digest` / `render_project_context` (ENH-1907) |
 | `ll-history-context` CLI | `cli/history_context.py` | Primary consumer: `## Historical Context` block (issue mode) + project digest dry-run (`--project`) |
 | `ll-session` CLI | `cli/session.py` | Secondary consumer: search, issue events, sessions, `grep`/`expand`/`describe` (FEAT-1712) |
@@ -812,7 +812,7 @@ and `.ll/decisions.d/*.json` fragments) are gated by `ll-verify-decisions`
 
 ### Correction Detection Heuristic
 
-`is_correction()` in `session_store.py` decides whether a user message should be recorded as a `user_corrections` row. It applies three independent pattern sets in order:
+`is_correction()` in `session_store/writers.py` decides whether a user message should be recorded as a `user_corrections` row. It applies three independent pattern sets in order:
 
 1. **Prefix patterns** (`_CORRECTION_RE`) — Opening phrases like "no,", "wrong,", "actually,", "that's not", "you're wrong".
 2. **Phrase-internal patterns** (`_PHRASE_RE`) — Mid-sentence signals: "instead", "you missed", "should be" (guarded against false-positive affirmatives like "should be fine"), "wrong approach", "remember that", "always use", "never use", "from now on", "I meant … not". (ENH-1887)
@@ -833,7 +833,7 @@ Any match across the three sets records the message as a correction. A fourth me
 
 ## Queue DB (ll-queue)
 
-`.ll/queue.db` is a sibling per-project SQLite database — distinct from `.ll/history.db` — backing `ll-queue`'s persisted work-item queue (`little_loops.queue_store`, FEAT-2682). It copies `session_store.py`'s `_configure_connection`/`_apply_migrations`/`ensure_db`/`connect` shape (own `_MIGRATIONS`/`SCHEMA_VERSION`) rather than sharing code, matching every other sqlite consumer in this codebase.
+`.ll/queue.db` is a sibling per-project SQLite database — distinct from `.ll/history.db` — backing `ll-queue`'s persisted work-item queue (`little_loops.queue_store`, FEAT-2682). It copies `session_store/schema.py`'s `_configure_connection`/`_apply_migrations`/`ensure_db`/`connect` shape (own `_MIGRATIONS`/`SCHEMA_VERSION`) rather than sharing code, matching every other sqlite consumer in this codebase.
 
 | Version | Table | Purpose |
 |---------|-------|---------|

@@ -1043,11 +1043,11 @@ This section documents, for every event-emitter surface, what JSON callers can e
 
 ### `SQLiteTransport`
 
-**Source:** `scripts/little_loops/session_store.py:1311-1430` (despite the path, this transport lives with the session store, not in `transport.py`).
+**Source:** `scripts/little_loops/session_store/writers.py:1773-1893` (despite the package name, this transport lives with the session store, not in `transport.py`; ENH-2890 split the former flat `session_store.py` into a `session_store/` package).
 
-- **Connection failure at construction → `send()` is a silent no-op forever.** If the SQLite database cannot be opened, `self._conn` stays `None` and `send()` returns early at `session_store.py:1343-1345`. **No error is raised to the caller.**
-- **Per-write failures are logged + swallowed.** `session_store.py:1421-1422`. Writes are serialized with a `threading.Lock`.
-- **Recognises a closed set of event types only.** `_LOOP_EVENT_TYPES = frozenset({"loop_start", "loop_resume", "loop_complete", "state_enter", "route", "retry_exhausted", "cycle_detected", "max_steps_summary", "max_iterations_reached_summary"})` (`session_store.py:133-145`) plus the `issue.*` prefix. **All other event types silently `return` without insert** — there is no error envelope or warning.
+- **Connection failure at construction → `send()` is a silent no-op forever.** If the SQLite database cannot be opened, `self._conn` stays `None` and `send()` returns early. **No error is raised to the caller.**
+- **Per-write failures are logged + swallowed** (`writers.py`'s `SQLiteTransport.send()`). Writes are serialized with a `threading.Lock`.
+- **Recognises a closed set of event types only.** `_LOOP_EVENT_TYPES = frozenset({"loop_start", "loop_resume", "loop_complete", "state_enter", "route", "retry_exhausted", "cycle_detected", "max_steps_summary", "max_iterations_reached_summary"})` (defined in `session_store/schema.py`, re-exported at the `session_store` package root) plus the `issue.*` prefix. **All other event types silently `return` without insert** — there is no error envelope or warning.
 - **`close()` is best-effort** and swallows `sqlite3.Error`.
 
 **Caller implications:** Treat the SQLite transport as an indexed history of FSM and issue events only. Other event types are intentionally not persisted; the absence of a row is not a failure.
