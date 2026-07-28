@@ -175,7 +175,6 @@ little-loops/
 │   └── workflow-pattern-analyzer.md
 ├── hooks/                # Lifecycle hooks
 ├── skills/               # 41 skill definitions (user-invocable workflows)
-│   ├── adversarial-verify-loop/      # Generate adversarial FSM verification loop
 │   ├── analyze-history/              # Analyze issue history and trends
 │   ├── debug-loop-run/               # Analyze loop execution history
 │   ├── audit-loop-run/               # Audit loop goal achievement
@@ -210,7 +209,7 @@ little-loops/
 │   ├── simplify-loop/                # Simplify or decompose FSM loop configurations
 │   ├── update/                       # Update little-loops components
 │   ├── update-docs/                  # Identify stale or missing documentation
-│   ├── verify-issue-loop/            # Generate FSM verification loop from issue acceptance criteria
+│   ├── verify-issue-loop/            # Generate FSM verification loop (criteria or adversarial mode)
 │   ├── wire-issue/                   # Add integration wiring to implementation plans
 │   └── workflow-automation-proposer/ # Propose automations from patterns
 ├── docs/                 # Documentation

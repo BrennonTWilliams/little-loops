@@ -641,38 +641,25 @@ Also supports `--dsl <source-file>` to generate DSL-native fill-in-the-blank/tra
 **See also:** `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`, `/ll:create-loop`
 
 ### `/ll:verify-issue-loop`
-Generate a ready-to-run FSM verification loop YAML from a single issue ID. Walks each acceptance criterion in order and asks an LLM whether the implementation satisfies it — failing fast on any criterion that fails. Verification counterpart to `/ll:create-eval-from-issues`: where `create-eval-from-issues` exercises a feature as a user would, `verify-issue-loop` checks that the implementation meets each acceptance criterion.
+Generate a ready-to-run FSM verification loop YAML from a single issue ID. Two modes: `criteria` (default) walks each acceptance criterion in order and asks an LLM whether the implementation satisfies it, failing fast on any criterion that fails; `adversarial` tries to *break* the feature via three distinct probe classes — boundary values, malformed/hostile inputs, and failure modes — rather than confirming it works. Verification counterpart to `/ll:create-eval-from-issues`: where `create-eval-from-issues` exercises a feature as a user would, `verify-issue-loop` checks that the implementation meets each acceptance criterion (or survives adversarial probing).
 
 **Arguments:**
 - `issue_id` (required): A single issue ID (e.g., `FEAT-919`, `ENH-950`, `BUG-347`). Accepts open or completed issues.
+- `mode` (optional): `criteria` (default) or `adversarial`. Absent `mode` resolves silently to `criteria`.
 
-**Output:** `.loops/verify-<ISSUE-ID>-<slug>.yaml` (validated with `ll-loop validate` before writing)
+**Output:** `.loops/verify-<ISSUE-ID>-<slug>.yaml` (`criteria` mode) or `.loops/adversarial-<ISSUE-ID>-<slug>.yaml` (`adversarial` mode), each validated with `ll-loop validate` before writing.
 
-**Structure:** One `verify-criterion-N` state per acceptance criterion with an `llm_structured` pass/fail evaluator; linear pass-routing (`on_yes: verify-criterion-<N+1>` or `done`; `on_no: failed`).
+**Structure:**
+- `mode: criteria` — one `verify-criterion-N` state per acceptance criterion with an `llm_structured` pass/fail evaluator; linear pass-routing (`on_yes: verify-criterion-<N+1>` or `done`; `on_no: failed`).
+- `mode: adversarial` — three probe states (`probe-boundary`, `probe-malformed-hostile`, `probe-failure-mode`) with `llm_structured` evaluators; a `count_probes` shell gate with `output_numeric ≥ 3`; terminals: `done`, `failed_with_finding`, `failed_too_few`. **FAIL fires when fewer than 3 probe classes are genuinely attempted**, even if every attempted probe passed.
 
 **Usage:**
 ```bash
 /ll:verify-issue-loop FEAT-919
+/ll:verify-issue-loop FEAT-919 --mode adversarial
 ```
 
-**See also:** `/ll:create-eval-from-issues`, `/ll:create-loop`
-
-### `/ll:adversarial-verify-loop`
-Generate a ready-to-run FSM adversarial verification loop YAML from a single issue ID. Tries to *break* the feature via three distinct probe classes — boundary values, malformed/hostile inputs, and failure modes — rather than confirming it works. Adversarial counterpart to `/ll:verify-issue-loop`: **FAIL fires when fewer than 3 probe classes are genuinely attempted**, even if every attempted probe passed.
-
-**Arguments:**
-- `issue_id` (required): A single issue ID (e.g., `FEAT-919`, `ENH-950`, `BUG-347`). Accepts open or completed issues.
-
-**Output:** `.loops/adversarial-<ISSUE-ID>-<slug>.yaml` (validated with `ll-loop validate` before writing)
-
-**Structure:** Three probe states (`probe-boundary`, `probe-malformed-hostile`, `probe-failure-mode`) with `llm_structured` evaluators; a `count_probes` shell gate with `output_numeric ≥ 3`; terminals: `done`, `failed_with_finding`, `failed_too_few`.
-
-**Usage:**
-```bash
-/ll:adversarial-verify-loop FEAT-919
-```
-
-**See also:** `/ll:verify-issue-loop` (confirmatory counterpart), `/ll:create-loop`, `/ll:go-no-go`
+**See also:** `/ll:create-eval-from-issues`, `/ll:create-loop`, `/ll:go-no-go`
 
 ### `/ll:loop-suggester`
 Analyze user message history to suggest FSM loop configurations automatically.
@@ -1065,8 +1052,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `resume` | Resume from continuation prompt |
 | `create-loop`^ | Interactive FSM loop creation |
 | `create-eval-from-issues`^ | Generate eval harness YAML from issue IDs |
-| `verify-issue-loop`^ | Generate verification loop YAML from a single issue's acceptance criteria |
-| `adversarial-verify-loop`^ | Generate adversarial verification loop YAML that tries to break a feature |
+| `verify-issue-loop`^ | Generate verification loop YAML from a single issue's acceptance criteria (`--mode criteria\|adversarial`) |
 | `loop-suggester` | Suggest loops from message history |
 | `review-loop`^ | Review and improve existing FSM loop configurations |
 | `simplify-loop`^ | Refactor a loop: collapse linear state chains to flows, extract sub-loops — behavior-preserving |

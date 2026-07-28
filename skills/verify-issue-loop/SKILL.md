@@ -1,7 +1,7 @@
 ---
 name: verify-issue-loop
-description: Use when asked to generate an FSM verification loop YAML from a single issue's acceptance criteria.
-argument-hint: "<issue-id>"
+description: Use when asked to generate an FSM verification loop YAML from a single issue's acceptance criteria, or an adversarial variant that tries to break the feature via boundary/malformed/failure-mode probes.
+argument-hint: "<issue-id> [--mode criteria|adversarial]"
 allowed-tools:
   - Bash(ll-issues:*, ll-loop:*, mkdir:*)
   - Read
@@ -10,32 +10,63 @@ arguments:
   - name: issue_id
     description: A single issue ID (e.g., FEAT-919, ENH-950, BUG-347). Accepts open or completed issues.
     required: true
+  - name: mode
+    description: "criteria (default) — one state per acceptance criterion, fails fast; adversarial — three probe states (boundary, malformed/hostile, failure-mode) plus a filesystem-derived probe-count gate. Optional; an absent mode resolves silently to criteria."
+    required: false
 metadata:
-  short-description: Use when asked to generate an FSM verification loop YAML from a single issue's a
+  short-description: Generate an FSM verification loop (criteria mode) or adversarial probe loop
 trigger_fixtures:
   should_fire:
     - "generate a verification loop from this single issue's acceptance criteria"
     - "create an FSM loop verifying this issue's acceptance criteria"
+    - "generate an adversarial verification loop that tries to break this feature with boundary values and malformed inputs"
+    - "create an FSM loop probing failure modes via malformed inputs for this feature"
   should_not_fire:
-    - "generate an adversarial verification loop that tries to break a feature"
     - "generate an FSM eval harness yaml from issue ids"
 ---
 
 # Verify Issue Loop
 
-Generate a ready-to-run FSM verification loop YAML from a single issue ID. The loop walks each acceptance criterion in order and asks an LLM whether the implementation satisfies it — failing fast on any criterion that fails.
+Generate a ready-to-run FSM verification loop YAML from a single issue ID. Two modes:
 
-This is the verification counterpart to `/ll:create-eval-from-issues`. Where `create-eval-from-issues` exercises a feature *as a user would* and judges experience quality, `verify-issue-loop` checks that the *implementation* meets each acceptance criterion.
+- **`mode: criteria`** (**default**) — walks each acceptance criterion in order and asks
+  an LLM whether the implementation satisfies it, failing fast on any criterion that
+  fails. Cheap: cost scales with criterion count.
+- **`mode: adversarial`** (**explicit opt-in**) — tries to *break* the feature via
+  three distinct probe classes (boundary values, malformed/hostile inputs, failure
+  modes) instead of confirming it works. **Verdict rule: attempting fewer than 3
+  genuine probe classes is itself a FAIL**, even if every attempted probe passed.
+  Expensive: a fixed floor of three open-ended probe states before a verdict.
+
+This is the verification counterpart to `/ll:create-eval-from-issues`. Where
+`create-eval-from-issues` exercises a feature *as a user would* and judges experience
+quality, `verify-issue-loop` checks that the *implementation* meets each acceptance
+criterion (`criteria` mode) or survives adversarial probing (`adversarial` mode).
+
+### Choosing a mode
+
+`criteria` is the default because it is the cheaper, bounded, fail-fast path — a bare
+`/ll:verify-issue-loop <ID>` (or an FSM state wiring it in without knowing `mode`
+exists) must not silently opt into the far more expensive adversarial path. The two
+modes cost the same to *run* (resolve, emit one YAML, validate) but the loops they
+emit do not: adversarial carries `timeout: 2700` against criteria's `1800`, and always
+pays a fixed floor of three open-ended probe states, whereas criteria's cost scales
+with the acceptance-criterion count and fails fast on criterion 1. Prefer `criteria`
+for confirming implementation conformance; reach for `mode: adversarial` deliberately
+when you specifically want boundary/malformed/failure-mode robustness testing, not as
+a casual default.
 
 ## Overview
 
-This skill:
-1. Resolves the issue ID to a file path using `ll-issues show <ID> --json`
-2. Reads the issue file to extract the `## Acceptance Criteria` section
-3. Synthesizes one `verify-criterion-N` state per criterion, each with an `llm_structured` pass/fail evaluator
-4. Wires linear pass-routing: `on_yes: verify-criterion-<N+1>` (or `done` for the final), `on_no: failed`
-5. Writes the file to `.loops/verify-<ISSUE-ID>-<slug>.yaml`
-6. Validates it with `ll-loop validate` and reports the result
+Both modes share a spine:
+1. Resolve the issue ID to a file path using `ll-issues show <ID> --json`
+2. Read the issue file to extract criteria (and title, for adversarial mode)
+3. Synthesize mode-specific states (see Mode sections below)
+4. Wire routing
+5. Write the file to `.loops/<prefix>-<ISSUE-ID>-<slug>.yaml` (`verify-` for
+   `criteria`, `adversarial-` for `adversarial` — output paths stay
+   mode-distinguished so already-generated loops are unaffected)
+6. Validate with `ll-loop validate` and report the result
 
 ## Arguments
 
@@ -45,21 +76,38 @@ Parse arguments:
 
 ```bash
 ISSUE_ID=""
+MODE="criteria"
 for token in $ARGUMENTS; do
   case "$token" in
-    --*) ;;  # skip flags (reserved for future use)
-    *) ISSUE_ID="$token"; break ;;
+    --mode=*) MODE="${token#--mode=}" ;;
+    --mode) MODE="__next__" ;;
+    --*) ;;  # skip other flags (reserved for future use)
+    *)
+      if [ "$MODE" = "__next__" ]; then
+        MODE="$token"
+      else
+        ISSUE_ID="$token"
+      fi
+      ;;
   esac
 done
 
 if [ -z "$ISSUE_ID" ]; then
   echo "Error: an issue ID is required."
-  echo "Usage: /ll:verify-issue-loop FEAT-919"
+  echo "Usage: /ll:verify-issue-loop FEAT-919 [--mode criteria|adversarial]"
+  exit 1
+fi
+
+if [ "$MODE" != "criteria" ] && [ "$MODE" != "adversarial" ]; then
+  echo "Error: --mode must be 'criteria' or 'adversarial' (got: $MODE)."
   exit 1
 fi
 ```
 
-## Step 1: Resolve Issue File
+`mode` is optional and defaults to `criteria`. An absent `mode` resolves silently —
+never error or prompt for it.
+
+## Step 1: Resolve Issue File (shared)
 
 Resolve the issue file path:
 
@@ -71,161 +119,77 @@ Use the `path` field from the JSON result. If `ll-issues show` fails, report the
 
 **Both open and completed issues are accepted.** The `ll-issues show` command finds an issue by ID regardless of its `status:` frontmatter (open, done, deferred, etc.) — there is no `completed/` or `deferred/` directory.
 
-## Step 2: Extract Acceptance Criteria
+## Step 2: Extract Title and Acceptance Criteria (shared)
 
 Read the resolved issue file directly and extract:
 
 1. **Title** — from the YAML frontmatter `title:` field or the first `# ISSUE-NNN:` heading
-2. **Acceptance Criteria section** — the `## Acceptance Criteria` section body (checkboxes or bullet items describing observable conditions)
+2. **Acceptance Criteria section** — the `## Acceptance Criteria` section body
 
-Parse the acceptance criteria into an ordered list. Accept any of these bullet styles:
-
-- `- [ ] ...` / `- [x] ...` (checkbox style — strip the leading `- [ ] ` / `- [x] `)
+Parse the criteria into an ordered list. Accept any bullet style:
+- `- [ ] ...` / `- [x] ...` (checkbox style — strip the leading marker)
 - `- ...` / `* ...` (plain bullets)
 - `1. ...` / `2. ...` (numbered list)
 
-Strip the marker and whitespace; keep the criterion text. Skip blank lines and sub-bullets (indented items belong to their parent criterion).
+Strip the marker and whitespace; keep the criterion text. Skip blank lines and
+sub-bullets (indented items belong to their parent criterion).
 
-**If the section is missing or empty, halt with a clear error:**
+**Mode-specific handling of a missing/empty section:**
 
-```
-Error: issue <ISSUE-ID> has no Acceptance Criteria section (or it is empty).
-Run /ll:refine-issue <ISSUE-ID> to add criteria, or /ll:format-issue <ISSUE-ID>
-to fix the section heading. No file was written.
-```
+- `mode: criteria` — **halt** with a clear error:
+  ```
+  Error: issue <ISSUE-ID> has no Acceptance Criteria section (or it is empty).
+  Run /ll:refine-issue <ISSUE-ID> to add criteria, or /ll:format-issue <ISSUE-ID>
+  to fix the section heading. No file was written.
+  ```
+  Do **not** write a YAML file in this case.
+- `mode: adversarial` — **do not halt**; fall back to the issue title and Summary
+  section as the probe target. The criteria text (if any) is used only to focus
+  probe prompts on what the feature is supposed to do.
 
-Do **not** write a YAML file in this case.
+## Step 3 & 4: Synthesize States and Wire Transitions
 
-## Step 3: Synthesize Verify-State Prompts
+See [templates.md](templates.md) for the full per-mode state-synthesis prompts,
+transition wiring, and fully-expanded YAML templates:
 
-For each criterion (1-indexed), synthesize a single verify-state. The state's `action` (prompt) and its evaluator (`llm_structured`) both reference the criterion text.
+- **`mode: criteria`** — one `verify-criterion-N` state per criterion, `llm_structured`
+  pass/fail, linear `on_yes: verify-criterion-<N+1>` chaining (final state's
+  `on_yes: done`), `on_no: failed`, `on_partial: failed`. `initial:
+  verify-criterion-1`. Terminals: `done`, `failed`.
+- **`mode: adversarial`** — three fixed probe states (`probe-boundary`,
+  `probe-malformed-hostile`, `probe-failure-mode`), each `llm_structured`, chained on
+  `on_yes`, `on_no: failed_with_finding`. Final probe's `on_yes` routes to
+  `count_probes` — **not `done`**. `initial: probe-boundary`. Terminals: `done`,
+  `failed_with_finding`, `failed_too_few`.
 
-### State action (prompt)
+  **`count_probes` (load-bearing, keep prominent — do not bury in prose):** a
+  `action_type: shell` state that counts probe-result JSON files physically written
+  during the run (`ls "${context.run_dir}"/probe-*.json 2>/dev/null | wc -l`),
+  evaluated with `output_numeric` (`operator: ge`, `target: 3`). This gate is
+  filesystem-derived, not LLM-self-reported — the same self-evaluation-bias concern
+  MR-1 encodes. **Attempting fewer than 3 genuine probe classes is itself a FAIL**
+  (routes to `failed_too_few`), even if every attempted probe passed.
 
-Tell the running agent to inspect the implementation and gather evidence specifically for this criterion. Pattern:
-
-> "Verify acceptance criterion <N> for <ISSUE-ID>: <criterion text>. Inspect the implementation, run any commands needed, and gather concrete evidence about whether the criterion holds. Report what you observed."
-
-### Evaluator prompt (llm_structured)
-
-Ask the evaluator to decide pass/fail with a short reason. Pattern:
-
-> "Does the implementation satisfy criterion <N> of <ISSUE-ID>?
->
-> Criterion: <criterion text>
->
-> Answer YES only if the evidence clearly shows the criterion is met.
-> Answer NO if the criterion is not met or evidence is missing/ambiguous.
-> Provide a one-sentence reason citing the observed evidence."
-
-## Step 4: Wire Transitions
-
-Generate N states named `verify-criterion-1`, `verify-criterion-2`, …, `verify-criterion-N`.
-
-For each state at position `i` (1-indexed):
-
-- `on_yes: verify-criterion-<i+1>` for `i < N`
-- `on_yes: done` for `i == N`
-- `on_no: failed` for every state
-- `on_partial: failed` for every state (an ambiguous/partial verdict is treated as a failed criterion, not a dead end)
-
-`done` and `failed` are both `terminal: true`.
-
-`initial: verify-criterion-1`.
-
-## Step 5: Generate Verification YAML
-
-### Slug Generation
+## Step 5: Slug Generation and Output Path (shared)
 
 ```bash
 ISSUE_LOWER=$(echo "$ISSUE_ID" | tr '[:upper:]' '[:lower:]')
-# Slug uses the issue ID + a kebab-cased title slug from the issue file
 TITLE_SLUG=$(echo "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-//;s/-$//')
-LOOP_NAME="verify-${ISSUE_LOWER}-${TITLE_SLUG}"
+PREFIX="verify"
+if [ "$MODE" = "adversarial" ]; then PREFIX="adversarial"; fi
+LOOP_NAME="${PREFIX}-${ISSUE_LOWER}-${TITLE_SLUG}"
 OUTPUT_FILE=".loops/${LOOP_NAME}.yaml"
 ```
 
-If the issue title cannot be extracted cleanly, fall back to `LOOP_NAME="verify-${ISSUE_LOWER}"`.
+If the issue title cannot be extracted cleanly, fall back to
+`LOOP_NAME="${PREFIX}-${ISSUE_LOWER}"`.
 
-### Fully-Expanded YAML (self-contained, no `from:` inheritance)
+Generate fully-expanded YAML (self-contained, no `from:` inheritance) per the
+templates in [templates.md](templates.md). `mode: criteria` loops get
+`timeout: 1800`; `mode: adversarial` loops get `timeout: 2700`. Both get
+`max_steps: 20` and per-state `timeout: 300`.
 
-Generate YAML with this structure. All scaffolding and states are inline — there is no `from:` field. (Rationale: matches `create-eval-from-issues` and 40/42 existing loops.)
-
-```yaml
-name: "verify-<issue-id-lower>-<title-slug>"
-category: verification
-description: |
-  Verification loop for <ISSUE-ID>: <issue title>.
-  Walks each acceptance criterion in order; fails fast on any criterion that fails.
-  Generated by /ll:verify-issue-loop on <YYYY-MM-DD>.
-initial: verify-criterion-1
-max_steps: 20
-timeout: 1800
-
-states:
-
-  verify-criterion-1:
-    action: >
-      Verify acceptance criterion 1 for <ISSUE-ID>: <criterion-1 text>.
-      Inspect the implementation, run any commands needed, and gather concrete
-      evidence about whether the criterion holds. Report what you observed.
-    action_type: prompt
-    timeout: 300
-    evaluate:
-      type: llm_structured
-      prompt: >
-        Does the implementation satisfy criterion 1 of <ISSUE-ID>?
-
-        Criterion: <criterion-1 text>
-
-        Answer YES only if the evidence clearly shows the criterion is met.
-        Answer NO if the criterion is not met or evidence is missing/ambiguous.
-        Provide a one-sentence reason citing the observed evidence.
-    on_yes: verify-criterion-2
-    on_no: failed
-    on_partial: failed
-
-  verify-criterion-2:
-    action: >
-      Verify acceptance criterion 2 for <ISSUE-ID>: <criterion-2 text>.
-      Inspect the implementation, run any commands needed, and gather concrete
-      evidence about whether the criterion holds. Report what you observed.
-    action_type: prompt
-    timeout: 300
-    evaluate:
-      type: llm_structured
-      prompt: >
-        Does the implementation satisfy criterion 2 of <ISSUE-ID>?
-
-        Criterion: <criterion-2 text>
-
-        Answer YES only if the evidence clearly shows the criterion is met.
-        Answer NO if the criterion is not met or evidence is missing/ambiguous.
-        Provide a one-sentence reason citing the observed evidence.
-    on_yes: done   # or verify-criterion-3 if more criteria remain
-    on_no: failed
-    on_partial: failed
-
-  # ... repeat verify-criterion-N for each remaining criterion ...
-
-  done:
-    terminal: true
-
-  failed:
-    terminal: true
-```
-
-**Important rules:**
-
-- Exactly N `verify-criterion-N` states for N criteria.
-- The final verify state's `on_yes` is `done` (not `verify-criterion-<N+1>`).
-- Every verify state's `on_no` is `failed`.
-- Every verify state's `on_partial` is `failed`.
-- Both `done` and `failed` have `terminal: true`.
-- No `discover` or `advance` states — this is single-issue scope.
-- No `check_invariants`, `check_stall`, or `check_concrete` — those belong in code-quality loops, not verification loops.
-
-## Step 6: Write and Validate
+## Step 6: Write and Validate (shared)
 
 ```bash
 mkdir -p .loops/
@@ -243,28 +207,6 @@ Report the validation result. If validation fails, show the errors and explain w
 
 ## Output Format
 
-After completion, output:
+See [templates.md](templates.md) for the per-mode Output Format block and Example.
 
-```
-✓ Verification loop generated: .loops/verify-<issue-id-lower>-<title-slug>.yaml
-
-Issue: <ISSUE-ID>: <title>
-Criteria verified: N
-States: verify-criterion-1 → ... → verify-criterion-N → done (with failed terminal on any miss)
-
-Validation: PASS / FAIL
-  [validation output if FAIL]
-
-To run:
-  ll-loop run verify-<issue-id-lower>-<title-slug>
-```
-
-## Example
-
-```
-/ll:verify-issue-loop FEAT-919
-→ Reads acceptance criteria from .issues/features/P3-FEAT-919-*.md
-→ Writes: .loops/verify-feat-919-add-json-schema-generation.yaml
-→ Loop: initial: verify-criterion-1, N states ending in done (or failed)
-→ Validation: PASS
-```
+**See also:** `/ll:create-loop`, `/ll:go-no-go`, `/ll:create-eval-from-issues`

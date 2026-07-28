@@ -128,11 +128,11 @@ class TestBestMatchSkills:
         every skill sharing just one keyword.
         """
         skill_keywords = {
-            "adversarial-verify-loop": {"generate", "adversarial", "loop", "fsm"},
+            "verify-issue-loop": {"generate", "adversarial", "loop", "fsm"},
             "create-loop": {"create", "loop", "automation"},
         }
         phrasing = "generate an adversarial fsm loop"
-        assert _best_match_skills(phrasing, skill_keywords) == {"adversarial-verify-loop"}
+        assert _best_match_skills(phrasing, skill_keywords) == {"verify-issue-loop"}
 
 
 # ---------------------------------------------------------------------------
