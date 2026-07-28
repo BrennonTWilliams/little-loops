@@ -1,0 +1,11 @@
+{
+  "id": "1b4b3780-e3ce-47cb-a26c-91658c44f65c",
+  "type": "decision",
+  "timestamp": "2026-07-28T02:10:22Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "ENH-2877 audit Tier 1 C1: self-declared inverses, duplicated Jaccard scoring already drifted on --min-score defaults; 0 dispatch-site references.",
+  "rule": "Captured: Merge link-epics and create-epics-from-unparented behind a mode flag",
+  "scope": "issue",
+  "issue": "ENH-2880"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "1392f863-7dd4-4787-a971-4a86ebe058e4",
+  "type": "decision",
+  "timestamp": "2026-07-28T02:10:22Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "ENH-2877 audit Tier 1 C2: identical input/allowlist/spine, 6 of 8 steps duplicated; create-eval-from-issues explicitly excluded.",
+  "rule": "Captured: Merge verify-issue-loop and adversarial-verify-loop behind a mode flag",
+  "scope": "issue",
+  "issue": "ENH-2881"
+}

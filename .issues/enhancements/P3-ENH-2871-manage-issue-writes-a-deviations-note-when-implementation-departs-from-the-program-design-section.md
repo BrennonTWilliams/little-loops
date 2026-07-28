@@ -5,7 +5,6 @@ title: manage-issue writes a Deviations note when implementation departs from th
 type: ENH
 priority: P3
 status: open
-discovered_by: split-from-ENH-2852
 discovered_date: 2026-07-27
 epic: EPIC-2856
 parent: EPIC-2856
@@ -35,7 +34,7 @@ in the system would ever produce a `Deviations` note. Give it a writer in
 
 ## Current Behavior
 
-`skills/manage-issue/SKILL.md`'s "Mismatch Handling Protocol" (~L325-331) handles
+`skills/manage-issue/SKILL.md`'s "Mismatch Handling Protocol" (`:325-334`) handles
 plan/reality divergence interactively at implementation time but persists nothing
 structured to the issue file. There is no existing "Deviations" section or frontmatter
 convention anywhere in the codebase (confirmed by ENH-2852's refinement research).
@@ -51,11 +50,18 @@ sections is unaffected.
 
 ## Proposed Change
 
-1. **`skills/manage-issue/SKILL.md`** — extend the Mismatch Handling Protocol (~L325-331,
-   the attach point) with an explicit step: when the implemented shape departs from
+1. **`skills/manage-issue/SKILL.md`** — extend the Mismatch Handling Protocol
+   (`:325-334`, the attach point) with an explicit step: when the implemented shape departs from
    `## Program Design`, append (via `Edit`) a `#### Deviations` note under that section
    with a dated entry per deviation: what the design said, what was implemented, and why.
    Never modify the original `Types`/`Signatures`/`Call Path` content.
+
+   **The step must fire on both branches, and be worded so it obviously applies to the
+   non-`--gates` default.** The protocol's step 4 (`SKILL.md:332` — "Without `--gates`
+   (default): Do NOT use `AskUserQuestion`. Adapt if minor…") is the autonomous branch `ll-auto` /
+   `ll-parallel` / autodev actually take — it is precisely where deviations go
+   unrecorded today. If the new step reads as belonging to the interactive `--gates`
+   branch, it is dead code in automation and the issue delivers nothing.
 2. **Format tolerance** — the `Deviations` subsection must not trip ENH-2852's specificity
    grading: grading operates on the `Types`/`Signatures`/`Call Path` subsections and the
    `Call Path` anchor extraction, so an appended prose `Deviations` note is inert to the
@@ -73,6 +79,16 @@ sections is unaffected.
       section.
 - [ ] The step appends; it never rewrites the original `Types`/`Signatures`/`Call Path`
       content.
+- [ ] The step is written to fire on the non-`--gates` autonomous branch (step 4 of the
+      protocol), not only the interactive `--gates` branch — that is the branch
+      `ll-auto`/`ll-parallel`/autodev use.
+- [ ] **Positional assertion** (the only mechanically checkable guard that the writer is
+      not dead code in automation): a test asserts the Deviations instruction text appears
+      within the Mismatch Handling Protocol section *at or after* the step-4
+      "Without `--gates`" line, not confined to the step-3 `--gates` block. Every other
+      AC here is prose-only; without this one, "the step exists" and "the step fires in
+      automation" are indistinguishable to the suite — which is exactly the failure mode
+      this issue names as the thing that makes it deliver nothing.
 - [ ] A test asserts a gate-passing `## Program Design` section still passes
       `ll-issues format-check` with a `Deviations` note appended (the note is inert to
       specificity grading).
@@ -86,6 +102,13 @@ sections is unaffected.
 - **Out of scope**: the gate, grading, grandfathering (ENH-2852); autodev routing and
   stamp arming (ENH-2870); any change to `/ll:reconcile-issue`'s by-design rewriting of
   directive sections.
+- **Known coverage limit** (deliberate, not an oversight): `rn-implement.yaml` and
+  `rn-stepwise.yaml` do **not** invoke `/ll:manage-issue` — grep confirms only
+  `harness-single-shot.yaml`, `harness-plan-research-implement-report.yaml`,
+  `rl-coding-agent.yaml`, and `issue_manager.py:942` (the `ll-auto`/`ll-parallel`/autodev
+  path) do. So this writer covers the autodev path but leaves the `rn-*` implement loops
+  unenforced. Recording the limit here rather than silently shipping a partial contract;
+  extending it to the `rn-*` loops is a follow-up, unowned.
 
 ## Impact
 

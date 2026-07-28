@@ -1,0 +1,12 @@
+{
+  "id": "3adbfc7e-c271-40e7-8853-29016310258a",
+  "type": "decision",
+  "timestamp": "2026-07-28T02:28:18Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches 3 existing skip-disable-model-invocation precedents; downstream collision detection has no independent dependency on the full 71-skill set; yields actionable N/19 coverage vs. Option B's permanently-unreachable N/71 and its unmeasured/not-applicable conflation.",
+  "rule": "Option A: filter ll-verify-triggers population to model-invocable skills via _is_model_invocation_disabled()",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: score all 71 skills unfiltered, rely solely on measured/unmeasured split",
+  "issue": "BUG-2879"
+}

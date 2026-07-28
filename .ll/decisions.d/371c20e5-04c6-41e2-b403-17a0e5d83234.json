@@ -1,0 +1,11 @@
+{
+  "id": "ab123be4-532f-46bd-850b-42fafc9e1774",
+  "type": "decision",
+  "timestamp": "2026-07-28T02:16:28Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Complements ENH-2634's EPIC scope with an arbitrary explicit-list scope",
+  "rule": "Captured: audit-issue-conflicts comma-separated issue-ID scope",
+  "scope": "issue",
+  "issue": "ENH-2882"
+}
