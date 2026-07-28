@@ -35,6 +35,8 @@ REQUIRED_STATES = {
     "check_harness_name",
     "eval_gate",
     "check_eval_retry_budget",
+    "harness_missing",
+    "finalize_harness_missing",
     "capture_eval_failures",
     "synthesize_result",
     "done",
@@ -212,13 +214,20 @@ class TestCheckHarnessNameGuard:
             "check_harness_name on_yes must route to eval_gate when harness name is present"
         )
 
-    def test_check_harness_name_routes_to_synthesize_when_empty(self, loop_data: dict) -> None:
+    def test_check_harness_name_routes_to_harness_missing_when_empty(self, loop_data: dict) -> None:
+        # ENH-2415: a missing harness is a build failure, not a silent skip to synthesize.
         state = loop_data["states"]["check_harness_name"]
-        assert state.get("on_no") == "synthesize_result", (
-            "check_harness_name on_no must route to synthesize_result when harness name is empty"
+        assert state.get("on_no") == "harness_missing", (
+            "check_harness_name on_no must route to harness_missing when harness name is empty"
         )
-        assert state.get("on_error") == "synthesize_result", (
-            "check_harness_name on_error must route to synthesize_result on shell error"
+        assert state.get("on_error") == "harness_missing", (
+            "check_harness_name on_error must route to harness_missing on shell error"
+        )
+
+    def test_check_harness_name_references_skip_eval(self, loop_data: dict) -> None:
+        action = loop_data["states"]["check_harness_name"].get("action", "")
+        assert "context.skip_eval" in action, (
+            "check_harness_name must reference ${context.skip_eval:default=false} (ENH-2415)"
         )
 
     def test_cluster_execute_routes_to_check_build_outcome(self, loop_data: dict) -> None:
@@ -294,6 +303,16 @@ class TestCheckBuildOutcomeGate:
             "finalize_build_failed must emit a resume_command so the build stays resumable"
         )
 
+    def test_synthesize_result_routes_to_done(self, loop_data: dict) -> None:
+        # synthesize_result is only reached once the eval gate (or an explicit skip_eval
+        # bypass, which routes elsewhere) actually passed — so all three content verdicts
+        # terminate `done` (ENH-2415).
+        state = loop_data["states"]["synthesize_result"]
+        for route_key in ("on_yes", "on_no", "on_partial"):
+            assert state.get(route_key) == "done", (
+                f"synthesize_result.{route_key} must route to done"
+            )
+
 
 class TestGoalClusterScheduleModePassthrough:
     """Tests that goal-cluster threads schedule_mode to dispatch_cluster."""
@@ -342,6 +361,13 @@ class TestRnBuildEvalGate:
             "eval_gate on_yes must route to synthesize_result"
         )
 
+    def test_eval_gate_routes_to_harness_missing_on_error(self, loop_data: dict) -> None:
+        # ENH-2415: a crashed harness must not be indistinguishable from a real pass.
+        state = loop_data["states"]["eval_gate"]
+        assert state.get("on_error") == "harness_missing", (
+            "eval_gate on_error must route to harness_missing, not synthesize_result"
+        )
+
     def test_retry_budget_uses_output_numeric_evaluator(self, loop_data: dict) -> None:
         state = loop_data["states"]["check_eval_retry_budget"]
         evaluate = state.get("evaluate", {})
@@ -355,10 +381,14 @@ class TestRnBuildEvalGate:
             "When under retry budget, must capture failures before re-entering cluster_execute"
         )
 
-    def test_retry_budget_on_no_routes_to_synthesize(self, loop_data: dict) -> None:
+    def test_retry_budget_on_no_routes_to_harness_missing(self, loop_data: dict) -> None:
+        # ENH-2415: retries exhausted must not silently proceed to a `done` terminal.
         state = loop_data["states"]["check_eval_retry_budget"]
-        assert state.get("on_no") == "synthesize_result", (
-            "When retry budget exhausted, must proceed to synthesize_result"
+        assert state.get("on_no") == "harness_missing", (
+            "When retry budget exhausted, must route to harness_missing, not synthesize_result"
+        )
+        assert state.get("on_error") == "harness_missing", (
+            "check_eval_retry_budget on_error must route to harness_missing"
         )
 
     def test_capture_failures_re_enters_cluster_execute(self, loop_data: dict) -> None:
@@ -374,6 +404,71 @@ class TestRnBuildEvalGate:
         )
         assert "${context.run_dir}" in action or "context.run_dir" in action, (
             "Retry counter path must use ${context.run_dir} (not .loops/tmp/) for MR-3 compliance"
+        )
+
+
+class TestHarnessMissingGate:
+    """Tests for the harness_missing gate and skip_eval bypass (ENH-2415)."""
+
+    def test_harness_missing_exists(self, loop_data: dict) -> None:
+        assert "harness_missing" in loop_data["states"]
+
+    def test_harness_missing_uses_exit_code_evaluator(self, loop_data: dict) -> None:
+        state = loop_data["states"]["harness_missing"]
+        assert state.get("evaluate", {}).get("type") == "exit_code", (
+            "harness_missing must use a non-LLM exit_code evaluator (MR-1 compatible)"
+        )
+
+    def test_harness_missing_routes_to_finalize_build_failed_by_default(
+        self, loop_data: dict
+    ) -> None:
+        state = loop_data["states"]["harness_missing"]
+        assert state.get("on_no") == "finalize_harness_missing", (
+            "harness_missing on_no must route to finalize_harness_missing"
+        )
+        assert state.get("on_error") == "finalize_harness_missing", (
+            "harness_missing on_error must fail safe to finalize_harness_missing"
+        )
+
+    def test_harness_missing_routes_to_finalize_eval_skipped_when_skip_eval(
+        self, loop_data: dict
+    ) -> None:
+        state = loop_data["states"]["harness_missing"]
+        assert state.get("on_yes") == "finalize_eval_skipped", (
+            "harness_missing on_yes (skip_eval=true) must route to finalize_eval_skipped"
+        )
+
+    def test_finalize_harness_missing_routes_to_build_failed(self, loop_data: dict) -> None:
+        state = loop_data["states"]["finalize_harness_missing"]
+        assert state.get("next") == "build_failed", (
+            "finalize_harness_missing must terminate at build_failed, not done"
+        )
+
+    def test_finalize_harness_missing_emits_resume_command(self, loop_data: dict) -> None:
+        action = loop_data["states"]["finalize_harness_missing"].get("action", "")
+        assert "resume_command" in action, (
+            "finalize_harness_missing must emit a resume_command so the build stays resumable"
+        )
+
+    def test_finalize_eval_skipped_exists_and_terminates_non_done(self, loop_data: dict) -> None:
+        state = loop_data["states"]["finalize_eval_skipped"]
+        assert state.get("next") == "build_failed", (
+            "finalize_eval_skipped must terminate non-done even on deliberate skip (ENH-2415)"
+        )
+
+    def test_finalize_eval_skipped_emits_eval_skipped_flag(self, loop_data: dict) -> None:
+        action = loop_data["states"]["finalize_eval_skipped"].get("action", "")
+        assert "eval_skipped" in action, (
+            "finalize_eval_skipped must set eval_skipped:true in its JSON payload"
+        )
+
+    def test_skip_eval_context_default_exists(self, loop_data: dict) -> None:
+        context = loop_data.get("context", {})
+        assert "skip_eval" in context, (
+            "rn-build context block must declare a skip_eval knob (ENH-2415)"
+        )
+        assert str(context.get("skip_eval")).lower() == "false", (
+            "skip_eval must default to false — verification is mandatory by default"
         )
 
 
@@ -638,8 +733,13 @@ class TestRnBuildResumeState:
             "resume_read_harness must emit a visible WARNING when no harness is found "
             "(Change #4: no silent eval skip)"
         )
-        assert "SKIPPED" in action, (
-            "resume_read_harness warning must state eval gate will be SKIPPED"
+        # ENH-2415: the warning is now terminal-affecting (build_failed), not a silent skip.
+        assert "build_failed" in action, (
+            "resume_read_harness warning must state the build will terminate as build_failed"
+        )
+        assert "skip_eval" in action, (
+            "resume_read_harness warning must mention --context skip_eval=true as the "
+            "deliberate bypass path"
         )
 
 

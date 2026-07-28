@@ -11775,6 +11775,46 @@ class TestCheckSubstrateOptionalState:
             "check_substrate must appear after commit_design and before scope_project in rn-build.yaml"
         )
 
+    # ── ENH-2415: rn-build mandatory-eval harness_missing gate ──────────────────
+
+    def test_rn_build_has_harness_missing_states(self) -> None:
+        """rn-build.yaml must contain harness_missing/finalize_harness_missing states."""
+        assert self.RN_BUILD_FILE.exists(), f"Loop file not found: {self.RN_BUILD_FILE}"
+        content = self.RN_BUILD_FILE.read_text()
+        assert "harness_missing:" in content, (
+            "rn-build.yaml must contain a harness_missing state per ENH-2415"
+        )
+        assert "finalize_harness_missing:" in content, (
+            "rn-build.yaml must contain a finalize_harness_missing state per ENH-2415"
+        )
+
+    def test_rn_build_harness_missing_has_full_routing(self) -> None:
+        """rn-build harness_missing must declare on_yes, on_no, and on_error (MR-4)."""
+        assert self.RN_BUILD_FILE.exists(), f"Loop file not found: {self.RN_BUILD_FILE}"
+        content = self.RN_BUILD_FILE.read_text()
+        hm_pos = content.find("harness_missing:")
+        assert hm_pos != -1, "harness_missing state not found in rn-build.yaml"
+        next_state_pos = content.find("\n  finalize_harness_missing:", hm_pos)
+        block = content[hm_pos:next_state_pos] if next_state_pos != -1 else content[hm_pos:]
+        assert "on_yes:" in block, "rn-build harness_missing must have on_yes route (MR-4)"
+        assert "on_no:" in block, "rn-build harness_missing must have on_no route (MR-4)"
+        assert "on_error:" in block, "rn-build harness_missing must have on_error route (MR-4)"
+
+    def test_rn_build_check_harness_name_no_longer_routes_to_synthesize(self) -> None:
+        """check_harness_name on_no/on_error must repoint to harness_missing, not synthesize_result."""
+        assert self.RN_BUILD_FILE.exists(), f"Loop file not found: {self.RN_BUILD_FILE}"
+        content = self.RN_BUILD_FILE.read_text()
+        chn_pos = content.find("check_harness_name:")
+        assert chn_pos != -1, "check_harness_name state not found in rn-build.yaml"
+        next_state_pos = content.find("\n  eval_gate:", chn_pos)
+        block = content[chn_pos:next_state_pos] if next_state_pos != -1 else content[chn_pos:]
+        assert "on_no: harness_missing" in block, (
+            "check_harness_name on_no must route to harness_missing (ENH-2415)"
+        )
+        assert "on_error: harness_missing" in block, (
+            "check_harness_name on_error must route to harness_missing (ENH-2415)"
+        )
+
 
 class TestValidatorWarningBudget:
     """Ratchet on deterministic validator warning categories (FSM loop audit 2026-06-12).

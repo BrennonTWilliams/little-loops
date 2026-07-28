@@ -9905,7 +9905,8 @@ ll-loop run rn-build --context spec=specs/backend.md,specs/frontend.md
 | 4 — Eval harness | `eval_harness`, `read_harness_name` | Installs an eval harness loop keyed to the spec's acceptance criteria |
 | 5 — Execution | `cluster_execute` | Delegates to `goal-cluster` which batches issues and dispatches each batch to `rn-implement` with `schedule_mode=value_ranked` |
 | 6 — Eval gate | `check_harness_name`, `eval_gate`, `check_eval_retry_budget`, `capture_eval_failures` | Runs eval harness; on failure, captures failing scenarios as new issues and re-enters `cluster_execute` (bounded by `max_eval_retries`) |
-| 7 — Result | `synthesize_result`, `done` | Emits a structured JSON summary of the build outcome; includes `resume_command` when `eval_passed: false` |
+| 6.5 — Harness missing/skipped (ENH-2415) | `harness_missing`, `finalize_harness_missing`, `finalize_eval_skipped` | Reached when no harness resolves, the harness crashes, or retries are exhausted. Terminates `build_failed` (loud, resumable) unless `skip_eval=true` was explicitly set, which still terminates non-`done` with `eval_skipped: true` |
+| 7 — Result | `synthesize_result`, `done` | Emits a structured JSON summary of the build outcome; includes `resume_command` when `eval_passed: false`. Only reached when the eval gate actually passed |
 
 **Context knobs:**
 
@@ -9917,6 +9918,7 @@ ll-loop run rn-build --context spec=specs/backend.md,specs/frontend.md
 | `epic_id` | `""` | Auto-populated: EPIC ID from `scope_project`. Do not set manually. |
 | `resume_epic` | `""` | **Resume only.** EPIC ID from a prior run. When set, `init` skips spec validation and routes to `resume`, which re-enters `cluster_execute`. |
 | `resume_harness` | `""` | **Resume only.** Harness loop name from a prior run. Passed to `eval_gate` via `resume_read_harness`. |
+| `skip_eval` | `"false"` | **Deliberate bypass only** (ENH-2415). The only way to skip the eval gate; still terminates `build_failed` (not `done`) with `eval_skipped: true` in the JSON output. |
 
 **Internal dispatch flags** (fixed; set automatically, not user-facing):
 

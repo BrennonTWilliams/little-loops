@@ -714,6 +714,7 @@ ll-loop run rn-build --context spec=specs/sample.md
 | `max_eval_retries` | `"2"` | Max `eval_gate` retry cycles before accepting a partial result |
 | `resume_epic` | `""` | **Resume only.** EPIC ID from a prior run; skips the front half and re-enters `cluster_execute` |
 | `resume_harness` | `""` | **Resume only.** Harness loop name from a prior run; passed to `eval_gate` when resuming |
+| `skip_eval` | `"false"` | **Deliberate bypass only** (ENH-2415). The only way to skip the eval gate; still terminates `build_failed` with `eval_skipped: true` in the JSON, never `done` |
 
 #### Resuming a partial build (ENH-2016)
 
@@ -729,8 +730,12 @@ ll-loop run rn-build \
 ```
 
 `resume_epic` and `resume_harness` are both required for a full eval-gate cycle on
-resume. If `resume_harness` is omitted, `check_harness_name` will route directly to
-`synthesize_result` (no eval gate run).
+resume. If `resume_harness` is omitted (and no prior harness can be auto-discovered
+from `.loops/runs/rn-build-*/harness-name.txt` or an installed `.loops/harness-*.yaml`),
+`check_harness_name` routes to `harness_missing`, which terminates the run at
+`build_failed` — not `done` — since the eval gate is mandatory (ENH-2415). To
+deliberately proceed without verification, pass `--context skip_eval=true`; this
+still terminates non-`done`, with `eval_skipped: true` in the JSON output.
 
 #### Spec file format
 
