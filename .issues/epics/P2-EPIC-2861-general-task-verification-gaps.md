@@ -1,12 +1,21 @@
 ---
 id: EPIC-2861
-status: open
+status: done
 priority: P2
-captured_at: "2026-07-27T16:17:56Z"
+captured_at: '2026-07-27T16:17:56Z'
 discovered_date: 2026-07-27
 discovered_by: capture-issue
-labels: [loops, general-task, verification, fsm]
-relates_to: [ENH-2857, ENH-2858, ENH-2859, ENH-2860]
+labels:
+- loops
+- general-task
+- verification
+- fsm
+relates_to:
+- ENH-2857
+- ENH-2858
+- ENH-2859
+- ENH-2860
+completed_at: '2026-07-28T20:13:10Z'
 ---
 
 # EPIC-2861: Close general-task verification gaps (postmortem remediation)
