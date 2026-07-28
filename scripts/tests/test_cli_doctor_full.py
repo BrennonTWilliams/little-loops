@@ -203,6 +203,7 @@ class TestFullSection:
             "full:design_tokens",
             "full:des_audit",
             "full:check_links",
+            "full:host_map",
         }
 
     def test_full_section_data_keyed_by_verifier_name(self, tmp_path, monkeypatch) -> None:

@@ -91,6 +91,7 @@ from little_loops.cli.verify_cli_allowlist import main_verify_cli_allowlist
 from little_loops.cli.verify_decisions import main_verify_decisions
 from little_loops.cli.verify_des_audit import main_verify_des_audit
 from little_loops.cli.verify_design_tokens import main_verify_design_tokens
+from little_loops.cli.verify_host_map import main_verify_host_map
 from little_loops.cli.verify_kinds import main_verify_kinds
 from little_loops.cli.verify_package_data import main_verify_package_data
 from little_loops.cli.verify_triggers import main_verify_triggers
@@ -137,6 +138,7 @@ __all__ = [
     "main_verify_design_tokens",
     "main_verify_decisions",
     "main_verify_des_audit",
+    "main_verify_host_map",
     "main_verify_package_data",
     "main_verify_kinds",
     "main_verify_skill_budget",

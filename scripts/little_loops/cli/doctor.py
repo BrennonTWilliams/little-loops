@@ -637,6 +637,22 @@ def _full_kinds_check() -> list[CheckResult]:
     return [CheckResult(name="full:kinds", status=data["status"], note=data["note"])]
 
 
+def _full_host_map_data() -> dict:
+    """Adapter over `verify_host_map._run()` (ll-verify-host-map)."""
+    from little_loops.cli.verify_host_map import _run as _verify_host_map_run
+
+    exit_code, errors = _verify_host_map_run()
+    if exit_code == 0:
+        return {"status": "full", "note": "adapter host-capability map agrees with all cross-checks"}
+    return {"status": "unsupported", "note": "; ".join(errors)}
+
+
+@register_full_check
+def _full_host_map_check() -> list[CheckResult]:
+    data = _full_host_map_data()
+    return [CheckResult(name="full:host_map", status=data["status"], note=data["note"])]
+
+
 def _full_design_tokens_data() -> dict:
     """Adapter over `lint_profiles_dir()` (ll-verify-design-tokens)."""
     from little_loops.cli.verify_design_tokens import _find_profiles_dir, lint_profiles_dir

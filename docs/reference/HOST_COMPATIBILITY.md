@@ -1,6 +1,6 @@
 # Host Compatibility Matrix
 
-> **Last Updated: 2026-07-03** — update this date whenever a matrix cell changes status.
+> **Last Updated: 2026-07-28** — update this date whenever a matrix cell changes status.
 
 little-loops integrates with multiple coding-agent host CLIs. This page is
 the authoritative parity matrix — what is wired where, and which gaps are
@@ -190,6 +190,38 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
     **Follow-ups:** ll does not yet exploit the native `spawn_agents_on_csv`
     batch model, which maps onto `ll-parallel`'s per-issue fan-out
     (**FEAT-2122**). See `thoughts/research/codex-agent-selection.md`.
+
+## Adapter Host Capabilities
+
+Build-time capabilities of `ll-adapt`'s per-host output emitters
+(`scripts/little_loops/adapters/{codex,gemini,omp}.py`), authored in
+`scripts/little_loops/adapters/capabilities.py`'s `HOST_CAPABILITIES` map
+(ENH-2873). This is a **distinct surface from "Runner Capabilities" above**:
+this table describes what `ll-adapt` writes to disk for a host (build-time
+emission); the Runner Capabilities table above describes what a host's CLI
+can do when it is invoked (runtime invocation). The two host key sets are
+not congruent — `claude-code`/`opencode`/`pi` have no adapter-side entry at
+all, since `ll-adapt` only emits for hosts that need frontmatter translated
+into a different discovery format. `ll-verify-host-map` (`ll-doctor --full`)
+mechanically checks this table against the map, `host_runner.HostCapabilities`,
+and the emitters' actual behavior — see its module docstring for the checks.
+
+| Host   | Config dir | Skill output                                 | Command output                          | Agent output                | Agents | Commands | Hooks |
+| ------ | ---------- | --------------------------------------------- | ---------------------------------------- | ---------------------------- | ------ | -------- | ----- |
+| codex  | `.codex`   | SKILL.md + `agents/openai.yaml` sidecar (Codex Skills API) | bridged into `skills/ll-<stem>/`         | TOML (`.codex/agents/<name>.toml`) | ✓      | ✓        | ✓     |
+| gemini | `.gemini`  | SKILL.md (name injected, `metadata.short-description` stripped) | TOML (`.gemini/commands/<stem>.toml`)    | N/A — preview stub, raises `AdapterError` | ✗      | ✓        | ✗     |
+| omp    | N/A        | N/A — unimplemented stub, raises `AdapterError` | N/A — unimplemented stub, raises `AdapterError` | N/A — unimplemented stub, raises `AdapterError` | ✗      | ✗        | ✗     |
+
+omp's emitter (`adapters/omp.py`) is a 28-line placeholder tracked by
+**EPIC-2258**; every `emit_*` method raises. Un-stubbing Gemini agent
+emission is blocked on the vendor preview (tracked separately; see
+ENH-2874 for the degraded-mode agent path this unblocks).
+
+> **Last Verified: 2026-07-28** — this table was re-checked against the
+> emitters' actual source (not just re-dated); distinct from *Last Updated*
+> above, which only means the file text changed. Update both dates when the
+> table changes; update only *Last Verified* after a re-check that finds no
+> drift.
 
 ## Orchestration CLI
 
