@@ -109,6 +109,21 @@ states:
       [ -f "$NODE_DIR/research.md" ] || : > "$NODE_DIR/research.md"
       echo "0" > "$NODE_DIR/.node_iter"
       rm -rf "$NODE_DIR/children"
+      # ENH-2862: stepwise mode folds prior leaves' implementation deviations
+      # into THIS node's own research.md — the same file already feeding the
+      # research→synthesize prompts below — so a not-yet-refined node's
+      # refine pass sees where earlier siblings' real implementations diverged
+      # from their plans. Idempotent per node (guarded by a marker file) so a
+      # re-refine (e.g. resume) doesn't re-append on every pass.
+      DEVIATIONS="${context.run_dir}/deviations.md"
+      if [ -s "$DEVIATIONS" ] && [ ! -f "$NODE_DIR/.deviations-seeded" ]; then
+        {
+          echo
+          echo "## Deviations from prior implemented leaves"
+          cat "$DEVIATIONS"
+        } >> "$NODE_DIR/research.md"
+        : > "$NODE_DIR/.deviations-seeded"
+      fi
       echo "$NODE_DIR"
     capture: run_dir
     on_error: refine_failed

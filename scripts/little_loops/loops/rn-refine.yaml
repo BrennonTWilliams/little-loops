@@ -59,6 +59,16 @@ context:
   # is left into build_synth instead of forfeiting the whole run to the kill.
   timeout_total: 21600 # keep equal to the top-level `timeout:` field above
   synth_reserve: 3600  # seconds reserved for bottom-up synthesis + write-back
+  # ENH-2862: stepwise mode. When set (non-"0"), record_leaf routes into the
+  # implement/verify/commit-or-revert chain below instead of straight back to
+  # dequeue_next, so each leaf is implemented and verified before the walk
+  # continues. Unset (default "0"): behavior is unchanged from today's rn-refine.
+  # Driven by the thin rn-stepwise.yaml entry point — never set by hand here.
+  stepwise: 0
+  # Bounded per-leaf repair cycle: verify_leaf failures loop back into
+  # implement_leaf up to this many times before the leaf is hard-reverted and
+  # recorded as IMPLEMENT_FAILED.
+  leaf_repair_budget: 2
 
 states:
   init:
@@ -138,6 +148,7 @@ states:
     action: |
       RESUME="${context.resume}"
       RUN_DIR="${captured.run_dir.output}"
+      STEPWISE="${context.stepwise:default=0}"
       if [ -n "$RESUME" ] && [ -d "$RUN_DIR/nodes" ]; then
         QUEUE="$RUN_DIR/queue.txt"
         VISITED="$RUN_DIR/visited.txt"
@@ -146,7 +157,24 @@ states:
         if [ -s "$VISITED" ]; then
           while IFS= read -r NID; do
             [ -z "$NID" ] && continue
-            [ -f "$RUN_DIR/node_outcome_$${NID}.txt" ] || { INCOMPLETE=1; break; }
+            if [ ! -f "$RUN_DIR/node_outcome_$${NID}.txt" ]; then
+              INCOMPLETE=1
+              break
+            fi
+            # ENH-2862: in stepwise mode, a refined leaf/capped node with no
+            # leaf_impl_<id>.txt marker was refined but never implemented (e.g.
+            # killed mid-implement) — re-enqueue it, do not treat as complete.
+            if [ "$STEPWISE" != "0" ]; then
+              OUTCOME=$(cat "$RUN_DIR/node_outcome_$${NID}.txt" 2>/dev/null || echo "")
+              case "$OUTCOME" in
+                *REFINED_LEAF*|*REFINED_CAPPED*)
+                  if [ ! -f "$RUN_DIR/leaf_impl_$${NID}.txt" ]; then
+                    INCOMPLETE=1
+                    break
+                  fi
+                  ;;
+              esac
+            fi
           done < "$VISITED"
         fi
         if [ -s "$QUEUE" ] || [ -s "$UNDRAINED" ] || [ "$INCOMPLETE" -eq 1 ]; then
@@ -192,6 +220,7 @@ states:
     action_type: shell
     action: |
       RUN_DIR="${captured.run_dir.output}"
+      STEPWISE="${context.stepwise:default=0}"
       QUEUE="$RUN_DIR/queue.txt"
       VISITED="$RUN_DIR/visited.txt"
       UNDRAINED="$RUN_DIR/undrained.txt"
@@ -199,9 +228,20 @@ states:
       if [ -s "$VISITED" ]; then
         while IFS= read -r NID; do
           [ -z "$NID" ] && continue
+          NEEDS=0
           if [ ! -f "$RUN_DIR/node_outcome_$${NID}.txt" ]; then
-            PENDING="$PENDING $NID"
+            NEEDS=1
+          elif [ "$STEPWISE" != "0" ]; then
+            # ENH-2862: mirror check_resume's leaf-implementation completion
+            # check so a refined-but-not-implemented leaf is re-queued too.
+            OUTCOME=$(cat "$RUN_DIR/node_outcome_$${NID}.txt" 2>/dev/null || echo "")
+            case "$OUTCOME" in
+              *REFINED_LEAF*|*REFINED_CAPPED*)
+                [ -f "$RUN_DIR/leaf_impl_$${NID}.txt" ] || NEEDS=1
+                ;;
+            esac
           fi
+          [ "$NEEDS" -eq 1 ] && PENDING="$PENDING $NID"
         done < "$VISITED"
       fi
       EXISTING=$(cat "$QUEUE" 2>/dev/null || true)
@@ -350,8 +390,237 @@ states:
     action: |
       echo "${captured.input.output}" >> "${captured.run_dir.output}/leaves.txt"
       echo "[LEAF] ${captured.input.output}"
+      if [ "${context.stepwise:default=0}" != "0" ]; then
+        echo "STEPWISE_ON"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "STEPWISE_ON"
+    on_yes: reset_leaf_repair
+    on_no: dequeue_next
+    on_error: dequeue_next
+
+  # --- ENH-2862 stepwise implement/verify chain -----------------------------
+  # Reached only from record_leaf when ${context.stepwise} is set. Deliberately
+  # does NOT reuse record_leaf's on_error: dequeue_next habit — an
+  # implement/verify crash must revert the dirty tree and record
+  # IMPLEMENT_FAILED before the walk continues (Design Notes: error routing).
+
+  reset_leaf_repair:
+    # Per-leaf setup: reset the bounded repair-cycle counter (mirrors
+    # autodev.yaml's count_repair_cycle_refine convention) and snapshot the
+    # current HEAD as this leaf's revert baseline. The run starts from a clean
+    # tree (each prior leaf either committed or reverted), so HEAD here is
+    # always the last verified leaf's commit (or the pre-run baseline for the
+    # first leaf).
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      printf '0' > "$RUN_DIR/leaf-repair-count.txt"
+      git rev-parse HEAD > "$RUN_DIR/leaf-baseline-commit.txt" 2>/dev/null || : > "$RUN_DIR/leaf-baseline-commit.txt"
+      rm -f "$RUN_DIR/leaf-deviation-note.txt" "$RUN_DIR/leaf-was-deviated-${captured.input.output}.txt"
+    next: implement_leaf
+    on_error: revert_leaf_failed
+
+  implement_leaf:
+    # Implements this leaf's refined plan directly. NOT routed through the
+    # Issue system — a general-purpose loop's core must not couple to the
+    # Issue system (feedback_general_purpose_loop_decoupling); Issue
+    # integration, if any, is an optional adapter, not this state.
+    action_type: prompt
+    action: |
+      Implement the plan at ${captured.run_dir.output}/nodes/${captured.input.output}/final.md.
+
+      This is one leaf of a larger decomposition tree; treat this file as the complete,
+      self-contained scope of work for this step. Do not implement anything outside what
+      it describes.
+
+      If ${captured.run_dir.output}/deviations.md exists and is non-empty, read it first —
+      it records where earlier sibling leaves' actual implementations diverged from their
+      original plans, and is authoritative context about the current state of the repo
+      that supersedes anything this leaf's plan assumed about those siblings.
+
+      If, while implementing, you must deviate from what
+      nodes/${captured.input.output}/final.md describes (the described approach turns out
+      to be wrong, infeasible, or superseded by what you find in the repo), implement the
+      correct thing instead and then write a short note explaining exactly what changed and
+      why to ${captured.run_dir.output}/leaf-deviation-note.txt. Leave that file absent or
+      empty if you followed the plan as written.
+
+      Make focused, minimal changes scoped to this leaf. Do not run `git commit` — the
+      harness commits on your behalf after verification passes.
+    next: snapshot_leaf_diff
+    on_error: revert_leaf_failed
+
+  snapshot_leaf_diff:
+    # Records this leaf's "commit range" — the diff against leaf-baseline-
+    # commit.txt — as its touched-files set, purely for observability (the
+    # commit range itself, not a re-derived file list, is what scopes
+    # verify_leaf below). Never fails the leaf: a diff/record hiccup falls
+    # through to verification rather than blocking it.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      NID="${captured.input.output}"
+      BASELINE=$(cat "$RUN_DIR/leaf-baseline-commit.txt" 2>/dev/null || echo "")
+      if [ -n "$BASELINE" ]; then
+        git diff --name-only "$BASELINE" -- > "$RUN_DIR/leaf-touched-files-$${NID}.txt" 2>/dev/null || true
+      fi
+    next: verify_leaf
+    on_error: verify_leaf
+
+  verify_leaf:
+    # Scoped per-leaf verification, reusing the existing Tier-1 deterministic
+    # oracle (FEAT-2551, `oracles/code-run-gate`) instead of re-implementing
+    # `.ll/ll-config.json` command resolution: runs the project's
+    # test/typecheck/lint matrix and emits GATE_PASS/GATE_FAILED/GATE_SKIP via
+    # the sub-loop token channel — code-run-gate's own run_test/run_typecheck/
+    # run_lint states pair a shell generator with an `exit_code` evaluator,
+    # which is where MR-1's non-LLM evaluator backstop for implement_leaf's
+    # LLM-generated diff actually lives. Per-leaf run_dir gives each leaf's
+    # gate invocation its own artifact scope (MR-3); issue_id is the leaf node
+    # id so subloop_outcome files never collide across leaves.
+    loop: oracles/code-run-gate
+    with:
+      run_dir: "${captured.run_dir.output}/gate-${captured.input.output}"
+      issue_id: "${captured.input.output}"
+    on_success: check_leaf_deviation
+    on_failure: check_leaf_repair_budget
+    on_error: check_leaf_repair_budget
+
+  check_leaf_repair_budget:
+    # Bounded repair cycle (mirrors autodev.yaml's count_repair_cycle_refine):
+    # increment on each verify_leaf failure, cap at ${context.leaf_repair_budget}.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      N=$(cat "$RUN_DIR/leaf-repair-count.txt" 2>/dev/null || echo 0)
+      N=$((N + 1))
+      printf '%s' "$N" > "$RUN_DIR/leaf-repair-count.txt"
+      BUDGET="${context.leaf_repair_budget:default=2}"
+      if [ "$N" -gt "$BUDGET" ]; then
+        echo "BUDGET_EXHAUSTED"
+      else
+        echo "RETRY $N"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "BUDGET_EXHAUSTED"
+    on_yes: revert_leaf_failed
+    on_no: implement_leaf
+    on_error: revert_leaf_failed
+
+  revert_leaf_failed:
+    # Per-leaf tree hygiene: hard-revert to the last verified leaf's commit so
+    # an IMPLEMENT_FAILED leaf's half-implemented edits never contaminate the
+    # next leaf's implementation context or fail the next leaf's verify gate
+    # for this leaf's sins (Design Notes: commit-or-revert).
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      BASELINE=$(cat "$RUN_DIR/leaf-baseline-commit.txt" 2>/dev/null || echo "")
+      if [ -n "$BASELINE" ]; then
+        git reset --hard "$BASELINE"
+      fi
+      echo "${captured.input.output} IMPLEMENT_FAILED" >> "$RUN_DIR/failed_nodes.txt"
+    next: record_leaf_failed
+    on_error: record_leaf_failed
+
+  record_leaf_failed:
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      printf 'IMPLEMENT_FAILED' > "$RUN_DIR/leaf_impl_${captured.input.output}.txt"
+      echo "[IMPLEMENT_FAILED] ${captured.input.output}"
     next: dequeue_next
     on_error: dequeue_next
+
+  check_leaf_deviation:
+    action_type: shell
+    action: |
+      NOTE="${captured.run_dir.output}/leaf-deviation-note.txt"
+      if [ -s "$NOTE" ]; then
+        echo "DEVIATED"
+      else
+        echo "CLEAN"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "DEVIATED"
+    on_yes: record_deviation
+    on_no: commit_leaf
+    on_error: commit_leaf
+
+  record_deviation:
+    # Appends the implementer's deviation note to the run-wide deviations.md
+    # (plan-node-refine.yaml's setup state folds this into each subsequent
+    # node's research.md, so later refine_node passes see reality, not the
+    # original aspiration — no silent-unimplemented reconciliation, no
+    # reopening of already-visited nodes).
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      NID="${captured.input.output}"
+      NOTE="$RUN_DIR/leaf-deviation-note.txt"
+      {
+        echo "## Node $NID"
+        cat "$NOTE"
+        echo
+      } >> "$RUN_DIR/deviations.md"
+      : > "$RUN_DIR/leaf-was-deviated-$${NID}.txt"
+    next: rewrite_final_from_deviation
+    on_error: commit_leaf
+
+  rewrite_final_from_deviation:
+    # Rewrites the leaf's own final.md to match what was actually built, so
+    # build_synth later integrates reality instead of the original aspiration.
+    action_type: prompt
+    action: |
+      You just implemented ${captured.run_dir.output}/nodes/${captured.input.output}/final.md
+      with a deviation from what it originally described — see the note just appended for
+      node ${captured.input.output} in ${captured.run_dir.output}/deviations.md.
+
+      Rewrite ${captured.run_dir.output}/nodes/${captured.input.output}/final.md in place so
+      it accurately describes what was actually built, keeping its existing structure and
+      format. Do not modify any other file.
+    next: commit_leaf
+    on_error: commit_leaf
+
+  commit_leaf:
+    # Per-leaf tree hygiene: commit on verified success (one commit per leaf).
+    # No separate targets tracking needed — the whole working-tree diff since
+    # leaf-baseline-commit.txt IS this leaf's change (leaf-touched-files
+    # already captured it for verify_leaf's scoping).
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      git add -A
+      if git diff --cached --quiet; then
+        echo "NO_CHANGES ${captured.input.output}"
+      else
+        git commit -m "rn-stepwise: implement leaf ${captured.input.output}"
+        echo "COMMITTED ${captured.input.output}"
+      fi
+      git rev-parse HEAD > "$RUN_DIR/leaf-baseline-commit.txt" 2>/dev/null || true
+    next: record_leaf_done
+    on_error: record_leaf_done
+
+  record_leaf_done:
+    # ENH-2862: separate per-leaf implementation marker — NOT
+    # node_outcome_<id>.txt (that means "refined", not "implemented"). Resume
+    # semantics (check_resume/resume_reconcile) re-enqueue any leaf that has a
+    # node_outcome marker but no leaf_impl marker.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      NID="${captured.input.output}"
+      STATUS="verified"
+      [ -f "$RUN_DIR/leaf-was-deviated-$${NID}.txt" ] && STATUS="deviated"
+      printf '%s' "$STATUS" > "$RUN_DIR/leaf_impl_$${NID}.txt"
+      echo "[LEAF_IMPL] $NID $STATUS"
+    next: dequeue_next
+    on_error: dequeue_next
+  # --- end ENH-2862 stepwise implement/verify chain -------------------------
 
   record_capped:
     action_type: shell
@@ -687,9 +956,45 @@ states:
     evaluate:
       type: output_contains
       pattern: "INVARIANT_OK"
-    on_yes: finalize
+    on_yes: full_suite_gate
     on_no: record_finalize_aborted
     on_error: record_finalize_aborted
+
+  full_suite_gate:
+    # ENH-2862: one full-suite verification gate before the destructive
+    # write-back, ON TOP OF verify_leaf's per-leaf scoped gates — those catch
+    # this-leaf regressions, this catches cross-leaf regressions that scoping
+    # could miss. No-op (falls straight through to finalize) when stepwise is
+    # unset, since a non-stepwise run never implements any code. Advisory, like
+    # final_score: a failure is recorded into plan-rubric.md (surfaced by
+    # report's existing RECOVERY_NEEDED convention) but does not block
+    # write-back — real per-leaf gating already happened via verify_leaf's
+    # commit-or-revert hygiene.
+    action_type: shell
+    action: |
+      RUN_DIR="${captured.run_dir.output}"
+      if [ "${context.stepwise:default=0}" = "0" ]; then
+        exit 0
+      fi
+      # Best-effort .ll/ll-config.json read (same source oracles/code-run-gate
+      # resolves from); absent file/key just skips the gate.
+      TEST_CMD=$(python3 -c "
+      import json
+      try:
+          with open('.ll/ll-config.json') as f:
+              cfg = json.load(f)
+          print(cfg.get('project', {}).get('test_cmd') or '')
+      except Exception:
+          print('')
+      " 2>/dev/null || true)
+      if [ -z "$TEST_CMD" ]; then
+        exit 0
+      fi
+      if ! bash -c "$TEST_CMD" > "$RUN_DIR/full-suite-gate.log" 2>&1; then
+        echo "RECOVERY_NEEDED: full-suite gate failed before finalize (stepwise mode); see full-suite-gate.log" >> "$RUN_DIR/plan-rubric.md"
+      fi
+    next: finalize
+    on_error: finalize
 
   finalize:
     # Overwrite the user's original source file in-place with the reassembled plan.

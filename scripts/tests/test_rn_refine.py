@@ -1169,8 +1169,16 @@ class TestFinalizeSafety:
         assert fsm.states["record_finalize_aborted"].action_type == "shell"
 
     def test_preflight_routes_to_finalize_on_ok(self) -> None:
+        # ENH-2862: preflight_check now routes through full_suite_gate (a
+        # no-op passthrough to finalize when stepwise is unset) instead of
+        # straight to finalize.
         fsm = _load_rn_refine()
-        assert fsm.states["preflight_check"].on_yes == "finalize"
+        assert fsm.states["preflight_check"].on_yes == "full_suite_gate"
+
+    def test_full_suite_gate_routes_to_finalize(self) -> None:
+        fsm = _load_rn_refine()
+        assert fsm.states["full_suite_gate"].next == "finalize"
+        assert fsm.states["full_suite_gate"].on_error == "finalize"
 
     def test_preflight_routes_to_finalize_aborted_on_fail(self) -> None:
         fsm = _load_rn_refine()
@@ -1545,3 +1553,380 @@ class TestRunSummaryArtifacts:
         assert result.returncode == 0, result.stderr
         assert (rd / "capped.txt").exists(), "record_capped must append to capped.txt"
         assert "n7" in (rd / "capped.txt").read_text()
+
+
+# ---------------------------------------------------------------------------
+# ENH-2862: stepwise per-leaf implement/verify chain
+# ---------------------------------------------------------------------------
+
+
+class TestRecordLeafStepwiseBranch:
+    """record_leaf gains a ${context.stepwise} routing branch: unset (default)
+    keeps today's unconditional dequeue_next; set routes into the new
+    implement/verify chain instead."""
+
+    def test_record_leaf_default_shape_is_unchanged(self) -> None:
+        """Baseline (pre-ENH-2862 shape), asserted BEFORE the conditional so the
+        diff is provably additive: on_error still dequeue_next unconditionally."""
+        fsm = _load_rn_refine()
+        assert fsm.states["record_leaf"].on_error == "dequeue_next"
+
+    def test_record_leaf_routes_to_dequeue_when_stepwise_unset(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        rd.mkdir()
+        action = _load_rn_refine().states["record_leaf"].action
+        rendered = _render(
+            action,
+            context={"stepwise": "0"},
+            captured={"run_dir": {"output": str(rd)}, "input": {"output": "n3"}},
+        )
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert "STEPWISE_ON" not in result.stdout
+        assert "n3" in (rd / "leaves.txt").read_text()
+
+    def test_record_leaf_routes_to_stepwise_when_enabled(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        rd.mkdir()
+        action = _load_rn_refine().states["record_leaf"].action
+        rendered = _render(
+            action,
+            context={"stepwise": "1"},
+            captured={"run_dir": {"output": str(rd)}, "input": {"output": "n3"}},
+        )
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert "STEPWISE_ON" in result.stdout
+
+    def test_record_leaf_on_yes_is_reset_leaf_repair(self) -> None:
+        fsm = _load_rn_refine()
+        assert fsm.states["record_leaf"].on_yes == "reset_leaf_repair"
+
+    def test_record_leaf_on_no_is_dequeue_next(self) -> None:
+        fsm = _load_rn_refine()
+        assert fsm.states["record_leaf"].on_no == "dequeue_next"
+
+
+class TestStepwiseChainStructure:
+    """Structural assertions for the new implement/verify/commit-or-revert
+    chain, mirroring TestRecursiveStructure's per-edge style."""
+
+    def test_chain_states_exist(self) -> None:
+        fsm = _load_rn_refine()
+        for name in (
+            "reset_leaf_repair",
+            "implement_leaf",
+            "snapshot_leaf_diff",
+            "verify_leaf",
+            "check_leaf_repair_budget",
+            "revert_leaf_failed",
+            "record_leaf_failed",
+            "check_leaf_deviation",
+            "record_deviation",
+            "rewrite_final_from_deviation",
+            "commit_leaf",
+            "record_leaf_done",
+        ):
+            assert name in fsm.states, f"missing stepwise chain state: {name}"
+
+    def test_implement_leaf_errors_do_not_reuse_record_leaf_dequeue_habit(self) -> None:
+        """Design Notes (error routing): implement_leaf/verify_leaf errors must
+        NOT inherit record_leaf's on_error: dequeue_next — they must revert
+        first."""
+        fsm = _load_rn_refine()
+        assert fsm.states["implement_leaf"].on_error == "revert_leaf_failed"
+        assert fsm.states["verify_leaf"].on_error == "check_leaf_repair_budget"
+        assert fsm.states["implement_leaf"].on_error != "dequeue_next"
+        assert fsm.states["verify_leaf"].on_error != "dequeue_next"
+
+    def test_verify_leaf_delegates_to_code_run_gate(self) -> None:
+        fsm = _load_rn_refine()
+        state = fsm.states["verify_leaf"]
+        assert state.loop == "oracles/code-run-gate"
+        assert "run_dir" in state.with_
+        assert "issue_id" in state.with_
+
+    def test_repair_budget_loops_back_to_implement_leaf(self) -> None:
+        fsm = _load_rn_refine()
+        assert fsm.states["check_leaf_repair_budget"].on_no == "implement_leaf"
+        assert fsm.states["check_leaf_repair_budget"].on_yes == "revert_leaf_failed"
+
+    def test_revert_leaf_failed_records_implement_failed_then_continues_walk(self) -> None:
+        fsm = _load_rn_refine()
+        assert fsm.states["revert_leaf_failed"].next == "record_leaf_failed"
+        assert fsm.states["record_leaf_failed"].next == "dequeue_next"
+
+    def test_deviation_branch_rewrites_final_before_commit(self) -> None:
+        fsm = _load_rn_refine()
+        assert fsm.states["check_leaf_deviation"].on_yes == "record_deviation"
+        assert fsm.states["check_leaf_deviation"].on_no == "commit_leaf"
+        assert fsm.states["record_deviation"].next == "rewrite_final_from_deviation"
+        assert fsm.states["rewrite_final_from_deviation"].next == "commit_leaf"
+
+    def test_commit_leaf_then_record_leaf_done_then_dequeue_next(self) -> None:
+        fsm = _load_rn_refine()
+        assert fsm.states["commit_leaf"].next == "record_leaf_done"
+        assert fsm.states["record_leaf_done"].next == "dequeue_next"
+
+    def test_record_leaf_done_writes_leaf_impl_marker_not_node_outcome(self) -> None:
+        """record_leaf_done must write a SEPARATE leaf_impl_<id>.txt marker,
+        never node_outcome_<id>.txt (that means 'refined', not 'implemented')."""
+        action = _load_rn_refine().states["record_leaf_done"].action
+        assert "leaf_impl_" in action
+        assert "node_outcome_" not in action
+
+
+class TestStepwiseChainPlumbing:
+    """Executes the new chain's shell action bodies directly."""
+
+    def test_reset_leaf_repair_writes_counter_and_baseline(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        rd.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path)
+        subprocess.run(["git", "-c", "user.email=a@b.c", "-c", "user.name=a", "commit", "--allow-empty", "-q", "-m", "seed"], cwd=tmp_path)
+        action = _load_rn_refine().states["reset_leaf_repair"].action
+        rendered = _render(action, captured={"run_dir": {"output": str(rd)}, "input": {"output": "n1"}})
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert (rd / "leaf-repair-count.txt").read_text() == "0"
+        assert (rd / "leaf-baseline-commit.txt").read_text().strip() != ""
+
+    def test_check_leaf_repair_budget_exhausts_after_default_budget(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        rd.mkdir()
+        (rd / "leaf-repair-count.txt").write_text("2")
+        action = _load_rn_refine().states["check_leaf_repair_budget"].action
+        rendered = _render(
+            action,
+            context={"leaf_repair_budget": "2"},
+            captured={"run_dir": {"output": str(rd)}},
+        )
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert "BUDGET_EXHAUSTED" in result.stdout
+        assert (rd / "leaf-repair-count.txt").read_text() == "3"
+
+    def test_check_leaf_repair_budget_retries_below_cap(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        rd.mkdir()
+        (rd / "leaf-repair-count.txt").write_text("0")
+        action = _load_rn_refine().states["check_leaf_repair_budget"].action
+        rendered = _render(
+            action,
+            context={"leaf_repair_budget": "2"},
+            captured={"run_dir": {"output": str(rd)}},
+        )
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert "BUDGET_EXHAUSTED" not in result.stdout
+
+    def test_revert_leaf_failed_hard_resets_and_records_failure(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        rd.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path)
+        subprocess.run(
+            ["git", "-c", "user.email=a@b.c", "-c", "user.name=a", "commit", "--allow-empty", "-q", "-m", "baseline"],
+            cwd=tmp_path,
+        )
+        baseline = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=tmp_path, capture_output=True, text=True
+        ).stdout.strip()
+        (rd / "leaf-baseline-commit.txt").write_text(baseline)
+        (tmp_path / "dirty.txt").write_text("half-implemented")
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path)
+        subprocess.run(
+            ["git", "-c", "user.email=a@b.c", "-c", "user.name=a", "commit", "-q", "-m", "bad leaf"],
+            cwd=tmp_path,
+        )
+        action = _load_rn_refine().states["revert_leaf_failed"].action
+        rendered = _render(action, captured={"run_dir": {"output": str(rd)}, "input": {"output": "n4"}})
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=tmp_path, capture_output=True, text=True
+        ).stdout.strip()
+        assert head == baseline, "revert_leaf_failed must hard-reset to the leaf baseline commit"
+        assert "n4" in (rd / "failed_nodes.txt").read_text()
+        assert "IMPLEMENT_FAILED" in (rd / "failed_nodes.txt").read_text()
+
+    def test_record_leaf_failed_writes_marker(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        rd.mkdir()
+        action = _load_rn_refine().states["record_leaf_failed"].action
+        rendered = _render(action, captured={"run_dir": {"output": str(rd)}, "input": {"output": "n4"}})
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert (rd / "leaf_impl_n4.txt").read_text() == "IMPLEMENT_FAILED"
+
+    def test_record_deviation_appends_and_marks_deviated(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        rd.mkdir()
+        (rd / "leaf-deviation-note.txt").write_text("switched approach X for Y")
+        action = _load_rn_refine().states["record_deviation"].action
+        rendered = _render(action, captured={"run_dir": {"output": str(rd)}, "input": {"output": "n2"}})
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert "n2" in (rd / "deviations.md").read_text()
+        assert "switched approach X for Y" in (rd / "deviations.md").read_text()
+        assert (rd / "leaf-was-deviated-n2.txt").exists()
+
+    def test_commit_leaf_commits_pending_changes(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        rd.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path)
+        subprocess.run(
+            ["git", "-c", "user.email=a@b.c", "-c", "user.name=a", "commit", "--allow-empty", "-q", "-m", "baseline"],
+            cwd=tmp_path,
+        )
+        (tmp_path / "implemented.txt").write_text("done")
+        action = _load_rn_refine().states["commit_leaf"].action
+        rendered = _render(action, captured={"run_dir": {"output": str(rd)}, "input": {"output": "n5"}})
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert "COMMITTED" in result.stdout
+        log = subprocess.run(
+            ["git", "log", "-1", "--pretty=%s"], cwd=tmp_path, capture_output=True, text=True
+        ).stdout
+        assert "n5" in log
+        assert (rd / "leaf-baseline-commit.txt").read_text().strip() != ""
+
+    def test_record_leaf_done_marks_verified_by_default(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        rd.mkdir()
+        action = _load_rn_refine().states["record_leaf_done"].action
+        rendered = _render(action, captured={"run_dir": {"output": str(rd)}, "input": {"output": "n6"}})
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert (rd / "leaf_impl_n6.txt").read_text() == "verified"
+
+    def test_record_leaf_done_marks_deviated_when_flagged(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        rd.mkdir()
+        (rd / "leaf-was-deviated-n6.txt").touch()
+        action = _load_rn_refine().states["record_leaf_done"].action
+        rendered = _render(action, captured={"run_dir": {"output": str(rd)}, "input": {"output": "n6"}})
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert (rd / "leaf_impl_n6.txt").read_text() == "deviated"
+
+
+class TestStepwiseResumeSemantics:
+    """check_resume/resume_reconcile must re-enqueue a leaf that has a
+    node_outcome marker but no leaf_impl marker, in stepwise mode only."""
+
+    def test_check_resume_reenqueues_refined_but_unimplemented_leaf(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        (rd / "nodes").mkdir(parents=True)
+        (rd / "visited.txt").write_text("n0\n")
+        (rd / "queue.txt").write_text("")
+        (rd / "node_outcome_n0.txt").write_text("REFINED_LEAF")
+        # No leaf_impl_n0.txt written -> incomplete under stepwise.
+        action = _load_rn_refine().states["check_resume"].action
+        rendered = _render(
+            action,
+            context={"resume": "1", "stepwise": "1"},
+            captured={"run_dir": {"output": str(rd)}},
+        )
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "RESUME_WALK"
+
+    def test_check_resume_treats_leaf_with_impl_marker_as_complete(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        (rd / "nodes").mkdir(parents=True)
+        (rd / "visited.txt").write_text("n0\n")
+        (rd / "queue.txt").write_text("")
+        (rd / "node_outcome_n0.txt").write_text("REFINED_LEAF")
+        (rd / "leaf_impl_n0.txt").write_text("verified")
+        action = _load_rn_refine().states["check_resume"].action
+        rendered = _render(
+            action,
+            context={"resume": "1", "stepwise": "1"},
+            captured={"run_dir": {"output": str(rd)}},
+        )
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "RESUME_SYNTH"
+
+    def test_check_resume_non_stepwise_ignores_leaf_impl_marker(self, tmp_path: Path) -> None:
+        """Unset stepwise: identical behavior to today — a refined leaf with no
+        node_outcome gap is treated as complete regardless of leaf_impl."""
+        rd = tmp_path / "run"
+        (rd / "nodes").mkdir(parents=True)
+        (rd / "visited.txt").write_text("n0\n")
+        (rd / "queue.txt").write_text("")
+        (rd / "node_outcome_n0.txt").write_text("REFINED_LEAF")
+        action = _load_rn_refine().states["check_resume"].action
+        rendered = _render(
+            action,
+            context={"resume": "1", "stepwise": "0"},
+            captured={"run_dir": {"output": str(rd)}},
+        )
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "RESUME_SYNTH"
+
+    def test_resume_reconcile_prepends_unimplemented_leaf(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        rd.mkdir()
+        (rd / "visited.txt").write_text("n0\nn1\n")
+        (rd / "queue.txt").write_text("n2\n")
+        (rd / "node_outcome_n0.txt").write_text("REFINED_LEAF")
+        (rd / "leaf_impl_n0.txt").write_text("verified")
+        (rd / "node_outcome_n1.txt").write_text("REFINED_LEAF")
+        # n1 has no leaf_impl marker -> must be re-queued under stepwise.
+        action = _load_rn_refine().states["resume_reconcile"].action
+        rendered = _render(
+            action,
+            context={"stepwise": "1"},
+            captured={"run_dir": {"output": str(rd)}},
+        )
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        queue = (rd / "queue.txt").read_text().split()
+        assert "n1" in queue
+        assert "n0" not in queue
+
+
+class TestFullSuiteGate:
+    def test_full_suite_gate_noops_when_stepwise_unset(self, tmp_path: Path) -> None:
+        rd = tmp_path / "run"
+        rd.mkdir()
+        action = _load_rn_refine().states["full_suite_gate"].action
+        rendered = _render(
+            action, context={"stepwise": "0"}, captured={"run_dir": {"output": str(rd)}}
+        )
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert not (rd / "full-suite-gate.log").exists()
+
+
+class TestPlanNodeRefineDeviationsSeeding:
+    def test_setup_seeds_research_with_deviations_when_present(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        (run_dir / "nodes" / "n3").mkdir(parents=True)
+        (run_dir / "deviations.md").write_text("## Node n1\nswapped approach\n")
+        fsm, _ = load_and_validate(NODE_ORACLE)
+        action = fsm.states["setup"].action
+        rendered = _render(action, context={"run_dir": str(run_dir), "node_id": "n3"})
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        research = (run_dir / "nodes" / "n3" / "research.md").read_text()
+        assert "swapped approach" in research
+        assert (run_dir / "nodes" / "n3" / ".deviations-seeded").exists()
+
+    def test_setup_is_idempotent_when_already_seeded(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        node_dir = run_dir / "nodes" / "n3"
+        node_dir.mkdir(parents=True)
+        (run_dir / "deviations.md").write_text("## Node n1\nswapped approach\n")
+        (node_dir / "research.md").write_text("existing research\nswapped approach already here\n")
+        (node_dir / ".deviations-seeded").touch()
+        fsm, _ = load_and_validate(NODE_ORACLE)
+        action = fsm.states["setup"].action
+        rendered = _render(action, context={"run_dir": str(run_dir), "node_id": "n3"})
+        result = _bash(rendered, tmp_path)
+        assert result.returncode == 0, result.stderr
+        research = (node_dir / "research.md").read_text()
+        # Only one occurrence -> setup did not re-append.
+        assert research.count("swapped approach") == 1

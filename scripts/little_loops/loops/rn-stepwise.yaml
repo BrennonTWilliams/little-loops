@@ -1,0 +1,48 @@
+name: rn-stepwise
+category: planning
+visibility: public
+input_key: plan_file
+description: |
+  Same recursive decomposition walk as rn-refine, but each LEAF is implemented
+  and verified immediately after being refined — before the walk continues to
+  the next queued node — so implementation drift is caught and corrected
+  per-leaf instead of compounding across a whole tree of unimplemented plans.
+
+  This is a thin entry point (ENH-2862): it does NOT fork rn-refine's
+  decompose/refine/synth tree-walk logic. It sets ${context.stepwise}=1 (plus
+  a lower default max_nodes — implementation dominates runtime, so 40
+  implemented-and-verified leaves in one run is unrealistic) and delegates the
+  entire walk to rn-refine.yaml via a `loop:` state. See rn-refine.yaml's
+  record_leaf/implement_leaf/verify_leaf/record_deviation/record_leaf_done
+  chain for the actual per-leaf implement/verify/commit-or-revert mechanics.
+
+  Run as: ll-loop run rn-stepwise "path/to/plan.md"
+initial: run
+max_steps: 5
+timeout: 21600
+on_handoff: spawn
+required_inputs: ["plan_file"]
+
+context:
+  plan_file: ""    # populated from positional CLI arg via input_key: plan_file
+  max_nodes: 12     # lower than rn-refine's planning-only default of 40
+
+states:
+  run:
+    # Delegation pattern per issue-refinement.yaml/auto-refine-and-implement.yaml:
+    # a `loop:` state binds `with:` keys onto the sub-loop's own context names
+    # (plan_file/max_nodes match rn-refine.yaml's context: block verbatim).
+    loop: rn-refine
+    with:
+      plan_file: "${context.plan_file}"
+      stepwise: 1
+      max_nodes: "${context.max_nodes}"
+    on_success: done
+    on_failure: failed
+    on_error: failed
+
+  done:
+    terminal: true
+
+  failed:
+    terminal: true
