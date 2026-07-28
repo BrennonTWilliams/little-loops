@@ -1,9 +1,11 @@
 name: docs-sync
 category: meta
 description: |
-  Verify documentation matches the codebase, check for broken links, and
-  fix discrepancies. Runs doc verification tools, link checkers, and
-  iterates until docs are synchronized with actual project state.
+  Verify documentation matches the codebase and check for broken links.
+  Auto-fixes only auto-severity count mismatches (via `ll-verify-docs --fix`,
+  which already gates repair to `action_severity: auto` internally);
+  mention/route-severity findings and all link findings are reported, never
+  auto-repaired, per the action-severity model.
 initial: verify_docs
 scope:
   - "docs/"
@@ -13,11 +15,23 @@ import:
   - lib/cli.yaml
   - lib/prompt-fragments.yaml
 context:
-  commit_message: "docs: sync documentation with codebase state"
+  commit_message: "docs: sync auto-fixable count mismatches with codebase state"
 states:
   verify_docs:
-    action: "ll-verify-docs 2>&1"
-    fragment: shell_exit
+    # --fix only rewrites action_severity: auto mismatches (doc_counts.py's
+    # fix_counts skips mention/route internally); --json gives route_results
+    # structured per-finding severity to parse instead of raw text matching.
+    action_type: shell
+    action: |
+      case "${context.run_dir}" in
+        /*) ABS_DIR="${context.run_dir}" ;;
+        *) ABS_DIR="$(pwd)/${context.run_dir}" ;;
+      esac
+      mkdir -p "$ABS_DIR"
+      ll-verify-docs --fix --json > "$ABS_DIR/verify-docs.json" 2>&1
+      exit $?
+    evaluate:
+      type: exit_code
     capture: verify_results
     on_yes: check_links
     on_no: check_links
@@ -29,37 +43,61 @@ states:
     on_no: route_results
     on_error: route_results
   route_results:
-    evaluate:
-      type: output_contains
-      source: "${captured.verify_results.output}${captured.link_results.output}"
-      pattern: "FAIL\\|ERROR\\|BROKEN\\|MISMATCH"
-      negate: true
-    on_yes: done
-    on_no: fix_docs
-    on_error: verify_docs
-  fix_docs:
-    action_type: prompt
-    timeout: 600
+    # Non-LLM evaluator (MR-1): counts remaining non-auto verify mismatches
+    # (parsed from verify-docs.json) plus a link_results failure flag (every
+    # non-benign link finding is mention/route severity, never auto — see
+    # link_checker.py's action_severity assignment) instead of the previous
+    # raw FAIL/ERROR/BROKEN/MISMATCH text regex.
+    action_type: shell
     action: |
-      Documentation issues found:
+      case "${context.run_dir}" in
+        /*) ABS_DIR="${context.run_dir}" ;;
+        *) ABS_DIR="$(pwd)/${context.run_dir}" ;;
+      esac
+      NON_AUTO=$(python3 -c "
+      import json
+      try:
+          text = open('$ABS_DIR/verify-docs.json').read()
+          data = json.loads(text[text.index('{'):text.rindex('}') + 1])
+          print(sum(1 for m in data.get('mismatches', []) if m.get('action_severity') != 'auto'))
+      except Exception:
+          print(0)
+      ")
+      LINK_EXIT=${captured.link_results.exit_code:default=0}
+      echo "remaining_findings=$((NON_AUTO + LINK_EXIT))"
+    capture: remaining_findings
+    evaluate:
+      type: output_numeric
+      key: remaining_findings
+      operator: "eq"
+      target: 0
+    on_yes: commit
+    on_no: report_findings
+    on_error: verify_docs
+  report_findings:
+    # Report-only: surfaces remaining mention/route findings for a human.
+    # Never edits files — auto-severity repair already happened in verify_docs
+    # via --fix. Satisfies the parent issue's rule that drift is reported,
+    # not repaired as a side effect, unless the user asks.
+    action_type: prompt
+    timeout: 300
+    action: |
+      Documentation drift found that this loop does not auto-repair
+      (mention/route-severity findings per the action-severity model —
+      auto-severity count mismatches were already fixed above):
 
-      Verification results:
+      Verification results (auto-fixable mismatches already applied):
       ${captured.verify_results.output}
 
       Link check results:
       ${captured.link_results.output}
 
-      Fix all documentation discrepancies:
-      - Update counts that don't match actual file counts
-      - Fix broken internal links (wrong paths, renamed files)
-      - Update CLI command lists to match actual tools
-      - Remove references to deleted files/features
-
-      Do NOT rewrite prose — only fix factual inaccuracies and broken references.
+      Summarize the remaining findings for a human to review. Do NOT edit
+      any files — this is a report-only step.
     next: commit
   commit:
     fragment: ll_commit
-    next: verify_docs
+    next: done
   done:
     terminal: true
 max_steps: 10

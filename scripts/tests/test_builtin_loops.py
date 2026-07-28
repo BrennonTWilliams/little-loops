@@ -9667,7 +9667,14 @@ class TestDocsSyncLoop:
         assert isinstance(data.get("states"), dict)
 
     def test_required_states_exist(self, data: dict) -> None:
-        required = {"verify_docs", "check_links", "route_results", "fix_docs", "commit", "done"}
+        required = {
+            "verify_docs",
+            "check_links",
+            "route_results",
+            "report_findings",
+            "commit",
+            "done",
+        }
         assert not required - set(data["states"].keys())
 
     def test_commit_uses_ll_commit_fragment(self, data: dict) -> None:
@@ -9675,6 +9682,34 @@ class TestDocsSyncLoop:
 
     def test_done_state_is_terminal(self, data: dict) -> None:
         assert data["states"]["done"].get("terminal") is True
+
+    def test_verify_docs_uses_fix_and_json_flags(self, data: dict) -> None:
+        action = data["states"]["verify_docs"].get("action", "")
+        assert "--fix" in action
+        assert "--json" in action
+
+    def test_route_results_uses_non_llm_evaluator(self, data: dict) -> None:
+        # MR-1: route_results must use a deterministic evaluator, not an LLM
+        # judgment, over the parsed action_severity counts.
+        evaluator = data["states"]["route_results"].get("evaluate", {})
+        assert evaluator.get("type") == "output_numeric"
+
+    def test_route_results_does_not_use_raw_text_regex(self, data: dict) -> None:
+        # The pre-ENH-2889 evaluator matched raw FAIL/ERROR/BROKEN/MISMATCH
+        # text with zero severity awareness; that regex must be gone.
+        evaluator = data["states"]["route_results"].get("evaluate", {})
+        assert evaluator.get("type") != "output_contains"
+        action = data["states"]["route_results"].get("action", "")
+        assert "action_severity" in action
+
+    def test_report_findings_is_report_only(self, data: dict) -> None:
+        # fix_docs's unconditional "Fix all documentation discrepancies"
+        # free-form repair prompt must not survive the rework: report_findings
+        # must not instruct edits, since --fix already resolved everything
+        # auto-repairable in verify_docs.
+        action = data["states"]["report_findings"].get("action", "")
+        assert "do not edit" in action.lower()
+        assert "fix all documentation discrepancies" not in action.lower()
 
 
 class TestIncrementalRefactorLoop:

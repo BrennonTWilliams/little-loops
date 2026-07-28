@@ -1179,7 +1179,7 @@ The counters reflect cumulative totals at the moment of dequeue: position `N/tot
 |------|-------------|
 | `context-health-monitor` | Monitor context health via scratch file accumulation and session log size; compacts scratch files and archives stale outputs when pressure is detected |
 | `dead-code-cleanup` | Find dead code, remove high-confidence items, and verify tests pass |
-| `docs-sync` | Verify documentation matches the codebase and check for broken links |
+| `docs-sync` | Verify documentation matches the codebase, auto-fix auto-severity count mismatches, and report the rest |
 | `fix-quality-and-tests` | Sequential quality gate: lint + format + types must be clean before tests run |
 | `incremental-refactor` | Decompose a refactoring goal into safe atomic steps, execute each with test-gated commits, rollback and re-plan on failure |
 | `rubric-refine` | Converge loop that scores an artifact on a multi-dimension rubric, routes to tier-specific repair (light or deep), and re-scores until the aggregate meets `threshold_high`. Supply `subject` (path or description) and `rubric_dimensions` (pipe-separated). Demonstrates `lib/rubric-router.yaml` fragment usage. |
@@ -1242,7 +1242,7 @@ ll-loop run dead-code-cleanup
 
 ### `docs-sync` — Documentation Sync
 
-**When to use**: After code changes that may have drifted from documentation — verifies doc accuracy and fixes broken links.
+**When to use**: After code changes that may have drifted from documentation — verifies doc accuracy and auto-fixes only `auto`-severity count mismatches (`ll-verify-docs --fix`); `mention`/`route`-severity count mismatches and all link findings are reported, never auto-repaired.
 
 **Usage:**
 ```bash
@@ -1252,7 +1252,7 @@ ll-loop run docs-sync
 **Key context variables:**
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `commit_message` | `docs: sync documentation with codebase state` | Commit message template |
+| `commit_message` | `docs: sync auto-fixable count mismatches with codebase state` | Commit message template |
 
 ### `incremental-refactor` — Safe Incremental Refactoring
 

@@ -74,6 +74,10 @@ fragments:
       (timeout/DNS/connection reset) are reported but don't fail this check
       unless invoked with --strict-network.
       State must supply: on_yes, on_no (and optionally capture for storing output).
+      Every non-benign link finding is `action_severity: mention` or `route`
+      (link_checker.py) — there is no `--fix` path for links at all, so a
+      state consuming this fragment's output must only report findings, never
+      route to an auto-repair action.
     action_type: shell
     action: "ll-check-links 2>&1"
     evaluate:
