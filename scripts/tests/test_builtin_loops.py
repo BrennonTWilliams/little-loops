@@ -9703,6 +9703,23 @@ class TestDocsSyncLoop:
         action = data["states"]["route_results"].get("action", "")
         assert "action_severity" in action
 
+    def test_route_results_key_dispatches_correctly(self, data: dict) -> None:
+        # ENH-2895: route_results declares evaluate.key: remaining_findings; confirm
+        # the real dispatcher extracts it from real key=value stdout (not verdict="error").
+        from little_loops.fsm.evaluators import evaluate
+        from little_loops.fsm.interpolation import InterpolationContext
+        from little_loops.fsm.schema import EvaluateConfig
+
+        config = EvaluateConfig.from_dict(data["states"]["route_results"]["evaluate"])
+        assert config.key == "remaining_findings"
+
+        ctx = InterpolationContext()
+        yes_result = evaluate(config, "remaining_findings=0", 0, ctx)
+        assert yes_result.verdict == "yes"
+
+        no_result = evaluate(config, "remaining_findings=2", 0, ctx)
+        assert no_result.verdict == "no"
+
     def test_report_findings_is_report_only(self, data: dict) -> None:
         # fix_docs's unconditional "Fix all documentation discrepancies"
         # free-form repair prompt must not survive the rework: report_findings
@@ -10155,7 +10172,27 @@ class TestCodeRunGateOracle:
             assert state.get("on_error") == next_state, (
                 f"{state_name}.on_error must be '{next_state}', got {state.get('on_error')!r}"
             )
+
+    def test_run_test_key_dispatches_correctly(self, data: dict) -> None:
+        # ENH-2895: run_test declares evaluate.key: pass_rate; confirm the real
+        # dispatcher extracts it from real key=value stdout (not verdict="error").
+        from little_loops.fsm.evaluators import evaluate
+        from little_loops.fsm.interpolation import InterpolationContext
+        from little_loops.fsm.schema import EvaluateConfig
+
+        config = EvaluateConfig.from_dict(data["states"]["run_test"]["evaluate"])
+        assert config.key == "pass_rate"
+
+        ctx = InterpolationContext()
+        yes_result = evaluate(config, "exit_code=0 pass_rate=0.99", 0, ctx)
+        assert yes_result.verdict == "yes"
+
+        no_result = evaluate(config, "exit_code=0 pass_rate=0.50", 0, ctx)
+        assert no_result.verdict == "no"
+
+    def test_service_health_terminates_chain_at_aggregate(self, data: dict) -> None:
         # service_health must terminate the chain at aggregate
+        states = data["states"]
         sh = states["service_health"]
         assert sh.get("on_yes") == "aggregate"
         assert sh.get("on_no") == "aggregate"

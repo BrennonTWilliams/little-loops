@@ -5259,6 +5259,7 @@ class EvaluateConfig:
     pairs: list[dict] | None = None    # For contract: list of producer/consumer pair dicts
     line: str | int | None = None      # For classify: which line to read (last/first/<int index>)
     error_patterns: list[str] | None = None  # For output_contains: patterns that yield verdict="error"
+    key: str | None = None            # For output_numeric: extract value from a `<key>=<number>` field
 ```
 
 #### RouteConfig
@@ -5337,9 +5338,12 @@ def evaluate_output_numeric(
     output: str,
     operator: str,
     target: float,
+    key: str | None = None,
 ) -> EvaluationResult
 ```
-Parse stdout as number and compare to target.
+Parse stdout as number and compare to target. If `key` is set, extract the value from a
+`<key>=<number>` field in output (last match wins on multiple occurrences) instead of parsing
+the whole output; a missing key yields `verdict="error"` naming the key.
 
 ```python
 def evaluate_output_json(

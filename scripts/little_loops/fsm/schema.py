@@ -69,6 +69,8 @@ class EvaluateConfig:
         epsilon: Minimum score improvement counted as progress for score_stall
         pairs: List of producer/consumer pair dicts for contract evaluator
         line: Line selector for classify evaluator (last/first/<int index>)
+        key: For output_numeric, extract the value from a `<key>=<number>` field
+            in the output instead of parsing the whole output as a number
     """
 
     type: Literal[
@@ -115,6 +117,7 @@ class EvaluateConfig:
     error_patterns: list[str] | None = (
         None  # for output_contains: patterns that yield verdict="error"
     )
+    key: str | None = None  # for output_numeric: extract value from a `<key>=<number>` field
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -171,6 +174,8 @@ class EvaluateConfig:
             result["line"] = self.line
         if self.error_patterns is not None:
             result["error_patterns"] = self.error_patterns
+        if self.key is not None:
+            result["key"] = self.key
 
         return result
 
@@ -204,6 +209,7 @@ class EvaluateConfig:
             pairs=data.get("pairs"),
             line=data.get("line"),
             error_patterns=data.get("error_patterns"),
+            key=data.get("key"),
         )
 
 

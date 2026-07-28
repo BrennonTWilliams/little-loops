@@ -243,6 +243,7 @@ def evaluate_output_numeric(
     output: str,
     operator: str,
     target: float,
+    key: str | None = None,
 ) -> EvaluationResult:
     """Parse stdout as number and compare to target.
 
@@ -250,6 +251,9 @@ def evaluate_output_numeric(
         output: The action stdout to parse as a number
         operator: Comparison operator (eq, ne, lt, le, gt, ge)
         target: Target value to compare against
+        key: If set, extract the value from a `<key>=<number>` field in
+            output instead of parsing the whole output as a number. When
+            multiple matches exist, the last one wins.
 
     Returns:
         EvaluationResult with verdict:
@@ -257,13 +261,31 @@ def evaluate_output_numeric(
             - Condition not met -> no
             - Parse error -> error
     """
-    try:
-        value = float(output.strip())
-    except ValueError:
-        return EvaluationResult(
-            verdict="error",
-            details={"error": f"Cannot parse as number: {output[:100]}"},
+    if key is not None:
+        matches = re.findall(
+            rf"{re.escape(key)}\s*=\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)",
+            output,
         )
+        if not matches:
+            return EvaluationResult(
+                verdict="error",
+                details={"error": f"key {key!r} not found in output"},
+            )
+        try:
+            value = float(matches[-1])
+        except ValueError:
+            return EvaluationResult(
+                verdict="error",
+                details={"error": f"Cannot parse as number: {matches[-1][:100]}"},
+            )
+    else:
+        try:
+            value = float(output.strip())
+        except ValueError:
+            return EvaluationResult(
+                verdict="error",
+                details={"error": f"Cannot parse as number: {output[:100]}"},
+            )
 
     if operator not in _NUMERIC_OPERATORS:
         return EvaluationResult(
@@ -1841,6 +1863,7 @@ def evaluate(
             output=output,
             operator=config.operator or "eq",
             target=numeric_target,
+            key=config.key,
         )
 
     elif eval_type == "output_json":

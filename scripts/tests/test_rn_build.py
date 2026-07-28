@@ -586,13 +586,13 @@ class TestRnBuildAcceptanceGate:
         assert evaluate.get("type") == "output_numeric", (
             "score_acceptance must score pass count / total via output_numeric (non-LLM gate)"
         )
-        # EvaluateConfig has no `key:` field — evaluate_output_numeric parses the
-        # WHOLE stripped stdout via float(). The state must therefore echo a bare
-        # number (check_eval_retry_budget's form) and route its human-readable
-        # breakdown to a sidecar file, or the evaluator returns verdict="error".
+        # ENH-2895 added `key:` support to output_numeric, but score_acceptance
+        # intentionally keeps the bare-echo pattern here: it already routes its
+        # human-readable breakdown to a sidecar file (score.txt) and echoes a bare
+        # numeric pass rate, so there is no labelled-output problem to solve.
         assert "key" not in evaluate, (
-            "output_numeric has no key: support (see fsm/schema.py EvaluateConfig); "
-            "score_acceptance must echo a bare numeric pass rate on stdout"
+            "score_acceptance intentionally echoes a bare numeric pass rate on stdout "
+            "rather than adopting evaluate.key (ENH-2895) — no need for this state"
         )
         action = state.get("action", "")
         assert "score.txt" in action, (

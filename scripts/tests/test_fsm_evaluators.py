@@ -163,6 +163,50 @@ class TestOutputNumericEvaluator:
         assert result.verdict == "error"
         assert "Unknown operator" in result.details["error"]
 
+    def test_key_labelled_single_line(self) -> None:
+        """key extracts the value from a labelled line."""
+        result = evaluate_output_numeric("pass_rate=0.99", "ge", 0.95, key="pass_rate")
+        assert result.verdict == "yes"
+        assert result.details["value"] == 0.99
+
+    def test_key_inline_multi_field(self) -> None:
+        """key extracts the value when multiple fields share a line."""
+        result = evaluate_output_numeric(
+            "exit_code=0 pass_rate=0.99", "ge", 0.95, key="pass_rate"
+        )
+        assert result.verdict == "yes"
+        assert result.details["value"] == 0.99
+
+    def test_key_multiple_matches_last_wins(self) -> None:
+        """When key appears multiple times, the last match is used."""
+        result = evaluate_output_numeric(
+            "pass_rate=0.50\npass_rate=0.99", "ge", 0.95, key="pass_rate"
+        )
+        assert result.verdict == "yes"
+        assert result.details["value"] == 0.99
+
+    def test_key_missing(self) -> None:
+        """key not found in output returns error verdict naming the key."""
+        result = evaluate_output_numeric("other=1", "eq", 5, key="pass_rate")
+        assert result.verdict == "error"
+        assert "pass_rate" in result.details["error"]
+
+    def test_key_non_numeric_value(self) -> None:
+        """key found but attached value doesn't match returns error."""
+        result = evaluate_output_numeric("pass_rate=abc", "eq", 5, key="pass_rate")
+        assert result.verdict == "error"
+
+    def test_key_requires_regex_escaping(self) -> None:
+        """key containing regex metacharacters is matched literally, not as a pattern."""
+        result = evaluate_output_numeric("aXb=9.0\na.b=1.5", "eq", 1.5, key="a.b")
+        assert result.verdict == "yes"
+        assert result.details["value"] == 1.5
+
+    def test_key_none_unchanged_behavior(self) -> None:
+        """key=None preserves the original bare-number behavior."""
+        result = evaluate_output_numeric("5", "eq", 5, key=None)
+        assert result.verdict == "yes"
+
 
 class TestExtractJsonPath:
     """Tests for the _extract_json_path helper."""
@@ -547,6 +591,13 @@ class TestEvaluateDispatcher:
         ctx = InterpolationContext()
         with pytest.raises(ValueError, match="output_numeric evaluator requires 'target'"):
             evaluate(config, "5", 0, ctx)
+
+    def test_dispatch_output_numeric_key(self) -> None:
+        """output_numeric with key extracts a labelled value via the dispatch path."""
+        config = EvaluateConfig(type="output_numeric", operator="ge", target=0.95, key="pass_rate")
+        ctx = InterpolationContext()
+        result = evaluate(config, "exit_code=0 pass_rate=0.99", 0, ctx)
+        assert result.verdict == "yes"
 
     def test_dispatch_output_json(self) -> None:
         """output_json type routes correctly."""

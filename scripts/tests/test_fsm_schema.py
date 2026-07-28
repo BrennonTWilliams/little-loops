@@ -190,6 +190,46 @@ class TestEvaluateConfig:
         assert restored.direction == original.direction
         assert restored.previous == original.previous
 
+    def test_key_field_default_none(self) -> None:
+        """key defaults to None when not set."""
+        config = EvaluateConfig(type="output_numeric", operator="ge", target=0.95)
+
+        assert config.key is None
+
+    def test_to_dict_includes_key_when_set(self) -> None:
+        """to_dict emits key when set."""
+        config = EvaluateConfig(type="output_numeric", operator="ge", target=0.95, key="pass_rate")
+        result = config.to_dict()
+
+        assert result["key"] == "pass_rate"
+
+    def test_to_dict_omits_key_when_none(self) -> None:
+        """to_dict omits key when unset."""
+        config = EvaluateConfig(type="output_numeric", operator="ge", target=0.95)
+        result = config.to_dict()
+
+        assert "key" not in result
+
+    def test_from_dict_reads_key(self) -> None:
+        """from_dict reads key from the data dict."""
+        data = {"type": "output_numeric", "operator": "ge", "target": 0.95, "key": "pass_rate"}
+        config = EvaluateConfig.from_dict(data)
+
+        assert config.key == "pass_rate"
+
+    def test_key_roundtrip_serialization(self) -> None:
+        """Roundtrip through to_dict and from_dict preserves key."""
+        original = EvaluateConfig(
+            type="output_numeric",
+            operator="ge",
+            target=0.95,
+            key="pass_rate",
+        )
+
+        restored = EvaluateConfig.from_dict(original.to_dict())
+
+        assert restored.key == original.key
+
 
 class TestRouteConfig:
     """Tests for RouteConfig dataclass."""
