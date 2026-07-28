@@ -1,31 +1,40 @@
 ---
 id: ENH-2873
-title: Replace per-host adapt modules with a declarative host-capability map and one transformer
+title: Introduce a declarative host-capability map for adapter hosts
 type: ENH
 parent: EPIC-2257
 priority: P2
 status: open
 discovered_date: 2026-07-27
+blocks:
+- ENH-2874
+- ENH-2883
 labels:
 - multi-host
 - ll-adapt
 ---
 
-# ENH-2873: Replace per-host adapt modules with a declarative host-capability map and one transformer
+# ENH-2873: Introduce a declarative host-capability map for adapter hosts
 
 Origin: ll-product #ENH-056
 
 Parent EPIC: EPIC-2257 (multi-host generalization — portfolio coordination), which already
 owns shared per-host infrastructure including skill/command adapters.
 
+Scope note (2026-07-27): originally written as map + emitter collapse. The emitter refactor
+is Medium-risk and gated on a golden-output corpus, while this half is small, additive, and
+is the whole of what ENH-2874 depends on — so the refactor split out to ENH-2883 rather
+than chaining ENH-2874 behind it.
+
 ## Summary
 
-Adding an adapter host today means writing a module. `scripts/little_loops/adapters/`
-carries `codex.py` (395 lines), `gemini.py` (187), and `omp.py` (28, a stub), and the
-host-specific knowledge inside them — which frontmatter fields the host reads, whether it
-takes agents at all, how tools map to a sandbox mode — is expressed as code rather than as
-data, so it can drift between hosts with nothing to catch it. Move that knowledge onto a
-declarative per-host entry and leave the emitters as format serializers only.
+Adding an adapter host today means writing a module, because host-specific knowledge —
+which frontmatter fields the host reads, whether it takes agents at all, how tools map to a
+sandbox mode — lives as code in `adapters/codex.py` (395 lines), `gemini.py` (187), and
+`omp.py` (28, a stub), where it can drift between hosts with nothing to catch it. There are
+also already three partial, independently maintained views of "what a host supports."
+Establish one declarative per-host entry, reconcile it with what exists, and make the
+doc↔map relationship mechanically checked. ENH-2883 then drives emission from it.
 
 ## Current Behavior
 
@@ -54,19 +63,15 @@ and has no `omp` row at all.
 
 ## Expected Behavior
 
-Adding an adapter host is a data change plus a documentation row. A new host that needs
-behavior the map cannot express is a signal to add a field to the map, not a module. The
+One declarative entry per adapter host is the single place host knowledge is written. The
 capability map and `HOST_COMPATIBILITY.md` are mechanically checked against each other, so
 the "two sources cannot disagree" claim is enforced rather than asserted, and the
 relationship between the build-time adapter map and the runtime `HostCapabilities` is
-stated explicitly rather than left as two independent notions of "capability."
+stated explicitly rather than left as two independent notions of "capability." Emission
+behavior is unchanged by this issue — the map is authoritative but not yet consumed by
+`core.py` (that is ENH-2883).
 
 ## Proposed Change
-
-Two separable phases. Phase A is the whole of what ENH-2874 depends on and is
-independently shippable; Phase B is the payoff.
-
-### Phase A — the map, and its relationship to what already exists
 
 1. **`scripts/little_loops/adapters/capabilities.py`** (new) — one declarative entry per
    adapter host, keyed the same as `_EMITTER_MAP`: config dir, output formats per artifact
@@ -96,17 +101,6 @@ independently shippable; Phase B is the payoff.
    means the file changed, *verified* means someone re-checked the vendor's product. State
    which artifact is authored and which is derived.
 
-### Phase B — collapse policy into the map
-
-5. Drive `process_skills` / `process_commands` / `process_agents` from the map:
-   field-selection, agent-support, and skip/stub decisions read from the entry instead of
-   from per-host branches. Emitters retain only serialization (TOML vs. markdown writers)
-   plus genuinely non-data behavior.
-
-6. Capture a **golden-output corpus before any refactor** (`scripts/tests/fixtures/adapt/`)
-   over the current skill/agent/command corpus for `codex` (skills, commands, agents) and
-   `gemini` (skills, commands), and assert byte-identity after.
-
 ## Acceptance Criteria
 
 - [ ] A capability map exists with one entry per adapter host, and its relationship to
@@ -119,49 +113,52 @@ independently shippable; Phase B is the payoff.
 - [ ] `docs/reference/HOST_COMPATIBILITY.md` covers all three adapter hosts including
       `omp`, and carries a `Last Verified` date plus a point-in-time warning that is
       distinct from `Last Updated`.
-- [ ] **Byte-identity, scoped honestly**: golden-corpus snapshots for `codex`
-      (skills/commands/agents) and `gemini` (skills/commands) are byte-identical before and
-      after, or each difference is explained in the PR. `omp` is excluded (its emitter
-      raises — there is no output to compare), and `gemini` agent emission is excluded (an
-      intentional preview stub); both exclusions are named in the test, not silent.
-- [ ] Adding a hypothetical fourth host requires only a map entry, a doc row, and a
-      serializer if its output format is new — demonstrated by a test that registers a
-      fixture host through the map alone and emits for it.
+- [ ] **Emission output is unchanged.** This issue adds a map and a verifier; it does not
+      touch `core.py`'s dispatch. A test asserts current `codex`/`gemini` output is
+      identical before and after — the map's correctness is checked against the emitters'
+      existing behavior, not by rewriting them.
+- [ ] The map's entries are asserted to agree with what the emitters actually do today
+      (e.g. `gemini.agents = none` matches `_AGENT_STUB_MSG`; `omp` declares no working
+      emitter). A map that describes the wrong thing is worse than no map, and ENH-2883
+      will consume it as truth.
 - [ ] `ll-verify-cli-allowlist` (BUG-2764) still passes if any entry point changes.
 
 ## Scope Boundaries
 
-- **In scope**: `adapters/capabilities.py`, the drift verifier, `HOST_COMPATIBILITY.md`
-  adapter section, and driving `core.py` from the map.
-- **Out of scope**: implementing the `omp` emitter (still a stub after this issue — the map
-  gains an entry describing it, the emitter stays unimplemented); un-stubbing Gemini agent
-  emission (blocked on the vendor preview, and superseded for degraded hosts by ENH-2874);
-  any change to `host_runner`'s runtime dispatch behavior; hook adapters under
-  `hooks/adapters/`, which are a separate translation layer.
+- **In scope**: `adapters/capabilities.py`, the reconciliation decision with
+  `host_runner.HostCapabilities`, the drift verifier, and the `HOST_COMPATIBILITY.md`
+  adapter section.
+- **Out of scope**: driving `core.py` from the map and thinning the emitters (**ENH-2883**);
+  the degraded-mode agent path (ENH-2874); implementing the `omp` emitter (still a stub —
+  the map gains an entry describing it, the emitter stays unimplemented); un-stubbing
+  Gemini agent emission (blocked on the vendor preview, and superseded for degraded hosts
+  by ENH-2874); any change to `host_runner`'s runtime dispatch behavior; hook adapters
+  under `hooks/adapters/`, which are a separate translation layer.
 - **Already done — do not re-do**: `ll-adapt-skills-for-codex` and
   `ll-adapt-agents-for-codex` are *already* thin aliases that delegate to `CodexEmitter` +
   `adapters.core` (see the module docstring in `cli/adapt_skills_for_codex.py`). The
   original framing of this issue asked for that work; it exists. Only re-verify it still
   holds after Phase B.
-- **Deliberate limit**: "zero per-host code" is not achievable and is not the goal. A TOML
-  writer and a markdown writer are irreducibly different code. The target is that *policy*
-  (which fields, which artifacts, which capabilities) is data and *serialization* is
-  pluggable code selected by that data.
+- **Deliberate limit**: "zero per-host code" is not achievable and is not the goal, here or
+  in ENH-2883. A TOML writer and a markdown writer are irreducibly different code. The
+  target is that *policy* (which fields, which artifacts, which capabilities) is data and
+  *serialization* is pluggable code selected by that data.
 
 ## Impact
 
-- **Priority**: P2 — prerequisite for ENH-2874, and the per-host drift it prevents is
-  silent (a host quietly emitting a field another host reads, or missing one it needs).
-- **Effort**: Medium — Phase A is small (one dataclass module, one verifier, one doc
-  section); Phase B is the bulk, gated on the golden corpus landing first.
-- **Risk**: Medium — a refactor of live emission paths. Mitigated by capturing golden
-  output before touching `core.py`; the byte-identity AC is the safety net.
+- **Priority**: P2 — prerequisite for both ENH-2874 and ENH-2883, and the per-host drift it
+  prevents is silent (a host quietly emitting a field another host reads, or missing one it
+  needs).
+- **Effort**: Small — one frozen-dataclass module, one `ll-verify-*` entry point plus its
+  pytest gate, one documentation section.
+- **Risk**: Low — purely additive. No emission path changes; the map is authoritative but
+  not yet consumed.
 - **Breaking Change**: No — entry points and CLI surface unchanged.
 
 ## Notes
 
-Prerequisite for ENH-2874: that issue selects its emission path from the `subagents`
-capability flag introduced here. Phase A alone unblocks it.
+Unblocks two issues that both read the map: ENH-2874 (selects its emission path from the
+`subagents` flag) and ENH-2883 (drives `core.py` from the entries).
 
 ## Status
 
