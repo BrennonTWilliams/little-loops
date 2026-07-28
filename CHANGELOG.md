@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.153.0] - 2026-07-28
+
+### Added
+
+- FEAT-2414: `rn-build` end-to-end integration/acceptance gate. Until now every
+  feature was built and self-judged in isolation (`goal-cluster` →
+  `rn-implement`) and the spec's `## Acceptance Criteria` were only ever *read*
+  by an LLM, so cross-feature integration bugs (shared state, interface drift)
+  escaped every automated gate. A new phase between `eval_gate` and
+  `synthesize_result` derives one runnable check per criterion
+  (`${run_dir}/acceptance/checks.json`), stands up the assembled project and
+  **executes** them (`acceptance/results.json`, `acceptance/score.txt`), and
+  scores `passed / executed` through a non-LLM `output_numeric` gate. Failures
+  are captured as issues and re-enter `cluster_execute` (bounded by
+  `max_acceptance_retries`); an unverifiable build terminates at the new
+  `failure: true` terminal `acceptance_failed` instead of `done`. An
+  all-skipped `results.json` scores `0.0`, so the gate cannot be cleared by
+  declining to write checks. New knobs: `max_acceptance_retries` (default `1`),
+  `min_acceptance_pass_rate` (default `1.0`); `max_steps` raised 30 → 40.
+
 ## [1.152.0] - 2026-07-27
 
 ### Added

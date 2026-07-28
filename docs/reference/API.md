@@ -9883,7 +9883,7 @@ Built-in loops live in `scripts/little_loops/loops/`. Full documentation and a d
 **File**: `scripts/little_loops/loops/rn-build.yaml`  
 **Required input**: `spec` (path to spec Markdown file)
 
-End-to-end spec-to-project pipeline. Accepts a spec Markdown file and drives: spec validation → tech research → design artifacts → commit → scope EPIC + feature stubs → issue refinement → eval harness → `goal-cluster` (batched `rn-implement`, `value_ranked` scheduling) → eval gate with bounded re-entry → structured JSON result.
+End-to-end spec-to-project pipeline. Accepts a spec Markdown file and drives: spec validation → tech research → design artifacts → commit → scope EPIC + feature stubs → issue refinement → eval harness → `goal-cluster` (batched `rn-implement`, `value_ranked` scheduling) → eval gate with bounded re-entry → integration/acceptance gate → structured JSON result.
 
 Uses value-ranked scheduling via `rn-implement` + `goal-cluster` rather than an `eval-driven-development` sub-loop.
 
@@ -9908,7 +9908,9 @@ ll-loop run rn-build --context spec=specs/backend.md,specs/frontend.md
 | 5 — Execution | `cluster_execute` | Delegates to `goal-cluster` which batches issues and dispatches each batch to `rn-implement` with `schedule_mode=value_ranked` |
 | 6 — Eval gate | `check_harness_name`, `eval_gate`, `check_eval_retry_budget`, `capture_eval_failures` | Runs eval harness; on failure, captures failing scenarios as new issues and re-enters `cluster_execute` (bounded by `max_eval_retries`) |
 | 6.5 — Harness missing/skipped (ENH-2415) | `harness_missing`, `finalize_harness_missing`, `finalize_eval_skipped` | Reached when no harness resolves, the harness crashes, or retries are exhausted. Terminates `build_failed` (loud, resumable) unless `skip_eval=true` was explicitly set, which still terminates non-`done` with `eval_skipped: true` |
-| 7 — Result | `synthesize_result`, `done` | Emits a structured JSON summary of the build outcome; includes `resume_command` when `eval_passed: false`. Only reached when the eval gate actually passed |
+| 6.75 — Integration/acceptance gate (FEAT-2414) | `derive_acceptance_checks`, `run_acceptance`, `score_acceptance`, `check_acceptance_retry_budget`, `capture_acceptance_failures` | Turns the spec's `## Acceptance Criteria` into an executable contract. An LLM derives one runnable check per criterion into `${run_dir}/acceptance/checks.json`; `run_acceptance` stands up the assembled project and **executes** each check, writing a per-criterion breakdown to `acceptance/results.json`; `score_acceptance` scores `passed / executed` through a non-LLM `output_numeric` gate against `min_acceptance_pass_rate`. Failures re-enter `cluster_execute` as captured issues (bounded by `max_acceptance_retries`) |
+| 6.8 — Acceptance failed (FEAT-2414) | `finalize_acceptance_failed`, `acceptance_failed` | Reached when integration cannot be verified after the retry budget is spent. Emits the per-criterion breakdown plus a `resume_command` and terminates at the `failure: true` terminal `acceptance_failed` — every feature passing in isolation is not a passing build |
+| 7 — Result | `synthesize_result`, `done` | Emits a structured JSON summary of the build outcome, including per-criterion `acceptance` results read from `acceptance/results.json`; includes `resume_command` when `eval_passed: false`. Only reached when both the eval gate **and** the acceptance gate actually passed |
 
 **Context knobs:**
 
@@ -9921,6 +9923,8 @@ ll-loop run rn-build --context spec=specs/backend.md,specs/frontend.md
 | `resume_epic` | `""` | **Resume only.** EPIC ID from a prior run. When set, `init` skips spec validation and routes to `resume`, which re-enters `cluster_execute`. |
 | `resume_harness` | `""` | **Resume only.** Harness loop name from a prior run. Passed to `eval_gate` via `resume_read_harness`. |
 | `skip_eval` | `"false"` | **Deliberate bypass only** (ENH-2415). The only way to skip the eval gate; still terminates `build_failed` (not `done`) with `eval_skipped: true` in the JSON output. |
+| `max_acceptance_retries` | `"1"` | FEAT-2414. Remediation cycles for *integration* failures, budgeted separately from `max_eval_retries` (own counter: `${run_dir}/acceptance-retry-count.txt`). |
+| `min_acceptance_pass_rate` | `"1.0"` | FEAT-2414. Fraction of **executed** acceptance checks that must pass. Defaults to a full pass — a partially-satisfied spec is not a `done` build. A criterion the derivation marks unrunnable (`skip_reason`) is excluded from the denominator, but an all-skipped `results.json` scores `0.0` so the gate cannot be cleared by declining to write checks. |
 
 **Internal dispatch flags** (fixed; set automatically, not user-facing):
 
@@ -9929,4 +9933,4 @@ ll-loop run rn-build --context spec=specs/backend.md,specs/frontend.md
 | `schedule_mode` | `value_ranked` | Passed to each `rn-implement` batch via `goal-cluster`; issues are implemented in value-ranked order |
 | `propagate_context` | `true` | Cluster propagates context across batches so later batches can incorporate earlier-batch results |
 
-**Loop settings**: `max_steps: 30`, `timeout: 86400s` (24h), `on_handoff: spawn` (auto-resumes across session boundaries).
+**Loop settings**: `max_steps: 40`, `timeout: 86400s` (24h), `on_handoff: spawn` (auto-resumes across session boundaries).

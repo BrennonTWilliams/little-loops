@@ -25,9 +25,15 @@ description: |
     → commit_design → scope_project → refine_seed → eval_harness
   - Execution: cluster_execute (goal-cluster → rn-implement/value_ranked)
   - Quality gate: check_harness_name → eval_gate → check_eval_retry_budget → capture_eval_failures → re-cluster
+  - Integration gate (FEAT-2414): derive_acceptance_checks → run_acceptance →
+    score_acceptance — the spec's `## Acceptance Criteria` are executed against the
+    assembled, running project and scored by a non-LLM gate. Failures re-enter
+    cluster_execute (bounded by max_acceptance_retries), then terminate acceptance_failed.
   - Terminal: synthesize_result → done
 initial: init
-max_steps: 30
+# 40 (was 30, FEAT-2414): the acceptance phase adds up to 5 states to the happy path
+# and a second bounded remediation cycle back through cluster_execute.
+max_steps: 40
 timeout: 86400
 on_handoff: spawn
 
@@ -45,6 +51,9 @@ context:
   # verification; still terminates non-`done` (`harness_missing`/`build_failed`) with
   # eval_skipped:true, never a silent pass to `done`.
   skip_eval: "false"
+  # FEAT-2414: end-to-end integration/acceptance gate.
+  max_acceptance_retries: "1"      # remediation cycles for integration failures
+  min_acceptance_pass_rate: "1.0"  # every executed criterion must hold — a partial pass is not a pass
 
 states:
 
@@ -640,7 +649,7 @@ states:
     loop: "${captured.harness_name.output}"
     timeout: 7200
     capture: eval_result
-    on_yes: synthesize_result
+    on_yes: derive_acceptance_checks
     on_no: check_eval_retry_budget
     on_error: harness_missing
 
@@ -754,6 +763,386 @@ states:
       2. Run `/ll:normalize-issues` after all issues are created
     next: cluster_execute
 
+  # ─── Phase 9.5: End-to-end integration/acceptance gate (FEAT-2414) ────────────
+  # Until now every feature was built and self-judged in isolation (goal-cluster →
+  # rn-implement), and the spec's `## Acceptance Criteria` were only ever *read* by an
+  # LLM. This phase turns them into an executable contract against the assembled
+  # project, so cross-feature integration bugs (shared state, interface drift) fail the
+  # build instead of surfacing when a human first runs it.
+  #
+  #   derive_acceptance_checks (LLM)  → criteria prose → runnable checks.json
+  #   run_acceptance           (shell) → stand up the project, execute each check
+  #   score_acceptance         (shell) → non-LLM output_numeric on passed/executed
+  #
+  # MR-1: the LLM derivation is backstopped by two non-LLM evaluators downstream
+  # (run_acceptance's exit_code, score_acceptance's output_numeric) — the LLM never
+  # grades its own work.
+
+  derive_acceptance_checks:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Convert this project's spec `## Acceptance Criteria` into concrete RUNNABLE checks.
+
+      SPEC: ${captured.spec_content.output}
+
+      The project has been fully built and its own eval harness passed. Your job is to
+      make each acceptance criterion mechanically verifiable against the assembled,
+      running project — NOT to read the code and judge whether it looks correct.
+
+      Write ${context.run_dir}/acceptance/checks.json with this exact shape:
+
+      ```json
+      {
+        "service": {
+          "run_cmd": "shell command that starts the app, or \"\" if none is needed",
+          "health_url": "URL that returns 2xx once ready, or \"\" if not a service",
+          "startup_seconds": 30
+        },
+        "checks": [
+          {
+            "id": "AC1",
+            "criterion": "verbatim text of the acceptance criterion",
+            "command": "shell command that exercises it and exits 0 on success",
+            "expect_exit_code": 0,
+            "expect_output": "optional substring that must appear in stdout/stderr",
+            "timeout_seconds": 120
+          }
+        ]
+      }
+      ```
+
+      Rules:
+      1. One entry per acceptance criterion, in spec order. Quote each `criterion`
+         VERBATIM from the spec so the report is auditable.
+      2. `command` must exercise the criterion end-to-end against the BUILT project
+         (an HTTP request via `curl --fail`, a CLI invocation, an integration test).
+         Prefer commands that already exist in the repo over ad-hoc scripts.
+      3. If — and only if — a criterion genuinely cannot be mechanized (it is purely
+         subjective, or requires hardware/credentials unavailable here), omit
+         `command` and set `"skip_reason": "<why>"` instead. Do NOT use this to
+         avoid writing a hard check: every skipped criterion lowers the score, and a
+         checks.json where everything is skipped fails the gate outright.
+      4. Use the project's own test runner and entry points, discovered from the
+         repository, not invented ones.
+
+      Create the directory first (`mkdir -p ${context.run_dir}/acceptance`), write the
+      file, then print the literal marker ACCEPTANCE_CHECKS_WRITTEN on its own line.
+    capture: acceptance_checks
+    evaluate:
+      type: output_contains
+      pattern: "ACCEPTANCE_CHECKS_WRITTEN"
+    # MR-4: every edge reaches run_acceptance. A malformed or missing checks.json is
+    # not a free pass — run_acceptance records zero executed checks and the non-LLM
+    # score gate fails the build.
+    on_yes: run_acceptance
+    on_no: run_acceptance
+    on_error: run_acceptance
+
+  run_acceptance:
+    action_type: shell
+    timeout: 3600
+    action: |
+      set -u
+      RUN_DIR="${context.run_dir}"
+      ACC_DIR="$RUN_DIR/acceptance"
+      mkdir -p "$ACC_DIR"
+      export ACC_DIR
+      CHECKS="$ACC_DIR/checks.json"
+
+      if [ ! -f "$CHECKS" ]; then
+        python3 -c "
+      import json, os
+      p = os.path.join(os.environ['ACC_DIR'], 'results.json')
+      json.dump({'total': 0, 'executed': 0, 'skipped': 0, 'passed': 0,
+                 'pass_rate': 0.0, 'results': [],
+                 'error': 'derive_acceptance_checks produced no checks.json'},
+                open(p, 'w'), indent=2)
+      "
+        echo "no acceptance/checks.json — derivation produced nothing to run"
+        exit 1
+      fi
+
+      # ── Stand up the assembled project (code-run-gate service_health pattern) ──
+      SERVICE_PID=""
+      cleanup() {
+        [ -n "$SERVICE_PID" ] && kill "$SERVICE_PID" 2>/dev/null || true
+        [ -f "$ACC_DIR/service.pid" ] && kill "$(cat "$ACC_DIR/service.pid")" 2>/dev/null || true
+        rm -f "$ACC_DIR/service.pid"
+      }
+      trap cleanup EXIT
+
+      RUN_CMD=$(python3 -c "
+      import json, os
+      d = json.load(open(os.path.join(os.environ['ACC_DIR'], 'checks.json')))
+      print((d.get('service') or {}).get('run_cmd') or '')
+      " 2>/dev/null || echo "")
+      HEALTH_URL=$(python3 -c "
+      import json, os
+      d = json.load(open(os.path.join(os.environ['ACC_DIR'], 'checks.json')))
+      print((d.get('service') or {}).get('health_url') or '')
+      " 2>/dev/null || echo "")
+      STARTUP=$(python3 -c "
+      import json, os
+      d = json.load(open(os.path.join(os.environ['ACC_DIR'], 'checks.json')))
+      print(int((d.get('service') or {}).get('startup_seconds') or 30))
+      " 2>/dev/null || echo 30)
+
+      if [ -n "$RUN_CMD" ]; then
+        bash -c "$RUN_CMD" > "$ACC_DIR/service.log" 2>&1 &
+        SERVICE_PID=$!
+        echo "$SERVICE_PID" > "$ACC_DIR/service.pid"
+        if [ -n "$HEALTH_URL" ]; then
+          READY=1
+          I=0
+          while [ "$I" -lt "$STARTUP" ]; do
+            if curl --fail --silent --max-time 2 "$HEALTH_URL" > /dev/null 2>&1; then
+              READY=0
+              break
+            fi
+            I=$((I + 1))
+            sleep 1
+          done
+          if [ "$READY" -ne 0 ]; then
+            echo "service did not become healthy at $HEALTH_URL within $${STARTUP}s" \
+              > "$ACC_DIR/service-health.txt"
+          fi
+        else
+          sleep 3
+        fi
+      fi
+
+      # ── Execute every check and write the per-criterion breakdown ─────────────
+      python3 << 'PYEOF'
+      import json, os, subprocess
+
+      acc_dir = os.environ["ACC_DIR"]
+      with open(os.path.join(acc_dir, "checks.json")) as f:
+          spec = json.load(f)
+
+      checks = spec.get("checks") or []
+      results = []
+      for i, c in enumerate(checks):
+          entry = {
+              "id": c.get("id") or "AC%d" % (i + 1),
+              "criterion": c.get("criterion") or "",
+          }
+          command = (c.get("command") or "").strip()
+          if not command or c.get("skip_reason"):
+              entry.update({
+                  "skipped": True,
+                  "passed": False,
+                  "skip_reason": c.get("skip_reason") or "no command derived",
+              })
+              results.append(entry)
+              continue
+
+          try:
+              timeout = int(c.get("timeout_seconds") or 120)
+          except (TypeError, ValueError):
+              timeout = 120
+
+          entry["command"] = command
+          entry["skipped"] = False
+          try:
+              proc = subprocess.run(
+                  ["bash", "-c", command],
+                  capture_output=True, text=True, timeout=timeout,
+              )
+              output = (proc.stdout or "") + (proc.stderr or "")
+              entry["exit_code"] = proc.returncode
+              expected = c.get("expect_exit_code")
+              expected = 0 if expected is None else int(expected)
+              ok = proc.returncode == expected
+              needle = c.get("expect_output")
+              if ok and needle:
+                  ok = needle in output
+                  if not ok:
+                      entry["reason"] = "expected output substring not found"
+              entry["passed"] = ok
+              entry["output_tail"] = output[-2000:]
+          except subprocess.TimeoutExpired:
+              entry.update({
+                  "exit_code": None, "passed": False,
+                  "reason": "timed out after %ds" % timeout,
+              })
+          except Exception as exc:  # unrunnable command — a failure, not a skip
+              entry.update({
+                  "exit_code": None, "passed": False,
+                  "reason": "could not execute: %s" % exc,
+              })
+          results.append(entry)
+
+      executed = [r for r in results if not r.get("skipped")]
+      passed = [r for r in executed if r.get("passed")]
+      summary = {
+          "total": len(results),
+          "executed": len(executed),
+          "skipped": len(results) - len(executed),
+          "passed": len(passed),
+          "pass_rate": round(len(passed) / len(executed), 4) if executed else 0.0,
+          "results": results,
+      }
+      with open(os.path.join(acc_dir, "results.json"), "w") as f:
+          json.dump(summary, f, indent=2)
+      print("acceptance: %d/%d executed checks passed (%d skipped)" % (
+          len(passed), len(executed), summary["skipped"]))
+      PYEOF
+    capture: acceptance_run
+    evaluate:
+      type: exit_code
+    # Every outcome aggregates — one failing check must still produce a scored
+    # verdict rather than dead-ending (code-run-gate `aggregate` pattern).
+    on_yes: score_acceptance
+    on_no: score_acceptance
+    on_error: score_acceptance
+
+  score_acceptance:
+    action_type: shell
+    timeout: 60
+    action: |
+      RUN_DIR="${context.run_dir}"
+      ACC_DIR="$RUN_DIR/acceptance"
+      mkdir -p "$ACC_DIR"
+      export ACC_DIR
+      # stdout must be a BARE number: EvaluateConfig has no `key:` field, so
+      # evaluate_output_numeric float()s the whole stripped stdout. The
+      # human-readable per-criterion breakdown goes to acceptance/score.txt.
+      python3 << 'PYEOF'
+      import json, os
+
+      acc_dir = os.environ["ACC_DIR"]
+      report = os.path.join(acc_dir, "score.txt")
+      try:
+          with open(os.path.join(acc_dir, "results.json")) as f:
+              d = json.load(f)
+      except Exception as exc:
+          with open(report, "w") as f:
+              f.write("acceptance results.json missing or malformed: %s\n" % exc)
+          print("0.0")
+          raise SystemExit(0)
+
+      results = d.get("results") or []
+      executed = [r for r in results if not r.get("skipped")]
+      skipped = [r for r in results if r.get("skipped")]
+      passed = [r for r in executed if r.get("passed")]
+
+      # An all-skipped results.json is a FAILURE, not a free pass — otherwise the
+      # derivation step could clear the gate by declaring every criterion
+      # unmechanizable. At least one check must have actually executed.
+      rate = round(len(passed) / len(executed), 4) if executed else 0.0
+
+      lines = ["total=%d executed=%d skipped=%d passed=%d pass_rate=%s" % (
+          len(results), len(executed), len(skipped), len(passed), rate)]
+      if not executed:
+          lines.append(
+              "NO CHECK WAS EXECUTED — %s; scoring 0.0" % (
+                  "every criterion was skipped" if skipped
+                  else "no acceptance checks were derived"))
+      for r in results:
+          if r.get("skipped"):
+              lines.append("SKIP %s: %s -- %s" % (
+                  r.get("id"), r.get("criterion"), r.get("skip_reason")))
+          else:
+              lines.append("%s %s: %s%s" % (
+                  "PASS" if r.get("passed") else "FAIL",
+                  r.get("id"), r.get("criterion"),
+                  "" if r.get("passed") else " -- %s" % (
+                      r.get("reason") or "exit_code=%s" % r.get("exit_code")),
+              ))
+      with open(report, "w") as f:
+          f.write("\n".join(lines) + "\n")
+      print(rate)
+      PYEOF
+    capture: acceptance_score
+    evaluate:
+      type: output_numeric
+      operator: ge
+      target: "${context.min_acceptance_pass_rate}"
+    on_yes: synthesize_result
+    on_no: check_acceptance_retry_budget
+    # An unscoreable acceptance run must fail loudly — never a silent pass to done.
+    on_error: finalize_acceptance_failed
+
+  # Bounded remediation re-entry, mirroring check_eval_retry_budget but with its own
+  # counter: eval-harness failures and integration failures are budgeted independently.
+  check_acceptance_retry_budget:
+    action_type: shell
+    action: |
+      RUN_DIR="${context.run_dir}"
+      COUNT=$(cat "$RUN_DIR/acceptance-retry-count.txt" 2>/dev/null || echo 0)
+      COUNT=$((COUNT + 1))
+      echo "$COUNT" > "$RUN_DIR/acceptance-retry-count.txt"
+      echo "$COUNT"
+    capture: acceptance_retry_count
+    evaluate:
+      type: output_numeric
+      operator: le
+      target: "${context.max_acceptance_retries}"
+    on_yes: capture_acceptance_failures
+    on_no: finalize_acceptance_failed
+    on_error: finalize_acceptance_failed
+
+  capture_acceptance_failures:
+    action_type: prompt
+    timeout: 300
+    action: |
+      The assembled project failed the spec's acceptance criteria when they were
+      executed end-to-end (retry ${captured.acceptance_retry_count.output} of
+      ${context.max_acceptance_retries}). Every feature passed in isolation, so these
+      are integration failures: shared state, interface drift, or a criterion no
+      feature actually implements.
+
+      Read the per-criterion breakdown from ${context.run_dir}/acceptance/score.txt
+      and the full evidence (commands, exit codes, output tails) from
+      ${context.run_dir}/acceptance/results.json.
+
+      For each FAIL entry:
+      1. Run `/ll:capture-issue` to create a BUG (integration defect) or FEAT (criterion
+         never implemented) describing the failing criterion, the exact command that
+         failed, and its observed vs expected outcome.
+      2. Run `/ll:normalize-issues` after all issues are created.
+
+      Do NOT modify checks.json or results.json — the next cycle re-derives and
+      re-executes them.
+    next: cluster_execute
+
+  finalize_acceptance_failed:
+    action_type: shell
+    action: |
+      RUN_DIR="${context.run_dir}"
+      EPIC=$(cat "$RUN_DIR/epic-id.txt" 2>/dev/null || echo "")
+      HARNESS=$(cat "$RUN_DIR/harness-name.txt" 2>/dev/null || echo "")
+      BREAKDOWN=$(cat "$RUN_DIR/acceptance/score.txt" 2>/dev/null || echo "")
+      python3 -c "
+      import json, sys
+      epic, harness, breakdown = sys.argv[1], sys.argv[2], sys.argv[3]
+      still_open = [
+          l for l in breakdown.splitlines()
+          if l.startswith('FAIL') or l.startswith('SKIP') or l.startswith('NO CHECK')
+      ]
+      d = {
+          'accomplished': [],
+          'still_open': still_open or ['acceptance criteria could not be verified'],
+          'recommended_next_batch': [],
+          'eval_passed': True,
+          'eval_retry_count': 0,
+          'acceptance_passed': False,
+          'acceptance_breakdown': breakdown,
+          'error': 'rn-build: the assembled project failed the spec acceptance criteria '
+                   'when executed end-to-end; integration is not verified.',
+      }
+      if epic:
+          cmd = f'll-loop run rn-build --context resume_epic={epic}'
+          if harness:
+              cmd += f' --context resume_harness={harness}'
+          d['resume_command'] = cmd
+      print(json.dumps(d, indent=2))
+      " "$EPIC" "$HARNESS" "$BREAKDOWN"
+      exit 1
+    next: acceptance_failed
+    on_error: finalize_failed
+
   # ─── Phase 10: Synthesize cluster-wide result as structured JSON ──────────────
 
   synthesize_result:
@@ -770,6 +1159,11 @@ states:
       captured epic_id if the file is absent). Read the harness name from
       ${context.run_dir}/harness-name.txt if it exists.
 
+      Read the executed acceptance results from
+      ${context.run_dir}/acceptance/results.json (FEAT-2414). Reaching this state means
+      the acceptance gate passed, so report the per-criterion outcomes VERBATIM from
+      that file — do not restate the spec's criteria from memory or re-judge them.
+
       Write a summary covering:
       1. What was accomplished per goal
       2. What is still open or incomplete
@@ -782,9 +1176,18 @@ states:
         "still_open": ["list of incomplete items"],
         "recommended_next_batch": ["list of suggested next actions"],
         "eval_passed": true,
-        "eval_retry_count": 0
+        "eval_retry_count": 0,
+        "acceptance_passed": true,
+        "acceptance": [
+          {"id": "AC1", "criterion": "verbatim criterion", "passed": true,
+           "command": "command that was executed", "skipped": false}
+        ]
       }
       ```
+
+      Populate `acceptance` from every entry in results.json (one object per criterion,
+      in file order). If results.json is absent or unreadable, set
+      `"acceptance_passed": false` and `"acceptance": []` rather than inventing entries.
 
       IMPORTANT: When `eval_passed` is false and `still_open` is non-empty, add a
       `resume_command` field containing the exact invocation to resume this build in a
@@ -846,6 +1249,13 @@ states:
     next: build_failed
     on_error: finalize_failed
   build_failed:
+    terminal: true
+    failure: true
+  # FEAT-2414. `acceptance_failed` is absent from schema.FAILURE_TERMINAL_NAMES (a
+  # backward-compat-only set that merely *defaults* the flag for legacy names), so it
+  # declares failure: true explicitly — otherwise the run would exit 0 and persist as
+  # `completed` despite unverified integration (ENH-2814/ENH-2825).
+  acceptance_failed:
     terminal: true
     failure: true
   finalize_failed:

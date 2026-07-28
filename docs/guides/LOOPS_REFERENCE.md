@@ -694,7 +694,9 @@ Phase 5 — Convergence:
 **Category**: orchestration  
 **File**: `scripts/little_loops/loops/rn-build.yaml`
 
-End-to-end spec-to-project pipeline. Accepts a spec Markdown file and drives the full automated build: spec validation → tech research → design artifacts → **check_substrate** (ENH-2098) → commit → scope EPIC + feature stubs → issue refinement → eval harness → goal-cluster (batched `rn-implement`) → eval gate → structured JSON result.
+End-to-end spec-to-project pipeline. Accepts a spec Markdown file and drives the full automated build: spec validation → tech research → design artifacts → **check_substrate** (ENH-2098) → commit → scope EPIC + feature stubs → issue refinement → eval harness → goal-cluster (batched `rn-implement`) → eval gate → **integration/acceptance gate** (FEAT-2414) → structured JSON result.
+
+> **Integration/acceptance gate** (FEAT-2414): Every feature is built and self-judged in *isolation* by `goal-cluster` → `rn-implement`, so cross-feature integration bugs (shared state, interface drift) escape all per-issue gates. After the eval harness passes, `derive_acceptance_checks` converts each `## Acceptance Criteria` bullet into a runnable check (`${run_dir}/acceptance/checks.json`), `run_acceptance` stands up the assembled project and **executes** them, and `score_acceptance` scores `passed / executed` through a non-LLM `output_numeric` gate. Anything short of `min_acceptance_pass_rate` re-enters `cluster_execute` with the failures captured as issues (bounded by `max_acceptance_retries`), then terminates at `acceptance_failed` — never `done`. Results are derived from execution, not from an LLM reading the code.
 
 > **`check_substrate` gate** (ENH-2098): After `design_artifacts` completes, an LLM feasibility check validates every proposed action against target environment constraints (shell commands, MCP tool access, file write permissions, token budget). Infeasible designs route back to `design_artifacts` for revision before project scoping begins. See [`HARNESS_OPTIMIZATION_GUIDE.md` § check_substrate](HARNESS_OPTIMIZATION_GUIDE.md) for configuration details.
 
@@ -715,6 +717,8 @@ ll-loop run rn-build --context spec=specs/sample.md
 | `resume_epic` | `""` | **Resume only.** EPIC ID from a prior run; skips the front half and re-enters `cluster_execute` |
 | `resume_harness` | `""` | **Resume only.** Harness loop name from a prior run; passed to `eval_gate` when resuming |
 | `skip_eval` | `"false"` | **Deliberate bypass only** (ENH-2415). The only way to skip the eval gate; still terminates `build_failed` with `eval_skipped: true` in the JSON, never `done` |
+| `max_acceptance_retries` | `"1"` | FEAT-2414. Remediation cycles for integration failures, budgeted separately from `max_eval_retries` |
+| `min_acceptance_pass_rate` | `"1.0"` | FEAT-2414. Fraction of executed acceptance checks that must pass; defaults to a full pass |
 
 #### Resuming a partial build (ENH-2016)
 
@@ -747,7 +751,7 @@ still terminates non-`done`, with `eval_skipped: true` in the JSON output.
 |---------|---------|
 | `## Overview` | 2–4 sentences describing what the project does and why it exists |
 | `## Core Features` | Bulleted list of top-level capabilities (aim for 5–15); each bullet becomes a candidate feature issue after `scope-epic` runs |
-| `## Acceptance Criteria` | 2–3 high-level observable outcomes; `rn-build` uses these to configure the eval harness |
+| `## Acceptance Criteria` | 2–3 high-level observable outcomes. `rn-build` uses these twice: to configure the eval harness, and (FEAT-2414) as the source for `derive_acceptance_checks`, which turns each one into a check executed against the assembled project. Phrase them as **observable, mechanically checkable** outcomes — a criterion that cannot be turned into a command is skipped, and a spec whose criteria are all unrunnable fails the gate |
 
 **Optional sections**: `## Data Model`, `## Non-Goals`, `## Tech Constraints`. When omitted, `rn-build` infers them from the required sections. Including them narrows the design space and reduces hallucinated constraints.
 
@@ -784,7 +788,11 @@ PYTEST_INTEGRATION=1 python -m pytest scripts/tests/test_rn_build.py::TestE2E -v
 3. Dispatch output does **not** contain `eval-driven-development`
 4. Dispatch output contains `goal-cluster` (sub-loop header `== loop: goal-cluster …`)
 5. Dispatch output contains `rn-implement` (dispatched by `goal-cluster`)
-6. Output contains `SYNTHESIS_RESULT:` followed by valid JSON
+6. `.loops/runs/rn-build-<instance_id>/acceptance/results.json` exists and carries a
+   per-criterion breakdown; `acceptance/score.txt` shows the PASS/FAIL/SKIP lines
+   (FEAT-2414 — the acceptance gate actually executed the spec's criteria)
+7. Output contains `SYNTHESIS_RESULT:` followed by valid JSON, including an
+   `acceptance` array and `acceptance_passed: true`
 
 Pass `--context max_eval_retries=0` to skip the `eval_gate` retry cycle and reduce wall time.
 

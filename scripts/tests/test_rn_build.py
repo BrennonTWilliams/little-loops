@@ -45,6 +45,14 @@ REQUIRED_STATES = {
     # ENH-2016: resume path states
     "resume",
     "resume_read_harness",
+    # FEAT-2414: end-to-end integration/acceptance phase
+    "derive_acceptance_checks",
+    "run_acceptance",
+    "score_acceptance",
+    "check_acceptance_retry_budget",
+    "capture_acceptance_failures",
+    "finalize_acceptance_failed",
+    "acceptance_failed",
 }
 
 
@@ -355,10 +363,19 @@ class TestRnBuildEvalGate:
             "eval_gate on_no must route to check_eval_retry_budget for bounded re-entry"
         )
 
-    def test_eval_gate_routes_to_synthesize_on_success(self, loop_data: dict) -> None:
+    def test_eval_gate_routes_to_acceptance_phase_on_success(self, loop_data: dict) -> None:
+        """FEAT-2414 moved the success edge: eval_gate → acceptance gate → synthesis.
+
+        A passing eval harness proves the project's *own* tests pass; it does not
+        prove the spec's acceptance criteria hold across features. Synthesis is now
+        reached through `score_acceptance`, never directly from `eval_gate`.
+        """
         state = loop_data["states"]["eval_gate"]
-        assert state.get("on_yes") == "synthesize_result", (
-            "eval_gate on_yes must route to synthesize_result"
+        assert state.get("on_yes") == "derive_acceptance_checks", (
+            "eval_gate on_yes must enter the acceptance phase (FEAT-2414)"
+        )
+        assert loop_data["states"]["score_acceptance"].get("on_yes") == "synthesize_result", (
+            "synthesize_result must still be reachable — via the acceptance gate"
         )
 
     def test_eval_gate_routes_to_harness_missing_on_error(self, loop_data: dict) -> None:
@@ -469,6 +486,232 @@ class TestHarnessMissingGate:
         )
         assert str(context.get("skip_eval")).lower() == "false", (
             "skip_eval must default to false — verification is mandatory by default"
+        )
+
+
+class TestRnBuildAcceptanceGate:
+    """Tests for the end-to-end integration/acceptance phase (FEAT-2414).
+
+    The phase sits between ``eval_gate.on_yes`` and ``synthesize_result``: the
+    spec's ``## Acceptance Criteria`` are derived into runnable checks, executed
+    against the assembled project, and scored by a non-LLM ``output_numeric``
+    gate. Anything short of a full pass terminates at ``acceptance_failed``
+    after a bounded remediation re-entry.
+    """
+
+    def test_eval_gate_routes_into_acceptance_phase(self, loop_data: dict) -> None:
+        state = loop_data["states"]["eval_gate"]
+        assert state.get("on_yes") == "derive_acceptance_checks", (
+            "eval_gate.on_yes must enter the acceptance phase, not synthesize_result "
+            "directly — the spec's acceptance criteria are exercised after the "
+            "project's own harness passes (FEAT-2414)"
+        )
+
+    def test_derive_acceptance_checks_writes_checks_json(self, loop_data: dict) -> None:
+        state = loop_data["states"]["derive_acceptance_checks"]
+        assert state.get("action_type") == "prompt", (
+            "derive_acceptance_checks converts prose criteria to runnable checks (LLM work)"
+        )
+        action = state.get("action", "")
+        assert "acceptance/checks.json" in action, (
+            "derive_acceptance_checks must write ${context.run_dir}/acceptance/checks.json"
+        )
+        assert "${context.run_dir}" in action, (
+            "checks.json must live under ${context.run_dir} (MR-3 artifact isolation)"
+        )
+        assert "Acceptance Criteria" in action, (
+            "derive_acceptance_checks must consume the spec's ## Acceptance Criteria section"
+        )
+
+    def test_derive_acceptance_checks_has_full_routing(self, loop_data: dict) -> None:
+        """MR-4: an LLM-judged state must not dead-end on the non-yes edges."""
+        state = loop_data["states"]["derive_acceptance_checks"]
+        assert state.get("on_yes") == "run_acceptance"
+        assert state.get("on_no") == "run_acceptance", (
+            "A malformed derivation must still reach run_acceptance, which records "
+            "zero checks and lets the non-LLM score gate fail the build"
+        )
+        assert state.get("on_error") == "run_acceptance"
+
+    def test_derive_acceptance_checks_paired_with_non_llm_evaluator(self, loop_data: dict) -> None:
+        """MR-1: the LLM derivation is backstopped by a non-LLM evaluator downstream."""
+        assert loop_data["states"]["run_acceptance"].get("evaluate", {}).get("type") == (
+            "exit_code"
+        )
+        assert loop_data["states"]["score_acceptance"].get("evaluate", {}).get("type") == (
+            "output_numeric"
+        )
+
+    def test_run_acceptance_is_shell_and_writes_results_json(self, loop_data: dict) -> None:
+        state = loop_data["states"]["run_acceptance"]
+        assert state.get("action_type") == "shell", (
+            "run_acceptance must actually execute checks, not ask an LLM to read code"
+        )
+        action = state.get("action", "")
+        assert "results.json" in action, "run_acceptance must write a results.json breakdown"
+        assert '"$RUN_DIR/acceptance"' in action, (
+            "results.json must land under ${context.run_dir}/acceptance/"
+        )
+        assert "${context.run_dir}" in action
+        assert "subprocess.run" in action, (
+            "run_acceptance must actually execute each check as a subprocess — "
+            "results.json is derived from execution, not from reading code"
+        )
+
+    def test_run_acceptance_stands_up_the_service(self, loop_data: dict) -> None:
+        """The assembled project is started before checks run, and torn down after."""
+        action = loop_data["states"]["run_acceptance"].get("action", "")
+        assert "service.pid" in action, (
+            "run_acceptance must record the background service PID (code-run-gate "
+            "service_health pattern)"
+        )
+        assert "trap cleanup EXIT" in action, (
+            "run_acceptance must tear the service down via a trap, even on failure"
+        )
+
+    def test_run_acceptance_routes_all_outcomes_to_score(self, loop_data: dict) -> None:
+        state = loop_data["states"]["run_acceptance"]
+        for edge in ("on_yes", "on_no", "on_error"):
+            assert state.get(edge) == "score_acceptance", (
+                f"run_acceptance.{edge} must reach score_acceptance so a single failed "
+                "check still produces an aggregated verdict (code-run-gate aggregate pattern)"
+            )
+
+    def test_score_acceptance_uses_output_numeric_pass_rate(self, loop_data: dict) -> None:
+        state = loop_data["states"]["score_acceptance"]
+        assert state.get("action_type") == "shell", (
+            "score_acceptance must be non-LLM — it reduces results.json arithmetically"
+        )
+        evaluate = state.get("evaluate", {})
+        assert evaluate.get("type") == "output_numeric", (
+            "score_acceptance must score pass count / total via output_numeric (non-LLM gate)"
+        )
+        # EvaluateConfig has no `key:` field — evaluate_output_numeric parses the
+        # WHOLE stripped stdout via float(). The state must therefore echo a bare
+        # number (check_eval_retry_budget's form) and route its human-readable
+        # breakdown to a sidecar file, or the evaluator returns verdict="error".
+        assert "key" not in evaluate, (
+            "output_numeric has no key: support (see fsm/schema.py EvaluateConfig); "
+            "score_acceptance must echo a bare numeric pass rate on stdout"
+        )
+        action = state.get("action", "")
+        assert "score.txt" in action, (
+            "The per-criterion breakdown must go to a sidecar file so stdout stays a "
+            "bare parseable number"
+        )
+        assert evaluate.get("operator") == "ge"
+        assert "min_acceptance_pass_rate" in str(evaluate.get("target", "")), (
+            "score_acceptance's threshold must come from the min_acceptance_pass_rate knob"
+        )
+
+    def test_score_acceptance_reads_results_json(self, loop_data: dict) -> None:
+        action = loop_data["states"]["score_acceptance"].get("action", "")
+        assert "results.json" in action, (
+            "score_acceptance must score the executed results, not LLM prose"
+        )
+        assert '"$RUN_DIR/acceptance"' in action, (
+            "score_acceptance must read results.json from ${context.run_dir}/acceptance/"
+        )
+
+    def test_score_acceptance_fails_when_every_check_is_skipped(self, loop_data: dict) -> None:
+        """Backstop: an LLM cannot pass the gate by marking every criterion unrunnable."""
+        action = loop_data["states"]["score_acceptance"].get("action", "")
+        assert "skipped" in action, "score_acceptance must account for skipped checks explicitly"
+        assert "executed" in action, (
+            "score_acceptance must require at least one executed check — an all-skipped "
+            "results.json scores pass_rate=0, not a free pass"
+        )
+
+    def test_score_acceptance_routing(self, loop_data: dict) -> None:
+        state = loop_data["states"]["score_acceptance"]
+        assert state.get("on_yes") == "synthesize_result", (
+            "A full acceptance pass proceeds to synthesis"
+        )
+        assert state.get("on_no") == "check_acceptance_retry_budget", (
+            "Acceptance failures route to a bounded remediation re-entry"
+        )
+        assert state.get("on_error") == "finalize_acceptance_failed", (
+            "An unscoreable acceptance run must fail loudly, not pass silently"
+        )
+
+    def test_acceptance_retry_budget_uses_its_own_counter(self, loop_data: dict) -> None:
+        action = loop_data["states"]["check_acceptance_retry_budget"].get("action", "")
+        assert "acceptance-retry-count.txt" in action, (
+            "The acceptance retry budget needs its own counter file, separate from "
+            "eval-retry-count.txt — the two failure classes are budgeted independently"
+        )
+        assert "eval-retry-count.txt" not in action
+        assert "${context.run_dir}" in action, (
+            "The counter must live under ${context.run_dir} (MR-3)"
+        )
+
+    def test_acceptance_retry_budget_uses_output_numeric_evaluator(self, loop_data: dict) -> None:
+        evaluate = loop_data["states"]["check_acceptance_retry_budget"].get("evaluate", {})
+        assert evaluate.get("type") == "output_numeric"
+        assert evaluate.get("operator") == "le"
+        assert "max_acceptance_retries" in str(evaluate.get("target", "")), (
+            "The budget must be bounded by the max_acceptance_retries context knob"
+        )
+
+    def test_acceptance_retry_budget_routing(self, loop_data: dict) -> None:
+        state = loop_data["states"]["check_acceptance_retry_budget"]
+        assert state.get("on_yes") == "capture_acceptance_failures", (
+            "Remaining budget re-enters remediation"
+        )
+        assert state.get("on_no") == "finalize_acceptance_failed", (
+            "An exhausted budget terminates non-done"
+        )
+        assert state.get("on_error") == "finalize_acceptance_failed"
+
+    def test_capture_acceptance_failures_reenters_cluster_execute(self, loop_data: dict) -> None:
+        state = loop_data["states"]["capture_acceptance_failures"]
+        assert state.get("next") == "cluster_execute", (
+            "Acceptance failures are fed back as issues and re-executed via goal-cluster"
+        )
+
+    def test_finalize_acceptance_failed_routes_to_terminal(self, loop_data: dict) -> None:
+        state = loop_data["states"]["finalize_acceptance_failed"]
+        assert state.get("next") == "acceptance_failed", (
+            "finalize_acceptance_failed must terminate at acceptance_failed, not done "
+            "(BUG-2813 finalize/terminal pair shape)"
+        )
+        assert not state.get("terminal"), (
+            "The diagnostic payload must live on a non-terminal state — the executor "
+            "finishes the run the instant a terminal is entered"
+        )
+
+    def test_finalize_acceptance_failed_emits_resume_command(self, loop_data: dict) -> None:
+        action = loop_data["states"]["finalize_acceptance_failed"].get("action", "")
+        assert "resume_command" in action, (
+            "finalize_acceptance_failed must emit a resume_command so the build stays resumable"
+        )
+        assert "acceptance" in action.lower()
+
+    def test_acceptance_failed_terminal_declares_failure(self, loop_data: dict) -> None:
+        """`acceptance_failed` is not in FAILURE_TERMINAL_NAMES — it must opt in."""
+        state = loop_data["states"]["acceptance_failed"]
+        assert state.get("terminal") is True
+        assert state.get("failure") is True, (
+            "acceptance_failed is absent from schema.FAILURE_TERMINAL_NAMES (a "
+            "backward-compat-only set), so it must declare failure: true explicitly "
+            "to exit non-zero and persist as 'failed' (ENH-2814)"
+        )
+
+    def test_acceptance_context_knobs_exist(self, loop_data: dict) -> None:
+        context = loop_data.get("context", {})
+        assert "max_acceptance_retries" in context
+        assert "min_acceptance_pass_rate" in context
+        assert str(context["min_acceptance_pass_rate"]) == "1.0", (
+            "Every acceptance criterion must hold by default — a partial pass is not a pass"
+        )
+
+    def test_synthesize_result_reports_per_criterion_results(self, loop_data: dict) -> None:
+        action = loop_data["states"]["synthesize_result"].get("action", "")
+        assert "acceptance" in action.lower(), (
+            "synthesize_result's JSON must include the per-criterion acceptance results"
+        )
+        assert "acceptance/results.json" in action, (
+            "synthesize_result must read the executed results, not restate the criteria"
         )
 
 
@@ -639,6 +882,20 @@ class TestE2E:
                 pytest.fail(f"synthesize_result JSON is malformed: {exc}")
             assert "accomplished" in synthesis, "synthesize_result JSON must have 'accomplished'"
             assert "eval_passed" in synthesis, "synthesize_result JSON must have 'eval_passed'"
+
+        # 7. FEAT-2414: the acceptance phase actually executed checks against the
+        #    assembled project. synthesize_result is only reachable through
+        #    score_acceptance, so reaching step 6 implies results.json exists.
+        results_path = run_dir / "acceptance" / "results.json"
+        assert results_path.exists(), (
+            f"acceptance/results.json not found in {run_dir} — the integration/acceptance "
+            "phase did not execute the spec's acceptance criteria as runnable checks"
+        )
+        acceptance = json.loads(results_path.read_text())
+        assert "results" in acceptance and "pass_rate" in acceptance, (
+            f"acceptance/results.json must carry a per-criterion breakdown: {acceptance}"
+        )
+        assert isinstance(acceptance["results"], list)
 
 
 class TestRnBuildResumeState:
