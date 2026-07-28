@@ -400,6 +400,7 @@ class ProjectConfig:
     build_cmd: str | None = None
     run_cmd: str | None = None
     health_url: str | None = None
+    test_patterns: list[str] = field(default_factory=lambda: [...])  # ENH-2865
 ```
 
 ### IssuesConfig

@@ -61,6 +61,12 @@
           "type": ["string", "null"],
           "description": "URL to probe for service readiness (used by oracles/code-run-gate's service_health state; null = skip)",
           "default": null
+        },
+        "test_patterns": {
+          "type": "array",
+          "description": "Gitignore-style glob patterns identifying test files, matched via little_loops.test_file_patterns. Not introspected by ll-init (no manifest source) — per-project-type template defaults are the whole story.",
+          "items": {"type": "string"},
+          "default": ["**/test_*.py", "**/*_test.py", "**/tests/**", "conftest.py", "**/conftest.py"]
         }
       },
       "additionalProperties": false

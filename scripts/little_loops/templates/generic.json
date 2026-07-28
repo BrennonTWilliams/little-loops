@@ -14,7 +14,17 @@
     "type_cmd": null,
     "format_cmd": null,
     "build_cmd": null,
-    "run_cmd": null
+    "run_cmd": null,
+    "test_patterns": [
+      "**/test_*.*",
+      "**/*_test.*",
+      "**/*.test.*",
+      "**/*.spec.*",
+      "**/tests/**",
+      "**/test/**",
+      "conftest.py",
+      "**/conftest.py"
+    ]
   },
   "scan": {
     "focus_dirs": ["src/", "lib/"],

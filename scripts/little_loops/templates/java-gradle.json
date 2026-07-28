@@ -24,7 +24,14 @@
     "type_cmd": null,
     "format_cmd": null,
     "build_cmd": "./gradlew build -x test",
-    "run_cmd": "./gradlew run"
+    "run_cmd": "./gradlew run",
+    "test_patterns": [
+      "**/*Test.java",
+      "**/*Tests.java",
+      "**/*IT.java",
+      "**/BaseTest.java",
+      "src/test/**"
+    ]
   },
   "scan": {
     "focus_dirs": [

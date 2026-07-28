@@ -26,7 +26,13 @@
     "type_cmd": null,
     "format_cmd": "dotnet format",
     "build_cmd": "dotnet build",
-    "run_cmd": "dotnet run"
+    "run_cmd": "dotnet run",
+    "test_patterns": [
+      "**/*Tests.cs",
+      "**/*Test.cs",
+      "**/*.Tests/**",
+      "**/TestFixture.cs"
+    ]
   },
   "scan": {
     "focus_dirs": [

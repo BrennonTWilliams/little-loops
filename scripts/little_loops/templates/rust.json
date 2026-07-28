@@ -23,7 +23,12 @@
     "type_cmd": null,
     "format_cmd": "cargo fmt",
     "build_cmd": "cargo build",
-    "run_cmd": "cargo run"
+    "run_cmd": "cargo run",
+    "test_patterns": [
+      "tests/**",
+      "**/tests/**",
+      "**/common/mod.rs"
+    ]
   },
   "scan": {
     "focus_dirs": [

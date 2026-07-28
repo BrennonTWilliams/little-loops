@@ -27,7 +27,14 @@
     "type_cmd": null,
     "format_cmd": "npm run format",
     "build_cmd": null,
-    "run_cmd": "npm start"
+    "run_cmd": "npm start",
+    "test_patterns": [
+      "**/*.test.js",
+      "**/*.spec.js",
+      "**/__tests__/**",
+      "jest.setup.js",
+      "**/jest.setup.js"
+    ]
   },
   "scan": {
     "focus_dirs": [

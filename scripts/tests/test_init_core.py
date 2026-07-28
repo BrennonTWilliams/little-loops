@@ -2734,6 +2734,13 @@ class TestTemplateCommandOptions:
         data = json.loads((templates_dir / "generic.json").read_text())
         assert "command_options" not in data["_meta"]
 
+    @pytest.mark.parametrize("filename", [*TYPED_TEMPLATES, "generic.json"])
+    def test_has_test_patterns(self, filename: str, templates_dir: Path) -> None:
+        """ENH-2865: every project-type template declares project.test_patterns."""
+        data = json.loads((templates_dir / filename).read_text())
+        assert "test_patterns" in data["project"], f"{filename} is missing project.test_patterns"
+        assert len(data["project"]["test_patterns"]) > 0
+
 
 # ---------------------------------------------------------------------------
 # Merge helpers (BUG-2310)

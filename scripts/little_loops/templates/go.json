@@ -23,7 +23,10 @@
     "type_cmd": null,
     "format_cmd": "gofmt -w .",
     "build_cmd": "go build ./...",
-    "run_cmd": "go run ."
+    "run_cmd": "go run .",
+    "test_patterns": [
+      "**/*_test.go"
+    ]
   },
   "scan": {
     "focus_dirs": [

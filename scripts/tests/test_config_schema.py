@@ -356,6 +356,26 @@ class TestConfigSchema:
             "project.health_url must default to null"
         )
 
+    def test_project_test_patterns_in_schema(self) -> None:
+        """ENH-2865: project.test_patterns must be declared in config-schema.json.
+
+        The project block has additionalProperties: false, so a config
+        carrying project.test_patterns is rejected unless the property is
+        declared here. ENH-2853/ENH-2854 read this array via
+        little_loops.test_file_patterns.
+        """
+        data = json.loads(_load_schema_text())
+        project_props = data["properties"]["project"]["properties"]
+        assert "test_patterns" in project_props, (
+            "project.test_patterns is not declared in config-schema.json; "
+            "configs using it will be rejected by additionalProperties: false "
+            "on the project block (ENH-2865)"
+        )
+        assert project_props["test_patterns"]["type"] == "array"
+        assert project_props["test_patterns"]["items"]["type"] == "string"
+        assert isinstance(project_props["test_patterns"].get("default"), list)
+        assert "conftest.py" in project_props["test_patterns"]["default"]
+
     def test_design_tokens_in_schema(self) -> None:
         """design_tokens block must be declared in config-schema.json (FEAT-1747).
 

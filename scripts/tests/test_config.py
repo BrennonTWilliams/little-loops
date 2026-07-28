@@ -111,6 +111,7 @@ class TestProjectConfig:
             "build_cmd": "npm run build",
             "run_cmd": "npm start",
             "health_url": "http://localhost:8080/health",
+            "test_patterns": ["**/*.spec.ts"],
         }
         config = ProjectConfig.from_dict(data)
 
@@ -124,6 +125,7 @@ class TestProjectConfig:
         assert config.build_cmd == "npm run build"
         assert config.run_cmd == "npm start"
         assert config.health_url == "http://localhost:8080/health"
+        assert config.test_patterns == ["**/*.spec.ts"]
 
     def test_from_dict_with_defaults(self) -> None:
         """Test creating ProjectConfig with default values."""
@@ -139,6 +141,7 @@ class TestProjectConfig:
         assert config.build_cmd is None
         assert config.run_cmd is None
         assert config.health_url is None
+        assert "conftest.py" in config.test_patterns
 
 
 class TestIssuesConfig:

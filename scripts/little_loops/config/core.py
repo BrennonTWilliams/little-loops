@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
@@ -153,6 +153,15 @@ class ProjectConfig:
     build_cmd: str | None = None
     run_cmd: str | None = None
     health_url: str | None = None
+    test_patterns: list[str] = field(
+        default_factory=lambda: [
+            "**/test_*.py",
+            "**/*_test.py",
+            "**/tests/**",
+            "conftest.py",
+            "**/conftest.py",
+        ]
+    )
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ProjectConfig:
@@ -168,6 +177,16 @@ class ProjectConfig:
             build_cmd=data.get("build_cmd"),
             run_cmd=data.get("run_cmd"),
             health_url=data.get("health_url"),
+            test_patterns=data.get(
+                "test_patterns",
+                [
+                    "**/test_*.py",
+                    "**/*_test.py",
+                    "**/tests/**",
+                    "conftest.py",
+                    "**/conftest.py",
+                ],
+            ),
         )
 
 
@@ -629,6 +648,7 @@ class BRConfig:
                 "build_cmd": self._project.build_cmd,
                 "run_cmd": self._project.run_cmd,
                 "health_url": self._project.health_url,
+                "test_patterns": self._project.test_patterns,
             },
             "issues": {
                 "base_dir": self._issues.base_dir,

@@ -24,7 +24,16 @@
     "type_cmd": "npx tsc --noEmit",
     "format_cmd": "npm run format",
     "build_cmd": "npm run build",
-    "run_cmd": "npm start"
+    "run_cmd": "npm start",
+    "test_patterns": [
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "**/*.spec.ts",
+      "**/*.spec.tsx",
+      "**/__tests__/**",
+      "jest.setup.ts",
+      "**/jest.setup.ts"
+    ]
   },
   "scan": {
     "focus_dirs": [

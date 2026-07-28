@@ -263,7 +263,7 @@ def _read_existing_gitignore(repo_root: Path) -> list[str]:
     return patterns
 
 
-def _file_matches_pattern(file_path: str, pattern: str) -> bool:
+def file_matches_pattern(file_path: str, pattern: str) -> bool:
     """Check if a file path matches a gitignore pattern.
 
     Implements gitignore-style matching semantics:
@@ -321,6 +321,10 @@ def _file_matches_pattern(file_path: str, pattern: str) -> bool:
         return False
 
 
+# Backwards-compat alias for existing in-module and cross-module callers.
+_file_matches_pattern = file_matches_pattern
+
+
 def _is_already_ignored(
     file_path: str,
     existing_patterns: list[str],
@@ -342,7 +346,7 @@ def _is_already_ignored(
     is_ignored = False
 
     for pattern in existing_patterns:
-        if _file_matches_pattern(file_path, pattern):
+        if file_matches_pattern(file_path, pattern):
             # If pattern starts with !, it's a negation
             if pattern.startswith("!"):
                 is_ignored = False
@@ -410,7 +414,7 @@ def suggest_gitignore_patterns(
         # Try to match against common patterns
         matched = False
         for pattern_obj in sorted(pattern_objects, key=lambda p: p.priority):
-            if _file_matches_pattern(file_path, pattern_obj.pattern):
+            if file_matches_pattern(file_path, pattern_obj.pattern):
                 # Add to suggestions (deduplicate by pattern)
                 if pattern_obj.pattern not in suggestions:
                     suggestions[pattern_obj.pattern] = pattern_obj

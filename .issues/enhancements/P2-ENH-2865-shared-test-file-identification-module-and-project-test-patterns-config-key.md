@@ -3,9 +3,10 @@ id: ENH-2865
 title: Shared test-file identification module and project.test_patterns config key
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_by: epic-review
 discovered_date: 2026-07-27
+completed_at: '2026-07-28T16:33:50Z'
 epic: EPIC-2856
 parent: EPIC-2856
 labels:
@@ -15,6 +16,12 @@ labels:
 blocks:
 - ENH-2853
 - ENH-2854
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 18
+score_test_coverage: 22
+score_ambiguity: 20
+score_change_surface: 22
 ---
 
 # ENH-2865: Shared test-file identification module and `project.test_patterns` config key
@@ -100,6 +107,61 @@ of forcing an arbitrary serial order between them.
   `file_matches_pattern`, keeping the underscore name as an alias for existing
   in-module callers) as part of this issue.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **A third call site exists beyond `git_operations.py`'s own two internal
+  uses**: `scripts/little_loops/codequery/codegraph.py:131,133` imports
+  `_file_matches_pattern` via a **function-local import** inside
+  `_is_scan_relevant()` specifically to isolate this cross-module private
+  dependency. That local-import call site is a candidate to repoint at the
+  new shared module (or the promoted public name) directly, since it already
+  signals "this import is a workaround."
+- `_file_matches_pattern(file_path: str, pattern: str) -> bool` at
+  `git_operations.py:266-321` matches one path against one pattern string
+  (callers loop over pattern lists themselves) and is negation-agnostic — it
+  strips a leading `!` for matching purposes but never inspects it, so
+  negation semantics stay the caller's responsibility. The new module's
+  predicate should decide once whether negation in `test_patterns` entries
+  is supported or explicitly out of scope.
+- **`resolve_variable()` is the wrong read path for this list.**
+  `config/core.py:887-909` implements `resolve_variable()` as a dot-path
+  walker that special-cases lists by space-joining them into one string
+  (`" ".join(str(v) for v in value)`). Reading `project.test_patterns`
+  through `resolve_variable()` would collapse the glob list into a single
+  joined string, destroying the individual patterns. `test_file_patterns.py`
+  should read `ProjectConfig.test_patterns` directly (via `BRConfig.project`,
+  `core.py:265-268`) rather than through `resolve_variable()`.
+- `ProjectConfig` dataclass and its `from_dict()` hydration live at
+  `config/core.py:142-171` (`test_cmd: str = "pytest"` is the sibling field
+  at line ~149); the aggregator `BRConfig._parse_config()` constructs it at
+  line 219, and `to_dict()`'s project block (lines 621-632) is the other
+  place a new field must be listed for it to be visible to `resolve_variable()`
+  callers of *other* project keys (moot for `test_patterns` itself per the
+  point above, but still required for consistency/introspection tooling).
+- `scan.focus_dirs`'s exact schema shape to mirror is
+  `config-schema.json:661-675`: `{"type": "array", "description": ...,
+  "items": {"type": "string"}, "default": [...]}`, inside the `scan` object;
+  the `project` block's own properties start at `config-schema.json:12`.
+- Exact schema-presence test template: `test_config_schema.py:337-357`,
+  `test_health_url_in_schema()` — asserts key presence in
+  `data["properties"]["project"]["properties"]`, asserts type, and asserts
+  default, with the issue ID cited in both docstring and assertion message.
+  `test_project_test_patterns_in_schema()` should follow this exactly.
+- Test-style precedent for the new pure module:
+  `test_work_verification.py:24-143` (`TestExcludedDirectories`,
+  `TestFilterExcludedFiles`) is the closer template than
+  `test_git_operations.py` (which mocks subprocess calls) — no mocking, one
+  `TestX` class per constant/function, one behavior per test method, and an
+  explicit "looks similar but isn't" case
+  (`test_similar_but_not_excluded_paths`) directly analogous to the
+  `pytest_history_plugin.py` AC case here.
+- Confirmed via search: no other "is this a test file" classifier exists
+  anywhere in `scripts/little_loops/` outside the unrelated Learning-Test-Registry
+  concept in `issue_history/` — this module is genuinely new consolidation,
+  not a rename of a scattered existing check.
+
 ## Scope Boundaries
 
 - **In scope**: `project.test_patterns` config key, `ProjectConfig` field,
@@ -123,24 +185,24 @@ of forcing an arbitrary serial order between them.
 
 ## Acceptance Criteria
 
-- [ ] `project.test_patterns` is declared in `config-schema.json`'s `project`
+- [x] `project.test_patterns` is declared in `config-schema.json`'s `project`
       block as an array of strings with a default, and a config carrying it
       validates.
-- [ ] `ProjectConfig.test_patterns` exists alongside `test_cmd` and resolves via
+- [x] `ProjectConfig.test_patterns` exists alongside `test_cmd` and resolves via
       `resolve_variable("project.test_patterns")`.
-- [ ] All nine project-type templates carry a language-appropriate default.
-- [ ] Every default pattern set includes `conftest.py` (or the ecosystem's
+- [x] All nine project-type templates carry a language-appropriate default.
+- [x] Every default pattern set includes `conftest.py` (or the ecosystem's
       equivalent shared-fixture file where one exists).
-- [ ] `scripts/little_loops/test_file_patterns.py` exposes a single
+- [x] `scripts/little_loops/test_file_patterns.py` exposes a single
       identification predicate and a list filter, both pure and LLM-free.
-- [ ] Matching uses `git_operations`' existing gitignore-style matcher rather
+- [x] Matching uses `git_operations`' existing gitignore-style matcher rather
       than a second glob implementation, and the matcher is promoted to a
       public name instead of being imported under its private `_`-prefixed one.
-- [ ] Paths are matched repo-relative and POSIX-normalized.
-- [ ] Tests cover: each template's default set, `conftest.py` classification,
+- [x] Paths are matched repo-relative and POSIX-normalized.
+- [x] Tests cover: each template's default set, `conftest.py` classification,
       a non-test file that superficially resembles one (e.g.
       `scripts/little_loops/pytest_history_plugin.py`), and path normalization.
-- [ ] `docs/reference/CONFIGURATION.md`'s `### project` table gains a
+- [x] `docs/reference/CONFIGURATION.md`'s `### project` table gains a
       `test_patterns` row, noting the deliberate non-introspection.
 
 ## Integration Map
@@ -158,20 +220,63 @@ of forcing an arbitrary serial order between them.
 - `scripts/little_loops/test_file_patterns.py`
 
 ### Similar Patterns
-- `scripts/little_loops/git_operations.py:_file_matches_pattern()` — the
-  gitignore-style matcher to wrap rather than reimplement
+- `scripts/little_loops/git_operations.py:_file_matches_pattern()`
+  (lines 266-321) — the gitignore-style matcher to wrap rather than
+  reimplement; existing internal call sites at lines 345 and 413
+- `scripts/little_loops/codequery/codegraph.py:131,133` — a third,
+  cross-module call site (`_is_scan_relevant()`, function-local import) worth
+  repointing at the promoted public name or the new module directly
 - `scripts/little_loops/work_verification.py:filter_excluded_files()` /
-  `EXCLUDED_DIRECTORIES` — the closest existing "classify changed files"
-  precedent; this module is its structural inverse (inclusion predicate)
-- `scripts/tests/test_config_schema.py:test_health_url_in_schema()` — exact
-  template for a new `project.*` schema-presence test
+  `EXCLUDED_DIRECTORIES` (lines 18-41) — the closest existing "classify
+  changed files" precedent; this module is its structural inverse (inclusion
+  predicate)
+- `scripts/tests/test_config_schema.py:test_health_url_in_schema()`
+  (lines 337-357) — exact template for a new `project.*` schema-presence test
+- `scripts/tests/test_work_verification.py:24-143` — test-style template for
+  the new pure module (no mocking, one class per constant/function)
 
 ### Tests
 - `scripts/tests/test_config_schema.py` — new `test_project_test_patterns_in_schema`
-  following the one-test-per-key convention
-- `scripts/tests/test_config.py` — `ProjectConfig` fixtures (~L107, L120, L135)
-  need `test_patterns` parity with `test_cmd`
+  following the one-test-per-key convention (mirror `test_health_url_in_schema`,
+  lines 337-357; membership-style assertion, not exhaustive key-set)
+- `scripts/tests/test_config.py` — `TestProjectConfig::test_from_dict_with_all_fields`
+  and `::test_from_dict_with_defaults` (~L101-141) need `test_patterns` parity
+  with `test_cmd`
 - New `scripts/tests/test_test_file_patterns.py`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_gitignore_suggestions.py` — imports `_file_matches_pattern`
+  by its private name (line 12) and asserts against it at lines 114, 285,
+  287-289, 411-413. Only breaks if the promotion drops the private alias
+  instead of keeping it (as the issue's Design Notes already specify) —
+  confirm the alias is kept so this test needs no changes. [Agent 3 finding]
+- `scripts/little_loops/codequery/codegraph.py:_is_scan_relevant()` (line 131,
+  the function-local import) has zero direct test coverage anywhere in
+  `scripts/tests/` — repointing it to the promoted public name is a pure
+  coverage gap, not a regression risk, and needs no existing test update.
+  [Agent 3 finding]
+- `scripts/tests/test_init_core.py::TestTemplateCommandOptions` (lines
+  2706-2735) — uses membership (`in`) checks over `_meta.command_options`,
+  not exhaustive key-set equality, so adding `test_patterns` to all nine
+  templates will not break this class; optionally extend it with a new
+  parametrized assertion for `test_patterns` presence, following the same
+  `TYPED_TEMPLATES` + `templates_dir` fixture pattern (fixture at line 59-61).
+  [Agent 3 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md:394-398` — a `ProjectConfig` dataclass code-block
+  excerpt (`name`, `src_dir`, `test_dir`, `test_cmd`, `lint_cmd`, `type_cmd`)
+  will drift out of sync with the real dataclass unless `test_patterns` is
+  added to the excerpt. [Agent 2 finding]
+- `docs/reference/CONFIGURATION.md:307-310` — prose note lists which project
+  keys are introspected on fresh `ll-init` (`src_dir`/`test_cmd`/`lint_cmd`/
+  `format_cmd`/`type_cmd`/`scan.focus_dirs`); consider an explicit
+  "not introspected" callout for `test_patterns` here so a reader doesn't
+  read its absence as an oversight (the Design Notes already document this
+  as deliberate, but this is the doc location a reader would actually
+  check). [Agent 2 finding]
 
 ### Consumers (this issue blocks both)
 - `ENH-2853` — pre-patch test-failure check
@@ -183,4 +288,8 @@ of forcing an arbitrary serial order between them.
 
 
 ## Session Log
+- `/ll:manage-issue improve` - 2026-07-28T16:33:06 - `e4c5794d-4e37-4171-bea5-2b2eca6982ee.jsonl`
+- `/ll:confidence-check` - 2026-07-28T00:00:00 - `89cb51b2-4a20-4e90-b654-857c039570e9.jsonl`
+- `/ll:wire-issue` - 2026-07-28T16:18:39 - `5106e362-24eb-4783-8217-bdbd22e2c26d.jsonl`
+- `/ll:refine-issue` - 2026-07-28T16:13:05 - `23c9adb4-eaf1-486a-b3a9-0b03f0bd32af.jsonl`
 - `/ll:format-issue` - 2026-07-27T20:01:56 - `74d428f0-7103-4a58-9168-ff504878fb04.jsonl`

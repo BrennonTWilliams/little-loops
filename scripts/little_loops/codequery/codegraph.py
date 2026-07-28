@@ -128,9 +128,9 @@ def _is_scan_relevant(path: str, focus_dirs: list[str], exclude_patterns: list[s
     ``focus_dirs`` is treated as "no scope restriction", preserving prior
     repo-wide behavior) and doesn't match any ``exclude_patterns`` entry.
     """
-    from little_loops.git_operations import _file_matches_pattern
+    from little_loops.git_operations import file_matches_pattern
 
-    if any(_file_matches_pattern(path, pattern) for pattern in exclude_patterns):
+    if any(file_matches_pattern(path, pattern) for pattern in exclude_patterns):
         return False
     if not focus_dirs:
         return True

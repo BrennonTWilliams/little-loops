@@ -23,7 +23,14 @@
     "type_cmd": null,
     "format_cmd": null,
     "build_cmd": "mvn package -DskipTests",
-    "run_cmd": "mvn exec:java"
+    "run_cmd": "mvn exec:java",
+    "test_patterns": [
+      "**/*Test.java",
+      "**/*Tests.java",
+      "**/*IT.java",
+      "**/BaseTest.java",
+      "src/test/**"
+    ]
   },
   "scan": {
     "focus_dirs": [
