@@ -6,6 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from little_loops.cli.issues.set_status import _CLOSED_REASON_CODES, _DEFERRAL_REASON_CODES
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
 
@@ -774,17 +775,10 @@ Examples:
         )
         sst.add_argument(
             "--reason",
-            choices=[
-                "blocked_by_unmet",
-                "remediation_stalled",
-                "low_readiness",
-                "gate_blocked",
-                "decision_unresolved",
-                "oversized_atomic",
-                "readiness_stagnated",
-                "already_fixed",
-                "superseded",
-            ],
+            # ENH-2870: derived from the same source as _DEFERRAL_REASON_CODES /
+            # _CLOSED_REASON_CODES in set_status.py so the argparse choices list
+            # can't drift out of lockstep with the enum.
+            choices=sorted(_DEFERRAL_REASON_CODES | _CLOSED_REASON_CODES),
             default=None,
             dest="reason",
             help=(

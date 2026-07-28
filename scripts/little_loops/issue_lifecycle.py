@@ -77,6 +77,8 @@ class DeferReason(Enum):
     # dequeue-time snapshot — distinct from low_readiness, which also covers
     # issues that never got a repair attempt at all.
     READINESS_STAGNATED = "readiness_stagnated"
+    # ENH-2852/ENH-2870: program-design stage failed verification
+    DESIGN_GATE_FAILED = "design_gate_failed"
 
 
 # =============================================================================

@@ -122,6 +122,11 @@ states:
       # into this issue's deferral decision.
       rm -f ${context.run_dir}/autodev-pre-deferral-remedy.txt
       rm -f ${context.run_dir}/autodev-pre-deferral-remedy-fired
+      # ENH-2870: clear the atomic-remediation design-remedy handshake so a
+      # prior issue's armed-but-unconsumed remedy never leaks into this
+      # issue's decision (the design-gate-failed-<ID> marker is already
+      # per-issue-scoped by filename, so it self-isolates without cleanup).
+      rm -f ${context.run_dir}/autodev-atomic-design-remedy-pending
 
       (ll-issues list --json | python3 -c "
       import json, sys
@@ -944,11 +949,38 @@ states:
     # size-review. Scores can pass even when the sub-loop failed/errored (e.g.,
     # max-iterations hit while the issue was already ready). Mirrors
     # check_passed logic exactly; on pass, interleave implementation.
+    # ENH-2870 step 0: unlike the other two gate states this one has no local
+    # `GATE` python variable — it routes on `ll-issues check-readiness`'s own
+    # exit code (fragment: shell_exit). Hard-AND the deterministic Program
+    # Design verdict by chaining a second `&&`-gated check: a design-caused
+    # gap still lets check-readiness pass, but the compound command's overall
+    # exit code goes non-zero, so on_no fires exactly like a score failure.
+    # No new deferral branch here — the not-ready path already funnels
+    # through check_decision_before_size_review down to
+    # recheck_after_size_review, which owns the design_gate_failed deferral.
     action: |
-      ll-issues check-readiness ${captured.input.output} \
+      ID="${captured.input.output}"
+      DESIGN_JSON=$(ll-issues format-check "$ID" --format json 2>/dev/null || echo '{}')
+      DESIGN_FAIL=$(printf '%s' "$DESIGN_JSON" | python3 -c "
+      import json, sys
+      try:
+          d = json.load(sys.stdin)
+      except Exception:
+          d = {}
+      nonspecific = d.get('program_design_nonspecific') or []
+      missing = d.get('missing') or []
+      empty = d.get('empty') or []
+      fail = bool(nonspecific) or ('Program Design' in missing) or ('Program Design' in empty)
+      print('true' if fail else 'false')
+      " 2>/dev/null || echo "false")
+      if [ "$DESIGN_FAIL" = "true" ]; then
+        touch ${context.run_dir}/autodev-design-gate-failed-$ID
+      fi
+      ll-issues check-readiness "$ID" \
         --readiness ${context.readiness_threshold} \
         --outcome ${context.outcome_threshold} \
-        && echo "${captured.input.output}" >> ${context.run_dir}/autodev-passed.txt
+        && [ "$DESIGN_FAIL" != "true" ] \
+        && echo "$ID" >> ${context.run_dir}/autodev-passed.txt
     fragment: shell_exit
     on_yes: decide_current
     on_no: check_decision_before_size_review
@@ -1417,8 +1449,32 @@ states:
     # already passed to get here) so deferred-triage surfaces it distinctly and
     # a human can review/waive via outcome_gate_waived. `outcome_gate_waived`
     # is honored here too in case a prior run already stamped a waiver.
+    # ENH-2870: step-0 hard-AND of the deterministic Program Design verdict
+    # (see recheck_after_size_review for the parser/marker recipe). This state
+    # has no pre-deferral remedy machinery of its own (BUG-2734: it fires at
+    # most once per issue per run), so a design-caused FAIL is not deferred
+    # directly here — it routes once through the shared reconcile remedy via
+    # check_atomic_design_remedy/reconcile_current, and only defers
+    # design_gate_failed (never oversized_atomic) if reconcile was already
+    # attempted.
     action: |
       ID="${captured.input.output}"
+      DESIGN_JSON=$(ll-issues format-check "$ID" --format json 2>/dev/null || echo '{}')
+      DESIGN_FAIL=$(printf '%s' "$DESIGN_JSON" | python3 -c "
+      import json, sys
+      try:
+          d = json.load(sys.stdin)
+      except Exception:
+          d = {}
+      nonspecific = d.get('program_design_nonspecific') or []
+      missing = d.get('missing') or []
+      empty = d.get('empty') or []
+      fail = bool(nonspecific) or ('Program Design' in missing) or ('Program Design' in empty)
+      print('true' if fail else 'false')
+      " 2>/dev/null || echo "false")
+      if [ "$DESIGN_FAIL" = "true" ]; then
+        touch ${context.run_dir}/autodev-design-gate-failed-$ID
+      fi
       GATE=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
       import json, sys
       d = json.load(sys.stdin)
@@ -1429,6 +1485,9 @@ states:
       outcome_ok = waived or (outc >= ${context.outcome_threshold})
       print('PASS' if (readiness_ok and outcome_ok) else 'FAIL')
       " 2>/dev/null || echo "FAIL")
+      if [ "$DESIGN_FAIL" = "true" ]; then
+        GATE="FAIL"
+      fi
       if [ "$GATE" = "PASS" ]; then
         echo "$ID" >> ${context.run_dir}/autodev-passed.txt
       else
@@ -1440,6 +1499,19 @@ states:
           rm -f ${context.run_dir}/autodev-inflight
           exit 1
         fi
+        if [ -f ${context.run_dir}/autodev-design-gate-failed-$ID ]; then
+          RECONCILED=$(ll-issues show "$ID" --json 2>/dev/null \
+            | python3 -c "import json,sys; print(json.load(sys.stdin).get('reconcile_attempted') == 'true')" \
+            2>/dev/null || echo "False")
+          if [ "$RECONCILED" != "True" ]; then
+            touch ${context.run_dir}/autodev-atomic-design-remedy-pending
+            exit 1
+          fi
+          echo "$ID  design_gate_failed" >> ${context.run_dir}/autodev-skipped.txt
+          rm -f ${context.run_dir}/autodev-inflight
+          ll-issues set-status "$ID" deferred --by automation --reason design_gate_failed 2>/dev/null || true
+          exit 1
+        fi
         echo "$ID  oversized_atomic" >> ${context.run_dir}/autodev-skipped.txt
         rm -f ${context.run_dir}/autodev-inflight
         ll-issues set-status "$ID" deferred --by automation --reason oversized_atomic 2>/dev/null || true
@@ -1447,6 +1519,25 @@ states:
       fi
     fragment: shell_exit
     on_yes: decide_current
+    on_no: check_atomic_design_remedy
+    on_error: dequeue_next
+
+  check_atomic_design_remedy:
+    # ENH-2870: dispatcher gate mirroring BUG-2803's check_pre_deferral_remedy
+    # shape. regate_after_atomic_remediation's FAIL branch exits 1 both when
+    # it deferred (skip → advance the queue) and when it armed the shared
+    # reconcile remedy instead. Disambiguate via the pending-remedy marker:
+    # present → route to reconcile_current; absent → the issue was
+    # deferred/skipped, advance to the next queued issue (the pre-ENH-2870
+    # on_no behaviour).
+    action: |
+      if [ -f ${context.run_dir}/autodev-atomic-design-remedy-pending ]; then
+        rm -f ${context.run_dir}/autodev-atomic-design-remedy-pending
+        exit 0
+      fi
+      exit 1
+    fragment: shell_exit
+    on_yes: reconcile_current
     on_no: dequeue_next
     on_error: dequeue_next
 
@@ -1520,8 +1611,34 @@ states:
     # the distinct `readiness_stagnated` reason instead of `low_readiness` —
     # this now truthfully means "all remedies including reconcile were
     # attempted" rather than masking that no rewrite was ever tried.
+    # ENH-2870: step-0 hard-AND of the deterministic Program Design verdict
+    # into GATE, plus a design-gate branch positioned after
+    # resolved_by_subloop but BEFORE readiness_stagnated — a design-gate FAIL
+    # can arrive with passing scores, so it must not be swallowed by the
+    # CYCLE_COUNT>=2 stagnation branch below. The remedy is hardcoded to
+    # `reconcile` (bypassing the BUG-2803 weakest-subscore spike/reconcile
+    # heuristic) and reuses the existing one-shot remedy handshake
+    # (autodev-pre-deferral-remedy-fired / autodev-pre-deferral-remedy.txt);
+    # a `reconcile_attempted == 'true'` fall-through defers as
+    # design_gate_failed, never low_readiness.
     action: |
       ID="${captured.input.output}"
+      DESIGN_JSON=$(ll-issues format-check "$ID" --format json 2>/dev/null || echo '{}')
+      DESIGN_FAIL=$(printf '%s' "$DESIGN_JSON" | python3 -c "
+      import json, sys
+      try:
+          d = json.load(sys.stdin)
+      except Exception:
+          d = {}
+      nonspecific = d.get('program_design_nonspecific') or []
+      missing = d.get('missing') or []
+      empty = d.get('empty') or []
+      fail = bool(nonspecific) or ('Program Design' in missing) or ('Program Design' in empty)
+      print('true' if fail else 'false')
+      " 2>/dev/null || echo "false")
+      if [ "$DESIGN_FAIL" = "true" ]; then
+        touch ${context.run_dir}/autodev-design-gate-failed-$ID
+      fi
       GATE=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
       import json, sys
       d = json.load(sys.stdin)
@@ -1532,6 +1649,9 @@ states:
       outcome_ok = waived or (outc >= ${context.outcome_threshold})
       print('PASS' if (readiness_ok and outcome_ok) else 'FAIL')
       " 2>/dev/null || echo "FAIL")
+      if [ "$DESIGN_FAIL" = "true" ]; then
+        GATE="FAIL"
+      fi
       if [ "$GATE" = "PASS" ]; then
         echo "$ID" >> ${context.run_dir}/autodev-passed.txt
       else
@@ -1553,6 +1673,28 @@ states:
       import json, sys
       d = json.load(sys.stdin)
       print(int(d.get('confidence') or 0))" 2>/dev/null || echo 0)
+        if [ -f ${context.run_dir}/autodev-design-gate-failed-$ID ]; then
+          FIRED=${context.run_dir}/autodev-pre-deferral-remedy-fired
+          if [ ! -f "$FIRED" ]; then
+            REMEDY=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
+      import json, sys
+      d = json.load(sys.stdin)
+      print('' if d.get('reconcile_attempted') == 'true' else 'reconcile')" 2>/dev/null || echo "")
+            if [ -n "$REMEDY" ]; then
+              touch "$FIRED"
+              printf '%s' "$REMEDY" > ${context.run_dir}/autodev-pre-deferral-remedy.txt
+              if [ -z "$PRE_READINESS" ]; then
+                printf '%s' "$CUR_CONFIDENCE" > ${context.run_dir}/autodev-pre-readiness.txt
+              fi
+              echo "[PRE-DEFER] $ID program-design gate failed; routing to reconcile"
+              exit 1
+            fi
+          fi
+          echo "$ID  design_gate_failed" >> ${context.run_dir}/autodev-skipped.txt
+          rm -f ${context.run_dir}/autodev-inflight
+          ll-issues set-status "$ID" deferred --by automation --reason design_gate_failed 2>/dev/null || true
+          exit 1
+        fi
         if [ "$CYCLE_COUNT" -ge 2 ] 2>/dev/null && [ -n "$PRE_READINESS" ] && [ "$CUR_CONFIDENCE" -le "$PRE_READINESS" ] 2>/dev/null; then
           echo "$ID  readiness_stagnated" >> ${context.run_dir}/autodev-skipped.txt
           rm -f ${context.run_dir}/autodev-inflight

@@ -341,6 +341,7 @@ class TestIssuesCLISetStatus:
             "decision_unresolved",
             "oversized_atomic",
             "readiness_stagnated",
+            "design_gate_failed",
         ],
     )
     def test_set_status_deferred_stamps_autodev_reason_codes(

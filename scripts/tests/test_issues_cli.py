@@ -6379,6 +6379,56 @@ class TestIssuesCLIDeferredTriage:
             < captured.out.index("BUG-403")
         )
 
+    def test_design_gate_failed_ranked_between_readiness_stagnated_and_low_readiness(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """ENH-2870: design_gate_failed rows rank above low_readiness (a more
+        actionable, specific signal) but below readiness_stagnated."""
+        issues_base = temp_project_dir / ".issues"
+        bugs_dir = issues_base / "bugs"
+        bugs_dir.mkdir(parents=True)
+        (issues_base / "completed").mkdir(parents=True)
+        (issues_base / "deferred").mkdir(parents=True)
+
+        (bugs_dir / "P2-BUG-501-stagnated.md").write_text(
+            "---\nstatus: deferred\ndeferred_by: automation\n"
+            "deferred_reason: readiness_stagnated\ndeferred_date: '2026-01-01T00:00:00Z'\n---\n"
+            "# BUG-501: Readiness stagnated\n"
+        )
+        (bugs_dir / "P2-BUG-502-design-gate.md").write_text(
+            "---\nstatus: deferred\ndeferred_by: automation\n"
+            "deferred_reason: design_gate_failed\ndeferred_date: '2026-01-01T00:00:00Z'\n---\n"
+            "# BUG-502: Design gate failed\n"
+        )
+        (bugs_dir / "P2-BUG-503-low-readiness.md").write_text(
+            "---\nstatus: deferred\ndeferred_by: automation\n"
+            "deferred_reason: low_readiness\ndeferred_date: '2026-01-01T00:00:00Z'\n---\n"
+            "# BUG-503: Low readiness\n"
+        )
+
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "deferred-triage", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert (
+            captured.out.index("BUG-501")
+            < captured.out.index("BUG-502")
+            < captured.out.index("BUG-503")
+        )
+
     def test_shows_age_since_deferred(
         self,
         temp_project_dir: Path,

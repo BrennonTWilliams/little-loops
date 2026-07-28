@@ -25,9 +25,13 @@ _REASON_RANK = {
     # Readiness never moved — a more actionable signal than generic
     # low_readiness, which also covers issues that never got a repair attempt.
     "readiness_stagnated": 5,
-    "low_readiness": 6,
+    # ENH-2870 (2026-07-27): the deterministic `## Program Design` gate failed
+    # even after the one-shot reconcile remedy — a distinct, actionable signal
+    # (missing/nonspecific design section) ranked above generic low_readiness.
+    "design_gate_failed": 6,
+    "low_readiness": 7,
 }
-_DEFAULT_REASON_RANK = 7
+_DEFAULT_REASON_RANK = 8
 
 
 def add_deferred_triage_parser(subs: argparse._SubParsersAction) -> argparse.ArgumentParser:

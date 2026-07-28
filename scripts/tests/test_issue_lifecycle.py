@@ -1655,3 +1655,22 @@ class TestSkip:
         target.write_text("already here")
         with pytest.raises(FileExistsError):
             skip_issue(original, target)
+
+
+class TestDeferReasonEnum:
+    """ENH-2870: DESIGN_GATE_FAILED is a member of DeferReason."""
+
+    def test_design_gate_failed_member_exists_with_expected_value(self) -> None:
+        from little_loops.issue_lifecycle import DeferReason
+
+        assert DeferReason.DESIGN_GATE_FAILED.value == "design_gate_failed"
+
+    def test_design_gate_failed_is_derived_into_set_status_reason_codes(self) -> None:
+        """set_status.py derives its accepted reason-code set from the enum
+        rather than duplicating it as a literal, so a new member is picked up
+        automatically."""
+        from little_loops.cli.issues.set_status import _DEFERRAL_REASON_CODES
+        from little_loops.issue_lifecycle import DeferReason
+
+        assert _DEFERRAL_REASON_CODES == frozenset(r.value for r in DeferReason)
+        assert "design_gate_failed" in _DEFERRAL_REASON_CODES

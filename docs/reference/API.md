@@ -3850,8 +3850,10 @@ handling to the same model) — showing `deferred_reason` and age-since-`deferre
 `decision_unresolved`, above `oversized_atomic` (BUG-2734: readiness passed but a Very Large,
 atomic issue's outcome risk failed even after Pattern-B rescoring), above `readiness_stagnated`
 (FEAT-2751: every repair remedy including reconcile was attempted and Readiness never moved),
-above `low_readiness`; ties break oldest-first. This closes the cross-run resurfacing gap
-FEAT-2665 targets: `re_enqueue_unblocked` only re-surfaces within a single run.
+above `design_gate_failed` (ENH-2870: the deterministic `## Program Design` gate failed even
+after the one-shot reconcile remedy), above `low_readiness`; ties break oldest-first. This
+closes the cross-run resurfacing gap FEAT-2665 targets: `re_enqueue_unblocked` only
+re-surfaces within a single run.
 
 #### next-issue
 

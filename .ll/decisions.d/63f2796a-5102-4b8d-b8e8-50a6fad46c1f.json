@@ -1,0 +1,11 @@
+{
+  "id": "c2e96fe6-0392-4088-8ef3-bc0469c99f70",
+  "type": "decision",
+  "timestamp": "2026-07-28T04:08:44Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Host CLI session JSONL reports actual effort applied per assistant turn; executor currently only displays the resolved config value, missing loops that never set an explicit effort override.",
+  "rule": "Captured: Read actual effort from session JSONL instead of resolved config",
+  "scope": "issue",
+  "issue": "ENH-2885"
+}

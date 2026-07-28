@@ -1,0 +1,12 @@
+{
+  "id": "726765b9-91d9-4688-96d5-6cc555e898a3",
+  "type": "decision",
+  "timestamp": "2026-07-28T03:28:07Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Best-match scoring models actual host routing (one skill wins per phrasing) and reuses the already-implemented but dead _match_score(); fixes the OR-matching root cause instead of masking it.",
+  "rule": "Option A \u2014 score-based best-match matcher for ll-verify-triggers",
+  "scope": "issue",
+  "alternatives_rejected": "B: min token overlap threshold \u2014 doesn't change OR-matching shape, still allows simultaneous multi-skill matches. C: warning-only collisions \u2014 leaves matcher broken, reopens BUG-2879's failing-on-the-wrong-thing problem for the collision metric.",
+  "issue": "ENH-2884"
+}

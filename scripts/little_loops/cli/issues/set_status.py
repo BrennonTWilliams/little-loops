@@ -6,20 +6,14 @@ import argparse
 import sys
 from typing import TYPE_CHECKING
 
+from little_loops.issue_lifecycle import DeferReason
+
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
 
-_DEFERRAL_REASON_CODES = frozenset(
-    {
-        "blocked_by_unmet",
-        "remediation_stalled",
-        "low_readiness",
-        "gate_blocked",
-        "decision_unresolved",
-        "oversized_atomic",
-        "readiness_stagnated",
-    }
-)
+# ENH-2870: derived from DeferReason so the two can't drift out of lockstep
+# (previously a hardcoded literal set duplicating the enum).
+_DEFERRAL_REASON_CODES = frozenset(r.value for r in DeferReason)
 _CLOSED_REASON_CODES = frozenset({"already_fixed", "superseded"})
 
 

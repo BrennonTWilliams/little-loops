@@ -4872,7 +4872,12 @@ class TestAutodevLoop:
 
         regate_state = data["states"].get("regate_after_atomic_remediation", {})
         assert regate_state.get("on_yes") == "decide_current"
-        assert regate_state.get("on_no") == "dequeue_next"
+        # ENH-2870: on_no now routes through the design-remedy dispatcher
+        # (check_atomic_design_remedy), which itself falls through to
+        # dequeue_next when no reconcile remedy was armed.
+        assert regate_state.get("on_no") == "check_atomic_design_remedy"
+        dispatcher_state = data["states"].get("check_atomic_design_remedy", {})
+        assert dispatcher_state.get("on_no") == "dequeue_next"
 
     def test_check_reconcile_needed_routes_through_guard2_verdict(self, data: dict) -> None:
         """BUG-2734: check_reconcile_needed's on_no must now route towards

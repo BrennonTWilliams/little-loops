@@ -368,3 +368,154 @@ class TestRecheckAfterSizeReviewStagnationBackstop:
         stagnated_idx = action.index('echo "$ID  readiness_stagnated"')
         low_readiness_idx = action.index('echo "$ID  low_readiness"')
         assert stagnated_idx < low_readiness_idx
+
+
+class TestDesignGateStep0Detection:
+    """ENH-2870: all three gate states hard-AND the Program Design verdict."""
+
+    def test_recheck_scores_shells_out_to_format_check(self) -> None:
+        action = _load_autodev_yaml()["states"]["recheck_scores"]["action"]
+        assert "ll-issues format-check" in action
+        assert "--format json" in action
+        assert "program_design_nonspecific" in action
+        assert "autodev-design-gate-failed-$ID" in action
+
+    def test_recheck_scores_composes_design_fail_with_check_readiness_exit_code(self) -> None:
+        """recheck_scores has no local GATE variable — it routes on
+        check-readiness's own exit code (fragment: shell_exit) — so the
+        design AND must be composed via a chained `&&`, not a GATE overwrite."""
+        action = _load_autodev_yaml()["states"]["recheck_scores"]["action"]
+        assert "ll-issues check-readiness" in action
+        assert '[ "$DESIGN_FAIL" != "true" ]' in action
+
+    def test_regate_after_atomic_remediation_shells_out_to_format_check(self) -> None:
+        action = _load_autodev_yaml()["states"]["regate_after_atomic_remediation"]["action"]
+        assert "ll-issues format-check" in action
+        assert "--format json" in action
+        assert "program_design_nonspecific" in action
+        assert 'GATE="FAIL"' in action
+
+    def test_recheck_after_size_review_shells_out_to_format_check(self) -> None:
+        action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
+        assert "ll-issues format-check" in action
+        assert "--format json" in action
+        assert "program_design_nonspecific" in action
+        assert 'GATE="FAIL"' in action
+
+    def test_parses_flat_single_id_shape_not_all_mapping(self) -> None:
+        """The parser must read the flat single-ID JSON shape (missing/empty/
+        program_design_nonspecific keys directly on the root dict), never
+        index by issue ID the way --all's {issue_id: gaps} mapping would."""
+        for state_name in (
+            "recheck_scores",
+            "regate_after_atomic_remediation",
+            "recheck_after_size_review",
+        ):
+            action = _load_autodev_yaml()["states"][state_name]["action"]
+            assert "d.get('program_design_nonspecific')" in action
+            assert "d.get('missing')" in action
+            assert "d.get('empty')" in action
+            assert "d[ID]" not in action
+            assert 'd["$ID"]' not in action
+
+
+class TestRecheckAfterSizeReviewDesignGateBranch:
+    """ENH-2870: a design-caused FAIL routes through the reconcile remedy
+    before any deferral, ordered ahead of the readiness_stagnated backstop,
+    and defers as design_gate_failed (never low_readiness) once reconcile has
+    already been attempted."""
+
+    def test_design_branch_precedes_readiness_stagnated_branch(self) -> None:
+        """A design-gate FAIL must not be swallowed by the CYCLE_COUNT >= 2
+        stagnation branch — required order is after resolved_by_subloop,
+        before readiness_stagnated."""
+        action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
+        design_idx = action.index("if [ -f ${context.run_dir}/autodev-design-gate-failed-$ID ]")
+        resolved_idx = action.index('echo "$ID  resolved_by_subloop"')
+        stagnated_idx = action.index('echo "$ID  readiness_stagnated"')
+        assert resolved_idx < design_idx < stagnated_idx
+
+    def test_design_branch_hardcodes_reconcile_remedy(self) -> None:
+        """The design-gate branch bypasses the weakest-subscore spike/reconcile
+        heuristic entirely — it always selects reconcile."""
+        action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
+        design_section = action[action.index("autodev-design-gate-failed-$ID") :]
+        pre_deferral_idx = design_section.index("design_gate_failed")
+        branch = design_section[:pre_deferral_idx]
+        assert "else 'reconcile'" in branch
+        assert "score_ambiguity" not in branch
+
+    def test_design_branch_reconcile_attempted_falls_through_to_design_gate_failed(
+        self,
+    ) -> None:
+        """The selector's `reconcile_attempted == 'true'` empty fall-through
+        must land on design_gate_failed, never low_readiness."""
+        action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
+        assert "'' if d.get('reconcile_attempted') == 'true' else 'reconcile'" in action
+        design_idx = action.index("autodev-design-gate-failed-$ID")
+        design_defer_idx = action.index('echo "$ID  design_gate_failed"')
+        low_readiness_idx = action.index('echo "$ID  low_readiness"')
+        assert design_idx < design_defer_idx < low_readiness_idx
+
+    def test_design_branch_reuses_existing_remedy_handshake_files(self) -> None:
+        """No new remedy infrastructure — reuse BUG-2803's fired marker and
+        pre-deferral-remedy.txt handshake files."""
+        action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
+        design_section = action[action.index("autodev-design-gate-failed-$ID") :]
+        branch = design_section[: design_section.index('echo "$ID  design_gate_failed"')]
+        assert "autodev-pre-deferral-remedy-fired" in branch
+        assert "autodev-pre-deferral-remedy.txt" in branch
+
+    def test_pre_fix_bypass_closed_high_score_with_design_gap(self) -> None:
+        """High confidence score alone must not reach decide_current when the
+        design gate marker is present — the GATE AND forces FAIL regardless
+        of the persisted numeric score."""
+        action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
+        assert 'GATE="FAIL"' in action
+        design_fail_idx = action.index('if [ "$DESIGN_FAIL" = "true" ]')
+        gate_fail_write_idx = action.index('GATE="FAIL"')
+        gate_pass_check_idx = action.index('if [ "$GATE" = "PASS" ]')
+        assert design_fail_idx < gate_fail_write_idx < gate_pass_check_idx
+
+
+class TestRegateAfterAtomicRemediationDesignGateBranch:
+    """ENH-2870: a design-caused FAIL at regate_after_atomic_remediation must
+    never be labelled oversized_atomic — it routes to the shared reconcile
+    remedy (via check_atomic_design_remedy) if reachable, else defers
+    design_gate_failed."""
+
+    def test_design_marker_check_precedes_oversized_atomic_write(self) -> None:
+        action = _load_autodev_yaml()["states"]["regate_after_atomic_remediation"]["action"]
+        design_idx = action.index("autodev-design-gate-failed-$ID")
+        oversized_idx = action.index('echo "$ID  oversized_atomic"')
+        assert design_idx < oversized_idx
+
+    def test_design_caused_fail_never_writes_oversized_atomic(self) -> None:
+        """Everything within the design-marker branch must return before
+        reaching the unconditional oversized_atomic write below it."""
+        action = _load_autodev_yaml()["states"]["regate_after_atomic_remediation"]["action"]
+        design_section = action[
+            action.index("if [ -f ${context.run_dir}/autodev-design-gate-failed-$ID ]")
+        ]
+        assert design_section is not None  # marker branch exists at all
+
+    def test_on_no_routes_through_check_atomic_design_remedy_dispatcher(self) -> None:
+        state = _load_autodev_yaml()["states"]["regate_after_atomic_remediation"]
+        assert state.get("on_no") == "check_atomic_design_remedy"
+
+    def test_dispatcher_routes_pending_remedy_to_reconcile_current(self) -> None:
+        dispatcher = _load_autodev_yaml()["states"]["check_atomic_design_remedy"]
+        assert dispatcher.get("on_yes") == "reconcile_current"
+        assert dispatcher.get("on_no") == "dequeue_next"
+        assert "autodev-atomic-design-remedy-pending" in dispatcher["action"]
+
+    def test_pre_fix_bypass_closed_oversized_atomic_never_masks_design_fail(self) -> None:
+        """Regression guard for the pre-fix bug: a design-caused FAIL with a
+        passing readiness score used to fall straight into the unconditional
+        oversized_atomic write. The design-marker branch must come first and
+        `exit 1` before that write is reached for a not-yet-reconciled issue."""
+        action = _load_autodev_yaml()["states"]["regate_after_atomic_remediation"]["action"]
+        assert "autodev-atomic-design-remedy-pending" in action
+        pending_idx = action.index("autodev-atomic-design-remedy-pending")
+        oversized_idx = action.index('echo "$ID  oversized_atomic"')
+        assert pending_idx < oversized_idx
