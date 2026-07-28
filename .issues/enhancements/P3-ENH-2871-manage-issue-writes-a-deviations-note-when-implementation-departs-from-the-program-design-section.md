@@ -95,6 +95,61 @@ sections is unaffected.
 - [ ] `docs/reference/ISSUE_TEMPLATE.md` documents the `Deviations` convention alongside
       the `Program Design` section entry.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Attach point moved**: `skills/manage-issue/SKILL.md`'s Mismatch Handling Protocol
+  now lives at lines `332-341` (not `325-334` as stated above — the file has grown
+  since this issue was filed). The numbered steps are at lines `336-339`; step 4
+  ("Without `--gates` flag (default): Do NOT use `AskUserQuestion`. Adapt if minor,
+  mark `INCOMPLETE` if significant") is at line `339`. This is still the correct
+  attach point — only the line numbers drifted.
+- **AC "grading-inertness test" is already satisfied, no new test needed**:
+  `scripts/tests/test_program_design_gate.py:260-288`,
+  `TestGrading.test_deviations_subsection_is_inert`, already asserts (a) a
+  `### Deviations` subsection alone doesn't rescue a prose `## Program Design`
+  section, and (b) appending one to an already-valid section doesn't break its
+  passing verdict. This is backed by `_evidence_body()` and
+  `extract_call_path_anchors()` in `scripts/little_loops/issues/program_design.py`
+  (both reference ENH-2871 in their docstrings/comments), which only read the
+  `Types`/`Signatures`/`Call Path` subsections — a `Deviations` heading terminates
+  subsection scanning by construction. **Scope Boundaries note**: item 2 of the
+  Proposed Change ("Add a test guarding this") is done; no new work required there.
+- **AC "docs" is already satisfied, no new writing needed**:
+  `docs/reference/ISSUE_TEMPLATE.md:50-51` already documents the convention: "An
+  appended `### Deviations` note (recorded at implementation time) is inert: it
+  neither rescues a prose section nor breaks a valid one." Item 3 of the Proposed
+  Change is done.
+- **What remains is only item 1 of the Proposed Change** — the `SKILL.md` writer
+  step itself and its positional test. No existing code writes a `Deviations` note
+  anywhere in the codebase today (confirmed: only `program_design.py`'s grading
+  logic and the docs mention it; there is no writer).
+- **Test pattern to model the writer step's test after**:
+  `scripts/tests/test_manage_issue_changelog_gate.py` (`TestSkillGateContract`,
+  ~lines 38-56) is the established precedent for testing `SKILL.md` prose directly
+  — it reads `SKILL_FILE.read_text()` and asserts literal substrings/snippets are
+  present, one assertion message per invariant.
+- **Positional-assertion idiom already used elsewhere in this test suite** (for the
+  required "at or after step 4" check): `text.index(a) < text.index(b)` /
+  `.find(...) > anchor_idx`, e.g. `scripts/tests/test_session_log.py:121`,
+  `scripts/tests/test_rn_remediate.py:231`, `scripts/tests/test_ll_loop_commands.py:1654`,
+  `scripts/tests/test_issues_cli.py:1169-1170`. Compare
+  `SKILL_FILE.read_text().index("<Deviations instruction text>")` against
+  `.index("Without \`--gates\` flag (default)")` and assert the former is `>=` the
+  latter.
+- **Established "fire on both branches" phrasing precedent**: `SKILL.md:321-328`'s
+  `### Default Behavior` section already uses the framing "By default (no `--gates`
+  flag): ..." to make autonomous-branch applicability unambiguous — the new
+  Deviations instruction should follow the same framing so it obviously covers the
+  non-`--gates` default per this issue's own wording requirement.
+- **Nearby "Deviations" heading precedent in the FSM/loop world** (different
+  mechanism, same wording): `scripts/little_loops/loops/oracles/plan-node-refine.yaml:122`
+  uses a `## Deviations from prior implemented leaves` heading emitted by a shell
+  action — confirms "Deviations" as an established convention name, not a new
+  coinage, though this issue's mechanism is skill-instructed `Edit`, not a shell
+  action.
+
 ## Scope Boundaries
 
 - **In scope**: the `manage-issue` Deviations-writing step, the grading-inertness test,
@@ -122,3 +177,7 @@ sections is unaffected.
 ## Status
 
 **Open** | Created: 2026-07-27 | Priority: P3
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-07-28T04:10:26 - `745b3b56-2216-4c20-9d01-25c9f3ef2f8d.jsonl`
