@@ -24,6 +24,7 @@ from little_loops.cli.loop.diagram_modes import (
 )
 from little_loops.cli.output import colorize, strip_ansi, terminal_size, terminal_width
 from little_loops.fsm.concurrency import LockManager, _process_alive, resolve_scope
+from little_loops.fsm.loop_paths import get_builtin_loops_dir, resolve_loop_path
 from little_loops.fsm.types import FAILURE_TERMINAL_EXIT_CODE
 from little_loops.logger import Logger
 
@@ -1214,11 +1215,6 @@ class StateFeedRenderer:
                 print(f"{indent}       {colorize(msg, '38;5;208')}", flush=True)
 
 
-def get_builtin_loops_dir() -> Path:
-    """Get the path to built-in loops bundled with the plugin."""
-    return Path(__file__).parent.parent.parent / "loops"
-
-
 def _relativize_to_cwd(value: str) -> str:
     """Shorten an absolute path that lives under the current working directory.
 
@@ -1402,30 +1398,6 @@ def derive_input_hash(context: dict[str, Any]) -> None:
     """
     if "input_hash" not in context and isinstance(context.get("input"), str):
         context["input_hash"] = hashlib.sha256(context["input"].encode()).hexdigest()[:12]
-
-
-def resolve_loop_path(name_or_path: str, loops_dir: Path) -> Path:
-    """Resolve loop name to file path."""
-    path = Path(name_or_path)
-    if path.exists():
-        return path
-
-    # Try <loops_dir>/<name>.fsm.yaml first (compiled FSM)
-    fsm_path = loops_dir / f"{name_or_path}.fsm.yaml"
-    if fsm_path.exists():
-        return fsm_path
-
-    # Fall back to <loops_dir>/<name>.yaml
-    loops_path = loops_dir / f"{name_or_path}.yaml"
-    if loops_path.exists():
-        return loops_path
-
-    # Fall back to built-in loops from plugin directory
-    builtin_path = get_builtin_loops_dir() / f"{name_or_path}.yaml"
-    if builtin_path.exists():
-        return builtin_path
-
-    raise FileNotFoundError(f"Loop not found: {name_or_path}")
 
 
 def load_loop(name_or_path: str, loops_dir: Path, logger: Logger) -> FSMLoop:

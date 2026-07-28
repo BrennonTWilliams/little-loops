@@ -1579,6 +1579,9 @@ def _text_from_content_blocks(content: Any) -> str:
 
 def _usage_from_response(response: Any, *, is_batch: bool = False) -> TokenUsage:
     """Normalize an SDK ``Message.usage`` block into a :class:`TokenUsage`."""
+    # Deferred: subprocess_utils imports resolve_host from this module at
+    # module level (ENH-2773), so a top-level import here would cycle. Keep
+    # this deferred even if the rest of the module is refactored.
     from little_loops.subprocess_utils import TokenUsage
 
     usage = response.usage

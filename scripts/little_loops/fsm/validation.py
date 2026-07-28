@@ -26,6 +26,7 @@ import yaml
 
 from little_loops.fsm.evaluators import _NUMERIC_OPERATORS
 from little_loops.fsm.fragments import resolve_flow, resolve_fragments, resolve_inheritance
+from little_loops.fsm.loop_paths import resolve_loop_path
 from little_loops.fsm.schema import (
     EvaluateConfig,
     FSMLoop,
@@ -497,8 +498,6 @@ def _validate_with_bindings(fsm: FSMLoop, loop_dir: Path) -> list[ValidationErro
 
         # Try to resolve and load the child loop; skip if unavailable
         try:
-            from little_loops.cli.loop._helpers import resolve_loop_path
-
             loop_path = resolve_loop_path(state.loop, loop_dir)
             child_fsm, _ = load_and_validate(loop_path)
         except Exception:
@@ -578,8 +577,6 @@ def _validate_loop_references(fsm: FSMLoop, loop_dir: Path) -> list[ValidationEr
         if "${" in state.loop:
             continue
         try:
-            from little_loops.cli.loop._helpers import resolve_loop_path
-
             resolve_loop_path(state.loop, loop_dir)
         except FileNotFoundError:
             errors.append(

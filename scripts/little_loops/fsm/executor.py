@@ -50,6 +50,7 @@ from little_loops.fsm.interpolation import (
     interpolate,
     interpolate_dict,
 )
+from little_loops.fsm.loop_paths import resolve_loop_path
 from little_loops.fsm.rate_limit_circuit import RateLimitCircuit
 from little_loops.fsm.runners import (
     ActionRunner,
@@ -820,7 +821,6 @@ class FSMExecutor:
         Returns:
             Next state name based on child loop verdict, or None
         """
-        from little_loops.cli.loop._helpers import resolve_loop_path
         from little_loops.fsm.validation import load_and_validate
 
         assert state.loop is not None  # guarded by caller

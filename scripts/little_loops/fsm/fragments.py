@@ -35,6 +35,8 @@ from typing import Any
 
 import yaml
 
+from little_loops.fsm.loop_paths import resolve_loop_path
+
 _BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "loops"
 
 
@@ -164,7 +166,7 @@ def resolve_inheritance(
     are replaced by the child, dicts are merged recursively. The ``from:`` key
     itself is stripped from the returned dict.
 
-    Parent lookup uses :func:`little_loops.cli.loop._helpers.resolve_loop_path`,
+    Parent lookup uses :func:`little_loops.fsm.loop_paths.resolve_loop_path`,
     which searches ``loop_dir`` first then falls back to the bundled built-in
     loops directory. Cycles in the ``from:`` chain raise ``ValueError`` with the
     full chain path; missing parents raise ``FileNotFoundError``.
@@ -200,11 +202,6 @@ def resolve_inheritance(
     if parent_name in _seen:
         chain = " -> ".join(_seen + (parent_name,))
         raise ValueError(f"Circular `from:` chain: {chain}")
-
-    # Lazy import to avoid circular import at module load (cli.loop._helpers
-    # imports from fsm.* indirectly). Mirrors the pattern used in
-    # fsm/executor.py:410 for sub-loop calls.
-    from little_loops.cli.loop._helpers import resolve_loop_path
 
     parent_path = resolve_loop_path(parent_name, loop_dir)
     with open(parent_path) as f:
