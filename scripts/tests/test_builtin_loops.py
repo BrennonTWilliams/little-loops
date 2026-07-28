@@ -208,6 +208,7 @@ class TestBuiltinLoopFiles:
             "flux-image-generator",
             "interactive-component-generator",
             "workflow-generator",
+            "rn-stepwise",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual

@@ -200,7 +200,7 @@ states:
       # max_iterations (do_work succeeds and verify_step's on_no is a verdict,
       # not a state failure, so the repeated_failure circuit never trips). Count
       # attempts per exact step line; once a step exhausts its budget, mark it
-      # [x] with an abandonment note and fall through to check_done so the DoD
+      # [!] with an abandonment note and fall through to check_done so the DoD
       # machinery — not an unbounded retry — decides whether the underlying
       # criterion is satisfied.
       ATTEMPTS="${context.run_dir}/step-attempts.txt"
@@ -214,7 +214,11 @@ states:
         # a blocker/gate/prerequisite alongside a step reference. Direction (b):
         # any remaining unchecked step textually references this step's number,
         # tolerating comma-separated lists ("Steps 13, 16, 27"), not just the
-        # first number in the list.
+        # first number in the list. Direction (b) must exclude the exhausted
+        # step's OWN line from the candidate set: the [!] rewrite happens below,
+        # so it is still '- [ ]' here, and its own text ("Step N: ...") always
+        # contains its own number — leaving it in makes HALT=1 unconditional and
+        # misreports every abandonment as STEP_BLOCKER_HALT.
         HALT=0
         if printf '%s' "$STEP" | grep -Eq '([Bb]locker|[Gg]ated|[Pp]rerequisite).*[Ss]teps?[[:space:]]+[0-9]+|[Ss]teps?[[:space:]]+[0-9]+.*([Bb]locker|[Gg]ated|[Pp]rerequisite)'; then
           HALT=1
@@ -227,7 +231,7 @@ states:
               HALT=1
               break
             fi
-          done < <(grep '^- \[ \]' "$PLAN")
+          done < <(grep '^- \[ \]' "$PLAN" | grep -Fxv -- "$STEP")
         fi
         # Still rewrite to [!] first — the step DID exhaust its attempts; the
         # halt only changes what happens to the remaining steps. Without this
@@ -758,7 +762,14 @@ states:
     # `partial` terminal so parent sub-loop dispatch treats it as on_failure,
     # matching the ENH-2657 precedent's precedence ordering.
     on_no: partial
-    on_error: done
+    # ENH-2825: NOT an exemption case. The python3 above already swallows every
+    # read/parse failure (`except: print(0)`), so reaching on_error means the
+    # interpreter itself failed and the abandoned count is unknown — routing to
+    # `done` would launder a possibly-abandoned run into success, the exact
+    # defect ENH-2857 exists to prevent. Route to `diagnose` (this loop's
+    # convention for every other unrecoverable on_error) so the operator gets a
+    # cause summary and the run ends at `failed`, not `done`.
+    on_error: diagnose
 
   continue_work:
     action: |

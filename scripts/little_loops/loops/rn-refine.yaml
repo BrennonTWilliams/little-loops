@@ -522,6 +522,11 @@ states:
       if [ -n "$BASELINE" ]; then
         git reset --hard "$BASELINE"
       fi
+      # The reset can remove $RUN_DIR itself when the run dir is *tracked* by the
+      # repo being reset (git prunes directories that the baseline commit does not
+      # contain). Normally .loops/runs/ is gitignored so this is a no-op, but
+      # recreate unconditionally so the append below cannot fail on layout alone.
+      mkdir -p "$RUN_DIR"
       echo "${captured.input.output} IMPLEMENT_FAILED" >> "$RUN_DIR/failed_nodes.txt"
     next: record_leaf_failed
     on_error: record_leaf_failed
