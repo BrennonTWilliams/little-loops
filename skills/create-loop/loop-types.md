@@ -1915,7 +1915,7 @@ User answers:
 
 Generated loop name suggestion: `optimize-docs-sync`
 
-The generated YAML passes `ll-loop validate` without `meta_self_eval_ok: true` because the `gate` state uses `type: convergence` which is in `NON_LLM_EVALUATOR_TYPES` (`scripts/little_loops/fsm/validation.py:76–94`).
+The generated YAML passes `ll-loop validate` without `meta_self_eval_ok: true` because the `gate` state uses `type: convergence` which is in `NON_LLM_EVALUATOR_TYPES` (`scripts/little_loops/fsm/validation/_base.py`).
 
 ---
 

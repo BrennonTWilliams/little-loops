@@ -217,7 +217,7 @@ states:
 | `cost_ceiling_per_state` | `null` (no cap) | When a state visit's USD cost exceeds this value, the run routes per `on_no`/`on_error` (no dedicated `on_ceiling_exceeded` key exists in the schema). Validator rejects negative values. |
 | `cost_warn_at` | `null` (no warn) | Warning-only — emits a `cost_warn` event when crossed but does not block. Validator **rejects** (error) when `cost_warn_at > cost_ceiling_per_state` (a logically inconsistent config). |
 
-The validator at `fsm/validation.py:_validate_state_cost_ceiling` enforces both the negative-value rejection and the `warn_at > ceiling` rejection. Per-state cost attribution is independent; a global `--max-cost` loop-level ceiling was tracked separately by FEAT-2476 (cancelled 2026-07-10) and is not currently shipped.
+The validator at `fsm/validation/structural_rules.py:_validate_state_cost_ceiling` enforces both the negative-value rejection and the `warn_at > ceiling` rejection. Per-state cost attribution is independent; a global `--max-cost` loop-level ceiling was tracked separately by FEAT-2476 (cancelled 2026-07-10) and is not currently shipped.
 
 ### Prompt-Size Guard (prompt_size_guard)
 

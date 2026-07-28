@@ -20,6 +20,7 @@ score_test_coverage: 22
 score_ambiguity: 16
 score_change_surface: 6
 size: Very Large
+completed_at: '2026-07-28T09:59:24Z'
 ---
 
 # ENH-2772: Split session_store.py god module into a subpackage
@@ -420,3 +421,13 @@ _Added by `/ll:confidence-check` on 2026-07-28_
 ## Status
 
 **Done** | Created: 2026-07-24 | Priority: P2
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Closed**: 2026-07-28
+- **Decomposed into**: ENH-2890, ENH-2891
+
+Work for ENH-2772 is now carried by its child issues; this parent was closed by rn-decompose.

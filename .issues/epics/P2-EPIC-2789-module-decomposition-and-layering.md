@@ -4,10 +4,16 @@ title: Module Decomposition and Layering
 type: EPIC
 priority: P2
 status: open
-captured_at: "2026-07-25T02:35:31Z"
+captured_at: '2026-07-25T02:35:31Z'
 discovered_date: 2026-07-25
 discovered_by: create-epics-from-unparented
-relates_to: [ENH-2772, ENH-2773, ENH-2774, ENH-2775, ENH-2776]
+relates_to:
+- ENH-2773
+- ENH-2774
+- ENH-2775
+- ENH-2776
+- ENH-2890
+- ENH-2891
 ---
 
 # EPIC-2789: Module Decomposition and Layering
