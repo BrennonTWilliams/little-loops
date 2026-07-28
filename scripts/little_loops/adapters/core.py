@@ -11,6 +11,7 @@ See FEAT-2391 for the full design.
 from __future__ import annotations
 
 import importlib
+import re
 import sys
 from pathlib import Path
 from typing import Protocol, cast, runtime_checkable
@@ -101,6 +102,75 @@ def _extract_body(text: str) -> str:
     if after_fm.startswith("\n"):
         after_fm = after_fm[1:]
     return after_fm
+
+
+_FM_CLOSE_RE = re.compile(r"\n---\s*\n")
+
+
+def _select_frontmatter_fields(
+    content: str,
+    name: str,
+    fields_read: tuple[str, ...],
+    short_desc: str = "",
+) -> tuple[str, bool]:
+    """Add/strip SKILL.md frontmatter fields per a host's ``frontmatter_fields_read``.
+
+    Generalizes what was previously host-private policy
+    (``codex._insert_skill_fields``, ``gemini._inject_name`` +
+    ``gemini._strip_metadata_short_description``) into a single map-driven
+    helper (ENH-2883): the *decision* of which fields a host reads now comes
+    from :data:`little_loops.adapters.capabilities.HOST_CAPABILITIES`, not
+    from per-emitter code.
+
+    - Injects ``name: <name>`` at the top of frontmatter when ``"name"`` is
+      in *fields_read* and no ``name:`` key is already present.
+    - When ``"metadata.short-description"`` is in *fields_read*, inserts
+      ``metadata.short-description: <short_desc>`` if absent (nesting under
+      an existing ``metadata:`` block when present).
+    - When it is *not* in *fields_read*, strips an existing
+      ``metadata.short-description:`` line (and the ``metadata:`` header if
+      left empty) — a host that doesn't read the field shouldn't emit it.
+
+    Uses targeted string manipulation — no yaml roundtrip — to preserve
+    existing frontmatter formatting. Returns ``(new_content, changed)``.
+    """
+    if not content.startswith("---\n"):
+        return content, False
+
+    m = _FM_CLOSE_RE.search(content[3:])
+    if not m:
+        return content, False
+
+    fm_text = content[4 : 3 + m.start()]
+    after = content[3 + m.start() :]
+
+    changed = False
+
+    if "name" in fields_read and not re.search(r"^name\s*:", fm_text, re.MULTILINE):
+        fm_text = f"name: {name}\n" + fm_text
+        changed = True
+
+    if "metadata.short-description" in fields_read:
+        if "short-description:" not in fm_text:
+            if re.search(r"^metadata\s*:", fm_text, re.MULTILINE):
+                fm_text = re.sub(
+                    r"^(metadata\s*:.*)$",
+                    lambda mtch: mtch.group(0) + f"\n  short-description: {short_desc}",
+                    fm_text,
+                    flags=re.MULTILINE,
+                    count=1,
+                )
+            else:
+                fm_text += f"\nmetadata:\n  short-description: {short_desc}"
+            changed = True
+    elif "short-description:" in fm_text:
+        cleaned = re.sub(r"^[ \t]*short-description:.*$\n?", "", fm_text, flags=re.MULTILINE)
+        cleaned = re.sub(r"^metadata:[ \t]*\n(?=\n|\Z)", "", cleaned, flags=re.MULTILINE)
+        if cleaned != fm_text:
+            changed = True
+        fm_text = cleaned
+
+    return f"---\n{fm_text}{after}", changed
 
 
 def _is_model_invocation_disabled(fm: dict) -> bool:
@@ -233,16 +303,22 @@ def process_skills(
             skipped += 1
             continue
 
-        result = emitter.emit_skill(
-            {
-                "skill_name": skill_name,
-                "skill_path": skill_md,
-                "content": content,
-                "fm": fm,
-                "apply": apply,
-                "quiet": quiet,
-            }
-        )
+        try:
+            result = emitter.emit_skill(
+                {
+                    "skill_name": skill_name,
+                    "skill_path": skill_md,
+                    "content": content,
+                    "fm": fm,
+                    "apply": apply,
+                    "quiet": quiet,
+                }
+            )
+        except AdapterError as exc:
+            if not quiet:
+                print(f"  ERROR  {skill_name}: {exc}", file=sys.stderr)
+            errors += 1
+            continue
         if result == "adapted":
             adapted += 1
         elif result == "skipped":
@@ -299,17 +375,23 @@ def process_commands(
             skipped += 1
             continue
 
-        result = emitter.emit_command(
-            {
-                "stem": stem,
-                "cmd_path": cmd_md,
-                "content": content,
-                "fm": fm,
-                "output_dir": output_dir,
-                "apply": apply,
-                "quiet": quiet,
-            }
-        )
+        try:
+            result = emitter.emit_command(
+                {
+                    "stem": stem,
+                    "cmd_path": cmd_md,
+                    "content": content,
+                    "fm": fm,
+                    "output_dir": output_dir,
+                    "apply": apply,
+                    "quiet": quiet,
+                }
+            )
+        except AdapterError as exc:
+            if not quiet:
+                print(f"  ERROR  {label}: {exc}", file=sys.stderr)
+            errors += 1
+            continue
         if result == "adapted":
             adapted += 1
         elif result == "skipped":

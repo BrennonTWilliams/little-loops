@@ -8,17 +8,17 @@ Three checks, all against ``little_loops.adapters.capabilities.HOST_CAPABILITIES
 2. Hosts present in both the adapter map and `host_runner`'s
    ``HostCapabilities`` do not contradict each other on any field name the
    two dataclasses share.
-3. The map's ``agents``/``commands`` flags agree with what the emitters
-   actually do. Since ENH-2874, ``gemini.agents`` is expected to be ``True``
-   — ``GeminiEmitter.emit_agent`` no longer raises; it produces a
-   degraded-mode inline-role file (``subagents == "none"``, with
-   ``agent_output_format`` describing the degraded format). The check flags
-   a mismatch the other way: ``agents=True`` with ``subagents == "none"``
-   but no ``agent_output_format`` set (nothing for the degraded path to
-   point at), or ``subagents == "native"`` with ``agents=False`` (a host
-   that can spawn but is declared not to emit). ``omp`` must stay
-   ``False``/``False`` to match its all-stub emitter, which has no
-   degraded path either (``agent_output_format`` is ``None``).
+3. Each entry's own ``agents``/``subagents``/``agent_output_format`` fields
+   are mutually consistent (ENH-2883: since ``core.py``'s traversal
+   functions dispatch from the map itself, there is no independent emitter
+   behavior left to compare against — this is a same-dataclass
+   self-consistency check, not a map-vs-emitter one). It flags
+   ``agents=True`` with ``subagents == "none"`` but no ``agent_output_format``
+   set (nothing for the degraded path to point at), or
+   ``subagents == "native"`` with ``agents=False`` (a host that can spawn
+   but is declared not to emit). ``omp`` must stay ``False``/``False`` to
+   match its all-stub emitter, which has no degraded path either
+   (``agent_output_format`` is ``None``).
 
 Exit codes:
     0 - all three checks pass
@@ -125,15 +125,24 @@ def _check_runtime_contradiction() -> list[str]:
 
 
 def _check_emitter_agreement() -> list[str]:
-    """Return error strings where a map entry misdescribes its emitter's actual behavior.
+    """Return error strings for internal contradictions within a map entry.
 
-    Since ENH-2874, ``gemini.agents=True`` is the *agreeing* state (its
-    emitter produces degraded-mode output rather than raising) — the
-    mismatches this now flags are: declaring ``agents=True`` under
+    Reframed by ENH-2883: since ``core.py``'s traversal functions
+    (``process_skills``/``process_commands``/``process_agents``) now
+    dispatch from ``HOST_CAPABILITIES`` themselves (the same
+    capability-flag-driven pattern ``process_agents`` pioneered for
+    ENH-2874), there is no longer any *independent* emitter behavior left
+    for the map to drift against — an emitter's dispatch-relevant behavior
+    (agent support, degraded routing) *is* the map now. This check is a
+    same-dataclass self-consistency assertion: it flags a
+    ``HostCapabilityEntry`` whose own fields contradict each other, not a
+    map-vs-emitter comparison. Concretely: declaring ``agents=True`` under
     ``subagents == "none"`` with no ``agent_output_format`` for the
     degraded path to target, and declaring ``subagents == "native"`` while
     ``agents=False`` (a host that can spawn natively but is marked as
-    emitting nothing).
+    emitting nothing). The function name and the ``ll-verify-host-map``
+    check list above are kept for compatibility; read "emitter" here as
+    "this entry's own declared behavior."
     """
     errors = []
 

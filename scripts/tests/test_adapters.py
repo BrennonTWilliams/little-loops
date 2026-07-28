@@ -1015,3 +1015,70 @@ class TestDegradedAgentIdempotency:
         content = (gemini_dir / "my-agent.md").read_text()
         assert "Updated body." in content
         assert "Original body." not in content
+
+
+# =============================================================================
+# Fixture-host registration (ENH-2883 AC #4): map entry + existing serializer,
+# no new module under adapters/.
+# =============================================================================
+
+
+class TestFixtureHostRegistration:
+    """A brand-new host can be registered through the capability map alone.
+
+    Uses the additive ``patch.dict`` form (precedent:
+    ``test_verify_host_map.py``'s ``TestCheckDocParity`` /
+    ``TestCheckEmitterAgreement``) to inject one synthetic
+    ``HostCapabilityEntry`` under a made-up host key, paired with the
+    generic ``_MockEmitter`` (already Protocol-satisfying) as the "existing
+    serializer." Proves ``process_skills``/``process_commands``/
+    ``process_agents`` need nothing beyond a map entry + an emitter
+    instance to support a new host — no ``adapters/fixturehost.py`` required.
+    """
+
+    def test_fixture_host_emits_skills_commands_and_agents(self, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        from little_loops.adapters.capabilities import HostCapabilityEntry
+
+        fixture_entry = HostCapabilityEntry(
+            host="fixturehost",
+            config_dir=".fixturehost",
+            skill_output_format="SKILL.md (identity passthrough)",
+            command_output_format="SKILL.md (identity passthrough)",
+            agent_output_format="Markdown (identity passthrough)",
+            frontmatter_fields_read=("description", "name"),
+            agents=True,
+            commands=True,
+            hooks=False,
+            subagents="native",
+        )
+
+        _make_skill(tmp_path, "fixture-skill")
+        _make_command(tmp_path, "fixture-cmd")
+        _make_agent(tmp_path, "fixture-agent")
+
+        emitter = _MockEmitter()
+        emitter.name = "fixturehost"
+
+        with patch.dict(
+            "little_loops.adapters.capabilities.HOST_CAPABILITIES",
+            {"fixturehost": fixture_entry},
+            clear=False,
+        ):
+            s_adapted, s_skipped, s_errors = process_skills(
+                emitter, tmp_path / "skills", False, True
+            )
+            c_adapted, c_skipped, c_errors = process_commands(
+                emitter, tmp_path / "commands", tmp_path / "skills", False, True
+            )
+            a_adapted, a_skipped, a_errors = process_agents(
+                emitter, tmp_path / "agents", tmp_path / ".fixturehost" / "agents", False, True
+            )
+
+        assert (s_adapted, s_skipped, s_errors) == (1, 0, 0)
+        assert (c_adapted, c_skipped, c_errors) == (1, 0, 0)
+        assert (a_adapted, a_skipped, a_errors) == (1, 0, 0)
+        # Native subagents means process_agents calls emitter.emit_agent
+        # directly (no degraded-mode routing for this host).
+        assert len(emitter.agent_calls) == 1

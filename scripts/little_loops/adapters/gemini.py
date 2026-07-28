@@ -6,14 +6,16 @@ into a single emitter following the pattern established by CodexEmitter (FEAT-23
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
-from little_loops.adapters.core import _emit_degraded_agent, _extract_body
+from little_loops.adapters.capabilities import HOST_CAPABILITIES
+from little_loops.adapters.core import (
+    _emit_degraded_agent,
+    _extract_body,
+    _select_frontmatter_fields,
+)
 
 __all__ = ["GeminiEmitter"]
-
-_FM_CLOSE_RE = re.compile(r"\n---\s*\n")
 
 
 # ---------------------------------------------------------------------------
@@ -21,53 +23,17 @@ _FM_CLOSE_RE = re.compile(r"\n---\s*\n")
 # ---------------------------------------------------------------------------
 
 
-def _inject_name(fm_text: str, name: str) -> tuple[str, bool]:
-    """Inject ``name: <name>`` at the top of frontmatter text if absent."""
-    if re.search(r"^name\s*:", fm_text, re.MULTILINE):
-        return fm_text, False
-    return f"name: {name}\n" + fm_text, True
-
-
-def _strip_metadata_short_description(fm_text: str) -> tuple[str, bool]:
-    """Remove ``metadata.short-description:`` from frontmatter text.
-
-    Removes the line entirely, then removes the ``metadata:`` header if no
-    other indented keys remain under it.  Returns ``(new_fm_text, changed)``.
-    """
-    if "short-description:" not in fm_text:
-        return fm_text, False
-
-    cleaned = re.sub(r"^[ \t]*short-description:.*$\n?", "", fm_text, flags=re.MULTILINE)
-    # Remove empty metadata: header (followed immediately by blank line or end)
-    cleaned = re.sub(r"^metadata:[ \t]*\n(?=\n|\Z)", "", cleaned, flags=re.MULTILINE)
-    return cleaned, cleaned != fm_text
-
-
 def _prepare_skill_content(content: str, skill_name: str) -> tuple[str, bool]:
     """Return modified SKILL.md content for Gemini output plus a changed flag.
 
     Injects ``name: <skill_name>`` when absent and removes
-    ``metadata.short-description:`` (Codex-only field).
+    ``metadata.short-description:`` — both selected from
+    ``HOST_CAPABILITIES["gemini"].frontmatter_fields_read`` via the shared
+    :func:`little_loops.adapters.core._select_frontmatter_fields` helper
+    (ENH-2883), not host-private regex logic.
     """
-    if not content.startswith("---\n"):
-        return content, False
-
-    m = _FM_CLOSE_RE.search(content[3:])
-    if not m:
-        return content, False
-
-    fm_text = content[4 : 3 + m.start()]
-    after = content[3 + m.start() :]
-
-    changed = False
-
-    fm_text, name_changed = _inject_name(fm_text, skill_name)
-    changed = changed or name_changed
-
-    fm_text, strip_changed = _strip_metadata_short_description(fm_text)
-    changed = changed or strip_changed
-
-    return f"---\n{fm_text}{after}", changed
+    fields_read = HOST_CAPABILITIES["gemini"].frontmatter_fields_read
+    return _select_frontmatter_fields(content, skill_name, fields_read)
 
 
 # ---------------------------------------------------------------------------

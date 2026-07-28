@@ -193,11 +193,12 @@ def test_omp_and_gemini_agent_excluded_from_byte_identity_claim() -> None:
     degraded-mode preview stub (ENH-2874), covered by its own tests, not
     part of this native-format byte-identity claim.
     """
-    from little_loops.adapters.omp import OmpEmitter
-
     import pytest
 
-    with pytest.raises(Exception):
+    from little_loops.adapters.core import AdapterError
+    from little_loops.adapters.omp import OmpEmitter
+
+    with pytest.raises(AdapterError):
         OmpEmitter().emit_skill({})
 
     # Gemini agent emission always routes to the shared degraded-mode
