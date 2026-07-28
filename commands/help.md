@@ -73,12 +73,10 @@ ISSUE REFINEMENT
     Flags: --auto (non-interactive), --dry-run (preview)
 
 /ll:link-epics [flags]
-    Assign parentless open issues to open epics via title/summary similarity
-    Flags: --auto (apply HIGH-confidence links without prompting), --min-score MEDIUM|HIGH
-
-/ll:create-epics-from-unparented [flags]
-    Cluster orphaned issues by Jaccard similarity and propose new EPIC definitions
-    Flags: --auto (create all clusters without prompting), --min-cluster N (default: 2), --min-score N (default: 0.3)
+    Assign parentless open issues to open epics (--mode assign, default), or
+    cluster them into proposed new EPICs (--mode synthesize), via Jaccard similarity
+    Flags: --mode assign|synthesize, --auto (apply proposals without prompting),
+    --min-score <threshold>, --min-cluster N (synthesize only, default: 2)
 
 /ll:verify-issues
     Verify all issue files against current codebase state
@@ -329,7 +327,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 
 ## Quick Reference Table
 
-**Issue Discovery**: `capture-issue`, `scan-codebase`, `scan-product`, `audit-architecture`, `scope-epic`, `create-epics-from-unparented`
+**Issue Discovery**: `capture-issue`, `scan-codebase`, `scan-product`, `audit-architecture`, `scope-epic`
 **Issue Refinement**: `normalize-issues`, `prioritize-issues`, `align-issues`, `format-issue`, `refine-issue`, `wire-issue`, `verify-issues`, `tradeoff-review-issues`, `ready-issue`, `audit-issue-conflicts`
 **Planning & Implementation**: `create-sprint`, `review-sprint`, `review-epic`, `manage-issue`, `iterate-plan`, `spike`
 **Scanning & Analysis**: `find-dead-code`, `explore-api`

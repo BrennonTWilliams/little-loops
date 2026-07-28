@@ -73,6 +73,26 @@ class TestLinkEpicsSkillExists:
         assert SKILL_FILE.exists(), "Skill file not found"
         assert "## Children" in SKILL_FILE.read_text()
 
+    def test_mode_flag_documented(self) -> None:
+        assert SKILL_FILE.exists(), "Skill file not found"
+        assert "--mode" in SKILL_FILE.read_text()
+
+    def test_assign_mode_section(self) -> None:
+        assert SKILL_FILE.exists(), "Skill file not found"
+        assert "## Mode: `--mode assign`" in SKILL_FILE.read_text()
+
+    def test_synthesize_mode_section(self) -> None:
+        assert SKILL_FILE.exists(), "Skill file not found"
+        assert "## Mode: `--mode synthesize`" in SKILL_FILE.read_text()
+
+    def test_min_cluster_flag(self) -> None:
+        assert SKILL_FILE.exists(), "Skill file not found"
+        assert "--min-cluster" in SKILL_FILE.read_text()
+
+    def test_create_epics_from_unparented_name_removed(self) -> None:
+        assert SKILL_FILE.exists(), "Skill file not found"
+        assert "create-epics-from-unparented" not in SKILL_FILE.read_text()
+
 
 class TestUpdateFrontmatterRoundTrip:
     """Verify update_frontmatter can write parent: fields with full round-trip integrity."""
