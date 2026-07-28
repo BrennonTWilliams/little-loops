@@ -64,7 +64,7 @@ name the orchestration family even though the primitives exist:
   (`loop: "${captured.chosen.output}"`), shipped (FEAT-1654, done).
 - `loop-composer` (FEAT-1808) and adaptive re-plan (FEAT-1809) under EPIC-1811.
 
-**Why:** A review comparing little-loops to `revfactory/harness` initially mis-judged
+**Why:** A capability review of little-loops initially mis-judged
 "supervisor / dynamic dispatch" as a gap — precisely because the capability is real but not
 *named* anywhere a loop author would look. If a careful review missed it, users will too.
 **How to apply:** Pure documentation/template surface in the wizard; do not change FSM
@@ -195,13 +195,6 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **EPIC-1811** builds the orchestration *loops*; this issue makes them *discoverable* from the
   wizard. Best landed (at least partly) after the composer ships so the templates point at real
   built-ins — though the `loop-router` entry can go in immediately.
-
-## Provenance
-
-Surfaced while reviewing `https://github.com/revfactory/harness`. Harness names six
-architecture patterns (pipeline, fan-out, expert-pool, producer-reviewer, supervisor,
-hierarchical) as first-class choices; little-loops has the equivalents but doesn't name the
-orchestration ones in its authoring wizard.
 
 ## Impact
 

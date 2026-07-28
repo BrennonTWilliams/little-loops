@@ -44,7 +44,7 @@ MR-1 validation in `ll-loop validate` detects evaluator states that are missing 
 
 ## Motivation
 
-`revfactory/harness`'s testing methodology (`references/skill-testing-guide.md` §4-3) explicitly identifies "non-discriminating assertions" — checks that pass for *both* with-skill and without-skill runs — as having no signal value. The reframing: an evaluator whose verdict has near-zero variance across runs isn't measuring anything useful.
+Skill-testing methodology names a specific defect: "non-discriminating assertions" — checks that pass for *both* with-skill and without-skill runs — have no signal value. The reframing: an evaluator whose verdict has near-zero variance across runs isn't measuring anything useful.
 
 In our codebase this manifests as:
 - `check_semantic` states whose `llm_structured` prompt is so vague the judge returns `yes` almost universally (`feedback_eval_harness_purpose.md` captures a related case — `execute` running `/ll:manage-issue` instead of exercising the feature created phantom passes the judge couldn't see through)

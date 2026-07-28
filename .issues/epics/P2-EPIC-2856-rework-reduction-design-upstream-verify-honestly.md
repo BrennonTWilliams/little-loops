@@ -6,7 +6,6 @@ status: open
 priority: P2
 captured_at: '2026-07-27T00:00:00Z'
 discovered_date: 2026-07-27
-discovered_by: ll-product-promotion
 relates_to:
 - ENH-2852
 - ENH-2853

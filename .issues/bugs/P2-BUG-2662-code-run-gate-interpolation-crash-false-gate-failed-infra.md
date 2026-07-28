@@ -7,7 +7,6 @@ captured_at: '2026-07-18T00:55:49Z'
 completed_at: '2026-07-18T00:55:49Z'
 discovered_date: 2026-07-18
 discovered_by: manage-issue
-discovered_source: rn-implement run rn-implement-20260717T165621
 relates_to:
 - BUG-2649
 decision_needed: false

@@ -4,7 +4,6 @@ title: Guard against agent edits to test files during verification
 type: ENH
 priority: P2
 status: open
-discovered_by: ll-product-promotion
 discovered_date: 2026-07-27
 epic: EPIC-2856
 parent: EPIC-2856

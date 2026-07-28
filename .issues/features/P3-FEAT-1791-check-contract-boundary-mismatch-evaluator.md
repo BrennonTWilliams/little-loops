@@ -51,7 +51,7 @@ Verdicts: `yes` (all pairs aligned → `on_yes`), `no` (any pair fails → `on_n
 
 ## Motivation
 
-`revfactory/harness`'s `qa-agent-guide.md` documents (with 7 production bug case studies from SatangSlide) a failure class our current evaluators miss: **boundary mismatch** — two components each correctly implemented but disagreeing at the integration seam. Static type checks and existence checks miss these because:
+There is a failure class our current evaluators miss: **boundary mismatch** — two components each correctly implemented but disagreeing at the integration seam. Static type checks and existence checks miss these because:
 
 - TypeScript generic casts (`fetchJson<SlideProject[]>()`) make the compiler accept any runtime shape
 - `npm run build` exit-code 0 ≠ runtime correctness

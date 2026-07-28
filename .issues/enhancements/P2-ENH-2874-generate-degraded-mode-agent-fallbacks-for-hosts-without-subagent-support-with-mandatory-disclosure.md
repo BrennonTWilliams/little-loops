@@ -5,9 +5,7 @@ type: ENH
 parent: EPIC-2257
 priority: P2
 status: open
-discovered_by: ll-product-promotion
 discovered_date: 2026-07-27
-discovered_source: https://github.com/pbakaus/impeccable
 labels:
 - multi-host
 - ll-adapt
@@ -24,9 +22,9 @@ Parent EPIC: EPIC-2257 (multi-host generalization — portfolio coordination), w
 
 little-loops' `agents/*.md` assume the host can spawn a subagent. Codex's invocation model is a known asymmetry, and other hosts lack the capability outright — so for those hosts the role simply does not adapt, and the reasoning the agent encodes is silently unavailable.
 
-## Source pattern (external, described not copied)
+## Reference pattern
 
-Mined from `pbakaus/impeccable` (Apache-2.0), which handles this at build time rather than at run time:
+The reference pattern handles this at build time rather than at run time:
 
 - Where a harness declares no subagent capability, the build emits a **degraded-mode reference file generated from the same agent source**, prefixed with a preamble instructing the model to run the role inline.
 - The preamble mandates **disclosure**: the model must "disclose the substitution in one line when you report". A degraded run never silently looks like a delegated one.
@@ -50,7 +48,3 @@ Mined from `pbakaus/impeccable` (Apache-2.0), which handles this at build time r
 ## Dependencies
 
 Depends on the declarative host-capability map issue in the same EPIC — the emission path is selected by the capability flag that map introduces. Sequence it second.
-
-## Provenance
-
-Pattern mined from `https://github.com/pbakaus/impeccable` (Apache-2.0). Described and re-implemented, not copied.

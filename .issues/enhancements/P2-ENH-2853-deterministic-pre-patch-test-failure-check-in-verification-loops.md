@@ -4,7 +4,6 @@ title: Deterministic pre-patch test-failure check in verification loops
 type: ENH
 priority: P2
 status: open
-discovered_by: ll-product-promotion
 discovered_date: 2026-07-27
 epic: EPIC-2856
 parent: EPIC-2856

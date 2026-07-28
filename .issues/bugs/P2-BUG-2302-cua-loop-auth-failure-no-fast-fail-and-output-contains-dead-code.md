@@ -380,15 +380,6 @@ Note: `docs/reference/CLI.md:627` lists `output_contains` as a valid MR-1 non-LL
 
 **Open** | Created: 2026-06-25 | Priority: P2
 
-## Provenance
-
-- cards BUG-357 findings: `rn-bug-357-cua-auth-failure-findings.md` (repo root)
-- cards decision: ARCHITECTURE-042 (cards `.ll/decisions.yaml`) — scoped to
-  cards; **not** imported. Decoupling rationale per the general-purpose
-  library-loop principle.
-- Closure commit (cards): `19bf612`
-
-
 ## Session Log
 - `/ll:ready-issue` - 2026-06-26T01:24:52 - `01b1409f-85b6-4481-886a-1dfb6c6dac09.jsonl`
 - `/ll:confidence-check` - 2026-06-25T18:30:00Z - `5d5fc6c6-84ac-4a27-b633-955e67c2fcee.jsonl`

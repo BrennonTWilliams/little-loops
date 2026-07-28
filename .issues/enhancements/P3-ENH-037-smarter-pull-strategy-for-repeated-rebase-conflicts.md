@@ -2,7 +2,6 @@
 discovered_commit: b0fced8
 discovered_branch: main
 discovered_date: 2026-01-13T15:05:00Z
-discovered_source: ll-parallel-blender-agents-debug.log
 discovered_external_repo: <external-repo>
 status: done
 completed_at: 2026-02-12T00:00:00Z

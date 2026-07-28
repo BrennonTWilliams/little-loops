@@ -24,7 +24,7 @@ score_change_surface: 25
 ## Summary
 
 Extend `analyze-history` (and feed `improve-claude-md`) with quantified "evolution trigger"
-signals modeled on `revfactory/harness`'s Phase 7: detect when the **same user correction has
+signals: detect when the **same user correction has
 recurred ≥N times** and when a user has **bypassed a skill/loop N times** (did the work
 manually instead of invoking the matching skill). Both signals turn accreted history into
 concrete, count-backed proposals for harness self-improvement (a CLAUDE.md rule, a sharper
@@ -65,8 +65,8 @@ count-backed candidates; applying a change stays with `improve-claude-md` / the 
 
 ## Motivating Signal (from this conversation)
 
-A review of harness's Phase 7 "Evolution Triggers" (fire on: same feedback type 2+ times,
-repeated failure pattern, user bypasses orchestrator) highlighted that little-loops detects
+Quantified "evolution triggers" — fire on: same feedback type 2+ times, repeated
+failure pattern, user bypasses orchestrator — are a known pattern. little-loops detects
 recurring manual work but not recurring *feedback* or *bypass*.
 
 ## Implementation Steps
@@ -237,14 +237,6 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ## Labels
 
 `enhancement`, `history`, `analyze-history`, `improve-claude-md`, `evolution`
-
-## Provenance
-
-Surfaced while reviewing `https://github.com/revfactory/harness`. Its Phase 7 fires
-self-improvement on quantified triggers (same feedback 2+ times, repeated failure, user
-bypasses orchestrator). This issue ports the *signal detection*; little-loops keeps its more
-rigorous "propose, don't auto-grade" stance for the action side.
-
 
 ## Verification Notes
 

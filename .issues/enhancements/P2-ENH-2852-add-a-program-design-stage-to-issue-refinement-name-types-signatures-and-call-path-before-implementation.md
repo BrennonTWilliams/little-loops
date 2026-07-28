@@ -5,7 +5,6 @@ title: Add a program-design stage to issue refinement naming types, signatures, 
 type: ENH
 priority: P2
 status: done
-discovered_by: ll-product-promotion
 discovered_date: 2026-07-27
 completed_at: '2026-07-27T22:51:05Z'
 epic: EPIC-2856

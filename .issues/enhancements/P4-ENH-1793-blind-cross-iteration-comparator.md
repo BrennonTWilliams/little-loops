@@ -42,7 +42,7 @@ A new `comparator` evaluator type enables blind A/B comparison between current i
 
 Our current `check_semantic` evaluator is *absolute*: it grades each iteration's output against a fixed prompt and routes on YES/NO. This is fine for catching catastrophic failures but blind to gradual degradation. A run that returns "summary is reasonable" YES on a one-paragraph stub *and* on a three-paragraph well-cited revision treats them as equivalent.
 
-`revfactory/harness`'s "Comparator" agent (`references/skill-testing-guide.md` §5-2) addresses this with *blind A/B* — two outputs anonymized as A and B, judge picks which is better. This is a different signal from absolute scoring:
+A "comparator" evaluator addresses this with *blind A/B* — two outputs anonymized as A and B, judge picks which is better. This is a different signal from absolute scoring:
 - Absolute judge: "Is this acceptable?" (binary, threshold-based)
 - Comparator: "Is this better than what we had?" (ordinal, drift-detecting)
 

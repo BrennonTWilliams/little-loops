@@ -4,9 +4,7 @@ title: Self-describing drift and deprecation signals
 type: EPIC
 priority: P2
 status: open
-discovered_by: ll-product-promotion
 discovered_date: 2026-07-27
-discovered_source: https://github.com/pbakaus/impeccable
 labels:
 - hygiene
 - issue-schema
@@ -43,7 +41,3 @@ Independent of each other; either can ship first.
 
 - `ll-verify-docs`, `ll-check-links`, `ll-doctor`
 - Issue-frontmatter and loop-YAML schema definitions (`issue_parser.py`)
-
-## Provenance
-
-Both patterns mined from `https://github.com/pbakaus/impeccable` (Apache-2.0), where drift findings carry an action-severity (`auto` / `mention` / `route`) and every retired spec field is paired with a mandatory prose reason. Described and re-implemented, not copied.

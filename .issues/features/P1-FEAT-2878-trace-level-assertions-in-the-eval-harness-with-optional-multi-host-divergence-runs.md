@@ -5,9 +5,7 @@ type: FEAT
 parent: EPIC-2856
 priority: P1
 status: open
-discovered_by: ll-product-promotion
 discovered_date: 2026-07-27
-discovered_source: https://github.com/pbakaus/impeccable
 labels:
 - evals
 - ll-harness
@@ -23,9 +21,9 @@ Parent EPIC: EPIC-2856 (rework reduction — design upstream, verify honestly). 
 
 The current eval surface asserts on **outcomes** and on **recorded** traces: `ll-harness` checks exit codes and semantic criteria, `/ll:create-eval-from-issues` derives tasks from acceptance criteria, and `ll-logs eval-export` plus the trace sets work from logs after the fact. What is missing is assertion on the **live tool-call sequence** a skill produces while it runs — the ability to fail a skill for calling the right tools in the wrong order, or for writing an artifact it should not have touched.
 
-## Source pattern (external, described not copied)
+## Reference pattern
 
-Mined from `pbakaus/impeccable` (Apache-2.0), whose skill-behavior eval tier:
+The reference pattern for a skill-behavior eval tier:
 
 - Inlines the **source** skill file into a real model's system prompt, and gives it bash/read/write/list tools **scoped to a temporary workspace**.
 - Asserts on the tool-call trace, not on free-form output — stated flatly as "the trace is the source of truth".
@@ -57,7 +55,3 @@ Instead: make multi-host divergence runs an **opt-in flag**. Hosts that are unav
 - Multi-host divergence is opt-in via a flag; the default run uses one host.
 - An unconfigured or unavailable host is skipped with a reported reason, not a failure.
 - The scenario list and pass baseline live with the suite, not duplicated into contributor docs.
-
-## Provenance
-
-Pattern mined from `https://github.com/pbakaus/impeccable` (Apache-2.0). Described and re-implemented, not copied.

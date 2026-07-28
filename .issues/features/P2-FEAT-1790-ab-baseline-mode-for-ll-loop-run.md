@@ -46,7 +46,7 @@ Both outputs are fed to `check_semantic` blind (anonymized as A/B, randomized pe
 
 EPIC-1663's MR-1 rule (CLAUDE.md § Loop Authoring) requires meta-loops to pair LLM judges with non-LLM external evidence because LLM self-grades on harness updates are ~33–55% accurate (SHOR Table 1; Sonnet 4.6 = 33.4%). The rule catches *missing* non-LLM evidence but doesn't *produce* the evidence — authors still have no native way to demonstrate that a harness beats the underlying skill.
 
-`revfactory/harness` (reviewed 2026-05-29) addresses this by spawning two subagents per test prompt — `with_skill/` and `without_skill/` — into a per-iteration workspace, capturing `total_tokens`, `duration_ms`, and assertion grading for both. Their A/B (n=15) shows +60% quality with the harness; whether that holds for *our* harnesses is currently untestable. Without baseline comparison the harness's value is asserted, not measured.
+The approach: spawn two subagents per test prompt — `with_skill/` and `without_skill/` — into a per-iteration workspace, capturing `total_tokens`, `duration_ms`, and assertion grading for both. Prior art using this design reports a large quality delta at n=15; whether that holds for *our* harnesses is currently untestable. Without baseline comparison the harness's value is asserted, not measured.
 
 This is also the empirical foundation for downstream issues in this batch (non-discriminating evaluator detection, blind comparator) — both depend on having paired with/without runs to analyze.
 

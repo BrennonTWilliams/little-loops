@@ -4,9 +4,7 @@ title: Audit which ll skills are close enough in scope to merge into fewer skill
 type: ENH
 priority: P3
 status: open
-discovered_by: ll-product-promotion
 discovered_date: 2026-07-27
-discovered_source: https://github.com/pbakaus/impeccable
 labels:
 - skills
 ---
@@ -23,7 +21,7 @@ A deliberately scoped-down survivor of a **rejected** proposal. Read the rejecti
 
 ## What was rejected, and why
 
-The source repo (`pbakaus/impeccable`, Apache-2.0) consolidated its entire command surface into **one** user-invocable skill with 23 sub-commands behind a router table, and states the motivation loudly: "the `/` menu pollution problem is real and gets worse as users install more plugins." It keeps maintenance tooling out of that menu entirely.
+The rejected shape: consolidate the entire command surface into **one** user-invocable skill with sub-commands behind a router table, keeping maintenance tooling out of the `/` menu entirely. The motivation is real — `/` menu pollution gets worse as users install more plugins.
 
 **That shape does not transfer to little-loops, and must not be adopted.** Individually addressable skills are load-bearing here:
 
@@ -53,7 +51,3 @@ A **read-only audit**, producing a list of merge candidates with the argument fo
 - Every candidate is checked against name-based dispatch sites, and any that would break one is marked as such.
 - No skill is merged, renamed, or removed as part of this issue.
 - No router, no change to name-based dispatch.
-
-## Provenance
-
-Derived — by rejection and reduction — from `https://github.com/pbakaus/impeccable` (Apache-2.0).

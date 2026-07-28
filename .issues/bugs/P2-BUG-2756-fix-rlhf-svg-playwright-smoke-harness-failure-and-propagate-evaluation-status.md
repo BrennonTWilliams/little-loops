@@ -4,7 +4,6 @@ title: Fix rlhf SVG Playwright smoke harness failure and propagate evaluation st
 type: BUG
 priority: P2
 status: done
-discovered_by: ll-product-promotion
 discovered_date: 2026-07-24
 completed_at: '2026-07-24T18:16:49Z'
 labels:

@@ -5,9 +5,7 @@ type: ENH
 parent: EPIC-2872
 priority: P3
 status: open
-discovered_by: ll-product-promotion
 discovered_date: 2026-07-27
-discovered_source: https://github.com/pbakaus/impeccable
 labels:
 - schema
 ---
@@ -22,9 +20,9 @@ Parent EPIC: routed alongside this issue — "Self-describing drift and deprecat
 
 Issue frontmatter and loop YAML are actively evolving — `superseded_by` recently became derived-and-never-written, and status synonyms are now coerced — and each such change leaves a retired field that agents keep encountering in older files. A deprecation flag alone is not enough to get a model to drop one.
 
-## Source pattern (external, described not copied)
+## Reference pattern
 
-Mined from `pbakaus/impeccable` (Apache-2.0). When it retired an axis from its product spec, it did not simply delete the field or mark it deprecated. It added a **deprecated-sections map** pairing each retired field with a **prose reason**, and made the reason mandatory. The stated rationale:
+In the reference pattern, retiring an axis from a product spec does not simply delete the field or mark it deprecated. A **deprecated-sections map** pairs each retired field with a **prose reason**, and the reason is mandatory. The rationale:
 
 > "told only that a field is deprecated, models preserve it 'just in case', which is how a retired axis keeps steering current output."
 
@@ -47,7 +45,3 @@ The same repo applies the pattern to a retired command as well: rather than remo
 ## Notes
 
 Small and self-contained; no dependency on the other children of this EPIC.
-
-## Provenance
-
-Pattern mined from `https://github.com/pbakaus/impeccable` (Apache-2.0). Described and re-implemented, not copied.

@@ -207,6 +207,50 @@ Decided by `/ll:decide-issue` on 2026-07-16.
 - **Option A**: Worker already accepts a directory and globs `*.jsonl` (reuse 2/3), but the staging mechanism (symlink/hardlink into a temp dir) has no production precedent. Existing `FakePopen` mock at `tests/test_hook_session_start.py:239-247` doesn't model subprocess lifetime, leaving the parent-tempdir-cleanup-vs-detached-child-read race untested. Existing session-start test at `tests/test_hook_session_start.py:288-304` asserts the project directory itself as the worker path — would need restructuring.
 - **Option B**: Six existing CLIs use `nargs="*"` for sibling lists; `backfill_incremental(jsonl_files=list[Path])` accepts the list directly; `_worker_argv.extend([...])` mirrors the existing `.append("--rebuild")` pattern in `session_start.py:153-181`; the existing FakePopen substring-assert test pattern extends with additional `in args` checks. Single call site (`session_start.py:153-159`) means one-touch propagation.
 
+### Rejected Alternative: repo-type-conditional default
+
+Considered and rejected on 2026-07-27: making the discovery order
+depend on whether the current repo is the little-loops **source**
+(user-root first) or a **consumer** project (project-root first),
+detected via `.claude-plugin/plugin.json` presence or
+`project.name == "little-loops"`.
+
+Rejected for three reasons:
+
+1. **The motivating concern doesn't apply.** The stated worry was
+   that user-root discovery in a consumer project would pull in
+   noise from every other local-editable project on the machine.
+   It cannot: step 2 of Expected Behavior filters user-root
+   sessions by the `cwd` embedded in each JSONL
+   (`_extract_cwd_from_project()`, `cli/logs.py:110-134`). Both
+   repo types get the same project-scoped result set — user-root
+   vs project-root is only *where the transcripts physically
+   live*, not *whose transcripts are ingested*. The branch would
+   flip a lookup order that yields the same set either way.
+2. **Special-casing the source repo breaks dogfooding.**
+   little-loops-in-development is a consumer of its own tooling
+   (every project on this machine is `local-editable` against this
+   checkout). A default that diverges by repo type means the
+   source repo stops exercising the code path consumers actually
+   run, so defects in the consumer branch surface for users rather
+   than here.
+3. **The detection is unreliable.** `.claude-plugin/plugin.json`
+   marks *any* Claude Code plugin repo, not this one;
+   `project.name` is user-editable config. Both misfire on forks
+   and on consumer repos that author plugins of their own.
+
+**Alternative that addresses the underlying case**: if the real
+motivation is dev work scattered across `epic/*` worktrees (sessions
+whose `cwd` is a sibling path under a different worktree root), the
+fix belongs in the **cwd-matching predicate**, not in repo-type
+branching — widen it to descendant match or shared git common-dir
+(`git rev-parse --git-common-dir`). This is the `--strict-cwd`
+opt-out already sketched in Proposed Solution step 1, is
+repo-type-agnostic, and helps consumers using worktrees too. If an
+explicit override is ever genuinely needed, a config key
+(`history.backfill.discovery_order`) is preferable to an inferred
+heuristic: explicit, testable, no misfire.
+
 ## Acceptance Criteria
 
 - `ll-session backfill` (no flags) on a project whose JSONL

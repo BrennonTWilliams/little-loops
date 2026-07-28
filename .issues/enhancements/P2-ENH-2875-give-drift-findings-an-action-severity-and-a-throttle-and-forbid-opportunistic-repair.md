@@ -5,9 +5,7 @@ type: ENH
 parent: EPIC-2872
 priority: P2
 status: open
-discovered_by: ll-product-promotion
 discovered_date: 2026-07-27
-discovered_source: https://github.com/pbakaus/impeccable
 labels:
 - verification
 - ll-doctor
@@ -23,9 +21,9 @@ Parent EPIC: routed alongside this issue — "Self-describing drift and deprecat
 
 `ll-verify-docs`, `ll-check-links`, and `ll-doctor --full` all report drift as an undifferentiated list. Nothing distinguishes a finding the tool can safely fix itself from one that needs a human, or from one that a specific other command already owns. The result is a wall of findings with no encoded next action, and no throttle — so the same low-value items resurface every run until they are tuned out entirely.
 
-## Source pattern (external, described not copied)
+## Reference pattern
 
-Mined from `pbakaus/impeccable` (Apache-2.0), whose staleness findings are shaped `{ id, artifact, path, severity, summary, fix }` where **severity names the action, not the badness**:
+In the reference pattern, staleness findings are shaped `{ id, artifact, path, severity, summary, fix }` where **severity names the action, not the badness**:
 
 - `auto` — fixed silently on the next write to that file
 - `mention` — state once
@@ -55,7 +53,3 @@ Around that:
 - Repeat findings are throttled per project, with a documented opt-out that tests can set.
 - A session-start drift check performs no directory walk, no git call, and no cross-workspace sweep.
 - A hook that surfaces findings exits 0 on malformed input and on internal error, and never fails the turn.
-
-## Provenance
-
-Pattern mined from `https://github.com/pbakaus/impeccable` (Apache-2.0). Described and re-implemented, not copied.

@@ -3,16 +3,17 @@ id: ENH-2582
 title: analytics.auto_collect opt-in background summarization
 type: ENH
 priority: P3
-status: open
+status: cancelled
+cancelled_reason: "Low-value speculative work: session-summary compaction already fires automatically at the 7,500-token soft threshold during a session; adding a second SessionEnd-triggered path duplicates that mechanism for marginal benefit. Closed in a tradeoff review of EPIC-2457 gap-list children."
 discovered_date: 2026-07-08
-captured_at: "2026-07-08T00:00:00Z"
+captured_at: '2026-07-08T00:00:00Z'
 discovered_by: capture-issue
 parent: EPIC-2457
 labels:
-  - enhancement
-  - history-db
-  - session-end
-  - captured
+- enhancement
+- history-db
+- session-end
+- captured
 ---
 
 # ENH-2582: analytics.auto_collect opt-in background summarization

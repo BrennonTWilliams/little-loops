@@ -4,7 +4,6 @@ title: Track codebase maintainability trend as an observability dimension
 type: FEAT
 priority: P3
 status: open
-discovered_by: ll-product-promotion
 discovered_date: 2026-07-27
 epic: EPIC-2856
 parent: EPIC-2856

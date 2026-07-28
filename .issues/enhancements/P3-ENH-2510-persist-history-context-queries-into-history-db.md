@@ -3,17 +3,18 @@ id: ENH-2510
 title: Persist ll-history-context query telemetry into history.db
 type: ENH
 priority: P3
-status: open
+status: cancelled
+cancelled_reason: "Low-value speculative instrumentation: builds a table + reader API + ll-ctx-stats UI to tune history.compaction.budget_tokens, but no one has asked whether the current budget is wrong. Closed in a tradeoff review of EPIC-2457 gap-list children."
 discovered_date: 2026-07-06
-captured_at: "2026-07-06T00:00:00Z"
+captured_at: '2026-07-06T00:00:00Z'
 discovered_by: capture-issue
 parent: EPIC-2457
 labels:
-  - enhancement
-  - history-db
-  - context
-  - telemetry
-  - captured
+- enhancement
+- history-db
+- context
+- telemetry
+- captured
 ---
 
 # ENH-2510: Persist ll-history-context query telemetry into history.db

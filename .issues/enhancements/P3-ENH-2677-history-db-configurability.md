@@ -5,7 +5,6 @@ status: cancelled
 priority: P3
 type: ENH
 discovered_date: 2026-07-18
-discovered_by: ll-product-promotion
 labels:
 - history-db
 - config

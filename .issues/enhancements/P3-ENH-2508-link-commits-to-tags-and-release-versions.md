@@ -3,18 +3,19 @@ id: ENH-2508
 title: Link commits to git tags and release versions in commit_events
 type: ENH
 priority: P3
-status: open
+status: cancelled
+cancelled_reason: "Low-value speculative widening: no current consumer needs 'what shipped in a tag' as a DB query; `git log tag1..tag2` already answers it at zero schema cost. Closed in a tradeoff review of EPIC-2457 gap-list children."
 discovered_date: 2026-07-06
-captured_at: "2026-07-06T00:00:00Z"
+captured_at: '2026-07-06T00:00:00Z'
 discovered_by: capture-issue
 decision_needed: false
 parent: EPIC-2457
 labels:
-  - enhancement
-  - history-db
-  - release
-  - widening
-  - captured
+- enhancement
+- history-db
+- release
+- widening
+- captured
 ---
 
 # ENH-2508: Link commits to git tags and release versions in commit_events

@@ -1,7 +1,6 @@
 ---
 discovered_date: 2026-01-24
 discovered_by: capture_issue
-discovered_source: argobots-ll-parallel-debug.log
 discovered_external_repo: <external-repo>
 status: done
 completed_at: 2026-02-13T00:00:00Z

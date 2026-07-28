@@ -1,7 +1,6 @@
 ---
 discovered_commit: ef0f5a7
 discovered_date: 2026-01-16
-discovered_source: git-error-analysis-blender-agents-ll-parallel.md
 discovered_external_repo: <external-repo>
 status: done
 completed_at: 2026-02-12T00:00:00Z

@@ -17,8 +17,7 @@ Add tooling — an `ll-verify-triggers` CLI and/or a built-in FSM loop — that 
 validates whether each skill's `description` field fires correctly: it should trigger on a
 set of realistic should-fire phrasings and stay silent on a set of near-miss should-NOT-fire
 phrasings. Report per-skill precision/recall and exit non-zero when a description collides
-with another skill's trigger space. This is the one genuine capability gap surfaced by a
-review of the `revfactory/harness` plugin (its Phase 6-4 "Trigger Validation"): little-loops
+with another skill's trigger space. This is a genuine capability gap: little-loops
 generates and budgets descriptions but never tests that they actually fire as intended.
 
 ## Current Behavior
@@ -142,14 +141,6 @@ maintainer tightens the description and re-runs until precision/recall clear the
 ## Labels
 
 `feature`, `verification`, `ci`, `skills`
-
-## Provenance
-
-Surfaced while reviewing `https://github.com/revfactory/harness` for ideas applicable to
-little-loops. Harness's Phase 6-4 validates each skill against 8–10 should-trigger and 8–10
-should-NOT-trigger (near-miss) queries; this issue ports that discipline into a measurable,
-CI-enforceable check that fits little-loops' non-LLM-evaluator philosophy.
-
 
 ## Verification Notes
 

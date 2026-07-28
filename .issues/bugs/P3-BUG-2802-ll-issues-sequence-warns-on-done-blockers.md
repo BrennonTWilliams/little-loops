@@ -1,6 +1,5 @@
 ---
 discovered_date: 2026-07-25
-discovered_source: ll-issues sequence run from ll-marketing (cross-repo investigation)
 status: done
 completed_at: '2026-07-25T16:15:29Z'
 ---
