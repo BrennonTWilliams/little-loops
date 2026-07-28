@@ -337,6 +337,14 @@ When reality diverges from the plan during implementation:
 2. **Present issue clearly** - Show expected vs. actual situation
 3. **With `--gates` flag**: Use AskUserQuestion with options (Adapt/Update plan/Stop)
 4. **Without `--gates` flag (default)**: Do NOT use `AskUserQuestion`. Adapt if minor, mark `INCOMPLETE` if significant
+5. **Record a Deviations note** - By default (no `--gates` flag) and with `--gates`, if the
+   issue has a `## Program Design` section and the implemented shape departs from it
+   (different signature, different call path, different type shape), use `Edit` to append a
+   dated entry under a `### Deviations` subsection immediately after `## Program Design`
+   (creating the subsection on first use) stating what the design said, what was
+   implemented, and why. Never modify the original `Types`/`Signatures`/`Call Path`
+   content — this is additive only. Skip silently if there is no `## Program Design`
+   section or implementation matched it exactly.
 
 See [templates.md](templates.md) for mismatch detection and reporting formats.
 

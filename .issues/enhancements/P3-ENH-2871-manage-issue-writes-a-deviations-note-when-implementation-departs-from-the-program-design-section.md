@@ -4,8 +4,9 @@ title: manage-issue writes a Deviations note when implementation departs from th
   Program Design section
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: 2026-07-27
+completed_at: '2026-07-28T04:21:47Z'
 epic: EPIC-2856
 parent: EPIC-2856
 relates_to:
@@ -14,6 +15,12 @@ relates_to:
 labels:
 - rework
 - verification
+confidence_score: 96
+outcome_confidence: 92
+score_complexity: 24
+score_test_coverage: 23
+score_ambiguity: 22
+score_change_surface: 23
 ---
 
 # ENH-2871: manage-issue writes a Deviations note when implementation departs from the Program Design section
@@ -150,6 +157,38 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   coinage, though this issue's mechanism is skill-instructed `Edit`, not a shell
   action.
 
+### Wiring Findings
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- **Heading-level mismatch between this issue's Proposed Change and the already-shipped
+  docs convention.** Item 1 of Proposed Change specifies `#### Deviations` (four hashes).
+  But `docs/reference/ISSUE_TEMPLATE.md:50-51` (already shipped, per this issue's own
+  Codebase Research Findings) documents the convention one level shallower: `### Deviations`
+  (three hashes) — *"An appended `### Deviations` note (recorded at implementation time) is
+  inert..."*. `TestGrading.test_deviations_subsection_is_inert`
+  (`scripts/tests/test_program_design_gate.py:260-288`) is the existing fixture that pins
+  whichever level it was written against. **Use `### Deviations` (matching the shipped docs
+  and the `##`-level `Program Design` parent, consistent with sibling `###`-level
+  `Types`/`Signatures`/`Call Path` subsections) when writing the `SKILL.md` step and its
+  positional test** — the grading regex (`#{2,6}`) accepts either level, so this is a
+  documentation-consistency requirement, not a gate-functional one, but shipping `####`
+  would contradict the already-published convention. [wiring pass, side-effect-surface trace]
+- No other coupling requires new files. `program_design.py`'s `_evidence_body()` and
+  `extract_call_path_anchors()` are confirmed inert to a `Deviations` heading by direct
+  reading (their docstrings/comments already reference ENH-2871); `docs/ARCHITECTURE.md`,
+  `config-schema.json`, and the *-sections.json templates have no coupling. Other skills/loops
+  that generically mention "manage-issue" or "Program Design" (confidence-check, format-issue,
+  autodev.yaml, rn-refine.yaml, etc.) are pre-existing consumers of the gate/grading mechanism
+  this issue's Scope Boundaries already excludes — not new wiring for this issue's writer step.
+  [wiring pass, caller/importer trace — filtered per issue's own Scope Boundaries]
+- Test placement for the new positional test has two equally-precedented options, no
+  wiring gap either way: a new class in `scripts/tests/test_manage_issue_changelog_gate.py`
+  (reusing its existing `SKILL_FILE`/`REPO_ROOT` constants) or a new sibling file
+  `scripts/tests/test_manage_issue_deviations_note.py`. Positional-assertion idiom to copy:
+  `text.index(a) < text.index(b)`, as used in `scripts/tests/test_session_log.py:121` and
+  `scripts/tests/test_rn_remediate.py:231`. [wiring pass, test-gap trace]
+
 ## Scope Boundaries
 
 - **In scope**: the `manage-issue` Deviations-writing step, the grading-inertness test,
@@ -180,4 +219,6 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-28T04:21:15 - `7f05c8cc-b967-4589-af2b-77b4cea4c84a.jsonl`
+- `/ll:wire-issue` - 2026-07-28T04:14:09 - `8ff438b9-2c5a-49f6-b389-bfdfbd96bfed.jsonl`
 - `/ll:refine-issue` - 2026-07-28T04:10:26 - `745b3b56-2216-4c20-9d01-25c9f3ef2f8d.jsonl`

@@ -56,6 +56,31 @@ class TestSkillGateContract:
             assert line in text, f"SKILL.md gate snippet drifted; missing line: {line}"
 
 
+class TestDeviationsNoteWriter:
+    """SKILL.md must document a Deviations-note writer step (ENH-2871)."""
+
+    def test_skill_documents_deviations_note_step(self) -> None:
+        text = SKILL_FILE.read_text()
+        assert "### Deviations" in text, (
+            "manage-issue SKILL.md must instruct writing a ### Deviations note (ENH-2871)"
+        )
+
+    def test_deviations_step_fires_at_or_after_default_branch(self) -> None:
+        """The writer step must not be confined to the interactive --gates branch.
+
+        Positional guard: without this, "the step exists" and "the step fires in
+        automation" are indistinguishable to the suite (ENH-2871).
+        """
+        text = SKILL_FILE.read_text()
+        default_branch_idx = text.index("Without `--gates` flag (default)")
+        deviations_step_idx = text.index("Record a Deviations note")
+        assert deviations_step_idx >= default_branch_idx, (
+            "Deviations note step must appear at or after the non-`--gates` default "
+            "branch (step 4) so it is not dead code in ll-auto/ll-parallel/autodev "
+            "(ENH-2871)"
+        )
+
+
 class TestReleaseAggregatorExclusion:
     """manage-release.md must exclude chore(issues): commits from the changelog."""
 
