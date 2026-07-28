@@ -488,6 +488,96 @@ class TestCheckMarkdownLinks:
         assert mock_check.call_count == 3
 
 
+class TestActionSeverity:
+    """Tests for LinkResult.action_severity (ENH-2886)."""
+
+    def test_broken_link_gets_mention_severity(self, tmp_path: Path) -> None:
+        """check_markdown_links tags broken links as mention-severity."""
+        test_file = tmp_path / "test.md"
+        test_file.write_text("[Link](https://invalid.example.com)\n")
+
+        with patch("little_loops.link_checker.check_url_outcome") as mock_check:
+            mock_check.return_value = (LinkOutcome.BROKEN, "HTTP 404")
+
+            result = check_markdown_links(tmp_path, [], timeout=10)
+
+        broken = [r for r in result.results if r.status == "broken"]
+        assert len(broken) == 1
+        assert broken[0].action_severity == "mention"
+
+    def test_unreachable_link_gets_mention_severity(self, tmp_path: Path) -> None:
+        """check_markdown_links tags unreachable links as mention-severity."""
+        test_file = tmp_path / "test.md"
+        test_file.write_text("[Link](https://timeout.example.com)\n")
+
+        with patch("little_loops.link_checker.check_url_outcome") as mock_check:
+            mock_check.return_value = (LinkOutcome.UNREACHABLE, "Timeout")
+
+            result = check_markdown_links(tmp_path, [], timeout=10)
+
+        unreachable = [r for r in result.results if r.status == "unreachable"]
+        assert len(unreachable) == 1
+        assert unreachable[0].action_severity == "mention"
+
+    def test_valid_link_gets_auto_severity(self, tmp_path: Path) -> None:
+        """check_markdown_links tags valid links as auto-severity (no action needed)."""
+        test_file = tmp_path / "test.md"
+        test_file.write_text("[Link](https://example.com)\n")
+
+        with patch("little_loops.link_checker.check_url_outcome") as mock_check:
+            mock_check.return_value = (LinkOutcome.VALID, None)
+
+            result = check_markdown_links(tmp_path, [], timeout=10)
+
+        valid = [r for r in result.results if r.status == "valid"]
+        assert len(valid) == 1
+        assert valid[0].action_severity == "auto"
+
+    def test_route_severity_names_owning_command(self) -> None:
+        """A route-severity LinkResult carries the name of the owning command."""
+        result = LinkResult(
+            url="https://example.com",
+            file="README.md",
+            line=1,
+            status="broken",
+            action_severity="route",
+            route_owner="ll-check-links",
+        )
+
+        assert result.action_severity == "route"
+        assert result.route_owner == "ll-check-links"
+
+    def test_action_severity_defaults_to_auto(self) -> None:
+        """LinkResult defaults action_severity to auto when not specified."""
+        result = LinkResult(url="https://example.com", file="README.md", line=1, status="valid")
+
+        assert result.action_severity == "auto"
+        assert result.route_owner is None
+
+    def test_format_result_json_includes_action_severity(self) -> None:
+        """format_result_json surfaces action_severity and route_owner."""
+        result = LinkCheckResult(
+            total_links=1,
+            broken_links=1,
+            results=[
+                LinkResult(
+                    url="https://broken.example.com",
+                    file="test.md",
+                    line=1,
+                    status="broken",
+                    error="HTTP 404",
+                    action_severity="mention",
+                )
+            ],
+        )
+
+        output = format_result_json(result)
+        data = json.loads(output)
+
+        assert data["results"][0]["action_severity"] == "mention"
+        assert data["results"][0]["route_owner"] is None
+
+
 class TestLoadIgnorePatterns:
     """Tests for load_ignore_patterns function."""
 

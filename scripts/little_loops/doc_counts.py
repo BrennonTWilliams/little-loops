@@ -7,6 +7,7 @@ match actual file counts in the codebase.
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 import yaml
 
@@ -36,7 +37,17 @@ BRIDGE_MARKER = "Bridged from `commands/"
 
 @dataclass
 class CountResult:
-    """Result of counting files in a directory."""
+    """Result of counting files in a directory.
+
+    ``action_severity`` mirrors ``doctor.py``'s ``CheckResult.severity`` shape:
+    a closed vocabulary interpreted by one function (``fix_counts``) rather than
+    scattered conditionals. ``auto`` means the mismatch is safe to rewrite
+    silently; ``mention`` means a human should confirm before any rewrite;
+    ``route`` means another command owns the repair (named in ``route_owner``).
+    All count mismatches from ``verify_documentation`` are ``auto`` today —
+    ``mention``/``route`` exist for callers that construct ``CountResult``
+    directly with a different provenance.
+    """
 
     category: str
     actual: int
@@ -44,6 +55,8 @@ class CountResult:
     file: str | None = None
     line: int | None = None
     matches: bool = True
+    action_severity: Literal["auto", "mention", "route"] = "auto"
+    route_owner: str | None = None
 
 
 @dataclass
@@ -229,6 +242,8 @@ def format_result_json(result: VerificationResult) -> str:
                 "actual": m.actual,
                 "file": m.file,
                 "line": m.line,
+                "action_severity": m.action_severity,
+                "route_owner": m.route_owner,
             }
             for m in result.mismatches
         ],
@@ -408,6 +423,10 @@ def check_skill_sizes(
 def fix_counts(base_dir: Path, result: VerificationResult) -> FixResult:
     """Fix count mismatches in documentation files.
 
+    Only ``auto``-severity mismatches are rewritten. ``mention`` mismatches
+    need a human to confirm; ``route`` mismatches are owned by another
+    command's repair flow (see ``CountResult.action_severity``).
+
     Args:
         base_dir: Base directory path
         result: Verification result with mismatches
@@ -418,9 +437,11 @@ def fix_counts(base_dir: Path, result: VerificationResult) -> FixResult:
     files_modified: set[str] = set()
     fixed_count = 0
 
-    # Group mismatches by file
+    # Group mismatches by file (auto-severity only)
     mismatches_by_file: dict[str, list[CountResult]] = {}
     for mismatch in result.mismatches:
+        if mismatch.action_severity != "auto":
+            continue
         if mismatch.file:
             mismatches_by_file.setdefault(mismatch.file, []).append(mismatch)
 

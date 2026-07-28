@@ -191,6 +191,48 @@ class TestMainVerifyDocs:
 
         mock_verify.assert_called_once_with(Path(str(tmp_path)))
 
+    def test_fix_flag_leaves_non_auto_mismatch_unwritten(self, tmp_path: Path) -> None:
+        """--fix with a non-auto mismatch calls fix_counts but leaves the file untouched.
+
+        Exercises the real doc_counts.fix_counts (not mocked) to confirm the CLI's
+        --fix gate respects action_severity, not just all_match (ENH-2886).
+        """
+        from little_loops.doc_counts import CountResult, VerificationResult
+
+        test_file = tmp_path / "README.md"
+        original_content = "## 34 commands\n"
+        test_file.write_text(original_content)
+
+        result = VerificationResult(total_checked=1, all_match=False)
+        result.mismatches.append(
+            CountResult(
+                category="commands",
+                actual=35,
+                documented=34,
+                file="README.md",
+                line=1,
+                matches=False,
+                action_severity="mention",
+            )
+        )
+
+        with (
+            patch(
+                "sys.argv",
+                ["ll-verify-docs", "--fix", "--directory", str(tmp_path)],
+            ),
+            patch(
+                "little_loops.doc_counts.verify_documentation",
+                return_value=result,
+            ),
+            patch("little_loops.doc_counts.format_result_text", return_value="MISMATCH"),
+            patch("builtins.print"),
+        ):
+            exit_code = main_verify_docs()
+
+        assert exit_code == 1
+        assert test_file.read_text() == original_content
+
 
 class TestMainCheckLinks:
     """Tests for main_check_links entry point."""

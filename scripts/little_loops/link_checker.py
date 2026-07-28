@@ -16,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from typing import Literal
 
 # Retry-with-backoff before classifying a transient network failure as
 # unreachable (a chunk of "broken" results can be one slow host hit serially).
@@ -68,6 +69,15 @@ class LinkResult:
         status: Status of the link ("valid", "broken", "unreachable", "ignored", "internal")
         error: Error message if link is broken
         link_text: The link text from markdown [text](url)
+        action_severity: Closed-vocabulary action-severity, mirroring
+            `doc_counts.CountResult.action_severity`. `auto` means no action is
+            needed (valid/internal/ignored links); `mention` means a human
+            should review (broken/unreachable links — `ll-check-links` has no
+            `--fix` path, so these are surfaced but never silently rewritten);
+            `route` means another command owns the repair (named in
+            `route_owner`).
+        route_owner: Name of the command that owns the repair, set only when
+            `action_severity` is `route`.
     """
 
     url: str
@@ -76,6 +86,8 @@ class LinkResult:
     status: str
     error: str | None = None
     link_text: str | None = None
+    action_severity: Literal["auto", "mention", "route"] = "auto"
+    route_owner: str | None = None
 
 
 @dataclass
@@ -338,6 +350,7 @@ def check_markdown_links(
                     line=0,
                     status="broken",
                     error=f"File read error: {e}",
+                    action_severity="mention",
                 )
             )
 
@@ -379,6 +392,7 @@ def check_markdown_links(
                             status="unreachable",
                             error=error,
                             link_text=link_text,
+                            action_severity="mention",
                         )
                     )
                 else:
@@ -391,6 +405,7 @@ def check_markdown_links(
                             status="broken",
                             error=error,
                             link_text=link_text,
+                            action_severity="mention",
                         )
                     )
 
@@ -518,6 +533,8 @@ def format_result_json(result: LinkCheckResult) -> str:
                 "status": r.status,
                 "error": r.error,
                 "link_text": r.link_text,
+                "action_severity": r.action_severity,
+                "route_owner": r.route_owner,
             }
             for r in result.results
         ],

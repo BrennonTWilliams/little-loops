@@ -5,7 +5,7 @@ title: Give drift findings an action-severity and a throttle, and forbid opportu
 type: ENH
 parent: EPIC-2872
 priority: P2
-status: open
+status: done
 discovered_date: 2026-07-27
 labels:
 - verification
@@ -18,7 +18,7 @@ score_ambiguity: 20
 score_change_surface: 7
 decision_needed: false
 size: Very Large
-status: done
+completed_at: '2026-07-28T07:57:30Z'
 ---
 
 # ENH-2875: Give drift findings an action-severity and a throttle, and forbid opportunistic repair
@@ -250,3 +250,13 @@ _Added by `/ll:confidence-check` on 2026-07-28_
 - `/ll:confidence-check` - 2026-07-28T07:45:02 - `58786ea0-61bd-4f7d-9422-c0ca1f5040d3.jsonl`
 - `/ll:wire-issue` - 2026-07-28T07:42:51 - `43684f63-0308-4498-aec4-6c75e97444b4.jsonl`
 - `/ll:refine-issue` - 2026-07-28T07:35:21 - `bcb16e3c-19bb-4a4c-8a3b-d768cca504e4.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Closed**: 2026-07-28
+- **Decomposed into**: ENH-2886, ENH-2887, ENH-2888, ENH-2889
+
+Work for ENH-2875 is now carried by its child issues; this parent was closed by rn-decompose.

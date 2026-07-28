@@ -1,0 +1,12 @@
+{
+  "id": "1a2d8e8d-62f9-42cb-bf47-7977c854f98e",
+  "type": "decision",
+  "timestamp": "2026-07-28T08:58:42Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Option B for drift-source reuses the existing doctor.py:498 call with zero new disk-state; Option A for OpenCode dispatch matches the file's existing sequential MVP dispatch pattern with no shared-state risk.",
+  "rule": "Drift-source: Option B (doc_counts-only, no cache); OpenCode dispatch: Option A (second spawnIntent call)",
+  "scope": "issue",
+  "alternatives_rejected": "Drift-source Option A (cached prior-run result, requires building persistence machinery from scratch); OpenCode Option B (generalized multi-intent dispatch loop, no second caller to justify it)",
+  "issue": "ENH-2888"
+}

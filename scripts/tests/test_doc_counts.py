@@ -386,6 +386,30 @@ class TestFormatResultJson:
         assert data["mismatches"][0]["category"] == "commands"
         assert data["mismatches"][0]["actual"] == 35
 
+    def test_format_includes_action_severity(self) -> None:
+        """JSON surfaces action_severity and route_owner on mismatches."""
+        import json
+
+        result = VerificationResult(total_checked=1, all_match=False)
+        result.mismatches.append(
+            CountResult(
+                category="commands",
+                actual=35,
+                documented=34,
+                file="README.md",
+                line=10,
+                matches=False,
+                action_severity="route",
+                route_owner="ll-adapt",
+            )
+        )
+
+        output = format_result_json(result)
+        data = json.loads(output)
+
+        assert data["mismatches"][0]["action_severity"] == "route"
+        assert data["mismatches"][0]["route_owner"] == "ll-adapt"
+
 
 class TestFormatResultMarkdown:
     """Tests for format_result_markdown function."""
@@ -554,6 +578,68 @@ class TestFixCounts:
         test_file.write_text(original_content)
 
         result = VerificationResult(total_checked=1, all_match=True)
+
+        fix_result = fix_counts(tmp_path, result)
+
+        assert fix_result.fixed_count == 0
+        assert len(fix_result.files_modified) == 0
+        assert test_file.read_text() == original_content
+
+    def test_fix_only_applies_to_auto_severity(self, tmp_path: Path) -> None:
+        """fix_counts skips mention/route mismatches, only rewrites auto ones."""
+        test_file = tmp_path / "README.md"
+        test_file.write_text("## 34 commands\n## 8 agents\n")
+
+        result = VerificationResult(total_checked=2, all_match=False)
+        result.mismatches.append(
+            CountResult(
+                category="commands",
+                actual=35,
+                documented=34,
+                file="README.md",
+                line=1,
+                matches=False,
+                action_severity="auto",
+            )
+        )
+        result.mismatches.append(
+            CountResult(
+                category="agents",
+                actual=9,
+                documented=8,
+                file="README.md",
+                line=2,
+                matches=False,
+                action_severity="mention",
+            )
+        )
+
+        fix_result = fix_counts(tmp_path, result)
+
+        assert fix_result.fixed_count == 1
+        updated = test_file.read_text()
+        assert "35 commands" in updated
+        assert "8 agents" in updated  # mention-severity mismatch left untouched
+
+    def test_fix_no_changes_when_only_route_severity(self, tmp_path: Path) -> None:
+        """fix_counts is a no-op when every mismatch is route-severity."""
+        test_file = tmp_path / "README.md"
+        original_content = "## 34 commands\n"
+        test_file.write_text(original_content)
+
+        result = VerificationResult(total_checked=1, all_match=False)
+        result.mismatches.append(
+            CountResult(
+                category="commands",
+                actual=35,
+                documented=34,
+                file="README.md",
+                line=1,
+                matches=False,
+                action_severity="route",
+                route_owner="ll-adapt",
+            )
+        )
 
         fix_result = fix_counts(tmp_path, result)
 

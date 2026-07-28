@@ -1,0 +1,12 @@
+{
+  "id": "22218d01-092c-4175-b62b-757b946fa0ff",
+  "type": "decision",
+  "timestamp": "2026-07-28T07:52:07Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Own-intent matches sweep_stale_refs.py precedent, keeps fragile session_start.py handler untouched (11/12 vs 4/12 scored). Naming verified collision-free against enable_scope_drift_check and matches hooks.*/LL_* conventions.",
+  "rule": "Session-start drift check ships as its own hook intent (Option A); config key hooks.doc_drift_throttle_days + LL_DOC_DRIFT_DISABLE (Option C)",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: fold drift check into session_start.py::handle() (no precedent, higher regression risk)",
+  "issue": "ENH-2875"
+}

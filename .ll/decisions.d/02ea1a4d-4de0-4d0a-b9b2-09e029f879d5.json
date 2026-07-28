@@ -1,0 +1,12 @@
+{
+  "id": "e156cdae-d2ee-4a12-91e7-481ca4996ad3",
+  "type": "decision",
+  "timestamp": "2026-07-28T08:28:03Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Keeps --full's shared one-line-per-verifier shape intact for all 11 register_full_check adapters; reuses the exact additive-optional-field-with-default pattern CheckResult.severity and CountResult/LinkResult.action_severity already established (ENH-2886), vs Option A's per-finding CheckResult which breaks the shared 1:1 name assumption in _print_full_section/_full_section_data and fails 2 existing tests.",
+  "rule": "Option B \u2014 additive findings field on CheckResult",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: emit one CheckResult per finding instead of per verifier",
+  "issue": "ENH-2887"
+}

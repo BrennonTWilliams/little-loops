@@ -9,6 +9,11 @@ labels:
 - hygiene
 - issue-schema
 - observability
+relates_to:
+- ENH-2886
+- ENH-2887
+- ENH-2888
+- ENH-2889
 ---
 
 # EPIC-2872: Self-describing drift and deprecation signals
