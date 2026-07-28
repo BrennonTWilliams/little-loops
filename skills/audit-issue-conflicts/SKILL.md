@@ -2,7 +2,7 @@
 name: audit-issue-conflicts
 description: Use when asked to detect conflicting requirements or incompatible decisions across open issues.
 disable-model-invocation: false
-argument-hint: "[EPIC-NNNN] [--auto] [--dry-run] [--cross-theme]"
+argument-hint: "[EPIC-NNNN | ID,ID,ID,...] [--auto] [--dry-run] [--cross-theme]"
 model: sonnet
 allowed-tools:
   - Read
@@ -15,7 +15,7 @@ allowed-tools:
   - Bash(python3:*)
 arguments:
   - name: epic_id
-    description: "Optional positional EPIC-NNNN (bare NNNN accepted). When set, scopes the audit to that EPIC's transitive children plus the EPIC file itself, instead of the full backlog."
+    description: "Optional positional EPIC-NNNN (bare NNNN accepted), or a comma-separated list of issue IDs (TYPE-NNN or bare NNN per item). EPIC-NNNN scopes the audit to that EPIC's transitive children plus the EPIC file itself. A comma-separated list scopes the audit to exactly those issues (no transitive expansion). Omitted scans the full backlog."
     required: false
   - name: flags
     description: "Optional flags: --auto (apply all recommendations without prompting), --dry-run (report only, no changes), --cross-theme (add Phase 2b cross-batch fingerprint sweep to catch conflicts spanning thematic groups)"
@@ -60,9 +60,28 @@ absent, leave `SCOPE_EPIC` empty (preserving today's full-backlog behavior).
 
 ```bash
 SCOPE_EPIC=""
+declare -a SCOPE_ISSUE_LIST
 for tok in $ARGUMENTS; do
     case "$tok" in
         --*) continue ;;                       # flags handled above
+        *[,]*)
+            # Comma-separated explicit issue-ID list (TYPE-NNN or bare NNN per
+            # token, mixed types allowed). Resolves to SCOPE_ISSUE_LIST; leaves
+            # SCOPE_EPIC empty. No transitive expansion.
+            IFS=',' read -ra RAW_IDS <<< "$tok"
+            for raw_id in "${RAW_IDS[@]}"; do
+                [ -z "$raw_id" ] && continue
+                # `ll-issues path` resolves both TYPE-NNN and bare NNN forms
+                # (case-insensitive) directly, so no local normalization needed.
+                resolved_path=$(ll-issues path "$raw_id" 2>/dev/null)
+                if [ -z "$resolved_path" ] || [ ! -f "$resolved_path" ]; then
+                    echo "ERROR: '$raw_id' does not resolve to an existing issue."
+                    exit 1
+                fi
+                SCOPE_ISSUE_LIST+=("$resolved_path")
+            done
+            break
+            ;;
         *)
             # Normalize: accept EPIC-NNNN or bare NNNN (case-insensitive).
             up=$(printf '%s' "$tok" | tr '[:lower:]' '[:upper:]')
@@ -92,6 +111,7 @@ Log the active mode:
 - `--cross-theme` → "Cross-theme sweep enabled: Phase 2b will check for conflicts spanning thematic batch boundaries."
 - neither → "Running in interactive mode: each recommendation will require approval."
 - `SCOPE_EPIC` set → "Scoped to $SCOPE_EPIC: auditing only its transitive children (plus the EPIC file)."
+- `SCOPE_ISSUE_LIST` set → "Scoped to ${#SCOPE_ISSUE_LIST[@]} explicit issue IDs: auditing only those issues."
 
 ---
 
@@ -106,7 +126,12 @@ ENH-2481) plus the EPIC file itself. Otherwise load the full active backlog.
 declare -a ISSUE_FILES
 declare -i TERMINAL_COUNT=0
 
-if [[ -n "$SCOPE_EPIC" ]]; then
+if [[ ${#SCOPE_ISSUE_LIST[@]} -gt 0 ]]; then
+    # Explicit-list mode: exactly the resolved paths from Phase 0, no
+    # transitive expansion, no active-status filtering.
+    ISSUE_FILES=("${SCOPE_ISSUE_LIST[@]}")
+    echo "Scoped to ${#ISSUE_FILES[@]} explicit issue IDs"
+elif [[ -n "$SCOPE_EPIC" ]]; then
     # Scoped mode: transitive children of SCOPE_EPIC (plus the EPIC file).
     # --status all + in-extractor filter (the bare default drops in_progress /
     # blocked children, and --status takes a single value, not a CSV list).
@@ -463,37 +488,7 @@ All changes staged in {{config.issues.base_dir}}/
 
 ---
 
-## Examples
-
-```bash
-# Interactive mode: review each conflict and approve/reject
-/ll:audit-issue-conflicts
-
-# Scope the audit to a single EPIC's transitive children (plus the EPIC file)
-/ll:audit-issue-conflicts EPIC-2457
-
-# Scoped + auto-apply (bare NNNN is normalized to EPIC-NNNN)
-/ll:audit-issue-conflicts 2457 --auto
-
-# Auto-apply all recommendations without prompting
-/ll:audit-issue-conflicts --auto
-
-# Report only, no changes
-/ll:audit-issue-conflicts --dry-run
-
-# Cross-theme sweep: detect conflicts across thematic boundaries
-/ll:audit-issue-conflicts --cross-theme
-
-# Cross-theme dry-run: report only, no changes
-/ll:audit-issue-conflicts --dry-run --cross-theme
-```
-
-## Related Commands
-
-- `/ll:tradeoff-review-issues` — Evaluates utility vs complexity (is it worth doing?)
-- `/ll:align-issues` — Validates issues against project goals
-- `/ll:map-dependencies` — Traces blocked_by relationships
-- `/ll:refine-issue` — Fills knowledge gaps in a single issue
+See [examples.md](examples.md) for usage examples and related commands.
 
 ## Output Evidence Contract
 

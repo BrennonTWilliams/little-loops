@@ -252,3 +252,34 @@ class TestAuditIssueConflictsEpicScoping:
         assert "fingerprinted too (ENH-2634)" in phase1, (
             "Phase 1 must still document that epics/ is covered so EPIC files are fingerprinted"
         )
+
+
+class TestAuditIssueConflictsCommaScope:
+    """Verify the optional comma-separated issue-ID scoping argument (ENH-2882)."""
+
+    def _phase(self, start_header: str, end_header: str) -> str:
+        content = SKILL_FILE.read_text()
+        return content[content.index(start_header) : content.index(end_header)]
+
+    def test_argument_hint_documents_comma_list(self) -> None:
+        """Frontmatter argument-hint must document the comma-separated ID-list form."""
+        content = SKILL_FILE.read_text()
+        fm_end = content.index("\n---", content.index("---") + 3)
+        frontmatter = content[:fm_end]
+        assert "ID,ID,ID" in frontmatter, "argument-hint must document the comma-list form"
+
+    def test_phase0_parses_comma_list(self) -> None:
+        """Phase 0 must detect a comma-separated positional and bind SCOPE_ISSUE_LIST."""
+        phase0 = self._phase("## Phase 0", "## Phase 1")
+        assert "SCOPE_ISSUE_LIST" in phase0, "Phase 0 must bind a SCOPE_ISSUE_LIST array"
+        assert "IFS=','" in phase0, "Phase 0 must split the positional on commas"
+
+    def test_phase0_aborts_on_unresolvable_id(self) -> None:
+        """Phase 0 must abort with a clear message naming the offending token."""
+        phase0 = self._phase("## Phase 0", "## Phase 1")
+        assert "does not resolve to an existing issue" in phase0
+
+    def test_phase1_branches_on_scope_issue_list(self) -> None:
+        """Phase 1 must set ISSUE_FILES directly from SCOPE_ISSUE_LIST, ahead of EPIC/backlog branches."""
+        phase1 = self._phase("## Phase 1", "## Phase 2")
+        assert "SCOPE_ISSUE_LIST" in phase1, "Phase 1 must branch on SCOPE_ISSUE_LIST"

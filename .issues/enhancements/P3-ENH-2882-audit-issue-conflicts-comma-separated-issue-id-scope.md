@@ -4,8 +4,9 @@ title: audit-issue-conflicts should accept a comma-separated issue-ID list as an
   scope argument
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-28T02:15:38Z'
+completed_at: '2026-07-28T03:04:56Z'
 discovered_date: 2026-07-28
 discovered_by: capture-issue
 relates_to:
@@ -59,6 +60,24 @@ The positional argument should accept three forms:
    item, mixed types allowed) — scope the audit to exactly those issues (no
    transitive expansion). Each ID is normalized/validated independently;
    an unresolvable ID aborts with a clear message naming the offending token.
+
+## Impact
+
+- **Priority**: P3 - Quality-of-life scoping option for a niche audit workflow; no
+  user is blocked without it, and the existing EPIC-scope and full-backlog paths
+  remain unaffected.
+- **Effort**: Small - Reuses ENH-2634's positional-parsing shape and existing
+  `ll-issues path`/`show --json` resolution; no new Python entry point.
+- **Risk**: Low - Purely additive branch in Phase 0/Phase 1 bash logic; the
+  existing EPIC-token and no-argument paths are unchanged.
+- **Breaking Change**: No
+
+## Scope Boundaries
+
+Out of scope: transitive expansion of listed IDs (e.g. auto-including an
+EPIC's children if an EPIC ID appears in the list), deduplication warnings for
+overlapping IDs across mixed EPIC/explicit forms, and any change to
+`SCOPE_EPIC`'s existing single-EPIC resolution behavior.
 
 ## Proposed Solution
 
@@ -244,6 +263,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - ENH-1801, ENH-1802 — other audit-issue-conflicts scoping/detection work.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-28T03:04:01 - `7e9912d7-d5ca-4730-9739-6b5c2e4c8e96.jsonl`
+- `/ll:ready-issue` - 2026-07-28T02:53:06 - `389e3d36-9010-4451-b8f7-22ffba41f7b8.jsonl`
 - `/ll:confidence-check` - 2026-07-28T00:00:00 - `d3845334-2f18-413a-a1b0-c5cb779474b0.jsonl`
 - `/ll:wire-issue` - 2026-07-28T02:35:16 - `389e3d36-9010-4451-b8f7-22ffba41f7b8.jsonl`
 - `/ll:refine-issue` - 2026-07-28T02:26:22 - `390eda17-6836-4908-8103-b710184f7d7e.jsonl`
@@ -251,6 +272,27 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ---
 
+## Resolution
+
+Implemented the comma-separated issue-ID scoping form in
+`skills/audit-issue-conflicts/SKILL.md`:
+- Phase 0: a sibling `case` branch detects a comma in the positional token,
+  splits on `,`, and resolves each token via `ll-issues path` (which already
+  handles both `TYPE-NNN` and bare-`NNN` forms) into a `SCOPE_ISSUE_LIST`
+  array; aborts naming the offending token on an unresolvable ID.
+- Phase 1: a new leading branch sets `ISSUE_FILES` directly from
+  `SCOPE_ISSUE_LIST` when non-empty, ahead of the existing `SCOPE_EPIC` and
+  full-backlog branches.
+- Updated `argument-hint`/`epic_id` frontmatter, the Examples section
+  (extracted to `examples.md` alongside Related Commands to keep `SKILL.md`
+  under the 500-line cap, ENH-494), `docs/reference/COMMANDS.md`, and
+  `commands/help.md`.
+- Added `TestAuditIssueConflictsCommaScope` to
+  `scripts/tests/test_audit_issue_conflicts_skill.py`, mirroring the
+  ENH-2634 EPIC-scope test class.
+- No CHANGELOG entry: current `[1.152.0]` section is already tagged/released
+  (`v1.152.0`); this lands in the next release's notes automatically.
+
 ## Status
 
-- [ ] Not started
+- [x] Complete

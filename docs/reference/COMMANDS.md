@@ -306,6 +306,7 @@ Scan all open issues for conflicting requirements, objectives, or architectural 
 
 **Arguments:**
 - `epic-id` (optional): Positional `EPIC-NNNN` (bare `NNNN` accepted). When set, scopes the audit to that EPIC's transitive children (cycle-guarded, via `ll-issues list --parent`) plus the EPIC file itself, instead of the full active backlog. A non-EPIC positional aborts with a clear message.
+- Positional alternative — comma-separated issue-ID list (e.g. `BUG-123,ENH-456,FEAT-555`, bare `NNN` per token accepted): scopes the audit to exactly those issues, with no transitive expansion. Each ID is resolved independently via `ll-issues path`; an unresolvable ID aborts with a message naming the offending token.
 
 **Flags:** `--auto` (apply all recommendations without prompting), `--dry-run` (report only, no changes written), `--cross-theme` (add Phase 2b cross-batch fingerprint sweep to catch conflicts between issues in different thematic groups — uses `ll-issues fingerprint` to find file-overlap pairs across batch boundaries without an LLM call, then dispatches targeted single-pair agents only for overlapping pairs)
 
