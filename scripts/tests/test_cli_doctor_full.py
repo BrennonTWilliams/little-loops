@@ -7,10 +7,12 @@ from unittest.mock import patch
 
 from little_loops.cli.doctor import (
     CheckResult,
+    _full_check_links_check,
     _full_check_links_data,
     _full_decisions_data,
     _full_des_audit_data,
     _full_design_tokens_data,
+    _full_docs_check,
     _full_docs_data,
     _full_kinds_data,
     _full_package_data_data,
@@ -45,6 +47,29 @@ class TestFullAdapters:
             data = _full_docs_data()
         assert data["status"] == "unsupported"
         assert "skills" in data["note"]
+
+    def test_docs_surfaces_action_severity_findings(self) -> None:
+        from little_loops import doc_counts
+
+        result = doc_counts.VerificationResult()
+        result.add_result(
+            doc_counts.CountResult(
+                category="skills",
+                actual=1,
+                documented=2,
+                matches=False,
+                action_severity="route",
+                route_owner="ll-verify-docs",
+            )
+        )
+        with patch.object(doc_counts, "verify_documentation", return_value=result):
+            data = _full_docs_data()
+            findings = _full_docs_check()[0].findings
+        assert len(data["findings"]) == 1
+        assert data["findings"][0].label == "skills"
+        assert data["findings"][0].action_severity == "route"
+        assert data["findings"][0].route_owner == "ll-verify-docs"
+        assert findings == tuple(data["findings"])
 
     def test_skill_budget_reports_unsupported_over_budget(self) -> None:
         from little_loops import doc_counts
@@ -175,6 +200,25 @@ class TestFullAdapters:
         assert data["severity"] == "informational"
         assert "3" in data["note"]
 
+    def test_check_links_surfaces_action_severity_findings(self) -> None:
+        from little_loops import link_checker
+
+        broken = link_checker.LinkResult(
+            url="https://example.com/broken",
+            file="README.md",
+            line=1,
+            status="broken",
+            action_severity="mention",
+        )
+        result = link_checker.LinkCheckResult(broken_links=1, results=[broken])
+        with patch.object(link_checker, "check_markdown_links", return_value=result):
+            data = _full_check_links_data()
+            findings = _full_check_links_check()[0].findings
+        assert len(data["findings"]) == 1
+        assert data["findings"][0].label == "https://example.com/broken"
+        assert data["findings"][0].action_severity == "mention"
+        assert findings == tuple(data["findings"])
+
 
 class TestFullSection:
     """Aggregation and JSON-section behavior."""
@@ -211,7 +255,7 @@ class TestFullSection:
         with self._patch_check_links():
             section = _full_section_data()
         assert "docs" in section
-        assert set(section["docs"]) == {"status", "note"}
+        assert set(section["docs"]) == {"status", "note", "findings"}
 
 
 class TestMainDoctorFull:

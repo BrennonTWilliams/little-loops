@@ -233,7 +233,7 @@ Beyond the host-capability table, `ll-doctor` always runs 5 default install-surf
 
 **Flags:**
 - `-j`, `--json` — emit the report as JSON instead of the human-readable table. The JSON payload is a superset of the `CapabilityReport` dataclass: alongside `host`/`binary`/`version`/`capabilities` it includes `analytics_capture` (`{skills, cli_commands, corrections, file_events, correction_patterns}`), `issues` (`{auto_commit, auto_commit_prefix}`), and the install-surface keys `entry_points` (list of `{name, status, note}`), `skills_commands` (`{status, note, total}`), `decisions_store` (`{status, note}`), `history_db` (`{status, note}`), and `loop_validity` (`{status, note, total, invalid}`) — the same config/check state the text output prints under their respective sections (ENH-2762, FEAT-2793).
-- `--full` — additionally run the full `ll-verify-*` / `ll-check-links` checker family (FEAT-2795) under a "Full Verification (--full)" section: `docs`, `skill_budget`, `skills`, `triggers`, `decisions`, `package_data`, `kinds`, `design_tokens`, `des_audit`, `check_links` (does not wrap `ll-verify-cli-allowlist`). Adds a `full` key (dict keyed by verifier name → `{status, note, severity}`) to the `--json` payload when combined with `-j`/`--json`. `check_links` reports `severity: "error"` on genuinely broken links and `severity: "informational"` when the only failures are unreachable (network timeout/DNS) links (ENH-2836), so a flaky or offline network doesn't fail this check.
+- `--full` — additionally run the full `ll-verify-*` / `ll-check-links` checker family (FEAT-2795) under a "Full Verification (--full)" section: `docs`, `skill_budget`, `skills`, `triggers`, `decisions`, `package_data`, `kinds`, `design_tokens`, `des_audit`, `check_links` (does not wrap `ll-verify-cli-allowlist`). Adds a `full` key (dict keyed by verifier name → `{status, note, findings}`) to the `--json` payload when combined with `-j`/`--json`. `check_links` reports `severity: "error"` on genuinely broken links and `severity: "informational"` when the only failures are unreachable (network timeout/DNS) links (ENH-2836), so a flaky or offline network doesn't fail this check. `docs` and `check_links` additionally populate `findings` (a list of `{label, action_severity, route_owner}`, one entry per mismatched doc category or broken/unreachable link) surfacing each finding's `auto`/`mention`/`route` action-severity (ENH-2886/ENH-2887) — a distinct axis from `severity`, which only governs `ll-doctor`'s exit code. Every other `--full` verifier's `findings` is an empty list. The text-output rendering prints a `- <label>: <action_severity>` sub-line (with `-> <route_owner>` when routed) under any verifier with findings, without changing the one-line-per-verifier summary shape for verifiers that don't.
 
 **Exit codes:** `0` = all error-tier checks passed, `1` = an error-tier check failed. `ll-doctor` folds the host-capability report and any registered install-surface checks (FEAT-2793's `CheckResult` registry) — including the `--full` verifier family when requested — into a single severity split: `unsupported` capabilities/checks are error-tier (fail the exit code, as before); informational checks — e.g. an absent-but-optional subsystem — never affect it regardless of status.
 
@@ -2920,6 +2920,8 @@ Verify that documented counts (commands, agents, skills, loops) match actual fil
 | `--fix` | | Auto-fix count mismatches in documentation files |
 | `--directory` | `-C` | Base directory (default: current directory) |
 
+Each mismatch carries a closed-vocabulary `action_severity` field (`auto`/`mention`/`route`, ENH-2886), mirroring `ll-doctor`'s `CheckResult.severity` shape: `auto` is safe to rewrite silently, `mention` needs a human to confirm, `route` names the command that owns the repair (`route_owner`). `--fix` only rewrites `auto`-severity mismatches — `mention`/`route` findings are reported but left untouched. `verify_documentation()` currently emits `auto` for every count mismatch it finds; the other two values exist for callers that construct `CountResult` directly. `--json`/`--format json` output includes `action_severity` and `route_owner` on each mismatch.
+
 **Exit codes:** `0` = all counts match, `1` = mismatches found, `2` = error
 
 **Examples:**
@@ -2927,7 +2929,7 @@ Verify that documented counts (commands, agents, skills, loops) match actual fil
 ll-verify-docs                    # Check and show results
 ll-verify-docs --json             # Output as JSON
 ll-verify-docs --format markdown  # Markdown report
-ll-verify-docs --fix              # Auto-fix mismatches
+ll-verify-docs --fix              # Auto-fix mismatches (auto-severity only)
 ```
 
 ---
@@ -3164,6 +3166,8 @@ Check markdown documentation for broken links. External link failures are classi
 | `--workers` | `-w` | Maximum concurrent HTTP requests (default: 10) |
 | `--verbose` | `-v` | Show verbose output |
 | `--strict-network` | | Also fail the exit code on unreachable (timeout/DNS/connection) links, restoring the pre-ENH-2836 behavior |
+
+Each result also carries an `action_severity` field (`auto`/`mention`/`route`, ENH-2886), the same closed vocabulary `ll-verify-docs` uses: `valid`/`internal`/`ignored` results are `auto` (no action needed), `broken`/`unreachable` results are `mention` (a human should review — `ll-check-links` has no `--fix` path, so these are never silently rewritten). `route` is supported on `LinkResult` for callers that construct it directly with a different provenance, naming the owning command via `route_owner`.
 
 **Exit codes:** `0` = no broken links (unreachable links are reported but don't fail the gate, unless `--strict-network` is set), `1` = broken links found (or unreachable links found, with `--strict-network`), `2` = error
 

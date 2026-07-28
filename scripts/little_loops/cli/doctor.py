@@ -30,6 +30,21 @@ _STATUS_SYMBOLS: dict[str, str] = {
 
 
 @dataclass(frozen=True)
+class FindingDetail:
+    """One per-finding action-severity breakdown within a `CheckResult`.
+
+    Carries the `action_severity`/`route_owner` axis from `doc_counts.CountResult`
+    and `link_checker.LinkResult` (ENH-2886) down into `--full` output, distinct
+    from `CheckResult.severity`'s error/informational exit-code axis. `label`
+    identifies the finding (a doc category name or a link URL).
+    """
+
+    label: str
+    action_severity: Literal["auto", "mention", "route"]
+    route_owner: str | None = None
+
+
+@dataclass(frozen=True)
 class CheckResult:
     """One registered doctor check's outcome.
 
@@ -38,13 +53,17 @@ class CheckResult:
     an "error"-severity result with status "unsupported" fails the default
     exit code (the pre-registry host-capability behavior); "informational"
     results never do, regardless of status (for checks like an absent-but-
-    optional subsystem).
+    optional subsystem). `findings` is an additive optional breakdown of
+    per-finding action-severity (ENH-2887); it defaults to empty for every
+    check that doesn't populate it, so only `_full_docs_check()`/
+    `_full_check_links_check()` set it today.
     """
 
     name: str
     status: Literal["full", "partial", "unsupported"]
     note: str = ""
     severity: Literal["error", "informational"] = "error"
+    findings: tuple[FindingDetail, ...] = ()
 
 
 # Registered no-arg checks run unconditionally by main_doctor(). The host-
@@ -480,13 +499,31 @@ def _full_docs_data() -> dict:
     if result.all_match:
         return {"status": "full", "note": f"{result.total_checked} categor(y/ies) match"}
     names = ", ".join(m.category for m in result.mismatches)
-    return {"status": "unsupported", "note": f"mismatched: {names}"}
+    return {
+        "status": "unsupported",
+        "note": f"mismatched: {names}",
+        "findings": [
+            FindingDetail(
+                label=m.category,
+                action_severity=m.action_severity,
+                route_owner=m.route_owner,
+            )
+            for m in result.mismatches
+        ],
+    }
 
 
 @register_full_check
 def _full_docs_check() -> list[CheckResult]:
     data = _full_docs_data()
-    return [CheckResult(name="full:docs", status=data["status"], note=data["note"])]
+    return [
+        CheckResult(
+            name="full:docs",
+            status=data["status"],
+            note=data["note"],
+            findings=tuple(data.get("findings", ())),
+        )
+    ]
 
 
 def _full_skill_budget_data() -> dict:
@@ -743,12 +780,30 @@ def _full_check_links_data() -> dict:
             "status": "unsupported",
             "severity": "error",
             "note": f"{result.broken_links} broken link(s)",
+            "findings": [
+                FindingDetail(
+                    label=r.url,
+                    action_severity=r.action_severity,
+                    route_owner=r.route_owner,
+                )
+                for r in result.results
+                if r.status == "broken"
+            ],
         }
     if result.unreachable_links > 0:
         return {
             "status": "unsupported",
             "severity": "informational",
             "note": f"{result.unreachable_links} unreachable link(s) (network)",
+            "findings": [
+                FindingDetail(
+                    label=r.url,
+                    action_severity=r.action_severity,
+                    route_owner=r.route_owner,
+                )
+                for r in result.results
+                if r.status == "unreachable"
+            ],
         }
     return {
         "status": "full",
@@ -766,12 +821,18 @@ def _full_check_links_check() -> list[CheckResult]:
             status=data["status"],
             note=data["note"],
             severity=data.get("severity", "error"),
+            findings=tuple(data.get("findings", ())),
         )
     ]
 
 
 def _print_full_section() -> None:
-    """Print the `--full` aggregation section (one line per verifier)."""
+    """Print the `--full` aggregation section (one line per verifier).
+
+    Verifiers that populate `CheckResult.findings` (ENH-2887) get an additional
+    per-finding sub-line showing action-severity, without changing the existing
+    one-line-per-verifier summary shape for every other check.
+    """
     print()
     print("Full Verification (--full)")
     print("─" * 40)
@@ -780,12 +841,26 @@ def _print_full_section() -> None:
         label = result.name.removeprefix("full:")
         note = f"  {result.note}" if result.note else ""
         print(f"  {symbol}  {label}{note}")
+        for finding in result.findings:
+            owner = f" -> {finding.route_owner}" if finding.route_owner else ""
+            print(f"      - {finding.label}: {finding.action_severity}{owner}")
 
 
 def _full_section_data() -> dict:
     """`--json --full`'s per-verifier section, keyed by verifier name."""
     return {
-        result.name.removeprefix("full:"): {"status": result.status, "note": result.note}
+        result.name.removeprefix("full:"): {
+            "status": result.status,
+            "note": result.note,
+            "findings": [
+                {
+                    "label": f.label,
+                    "action_severity": f.action_severity,
+                    "route_owner": f.route_owner,
+                }
+                for f in result.findings
+            ],
+        }
         for result in _run_full_checks()
     }
 
