@@ -5096,7 +5096,7 @@ class StateConfig:
     agent: str | None = None           # Subprocess agent name; passes --agent <name> to Claude CLI (prompt states only)
     tools: list[str] | None = None     # Subprocess tool scope; passes --tools <csv> to Claude CLI (prompt states only)
     model: str | None = None           # Model override for this state's LLM action
-    effort: str | None = None          # Reasoning-effort override (low/medium/high/xhigh/max); resolved via state.effort or self.run_effort or self.fsm.llm.effort (ENH-2869)
+    effort: str | None = None          # Reasoning-effort override (low/medium/high/xhigh/max); config-resolved fallback via state.effort or self.run_effort or self.fsm.llm.effort (ENH-2869); action_complete payload prefers the host CLI's actually-applied effort observed from the session JSONL when available (ENH-2885)
     extra_routes: dict[str, str] = field(default_factory=dict)  # Additional on_<verdict> → state mappings
     type: str | None = None            # State type marker (e.g., "learning")
     max_rate_limit_retries: int | None = None        # Short-burst tier budget; requires on_rate_limit_exhausted

@@ -672,9 +672,11 @@ class StateConfig:
     session_mode: str | None = None
     # ENH-2869: reasoning-effort level override. State override of the
     # loop-default tier (LLMConfig.effort). Vocabulary: low/medium/high/xhigh/max
-    # (undocumented as a Literal, mirroring session_mode). Resolved via
-    # `state.effort or self.run_effort or self.fsm.llm.effort`
-    # (_resolve_action_effort() in fsm/executor.py).
+    # (undocumented as a Literal, mirroring session_mode). Config-resolved
+    # fallback via `state.effort or self.run_effort or self.fsm.llm.effort`
+    # (_resolve_action_effort() in fsm/executor.py); the action_complete
+    # payload prefers the host CLI's actually-applied effort observed from the
+    # session JSONL over this value when available (ENH-2885).
     effort: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -937,9 +939,12 @@ class LLMConfig:
     max_tokens: int = 256
     timeout: int = 1800
     # ENH-2869: loop-default reasoning-effort tier for _resolve_action_effort()'s
-    # `state.effort or self.run_effort or self.fsm.llm.effort` precedence chain.
-    # Vocabulary: low/medium/high/xhigh/max (undocumented as a Literal, like
-    # StateConfig.session_mode). No forced default — None means unset.
+    # `state.effort or self.run_effort or self.fsm.llm.effort` config-resolved
+    # fallback chain. Vocabulary: low/medium/high/xhigh/max (undocumented as a
+    # Literal, like StateConfig.session_mode). No forced default — None means
+    # unset. The action_complete payload prefers the host CLI's actually-applied
+    # effort observed from the session JSONL over this value when available
+    # (ENH-2885).
     effort: str | None = None
 
     def to_dict(self) -> dict[str, Any]:

@@ -9849,6 +9849,90 @@ class TestStderrPreview:
         assert preview.endswith("TAIL")
 
 
+class TestObservedEffortFromSessionJsonl:
+    """ENH-2885: action_complete prefers the JSONL-observed effort over config."""
+
+    def _prompt_fsm(self, effort: str | None = None) -> FSMLoop:
+        return FSMLoop(
+            name="test",
+            initial="ask",
+            states={
+                "ask": StateConfig(
+                    action="Say hi",
+                    action_type="prompt",
+                    effort=effort,
+                    on_yes="done",
+                    on_no="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+    def _run_and_collect(self, fsm: FSMLoop, runner: Any) -> list[dict[str, Any]]:
+        events: list[dict[str, Any]] = []
+        executor = FSMExecutor(fsm, event_callback=events.append, action_runner=runner)
+        executor.run()
+        return [e for e in events if e["event"] == "action_complete"]
+
+    def test_jsonl_effort_overrides_config_value(self, tmp_path: Path) -> None:
+        session_jsonl = tmp_path / "session.jsonl"
+        session_jsonl.write_text('{"type": "assistant", "effort": "high"}\n')
+
+        fsm = self._prompt_fsm(effort="low")
+        runner = MockActionRunner()
+        runner.always_return(output="hi", exit_code=0)
+
+        with patch(
+            "little_loops.fsm.executor.get_current_session_jsonl",
+            return_value=session_jsonl,
+        ):
+            completes = self._run_and_collect(fsm, runner)
+
+        assert completes[0]["effort"] == "high"
+
+    def test_falls_back_to_config_when_jsonl_has_no_effort(self, tmp_path: Path) -> None:
+        session_jsonl = tmp_path / "session.jsonl"
+        session_jsonl.write_text('{"type": "assistant", "message": {}}\n')
+
+        fsm = self._prompt_fsm(effort="low")
+        runner = MockActionRunner()
+        runner.always_return(output="hi", exit_code=0)
+
+        with patch(
+            "little_loops.fsm.executor.get_current_session_jsonl",
+            return_value=session_jsonl,
+        ):
+            completes = self._run_and_collect(fsm, runner)
+
+        assert completes[0]["effort"] == "low"
+
+    def test_falls_back_to_config_when_no_session_jsonl(self) -> None:
+        fsm = self._prompt_fsm(effort="medium")
+        runner = MockActionRunner()
+        runner.always_return(output="hi", exit_code=0)
+
+        with patch(
+            "little_loops.fsm.executor.get_current_session_jsonl",
+            return_value=None,
+        ):
+            completes = self._run_and_collect(fsm, runner)
+
+        assert completes[0]["effort"] == "medium"
+
+    def test_no_effort_key_when_neither_config_nor_jsonl_set(self) -> None:
+        fsm = self._prompt_fsm(effort=None)
+        runner = MockActionRunner()
+        runner.always_return(output="hi", exit_code=0)
+
+        with patch(
+            "little_loops.fsm.executor.get_current_session_jsonl",
+            return_value=None,
+        ):
+            completes = self._run_and_collect(fsm, runner)
+
+        assert "effort" not in completes[0]
+
+
 class TestRequestPathDispatchWiring:
     """FEAT-2716: request_path == 'sdk'/'batch' branches before action_runner.run()."""
 

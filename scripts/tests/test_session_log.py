@@ -13,6 +13,7 @@ from little_loops.session_log import (
     append_session_log_entry,
     get_current_session_jsonl,
     parse_session_log,
+    read_latest_effort_from_session_jsonl,
 )
 from little_loops.user_messages import encode_project_path
 
@@ -91,6 +92,42 @@ class TestGetCurrentSessionJsonl:
         with patch("little_loops.session_log.get_project_folder", return_value=tmp_path):
             with patch.object(Path, "stat", all_gone):
                 assert get_current_session_jsonl() is None
+
+
+class TestReadLatestEffortFromSessionJsonl:
+    """Tests for read_latest_effort_from_session_jsonl (ENH-2885)."""
+
+    def test_returns_none_for_missing_file(self, tmp_path: Path) -> None:
+        assert read_latest_effort_from_session_jsonl(tmp_path / "missing.jsonl") is None
+
+    def test_returns_none_when_no_assistant_lines(self, tmp_path: Path) -> None:
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text('{"type": "user", "effort": "high"}\n')
+        assert read_latest_effort_from_session_jsonl(jsonl) is None
+
+    def test_returns_none_when_no_effort_field(self, tmp_path: Path) -> None:
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text('{"type": "assistant", "message": {}}\n')
+        assert read_latest_effort_from_session_jsonl(jsonl) is None
+
+    def test_returns_effort_from_single_assistant_line(self, tmp_path: Path) -> None:
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text('{"type": "assistant", "effort": "low"}\n')
+        assert read_latest_effort_from_session_jsonl(jsonl) == "low"
+
+    def test_last_write_wins_across_multiple_assistant_lines(self, tmp_path: Path) -> None:
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            '{"type": "assistant", "effort": "low"}\n'
+            '{"type": "user"}\n'
+            '{"type": "assistant", "effort": "high"}\n'
+        )
+        assert read_latest_effort_from_session_jsonl(jsonl) == "high"
+
+    def test_skips_malformed_json_lines(self, tmp_path: Path) -> None:
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text('not json\n{"type": "assistant", "effort": "medium"}\n')
+        assert read_latest_effort_from_session_jsonl(jsonl) == "medium"
 
 
 class TestAppendSessionLogEntry:

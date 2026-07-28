@@ -113,6 +113,45 @@ def get_current_session_id(cwd: Path | None = None) -> str | None:
     return jsonl.stem if jsonl is not None else None
 
 
+def read_latest_effort_from_session_jsonl(session_jsonl: Path) -> str | None:
+    """Read the most recent ``"effort"`` field from a session JSONL's assistant lines.
+
+    ENH-2885: the host CLI reports the actual reasoning-effort level it applied
+    as a top-level ``"effort"`` field on every ``type: "assistant"`` line. Scans
+    all lines (last-write-wins, mirroring how callers take ``usage_events[-1]``
+    for the observed ``model`` value) so the most recent assistant turn's effort
+    wins over earlier ones in the same file.
+
+    Args:
+        session_jsonl: Path to a session JSONL file.
+
+    Returns:
+        The most recent assistant-line effort value, or None if the file is
+        missing, unreadable, or no assistant line carries an ``"effort"`` field.
+    """
+    import json
+
+    latest: str | None = None
+    try:
+        with session_jsonl.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if record.get("type") != "assistant":
+                    continue
+                effort = record.get("effort")
+                if effort:
+                    latest = effort
+    except OSError:
+        return None
+    return latest
+
+
 def append_session_log_entry(
     issue_path: Path,
     command: str,

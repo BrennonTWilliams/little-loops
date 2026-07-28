@@ -64,7 +64,10 @@ from little_loops.fsm.types import ActionResult, Evaluator, EventCallback, Execu
 from little_loops.fsm.validation import _SKILL_INVOKE_RE, _effective_session_mode
 from little_loops.issue_lifecycle import FailureType, classify_failure
 from little_loops.prompts import FragmentStore, fragment_key
-from little_loops.session_log import get_current_session_jsonl
+from little_loops.session_log import (
+    get_current_session_jsonl,
+    read_latest_effort_from_session_jsonl,
+)
 from little_loops.subprocess_utils import (
     TokenUsage,
     UsageCallback,
@@ -1710,11 +1713,9 @@ class FSMExecutor:
                 **extra_kwargs,
             )
 
-        # ENH-2869: resolve the reasoning-effort level for header display. No host
-        # surface reports an "actual" effort value back, so this is always the
-        # *resolved* config value (state/run/loop-default precedence), gated to
-        # prompt-mode the same way `model` is above — shell/mcp actions have no
-        # effort concept.
+        # ENH-2869: resolve the reasoning-effort level for header display, gated
+        # to prompt-mode the same way `model` is above — shell/mcp actions have
+        # no effort concept. This is the config-resolved fallback value.
         effort_value = self._resolve_action_effort(state) if action_mode == "prompt" else None
 
         preview = result.output[-2000:].strip() if result.output else None
@@ -1731,6 +1732,13 @@ class FSMExecutor:
         if action_mode == "prompt":
             session_jsonl = get_current_session_jsonl()
             payload["session_jsonl"] = str(session_jsonl) if session_jsonl else None
+            # ENH-2885: prefer the host CLI's actually-applied effort, observed
+            # from the session JSONL's assistant lines, over the resolved
+            # config value — mirrors the `model` observed-value override below.
+            if session_jsonl is not None:
+                observed_effort = read_latest_effort_from_session_jsonl(session_jsonl)
+                if observed_effort:
+                    effort_value = observed_effort
         if effort_value is not None:
             payload["effort"] = effort_value
         # Aggregate token usage from host-CLI invocations (prompt / slash_command only)
@@ -2281,7 +2289,10 @@ class FSMExecutor:
 
         Mirrors ``_resolve_action_model()``'s precedence chain, but ``effort``
         has no forced default (``LLMConfig.effort`` defaults to ``None``) —
-        the header only appends a suffix when a value is actually set.
+        the header only appends a suffix when a value is actually set. This is
+        the config-resolved *fallback*; the ``action_complete`` payload prefers
+        the host CLI's actually-applied effort observed from the session JSONL
+        when available (ENH-2885).
         """
         return state.effort or self.run_effort or self.fsm.llm.effort
 
