@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import re
 import textwrap
+from dataclasses import dataclass
 from typing import Any
 
 import yaml
@@ -24,6 +25,54 @@ STATUS_SYNONYMS: dict[str, str] = {
     "in progress": "in_progress",
     "wip": "in_progress",
     "pending": "open",
+}
+
+
+@dataclass(frozen=True)
+class DeprecatedFrontmatterEntry:
+    """A retired frontmatter key/value paired with a mandatory prose reason (ENH-2876).
+
+    ``reason`` must be non-empty prose naming what replaced the retired
+    key/value and why — a bare ``deprecated: true``-style flag with no
+    explanation is exactly the gap this map closes. Enforced at construction
+    time so a deprecation entry added without a reason fails immediately
+    rather than silently defaulting to an empty string.
+    """
+
+    reason: str
+
+    def __post_init__(self) -> None:
+        if not self.reason or not self.reason.strip():
+            raise ValueError(
+                "DeprecatedFrontmatterEntry requires a non-empty prose reason"
+            )
+
+
+# Deprecated frontmatter *keys* — presence of the key itself is the signal.
+# The already-retired cases come first (ENH-2876 AC3): superseded_by (ENH-2829,
+# purely derived and never hand-authored) and the pre-existing renamed-key
+# aliases (ENH-1434/BUG-... rename passes).
+DEPRECATED_FRONTMATTER_KEYS: dict[str, DeprecatedFrontmatterEntry] = {
+    "superseded_by": DeprecatedFrontmatterEntry(
+        reason=(
+            "Always derived from 'supersedes' on the replacement issue via "
+            "issue_parser.superseded_by(); never hand-author this key — it is "
+            "silently ignored on read (ENH-2829)."
+        )
+    ),
+    "parent_issue": DeprecatedFrontmatterEntry(reason="Renamed to 'parent' (ENH-1434)."),
+    "target_branch": DeprecatedFrontmatterEntry(reason="Renamed to 'base_branch'."),
+    "related": DeprecatedFrontmatterEntry(reason="Renamed to 'relates_to' (ENH-1434)."),
+}
+
+# Deprecated frontmatter *status values* — the coerced STATUS_SYNONYMS cases
+# (ENH-2876 AC3), each paired with the canonical replacement it is silently
+# rewritten to today.
+DEPRECATED_STATUS_VALUES: dict[str, DeprecatedFrontmatterEntry] = {
+    synonym: DeprecatedFrontmatterEntry(
+        reason=f"Coerced to canonical status '{canonical}' on read — write '{canonical}' directly."
+    )
+    for synonym, canonical in STATUS_SYNONYMS.items()
 }
 
 

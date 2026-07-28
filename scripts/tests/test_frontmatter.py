@@ -5,11 +5,42 @@ from __future__ import annotations
 import pytest
 
 from little_loops.frontmatter import (
+    DEPRECATED_FRONTMATTER_KEYS,
+    DEPRECATED_STATUS_VALUES,
+    STATUS_SYNONYMS,
+    DeprecatedFrontmatterEntry,
     parse_frontmatter,
     parse_skill_frontmatter,
     strip_frontmatter,
     update_frontmatter,
 )
+
+
+class TestDeprecatedFrontmatterEntry:
+    """Tests for DeprecatedFrontmatterEntry and the deprecation maps (ENH-2876)."""
+
+    def test_empty_reason_raises(self) -> None:
+        """A deprecation entry with no reason fails validation (AC2)."""
+        with pytest.raises(ValueError, match="non-empty prose reason"):
+            DeprecatedFrontmatterEntry(reason="")
+
+    def test_whitespace_only_reason_raises(self) -> None:
+        with pytest.raises(ValueError, match="non-empty prose reason"):
+            DeprecatedFrontmatterEntry(reason="   ")
+
+    def test_non_empty_reason_constructs(self) -> None:
+        entry = DeprecatedFrontmatterEntry(reason="Renamed to 'foo'.")
+        assert entry.reason == "Renamed to 'foo'."
+
+    def test_superseded_by_is_first_entry(self) -> None:
+        """The already-retired superseded_by case leads the map (AC3)."""
+        assert next(iter(DEPRECATED_FRONTMATTER_KEYS)) == "superseded_by"
+
+    def test_all_status_synonyms_represented(self) -> None:
+        """Every coerced status synonym is represented in the map (AC3)."""
+        assert set(DEPRECATED_STATUS_VALUES.keys()) == set(STATUS_SYNONYMS.keys())
+        for synonym, entry in DEPRECATED_STATUS_VALUES.items():
+            assert STATUS_SYNONYMS[synonym] in entry.reason
 
 
 class TestParseFrontmatter:

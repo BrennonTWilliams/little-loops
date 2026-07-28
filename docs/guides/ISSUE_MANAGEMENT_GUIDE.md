@@ -362,7 +362,7 @@ Use this to sense-check your backlog before sprint planning. A backlog with 200 
 - Impact includes justifications (not just "P2 / Medium / Low")
 - Integration Map covers all affected files
 - Implementation Steps are present and high-level
-- No deprecated sections used
+- No deprecated sections used, and no retired frontmatter keys/values (e.g. hand-authored `superseded_by`, a coerced status synonym like `completed`) — see `deprecated_key` in `check_format_gaps()` (ENH-2876)
 - Proposed Solution uses anchors, not line numbers
 - For BUGs: Root Cause identifies file + function anchor + explanation
 - For FEATs: Acceptance Criteria are individually testable

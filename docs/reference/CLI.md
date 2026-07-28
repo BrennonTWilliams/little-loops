@@ -1634,7 +1634,7 @@ ll-issues check-open-questions ENH-2446   # Exit 0 — no unresolved decision su
 
 #### `ll-issues format-check`
 
-Deterministic (no-LLM) structural linter for issue formatting (ENH-2426). Grades an issue against its type template and reports gaps in seven classes: `missing` (a required section header absent entirely), `renamed` (a present section header is deprecated with an extractable canonical replacement, e.g. `Proposed Fix` → `Proposed Solution`), `empty` (a required header present with a whitespace-only body), `boilerplate` (a required section's body still equals its `creation_template`), `malformed_id` (frontmatter `id` present but not matching the filename-derived `TYPE-NNN`, BUG-2769), `prose_dep_drift` (FEAT-2849: the body claims a dependency in prose — "Depends on ID", "Blocked by ID", "Requires ID", or a `## Blocked By` section — on an active issue absent from `blocked_by`/`depends_on`), and `stale_prose_dep` (FEAT-2849: the body's prose dependency claim names a `done`/`cancelled` issue — the remedy is deleting the stale text, not adding an edge). Fails open — an unresolved template or unreadable issue file reports no gaps (exit 0) rather than blocking.
+Deterministic (no-LLM) structural linter for issue formatting (ENH-2426). Grades an issue against its type template and reports gaps in seven classes: `missing` (a required section header absent entirely), `renamed` (a present section header is deprecated with an extractable canonical replacement, e.g. `Proposed Fix` → `Proposed Solution`), `empty` (a required header present with a whitespace-only body), `boilerplate` (a required section's body still equals its `creation_template`), `malformed_id` (frontmatter `id` present but not matching the filename-derived `TYPE-NNN`, BUG-2769), `prose_dep_drift` (FEAT-2849: the body claims a dependency in prose — "Depends on ID", "Blocked by ID", "Requires ID", or a `## Blocked By` section — on an active issue absent from `blocked_by`/`depends_on`), `stale_prose_dep` (FEAT-2849: the body's prose dependency claim names a `done`/`cancelled` issue — the remedy is deleting the stale text, not adding an edge), and `deprecated_key` (ENH-2876: frontmatter carries a retired key like hand-authored `superseded_by` or a coerced status synonym like `status: completed`, each reported with its mandatory prose reason). Fails open — an unresolved template or unreadable issue file reports no gaps (exit 0) rather than blocking.
 
 | Argument/Flag | Default | Description |
 |---------------|---------|-------------|
@@ -1647,7 +1647,7 @@ Deterministic (no-LLM) structural linter for issue formatting (ENH-2426). Grades
 **Examples:**
 ```bash
 ll-issues format-check ENH-2426               # text report, exit 0/1
-ll-issues format-check ENH-2426 --format json # {"missing": [...], "renamed": [...], "empty": [...], "boilerplate": [...], "malformed_id": [...], "prose_dep_drift": [...], "stale_prose_dep": [...]}
+ll-issues format-check ENH-2426 --format json # {"missing": [...], "renamed": [...], "empty": [...], "boilerplate": [...], "malformed_id": [...], "prose_dep_drift": [...], "stale_prose_dep": [...], "program_design_nonspecific": [...], "deprecated_key": [...]}
 ll-issues format-check --all --fix            # preview blocked_by backfills for every drifting issue (dry-run)
 ll-issues format-check --all --fix --apply    # write the previewed edges via `ll-issues link`
 ```

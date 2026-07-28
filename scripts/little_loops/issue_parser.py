@@ -13,7 +13,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from little_loops.cli_args import _id_matches
-from little_loops.frontmatter import parse_frontmatter
+from little_loops.frontmatter import (
+    DEPRECATED_FRONTMATTER_KEYS,
+    DEPRECATED_STATUS_VALUES,
+    parse_frontmatter,
+)
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -173,6 +177,7 @@ class FormatGaps:
     prose_dep_drift: list[str] = field(default_factory=list)
     stale_prose_dep: list[str] = field(default_factory=list)
     program_design_nonspecific: list[str] = field(default_factory=list)
+    deprecated_key: list[str] = field(default_factory=list)
 
     @property
     def has_gaps(self) -> bool:
@@ -186,6 +191,7 @@ class FormatGaps:
             or self.prose_dep_drift
             or self.stale_prose_dep
             or self.program_design_nonspecific
+            or self.deprecated_key
         )
 
     def to_dict(self) -> dict[str, list[str]]:
@@ -199,6 +205,7 @@ class FormatGaps:
             "prose_dep_drift": self.prose_dep_drift,
             "stale_prose_dep": self.stale_prose_dep,
             "program_design_nonspecific": self.program_design_nonspecific,
+            "deprecated_key": self.deprecated_key,
         }
 
 
@@ -260,6 +267,12 @@ def check_format_gaps(
             against the repo. Only reported when the project has armed the gate
             with a ``.ll/program-design-cutover.json`` stamp and the issue is not
             grandfathered or opted out via ``program_design_not_applicable``.
+        deprecated_key: the frontmatter carries a retired key (e.g.
+            ``superseded_by``) or a coerced status synonym (ENH-2876,
+            :data:`little_loops.frontmatter.DEPRECATED_FRONTMATTER_KEYS`,
+            :data:`little_loops.frontmatter.DEPRECATED_STATUS_VALUES`). Each
+            entry pairs the retired key/value with its mandatory prose reason,
+            surfaced in the same output that reports the key.
 
     Args:
         issue_path: Path to the issue markdown file.
@@ -283,6 +296,19 @@ def check_format_gaps(
         content = issue_path.read_text(encoding="utf-8")
     except Exception:
         return gaps
+
+    frontmatter = parse_frontmatter(content)
+    for key, entry in DEPRECATED_FRONTMATTER_KEYS.items():
+        if key in frontmatter:
+            gaps.deprecated_key.append(f"{key} — {entry.reason}")
+    # parse_frontmatter() already canonicalizes STATUS_SYNONYMS on read (unconditionally),
+    # so the raw synonym must be recovered from the frontmatter block text directly.
+    raw_status_match = re.search(r"(?m)^status:\s*['\"]?([^'\"\n]+?)['\"]?\s*$", content)
+    if raw_status_match:
+        raw_status = raw_status_match.group(1).strip()
+        if raw_status in DEPRECATED_STATUS_VALUES:
+            entry = DEPRECATED_STATUS_VALUES[raw_status]
+            gaps.deprecated_key.append(f"status: {raw_status} — {entry.reason}")
 
     type_match = _ISSUE_TYPE_RE.search(issue_path.name)
     if not type_match:

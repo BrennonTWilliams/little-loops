@@ -3776,6 +3776,53 @@ class TestFormatGradedChecker:
         assert gaps.empty == []
         assert gaps.boilerplate == []
 
+    def test_deprecated_frontmatter_key_reports_deprecated_key(self, tmp_path: Path) -> None:
+        """A hand-authored superseded_by: key is reported with its prose reason (ENH-2876)."""
+        from little_loops.issue_parser import check_format_gaps
+
+        bugs_dir = tmp_path / "bugs"
+        bugs_dir.mkdir()
+        issue_file = bugs_dir / "P3-BUG-9004-test-bug.md"
+        body = _CLEAN_BUG_BODY.replace(
+            "status: open", "status: open\nsuperseded_by: BUG-9000"
+        )
+        issue_file.write_text(body)
+
+        gaps = check_format_gaps(issue_file)
+
+        assert len(gaps.deprecated_key) == 1
+        assert gaps.deprecated_key[0].startswith("superseded_by — ")
+        assert gaps.has_gaps is True
+
+    def test_deprecated_status_synonym_reports_deprecated_key(self, tmp_path: Path) -> None:
+        """A raw status synonym (e.g. 'completed') is reported, not the coerced value."""
+        from little_loops.issue_parser import check_format_gaps
+
+        bugs_dir = tmp_path / "bugs"
+        bugs_dir.mkdir()
+        issue_file = bugs_dir / "P3-BUG-9005-test-bug.md"
+        body = _CLEAN_BUG_BODY.replace("status: open", "status: completed")
+        issue_file.write_text(body)
+
+        gaps = check_format_gaps(issue_file)
+
+        assert len(gaps.deprecated_key) == 1
+        assert gaps.deprecated_key[0].startswith("status: completed — ")
+        assert "'done'" in gaps.deprecated_key[0]
+
+    def test_no_deprecated_keys_reports_empty(self, tmp_path: Path) -> None:
+        """A clean issue with no retired keys/values reports no deprecated_key gaps."""
+        from little_loops.issue_parser import check_format_gaps
+
+        bugs_dir = tmp_path / "bugs"
+        bugs_dir.mkdir()
+        issue_file = bugs_dir / "P3-BUG-9006-test-bug.md"
+        issue_file.write_text(_CLEAN_BUG_BODY)
+
+        gaps = check_format_gaps(issue_file)
+
+        assert gaps.deprecated_key == []
+
     def test_empty_required_section_reports_empty(self, tmp_path: Path) -> None:
         """A required header present with a whitespace-only body is reported as empty."""
         from little_loops.issue_parser import check_format_gaps

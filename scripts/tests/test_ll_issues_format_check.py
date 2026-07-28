@@ -276,6 +276,7 @@ class TestFormatCheckJsonOutput:
             "prose_dep_drift": [],
             "stale_prose_dep": [],
             "program_design_nonspecific": [],
+            "deprecated_key": [],
         }
 
     def test_gapped_issue_json_output(

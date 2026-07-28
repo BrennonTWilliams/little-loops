@@ -849,7 +849,7 @@ def check_format_gaps(
 
 Grade an issue's structural format gaps against its type template (ENH-2426). Deterministic (no LLM) — backs the `ll-issues format-check` subcommand and the `ensure_formatted` gate in `rn-remediate.yaml`. Unlike `is_formatted()`, this always runs the structural analysis; it does not honor the `/ll:format-issue` session-log shortcut, since every issue reaching the gate has already run that command.
 
-Reports eight gap classes on the returned `FormatGaps` dataclass (`missing`, `renamed`, `empty`, `boilerplate`, `malformed_id`, `prose_dep_drift`, `stale_prose_dep`, `program_design_nonspecific` — each a `list[str]`, plus a derived `has_gaps` property and a `to_dict()` for JSON output):
+Reports nine gap classes on the returned `FormatGaps` dataclass (`missing`, `renamed`, `empty`, `boilerplate`, `malformed_id`, `prose_dep_drift`, `stale_prose_dep`, `program_design_nonspecific`, `deprecated_key` — each a `list[str]`, plus a derived `has_gaps` property and a `to_dict()` for JSON output):
 - **missing** — a required section header is absent from the body.
 - **renamed** — a present section header is `deprecated: true` in the template with an extractable canonical replacement in its `deprecation_reason` (e.g. `"Proposed Fix" -> "Proposed Solution"`).
 - **empty** — a required section header is present but its body is whitespace-only.
@@ -858,6 +858,7 @@ Reports eight gap classes on the returned `FormatGaps` dataclass (`missing`, `re
 - **prose_dep_drift** (FEAT-2849) — the body claims a dependency in prose (`extract_prose_deps()`, see below) on an **active** issue absent from `blocked_by`/`depends_on`.
 - **stale_prose_dep** (FEAT-2849) — the body's prose dependency claim names a `done`/`cancelled` issue — the remedy is deleting the stale text, not adding an edge.
 - **program_design_nonspecific** (ENH-2852) — the `## Program Design` section is present and non-boilerplate but not *specific*: it carries no signature-shaped line (`name(params) -> ret`, `field: type`), or names no `Call Path` anchor that resolves against the repo. Graded by `little_loops.issues.program_design.grade_program_design()`. **Opt-in per project and grandfathered**: the whole Program Design check — including the `missing`/`empty` entries for that section — is skipped unless the project has armed the gate by writing `.ll/program-design-cutover.json` (`{"sha": "<40-char SHA>", "date": "YYYY-MM-DD"}`), and is skipped per-issue when the issue's design timestamp (latest `/ll:refine-issue` Session Log entry, else `discovered_date`) is *strictly earlier* than the stamped date, or when frontmatter carries `program_design_not_applicable: true`. Only call-path anchors must resolve; new identifiers need only be signature-*shaped*, and a new identifier that happens to resolve never changes the verdict.
+- **deprecated_key** (ENH-2876) — frontmatter carries a retired key (e.g. hand-authored `superseded_by`) or a coerced status synonym (e.g. `status: completed`), each paired with a mandatory prose reason from `little_loops.frontmatter.DEPRECATED_FRONTMATTER_KEYS`/`DEPRECATED_STATUS_VALUES`.
 
 **Parameters:**
 - `issue_path` - Path to the issue markdown file

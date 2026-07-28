@@ -97,13 +97,15 @@ def _print_gaps(gaps: FormatGaps) -> None:
         print(f"  stale_prose_dep: {entry}")
     for entry in gaps.program_design_nonspecific:
         print(f"  program_design_nonspecific: {entry}")
+    for entry in gaps.deprecated_key:
+        print(f"  deprecated_key: {entry}")
 
 
 def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
     """Report structural format gaps for one issue, or sweep all active issues.
 
     Gap classes: missing/renamed/empty/boilerplate/malformed_id/
-    prose_dep_drift/stale_prose_dep/program_design_nonspecific.
+    prose_dep_drift/stale_prose_dep/program_design_nonspecific/deprecated_key.
 
     Returns:
         0 when structurally compliant (all issues, in --all mode), 1 when gaps
