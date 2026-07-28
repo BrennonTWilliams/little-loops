@@ -1403,6 +1403,11 @@
           "default": "report",
           "description": "Session-end stale-ref sweep mode (FEAT-1680). report prints findings to stderr; auto also rewrites them in-place."
         },
+        "doc_drift_throttle_days": {
+          "type": "integer",
+          "default": 7,
+          "description": "Minimum days between session-start doc-drift checks (ENH-2888) per project, tracked via a timestamp state file. Set LL_DOC_DRIFT_DISABLE to opt out entirely."
+        },
         "pre_compact": {
           "type": "object",
           "description": "Pre-compact hook configuration (ENH-2341).",

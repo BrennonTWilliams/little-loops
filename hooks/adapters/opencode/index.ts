@@ -8,7 +8,8 @@
  * the LL_HOOK_HOST environment variable so the Python dispatcher constructs
  * LLHookEvent with host="opencode".
  *
- * MVP scope: session.created → session_start, session.compacted → pre_compact.
+ * MVP scope: session.created → session_start (then drift_check, ENH-2888),
+ * session.compacted → pre_compact.
  * tool.execute.after → post_tool_use is wired as fire-and-forget (no `await`
  * on spawnIntent) per FEAT-1489 — zero user-visible latency cost.
  * tool.execute.before is still deferred (blocking pre-tool requires a
@@ -16,7 +17,7 @@
  */
 import type { Plugin } from "@opencode-ai/plugin";
 
-type Intent = "session_start" | "pre_compact" | "post_tool_use";
+type Intent = "session_start" | "drift_check" | "pre_compact" | "post_tool_use";
 
 interface SpawnResult {
   stdout: string;
@@ -59,6 +60,11 @@ const plugin: Plugin = async (ctx) => ({
       // the dispatcher contract: exit_code=2 means "block + inject feedback".
       throw new Error(stderr || "session_start blocked");
     }
+    // Second sequential dispatch (ENH-2888): drift_check is advisory-only and
+    // always exits 0, so its stdout/stderr are surfaced but never block or
+    // override session_start's return value.
+    const driftResult = await spawnIntent("drift_check", input, ctx.cwd);
+    if (driftResult.stderr) console.error(driftResult.stderr);
     return stdout ? JSON.parse(stdout) : undefined;
   },
   "session.compacted": async (input: unknown) => {

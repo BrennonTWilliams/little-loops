@@ -6470,7 +6470,11 @@ class CountResult:
     file: str | None           # Documentation file path
     line: int | None           # Line number in doc file
     matches: bool              # Whether counts match
+    action_severity: Literal["auto", "mention", "route"] = "auto"  # ENH-2886
+    route_owner: str | None = None  # Owning command, set only when action_severity is "route"
 ```
+
+`action_severity` is a closed vocabulary mirroring `cli/doctor.py`'s `CheckResult.severity` shape: `auto` is safe for `fix_counts()` to rewrite silently, `mention` needs a human to confirm before any rewrite, `route` means another command owns the repair (named in `route_owner`). `verify_documentation()` emits `auto` for every mismatch it finds today; `mention`/`route` exist for callers that construct `CountResult` with a different provenance.
 
 #### VerificationResult
 
@@ -6504,7 +6508,7 @@ class FixResult:
 | `count_files` | Count files matching a glob pattern in a directory |
 | `extract_count_from_line` | Extract a count number from a documentation line |
 | `verify_documentation` | Verify all documented counts against actual file counts |
-| `fix_counts` | Auto-fix count mismatches in documentation files |
+| `fix_counts` | Auto-fix count mismatches in documentation files (`auto`-severity only, ENH-2886) |
 | `format_result_text` | Format verification result as plain text |
 | `format_result_json` | Format verification result as JSON |
 | `format_result_markdown` | Format verification result as Markdown |
@@ -6556,7 +6560,11 @@ class LinkResult:
     status: str                 # "valid", "broken", "timeout", "ignored", "internal"
     error: str | None           # Error message if broken
     link_text: str | None       # The link text from markdown [text](url)
+    action_severity: Literal["auto", "mention", "route"] = "auto"  # ENH-2886
+    route_owner: str | None = None  # Owning command, set only when action_severity is "route"
 ```
+
+`action_severity` mirrors `doc_counts.CountResult.action_severity`'s vocabulary. `check_markdown_links()` assigns `auto` to `valid`/`internal`/`ignored` results (no action needed) and `mention` to `broken`/`unreachable` results (a human should review — `ll-check-links` has no `--fix` path, so `mention` findings are surfaced but never rewritten). `route` is supported for callers that construct `LinkResult` directly with a different provenance.
 
 #### LinkCheckResult
 
@@ -8653,9 +8661,9 @@ def main_hooks(argv: list[str]) -> int: ...
 4. Calls the handler; writes `result.stdout` to stdout if non-`None`, prints `result.feedback` to stderr if truthy, and returns `result.exit_code` (the `__main__` shim raises `SystemExit(...)`).
 
 **Adapter integration:**
-- Claude Code adapters (`hooks/adapters/claude-code/precompact.sh`, `precompact-handoff.sh`, `post-tool-use.sh`, `session-start.sh`, `session-end.sh`) invoke `python -m little_loops.hooks <intent>` directly — `LL_HOOK_HOST` defaults to `"claude-code"`.
+- Claude Code adapters (`hooks/adapters/claude-code/precompact.sh`, `precompact-handoff.sh`, `post-tool-use.sh`, `session-start.sh`, `session-end.sh`, `drift-check.sh`) invoke `python -m little_loops.hooks <intent>` directly — `LL_HOOK_HOST` defaults to `"claude-code"`.
 - The OpenCode adapter (`hooks/adapters/opencode/index.ts`) sets `LL_HOOK_HOST=opencode` before invoking the same CLI.
-- The Codex CLI adapter (`scripts/little_loops/hooks/adapters/codex/session-start.sh`, `pre-compact.sh`) sets `LL_HOOK_HOST=codex` before invoking the same CLI. The `hooks.json` template restricts `SessionStart` to `"matcher": "startup"` per FEAT-957's policy (avoids re-emitting identifiers on `resume`/`clear` and minimizes trust-hash churn).
+- The Codex CLI adapter (`scripts/little_loops/hooks/adapters/codex/session-start.sh`, `pre-compact.sh`, `drift-check.sh`) sets `LL_HOOK_HOST=codex` before invoking the same CLI. The `hooks.json` template restricts `SessionStart` to `"matcher": "startup"` per FEAT-957's policy (avoids re-emitting identifiers on `resume`/`clear` and minimizes trust-hash churn); the `drift_check` intent (ENH-2888) reuses this same convention.
 
 ---
 

@@ -113,6 +113,20 @@ class TestClaudeCodeAdapterIntegration:
             f"expected session-end.sh in a SessionStart command; got {ss_cmds!r}"
         )
 
+    def test_hooks_json_registers_drift_check_under_session_start(self) -> None:
+        """The doc-drift check (drift-check.sh) must be registered under SessionStart (ENH-2888)."""
+        data = json.loads(HOOKS_JSON.read_text())
+        assert "SessionStart" in data["hooks"], "hooks.json is missing SessionStart key"
+        ss_cmds = [
+            h["command"]
+            for group in data["hooks"]["SessionStart"]
+            for h in group.get("hooks", [])
+            if h.get("type") == "command"
+        ]
+        assert any("drift-check.sh" in cmd for cmd in ss_cmds), (
+            f"expected drift-check.sh in a SessionStart command; got {ss_cmds!r}"
+        )
+
     def test_hooks_json_session_end_no_longer_references_sweep(self) -> None:
         """The SessionEnd array must no longer reference session-end.sh (regression).
 

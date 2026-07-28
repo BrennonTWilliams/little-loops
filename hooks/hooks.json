@@ -23,6 +23,17 @@
             "statusMessage": "Sweeping stale cross-issue status references..."
           }
         ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/adapters/claude-code/drift-check.sh",
+            "timeout": 5,
+            "statusMessage": "Checking doc drift..."
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [

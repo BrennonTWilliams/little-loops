@@ -1239,6 +1239,7 @@ Settings for hook adapter selection.
 |-----|---------|-------------|
 | `host` | (auto-detected) | Host agent identifier for hook adapters: `"claude-code"`, `"opencode"`, or `"codex"`. Adapters translate between the host's native hook protocol and `LLHookEvent`/`LLHookResult`. |
 | `stale_ref_fix` | `"report"` | Session-end stale-ref sweep mode: `"report"` prints findings to stderr; `"auto"` also rewrites them in-place. |
+| `doc_drift_throttle_days` | `7` | Minimum days between session-start doc-drift checks (ENH-2888), tracked via a per-project timestamp state file. Set `LL_DOC_DRIFT_DISABLE` (any non-empty value) to opt out entirely. |
 
 #### `hooks.pre_compact.rubric`
 
@@ -1258,6 +1259,7 @@ A successful state write (rubric-gated or not) also emits a best-effort `compact
 ```json
 {
   "hooks": {
+    "doc_drift_throttle_days": 7,
     "pre_compact": {
       "rubric": {
         "enabled": true,

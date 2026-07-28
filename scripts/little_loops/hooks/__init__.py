@@ -28,6 +28,8 @@ exits with the handler's exit code. Today it routes:
 
 - ``session_end`` -> :mod:`little_loops.hooks.sweep_stale_refs`
 
+- ``drift_check`` -> :mod:`little_loops.hooks.drift_check` (SessionStart-sharing intent; surfaces throttled `mention`/`route` doc-drift findings, ENH-2888)
+
 - ``subagent_start`` → :mod:`little_loops.hooks.subagent_start` (records a subagent spawn in ``subagent_runs``)
 
 - ``subagent_stop`` → :mod:`little_loops.hooks.subagent_stop` (closes out the matching ``subagent_runs`` row)
@@ -68,6 +70,7 @@ _INTENT_EVENT_NAME = {
     "pre_compact_handoff": "PreCompact",
     "session_start": "SessionStart",
     "session_end": "SessionStart",
+    "drift_check": "SessionStart",
     "user_prompt_submit": "UserPromptSubmit",
     "post_tool_use": "PostToolUse",
     "pre_tool_use": "PreToolUse",
@@ -108,7 +111,8 @@ def _hooks_telemetry_enabled(cwd: Path) -> bool:
 _USAGE = (
     "Usage: python -m little_loops.hooks <intent>\n\n"
     "Available intents: pre_compact, pre_compact_handoff, session_start, user_prompt_submit,"
-    " post_tool_use, pre_tool_use, edit_batch_nudge, session_end, subagent_start, subagent_stop"
+    " post_tool_use, pre_tool_use, edit_batch_nudge, session_end, drift_check, subagent_start,"
+    " subagent_stop"
 )
 
 _HOOK_INTENT_REGISTRY: dict[str, Callable[[LLHookEvent], LLHookResult]] = {}
@@ -131,6 +135,7 @@ def _dispatch_table() -> dict[str, Callable[[LLHookEvent], LLHookResult]]:
     # Imported lazily to avoid a top-level circular import surface and keep
     # the module import cost minimal for callers that only need the types.
     from little_loops.hooks import (
+        drift_check,
         edit_batch_nudge,
         post_tool_use,
         pre_compact,
@@ -148,6 +153,7 @@ def _dispatch_table() -> dict[str, Callable[[LLHookEvent], LLHookResult]]:
         "pre_compact_handoff": pre_compact_handoff.handle,
         "session_start": session_start.handle,
         "session_end": sweep_stale_refs.handle,
+        "drift_check": drift_check.handle,
         "user_prompt_submit": user_prompt_submit.handle,
         "post_tool_use": post_tool_use.handle,
         "pre_tool_use": pre_tool_use.handle,

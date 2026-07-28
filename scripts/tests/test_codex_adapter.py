@@ -36,6 +36,7 @@ SESSION_START = ADAPTER_DIR / "session-start.sh"
 PRE_COMPACT = ADAPTER_DIR / "pre-compact.sh"
 PROMPT_SUBMIT = ADAPTER_DIR / "prompt-submit.sh"
 POST_TOOL_USE = ADAPTER_DIR / "post-tool-use.sh"
+DRIFT_CHECK = ADAPTER_DIR / "drift-check.sh"
 
 
 class TestCodexAdapterIntegration:
@@ -47,6 +48,7 @@ class TestCodexAdapterIntegration:
         assert PRE_COMPACT.is_file()
         assert PROMPT_SUBMIT.is_file()
         assert POST_TOOL_USE.is_file()
+        assert DRIFT_CHECK.is_file()
         assert (HOOKS_JSON_DIR / "hooks.json").is_file()
         assert (REPO_ROOT / "hooks" / "adapters" / "codex" / "README.md").is_file()
 
@@ -64,18 +66,36 @@ class TestCodexAdapterIntegration:
         assert os.access(POST_TOOL_USE, os.X_OK), (
             f"{POST_TOOL_USE} is not executable; chmod +x required"
         )
+        assert os.access(DRIFT_CHECK, os.X_OK), (
+            f"{DRIFT_CHECK} is not executable; chmod +x required"
+        )
 
     def test_hooks_json_uses_matcher_startup(self) -> None:
         """SessionStart MatcherGroup must restrict to ``"matcher": "startup"`` per FEAT-957 policy.
 
         Firing on ``resume`` or ``clear`` would re-emit identifiers for an
         already-running session; restricting to ``startup`` matches the
-        semantics the Claude Code adapter already relies on.
+        semantics the Claude Code adapter already relies on. Every SessionStart
+        group must hold this matcher (ENH-2888 added a second group).
         """
         data = json.loads((HOOKS_JSON_DIR / "hooks.json").read_text())
         session_start_groups = data["hooks"]["SessionStart"]
         assert len(session_start_groups) >= 1
-        assert session_start_groups[0]["matcher"] == "startup"
+        for group in session_start_groups:
+            assert group["matcher"] == "startup"
+
+    def test_hooks_json_registers_drift_check_under_session_start(self) -> None:
+        """The doc-drift check (drift-check.sh) must be registered under SessionStart (ENH-2888)."""
+        data = json.loads((HOOKS_JSON_DIR / "hooks.json").read_text())
+        ss_cmds = [
+            h["command"]
+            for group in data["hooks"]["SessionStart"]
+            for h in group.get("hooks", [])
+            if h.get("type") == "command"
+        ]
+        assert any("drift-check.sh" in cmd for cmd in ss_cmds), (
+            f"expected drift-check.sh in a SessionStart command; got {ss_cmds!r}"
+        )
 
     def test_hooks_json_references_plugin_root_placeholder(self) -> None:
         """Template must use ``{{LL_PLUGIN_ROOT}}`` for ``ll:init --codex`` to substitute at install time."""

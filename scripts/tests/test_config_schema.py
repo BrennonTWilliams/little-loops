@@ -631,6 +631,22 @@ class TestConfigSchema:
         ]
         assert data["properties"]["hooks"].get("additionalProperties") is False
 
+    def test_doc_drift_throttle_days_in_schema(self) -> None:
+        """hooks.doc_drift_throttle_days must be declared in config-schema.json (ENH-2888).
+
+        The hooks block has additionalProperties: false, so a config containing
+        hooks.doc_drift_throttle_days will be rejected unless the property is
+        declared here.
+        """
+        data = json.loads(_load_schema_text())
+        assert "doc_drift_throttle_days" in data["properties"]["hooks"]["properties"], (
+            "hooks.doc_drift_throttle_days is not declared in config-schema.json; configs using "
+            "it will be rejected by additionalProperties: false on the hooks block"
+        )
+        prop = data["properties"]["hooks"]["properties"]["doc_drift_throttle_days"]
+        assert prop["type"] == "integer"
+        assert prop["default"] == 7
+
     def test_events_in_schema(self) -> None:
         """events block must be declared in config-schema.json with a transports array.
 

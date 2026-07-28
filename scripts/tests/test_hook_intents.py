@@ -450,6 +450,41 @@ class TestHooksMainModule:
         assert result.stdout == ""
         assert result.stderr == ""
 
+    def test_dispatch_drift_check_happy_path(self, tmp_path) -> None:
+        """``drift_check`` intent runs the handler and exits 0 (ENH-2888).
+
+        With no doc files in tmp_path, `verify_documentation` finds nothing to
+        check, so both stdout and stderr are empty.
+        """
+        result = subprocess.run(
+            [sys.executable, "-m", "little_loops.hooks", "drift_check"],
+            input=json.dumps({}),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(tmp_path),
+        )
+        assert result.returncode == 0, f"returncode={result.returncode}; stderr={result.stderr!r}"
+        assert result.stdout == ""
+        assert result.stderr == ""
+
+    def test_dispatch_drift_check_disabled_via_env(self, tmp_path) -> None:
+        """``LL_DOC_DRIFT_DISABLE`` opts the drift_check intent out entirely."""
+        import os
+
+        env = {**os.environ, "LL_DOC_DRIFT_DISABLE": "1"}
+        result = subprocess.run(
+            [sys.executable, "-m", "little_loops.hooks", "drift_check"],
+            input=json.dumps({}),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(tmp_path),
+            env=env,
+        )
+        assert result.returncode == 0
+        assert not (tmp_path / ".ll" / "ll-doc-drift-state.json").exists()
+
     def test_dispatch_subagent_start_happy_path(self, tmp_path) -> None:
         """``subagent_start`` intent runs the handler and exits 0 (ENH-2505)."""
         result = subprocess.run(
@@ -756,3 +791,33 @@ class TestHooksMainModule:
         assert "subagent_stop" in table
         # Built-in shadows extension on collision.
         assert table["session_start"] is not shadow_handler
+
+    def test_dispatch_table_intent_event_name_usage_stay_consistent(self, monkeypatch) -> None:
+        """Every built-in intent must be registered in all three enumeration sites.
+
+        _dispatch_table(), _INTENT_EVENT_NAME, and _USAGE are three independent
+        enumerations of the same intent set in scripts/little_loops/hooks/__init__.py.
+        Nothing enforces they stay in sync — a partial registration (e.g. adding
+        an intent to _dispatch_table() but forgetting _INTENT_EVENT_NAME) would
+        pass every other existing test silently (per ENH-2888's own wiring-pass
+        finding). Reset _HOOK_INTENT_REGISTRY so extension-provided intents from
+        other tests don't leak in.
+        """
+        from little_loops import hooks as hooks_pkg
+
+        monkeypatch.setattr(hooks_pkg, "_HOOK_INTENT_REGISTRY", {})
+
+        built_in_intents = set(hooks_pkg._dispatch_table())
+        event_name_intents = set(hooks_pkg._INTENT_EVENT_NAME)
+        usage_intents = {
+            token.strip() for token in hooks_pkg._USAGE.split("Available intents:")[1].split(",")
+        }
+
+        assert built_in_intents == event_name_intents, (
+            f"_dispatch_table() and _INTENT_EVENT_NAME disagree: "
+            f"{built_in_intents.symmetric_difference(event_name_intents)}"
+        )
+        assert built_in_intents == usage_intents, (
+            f"_dispatch_table() and _USAGE disagree: "
+            f"{built_in_intents.symmetric_difference(usage_intents)}"
+        )

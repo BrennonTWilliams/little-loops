@@ -29,6 +29,7 @@ Ensure `little_loops` is installed in the Python interpreter on `PATH`
 | Codex event (`hooks.json` key) | ll intent       | Python invocation                              | Status     |
 | ------------------------------ | --------------- | ---------------------------------------------- | ---------- |
 | `SessionStart`                 | `session_start` | `python -m little_loops.hooks session_start`   | Implemented |
+| `SessionStart` (2nd group)     | `drift_check`   | `python -m little_loops.hooks drift_check`     | Implemented (ENH-2888) |
 | `PreCompact`                   | `pre_compact`   | `python -m little_loops.hooks pre_compact`     | Implemented |
 | `PostCompact`                  | —               | —                                              | Deferred — no concrete consumer in ll today; `pre_compact` performs all compact-time cleanup |
 | `PreToolUse`                   | `pre_tool_use` (opt-in) | `python -m little_loops.hooks pre_tool_use`   | Opt-in — handler registered; not wired in `hooks.json` by default (FEAT-1489) |
@@ -151,6 +152,7 @@ file:<absolute-path-to-hooks.json>:<event_snake_case>:<group_index>:<handler_ind
 For ll the keys are:
 ```
 file:<project>/.codex/hooks.json:session_start:0:0
+file:<project>/.codex/hooks.json:session_start:1:0
 file:<project>/.codex/hooks.json:pre_compact:0:0
 file:<project>/.codex/hooks.json:user_prompt_submit:0:0
 file:<project>/.codex/hooks.json:post_tool_use:0:0

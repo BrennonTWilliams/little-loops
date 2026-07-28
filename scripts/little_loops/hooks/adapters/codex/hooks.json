@@ -12,6 +12,17 @@
             "statusMessage": "Loading ll config..."
           }
         ]
+      },
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/codex/drift-check.sh",
+            "timeout": 5,
+            "statusMessage": "Checking doc drift..."
+          }
+        ]
       }
     ],
     "PreCompact": [

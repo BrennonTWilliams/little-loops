@@ -51,6 +51,7 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 |-------|------|--------------|:---------:|:-------:|
 | **SessionStart** | session-start | Loads config + local overrides, injects a 7-day project digest, starts history backfill | — | on |
 | **SessionStart** | sweep-stale-refs | Finds/fixes prose calling a `done` issue still "open" | — | on (report) |
+| **SessionStart** | drift-check | Surfaces throttled `mention`/`route` doc-drift findings (`hooks.doc_drift_throttle_days`, default 7 days); opt out with `LL_DOC_DRIFT_DISABLE` | — | on |
 | **UserPromptSubmit** | user-prompt-check | Optimizes vague prompts; records corrections & skill calls | — | on (opt-in for recording) |
 | **PreToolUse** | check-duplicate-issue-id | Blocks creating an issue file whose ID collides cross-type | **yes** | on |
 | **PreToolUse** | check-decisions-yaml | Blocks writing a corrupt `.ll/decisions.yaml` or `.ll/decisions.d/*.json` fragment from Claude-side Write/Edit | **yes** | on |
@@ -82,6 +83,7 @@ Here's what fires during a typical session:
 You start a session
   → SessionStart: loads config + local overrides, injects project digest
   → SessionStart (stale refs): reports any open-issue references pointing at issues the previous session marked done
+  → SessionStart (drift check): reports throttled mention/route doc-drift findings, at most once per hooks.doc_drift_throttle_days
 
 You submit a prompt
   → UserPromptSubmit: optimizes vague prompts; records skill calls and corrections
@@ -122,6 +124,7 @@ The behaviors that **write data or change your repo** are **off until you opt in
 - `learning_tests.enabled` (import gate) — **off**
 - `issues.auto_commit` (auto-committing issue files) — **off**
 - `hooks.stale_ref_fix` — defaults to `report` (never edits files unless set to `auto`)
+- `drift-check` — advisory-only, on by default; set `LL_DOC_DRIFT_DISABLE` (any non-empty value) to opt out entirely
 
 The behaviors that are **on by default** are non-destructive: they load config, estimate context, inject advisory reminders, protect issue-ID uniqueness, and clean up *this session's* temp files on exit. None of them modify your source code.
 
@@ -471,6 +474,7 @@ A few quick controls:
 | `session_capture.enabled` | PostToolUse | `false` | Append per-tool structured event records to `.ll/ll-session-events.jsonl` |
 | `issues.base_dir` | (all issue hooks) | `.issues` | Issue directory |
 | `hooks.stale_ref_fix` | SessionStart | `report` | `report` or `auto` |
+| `hooks.doc_drift_throttle_days` | SessionStart (drift-check) | `7` | Minimum days between doc-drift checks per project; `LL_DOC_DRIFT_DISABLE` opts out entirely |
 | `parallel.worktree_base` | Stop | `.worktrees` | Worktree cleanup scope (distinct from `automation.worktree_base`, which `ll-auto`/FSM sub-loops use and this hook does not read) |
 
 Full schema and substitution rules: [Configuration Reference](../reference/CONFIGURATION.md).
