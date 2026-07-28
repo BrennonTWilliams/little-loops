@@ -13,7 +13,10 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
-relates_to: ['ENH-1348', 'ENH-1350', 'ENH-1341']
+relates_to:
+- 'ENH-1348'
+- 'ENH-1350'
+- 'ENH-1341'
 ---
 
 # ENH-1349: Queue Peek After Enqueue in `recursive-refine`

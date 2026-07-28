@@ -13,7 +13,9 @@ score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
-relates_to: ['ENH-1337', 'ENH-1338']
+relates_to:
+- 'ENH-1337'
+- 'ENH-1338'
 ---
 
 # ENH-1339: Per-Issue Refinement Budget Cap in `recursive-refine`

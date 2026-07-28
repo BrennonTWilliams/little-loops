@@ -7,7 +7,10 @@ captured_at: "2026-05-28T21:10:40Z"
 completed_at: "2026-05-30T06:50:00Z"
 discovered_date: 2026-05-28
 discovered_by: capture-issue
-labels: [enhancement, design-tokens, captured]
+labels:
+- enhancement
+- design-tokens
+- captured
 ---
 
 # ENH-1769: design-tokens: support W3C DTCG `$value` format in token resolver

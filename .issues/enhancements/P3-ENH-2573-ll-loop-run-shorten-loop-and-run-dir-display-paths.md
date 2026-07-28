@@ -7,7 +7,11 @@ status: done
 completed_at: 2026-07-10T02:52:26Z
 discovered_date: "2026-07-10"
 discovered_by: manual
-labels: [cli, loops, ux, path-display]
+labels:
+- cli
+- loops
+- ux
+- path-display
 ---
 
 # ENH-2573: ll-loop run — show loop filename / relative run_dir instead of absolute paths

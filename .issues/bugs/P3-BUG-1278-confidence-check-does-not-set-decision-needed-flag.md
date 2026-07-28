@@ -15,7 +15,8 @@ score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
-relates_to: ['BUG-1277']
+relates_to:
+- 'BUG-1277'
 ---
 
 # BUG-1278: `confidence-check` Does Not Set `decision_needed: true` When Unresolved Decisions Found

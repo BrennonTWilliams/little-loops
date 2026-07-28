@@ -8,7 +8,11 @@ completed_at: '2026-06-04T00:00:00Z'
 captured_at: '2026-06-02T00:00:00Z'
 discovered_date: '2026-06-02'
 discovered_by: review-epic
-relates_to: [ENH-1943, ENH-1944, ENH-1948, ENH-1949]
+relates_to:
+- ENH-1943
+- ENH-1944
+- ENH-1948
+- ENH-1949
 labels:
   - epic
   - sft

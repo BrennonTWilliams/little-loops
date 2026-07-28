@@ -6,7 +6,12 @@ discovered_by: user-report
 status: done
 completed_at: 2026-07-10T00:26:13Z
 relates_to: BUG-2554
-labels: [bug, cli, ll-loop, display, truncation]
+labels:
+- bug
+- cli
+- ll-loop
+- display
+- truncation
 ---
 
 # BUG-2566: `ll-loop list` multi-line descriptions still overflow terminal width

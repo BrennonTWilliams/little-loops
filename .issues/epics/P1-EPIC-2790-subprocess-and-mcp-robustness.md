@@ -7,7 +7,10 @@ status: open
 captured_at: "2026-07-25T02:35:31Z"
 discovered_date: 2026-07-25
 discovered_by: create-epics-from-unparented
-relates_to: [BUG-2777, BUG-2778, BUG-2779]
+relates_to:
+- BUG-2777
+- BUG-2778
+- BUG-2779
 ---
 
 # EPIC-2790: Subprocess and MCP Robustness

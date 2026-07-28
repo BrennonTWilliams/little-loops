@@ -8,7 +8,12 @@ discovered_date: 2026-06-20
 completed_at: 2026-06-20 19:24:00+00:00
 discovered_by: manual
 parent: null
-relates_to: [EPIC-1929, FEAT-1930, FEAT-1932, FEAT-2102, EPIC-2196]
+relates_to:
+- EPIC-1929
+- FEAT-1930
+- FEAT-1932
+- FEAT-2102
+- EPIC-2196
 labels:
   - hermes
   - hitl

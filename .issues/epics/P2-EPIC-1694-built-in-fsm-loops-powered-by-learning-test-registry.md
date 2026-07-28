@@ -7,7 +7,25 @@ status: done
 captured_at: '2026-05-25T20:53:43Z'
 discovered_date: '2026-05-25'
 discovered_by: capture-issue
-relates_to: [FEAT-1692, FEAT-1695, FEAT-1696, FEAT-1697, FEAT-1287, FEAT-1283, FEAT-1285, FEAT-1286, EPIC-1663, FEAT-1738, FEAT-1739, ENH-1740, ENH-1741, FEAT-1742, FEAT-1743, ENH-1284, FEAT-1813, ENH-1814]
+relates_to:
+- FEAT-1692
+- FEAT-1695
+- FEAT-1696
+- FEAT-1697
+- FEAT-1287
+- FEAT-1283
+- FEAT-1285
+- FEAT-1286
+- EPIC-1663
+- FEAT-1738
+- FEAT-1739
+- ENH-1740
+- ENH-1741
+- FEAT-1742
+- FEAT-1743
+- ENH-1284
+- FEAT-1813
+- ENH-1814
 ---
 
 # EPIC-1694: Built-in FSM Loops Powered by the Learning-Test Registry

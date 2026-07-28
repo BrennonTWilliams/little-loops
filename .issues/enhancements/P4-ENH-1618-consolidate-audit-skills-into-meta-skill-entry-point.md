@@ -8,7 +8,8 @@ discovered_date: 2026-05-22
 discovered_by: capture-issue
 status: cancelled
 parent: EPIC-1745
-depends_on: [ENH-494]
+depends_on:
+- ENH-494
 ---
 
 # ENH-1618: Consolidate audit-* skills into a single meta-skill entry point

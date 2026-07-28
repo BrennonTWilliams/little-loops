@@ -3,7 +3,8 @@ discovered_date: "2026-03-12"
 discovered_by: capture-issue
 confidence_score: 95
 outcome_confidence: 74
-blocked_by: [ENH-470]
+blocked_by:
+- ENH-470
 status: deferred
 ---
 

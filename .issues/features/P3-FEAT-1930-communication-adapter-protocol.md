@@ -8,7 +8,10 @@ discovered_date: 2026-06-04
 discovered_by: scope-epic
 status: open
 parent: EPIC-1929
-relates_to: [FEAT-1794, FEAT-1931, EPIC-2196]
+relates_to:
+- FEAT-1794
+- FEAT-1931
+- EPIC-2196
 blocks:
 - FEAT-2102
 - FEAT-1794

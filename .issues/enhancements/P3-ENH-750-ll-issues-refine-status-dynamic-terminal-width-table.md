@@ -6,7 +6,10 @@ type: ENH
 status: done
 discovered_date: "2026-03-15"
 discovered_by: capture-issue
-labels: [cli, ux, table-rendering]
+labels:
+- cli
+- ux
+- table-rendering
 confidence_score: 100
 outcome_confidence: 100
 completed_at: 2026-03-15T00:00:00Z

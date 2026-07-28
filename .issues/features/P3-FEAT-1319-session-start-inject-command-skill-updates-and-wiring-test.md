@@ -5,7 +5,10 @@ priority: P3
 status: deferred
 discovered_date: 2026-05-01
 discovered_by: issue-size-review
-blocked_by: [FEAT-1315, FEAT-1317, FEAT-1318]
+blocked_by:
+- FEAT-1315
+- FEAT-1317
+- FEAT-1318
 parent: FEAT-1316
 
 size: Very Large
@@ -15,7 +18,11 @@ score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 22
 score_change_surface: 18
-relates_to: ['FEAT-1315', 'FEAT-1316', 'FEAT-1317', 'FEAT-1318']
+relates_to:
+- 'FEAT-1315'
+- 'FEAT-1316'
+- 'FEAT-1317'
+- 'FEAT-1318'
 ---
 
 # FEAT-1319: SessionStart Inject — Command/Skill Updates and Wiring Test

@@ -1,7 +1,10 @@
 ---
 discovered_date: "2026-04-12"
 discovered_by: capture-issue
-depends_on: [FEAT-1074, FEAT-1075, FEAT-1076]
+depends_on:
+- FEAT-1074
+- FEAT-1075
+- FEAT-1076
 status: deferred
 ---
 

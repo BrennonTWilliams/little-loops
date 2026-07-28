@@ -5,11 +5,15 @@ type: enhancement
 status: done
 priority: P4
 parent: EPIC-2178
-depends_on: [FEAT-2179]
+depends_on:
+- FEAT-2179
 captured_at: "2026-06-15T00:00:00Z"
 discovered_date: 2026-06-15
 discovered_by: capture-issue
-labels: [gemini, host-compat, config]
+labels:
+- gemini
+- host-compat
+- config
 ---
 
 # ENH-2187: Config probe — .gemini/ll-config.json in _config_candidates()

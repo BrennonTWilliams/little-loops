@@ -4,8 +4,15 @@ title: fsm.host_guard — protect FSM loops from host pressure
 type: EPIC
 priority: P2
 status: open
-relates_to: [ENH-2452, ENH-2453, ENH-2454]
-labels: [epic, fsm, host-guard, captured]
+relates_to:
+- ENH-2452
+- ENH-2453
+- ENH-2454
+labels:
+- epic
+- fsm
+- host-guard
+- captured
 captured_at: "2026-07-03T02:05:57Z"
 discovered_date: "2026-07-02"
 discovered_by: capture-issue

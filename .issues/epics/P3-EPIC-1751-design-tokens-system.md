@@ -7,8 +7,18 @@ status: done
 captured_at: "2026-05-27T20:30:00Z"
 discovered_date: "2026-05-27"
 discovered_by: issue-size-review
-labels: [epic, design-system, config, loops, init]
-relates_to: [FEAT-1747, FEAT-1748, FEAT-1749, FEAT-1750, ENH-1768]
+labels:
+- epic
+- design-system
+- config
+- loops
+- init
+relates_to:
+- FEAT-1747
+- FEAT-1748
+- FEAT-1749
+- FEAT-1750
+- ENH-1768
 ---
 
 # EPIC-1751: Design Tokens System

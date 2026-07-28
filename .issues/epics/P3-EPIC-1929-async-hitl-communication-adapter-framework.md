@@ -8,7 +8,14 @@ discovered_date: 2026-06-04
 discovered_by: scope-epic
 status: open
 parent: null
-relates_to: [FEAT-1794, FEAT-1930, FEAT-1931, FEAT-1932, FEAT-2102, FEAT-1545, FEAT-1613]
+relates_to:
+- FEAT-1794
+- FEAT-1930
+- FEAT-1931
+- FEAT-1932
+- FEAT-2102
+- FEAT-1545
+- FEAT-1613
 ---
 
 # EPIC-1929: Async HITL Communication Adapter Framework

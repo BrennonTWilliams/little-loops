@@ -4,7 +4,8 @@ type: FEAT
 title: HITL interrupt FSM state type (action_type human_approval)
 priority: P3
 status: blocked
-blocked_by: [FEAT-1930]
+blocked_by:
+- FEAT-1930
 captured_at: '2026-05-29T20:37:23Z'
 discovered_date: 2026-05-29
 discovered_by: capture-issue
@@ -15,7 +16,12 @@ labels:
   - hitl
   - loops
 parent: EPIC-1929
-relates_to: [FEAT-1545, FEAT-1613, FEAT-1930, FEAT-1931, FEAT-1932]
+relates_to:
+- FEAT-1545
+- FEAT-1613
+- FEAT-1930
+- FEAT-1931
+- FEAT-1932
 decision_needed: false
 decision: >-
   Option A — hardcoded dispatch following the mcp_tool pattern. Simpler single-file

@@ -13,7 +13,8 @@ score_test_coverage: 18
 score_ambiguity: 22
 score_change_surface: 18
 size: Very Large
-relates_to: ['FEAT-1116']
+relates_to:
+- 'FEAT-1116'
 completed_at: 2026-05-10T00:00:00Z
 ---
 

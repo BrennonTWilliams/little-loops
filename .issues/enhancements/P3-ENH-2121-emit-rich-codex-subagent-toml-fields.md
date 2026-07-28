@@ -8,8 +8,15 @@ captured_at: "2026-06-13T00:00:00Z"
 discovered_date: 2026-06-13
 discovered_by: capture-issue
 parent: EPIC-1463
-relates_to: [FEAT-1527, ENH-1533, ENH-1529]
-labels: [codex, host-runner, agents, host-compat]
+relates_to:
+- FEAT-1527
+- ENH-1533
+- ENH-1529
+labels:
+- codex
+- host-runner
+- agents
+- host-compat
 ---
 
 # ENH-2121: Emit rich Codex subagent TOML fields in ll-adapt-agents-for-codex

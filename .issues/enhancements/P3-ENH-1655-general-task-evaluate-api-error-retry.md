@@ -7,7 +7,9 @@ discovered_date: 2026-05-23
 discovered_by: audit-loop-run
 confidence_score: 85
 outcome_confidence: 80
-relates_to: [ENH-1650, BUG-1657]
+relates_to:
+- ENH-1650
+- BUG-1657
 depends_on: []
 ---
 

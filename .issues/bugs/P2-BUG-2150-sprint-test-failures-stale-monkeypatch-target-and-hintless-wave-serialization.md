@@ -4,7 +4,10 @@ type: bug
 priority: P2
 status: done
 title: "Sprint test failures: stale monkeypatch target and hintless-wave serialization"
-labels: [testing, sprint, regression]
+labels:
+- testing
+- sprint
+- regression
 completed_date: 2026-06-14
 ---
 

@@ -7,8 +7,12 @@ priority: P4
 discovered_date: 2026-06-24
 discovered_by: planning-assessment
 parent: EPIC-2258
-depends_on: [FEAT-1850]
-labels: [host-compat, omp, config]
+depends_on:
+- FEAT-1850
+labels:
+- host-compat
+- omp
+- config
 ---
 
 # FEAT-2262: omp config probe — _config_candidates()

@@ -9,7 +9,12 @@ completed_at: '2026-06-04'
 discovered_date: '2026-06-04'
 discovered_by: capture-issue
 parent: EPIC-1880
-relates_to: [ENH-1941, ENH-1710, ENH-1827, FEAT-1826, EPIC-1707]
+relates_to:
+- ENH-1941
+- ENH-1710
+- ENH-1827
+- FEAT-1826
+- EPIC-1707
 labels:
   - epic: EPIC-1880
   - enhancement

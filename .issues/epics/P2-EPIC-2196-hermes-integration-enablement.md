@@ -6,8 +6,17 @@ status: done
 captured_at: 2026-06-16T18:21:36Z
 discovered_date: 2026-06-16
 discovered_by: scope-epic
-relates_to: [ENH-2197, ENH-2198, ENH-2199, ENH-2200, FEAT-1680]
-labels: [hermes, integration, cli, enablement]
+relates_to:
+- ENH-2197
+- ENH-2198
+- ENH-2199
+- ENH-2200
+- FEAT-1680
+labels:
+- hermes
+- integration
+- cli
+- enablement
 ---
 
 # EPIC: Hermes Integration Enablement (little-loops side)

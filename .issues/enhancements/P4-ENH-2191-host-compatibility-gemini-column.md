@@ -5,11 +5,22 @@ type: enhancement
 status: open
 priority: P4
 parent: EPIC-2178
-depends_on: [FEAT-2179, ENH-2184, ENH-2185, FEAT-2186, ENH-2187, FEAT-2190, FEAT-2259, FEAT-2260]
+depends_on:
+- FEAT-2179
+- ENH-2184
+- ENH-2185
+- FEAT-2186
+- ENH-2187
+- FEAT-2190
+- FEAT-2259
+- FEAT-2260
 captured_at: "2026-06-15T00:00:00Z"
 discovered_date: 2026-06-15
 discovered_by: capture-issue
-labels: [gemini, host-compat, docs]
+labels:
+- gemini
+- host-compat
+- docs
 ---
 
 # ENH-2191: HOST_COMPATIBILITY.md Gemini column — populate cells as children land

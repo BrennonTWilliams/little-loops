@@ -7,7 +7,11 @@ status: open
 captured_at: "2026-07-25T02:35:31Z"
 discovered_date: 2026-07-25
 discovered_by: create-epics-from-unparented
-relates_to: [BUG-2769, BUG-2770, ENH-2771, ENH-2783]
+relates_to:
+- BUG-2769
+- BUG-2770
+- ENH-2771
+- ENH-2783
 ---
 
 # EPIC-2791: History Event Bus and Issue Id Keying

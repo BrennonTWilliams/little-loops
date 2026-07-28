@@ -7,8 +7,15 @@ priority: P4
 captured_at: "2026-06-15T17:09:51Z"
 discovered_date: 2026-06-15
 discovered_by: capture-issue
-relates_to: [EPIC-2257, EPIC-1463]
-labels: [epic, captured, gemini, host-compat, tracking]
+relates_to:
+- EPIC-2257
+- EPIC-1463
+labels:
+- epic
+- captured
+- gemini
+- host-compat
+- tracking
 ---
 
 # EPIC-2178: Gemini CLI host adapter — tracking

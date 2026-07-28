@@ -13,7 +13,14 @@ score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
 size: Very Large
-relates_to: ['ENH-1131', 'ENH-1132', 'ENH-1133', 'ENH-1134', 'BUG-1107', 'BUG-1108', 'BUG-1109']
+relates_to:
+- 'ENH-1131'
+- 'ENH-1132'
+- 'ENH-1133'
+- 'ENH-1134'
+- 'BUG-1107'
+- 'BUG-1108'
+- 'BUG-1109'
 completed_at: 2026-05-10T00:00:00Z
 ---
 

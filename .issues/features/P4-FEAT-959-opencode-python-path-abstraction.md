@@ -6,7 +6,8 @@ status: done
 discovered_date: 2026-04-05
 discovered_by: issue-size-review
 
-blocked_by: [FEAT-1116]
+blocked_by:
+- FEAT-1116
 confidence_score: 90
 outcome_confidence: 72
 parent: FEAT-769

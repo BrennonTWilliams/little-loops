@@ -6,7 +6,10 @@ priority: P3
 status: done
 created: 2026-07-08
 completed_at: 2026-07-09T04:06:16Z
-labels: [config, init, cli]
+labels:
+- config
+- init
+- cli
 ---
 
 # Default learning_tests and analytics to enabled in generated config

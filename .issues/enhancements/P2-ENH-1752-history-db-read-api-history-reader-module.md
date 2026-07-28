@@ -11,7 +11,8 @@ discovered_by: capture-issue
 labels:
   - enhancement
   - captured
-relates_to: [EPIC-1707]
+relates_to:
+- EPIC-1707
 ---
 
 # ENH-1752: history.db Read API — history_reader module

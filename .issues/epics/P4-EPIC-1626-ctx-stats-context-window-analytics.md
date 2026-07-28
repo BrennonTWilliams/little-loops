@@ -5,8 +5,14 @@ status: done
 priority: P4
 discovered_date: 2026-05-22
 discovered_by: manual
-labels: [epic, ctx-stats, analytics, tracking]
-relates_to: [FEAT-1160, FEAT-1112]
+labels:
+- epic
+- ctx-stats
+- analytics
+- tracking
+relates_to:
+- FEAT-1160
+- FEAT-1112
 ---
 
 # EPIC-1626: ctx-stats — Context Window Analytics Command

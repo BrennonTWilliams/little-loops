@@ -8,8 +8,17 @@ captured_at: "2026-06-13T00:00:00Z"
 discovered_date: 2026-06-13
 discovered_by: capture-issue
 parent: EPIC-1463
-relates_to: [ENH-1529, ENH-2121, FEAT-1462, FEAT-2122]
-labels: [codex, host-runner, sandbox, host-compat, research]
+relates_to:
+- ENH-1529
+- ENH-2121
+- FEAT-1462
+- FEAT-2122
+labels:
+- codex
+- host-runner
+- sandbox
+- host-compat
+- research
 ---
 
 # ENH-2124: Research and track Codex permission-skip and tool-allowlist capability gaps

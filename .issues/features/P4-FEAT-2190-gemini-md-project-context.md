@@ -5,11 +5,16 @@ type: feature
 status: open
 priority: P4
 parent: EPIC-2178
-depends_on: [FEAT-2179]
+depends_on:
+- FEAT-2179
 captured_at: "2026-06-15T00:00:00Z"
 discovered_date: 2026-06-15
 discovered_by: capture-issue
-labels: [gemini, host-compat, init, project-context]
+labels:
+- gemini
+- host-compat
+- init
+- project-context
 ---
 
 # FEAT-2190: GEMINI.md project context file — ll:init --gemini

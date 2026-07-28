@@ -5,8 +5,15 @@ priority: P3
 captured_at: "2026-07-28T00:00:00Z"
 discovered_date: 2026-07-28
 discovered_by: capture-issue
-labels: [loops, general-task, fsm, verification]
-relates_to: [ENH-2814, ENH-2825, ENH-2857]
+labels:
+- loops
+- general-task
+- fsm
+- verification
+relates_to:
+- ENH-2814
+- ENH-2825
+- ENH-2857
 ---
 
 # ENH-2892: general-task.yaml has no `failure: true` terminal — ENH-2814 exit-code plumbing is inert

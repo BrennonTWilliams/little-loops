@@ -8,10 +8,14 @@ captured_at: "2026-05-26T02:23:05Z"
 discovered_date: 2026-05-26
 discovered_by: capture-issue
 parent: EPIC-1463
-blocked_by: [ENH-1718]
+blocked_by:
+- ENH-1718
 blocks:
 - FEAT-1721
-labels: [codex, hooks, host-compat]
+labels:
+- codex
+- hooks
+- host-compat
 ---
 
 # FEAT-1719: Wire `PostCompact` intent for Codex adapter

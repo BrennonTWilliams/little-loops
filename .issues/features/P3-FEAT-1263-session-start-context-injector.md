@@ -5,7 +5,9 @@ priority: P3
 status: done
 discovered_date: 2026-04-22
 discovered_by: issue-size-review
-blocked_by: [FEAT-1156, FEAT-1116]
+blocked_by:
+- FEAT-1156
+- FEAT-1116
 parent: FEAT-1159
 
 confidence_score: 88
@@ -15,7 +17,10 @@ score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 18
 size: Very Large
-relates_to: ['FEAT-1156', 'FEAT-1264', 'FEAT-1262']
+relates_to:
+- 'FEAT-1156'
+- 'FEAT-1264'
+- 'FEAT-1262'
 completed_at: 2026-05-10T00:00:00Z
 ---
 

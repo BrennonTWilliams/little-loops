@@ -13,7 +13,8 @@ score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
-relates_to: ['ENH-1340']
+relates_to:
+- 'ENH-1340'
 ---
 
 # ENH-1341: Render Decomposition Tree in `recursive-refine` `done` Summary

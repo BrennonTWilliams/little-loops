@@ -13,7 +13,11 @@ score_complexity: 17
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
-labels: [enhancement, harness-optimize, state-mode, testing]
+labels:
+- enhancement
+- harness-optimize
+- state-mode
+- testing
 ---
 
 # ENH-1556: harness-optimize State-Mode Wiring & Tests

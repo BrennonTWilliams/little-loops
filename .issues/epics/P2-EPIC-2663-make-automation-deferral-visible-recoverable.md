@@ -6,7 +6,12 @@ status: open
 captured_at: '2026-07-18T02:50:02Z'
 discovered_date: '2026-07-18'
 discovered_by: capture-issue
-relates_to: [ENH-2664, FEAT-2665, ENH-2666, ENH-2533, ENH-2008]
+relates_to:
+- ENH-2664
+- FEAT-2665
+- ENH-2666
+- ENH-2533
+- ENH-2008
 labels:
 - loops
 - orchestration

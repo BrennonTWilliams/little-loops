@@ -10,7 +10,8 @@ captured_at: "2026-06-20T19:17:49Z"
 completed_at: 2026-06-20T20:24:58Z
 discovered_date: "2026-06-20"
 discovered_by: capture-issue
-relates_to: [ENH-2250]
+relates_to:
+- ENH-2250
 ---
 
 # ENH-2247: rn-remediate overuses --full-rewrite in refine state

@@ -1,7 +1,9 @@
 ---
 discovered_date: "2026-04-20"
 discovered_by: parallel-family-review
-depends_on: [FEAT-1075, ENH-1176]
+depends_on:
+- FEAT-1075
+- ENH-1176
 decision_needed: false
 confidence_score: 85
 outcome_confidence: 56

@@ -7,8 +7,15 @@ priority: P3
 captured_at: "2026-06-01T15:06:49Z"
 discovered_date: 2026-06-01
 discovered_by: capture-issue
-labels: [feat, captured, host-compat, pi-adapter, omp]
-relates_to: [FEAT-2261, FEAT-2263]
+labels:
+- feat
+- captured
+- host-compat
+- pi-adapter
+- omp
+relates_to:
+- FEAT-2261
+- FEAT-2263
 parent: EPIC-2258
 ---
 

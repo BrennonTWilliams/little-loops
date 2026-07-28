@@ -13,7 +13,10 @@ score_test_coverage: 18
 score_ambiguity: 22
 score_change_surface: 25
 testable: false
-relates_to: ['ENH-1144', 'ENH-1147', 'ENH-1151']
+relates_to:
+- 'ENH-1144'
+- 'ENH-1147'
+- 'ENH-1151'
 completed_at: 2026-05-10T00:00:00Z
 ---
 

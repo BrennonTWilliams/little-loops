@@ -5,8 +5,14 @@ discovered_date: 2026-07-24T23:13:40Z
 discovered_by: deep-audit-session
 status: done
 completed_at: 2026-07-24T23:13:40Z
-relates_to: [BUG-2484, BUG-2523, BUG-2540]
-labels: [tests, performance, macos]
+relates_to:
+- BUG-2484
+- BUG-2523
+- BUG-2540
+labels:
+- tests
+- performance
+- macos
 ---
 
 # BUG-2788: Full-suite filesystem churn starves macOS services → beachball (post cap+renice)

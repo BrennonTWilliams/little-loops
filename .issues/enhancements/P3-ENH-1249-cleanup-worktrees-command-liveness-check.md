@@ -3,7 +3,9 @@ completed_at: 2026-04-22T19:15:25Z
 discovered_date: "2026-04-22"
 discovered_by: issue-size-review
 
-depends_on: [FEAT-1075, ENH-1176]
+depends_on:
+- FEAT-1075
+- ENH-1176
 decision_needed: false
 size: Small
 confidence_score: 90

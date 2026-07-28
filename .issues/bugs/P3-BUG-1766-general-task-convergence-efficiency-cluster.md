@@ -9,7 +9,11 @@ labels:
 - loops
 - general-task
 - fsm
-relates_to: [BUG-1628, BUG-1687, ENH-1732, BUG-1767]
+relates_to:
+- BUG-1628
+- BUG-1687
+- ENH-1732
+- BUG-1767
 ---
 
 # BUG-1766: `general-task` loop wastes ~40 iterations re-doing finished work (convergence-efficiency cluster)

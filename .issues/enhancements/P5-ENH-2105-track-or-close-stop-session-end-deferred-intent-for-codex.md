@@ -8,7 +8,8 @@ captured_at: "2026-06-12T00:00:00Z"
 discovered_date: 2026-06-12
 discovered_by: review-epic
 parent: EPIC-1463
-relates_to: [FEAT-1719]
+relates_to:
+- FEAT-1719
 decision_needed: true
 labels:
   - codex

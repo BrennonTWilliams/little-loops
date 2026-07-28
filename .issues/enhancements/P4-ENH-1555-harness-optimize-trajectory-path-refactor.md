@@ -12,7 +12,12 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 25
-labels: [yaml, fsm, harness-optimize, refactor, trajectory]
+labels:
+- yaml
+- fsm
+- harness-optimize
+- refactor
+- trajectory
 ---
 
 # ENH-1555: harness-optimize Trajectory Path Refactor

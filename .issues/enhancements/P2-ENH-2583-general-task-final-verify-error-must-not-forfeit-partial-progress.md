@@ -7,7 +7,12 @@ status: done
 completed_at: 2026-07-10T05:29:21Z
 discovered_date: "2026-07-10"
 discovered_by: audit-loop-run
-labels: [loops, fsm, general-task, partial-credit, audit]
+labels:
+- loops
+- fsm
+- general-task
+- partial-credit
+- audit
 relates_to:
 - ENH-2584
 ---

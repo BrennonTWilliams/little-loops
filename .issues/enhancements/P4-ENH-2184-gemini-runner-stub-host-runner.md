@@ -5,11 +5,15 @@ type: enhancement
 status: done
 priority: P4
 parent: EPIC-2178
-depends_on: [FEAT-2179]
+depends_on:
+- FEAT-2179
 captured_at: "2026-06-15T00:00:00Z"
 discovered_date: 2026-06-15
 discovered_by: capture-issue
-labels: [gemini, host-compat, host-runner]
+labels:
+- gemini
+- host-compat
+- host-runner
 ---
 
 # ENH-2184: GeminiRunner stub in host_runner.py

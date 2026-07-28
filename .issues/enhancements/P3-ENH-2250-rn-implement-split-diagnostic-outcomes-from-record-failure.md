@@ -9,8 +9,14 @@ outcome_confidence: 85
 discovered_date: "2026-06-20"
 discovered_by: audit
 completed_at: 2026-06-20T20:22:03Z
-relates_to: [ENH-2247]
-labels: [loop, fsm, rn-implement, observability, enhancement]
+relates_to:
+- ENH-2247
+labels:
+- loop
+- fsm
+- rn-implement
+- observability
+- enhancement
 ---
 
 # ENH-2250: rn-implement splits diagnostic outcomes out of the generic failure bucket

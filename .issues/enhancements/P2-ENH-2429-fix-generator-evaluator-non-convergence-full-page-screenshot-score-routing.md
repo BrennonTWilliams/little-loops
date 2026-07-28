@@ -5,8 +5,12 @@ confidence_score: 100
 outcome_confidence: 95
 status: done
 completed_at: 2026-07-01T18:56:13Z
-labels: [loops, harness, generator-evaluator]
-relates_to: [ENH-2428]
+labels:
+- loops
+- harness
+- generator-evaluator
+relates_to:
+- ENH-2428
 ---
 
 # ENH-2429: Fix generator-evaluator non-convergence (full-page screenshot + score-driven routing)

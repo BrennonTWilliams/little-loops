@@ -7,7 +7,11 @@ status: done
 captured_at: "2026-06-04T14:53:54Z"
 discovered_date: 2026-06-04
 discovered_by: capture-issue
-labels: [bug, loops, fsm, rate-limiting]
+labels:
+- bug
+- loops
+- fsm
+- rate-limiting
 ---
 
 # BUG-1937: run_size_review missing on_rate_limit_exhausted routing in rn-implement.yaml

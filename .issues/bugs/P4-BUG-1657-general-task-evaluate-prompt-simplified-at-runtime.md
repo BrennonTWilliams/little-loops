@@ -7,7 +7,8 @@ discovered_date: 2026-05-23
 discovered_by: audit-loop-run
 confidence_score: 80
 outcome_confidence: 75
-relates_to: [ENH-1655]
+relates_to:
+- ENH-1655
 ---
 
 # BUG-1657: check_done evaluate prompt is silently simplified at runtime vs FSM definition

@@ -1,7 +1,9 @@
 ---
 discovered_date: "2026-04-20"
 discovered_by: parallel-family-review
-depends_on: [FEAT-1075, ENH-1177]
+depends_on:
+- FEAT-1075
+- ENH-1177
 status: deferred
 ---
 

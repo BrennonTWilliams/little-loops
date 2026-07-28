@@ -6,8 +6,19 @@ status: done
 priority: P2
 discovered_date: 2026-06-15
 discovered_by: manual
-labels: [epic, loops, fsm, routing, decision-table, evaluators, dx]
-relates_to: [ENH-2165, ENH-2164, ENH-2166, ENH-2154]
+labels:
+- epic
+- loops
+- fsm
+- routing
+- decision-table
+- evaluators
+- dx
+relates_to:
+- ENH-2165
+- ENH-2164
+- ENH-2166
+- ENH-2154
 ---
 
 # EPIC-2167: Decision-router as the core routing pattern for automated loops

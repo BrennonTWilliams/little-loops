@@ -4,7 +4,11 @@ type: enhancement
 priority: P3
 status: done
 completed_at: 2026-05-17T09:26:50Z
-labels: [migration, issue-management, cleanup, one-shot]
+labels:
+- migration
+- issue-management
+- cleanup
+- one-shot
 parent: ENH-1539
 size: Small
 decision_needed: false

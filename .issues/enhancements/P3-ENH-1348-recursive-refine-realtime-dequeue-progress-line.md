@@ -13,7 +13,11 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
-relates_to: ['ENH-1347', 'ENH-1338', 'ENH-1339', 'ENH-1350']
+relates_to:
+- 'ENH-1347'
+- 'ENH-1338'
+- 'ENH-1339'
+- 'ENH-1350'
 ---
 
 # ENH-1348: Real-Time Dequeue Progress Line in `recursive-refine`

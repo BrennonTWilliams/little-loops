@@ -5,13 +5,18 @@ type: feature
 status: open
 priority: P4
 parent: EPIC-2178
-depends_on: [FEAT-2179, ENH-2184]
+depends_on:
+- FEAT-2179
+- ENH-2184
 decision_needed: false
 decision_ref: ARCHITECTURE-046
 captured_at: "2026-06-15T00:00:00Z"
 discovered_date: 2026-06-15
 discovered_by: capture-issue
-labels: [gemini, host-compat, hooks]
+labels:
+- gemini
+- host-compat
+- hooks
 ---
 
 # FEAT-2186: Hook adapter — hooks/adapters/gemini/

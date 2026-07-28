@@ -13,7 +13,11 @@ score_complexity: 18
 score_test_coverage: 10
 score_ambiguity: 25
 score_change_surface: 25
-relates_to: ['ENH-1138', 'ENH-1134', 'ENH-1141', 'ENH-1142']
+relates_to:
+- 'ENH-1138'
+- 'ENH-1134'
+- 'ENH-1141'
+- 'ENH-1142'
 completed_at: 2026-05-10T00:00:00Z
 ---
 

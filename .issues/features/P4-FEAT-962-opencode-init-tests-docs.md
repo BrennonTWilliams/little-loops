@@ -6,7 +6,9 @@ status: done
 discovered_date: 2026-04-05
 discovered_by: issue-size-review
 
-blocked_by: [FEAT-961, FEAT-1116]
+blocked_by:
+- FEAT-961
+- FEAT-1116
 parent: FEAT-769
 completed_at: 2026-05-10T00:00:00Z
 ---

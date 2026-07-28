@@ -6,7 +6,8 @@ status: done
 discovered_date: 2026-03-31
 completed_date: 2026-03-31
 discovered_by: manual-audit
-depends_on: [ENH-896]
+depends_on:
+- ENH-896
 confidence_score: 100
 completed_at: 2026-03-31T00:00:00Z
 ---

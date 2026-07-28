@@ -7,8 +7,15 @@ priority: P4
 discovered_date: 2026-06-24
 discovered_by: planning-assessment
 decision_ref: ARCHITECTURE-048
-labels: [epic, host-compat, omp, pi-adapter, tracking]
-relates_to: [EPIC-2257, EPIC-2178]
+labels:
+- epic
+- host-compat
+- omp
+- pi-adapter
+- tracking
+relates_to:
+- EPIC-2257
+- EPIC-2178
 ---
 
 # EPIC-2258: oh-my-pi (omp) host adapter — tracking

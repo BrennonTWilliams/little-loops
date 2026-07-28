@@ -14,7 +14,8 @@ score_test_coverage: 10
 score_ambiguity: 25
 score_change_surface: 25
 testable: false
-blocked_by: [FEAT-1002]
+blocked_by:
+- FEAT-1002
 ---
 
 # FEAT-1005: Documentation file updates for ll-logs

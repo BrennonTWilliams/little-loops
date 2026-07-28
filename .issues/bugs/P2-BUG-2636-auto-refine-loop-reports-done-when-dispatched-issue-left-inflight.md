@@ -6,7 +6,11 @@ status: done
 discovered_date: "2026-07-13"
 discovered_by: manual
 completed_at: "2026-07-13"
-labels: [loops, fsm, observability, auto-refine-and-implement]
+labels:
+- loops
+- fsm
+- observability
+- auto-refine-and-implement
 relates_to:
 - BUG-2633
 ---

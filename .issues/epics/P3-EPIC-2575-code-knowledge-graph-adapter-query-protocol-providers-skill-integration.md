@@ -6,8 +6,18 @@ priority: P3
 status: open
 discovered_date: 2026-07-10
 discovered_by: capture-issue
-labels: [epic, code-intelligence, adapters, token-cost, cli, captured]
-relates_to: [FEAT-2576, ENH-2577, ENH-2578, ENH-2863]
+labels:
+- epic
+- code-intelligence
+- adapters
+- token-cost
+- cli
+- captured
+relates_to:
+- FEAT-2576
+- ENH-2577
+- ENH-2578
+- ENH-2863
 ---
 
 # EPIC-2575: Code Knowledge Graph Adapter — Query Protocol, Providers & Skill Integration

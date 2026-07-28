@@ -7,8 +7,15 @@ priority: P4
 discovered_date: 2026-07-25
 discovered_by: capture-issue
 parent: EPIC-2258
-relates_to: [FEAT-2787, FEAT-2261]
-labels: [host-compat, omp, structured-output, docs, adapters]
+relates_to:
+- FEAT-2787
+- FEAT-2261
+labels:
+- host-compat
+- omp
+- structured-output
+- docs
+- adapters
 ---
 
 # FEAT-2797: omp structured-output surface — audit findings, matrix correction, and agent `output:` schema wiring

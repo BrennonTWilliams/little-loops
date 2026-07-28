@@ -13,7 +13,12 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
-relates_to: ['ENH-1339', 'ENH-1340', 'ENH-1341', 'ENH-1347', 'ENH-1348']
+relates_to:
+- 'ENH-1339'
+- 'ENH-1340'
+- 'ENH-1341'
+- 'ENH-1347'
+- 'ENH-1348'
 ---
 
 # ENH-1350: Split `recursive-refine` "Skipped" Bucket Into Meaningful Reason Categories

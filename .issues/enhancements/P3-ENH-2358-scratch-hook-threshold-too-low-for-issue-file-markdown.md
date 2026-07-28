@@ -7,8 +7,13 @@ status: cancelled
 captured_at: "2026-06-27T22:44:05Z"
 discovered_date: 2026-06-27
 discovered_by: capture-issue
-labels: [scratch-hook, config, issue-files, markdown]
-relates_to: [BUG-2357]
+labels:
+- scratch-hook
+- config
+- issue-files
+- markdown
+relates_to:
+- BUG-2357
 ---
 
 # ENH-2358: Scratch hook threshold_lines too low for issue-file markdown

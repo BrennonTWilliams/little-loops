@@ -7,8 +7,33 @@ status: open
 captured_at: "2026-06-04T02:27:34Z"
 discovered_date: "2026-06-04"
 discovered_by: capture-issue
-labels: [epic, captured, ll-logs, telemetry, observability]
-relates_to: [ENH-1919, FEAT-1920, ENH-1921, ENH-1922, ENH-1923, ENH-1924, FEAT-1309, ENH-1904, FEAT-1925, ENH-2070, ENH-2071, ENH-2072, ENH-2103, ENH-2104, ENH-2129, ENH-2130, ENH-2131, ENH-2132, ENH-2133, ENH-2134]
+labels:
+- epic
+- captured
+- ll-logs
+- telemetry
+- observability
+relates_to:
+- ENH-1919
+- FEAT-1920
+- ENH-1921
+- ENH-1922
+- ENH-1923
+- ENH-1924
+- FEAT-1309
+- ENH-1904
+- FEAT-1925
+- ENH-2070
+- ENH-2071
+- ENH-2072
+- ENH-2103
+- ENH-2104
+- ENH-2129
+- ENH-2130
+- ENH-2131
+- ENH-2132
+- ENH-2133
+- ENH-2134
 ---
 
 # EPIC-1918: Leverage ll-logs as a development telemetry layer

@@ -8,9 +8,15 @@ testable: false
 discovered_date: 2026-06-24
 discovered_by: planning-assessment
 parent: EPIC-2258
-depends_on: [FEAT-1850]
-labels: [host-compat, omp, hooks, parity]
-relates_to: [FEAT-2261]
+depends_on:
+- FEAT-1850
+labels:
+- host-compat
+- omp
+- hooks
+- parity
+relates_to:
+- FEAT-2261
 ---
 
 # FEAT-2263: omp hook-event parity audit

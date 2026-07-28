@@ -5,7 +5,8 @@ priority: P3
 status: done
 discovered_date: 2026-05-01
 discovered_by: issue-size-review
-blocked_by: [FEAT-1315]
+blocked_by:
+- FEAT-1315
 parent: FEAT-1263
 
 confidence_score: 80
@@ -16,7 +17,8 @@ score_ambiguity: 25
 score_change_surface: 25
 missing_artifacts: true
 size: Very Large
-relates_to: ['FEAT-1315']
+relates_to:
+- 'FEAT-1315'
 completed_at: 2026-05-10T00:00:00Z
 ---
 

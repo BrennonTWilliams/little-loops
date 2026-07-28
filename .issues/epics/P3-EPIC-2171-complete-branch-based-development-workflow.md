@@ -7,8 +7,24 @@ priority: P3
 captured_at: '2026-06-15T16:51:50Z'
 discovered_date: '2026-06-15'
 discovered_by: capture-issue
-labels: [epic, parallel, sprint, feature-branches, workflow, dx]
-relates_to: [BUG-2172, ENH-2173, ENH-2174, ENH-2175, ENH-2176, ENH-2177, ENH-2180, ENH-2181, ENH-2182, ENH-2183]
+labels:
+- epic
+- parallel
+- sprint
+- feature-branches
+- workflow
+- dx
+relates_to:
+- BUG-2172
+- ENH-2173
+- ENH-2174
+- ENH-2175
+- ENH-2176
+- ENH-2177
+- ENH-2180
+- ENH-2181
+- ENH-2182
+- ENH-2183
 ---
 
 # EPIC-2171: Complete the branch-based development workflow (use_feature_branches)

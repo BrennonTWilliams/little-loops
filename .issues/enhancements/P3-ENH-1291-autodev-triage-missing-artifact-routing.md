@@ -4,7 +4,8 @@ completed_at: 2026-04-26T19:10:04Z
 discovered_date: 2026-04-25
 discovered_by: capture-issue
 decision_needed: false
-blocked_by: [ENH-1290]
+blocked_by:
+- ENH-1290
 confidence_score: 90
 outcome_confidence: 78
 score_complexity: 10

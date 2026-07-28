@@ -7,7 +7,19 @@ status: done
 captured_at: '2026-06-18T15:38:06Z'
 discovered_date: '2026-06-18'
 discovered_by: capture-issue
-relates_to: [ENH-2208, ENH-2209, ENH-2210, ENH-2212, ENH-2214, ENH-2215, ENH-2216, ENH-2217, ENH-2218, ENH-2219, ENH-2220, ENH-2221]
+relates_to:
+- ENH-2208
+- ENH-2209
+- ENH-2210
+- ENH-2212
+- ENH-2214
+- ENH-2215
+- ENH-2216
+- ENH-2217
+- ENH-2218
+- ENH-2219
+- ENH-2220
+- ENH-2221
 ---
 
 # EPIC-2207: Learning Test Registry — Deep Integration Across ll Features

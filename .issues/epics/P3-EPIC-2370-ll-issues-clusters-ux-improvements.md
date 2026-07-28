@@ -7,7 +7,10 @@ status: open
 captured_at: "2026-06-28T17:55:50Z"
 discovered_date: 2026-06-28
 discovered_by: create-epics-from-unparented
-relates_to: [FEAT-2337, ENH-2335, ENH-2336]
+relates_to:
+- FEAT-2337
+- ENH-2335
+- ENH-2336
 ---
 
 # EPIC-2370: ll-issues clusters UX Improvements

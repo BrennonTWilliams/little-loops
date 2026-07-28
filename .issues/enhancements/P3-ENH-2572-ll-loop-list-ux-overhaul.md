@@ -8,7 +8,10 @@ closed_date: 2026-07-10
 captured_at: "2026-07-10T00:00:00Z"
 discovered_date: 2026-07-10
 discovered_by: manual
-labels: [cli, ux, loops]
+labels:
+- cli
+- ux
+- loops
 ---
 
 # ENH-2572: `ll-loop list` UX overhaul — scanning-first layout

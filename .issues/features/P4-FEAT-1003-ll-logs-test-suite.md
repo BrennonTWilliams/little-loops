@@ -12,7 +12,8 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
-blocked_by: [FEAT-1002]
+blocked_by:
+- FEAT-1002
 completed_at: 2026-04-23T00:00:00Z
 ---
 

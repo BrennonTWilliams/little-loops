@@ -8,7 +8,11 @@ parent: EPIC-2178
 captured_at: "2026-06-15T17:09:51Z"
 discovered_date: 2026-06-15
 discovered_by: capture-issue
-labels: [research, gemini, host-compat, spike]
+labels:
+- research
+- gemini
+- host-compat
+- spike
 ---
 
 # FEAT-2179: Research spike — gemini-cli binary surface, hook events, and plugin discovery

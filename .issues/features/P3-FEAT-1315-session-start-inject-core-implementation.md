@@ -5,7 +5,8 @@ priority: P3
 status: deferred
 discovered_date: 2026-05-01
 discovered_by: issue-size-review
-blocked_by: [FEAT-1156]
+blocked_by:
+- FEAT-1156
 parent: FEAT-1263
 
 decision_needed: false
@@ -16,7 +17,11 @@ score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
 size: Very Large
-relates_to: ['FEAT-1156', 'FEAT-1264', 'FEAT-1262', 'FEAT-1316']
+relates_to:
+- 'FEAT-1156'
+- 'FEAT-1264'
+- 'FEAT-1262'
+- 'FEAT-1316'
 ---
 
 # FEAT-1315: SessionStart Inject — Core Hook Implementation

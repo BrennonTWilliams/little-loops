@@ -6,7 +6,11 @@ status: done
 captured_at: "2026-06-05T18:20:28Z"
 discovered_date: 2026-06-05
 discovered_by: scope-epic
-relates_to: [ENH-1958, ENH-1959, BUG-1960, ENH-1961]
+relates_to:
+- ENH-1958
+- ENH-1959
+- BUG-1960
+- ENH-1961
 ---
 
 # EPIC-1962: Hardening FSM Loop Checkpoint & Capture Safety

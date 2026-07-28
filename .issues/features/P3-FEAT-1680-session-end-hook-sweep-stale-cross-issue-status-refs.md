@@ -13,7 +13,8 @@ labels:
 - automation
 - issue-management
 parent: EPIC-1707
-relates_to: [EPIC-2196]
+relates_to:
+- EPIC-2196
 decision_needed: false
 confidence_score: 98
 outcome_confidence: 91

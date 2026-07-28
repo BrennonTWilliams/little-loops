@@ -7,8 +7,12 @@ priority: P4
 discovered_date: 2026-06-24
 discovered_by: planning-assessment
 parent: EPIC-2258
-depends_on: [FEAT-1850]
-labels: [host-compat, omp, hooks]
+depends_on:
+- FEAT-1850
+labels:
+- host-compat
+- omp
+- hooks
 ---
 
 # FEAT-2261: omp hook adapter — hooks/adapters/omp/

@@ -8,7 +8,10 @@ captured_at: "2026-05-26T02:23:05Z"
 discovered_date: 2026-05-26
 discovered_by: capture-issue
 parent: EPIC-1463
-labels: [codex, host-compat, research]
+labels:
+- codex
+- host-compat
+- research
 testable: false
 ---
 

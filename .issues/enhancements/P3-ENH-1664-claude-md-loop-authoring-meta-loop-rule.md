@@ -5,9 +5,17 @@ status: done
 priority: P3
 discovered_date: 2026-05-23
 discovered_by: manual
-labels: [docs, claude-md, loops, meta-loop, harness, shor]
+labels:
+- docs
+- claude-md
+- loops
+- meta-loop
+- harness
+- shor
 parent: EPIC-1663
-relates_to: [ENH-1665, ENH-1666]
+relates_to:
+- ENH-1665
+- ENH-1666
 testable: false
 ---
 

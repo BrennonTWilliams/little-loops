@@ -14,7 +14,10 @@ score_change_surface: 25
 implementation_order_risk: true
 size: Very Large
 decision_needed: false
-labels: [documentation, harness-optimize, loops]
+labels:
+- documentation
+- harness-optimize
+- loops
 ---
 
 # ENH-1557: harness-optimize State-Mode Documentation

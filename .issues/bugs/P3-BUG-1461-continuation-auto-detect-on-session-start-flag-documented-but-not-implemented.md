@@ -8,7 +8,8 @@ testable: false
 discovered_date: 2026-05-14
 discovered_by: verify-issues
 completed_at: 2026-06-01T19:57:35Z
-relates_to: [FEAT-948]
+relates_to:
+- FEAT-948
 decision_needed: false
 ---
 

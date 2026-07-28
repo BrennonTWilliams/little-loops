@@ -7,7 +7,10 @@ status: open
 captured_at: "2026-07-25T02:35:31Z"
 discovered_date: 2026-07-25
 discovered_by: create-epics-from-unparented
-relates_to: [ENH-2780, ENH-2781, ENH-2782]
+relates_to:
+- ENH-2780
+- ENH-2781
+- ENH-2782
 ---
 
 # EPIC-2792: Issue Parsing Performance

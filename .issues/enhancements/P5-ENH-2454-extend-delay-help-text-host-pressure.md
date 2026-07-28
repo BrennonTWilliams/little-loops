@@ -5,7 +5,10 @@ type: ENH
 parent: EPIC-2455
 priority: P5
 status: done
-labels: [docs, cli, captured]
+labels:
+- docs
+- cli
+- captured
 captured_at: "2026-07-03T02:05:57Z"
 discovered_date: "2026-07-02"
 discovered_by: capture-issue

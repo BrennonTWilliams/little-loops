@@ -2,7 +2,9 @@
 discovered_date: "2026-04-22"
 discovered_by: issue-size-review
 
-depends_on: [FEAT-1075, ENH-1176]
+depends_on:
+- FEAT-1075
+- ENH-1176
 decision_needed: true
 decision_question: "Should ll-loop --worktree worktrees (naming: <timestamp>-<safe-name>) be added to the orchestrator's orphan scan, or should loop cleanup remain atexit-only? Choosing 'yes' requires extending startswith('worker-') filters in orchestrator.py:385 and worker_pool.py:1316."
 size: Very Large

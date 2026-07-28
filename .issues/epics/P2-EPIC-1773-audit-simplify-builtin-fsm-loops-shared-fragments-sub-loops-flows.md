@@ -8,7 +8,12 @@ discovered_date: 2026-05-28
 discovered_by: capture-issue
 status: done
 completed_at: '2026-06-04T00:00:00Z'
-relates_to: [ENH-1774, ENH-1643, BUG-1767, ENH-1862, FEAT-1798]
+relates_to:
+- ENH-1774
+- ENH-1643
+- BUG-1767
+- ENH-1862
+- FEAT-1798
 ---
 
 # EPIC-1773: Audit & Simplify Built-in FSM Loops with Shared Fragments, Sub-loops, and Flows

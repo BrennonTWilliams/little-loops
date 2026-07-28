@@ -1,7 +1,8 @@
 ---
 discovered_date: 2026-02-05
 discovered_by: investigation
-related_issues: [FEAT-222]
+related_issues:
+- FEAT-222
 status: done
 completed_at: 2026-02-13T00:00:00Z
 ---

@@ -4,7 +4,13 @@ title: autodev spike triage routing + spike-gate wrapper loop
 type: ENH
 priority: P3
 status: cancelled
-labels: [fsm, loops, autodev, confidence, risk-reduction, captured]
+labels:
+- fsm
+- loops
+- autodev
+- confidence
+- risk-reduction
+- captured
 captured_at: "2026-07-10T01:34:59Z"
 discovered_date: "2026-07-10"
 discovered_by: capture-issue

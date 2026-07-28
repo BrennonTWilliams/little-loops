@@ -7,7 +7,11 @@ status: done
 captured_at: "2026-06-27T22:44:05Z"
 discovered_date: 2026-06-27
 discovered_by: capture-issue
-labels: [scratch-hook, tooling, edit, read]
+labels:
+- scratch-hook
+- tooling
+- edit
+- read
 ---
 
 # BUG-2357: Scratch hook Read interception breaks Edit/Write tools for session

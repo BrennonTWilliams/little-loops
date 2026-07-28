@@ -13,7 +13,11 @@ score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 0
 size: Very Large
-relates_to: ['BUG-1107', 'BUG-1108', 'BUG-1109', 'ENH-1115']
+relates_to:
+- 'BUG-1107'
+- 'BUG-1108'
+- 'BUG-1109'
+- 'ENH-1115'
 completed_at: 2026-05-10T00:00:00Z
 ---
 

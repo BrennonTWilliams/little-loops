@@ -8,9 +8,20 @@ captured_at: "2026-06-13T00:00:00Z"
 discovered_date: 2026-06-13
 discovered_by: capture-issue
 parent: EPIC-1463
-relates_to: [FEAT-1462, FEAT-1623, FEAT-1721, FEAT-2122, EPIC-2456]
-depends_on: [ENH-2461]
-labels: [codex, opencode, host-runner, observability, host-compat]
+relates_to:
+- FEAT-1462
+- FEAT-1623
+- FEAT-1721
+- FEAT-2122
+- EPIC-2456
+depends_on:
+- ENH-2461
+labels:
+- codex
+- opencode
+- host-runner
+- observability
+- host-compat
 ---
 
 # FEAT-2123: Surface per-invocation token usage from Codex and OpenCode runners

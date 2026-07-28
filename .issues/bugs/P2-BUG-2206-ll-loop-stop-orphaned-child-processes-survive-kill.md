@@ -5,7 +5,10 @@ confidence_score: 99
 outcome_confidence: 99
 status: done
 completed_at: 2026-06-14T00:00:00Z
-labels: [loop, process-management, cli]
+labels:
+- loop
+- process-management
+- cli
 ---
 
 # BUG-2147: `ll-loop stop` Leaves Orphaned Child Processes Alive

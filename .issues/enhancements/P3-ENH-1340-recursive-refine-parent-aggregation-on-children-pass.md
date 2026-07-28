@@ -13,7 +13,8 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
-relates_to: ['ENH-1342']
+relates_to:
+- 'ENH-1342'
 ---
 
 # ENH-1340: Aggregate Children's Outcomes Back to Parent in `recursive-refine`
