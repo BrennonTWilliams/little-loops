@@ -443,6 +443,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 | `docs/reference/CLI.md` | Full CLI reference (`### ll-verify-triggers`, lines 2982-3006) with an exit-code contract that goes stale after Part 1 — _added by `/ll:wire-issue`_ |
 
 ## Session Log
+- `/ll:ready-issue` - 2026-07-28T02:59:34 - `808ab62e-a3cc-4318-8865-b51adadca76f.jsonl`
 - `/ll:wire-issue` - 2026-07-28T02:36:27 - `1679ea24-85ef-4b97-b445-0a9c3a5e3f4b.jsonl`
 - `/ll:decide-issue` - 2026-07-28T02:28:19 - `cf5573d6-5c50-4030-93dd-76c7e1c89898.jsonl`
 - `/ll:refine-issue` - 2026-07-28T02:22:13 - `e2671968-a7c2-48ee-8e1c-446533c43048.jsonl`
