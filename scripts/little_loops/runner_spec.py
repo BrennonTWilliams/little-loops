@@ -28,6 +28,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 from little_loops.host_runner import resolve_host
@@ -62,6 +63,12 @@ class RunnerResult:
     exit_code: int
     timed_out: bool = False
     error: str | None = None
+    # FEAT-2878: ordered tool-call trace (dicts with "index"/"name"/"input"
+    # keys, mirroring subprocess_utils.ToolCall) captured live during a
+    # trace-mode SKILL/PROMPT run. None for every non-trace-mode run — a
+    # defaulted field appended after `error`, so all existing keyword-only
+    # construction sites (see Decision 1's call-site survey) are unaffected.
+    tool_trace: list[dict[str, Any]] | None = None
 
 
 @dataclass(frozen=True)
@@ -91,17 +98,67 @@ def _run_skill(spec: ActionSpec) -> RunnerResult:
     - set (ll-action's ``invoke`` command): streaming execution via
       :func:`little_loops.subprocess_utils.run_claude_command`, which
       invokes the callback per output line as it arrives.
+
+    ``args["trace_mode"]`` (FEAT-2878, Decision 2) is a third mode, layered
+    on top rather than a new ``RunnerType`` member: when True, the skill runs
+    via the same streaming path as ``stream_callback``, but additionally
+    captures an ordered tool-call trace (via
+    :func:`little_loops.subprocess_utils.run_claude_command`'s
+    ``on_tool_call``) into the returned :class:`RunnerResult`'s
+    ``tool_trace``. ``args["workspace_root"]`` (``Path | str``), when set,
+    is forwarded as ``working_dir`` and as ``workspace_root`` so a
+    ``workspace_sandboxed`` host confines tool access to it.
     """
     runner_args: list[str] = spec.args.get("runner_args") or []
     parts = [f"/ll:{spec.target}"] + runner_args
     prompt = " ".join(parts)
     stream_callback: Callable[[str, bool], None] | None = spec.args.get("stream_callback")
+    trace_mode: bool = bool(spec.args.get("trace_mode"))
 
     # ENH-2714: opt-in automation-context static-prefix pruning profile, threaded
     # through from the caller (ll-harness/ll-action/ll-loop) so those CLIs don't
     # silently bypass pruning outside the FSM executor path. None (default)
     # preserves full unpruned behavior.
     automation_profile: str | None = spec.args.get("automation_profile")
+
+    if trace_mode:
+        from little_loops.subprocess_utils import ToolCall, run_claude_command
+
+        command = f"/ll:{spec.target}"
+        if runner_args:
+            command += " " + " ".join(runner_args)
+        workspace_root_arg = spec.args.get("workspace_root")
+        workspace_root = Path(workspace_root_arg) if workspace_root_arg else None
+        trace: list[ToolCall] = []
+        try:
+            proc = run_claude_command(
+                command=command,
+                timeout=spec.timeout,
+                working_dir=workspace_root,
+                stream_callback=stream_callback,
+                automation_profile=automation_profile,
+                tools=spec.args.get("tools"),
+                on_tool_call=trace.append,
+                workspace_root=workspace_root,
+            )
+            return RunnerResult(
+                stdout="",
+                stderr="",
+                exit_code=proc.returncode,
+                tool_trace=[
+                    {"index": c.index, "name": c.name, "input": c.input} for c in trace
+                ],
+            )
+        except subprocess.TimeoutExpired:
+            return RunnerResult(
+                stdout="",
+                stderr="",
+                exit_code=124,
+                timed_out=True,
+                tool_trace=[
+                    {"index": c.index, "name": c.name, "input": c.input} for c in trace
+                ],
+            )
 
     if stream_callback is not None:
         from little_loops.subprocess_utils import run_claude_command

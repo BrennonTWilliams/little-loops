@@ -1,0 +1,12 @@
+{
+  "id": "67028e71-6cc5-4774-9119-fb99d961aa08",
+  "type": "decision",
+  "timestamp": "2026-07-28T12:18:37Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Avoids cross-CLI wiring in cli/action.py, cli/queue.py, queue_store.py that a new RunnerType member would still require",
+  "rule": "Routing: trace_mode flag on existing SKILL/PROMPT RunnerType members",
+  "scope": "issue",
+  "alternatives_rejected": "New TRACE RunnerType enum member",
+  "issue": "FEAT-2878"
+}

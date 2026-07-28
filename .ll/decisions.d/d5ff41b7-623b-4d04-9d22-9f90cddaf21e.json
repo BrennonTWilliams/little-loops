@@ -1,0 +1,12 @@
+{
+  "id": "29dc6e42-c3e3-4149-875b-09e7f7dd106c",
+  "type": "decision",
+  "timestamp": "2026-07-28T12:18:37Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "All call sites are keyword-only; defaulted field is backward compatible; avoids duplicating _DISPATCH return types",
+  "rule": "Trace carrier: extend RunnerResult with tool_trace field",
+  "scope": "issue",
+  "alternatives_rejected": "Parallel result type for trace-mode runs",
+  "issue": "FEAT-2878"
+}

@@ -166,6 +166,57 @@ Exit codes:
             help="Show full captured output even on pass",
         )
 
+    def _add_trace_flags(p: argparse.ArgumentParser) -> None:
+        """FEAT-2878: trace-assertion mode flags, layered onto SKILL/PROMPT.
+
+        Opt-in via ``--trace-mode``; the default (unset) run is unaffected.
+        """
+        p.add_argument(
+            "--trace-mode",
+            action="store_true",
+            help=(
+                "Run against a scoped temporary workspace and assert on the "
+                "live ordered tool-call trace instead of stdout (FEAT-2878)"
+            ),
+        )
+        p.add_argument(
+            "--require-order",
+            type=str,
+            default=None,
+            metavar="TOOL,TOOL,...",
+            help="Comma-separated tool names that must appear in this relative order",
+        )
+        p.add_argument(
+            "--require-artifact",
+            action="append",
+            default=[],
+            metavar="PATH",
+            help="Path (relative to the workspace) that must have been written; repeatable",
+        )
+        p.add_argument(
+            "--forbid-path",
+            action="append",
+            default=[],
+            metavar="PATH",
+            help="Path (relative to the workspace) that must NOT have been written; repeatable",
+        )
+        p.add_argument(
+            "--keep-workspace",
+            action="store_true",
+            help="Do not delete the scoped temporary workspace after the run",
+        )
+        p.add_argument(
+            "--hosts",
+            type=str,
+            default=None,
+            metavar="HOST,HOST,...",
+            help=(
+                "Opt-in multi-host divergence: comma-separated host names to run "
+                "against (default: the single resolved host). Hosts that are "
+                "unconfigured or unavailable are skipped with a reported reason."
+            ),
+        )
+
     skill_p = subparsers.add_parser(
         "skill",
         help="Invoke a little-loops skill",
@@ -178,6 +229,7 @@ Exit codes:
         help="Additional arguments passed to the skill",
     )
     _add_evaluator_flags(skill_p)
+    _add_trace_flags(skill_p)
 
     cmd_p = subparsers.add_parser(
         "cmd",

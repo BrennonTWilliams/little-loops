@@ -72,6 +72,27 @@ class TokenUsage:
 # Detailed usage callback — receives all four token fields plus model ID.
 DetailedUsageCallback = Callable[[TokenUsage], None]
 
+
+@dataclass(frozen=True)
+class ToolCall:
+    """A single ordered tool-call captured live from a stream-json run.
+
+    Mirrors ``scripts/tests/spike/eval_trace_capture/trace_capture.py``'s
+    ``ToolCall`` shape, proven in the FEAT-2878 spike. ``index`` is the
+    call's 0-based position in the ordered trace for this invocation.
+    """
+
+    index: int
+    name: str
+    input: dict[str, object]
+
+
+# Tool-call callback: (call: ToolCall) -> None (FEAT-2878). Invoked live,
+# once per ordered tool_use block parsed out of an "assistant" stream-json
+# event, so a caller can build/assert an ordered tool-call trace during a
+# run instead of only reconstructing it post-hoc from on-disk JSONL logs.
+ToolCallCallback = Callable[[ToolCall], None]
+
 # Context handoff detection pattern
 CONTEXT_HANDOFF_PATTERN = re.compile(r"CONTEXT_HANDOFF:\s*Ready for fresh session")
 CONTINUATION_PROMPT_PATH = Path(".ll/ll-continue-prompt.md")
@@ -315,6 +336,8 @@ def run_claude_command(
     post_stream_close_grace_seconds: int = 300,
     on_result_seen: ResultSeenCallback | None = None,
     on_session_id_detected: SessionIdCallback | None = None,
+    on_tool_call: ToolCallCallback | None = None,
+    workspace_root: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke Claude CLI command with real-time output streaming.
 
@@ -355,6 +378,16 @@ def run_claude_command(
         on_session_id_detected: Optional callback invoked with the host CLI's
             `session_id` from the stream-json system/init event (FEAT-2711).
             Called at most once per invocation, alongside on_model_detected.
+        on_tool_call: Optional callback invoked live, once per ordered
+            ``tool_use`` block parsed out of an "assistant" stream-json
+            event (FEAT-2878). Lets a caller build/assert an ordered
+            tool-call trace (name, order, input) during the run, instead of
+            only reconstructing it post-hoc from on-disk JSONL logs.
+        workspace_root: Optional path forwarded to ``build_streaming()`` to
+            request that tool access be confined to that directory
+            (FEAT-2878). Only honored by hosts advertising
+            ``HostCapabilities.workspace_sandboxed`` — see that flag's
+            docstring for the current support matrix.
 
     Returns:
         CompletedProcess with stdout/stderr captured
@@ -372,6 +405,7 @@ def run_claude_command(
         tools=tools,
         model=model,
         automation_profile=automation_profile,
+        workspace_root=workspace_root,
     )
     cmd_args = [invocation.binary, *invocation.args]
 
@@ -405,6 +439,7 @@ def run_claude_command(
     stdout_lines: list[str] = []
     stderr_lines: list[str] = []
     detected_model: str = "unknown"
+    tool_call_count = 0
 
     # Use selectors for non-blocking read from both streams
     with selectors.DefaultSelector() as sel:
@@ -480,6 +515,17 @@ def run_claude_command(
                                     if block.get("type") == "text"
                                 ]
                                 text = "\n\n".join(text_parts)
+                                if on_tool_call:
+                                    for block in msg.get("content", []):
+                                        if block.get("type") != "tool_use":
+                                            continue
+                                        call = ToolCall(
+                                            index=tool_call_count,
+                                            name=block.get("name", ""),
+                                            input=block.get("input", {}),
+                                        )
+                                        tool_call_count += 1
+                                        on_tool_call(call)
                                 if not text:
                                     continue
                                 for sub_line in text.splitlines() or [""]:

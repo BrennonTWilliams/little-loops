@@ -1,0 +1,12 @@
+{
+  "id": "feb429f7-3b2e-4159-bc88-4b0c3f02408a",
+  "type": "decision",
+  "timestamp": "2026-07-28T05:19:40Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "No dataclass-inheritance precedent exists in the codebase; adapter host keys (codex/gemini/omp) are non-congruent with runtime host keys (adds claude-code/opencode/pi); cli/doctor.py's CheckResult already mirrors host_runner.CapabilityEntry via docstring + TYPE_CHECKING-only import as direct precedent.",
+  "rule": "Option B \u2014 capability map is a distinct build-time surface from host_runner.HostCapabilities, cross-referenced by docstring, no inheritance",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: extend/embed HostCapabilities directly",
+  "issue": "ENH-2873"
+}

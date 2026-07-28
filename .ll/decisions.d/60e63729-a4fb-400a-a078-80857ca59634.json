@@ -1,0 +1,12 @@
+{
+  "id": "cb716dba-053b-4b3a-908e-4325a228176f",
+  "type": "decision",
+  "timestamp": "2026-07-28T12:18:37Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "verify_host_map.py already gates on HostCapabilities agreement per host; an invisible jail could silently run unsandboxed on unsupporting hosts",
+  "rule": "Sandboxing: new boolean HostCapabilities field",
+  "scope": "issue",
+  "alternatives_rejected": "Config-only concern with no HostCapabilities flag",
+  "issue": "FEAT-2878"
+}

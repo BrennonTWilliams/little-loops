@@ -29,6 +29,7 @@ from little_loops.host_runner import ClaudeCodeRunner
 from little_loops.subprocess_utils import (
     CONTEXT_HANDOFF_PATTERN,
     CONTINUATION_PROMPT_PATH,
+    ToolCall,
     detect_context_handoff,
     read_continuation_prompt,
     run_claude_command,
@@ -1610,9 +1611,9 @@ class TestRunClaudeCommandModelDetection:
 
     def test_unknown_event_type_skipped(self) -> None:
         """Non-init, non-assistant, non-result JSON events are skipped: no stdout, no callback."""
-        tool_use_event = '{"type": "tool_use", "id": "tu_123", "name": "Bash"}\n'
+        unknown_event = '{"type": "queued", "id": "q_123"}\n'
         mock_process = Mock()
-        mock_process.stdout = io.StringIO(tool_use_event)
+        mock_process.stdout = io.StringIO(unknown_event)
         mock_process.stderr = io.StringIO("")
         mock_process.returncode = 0
         mock_process.wait.return_value = None
@@ -1631,6 +1632,69 @@ class TestRunClaudeCommandModelDetection:
 
         assert result.stdout == ""
         assert callback_calls == []
+
+    def test_tool_use_event_surfaced_to_on_tool_call_callback(self) -> None:
+        """tool_use content blocks in an assistant event are surfaced live via on_tool_call.
+
+        FEAT-2878: this replaces the prior `else: continue` discard of tool_use
+        blocks. An assistant message with ONLY a tool_use block (no text) must
+        still surface the call, since real tool-invocation turns often carry no
+        accompanying text.
+        """
+        assistant_event = (
+            '{"type": "assistant", "message": {"content": ['
+            '{"type": "tool_use", "id": "tu_1", "name": "Read", '
+            '"input": {"file_path": "/tmp/foo.py"}}]}}\n'
+        )
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO(assistant_event)
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        tool_calls: list[ToolCall] = []
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                self._make_single_line_selector(mock_selector, mock_process)
+                result = run_claude_command(
+                    "test",
+                    on_tool_call=lambda call: tool_calls.append(call),
+                )
+
+        assert result.stdout == ""
+        assert len(tool_calls) == 1
+        assert tool_calls[0].index == 0
+        assert tool_calls[0].name == "Read"
+        assert tool_calls[0].input == {"file_path": "/tmp/foo.py"}
+
+    def test_multiple_tool_calls_in_one_event_preserve_order(self) -> None:
+        """Ordered tool-call trace preserves declaration order within one assistant event."""
+        assistant_event = (
+            '{"type": "assistant", "message": {"content": ['
+            '{"type": "tool_use", "id": "tu_1", "name": "Read", "input": {"a": 1}},'
+            '{"type": "text", "text": "checking"},'
+            '{"type": "tool_use", "id": "tu_2", "name": "Grep", "input": {"b": 2}}'
+            "]}}\n"
+        )
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO(assistant_event)
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        tool_calls: list[ToolCall] = []
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                self._make_single_line_selector(mock_selector, mock_process)
+                run_claude_command(
+                    "test",
+                    on_tool_call=lambda call: tool_calls.append(call),
+                )
+
+        assert [c.name for c in tool_calls] == ["Read", "Grep"]
+        assert [c.index for c in tool_calls] == [0, 1]
 
     def test_on_usage_callback_called_with_result_event(self) -> None:
         """on_usage callback receives (input_tokens + cache_read, output_tokens) from result event."""
@@ -2300,6 +2364,7 @@ class TestRunClaudeCommandHostRunner:
             tools=None,
             model=None,
             automation_profile=None,
+            workspace_root=None,
         )
         assert captured_args[0][0] == "myhost"
 

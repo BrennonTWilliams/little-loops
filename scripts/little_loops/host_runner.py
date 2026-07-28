@@ -134,6 +134,12 @@ class HostCapabilities:
     # ignore or reject it, so evaluators skip the flag and rely on the
     # prompt-and-parse path (BUG-2626 tag fallback stays as the safety net).
     structured_output: bool = False
+    # FEAT-2878: True only when build_streaming()'s `workspace_root` parameter
+    # actually confines tool/filesystem access to that directory (a real
+    # jail), rather than merely being accepted and ignored. Defaulted False
+    # at all six per-host construction sites, mirroring how structured_output
+    # (ENH-2627) was added; flip True only where the jail is implemented.
+    workspace_sandboxed: bool = False
 
 
 @dataclass(frozen=True)
@@ -216,6 +222,7 @@ class HostRunner(Protocol):
         tools: list[str] | None = None,
         model: str | None = None,
         automation_profile: str | None = None,
+        workspace_root: Path | None = None,
     ) -> HostInvocation:
         """Build an invocation that streams structured output.
 
@@ -227,6 +234,13 @@ class HostRunner(Protocol):
         automation-aware hooks (SessionStart digest, history-context CLI) can
         suppress their static-prefix output. ``None`` (the default) preserves
         full unpruned behavior.
+
+        ``workspace_root`` (FEAT-2878), when set, requests that tool access be
+        confined to that directory for a trace-assertion eval run. Only
+        honored where ``HostCapabilities.workspace_sandboxed`` is True; other
+        hosts accept and ignore it (or warn via
+        :class:`CapabilityNotSupported`), same posture as ``tools`` on hosts
+        without a native allowlist.
         """
         ...
 
@@ -270,6 +284,10 @@ class ClaudeCodeRunner:
         agent_select=True,
         tool_allowlist=True,
         structured_output=True,  # ENH-2627: claude CLI honors inline --json-schema
+        # FEAT-2878: --permission-mode + --add-dir (below) confines tool
+        # access to workspace_root when requested, instead of the blanket
+        # --dangerously-skip-permissions bypass used on the default path.
+        workspace_sandboxed=True,
     )
 
     def detect(self) -> bool:
@@ -285,13 +303,34 @@ class ClaudeCodeRunner:
         tools: list[str] | None = None,
         model: str | None = None,
         automation_profile: str | None = None,
+        workspace_root: Path | None = None,
     ) -> HostInvocation:
-        args: list[str] = [
-            "--dangerously-skip-permissions",
-            "--verbose",
-            "--output-format",
-            "stream-json",
-        ]
+        if workspace_root is not None:
+            # FEAT-2878: trace-assertion runs opt out of the blanket
+            # --dangerously-skip-permissions bypass so the CLI's own
+            # permission system enforces a filesystem jail. --add-dir grants
+            # access to exactly workspace_root (nothing else is allowlisted);
+            # --permission-mode acceptEdits auto-approves edits *within* the
+            # allowed directories without opening a full bypass. This
+            # mechanism was deliberately not spiked (see FEAT-2878's Spike
+            # Results) — verify with a scoped-workspace conformance test
+            # before relying on it for a security boundary.
+            args: list[str] = [
+                "--permission-mode",
+                "acceptEdits",
+                "--add-dir",
+                str(workspace_root),
+                "--verbose",
+                "--output-format",
+                "stream-json",
+            ]
+        else:
+            args = [
+                "--dangerously-skip-permissions",
+                "--verbose",
+                "--output-format",
+                "stream-json",
+            ]
         if resume:
             args.append("--continue")
         args += ["-p", prompt]
@@ -305,8 +344,9 @@ class ClaudeCodeRunner:
         env: dict[str, str] = {
             "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "1",
             "LL_NON_INTERACTIVE": "1",
-            "DANGEROUSLY_SKIP_PERMISSIONS": "1",
         }
+        if workspace_root is None:
+            env["DANGEROUSLY_SKIP_PERMISSIONS"] = "1"
         if automation_profile is not None:
             env["LL_AUTOMATION"] = "1"
             env["LL_AUTOMATION_PROFILE"] = automation_profile
@@ -557,8 +597,18 @@ class CodexRunner:
         sandbox_mode: str | None = None,
         model: str | None = None,
         automation_profile: str | None = None,
+        workspace_root: Path | None = None,
     ) -> HostInvocation:
         del model  # codex does not support --model in streaming mode
+        if workspace_root is not None:
+            warnings.warn(
+                "codex host_runner has no workspace-sandboxing implementation "
+                "(HostCapabilities.workspace_sandboxed=False); "
+                "the 'workspace_root' parameter will be ignored. Use "
+                "sandbox_mode= for Codex's own sandbox modes instead.",
+                CapabilityNotSupported,
+                stacklevel=2,
+            )
         if agent is not None:
             prompt, injected = self._inject_agent_persona(agent, prompt, working_dir)
             if not injected:
@@ -755,6 +805,7 @@ class OpenCodeRunner:
         tools: list[str] | None = None,
         model: str | None = None,
         automation_profile: str | None = None,
+        workspace_root: Path | None = None,
     ) -> HostInvocation:
         raise HostNotConfigured(
             "OpenCode orchestration not yet wired — research OpenCode headless CLI. "
@@ -828,6 +879,7 @@ class PiRunner:
         tools: list[str] | None = None,
         model: str | None = None,
         automation_profile: str | None = None,
+        workspace_root: Path | None = None,
     ) -> HostInvocation:
         raise HostNotConfigured(
             "Pi orchestration not yet wired — see FEAT-992. "
@@ -938,6 +990,7 @@ class GeminiRunner:
         tools: list[str] | None = None,
         model: str | None = None,
         automation_profile: str | None = None,
+        workspace_root: Path | None = None,
     ) -> HostInvocation:
         if agent:
             warnings.warn(
@@ -951,6 +1004,14 @@ class GeminiRunner:
                 "gemini has no tool-allowlist flag; tool access is governed "
                 "by the Policy Engine (--policy <path>, a TOML file). "
                 "The 'tools' parameter will be ignored.",
+                CapabilityNotSupported,
+                stacklevel=2,
+            )
+        if workspace_root is not None:
+            warnings.warn(
+                "gemini host_runner has no workspace-sandboxing implementation "
+                "(HostCapabilities.workspace_sandboxed=False); "
+                "the 'workspace_root' parameter will be ignored.",
                 CapabilityNotSupported,
                 stacklevel=2,
             )
@@ -1126,12 +1187,21 @@ class OmpRunner:
         tools: list[str] | None = None,
         model: str | None = None,
         automation_profile: str | None = None,
+        workspace_root: Path | None = None,
     ) -> HostInvocation:
         if agent:
             warnings.warn(
                 "omp has no CLI-flag agent selection; subagents are spawned "
                 "in-session by the model (task delegation). The 'agent' "
                 "parameter will be ignored.",
+                CapabilityNotSupported,
+                stacklevel=2,
+            )
+        if workspace_root is not None:
+            warnings.warn(
+                "omp host_runner has no workspace-sandboxing implementation "
+                "(HostCapabilities.workspace_sandboxed=False); "
+                "the 'workspace_root' parameter will be ignored.",
                 CapabilityNotSupported,
                 stacklevel=2,
             )
