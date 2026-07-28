@@ -3,8 +3,12 @@
 Empirically validates whether each skill's ``description`` field fires correctly:
 it should trigger on a set of realistic should-fire phrasings and stay silent on
 a set of near-miss should-NOT-fire phrasings. Reports per-skill precision/recall
-and a cross-skill collision matrix. Exits non-zero when any skill falls below
-threshold or collides with another skill.
+and a cross-skill collision matrix.
+
+Only model-invocable skills are scored, and only skills that actually declare
+``trigger_fixtures`` are measured; the rest are reported as unmeasured coverage
+gaps. Exits non-zero when a *measured* skill falls below threshold or collides
+with another skill (BUG-2879).
 """
 
 from __future__ import annotations
@@ -17,6 +21,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from little_loops.adapters.core import _is_model_invocation_disabled
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
 # ---------------------------------------------------------------------------
@@ -152,6 +157,13 @@ class SkillTriggerResult:
     recall: float = 0.0
     false_positive_phrasings: list[str] = field(default_factory=list)
     false_negative_phrasings: list[str] = field(default_factory=list)
+    measured: bool = False
+    """True when the skill declared ``trigger_fixtures``.
+
+    Unmeasured skills score 0.0/0.0 by construction and are excluded from the
+    pass/fail computation — absence of fixtures is a coverage gap, not a
+    threshold violation (BUG-2879).
+    """
 
 
 # Naming aliases for test compatibility
@@ -271,11 +283,20 @@ def _load_trigger_fixtures(skill_md_path: Path) -> TriggerFixtures | None:
 # ---------------------------------------------------------------------------
 
 
-def _load_skill_descriptions(skills_dir: Path) -> dict[str, tuple[str, Path]]:
+def _load_skill_descriptions(
+    skills_dir: Path,
+    model_invocable_only: bool = False,
+) -> dict[str, tuple[str, Path]]:
     """Load (description, path) for all SKILL.md files under *skills_dir*.
 
     Returns a dict mapping skill name → (description, path).
     Skills without frontmatter or a description are skipped.
+
+    When *model_invocable_only* is True, skills carrying a truthy
+    ``disable-model-invocation`` are skipped as well — trigger accuracy is
+    meaningless for a skill the model can never auto-invoke. The filter is
+    opt-in so other callers (``issue_history.evolution._load_skill_keywords``)
+    keep seeing the full population.
     """
     skills: dict[str, tuple[str, Path]] = {}
 
@@ -305,6 +326,9 @@ def _load_skill_descriptions(skills_dir: Path) -> dict[str, tuple[str, Path]]:
             continue
 
         if not isinstance(fm, dict):
+            continue
+
+        if model_invocable_only and _is_model_invocation_disabled(fm):
             continue
 
         name = fm.get("name") or skill_md.parent.name
@@ -362,7 +386,7 @@ def _run_validation(
     Returns (results_by_skill, collisions, thresholds_dict).
     """
     # 1. Load skill descriptions and extract keywords
-    skill_descs = _load_skill_descriptions(skills_dir)
+    skill_descs = _load_skill_descriptions(skills_dir, model_invocable_only=True)
     skill_keywords: dict[str, set[str]] = {
         name: _extract_keywords(desc) for name, (desc, _) in skill_descs.items()
     }
@@ -435,6 +459,7 @@ def _run_validation(
             recall=pr.recall,
             false_positive_phrasings=fp_phrasings,
             false_negative_phrasings=fn_phrasings,
+            measured=True,
         )
 
     # 4. Detect collisions
@@ -453,12 +478,18 @@ def _run_validation(
 # ---------------------------------------------------------------------------
 
 
+def _coverage(results: dict[str, SkillTriggerResult]) -> tuple[int, int]:
+    """Return (measured_count, total_count) over model-invocable skills."""
+    return sum(1 for r in results.values() if r.measured), len(results)
+
+
 def _format_text_report(
     results: dict[str, SkillTriggerResult],
     collisions: list[dict],
     thresholds: dict,
 ) -> str:
     """Format a human-readable text report."""
+    measured_count, total = _coverage(results)
     lines: list[str] = []
     lines.append("Skill Trigger Validation Report")
     lines.append("=" * 50)
@@ -466,18 +497,34 @@ def _format_text_report(
         f"Thresholds: precision ≥ {thresholds['precision_threshold']:.0%}, "
         f"recall ≥ {thresholds['recall_threshold']:.0%}"
     )
+    lines.append(
+        f"Fixture coverage: {measured_count}/{total} model-invocable skill(s) "
+        f"declare trigger_fixtures"
+    )
     lines.append("")
 
-    # Per-skill table
-    if results:
+    # Per-skill table — unmeasured skills are listed separately so a coverage
+    # gap is never mistaken for a 0% score (BUG-2879).
+    measured = [n for n in sorted(results) if results[n].measured]
+    unmeasured = [n for n in sorted(results) if not results[n].measured]
+
+    if measured:
         lines.append(f"{'Skill':<40} {'Precision':>10} {'Recall':>10}")
         lines.append(f"{'':-<40} {'':->10} {'':->10}")
-        for name in sorted(results):
+        for name in measured:
             r = results[name]
             lines.append(f"{name:<40} {r.precision:>10.0%} {r.recall:>10.0%}")
         lines.append("")
 
-    # Collisions
+    if unmeasured:
+        lines.append(f"Unmeasured ({len(unmeasured)} skill(s) with no trigger_fixtures)")
+        lines.append("=" * 50)
+        for name in unmeasured:
+            lines.append(f"  {name}")
+        lines.append("")
+
+    # Collisions — a clean result is only meaningful if some phrasings were
+    # actually tested; with no fixtures the check is vacuous by construction.
     if collisions:
         lines.append("Cross-Skill Collisions")
         lines.append("=" * 50)
@@ -486,13 +533,16 @@ def _format_text_report(
             lines.append(f'  Phrasing: "{c["phrasing"]}"')
             lines.append(f"  Colliding skills: {skills}")
             lines.append("")
+    elif measured_count == 0:
+        lines.append("Collision detection skipped: no trigger fixtures to test.")
+        lines.append("")
     else:
         lines.append("No cross-skill collisions detected.")
         lines.append("")
 
-    # Failures
+    # Failures — scored skills only
     failures: list[str] = []
-    for name in sorted(results):
+    for name in measured:
         r = results[name]
         if r.precision < thresholds["precision_threshold"]:
             failures.append(
@@ -534,14 +584,19 @@ def _format_json_report(
                 "fn": r.fn,
                 "false_positive_phrasings": r.false_positive_phrasings,
                 "false_negative_phrasings": r.false_negative_phrasings,
+                "measured": r.measured,
             }
         )
+
+    measured_count, total = _coverage(results)
 
     return json.dumps(
         {
             "thresholds": thresholds,
+            "coverage": {"measured": measured_count, "total": total},
             "skills": skills_list,
             "collisions": collisions,
+            "collision_detection": "skipped" if measured_count == 0 else "run",
         },
         indent=2,
     )
@@ -558,10 +613,16 @@ def _any_failures(
     precision_threshold: float,
     recall_threshold: float,
 ) -> bool:
-    """True when any skill is below threshold or collisions exist."""
+    """True when any *measured* skill is below threshold or collisions exist.
+
+    Skills with no ``trigger_fixtures`` are unmeasured and cannot fail a
+    threshold they were never scored against (BUG-2879).
+    """
     if collisions:
         return True
     for r in results.values():
+        if not r.measured:
+            continue
         if r.precision < precision_threshold:
             return True
         if r.recall < recall_threshold:
@@ -596,8 +657,11 @@ Examples:
   %(prog)s --precision-threshold 0.8 --recall-threshold 0.6
 
 Exit codes:
-  0 - All skills meet thresholds, no collisions
-  1 - One or more skills below threshold, or collisions detected
+  0 - All measured skills meet thresholds, no collisions
+  1 - A skill that declares trigger_fixtures is below threshold, or collisions
+
+Only model-invocable skills are scored. A skill with no trigger_fixtures is
+reported as unmeasured and never fails the exit code.
 """,
         )
         parser.add_argument(

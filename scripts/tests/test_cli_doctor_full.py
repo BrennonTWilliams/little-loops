@@ -99,6 +99,18 @@ class TestFullAdapters:
         assert data["status"] == "unsupported"
         assert data["severity"] == "error"
 
+    def test_triggers_passes_on_fixture_less_tree(self, monkeypatch, tmp_path) -> None:
+        """A populated but fixture-less skills tree no longer fails --full (BUG-2879)."""
+        monkeypatch.chdir(tmp_path)
+        skill = tmp_path / "skills" / "ll-alpha"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text(
+            "---\nname: ll-alpha\ndescription: Does something useful\n---\n\n# Alpha\n"
+        )
+        data = _full_triggers_data()
+        assert data["status"] == "full"
+        assert data["note"] == "0/1 skill(s) measured"
+
     def test_decisions_reports_unsupported_on_error(self) -> None:
         import little_loops.cli.verify_decisions as verify_decisions_mod
 

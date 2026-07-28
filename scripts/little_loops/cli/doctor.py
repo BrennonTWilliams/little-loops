@@ -551,10 +551,11 @@ def _full_triggers_data() -> dict:
             "severity": "error",
             "note": "one or more skills below threshold or collisions detected",
         }
+    measured = sum(1 for r in results.values() if r.measured)
     return {
         "status": "full",
         "severity": "error",
-        "note": f"{len(results)} skill(s) validated",
+        "note": f"{measured}/{len(results)} skill(s) measured",
     }
 
 

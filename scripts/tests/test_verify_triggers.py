@@ -532,6 +532,140 @@ description: A skill without trigger fixtures
             result = main_verify_triggers()
         assert result == 0
 
+    def test_fixture_less_tree_returns_0(self, tmp_path: Path, capsys) -> None:
+        """A populated skills dir where no skill declares fixtures exits 0 (BUG-2879)."""
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
+        for name in ("ll-alpha", "ll-beta"):
+            d = skills_dir / name
+            d.mkdir()
+            (d / "SKILL.md").write_text(f"""---
+name: {name}
+description: Does something useful for {name}
+---
+
+# {name}
+""")
+
+        with patch("sys.argv", ["ll-verify-triggers", "-C", str(tmp_path)]):
+            result = main_verify_triggers()
+
+        out = capsys.readouterr().out
+        assert result == 0
+        assert "0/2" in out
+        assert "unmeasured" in out.lower()
+        # Collision detection must not claim a clean bill of health with no input
+        assert "No cross-skill collisions detected." not in out
+
+    def test_below_threshold_with_fixtures_returns_1(self, tmp_path: Path) -> None:
+        """A skill that HAS fixtures and misses threshold still exits 1 (BUG-2879)."""
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
+        d = skills_dir / "ll-mismatch"
+        d.mkdir()
+        (d / "SKILL.md").write_text("""---
+name: ll-mismatch
+description: Manage zebra and quokka husbandry records
+trigger_fixtures:
+  should_fire:
+    - "please deploy the application now"
+    - "restart the web server"
+---
+
+# Mismatch
+""")
+
+        with (
+            patch("sys.argv", ["ll-verify-triggers", "-C", str(tmp_path)]),
+            patch("builtins.print"),
+        ):
+            result = main_verify_triggers()
+        assert result == 1
+
+    def test_unmeasured_skill_excluded_from_failures(self, tmp_path: Path, capsys) -> None:
+        """A fixture-less skill never appears in the FAILURES block (BUG-2879)."""
+        self._setup_skills_dir(tmp_path)
+        d = tmp_path / "skills" / "ll-no-fixtures"
+        d.mkdir()
+        (d / "SKILL.md").write_text("""---
+name: ll-no-fixtures
+description: Some unrelated capability with no fixtures
+---
+
+# No Fixtures
+""")
+
+        with patch("sys.argv", ["ll-verify-triggers", "-C", str(tmp_path)]):
+            result = main_verify_triggers()
+
+        out = capsys.readouterr().out
+        assert result == 0
+        assert "ll-no-fixtures: precision" not in out
+        assert "2/3" in out
+
+    def test_model_uninvocable_skills_excluded(self, tmp_path: Path, capsys) -> None:
+        """disable-model-invocation skills are not scored or counted (BUG-2879, Option A)."""
+        self._setup_skills_dir(tmp_path)
+        d = tmp_path / "skills" / "ll-manual-only"
+        d.mkdir()
+        (d / "SKILL.md").write_text("""---
+name: ll-manual-only
+description: A user-invocable-only skill
+disable-model-invocation: true
+---
+
+# Manual Only
+""")
+
+        with patch("sys.argv", ["ll-verify-triggers", "-C", str(tmp_path), "--json"]):
+            result = main_verify_triggers()
+
+        output = json.loads(capsys.readouterr().out)
+        names = [s["name"] for s in output["skills"]]
+        assert result == 0
+        assert "ll-manual-only" not in names
+        assert output["coverage"]["total"] == 2
+        assert output["coverage"]["measured"] == 2
+
+    def test_json_reports_measured_flag(self, tmp_path: Path, capsys) -> None:
+        """JSON output distinguishes measured from unmeasured skills (BUG-2879)."""
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
+        d = skills_dir / "ll-no-fixtures"
+        d.mkdir()
+        (d / "SKILL.md").write_text("""---
+name: ll-no-fixtures
+description: A skill without trigger fixtures
+---
+
+# No Fixtures
+""")
+
+        with patch("sys.argv", ["ll-verify-triggers", "-C", str(tmp_path), "--json"]):
+            main_verify_triggers()
+
+        output = json.loads(capsys.readouterr().out)
+        assert output["skills"][0]["measured"] is False
+        assert output["coverage"] == {"measured": 0, "total": 1}
+        assert output["collision_detection"] == "skipped"
+
+    def test_load_skill_descriptions_filter_is_opt_in(self, tmp_path: Path) -> None:
+        """_load_skill_descriptions keeps uninvocable skills unless asked to filter."""
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
+        d = skills_dir / "ll-manual-only"
+        d.mkdir()
+        (d / "SKILL.md").write_text("""---
+name: ll-manual-only
+description: A user-invocable-only skill
+disable-model-invocation: true
+---
+
+# Manual Only
+""")
+        assert "ll-manual-only" in _load_skill_descriptions(skills_dir)
+        assert _load_skill_descriptions(skills_dir, model_invocable_only=True) == {}
+
     def test_precision_threshold_flag(self, tmp_path: Path) -> None:
         """--precision-threshold flag is parsed."""
         self._setup_skills_dir(tmp_path)

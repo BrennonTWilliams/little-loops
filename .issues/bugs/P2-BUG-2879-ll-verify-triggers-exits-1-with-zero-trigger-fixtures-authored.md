@@ -3,8 +3,9 @@ id: BUG-2879
 title: "ll-verify-triggers exits 1 \u2014 zero skills declare trigger_fixtures"
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-28T02:07:33Z'
+completed_at: '2026-07-28T03:24:12Z'
 discovered_date: 2026-07-28
 labels:
 - skills
@@ -12,6 +13,7 @@ labels:
 relates_to:
 - FEAT-1910
 - FEAT-2795
+- ENH-2884
 decision_needed: false
 learning_tests_required:
 - yaml
@@ -442,7 +444,55 @@ _These touchpoints were identified by wiring analysis and must be included in th
 | `docs/reference/API.md` | Module reference for `little_loops.cli.verify_triggers` |
 | `docs/reference/CLI.md` | Full CLI reference (`### ll-verify-triggers`, lines 2982-3006) with an exit-code contract that goes stale after Part 1 — _added by `/ll:wire-issue`_ |
 
+## Resolution
+
+**Part 1 (the bug) — implemented.** `scripts/little_loops/cli/verify_triggers.py`:
+
+- `SkillTriggerResult` gained a `measured: bool` flag, set True only when the
+  skill declared `trigger_fixtures`.
+- `_load_skill_descriptions()` gained an opt-in `model_invocable_only` parameter
+  reusing `adapters.core._is_model_invocation_disabled()` (Option A). Default is
+  `False`, so `issue_history/evolution.py:_load_skill_keywords()` — which powers
+  `detect_skill_bypass()` and legitimately wants the full 71-skill population —
+  is unaffected (resolves Wiring Step 8). `_run_validation()` passes `True`,
+  narrowing the scored population to 19.
+- `_any_failures()` skips unmeasured skills; `_format_text_report()` lists them in
+  a dedicated `Unmeasured` section, adds a `Fixture coverage: M/N` line, and gates
+  the collision-clean message (now `Collision detection skipped: no trigger
+  fixtures to test.` when nothing was measured).
+- `_format_json_report()` adds a per-skill `measured` flag plus top-level
+  `coverage` and `collision_detection` keys.
+- `doctor.py:_full_triggers_data()` reports `M/N skill(s) measured`. No signature
+  change to `_run_validation()`/`_any_failures()`, so the existing doctor mocks
+  hold.
+
+Verified: `ll-verify-triggers` now exits 0 reporting `Fixture coverage: 0/19`, and
+`ll-doctor --full` reports `✓ triggers 0/19 skill(s) measured` where it previously
+failed at `severity: "error"`.
+
+**Part 2 (author fixtures) — split to ENH-2884.** A pilot on the loop cluster
+showed Part 2 is not data entry: `_match_phrasing()` fires on a *single* shared
+token, so realistic phrasings match 3–6 skills each and every one registers as a
+collision (e.g. `"generate a verification loop from FEAT-100"` →
+`adversarial-verify-loop`, `create-eval-from-issues`, `create-loop`,
+`verify-issue-loop`). Authoring fixtures now would flip the gate back to exit 1 for
+matcher-fidelity reasons rather than description defects — reintroducing this
+bug's own failure mode. ENH-2884 covers matcher fidelity first, then the fixture
+authoring.
+
+Tests added (`test_verify_triggers.py`): fixture-less tree exits 0 with an
+unmeasured report and no collision-clean claim; a skill *with* fixtures below
+threshold still exits 1; unmeasured skills absent from FAILURES; model-uninvocable
+skills excluded from scoring and coverage; JSON `measured`/`coverage`/
+`collision_detection` shape; and the `_load_skill_descriptions()` filter being
+opt-in. `test_cli_doctor_full.py` gained `test_triggers_passes_on_fixture_less_tree`.
+
+Full suite: 16721 passed. The 6 failures in `test_general_task_loop.py`,
+`test_builtin_loops.py`, `test_rn_refine.py`, and `test_prose_dep_sweep_gate.py`
+reproduce identically on a clean `git stash` tree — pre-existing and unrelated.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-28T03:23:51Z - `bde35a6a-0676-47b5-9df9-c42e7200e84e.jsonl`
 - `/ll:ready-issue` - 2026-07-28T02:59:34 - `808ab62e-a3cc-4318-8865-b51adadca76f.jsonl`
 - `/ll:wire-issue` - 2026-07-28T02:36:27 - `1679ea24-85ef-4b97-b445-0a9c3a5e3f4b.jsonl`
 - `/ll:decide-issue` - 2026-07-28T02:28:19 - `cf5573d6-5c50-4030-93dd-76c7e1c89898.jsonl`

@@ -2986,6 +2986,16 @@ ll-verify-skills --json             # Output as JSON
 Validate skill description trigger accuracy against should-fire and should-NOT-fire
 phrasings. Reports per-skill precision/recall and a cross-skill collision matrix.
 
+Only **model-invocable** skills are scored — skills declaring
+`disable-model-invocation: true` are excluded from the table, the coverage
+denominator, and the exit code, since trigger accuracy is meaningless for a skill
+the model can never auto-invoke.
+
+A skill that declares no `trigger_fixtures` is reported as **unmeasured** in its
+own section and counted against the `Fixture coverage: M/N` line — it is *not*
+scored 0% and cannot fail a threshold. Collision detection is reported as skipped
+rather than clean when no fixtures were available to test.
+
 **Flags:**
 
 | Flag | Short | Description |
@@ -2995,7 +3005,9 @@ phrasings. Reports per-skill precision/recall and a cross-skill collision matrix
 | `--precision-threshold` | | Minimum precision required (default: 0.5) |
 | `--recall-threshold` | | Minimum recall required (default: 0.5) |
 
-**Exit codes:** `0` = all skills meet thresholds, no collisions; `1` = threshold miss or collision detected.
+**Exit codes:** `0` = all *measured* skills meet thresholds, no collisions (a tree
+with zero fixtures exits 0); `1` = a skill that has fixtures missed a threshold, or
+a collision was detected.
 
 **Examples:**
 ```bash
