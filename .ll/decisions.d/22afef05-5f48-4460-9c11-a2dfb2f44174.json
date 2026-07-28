@@ -1,0 +1,11 @@
+{
+  "id": "c6d2e269-abb7-46cd-855a-be220fee74c5",
+  "type": "decision",
+  "timestamp": "2026-07-28T22:17:02Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "from_dict silently discards unknown YAML keys, making inert evaluator fields undetectable at load and at ll-loop validate. Root cause of BUG-2893 and BUG-2894.",
+  "rule": "Captured: Reject or warn on unknown keys in EvaluateConfig.from_dict",
+  "scope": "issue",
+  "issue": "ENH-2896"
+}

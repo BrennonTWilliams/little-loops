@@ -1,0 +1,11 @@
+{
+  "id": "a51081d4-f999-4722-b8c5-23f9bb85c733",
+  "type": "decision",
+  "timestamp": "2026-07-28T22:17:02Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Two built-in loops independently declare key: on output_numeric assuming field extraction; the field does not exist and is silently dropped. Implementing it fixes both with no shell rewrite.",
+  "rule": "Captured: Support an evaluate.key field on the output_numeric evaluator",
+  "scope": "issue",
+  "issue": "ENH-2895"
+}
