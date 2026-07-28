@@ -9,14 +9,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from little_loops.adapters.core import AdapterError, _extract_body
+from little_loops.adapters.core import _emit_degraded_agent, _extract_body
 
 __all__ = ["GeminiEmitter"]
-
-_AGENT_STUB_MSG = (
-    "gemini agent emission not yet stable — "
-    "Gemini agents are a preview feature; open a PR when they exit preview"
-)
 
 _FM_CLOSE_RE = re.compile(r"\n---\s*\n")
 
@@ -107,8 +102,11 @@ class GeminiEmitter:
     """Output emitter for the Gemini CLI (``--host gemini``).
 
     Writes to ``.gemini/skills/<name>/SKILL.md`` and
-    ``.gemini/commands/<stem>.toml``.  Agent emission raises
-    :class:`AdapterError` — Gemini agents are a preview feature.
+    ``.gemini/commands/<stem>.toml``.  Gemini cannot spawn a native
+    subagent, so agent emission produces a degraded-mode inline-role file
+    at ``.gemini/agents/<name>.md`` instead (ENH-2874) — the role's
+    authored body, prefixed with a preamble instructing the model to
+    perform the role inline and disclose the substitution in its report.
     """
 
     name = "gemini"
@@ -184,4 +182,10 @@ class GeminiEmitter:
         return "adapted"
 
     def emit_agent(self, agent_meta: dict) -> str:
-        raise AdapterError(_AGENT_STUB_MSG)
+        """Write a degraded-mode inline-role file to ``.gemini/agents/<name>.md``.
+
+        Gemini has no native subagent-spawning support, so this routes
+        through the shared degraded-emission helper (ENH-2874) rather than
+        emitting a native format. See :func:`little_loops.adapters.core._emit_degraded_agent`.
+        """
+        return _emit_degraded_agent(agent_meta)

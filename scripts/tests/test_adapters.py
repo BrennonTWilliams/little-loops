@@ -808,13 +808,69 @@ class TestGeminiEmitterEmitCommand:
 
 
 class TestGeminiEmitterEmitAgent:
-    def test_raises_adapter_error(self) -> None:
-        with pytest.raises(AdapterError, match="preview feature"):
-            GeminiEmitter().emit_agent({})
+    """ENH-2874: degraded-mode inline-role emission (no more raise)."""
 
-    def test_error_message_contains_remediation(self) -> None:
-        with pytest.raises(AdapterError, match="open a PR when they exit preview"):
-            GeminiEmitter().emit_agent({"agent_name": "any"})
+    def _meta(self, tmp_path: Path, name: str, apply: bool = True, **kwargs: object) -> dict:
+        agent_md = _make_agent(tmp_path, name, **kwargs)  # type: ignore[arg-type]
+        return {
+            "agent_name": name,
+            "agent_path": agent_md,
+            "content": agent_md.read_text(),
+            "fm": {},
+            "output_dir": tmp_path / ".gemini" / "agents",
+            "apply": apply,
+            "quiet": True,
+        }
+
+    def _out_path(self, tmp_path: Path, name: str) -> Path:
+        return tmp_path / ".gemini" / "agents" / f"{name}.md"
+
+    def test_does_not_raise(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-agent")
+        assert GeminiEmitter().emit_agent(meta) == "adapted"
+
+    def test_writes_degraded_file(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-agent", body="Do the thing.")
+        GeminiEmitter().emit_agent(meta)
+        content = self._out_path(tmp_path, "my-agent").read_text()
+        assert "Do the thing." in content
+
+    def test_preamble_has_inline_execution_instruction(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-agent")
+        GeminiEmitter().emit_agent(meta)
+        content = self._out_path(tmp_path, "my-agent").read_text()
+        assert "inline" in content.lower()
+        assert "subagent" in content.lower()
+
+    def test_preamble_has_disclosure_requirement(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-agent")
+        GeminiEmitter().emit_agent(meta)
+        content = self._out_path(tmp_path, "my-agent").read_text()
+        assert "disclos" in content.lower()
+
+    def test_body_matches_source_verbatim(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-agent", body="Exact source body text.")
+        GeminiEmitter().emit_agent(meta)
+        content = self._out_path(tmp_path, "my-agent").read_text()
+        assert content.endswith("Exact source body text.")
+
+    def test_dry_run_does_not_write(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-agent", apply=False)
+        assert GeminiEmitter().emit_agent(meta) == "adapted"
+        assert not self._out_path(tmp_path, "my-agent").exists()
+
+    def test_rerun_with_apply_skips_unchanged(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-agent")
+        GeminiEmitter().emit_agent(meta)
+        assert GeminiEmitter().emit_agent(meta) == "skipped"
+
+    def test_user_authored_file_without_marker_is_protected(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-agent")
+        out_path = self._out_path(tmp_path, "my-agent")
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text("# Hand-authored, no marker\n")
+        assert GeminiEmitter().emit_agent(meta) == "skipped"
+        assert out_path.read_text() == "# Hand-authored, no marker\n"
 
 
 # =============================================================================
@@ -828,3 +884,134 @@ class TestResolveEmitterGemini:
 
     def test_gemini_emitter_satisfies_protocol(self) -> None:
         assert isinstance(resolve_emitter("gemini"), HostEmitter)
+
+
+# =============================================================================
+# process_agents: degraded-mode routing via the capability map (ENH-2874)
+# =============================================================================
+
+
+class TestProcessAgentsDegradedRouting:
+    def test_gemini_writes_one_file_per_source_agent(self, tmp_path: Path) -> None:
+        _make_agent(tmp_path, "agent-a")
+        _make_agent(tmp_path, "agent-b")
+        gemini_dir = tmp_path / ".gemini" / "agents"
+
+        adapted, skipped, errors = process_agents(
+            GeminiEmitter(), tmp_path / "agents", gemini_dir, apply=True, quiet=True
+        )
+        assert adapted == 2
+        assert skipped == 0
+        assert errors == 0
+        assert (gemini_dir / "agent-a.md").exists()
+        assert (gemini_dir / "agent-b.md").exists()
+
+    def test_gemini_output_never_calls_native_emit_agent(self, tmp_path: Path) -> None:
+        """process_agents must route via the degraded helper, not GeminiEmitter.emit_agent.
+
+        Selection happens by capability flag, not by calling the emitter's
+        own method and hoping it degrades — assert that directly by
+        breaking the emitter's emit_agent and confirming the traversal
+        still succeeds.
+        """
+        _make_agent(tmp_path, "agent-a")
+        gemini_dir = tmp_path / ".gemini" / "agents"
+
+        class ExplodingGeminiEmitter(GeminiEmitter):
+            def emit_agent(self, agent_meta: dict) -> str:
+                raise AssertionError("emit_agent should not be called for degraded hosts")
+
+        adapted, skipped, errors = process_agents(
+            ExplodingGeminiEmitter(), tmp_path / "agents", gemini_dir, apply=True, quiet=True
+        )
+        assert adapted == 1
+        assert errors == 0
+
+
+# =============================================================================
+# Integration guard: real agents (post-apply validation, degraded hosts)
+# =============================================================================
+
+
+class TestRealAgentsDegradedCoverageGuard:
+    """After ll-adapt --host gemini --apply, every agents/*.md has a degraded file.
+
+    ``omp`` is explicitly excluded — its emitter is an all-stub (all
+    ``emit_*`` raise) with no ``agent_output_format``, so ENH-2874's
+    degraded path never selects it; there is no ``.omp/agents/`` coverage
+    guard to add here.
+    """
+
+    def test_all_real_agents_have_gemini_degraded_files(self) -> None:
+        agents_dir = Path(__file__).parent.parent.parent / "agents"
+        gemini_agents_dir = Path(__file__).parent.parent.parent / ".gemini" / "agents"
+        if not gemini_agents_dir.exists():
+            return
+        for agent_md in sorted(agents_dir.glob("*.md")):
+            agent_name = agent_md.stem
+            out_md = gemini_agents_dir / f"{agent_name}.md"
+            assert out_md.exists(), (
+                f".gemini/agents/{agent_name}.md missing. Run: ll-adapt --host gemini --apply"
+            )
+
+    def test_all_real_gemini_agent_files_have_marker(self) -> None:
+        gemini_agents_dir = Path(__file__).parent.parent.parent / ".gemini" / "agents"
+        if not gemini_agents_dir.exists():
+            return
+        for out_md in sorted(gemini_agents_dir.glob("*.md")):
+            content = out_md.read_text()
+            assert content.startswith("<!-- generated by ll-adapt"), (
+                f".gemini/agents/{out_md.name}: missing degraded-mode marker comment"
+            )
+
+    def test_all_real_gemini_agent_files_have_preamble_requirements(self) -> None:
+        gemini_agents_dir = Path(__file__).parent.parent.parent / ".gemini" / "agents"
+        if not gemini_agents_dir.exists():
+            return
+        for out_md in sorted(gemini_agents_dir.glob("*.md")):
+            content = out_md.read_text().lower()
+            assert "inline" in content, f"{out_md.name}: missing inline-execution instruction"
+            assert "disclos" in content, f"{out_md.name}: missing disclosure requirement"
+
+
+# =============================================================================
+# Idempotency: degraded emission (ENH-2874)
+# =============================================================================
+
+
+class TestDegradedAgentIdempotency:
+    def test_rerun_with_apply_skips_unchanged(self, tmp_path: Path) -> None:
+        _make_agent(tmp_path, "my-agent")
+        gemini_dir = tmp_path / ".gemini" / "agents"
+
+        adapted1, skipped1, _ = process_agents(
+            GeminiEmitter(), tmp_path / "agents", gemini_dir, apply=True, quiet=True
+        )
+        assert adapted1 == 1
+        assert skipped1 == 0
+
+        adapted2, skipped2, errors2 = process_agents(
+            GeminiEmitter(), tmp_path / "agents", gemini_dir, apply=True, quiet=True
+        )
+        assert adapted2 == 0
+        assert skipped2 == 1
+        assert errors2 == 0
+
+    def test_changed_source_triggers_rewrite(self, tmp_path: Path) -> None:
+        agent_md = _make_agent(tmp_path, "my-agent", body="Original body.")
+        gemini_dir = tmp_path / ".gemini" / "agents"
+        process_agents(GeminiEmitter(), tmp_path / "agents", gemini_dir, apply=True, quiet=True)
+
+        agent_md.write_text(
+            "---\nname: my-agent\ndescription: |\n  Use when user asks for stuff.\n"
+            'model: sonnet\ntools: ["Read"]\n---\n\nUpdated body.'
+        )
+
+        adapted, skipped, _ = process_agents(
+            GeminiEmitter(), tmp_path / "agents", gemini_dir, apply=True, quiet=True
+        )
+        assert adapted == 1
+        assert skipped == 0
+        content = (gemini_dir / "my-agent.md").read_text()
+        assert "Updated body." in content
+        assert "Original body." not in content

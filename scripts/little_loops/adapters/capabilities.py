@@ -27,8 +27,18 @@ both sides are checked against.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Literal
 
-__all__ = ["HostCapabilityEntry", "HOST_CAPABILITIES"]
+__all__ = ["HostCapabilityEntry", "HOST_CAPABILITIES", "SubagentSupport"]
+
+# Two-value discriminator (ENH-2874). "native" = the host can spawn a real
+# subagent for a role; "none" = it cannot, so agent emission (when it emits
+# at all) falls back to a degraded inline-role file. A third value was
+# considered (permission-gated spawning) but ENH-2874's research found no
+# host that needs it — Codex's asymmetry vs. Claude Code is spawn-based
+# (no `--agent` flag), not permission-gated, so the two-value flag is
+# sufficient. See ENH-2874's Open Question / resolution notes.
+SubagentSupport = Literal["native", "none"]
 
 
 @dataclass(frozen=True)
@@ -48,7 +58,7 @@ class HostCapabilityEntry:
     agents: bool = False
     commands: bool = False
     hooks: bool = False
-    subagents: bool = False
+    subagents: SubagentSupport = "none"
 
 
 HOST_CAPABILITIES: dict[str, HostCapabilityEntry] = {
@@ -65,28 +75,37 @@ HOST_CAPABILITIES: dict[str, HostCapabilityEntry] = {
         # Agent selection is "partial (subagents)" per HOST_COMPATIBILITY.md's
         # Runner Capabilities table — Codex supports subagents but has no
         # `--agent` flag for direct selection.
-        subagents=True,
+        subagents="native",
     ),
     "gemini": HostCapabilityEntry(
         host="gemini",
         config_dir=".gemini",
         skill_output_format="SKILL.md (name injected, metadata.short-description stripped)",
         command_output_format="TOML (.gemini/commands/<stem>.toml)",
-        # emit_agent unconditionally raises AdapterError(_AGENT_STUB_MSG) —
-        # Gemini agents are a preview feature (gemini.py:16). This entry must
-        # reflect that stub, not aspirational support.
-        agent_output_format=None,
+        # ENH-2874: Gemini cannot spawn a subagent, but emit_agent no longer
+        # raises — it emits a degraded-mode inline-role file (Markdown,
+        # .gemini/agents/<name>.md) generated from the same agents/*.md
+        # source, prefixed with a preamble that instructs the model to
+        # perform the role inline and disclose the substitution in its
+        # report. `agents=True` reflects that this now produces real output;
+        # `subagents="none"` records that it is degraded, not delegated. If
+        # Gemini agents exit preview and gain native subagent spawning later,
+        # flip subagents to "native" and this entry's agent_output_format to
+        # describe the native format — no other code changes required.
+        agent_output_format="Markdown inline-role file, degraded mode (.gemini/agents/<name>.md)",
         frontmatter_fields_read=("description", "name"),
-        agents=False,
+        agents=True,
         commands=True,
         hooks=False,
-        subagents=False,
+        subagents="none",
     ),
     "omp": HostCapabilityEntry(
         host="omp",
         # All three emit_* methods raise AdapterError(_REMEDIATION) — omp.py
         # is a 28-line stub (EPIC-2258). This entry describes it as fully
-        # unimplemented, per ENH-2873's Scope Boundaries.
+        # unimplemented, per ENH-2873's Scope Boundaries. Unlike gemini, omp
+        # has no working agent emitter at all (agent_output_format stays
+        # None), so it is excluded from ENH-2874's degraded-emission path.
         config_dir=None,
         skill_output_format=None,
         command_output_format=None,
@@ -95,6 +114,6 @@ HOST_CAPABILITIES: dict[str, HostCapabilityEntry] = {
         agents=False,
         commands=False,
         hooks=False,
-        subagents=False,
+        subagents="none",
     ),
 }

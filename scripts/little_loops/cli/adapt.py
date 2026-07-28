@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from little_loops.adapters.capabilities import HOST_CAPABILITIES
 from little_loops.adapters.core import (
     AdapterError,
     process_agents,
@@ -118,9 +119,15 @@ Examples:
 
         # Agents
         if agents_dir.exists():
-            codex_dir = plugin_root / ".codex" / "agents"
+            # Output dir is host-parameterized via the capability map's
+            # config_dir (e.g. ".codex" -> .codex/agents/, ".gemini" ->
+            # .gemini/agents/); falls back to ".codex" for an unregistered
+            # host so existing behaviour is unchanged.
+            capability_entry = HOST_CAPABILITIES.get(args.host)
+            config_dir = (capability_entry.config_dir if capability_entry else None) or ".codex"
+            agent_output_dir = plugin_root / config_dir / "agents"
             a_adapted, a_skipped, a_errors = process_agents(
-                emitter, agents_dir, codex_dir, apply, args.quiet, args.only
+                emitter, agents_dir, agent_output_dir, apply, args.quiet, args.only
             )
             total_adapted += a_adapted
             total_skipped += a_skipped

@@ -20,8 +20,16 @@ class TestHostCapabilities:
 
         assert set(HOST_CAPABILITIES) == set(_EMITTER_MAP)
 
-    def test_gemini_agents_false_matches_stub(self) -> None:
-        assert HOST_CAPABILITIES["gemini"].agents is False
+    def test_gemini_agents_true_matches_degraded_emission(self) -> None:
+        # ENH-2874: GeminiEmitter.emit_agent no longer raises — it produces
+        # degraded-mode inline-role output, so agents=True now agrees with
+        # the emitter's actual behavior. subagents stays "none" (no native
+        # spawn support), with agent_output_format describing the degraded
+        # format.
+        entry = HOST_CAPABILITIES["gemini"]
+        assert entry.agents is True
+        assert entry.subagents == "none"
+        assert entry.agent_output_format is not None
 
     def test_omp_fully_unimplemented(self) -> None:
         entry = HOST_CAPABILITIES["omp"]
@@ -60,7 +68,26 @@ class TestCheckEmitterAgreement:
     def test_current_tree_agrees(self) -> None:
         assert _check_emitter_agreement() == []
 
-    def test_flags_gemini_agents_mismatch(self) -> None:
+    def test_flags_gemini_agents_true_with_no_output_format(self) -> None:
+        # agents=True under subagents="none" with no agent_output_format:
+        # the degraded path has nowhere to write.
+        bad_map = dict(HOST_CAPABILITIES)
+        bad_map["gemini"] = HostCapabilityEntry(
+            host="gemini",
+            config_dir=".gemini",
+            skill_output_format="SKILL.md",
+            command_output_format="TOML",
+            agent_output_format=None,
+            agents=True,
+            subagents="none",
+        )
+        with patch("little_loops.cli.verify_host_map.HOST_CAPABILITIES", bad_map):
+            errors = _check_emitter_agreement()
+        assert any("gemini" in e for e in errors)
+
+    def test_flags_gemini_native_subagents_with_agents_false(self) -> None:
+        # subagents="native" implies the host can spawn, so agents=False
+        # would mean it's declared to emit nothing despite native support.
         bad_map = dict(HOST_CAPABILITIES)
         bad_map["gemini"] = HostCapabilityEntry(
             host="gemini",
@@ -68,7 +95,8 @@ class TestCheckEmitterAgreement:
             skill_output_format="SKILL.md",
             command_output_format="TOML",
             agent_output_format="TOML",
-            agents=True,
+            agents=False,
+            subagents="native",
         )
         with patch("little_loops.cli.verify_host_map.HOST_CAPABILITIES", bad_map):
             errors = _check_emitter_agreement()

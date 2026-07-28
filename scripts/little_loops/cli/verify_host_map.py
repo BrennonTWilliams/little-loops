@@ -9,9 +9,16 @@ Three checks, all against ``little_loops.adapters.capabilities.HOST_CAPABILITIES
    ``HostCapabilities`` do not contradict each other on any field name the
    two dataclasses share.
 3. The map's ``agents``/``commands`` flags agree with what the emitters
-   actually do (``gemini.agents`` must be ``False`` to match the
-   unconditional ``AdapterError`` in ``GeminiEmitter.emit_agent``; ``omp``
-   must be ``False``/``False`` to match its all-stub emitter).
+   actually do. Since ENH-2874, ``gemini.agents`` is expected to be ``True``
+   — ``GeminiEmitter.emit_agent`` no longer raises; it produces a
+   degraded-mode inline-role file (``subagents == "none"``, with
+   ``agent_output_format`` describing the degraded format). The check flags
+   a mismatch the other way: ``agents=True`` with ``subagents == "none"``
+   but no ``agent_output_format`` set (nothing for the degraded path to
+   point at), or ``subagents == "native"`` with ``agents=False`` (a host
+   that can spawn but is declared not to emit). ``omp`` must stay
+   ``False``/``False`` to match its all-stub emitter, which has no
+   degraded path either (``agent_output_format`` is ``None``).
 
 Exit codes:
     0 - all three checks pass
@@ -118,15 +125,33 @@ def _check_runtime_contradiction() -> list[str]:
 
 
 def _check_emitter_agreement() -> list[str]:
-    """Return error strings where a map entry misdescribes its emitter's actual behavior."""
+    """Return error strings where a map entry misdescribes its emitter's actual behavior.
+
+    Since ENH-2874, ``gemini.agents=True`` is the *agreeing* state (its
+    emitter produces degraded-mode output rather than raising) — the
+    mismatches this now flags are: declaring ``agents=True`` under
+    ``subagents == "none"`` with no ``agent_output_format`` for the
+    degraded path to target, and declaring ``subagents == "native"`` while
+    ``agents=False`` (a host that can spawn natively but is marked as
+    emitting nothing).
+    """
     errors = []
 
     gemini_entry = HOST_CAPABILITIES.get("gemini")
-    if gemini_entry is not None and gemini_entry.agents:
-        errors.append(
-            "map entry 'gemini' declares agents=True but GeminiEmitter.emit_agent "
-            "unconditionally raises AdapterError (preview-feature stub)"
-        )
+    if gemini_entry is not None:
+        if (
+            gemini_entry.agents
+            and gemini_entry.subagents == "none"
+            and gemini_entry.agent_output_format is None
+        ):
+            errors.append(
+                "map entry 'gemini' declares agents=True with subagents='none' but no "
+                "agent_output_format is set — degraded emission has nowhere to write"
+            )
+        if gemini_entry.subagents == "native" and not gemini_entry.agents:
+            errors.append(
+                "map entry 'gemini' declares subagents='native' but agents=False"
+            )
 
     omp_entry = HOST_CAPABILITIES.get("omp")
     if omp_entry is not None and (omp_entry.agents or omp_entry.commands):
@@ -167,7 +192,9 @@ def main_verify_host_map() -> int:
             description=(
                 "Assert the adapter host-capability map agrees with "
                 "HOST_COMPATIBILITY.md, host_runner.HostCapabilities, and the "
-                "emitters' actual behavior. Exits 1 on drift (ENH-2873)."
+                "emitters' actual behavior — including that a host declaring "
+                "subagents='none' with agents=True has a working degraded-mode "
+                "agent_output_format (ENH-2874). Exits 1 on drift (ENH-2873)."
             ),
         )
         parser.parse_args()

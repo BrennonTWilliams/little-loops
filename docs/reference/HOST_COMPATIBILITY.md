@@ -206,16 +206,30 @@ into a different discovery format. `ll-verify-host-map` (`ll-doctor --full`)
 mechanically checks this table against the map, `host_runner.HostCapabilities`,
 and the emitters' actual behavior — see its module docstring for the checks.
 
-| Host   | Config dir | Skill output                                 | Command output                          | Agent output                | Agents | Commands | Hooks |
-| ------ | ---------- | --------------------------------------------- | ---------------------------------------- | ---------------------------- | ------ | -------- | ----- |
-| codex  | `.codex`   | SKILL.md + `agents/openai.yaml` sidecar (Codex Skills API) | bridged into `skills/ll-<stem>/`         | TOML (`.codex/agents/<name>.toml`) | ✓      | ✓        | ✓     |
-| gemini | `.gemini`  | SKILL.md (name injected, `metadata.short-description` stripped) | TOML (`.gemini/commands/<stem>.toml`)    | N/A — preview stub, raises `AdapterError` | ✗      | ✓        | ✗     |
-| omp    | N/A        | N/A — unimplemented stub, raises `AdapterError` | N/A — unimplemented stub, raises `AdapterError` | N/A — unimplemented stub, raises `AdapterError` | ✗      | ✗        | ✗     |
+| Host   | Config dir | Skill output                                 | Command output                          | Agent output                | Subagents | Agents | Commands | Hooks |
+| ------ | ---------- | --------------------------------------------- | ---------------------------------------- | ---------------------------- | --------- | ------ | -------- | ----- |
+| codex  | `.codex`   | SKILL.md + `agents/openai.yaml` sidecar (Codex Skills API) | bridged into `skills/ll-<stem>/`         | TOML (`.codex/agents/<name>.toml`) | native    | ✓      | ✓        | ✓     |
+| gemini | `.gemini`  | SKILL.md (name injected, `metadata.short-description` stripped) | TOML (`.gemini/commands/<stem>.toml`)    | Markdown, degraded mode (`.gemini/agents/<name>.md`) — authored body verbatim, prefixed with an inline-execution + one-line-disclosure preamble (ENH-2874) | none      | ✓      | ✓        | ✗     |
+| omp    | N/A        | N/A — unimplemented stub, raises `AdapterError` | N/A — unimplemented stub, raises `AdapterError` | N/A — unimplemented stub, raises `AdapterError` | none      | ✗      | ✗        | ✗     |
 
 omp's emitter (`adapters/omp.py`) is a 28-line placeholder tracked by
-**EPIC-2258**; every `emit_*` method raises. Un-stubbing Gemini agent
-emission is blocked on the vendor preview (tracked separately; see
-ENH-2874 for the degraded-mode agent path this unblocks).
+**EPIC-2258**; every `emit_*` method raises, including for agents — it has no
+degraded-mode fallback (`agent_output_format` is `None`), which is why it is
+explicitly excluded from ENH-2874's degraded-emission coverage rather than
+included with `agents: ✗`.
+
+Gemini has no native subagent-spawning support (`subagents: none`), so
+`GeminiEmitter.emit_agent` produces the degraded-mode file described above
+instead of raising — every role in `agents/` gets an inline-role reference
+the model is instructed to perform itself, disclosing the substitution in
+its report (ENH-2874). Discoverability: the file lives at
+`.gemini/agents/<name>.md`, generated 1:1 from `agents/<name>.md` by
+`ll-adapt --host gemini --apply`; nothing else currently indexes or links to
+it (same as Codex's `.codex/agents/*.toml`, which is discovered by the host
+CLI's own agent directory scan rather than an ll-side index). If Gemini
+agents exit preview and gain native subagent spawning later, the capability
+map's `subagents` flips to `native` and `agent_output_format` switches to
+describe the native format — no other code changes required.
 
 > **Last Verified: 2026-07-28** — this table was re-checked against the
 > emitters' actual source (not just re-dated); distinct from *Last Updated*

@@ -1,0 +1,413 @@
+description = "Scan codebase to identify bugs, enhancements, and features, then create issue files"
+prompt = """
+
+# Scan Codebase
+
+You are tasked with scanning the codebase to identify potential bugs, enhancements, and feature opportunities, then creating issue files for tracking.
+
+## Configuration
+
+This command uses project configuration from `.ll/ll-config.json`:
+- **Source directory**: `{{config.project.src_dir}}`
+- **Focus directories**: `{{config.scan.focus_dirs}}`
+- **Exclude patterns**: `{{config.scan.exclude_patterns}}`
+- **Issues base**: `{{config.issues.base_dir}}`
+- **Categories**: `{{config.issues.categories}}`
+
+## Process
+
+### 0. Initialize Progress Tracking
+
+Create a todo list to track scan progress:
+
+```
+Use TodoWrite to create:
+- Gathering git metadata and repo info
+- Scanning for bugs (via sub-agent)
+- Scanning for enhancements (via sub-agent)
+- Scanning for features (via sub-agent)
+- Synthesizing and deduplicating findings
+- Creating issue files
+- Generating summary report
+```
+
+Update todos as each phase completes to give the user visibility into progress.
+
+### 0.5. Parse Flags
+
+```bash
+FLAGS="${flags:-}"
+QUICK_MODE=false
+DEEP_MODE=false
+FOCUS_AREA=""
+
+if [[ "$FLAGS" == *"--quick"* ]]; then QUICK_MODE=true; fi
+if [[ "$FLAGS" == *"--deep"* ]]; then DEEP_MODE=true; fi
+
+# Extract --focus value (e.g., "--focus security" → "security")
+if [[ "$FLAGS" =~ --focus[[:space:]]+([a-zA-Z_-]+) ]]; then
+    FOCUS_AREA="${BASH_REMATCH[1]}"
+fi
+```
+
+**Flag behavior**:
+- `--quick`: Spawn a single combined scan agent instead of 3 parallel agents. Skip cross-referencing (Step 3.4). Faster but less thorough.
+- `--deep`: Add extra verification passes in agent prompts. Include code complexity analysis. More thorough but slower.
+- `--focus [area]`: Narrow all agent prompts to a specific concern area (e.g., `security`, `performance`, `error-handling`, `testing`). Only report findings related to that area.
+
+### 1. Gather Metadata
+
+Collect git and repository information for traceability and GitHub permalinks:
+
+```bash
+# Git metadata
+git rev-parse HEAD                    # Current commit hash
+git branch --show-current             # Current branch name
+date -u +"%Y-%m-%dT%H:%M:%SZ"         # ISO timestamp
+
+# Repository info for permalinks
+gh repo view --json owner,name        # Get owner and repo name
+
+# Check if permalinks are possible (on main or pushed)
+git status                            # Check if ahead of remote
+```
+
+Store these values for use in issue files:
+- `COMMIT_HASH`: Current commit
+- `BRANCH_NAME`: Current branch
+- `SCAN_DATE`: ISO 8601 timestamp
+- `REPO_OWNER`: GitHub owner
+- `REPO_NAME`: Repository name
+- `PERMALINKS_AVAILABLE`: true if on main/master or commit is pushed
+
+### 2. Spawn Scan Agents
+
+**If `--quick` flag is set**: Spawn a single combined agent that scans for bugs, enhancements, and features in one pass. Skip the parallel approach below.
+
+**Default / `--deep`**: Launch 3 sub-agents in parallel to scan different categories concurrently.
+
+**If `--focus [area]` is set**: Add the following instruction to ALL agent prompts: "Focus exclusively on [area]-related findings. Only report issues directly related to [area]. Skip unrelated findings."
+
+**IMPORTANT**: When not using `--quick`, spawn all 3 agents in a SINGLE message with multiple Task tool calls.
+
+#### Agent 1: Bug Scanner
+```
+Use Task tool with subagent_type="codebase-analyzer"
+
+Prompt: Scan the codebase in {{config.scan.focus_dirs}} for potential bugs:
+- TODO/FIXME/BUG/HACK comments
+- Error handling gaps (bare except, swallowed exceptions)
+- Type mismatches and potential runtime errors
+- Resource leaks (unclosed files, connections)
+- Race conditions or thread safety issues
+
+Exclude: {{config.scan.exclude_patterns}}
+
+Return structured findings with:
+- Title (brief description)
+- File path and line number(s)
+- Stable anchor (function name, class name, or unique nearby string that won't change)
+- Code snippet showing the issue
+- Severity assessment (High/Medium/Low)
+- Brief explanation of the problem
+- Reproduction steps (how to trigger the bug)
+
+IMPORTANT: Do NOT include related issue IDs or their status in findings.
+Related issues will be resolved dynamically during validation.
+
+IMPORTANT: Before reporting each finding, VERIFY:
+- File paths exist (use Read tool to confirm)
+- Line numbers are accurate (check the actual file)
+- Code snippets match current code
+Only report VERIFIED issues with accurate references.
+
+**If --deep**: Additionally analyze:
+- Code complexity metrics (cyclomatic complexity, nesting depth)
+- Cross-reference with git blame for recently introduced bugs
+- Check if similar bugs exist in related modules
+```
+
+#### Agent 2: Enhancement Scanner
+```
+Use Task tool with subagent_type="codebase-analyzer"
+
+Prompt: Scan the codebase in {{config.scan.focus_dirs}} for enhancement opportunities:
+- Performance bottlenecks (N+1 queries, unnecessary loops)
+- Code duplication that could be refactored
+- Missing abstractions or patterns
+- Outdated dependencies or deprecated APIs
+- Test coverage gaps
+
+Exclude: {{config.scan.exclude_patterns}}
+
+Return structured findings with:
+- Title (brief description)
+- File path and line number(s)
+- Stable anchor (function name, class name, or unique nearby string that won't change)
+- Code snippet showing the area
+- Effort estimate (Small/Medium/Large)
+- Current behavior (what the code does now)
+- Expected behavior (what the code should do after improvement)
+- Proposed solution (suggested approach to implement the enhancement)
+
+IMPORTANT: Do NOT include related issue IDs or their status in findings.
+Related issues will be resolved dynamically during validation.
+
+IMPORTANT: Before reporting each finding, VERIFY:
+- File paths exist (use Read tool to confirm)
+- Line numbers are accurate (check the actual file)
+- Any referenced functions/classes exist
+Only report VERIFIED findings with accurate references.
+
+**If --deep**: Additionally analyze:
+- Quantify performance impact with benchmarks where possible
+- Check for similar patterns across the codebase that could benefit from the same enhancement
+- Assess test coverage gaps with specific missing test cases
+```
+
+#### Agent 3: Feature Scanner
+```
+Use Task tool with subagent_type="codebase-analyzer"
+
+Prompt: Scan the codebase in {{config.scan.focus_dirs}} for feature opportunities:
+- TODO comments describing new functionality
+- Missing API endpoints or CLI commands
+- Incomplete implementations
+- User-facing improvements suggested in code
+
+Exclude: {{config.scan.exclude_patterns}}
+
+Return structured findings with:
+- Title (brief description)
+- File path and line number(s)
+- Stable anchor (function name, class name, or unique nearby string that won't change)
+- Code snippet or context
+- Scope estimate (Small/Medium/Large)
+- Brief explanation of the feature
+
+IMPORTANT: Do NOT include related issue IDs or their status in findings.
+Related issues will be resolved dynamically during validation.
+
+IMPORTANT: Before reporting each finding, VERIFY:
+- File paths exist (use Read tool to confirm)
+- Any TODOs or comments you reference are still present
+- Line numbers are accurate
+Only report VERIFIED findings.
+
+**If --deep**: Additionally:
+- Search for related TODO chains across files
+- Analyze incomplete implementations by checking for stub functions or placeholder code
+- Cross-reference with existing feature requests in .issues/features/
+```
+
+### 3. Synthesize Findings
+
+After ALL sub-agents complete:
+
+1. **Collect results** from all 3 agents
+2. **Deduplicate** against existing issues in `{{config.issues.base_dir}}/`
+3. **Assign priorities** (P0-P5) based on:
+   - P0: Critical bugs, security issues, data loss risk
+   - P1: High-impact bugs, blocking issues
+   - P2: Medium bugs, important enhancements
+   - P3: Low-priority bugs, nice-to-have enhancements
+   - P4: Minor improvements, code cleanup
+   - P5: Future considerations, low-priority features
+4. **Skip cross-referencing if `--quick`**: When `--quick` is set, skip step 5 (cross-reference for dependencies) to save time.
+5. **Assign globally unique sequential numbers**:
+   - Run `ll-issues next-id` to get the next available issue number
+   - Use that value for the first new issue, increment for subsequent issues
+   - Example: If `ll-issues next-id` prints `011`, assign 011, 012, 013, etc.
+6. **Cross-reference for dependencies** (skip if `--quick`): After assigning IDs to new findings:
+   - For each new finding, extract the file path(s) from its Location section
+   - Compare against file paths in ALL existing active issues (read their Location sections)
+   - If a new finding references files also referenced by an existing issue:
+     - If existing issue is higher priority or more foundational: add existing issue to the new issue's `## Blocked By` section
+     - Add a comment: `<!-- Suggested by scan-codebase: file overlap with [file.py] -->`
+   - This is a suggestion only — users can review and remove suggestions during the confirmation step (Step 4.5)
+
+### 4. Create Issue Files
+
+For each finding, create an issue file using the section structure from `ll-issues sections {type}`:
+
+1. Run `ll-issues sections {type}` to get the per-type template where `{type}` is `bug`, `feat`, `enh`, or `epic` based on the issue type
+2. Use `creation_variants.full` to determine which common sections to include
+3. Include `type_sections` from the loaded file (especially "Steps to Reproduce" for BUGs — use this exact name, not "Reproduction Steps")
+5. Always include the scan-specific YAML frontmatter and Location section
+
+The assembled file follows this structure:
+
+```markdown
+---
+discovered_commit: [COMMIT_HASH]
+discovered_branch: [BRANCH_NAME]
+discovered_date: [SCAN_DATE]
+discovered_by: scan-codebase
+---
+
+# [PREFIX]-[NUMBER]: [Title]
+
+## Summary
+
+[Clear description of the issue]
+
+## Location
+
+- **File**: `path/to/file.py`
+- **Line(s)**: 42-45 (at scan commit: [COMMIT_HASH_SHORT])
+- **Anchor**: `in function process_issue()` or `in class IssueManager` or `near string "unique marker"`
+- **Permalink**: [View on GitHub](...)
+- **Code**:
+```[language]
+# Relevant code snippet
+```
+
+[Remaining sections from template: Current Behavior, Expected Behavior,
+type-specific sections (e.g. Steps to Reproduce for BUGs), Proposed Solution,
+Impact, Labels, Status — using section names and structure from per-type sections files]
+```
+
+**Note**: Only include Permalink if `PERMALINKS_AVAILABLE` is true.
+
+### 4.5. Confirm Issue Creation
+
+Before creating any files, present a summary to the user:
+
+```markdown
+## Issues to Create
+
+| Category | Count | Priority Range |
+|----------|-------|----------------|
+| Bugs | N | P0-P3 |
+| Enhancements | N | P2-P4 |
+| Features | N | P3-P5 |
+
+[List each issue briefly: priority, type, title]
+```
+
+Ask: "Create these [N] issue files? (y/n)"
+
+Only proceed to save files if user confirms.
+
+### 5. Save Issue Files
+
+```bash
+# Create issue file with proper naming
+cat > "{{config.issues.base_dir}}/[category]/P[X]-[PREFIX]-[NUM]-[slug].md" << 'EOF'
+[Issue content]
+EOF
+
+# Stage new issues
+git add "{{config.issues.base_dir}}/"
+```
+
+### 5.5. Append Session Log Entries
+
+For each newly created issue file, use the Bash tool to append a session log entry:
+
+```bash
+ll-issues append-log <path-to-issue-file> /ll:scan-codebase
+```
+
+If `ll-issues` is not available, fall back to manually appending with **exactly** this format (backticks required):
+
+```
+- `/ll:scan-codebase` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
+```
+
+### 6. Output Report
+
+```markdown
+# Codebase Scan Report
+
+## Scan Metadata
+- **Commit**: [COMMIT_HASH]
+- **Branch**: [BRANCH_NAME]
+- **Date**: [SCAN_DATE]
+- **Repository**: [REPO_OWNER]/[REPO_NAME]
+
+## Summary
+- **Files scanned**: X
+- **Issues found**: Y
+  - Bugs: N
+  - Enhancements: N
+  - Features: N
+  - Epics: N
+- **Duplicates skipped**: Z
+
+## New Issues Created
+
+### Bugs ({{config.issues.base_dir}}/bugs/)
+| File | Priority | Title | Permalink |
+|------|----------|-------|-----------|
+| P1-BUG-001-... | P1 | Description | [Link](...) |
+
+### Enhancements ({{config.issues.base_dir}}/enhancements/)
+| File | Priority | Title | Permalink |
+|------|----------|-------|-----------|
+| P2-ENH-001-... | P2 | Description | [Link](...) |
+
+### Features ({{config.issues.base_dir}}/features/)
+| File | Priority | Title | Permalink |
+|------|----------|-------|-----------|
+| P3-FEAT-001-... | P3 | Description | [Link](...) |
+
+### Epics ({{config.issues.base_dir}}/epics/)
+| File | Priority | Title | Permalink |
+|------|----------|-------|-----------|
+| P2-EPIC-001-... | P2 | Description | [Link](...) |
+
+## Next Steps
+1. Review created issues for accuracy
+2. Adjust priorities as needed
+3. Run `/ll:manage-issue` to start processing
+```
+
+---
+
+## Arguments
+
+$ARGUMENTS
+
+- **flags** (optional): Modify scan behavior
+  - `--quick` - Single-agent scan, skip cross-referencing. Faster but less thorough
+  - `--deep` - Extra verification passes, complexity analysis, cross-module checks
+  - `--focus [area]` - Narrow scope to a specific concern (e.g., `security`, `performance`, `error-handling`, `testing`)
+
+---
+
+## Examples
+
+```bash
+# Scan codebase for issues (default: 3 parallel agents)
+/ll:scan-codebase
+
+# Quick scan for fast results
+/ll:scan-codebase --quick
+
+# Deep scan with extra analysis
+/ll:scan-codebase --deep
+
+# Focus on security-related issues only
+/ll:scan-codebase --focus security
+
+# Deep scan focused on performance
+/ll:scan-codebase --deep --focus performance
+
+# Review created issues
+ls {{config.issues.base_dir}}/*/
+
+# Start processing issues
+/ll:manage-issue bug fix
+```
+
+---
+
+## Integration
+
+After scanning:
+1. Review created issues for accuracy
+2. Run `/ll:prioritize-issues` if needed
+3. Use `/ll:manage-issue` to process issues
+4. Commit new issues: `/ll:commit`
+"""
