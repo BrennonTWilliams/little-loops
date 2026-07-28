@@ -12,6 +12,13 @@ arguments:
     required: true
 metadata:
   short-description: Use when asked to generate an FSM verification loop YAML from a single issue's a
+trigger_fixtures:
+  should_fire:
+    - "generate a verification loop from this single issue's acceptance criteria"
+    - "create an FSM loop verifying this issue's acceptance criteria"
+  should_not_fire:
+    - "generate an adversarial verification loop that tries to break a feature"
+    - "generate an FSM eval harness yaml from issue ids"
 ---
 
 # Verify Issue Loop

@@ -9,6 +9,13 @@ allowed-tools:
   - Grep
 metadata:
   short-description: Use when asked to propose automations or suggest automation opportunities from w
+trigger_fixtures:
+  should_fire:
+    - "propose automations and suggest automation opportunities from these workflow patterns"
+    - "suggest automation opportunities from user message workflow patterns"
+  should_not_fire:
+    - "configure little-loops settings"
+    - "create an automation loop for this recurring task"
 ---
 
 # Workflow Automation Proposer

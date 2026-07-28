@@ -17,6 +17,13 @@ arguments:
     required: false
 metadata:
   short-description: Use when exploring an external API/library and recording proof to the Learning T
+trigger_fixtures:
+  should_fire:
+    - "explore this external api library and record proof to the learning test registry"
+    - "record proof of exploring this external library to the test registry"
+  should_not_fire:
+    - "prove this unproven internal mechanism with an isolated code spike"
+    - "check whether this issue is ready to implement"
 ---
 
 # Explore API

@@ -14,6 +14,13 @@ allowed-tools:
   - Bash(date:*)
 metadata:
   short-description: Use when asked to analyze product goals, check feature gaps, or evaluate busines
+trigger_fixtures:
+  should_fire:
+    - "analyze product goals and check for feature gaps"
+    - "evaluate the business value and feature gaps of this product"
+  should_not_fire:
+    - "review epic health and audit stalled children"
+    - "propose automations from workflow patterns"
 ---
 
 # Product Analyzer Skill

@@ -20,6 +20,13 @@ arguments:
     required: false
 metadata:
   short-description: Use when asked to implement an issue end-to-end or start implementing FEAT-NNN.
+trigger_fixtures:
+  should_fire:
+    - "implement this issue end-to-end starting with FEAT-NNN"
+    - "start implementing FEAT-NNN end-to-end"
+  should_not_fire:
+    - "fix this issue's template structure"
+    - "run a pre-implementation confidence check"
 ---
 
 # Manage Issue

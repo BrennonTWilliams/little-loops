@@ -19,6 +19,13 @@ arguments:
     required: false
 metadata:
   short-description: Use when asked to capture or create an issue from conversation or natural langua
+trigger_fixtures:
+  should_fire:
+    - "capture this bug as a new issue from our conversation"
+    - "create an issue from this natural language description"
+  should_not_fire:
+    - "fix this issue's template structure"
+    - "detect conflicting requirements across open issues"
 ---
 
 # Capture Issue

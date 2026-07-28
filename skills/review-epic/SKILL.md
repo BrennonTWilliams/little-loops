@@ -18,6 +18,13 @@ arguments:
     required: false
 metadata:
   short-description: "Audit EPIC health: stalled children, scope drift, missing coverage."
+trigger_fixtures:
+  should_fire:
+    - "review epic health and audit stalled children for scope drift"
+    - "assess this epic's closure readiness and find missing coverage"
+  should_not_fire:
+    - "decompose this theme into an epic with child issues"
+    - "detect conflicting requirements across open issues"
 ---
 
 # Review Epic

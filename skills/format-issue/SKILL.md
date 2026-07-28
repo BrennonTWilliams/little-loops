@@ -17,6 +17,13 @@ arguments:
     required: false
 metadata:
   short-description: Use when asked to format an issue or fix its template structure.
+trigger_fixtures:
+  should_fire:
+    - "fix this issue's template structure"
+    - "format this issue to match the template structure"
+  should_not_fire:
+    - "capture this bug as a new issue"
+    - "detect conflicting requirements across open issues"
 ---
 
 # Format Issue

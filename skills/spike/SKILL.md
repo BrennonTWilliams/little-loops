@@ -17,6 +17,13 @@ allowed-tools:
   - Bash(find:*)
 metadata:
   short-description: Prove an unproven internal mechanism with a code spike before implementing.
+trigger_fixtures:
+  should_fire:
+    - "prove this unproven internal mechanism with an isolated code spike before implementing"
+    - "run an isolated code spike to prove this unproven mechanism"
+  should_not_fire:
+    - "explore this external api library and record proof"
+    - "run a pre-implementation confidence check"
 ---
 
 # Spike Skill

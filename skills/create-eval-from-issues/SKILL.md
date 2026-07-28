@@ -15,6 +15,13 @@ arguments:
     required: false
 metadata:
   short-description: Generate FSM eval harness YAML from issue IDs, or DSL eval tasks with --dsl.
+trigger_fixtures:
+  should_fire:
+    - "generate an FSM eval harness yaml from one or more issue ids"
+    - "generate DSL eval tasks from this loop yaml file"
+  should_not_fire:
+    - "generate an adversarial verification loop that tries to break a feature"
+    - "generate a verification loop from acceptance criteria"
 ---
 
 # Create Eval From Issues

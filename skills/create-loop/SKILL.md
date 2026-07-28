@@ -5,6 +5,13 @@ allowed-tools:
   - Bash(mkdir:*, test:*, ll-loop:*)
 metadata:
   short-description: Use when asked to create an automation loop or automate a recurring task with an
+trigger_fixtures:
+  should_fire:
+    - "create an automation loop to automate this recurring task"
+    - "automate this recurring task with an FSM loop"
+  should_not_fire:
+    - "generate an FSM eval harness yaml from issue ids"
+    - "generate a verification loop from acceptance criteria"
 ---
 
 # Create Loop

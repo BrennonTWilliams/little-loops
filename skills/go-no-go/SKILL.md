@@ -17,6 +17,13 @@ allowed-tools:
   - Bash(ll-issues:*)
 metadata:
   short-description: Use when asked for an adversarial go/no-go review or whether an issue is worth i
+trigger_fixtures:
+  should_fire:
+    - "adversarial review of whether this issue is worth implementing, go or no-go"
+    - "give me a go no-go review on whether this issue is worth implementing"
+  should_not_fire:
+    - "select the winning implementation option for this issue"
+    - "run a pre-implementation confidence check"
 ---
 
 # Go/No-Go — Adversarial Issue Assessment

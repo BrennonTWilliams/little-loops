@@ -18,6 +18,13 @@ arguments:
     required: false
 metadata:
   short-description: Use when asked to configure little-loops, change settings, or update ll-config.j
+trigger_fixtures:
+  should_fire:
+    - "configure little-loops settings and update ll-config json"
+    - "change the little-loops settings in ll-config"
+  should_not_fire:
+    - "adjust the default number of parallel sprint workers"
+    - "propose automations from workflow patterns"
 ---
 
 # Configure

@@ -15,6 +15,13 @@ allowed-tools:
   - Agent
 metadata:
   short-description: Use when asked to select the winning implementation option for an issue with dec
+trigger_fixtures:
+  should_fire:
+    - "select the winning implementation option for this issue with decision_needed"
+    - "decide the winning implementation option among these"
+  should_not_fire:
+    - "run a pre-implementation confidence check on this issue"
+    - "adversarial review of whether this issue is worth implementing"
 ---
 
 # Decide Issue

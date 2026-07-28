@@ -222,6 +222,24 @@ def _match_score(phrasing: str, keywords: set[str]) -> int:
     return len(phrasing_tokens & keywords)
 
 
+def _best_match_skills(
+    phrasing: str, skill_keywords: dict[str, set[str]]
+) -> set[str]:
+    """Skills tied for the highest ``_match_score`` against *phrasing*.
+
+    Models host routing, which resolves a phrasing to a single best-matching
+    skill rather than every skill sharing a token (single-token OR matching
+    flagged legitimate single-skill phrasings as collisions across 3-6 skills
+    — ENH-2884). Returns an empty set when no skill scores above zero; returns
+    more than one skill only on a genuine tie/near-tie for the top score.
+    """
+    scores = {name: _match_score(phrasing, kw) for name, kw in skill_keywords.items()}
+    max_score = max(scores.values(), default=0)
+    if max_score == 0:
+        return set()
+    return {name for name, score in scores.items() if score == max_score}
+
+
 # ---------------------------------------------------------------------------
 # Fixture loading
 # ---------------------------------------------------------------------------
@@ -419,14 +437,10 @@ def _run_validation(
 
         # Evaluate should_fire phrasings
         for phrasing in fixtures.should_fire:
-            # Check which skills this phrasing matches
-            matched: list[str] = []
-            for other_name, other_kw in skill_keywords.items():
-                if _match_phrasing(phrasing, other_kw):
-                    matched.append(other_name)
+            matched = _best_match_skills(phrasing, skill_keywords)
 
             if matched:
-                phrasing_matches[phrasing] |= set(matched)
+                phrasing_matches[phrasing] |= matched
 
             if skill_name in matched:
                 tp += 1
@@ -436,13 +450,10 @@ def _run_validation(
 
         # Evaluate should_not_fire phrasings
         for phrasing in fixtures.should_not_fire:
-            matched_not: list[str] = []
-            for other_name, other_kw in skill_keywords.items():
-                if _match_phrasing(phrasing, other_kw):
-                    matched_not.append(other_name)
+            matched_not = _best_match_skills(phrasing, skill_keywords)
 
             if matched_not:
-                phrasing_matches[phrasing] |= set(matched_not)
+                phrasing_matches[phrasing] |= matched_not
 
             if skill_name in matched_not:
                 fp += 1

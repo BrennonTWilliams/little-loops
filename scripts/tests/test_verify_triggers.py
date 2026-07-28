@@ -9,6 +9,7 @@ from unittest.mock import patch
 from little_loops.cli.verify_triggers import (
     PrecisionRecall,
     SkillTriggerResult,
+    _best_match_skills,
     _compute_precision_recall,
     _detect_collisions,
     _extract_keywords,
@@ -85,6 +86,53 @@ class TestExtractKeywords:
         assert "and" not in kw
         assert "asked" in kw
         assert "tests" in kw
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: best-match scoring (ENH-2884)
+# ---------------------------------------------------------------------------
+
+
+class TestBestMatchSkills:
+    """Tests for _best_match_skills — score-based best-match routing."""
+
+    def test_single_winner(self) -> None:
+        """A phrasing that scores higher against one skill's keywords wins alone."""
+        skill_keywords = {
+            "commit": {"commit", "git", "changes"},
+            "lint": {"lint", "code", "format"},
+        }
+        assert _best_match_skills("commit git changes", skill_keywords) == {"commit"}
+
+    def test_no_match_returns_empty(self) -> None:
+        """A phrasing sharing no tokens with any skill matches nothing."""
+        skill_keywords = {
+            "commit": {"commit", "git"},
+            "lint": {"lint", "code"},
+        }
+        assert _best_match_skills("deploy the application", skill_keywords) == set()
+
+    def test_tie_returns_multiple_skills(self) -> None:
+        """Skills tied for the top score are all reported (a genuine collision)."""
+        skill_keywords = {
+            "a": {"loop", "create"},
+            "b": {"loop", "generate"},
+        }
+        assert _best_match_skills("create and generate a loop", skill_keywords) == {"a", "b"}
+
+    def test_higher_overlap_beats_single_token_overlap(self) -> None:
+        """A skill sharing more tokens outscores one sharing only one token.
+
+        This is the case single-token OR matching got wrong (BUG-2879 pilot):
+        a phrasing legitimately belonging to one skill no longer collides with
+        every skill sharing just one keyword.
+        """
+        skill_keywords = {
+            "adversarial-verify-loop": {"generate", "adversarial", "loop", "fsm"},
+            "create-loop": {"create", "loop", "automation"},
+        }
+        phrasing = "generate an adversarial fsm loop"
+        assert _best_match_skills(phrasing, skill_keywords) == {"adversarial-verify-loop"}
 
 
 # ---------------------------------------------------------------------------

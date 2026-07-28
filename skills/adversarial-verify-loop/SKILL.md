@@ -12,6 +12,13 @@ arguments:
     required: true
 metadata:
   short-description: Generate an FSM adversarial loop that tries to break a feature via probes
+trigger_fixtures:
+  should_fire:
+    - "generate an adversarial verification loop that tries to break this feature with boundary values and malformed inputs"
+    - "create an FSM loop probing failure modes via malformed inputs for this feature"
+  should_not_fire:
+    - "generate a verification loop from this issue's acceptance criteria"
+    - "generate an eval harness from these issue ids"
 ---
 
 # Adversarial Verify Loop

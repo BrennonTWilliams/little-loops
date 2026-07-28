@@ -22,6 +22,13 @@ arguments:
     required: false
 metadata:
   short-description: Use when asked to detect conflicting requirements or incompatible decisions acro
+trigger_fixtures:
+  should_fire:
+    - "detect conflicting requirements across these open issues"
+    - "find incompatible decisions between issues in this epic"
+  should_not_fire:
+    - "check whether this issue is ready to implement"
+    - "review epic health and audit stalled children"
 ---
 
 # Audit Issue Conflicts

@@ -2996,6 +2996,13 @@ own section and counted against the `Fixture coverage: M/N` line — it is *not*
 scored 0% and cannot fail a threshold. Collision detection is reported as skipped
 rather than clean when no fixtures were available to test.
 
+**Matching semantics (ENH-2884):** a phrasing is scored against every
+model-invocable skill's keyword set (`_match_score`, shared-token count) and
+resolves to whichever skill scores highest — modeling a host resolving a
+phrasing to a single best-matching skill, not every skill that happens to
+share a token. A collision is reported only when two or more skills tie for
+the top score.
+
 **Flags:**
 
 | Flag | Short | Description |

@@ -14,6 +14,13 @@ allowed-tools:
   - Bash(ll-learning-tests:*)
 metadata:
   short-description: Use when asked for a pre-implementation confidence check or whether an issue is 
+trigger_fixtures:
+  should_fire:
+    - "run a pre-implementation confidence check on whether this issue is ready to implement"
+    - "check confidence that this issue is ready to implement"
+  should_not_fire:
+    - "select the winning implementation option for this issue"
+    - "adversarial review of whether this issue is worth implementing"
 ---
 
 # Confidence Check Skill

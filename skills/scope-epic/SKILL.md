@@ -23,6 +23,13 @@ arguments:
     required: false
 metadata:
   short-description: Decompose a theme into an EPIC with 3–8 pre-wired child issue stubs.
+trigger_fixtures:
+  should_fire:
+    - "decompose this theme into an epic with child issues and pre-wired stubs"
+    - "scope a new epic from this goal with child issue stubs"
+  should_not_fire:
+    - "review epic health and audit stalled children"
+    - "capture this bug as a new issue"
 ---
 
 # Scope EPIC

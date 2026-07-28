@@ -16,6 +16,13 @@ allowed-tools:
   - Agent
 metadata:
   short-description: Use when a refined issue is missing integration points or wiring in the implemen
+trigger_fixtures:
+  should_fire:
+    - "this refined issue is missing integration points and wiring in the implementation plan"
+    - "add missing wiring and integration points to this issue's plan"
+  should_not_fire:
+    - "fix this issue's template structure"
+    - "select the winning implementation option"
 ---
 
 # Wire Issue
