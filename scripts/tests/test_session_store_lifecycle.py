@@ -1,0 +1,2653 @@
+"""Tests for little_loops.session_store — lifecycle module."""
+
+from __future__ import annotations
+
+import itertools
+import json
+import logging
+import re
+import sqlite3
+import subprocess
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+
+from little_loops.session_store import (
+    SCHEMA_VERSION,
+    _estimate_tokens,
+    _pack_payload,
+    _summarize_block,
+    _unpack_payload,
+    backfill,
+    backfill_incremental,
+    backfill_raw_events,
+    compact,
+    compact_session,
+    connect,
+    ensure_db,
+    prune,
+    rebuild,
+    recent,
+    recompress_raw_events,
+    record_loop_run_summary,
+    search,
+)
+
+# ENH-2529: consolidate per-test temp dirs under one module-scoped parent to cut
+# macOS launchservicesd/mds re-indexing churn during full-suite runs. Each test
+# still gets a fresh, unique directory; only the parent dir consolidates.
+_TMP_COUNTER = itertools.count()
+
+
+@pytest.fixture(scope="module")
+def _module_tmp_parent(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """One temp parent per module instead of one top-level dir per test."""
+    return tmp_path_factory.mktemp("session_store")
+
+
+@pytest.fixture
+def tmp_path(_module_tmp_parent: Path, request: pytest.FixtureRequest) -> Path:
+    """Override built-in tmp_path: unique fresh subdir of the module parent."""
+    name = re.sub(r"\W", "_", request.node.name)[:30]
+    path = _module_tmp_parent / f"{name}_{next(_TMP_COUNTER)}"
+    path.mkdir()
+    return path
+
+
+class TestBackfill:
+    """Seeding the database from existing on-disk sources."""
+
+    def test_backfill_issues(self, tmp_path: Path) -> None:
+        issues = tmp_path / ".issues" / "bugs"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P1-BUG-1-x.md").write_text(
+            "---\nid: BUG-1\nstatus: done\ntype: BUG\n---\n# x\n", encoding="utf-8"
+        )
+        db = tmp_path / "session.db"
+        counts = backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / ".loops")
+        assert counts["issues"] == 1
+        rows = recent(db, kind="issue")
+        assert rows[0]["issue_id"] == "BUG-1"
+
+    def test_backfill_loops(self, tmp_path: Path) -> None:
+        running = tmp_path / ".loops" / ".running"
+        running.mkdir(parents=True, exist_ok=True)
+        (running / "docs-sync.json").write_text(
+            json.dumps({"loop_name": "docs-sync", "current_state": "verify"}), encoding="utf-8"
+        )
+        db = tmp_path / "session.db"
+        counts = backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / ".loops")
+        assert counts["loops"] == 1
+
+    def test_backfill_tool_events_from_jsonl(self, tmp_path: Path) -> None:
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "sessionId": "s1",
+                    "timestamp": "2026-05-22T00:00:00Z",
+                    "message": {
+                        "content": [
+                            {"type": "tool_use", "name": "Bash", "input": {"command": "ls"}}
+                        ]
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        counts = backfill(
+            db,
+            issues_dir=tmp_path / "none",
+            loops_dir=tmp_path / "none",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
+        assert counts["tools"] == 1
+        assert recent(db, kind="tool")[0]["tool_name"] == "Bash"
+
+    def test_backfill_missing_sources_is_noop(self, tmp_path: Path) -> None:
+        db = tmp_path / "session.db"
+        counts = backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            registry_dir=tmp_path / "no-registry",
+        )
+        assert counts == {
+            "issues": 0,
+            "loops": 0,
+            "snapshots": 0,
+            "commits": 0,
+            "raw_events": 0,
+            "learning_tests": 0,
+            "subagent_runs": 0,
+        }
+
+    def test_backfill_jsonl_populates_sessions(self, tmp_path: Path) -> None:
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            json.dumps(
+                {
+                    "type": "user",
+                    "sessionId": "sess-abc",
+                    "timestamp": "2026-05-22T00:00:00Z",
+                    "message": {"content": "hello"},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        counts = backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
+        assert counts["sessions"] == 1
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT jsonl_path FROM sessions WHERE session_id = 'sess-abc'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+        assert row["jsonl_path"] == str(jsonl)
+
+    def test_backfilled_issue_is_searchable(self, tmp_path: Path) -> None:
+        issues = tmp_path / ".issues"
+        issues.mkdir(exist_ok=True)
+        (issues / "P1-BUG-2-y.md").write_text(
+            "---\nid: BUG-2\nstatus: done\ntype: BUG\n---\n", encoding="utf-8"
+        )
+        db = tmp_path / "session.db"
+        backfill(db, issues_dir=issues, loops_dir=tmp_path / "no")
+        results = search(db, query="done")
+        assert any(r["kind"] == "issue" for r in results)
+
+
+class TestBackfillMessages:
+    """_backfill_messages() seeds message_events from user JSONL blocks."""
+
+    def _user_record(self, session_id: str, ts: str, content: object) -> str:
+        return (
+            json.dumps(
+                {
+                    "type": "user",
+                    "sessionId": session_id,
+                    "timestamp": ts,
+                    "message": {"content": content},
+                }
+            )
+            + "\n"
+        )
+
+    def test_backfill_messages_plain_string(self, tmp_path: Path) -> None:
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._user_record("s1", "2026-05-22T00:00:00Z", "implement ENH-1621"),
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        counts = backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
+        assert counts["messages"] == 1
+        rows = recent(db, kind="message")
+        assert rows[0]["content"] == "implement ENH-1621"
+        assert rows[0]["session_id"] == "s1"
+
+    def test_backfill_messages_block_list_content(self, tmp_path: Path) -> None:
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._user_record(
+                "s2",
+                "2026-05-22T00:00:00Z",
+                [{"type": "text", "text": "first"}, {"type": "text", "text": "second"}],
+            ),
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
+        rows = recent(db, kind="message")
+        assert rows[0]["content"] == "first\nsecond"
+
+    def test_backfill_messages_skips_empty_and_assistant_records(self, tmp_path: Path) -> None:
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._user_record("s3", "2026-05-22T00:00:00Z", "")
+            + json.dumps(
+                {
+                    "type": "assistant",
+                    "sessionId": "s3",
+                    "timestamp": "2026-05-22T00:00:01Z",
+                    "message": {"content": [{"type": "text", "text": "ignored"}]},
+                }
+            )
+            + "\n"
+            + self._user_record("s3", "2026-05-22T00:00:02Z", "kept"),
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        counts = backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
+        assert counts["messages"] == 1
+
+    def test_message_events_are_searchable(self, tmp_path: Path) -> None:
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._user_record("s4", "2026-05-22T00:00:00Z", "needle in haystack"),
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
+        results = search(db, query="needle")
+        assert any(r["kind"] == "message" for r in results)
+
+    def test_recent_message_kind_supported(self, tmp_path: Path) -> None:
+        db = tmp_path / "session.db"
+        ensure_db(db)
+        assert recent(db, kind="message") == []
+
+    def test_backfill_populates_corrections_from_correction_message(self, tmp_path: Path) -> None:
+        """Backfill with a correction-pattern message populates user_corrections."""
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._user_record("s-corr", "2026-06-03T10:00:00Z", "no, don't do that"),
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        counts = backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
+        assert counts["corrections"] == 1
+        rows = recent(db, kind="correction")
+        assert len(rows) == 1
+        assert rows[0]["content"] == "no, don't do that"
+        assert rows[0]["session_id"] == "s-corr"
+
+    def test_backfill_corrections_gate_disabled(self, tmp_path: Path) -> None:
+        """analytics.capture.corrections=false suppresses correction mining during backfill."""
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._user_record("s-gate", "2026-06-03T10:00:00Z", "no, don't do that"),
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        counts = backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            config={"analytics": {"capture": {"corrections": False}}},
+            also_rebuild=True,
+        )
+        assert counts["corrections"] == 0
+        assert len(recent(db, kind="correction")) == 0
+
+    def test_backfill_corrections_idempotent(self, tmp_path: Path) -> None:
+        """Running backfill twice on same JSONL produces exactly 1 correction row."""
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._user_record("s-idem", "2026-06-03T10:00:00Z", "no, don't do that"),
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
+        backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
+        rows = recent(db, kind="correction")
+        assert len(rows) == 1, "re-running backfill must not duplicate correction rows"
+
+
+class TestBackfillIssuesV2Columns:
+    """_backfill_issues() populates the v2 issue_events columns (ENH-1621)."""
+
+    def test_v2_columns_populated_from_frontmatter(self, tmp_path: Path) -> None:
+        issues = tmp_path / ".issues" / "enhancements"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P2-ENH-99-foo.md").write_text(
+            "---\n"
+            "id: ENH-99\n"
+            "status: done\n"
+            "type: ENH\n"
+            "priority: P2\n"
+            "captured_at: 2026-05-20T10:00:00Z\n"
+            "completed_at: 2026-05-22T15:30:00Z\n"
+            "---\n# x\n",
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        rows = recent(db, kind="issue")
+        assert rows[0]["issue_type"] == "ENH"
+        assert rows[0]["priority"] == "P2"
+        assert rows[0]["completed_date"] == "2026-05-22"
+        assert rows[0]["completed_at"] == "2026-05-22T15:30:00Z"
+        assert rows[0]["captured_at"] == "2026-05-20T10:00:00Z"
+
+    def test_v2_columns_derived_from_filename_when_fm_absent(self, tmp_path: Path) -> None:
+        issues = tmp_path / ".issues" / "bugs"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P3-BUG-7-no-meta.md").write_text(
+            "---\nid: BUG-7\nstatus: done\n---\n", encoding="utf-8"
+        )
+        db = tmp_path / "session.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        rows = recent(db, kind="issue")
+        assert rows[0]["issue_type"] == "BUG"
+        assert rows[0]["priority"] == "P3"
+
+    def test_bare_int_id_canonicalized_to_type_nnn(self, tmp_path: Path) -> None:
+        """BUG-2769: id: 2756 (bare int) is canonicalized to BUG-2756 from the filename."""
+        issues = tmp_path / ".issues" / "bugs"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P2-BUG-2756-bare-int-id.md").write_text(
+            "---\nid: 2756\nstatus: done\ntype: BUG\n---\n# x\n", encoding="utf-8"
+        )
+        db = tmp_path / "session.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        rows = recent(db, kind="issue")
+        assert rows[0]["issue_id"] == "BUG-2756"
+
+    def test_quoted_numeric_id_canonicalized_to_type_nnn(self, tmp_path: Path) -> None:
+        """BUG-2769: id: "1294" (quoted numeric) is canonicalized to BUG-1294."""
+        issues = tmp_path / ".issues" / "bugs"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P2-BUG-1294-quoted-numeric-id.md").write_text(
+            '---\nid: "1294"\nstatus: done\ntype: BUG\n---\n# x\n', encoding="utf-8"
+        )
+        db = tmp_path / "session.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        rows = recent(db, kind="issue")
+        assert rows[0]["issue_id"] == "BUG-1294"
+
+    def test_absent_id_derived_from_filename(self, tmp_path: Path) -> None:
+        """BUG-2769: absent id falls back to the filename-derived TYPE-NNN."""
+        issues = tmp_path / ".issues" / "enhancements"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P2-ENH-1548-no-id.md").write_text(
+            "---\nstatus: done\ntype: ENH\n---\n# x\n", encoding="utf-8"
+        )
+        db = tmp_path / "session.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        rows = recent(db, kind="issue")
+        assert rows[0]["issue_id"] == "ENH-1548"
+
+    def test_correct_id_passes_through_unchanged(self, tmp_path: Path) -> None:
+        """BUG-2769: a correct id: TYPE-NNN is left untouched."""
+        issues = tmp_path / ".issues" / "bugs"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P2-BUG-1182-correct-id.md").write_text(
+            "---\nid: BUG-1182\nstatus: done\ntype: BUG\n---\n# x\n", encoding="utf-8"
+        )
+        db = tmp_path / "session.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        rows = recent(db, kind="issue")
+        assert rows[0]["issue_id"] == "BUG-1182"
+
+
+class TestBackfillDedup:
+    """_backfill_issues() is idempotent via INSERT OR IGNORE + unique index (ENH-1690)."""
+
+    def test_double_backfill_produces_single_row(self, tmp_path: Path) -> None:
+        issues = tmp_path / ".issues" / "bugs"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P1-BUG-10-x.md").write_text(
+            "---\nid: BUG-10\nstatus: done\ntype: BUG\n---\n# x\n", encoding="utf-8"
+        )
+        db = tmp_path / "session.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        rows = recent(db, kind="issue")
+        assert len(rows) == 1
+        assert rows[0]["issue_id"] == "BUG-10"
+
+
+class TestBackfillIncremental:
+    """backfill_incremental() filters JSONL by mtime and tracks last_backfill_ts (ENH-1830)."""
+
+    def _make_tool_jsonl(self, directory: Path, session_id: str) -> Path:
+        jsonl = directory / f"{session_id}.jsonl"
+        jsonl.write_text(
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "sessionId": session_id,
+                    "timestamp": "2026-05-22T00:00:00Z",
+                    "message": {
+                        "content": [
+                            {"type": "tool_use", "name": "Read", "input": {"file_path": "x"}}
+                        ]
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return jsonl
+
+    def _make_msg_jsonl(self, directory: Path, session_id: str) -> Path:
+        jsonl = directory / f"{session_id}.jsonl"
+        jsonl.write_text(
+            json.dumps(
+                {
+                    "type": "user",
+                    "sessionId": session_id,
+                    "timestamp": "2026-05-22T00:00:00Z",
+                    "message": {"content": "hello from " + session_id},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return jsonl
+
+    def test_processes_all_files_when_since_ts_zero(self, tmp_path: Path) -> None:
+        jsonl = self._make_tool_jsonl(tmp_path, "s1")
+        db = tmp_path / "history.db"
+        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0)
+        assert counts["raw_events"] >= 1
+
+    def test_filters_files_with_future_since_ts(self, tmp_path: Path) -> None:
+        """Files with mtime before a far-future since_ts are excluded."""
+        jsonl = self._make_tool_jsonl(tmp_path, "s2")
+        db = tmp_path / "history.db"
+        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=9_999_999_999.0)
+        assert counts["raw_events"] == 0
+
+    def test_writes_last_raw_event_ts_after_run(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        backfill_incremental(db, jsonl_files=[], since_ts=0.0)
+        conn = connect(db)
+        try:
+            row = conn.execute("SELECT value FROM meta WHERE key = 'last_raw_event_ts'").fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+        assert row["value"] is not None
+
+    def test_reads_last_raw_event_ts_from_meta_when_since_none(self, tmp_path: Path) -> None:
+        """When since_ts=None, meta value controls the mtime filter."""
+        jsonl = self._make_tool_jsonl(tmp_path, "s3")
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO meta(key, value) VALUES('last_raw_event_ts', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                ("9999-12-31T23:59:59Z",),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        counts = backfill_incremental(db, jsonl_files=[jsonl])
+        assert counts["raw_events"] == 0
+
+    def test_missing_file_is_skipped_silently(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        counts = backfill_incremental(
+            db, jsonl_files=[tmp_path / "nonexistent.jsonl"], since_ts=0.0
+        )
+        assert counts["raw_events"] == 0
+
+    def test_also_rebuild_materializes_messages_and_sessions(self, tmp_path: Path) -> None:
+        jsonl = self._make_msg_jsonl(tmp_path, "s4")
+        db = tmp_path / "history.db"
+        counts = backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0, also_rebuild=True)
+        assert counts["messages"] >= 1
+        assert counts["sessions"] >= 1
+
+    def test_without_also_rebuild_cache_tables_stay_empty(self, tmp_path: Path) -> None:
+        """backfill_incremental() is ingest-only by default (ENH-2581)."""
+        jsonl = self._make_tool_jsonl(tmp_path, "sess-1")
+        db = tmp_path / "history.db"
+        backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0)
+        conn = connect(db)
+        try:
+            sessions_count = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+            tools_count = conn.execute("SELECT COUNT(*) FROM tool_events").fetchone()[0]
+            raw_count = conn.execute("SELECT COUNT(*) FROM raw_events").fetchone()[0]
+        finally:
+            conn.close()
+        assert sessions_count == 0
+        assert tools_count == 0
+        assert raw_count == 1
+
+    def test_also_rebuild_materializes_sessions(self, tmp_path: Path) -> None:
+        jsonl = self._make_tool_jsonl(tmp_path, "sess-1")
+        db = tmp_path / "history.db"
+        backfill_incremental(db, jsonl_files=[jsonl], since_ts=0.0, also_rebuild=True)
+        conn = connect(db)
+        try:
+            count = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+        finally:
+            conn.close()
+        assert count == 1
+
+
+class TestBackfillSkillEvents:
+    """BUG-2283: _backfill_skill_events() seeds skill_events from JSONL user records."""
+
+    def _user_record(self, session_id: str, ts: str, content: object) -> str:
+        return (
+            json.dumps(
+                {
+                    "type": "user",
+                    "sessionId": session_id,
+                    "timestamp": ts,
+                    "message": {"content": content},
+                }
+            )
+            + "\n"
+        )
+
+    def test_backfill_populates_skill_events_from_command_name_tag(self, tmp_path: Path) -> None:
+        text = "<command-name>/ll:tradeoff-review-issues</command-name>\n<command-args>BUG-100</command-args>"
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._user_record("sess-pre", "2026-06-01T10:00:00Z", text),
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        counts = backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
+        assert counts["skill_events"] == 1
+        rows = recent(db, kind="skill")
+        assert len(rows) == 1
+        assert rows[0]["skill_name"] == "tradeoff-review-issues"
+        assert rows[0]["args"] == "BUG-100"
+        assert rows[0]["session_id"] == "sess-pre"
+
+    def test_backfill_skill_events_no_args_when_tag_absent(self, tmp_path: Path) -> None:
+        text = "<command-name>/ll:check-code</command-name>"
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._user_record("sess2", "2026-06-02T10:00:00Z", text),
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        counts = backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
+        assert counts["skill_events"] == 1
+        rows = recent(db, kind="skill")
+        assert rows[0]["skill_name"] == "check-code"
+        assert rows[0]["args"] == ""
+
+    def test_backfill_skill_events_skips_non_skill_records(self, tmp_path: Path) -> None:
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._user_record("sess3", "2026-06-03T10:00:00Z", "just a normal message")
+            + self._user_record("sess3", "2026-06-03T10:00:01Z", ""),
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        counts = backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
+        assert counts["skill_events"] == 0
+
+    def test_backfill_skill_events_block_list_content(self, tmp_path: Path) -> None:
+        text = "<command-name>/ll:scan-codebase</command-name>"
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._user_record("sess4", "2026-06-04T10:00:00Z", [{"type": "text", "text": text}]),
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        counts = backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
+        assert counts["skill_events"] == 1
+        rows = recent(db, kind="skill")
+        assert rows[0]["skill_name"] == "scan-codebase"
+
+    def test_backfill_skill_events_are_searchable(self, tmp_path: Path) -> None:
+        text = "<command-name>/ll:ready-issue</command-name>"
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._user_record("sess5", "2026-06-05T10:00:00Z", text),
+            encoding="utf-8",
+        )
+        db = tmp_path / "session.db"
+        backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
+        results = search(db, query="ready")
+        assert any(r["kind"] == "skill" for r in results)
+
+
+class TestCompactSession:
+    """Tests for compact_session() and the summary DAG (FEAT-1712)."""
+
+    def _make_db_with_messages(self, tmp_path: Path, session_id: str, messages: list[str]) -> Path:
+        """Bootstrap a DB with the given session_id and user messages."""
+        db = tmp_path / "history.db"
+        conn = connect(db)
+        try:
+            # Seed sessions table so the session exists
+            conn.execute(
+                "INSERT OR IGNORE INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                (session_id, str(tmp_path / f"{session_id}.jsonl")),
+            )
+            for i, content in enumerate(messages):
+                ts = f"2026-01-01T00:{i:02d}:00Z"
+                conn.execute(
+                    "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                    (ts, session_id, content),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+        return db
+
+    def test_compact_session_creates_leaf_nodes(self, tmp_path: Path) -> None:
+        """compact_session() creates at least one leaf node for a session with messages."""
+        session_id = "test-session-leaf"
+        # One message that fits in a single block
+        db = self._make_db_with_messages(tmp_path, session_id, ["Hello world, this is a test."])
+        compact_session(session_id, db)
+        conn = connect(db)
+        try:
+            rows = conn.execute(
+                "SELECT id, kind, session_id FROM summary_nodes WHERE session_id=?",
+                (session_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+        assert len(rows) >= 1
+        assert any(r["kind"] == "leaf" for r in rows)
+
+    def test_compact_session_idempotent(self, tmp_path: Path) -> None:
+        """Running compact_session() twice does not create duplicate summary_nodes."""
+        session_id = "test-session-idem"
+        db = self._make_db_with_messages(
+            tmp_path, session_id, ["First message.", "Second message."]
+        )
+        compact_session(session_id, db)
+        compact_session(session_id, db)  # second call must not create duplicates
+        conn = connect(db)
+        try:
+            leaf_rows = conn.execute(
+                "SELECT id FROM summary_nodes WHERE kind='leaf' AND session_id=?",
+                (session_id,),
+            ).fetchall()
+            condensed_rows = conn.execute(
+                "SELECT id FROM summary_nodes WHERE kind='condensed' AND session_id=?",
+                (session_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+        # Idempotency: second run adds zero new rows
+        assert len(leaf_rows) >= 1  # leaves from first run still present
+        assert len(condensed_rows) <= 1  # at most one condensed per session
+
+    def test_compact_session_creates_spans(self, tmp_path: Path) -> None:
+        """compact_session() populates summary_spans linking leaf nodes to message_events."""
+        session_id = "test-session-spans"
+        db = self._make_db_with_messages(tmp_path, session_id, ["Span test message."])
+        compact_session(session_id, db)
+        conn = connect(db)
+        try:
+            spans = conn.execute(
+                "SELECT ss.summary_id, ss.message_event_id"
+                " FROM summary_spans ss"
+                " JOIN summary_nodes sn ON sn.id = ss.summary_id"
+                " WHERE sn.session_id=?",
+                (session_id,),
+            ).fetchall()
+            # Single-message fixture → single leaf → no condensed node → parent_id is NULL
+            leaf_parent = conn.execute(
+                "SELECT parent_id FROM summary_nodes WHERE kind='leaf' AND session_id=?",
+                (session_id,),
+            ).fetchone()
+        finally:
+            conn.close()
+        assert len(spans) >= 1
+        assert leaf_parent is not None
+        assert leaf_parent["parent_id"] is None
+
+    def test_compact_session_condensed_node_when_multiple_leaves(self, tmp_path: Path) -> None:
+        """A condensed node is created when a session has >= 2 leaf nodes."""
+        session_id = "test-session-condensed"
+        # Many short messages so greedy grouping with tiny budget creates multiple leaves
+        messages = [f"Message number {i}. " * 5 for i in range(30)]
+        db = self._make_db_with_messages(tmp_path, session_id, messages)
+        # Use a very small budget (10 tokens ~ 40 chars) to force multiple leaf blocks
+        config = {"history": {"compaction": {"enabled": True, "budget_tokens": 10}}}
+        # Mock subprocess so _call_llm_for_summary never invokes the real claude binary
+        # (which would trigger SessionStart hooks writing to the production db).
+        short_summary = "Condensed summary."
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed(
+                returncode=0, stdout=_llm_response(short_summary)
+            )
+            compact_session(session_id, db, config=config)
+        conn = connect(db)
+        try:
+            leaf_count = conn.execute(
+                "SELECT COUNT(*) FROM summary_nodes WHERE kind='leaf' AND session_id=?",
+                (session_id,),
+            ).fetchone()[0]
+            condensed_count = conn.execute(
+                "SELECT COUNT(*) FROM summary_nodes WHERE kind='condensed' AND session_id=?",
+                (session_id,),
+            ).fetchone()[0]
+            # Verify parent_id linkage: leaves should point to the condensed node
+            condensed_id = conn.execute(
+                "SELECT id FROM summary_nodes WHERE kind='condensed' AND session_id=?",
+                (session_id,),
+            ).fetchone()["id"]
+            leaf_parent_ids = conn.execute(
+                "SELECT parent_id FROM summary_nodes WHERE kind='leaf' AND session_id=?",
+                (session_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+        assert leaf_count >= 2
+        assert condensed_count == 1
+        assert all(row["parent_id"] == condensed_id for row in leaf_parent_ids), (
+            f"Expected all leaf nodes to have parent_id={condensed_id}, "
+            f"got {[row['parent_id'] for row in leaf_parent_ids]}"
+        )
+
+    def test_compact_session_empty_session_is_noop(self, tmp_path: Path) -> None:
+        """compact_session() returns 0 and inserts nothing for a session with no messages."""
+        session_id = "test-session-empty"
+        db = self._make_db_with_messages(tmp_path, session_id, [])
+        result = compact_session(session_id, db)
+        assert result == 0
+        conn = connect(db)
+        try:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM summary_nodes WHERE session_id=?", (session_id,)
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert count == 0
+
+    def test_backfill_with_compaction_enabled(self, tmp_path: Path) -> None:
+        """backfill() runs compaction when config enables it."""
+        jsonl = tmp_path / "session.jsonl"
+        session_id = "test-backfill-compact"
+        import json
+
+        records = [
+            {
+                "type": "user",
+                "sessionId": session_id,
+                "timestamp": f"2026-01-01T00:{i:02d}:00Z",
+                "message": {"content": f"Backfill compaction message {i}."},
+            }
+            for i in range(5)
+        ]
+        jsonl.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
+        db = tmp_path / "history.db"
+        config = {"history": {"compaction": {"enabled": True, "budget_tokens": 4096}}}
+        # Mock subprocess to avoid real LLM calls in test; return a short summary
+        # that passes the size check so level 1 is accepted.
+        short_summary = "Compacted summary."
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed(
+                returncode=0, stdout=_llm_response(short_summary)
+            )
+            counts = backfill(db, jsonl_files=[jsonl], config=config, also_rebuild=True)
+        assert counts["summaries"] >= 1
+        conn = connect(db)
+        try:
+            leaf_count = conn.execute(
+                "SELECT COUNT(*) FROM summary_nodes WHERE kind='leaf' AND session_id=?",
+                (session_id,),
+            ).fetchone()[0]
+            # Single-block fixture (5 messages fit in 4096 tokens) → parent_id is NULL
+            parent_rows = conn.execute(
+                "SELECT parent_id FROM summary_nodes WHERE kind='leaf' AND session_id=?",
+                (session_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+        assert leaf_count >= 1
+        assert all(row["parent_id"] is None for row in parent_rows)
+
+    def test_backfill_compaction_disabled_by_default(self, tmp_path: Path) -> None:
+        """backfill() does not compact when config is absent (default disabled)."""
+        jsonl = tmp_path / "session.jsonl"
+        import json
+
+        record = {
+            "type": "user",
+            "sessionId": "s-no-compact",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "message": {"content": "No compaction by default."},
+        }
+        jsonl.write_text(json.dumps(record) + "\n", encoding="utf-8")
+        db = tmp_path / "history.db"
+        counts = backfill(
+            db, jsonl_files=[jsonl], also_rebuild=True
+        )  # no config → compaction.enabled=False
+        assert counts["summaries"] == 0
+        conn = connect(db)
+        try:
+            count = conn.execute("SELECT COUNT(*) FROM summary_nodes").fetchone()[0]
+        finally:
+            conn.close()
+        assert count == 0
+
+    # -- cross-session condensation tests (ENH-1954) -------------------------------
+
+    def _make_multi_session_db(self, tmp_path: Path, sessions: list[tuple[str, list[str]]]) -> Path:
+        """Bootstrap a DB with multiple sessions, each with messages."""
+        db = tmp_path / "history.db"
+        conn = connect(db)
+        try:
+            for session_id, messages in sessions:
+                conn.execute(
+                    "INSERT OR IGNORE INTO sessions(session_id, jsonl_path) VALUES(?, ?)",
+                    (session_id, str(tmp_path / f"{session_id}.jsonl")),
+                )
+                for i, content in enumerate(messages):
+                    ts = f"2026-01-01T00:{i:02d}:00Z"
+                    conn.execute(
+                        "INSERT INTO message_events(ts, session_id, content) VALUES(?, ?, ?)",
+                        (ts, session_id, content),
+                    )
+            conn.commit()
+        finally:
+            conn.close()
+        return db
+
+    def test_cross_session_condensation_produces_root(self, tmp_path: Path) -> None:
+        """Cross-session pass creates exactly one root node with session_id=NULL, level=max."""
+        from little_loops.session_store import _compact_sessions
+
+        sessions = [
+            (f"cross-root-sess-{i}", [f"Message {j} in session {i}. " * 5 for j in range(30)])
+            for i in range(2)
+        ]
+        db = self._make_multi_session_db(tmp_path, sessions)
+        config = {"history": {"compaction": {"enabled": True, "budget_tokens": 10}}}
+        short_summary = "Compacted."
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed(
+                returncode=0, stdout=_llm_response(short_summary)
+            )
+            conn = connect(db)
+            try:
+                _compact_sessions(conn, config)
+                conn.commit()
+            finally:
+                conn.close()
+
+        conn = connect(db)
+        try:
+            # Verify per-session condensed nodes exist
+            per_session = conn.execute(
+                "SELECT id, level FROM summary_nodes"
+                " WHERE kind='condensed' AND session_id IS NOT NULL"
+            ).fetchall()
+            # Verify cross-session nodes exist
+            cross_session = conn.execute(
+                "SELECT id, level, parent_id FROM summary_nodes"
+                " WHERE kind='condensed' AND session_id IS NULL ORDER BY level"
+            ).fetchall()
+        finally:
+            conn.close()
+
+        assert len(per_session) >= 2, "Expected ≥2 per-session condensed nodes"
+        assert len(cross_session) >= 1, "Expected ≥1 cross-session condensed node"
+        # Root is the highest-level cross-session node
+        max_level = max(r["level"] for r in cross_session)
+        roots = [r for r in cross_session if r["level"] == max_level]
+        assert len(roots) == 1, f"Expected exactly 1 root, got {len(roots)}"
+        # Root should have no parent
+        assert roots[0]["parent_id"] is None
+
+    def test_cross_session_condensation_idempotent(self, tmp_path: Path) -> None:
+        """Running cross-session pass twice does not create duplicate higher-order nodes."""
+        from little_loops.session_store import _compact_sessions
+
+        sessions = [
+            (f"cross-idem-sess-{i}", [f"Msg {j} sess {i}. " * 5 for j in range(30)])
+            for i in range(2)
+        ]
+        db = self._make_multi_session_db(tmp_path, sessions)
+        config = {"history": {"compaction": {"enabled": True, "budget_tokens": 10}}}
+        short_summary = "Compacted."
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed(
+                returncode=0, stdout=_llm_response(short_summary)
+            )
+            # First run
+            conn = connect(db)
+            try:
+                _compact_sessions(conn, config)
+                conn.commit()
+            finally:
+                conn.close()
+            # Second run
+            conn = connect(db)
+            try:
+                _compact_sessions(conn, config)
+                conn.commit()
+            finally:
+                conn.close()
+
+        conn = connect(db)
+        try:
+            cross_session = conn.execute(
+                "SELECT level, COUNT(*) as cnt FROM summary_nodes"
+                " WHERE kind='condensed' AND session_id IS NULL"
+                " GROUP BY level ORDER BY level"
+            ).fetchall()
+        finally:
+            conn.close()
+
+        # Idempotency: each level should have at most one condensed node
+        # (since with 2 sessions, each level groups into a single node)
+        for row in cross_session:
+            assert row["cnt"] <= 1, (
+                f"Duplicate cross-session nodes at level {row['level']}: found {row['cnt']}"
+            )
+
+    def test_cross_session_condensation_parent_id_links_existing(self, tmp_path: Path) -> None:
+        """Re-running _compact_sessions sets parent_id on existing per-session condensed nodes."""
+        from little_loops.session_store import _compact_sessions
+
+        sessions = [
+            (f"cross-link-sess-{i}", [f"Link msg {j} in s{i}. " * 5 for j in range(30)])
+            for i in range(2)
+        ]
+        db = self._make_multi_session_db(tmp_path, sessions)
+        config = {"history": {"compaction": {"enabled": True, "budget_tokens": 10}}}
+        short_summary = "Linked summary."
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed(
+                returncode=0, stdout=_llm_response(short_summary)
+            )
+            conn = connect(db)
+            try:
+                _compact_sessions(conn, config)
+                conn.commit()
+            finally:
+                conn.close()
+
+        # After first run, verify parent_id is set on per-session condensed nodes
+        conn = connect(db)
+        try:
+            per_session = conn.execute(
+                "SELECT id, parent_id FROM summary_nodes"
+                " WHERE kind='condensed' AND session_id IS NOT NULL"
+            ).fetchall()
+        finally:
+            conn.close()
+
+        assert len(per_session) >= 2
+        for row in per_session:
+            assert row["parent_id"] is not None, (
+                f"Per-session condensed node {row['id']} has NULL parent_id after"
+                f" cross-session pass"
+            )
+
+    def test_cross_session_disabled_preserves_old_behavior(self, tmp_path: Path) -> None:
+        """cross_session_enabled: false skips the cross-session pass entirely."""
+        from little_loops.session_store import _compact_sessions
+
+        sessions = [
+            (f"cross-off-sess-{i}", [f"Msg {j} in session {i}. " * 5 for j in range(30)])
+            for i in range(2)
+        ]
+        db = self._make_multi_session_db(tmp_path, sessions)
+        config = {
+            "history": {
+                "compaction": {
+                    "enabled": True,
+                    "budget_tokens": 10,
+                    "cross_session_enabled": False,
+                }
+            }
+        }
+        short_summary = "Off."
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed(
+                returncode=0, stdout=_llm_response(short_summary)
+            )
+            conn = connect(db)
+            try:
+                _compact_sessions(conn, config)
+                conn.commit()
+            finally:
+                conn.close()
+
+        conn = connect(db)
+        try:
+            cross_session = conn.execute(
+                "SELECT COUNT(*) FROM summary_nodes WHERE kind='condensed' AND session_id IS NULL"
+            ).fetchone()[0]
+            per_session = conn.execute(
+                "SELECT COUNT(*) FROM summary_nodes"
+                " WHERE kind='condensed' AND session_id IS NOT NULL"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+
+        assert cross_session == 0, (
+            f"cross_session_enabled=false should produce no cross-session nodes,"
+            f" got {cross_session}"
+        )
+        assert per_session >= 2, "Per-session compaction should still run"
+
+
+# -- helpers for _summarize_block tests -----------------------------------------
+
+
+def _make_completed(
+    returncode: int = 0, stdout: str = "", stderr: str = ""
+) -> subprocess.CompletedProcess:
+    """Create a subprocess.CompletedProcess mock result."""
+    return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
+
+
+def _llm_response(result_text: str) -> str:
+    """Build a JSON envelope matching the Claude CLI --output-format json shape."""
+    return json.dumps({"type": "result", "subtype": "success", "result": result_text})
+
+
+# -- helpers for _summarize_block tests -----------------------------------------
+
+
+def _make_completed(
+    returncode: int = 0, stdout: str = "", stderr: str = ""
+) -> subprocess.CompletedProcess:
+    """Create a subprocess.CompletedProcess mock result."""
+    return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
+
+
+def _llm_response(result_text: str) -> str:
+    """Build a JSON envelope matching the Claude CLI --output-format json shape."""
+    return json.dumps({"type": "result", "subtype": "success", "result": result_text})
+
+
+class TestEstimateTokens:
+    """Unit tests for _estimate_tokens()."""
+
+    def test_empty_string_returns_zero(self) -> None:
+        assert _estimate_tokens("") == 0
+
+    def test_ascii_text_returns_len_div_4(self) -> None:
+        assert _estimate_tokens("abcd") == 1
+        assert _estimate_tokens("abcdefgh") == 2
+        # "this is a test of 40 chars total." = 35 chars → 35 // 4 = 8
+        assert _estimate_tokens("this is a test of 40 chars total.") == 8
+
+    def test_short_string_rounds_down(self) -> None:
+        assert _estimate_tokens("abc") == 0
+
+    def test_unicode_multibyte(self) -> None:
+        # ≟ chars/token is a coarse approximation; unicode chars count as 1 len
+        text = "こんにちは世界"  # 7 chars (multi-byte UTF-8)
+        assert _estimate_tokens(text) == 1  # 7 // 4 = 1
+
+    def test_very_long_string(self) -> None:
+        text = "x" * 10_000
+        assert _estimate_tokens(text) == 2500  # 10000 // 4
+
+
+class TestSummarizeBlock:
+    """Tests for the three-level LCM Algorithm 3 escalation in _summarize_block()."""
+
+    # Input must exceed the 25-token short-circuit guard in _summarize_block()
+    SHORT_INPUT = [
+        "Hello world, this is a test message with enough content to exceed "
+        "the short-circuit guard threshold in the summarization function."
+    ]
+    SHORT_INPUT_EST = _estimate_tokens("\n---\n".join(SHORT_INPUT))
+
+    def test_level_1_accepts_smaller_summary(self) -> None:
+        """Level 1: LLM returns a summary smaller than input — accepted immediately."""
+        short_summary = "Short summary."
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed(
+                returncode=0, stdout=_llm_response(short_summary)
+            )
+            result = _summarize_block(self.SHORT_INPUT, budget=256)
+        assert result == short_summary
+        # Only one subprocess call (level 1 succeeded)
+        assert mock_run.call_count == 1
+
+    def test_level_1_escalates_when_summary_not_smaller(self) -> None:
+        """Level 1 summary >= input size → escalates to level 2."""
+        verbose = "x" * (self.SHORT_INPUT_EST * 4 + 10)  # longer than input
+        short_summary = "Short bullet list."
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            # Level 1 returns verbose (long), level 2 returns short
+            mock_run.side_effect = [
+                _make_completed(returncode=0, stdout=_llm_response(verbose)),
+                _make_completed(returncode=0, stdout=_llm_response(short_summary)),
+            ]
+            result = _summarize_block(self.SHORT_INPUT, budget=256)
+        assert result == short_summary
+        assert mock_run.call_count == 2  # level 1 + level 2
+
+    def test_level_2_accepts_smaller_summary(self) -> None:
+        """Level 2 produces a smaller summary after level 1 fails to reduce."""
+        verbose = "x" * (self.SHORT_INPUT_EST * 4 + 10)
+        medium = "Medium summary but still verbose." * 20  # verbose level 2
+        # Both levels fail, fall through to truncation
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                _make_completed(returncode=0, stdout=_llm_response(verbose)),
+                _make_completed(returncode=0, stdout=_llm_response(medium)),
+            ]
+            result = _summarize_block(self.SHORT_INPUT, budget=256)
+        assert mock_run.call_count == 2
+        # Result was truncated (level 3) because both LLM calls returned long text
+        combined = "\n---\n".join(self.SHORT_INPUT)
+        assert result == combined[: min(256 * 4, 2048)]
+
+    def test_level_3_truncation_when_llm_fails(self) -> None:
+        """LLM call raises FileNotFoundError → all levels escalate → truncation."""
+        with patch(
+            "little_loops.session_store.subprocess.run",
+            side_effect=FileNotFoundError("claude"),
+        ):
+            result = _summarize_block(self.SHORT_INPUT, budget=256)
+        combined = "\n---\n".join(self.SHORT_INPUT)
+        assert result == combined[: min(256 * 4, 2048)]
+
+    def test_level_3_truncation_when_timeout(self) -> None:
+        """LLM call times out → escalates through levels → truncation."""
+        with patch(
+            "little_loops.session_store.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=60),
+        ):
+            result = _summarize_block(self.SHORT_INPUT, budget=1024)
+        combined = "\n---\n".join(self.SHORT_INPUT)
+        assert result == combined[: min(1024 * 4, 2048)]
+
+    def test_level_3_truncation_when_nonzero_returncode(self) -> None:
+        """LLM returns non-zero exit code → escalates → truncation."""
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed(returncode=1, stderr="API error")
+            result = _summarize_block(self.SHORT_INPUT, budget=256)
+        assert mock_run.call_count == 2  # both levels tried, both failed
+        combined = "\n---\n".join(self.SHORT_INPUT)
+        assert result == combined[: min(256 * 4, 2048)]
+
+    def test_truncation_uses_min_cap(self) -> None:
+        """Truncation respects the min(budget * 4, 2048) cap."""
+        long_input = ["Long message. " * 100]
+        # Force LLM failure so truncation is used
+        with patch(
+            "little_loops.session_store.subprocess.run",
+            side_effect=FileNotFoundError("claude"),
+        ):
+            result = _summarize_block(long_input, budget=4096)
+        # budget=4096 → budget * 4 = 16384, but cap at 2048
+        assert len(result) <= 2048
+
+    def test_json_envelope_parsing(self) -> None:
+        """The result field is extracted from the JSON envelope, not stored raw."""
+        summary_text = "Extracted summary prose."
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed(
+                returncode=0, stdout=_llm_response(summary_text)
+            )
+            result = _summarize_block(self.SHORT_INPUT, budget=256)
+        # Result is the extracted prose, not the JSON envelope
+        assert result == summary_text
+        assert "{" not in result
+
+    def test_model_and_timeout_wired_to_subprocess(self) -> None:
+        """model and timeout params flow through to subprocess.run."""
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed(returncode=0, stdout=_llm_response("ok"))
+            _summarize_block(self.SHORT_INPUT, budget=256, model="haiku", timeout=30)
+        call_kwargs = mock_run.call_args[1]
+        assert call_kwargs["timeout"] == 30
+        # model flows to build_blocking_json, not directly to subprocess.run;
+        # we verify it was passed to resolve_host().build_blocking_json
+        # The subprocess call uses inv.binary/inv.args from the HostInvocation
+
+    def test_escalation_logs_warning(self, caplog) -> None:
+        """Escalation produces WARNING log messages."""
+        verbose = "x" * (self.SHORT_INPUT_EST * 4 + 10)
+        short_summary = "Short."
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                _make_completed(returncode=0, stdout=_llm_response(verbose)),
+                _make_completed(returncode=0, stdout=_llm_response(short_summary)),
+            ]
+            with caplog.at_level(logging.WARNING, logger="little_loops.session_store"):
+                _summarize_block(self.SHORT_INPUT, budget=256)
+        assert any("escalating to level 2" in m for m in caplog.messages)
+
+    def test_multiple_messages_joined(self) -> None:
+        """Multiple messages are joined with --- separator."""
+        # Messages must exceed the 25-token short-circuit guard
+        messages = [
+            "Message one with enough text to pass the guard threshold.",
+            "Message two also has plenty of content for testing.",
+            "Message three is similarly substantive in length.",
+        ]
+        with patch("little_loops.session_store.subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed(returncode=0, stdout=_llm_response("short"))
+            _summarize_block(messages, budget=256)
+        # The prompt text appears in the subprocess args regardless of host
+        # convention: Claude Code uses -p <prompt>, Codex appends directly, etc.
+        cmd_args = mock_run.call_args[0][0]
+        prompt_args = [a for a in cmd_args if isinstance(a, str) and "Message one" in a]
+        assert len(prompt_args) == 1, f"Expected one arg containing the prompt, got {prompt_args}"
+        prompt = prompt_args[0]
+        assert "Message one" in prompt
+        assert "\n---\n" in prompt
+        assert "Message three" in prompt
+
+
+class TestRawEventsPayloadCompression:
+    """raw_events payload columns are stored zlib-compressed, losslessly.
+
+    Guards the pack/unpack round-trip, the writer emitting BLOBs, the coexistence
+    of legacy TEXT rows with new BLOB rows through rebuild(), and the batched
+    recompress maintenance command.
+    """
+
+    @staticmethod
+    def _user_line(content: str, ts: str = "2026-05-22T00:00:00Z", line_no: int = 1) -> str:
+        return json.dumps(
+            {
+                "type": "user",
+                "sessionId": "s1",
+                "timestamp": ts,
+                "message": {"content": content},
+            }
+        )
+
+    def test_pack_unpack_round_trip(self) -> None:
+        for text in ["", "hello", "unïcodé 🎉", json.dumps({"a": [1, 2, 3], "b": "x" * 2000})]:
+            packed = _pack_payload(text)
+            assert isinstance(packed, bytes)
+            assert _unpack_payload(packed) == text
+
+    def test_unpack_passes_through_legacy_text(self) -> None:
+        """A str value (legacy uncompressed row) is returned unchanged."""
+        assert _unpack_payload('{"type":"user"}') == '{"type":"user"}'
+
+    def test_backfill_stores_compressed_blobs(self, tmp_path: Path) -> None:
+        jsonl = tmp_path / "s.jsonl"
+        jsonl.write_text(self._user_line("hello") + "\n", encoding="utf-8")
+        db = tmp_path / "history.db"
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT typeof(raw_line), typeof(parsed_json) FROM raw_events"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert tuple(row) == ("blob", "blob")
+
+    def test_rebuild_reads_mixed_legacy_and_compressed_rows(self, tmp_path: Path) -> None:
+        """A legacy TEXT row and a compressed BLOB row both materialize correctly."""
+        jsonl = tmp_path / "s.jsonl"
+        jsonl.write_text(self._user_line("compressed") + "\n", encoding="utf-8")
+        db = tmp_path / "history.db"
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)  # writes a BLOB row
+        conn = connect(db)
+        legacy = self._user_line("legacy", ts="2026-05-22T00:00:01Z")
+        conn.execute(
+            "INSERT INTO raw_events"
+            "(ts, session_id, host, source_path, line_no, event_type, raw_line, parsed_json)"
+            " VALUES('2026-05-22T00:00:01Z', 's1', 'claude-code', ?, 2, 'user', ?, '{}')",
+            (str(jsonl), legacy),  # raw_line stored as plain TEXT
+        )
+        conn.commit()
+        conn.close()
+        counts = rebuild(db)
+        assert counts["messages"] == 2
+
+    def test_recompress_converts_legacy_rows_and_preserves_rebuild(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = connect(db)
+        for i in range(3):
+            conn.execute(
+                "INSERT INTO raw_events"
+                "(ts, session_id, host, source_path, line_no, event_type, raw_line, parsed_json)"
+                " VALUES(?, 's1', 'claude-code', 's.jsonl', ?, 'user', ?, ?)",
+                (
+                    f"2026-05-22T00:00:0{i}Z",
+                    i + 1,
+                    self._user_line(f"m{i}", ts=f"2026-05-22T00:00:0{i}Z"),
+                    "{}",
+                ),
+            )
+        conn.commit()
+        conn.close()
+        before = rebuild(db)["messages"]
+
+        result = recompress_raw_events(db, batch_size=2)
+        assert result["recompressed"] == 3
+
+        conn = connect(db)
+        try:
+            types = {r[0] for r in conn.execute("SELECT DISTINCT typeof(raw_line) FROM raw_events")}
+        finally:
+            conn.close()
+        assert types == {"blob"}
+        assert rebuild(db)["messages"] == before  # output identical after compression
+
+    def test_recompress_is_idempotent(self, tmp_path: Path) -> None:
+        jsonl = tmp_path / "s.jsonl"
+        jsonl.write_text(self._user_line("hello") + "\n", encoding="utf-8")
+        db = tmp_path / "history.db"
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)  # already compressed
+        result = recompress_raw_events(db)
+        assert result["recompressed"] == 0  # nothing legacy left to convert
+
+
+class TestRebuild:
+    """rebuild() wipes+re-derives the JSONL-derived cache tables from raw_events (ENH-2581)."""
+
+    def _seed_raw_events(self, tmp_path: Path, db: Path) -> None:
+        jsonl = tmp_path / "s.jsonl"
+        jsonl.write_text(
+            json.dumps(
+                {
+                    "type": "user",
+                    "sessionId": "s1",
+                    "timestamp": "2026-05-22T00:00:00Z",
+                    "message": {"content": "hello from rebuild test"},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+
+    def test_rebuild_materializes_from_raw_events_without_original_files(
+        self, tmp_path: Path
+    ) -> None:
+        """rebuild() replays raw_events rows even after the source JSONL is gone."""
+        db = tmp_path / "history.db"
+        jsonl = tmp_path / "s.jsonl"
+        jsonl.write_text(
+            json.dumps(
+                {
+                    "type": "user",
+                    "sessionId": "s1",
+                    "timestamp": "2026-05-22T00:00:00Z",
+                    "message": {"content": "hello from rebuild test"},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        jsonl.unlink()  # source file gone — rebuild must not need it
+
+        counts = rebuild(db)
+        assert counts["messages"] == 1
+        assert counts["sessions"] == 1
+        conn = connect(db)
+        try:
+            n = conn.execute("SELECT COUNT(*) FROM message_events").fetchone()[0]
+        finally:
+            conn.close()
+        assert n == 1
+
+    def test_rebuild_is_idempotent(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        self._seed_raw_events(tmp_path, db)
+        rebuild(db)
+        rebuild(db)
+        conn = connect(db)
+        try:
+            n = conn.execute("SELECT COUNT(*) FROM message_events").fetchone()[0]
+        finally:
+            conn.close()
+        assert n == 1
+
+    def test_rebuild_updates_last_rebuild_version(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        self._seed_raw_events(tmp_path, db)
+        rebuild(db)
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key = 'last_rebuild_version'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert int(row["value"]) == SCHEMA_VERSION
+
+    def test_rebuild_does_not_touch_out_of_scope_tables(self, tmp_path: Path) -> None:
+        """issue_events/loop_events/commit_events are outside raw_events's scope."""
+        db = tmp_path / "history.db"
+        self._seed_raw_events(tmp_path, db)
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO issue_events(ts, issue_id, transition) VALUES(?,?,?)",
+                ("2026-01-01T00:00:00Z", "ENH-2581", "open"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        rebuild(db)
+
+        conn2 = connect(db)
+        try:
+            n = conn2.execute("SELECT COUNT(*) FROM issue_events").fetchone()[0]
+        finally:
+            conn2.close()
+        assert n == 1
+
+
+class TestBackfillUsageEvents:
+    """_backfill_usage_events parses real LLM token usage from raw_events (ENH-2461)."""
+
+    def _assistant_usage_record(self, session_id: str, ts: str, model: str, usage: dict) -> str:
+        return json.dumps(
+            {
+                "type": "assistant",
+                "sessionId": session_id,
+                "timestamp": ts,
+                "message": {"model": model, "usage": usage},
+            }
+        )
+
+    def _seed(self, tmp_path: Path, db: Path, records: list[str]) -> None:
+        jsonl = tmp_path / "s.jsonl"
+        jsonl.write_text("\n".join(records) + "\n", encoding="utf-8")
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+
+    def test_roundtrip_known_model_computes_cost(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        self._seed(
+            tmp_path,
+            db,
+            [
+                self._assistant_usage_record(
+                    "s1",
+                    "2026-07-13T03:00:00Z",
+                    "claude-opus-4-7",
+                    {
+                        "input_tokens": 100,
+                        "output_tokens": 20,
+                        "cache_read_input_tokens": 50,
+                        "cache_creation_input_tokens": 10,
+                    },
+                )
+            ],
+        )
+        counts = rebuild(db)
+        assert counts["usage_events"] == 1
+        conn = connect(db)
+        try:
+            row = conn.execute("SELECT * FROM usage_events").fetchone()
+        finally:
+            conn.close()
+        assert row["session_id"] == "s1"
+        assert row["model"] == "claude-opus-4-7"
+        assert row["state"] is None  # never populated by the parser path
+        assert row["input_tokens"] == 100
+        assert row["output_tokens"] == 20
+        assert row["cache_read_input_tokens"] == 50
+        assert row["cache_creation_input_tokens"] == 10
+        # 100*15 + 20*75 + 50*1.5 + 10*18.75, all /1e6
+        assert row["cost_usd"] == pytest.approx(0.0032625)
+
+    def test_unknown_model_cost_is_null(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        self._seed(
+            tmp_path,
+            db,
+            [
+                self._assistant_usage_record(
+                    "s1",
+                    "2026-07-13T03:00:00Z",
+                    "some-unpriced-model",
+                    {"input_tokens": 5, "output_tokens": 5},
+                )
+            ],
+        )
+        rebuild(db)
+        conn = connect(db)
+        try:
+            row = conn.execute("SELECT cost_usd FROM usage_events").fetchone()
+        finally:
+            conn.close()
+        assert row["cost_usd"] is None  # no warning, just NULL
+
+    def test_non_assistant_and_usageless_records_skipped(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        self._seed(
+            tmp_path,
+            db,
+            [
+                json.dumps(
+                    {
+                        "type": "user",
+                        "sessionId": "s1",
+                        "timestamp": "t",
+                        "message": {"content": "hi"},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "sessionId": "s1",
+                        "timestamp": "t",
+                        "message": {"model": "claude-opus-4-7"},
+                    }  # no usage block
+                ),
+                self._assistant_usage_record(
+                    "s1",
+                    "2026-07-13T03:00:00Z",
+                    "claude-opus-4-7",
+                    {"input_tokens": 1, "output_tokens": 1},
+                ),
+            ],
+        )
+        counts = rebuild(db)
+        assert counts["usage_events"] == 1  # only the real usage record
+
+    def test_usage_row_is_fts_indexed_and_recent_queryable(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        self._seed(
+            tmp_path,
+            db,
+            [
+                self._assistant_usage_record(
+                    "s1",
+                    "2026-07-13T03:00:00Z",
+                    "claude-sonnet-4-6",
+                    {"input_tokens": 10, "output_tokens": 2},
+                )
+            ],
+        )
+        rebuild(db)
+        # recent() by kind
+        rows = recent(db, kind="usage")
+        assert len(rows) == 1
+        # FTS by model name (quoted phrase — hyphens are token separators in FTS5)
+        hits = search(db, query='"claude-sonnet-4-6"', limit=10)
+        assert any(h["kind"] == "usage" for h in hits)
+
+    def test_rebuild_is_idempotent_for_usage(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        self._seed(
+            tmp_path,
+            db,
+            [
+                self._assistant_usage_record(
+                    "s1",
+                    "2026-07-13T03:00:00Z",
+                    "claude-opus-4-7",
+                    {"input_tokens": 1, "output_tokens": 1},
+                )
+            ],
+        )
+        rebuild(db)
+        rebuild(db)
+        conn = connect(db)
+        try:
+            n = conn.execute("SELECT COUNT(*) FROM usage_events").fetchone()[0]
+        finally:
+            conn.close()
+        assert n == 1
+
+    def test_run_id_backfilled_from_unambiguous_loop_run_window(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        record_loop_run_summary(
+            db,
+            run_id="20260713T030000-rn-implement",
+            loop_name="rn-implement",
+            started_at="2026-07-13T02:59:00Z",
+            ended_at="2026-07-13T03:01:00Z",
+            terminated_by="terminal",
+        )
+        self._seed(
+            tmp_path,
+            db,
+            [
+                self._assistant_usage_record(
+                    "s1",
+                    "2026-07-13T03:00:00Z",
+                    "claude-opus-4-7",
+                    {"input_tokens": 1, "output_tokens": 1},
+                )
+            ],
+        )
+        rebuild(db)
+        conn = connect(db)
+        try:
+            row = conn.execute("SELECT run_id FROM usage_events").fetchone()
+        finally:
+            conn.close()
+        assert row["run_id"] == "20260713T030000-rn-implement"
+
+    def test_run_id_stays_null_with_no_matching_window(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        record_loop_run_summary(
+            db,
+            run_id="20260713T030000-rn-implement",
+            loop_name="rn-implement",
+            started_at="2026-07-13T04:00:00Z",
+            ended_at="2026-07-13T04:05:00Z",
+            terminated_by="terminal",
+        )
+        self._seed(
+            tmp_path,
+            db,
+            [
+                self._assistant_usage_record(
+                    "s1",
+                    "2026-07-13T03:00:00Z",
+                    "claude-opus-4-7",
+                    {"input_tokens": 1, "output_tokens": 1},
+                )
+            ],
+        )
+        rebuild(db)
+        conn = connect(db)
+        try:
+            row = conn.execute("SELECT run_id FROM usage_events").fetchone()
+        finally:
+            conn.close()
+        assert row["run_id"] is None
+
+    def test_run_id_stays_null_when_windows_overlap(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        record_loop_run_summary(
+            db,
+            run_id="20260713T025900-rn-implement",
+            loop_name="rn-implement",
+            started_at="2026-07-13T02:59:00Z",
+            ended_at="2026-07-13T03:02:00Z",
+            terminated_by="terminal",
+        )
+        record_loop_run_summary(
+            db,
+            run_id="20260713T025930-rn-refine",
+            loop_name="rn-refine",
+            started_at="2026-07-13T02:59:30Z",
+            ended_at="2026-07-13T03:03:00Z",
+            terminated_by="terminal",
+        )
+        self._seed(
+            tmp_path,
+            db,
+            [
+                self._assistant_usage_record(
+                    "s1",
+                    "2026-07-13T03:00:00Z",
+                    "claude-opus-4-7",
+                    {"input_tokens": 1, "output_tokens": 1},
+                )
+            ],
+        )
+        rebuild(db)
+        conn = connect(db)
+        try:
+            row = conn.execute("SELECT run_id FROM usage_events").fetchone()
+        finally:
+            conn.close()
+        assert row["run_id"] is None
+
+    def test_run_id_backfill_idempotent_on_rerun(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        record_loop_run_summary(
+            db,
+            run_id="20260713T030000-rn-implement",
+            loop_name="rn-implement",
+            started_at="2026-07-13T02:59:00Z",
+            ended_at="2026-07-13T03:01:00Z",
+            terminated_by="terminal",
+        )
+        self._seed(
+            tmp_path,
+            db,
+            [
+                self._assistant_usage_record(
+                    "s1",
+                    "2026-07-13T03:00:00Z",
+                    "claude-opus-4-7",
+                    {"input_tokens": 1, "output_tokens": 1},
+                )
+            ],
+        )
+        rebuild(db)
+        rebuild(db)
+        conn = connect(db)
+        try:
+            rows = conn.execute("SELECT run_id FROM usage_events").fetchall()
+        finally:
+            conn.close()
+        assert len(rows) == 1
+        assert rows[0]["run_id"] == "20260713T030000-rn-implement"
+
+
+class TestCompact:
+    """compact() sweeps old raw_events into retention summaries (ENH-2581)."""
+
+    _RETENTION_CFG = {"analytics": {"retention": {"raw_event_max_age_days": 90}}}
+
+    def _insert_old_raw_event(self, conn: sqlite3.Connection, session_id: str = "s1") -> None:
+        conn.execute(
+            "INSERT INTO raw_events"
+            "(ts, session_id, host, source_path, line_no, event_type, raw_line, parsed_json)"
+            " VALUES('2020-01-01T00:00:00Z', ?, 'claude-code', 's.jsonl', 1, 'user', '{}', '{}')",
+            (session_id,),
+        )
+        conn.commit()
+
+    def test_compact_marks_rows_and_creates_retention_summary(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        conn = connect(db)
+        self._insert_old_raw_event(conn)
+        conn.close()
+
+        result = compact(db, config=self._RETENTION_CFG)
+        assert result["compacted_rows"] == 1
+        assert result["summary_nodes"] == 1
+
+        conn2 = connect(db)
+        try:
+            row = conn2.execute("SELECT compacted, summary_node_id FROM raw_events").fetchone()
+            summary = conn2.execute(
+                "SELECT kind, session_id FROM summary_nodes WHERE id = ?",
+                (row["summary_node_id"],),
+            ).fetchone()
+        finally:
+            conn2.close()
+        assert row["compacted"] == 1
+        assert row["summary_node_id"] is not None
+        assert summary["kind"] == "retention"
+        assert summary["session_id"] == "s1"
+
+    def test_compact_is_idempotent(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        conn = connect(db)
+        self._insert_old_raw_event(conn)
+        conn.close()
+
+        compact(db, config=self._RETENTION_CFG)
+        result2 = compact(db, config=self._RETENTION_CFG)
+        assert result2["compacted_rows"] == 0  # already compacted, nothing left to sweep
+
+        conn2 = connect(db)
+        try:
+            n = conn2.execute(
+                "SELECT COUNT(*) FROM summary_nodes WHERE kind = 'retention'"
+            ).fetchone()[0]
+        finally:
+            conn2.close()
+        assert n == 1
+
+    def test_and_prune_deletes_compacted_rows(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        conn = connect(db)
+        self._insert_old_raw_event(conn)
+        conn.close()
+
+        config = {
+            "analytics": {
+                "retention": {
+                    "raw_event_max_age_days": 90,
+                    "min_project_age_days": 0,
+                    "min_db_size_mb": 0,
+                }
+            }
+        }
+        result = compact(db, config=config, and_prune=True)
+        assert result["pruned_rows"] == 1
+
+        conn2 = connect(db)
+        try:
+            n = conn2.execute("SELECT COUNT(*) FROM raw_events").fetchone()[0]
+        finally:
+            conn2.close()
+        assert n == 0
+
+    def test_null_max_age_is_noop(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        conn = connect(db)
+        self._insert_old_raw_event(conn)
+        conn.close()
+
+        result = compact(db, config={"analytics": {"retention": {"raw_event_max_age_days": None}}})
+        assert result["compacted_rows"] == 0
+        assert result["summary_nodes"] == 0
+
+
+class TestFts5LeakFixed:
+    """rebuild() re-derives search_index from the current raw_events state (ENH-2581).
+
+    Regression coverage for the FTS5 leak: prune() used to delete cache-table
+    rows without ever touching search_index, leaving stale FTS rows pointing
+    at deleted events. Now prune() only deletes raw_events, and rebuild()
+    always wipes+re-populates search_index — so after prune+rebuild, the FTS
+    row count matches the surviving cache-table row count.
+    """
+
+    def test_fts_row_count_drops_to_match_after_prune_and_rebuild(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        jsonl = tmp_path / "s.jsonl"
+        records = [
+            {
+                "type": "user",
+                "sessionId": "s1",
+                "timestamp": f"2020-01-01T00:0{i}:00Z",
+                "message": {"content": f"message number {i}"},
+            }
+            for i in range(2)
+        ]
+        jsonl.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
+
+        backfill_raw_events(db, jsonl_files=[jsonl], since_ts=0.0)
+        rebuild(db)
+
+        conn = connect(db)
+        try:
+            before = conn.execute(
+                "SELECT COUNT(*) FROM search_index WHERE kind = 'message'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert before == 2
+
+        # Mark one raw_events row compacted and prune it away.
+        conn = connect(db)
+        try:
+            conn.execute("UPDATE raw_events SET compacted = 1 WHERE line_no = 1")
+            conn.commit()
+        finally:
+            conn.close()
+        prune(
+            db,
+            config={
+                "analytics": {
+                    "retention": {
+                        "raw_event_max_age_days": 0,
+                        "min_project_age_days": 0,
+                        "min_db_size_mb": 0,
+                    }
+                }
+            },
+        )
+
+        rebuild(db)
+
+        conn = connect(db)
+        try:
+            after = conn.execute(
+                "SELECT COUNT(*) FROM search_index WHERE kind = 'message'"
+            ).fetchone()[0]
+            message_count = conn.execute("SELECT COUNT(*) FROM message_events").fetchone()[0]
+        finally:
+            conn.close()
+        assert after == 1
+        assert after == message_count
+
+
+class TestPrune:
+    """Retention lifecycle for raw_events (ENH-1906, refactored onto raw_events by ENH-2581).
+
+    prune() only deletes raw_events rows already marked compacted=1 (see
+    TestCompact for compact()'s role in setting that flag) — an uncompacted row
+    is never deleted even past the cutoff, matching the compact -> prune
+    lifecycle order.
+    """
+
+    # Config that disables both dual gates so pruning always runs in tests.
+    _GATES_OPEN = {"analytics": {"retention": {"min_project_age_days": 0, "min_db_size_mb": 0}}}
+
+    def _insert_raw_event(
+        self,
+        conn: sqlite3.Connection,
+        ts: str = "2020-01-01T00:00:00Z",
+        *,
+        compacted: int = 1,
+        source_path: str = "s.jsonl",
+        line_no: int = 1,
+    ) -> None:
+        """Insert a minimal raw_events row, compacted by default (prune-eligible)."""
+        conn.execute(
+            "INSERT INTO raw_events"
+            "(ts, session_id, host, source_path, line_no, event_type, raw_line, parsed_json,"
+            " compacted)"
+            " VALUES(?, 's1', 'claude-code', ?, ?, 'user', '{}', '{}', ?)",
+            (ts, source_path, line_no, compacted),
+        )
+        conn.commit()
+
+    def _insert_session(self, conn: sqlite3.Connection, started_at: str) -> None:
+        """Insert a session row with the given started_at timestamp."""
+        conn.execute(
+            "INSERT INTO sessions(session_id, jsonl_path, started_at) VALUES(?,?,?)",
+            ("test-session", "test.jsonl", started_at),
+        )
+        conn.commit()
+
+    def test_both_gates_unmet_by_default_fresh_db(self, tmp_path: Path) -> None:
+        """Fresh small DB with no sessions fails both gates."""
+        db = tmp_path / "h.db"
+        result = prune(db)
+        assert not result["pruned"]
+        assert len(result["gate_unmet"]) == 2
+
+    def test_blocks_when_project_too_young(self, tmp_path: Path) -> None:
+        """Gate fails when project age < threshold even if DB is large enough."""
+        db = tmp_path / "h.db"
+        conn = connect(db)
+        self._insert_session(conn, "2026-05-01T00:00:00Z")  # ~35 days old
+        conn.close()
+        config = {"analytics": {"retention": {"min_project_age_days": 365, "min_db_size_mb": 0}}}
+        result = prune(db, config=config)
+        assert not result["pruned"]
+        assert any("project age" in g for g in result["gate_unmet"])
+        assert result["project_age_days"] < 365
+
+    def test_blocks_when_db_too_small(self, tmp_path: Path) -> None:
+        """Gate fails when DB size < threshold even if project is old enough."""
+        db = tmp_path / "h.db"
+        conn = connect(db)
+        self._insert_session(conn, "2020-01-01T00:00:00Z")  # very old
+        conn.close()
+        config = {"analytics": {"retention": {"min_project_age_days": 0, "min_db_size_mb": 9999}}}
+        result = prune(db, config=config)
+        assert not result["pruned"]
+        assert any("db size" in g for g in result["gate_unmet"])
+
+    def test_gate_unmet_messages_include_thresholds(self, tmp_path: Path) -> None:
+        """gate_unmet entries quote the threshold values for operator visibility."""
+        db = tmp_path / "h.db"
+        config = {"analytics": {"retention": {"min_project_age_days": 365, "min_db_size_mb": 800}}}
+        result = prune(db, config=config)
+        assert any("365d" in g for g in result["gate_unmet"])
+        assert any("800MB" in g for g in result["gate_unmet"])
+
+    def test_prunes_old_compacted_raw_events(self, tmp_path: Path) -> None:
+        """Compacted rows older than raw_event_max_age_days are deleted."""
+        db = tmp_path / "h.db"
+        conn = connect(db)
+        self._insert_raw_event(conn, compacted=1)
+        conn.close()
+
+        config = {**self._GATES_OPEN, "analytics": {**self._GATES_OPEN["analytics"]}}
+        config["analytics"]["retention"]["raw_event_max_age_days"] = 90
+        result = prune(db, config=config)
+
+        assert result["pruned"]
+        assert result["deleted"]["raw_events"] == 1
+        conn2 = connect(db)
+        count = conn2.execute("SELECT COUNT(*) FROM raw_events").fetchone()[0]
+        conn2.close()
+        assert count == 0
+
+    def test_uncompacted_rows_never_pruned(self, tmp_path: Path) -> None:
+        """Rows past the cutoff but not yet compacted survive — compact() must run first."""
+        db = tmp_path / "h.db"
+        conn = connect(db)
+        self._insert_raw_event(conn, compacted=0)
+        conn.close()
+
+        result = prune(db, config=self._GATES_OPEN)
+        assert result["deleted"]["raw_events"] == 0
+
+        conn2 = connect(db)
+        count = conn2.execute("SELECT COUNT(*) FROM raw_events").fetchone()[0]
+        conn2.close()
+        assert count == 1
+
+    def test_retains_recent_rows(self, tmp_path: Path) -> None:
+        """Rows newer than the cutoff are kept after pruning even if compacted."""
+        db = tmp_path / "h.db"
+        conn = connect(db)
+        self._insert_raw_event(conn, "2020-01-01T00:00:00Z", compacted=1, line_no=1)
+        self._insert_raw_event(conn, "2099-12-31T00:00:00Z", compacted=1, line_no=2)
+        conn.close()
+
+        result = prune(db, config=self._GATES_OPEN)
+        assert result["deleted"]["raw_events"] == 1
+
+        conn2 = connect(db)
+        count = conn2.execute("SELECT COUNT(*) FROM raw_events").fetchone()[0]
+        conn2.close()
+        assert count == 1  # only the future row survives
+
+    def test_high_value_tables_never_pruned(self, tmp_path: Path) -> None:
+        """issue_events and user_corrections are never touched by prune()."""
+        db = tmp_path / "h.db"
+        conn = connect(db)
+        conn.execute(
+            "INSERT INTO issue_events(ts, issue_id, transition) VALUES(?,?,?)",
+            ("2020-01-01T00:00:00Z", "ENH-1906", "open"),
+        )
+        conn.execute(
+            "INSERT INTO user_corrections(ts, session_id, content, source) VALUES(?,?,?,?)",
+            ("2020-01-01T00:00:00Z", "s1", "don't do that", "message"),
+        )
+        conn.commit()
+        conn.close()
+
+        prune(db, config=self._GATES_OPEN)
+
+        conn2 = connect(db)
+        ie_count = conn2.execute("SELECT COUNT(*) FROM issue_events").fetchone()[0]
+        uc_count = conn2.execute("SELECT COUNT(*) FROM user_corrections").fetchone()[0]
+        conn2.close()
+        assert ie_count == 1
+        assert uc_count == 1
+
+    def test_idempotent(self, tmp_path: Path) -> None:
+        """Second prune call with no new rows reports 0 deleted."""
+        db = tmp_path / "h.db"
+        conn = connect(db)
+        self._insert_raw_event(conn, compacted=1)
+        conn.close()
+
+        prune(db, config=self._GATES_OPEN)
+        result2 = prune(db, config=self._GATES_OPEN)
+        assert result2["pruned"]
+        assert result2["deleted"].get("raw_events", 0) == 0
+
+    def test_dry_run_does_not_delete_rows(self, tmp_path: Path) -> None:
+        """dry_run=True counts rows without deleting them."""
+        db = tmp_path / "h.db"
+        conn = connect(db)
+        self._insert_raw_event(conn, compacted=1)
+        conn.close()
+
+        result = prune(db, config=self._GATES_OPEN, dry_run=True)
+        assert result["pruned"]
+        assert result["deleted"]["raw_events"] == 1
+        assert not result["vacuumed"]
+
+        conn2 = connect(db)
+        count = conn2.execute("SELECT COUNT(*) FROM raw_events").fetchone()[0]
+        conn2.close()
+        assert count == 1  # row still present
+
+    def test_null_raw_event_max_age_disables_pruning(self, tmp_path: Path) -> None:
+        """raw_event_max_age_days=null means no row is pruned."""
+        db = tmp_path / "h.db"
+        conn = connect(db)
+        self._insert_raw_event(conn, compacted=1)
+        conn.close()
+
+        config = {
+            "analytics": {
+                "retention": {
+                    "min_project_age_days": 0,
+                    "min_db_size_mb": 0,
+                    "raw_event_max_age_days": None,
+                }
+            }
+        }
+        result = prune(db, config=config)
+        assert result["pruned"]
+        assert result["deleted"] == {}
+
+        conn2 = connect(db)
+        count = conn2.execute("SELECT COUNT(*) FROM raw_events").fetchone()[0]
+        conn2.close()
+        assert count == 1
+
+    def test_vacuum_runs_after_prune(self, tmp_path: Path) -> None:
+        """vacuumed flag is set True when pruning runs and rows are deleted."""
+        db = tmp_path / "h.db"
+        conn = connect(db)
+        self._insert_raw_event(conn, compacted=1)
+        conn.close()
+
+        result = prune(db, config=self._GATES_OPEN)
+        assert result["vacuumed"]
+
+    def test_returns_project_age_and_db_size(self, tmp_path: Path) -> None:
+        """Result always includes measured project_age_days and db_size_mb."""
+        db = tmp_path / "h.db"
+        conn = connect(db)
+        self._insert_session(conn, "2022-01-01T00:00:00Z")
+        conn.close()
+
+        result = prune(db)
+        assert result["project_age_days"] > 0
+        assert result["db_size_mb"] > 0
+
+
+class TestBackfillSnapshots:
+    """ENH-2151: _backfill_snapshots() hydrates issue_snapshots from .issues/."""
+
+    def _make_issues_dir(self, root: Path) -> Path:
+        issues = root / ".issues" / "enhancements"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P2-ENH-2151-store-snapshots.md").write_text(
+            "---\nid: ENH-2151\ntype: ENH\npriority: P2\nstatus: done\n"
+            "title: Store snapshots\n---\n\n# Store snapshots\n\nBody content here.",
+            encoding="utf-8",
+        )
+        (issues / "P3-ENH-2200-another.md").write_text(
+            "---\nid: ENH-2200\ntype: ENH\npriority: P3\nstatus: open\n"
+            "title: Another issue\n---\n\n# Another issue\n\nMore content.",
+            encoding="utf-8",
+        )
+        return root / ".issues"
+
+    def test_backfill_snapshots_hydrates_table(self, tmp_path: Path) -> None:
+        issues_dir = self._make_issues_dir(tmp_path)
+        db = tmp_path / "history.db"
+        counts = backfill(db, issues_dir=issues_dir, loops_dir=tmp_path / "no")
+        assert counts["snapshots"] == 2
+
+        conn = connect(db)
+        try:
+            count = conn.execute("SELECT COUNT(*) FROM issue_snapshots").fetchone()[0]
+        finally:
+            conn.close()
+        assert count == 2
+
+    def test_backfill_snapshots_idempotent(self, tmp_path: Path) -> None:
+        issues_dir = self._make_issues_dir(tmp_path)
+        db = tmp_path / "history.db"
+        backfill(db, issues_dir=issues_dir, loops_dir=tmp_path / "no")
+        backfill(db, issues_dir=issues_dir, loops_dir=tmp_path / "no")
+
+        conn = connect(db)
+        try:
+            count = conn.execute("SELECT COUNT(*) FROM issue_snapshots").fetchone()[0]
+        finally:
+            conn.close()
+        assert count == 2, "Double backfill must not duplicate rows"
+
+    def test_backfill_snapshots_stores_body(self, tmp_path: Path) -> None:
+        issues_dir = self._make_issues_dir(tmp_path)
+        db = tmp_path / "history.db"
+        backfill(db, issues_dir=issues_dir, loops_dir=tmp_path / "no")
+
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT body FROM issue_snapshots WHERE issue_id='ENH-2151'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+        assert "Body content here" in (row[0] or "")
+
+    def test_bare_int_id_canonicalized_in_snapshots(self, tmp_path: Path) -> None:
+        """BUG-2769: id: 2756 (bare int) is canonicalized to BUG-2756 in issue_snapshots."""
+        issues = tmp_path / ".issues" / "bugs"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P2-BUG-2756-bare-int-id.md").write_text(
+            "---\nid: 2756\nstatus: done\ntype: BUG\n---\n# x\n", encoding="utf-8"
+        )
+        db = tmp_path / "history.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT issue_id FROM issue_snapshots WHERE issue_id='BUG-2756'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+
+    def test_quoted_numeric_id_canonicalized_in_snapshots(self, tmp_path: Path) -> None:
+        """BUG-2769: id: "1294" (quoted numeric) is canonicalized to BUG-1294 in issue_snapshots."""
+        issues = tmp_path / ".issues" / "bugs"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P2-BUG-1294-quoted-numeric-id.md").write_text(
+            '---\nid: "1294"\nstatus: done\ntype: BUG\n---\n# x\n', encoding="utf-8"
+        )
+        db = tmp_path / "history.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT issue_id FROM issue_snapshots WHERE issue_id='BUG-1294'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+
+    def test_absent_id_derived_from_filename_in_snapshots(self, tmp_path: Path) -> None:
+        """BUG-2769: absent id falls back to the filename-derived TYPE-NNN in issue_snapshots."""
+        issues = tmp_path / ".issues" / "enhancements"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P2-ENH-1548-no-id.md").write_text(
+            "---\nstatus: done\ntype: ENH\n---\n# x\n", encoding="utf-8"
+        )
+        db = tmp_path / "history.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT issue_id FROM issue_snapshots WHERE issue_id='ENH-1548'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+
+    def test_correct_id_passes_through_unchanged_in_snapshots(self, tmp_path: Path) -> None:
+        """BUG-2769: a correct id: TYPE-NNN is left untouched in issue_snapshots."""
+        issues = tmp_path / ".issues" / "bugs"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P2-BUG-1182-correct-id.md").write_text(
+            "---\nid: BUG-1182\nstatus: done\ntype: BUG\n---\n# x\n", encoding="utf-8"
+        )
+        db = tmp_path / "history.db"
+        backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT issue_id FROM issue_snapshots WHERE issue_id='BUG-1182'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+
+
+class TestBackfillSinglePass:
+    """ENH-2782: backfill() reads/parses each issue file exactly once."""
+
+    def test_backfill_reads_each_issue_file_once(self, tmp_path: Path) -> None:
+        issues = tmp_path / ".issues" / "enhancements"
+        issues.mkdir(parents=True, exist_ok=True)
+        for i in range(1, 6):
+            (issues / f"P2-ENH-{2900 + i}-issue.md").write_text(
+                f"---\nid: ENH-{2900 + i}\ntype: ENH\npriority: P2\nstatus: open\n"
+                f"title: Issue {i}\n---\n\n# Issue {i}\n\nBody content.",
+                encoding="utf-8",
+            )
+        db = tmp_path / "history.db"
+
+        from little_loops import frontmatter as frontmatter_module
+
+        real_parse_frontmatter = frontmatter_module.parse_frontmatter
+        call_counts: dict[str, int] = {}
+
+        def counting_parse_frontmatter(content: str):
+            call_counts[content] = call_counts.get(content, 0) + 1
+            return real_parse_frontmatter(content)
+
+        with patch.object(
+            frontmatter_module, "parse_frontmatter", side_effect=counting_parse_frontmatter
+        ):
+            counts = backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+
+        assert counts["issues"] == 5
+        assert counts["snapshots"] == 5
+        assert len(call_counts) == 5, "expected one distinct file content per issue"
+        assert all(n == 1 for n in call_counts.values()), (
+            f"each issue file's frontmatter must be parsed exactly once, got {call_counts}"
+        )
+
+
+def _bootstrap_schema_at(db: Path, version: int) -> None:
+    """Bootstrap a database at an exact historical schema *version*.
+
+    Applies migrations 0..version-1 verbatim from ``_MIGRATIONS`` and stamps
+    the meta row, mirroring the TestSchemaV14 pattern so upgrade tests always
+    exercise the real historical DDL.
+    """
+    from little_loops.session_store import _MIGRATIONS, _split_sql_statements
+
+    conn = sqlite3.connect(str(db))
+    try:
+        for script in _MIGRATIONS[:version]:
+            for stmt in _split_sql_statements(script):
+                conn.execute(stmt)
+        conn.execute(
+            "INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', ?)",
+            (str(version),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+class TestBackfillCommitEvents:
+    """ENH-2458: _backfill_commit_events() seeds commit_events from git log."""
+
+    @staticmethod
+    def _git(repo: Path, *args: str) -> None:
+        subprocess.run(
+            ["git", "-c", "user.email=t@t.t", "-c", "user.name=T", *args],
+            cwd=str(repo),
+            check=True,
+            capture_output=True,
+            timeout=30,
+        )
+
+    @pytest.fixture()
+    def repo(self, tmp_path: Path) -> Path:
+        import shutil
+
+        if shutil.which("git") is None:
+            pytest.skip("git not available")
+        from tests.helpers import copy_git_template
+
+        repo = copy_git_template(tmp_path / "repo")
+        (repo / "a.txt").write_text("one\n", encoding="utf-8")
+        self._git(repo, "add", "a.txt")
+        self._git(repo, "commit", "-q", "-m", "feat: initial commit")
+        (repo / "b.txt").write_text("two\n", encoding="utf-8")
+        self._git(repo, "add", "b.txt")
+        self._git(repo, "commit", "-q", "-m", "enh(store): wire it up\n\nCloses ENH-2458")
+        return repo
+
+    def test_backfill_populates_commit_events(self, repo: Path, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        counts = backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", repo_root=repo)
+        assert counts["commits"] == 2
+        rows = recent(db, kind="commit")
+        messages = {r["message"] for r in rows}
+        assert any("initial commit" in m for m in messages)
+        by_issue = {r["issue_id"] for r in rows}
+        assert "ENH-2458" in by_issue
+
+    def test_backfill_records_touched_files(self, repo: Path, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", repo_root=repo)
+        rows = recent(db, kind="commit")
+        newest = next(r for r in rows if "wire it up" in r["message"])
+        assert "b.txt" in json.loads(newest["files_json"])
+
+    def test_backfill_idempotent(self, repo: Path, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        first = backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", repo_root=repo)
+        second = backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", repo_root=repo)
+        assert first["commits"] == 2
+        assert second["commits"] == 0
+        assert len(recent(db, kind="commit")) == 2
+
+    def test_backfill_skipped_without_repo_root(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        counts = backfill(db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no")
+        assert counts["commits"] == 0
+
+    def test_record_head_commit_hook_helper(self, repo: Path, tmp_path: Path) -> None:
+        """The post-commit hook helper records HEAD with branch attribution."""
+        from little_loops.hooks.post_commit import record_head_commit
+
+        db = tmp_path / "history.db"
+        assert record_head_commit(db, repo)
+        rows = recent(db, kind="commit")
+        assert len(rows) == 1
+        assert rows[0]["issue_id"] == "ENH-2458"
+        assert rows[0]["branch"] is not None
+        assert "b.txt" in json.loads(rows[0]["files_json"])
+        # Second call is a duplicate → no new row
+        assert not record_head_commit(db, repo)
+        assert len(recent(db, kind="commit")) == 1
+
+
+class TestBackfillLearningTestEvents:
+    """ENH-2466: _backfill_learning_test_events() seeds learning_test_events from disk."""
+
+    def test_backfill_populates_from_registry(self, tmp_path: Path) -> None:
+        from little_loops.learning_tests import Assertion, LearnTestRecord, write_record
+
+        registry_dir = tmp_path / "registry"
+        registry_dir.mkdir()
+        write_record(
+            LearnTestRecord(
+                target="anthropic",
+                date="2026-07-19",
+                status="proven",
+                assertions=[Assertion(claim="streaming works", result="pass")],
+                raw_output_path=None,
+            ),
+            base_dir=registry_dir,
+        )
+        write_record(
+            LearnTestRecord(
+                target="openai",
+                date="2026-07-18",
+                status="stale",
+                assertions=[],
+                raw_output_path=None,
+            ),
+            base_dir=registry_dir,
+        )
+
+        db = tmp_path / "history.db"
+        counts = backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            registry_dir=registry_dir,
+        )
+        assert counts["learning_tests"] == 2
+        rows = recent(db, kind="learning_test")
+        assert {r["record_id"] for r in rows} == {"anthropic", "openai"}
+
+    def test_backfill_idempotent(self, tmp_path: Path) -> None:
+        from little_loops.learning_tests import Assertion, LearnTestRecord, write_record
+
+        registry_dir = tmp_path / "registry"
+        registry_dir.mkdir()
+        write_record(
+            LearnTestRecord(
+                target="anthropic",
+                date="2026-07-19",
+                status="proven",
+                assertions=[Assertion(claim="streaming works", result="pass")],
+                raw_output_path=None,
+            ),
+            base_dir=registry_dir,
+        )
+        db = tmp_path / "history.db"
+        first = backfill(
+            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", registry_dir=registry_dir
+        )
+        second = backfill(
+            db, issues_dir=tmp_path / "no", loops_dir=tmp_path / "no", registry_dir=registry_dir
+        )
+        assert first["learning_tests"] == 1
+        assert second["learning_tests"] == 1  # files-processed count, not rows-changed
+        assert len(recent(db, kind="learning_test")) == 1
+
+    def test_backfill_skipped_without_registry_dir(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        counts = backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            registry_dir=tmp_path / "no-such-registry",
+        )
+        assert counts["learning_tests"] == 0
+
+
+class TestBackfillPromptOpt:
+    """ENH-2498: _backfill_prompt_opt() enriches offer rows with optimized text."""
+
+    def _assistant_record(self, session_id: str, ts: str, text: str) -> str:
+        return (
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "sessionId": session_id,
+                    "timestamp": ts,
+                    "message": {"content": [{"type": "text", "text": text}]},
+                }
+            )
+            + "\n"
+        )
+
+    def test_enriches_offer_row_with_enhanced_text(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_prompt_opt_event
+
+        db = tmp_path / "history.db"
+        record_prompt_opt_event(
+            db,
+            ts="2026-07-23T10:00:00Z",
+            session_id="sess-enrich",
+            mode="quick",
+            offered=True,
+            raw_len=50,
+        )
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._assistant_record(
+                "sess-enrich",
+                "2026-07-23T10:00:05Z",
+                "ORIGINAL: fix the bug\nENHANCED: fix the null-pointer bug in foo.py:42",
+            ),
+            encoding="utf-8",
+        )
+        counts = backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
+        assert counts["prompt_opt_events"] == 1
+        rows = recent(db, kind="prompt_opt")
+        assert rows[0]["accepted"] == 1
+        assert rows[0]["optimized_text"] == "fix the null-pointer bug in foo.py:42"
+        assert rows[0]["optimized_len"] == len("fix the null-pointer bug in foo.py:42")
+
+    def test_unparseable_response_leaves_row_unenriched(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_prompt_opt_event
+
+        db = tmp_path / "history.db"
+        record_prompt_opt_event(
+            db,
+            ts="2026-07-23T10:00:00Z",
+            session_id="sess-auto-apply",
+            mode="quick",
+            offered=True,
+        )
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._assistant_record(
+                "sess-auto-apply",
+                "2026-07-23T10:00:05Z",
+                "[ll:autoprompt] Enhanced with: codebase context",
+            ),
+            encoding="utf-8",
+        )
+        counts = backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
+        assert counts["prompt_opt_events"] == 0
+        rows = recent(db, kind="prompt_opt")
+        assert rows[0]["accepted"] is None
+        assert rows[0]["optimized_text"] is None
+
+    def test_repeated_rebuild_is_idempotent(self, tmp_path: Path) -> None:
+        from little_loops.session_store import rebuild, record_prompt_opt_event
+
+        db = tmp_path / "history.db"
+        record_prompt_opt_event(
+            db,
+            ts="2026-07-23T10:00:00Z",
+            session_id="sess-idempotent",
+            mode="quick",
+            offered=True,
+        )
+        jsonl = tmp_path / "session.jsonl"
+        jsonl.write_text(
+            self._assistant_record(
+                "sess-idempotent",
+                "2026-07-23T10:00:05Z",
+                "ENHANCED: the fully rewritten prompt",
+            ),
+            encoding="utf-8",
+        )
+        backfill(
+            db,
+            issues_dir=tmp_path / "no",
+            loops_dir=tmp_path / "no",
+            jsonl_files=[jsonl],
+            also_rebuild=True,
+        )
+        first_pass = rebuild(db)
+        assert first_pass["prompt_opt_events"] == 0
+        rows = recent(db, kind="prompt_opt")
+        assert len(rows) == 1
+        results = search(db, query="fully rewritten prompt")
+        assert len([r for r in results if r["kind"] == "prompt_opt"]) == 1

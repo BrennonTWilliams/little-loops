@@ -25,7 +25,7 @@ def _bootstrap_schema_at(db: Path, version: int) -> None:
     """Bootstrap a database at an exact historical schema *version*.
 
     Applies migrations 0..version-1 verbatim from ``_MIGRATIONS``, mirroring
-    the helper in ``test_session_store.py``.
+    the helper in ``test_session_store_schema.py``.
     """
     conn = sqlite3.connect(str(db))
     try:
