@@ -1,0 +1,41 @@
+{
+  "_comment": "Golden corpus for ENH-2883 pre-refactor baseline. codex/gemini skill emission byte-identity.",
+  "cases": [
+    {
+      "name": "case-basic",
+      "input_content": "---\ndescription: Use when user asks for tasks.\n---\n\n# Case Basic\n",
+      "codex_result": "adapted",
+      "codex_skill_md": "---\nname: case-basic\ndescription: Use when user asks for tasks.\nmetadata:\n  short-description: Use when user asks for tasks.\n---\n\n# Case Basic\n",
+      "codex_openai_yaml": "interface:\n  display_name: \"Case Basic\"\n  short_description: \"Use when user asks for tasks.\"\n",
+      "gemini_result": "adapted",
+      "gemini_skill_md": "---\nname: case-basic\ndescription: Use when user asks for tasks.\n---\n\n# Case Basic\n"
+    },
+    {
+      "name": "case-multiword-name",
+      "input_content": "---\ndescription: Use when doing a multi word thing.\nSecond line ignored for short desc.\n---\n\n# Case Multiword Name\n",
+      "codex_result": "skipped",
+      "codex_skill_md": null,
+      "codex_openai_yaml": null,
+      "gemini_result": "adapted",
+      "gemini_skill_md": "---\nname: case-multiword-name\ndescription: Use when doing a multi word thing.\nSecond line ignored for short desc.\n---\n\n# Case Multiword Name\n"
+    },
+    {
+      "name": "case-with-metadata",
+      "input_content": "---\ndescription: Has existing metadata block.\nmetadata:\n  other: value\n---\n\n# Case With Metadata\n",
+      "codex_result": "adapted",
+      "codex_skill_md": "---\nname: case-with-metadata\ndescription: Has existing metadata block.\nmetadata:\n  short-description: Has existing metadata block.\n  other: value\n---\n\n# Case With Metadata\n",
+      "codex_openai_yaml": "interface:\n  display_name: \"Case With Metadata\"\n  short_description: \"Has existing metadata block.\"\n",
+      "gemini_result": "adapted",
+      "gemini_skill_md": "---\nname: case-with-metadata\ndescription: Has existing metadata block.\nmetadata:\n  other: value\n---\n\n# Case With Metadata\n"
+    },
+    {
+      "name": "case-no-description",
+      "input_content": "---\ndescription: \n---\n\n# Case No Description\n",
+      "codex_result": "skipped",
+      "codex_skill_md": null,
+      "codex_openai_yaml": null,
+      "gemini_result": "adapted",
+      "gemini_skill_md": "---\nname: case-no-description\ndescription: \n---\n\n# Case No Description\n"
+    }
+  ]
+}

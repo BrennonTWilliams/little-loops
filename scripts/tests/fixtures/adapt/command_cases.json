@@ -1,0 +1,35 @@
+{
+  "_comment": "Golden corpus for ENH-2883 pre-refactor baseline. codex/gemini command emission byte-identity.",
+  "cases": [
+    {
+      "name": "help",
+      "input_content": "---\ndescription: Show help for all commands.\n---\n\n# Help\n",
+      "input_description": "Show help for all commands.",
+      "codex_result": "adapted",
+      "codex_skill_md": "---\nname: ll-help\ndescription: Show help for all commands.\ndisable-model-invocation: true\nmetadata:\n  short-description: Show help for all commands.\n---\n\n# Help\n\nBridged from `commands/help.md` for Codex Skills API discovery.\nSee the source command file for the full prompt body.\n",
+      "codex_openai_yaml": "interface:\n  display_name: \"Help\"\n  short_description: \"Show help for all commands.\"\n",
+      "gemini_result": "adapted",
+      "gemini_toml": "description = \"Show help for all commands.\"\nprompt = \"\"\"\n\n# Help\n\"\"\"\n"
+    },
+    {
+      "name": "multi-line-desc",
+      "input_content": "---\ndescription: Line one.\nLine two continued.\n---\n\n# Multi Line Desc\n",
+      "input_description": "Line one.\nLine two continued.",
+      "codex_result": "skipped",
+      "codex_skill_md": null,
+      "codex_openai_yaml": null,
+      "gemini_result": "adapted",
+      "gemini_toml": "description = \"Line one.\nLine two continued.\"\nprompt = \"\"\"\n\n# Multi Line Desc\n\"\"\"\n"
+    },
+    {
+      "name": "no-desc",
+      "input_content": "---\ndescription: \n---\n\n# No Desc\n",
+      "input_description": "",
+      "codex_result": "skipped",
+      "codex_skill_md": null,
+      "codex_openai_yaml": null,
+      "gemini_result": "adapted",
+      "gemini_toml": "prompt = \"\"\"\n\n# No Desc\n\"\"\"\n"
+    }
+  ]
+}
