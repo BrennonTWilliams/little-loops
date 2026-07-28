@@ -515,3 +515,29 @@ The following examples illustrate how Criterion A distinguishes wide-shallow swe
 /ll:confidence-check --sprint my-sprint
 /ll:confidence-check --sprint my-sprint --auto
 ```
+
+## Confidence Check Notes template
+
+Append this section to the issue file when `HAS_FINDINGS` is true, inserting it
+before `## Session Log` (or before `## Status` if no session log exists):
+
+```markdown
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on [YYYY-MM-DD]_
+
+**Readiness Score**: [N]/100 → [tier label]
+**Outcome Confidence**: [N]/100 → [label]
+
+### Concerns
+- [concern 1]
+- [concern 2]
+
+### Gaps to Address
+- [gap 1]
+_(omit this subsection if no gaps)_
+
+### Outcome Risk Factors
+- [risk 1 — phrase by dominant axis: "deep per-site complexity" for low-Depth issues, "broad enumeration across N sites" for high-Breadth issues]
+_(omit this subsection if no risk factors)_
+```

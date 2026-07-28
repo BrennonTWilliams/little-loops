@@ -302,11 +302,8 @@ To continue: Start new session with content from that file
 This ensures work can continue with fresh context quality rather than degraded post-compaction context.
 
 ### Implementation Guidelines
-- Follow existing code patterns
-- Add/update tests for changed behavior
-- Keep changes focused on the issue
-- Include type hints for new code
-- Add docstrings for public interfaces
+
+See [templates.md](templates.md) for the standing implementation guidelines.
 
 ### Phase Gate Protocol (requires --gates)
 
@@ -408,14 +405,6 @@ After verification passes, review new/modified code for integration quality befo
 
 **Skip this phase if**: Action is `verify` (verification-only mode)
 
-### Review Checklist
-
-For each file created or substantially modified:
-1. **Duplication check** - Flag any new code duplicating existing utilities
-2. **Shared module usage** - Verify imports from existing shared modules
-3. **Pattern conformance** - Confirm follows project patterns
-4. **Integration points** - Verify connects to existing architecture
-
 See [templates.md](templates.md) for the Integration Report template and handling warnings guidance.
 
 ---
@@ -436,15 +425,11 @@ See [templates.md](templates.md) for the Session Log entry format.
 
 Before flipping the status, add a `completed_at` field to its YAML frontmatter with the current ISO 8601 UTC timestamp. Use shell `date -u +"%Y-%m-%dT%H:%M:%SZ"` format (Z-suffixed, matches the `captured_at` precedent and the Python helper `_completed_at_now()`). Use the Edit tool to insert the line into the issue's frontmatter block (after `captured_at` if present, otherwise alongside the other timestamp fields):
 
-```yaml
----
-captured_at: 2026-03-17T14:32:07Z
-completed_at: 2026-03-17T15:02:41Z  # <-- new line, value from `date -u +"%Y-%m-%dT%H:%M:%SZ"`
-discovered_date: 2026-03-17T00:00:00Z
----
-```
+See [templates.md](templates.md) for the frontmatter placement example.
 
-This parallels the Python-driven completion paths (`ll-auto`, `ll-parallel`) that inject `completed_at` via `update_frontmatter`; the interactive path must match so all completion paths produce consistent frontmatter.
+This parallels the Python-driven completion paths (`ll-auto`, `ll-parallel`) that
+inject `completed_at` via `update_frontmatter`; the interactive path must match so
+all completion paths produce consistent frontmatter.
 
 ### 2. Update Issue Status
 

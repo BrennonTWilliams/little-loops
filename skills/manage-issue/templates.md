@@ -546,3 +546,33 @@ expansion.
 ```
 
 **Display Note**: When reviewing an issue file during implementation, check for and display product impact fields if present in the frontmatter. These provide business context for prioritization decisions.
+
+## `completed_at` frontmatter placement (Phase 5.1.6)
+
+```yaml
+---
+captured_at: 2026-03-17T14:32:07Z
+completed_at: 2026-03-17T15:02:41Z  # <-- new line, value from `date -u +"%Y-%m-%dT%H:%M:%SZ"`
+discovered_date: 2026-03-17T00:00:00Z
+---
+```
+
+This parallels the Python-driven completion paths (`ll-auto`, `ll-parallel`) that inject `completed_at` via `update_frontmatter`; the interactive path must match so all completion paths produce consistent frontmatter.
+
+## Integration Review checklist (Phase 4.5)
+
+### Review Checklist
+
+For each file created or substantially modified:
+1. **Duplication check** - Flag any new code duplicating existing utilities
+2. **Shared module usage** - Verify imports from existing shared modules
+3. **Pattern conformance** - Confirm follows project patterns
+4. **Integration points** - Verify connects to existing architecture
+
+## Implementation guidelines (Phase 3)
+
+- Follow existing code patterns
+- Add/update tests for changed behavior
+- Keep changes focused on the issue
+- Include type hints for new code
+- Add docstrings for public interfaces

@@ -10,3 +10,36 @@ IMPORTANT: For each conflict you report:
 3. If you cannot quote specific text from both sides, your verdict is automatically No (or Partial if only one side is clearly stated).
 
 Do not assert a conflict without evidence. "These issues seem to overlap" is not evidence.
+
+## Conflict report template (Phase 3)
+
+```
+================================================================================
+AUDIT ISSUE CONFLICTS
+================================================================================
+
+Issues scanned: [N]
+Conflicts found: [C] ([H] high / [M] medium / [L] low)
+
+## HIGH SEVERITY
+
+| # | Type | Issues | Description | Recommendation |
+|---|------|--------|-------------|----------------|
+| 1 | [type] | [ID-A] vs [ID-B] | [description] | [recommendation] |
+
+## MEDIUM SEVERITY
+
+| # | Type | Issues | Description | Recommendation |
+|---|------|--------|-------------|----------------|
+| 2 | [type] | [ID-A] vs [ID-B] | [description] | [recommendation] |
+
+## LOW SEVERITY
+
+| # | Type | Issues | Description | Recommendation |
+|---|------|--------|-------------|----------------|
+| 3 | [type] | [ID-A] vs [ID-B] | [description] | [recommendation] |
+
+================================================================================
+```
+
+---
