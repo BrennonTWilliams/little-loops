@@ -25,6 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   declining to write checks. New knobs: `max_acceptance_retries` (default `1`),
   `min_acceptance_pass_rate` (default `1.0`); `max_steps` raised 30 → 40.
 
+### Fixed
+
+- BUG-2894: `oracles/code-run-gate.yaml`'s `run_test` state double-prefixed its
+  stdout (`pass_rate=pass_rate=<n>`), left the `grep` against
+  `test-results.txt` unquoted (broke on a space-containing `run_dir`), and
+  emitted a bare `SKIP` with no `pass_rate` key (yielded `verdict="error"` on
+  every skipped gate). The final `echo` now emits the grepped line once, the
+  path is quoted, and the SKIP branch emits `SKIP pass_rate=1.0`.
+
 ## [1.152.0] - 2026-07-27
 
 ### Added

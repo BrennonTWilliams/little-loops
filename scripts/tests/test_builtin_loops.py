@@ -10283,6 +10283,61 @@ class TestCodeRunGateOracle:
         assert test_results.splitlines()[0].startswith("SKIP")
         assert "exit_code=" not in test_results
 
+    def test_run_test_stdout_not_double_prefixed(self, data: dict) -> None:
+        """BUG-2894: the final echo must not double-prefix pass_rate=, and
+        the grep against test-results.txt must be quoted so a space-
+        containing run_dir doesn't break word-splitting."""
+        action = data["states"]["run_test"]["action"]
+        assert "pass_rate=pass_rate=" not in action, (
+            "run_test action must not double-prefix pass_rate= in the final echo"
+        )
+        assert "grep '^pass_rate=' \"$${ABS_DIR}/test-results.txt\"" in action, (
+            "run_test's grep against test-results.txt must be quoted"
+        )
+
+    def test_run_test_stdout_space_in_run_dir_regression(self, data: dict, tmp_path) -> None:
+        """Space-containing run_dir must not break the (now-quoted) grep."""
+        import subprocess
+
+        run_dir = tmp_path / "run dir"
+        run_dir.mkdir()
+        (run_dir / "commands.json").write_text('{"test_cmd": "exit 0"}', encoding="utf-8")
+
+        action = data["states"]["run_test"]["action"]
+        shell_action = action.replace("$${", "${").replace("${context.run_dir}", str(run_dir))
+        result = subprocess.run(
+            ["bash", "-c", shell_action], capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, f"run_test action must not fail: {result.stderr}"
+        assert "pass_rate=pass_rate=" not in result.stdout
+        assert "pass_rate=1.0" in result.stdout
+
+    def test_run_test_skip_branch_emits_pass_rate(self, data: dict, tmp_path) -> None:
+        """SKIP branch must emit a parseable pass_rate key so the evaluator
+        yields verdict='yes' instead of 'error' on a skipped gate."""
+        import subprocess
+
+        from little_loops.fsm.evaluators import evaluate
+        from little_loops.fsm.interpolation import InterpolationContext
+        from little_loops.fsm.schema import EvaluateConfig
+
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "commands.json").write_text('{"test_cmd": null}', encoding="utf-8")
+
+        action = data["states"]["run_test"]["action"]
+        shell_action = action.replace("$${", "${").replace("${context.run_dir}", str(run_dir))
+        result = subprocess.run(
+            ["bash", "-c", shell_action], capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == "SKIP pass_rate=1.0"
+
+        config = EvaluateConfig.from_dict(data["states"]["run_test"]["evaluate"])
+        ctx = InterpolationContext()
+        skip_result = evaluate(config, result.stdout.strip(), 0, ctx)
+        assert skip_result.verdict == "yes"
+
     def test_run_states_converging_routing_not_regressed(self, data: dict) -> None:
         """Regression guard for the Rejected Approach: run_test's on_yes/
         on_no/on_error must all converge on run_typecheck (not fork to a

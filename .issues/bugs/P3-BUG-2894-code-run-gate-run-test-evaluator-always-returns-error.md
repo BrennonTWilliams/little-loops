@@ -2,7 +2,7 @@
 id: BUG-2894
 type: BUG
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-28T22:13:33Z'
 discovered_date: 2026-07-28
 discovered_by: capture-issue
@@ -11,6 +11,13 @@ relates_to:
 - ENH-2895
 - ENH-2896
 - BUG-2902
+confidence_score: 96
+outcome_confidence: 90
+completed_at: '2026-07-29T03:16:19Z'
+score_complexity: 24
+score_test_coverage: 23
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # BUG-2894: code-run-gate `run_test` evaluator returns error on every invocation
@@ -230,6 +237,80 @@ strict sense that no verdict depends on it.
 - `scripts/little_loops/fsm/schema.py` — `EvaluateConfig`
 - `scripts/tests/test_builtin_loops.py` — regression coverage
 
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py` — `TestCodeRunGateOracle`: no existing
+  test asserts the literal `pass_rate=pass_rate=` or bare `echo "SKIP"` string,
+  so nothing needs textual updating — but two **new** tests are needed, not
+  yet reflected as discrete Integration Map entries even though Implementation
+  Steps 2–3 describe their intent:
+  - space-in-`run_dir` regression test for the newly-quoted `grep` path —
+    model on `test_run_test_sidecar_exit_code_actually_detects_failure`
+    (~line 10218), reusing its `subprocess.run(["bash", "-c", shell_action],
+    ...)` + `action.replace("$${", "${")` shape with `tmp_path / "run dir"`
+    (a space-containing subdirectory) instead of a plain `tmp_path / "run"`.
+  - SKIP-branch stdout test asserting `echo "SKIP pass_rate=1.0"` — no
+    existing test exercises `evaluate_output_numeric` against a SKIP stdout
+    string (`test_run_test_sidecar_skip_path_unaffected`, ~line 10266, only
+    asserts on the sidecar **file** content, which is unchanged by this fix).
+- Confirmed **no test breaks**: `test_run_test_sidecar_skip_path_unaffected`
+  inspects the sidecar file write (`echo "SKIP test_cmd=null" > ...`), not the
+  stdout echo this issue changes — orthogonal, no update needed.
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `CHANGELOG.md` — add an entry for this fix under the next concrete release
+  section per existing `code-run-gate` precedent (prior entries at lines 354,
+  654, 788); per project convention, do **not** add under `[Unreleased]`.
+- `docs/reference/loops.md` § `oracles/code-run-gate` (~lines 725-787) —
+  confirm-only, no edit expected: describes `min_pass_rate`/sidecar artifacts
+  at a level of abstraction that doesn't commit to the exact stdout string, so
+  the double-prefix fix and SKIP-branch change don't require a rewrite here.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Existing test scaffolding to extend** (`scripts/tests/test_builtin_loops.py`,
+  `TestCodeRunGateOracle` class, `LOOP_FILE`/`data` fixture at ~line 10002+):
+  three tests already cover adjacent shapes of `run_test`'s action string and
+  are the direct templates for this issue's regression tests:
+  - `test_run_test_key_dispatches_correctly` (~line 10191) — feeds literal
+    stdout strings (e.g. `"exit_code=0 pass_rate=0.99"`) through
+    `little_loops.fsm.evaluators.evaluate()` with the state's real
+    `EvaluateConfig`. Reuse this shape to assert the *fixed* single-prefixed
+    echo still parses correctly, and to assert a 0.5-vs-0.95 threshold yields
+    `verdict="no"` (Implementation Step 4).
+  - `test_run_test_sidecar_declares_exit_code` (~line 10208) — a static
+    string-containment assertion (`assert '...' in action`) against
+    `data["states"]["run_test"]["action"]`. Reuse this shape for a fast
+    assertion that the double `pass_rate=pass_rate=` substring is gone from
+    the raw YAML action string (Implementation Step 2).
+  - `test_run_test_sidecar_exit_code_actually_detects_failure` (~line 10218) —
+    the end-to-end pattern: writes a fake `commands.json` under `tmp_path`,
+    de-escapes the FSM `$${...}` syntax to raw bash via
+    `action.replace("$${", "${").replace("${context.run_dir}", str(run_dir))`,
+    executes it with `subprocess.run(["bash", "-c", shell_action], ...)`, then
+    asserts on real stdout/sidecar-file content. This is the template for the
+    space-in-`run_dir`-path regression test (Implementation Step 2) — run the
+    same subprocess against a `tmp_path` containing a space.
+- **Sibling-state precedent for the fix's target shape**: `run_build` (~line
+  194), `run_typecheck` (~line 275), `run_lint` (~line 302), and
+  `service_health` (~line 360) all end their action with a single flat
+  `echo "exit_code=$RC"` — no embedded command substitution. The proposed
+  `RATE_LINE=$(...); echo "exit_code=$RC $${RATE_LINE}"` fix matches this
+  sibling convention (extraction hoisted above the echo) rather than
+  introducing a new shape unique to `run_test`.
+- **Unit-level coverage for the evaluator itself**:
+  `scripts/tests/test_fsm_evaluators.py` — `TestOutputNumericEvaluator` class
+  (~line 78) already unit-tests `evaluate_output_numeric()` directly (no YAML
+  involved); confirms `matches[-1]` ("last match wins") and the exact
+  `verdict="error"` / `details={"error": f"key {key!r} not found in output"}`
+  shape returned on a missing key — the behavior Implementation Step 3's SKIP
+  fix depends on.
+
 ## Implementation Steps
 
 1. Add a failing test asserting the final `echo` emits a single-prefixed
@@ -249,6 +330,16 @@ strict sense that no verdict depends on it.
 Note the previous step 3 ("resolve the `capture: pass_rate` value shape") has
 been removed as redundant — the capture holds whatever the final `echo` emits,
 so step 2 satisfies it automatically.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+7. Add the space-in-`run_dir` regression test (see Integration Map → Tests)
+   confirming the newly-quoted `grep` doesn't word-split on a space in the
+   path.
+8. Add the SKIP-branch stdout test asserting `echo "SKIP pass_rate=1.0"` is
+   emitted and parses via `evaluate_output_numeric`.
+9. Add a `CHANGELOG.md` entry for this fix under the next concrete release
+   section (not `[Unreleased]`).
 
 **Out of scope** (BUG-2902's, now `done`): the sidecar `exit_code=` write and the
 `aggregate` exit-code detector. **Out of scope** (ENH-2905's): wiring
@@ -279,7 +370,35 @@ so step 2 satisfies it automatically.
 | `docs/ARCHITECTURE.md` | Oracle sub-loop token channel and delegation |
 | `.claude/CLAUDE.md` | `ll-loop diagnose-evaluators`; Loop Authoring rules |
 
+## Resolution
+
+Fixed both remaining cosmetic defects in `run_test`'s final `echo`, plus the
+SKIP-branch key gap:
+
+- Hoisted the `grep '^pass_rate=' "$${ABS_DIR}/test-results.txt" | tail -1`
+  extraction into a `RATE_LINE` variable and quoted the path; the final echo
+  now emits `exit_code=$RC $${RATE_LINE}` — no more literal `pass_rate=`
+  double-prefix.
+- SKIP branch now emits `echo "SKIP pass_rate=1.0"` instead of a bare `SKIP`,
+  so `evaluate_output_numeric` finds the `pass_rate` key and returns
+  `verdict="yes"` on a skipped gate.
+- Added 3 new tests to `TestCodeRunGateOracle`
+  (`test_run_test_stdout_not_double_prefixed`,
+  `test_run_test_stdout_space_in_run_dir_regression`,
+  `test_run_test_skip_branch_emits_pass_rate`) covering the double-prefix
+  removal, the quoted-path/space-in-run_dir regression, and the SKIP-branch
+  verdict.
+- `ll-loop validate oracles/code-run-gate` passes; full suite
+  (`python -m pytest scripts/tests/`) passes: 16977 passed, 42 skipped.
+- CHANGELOG.md entry added under `[1.153.0]`.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-07-29T03:15:50 - `96c3fb84-214d-4374-970b-53550ad12f42.jsonl`
+- `/ll:ready-issue` - 2026-07-29T03:10:13 - `938ef832-486e-4529-ac3f-94581a4da158.jsonl`
+- `/ll:ready-issue` - 2026-07-29T03:10:02 - `938ef832-486e-4529-ac3f-94581a4da158.jsonl`
+- `/ll:confidence-check` - 2026-07-29T03:15:00 - `f30508a6-f344-4aaa-a7a4-8eeef8d434b9.jsonl`
+- `/ll:wire-issue` - 2026-07-29T03:07:30 - `47759fa3-513a-4ff6-be24-404827d40c38.jsonl`
+- `/ll:refine-issue` - 2026-07-29T03:02:16 - `1a15bf47-b270-4d12-a74c-47b9c005a000.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-29T00:04:13 - `00aa385f-3c68-486e-aadc-2dadfb4a2e42.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-28T23:20:23 - `c53b272d-061d-4930-bc4e-fede59dd7ae2.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-28T22:30:33 - `0c009821-2287-4712-ab12-876baba4cf48.jsonl`
