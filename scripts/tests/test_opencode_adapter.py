@@ -37,7 +37,7 @@ def _write_driver(tmp_path: Path, event_name: str, payload: dict) -> Path:
 
     The driver:
       - Imports the adapter's default export (the ``Plugin`` factory).
-      - Calls it with a minimal ``ctx`` carrying ``cwd``.
+      - Calls it with a minimal ``ctx`` carrying ``directory``.
       - Invokes the named event handler with ``payload``.
       - Prints the handler's return value (if any) to stdout as JSON.
       - Propagates handler errors via process.exit(1).
@@ -46,7 +46,7 @@ def _write_driver(tmp_path: Path, event_name: str, payload: dict) -> Path:
         f"""
         import plugin from {str(ADAPTER_PATH)!r};
 
-        const ctx = {{ cwd: {str(tmp_path)!r} }};
+        const ctx = {{ directory: {str(tmp_path)!r} }};
         const handlers = await (plugin as any)(ctx);
         const handler = handlers[{event_name!r}];
         if (!handler) {{
@@ -179,3 +179,25 @@ class TestOpenCodeAdapterIntegration:
             f"module. stderr={result.stderr!r}"
         )
         assert sentinel.read_text() == "opencode"
+
+
+class TestOpenCodeAdapterTypecheck:
+    """Typecheck gate (BUG-2922): ``tsc --noEmit`` must actually run and pass.
+
+    Inherits the module-level Bun skip above — this only runs where Bun (and
+    thus ``bun x tsc``) is available.
+    """
+
+    def test_tsc_noemit_passes(self) -> None:
+        """``bun x tsc --noEmit`` against the adapter's tsconfig exits 0."""
+        adapter_dir = REPO_ROOT / "hooks" / "adapters" / "opencode"
+        proc = subprocess.run(
+            [BUN, "x", "tsc", "--noEmit", "-p", "tsconfig.json"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=str(adapter_dir),
+        )
+        assert proc.returncode == 0, (
+            f"tsc --noEmit failed (exit {proc.returncode}):\n{proc.stdout}\n{proc.stderr}"
+        )

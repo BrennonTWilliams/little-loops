@@ -130,6 +130,10 @@ The Python-side integration test at
 `bun hooks/adapters/opencode/index.ts`. It is automatically skipped if Bun is
 not available on `PATH`.
 
+The same test module also gates `bun x tsc --noEmit -p tsconfig.json`
+(`TestOpenCodeAdapterTypecheck`), so the adapter's `strict: true` typecheck
+runs as part of `python -m pytest scripts/tests/` instead of only on-demand.
+
 ## Related
 
 - Parent epic: `FEAT-1116` (hook-intent abstraction layer for multi-host support)

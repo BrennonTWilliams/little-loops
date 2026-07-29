@@ -1,0 +1,54 @@
+=== claim: bun-types/index.d.ts does NOT declare test globals (bare check) ===
+claim1_no_test_globals.ts(2,17): error TS2593: Cannot find name 'test'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+claim1_no_test_globals.ts(2,24): error TS2593: Cannot find name 'test'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+exit:2
+
+=== claim: /// <reference types="bun-types/test-globals" /> opts in test globals ===
+exit:0
+
+=== claim: Bun namespace is a global without import, via bun.ns.d.ts's declare global { export import Bun = BunModule } ===
+exit:0
+
+=== package.json dependency facts ===
+{
+  "version": "1.2.19",
+  "name": "bun-types",
+  "license": "MIT",
+  "types": "./index.d.ts",
+  "description": "Type definitions and documentation for Bun, an incredibly fast JavaScript runtime",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/oven-sh/bun",
+    "directory": "packages/bun-types"
+  },
+  "files": [
+    "./*.d.ts",
+    "docs/**/*.md",
+    "docs/*.md",
+    "CLAUDE.md",
+    "README.md"
+  ],
+  "homepage": "https://bun.com",
+  "dependencies": {
+    "@types/node": "*"
+  },
+  "peerDependencies": {
+    "@types/react": "^19"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "typescript": "^5.0.2"
+  },
+  "scripts": {
+    "prebuild": "echo $(pwd)",
+    "copy-docs": "rm -rf docs && cp -rL ../../docs/ ./docs && find ./docs -type f -name '*.md' -exec sed -i 's/\\$BUN_LATEST_VERSION/'\"${BUN_VERSION#bun-v}\"'/g' {} +",
+    "build": "bun run copy-docs && cp ../../src/init/rule.md CLAUDE.md && bun scripts/build.ts",
+    "test": "tsc",
+    "fmt": "echo $(which biome) && biome format --write ."
+  },
+  "keywords": [
+    "bun",
+    "bun.js",
+    "types"
+  ]
+}

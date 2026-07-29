@@ -61,7 +61,7 @@ const plugin: Plugin = async (ctx) => ({
     const { stdout, stderr, exitCode } = await spawnIntent(
       "session_start",
       input,
-      ctx.cwd,
+      ctx.directory,
     );
     if (stderr) console.error(stderr);
     if (exitCode === 2) {
@@ -72,12 +72,12 @@ const plugin: Plugin = async (ctx) => ({
     // Second sequential dispatch (ENH-2888): drift_check is advisory-only and
     // always exits 0, so its stdout/stderr are surfaced but never block or
     // override session_start's return value.
-    const driftResult = await spawnIntent("drift_check", input, ctx.cwd);
+    const driftResult = await spawnIntent("drift_check", input, ctx.directory);
     if (driftResult.stderr) console.error(driftResult.stderr);
     return stdout ? JSON.parse(stdout) : undefined;
   },
   "session.compacted": async (input: unknown) => {
-    const { stderr, exitCode } = await spawnIntent("pre_compact", input, ctx.cwd);
+    const { stderr, exitCode } = await spawnIntent("pre_compact", input, ctx.directory);
     if (stderr) console.error(stderr);
     // pre_compact's success path is exit_code=2 with feedback-only; no return
     // value is consumed by OpenCode for this event.
@@ -91,7 +91,7 @@ const plugin: Plugin = async (ctx) => ({
     // byte metrics to .ll/history.db when ``analytics.enabled`` is set, so
     // OpenCode never blocks on a SQLite write. Consumers of the data layer
     // must tolerate observational-only semantics.
-    void spawnIntent("post_tool_use", input, ctx.cwd);
+    void spawnIntent("post_tool_use", input, ctx.directory);
   },
 });
 

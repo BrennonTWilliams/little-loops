@@ -4,7 +4,7 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "types": ["bun-types"],
+    "types": ["bun"],
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "strict": true,
