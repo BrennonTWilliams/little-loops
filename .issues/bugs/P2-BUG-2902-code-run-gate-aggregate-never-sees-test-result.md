@@ -10,6 +10,7 @@ relates_to:
 - BUG-2894
 - ENH-2895
 - ENH-2896
+- ENH-2905
 ---
 
 # BUG-2902: code-run-gate's `aggregate` never sees the test result — a failing suite yields GATE_PASS
@@ -80,10 +81,10 @@ returned to every consumer regardless of test outcome.
 sibling gates use, so `aggregate`'s existing grep detects a failing suite without
 modification.
 
-Additionally (decide explicitly — see Open Questions): a pass rate below
-`min_pass_rate` should set `ANY_FAIL` even when the test command exits 0, which
-requires `aggregate` to also read the `pass_rate=` line. Without this, `ge 0.95`
-remains decorative.
+**Decided 2026-07-29** (see Open Questions, now resolved): this issue implements
+*only* the `exit_code=` sidecar fix. Honoring `min_pass_rate` independently of
+exit code is split out to [ENH-2905] and is explicitly out of scope here —
+`aggregate` gains no `pass_rate` detector as part of this issue.
 
 The SKIP path must stay unaffected: `run_test` writes `SKIP test_cmd=null` as the
 first line when no test command is configured, and `aggregate`'s `case
@@ -139,22 +140,16 @@ verdict is not derived from routing in this loop.
    replace the `tail -1` read with a `grep '^pass_rate='` extraction. The latter
    is more robust and pairs with BUG-2894's echo cleanup.
 
-2. Decide and implement the `pass_rate` half (Open Questions). If adopted,
-   `aggregate` gains a second detector alongside the exit-code grep, comparing
-   the parsed `pass_rate` against `${context.min_pass_rate}`.
+2. Leave all five states' routing exactly as-is.
 
-3. Leave all five states' routing exactly as-is.
+3. Do not touch `aggregate`'s detector logic beyond what fix (1) requires — no
+   `pass_rate` parsing. That half is [ENH-2905].
 
 ## Open Questions
 
-- **Should a sub-threshold pass rate fail the gate independently of exit code?**
-  In practice a failing pytest run exits non-zero, so fix (1) alone catches the
-  common case and `min_pass_rate` stays decorative. Honoring it matters only for
-  the "some tests fail but the command still exits 0" case (e.g. a wrapper that
-  swallows the status) and for thresholds below 1.0. Decide before implementing —
-  it determines whether `aggregate` changes at all.
-- If adopted, `aggregate` parses `pass_rate` in shell; confirm the comparison is
-  done in `python3` rather than `[ ]`, since POSIX test has no float comparison.
+None — resolved 2026-07-29. This issue implements the `exit_code=` sidecar fix
+only; honoring `min_pass_rate` independently of exit code is tracked separately
+as [ENH-2905].
 
 ## Integration Map
 
@@ -174,8 +169,8 @@ verdict is not derived from routing in this loop.
    pass-rate read so it still resolves (see Proposed Solution step 1).
 4. Confirm the SKIP path still yields `GATE_SKIP` and is not caught by the new
    detector.
-5. Resolve the Open Question; implement the `aggregate` pass-rate detector only
-   if adopted, and record the decision via `ll-issues decisions add`.
+5. Confirm `aggregate` is otherwise untouched — no `pass_rate` detector added
+   (that is [ENH-2905]'s scope, not this issue's).
 6. Add a regression test asserting all five gate states retain converging
    routing, so the rejected approach is not reintroduced.
 7. Confirm `python -m pytest scripts/tests/` exits 0.

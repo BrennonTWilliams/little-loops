@@ -92,11 +92,16 @@ Two candidate strictness levels:
 > schema lint can see). WARN-vs-ERROR remains a live decision — but decide it on
 > third-party/user-loop compatibility grounds, not on our own built-ins.
 
-Recommended sequencing: the built-in-sweep precondition is already met, so there is
-no staged rollout to wait on. Record the WARN-vs-ERROR choice as a decision via
-`ll-issues decisions add`, weighing it on third-party/user-loop compatibility and on
-alignment with the JSON schema's existing `additionalProperties: false` (see the note
-above) — not on our own built-ins.
+**Decision: WARN-now / ERROR-later.** Ship the `ll-loop validate` lint rule as WARN
+severity now — non-breaking for third-party/user loops carrying a stray key today —
+and revisit ERROR-at-load once telemetry from the WARN rule shows the built-in and
+user-loop population is clean in practice, bringing the Python loader into eventual
+agreement with the JSON schema's existing `additionalProperties: false` stance. The
+built-in-sweep precondition is already met, so there is no staged rollout blocking
+WARN from shipping immediately. Record this WARN-now/ERROR-later decision via
+`ll-issues decisions add`, citing third-party/user-loop compatibility and the JSON
+schema's `additionalProperties: false` precedent (see the note above) as the
+rationale.
 
 A useful refinement either way: suggest the nearest known field name
 (`difflib.get_close_matches`) so `key` → *did you mean `line`? `path`?* guides the author
@@ -115,7 +120,13 @@ keep it out of this issue's minimum scope.
 1. Derive the known-field set from the dataclass itself
    (`{f.name for f in dataclasses.fields(EvaluateConfig)}`) rather than hand-maintaining
    a second list that can drift from `from_dict` the same way `from_dict` drifted from
-   authors' expectations.
+   authors' expectations. Expose this as a named helper (e.g.
+   `find_issues_for_graph`-style — a single function encapsulating the field-set
+   derivation) rather than inlining the set-comprehension at each call site; BUG-2897
+   imports `_ALL_STATUSES`/`_TERMINAL_STATUSES` from `issue_progress` directly (an
+   underscore-private module boundary `sequence.py` already crosses, so precedent
+   exists), but a named helper is the cleaner resolution here and is a requirement of
+   this issue, not an optional consideration.
 2. Add an `ll-loop validate` rule walking every state's raw `evaluate:` mapping and
    reporting keys outside that set, with a close-match suggestion.
 3. Follow the existing gate conventions in `.claude/CLAUDE.md`: assign a rule id,

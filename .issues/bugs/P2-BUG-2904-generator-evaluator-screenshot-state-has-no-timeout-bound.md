@@ -88,7 +88,7 @@ Add a per-state bound to the `evaluate` state:
 
 ```yaml
 evaluate:
-  timeout: 90
+  timeout: 120
   fragment: playwright_screenshot
   ...
 ```
@@ -114,19 +114,17 @@ other consumer reads.
 
 ## Open Questions
 
-Both must be **resolved in this issue before implementation** — they change the
-shape of the diff, not just a constant.
+Resolved:
 
-- Is 90s the right ceiling? Static SVGs render in <5s, but `--full-page` on a
-  heavy generated HTML page may legitimately take longer. Wants one calibration
-  pass across the consumer loops before settling.
-- **Per-state `timeout:` vs. loop-level `default_timeout:`.** These are different
-  changes with different blast radii: a per-state bound touches only `evaluate`,
-  while `default_timeout` re-bounds every state in the loop (including `generate`,
-  which legitimately runs long). Recommendation: per-state here, and file a
-  separate issue if the sibling oracles (`generator-evaluator-cli.yaml`,
-  `generator-evaluator-flux.yaml`) want the same treatment — they are not in this
-  issue's scope.
+- **Per-state `timeout:` vs. loop-level `default_timeout:`.** Per-state, on
+  `evaluate` only — a per-state bound touches only that state, while
+  `default_timeout` would re-bound every state in the loop (including
+  `generate`, which legitimately runs long). Sibling oracles
+  (`generator-evaluator-cli.yaml`, `generator-evaluator-flux.yaml`) are out of
+  scope for this issue; file a separate issue if they need the same treatment.
+- **Ceiling value: 120s.** Committing to this rather than the draft 90s to
+  leave headroom over `--full-page` on heavy generated pages, while still
+  bounding a hang to a couple minutes instead of an hour.
 
 ## Acceptance Criteria
 

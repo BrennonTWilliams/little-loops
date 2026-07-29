@@ -188,8 +188,11 @@ at current backlog sizes; worth a comment rather than a refactor.
 2. Replace `ordered = issues` with the explicit priority sort over the *display*
    list (`display_issues`), not the raw loaded list — see the Proposed Solution
    note. Requires BUG-2897 to have landed the build-wide/display-narrow split.
-2a. Move the status/type display filter below the `try`/`except` so the
-   cycle-fallback branch is filtered identically to the success branch.
+2a. Verify BUG-2897 placed the shared status/type display filter below the
+   `try`/`except` (its Scope Addition step 2), so the cycle-fallback branch is
+   filtered identically to the success branch. Do not re-implement this move
+   here — it is BUG-2897's edit; this step only confirms it landed as
+   specified.
 3. Capture `cycle_ids` from `graph.detect_cycles()` in the except branch.
 4. Thread `cycle_ids` into rationale construction; suppress stale
    `blocked by:` / `after:` parts for cycle members.

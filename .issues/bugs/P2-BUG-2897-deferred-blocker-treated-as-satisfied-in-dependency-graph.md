@@ -148,7 +148,7 @@ The former is less invasive and keeps the graph status-agnostic.
 
 ### Dependent Files (Callers/Importers)
 
-**Call-site audit completed 2026-07-29.** All 13 `DependencyGraph.from_issues(`
+**Call-site audit completed 2026-07-29.** All 12 `DependencyGraph.from_issues(`
 call sites, with the provenance of the issue list each one passes:
 
 | Call site | Line | Issue-list source | Affected? |
@@ -216,7 +216,7 @@ their caller did and need one more hop.
 1. Add a failing test: dependent of a `deferred` blocker must report blocked.
 2. ~~Audit `DependencyGraph.from_issues()` call sites for default-filter reliance.~~
    **Done 2026-07-29** — inventory in Dependent Files. Remaining work is walking
-   the 12 `Verify` rows one hop further to their list source and fixing those that
+   the 11 `Verify` rows one hop further to their list source and fixing those that
    share the defect.
 3. Introduce the non-terminal superset load for graph construction (Option A),
    ideally behind one named helper.
@@ -228,9 +228,9 @@ their caller did and need one more hop.
 ## Impact
 
 - **Severity**: Correctness — silent wrong answer, no warning
-- **Scope**: `ll-issues sequence` confirmed broken. 13 `from_issues()` call sites
+- **Scope**: `ll-issues sequence` confirmed broken. 12 `from_issues()` call sites
   inventoried (see Dependent Files); `sequence.py:77` is the one with a
-  demonstrated default-filter dependency. The remaining 12 are candidates whose
+  demonstrated default-filter dependency. The remaining 11 are candidates whose
   list-provenance must be walked one hop further during implementation — they are
   inventoried, not yet cleared.
 - **Risk of fix**: Low for Option A; the graph gains nodes it should always have
