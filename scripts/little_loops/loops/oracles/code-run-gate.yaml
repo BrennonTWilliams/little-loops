@@ -237,7 +237,8 @@ states:
         [ "$RC" -ne 0 ] && RATE="0.0"
         echo "pass_rate=$RATE" >> "$${ABS_DIR}/test-results.txt"
       fi
-      echo "exit_code=$RC pass_rate=$(tail -1 $${ABS_DIR}/test-results.txt)"
+      echo "exit_code=$RC" >> "$${ABS_DIR}/test-results.txt"
+      echo "exit_code=$RC pass_rate=$(grep '^pass_rate=' $${ABS_DIR}/test-results.txt | tail -1)"
     capture: pass_rate
     evaluate:
       type: output_numeric

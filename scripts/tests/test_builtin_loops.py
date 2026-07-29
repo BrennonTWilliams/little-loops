@@ -10190,6 +10190,104 @@ class TestCodeRunGateOracle:
         no_result = evaluate(config, "exit_code=0 pass_rate=0.50", 0, ctx)
         assert no_result.verdict == "no"
 
+    def test_run_test_sidecar_declares_exit_code(self, data: dict) -> None:
+        """BUG-2902: run_test's sidecar write must append an `exit_code=`
+        line to test-results.txt, matching build/typecheck/lint's shape,
+        so aggregate's `grep '^exit_code=[1-9]'` scan can detect it."""
+        action = data["states"]["run_test"].get("action", "")
+        assert 'echo "exit_code=$RC" >> "$${ABS_DIR}/test-results.txt"' in action, (
+            "run_test must append exit_code=$RC into test-results.txt, "
+            "matching run_build/run_typecheck/run_lint's sidecar shape"
+        )
+
+    def test_run_test_sidecar_exit_code_actually_detects_failure(
+        self, data: dict, tmp_path
+    ) -> None:
+        """End-to-end shell reproduction of BUG-2902: run a failing test_cmd
+        through run_test's real action body, then feed the resulting
+        test-results.txt through aggregate's detector logic. Before the fix,
+        this yields ANY_FAIL=false for a failing suite (GATE_PASS bug).
+        After the fix, ANY_FAIL=true."""
+        import subprocess
+
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "commands.json").write_text(
+            '{"test_cmd": "exit 1"}', encoding="utf-8"
+        )
+
+        action = data["states"]["run_test"]["action"]
+        # Loop YAML actions use $${...} to escape FSM interpolation of
+        # ${context.*}; the raw shell needs single $.
+        shell_action = action.replace("$${", "${").replace("${context.run_dir}", str(run_dir))
+        result = subprocess.run(
+            ["bash", "-c", shell_action], capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, f"run_test action itself must not fail: {result.stderr}"
+
+        test_results = (run_dir / "test-results.txt").read_text()
+        assert "exit_code=1" in test_results.splitlines(), (
+            "test-results.txt must carry an exit_code=1 line for a failing test_cmd "
+            f"(BUG-2902); got:\n{test_results}"
+        )
+        # pass_rate must still be resolvable (tail-1 replacement didn't break it)
+        assert any(line.startswith("pass_rate=") for line in test_results.splitlines())
+
+        # Reproduce aggregate's exact detector against the sidecar.
+        agg_result = subprocess.run(
+            [
+                "bash",
+                "-c",
+                f'grep -q "^exit_code=[1-9]" "{run_dir}/test-results.txt" && echo FAIL || echo NOFAIL',
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert agg_result.stdout.strip() == "FAIL", (
+            "aggregate's grep must detect the failing test_cmd via test-results.txt "
+            "(BUG-2902 regression)"
+        )
+
+    def test_run_test_sidecar_skip_path_unaffected(self, data: dict, tmp_path) -> None:
+        """SKIP path (no test_cmd configured) must still yield SKIP* first
+        line with no exit_code= line, so aggregate's SKIP branch still
+        short-circuits before the grep."""
+        import subprocess
+
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "commands.json").write_text('{"test_cmd": null}', encoding="utf-8")
+
+        action = data["states"]["run_test"]["action"]
+        shell_action = action.replace("$${", "${").replace("${context.run_dir}", str(run_dir))
+        result = subprocess.run(
+            ["bash", "-c", shell_action], capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0
+        test_results = (run_dir / "test-results.txt").read_text()
+        assert test_results.splitlines()[0].startswith("SKIP")
+        assert "exit_code=" not in test_results
+
+    def test_run_states_converging_routing_not_regressed(self, data: dict) -> None:
+        """Regression guard for the Rejected Approach: run_test's on_yes/
+        on_no/on_error must all converge on run_typecheck (not fork to a
+        gate-failure terminal), and this must hold for all five gate states."""
+        chain = (
+            ("run_build", "run_test"),
+            ("run_test", "run_typecheck"),
+            ("run_typecheck", "run_lint"),
+            ("run_lint", "service_health"),
+            ("service_health", "aggregate"),
+        )
+        states = data["states"]
+        for state_name, next_state in chain:
+            state = states[state_name]
+            outcomes = {state.get("on_yes"), state.get("on_no"), state.get("on_error")}
+            assert outcomes == {next_state}, (
+                f"{state_name} must route on_yes/on_no/on_error identically to "
+                f"{next_state!r} (converging routing); got {outcomes}"
+            )
+
     def test_service_health_terminates_chain_at_aggregate(self, data: dict) -> None:
         # service_health must terminate the chain at aggregate
         states = data["states"]

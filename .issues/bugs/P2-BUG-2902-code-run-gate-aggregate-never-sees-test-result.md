@@ -2,8 +2,9 @@
 id: BUG-2902
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-28T23:25:00Z'
+completed_at: '2026-07-29T01:02:05Z'
 discovered_date: 2026-07-28
 discovered_by: audit-issue-conflicts
 relates_to:
@@ -11,6 +12,12 @@ relates_to:
 - ENH-2895
 - ENH-2896
 - ENH-2905
+confidence_score: 98
+outcome_confidence: 84
+score_complexity: 22
+score_test_coverage: 20
+score_ambiguity: 24
+score_change_surface: 18
 ---
 
 # BUG-2902: code-run-gate's `aggregate` never sees the test result — a failing suite yields GATE_PASS
@@ -159,6 +166,66 @@ as [ENH-2905].
 - `rn-implement` / `rn-remediate` — downstream delegating loops whose gate
   behaviour changes once test failures are honoured (FEAT-2551/FEAT-2552)
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/rn-refine.yaml` — `verify_leaf` state delegates
+  per-leaf verification to `loop: oracles/code-run-gate` (`on_success:
+  check_leaf_deviation`, `on_failure`/`on_error: check_leaf_repair_budget`).
+  This is a third production consumer beyond `rn-implement`/`rn-remediate` not
+  previously listed. Today a genuine test failure during a recursive-refine
+  leaf never trips `ANY_FAIL`, so `verify_leaf` never routes to
+  `check_leaf_repair_budget` on test failure alone — after this fix it will,
+  which can newly trigger `revert_leaf_failed` cycles that were previously
+  silent. [Agent 1/2 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_rn_refine.py::test_verify_leaf_delegates_to_code_run_gate`
+  — asserts only static wiring (`state.loop == "oracles/code-run-gate"`), not
+  runtime verdict behavior; does not need code changes for this fix, but its
+  assumption (leaf-level gate failures are rare) becomes truer once test
+  failures are actually detected — worth a read-through, no edit expected.
+  [Agent 3 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/loops.md` § `oracles/code-run-gate` (~line 730-787) —
+  describes the oracle's `GATE_PASS`/`GATE_FAILED`/`GATE_SKIP` verdicts and
+  lists `test-results.txt` as a sidecar artifact; the text is already
+  consistent with the *intended* (post-fix) behavior, so no edit is required,
+  but confirm during review that nothing there implies the test gate already
+  worked. [Agent 2 finding]
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — confirmed against current `main` (2026-07-28):_
+
+- Verified the `run_test` state body in the current file matches this issue's
+  quoted excerpts exactly: `evaluate.key: pass_rate`, `target: 0.95` hardcoded
+  (not `${context.min_pass_rate}` — that inertness is real and correctly
+  scoped to [ENH-2905], not this issue), and no `exit_code=` line written to
+  `test-results.txt`.
+- `test_run_test_key_dispatches_correctly`
+  (`scripts/tests/test_builtin_loops.py:10176`) already covers ENH-2895's
+  `evaluate.key: pass_rate` dispatch path directly against
+  `little_loops.fsm.evaluators.evaluate` — this is a **separate** code path
+  from `aggregate`'s own `grep "^exit_code=" test-results.txt` file scan, and
+  does not exercise or cover this issue's defect. Confirmed by grep: no
+  existing test in `test_builtin_loops.py` asserts `test-results.txt`
+  contains an `exit_code=` line, and no existing test drives `aggregate`
+  end-to-end with a failing test command to assert `GATE_FAILED`. Both gaps
+  match Implementation Steps 1–2 as genuinely unaddressed, not
+  already-covered-elsewhere.
+- Related existing tests to model new coverage after: `test_aggregate_uses_classify_with_default_route`
+  (`test_builtin_loops.py:10124`) and `test_run_states_chain_forward_and_terminate_at_aggregate`
+  (`test_builtin_loops.py:10145`) are the nearest structural precedents for
+  asserting routing/shape; `test_code_run_gate_oracle_exists`
+  (`test_builtin_loops.py:13139`) is the oracle's top-level fixture entry
+  point a new end-to-end `GATE_FAILED`-on-test-failure test would extend.
+
 ## Implementation Steps
 
 1. Add a failing test: an oracle run whose test command exits non-zero must yield
@@ -198,6 +265,11 @@ as [ENH-2905].
 | `.claude/CLAUDE.md` | `ll-loop diagnose-evaluators`; Loop Authoring rules |
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-29T01:01:19 - `ae1640d4-5ac7-48dc-b9b1-559d5c0f88b3.jsonl`
+- `/ll:ready-issue` - 2026-07-29T00:56:28 - `86a9d028-05cc-447a-b23c-b439e7234980.jsonl`
+- `/ll:confidence-check` - 2026-07-28T00:00:00 - `69c120e8-6353-42c7-8c9e-8854af725fcc.jsonl`
+- `/ll:wire-issue` - 2026-07-29T00:54:05 - `f74aa2ac-43ca-4068-bba2-0296d720a971.jsonl`
+- `/ll:refine-issue` - 2026-07-29T00:50:01 - `9713cc39-3871-483d-8a84-1cbbd4481f2a.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-29T00:04:13 - `00aa385f-3c68-486e-aadc-2dadfb4a2e42.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-28T23:25:00 - conflict-resolution split from BUG-2894 step 6
 
@@ -222,6 +294,36 @@ rebases on top and interacts with this issue's step 3 (the `tail -1` adjustment)
 
 ---
 
+## Resolution
+
+Fixed in `run_test` (`scripts/little_loops/loops/oracles/code-run-gate.yaml`):
+
+1. Appended `echo "exit_code=$RC" >> "$${ABS_DIR}/test-results.txt"` after the
+   pass-rate block, matching the sidecar shape of `build.txt`/`typecheck.txt`/
+   `lint.txt`.
+2. Replaced the `tail -1` pass-rate read on the stdout `echo` line with
+   `grep '^pass_rate=' ... | tail -1`, so appending the `exit_code=` line
+   doesn't break pass-rate extraction (per the Proposed Solution's step-1
+   note).
+3. `aggregate`'s detector, the SKIP path, and all five gates' converging
+   routing were left untouched, as scoped.
+
+Added regression coverage in `scripts/tests/test_builtin_loops.py`
+(`TestCodeRunGateOracle`):
+- `test_run_test_sidecar_declares_exit_code` — static assertion the action
+  writes `exit_code=$RC` into the sidecar.
+- `test_run_test_sidecar_exit_code_actually_detects_failure` — runs the real
+  `run_test` shell action against a failing `test_cmd` in a tmp dir, then
+  reproduces `aggregate`'s exact `grep` detector against the resulting
+  sidecar and asserts it fires.
+- `test_run_test_sidecar_skip_path_unaffected` — confirms the SKIP path still
+  writes no `exit_code=` line.
+- `test_run_states_converging_routing_not_regressed` — guards against
+  reintroducing the Rejected Approach (on_no/on_error forking away from the
+  shared aggregate chain).
+
+`python -m pytest scripts/tests/` — 16949 passed, 42 skipped.
+
 ## Status
 
-open
+done
