@@ -9803,6 +9803,14 @@ class TestGeneratorEvaluatorOracle:
             "evaluate state must use fragment: playwright_screenshot"
         )
 
+    def test_evaluate_has_bounded_timeout(self, data: dict) -> None:
+        """BUG-2904: evaluate (Playwright screenshot) must not hang for the
+        loop's full 7200s timeout on a headless-browser stall."""
+        state = data["states"].get("evaluate", {})
+        assert isinstance(state.get("timeout"), int) and state["timeout"] > 0, (
+            "evaluate state must declare a positive per-state timeout (BUG-2904)"
+        )
+
     def test_evaluate_routes_to_snapshot_on_all_outcomes(self, data: dict) -> None:
         state = data["states"].get("evaluate", {})
         assert state.get("on_yes") == "snapshot"
@@ -9945,6 +9953,13 @@ class TestGeneratorEvaluatorCliOracle:
         state = resolved_data["states"].get("evaluate", {})
         assert state.get("action_type") == "shell", (
             "evaluate state must be action_type: shell in CLI oracle"
+        )
+
+    def test_resolved_evaluate_has_bounded_timeout(self, resolved_data: dict) -> None:
+        """BUG-2904: CLI-render evaluate override must not hang indefinitely."""
+        state = resolved_data["states"].get("evaluate", {})
+        assert isinstance(state.get("timeout"), int) and state["timeout"] > 0, (
+            "evaluate state must declare a positive per-state timeout (BUG-2904)"
         )
 
     def test_resolved_evaluate_has_output_contains_captured(self, resolved_data: dict) -> None:

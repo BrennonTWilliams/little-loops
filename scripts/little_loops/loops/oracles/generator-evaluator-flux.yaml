@@ -191,6 +191,7 @@ states:
       replaces the inherited playwright_screenshot action with a plain copy to
       screenshot.png (the path the inherited snapshot/score states read).
     action_type: shell
+    timeout: 120
     action: |
       RUN_DIR="${context.run_dir}"
       case "$RUN_DIR" in

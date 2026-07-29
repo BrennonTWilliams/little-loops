@@ -73,6 +73,7 @@ states:
 
   evaluate:
     fragment: playwright_screenshot
+    timeout: 120
     action: |
       case "${context.run_dir}" in
         /*) ABS_DIR="${context.run_dir}" ;;

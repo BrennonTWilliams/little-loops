@@ -71,6 +71,15 @@ class TestLoopStructure:
         assert "playwright" not in action.lower()
         assert "screenshot.png" in action
 
+    def test_oracle_evaluate_has_bounded_timeout(self) -> None:
+        """BUG-2904: flux's own evaluate override does not inherit the base
+        oracle's timeout fix, so it needs its own explicit bound."""
+        raw = yaml.safe_load(ORACLE.read_text())
+        state = raw["states"].get("evaluate", {})
+        assert isinstance(state.get("timeout"), int) and state["timeout"] > 0, (
+            "evaluate state must declare a positive per-state timeout (BUG-2904)"
+        )
+
     def test_oracle_inherits_stall_machinery(self) -> None:
         """score/record_score/check_stall/check_diff_stall come from the base."""
         fsm, _ = load_and_validate(ORACLE)
