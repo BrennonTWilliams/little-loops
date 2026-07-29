@@ -59,6 +59,7 @@ def cmd_sequence(config: BRConfig, args: argparse.Namespace) -> int:
     from little_loops.issue_progress import _OPEN_STATUSES
 
     type_prefix = getattr(args, "type", None)
+    is_json = getattr(args, "json", False)
 
     # Build wide: one graph-construction call, no type_prefixes, non-terminal
     # superset (includes deferred) — so a blocker outside the requested type
@@ -81,11 +82,28 @@ def cmd_sequence(config: BRConfig, args: argparse.Namespace) -> int:
 
     graph = DependencyGraph.from_issues(graph_issues, all_known_ids=all_known_ids)
 
+    cycle_ids: set[str] = set()
+    cycle_paths: dict[str, str] = {}
     try:
         ordered = graph.topological_sort()
     except ValueError as exc:
-        print(f"Warning: dependency cycle detected — {exc}")
-        ordered = graph_issues  # fall back to priority order
+        # --json must emit a single valid JSON document on stdout, so the
+        # cycle is surfaced there via the per-item in_cycle field instead of
+        # these human-readable warning lines.
+        if not is_json:
+            print(f"Warning: dependency cycle detected — {exc}")
+            print(
+                "Ordering below is priority-only; cycle members marked ⚠ and cannot be sequenced.\n"
+            )
+        # detect_cycles() is called again here (already ran once inside
+        # topological_sort() to build the exception message) — harmless at
+        # current backlog sizes, not worth threading through for a single call.
+        for cycle in graph.detect_cycles():
+            cycle_ids.update(cycle)
+            path_str = " -> ".join(cycle)
+            for cid in cycle:
+                cycle_paths[cid] = path_str
+        ordered = sorted(graph_issues, key=lambda i: (i.priority_int, i.issue_id))
 
     # Narrow: apply both display filters to the ordered list, below the
     # cycle-fallback path so it's covered too.
@@ -138,6 +156,7 @@ def cmd_sequence(config: BRConfig, args: argparse.Namespace) -> int:
                     "blocks": issue.blocks,
                     "depends_on": sorted(graph.get_pending_prerequisites(issue.issue_id)),
                     "unverified_prose_deps": prose_deps_for(issue),
+                    "in_cycle": issue.issue_id in cycle_ids,
                     **({"type_filter": type_filter} if type_filter else {}),
                 }
                 for issue in shown
@@ -147,6 +166,19 @@ def cmd_sequence(config: BRConfig, args: argparse.Namespace) -> int:
 
     print(f"Suggested implementation sequence ({len(shown)} of {len(display)} issues):\n")
     for issue in shown:
+        if issue.issue_id in cycle_ids:
+            # Structured blocked_by/after edges are what form the cycle —
+            # showing the stale annotations alongside the cycle marker would
+            # just repeat the same edges as noise, so suppress them here.
+            rationale = f"⚠ in cycle: {cycle_paths.get(issue.issue_id, '')}"
+            prose_deps = prose_deps_for(issue)
+            if prose_deps:
+                rationale += f" ⚠ prose dep {', '.join(prose_deps)}, not in blocked_by"
+            issue_prefix = issue.issue_id.split("-", 1)[0]
+            colored_id = colorize(issue.issue_id, TYPE_COLOR.get(issue_prefix, "0"))
+            colored_pri = colorize(issue.priority, PRIORITY_COLOR.get(issue.priority, "0"))
+            print(f"  [{colored_pri}, {rationale}] {colored_id}: {issue.title}")
+            continue
         blockers = graph.blocked_by.get(issue.issue_id, set())
         prerequisites = graph.get_pending_prerequisites(issue.issue_id)
         parts = []

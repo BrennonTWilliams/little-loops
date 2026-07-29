@@ -1271,6 +1271,19 @@ field is scheduled ahead of it (BUG-2848). Earlier versions of `sequence`
 honored `blocked_by` only, so a `depends_on`-only prerequisite could sort
 after its dependent; `topological_sort()` now folds both into the same pass.
 
+**Dependency cycle fallback** (BUG-2899): when a `blocked_by`/`depends_on`
+cycle makes topological order impossible, text output prints a warning plus
+a second line clarifying the fallback ("Ordering below is priority-only;
+cycle members marked ⚠ and cannot be sequenced."), then falls back to a
+genuine global priority sort (`(priority_int, issue_id)` — the same
+tiebreaker `topological_sort()` uses) rather than raw directory-walk order.
+Cycle-participating issues print `⚠ in cycle: A -> B -> A` in place of their
+`blocked by:`/`after:` rationale, since those structured edges are exactly
+what forms the unsatisfiable cycle. `--json` adds an always-present
+`"in_cycle": true/false` boolean per record instead of the warning text
+(which would break the single JSON document on stdout); check that field to
+detect a degraded fallback ordering programmatically.
+
 #### `ll-issues impact-effort` / `ll-issues ie`
 
 Display an impact vs. effort matrix for active issues.

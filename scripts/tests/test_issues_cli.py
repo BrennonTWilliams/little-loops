@@ -1782,6 +1782,103 @@ class TestSequenceDeferredAndCrossTypeBlockers:
         assert data[0]["id"] == "BUG-001"
         assert data[0]["blocked_by"] == ["FEAT-001"]
 
+    def test_sequence_cycle_fallback_is_priority_ordered_and_marks_cycle_members(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Cycle fallback sorts by priority (not directory order) and marks
+        cycle members instead of printing stale blocked-by/after rationale
+        (BUG-2899)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        feats_dir = temp_project_dir / ".issues" / "features"
+        bugs_dir.mkdir(parents=True)
+        feats_dir.mkdir(parents=True)
+
+        # BUG-001 <-> BUG-002 cycle; BUG-003 (P0, bugs/) and FEAT-010 (P2,
+        # features/) are non-cycle members. Directory-walk order would list
+        # all of bugs/ before features/ regardless of priority — this fixture
+        # spans both directories so that bug is actually caught.
+        (bugs_dir / "P1-BUG-001-alpha.md").write_text(
+            "---\nstatus: open\nblocked_by:\n  - BUG-002\n---\n\n# BUG-001: Alpha\n"
+        )
+        (bugs_dir / "P3-BUG-002-beta.md").write_text(
+            "---\nstatus: open\nblocked_by:\n  - BUG-001\n---\n\n# BUG-002: Beta\n"
+        )
+        (bugs_dir / "P0-BUG-003-gamma.md").write_text(
+            "---\nstatus: open\n---\n\n# BUG-003: Gamma\n"
+        )
+        (feats_dir / "P2-FEAT-010-delta.md").write_text(
+            "---\nstatus: open\n---\n\n# FEAT-010: Delta\n"
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "sequence", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Warning: dependency cycle detected" in captured.out
+
+        out = captured.out.split("Suggested implementation sequence")[1]
+        # Global priority order: BUG-003 (P0) < BUG-001 (P1) < FEAT-010 (P2) < BUG-002 (P3)
+        # Match the row marker (`] <ID>:`), not a bare ID substring — the
+        # cycle rationale text embeds other cycle members' IDs inline.
+        idx_003 = out.index("] BUG-003:")
+        idx_001 = out.index("] BUG-001:")
+        idx_010 = out.index("] FEAT-010:")
+        idx_002 = out.index("] BUG-002:")
+        assert idx_003 < idx_001 < idx_010 < idx_002
+
+        # Cycle members are marked and no longer print stale blocked-by/after
+        assert "⚠ in cycle:" in out
+        assert "blocked by: BUG-002" not in out
+        assert "blocked by: BUG-001" not in out
+        assert "no blockers" in out  # BUG-003 and FEAT-010 unaffected
+
+    def test_sequence_json_cycle_in_cycle_field(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json exposes an always-present in_cycle boolean (BUG-2899)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+
+        (bugs_dir / "P1-BUG-001-alpha.md").write_text(
+            "---\nstatus: open\nblocked_by:\n  - BUG-002\n---\n\n# BUG-001: Alpha\n"
+        )
+        (bugs_dir / "P3-BUG-002-beta.md").write_text(
+            "---\nstatus: open\nblocked_by:\n  - BUG-001\n---\n\n# BUG-002: Beta\n"
+        )
+        (bugs_dir / "P0-BUG-003-gamma.md").write_text(
+            "---\nstatus: open\n---\n\n# BUG-003: Gamma\n"
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "sequence", "--json", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        by_id = {item["id"]: item for item in data}
+        assert by_id["BUG-001"]["in_cycle"] is True
+        assert by_id["BUG-002"]["in_cycle"] is True
+        assert by_id["BUG-003"]["in_cycle"] is False
+
     def test_sequence_done_blocker_still_resolves(
         self,
         temp_project_dir: Path,
