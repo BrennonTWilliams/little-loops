@@ -285,7 +285,13 @@ little-loops/
         │   ├── evaluators.py        # Condition evaluation
         │   ├── executor.py          # Loop execution
         │   ├── interpolation.py     # Variable interpolation
-        │   ├── validation.py        # Schema validation
+        │   ├── validation/           # Schema + meta-loop lint rules (ENH-2774 split of former flat validation.py)
+        │   │   ├── __init__.py        #   Public API re-exports
+        │   │   ├── _base.py           #   ValidationSeverity/ValidationError + cross-rule helpers
+        │   │   ├── structural_rules.py #   Structural/static loop-shape checks
+        │   │   ├── reachability.py    #   capture-reachability, static loop-ref, session-mode-eval checks
+        │   │   ├── shell_safety.py    #   MR-7/MR-9/MR-11 bash-escaping rules
+        │   │   └── evaluator_rules.py, meta_rules.py # MR-1..MR-6, MR-8/MR-10/MR-12/MR-13 + haiku-gen
         │   ├── persistence.py       # State persistence
         │   ├── signal_detector.py   # Output signal detection
         │   ├── handoff_handler.py   # Session handoff handling
@@ -1288,6 +1294,26 @@ The merge coordinator is a sophisticated git operations state machine that handl
 8. Untracked file backup and retry
 
 **See [MERGE-COORDINATOR.md](development/MERGE-COORDINATOR.md) for comprehensive documentation.**
+
+### Host Adapter Capability Map
+
+`adapters/capabilities.py` (ENH-2873/ENH-2874) is a declarative per-host
+capability map for `ll-adapt`'s build-time artifact generation: one
+`HostCapabilityEntry` per adapter host (`codex`, `gemini`, `omp`) in
+`adapters/core.py`'s `_EMITTER_MAP`, replacing knowledge that was previously
+scattered as conditional code across `codex.py`/`gemini.py`/`omp.py`. Each
+entry's `SubagentSupport` field (`"native"` vs `"none"`, ENH-2874) drives
+whether `core.py` emits a real subagent file for a role or falls back to a
+degraded inline-role file (`0af1e555`) when the target host can't spawn
+subagents.
+
+This is distinct from `host_runner.HostCapabilities` (Option B, decided
+2026-07-28): that is a **runtime** invocation surface — "what can this host's
+CLI do when it's running" (`claude-code`/`opencode`/`pi`) — while
+`capabilities.py` is a **build-time** surface with a different host set
+(`codex`/`gemini`/`omp`) and no inheritance relationship between the two.
+See `docs/reference/HOST_COMPATIBILITY.md` for the parity matrix both sides
+are checked against.
 
 ### Context Monitor and Session Continuation
 

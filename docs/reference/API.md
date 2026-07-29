@@ -403,6 +403,10 @@ class ProjectConfig:
     test_patterns: list[str] = field(default_factory=lambda: [...])  # ENH-2865
 ```
 
+`test_file_patterns.is_test_file(path, config=None)` is the shared, pure classifier consumers wire against `project.test_patterns` (508c5565): given a repo-relative, POSIX-normalized path, it returns whether the path matches any configured pattern via `git_operations.file_matches_pattern`, with no git calls, filesystem stat, or LLM invocation of its own. Per-project-type defaults live in `scripts/little_loops/templates/*.json`.
+
+**`cli/verify_triggers.py` (`ll-verify-triggers`) scoring model:** only skills that declare `trigger_fixtures` (should-fire/should-not-fire phrasings) are scored for precision/recall and cross-skill collisions; every other model-invocable skill is reported as an *unmeasured* coverage gap rather than silently scored at 0% — distinguishing "never validated" from "validated and failing" (BUG-2879's fix). Exit is non-zero only when a *measured* skill falls below threshold or collides with another skill's trigger phrasings.
+
 ### IssuesConfig
 
 Issue management configuration dataclass.
@@ -6522,6 +6526,8 @@ class CountResult:
 
 `action_severity` is a closed vocabulary mirroring `cli/doctor.py`'s `CheckResult.severity` shape: `auto` is safe for `fix_counts()` to rewrite silently, `mention` needs a human to confirm before any rewrite, `route` means another command owns the repair (named in `route_owner`). `verify_documentation()` emits `auto` for every mismatch it finds today; `mention`/`route` exist for callers that construct `CountResult` with a different provenance.
 
+`ll-doctor`'s own exit code is not a simple any-check-failed OR: `_exit_code_for()` in `cli/doctor.py` returns non-zero only when a **`severity="error"`** result also has `status="unsupported"` — an `informational`-severity unsupported result (e.g. a host capability that is honestly absent, not broken) never fails the run. Each default and `--full`-only check independently sets its own `severity`/`status` pair rather than sharing one aggregation rule, so `--full`'s exit code is the OR of every registered check's error-tier failures, not just the default checks (FEAT-2793/FEAT-2795).
+
 #### VerificationResult
 
 ```python
@@ -8710,6 +8716,8 @@ def main_hooks(argv: list[str]) -> int: ...
 - Claude Code adapters (`hooks/adapters/claude-code/precompact.sh`, `precompact-handoff.sh`, `post-tool-use.sh`, `session-start.sh`, `session-end.sh`, `drift-check.sh`) invoke `python -m little_loops.hooks <intent>` directly — `LL_HOOK_HOST` defaults to `"claude-code"`.
 - The OpenCode adapter (`hooks/adapters/opencode/index.ts`) sets `LL_HOOK_HOST=opencode` before invoking the same CLI.
 - The Codex CLI adapter (`scripts/little_loops/hooks/adapters/codex/session-start.sh`, `pre-compact.sh`, `drift-check.sh`) sets `LL_HOOK_HOST=codex` before invoking the same CLI. The `hooks.json` template restricts `SessionStart` to `"matcher": "startup"` per FEAT-957's policy (avoids re-emitting identifiers on `resume`/`clear` and minimizes trust-hash churn); the `drift_check` intent (ENH-2888) reuses this same convention.
+
+**`drift_check` throttle (`hooks/drift_check.py`, ENH-2888):** surfaces throttled `mention`/`route`-severity doc-drift findings at session start, but only once per `hooks.doc_drift_throttle_days` (config key, default in `_DEFAULT_THROTTLE_DAYS`) — a per-project throttle-state file records the last-checked timestamp, and the hook is a no-op until that window elapses. Set `LL_DOC_DRIFT_DISABLE` to disable the check entirely regardless of throttle state.
 
 ---
 

@@ -556,6 +556,49 @@ Imports `lib/harness.yaml` for the `playwright_screenshot` fragment used in the 
 
 ---
 
+## `rn-build`
+
+Capstone orchestration loop for the recursive spec-to-project builder
+(`category: orchestration`). Takes a spec file path (`required_inputs:
+["spec"]`) and drives the full automated pipeline: spec validation → tech
+research → design artifacts → commit → scope EPIC + feature stubs → issue
+refinement → eval harness install → goal-cluster execution (dispatching
+batches to `rn-implement` with `value_ranked` scheduling) → eval gate with
+bounded re-entry → integration/acceptance gate (FEAT-2414: the spec's `##
+Acceptance Criteria` are executed against the assembled, running project and
+scored by a non-LLM gate) → synthesize result.
+
+```bash
+ll-loop run rn-build --context spec=<path>
+```
+
+`specs/SPEC_TEMPLATE.md` is the authoritative spec template (required
+sections: Overview, Core Features, Acceptance Criteria); loosely-structured
+specs are auto-normalized before `tech_research` without modifying the
+original file. See `specs/sample.md` for a worked example.
+
+## `rn-stepwise`
+
+Same recursive decomposition walk as `rn-refine` (`category: planning`), but
+each leaf is implemented and verified immediately after being refined —
+before the walk continues to the next queued node — so implementation drift
+is caught and corrected per-leaf instead of compounding across a whole tree
+of unimplemented plans (ENH-2862).
+
+This is a thin entry point: it does not fork `rn-refine`'s
+decompose/refine/synth tree-walk logic. It sets `${context.stepwise}=1` (plus
+a lower `max_nodes: 12` default vs. `rn-refine`'s planning-only default of 40
+— implementation dominates runtime) and delegates the entire walk to
+`rn-refine.yaml` via a `loop:` state. See `rn-refine.yaml`'s
+`record_leaf`/`implement_leaf`/`verify_leaf`/`record_deviation`/`record_leaf_done`
+chain for the actual per-leaf implement/verify/commit-or-revert mechanics.
+
+```bash
+ll-loop run rn-stepwise "path/to/plan.md"
+```
+
+---
+
 ## `oracles/generator-evaluator-cli`
 
 **Category**: oracle sub-loop
