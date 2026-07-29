@@ -8,6 +8,7 @@ DefaultActionRunner shell/slash paths. Skips _current_process lifecycle
 from __future__ import annotations
 
 import subprocess
+import tempfile
 from io import StringIO
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -349,6 +350,58 @@ class TestDefaultActionRunnerShellPath:
 
         assert result.exit_code == 124
         mock_killpg.assert_called_once_with(proc)
+
+    def test_shell_popen_starts_new_session(self) -> None:
+        """Shell actions spawn into their own process group (BUG-2901).
+
+        Without start_new_session=True the bash child inherits the ll-loop
+        runner's process group, so the _kill_process_group() call on the
+        timeout path SIGKILLs the runner itself instead of the hung command.
+        """
+        proc = _make_selector_mock_process()
+        sel = _make_ready_selector({})
+
+        with (
+            patch("little_loops.fsm.runners.subprocess.Popen", return_value=proc) as mock_popen,
+            patch("little_loops.fsm.runners.selectors.DefaultSelector", return_value=sel),
+        ):
+            DefaultActionRunner().run("echo hi", 30, False)
+
+        assert mock_popen.call_args.kwargs["start_new_session"] is True
+
+    def test_timeout_reaps_grandchildren_and_runner_survives(self) -> None:
+        """End-to-end: a timed-out shell action's whole tree dies, runner lives.
+
+        Mirrors the svg-image-generator hang shape — bash spawns a long-lived
+        grandchild (the Playwright/Chromium tree) and never exits. The timeout
+        path must reap the grandchild via the process group without killing
+        this test process, which shares the runner's group.
+        """
+        import os
+        import signal
+        import time as _time
+
+        with tempfile.TemporaryDirectory() as tmp:
+            pidfile = Path(tmp) / "grandchild.pid"
+            # bash backgrounds a sleeper, records its PID, then blocks forever.
+            action = f'sleep 300 & echo $! > "{pidfile}"; wait'
+
+            result = DefaultActionRunner().run(action, 2, False)
+
+            assert result.exit_code == 124, "timeout path should report 124"
+            assert pidfile.exists(), "grandchild never started"
+            grandchild = int(pidfile.read_text().strip())
+
+            # Reaping is asynchronous w.r.t. the SIGKILL returning.
+            for _ in range(50):
+                try:
+                    os.kill(grandchild, 0)
+                except (ProcessLookupError, PermissionError):
+                    break
+                _time.sleep(0.1)
+            else:
+                os.kill(grandchild, signal.SIGKILL)  # cleanup before failing
+                raise AssertionError(f"grandchild {grandchild} survived the timeout kill")
 
     def test_stderr_captured_when_stdout_empty(self) -> None:
         """Stderr output is captured correctly when stdout produces nothing."""

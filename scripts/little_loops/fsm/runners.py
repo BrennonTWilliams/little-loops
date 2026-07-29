@@ -221,6 +221,13 @@ class DefaultActionRunner:
         # deadline before each read. This closes the timeout dead-zone in the old
         # `for line in process.stdout` pattern which blocked indefinitely when a
         # shell process hung before producing any output.
+        # start_new_session=True puts bash in its own process group so the
+        # _kill_process_group() call on timeout below reaps the whole tree
+        # (bash -> node -> chrome-headless-shell ...) rather than the runner's
+        # own group. Without it the child inherits the ll-loop process group and
+        # os.killpg() SIGKILLs the runner itself instead of the hung command
+        # (BUG-2901). Matches subprocess_utils.run_claude_command() and
+        # mcp_call, the other two _kill_process_group callers.
         cmd = ["bash", "-c", action]
         process = subprocess.Popen(
             cmd,
@@ -228,6 +235,7 @@ class DefaultActionRunner:
             stderr=subprocess.PIPE,
             text=True,
             cwd=working_dir,
+            start_new_session=True,
         )
         self._current_process = process
         deadline = time.time() + timeout
