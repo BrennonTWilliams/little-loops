@@ -118,7 +118,7 @@ into `LLHookEvent` payloads.
 
 | Surface                  | Claude Code               | OpenCode                  | Codex CLI                 | Gemini CLI                | Kimi Code |
 | ------------------------ | ------------------------- | ------------------------- | ------------------------- | ------------------------- | --------- |
-| Slash-command discovery  | ✓ `.claude/commands/*.md` | ✓ via plugin registration | ✓ — `commands/*.md` bridged to `skills/ll-<name>/SKILL.md` by `ll-adapt --host codex` (FEAT-1493)[^cmds] | (deferred)[^gemini] — `.gemini/commands/*.toml`; TOML format; bridge script needed | ✓ — `kimi.plugin.json` (plugin id `ll`) registers `commands/*.md` as `/ll:<name>` (same namespace as the Claude plugin); project-local bridged skills via `ll-adapt --host kimi-code --apply` (FEAT-2916)[^kimi] |
+| Slash-command discovery  | ✓ `.claude/commands/*.md` | ✓ via plugin registration | ✓ — `commands/*.md` bridged to `skills/ll-<name>/SKILL.md` by `ll-adapt --host codex` (FEAT-1493)[^cmds] | (deferred)[^gemini] — `.gemini/commands/*.toml`; TOML format; bridge script needed | ✓ — `kimi.plugin.json` (plugin id `ll`) registers `commands/*.md` as `/ll:<name>` (confirmed working on 0.30.0; plugin **hooks** are inert — separate issue)[^kimiplugin]; project-local bridged skills via `ll-adapt --host kimi-code --apply` (FEAT-2916)[^kimi] |
 | Skill discovery          | ✓ `.claude/skills/*/SKILL.md` | ✓ via plugin registration | ✓ — `~/.codex/skills/<name>/SKILL.md`; all ll skills adapted by `ll-adapt --host codex` (FEAT-1486)[^cmds] | (deferred)[^gemini] — `.gemini/skills/<name>/SKILL.md`; compatible format; minor adaptation (add `name:`) | ✓ — `.kimi-code/skills/` is a native scan dir; SKILL.md near-1:1 (extra frontmatter keys tolerated)[^kimi] |
 
 [^cmds]: Codex has no `.codex/prompts/` slash-command path (that reference in
@@ -348,11 +348,22 @@ the adapter.
     *resolution* works (FEAT-2918), but `ll-session backfill` message
     *extraction* does not parse them yet (ENH-2918 follow-up).
 
+[^kimiplugin]: **BUG-2921** — plugin-manifest hooks **fire** on kimi 0.30.0
+    in TUI sessions (verified via `hook_events` telemetry; `/plugins info`
+    renders no Hooks section — a display gap, not a failure), and `/ll:*`
+    commands work. Two caveats: (1) `kimi -p` print mode does **not** fire
+    plugin-sourced hooks — headless automation gets hooks only from the
+    managed `[[hooks]]` block in `~/.kimi-code/config.toml`
+    (`ll-init --hosts kimi-code`); (2) kimi spawns plugin hooks with
+    cwd = plugin root, so ll shims `cd` into the payload's project dir —
+    config and telemetry resolve against the project's `.ll/`, never the
+    managed plugin copy.
+
 ## Installation
 
 | Action                              | Claude Code                   | OpenCode                                 | Codex CLI                                | Kimi Code |
 | ----------------------------------- | ----------------------------- | ---------------------------------------- | ---------------------------------------- | --------- |
-| Install command                     | Plugin auto-enables           | `bun install` under `hooks/adapters/opencode/` | `ll-init --hosts codex` writes `.codex/hooks.json` | `ll-init --hosts kimi-code` installs a managed `[[hooks]]` block into `~/.kimi-code/config.toml` (user-level — kimi has no project-local hook file); optional plugin install of repo-root `kimi.plugin.json` via `/plugins install` (per-user only) |
+| Install command                     | Plugin auto-enables           | `bun install` under `hooks/adapters/opencode/` | `ll-init --hosts codex` writes `.codex/hooks.json` | `ll-init --hosts kimi-code` installs a managed `[[hooks]]` block into `~/.kimi-code/config.toml` (user-level — kimi has no project-local hook file; **required for hooks in `kimi -p` automation**[^kimiplugin]); optional plugin install of repo-root `kimi.plugin.json` via `/plugins install` (per-user only; covers interactive TUI sessions) |
 | Trust prompt on first run           | N/A (plugin trust model)      | N/A                                      | **Yes** — Codex shows a hook-trust dialog; user must "Trust All" or "Review Hooks" before hooks fire | N/A — no trust dialog; hooks take effect in new sessions |
 | Host identification env var         | (default, no var needed)      | `LL_HOOK_HOST=opencode`                  | `LL_HOOK_HOST=codex`                     | `LL_HOOK_HOST=kimi-code` |
 | Adapter runtime                     | Bash + Python                 | TypeScript / Bun + Python                | Bash + Python                            | Bash + Python |

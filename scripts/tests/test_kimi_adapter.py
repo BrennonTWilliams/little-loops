@@ -77,7 +77,11 @@ class TestKimiAdapterSentinels:
         for shim, intent in EXPECTED_SHIMS.values():
             body = (ADAPTER_DIR / shim).read_text(encoding="utf-8")
             assert "export LL_HOOK_HOST=kimi-code" in body, f"{shim} missing host export"
-            assert f"python -m little_loops.hooks {intent}" in body, (
+            # BUG-2921: shims resolve the interpreter via LL_PYTHON/probe
+            # rather than a bare `python` (plugin hooks may spawn with a
+            # minimal PATH).
+            assert "LL_PYTHON" in body, f"{shim} missing LL_PYTHON interpreter resolution"
+            assert f'"$PY" -m little_loops.hooks {intent}' in body, (
                 f"{shim} must dispatch the {intent} intent"
             )
 
@@ -235,3 +239,54 @@ class TestKimiAdapterIntegration:
             },
             tmp_path,
         )
+
+    def test_shim_cd_into_payload_cwd(self, tmp_path: Path) -> None:
+        """BUG-2921: shims cd into the payload's project dir before dispatching.
+
+        Kimi spawns plugin hooks with cwd = plugin root; the shim must relocate
+        to the payload's ``cwd`` so config and telemetry resolve against the
+        project's ``.ll/`` rather than the managed plugin copy.
+        """
+        proj_dir = tmp_path / "proj"
+        proj_dir.mkdir()
+        fake_pkg = tmp_path / "fake_pkg"
+        ll_dir = fake_pkg / "little_loops" / "hooks"
+        ll_dir.mkdir(parents=True)
+        (fake_pkg / "little_loops" / "__init__.py").write_text("")
+        (ll_dir / "__init__.py").write_text("")
+        sentinel = tmp_path / "cwd-sentinel.txt"
+        (ll_dir / "__main__.py").write_text(
+            textwrap.dedent(
+                f"""
+                import os, sys
+                with open({str(sentinel)!r}, "w") as f:
+                    f.write(os.getcwd())
+                sys.exit(0)
+                """
+            ).strip()
+        )
+
+        full_env = {**os.environ, "PYTHONPATH": str(fake_pkg)}
+        full_env.pop("LL_HOOK_HOST", None)
+        payload = {
+            "hook_event_name": "SessionStart",
+            "session_id": "test-cd",
+            "cwd": str(proj_dir),
+            "source": "startup",
+        }
+        result = subprocess.run(
+            [BASH, str(ADAPTER_DIR / "session-start.sh")],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            timeout=20,
+            # Spawn from somewhere OTHER than the payload cwd — the shim must
+            # relocate away from this directory.
+            cwd=str(tmp_path),
+            env=full_env,
+        )
+        assert result.returncode == 0, (
+            f"adapter exited {result.returncode}; stderr={result.stderr!r}"
+        )
+        assert sentinel.is_file(), f"sentinel not written; stderr={result.stderr!r}"
+        assert sentinel.read_text() == str(proj_dir)

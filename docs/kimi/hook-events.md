@@ -57,8 +57,14 @@ For blockable events, kimi also honors stdout JSON of the form `{"hookSpecificOu
 
 ## Where hooks are declared
 
-1. **Managed `[[hooks]]` block** (default) — `ll-init --hosts kimi-code` installs a marker-delimited block into the **user-level** `$KIMI_CODE_HOME/config.toml` (default `~/.kimi-code/config.toml`). Entry fields: `event`, `matcher` (regex), `command`, `timeout`. Kimi has no project-local hook file, so this is the only ll-init target; see [Getting Started](getting-started.md#install).
+1. **Managed `[[hooks]]` block** (default) — `ll-init --hosts kimi-code` installs a marker-delimited block into the **user-level** `$KIMI_CODE_HOME/config.toml` (default `~/.kimi-code/config.toml`). Entry fields: `event`, `matcher` (regex), `command`, `timeout`. Kimi has no project-local hook file, so this is the only ll-init target; see [Getting Started](getting-started.md#install). **This is the only route that fires in `kimi -p` print mode** (see caveats below), so automation setups should install it even when the plugin is present.
 2. **Plugin manifest** — the `hooks` array of `kimi.plugin.json` (FEAT-2917) declares the same eight events with `./`-relative command paths. Plugin hooks run with cwd = plugin root and additionally receive `KIMI_CODE_HOME` and `KIMI_PLUGIN_ROOT` in the environment.
+
+### Caveats verified on kimi 0.30.0 (BUG-2921)
+
+- **Print mode does not fire plugin hooks.** `kimi -p` sessions do not load plugin-sourced hooks (config.toml `[[hooks]]` fire fine in print mode). Headless automation (`ll-auto` via `kimi -p`) therefore gets little-loops hooks only from the managed `[[hooks]]` block.
+- **`/plugins info` renders no Hooks section** even when plugin hooks are loaded and firing — a display gap, not a failure. Verify firing via `.ll/history.db` `hook_events` instead.
+- **Plugin hooks spawn with cwd = plugin root.** little-loops shims `cd` into the payload's `cwd` before dispatching, so config and telemetry always resolve against the *project's* `.ll/` (without this, telemetry lands in the managed plugin copy's database).
 
 ### Legacy `hooks/scripts/*.sh` are Claude-only
 

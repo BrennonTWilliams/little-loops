@@ -15,5 +15,11 @@
 #
 export LL_HOOK_HOST=kimi-code
 INPUT=$(cat)
-echo "$INPUT" | python -m little_loops.hooks session_end
+# Kimi spawns plugin hooks with cwd = plugin root; relocate to the payload's
+# project directory so config and telemetry resolve against the project's
+# .ll/ rather than the managed plugin copy (BUG-2921).
+PAYLOAD_CWD=$(printf '%s' "$INPUT" | sed -n 's/.*"cwd":[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)
+if [ -n "$PAYLOAD_CWD" ] && [ -d "$PAYLOAD_CWD" ]; then cd "$PAYLOAD_CWD" || true; fi
+PY="${LL_PYTHON:-$(command -v python3 || command -v python || echo python)}"
+echo "$INPUT" | "$PY" -m little_loops.hooks session_end
 exit $?
