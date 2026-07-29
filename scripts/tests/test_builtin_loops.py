@@ -4663,6 +4663,186 @@ class TestAutodevLoop:
             f"must fall back to 'already_resolved', got {skipped!r}"
         )
 
+    # ---------------------------------------------------------------
+    # ENH-2909: blocked_by pre-flight gate at dequeue
+    # ---------------------------------------------------------------
+
+    def test_check_decision_at_dequeue_routes_to_check_blockers_at_dequeue(
+        self, data: dict
+    ) -> None:
+        """ENH-2909: check_decision_at_dequeue's on_no/on_error must route to the
+        new check_blockers_at_dequeue gate (inserted between it and
+        refine_current), not directly to refine_current."""
+        state = data["states"].get("check_decision_at_dequeue", {})
+        assert state.get("on_no") == "check_blockers_at_dequeue", (
+            f"check_decision_at_dequeue.on_no should be 'check_blockers_at_dequeue', "
+            f"got {state.get('on_no')!r}"
+        )
+        assert state.get("on_error") == "check_blockers_at_dequeue", (
+            f"check_decision_at_dequeue.on_error should be 'check_blockers_at_dequeue', "
+            f"got {state.get('on_error')!r}"
+        )
+
+    def test_check_blockers_at_dequeue_routing(self, data: dict) -> None:
+        """ENH-2909: BLOCKED -> skip_blocked; otherwise continue to refine_current.
+        on_error must fail open (process, never block the queue)."""
+        state = data["states"].get("check_blockers_at_dequeue", {})
+        assert state, "check_blockers_at_dequeue state must exist (ENH-2909)"
+        assert state.get("action_type") == "shell"
+        assert state.get("on_yes") == "skip_blocked"
+        assert state.get("on_no") == "refine_current"
+        assert state.get("on_error") == "refine_current", (
+            "on_error must fail open to refine_current so a gate error never "
+            f"blocks the queue, got {state.get('on_error')!r}"
+        )
+        evaluate = state.get("evaluate", {})
+        assert evaluate.get("type") == "output_contains"
+        assert evaluate.get("pattern") == "BLOCKED"
+
+    def test_skip_blocked_ledgers_stem_and_clears_inflight(self, data: dict) -> None:
+        """ENH-2909: skip_blocked writes 'ID  blocked_by_unmet', clears
+        autodev-inflight, and routes back to dequeue_next — without setting
+        status:deferred (unlike rn-implement's mark_deferred; see Scope
+        Boundaries)."""
+        state = data["states"].get("skip_blocked", {})
+        assert state, "skip_blocked state must exist (ENH-2909)"
+        assert state.get("next") == "dequeue_next"
+        assert state.get("on_error") == "dequeue_next"
+        action = state.get("action", "")
+        assert "autodev-skipped.txt" in action
+        assert "autodev-inflight" in action
+        assert "set-status" not in action, (
+            "skip_blocked must not set status:deferred — the pre-flight parking "
+            "here is a queue-advance-only skip, not a status transition (ENH-2909 "
+            "Scope Boundaries)"
+        )
+        run_dir_marker = "${context.run_dir}"
+        assert run_dir_marker in action
+
+    def test_check_blockers_at_dequeue_classifies(self, data: dict, tmp_path: Path) -> None:
+        """ENH-2909: exercise the ported check_blocked_by shell body — it parses
+        the issue file's own frontmatter (not `ll-issues show --json`), so the
+        stub setup creates a real temp .issues/enhancements/*.md file plus a
+        stubbed `ll-issues list --json --status done`."""
+        state = data["states"].get("check_blockers_at_dequeue", {})
+        action = state.get("action", "")
+
+        issues_dir = tmp_path / ".issues" / "enhancements"
+        issues_dir.mkdir(parents=True)
+
+        def _write_issue(issue_id: str, blocked_by: list[str]) -> None:
+            blocked_yaml = (
+                "[]" if not blocked_by else "[" + ", ".join(blocked_by) + "]"
+            )
+            (issues_dir / f"P3-{issue_id}-example.md").write_text(
+                f"---\nid: {issue_id}\ntype: {issue_id.split('-')[0]}\n"
+                f"blocked_by: {blocked_yaml}\n---\n\n# {issue_id}\n"
+            )
+
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        stub = bin_dir / "ll-issues"
+        stub.write_text(
+            "#!/bin/sh\n"
+            'echo \'[{"id": "ENH-9001"}]\'\n'
+        )
+        stub.chmod(0o755)
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+
+        # done blocker -> READY
+        _write_issue("ENH-9100", ["ENH-9001"])
+        script = action.replace("${captured.input.output}", "ENH-9100")
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, env=env
+        )
+        assert result.returncode == 0, result.stderr
+        assert "READY" in result.stdout, result.stdout
+
+        # open (unresolved) blocker -> BLOCKED
+        _write_issue("ENH-9101", ["ENH-9002"])
+        script = action.replace("${captured.input.output}", "ENH-9101")
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, env=env
+        )
+        assert result.returncode == 0, result.stderr
+        assert "BLOCKED" in result.stdout, result.stdout
+
+        # no blockers -> READY
+        _write_issue("ENH-9102", [])
+        script = action.replace("${captured.input.output}", "ENH-9102")
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, env=env
+        )
+        assert result.returncode == 0, result.stderr
+        assert "READY" in result.stdout, result.stdout
+
+    def test_check_blockers_at_dequeue_deferred_blocker_still_unmet(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-2897 regression guard: a `deferred` blocker does NOT resolve the
+        edge (only done/cancelled do) — the issue must still classify BLOCKED."""
+        state = data["states"].get("check_blockers_at_dequeue", {})
+        action = state.get("action", "")
+
+        issues_dir = tmp_path / ".issues" / "enhancements"
+        issues_dir.mkdir(parents=True)
+        (issues_dir / "P3-ENH-9200-example.md").write_text(
+            "---\nid: ENH-9200\ntype: ENH\nblocked_by: [ENH-9003]\n---\n\n# ENH-9200\n"
+        )
+
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        stub = bin_dir / "ll-issues"
+        # `ll-issues list --json --status done` never includes a deferred
+        # issue's ID (deferred is non-terminal, BUG-2897) -> empty done set.
+        stub.write_text("#!/bin/sh\necho '[]'\n")
+        stub.chmod(0o755)
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+
+        script = action.replace("${captured.input.output}", "ENH-9200")
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, env=env
+        )
+        assert result.returncode == 0, result.stderr
+        assert "BLOCKED" in result.stdout, (
+            f"a deferred blocker must still classify BLOCKED (BUG-2897), got {result.stdout!r}"
+        )
+
+    def test_finalize_done_buckets_blocked_by_unmet_separately(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """ENH-2909: blocked_by_unmet skips get their own summary bucket and are
+        excluded from both the generic Skipped bucket and Already-resolved
+        (mirrors ENH-2868's already_* split)."""
+        state = data["states"].get("finalize_done", {})
+        action = state.get("action", "")
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        (run_dir / "autodev-skipped.txt").write_text(
+            "ENH-1001  refine_failed\n"
+            "BUG-2865  already_completed\n"
+            "FEAT-2001  blocked_by_unmet\n"
+        )
+        script = action.replace("${context.run_dir}", str(run_dir))
+        script = script.replace("$${", "${")
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
+        )
+        assert result.returncode == 0, f"finalize_done failed: {result.stderr}"
+        out = result.stdout
+        blocked_line = [ln for ln in out.splitlines() if ln.startswith("Blocked-by-unmet")]
+        assert blocked_line, f"expected a 'Blocked-by-unmet' bucket line, got:\n{out}"
+        assert "(1)" in blocked_line[0]
+        assert "FEAT-2001" in blocked_line[0]
+        skipped_line = [ln for ln in out.splitlines() if ln.startswith("Skipped")][0]
+        already_line = [ln for ln in out.splitlines() if ln.startswith("Already-resolved")][0]
+        assert "FEAT-2001" not in skipped_line, (
+            f"FEAT-2001 must not double-count in the generic Skipped bucket: {skipped_line!r}"
+        )
+        assert "FEAT-2001" not in already_line, (
+            f"FEAT-2001 must not double-count in Already-resolved: {already_line!r}"
+        )
+
     def test_finalize_done_buckets_already_resolved_separately(
         self, data: dict, tmp_path: Path
     ) -> None:

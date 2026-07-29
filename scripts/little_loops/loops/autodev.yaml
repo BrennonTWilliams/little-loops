@@ -223,8 +223,135 @@ states:
     action: "ll-issues check-flag ${captured.input.output} decision_needed"
     fragment: shell_exit
     on_yes: check_decision_decidable
+    on_no: check_blockers_at_dequeue
+    on_error: check_blockers_at_dequeue
+
+  check_blockers_at_dequeue:
+    # ENH-2909: cheap upfront gate ported from rn-implement.yaml's check_blocked_by
+    # (ENH-2008, lines ~407-510). If the dequeued issue has unmet `blocked_by`
+    # frontmatter deps (any blocker not yet done/cancelled), skip it BEFORE
+    # spending a full refine → wire → confidence-check cycle on a structurally
+    # doomed issue — that chain can never move scores past a declared blocker.
+    #
+    # Deliberately parses the issue file's YAML frontmatter directly rather than
+    # `ll-issues show --json`, matching rn-implement's posture: shell-escape
+    # safety and consistency with the existing get_frontmatter/get_blocked_by
+    # idiom (handles both list and comma-separated scalar forms).
+    #
+    # BUG-2897: `deferred` is non-terminal for dependency purposes — only
+    # done/cancelled resolve a blocking edge, so a deferred blocker still counts
+    # as unmet here.
+    #
+    # Fail-open: unresolved issue file, parse error, or an inability to compute
+    # the done-set all yield no unmet deps -> READY -> refine_current.
+    # Processing is never blocked on a gate error.
+    action_type: shell
+    action: |
+      ID="${captured.input.output}"
+      UNMET=$(python3 << 'PYEOF'
+      import re, subprocess, json, sys
+      from pathlib import Path
+      try:
+          import yaml as _yaml
+          def _parse_yaml(text):
+              return _yaml.safe_load(text) or {}
+      except ImportError:
+          def _parse_yaml(text):
+              result = {}
+              for line in text.splitlines():
+                  m = re.match(r'^([\w-]+):\s*(.*)', line)
+                  if m:
+                      result[m.group(1)] = m.group(2).strip()
+              return result
+
+      issue_id = "${captured.input.output}"
+
+      issue_path = None
+      for d in (".issues/bugs", ".issues/features", ".issues/enhancements", ".issues/epics"):
+          dp = Path(d)
+          if not dp.exists():
+              continue
+          for p in dp.glob("*.md"):
+              m = re.match(r'P\d-([A-Z]+-\d+)-', p.name)
+              if m and m.group(1) == issue_id:
+                  issue_path = p
+                  break
+          if issue_path:
+              break
+
+      if not issue_path:
+          print("UNRESOLVED", file=sys.stderr)
+          sys.exit(0)  # unresolved -> fail-open
+
+      try:
+          content = issue_path.read_text()
+          m = re.match(r'^---\n(.*?)\n---', content, re.DOTALL)
+          fm = _parse_yaml(m.group(1)) if m else {}
+      except Exception:
+          print("PARSE_ERROR", file=sys.stderr)
+          sys.exit(0)  # parse error -> fail-open
+
+      val = fm.get("blocked_by") or []
+      if isinstance(val, str):
+          deps = [v.strip() for v in val.split(",") if v.strip()]
+      else:
+          deps = [str(v).strip() for v in (val if isinstance(val, list) else []) if v]
+
+      if not deps:
+          sys.exit(0)  # no deps -> ready
+
+      done_ids = set()
+      try:
+          r = subprocess.run(
+              ["ll-issues", "list", "--json", "--status", "done"],
+              capture_output=True, text=True, timeout=30,
+          )
+          if r.returncode == 0:
+              done_ids = {i["id"] for i in json.loads(r.stdout) if "id" in i}
+          else:
+              print("DONE_SET_ERROR", file=sys.stderr)
+              sys.exit(0)  # cannot determine done set -> fail-open
+      except Exception:
+          print("DONE_SET_ERROR", file=sys.stderr)
+          sys.exit(0)  # fail-open
+
+      # BUG-2897: deferred is non-terminal for dependency purposes; only
+      # done/cancelled resolve an edge. done_ids above is already scoped to
+      # --status done, so a deferred blocker naturally stays "unmet" here.
+      unmet = [d for d in deps if d not in done_ids]
+      if unmet:
+          print(" ".join(unmet))
+      PYEOF
+      )
+      if [ -n "$UNMET" ]; then
+        echo "[BLOCKED_BY] $ID has unmet deps:$UNMET"
+        echo "BLOCKED"
+      else
+        echo "READY"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "BLOCKED"
+    capture: blockers_status
+    on_yes: skip_blocked
     on_no: refine_current
     on_error: refine_current
+
+  skip_blocked:
+    # ENH-2909: ledger a pre-flight blocker skip and advance the queue. Uses
+    # the `blocked_by_unmet` reason stem so finalize_done can surface it as its
+    # own bucket, mirroring ENH-2868's already_* bucket. Unlike rn-implement's
+    # mark_deferred, this does NOT set status:deferred — the issue remains
+    # `open` and will be re-checked on its next dequeue (queue-scheduling
+    # changes are out of scope, per the issue's Scope Boundaries).
+    action: |
+      echo "${captured.input.output}  blocked_by_unmet" >> ${context.run_dir}/autodev-skipped.txt
+      rm -f ${context.run_dir}/autodev-inflight
+      echo "[SKIP-BLOCKED] ${captured.input.output} has unmet blocked_by deps; no refinement attempted"
+    fragment: queue_track
+    action_type: shell
+    next: dequeue_next
+    on_error: dequeue_next
 
   refine_current:
     # Delegate format → refine → wire → confidence-check for a single issue to
@@ -1827,14 +1954,20 @@ states:
       # ENH-2868: likewise exclude pre-flight status skips (already_done /
       # already_cancelled / already_deferred) — these never entered refinement
       # at all and are not a failure signal.
+      # ENH-2909: exclude blocked_by_unmet pre-flight skips from the generic
+      # Skipped bucket too — these never entered refinement (see the already_*
+      # exclusion below for the identical ENH-2868 precedent).
       SKIPPED_IDS=$(cat ${context.run_dir}/autodev-skipped.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | grep -v 'refine_failed_infra' \
-        | grep -v '[[:space:]]already_' | sort -u || true)
+        | grep -v '[[:space:]]already_' | grep -v '[[:space:]]blocked_by_unmet' \
+        | sort -u || true)
       INFRA_SKIPPED_IDS=$(grep 'refine_failed_infra' ${context.run_dir}/autodev-skipped.txt 2>/dev/null \
         | awk '{print $1}' | grep -v '^[[:space:]]*$' | sort -u || true)
       ALREADY_RESOLVED_IDS=$(grep '[[:space:]]already_' ${context.run_dir}/autodev-skipped.txt 2>/dev/null \
         | awk '{print $1" ("$2")"}' | sed 's/already_//' \
         | grep -v '^[[:space:]]*$' | sort -u || true)
+      BLOCKED_BY_UNMET_IDS=$(grep '[[:space:]]blocked_by_unmet' ${context.run_dir}/autodev-skipped.txt 2>/dev/null \
+        | awk '{print $1}' | grep -v '^[[:space:]]*$' | sort -u || true)
       GATE_BLOCKED_IDS=$(cat ${context.run_dir}/autodev-gate-blocked.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
       DECISION_UNRESOLVED_IDS=$(cat ${context.run_dir}/autodev-decision-unresolved.txt 2>/dev/null \
@@ -1848,6 +1981,8 @@ states:
       [ -z "$INFRA_SKIPPED_COUNT" ] && INFRA_SKIPPED_COUNT=0
       ALREADY_RESOLVED_COUNT=$(echo "$ALREADY_RESOLVED_IDS" | grep -c '[^[:space:]]' || true)
       [ -z "$ALREADY_RESOLVED_COUNT" ] && ALREADY_RESOLVED_COUNT=0
+      BLOCKED_BY_UNMET_COUNT=$(echo "$BLOCKED_BY_UNMET_IDS" | grep -c '[^[:space:]]' || true)
+      [ -z "$BLOCKED_BY_UNMET_COUNT" ] && BLOCKED_BY_UNMET_COUNT=0
       GATE_BLOCKED_COUNT=$(echo "$GATE_BLOCKED_IDS" | grep -c '[^[:space:]]' || true)
       [ -z "$GATE_BLOCKED_COUNT" ] && GATE_BLOCKED_COUNT=0
       DECISION_UNRESOLVED_COUNT=$(echo "$DECISION_UNRESOLVED_IDS" | grep -c '[^[:space:]]' || true)
@@ -1873,6 +2008,7 @@ states:
       SKIPPED_LIST=$(echo "$SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
       INFRA_SKIPPED_LIST=$(echo "$INFRA_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
       ALREADY_RESOLVED_LIST=$(echo "$ALREADY_RESOLVED_IDS" | tr '\n' ',' | sed 's/,$//')
+      BLOCKED_BY_UNMET_LIST=$(echo "$BLOCKED_BY_UNMET_IDS" | tr '\n' ',' | sed 's/,$//')
       GATE_BLOCKED_LIST=$(echo "$GATE_BLOCKED_IDS" | tr '\n' ',' | sed 's/,$//')
       DECISION_UNRESOLVED_LIST=$(echo "$DECISION_UNRESOLVED_IDS" | tr '\n' ',' | sed 's/,$//')
       UNVERIFIED_LIST=$(echo "$UNVERIFIED_IDS" | tr '\n' ',' | sed 's/,$//')
@@ -1885,6 +2021,9 @@ states:
       fi
       if [ "$ALREADY_RESOLVED_COUNT" -gt 0 ]; then
         printf 'Already-resolved (%d): %s  (pre-flight skip — no refinement attempted)\n' "$ALREADY_RESOLVED_COUNT" "$ALREADY_RESOLVED_LIST"
+      fi
+      if [ "$BLOCKED_BY_UNMET_COUNT" -gt 0 ]; then
+        printf 'Blocked-by-unmet (%d): %s  (unmet blocked_by deps — resolve them, then re-run)\n' "$BLOCKED_BY_UNMET_COUNT" "$BLOCKED_BY_UNMET_LIST"
       fi
       if [ "$GATE_BLOCKED_COUNT" -gt 0 ]; then
         printf 'Gate-blocked (%d): %s  (prove deps with /ll:explore-api, then re-run)\n' "$GATE_BLOCKED_COUNT" "$GATE_BLOCKED_LIST"

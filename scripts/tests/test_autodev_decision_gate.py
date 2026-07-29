@@ -148,22 +148,25 @@ class TestCheckDecisionAtDequeueStructural:
     def test_check_decision_at_dequeue_on_no_routes_to_refine_current(
         self, data: dict[str, Any]
     ) -> None:
-        """decision_needed=false (or absent) must route to refine_current."""
+        """decision_needed=false (or absent) must route to check_blockers_at_dequeue
+        (ENH-2909's blocked_by pre-flight gate, inserted between the decision
+        gate and refine_current)."""
         state = data["states"]["check_decision_at_dequeue"]
-        assert state.get("on_no") == "refine_current", (
-            f"check_decision_at_dequeue.on_no should be 'refine_current', "
+        assert state.get("on_no") == "check_blockers_at_dequeue", (
+            f"check_decision_at_dequeue.on_no should be 'check_blockers_at_dequeue', "
             f"got {state.get('on_no')!r}"
         )
 
     def test_check_decision_at_dequeue_on_error_routes_to_refine_current(
         self, data: dict[str, Any]
     ) -> None:
-        """An ll-issues error (e.g. issue missing) must fall through to refine_current
+        """An ll-issues error (e.g. issue missing) must fall through to
+        check_blockers_at_dequeue (which itself fails open to refine_current)
         rather than blocking the queue — same fail-open semantics as
         check_decision_after_refine.on_error."""
         state = data["states"]["check_decision_at_dequeue"]
-        assert state.get("on_error") == "refine_current", (
-            f"check_decision_at_dequeue.on_error should be 'refine_current' "
+        assert state.get("on_error") == "check_blockers_at_dequeue", (
+            f"check_decision_at_dequeue.on_error should be 'check_blockers_at_dequeue' "
             f"(fail-open), got {state.get('on_error')!r}"
         )
 
