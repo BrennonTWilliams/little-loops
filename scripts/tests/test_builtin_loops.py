@@ -10198,7 +10198,7 @@ class TestCodeRunGateOracle:
         config = EvaluateConfig.from_dict(data["states"]["run_test"]["evaluate"])
         assert config.key == "pass_rate"
 
-        ctx = InterpolationContext()
+        ctx = InterpolationContext(context={"min_pass_rate": 0.95})
         yes_result = evaluate(config, "exit_code=0 pass_rate=0.99", 0, ctx)
         assert yes_result.verdict == "yes"
 
@@ -10283,6 +10283,140 @@ class TestCodeRunGateOracle:
         assert test_results.splitlines()[0].startswith("SKIP")
         assert "exit_code=" not in test_results
 
+    def _run_test_and_aggregate(
+        self, data: dict, run_dir, commands_json: str
+    ):
+        """Shared harness: run run_test's real action, then aggregate's real
+        action, against a staged run_dir. Returns (run_test_result,
+        aggregate_result, verdict_file_contents)."""
+        import subprocess
+
+        (run_dir / "commands.json").write_text(commands_json, encoding="utf-8")
+
+        run_test_action = data["states"]["run_test"]["action"]
+        shell_run_test = run_test_action.replace("$${", "${").replace(
+            "${context.run_dir}", str(run_dir)
+        )
+        run_test_result = subprocess.run(
+            ["bash", "-c", shell_run_test], capture_output=True, text=True, timeout=30
+        )
+
+        aggregate_action = data["states"]["aggregate"]["action"]
+        shell_aggregate = (
+            aggregate_action.replace("$${", "${")
+            .replace("${context.run_dir}", str(run_dir))
+            .replace("${context.issue_id}", "TEST")
+            .replace("${context.min_pass_rate}", "0.95")
+        )
+        aggregate_result = subprocess.run(
+            ["bash", "-c", shell_aggregate], capture_output=True, text=True, timeout=30
+        )
+        return run_test_result, aggregate_result
+
+    def test_aggregate_detects_pytest_json_pass_rate_below_threshold(
+        self, data: dict, tmp_path
+    ) -> None:
+        """ENH-2905: run_test computes a fractional pass_rate from
+        pytest.json (exit 0, 6/10 passing). aggregate must independently
+        detect this is below min_pass_rate (default 0.95) and yield
+        GATE_FAILED, even though the test_cmd itself exited 0."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "pytest.json").write_text(
+            '{"summary": {"total": 10, "passed": 6}}', encoding="utf-8"
+        )
+
+        run_test_result, aggregate_result = self._run_test_and_aggregate(
+            data, run_dir, '{"test_cmd": "exit 0"}'
+        )
+        assert run_test_result.returncode == 0
+        test_results = (run_dir / "test-results.txt").read_text()
+        assert "pass_rate=0.6" in test_results
+
+        assert aggregate_result.returncode == 0, aggregate_result.stderr
+        assert aggregate_result.stdout.strip().splitlines()[-1] == "GATE_FAILED", (
+            f"aggregate must detect pass_rate=0.6 < min_pass_rate=0.95 and fail "
+            f"the gate; stdout={aggregate_result.stdout!r}"
+        )
+
+    def test_aggregate_pass_rate_at_or_above_threshold_still_passes(
+        self, data: dict, tmp_path
+    ) -> None:
+        """A pytest.json pass_rate at/above min_pass_rate must still yield
+        GATE_PASS (no false positive from the new detector)."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "pytest.json").write_text(
+            '{"summary": {"total": 10, "passed": 10}}', encoding="utf-8"
+        )
+
+        run_test_result, aggregate_result = self._run_test_and_aggregate(
+            data, run_dir, '{"test_cmd": "exit 0"}'
+        )
+        assert run_test_result.returncode == 0
+        assert aggregate_result.stdout.strip().splitlines()[-1] == "GATE_PASS"
+
+    def test_aggregate_skip_path_unaffected_by_pass_rate_detector(
+        self, data: dict, tmp_path
+    ) -> None:
+        """SKIP path writes pass_rate=1.0, but the SKIP* first-line guard
+        must short-circuit before the new detector runs at all (so a
+        misconfigured min_pass_rate > 1.0 wouldn't spuriously fail a skip)."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+
+        run_test_result, aggregate_result = self._run_test_and_aggregate(
+            data, run_dir, '{"test_cmd": null}'
+        )
+        assert run_test_result.returncode == 0
+        assert aggregate_result.stdout.strip().splitlines()[-1] == "GATE_SKIP"
+
+    def test_aggregate_honors_non_default_min_pass_rate(self, data: dict, tmp_path) -> None:
+        """Regression guard for the target: wiring — a non-default
+        min_pass_rate must actually change the verdict. A pass_rate of 0.6
+        fails the 0.95 default but must pass when min_pass_rate=0.5."""
+        import subprocess
+
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "pytest.json").write_text(
+            '{"summary": {"total": 10, "passed": 6}}', encoding="utf-8"
+        )
+        (run_dir / "commands.json").write_text('{"test_cmd": "exit 0"}', encoding="utf-8")
+
+        run_test_action = data["states"]["run_test"]["action"]
+        shell_run_test = run_test_action.replace("$${", "${").replace(
+            "${context.run_dir}", str(run_dir)
+        )
+        run_test_result = subprocess.run(
+            ["bash", "-c", shell_run_test], capture_output=True, text=True, timeout=30
+        )
+        assert run_test_result.returncode == 0
+
+        aggregate_action = data["states"]["aggregate"]["action"]
+        shell_aggregate = (
+            aggregate_action.replace("$${", "${")
+            .replace("${context.run_dir}", str(run_dir))
+            .replace("${context.issue_id}", "TEST")
+            .replace("${context.min_pass_rate}", "0.5")
+        )
+        aggregate_result = subprocess.run(
+            ["bash", "-c", shell_aggregate], capture_output=True, text=True, timeout=30
+        )
+        assert aggregate_result.stdout.strip().splitlines()[-1] == "GATE_PASS", (
+            "min_pass_rate=0.5 must let a pass_rate=0.6 run pass — the aggregate "
+            "detector must read ${context.min_pass_rate}, not a hardcoded literal"
+        )
+
+    def test_run_test_evaluator_target_wired_to_min_pass_rate(self, data: dict) -> None:
+        """ENH-2905: run_test's evaluate.target must reference
+        ${context.min_pass_rate}, not the literal 0.95, so the parameter
+        actually governs the per-state verdict too."""
+        target = data["states"]["run_test"]["evaluate"].get("target")
+        assert target == "${context.min_pass_rate}", (
+            f"run_test.evaluate.target must be '${{context.min_pass_rate}}', got {target!r}"
+        )
+
     def test_run_test_stdout_not_double_prefixed(self, data: dict) -> None:
         """BUG-2894: the final echo must not double-prefix pass_rate=, and
         the grep against test-results.txt must be quoted so a space-
@@ -10334,7 +10468,7 @@ class TestCodeRunGateOracle:
         assert result.stdout.strip() == "SKIP pass_rate=1.0"
 
         config = EvaluateConfig.from_dict(data["states"]["run_test"]["evaluate"])
-        ctx = InterpolationContext()
+        ctx = InterpolationContext(context={"min_pass_rate": 0.95})
         skip_result = evaluate(config, result.stdout.strip(), 0, ctx)
         assert skip_result.verdict == "yes"
 

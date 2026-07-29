@@ -2,8 +2,9 @@
 id: ENH-2905
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-07-29T00:00:00Z'
+completed_at: '2026-07-29T03:36:54Z'
 discovered_date: 2026-07-29
 discovered_by: manual
 relates_to:
@@ -12,6 +13,12 @@ relates_to:
 - ENH-2896
 depends_on:
 - BUG-2894
+confidence_score: 100
+outcome_confidence: 96
+score_complexity: 23
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 23
 ---
 
 # ENH-2905: code-run-gate's `aggregate` should honor `min_pass_rate` independently of exit code
@@ -107,6 +114,110 @@ so BUG-2902 could land the higher-value, lower-risk fix first.
 5. Update the two stale comments (lines 204, 207) that already claim
    `min_pass_rate` is honored.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Step 4's open question is resolved — interpolation works.** Traced the
+  exact code path: `EvaluateConfig.target` (`scripts/little_loops/fsm/schema.py:95`,
+  typed `int | float | str | None`) passes an unresolved
+  `"${context.min_pass_rate}"` string through `from_dict` unchanged. The
+  `output_numeric` branch of `evaluate()`
+  (`scripts/little_loops/fsm/evaluators.py:1849-1861`) then does
+  `resolved = interpolate(config.target, context)` followed by
+  `numeric_target = float(resolved)` before calling `evaluate_output_numeric`.
+  This is a dedicated per-field lazy-interpolation step inside the evaluator
+  dispatcher itself (distinct from the whole-action-string interpolation pass
+  the executor runs on shell `action:` bodies — see
+  `[[reference_fsm_action_interpolated_before_bash]]`). So
+  `target: "${context.min_pass_rate}"` (quoted YAML string) will correctly
+  resolve to a float at evaluation time — sub-step 4 can be implemented
+  directly, not gated behind further investigation.
+- **Direct precedent for this exact pattern already exists**: `rn-build.yaml:1061`
+  uses `target: "${context.min_acceptance_pass_rate}"` on an `output_numeric`
+  evaluator — same shape as what step 4 proposes here. Other precedents:
+  `rn-remediate.yaml:899`, `canvas-sketch-generator.yaml:322`,
+  `test-coverage-improvement.yaml:81`, `dataset-curation.yaml:88`.
+- **Confirmed exact current line numbers** (file:
+  `scripts/little_loops/loops/oracles/code-run-gate.yaml`, current as of this
+  refine pass):
+  - `min_pass_rate` parameter declaration: lines 40-45; context default
+    (`min_pass_rate: 0.95`): line 81.
+  - Stale comment claiming the operator is honored: lines 202-204 (state
+    comment) and 205-208 (`description:` field) — both describe intended
+    behavior that doesn't match the literal on line 248.
+  - `run_test`'s hardcoded evaluator: lines 244-248, target literal is on
+    line 248 specifically (`target: 0.95`).
+  - `run_test`'s existing `pass_rate=` sidecar write (already correct,
+    BUG-2894 fixed the double-prefix): line 238 (fallback) / lines 226-234
+    (pytest.json branch) / line 241 (`RATE_LINE` read-back, unused for
+    control flow).
+  - `aggregate`'s per-sidecar-file loop: lines 393-407; the existing
+    `exit_code=[1-9]` grep is line 401; a `pass_rate` check on
+    `test-results.txt` needs to sit in this same loop, scoped only to that
+    filename (the other four sidecars — `build.txt`, `typecheck.txt`,
+    `lint.txt`, `health.txt` — never write a `pass_rate=` line, so an
+    unscoped grep would silently no-op on them, which is harmless but wasted
+    work; scoping to `test-results.txt` is still cleaner and matches the
+    issue's Proposed Solution).
+- **No existing shared helper for `key=value` sidecar parsing** — every state
+  that reads one hand-rolls `grep '^key=' file | tail -1` inline (e.g.
+  `run_test` line 241). There's nothing to reuse; the proposed
+  `grep '^pass_rate=' test-results.txt | cut -d= -f2` in `aggregate` will be a
+  new, self-contained snippet consistent with this file's existing style.
+- **No existing example of a raw `python3 -c` float-threshold *comparison*
+  used for pass/fail branching in bash** — every other pass-rate-vs-threshold
+  check in this codebase routes through the FSM's `output_numeric` evaluator
+  rather than an inline bash/python conditional (e.g. `rl-coding-agent.yaml:86`
+  uses `python3 -c` only for clamping a value, not for a pass/fail decision).
+  The `aggregate` state is a plain shell action with no `evaluate:` gate
+  mid-loop, so the issue's own Proposed Solution (compare via `python3 -c` and
+  set `ANY_FAIL=true`) is the only viable approach here — flagging this as a
+  deliberate, first-of-its-kind pattern in this file rather than an existing
+  convention to copy.
+- **Test file to extend**: `scripts/tests/test_builtin_loops.py`, class
+  `TestCodeRunGateOracle` (lines ~10002-10429). Relevant existing tests to
+  model the four new tests after:
+  - `test_run_test_sidecar_exit_code_actually_detects_failure` (~line 10218)
+    — the closest existing shape: extracts the real `run_test`/`aggregate`
+    action strings from the parsed YAML, de-escapes `$${` → `${`, substitutes
+    `${context.run_dir}`, and runs via `subprocess.run(["bash", "-c", ...])`
+    against a staged sidecar directory. The four new tests in this issue's
+    Implementation Steps should follow this exact harness pattern rather than
+    inventing a new one.
+  - `test_run_test_sidecar_skip_path_unaffected` (~line 10266) — SKIP-path
+    staging pattern to reuse for Implementation Step 3.
+  - `test_oracle_min_pass_rate_has_default` (~line 13326) and
+    `test_rn_remediate_min_pass_rate_default_is_one` (~line 13360) — existing
+    `min_pass_rate` default-wiring assertions; a non-default-value regression
+    test (Implementation Step 4) is a natural sibling to these.
+- **Downstream blast radius, concretely**: `rn-implement.yaml`, `rn-remediate.yaml`,
+  and `rn-refine.yaml` (its `verify_leaf` state) all delegate to
+  `loop: oracles/code-run-gate` — these are the callers that will newly see
+  `GATE_FAILED` for pytest-json-report runs with fractional pass rates once
+  this lands, consistent with the issue's existing Impact section.
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/loops.md:740` — the `min_pass_rate` parameter table row for
+  `oracles/code-run-gate` currently describes only `run_test`'s
+  `output_numeric` evaluator ("Pass-rate threshold for `run_test`'s
+  `output_numeric` evaluator"). Once this issue lands, the parameter also
+  governs `aggregate`'s independent detector — tighten the wording so it
+  doesn't undersell the fix.
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_rn_remediate.py:2079-2082` — `test_run_code_gate_has_with_bindings`'s
+  docstring asserts "The oracle's evaluator target is hardcoded 0.95; the
+  binding is passed for forward-compatibility and per-issue override." This
+  becomes stale prose once `run_test`'s `target:` is wired to
+  `${context.min_pass_rate}` (Implementation Step 5) — the binding is no
+  longer forward-compatibility-only, it's live. Update the docstring; the
+  assertions themselves don't need to change.
+
 ## Implementation Steps
 
 > **Correction 2026-07-29:** step 1 as previously written could not fail. It
@@ -140,6 +251,18 @@ so BUG-2902 could land the higher-value, lower-risk fix first.
    Proposed Solution.
 6. Confirm `ll-loop validate oracles/code-run-gate` passes.
 7. Confirm `python -m pytest scripts/tests/` exits 0.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+8. Update `docs/reference/loops.md:740` — tighten the `min_pass_rate`
+   parameter description to cover `aggregate`'s new detector, not just
+   `run_test`'s evaluator.
+9. Update the stale docstring in
+   `test_rn_remediate.py::test_run_code_gate_has_with_bindings` (~lines
+   2079-2082) — it currently claims the oracle's evaluator target is
+   hardcoded; this issue makes that no longer true.
 
 ## Scope Boundaries
 
@@ -188,6 +311,11 @@ SKIP branch's missing `pass_rate` key) and is a strictly smaller change.
 | `.claude/CLAUDE.md` | Loop Authoring rules |
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-29T03:36:26 - `38399bf0-562e-4769-a6ae-87bf16503216.jsonl`
+- `/ll:ready-issue` - 2026-07-29T03:29:17 - `fc2fa33f-9188-49d7-a7b0-f6181a446a47.jsonl`
+- `/ll:confidence-check` - 2026-07-28T00:00:00 - `4c417210-a37e-48b8-a806-88c6bfb984d0.jsonl`
+- `/ll:wire-issue` - 2026-07-29T03:26:30 - `614ea9f5-f4f0-404d-abfe-2eb7c4fd5aef.jsonl`
+- `/ll:refine-issue` - 2026-07-29T03:21:02 - `14425db7-0a90-4da0-a21e-2434d0f81fee.jsonl`
 - manual - 2026-07-29 - split from BUG-2902's Open Questions per user request
 
 ---

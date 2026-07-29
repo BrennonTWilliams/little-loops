@@ -737,7 +737,7 @@ Used by FEAT-2552's wiring into `rn-implement` / `rn-remediate` (F2b). Safe to c
 |-----------|----------|---------|-------------|
 | `run_dir` | yes | — | Per-invocation absolute path for artifact isolation (MR-3) |
 | `issue_id` | yes | — | Token-channel identifier used in `subloop_outcome_<ID>.txt` |
-| `min_pass_rate` | no | `0.95` | Pass-rate threshold for `run_test`'s `output_numeric` evaluator |
+| `min_pass_rate` | no | `0.95` | Pass-rate threshold, enforced by both `run_test`'s `output_numeric` evaluator and `aggregate`'s independent pass_rate detector |
 | `health_bound_seconds` | no | `10` | `curl --max-time` budget for `service_health` probe |
 | `build_cmd` | no | (from config) | Optional build command — null skips `run_build` |
 | `test_cmd` | no | (from config) | Optional test command — null skips `run_test` |

@@ -2072,8 +2072,9 @@ class TestRunCodeGate:
 
         `min_pass_rate` is a new rn-remediate context default (FEAT-2552:226-229) so
         the sub-loop dispatch never fails context-resolution for issues that don't
-        override it. The oracle's evaluator target is hardcoded 0.95; the binding is
-        passed for forward-compatibility and per-issue override.
+        override it. The oracle's evaluator target is wired to `${context.min_pass_rate}`
+        (ENH-2905); this binding actually governs both `run_test`'s and `aggregate`'s
+        verdicts, not just forward-compatibility.
         """
         data = _load_loop()
         with_bindings = data["states"]["run_code_gate"]["with"]
