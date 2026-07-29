@@ -2,8 +2,9 @@
 id: BUG-2897
 type: bug
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-28T22:29:06Z'
+completed_at: '2026-07-29T02:00:42Z'
 discovered_date: 2026-07-28
 discovered_by: capture-issue
 relates_to:
@@ -391,11 +392,44 @@ to silence legitimate `done` references.
 - `scripts/little_loops/cli/issues/sequence.py` — `cmd_sequence()`
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-29T01:59:59Z - `a8f6832d-1708-4ba2-ae77-4d4d6fefca43.jsonl`
+- `/ll:ready-issue` - 2026-07-29T01:42:47 - `c7268688-25a0-4d90-b7b1-ab9f7cf387f3.jsonl`
 - `/ll:confidence-check` - 2026-07-28T00:00:00Z - `441ef83e-0cde-42e0-afee-c51c388cc71f.jsonl`
 - `/ll:decide-issue` - 2026-07-29T01:40:41 - `e92a4acb-e07e-4abc-a10c-a6fee7eacecf.jsonl`
 - `/ll:refine-issue` - 2026-07-29T01:38:23 - `f658c4fd-e051-4ee6-95c7-6f9f287dbf58.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-28T23:17:14 - `139954b3-6523-4f66-ba64-f2917d895a02.jsonl`
 - `/ll:capture-issue` - 2026-07-28T22:29:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/73139eea-b48b-4fa0-a6fa-0b390a284d9f.jsonl`
+
+## Resolution
+
+Implemented Option A: added `issue_parser.find_issues_for_graph()` — the
+non-terminal superset (`_ALL_STATUSES - _TERMINAL_STATUSES`) — and switched
+every confirmed-affected `DependencyGraph.from_issues()` call site to build
+from it instead of a bare `find_issues(config)`:
+
+- `cli/issues/sequence.py` — merged with BUG-2898: builds the graph wide (no
+  `type_prefixes`, non-terminal superset), then narrows the *display* list to
+  `_OPEN_STATUSES` and (if `--type`) the requested prefix, below the
+  cycle-fallback path. Deferred blockers are annotated `(deferred)` in text
+  output and exposed as a `deferred_blockers` field in `--json`.
+- `issue_manager.py`, `cli/issues/link.py` — graph-only lists, widened directly.
+- `cli/issues/next_issue.py`, `cli/issues/next_issues.py` — preserved the
+  existing single-parse-pass invariant (ENH-2781) by deriving both the
+  ranked/display list and the graph from one `find_issues_for_graph()` call.
+- `cli/deps.py` `_load_issues()` — this path additionally scanned `deferred`
+  directly into `completed_ids` (treating it as satisfied outright); fixed to
+  only include `done`/`cancelled`.
+
+`DependencyGraph.from_issues()`'s docstring now documents that only a
+terminal status resolves an edge. Added regression tests covering: deferred
+blocker still blocks (text + JSON `deferred_blockers`), cross-type blocker
+still reported under `--type` (absorbed BUG-2898 acceptance criteria), and a
+`done` blocker still fully resolves (BUG-2733 regression guard).
+
+`sprint.py`'s `_ACTIVE_STATUSES` filter and the epic-tree path in `cli/deps.py`
+were confirmed already correct by design and left unchanged.
+
+Full suite: `python -m pytest scripts/tests/` — 16968 passed, 42 skipped.
 
 ---
 

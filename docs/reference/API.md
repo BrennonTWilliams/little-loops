@@ -1007,6 +1007,35 @@ for issue in issues:
 ready = find_issues(config, skip_blocked=True)
 ```
 
+#### find_issues_for_graph
+
+```python
+def find_issues_for_graph(
+    config: BRConfig,
+    category: str | None = None,
+) -> list[IssueInfo]
+```
+
+Build the non-terminal superset needed for correct `DependencyGraph`
+construction (BUG-2897). `find_issues()`'s default status filter hides
+`deferred` issues — correct for work-selection callers, but wrong for graph
+building: a `blocked_by`/`depends_on` edge pointing at a `deferred` issue
+must not be silently dropped just because the blocker is absent from the
+graph. Only terminal statuses (`done`, `cancelled`) should resolve a
+dependency edge. Callers should build the graph from this superset, then
+apply their own display-narrowing filter (e.g. `status in _OPEN_STATUSES`)
+to the ordered/display list afterward — the same "build wide, filter narrow"
+shape `find_issues(skip_blocked=True)` already uses internally.
+
+**Example:**
+```python
+from little_loops.dependency_graph import DependencyGraph
+from little_loops.issue_parser import find_issues_for_graph
+
+graph_issues = find_issues_for_graph(config)
+graph = DependencyGraph.from_issues(graph_issues)
+```
+
 #### find_highest_priority_issue
 
 ```python
@@ -1168,6 +1197,15 @@ Build graph from list of issues.
 - `all_known_ids` - Set of all issue IDs that exist on disk; references to these are silently skipped (not warned) even if not in the graph
 
 **Returns:** Constructed `DependencyGraph`
+
+A blocker is only treated as satisfied if it has a terminal status (`done`/
+`cancelled`), either via `completed_ids` or by being absent from `issues`
+because the caller's own list excluded terminal statuses. A blocker that is
+absent from `issues` for any *other* reason — most commonly a `deferred`
+issue omitted by a narrow status filter — is **not** satisfied; the edge is
+silently dropped instead (BUG-2897). Build `issues` from
+`issue_parser.find_issues_for_graph()` rather than `find_issues()`'s default
+filter when constructing a graph.
 
 #### Attributes
 
@@ -4965,6 +5003,7 @@ class FSMLoop:
     policy_dims_scored_ok: bool = False   # Suppress policy-table inactive-rubric-dim lint rule
     terminal_action_ok: bool = False      # Suppress terminal-action-ok (BUG-2813: dead action on terminal: true) lint rule
     abandonment_verdict_ok: bool = False  # Suppress MR-13 abandonment-verdict lint rule (ENH-2860)
+    evaluate_unknown_keys_ok: bool = False  # Suppress MR-14 unknown-evaluate-key lint rule (ENH-2896)
     imports: list[str] = []               # Raw `import:` list from YAML (fragment metadata, not serialized by to_dict)
 ```
 
@@ -5670,6 +5709,7 @@ Validate FSM structure and return list of errors.
 - **MR-11 (WARNING)**: a `shell`-type state pastes a user-controlled `${context.input|goal|description|task|prompt|query|topic}` value raw into the action body outside a safe position (single-quoted string, quoted heredoc `<<'EOF'`, or the `:shell` suffix) — `interpolate()` substitutes with a bare `str(value)` and no shell escaping, so a value containing `"`, `$`, `` ` ``, `\`, or `!` breaks bash tokenizing or injects commands; wrap the placeholder in single quotes, write it through a quoted heredoc, or use `${context.input:shell}` to shlex-quote it, or set `unsafe_context_interpolation_ok: true` to suppress (BUG-2622)
 - **terminal-action-ok (WARNING)**: a non-empty `action` on a `terminal: true` state — the executor finishes the run the instant a terminal is entered, before its `action` would run, so it's dead code; move the action into a new penultimate non-terminal state with `next: <terminal>` and an `on_error:` route, leaving the terminal bare (the `rn-implement::report` shape); exempts a terminal doubling as the loop's `on_max_steps`/`on_max_iterations` handler (BUG-158); set `terminal_action_ok: true` to suppress (BUG-2813)
 - **MR-13 (WARNING)**: a loop has an abandonment mechanism (checkbox rewrite to `[!]`, or `[x]`+"abandoned" annotation, or a `max_step_attempts`-style attempt cap) but no state's action emits an `"abandoned"` key into a summary JSON printf/write; or a shell action hardcodes a literal `"verdict":"success"`/`verdict=success` with no conditional branch on an abandonment/failure counter and no `"abandoned"` key emitted in that same state — abandoned work is silently laundered into a clean success verdict (the pre-ENH-2857 `general-task.yaml` defect); set `abandonment_verdict_ok: true` to suppress (ENH-2860)
+- **MR-14 (WARNING)**: a state's raw `evaluate:` mapping has a key outside `EvaluateConfig`'s dataclass fields — `EvaluateConfig.from_dict` silently drops unrecognized keys with no diagnostic, the root cause that let BUG-2893/BUG-2894 ship; the rule derives its known-field set from `dataclasses.fields(EvaluateConfig)` and suggests the nearest known field via `difflib.get_close_matches`; WARN-now/ERROR-later relative to `fsm-loop-schema.json`'s `additionalProperties: false` stance on `evaluateConfig`; set `evaluate_unknown_keys_ok: true` to suppress (ENH-2896)
 
 **Example:**
 ```python

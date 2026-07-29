@@ -209,9 +209,9 @@ def _check_cycle(config: BRConfig, source_id: str, target_id: str, field: str) -
     ``topological_sort()``, which raises ``ValueError`` on cycles.
     """
     from little_loops.dependency_graph import DependencyGraph
-    from little_loops.issue_parser import find_issues
+    from little_loops.issue_parser import find_issues_for_graph
 
-    issues = find_issues(config)
+    issues = find_issues_for_graph(config)
     for issue in issues:
         if issue.issue_id == source_id:
             if field == "blocked_by" and target_id not in issue.blocked_by:

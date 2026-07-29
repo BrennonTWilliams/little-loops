@@ -37,7 +37,7 @@ from little_loops.issue_lifecycle import (
     create_issue_from_failure,
     verify_issue_completed,
 )
-from little_loops.issue_parser import IssueInfo, IssueParser, find_issues
+from little_loops.issue_parser import IssueInfo, IssueParser, find_issues_for_graph
 from little_loops.learning_tests.extractor import resolve_learning_targets
 from little_loops.learning_tests.gate import run_learning_gate_for_issue
 from little_loops.logger import Logger, format_duration
@@ -1224,8 +1224,10 @@ class AutoManager:
         self._detected_model: list[str] = []
 
         # Build dependency graph for dependency-aware sequencing (ENH-016)
-        # Note: don't filter by type here — we need all issues for dependency resolution
-        all_issues = find_issues(self.config, self.category)
+        # Note: don't filter by type here — we need all issues for dependency resolution.
+        # Use the non-terminal superset so a deferred blocker is still a graph node
+        # (BUG-2897) — find_issues()'s default filter hides deferred issues.
+        all_issues = find_issues_for_graph(self.config, self.category)
         all_known_ids: set[str] | None = None
         try:
             from little_loops.dependency_mapper import gather_all_issue_ids

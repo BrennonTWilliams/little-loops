@@ -1547,6 +1547,28 @@ def find_issues(
     return issues
 
 
+def find_issues_for_graph(
+    config: BRConfig,
+    category: str | None = None,
+) -> list[IssueInfo]:
+    """Build the non-terminal superset needed for correct graph construction.
+
+    ``find_issues()``'s default status filter hides ``done``/``cancelled``/
+    ``deferred`` issues — correct for work-selection callers, but wrong for
+    ``DependencyGraph`` construction: a ``blocked_by``/``depends_on`` edge
+    pointing at a ``deferred`` issue must not be silently dropped just
+    because the blocker is absent from the graph (BUG-2897). Only terminal
+    statuses (``done``, ``cancelled``) should resolve a dependency edge, so
+    callers building a graph should load this superset rather than relying
+    on the default filter, then apply their own display-narrowing filter to
+    the *ordered/display* list afterward.
+    """
+    from little_loops.issue_progress import _ALL_STATUSES, _TERMINAL_STATUSES
+
+    non_terminal = set(_ALL_STATUSES - _TERMINAL_STATUSES)
+    return find_issues(config, category=category, status_filter=non_terminal)
+
+
 def superseded_by(issue_id: str, all_issues: Iterable[IssueInfo]) -> list[str]:
     """Return IDs of every issue whose `supersedes` list contains `issue_id`.
 

@@ -1675,6 +1675,147 @@ class TestIssuesCLISequence:
         assert all(item["id"].startswith("BUG-") for item in data)
 
 
+class TestSequenceDeferredAndCrossTypeBlockers:
+    """Tests for BUG-2897 (deferred blocker) and merged BUG-2898 (--type cross-type)."""
+
+    def test_sequence_deferred_blocker_reported_not_satisfied(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A dependent of a `deferred` blocker is still reported as blocked."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+
+        (bugs_dir / "P1-BUG-001-alpha.md").write_text(
+            "---\nstatus: deferred\n---\n\n# BUG-001: Alpha\n"
+        )
+        (bugs_dir / "P3-BUG-002-beta.md").write_text(
+            "---\nstatus: open\nblocked_by:\n  - BUG-001\n---\n\n# BUG-002: Beta\n"
+        )
+        (bugs_dir / "P0-BUG-003-gamma.md").write_text(
+            "---\nstatus: open\n---\n\n# BUG-003: Gamma\n"
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "sequence", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Alpha" not in captured.out  # deferred issue itself not displayed as a row
+        assert "blocked by: BUG-001 (deferred)" in captured.out
+
+    def test_sequence_json_deferred_blockers_field(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json exposes deferred_blockers for a deferred-blocked issue."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+
+        (bugs_dir / "P1-BUG-001-alpha.md").write_text(
+            "---\nstatus: deferred\n---\n\n# BUG-001: Alpha\n"
+        )
+        (bugs_dir / "P3-BUG-002-beta.md").write_text(
+            "---\nstatus: open\nblocked_by:\n  - BUG-001\n---\n\n# BUG-002: Beta\n"
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "sequence", "--json", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        beta = next(item for item in data if item["id"] == "BUG-002")
+        assert beta["blocked_by"] == ["BUG-001"]
+        assert beta["deferred_blockers"] == ["BUG-001"]
+
+    def test_sequence_type_filter_still_reports_cross_type_blocker(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--type BUG still reports a blocker from a non-BUG issue (BUG-2898 half)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        feats_dir = temp_project_dir / ".issues" / "features"
+        bugs_dir.mkdir(parents=True)
+        feats_dir.mkdir(parents=True)
+
+        (feats_dir / "P1-FEAT-001-alpha.md").write_text(
+            "---\nstatus: open\n---\n\n# FEAT-001: Alpha\n"
+        )
+        (bugs_dir / "P3-BUG-001-beta.md").write_text(
+            "---\nstatus: open\nblocked_by:\n  - FEAT-001\n---\n\n# BUG-001: Beta\n"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "sequence", "--type", "BUG", "--json", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert len(data) == 1
+        assert data[0]["id"] == "BUG-001"
+        assert data[0]["blocked_by"] == ["FEAT-001"]
+
+    def test_sequence_done_blocker_still_resolves(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Regression: a `done` blocker still fully resolves the edge (BUG-2733)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+
+        (bugs_dir / "P1-BUG-001-alpha.md").write_text(
+            "---\nstatus: done\n---\n\n# BUG-001: Alpha\n"
+        )
+        (bugs_dir / "P3-BUG-002-beta.md").write_text(
+            "---\nstatus: open\nblocked_by:\n  - BUG-001\n---\n\n# BUG-002: Beta\n"
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "sequence", "--json", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert len(data) == 1
+        assert data[0]["id"] == "BUG-002"
+        assert data[0]["blocked_by"] == []
+
+
 class TestSequenceProseDeps:
     """Tests for ENH-2847: sequence surfacing unverified prose dependencies."""
 

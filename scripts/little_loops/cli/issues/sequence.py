@@ -55,13 +55,18 @@ def cmd_sequence(config: BRConfig, args: argparse.Namespace) -> int:
         Exit code (0 = success)
     """
     from little_loops.dependency_graph import DependencyGraph
-    from little_loops.issue_parser import find_issues
-    from little_loops.issue_progress import _ALL_STATUSES
+    from little_loops.issue_parser import find_issues_for_graph
+    from little_loops.issue_progress import _OPEN_STATUSES
 
-    type_prefixes = {args.type} if getattr(args, "type", None) else None
-    issues = find_issues(config, type_prefixes=type_prefixes)
+    type_prefix = getattr(args, "type", None)
 
-    if not issues:
+    # Build wide: one graph-construction call, no type_prefixes, non-terminal
+    # superset (includes deferred) — so a blocker outside the requested type
+    # slice (BUG-2898) or a deferred blocker (BUG-2897) is still recognized
+    # rather than silently dropped as an out-of-graph edge.
+    graph_issues = find_issues_for_graph(config)
+
+    if not graph_issues:
         print("No active issues found.")
         return 0
 
@@ -74,21 +79,36 @@ def cmd_sequence(config: BRConfig, args: argparse.Namespace) -> int:
     except Exception:
         pass
 
-    graph = DependencyGraph.from_issues(issues, all_known_ids=all_known_ids)
+    graph = DependencyGraph.from_issues(graph_issues, all_known_ids=all_known_ids)
 
     try:
         ordered = graph.topological_sort()
     except ValueError as exc:
         print(f"Warning: dependency cycle detected — {exc}")
-        ordered = issues  # fall back to priority order
+        ordered = graph_issues  # fall back to priority order
+
+    # Narrow: apply both display filters to the ordered list, below the
+    # cycle-fallback path so it's covered too.
+    display = [i for i in ordered if i.status in _OPEN_STATUSES]
+    if type_prefix:
+        display = [i for i in display if i.issue_id.split("-", 1)[0] == type_prefix]
+
+    if not display:
+        if type_prefix:
+            print(f"No active issues found for type {type_prefix}.")
+        else:
+            print("No active issues found.")
+        return 0
 
     limit = args.limit
-    shown = ordered[:limit]
+    shown = display[:limit]
 
-    issue_statuses: dict[str, str] | None = None
+    issue_statuses: dict[str, str] = {info.issue_id: info.status for info in graph_issues}
     try:
-        all_issues = find_issues(config, status_filter=set(_ALL_STATUSES))
-        issue_statuses = {info.issue_id: info.status for info in all_issues}
+        from little_loops.issue_parser import find_issues
+
+        terminal_issues = find_issues(config, status_filter={"done", "cancelled"})
+        issue_statuses.update({info.issue_id: info.status for info in terminal_issues})
     except Exception:
         pass
 
@@ -110,6 +130,11 @@ def cmd_sequence(config: BRConfig, args: argparse.Namespace) -> int:
                     "title": issue.title,
                     "path": str(issue.path),
                     "blocked_by": sorted(graph.blocked_by.get(issue.issue_id, set())),
+                    "deferred_blockers": sorted(
+                        b
+                        for b in graph.blocked_by.get(issue.issue_id, set())
+                        if issue_statuses.get(b) == "deferred"
+                    ),
                     "blocks": issue.blocks,
                     "depends_on": sorted(graph.get_pending_prerequisites(issue.issue_id)),
                     "unverified_prose_deps": prose_deps_for(issue),
@@ -120,13 +145,17 @@ def cmd_sequence(config: BRConfig, args: argparse.Namespace) -> int:
         )
         return 0
 
-    print(f"Suggested implementation sequence ({len(shown)} of {len(ordered)} issues):\n")
+    print(f"Suggested implementation sequence ({len(shown)} of {len(display)} issues):\n")
     for issue in shown:
         blockers = graph.blocked_by.get(issue.issue_id, set())
         prerequisites = graph.get_pending_prerequisites(issue.issue_id)
         parts = []
         if blockers:
-            parts.append(f"blocked by: {', '.join(sorted(blockers))}")
+
+            def _fmt_blocker(bid: str) -> str:
+                return f"{bid} (deferred)" if issue_statuses.get(bid) == "deferred" else bid
+
+            parts.append(f"blocked by: {', '.join(_fmt_blocker(b) for b in sorted(blockers))}")
         if prerequisites:
             parts.append(f"after: {', '.join(sorted(prerequisites))}")
         prose_deps = prose_deps_for(issue)
@@ -138,8 +167,8 @@ def cmd_sequence(config: BRConfig, args: argparse.Namespace) -> int:
         colored_pri = colorize(issue.priority, PRIORITY_COLOR.get(issue.priority, "0"))
         print(f"  [{colored_pri}, {rationale}] {colored_id}: {issue.title}")
 
-    if len(ordered) > limit:
-        remaining = len(ordered) - limit
+    if len(display) > limit:
+        remaining = len(display) - limit
         print(f"\n  … +{remaining} more (use --limit to show more)")
 
     return 0

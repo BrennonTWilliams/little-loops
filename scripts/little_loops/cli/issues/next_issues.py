@@ -28,7 +28,8 @@ def cmd_next_issues(config: BRConfig, args: argparse.Namespace) -> int:
     from little_loops.cli.issues.search import build_sort_key
     from little_loops.cli.output import print_json
     from little_loops.dependency_graph import DependencyGraph
-    from little_loops.issue_parser import find_issues
+    from little_loops.issue_parser import find_issues, find_issues_for_graph
+    from little_loops.issue_progress import _OPEN_STATUSES
 
     try:
         sort_key = build_sort_key(config.issues.next_issue)
@@ -41,8 +42,15 @@ def cmd_next_issues(config: BRConfig, args: argparse.Namespace) -> int:
     if include_blocked:
         # EPICs are umbrella containers meant to be decomposed via scope
         # resolution, never ranked as implementable leaves (BUG-2638).
-        raw_issues = find_issues(config)
-        all_issues = [i for i in raw_issues if not i.issue_id.startswith("EPIC-")]
+        # Parse once — the non-terminal superset (includes deferred blockers,
+        # BUG-2897) — and derive both the display list and the graph from
+        # this same in-memory list instead of re-parsing (ENH-2781).
+        graph_issues = find_issues_for_graph(config)
+        all_issues = [
+            i
+            for i in graph_issues
+            if i.status in _OPEN_STATUSES and not i.issue_id.startswith("EPIC-")
+        ]
         if not all_issues:
             return 1
 
@@ -54,7 +62,7 @@ def cmd_next_issues(config: BRConfig, args: argparse.Namespace) -> int:
             all_known_ids = gather_all_issue_ids(issues_dir, config=config)
         except Exception:
             pass
-        graph = DependencyGraph.from_issues(raw_issues, all_known_ids=all_known_ids)
+        graph = DependencyGraph.from_issues(graph_issues, all_known_ids=all_known_ids)
         blocked_by_map: dict[str, list[str]] = {
             issue_id: sorted(graph.blocked_by.get(issue_id, set()))
             for issue_id in (i.issue_id for i in all_issues)

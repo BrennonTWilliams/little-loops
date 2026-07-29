@@ -26,7 +26,7 @@ def _load_issues(
         Tuple of (active issues, issue contents map, completed issue IDs)
     """
     from little_loops.config import BRConfig
-    from little_loops.issue_parser import find_issues
+    from little_loops.issue_parser import find_issues_for_graph
 
     # Find project root by walking up from issues_dir
     project_root = issues_dir.resolve().parent
@@ -35,7 +35,11 @@ def _load_issues(
         project_root = issues_dir.parent
 
     config = BRConfig(project_root)
-    issues = find_issues(config, only_ids=only_ids)
+    # Non-terminal superset so a deferred blocker stays a graph node instead of
+    # being silently dropped as "satisfied" (BUG-2897); only_ids narrows below.
+    issues = find_issues_for_graph(config)
+    if only_ids is not None:
+        issues = [i for i in issues if i.issue_id in only_ids]
 
     # Build contents map
     issue_contents: dict[str, str] = {}
@@ -43,7 +47,9 @@ def _load_issues(
         if info.path.exists():
             issue_contents[info.issue_id] = info.path.read_text(encoding="utf-8")
 
-    # Gather completed and deferred issue IDs via status-field scan of type dirs
+    # Gather completed issue IDs via status-field scan of type dirs. Only
+    # terminal statuses (done, cancelled) resolve a dependency edge — a
+    # deferred blocker is postponed, not satisfied (BUG-2897).
     from little_loops.issue_parser import IssueParser
 
     parser = IssueParser(config)
@@ -55,7 +61,7 @@ def _load_issues(
         for f in cat_dir.glob("*.md"):
             try:
                 info = parser.parse_file(f)
-                if info.status in ("done", "deferred"):
+                if info.status in ("done", "cancelled"):
                     completed_ids.add(info.issue_id)
             except Exception:
                 continue

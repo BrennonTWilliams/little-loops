@@ -64,7 +64,14 @@ class DependencyGraph:
         Constructs a dependency graph where:
         - Each issue is a node
         - blocked_by relationships create edges from blockers to blocked issues
-        - Completed issues are treated as satisfied (not blocking)
+        - Only issues with a terminal status (done/cancelled), whether passed
+          via `completed_ids` or absent from `issues` because the caller
+          excluded terminal statuses, are treated as satisfied. A blocker
+          that is simply absent from `issues` for any other reason (e.g. a
+          `deferred` issue omitted by a narrow status filter) is NOT
+          satisfied — callers building a graph must include non-terminal
+          statuses (deferred included) in `issues`, or the edge is dropped
+          silently (see `little_loops.issue_parser.find_issues_for_graph`).
         - Missing issues are logged as warnings but don't block
 
         Args:

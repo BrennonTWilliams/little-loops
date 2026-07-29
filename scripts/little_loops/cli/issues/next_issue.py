@@ -27,7 +27,8 @@ def cmd_next_issue(config: BRConfig, args: argparse.Namespace) -> int:
     from little_loops.cli.output import print_json
     from little_loops.cli_args import parse_issue_ids
     from little_loops.dependency_graph import DependencyGraph
-    from little_loops.issue_parser import find_issues
+    from little_loops.issue_parser import find_issues, find_issues_for_graph
+    from little_loops.issue_progress import _OPEN_STATUSES
 
     try:
         sort_key = build_sort_key(config.issues.next_issue)
@@ -44,23 +45,25 @@ def cmd_next_issue(config: BRConfig, args: argparse.Namespace) -> int:
         # each candidate's blocked status against the dep graph.
         # EPICs are umbrella containers meant to be decomposed via scope
         # resolution, never ranked as implementable leaves (BUG-2638).
-        # Parse once, unfiltered, so blocking edges outside the requested
-        # slice are still correctly recognized when building the dep graph
-        # below; derive the skip_ids-filtered ranking candidates in memory
-        # instead of re-parsing with skip_ids applied (ENH-2781).
-        raw_issues = find_issues(config)
+        # Parse once, unfiltered (non-terminal superset — includes deferred
+        # blockers so a dependency edge pointing at one isn't dropped,
+        # BUG-2897), so blocking edges outside the requested slice are still
+        # correctly recognized when building the dep graph below; derive both
+        # the skip_ids-filtered ranking candidates and the graph from this
+        # same in-memory list instead of re-parsing (ENH-2781).
+        graph_issues = find_issues_for_graph(config)
         skip_id_set = set(skip_ids) if skip_ids else None
         ranked = [
             i
-            for i in raw_issues
-            if not i.issue_id.startswith("EPIC-")
+            for i in graph_issues
+            if i.status in _OPEN_STATUSES
+            and not i.issue_id.startswith("EPIC-")
             and (skip_id_set is None or i.issue_id not in skip_id_set)
         ]
         if not ranked:
             return 1
 
-        # Build the dep graph from every active issue so blocking edges outside
-        # the requested slice are still correctly recognized.
+        # Build the dep graph from the same superset parse.
         all_known_ids: set[str] | None = None
         try:
             from little_loops.dependency_mapper import gather_all_issue_ids
@@ -69,7 +72,7 @@ def cmd_next_issue(config: BRConfig, args: argparse.Namespace) -> int:
             all_known_ids = gather_all_issue_ids(issues_dir, config=config)
         except Exception:
             pass
-        graph = DependencyGraph.from_issues(raw_issues, all_known_ids=all_known_ids)
+        graph = DependencyGraph.from_issues(graph_issues, all_known_ids=all_known_ids)
         blocked_by_map: dict[str, list[str]] = {
             issue_id: sorted(graph.blocked_by.get(issue_id, set()))
             for issue_id in (i.issue_id for i in ranked)
