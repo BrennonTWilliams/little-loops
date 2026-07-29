@@ -209,6 +209,7 @@ def _check_cycle(config: BRConfig, source_id: str, target_id: str, field: str) -
     ``topological_sort()``, which raises ``ValueError`` on cycles.
     """
     from little_loops.dependency_graph import DependencyGraph
+    from little_loops.dependency_mapper import gather_all_issue_ids
     from little_loops.issue_parser import find_issues_for_graph
 
     issues = find_issues_for_graph(config)
@@ -219,7 +220,14 @@ def _check_cycle(config: BRConfig, source_id: str, target_id: str, field: str) -
             elif field == "depends_on" and target_id not in issue.depends_on:
                 issue.depends_on = [*issue.depends_on, target_id]
 
-    graph = DependencyGraph.from_issues(issues)
+    all_known_ids: set[str] | None = None
+    try:
+        issues_dir = config.project_root / config.issues.base_dir
+        all_known_ids = gather_all_issue_ids(issues_dir, config=config)
+    except Exception:
+        pass
+
+    graph = DependencyGraph.from_issues(issues, all_known_ids=all_known_ids)
     try:
         graph.topological_sort()
     except ValueError as exc:

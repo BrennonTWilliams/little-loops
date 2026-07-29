@@ -105,6 +105,45 @@ class TestIssuesCLILink:
         assert result != 0
         assert a.read_text() == original
 
+    def test_link_no_unknown_warning_for_done_blocker(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        caplog: Any,
+    ) -> None:
+        """A blocked_by edge pointing at a done issue must not warn as unknown.
+
+        `_check_cycle` builds the graph from `find_issues_for_graph`, which
+        excludes terminal statuses (done/cancelled) by design (BUG-2897) — so
+        a done blocker is legitimately absent from that issue list. Without
+        passing `all_known_ids` to `DependencyGraph.from_issues`, that absence
+        is indistinguishable from a typo'd/nonexistent ID and gets logged as
+        an "unknown issue" warning.
+        """
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        _write_issue(
+            issues_dir,
+            "P2-FEAT-110-a.md",
+            "---\nid: FEAT-110\nstatus: open\nblocked_by:\n- FEAT-100\n---\n# FEAT-110: A\n",
+        )
+        _write_issue(
+            issues_dir, "P2-FEAT-100-c.md", "---\nid: FEAT-100\nstatus: done\n---\n# FEAT-100: C\n"
+        )
+        _write_issue(
+            issues_dir, "P2-FEAT-101-d.md", "---\nid: FEAT-101\nstatus: open\n---\n# FEAT-101: D\n"
+        )
+
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            result = self._run(temp_project_dir, "FEAT-110", "--depends-on", "FEAT-101")
+
+        assert result == 0
+        assert "FEAT-100" not in caplog.text
+
     def test_link_cycle_refused_nonzero_exit(
         self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
     ) -> None:
