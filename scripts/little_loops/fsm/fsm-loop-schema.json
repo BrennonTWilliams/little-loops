@@ -809,6 +809,10 @@
           "description": "Substrings that, when matched in output and main pattern not found, yield verdict='error' (output_contains only)",
           "items": { "type": "string" }
         },
+        "line": {
+          "type": ["string", "integer"],
+          "description": "For classify: which line to read (last/first/<int index>)"
+        },
         "key": {
           "type": "string",
           "description": "For output_numeric, extract the value from a '<key>=<number>' field in output instead of parsing the whole output as a number (last match wins)"

@@ -1,0 +1,12 @@
+{
+  "id": "0f24ce83-f8bf-4e85-9d06-5dff610f3cd3",
+  "type": "decision",
+  "timestamp": "2026-07-29T01:33:39Z",
+  "category": "validation",
+  "labels": [],
+  "rationale": "Ships non-breaking for third-party/user loops carrying a stray evaluate: key today. fsm-loop-schema.json already sets additionalProperties: false on evaluateConfig (an ERROR stance on the JSON-schema side), so the Python loader intentionally stays more permissive than the schema for now; revisit ERROR-at-load once WARN-rule telemetry confirms no live population depends on a stray key being silently accepted.",
+  "rule": "MR-14 (evaluate: unknown-key detection) ships as ll-loop validate WARN severity now; ERROR-at-load is deferred until built-in and user-loop telemetry shows the population is clean",
+  "scope": "project",
+  "alternatives_rejected": "ERROR-at-load immediately: rejected because it would be a breaking change for any third-party/user loop currently carrying a stray evaluate: key, even though the built-in-loop sweep is already clean.",
+  "issue": "ENH-2896"
+}

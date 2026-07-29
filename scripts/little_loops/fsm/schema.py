@@ -14,6 +14,7 @@ The schema supports:
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -211,6 +212,17 @@ class EvaluateConfig:
             error_patterns=data.get("error_patterns"),
             key=data.get("key"),
         )
+
+
+def evaluate_config_known_fields() -> set[str]:
+    """Return the set of field names ``EvaluateConfig`` knows how to parse.
+
+    Derived from the dataclass itself (ENH-2896) rather than a hand-maintained
+    list, so this can never drift from ``EvaluateConfig.from_dict``'s own
+    enumeration. Used by the ``ll-loop validate`` MR-14 unknown-evaluate-key
+    rule to diff a state's raw ``evaluate:`` dict against known fields.
+    """
+    return {f.name for f in dataclasses.fields(EvaluateConfig)}
 
 
 @dataclass
@@ -1318,6 +1330,9 @@ class FSMLoop:
     # (abandonment mechanism present but never reaches summary.json, or a
     # hardcoded "verdict":"success" with no abandonment guard/field).
     abandonment_verdict_ok: bool = False
+    # ENH-2896 suppression flag: silences the MR-14 unknown-evaluate-key warning
+    # (a state's raw `evaluate:` mapping has a key outside EvaluateConfig's fields).
+    evaluate_unknown_keys_ok: bool = False
     # Populated from the raw `import:` list by from_dict(); not serialized by to_dict()
     imports: list[str] = field(default_factory=list)
 
@@ -1439,6 +1454,8 @@ class FSMLoop:
             result["terminal_action_ok"] = self.terminal_action_ok
         if self.abandonment_verdict_ok:
             result["abandonment_verdict_ok"] = self.abandonment_verdict_ok
+        if self.evaluate_unknown_keys_ok:
+            result["evaluate_unknown_keys_ok"] = self.evaluate_unknown_keys_ok
 
         return result
 
@@ -1543,6 +1560,7 @@ class FSMLoop:
             capture_reachability_ok=data.get("capture_reachability_ok", False),
             terminal_action_ok=data.get("terminal_action_ok", False),
             abandonment_verdict_ok=data.get("abandonment_verdict_ok", False),
+            evaluate_unknown_keys_ok=data.get("evaluate_unknown_keys_ok", False),
             imports=data.get("import", []),
         )
 

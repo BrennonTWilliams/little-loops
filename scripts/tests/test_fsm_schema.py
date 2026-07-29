@@ -8,6 +8,8 @@ Tests cover:
 
 from __future__ import annotations
 
+import dataclasses
+import json
 from pathlib import Path
 
 import pytest
@@ -31,10 +33,12 @@ from little_loops.fsm.schema import (
     TargetFileSpec,
     TargetStateSpec,
     ThrottleConfig,
+    evaluate_config_known_fields,
 )
 from little_loops.fsm.validation import (
     ValidationError,
     ValidationSeverity,
+    is_runnable_loop,
     load_and_validate,
     validate_fsm,
 )
@@ -229,6 +233,53 @@ class TestEvaluateConfig:
         restored = EvaluateConfig.from_dict(original.to_dict())
 
         assert restored.key == original.key
+
+    def test_from_dict_silently_drops_unknown_key(self) -> None:
+        """ENH-2896: pins the CURRENT (pre-lint) behavior — from_dict silently
+        drops a key it doesn't recognize, with no exception or diagnostic. The
+        new ``ll-loop validate`` MR-14 rule (TestEvaluateUnknownKeysValidation)
+        is what surfaces this at validation time; from_dict itself is unchanged.
+        """
+        data = {
+            "type": "output_numeric",
+            "operator": "ge",
+            "target": 0.95,
+            "totally_unknown_key": "should be dropped",
+        }
+        config = EvaluateConfig.from_dict(data)
+
+        assert config.type == "output_numeric"
+        assert config.operator == "ge"
+        assert config.target == 0.95
+        assert not hasattr(config, "totally_unknown_key")
+
+    def test_known_fields_helper_matches_dataclass_fields(self) -> None:
+        """evaluate_config_known_fields() derives its set from the dataclass."""
+        expected = {f.name for f in dataclasses.fields(EvaluateConfig)}
+        assert evaluate_config_known_fields() == expected
+
+    def test_schema_json_evaluate_config_properties_match_dataclass_fields(self) -> None:
+        """ENH-2896: lockstep test between EvaluateConfig's dataclass fields and
+        fsm-loop-schema.json's evaluateConfig.properties keys. The JSON schema
+        sets `additionalProperties: false` on evaluateConfig, so any drift
+        between the two lists means the schema either rejects a field the
+        Python loader accepts (as `line` did, ENH-2896) or vice versa.
+        """
+        schema_path = (
+            Path(__file__).parent.parent
+            / "little_loops"
+            / "fsm"
+            / "fsm-loop-schema.json"
+        )
+        schema = json.loads(schema_path.read_text())
+        schema_keys = set(schema["definitions"]["evaluateConfig"]["properties"].keys())
+
+        dataclass_fields = {f.name for f in dataclasses.fields(EvaluateConfig)}
+
+        assert schema_keys == dataclass_fields, (
+            f"schema-only: {sorted(schema_keys - dataclass_fields)}, "
+            f"dataclass-only: {sorted(dataclass_fields - schema_keys)}"
+        )
 
 
 class TestRouteConfig:
@@ -1766,6 +1817,107 @@ class TestLoadAndValidate:
         _, warnings = load_and_validate(loop_yaml)
         unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
         assert unknown_warnings == []
+
+    def test_evaluate_unknown_key_warns(self, tmp_path: Path) -> None:
+        """ENH-2896 MR-14: an unknown key under a state's evaluate: mapping
+        produces a WARNING naming the state, the key, and a close-match
+        suggestion — not silence, and not an ERROR.
+        """
+        loop_yaml = tmp_path / "evaluate-unknown-key.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: test\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            "    action: 'echo hi'\n"
+            "    evaluate:\n"
+            "      type: output_numeric\n"
+            "      operator: ge\n"
+            "      target: 0.95\n"
+            "      kye: pass_rate\n"  # typo for "key"
+            "    terminal: true\n"
+        )
+        fsm, warnings = load_and_validate(loop_yaml)
+        assert fsm.name == "test-loop"
+        evaluate_warnings = [w for w in warnings if "Unknown evaluate key" in w.message]
+        assert len(evaluate_warnings) == 1
+        assert "kye" in evaluate_warnings[0].message
+        assert "check" in evaluate_warnings[0].message
+        assert "key" in evaluate_warnings[0].message  # close-match suggestion
+        assert evaluate_warnings[0].severity == ValidationSeverity.WARNING
+
+    def test_evaluate_known_keys_no_warning(self, tmp_path: Path) -> None:
+        """A state whose evaluate: mapping only uses known fields produces no
+        unknown-evaluate-key warning.
+        """
+        loop_yaml = tmp_path / "evaluate-known-keys.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: test\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            "    action: 'echo hi'\n"
+            "    evaluate:\n"
+            "      type: output_numeric\n"
+            "      operator: ge\n"
+            "      target: 0.95\n"
+            "      key: pass_rate\n"
+            "    terminal: true\n"
+        )
+        _, warnings = load_and_validate(loop_yaml)
+        evaluate_warnings = [w for w in warnings if "Unknown evaluate key" in w.message]
+        assert evaluate_warnings == []
+
+    def test_evaluate_unknown_key_suppressed_by_flag(self, tmp_path: Path) -> None:
+        """evaluate_unknown_keys_ok: true suppresses the MR-14 warning."""
+        loop_yaml = tmp_path / "evaluate-unknown-key-suppressed.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: test\n"
+            "initial: check\n"
+            "evaluate_unknown_keys_ok: true\n"
+            "states:\n"
+            "  check:\n"
+            "    action: 'echo hi'\n"
+            "    evaluate:\n"
+            "      type: output_numeric\n"
+            "      operator: ge\n"
+            "      target: 0.95\n"
+            "      kye: pass_rate\n"
+            "    terminal: true\n"
+        )
+        fsm, warnings = load_and_validate(loop_yaml)
+        assert fsm.evaluate_unknown_keys_ok is True
+        evaluate_warnings = [w for w in warnings if "Unknown evaluate key" in w.message]
+        assert evaluate_warnings == []
+
+    def test_evaluate_unknown_key_sweep_builtin_loops_clean(self) -> None:
+        """ENH-2896: sweep every built-in runnable loop for MR-14 hits. Expected
+        to come back clean per the issue's built-in-sweep precondition
+        (commit e2ea3c56 made `key` a real EvaluateConfig field).
+        """
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        yaml_files = sorted(loops_dir.rglob("*.yaml"))
+        assert len(yaml_files) > 0, "No builtin loops found"
+
+        hits: list[str] = []
+        for loop_path in yaml_files:
+            if not is_runnable_loop(loop_path):
+                continue
+            try:
+                _, warnings = load_and_validate(loop_path)
+            except (ValueError, yaml.YAMLError):
+                # Fixture-only/incomplete YAMLs that fail to load are out of
+                # scope for this sweep — is_runnable_loop already filters most,
+                # but tolerate the rest rather than failing on unrelated issues.
+                continue
+            for w in warnings:
+                if "Unknown evaluate key" in w.message:
+                    hits.append(f"{loop_path.relative_to(loops_dir)}: {w.message}")
+
+        assert hits == [], f"Unexpected unknown evaluate: keys in built-in loops: {hits}"
 
     def test_commands_key_no_warning(self, tmp_path: Path) -> None:
         """A YAML with top-level 'commands:' block produces no unknown-key warning."""

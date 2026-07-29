@@ -23,7 +23,7 @@ exist to make harness optimization safe — see [Why It Needs Guardrails](#why-i
 
 - [What Is Harness Optimization?](#what-is-harness-optimization)
 - [Why It Needs Guardrails](#why-it-needs-guardrails)
-- [The Design Rules (MR-1…MR-11)](#the-design-rules-mr-1mr-11)
+- [The Design Rules (MR-1…MR-14)](#the-design-rules-mr-1mr-14)
 - [The Optimizer Error Taxonomy](#the-optimizer-error-taxonomy)
 - [The Canonical Shape](#the-canonical-shape)
 - [Creating One](#creating-one)
@@ -82,7 +82,7 @@ trial-and-error into *safe* trial-and-error.
 
 ---
 
-## The Design Rules (MR-1…MR-13)
+## The Design Rules (MR-1…MR-14)
 
 `ll-loop validate` enforces these rules. [`.claude/CLAUDE.md` § Loop Authoring](../../.claude/CLAUDE.md)
 carries the compact lookup table for quick in-session reference; **this section is the rationale
@@ -107,6 +107,7 @@ suppressed with a top-level flag when you have a justified reason.
 | **MR-12** | Three checks on `pruning_profile:` consistency, resolved as `state.pruning_profile or fsm.pruning_profile` (mirrors `executor.py`'s runtime resolution): (1) a state's own `tools:` allowlist must not exclude a `/ll:<skill>` it invokes via `action:`; (2) a resolved profile with `suppress_catalog: true` on a skill-invoking state is flagged for host-dependent risk; (3) a skill/command-invoking state with **no** resolvable profile at all is flagged as uncovered (ENH-2805) | (1)/(2) catch self-contradictory narrowing that breaks the state's own action at runtime (ENH-2714). (3) surfaces the token-cost lever ENH-2714 shipped but that ENH-2805's audit found zero builtin loops actually use — every uncovered skill/command state pays the full automation-context static prefix (catalog + SessionStart digest + CLAUDE.md) on every invocation, and session-level skill-harness traffic (not the FSM-state-tagged `request_path: sdk` path) is the dominant share of fleet token spend. check (3) no longer exempts `request_path: sdk`/`batch` states (BUG-2831): every state reaching check (3) already invokes a `/ll:` skill, and the executor now force-downgrades a skill-invoking sdk/batch state to `cli` at runtime (`_dispatch_live`'s bare, tool-less single-turn call can't run a skill invocation), so it genuinely reaches `action_runner` and needs pruning guidance like any other skill-invoking state — the old exemption's premise (sdk/batch bypasses `action_runner` entirely) no longer holds for this branch | (1) **ERROR**, (2)/(3) WARNING | `pruning_profile_ok: true` |
 | **terminal-action-ok** | A `terminal: true` state must have no non-empty `action` — exempting a terminal doubling as the loop's `on_max_steps`/`on_max_iterations` handler | The executor returns `_finish("terminal")` the instant a terminal is entered, before that state's own `action:` would run — the action never executes. A corpus sweep found ~40 terminal states carrying dead actions (22 shell + 18 prompt). Move the action into a new penultimate non-terminal state with `next: <terminal>` and an `on_error:` route, leaving the terminal bare (the `rn-implement::report` shape) (BUG-2813) | WARNING | `terminal_action_ok: true` |
 | **MR-13** | A loop with an abandonment mechanism (checkbox rewrite to `[!]`, or `[x]`+"abandoned" annotation, or a `max_step_attempts`-style attempt cap) must have some state emit an `"abandoned"` key into its summary JSON; separately, a shell action must not hardcode `"verdict":"success"`/`verdict=success` without a conditional branch on an abandonment/failure counter and an `"abandoned"` key in the same state | Abandoned work that never reaches `summary.json` is invisible to audit tooling, sprint review, and `ll-history` regression detection — the pre-ENH-2857 `general-task.yaml` defect laundered 8-of-34 abandoned steps into a bare `"verdict":"success"` (ENH-2860) | WARNING | `abandonment_verdict_ok: true` |
+| **MR-14** | A state's raw `evaluate:` mapping must not contain a key outside `EvaluateConfig`'s dataclass fields | `EvaluateConfig.from_dict` enumerates known fields with `data.get(...)` and silently drops anything else — no exception, no log line, no prior diagnostic. A typo'd or aspirational evaluator key (e.g. `key` misspelled `kye`) is indistinguishable from a working one until a verdict is traced back to its source; this is the root cause that let BUG-2893 and BUG-2894 ship. The rule derives its known-field set from `dataclasses.fields(EvaluateConfig)` (via `evaluate_config_known_fields()`) so it can never drift from the loader itself, and suggests the nearest known field via `difflib.get_close_matches`. **WARN-now/ERROR-later**: `fsm-loop-schema.json`'s `evaluateConfig` already sets `additionalProperties: false` — an ERROR stance on the JSON-schema side — but the Python loader stays WARN until built-in and user-loop telemetry shows the population is clean, avoiding a breaking change for third-party/user loops carrying a stray key today (ENH-2896) | WARNING | `evaluate_unknown_keys_ok: true` |
 
 MR-1 is the load-bearing one: an optimizer's self-assessment is no better than a coin
 flip, so pair the LLM judge with something it cannot talk its way around — an exit code, a
@@ -309,7 +310,7 @@ Run these three commands in sequence before declaring a harness optimizer produc
 ```bash
 # Step 1: Check the YAML for rule violations
 ll-loop validate my-optimizer
-# → Enforces MR-1, MR-7, MR-9 (ERROR) and MR-2/MR-3/MR-4/MR-5/MR-6/MR-8/MR-10/MR-11/MR-13 (WARNING). Fix all ERRORs before continuing.
+# → Enforces MR-1, MR-7, MR-9 (ERROR) and MR-2/MR-3/MR-4/MR-5/MR-6/MR-8/MR-10/MR-11/MR-13/MR-14 (WARNING). Fix all ERRORs before continuing.
 
 # Step 2: Verify the gate actually discriminates
 ll-loop diagnose-evaluators my-optimizer
@@ -322,7 +323,7 @@ ll-loop run my-optimizer --baseline
 #   If the harness doesn't beat baseline by a meaningful margin, the loop isn't worth the overhead.
 ```
 
-- **`ll-loop validate <loop>`** — enforces MR-1, MR-7, MR-9 (ERROR) and MR-2/MR-3/MR-4/MR-5/MR-6/MR-8/MR-10/MR-11/MR-13 (WARNING)
+- **`ll-loop validate <loop>`** — enforces MR-1, MR-7, MR-9 (ERROR) and MR-2/MR-3/MR-4/MR-5/MR-6/MR-8/MR-10/MR-11/MR-13/MR-14 (WARNING)
   before you run.
 - **`ll-loop diagnose-evaluators <loop>`** — after MR-1 passes, checks that your gate is
   actually *discriminating*. A gate can satisfy MR-1 yet be toothless if its verdict never

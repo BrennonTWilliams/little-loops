@@ -50,6 +50,7 @@ These are surfaced by running `ll-loop validate <name>`. The review skill presen
 | MR-11 | `shell` state pastes a user-controlled `${context.input\|goal\|description\|task\|prompt\|query\|topic}` value raw into the action body outside a safe position (single-quoted string, quoted heredoc `<<'EOF'`, or the `:shell` suffix) — a value containing `"`, `$`, `` ` ``, `\`, or `!` breaks bash tokenizing or injects commands. Wrap in single quotes, write through a quoted heredoc, or use `${context.input:shell}` to shlex-quote it; suppress with `unsafe_context_interpolation_ok: true` (BUG-2622) | Warning |
 | V-18 | State's `loop:` reference does not resolve to any file (typo, renamed loop, missing sibling) — fails at runtime after expensive setup; caught at definition time (BUG-2305) | Warning |
 | terminal-action-ok | `terminal: true` state has a non-empty `action` — the executor finishes the run before that action would run, so it's dead code; move it to a new penultimate non-terminal state with `next: <terminal>` and `on_error:` routing (the `rn-implement::report` shape). Exempts a terminal doubling as the loop's `on_max_steps`/`on_max_iterations` handler; suppress with `terminal_action_ok: true` (BUG-2813) | Warning |
+| MR-14 | State's raw `evaluate:` mapping has a key outside `EvaluateConfig`'s dataclass fields — silently dropped by `EvaluateConfig.from_dict` with no diagnostic (root cause of BUG-2893/BUG-2894); suggests the nearest known field via `difflib.get_close_matches`; suppress with `evaluate_unknown_keys_ok: true` (ENH-2896) | Warning |
 
 ---
 

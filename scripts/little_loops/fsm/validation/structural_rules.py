@@ -8,6 +8,7 @@ and the `load_and_validate`/`is_runnable_loop` entry points.
 
 from __future__ import annotations
 
+import difflib
 import logging
 import re
 from pathlib import Path
@@ -18,7 +19,7 @@ import yaml
 from little_loops.fsm.evaluators import _NUMERIC_OPERATORS
 from little_loops.fsm.fragments import resolve_flow, resolve_fragments, resolve_inheritance
 from little_loops.fsm.loop_paths import resolve_loop_path
-from little_loops.fsm.schema import EvaluateConfig, FSMLoop, StateConfig
+from little_loops.fsm.schema import EvaluateConfig, FSMLoop, StateConfig, evaluate_config_known_fields
 
 from little_loops.fsm.validation._base import (
     EVALUATOR_REQUIRED_FIELDS,
@@ -1454,6 +1455,62 @@ def is_runnable_loop(path: Path) -> bool:
     has_flow = "states" in data or "flow" in data
     return "name" in data and "initial" in data and has_flow
 
+def _validate_evaluate_unknown_keys(
+    fsm: FSMLoop, raw_data: dict[str, Any]
+) -> list[ValidationError]:
+    """Validate rule MR-14 (ENH-2896): unknown keys under a state's ``evaluate:``.
+
+    By the time a state reaches ``validate_fsm``, ``EvaluateConfig.from_dict``
+    has already parsed it — silently dropping any key it doesn't recognize
+    (BUG-2893/BUG-2894's root cause). Every other structural rule receives the
+    already-parsed ``FSMLoop``/``StateConfig``/``EvaluateConfig`` objects, but
+    that's exactly the shape that can no longer reveal a dropped key. This rule
+    is therefore the one deliberate exception: it takes the **raw pre-parse
+    dict** (``raw_data``, the same object ``load_and_validate`` diffs against
+    ``KNOWN_TOP_LEVEL_KEYS`` before calling ``FSMLoop.from_dict``) and walks
+    each state's raw ``evaluate:`` sub-mapping directly, mirroring that
+    top-level check's set-difference shape at the state level.
+
+    Suppressed by ``evaluate_unknown_keys_ok: true`` at the loop top-level.
+    """
+    if fsm.evaluate_unknown_keys_ok:
+        return []
+
+    errors: list[ValidationError] = []
+    known_fields = evaluate_config_known_fields()
+    states_data = raw_data.get("states")
+    if not isinstance(states_data, dict):
+        return errors
+
+    for state_name, state_data in states_data.items():
+        if not isinstance(state_data, dict):
+            continue
+        evaluate_data = state_data.get("evaluate")
+        if not isinstance(evaluate_data, dict):
+            continue
+
+        unknown = set(evaluate_data.keys()) - known_fields
+        for key in sorted(unknown):
+            suggestion = ""
+            matches = difflib.get_close_matches(key, known_fields, n=1)
+            if matches:
+                suggestion = f" Did you mean `{matches[0]}`?"
+            errors.append(
+                ValidationError(
+                    path=f"states.{state_name}.evaluate",
+                    message=(
+                        f"[state: {state_name}] Unknown evaluate key `{key}` for "
+                        f"evaluator type `{evaluate_data.get('type', '?')}` — this key "
+                        "is silently dropped by EvaluateConfig.from_dict and has no "
+                        f"effect.{suggestion} Set `evaluate_unknown_keys_ok: true` to "
+                        "suppress. (ENH-2896 MR-14)"
+                    ),
+                    severity=ValidationSeverity.WARNING,
+                )
+            )
+    return errors
+
+
 def load_and_validate(
     path: Path,
     raise_on_error: bool = True,
@@ -1538,6 +1595,11 @@ def load_and_validate(
 
     # Parse into dataclass
     fsm = FSMLoop.from_dict(data)
+
+    # MR-14 (ENH-2896): unknown evaluate: keys, using the raw pre-parse `data`
+    # captured above (EvaluateConfig.from_dict already dropped anything unknown
+    # by this point, so `fsm` alone cannot reveal it — see the rule's docstring).
+    unknown_key_warnings.extend(_validate_evaluate_unknown_keys(fsm, data))
 
     # Validate
     errors = validate_fsm(fsm, orchestration_request_path)
