@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.153.0] - 2026-07-28
+## [1.153.0] - 2026-07-29
 
 ### Added
 
@@ -24,6 +24,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   all-skipped `results.json` scores `0.0`, so the gate cannot be cleared by
   declining to write checks. New knobs: `max_acceptance_retries` (default `1`),
   `min_acceptance_pass_rate` (default `1.0`); `max_steps` raised 30 → 40.
+- FEAT-2878: Trace-level assertions in the eval harness, with optional
+  multi-host divergence runs.
+- FEAT-2906: `ll-queue run` dispatches `RunnerType.LOOP` entries via a
+  subprocess `ll-loop run` per entry, writing back real `status`/`result`.
+- FEAT-2842: `ll-issues link` — an idempotent dependency-edge writer.
+- FEAT-2846: Detect prose dependency claims missing from frontmatter.
+- FEAT-2849: Prose dependency extractor, format-check gap taxonomy, and skill
+  wiring.
+- FEAT-2850: Repo-wide prose-dependency sweep gated in pytest.
+- FEAT-2851: Optional `--fix` to backfill `blocked_by` from prose dependencies.
+- ENH-2862: New `rn-stepwise` FSM loop — implement and verify each leaf before
+  continuing refinement.
+- ENH-2888: New session-start drift-check hook with a weekly throttle and
+  opt-out.
+- ENH-2896: New MR-14 validation rule rejecting unknown keys in
+  `EvaluateConfig.from_dict` (root cause of BUG-2893/BUG-2894).
+- ENH-2860: New MR-13 validation rule — abandonment must reach `summary.json`
+  and downgrade the verdict.
+- ENH-2865: Shared test-file identification module and a `project.test_patterns`
+  config key.
+- ENH-2874: Degraded-mode agent fallbacks generated for hosts without subagent
+  support, with mandatory disclosure.
+- ENH-2873: Declarative host-capability map for adapter hosts.
 
 ### Fixed
 
@@ -33,6 +56,105 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   emitted a bare `SKIP` with no `pass_rate` key (yielded `verdict="error"` on
   every skipped gate). The final `echo` now emits the grepped line once, the
   path is quoted, and the SKIP branch emits `SKIP pass_rate=1.0`.
+- BUG-2902: `code-run-gate`'s `aggregate` never saw the test result — a failing
+  suite yielded `GATE_PASS`.
+- BUG-2908: `autodev` reported `Passed` at threshold-pass time without ever
+  verifying closure.
+- BUG-2907: `ll-auto --only` exited 0 when no requested issue was ever eligible;
+  it now exits 1.
+- BUG-2897: A `deferred` blocker was silently treated as satisfied by the
+  dependency graph. Only `done`/`cancelled` resolve a `blocked_by`/`depends_on`
+  edge.
+- BUG-2893: `docs-sync`'s inert `evaluate.key` trapped the loop in a
+  `verify_docs` retry cycle.
+- BUG-2904: The generator-evaluator screenshot state had no timeout bound (1h
+  per hang).
+- BUG-2864: `ready-to-implement-gate` scope conflict and swallowed diagnostics
+  caused spurious `gate_blocked` deferrals.
+- BUG-2865: `ll-code` codegraph freshness was permanently stale — the
+  commit-count heuristic could never be satisfied by a sync.
+- BUG-2898: `ll-issues sequence --type` dropped cross-type dependencies instead
+  of respecting them.
+- BUG-2899: `ll-issues sequence` cycle fallback was not priority-ordered and
+  printed stale rationale.
+- BUG-2848: `depends_on` edges were invisible to `ll-issues sequence`, and the
+  conflict audit preferred them.
+- BUG-2844: `/ll:audit-issue-conflicts` supersession wrote `status: done` and
+  never recorded `supersedes:`.
+- BUG-2840: `claude_md_suppression` reported "full" on a host that cannot do it;
+  both pruning suppression flags were inert.
+- BUG-2879: `ll-verify-triggers` exited 1 because zero skills declared
+  `trigger_fixtures`.
+- FSM shell actions now start in their own process group, preventing the runner
+  from killing itself on timeout (`e2cb3d8`).
+
+### Changed
+
+- EPIC-2861: Closed the `general-task` verification gaps identified in the
+  postmortem — standing DoD criteria and absolute static-analysis gates in
+  `define_done` (ENH-2858), visible/counted/blocking step abandonment
+  (ENH-2857), harness-workaround flagging in `check_done` plus a closing
+  consistency sweep in `final_verify` (ENH-2859), and an explicit
+  `failure: true` terminal so ENH-2814's exit-code plumbing is no longer inert
+  (ENH-2892).
+- ENH-2903: The generator-evaluator screenshot failure now has an escape route
+  via a screenshot-miss abandonment gate.
+- ENH-2909 / ENH-2868: `autodev` gained a dequeue pre-flight gate that parks
+  issues with unmet blockers, and gates on issue status before refinement.
+- ENH-2870: Program-design gate failures route through `autodev`
+  reconcile-before-defer with a `design_gate_failed` deferral reason.
+- ENH-2852: Issue refinement gained a program-design stage naming types,
+  signatures, and call path; ENH-2871 has `manage-issue` write a Deviations note
+  when implementation departs from it.
+- ENH-2415: The `rn-build` eval harness is now mandatory and loud — no silent
+  skip to `done`.
+- ENH-2905 / ENH-2895: `code-run-gate`'s `aggregate` honors `min_pass_rate`
+  independently of exit code, backed by a new `evaluate.key` field on the
+  `output_numeric` evaluator.
+- ENH-2875 / ENH-2886 / ENH-2887 / ENH-2889: Drift findings carry an
+  action-severity and a throttle, opportunistic repair is forbidden, `--fix` is
+  gated to `auto`, severity threads through `ll-doctor --full` aggregation, and
+  `docs-sync.yaml` respects the model.
+- ENH-2883 / ENH-2873: Per-host adapter emitters collapsed onto the capability
+  map, with `core.py` dispatch driven from it.
+- ENH-2772 / ENH-2890 / ENH-2891: `session_store.py` split into a subpackage,
+  with its tests split per module.
+- ENH-2774: `fsm/validation.py` split by rule family into a subpackage.
+- ENH-2773: Fixed the fsm→cli layering inversion by moving `resolve_loop_path`
+  out of `cli/loop/_helpers`.
+- ENH-2877 / ENH-2880 / ENH-2881: Overlapping skills merged behind mode flags —
+  `link-epics` (`--mode assign|synthesize`) and `verify-issue-loop`
+  (`--mode criteria|adversarial`).
+- ENH-2882: `/ll:audit-issue-conflicts` accepts a comma-separated issue-ID list
+  as an optional scope argument.
+- ENH-2845: `/ll:audit-issue-conflicts` non-persistent bash state, under-declared
+  tools, and contradictory auto mode corrected.
+- ENH-2900: `ll-issues sequence --json`'s `blocks` field is now graph-derived,
+  matching `blocked_by`.
+- ENH-2847: `ll-issues sequence` surfaces unverified prose dependencies.
+- ENH-2836: `ll-check-links` no longer conflates network timeouts with broken
+  links (`--strict-network` to opt in).
+- ENH-2863: The codegraph index auto-syncs on staleness via the codegraph CLI.
+- ENH-2885: Effort is read from the session JSONL instead of the resolved config
+  value; ENH-2869 shows it in the `ll-loop run` header.
+- ENH-2876: Deprecated schema fields require a mandatory prose reason, not just
+  a `deprecated` flag.
+- ENH-2841 / ENH-2839: `<example>` blocks moved out of agent descriptions
+  (~1.9K tokens off every invocation), and ENH-2714's realized static-prefix
+  savings are now measured per component.
+- ENH-2843: Widened the learning-target extraction exclusion list to cover
+  contract-stable stdlib.
+- ENH-2838: SGR test assertions no longer under-match multi-segment 256 codes.
+- ENH-2884: `trigger_fixtures` authored for model-invocable skills, with
+  score-based best-match in `ll-verify-triggers`.
+- Skill reference overflow extracted to companion files to hold the 500-line
+  budget (`c3ec34e`).
+
+### Documentation
+
+- Architecture and reference docs synced with recent changes; the little-loops
+  distribution model (pip package + Claude Code plugin) clarified in
+  `.claude/CLAUDE.md`.
 
 ## [1.152.0] - 2026-07-27
 
@@ -397,6 +519,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ENH-2655: Standardize a .ll/ artifact directory for /ll:spike plan docs
 - refactor(runners): extract shared RunnerType/ActionSpec dispatch abstraction (c835911a)
 
+[1.153.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.152.0...v1.153.0
 [1.152.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.151.1...v1.152.0
 [1.151.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.151.0...v1.151.1
 [1.151.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.150.0...v1.151.0
