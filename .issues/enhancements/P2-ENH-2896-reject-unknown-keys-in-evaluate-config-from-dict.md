@@ -37,7 +37,7 @@ the only member with no detection at all.
 The same pattern likely exists in sibling `from_dict` methods across `fsm/schema.py`
 (`StateConfig`, `LoopConfig`, and others) — worth auditing in the same pass.
 
-## Current Pain Point / Current Behavior
+## Current Behavior
 
 `scripts/little_loops/fsm/schema.py`:
 
@@ -71,6 +71,18 @@ Two candidate strictness levels:
   breaks any third-party or user loop currently carrying a stray key. ~~including,
   today, two of our own built-ins.~~
 
+> **Added 2026-07-29 — the ERROR stance is already half-adopted.** Commit
+> `e2ea3c56` set `"additionalProperties": false` on `evaluateConfig` in
+> `fsm-loop-schema.json`, which *is* ERROR strictness on the JSON-schema side.
+> Anyone validating a loop against that schema (editor integration, docs
+> tooling) already gets a hard rejection for an unknown evaluate key. So the
+> live choice is narrower than "WARN vs ERROR" implies: it is whether the Python
+> loader should **agree with a stance the JSON schema has already taken**, or
+> deliberately stay more permissive than it. A permanent WARN/ERROR split
+> between the two validators is itself a drift bug of the kind this issue
+> exists to eliminate — if WARN is chosen, say explicitly why the two layers
+> differ and for how long.
+
 > **UPDATED 2026-07-28** by `/ll:audit-issue-conflicts`: **the built-in sweep is
 > already clean.** Commit `e2ea3c56` (ENH-2895) made `key` a real field on
 > `EvaluateConfig`, so neither `docs-sync.yaml` nor `oracles/code-run-gate.yaml`
@@ -80,9 +92,11 @@ Two candidate strictness levels:
 > schema lint can see). WARN-vs-ERROR remains a live decision — but decide it on
 > third-party/user-loop compatibility grounds, not on our own built-ins.
 
-Recommended sequencing: ~~land the WARN lint first, fix BUG-2893/BUG-2894 and any other
-hits it surfaces, then consider promoting to ERROR in a subsequent release.~~ Record the
-WARN-vs-ERROR choice as a decision; the built-in-sweep precondition is already met.
+Recommended sequencing: the built-in-sweep precondition is already met, so there is
+no staged rollout to wait on. Record the WARN-vs-ERROR choice as a decision via
+`ll-issues decisions add`, weighing it on third-party/user-loop compatibility and on
+alignment with the JSON schema's existing `additionalProperties: false` (see the note
+above) — not on our own built-ins.
 
 A useful refinement either way: suggest the nearest known field name
 (`difflib.get_close_matches`) so `key` → *did you mean `line`? `path`?* guides the author
@@ -116,9 +130,12 @@ keep it out of this issue's minimum scope.
    **already out of sync**:
 
    ```
+   evaluateConfig additionalProperties: False
    dataclass-only: ['line']
    schema-only:    []
    ```
+
+   (Re-verified 2026-07-29 — still drifted, exactly as stated.)
 
    So a loop legitimately using `line:` — the documented `classify` evaluator
    selector — is rejected by the JSON schema today. This is currently *latent*,
@@ -127,6 +144,28 @@ keep it out of this issue's minimum scope.
    schema and a test asserting `dataclasses.fields(EvaluateConfig)` and the
    schema's `evaluateConfig.properties` keys stay in lockstep, so the two lists
    can never drift again.
+
+## Scope Boundaries
+
+**In scope:**
+- Unknown-key detection for `evaluate:` mappings, derived from
+  `dataclasses.fields(EvaluateConfig)`
+- The new validation rule, its rule id, severity, and suppression flag
+- The `fsm-loop-schema.json` `line` parity fix and the schema/dataclass lockstep test
+- A built-in-loops sweep (expected to come back clean)
+- Recording the WARN-vs-ERROR decision
+
+**Explicitly out of scope:**
+- **Type-aware validation** — rejecting a field that is *known but irrelevant to
+  the declared evaluator type* (`pattern` on `output_numeric`, etc.). Noted under
+  Type-aware validation (stretch) so the idea isn't lost; it becomes its own
+  follow-up issue rather than being folded in here.
+- **Generalizing the check to sibling `from_dict` methods** (`StateConfig`,
+  `LoopConfig`, …). Step 4 *audits* them and decides; any actual fix is a
+  follow-up. Widening to every schema dataclass in this pass would make the
+  breaking-change surface unassessable.
+- Changing any built-in loop's evaluator configuration — the sweep is expected to
+  find nothing, and a hit would be filed, not fixed inline.
 
 ## Integration Map
 

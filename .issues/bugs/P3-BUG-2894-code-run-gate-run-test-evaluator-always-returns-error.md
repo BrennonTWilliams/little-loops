@@ -60,6 +60,23 @@ discriminates correctly and emits real `no` verdicts, which the shared
 `on_no`/`on_error` → `run_typecheck` routing then discards. That routing defect
 is **BUG-2902's** and is not addressed here.
 
+## Steps to Reproduce
+
+1. Check out `main`.
+2. Run the oracle against a project with a configured `test_cmd`:
+   `ll-loop run oracles/code-run-gate --context issue_id=X`
+3. Inspect the `run_test` action's stdout in the run's event stream — observe
+   `exit_code=0 pass_rate=pass_rate=0.99`, with `pass_rate=` emitted twice.
+4. Confirm the cause: `${run_dir}/test-results.txt`'s last line is itself
+   `pass_rate=<n>`, and the action's final `echo` prefixes it a second time via
+   `pass_rate=$(tail -1 ...)`.
+5. Inspect `${captured.pass_rate.output}` — it holds the doubly-prefixed blob
+   rather than a clean labelled line.
+
+Note the evaluator itself still returns the correct verdict: `output_numeric`'s
+regex takes the **last** match, so it absorbs the double prefix. This is why the
+defect is cosmetic and P3 rather than a live wrong answer.
+
 ## Current Behavior
 
 `scripts/little_loops/loops/oracles/code-run-gate.yaml` — `run_test` state:
@@ -123,21 +140,30 @@ the echo fixed, since the value after the first `=` is not numeric.
 
 ## Proposed Solution
 
-Fix the echo regardless of how ENH-2895 is resolved:
+ENH-2895 is `done`, so `key: pass_rate` stays and the evaluator extracts the
+labelled field. Emit the pass-rate line once, preserving the exit code:
 
 ```yaml
-      RATE_LINE=$(tail -1 "$${ABS_DIR}/test-results.txt")   # pass_rate=<n>
-      echo "$${RATE_LINE#pass_rate=}"
+      RATE_LINE=$(grep '^pass_rate=' "$${ABS_DIR}/test-results.txt" | tail -1)  # pass_rate=<n>
+      echo "exit_code=$RC $${RATE_LINE}"
 ```
 
-Then either:
+Note this **keeps** `exit_code=$RC` on stdout. An earlier draft of this issue
+proposed `echo "$${RATE_LINE#pass_rate=}"`, which strips the label *and* drops
+the exit code entirely — wrong on both counts now that `key:` is live and
+BUG-2902 depends on the exit code being present.
 
-- **With ENH-2895**: keep `key: pass_rate` and echo the labelled line
-  (`echo "$RATE_LINE"`), letting the evaluator extract the field.
-- **Without ENH-2895**: echo the bare number as above and drop `key:`.
+The `grep '^pass_rate=' | tail -1` form replaces the bare `tail -1` deliberately:
+BUG-2902 appends an `exit_code=` line into the same file, which would break a
+positional `tail -1` read. Coordinate with that issue's step 3.
 
-Verifying what `aggregate` does with `${captured.pass_rate.*}` is **BUG-2902's**
-scope, not this issue's.
+An earlier "Without ENH-2895 — echo the bare number and drop `key:`" branch has
+been deleted; that issue is closed and the branch is dead.
+
+Verifying what `aggregate` does with the test result is **BUG-2902's** scope, not
+this issue's. Note that `aggregate` reads sidecar *files*, not
+`${captured.pass_rate.*}` — so the capture's value shape is cosmetic in the
+strict sense that no verdict depends on it.
 
 ## Integration Map
 
@@ -153,13 +179,16 @@ scope, not this issue's.
    `pass_rate=<n>` (today it emits `pass_rate=pass_rate=<n>`).
 2. Fix the double-prefix in the final `echo`.
 3. Resolve the `capture: pass_rate` value shape so it holds the labelled line,
-   not the malformed blob. **Do not** modify the `aggregate` consumer — that
-   audit is BUG-2902's (see Scope Boundary).
-4. Assert `min_pass_rate` is honoured: a run at 0.5 with threshold 0.95 must yield `no`.
+   not the malformed blob. **Do not** modify the `aggregate` consumer — that is
+   BUG-2902's (see Scope Boundary).
+4. Assert the state's own evaluator verdict is honoured: a run at 0.5 with
+   threshold 0.95 must yield `no` from `evaluate_output_numeric`. Do **not**
+   assert this reaches the aggregate verdict — that path is BUG-2902's.
 5. Confirm `python -m pytest scripts/tests/` exits 0.
 
-**Out of scope** (owned by BUG-2902): the `on_no`/`on_error` routing split, and
-tracing `${captured.pass_rate.*}` into `aggregate`.
+**Out of scope** (BUG-2902's): the sidecar `exit_code=` write and the `aggregate`
+detector. **Out of scope entirely** (withdrawn, see BUG-2902's Rejected
+Approach): the `on_no`/`on_error` routing split.
 
 ## Impact
 
@@ -195,15 +224,20 @@ tracing `${captured.pass_rate.*}` into `aggregate`.
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): This issue covers the `run_test`
-state's **cosmetic output shape only** — the `pass_rate=pass_rate=` double-prefix
-in the final `echo`, and the resulting `capture: pass_rate` value shape. Related
-issue [BUG-2902] covers the `on_no`/`on_error` routing split and the
-`${captured.pass_rate.*}` → `aggregate` consumer audit; those were duplicated
-here after BUG-2902 was split out of this issue's step 6, and have now been
-removed from this issue's Implementation Steps.
+**Note** (revised 2026-07-29): This issue covers the `run_test` state's
+**cosmetic output shape only** — the `pass_rate=pass_rate=` double-prefix in the
+final `echo`, and the resulting `capture: pass_rate` value shape.
+
+Related issue [BUG-2902] covers the `run_test` → `aggregate` verdict path (the
+missing sidecar `exit_code=` write). Note that BUG-2902 was **rediagnosed** on
+2026-07-29: the `on_no`/`on_error` routing split it previously owned has been
+withdrawn as harmful, not reassigned — the converging routing is deliberate and
+uniform across all five gate states. Neither issue should implement it.
 
 Both issues edit the same `run_test` block, so BUG-2902 (P2) should land first.
+They interact directly: BUG-2902 appends an `exit_code=` line to
+`test-results.txt`, which breaks the positional `tail -1` pass-rate read this
+issue's fix replaces with a `grep '^pass_rate='` extraction.
 
 ---
 

@@ -19,7 +19,7 @@ relates_to:
 ## Summary
 
 Every outcome of the `evaluate` state in
-`scripts/little_loops/loops/oracles/generator-evaluator.yaml:75-77` routes to the
+`scripts/little_loops/loops/oracles/generator-evaluator.yaml:82-84` routes to the
 same place, so a failed screenshot cannot be distinguished from a bad artifact
 and the loop keeps iterating blind.
 
@@ -29,7 +29,9 @@ step budget on un-evaluable iterations.
 
 ## Status
 
-Open. Blocked on BUG-2901 and BUG-2904.
+Open. BUG-2901 is `done` (commit `e2cb3d8e`). Still blocked on **BUG-2904 only** —
+this issue's design assumes `exit_code: 124` is an observable signal downstream of
+`evaluate`, which BUG-2904's per-state `timeout:` is what produces.
 
 ## Current Behavior
 
@@ -113,7 +115,8 @@ stream, which downstream tooling can key on without a new event type.
 
 ## Acceptance Criteria
 
-- [ ] BUG-2901 and BUG-2904 are merged.
+- [x] BUG-2901 is merged — commit `e2cb3d8e`.
+- [ ] BUG-2904 is merged (remaining hard prerequisite).
 - [ ] A missing/stale `screenshot.png` is detectable downstream of `evaluate`.
 - [ ] `score` does not silently rubric-score a stale screenshot.
 - [ ] Repeated screenshot failures converge to a terminal state with an honest

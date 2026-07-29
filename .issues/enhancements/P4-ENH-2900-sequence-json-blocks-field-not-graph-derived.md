@@ -166,6 +166,11 @@ assume.
 - `scripts/tests/test_issues_cli.py` — assert `blocks` excludes a `done` target
   and is sorted; assert `blocked_by`/`blocks` are reciprocal across two active
   issues in the same output
+- **Also assert a `deferred` target is _included_ in `blocks`.** This is the
+  behaviour that actually changes relative to today under BUG-2897's widened
+  graph, and it is the assertion that would catch a regression where the graph
+  silently narrows back to active-only. The `done`-exclusion test above passes
+  both before and after BUG-2897, so it does not pin the new contract on its own.
 
 ### Documentation
 - `docs/reference/API.md` — `ll-issues sequence --json` field descriptions, if

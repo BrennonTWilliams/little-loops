@@ -8,6 +8,7 @@ discovered_date: 2026-07-28
 discovered_by: capture-issue
 relates_to: [BUG-2898, BUG-2899]
 supersedes: [BUG-2898]
+blocks: [BUG-2899]
 ---
 
 # BUG-2897: A `deferred` blocker is silently treated as satisfied by the dependency graph
@@ -146,10 +147,48 @@ The former is less invasive and keeps the graph status-agnostic.
   terminal statuses should be, and that absent-from-graph is the mechanism
 
 ### Dependent Files (Callers/Importers)
-- TBD — audit all `DependencyGraph.from_issues(` call sites; grep shows use in
-  `sprint.py`, `dependency_mapper.py`, `issue_parser.py` (skip_blocked branch),
-  `cli/issues/*`. Each needs checking for whether its issue list was built with
-  the default (deferred-excluding) filter.
+
+**Call-site audit completed 2026-07-29.** All 13 `DependencyGraph.from_issues(`
+call sites, with the provenance of the issue list each one passes:
+
+| Call site | Line | Issue-list source | Affected? |
+|---|---|---|---|
+| `cli/issues/sequence.py` | 77 | `find_issues(config, type_prefixes=...)` @ `:62` — **default status filter** | **Yes — the confirmed defect** |
+| `issue_parser.py` | 1520 | `all_active` (skip_blocked branch) | Verify — this is the existing non-terminal-superset precedent |
+| `issue_manager.py` | 1237 | `all_issues` | Verify |
+| `sprint.py` | 367 | `child_infos` | Verify |
+| `dependency_mapper/analysis.py` | 481 | `issues` + explicit `completed` arg | Verify |
+| `cli/deps.py` | 292 | — | Verify |
+| `cli/issues/link.py` | 222 | `issues` (**no `all_known_ids`** — will emit dropped-edge warnings) | Verify |
+| `cli/sprint/show.py` | 190 | `issue_infos` | Verify |
+| `cli/sprint/run.py` | 490 | `issue_infos` | Verify |
+| `cli/sprint/manage.py` | 99 | `issue_infos` | Verify |
+| `cli/issues/next_issue.py` | 72 | `raw_issues` | Verify |
+| `cli/issues/next_issues.py` | 57 | `raw_issues` | Verify |
+
+Two concrete findings from the audit that shape the fix:
+
+1. **`sequence.py:62` carries both defects on one line.** It passes
+   `type_prefixes` *and* relies on the default status filter:
+   ```python
+   type_prefixes = {args.type} if getattr(args, "type", None) else None
+   issues = find_issues(config, type_prefixes=type_prefixes)   # :62
+   ```
+   This single call is the BUG-2897 half and the absorbed BUG-2898 half
+   simultaneously — consistent with merging the two issues.
+
+2. **`sequence.py:90` already does the right thing** for the `all_known_ids`
+   argument: `find_issues(config, status_filter=set(_ALL_STATUSES))`. So
+   `_ALL_STATUSES` is already imported in this module and the superset-load
+   pattern is already present one line away from the defect. The fix is smaller
+   than the issue implies.
+
+The `Verify` rows are *not* asserted broken — the audit establishes the call-site
+inventory, not each one's correctness. Work through them during implementation;
+the ones whose list comes from a bare `find_issues(config)` share the defect, the
+ones fed a pre-built list (sprint `issue_infos`, `child_infos`) inherit whatever
+their caller did and need one more hop.
+
 - `scripts/little_loops/parallel/` — wave construction consumes the same graph
 
 ### Similar Patterns
@@ -175,7 +214,10 @@ The former is less invasive and keeps the graph status-agnostic.
 ## Implementation Steps
 
 1. Add a failing test: dependent of a `deferred` blocker must report blocked.
-2. Audit `DependencyGraph.from_issues()` call sites for default-filter reliance.
+2. ~~Audit `DependencyGraph.from_issues()` call sites for default-filter reliance.~~
+   **Done 2026-07-29** — inventory in Dependent Files. Remaining work is walking
+   the 12 `Verify` rows one hop further to their list source and fixing those that
+   share the defect.
 3. Introduce the non-terminal superset load for graph construction (Option A),
    ideally behind one named helper.
 4. Separate graph-membership from display-membership in `cmd_sequence()`.
@@ -186,9 +228,11 @@ The former is less invasive and keeps the graph status-agnostic.
 ## Impact
 
 - **Severity**: Correctness — silent wrong answer, no warning
-- **Scope**: `ll-issues sequence` confirmed; likely every `DependencyGraph`
-  consumer fed by a default `find_issues()` call (sprint waves, parallel waves,
-  `next-issue`) — scope to be confirmed by the Step 2 audit
+- **Scope**: `ll-issues sequence` confirmed broken. 13 `from_issues()` call sites
+  inventoried (see Dependent Files); `sequence.py:77` is the one with a
+  demonstrated default-filter dependency. The remaining 12 are candidates whose
+  list-provenance must be walked one hop further during implementation — they are
+  inventoried, not yet cleared.
 - **Risk of fix**: Low for Option A; the graph gains nodes it should always have
   had. Watch for deferred issues leaking into *display* lists — the display
   filter must stay narrow.

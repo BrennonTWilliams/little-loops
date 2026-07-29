@@ -23,12 +23,16 @@ render blocks for a full hour per iteration.
 
 This is distinct from and complementary to BUG-2901. That bug meant the timeout
 path, when it fired, killed the wrong process group; this bug means for this
-state the timeout effectively never fires at all. **BUG-2901 must land first** —
-without it, adding a timeout here only converts a hang into a runner suicide.
+state the timeout effectively never fires at all. BUG-2901 had to land first —
+without it, adding a timeout here would only convert a hang into a runner
+suicide.
 
 ## Status
 
-Open. Blocked on BUG-2901 (merged fix required before this is safe to apply).
+Open and **unblocked**. BUG-2901 is `done` — fixed by commit `e2cb3d8e`
+(*fix(fsm): start shell actions in own process group to prevent runner self-kill
+on timeout*), which added `start_new_session=True` to `DefaultActionRunner.run()`'s
+shell path. The hard prerequisite is satisfied; this is ready to implement.
 
 ## Current Behavior
 
@@ -101,18 +105,32 @@ in `lib/harness.yaml:2-14`. That fragment has 5+ consumers
 shared; a per-state `timeout:` is inheritance-free and each consumer can set its
 own value.
 
+This is additionally safe because **the `evaluate` state already overrides the
+fragment's `action:` inline** (`generator-evaluator.yaml:75-81`, the Variant A
+`$(pwd)/` path-expansion override the fragment's own description anticipates).
+Only `evaluate.type: output_contains` / `pattern: "CAPTURED"` are actually
+inherited. Adding `timeout:` alongside the existing override touches nothing any
+other consumer reads.
+
 ## Open Questions
+
+Both must be **resolved in this issue before implementation** — they change the
+shape of the diff, not just a constant.
 
 - Is 90s the right ceiling? Static SVGs render in <5s, but `--full-page` on a
   heavy generated HTML page may legitimately take longer. Wants one calibration
   pass across the consumer loops before settling.
-- Should the sibling oracles (`generator-evaluator-cli.yaml`,
-  `generator-evaluator-flux.yaml`) get the same bound here, or is a loop-level
-  `default_timeout` the better shape?
+- **Per-state `timeout:` vs. loop-level `default_timeout:`.** These are different
+  changes with different blast radii: a per-state bound touches only `evaluate`,
+  while `default_timeout` re-bounds every state in the loop (including `generate`,
+  which legitimately runs long). Recommendation: per-state here, and file a
+  separate issue if the sibling oracles (`generator-evaluator-cli.yaml`,
+  `generator-evaluator-flux.yaml`) want the same treatment — they are not in this
+  issue's scope.
 
 ## Acceptance Criteria
 
-- [ ] BUG-2901 is merged (hard prerequisite).
+- [x] BUG-2901 is merged (hard prerequisite) — commit `e2cb3d8e`.
 - [ ] The `evaluate` state in `generator-evaluator.yaml` carries an explicit
       `timeout:`.
 - [ ] A hung screenshot terminates within that bound and the Chromium tree is
