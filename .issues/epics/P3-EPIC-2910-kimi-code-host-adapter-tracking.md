@@ -17,6 +17,7 @@ relates_to:
 - FEAT-2917
 - ENH-2918
 - ENH-2919
+- BUG-2921
 labels:
 - epic
 - captured
@@ -115,6 +116,7 @@ every cell is ✓, ✗ (with a tracking issue), or N/A.
 - **FEAT-2917** — kimi.plugin.json packaging — open (independent)
 - **ENH-2918** — Conformance + host-list plumbing for kimi-code — open (independent)
 - **ENH-2919** — HOST_COMPATIBILITY.md kimi-code column + docs/kimi/ onboarding — open (final gate)
+- **BUG-2921** — kimi plugin-manifest hooks inert on 0.30.0; config.toml managed block is the working route — open (captured from live plugin-install validation)
 
 ## Implementation Steps
 

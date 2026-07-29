@@ -63,8 +63,15 @@ limitation), which the README section must note.
 - **Breaking Change**: No.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-29T20:39:42 - `7dce485a-c75c-400c-ac56-53fcf2521623.jsonl`
 - `/ll:capture-issue` - 2026-07-29T15:55:00Z - kimi-code host adapter planning session
 
 ---
 
 **Open** | Created: 2026-07-29 | Priority: P3
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The kimi-native plugin install path provides active hooks for interactive TUI sessions only. Per BUG-2921, print mode (`kimi -p`) does not fire plugin hooks, so headless automation (`ll-auto` via `kimi -p`) still requires the config.toml managed block from `ll-init --hosts kimi-code`. The README install section in this issue's scope must carry this caveat; do not present the plugin path as replacing `ll-init` for headless use.

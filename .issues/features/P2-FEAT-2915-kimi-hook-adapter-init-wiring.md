@@ -88,8 +88,15 @@ drifted on four rows, so handlers need tolerant accessors keyed by host.
 - **Breaking Change**: No.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-29T20:39:42 - `7dce485a-c75c-400c-ac56-53fcf2521623.jsonl`
 - `/ll:capture-issue` - 2026-07-29T15:55:00Z - kimi-code host adapter planning session
 
 ---
 
 **Open** | Created: 2026-07-29 | Priority: P2
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The adapter shims this issue specifies have already landed including BUG-2921's hardening — all 8 shims `cd` into the payload's `cwd` before dispatching (whitespace-tolerant extraction) and resolve `LL_PYTHON` → `python3` → `python`. Do not implement the literal 4-line bare-`python` shim shape from Implementation Step 1 as written; that pre-fix form would regress BUG-2921. Related issue BUG-2921 covers the cwd-locality fix and print-mode/doc caveats.

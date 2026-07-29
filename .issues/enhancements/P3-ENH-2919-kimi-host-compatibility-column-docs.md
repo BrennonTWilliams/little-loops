@@ -5,12 +5,14 @@ type: ENH
 status: open
 priority: P3
 parent: EPIC-2910
-captured_at: "2026-07-29T15:55:00Z"
+captured_at: '2026-07-29T15:55:00Z'
 discovered_date: 2026-07-29
 discovered_by: capture-issue
 labels:
 - kimi
 - host-compat
+depends_on:
+- FEAT-2916
 ---
 
 # ENH-2919: HOST_COMPATIBILITY.md kimi-code column + docs/kimi/ onboarding
@@ -67,6 +69,7 @@ component table, and new kimi users get a dedicated onboarding path.
 - **Breaking Change**: No.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-29T20:39:42 - `7dce485a-c75c-400c-ac56-53fcf2521623.jsonl`
 - `/ll:capture-issue` - 2026-07-29T15:55:00Z - kimi-code host adapter planning session
 
 ---
