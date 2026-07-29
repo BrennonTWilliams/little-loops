@@ -15,7 +15,11 @@ stateful, resumable, multi-state engine — not a single blocking call — so
 forcing it through the one-shot ``ActionSpec -> RunnerResult`` shape would
 misrepresent its behavior. ``cli/loop/run.py`` builds a ``RunnerType.LOOP``
 ``ActionSpec`` for structural/observability parity only; it keeps calling
-``PersistentExecutor`` directly for actual execution.
+``PersistentExecutor`` directly for actual execution. ``ll-queue run``
+(FEAT-2906) similarly never calls :func:`run_action` for ``LOOP`` entries —
+it intercepts them beforehand and drives each through a subprocess
+``ll-loop run`` shell-out (``cli/queue.py:_run_loop_entry``), not
+``PersistentExecutor`` in-process.
 """
 
 from __future__ import annotations

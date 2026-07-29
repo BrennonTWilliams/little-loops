@@ -3,8 +3,9 @@ id: FEAT-2906
 title: '`ll-queue run`: dispatch RunnerType.LOOP entries via PersistentExecutor'
 type: FEAT
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-29T00:47:13Z'
+completed_at: '2026-07-29T01:47:49Z'
 discovered_date: 2026-07-29
 discovered_by: capture-issue
 relates_to:
@@ -286,21 +287,21 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] `ll-queue add <loop>` then `ll-queue run` executes the loop and records a
+- [x] `ll-queue add <loop>` then `ll-queue run` executes the loop and records a
       terminal status derived from the run, never the
       `"run_action() does not dispatch runner type"` error.
-- [ ] `ll-queue add <loop> --input '{"issue_id": "BUG-1"}'` results in the loop
+- [x] `ll-queue add <loop> --input '{"issue_id": "BUG-1"}'` results in the loop
       seeing `issue_id` in `fsm.context` when that key exists in the loop's
       declared context, and the raw string under `fsm.input_key` otherwise —
       identical to `ll-loop run <loop> '{"issue_id": "BUG-1"}'`.
-- [ ] A loop declaring `required_inputs` that are not supplied fails the queue
+- [x] A loop declaring `required_inputs` that are not supplied fails the queue
       entry with the loop's own pre-run validation message
       (`cli/loop/run.py:311-315`), not a dispatch error.
-- [ ] `SKILL`/`CMD`/`MCP`/`PROMPT` entries continue through `run_action()` with
+- [x] `SKILL`/`CMD`/`MCP`/`PROMPT` entries continue through `run_action()` with
       no behavior change.
-- [ ] `run_action()` still raises for `RunnerType.LOOP` — the module contract at
+- [x] `run_action()` still raises for `RunnerType.LOOP` — the module contract at
       `runner_spec.py:12-19` is not weakened.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `python -m pytest scripts/tests/` exits 0.
 
 ## Edge Cases
 
@@ -333,6 +334,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 | `docs/reference/API.md` | `runner_spec` / `queue_store` module reference |
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-29T01:47:02 - `a8f6832d-1708-4ba2-ae77-4d4d6fefca43.jsonl`
+- `/ll:ready-issue` - 2026-07-29T01:29:42 - `d533da6b-dbaf-4088-b88d-fa94a60e9d37.jsonl`
 - `/ll:confidence-check` - 2026-07-29T01:22:45 - `624479d1-605f-4fe4-baf9-e256169e0545.jsonl`
 - `/ll:wire-issue` - 2026-07-29T01:01:42 - `ae1640d4-5ac7-48dc-b9b1-559d5c0f88b3.jsonl`
 - `/ll:decide-issue` - 2026-07-29T00:56:11 - `785b5229-efbd-49d2-9614-08d648dcdb90.jsonl`
@@ -344,7 +347,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Status
 
 - [x] Captured
-- [ ] Refined
-- [ ] Ready
-- [ ] Implemented
-- [ ] Verified
+- [x] Refined
+- [x] Ready
+- [x] Implemented
+- [x] Verified

@@ -3,12 +3,23 @@ id: BUG-2897
 type: bug
 priority: P2
 status: open
-captured_at: "2026-07-28T22:29:06Z"
+captured_at: '2026-07-28T22:29:06Z'
 discovered_date: 2026-07-28
 discovered_by: capture-issue
-relates_to: [BUG-2898, BUG-2899]
-supersedes: [BUG-2898]
-blocks: [BUG-2899]
+relates_to:
+- BUG-2898
+- BUG-2899
+supersedes:
+- BUG-2898
+blocks:
+- BUG-2899
+decision_needed: false
+confidence_score: 98
+outcome_confidence: 90
+score_complexity: 22
+score_test_coverage: 22
+score_ambiguity: 24
+score_change_surface: 22
 ---
 
 # BUG-2897: A `deferred` blocker is silently treated as satisfied by the dependency graph
@@ -91,6 +102,8 @@ silently vanish.
 The fix has a narrow option and a broad option; the broad one is likely correct
 but needs a caller audit.
 
+> **Selected:** Option A (narrow) — reuses the existing `skip_blocked` superset/filter precedent in `issue_parser.py`, low blast radius, high consistency.
+
 ### Option A (narrow) — fix at the graph-building call sites
 
 Have `ll-issues sequence` (and peer graph consumers) load the full non-terminal
@@ -125,6 +138,41 @@ certainly *not* wanted for work-selection callers.
 surfaces; make it visible to graph-construction surfaces. Consider extracting a
 small `find_issues_for_graph(config)` helper so the distinction is named once
 rather than repeated at each call site.
+
+### Decision Rationale
+
+**Selected: Option A (narrow) — fix at the graph-building call sites.**
+
+Codebase evidence from parallel `codebase-pattern-finder` agents confirms the
+narrow fix directly reuses an already-working, already-tested in-repo pattern:
+`find_issues(skip_blocked=True)` (`issue_parser.py:1468-1522`) already builds a
+`non_terminal = _ALL_STATUSES - _TERMINAL_STATUSES` superset for graph
+construction and separately filters the display list — the exact shape Option
+A proposes. Each of the five affected call sites (`sequence.py`,
+`issue_manager.py`, `link.py`, `next_issue.py`, `next_issues.py`) follows the
+same `find_issues()` → `DependencyGraph.from_issues()` two-line shape, so the
+fix is a small, copy-paste-consistent patch per site rather than five
+different designs.
+
+Option B (broadening the `find_issues()` default) was rejected: an agent
+audit found 10+ bare-default production call sites (`next_issues.py`,
+`next_issue.py`, `link.py`, `show.py`, `set_status.py`, `next_action.py`,
+`format_check.py`, `sweep_stale_refs.py`, `priority_queue.py` feeding
+`ll-parallel`, `issue_manager.py`) that would start surfacing `deferred`
+issues in work-selection/dequeue paths where hiding them is intentional and
+correct — inverting an established convention rather than reusing it, with
+existing unit tests (e.g. `test_issue_parser.py:2255`) asserting the current
+exclusion.
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|---|---|---|---|---|---|
+| A (narrow) | 3 | 2 | 3 | 3 | **11/12** |
+| B (broad) | 1 | 3 | 1 | 0 | 5/12 |
+
+**Key evidence:**
+- `issue_parser.py:1484-1522` — the `skip_blocked` superset/filter precedent Option A reuses verbatim
+- 10+ bare `find_issues(config)` call sites across work-selection surfaces would need individual auditing under Option B
+- `sprint.py`'s `_ACTIVE_STATUSES` filter is already independent of the default, unaffected either way
 
 ### Distinguishing deferred blockers in output
 
@@ -191,17 +239,82 @@ their caller did and need one more hop.
 
 - `scripts/little_loops/parallel/` — wave construction consumes the same graph
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis, resolving the 11
+`Verify` rows above one hop further to their list source:_
+
+**Exact anchors** (referenced elsewhere in this issue without line numbers):
+- `find_issues()` — `scripts/little_loops/issue_parser.py:1425`
+- `_matches_status()` — `scripts/little_loops/issue_parser.py:1468`; the
+  `status_filter is None` branch (the BUG-2897 defect) is at `:1470`
+- `_ALL_STATUSES` — `scripts/little_loops/issue_progress.py:12`
+- `_TERMINAL_STATUSES` — `scripts/little_loops/issue_progress.py:14`
+
+**Confirmed affected (bare `find_issues(config)`, `status_filter=None`) — 5 more sites beyond `sequence.py:77`:**
+- `issue_manager.py:1237` — fed by `all_issues = find_issues(self.config, self.category)` (`issue_manager.py:1228`)
+- `cli/issues/link.py:222` — fed by `issues = find_issues(config)` (`cli/issues/link.py:214`); this site also passes no `all_known_ids`, so it will additionally start emitting dropped-edge warnings once the graph gains the deferred nodes — worth a deliberate check during implementation, not just a silent fix
+- `cli/issues/next_issue.py:72` — fed by `raw_issues = find_issues(config)` (`cli/issues/next_issue.py:51`)
+- `cli/issues/next_issues.py:57` — fed by `raw_issues = find_issues(config)` (`cli/issues/next_issues.py:44`)
+- `cli/deps.py` `analyze`/`validate` command path (reaches `dependency_mapper/analysis.py:481`/`539` via `validate_dependencies`/`analyze_dependencies`) — sourced from `_load_issues()` → `issues = find_issues(config, only_ids=only_ids)` at `cli/deps.py:38`, a bare call. Note this is a **different** call path than the `cli/deps.py:292` row in the audit table, which is the epic-tree path and is NOT affected (see below) — the audit table's single `cli/deps.py` row conflates two distinct call paths in the same file.
+
+**Confirmed NOT affected (explicit non-terminal superset already passed, or no `find_issues()` in the chain):**
+- `issue_parser.py:1520` — `all_active` is built from `non_terminal = _ALL_STATUSES - _TERMINAL_STATUSES` (`issue_parser.py:1494`), bypassing `find_issues()`'s default filter entirely — this is the existing precedent, confirmed clean
+- `cli/deps.py:292` (epic-tree path) — fed by `all_issues = _find_issues(tree_cfg, status_filter=all_statuses)` (`cli/deps.py:274`) where `all_statuses` explicitly includes `deferred`, `done`, and `cancelled`
+- `cli/sprint/show.py:190`, `cli/sprint/run.py:490`, `cli/sprint/manage.py:99` — all three source `issue_infos` from `SprintManager.load_issue_infos()` (`sprint.py:451`), which parses named issue IDs directly via `IssueParser.parse_file()` and never calls `find_issues()` or applies any status filter at all
+
+**Excluded by pre-existing explicit design, not the BUG-2897 default-branch code path (same symptom, different root):**
+- `sprint.py:367` — `child_infos` derives from `all_active = find_issues(self.config, status_filter=_ACTIVE_STATUSES)` (`sprint.py:341`), where `_ACTIVE_STATUSES = {"open", "in_progress", "blocked"}` (`sprint.py:15`) intentionally excludes `deferred`. This is a separate, deliberate exclusion for sprint composition (a work-selection surface, where hiding `deferred` is correct per Option A's recommendation) — not a defect to fix under this issue, but worth a cross-reference note if a future change touches sprint dependency display.
+
+**Revised affected count**: 6 confirmed-affected call sites total (`sequence.py:77` plus the 5 above), 6 confirmed-clean, 1 excluded-by-design.
+
 ### Similar Patterns
 - `find_issues(skip_blocked=True)` already builds a non-terminal superset for
   exactly this reason — the precedent to follow
 - `ll-issues deferred-triage` is the intended visibility surface for deferred
   work; cross-check that this fix doesn't duplicate its role
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase-pattern-finder analysis:_
+
+- The `skip_blocked=True` precedent (`issue_parser.py:1484-1522`) is confirmed
+  to work exactly as described: `non_terminal = _ALL_STATUSES -
+  _TERMINAL_STATUSES` (line ~1494) builds one unfiltered non-terminal parse
+  pass over every category regardless of the caller's own filters, builds
+  `DependencyGraph.from_issues(all_active, ...)` from that superset, then
+  derives the caller's actual `issues` display list from the same in-memory
+  pass — single directory walk, not two (`test_find_issues_skip_blocked_single_parse_pass`
+  guards this, ENH-2780).
+- No `find_issues_for_graph()`-style extracted helper exists anywhere yet
+  (grepped `find_issues_for_graph`, `graph.*loader` — no hits). All 12
+  `DependencyGraph.from_issues(` call sites currently inline their own
+  `find_issues(...)` + `from_issues(...)` pairing. The issue's suggestion to
+  "consider extracting a small helper" is confirmed as genuinely new work, not
+  something to just call.
+- `sequence.py:90`'s second `find_issues()` call (`status_filter=set(_ALL_STATUSES)`)
+  builds only an `issue_statuses` dict for prose-dep terminal-status checks —
+  it does not feed the graph itself, so it's not a template to copy for the
+  graph-building fix, only for the "how do I get a full-status dict" need.
+
 ### Tests
-- `scripts/tests/test_issues_cli.py` — add a deferred-blocker sequencing case
+- `scripts/tests/test_issues_cli.py` — add a deferred-blocker sequencing case;
+  no `deferred`-status test currently exists in the `TestSequence*` class
+  block (lines 1410-1791) — existing deferred coverage lives only at the
+  `find_issues()` unit level
 - `scripts/tests/test_issue_manager.py` — graph construction with deferred nodes
 - Regression: assert a `done` blocker still resolves (BUG-2733 behaviour) while
   a `deferred` blocker does not
+- Model new tests after the existing paired contrast in `test_issue_parser.py`:
+  `test_find_issues_skip_blocked_deferred_blocker_still_blocks` (:1374-1394,
+  deferred blocker still blocks) and
+  `test_find_issues_skip_blocked_terminal_blocker_unblocks` (:1352-1372, `done`
+  blocker unblocks) — same fixture shape, opposite assertion
+- `test_find_issues_skip_blocked_false_byte_identical_for_all_caller_shapes`
+  (`test_issue_parser.py:1396-1523`) is the existing model for proving no
+  caller's *display* behavior regresses while the *graph-building* superset
+  changes — it enumerates real call-site kwargs shapes annotated with their
+  source line; extend it or write a sibling for this fix
 
 ### Documentation
 - `.claude/CLAUDE.md` § Issue File Format — note that `deferred` is non-terminal
@@ -278,6 +391,9 @@ to silence legitimate `done` references.
 - `scripts/little_loops/cli/issues/sequence.py` — `cmd_sequence()`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-28T00:00:00Z - `441ef83e-0cde-42e0-afee-c51c388cc71f.jsonl`
+- `/ll:decide-issue` - 2026-07-29T01:40:41 - `e92a4acb-e07e-4abc-a10c-a6fee7eacecf.jsonl`
+- `/ll:refine-issue` - 2026-07-29T01:38:23 - `f658c4fd-e051-4ee6-95c7-6f9f287dbf58.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-28T23:17:14 - `139954b3-6523-4f66-ba64-f2917d895a02.jsonl`
 - `/ll:capture-issue` - 2026-07-28T22:29:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/73139eea-b48b-4fa0-a6fa-0b390a284d9f.jsonl`
 

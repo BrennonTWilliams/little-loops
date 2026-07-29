@@ -776,7 +776,7 @@ In addition to structural checks (reachability, evaluator fields, routing consis
 - **MR-10 (WARNING)**: A `shell`-type state whose inline Python calls `json.loads`/`json.load`, catches `JSONDecodeError`/`ValueError`/bare `Exception`, and explicitly exits 0 (`sys.exit(0)` or `exit(0)`) — without an `on_error:` route — silently discards parse failures. The FSM receives exit 0 and treats the state as successful, producing zero results with no log, no stderr, and no non-zero exit code. Add `on_error:` to the state to route parse failures explicitly. Does not block validation. Suppressed by `parse_swallow_ok: true` when treating a parse failure as an empty result is intentional. (BUG-2383)
 - **MR-11 (WARNING)**: A `shell`-type state pastes a user-controlled `${context.input|goal|description|task|prompt|query|topic}` value raw into the action body, outside a safe position (single-quoted string, quoted heredoc `<<'EOF'`, or the `:shell` suffix). `interpolate()` substitutes with a bare `str(value)` and no shell escaping; a value containing `"`, `$`, `` ` ``, `\`, or `!` breaks bash tokenizing (misrouting the loop to `on_error`/`on_no`) or, from an untrusted source, injects commands. Fix by wrapping the placeholder in single quotes, writing it through a quoted heredoc, or using `${context.input:shell}` to shlex-quote it at interpolation time. Does not block validation. Suppressed by `unsafe_context_interpolation_ok: true`. (BUG-2622)
 
-MR-1, MR-2, and the multimodal evaluator blind-spot rule are suppressed by setting `meta_self_eval_ok: true` at the loop top-level (with a justifying comment). MR-3 is suppressed by `shared_state_ok: true`. MR-4 is suppressed by `partial_route_ok: true`. MR-5 is suppressed by `artifact_versioning: true` or `artifact_versioning_ok: true`. MR-6 is suppressed by `generator_fix_ok: true`. MR-7 is suppressed by `bash_default_ok: true`. MR-8 is suppressed by `evidence_contract_ok: true`. MR-9 is suppressed by `shell_pid_ok: true`. MR-10 is suppressed by `parse_swallow_ok: true`. MR-11 is suppressed by `unsafe_context_interpolation_ok: true`.
+MR-1, MR-2, and the multimodal evaluator blind-spot rule are suppressed by setting `meta_self_eval_ok: true` at the loop top-level (with a justifying comment). MR-3 is suppressed by `shared_state_ok: true`. MR-4 is suppressed by `partial_route_ok: true`. MR-5 is suppressed by `artifact_versioning: true` or `artifact_versioning_ok: true`. MR-6 is suppressed by `generator_fix_ok: true`. MR-7 is suppressed by `bash_default_ok: true`. MR-8 is suppressed by `evidence_contract_ok: true`. MR-9 is suppressed by `shell_pid_ok: true`. MR-10 is suppressed by `parse_swallow_ok: true`. MR-11 is suppressed by `unsafe_context_interpolation_ok: true`. MR-14 is suppressed by `evaluate_unknown_keys_ok: true`.
 
 - **Zero-retry counter pattern (WARNING)**: Detects states whose `retry` config sets `max_retries: 0` alongside a non-zero `retry_count` counter variable, or `retry_count` that is never incremented in any on-error transition. A zero-retry counter pattern means the state will never actually retry despite having retry infrastructure wired — this is almost always a configuration mistake. Does not block validation.
 - **Multimodal evaluator blind-spot (WARNING)**: Detects harness-loop states that use an LLM multimodal prompt (screenshot/image) evaluated via `output_contains` as the sole gate routing directly to a terminal state. LLMs can silently fall back to text-only analysis when reading images, producing verdicts from incomplete information without the `output_contains` evaluator detecting the gap. Consider adding a shell-action verification state (e.g., functional smoke test) between scoring and the terminal. Does not block validation. Suppressed by `meta_self_eval_ok: true`.
@@ -784,6 +784,7 @@ MR-1, MR-2, and the multimodal evaluator blind-spot rule are suppressed by setti
 - **Capture reachability (WARNING/ERROR)**: Detects states that reference ``${captured.<var>.*}`` in their action or evaluator source where the capturing state may not execute on all code paths to the referencing state. Uses dominance analysis (reverse BFS) to check whether every path from ``initial`` to the referencing state passes through at least one of the capturing states. When a variable is produced by more than one state on mutually-exclusive branches (e.g. `fifo_pop` and `select_next` both capture `input`), the validator accepts the reference as safe if the set of capturing states collectively dominates the referencing state — every path must pass through at least one member of the set. Emits an **ERROR** when the referenced capture variable has no capturing state at all in the current FSM (likely a missing ``capture:`` declaration). Emits a **WARNING** when a bypassing path exists — the variable may be undefined at runtime if the bypass path is taken. **Sub-loop exception**: when the loop contains sub-loop states and the variable has no capturing state in the *parent* FSM, the validator emits a **WARNING** rather than an ERROR — the capture may legitimately live in a child namespace; the WARNING ensures typos still surface rather than going completely dark. **Nested-path awareness (BUG-2812)**: the rule is aware of two distinct sub-loop reference shapes. `${captured.<sub_loop_state_name>.<var>...}` — qualified by the delegating state's own NAME, e.g. `${captured.prove.targets.output}` — is the correct form, since `executor.py` merges a child loop's captures under the invoking state's name. Referencing a sub-loop-delegating state's own `capture:` name instead (e.g. `${captured.gate_result.extracted.output}` when `gate.capture: gate_result`) is an **ERROR**: that name resolves only to the child's event-stream dict `{output, exit_code}`, never to the child's captures, so any nested field beyond `.output`/`.exit_code` can never resolve at runtime. Suppressed entirely by `capture_reachability_ok: true` at the loop top-level for a reviewed, runtime-guarded bypass the dominance analysis can't model. Does not block validation for warnings; errors block validation. (ENH-1961, BUG-1997, ENH-1998, BUG-2812)
 - **Terminal-action-ok (WARNING)**: Detects a non-empty `action` on a `terminal: true` state. The executor returns `_finish("terminal")` the instant a terminal is entered, before that state's own `action:` would run — the action is dead code that never executes. Fix by moving the action to a new penultimate non-terminal state with `next: <terminal>` and an `on_error:` route, leaving the terminal bare (the `rn-implement::report` shape). Exempts a terminal doubling as the loop's `on_max_steps`/`on_max_iterations` handler (BUG-158), whose action does execute once via the BUG-158 fallthrough. Does not block validation. Suppressed by `terminal_action_ok: true`. (BUG-2813)
 - **MR-13 (WARNING)**: Two compound sub-checks under one flag. (1) A loop has an abandonment mechanism — a shell action rewriting a checkbox line to the `[!]` marker, rewriting to `[x]` with an "abandoned" annotation, or consuming a `max_step_attempts`-style attempt-cap context var — but no state's action emits an `"abandoned"` key into a summary JSON printf/write, so abandoned work never reaches audit tooling. (2) A shell action hardcodes a literal `"verdict":"success"`/`verdict=success` with no conditional branch referencing an abandonment/failure counter and no `"abandoned"` key emitted in that same state, laundering abandoned work into a clean success verdict (the pre-ENH-2857 `general-task.yaml` defect: 8-of-34 abandoned steps reported as `success`). Does not block validation. Suppressed by `abandonment_verdict_ok: true`. (ENH-2860)
+- **MR-14 (WARNING)**: A state's raw `evaluate:` mapping contains a key outside `EvaluateConfig`'s dataclass fields (derived from `dataclasses.fields(EvaluateConfig)`, so this can never hand-drift from the loader). `EvaluateConfig.from_dict` silently drops any unrecognized key with no exception or log line — a typo'd or aspirational evaluator field (e.g. `key` misspelled `kye`) is indistinguishable from a working one until a verdict is traced back to its source (the root cause of BUG-2893/BUG-2894). The rule suggests the nearest known field via `difflib.get_close_matches`. This is WARN-now/ERROR-later: `fsm-loop-schema.json`'s `evaluateConfig` already sets `additionalProperties: false` (an ERROR stance), but the Python loader stays WARN pending telemetry that the built-in and user-loop population is clean. Does not block validation. Suppressed by `evaluate_unknown_keys_ok: true`. (ENH-2896)
 
 **Flags:**
 
@@ -2737,6 +2738,7 @@ Persisted work-item queue, backed by a dedicated `.ll/queue.db` (FEAT-2682) — 
 | `list` | List all entries, ordered by priority then FIFO |
 | `status ID` | Show one entry's state and result by full id or 8+-char prefix |
 | `remove ID` | Delete a `pending` entry by full id or 8+-char prefix |
+| `run` | Serially dequeue and dispatch all `pending` entries in priority/FIFO order |
 
 **`add` flags:**
 
@@ -2746,6 +2748,7 @@ Persisted work-item queue, backed by a dedicated `.ll/queue.db` (FEAT-2682) — 
 | `--priority {P0,P1,P2,P3,P4,P5}` | Priority tier (default: `P3`) |
 | `--runner {skill,cmd,mcp,prompt,loop}` | Force a specific runner kind instead of classifying `TARGET` |
 | `--arg KEY=VALUE` | Extra `ActionSpec` arg (repeatable) |
+| `--input INPUT` | (FEAT-2906) Input for a `LOOP`-runner target, same semantics as `ll-loop run <loop> [input]` — stored verbatim and interpreted at dequeue time, not re-parsed here |
 | `--timeout N` | Timeout in seconds (default: 120) |
 | `--json` | Output the new entry as JSON |
 
@@ -2759,13 +2762,21 @@ Without `--runner`, `TARGET` is classified in order: an FSM loop name (resolved 
 | `--force` | (`remove` only) remove even if the entry is not `pending` |
 | `--json` | Output as JSON |
 
+**`run`** (FEAT-2906): `SKILL`/`CMD`/`MCP`/`PROMPT` entries dispatch through `run_action()`; `LOOP` entries are intercepted beforehand and driven via a subprocess `ll-loop run <target> [input]` shell-out (process isolation, matching `worker_pool.py`/`cli/sprint/run.py`'s precedent) — never through `run_action()`, whose contract explicitly refuses `RunnerType.LOOP`. Exit code `0` → `done`; `FAILURE_TERMINAL_EXIT_CODE` (2) or any other nonzero → `failed`, with `stdout`/`stderr` captured into the entry's `result`.
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output the list of processed entries as JSON |
+
 **Examples:**
 ```bash
 ll-queue add audit-docs                                  # Enqueue a skill (classified automatically)
 ll-queue add "pytest scripts/tests/" --runner cmd --priority P1
+ll-queue add rn-refine --input '{"issue_id": "FEAT-2900"}' --priority P1
 ll-queue list --json
 ll-queue status abcd1234
 ll-queue remove abcd1234 --force
+ll-queue run                                              # Execute all pending entries serially
 ```
 
 ---

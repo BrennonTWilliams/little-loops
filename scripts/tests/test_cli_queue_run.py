@@ -215,15 +215,120 @@ class TestQueueRunExitCodeVerdict:
         assert get_entry(entry_id).status == "failed"
 
     def test_loop_runner_is_not_dispatched_by_run_action(self) -> None:
-        """`RunnerType.LOOP` is deliberately not dispatched by run_action().
+        """`RunnerType.LOOP` is deliberately not dispatched by run_action() directly.
 
-        Documents why ENH-2814 needs no `ll-queue run` change: queued loops
-        stay on PersistentExecutor (FEAT-2684), so the exit-code verdict above
-        only ever applies to the SKILL/CMD/MCP/PROMPT kinds. Guards against a
-        future LOOP handler being wired up without revisiting that verdict.
+        `run_action()`'s own contract (`runner_spec.py`) still raises for
+        `RunnerType.LOOP` in isolation — the exit-code verdict above only
+        ever applies to it for the SKILL/CMD/MCP/PROMPT kinds. FEAT-2906
+        wires a real LOOP execution path, but `cmd_run()` intercepts LOOP
+        entries *before* calling `run_action()` (see
+        `TestCmdRunLoopDispatch` below); this test guards `run_action()`'s
+        own dispatch table in isolation, not `cmd_run()`'s routing.
         """
         from little_loops.runner_spec import ActionSpec, RunnerType, run_action
 
         spec = ActionSpec(name="x", runner=RunnerType.LOOP, target="x")
         with pytest.raises(ValueError, match="does not dispatch"):
             run_action(spec)
+
+
+class TestCmdRunLoopDispatch:
+    """FEAT-2906: `ll-queue run` dispatches `RunnerType.LOOP` entries via subprocess."""
+
+    def _add_loop(
+        self,
+        capsys: pytest.CaptureFixture[str],
+        target: str = "some-loop",
+        *,
+        input_value: str | None = None,
+    ) -> str:
+        argv = ["ll-queue", "add", target, "--runner", "loop", "--json"]
+        if input_value is not None:
+            argv += ["--input", input_value]
+        with patch("sys.argv", argv):
+            main_queue()
+        return json.loads(capsys.readouterr().out)["id"]
+
+    def test_loop_entry_intercepted_before_run_action(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        entry_id = self._add_loop(capsys)
+
+        with patch("little_loops.runner_spec.run_action") as mock_run_action:
+            with patch("little_loops.cli.queue.subprocess.run") as mock_subproc:
+                mock_subproc.return_value.returncode = 0
+                mock_subproc.return_value.stdout = "ok"
+                mock_subproc.return_value.stderr = ""
+                with patch("sys.argv", ["ll-queue", "run", "--json"]):
+                    result = main_queue()
+
+        assert result == 0
+        mock_run_action.assert_not_called()
+        assert mock_subproc.called
+        cmd = mock_subproc.call_args[0][0]
+        assert cmd[:3] == ["ll-loop", "run", "some-loop"]
+        assert get_entry(entry_id).status == "done"
+
+    def test_loop_entry_input_passed_as_positional(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self._add_loop(capsys, input_value='{"issue_id": "BUG-1"}')
+
+        with patch("little_loops.cli.queue.subprocess.run") as mock_subproc:
+            mock_subproc.return_value.returncode = 0
+            mock_subproc.return_value.stdout = ""
+            mock_subproc.return_value.stderr = ""
+            with patch("sys.argv", ["ll-queue", "run", "--json"]):
+                main_queue()
+
+        cmd = mock_subproc.call_args[0][0]
+        assert cmd == ["ll-loop", "run", "some-loop", '{"issue_id": "BUG-1"}']
+
+    def test_loop_entry_terminal_failure_exit_code_marks_failed(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.fsm.types import FAILURE_TERMINAL_EXIT_CODE
+
+        entry_id = self._add_loop(capsys)
+
+        with patch("little_loops.cli.queue.subprocess.run") as mock_subproc:
+            mock_subproc.return_value.returncode = FAILURE_TERMINAL_EXIT_CODE
+            mock_subproc.return_value.stdout = ""
+            mock_subproc.return_value.stderr = "blocked"
+            with patch("sys.argv", ["ll-queue", "run", "--json"]):
+                main_queue()
+
+        entry = get_entry(entry_id)
+        assert entry is not None
+        assert entry.status == "failed"
+        assert entry.result is not None
+        assert entry.result["exit_code"] == FAILURE_TERMINAL_EXIT_CODE
+
+    def test_loop_entry_generic_nonzero_exit_marks_failed(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        entry_id = self._add_loop(capsys)
+
+        with patch("little_loops.cli.queue.subprocess.run") as mock_subproc:
+            mock_subproc.return_value.returncode = 1
+            mock_subproc.return_value.stdout = ""
+            mock_subproc.return_value.stderr = "error"
+            with patch("sys.argv", ["ll-queue", "run", "--json"]):
+                main_queue()
+
+        assert get_entry(entry_id).status == "failed"
+
+    def test_non_loop_entries_still_dispatch_via_run_action(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        entry_id = _add_and_get_id(capsys, "audit-docs")
+
+        with patch(
+            "little_loops.runner_spec.run_action",
+            return_value=RunnerResult(stdout="ok", stderr="", exit_code=0),
+        ) as mock_run_action:
+            with patch("sys.argv", ["ll-queue", "run", "--json"]):
+                main_queue()
+
+        mock_run_action.assert_called_once()
+        assert get_entry(entry_id).status == "done"

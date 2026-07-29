@@ -81,6 +81,23 @@ class TestClassifyAction:
                 "anything", runner_override="cmd", timeout=120, arg_pairs=["no-equals-sign"]
             )
 
+    def test_input_value_stored_verbatim_under_loop_input(self) -> None:
+        """FEAT-2906: --input is carried onto args["loop_input"], not re-interpreted."""
+        spec = _classify_action(
+            "anything",
+            runner_override="loop",
+            timeout=120,
+            arg_pairs=None,
+            input_value='{"issue_id": "BUG-1"}',
+        )
+        assert spec.args == {"loop_input": '{"issue_id": "BUG-1"}'}
+
+    def test_no_input_value_leaves_args_empty(self) -> None:
+        spec = _classify_action(
+            "anything", runner_override="loop", timeout=120, arg_pairs=None, input_value=None
+        )
+        assert "loop_input" not in spec.args
+
 
 class TestCmdAdd:
     def test_add_persists_entry(self, capsys: pytest.CaptureFixture[str]) -> None:
@@ -115,6 +132,26 @@ class TestCmdAdd:
         entries = list_entries()
         assert entries[0].priority == "P0"
         assert entries[0].action.runner == RunnerType.CMD
+
+    def test_add_with_input_persists_onto_entry_args(self) -> None:
+        with patch(
+            "sys.argv",
+            [
+                "ll-queue",
+                "add",
+                "some-loop",
+                "--runner",
+                "loop",
+                "--input",
+                '{"issue_id": "BUG-1"}',
+                "--json",
+            ],
+        ):
+            result = main_queue()
+        assert result == 0
+
+        entries = list_entries()
+        assert entries[0].action.args["loop_input"] == '{"issue_id": "BUG-1"}'
 
     def test_add_with_bad_arg_pair_exits_2(self) -> None:
         with patch(

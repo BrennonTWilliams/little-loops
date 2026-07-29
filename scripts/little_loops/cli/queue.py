@@ -9,6 +9,7 @@ shim rather than migrating.
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,7 @@ def _classify_action(
     runner_override: str | None,
     timeout: int,
     arg_pairs: list[str] | None,
+    input_value: str | None = None,
 ) -> Any:
     """Normalize a bare *target* string into an :class:`ActionSpec` (FEAT-2682).
 
@@ -40,6 +42,11 @@ def _classify_action(
     an FSM loop name (resolves via ``resolve_loop_path``), a skill/command
     name (resolves via ``skill_expander``'s ``skills/<name>/SKILL.md`` /
     ``commands/<name>.md`` lookup), or — the fallback — a raw CLI invocation.
+
+    ``input_value`` (FEAT-2906's ``--input``) is stored verbatim under
+    ``args["loop_input"]``, not re-interpreted here — ``ll-loop run``'s
+    positional does its own ``json.loads``/context-key coercion against the
+    loop's *loaded* FSM, which ``ll-queue add`` never loads.
     """
     from little_loops.cli.loop._helpers import resolve_loop_path
     from little_loops.config.core import BRConfig
@@ -52,6 +59,8 @@ def _classify_action(
             raise ValueError(f"--arg must be KEY=VALUE, got: {pair!r}")
         key, _, value = pair.partition("=")
         args_dict[key] = value
+    if input_value is not None:
+        args_dict["loop_input"] = input_value
 
     if runner_override is not None:
         runner = RunnerType(runner_override)
@@ -89,6 +98,7 @@ def cmd_add(args: argparse.Namespace) -> int:
             runner_override=args.runner,
             timeout=args.timeout,
             arg_pairs=args.arg,
+            input_value=args.input,
         )
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
@@ -223,11 +233,55 @@ def cmd_remove(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_loop_entry(action: Any) -> Any:
+    """Dispatch a ``RunnerType.LOOP`` entry via a subprocess ``ll-loop run`` shell-out.
+
+    Mirrors the working precedent in ``worker_pool.py``/``cli/sprint/run.py``:
+    process isolation sidesteps ``cmd_run_loop``'s process-global
+    ``register_loop_signal_handlers``/worktree/``atexit`` setup, which is
+    unsafe to invoke repeatedly within one ``ll-queue run`` process
+    (FEAT-2906 Decision Rationale). ``args["loop_input"]`` (FEAT-2906's
+    ``--input``) is passed through as the bare positional, matching
+    ``cli/loop/next_loop.py:_build_command``'s construction pattern — the
+    same coercion ``ll-loop run <loop> [input]`` already applies FSM-side.
+    """
+    from little_loops.fsm.types import FAILURE_TERMINAL_EXIT_CODE
+    from little_loops.runner_spec import RunnerResult
+
+    cmd = ["ll-loop", "run", action.target]
+    loop_input = action.args.get("loop_input")
+    if loop_input is not None:
+        cmd.append(loop_input)
+
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=action.timeout)
+    except subprocess.TimeoutExpired as exc:
+        return RunnerResult(
+            stdout=str(exc.stdout or ""),
+            stderr=str(exc.stderr or ""),
+            exit_code=-1,
+            timed_out=True,
+        )
+    except FileNotFoundError as exc:
+        return RunnerResult(stdout="", stderr="", exit_code=-1, error=str(exc))
+
+    error = "terminal failure" if proc.returncode == FAILURE_TERMINAL_EXIT_CODE else None
+    return RunnerResult(
+        stdout=proc.stdout, stderr=proc.stderr, exit_code=proc.returncode, error=error
+    )
+
+
 def cmd_run(args: argparse.Namespace) -> int:
-    """Dequeue pending entries in priority/FIFO order and dispatch each via run_action()."""
+    """Dequeue pending entries in priority/FIFO order and dispatch each entry.
+
+    ``RunnerType.LOOP`` entries are intercepted before ``run_action()`` (which
+    deliberately never dispatches them, see ``runner_spec.py``) and driven
+    via a subprocess ``ll-loop run`` shell-out instead (FEAT-2906). All other
+    runner kinds continue through ``run_action()`` unchanged.
+    """
     from little_loops.cli.output import colorize, print_json
     from little_loops.queue_store import list_entries, update_entry_result
-    from little_loops.runner_spec import run_action
+    from little_loops.runner_spec import RunnerType, run_action
 
     json_mode = getattr(args, "json", False)
     processed: list[dict[str, Any]] = []
@@ -240,7 +294,10 @@ def cmd_run(args: argparse.Namespace) -> int:
         update_entry_result(entry.id, "running", None, db_path=QUEUE_DB_PATH)
 
         try:
-            result = run_action(entry.action)
+            if entry.action.runner is RunnerType.LOOP:
+                result = _run_loop_entry(entry.action)
+            else:
+                result = run_action(entry.action)
         except Exception as exc:
             status = "failed"
             result_dict: dict[str, Any] = {"exit_code": None, "timed_out": False, "error": str(exc)}
@@ -331,6 +388,12 @@ Examples:
         add_parser.add_argument(
             "--timeout", type=int, default=120, help="Timeout in seconds (default: 120)"
         )
+        add_parser.add_argument(
+            "--input",
+            default=None,
+            help="Input for a LOOP-runner target, same semantics as `ll-loop run <loop> [input]` "
+            "(JSON object unpacks into matching context keys, else stored under fsm.input_key)",
+        )
         add_parser.add_argument("--json", action="store_true", default=False, help="JSON output")
 
         list_parser = subparsers.add_parser(
@@ -363,7 +426,8 @@ Examples:
         run_parser = subparsers.add_parser(
             "run",
             help="Dequeue and execute pending entries in priority/FIFO order",
-            description="Serially dispatch each pending entry through run_action()",
+            description="Serially dispatch each pending entry: SKILL/CMD/MCP/PROMPT through "
+            "run_action(), LOOP entries via a subprocess `ll-loop run` shell-out",
         )
         run_parser.add_argument("--json", action="store_true", default=False, help="JSON output")
 
