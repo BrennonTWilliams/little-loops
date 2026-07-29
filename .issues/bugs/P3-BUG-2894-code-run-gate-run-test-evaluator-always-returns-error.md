@@ -11,8 +11,6 @@ relates_to:
 - ENH-2895
 - ENH-2896
 - BUG-2902
-depends_on:
-- BUG-2902
 ---
 
 # BUG-2894: code-run-gate `run_test` evaluator returns error on every invocation
@@ -39,6 +37,26 @@ depends_on:
 > final `echo`'s `pass_rate=pass_rate=` emission and the shape of the
 > `capture: pass_rate` value. Both are cosmetic post-`e2ea3c56`, which is why
 > this stays P3.
+
+> **UNBLOCKED / RESCOPED AGAIN 2026-07-29** (pre-implementation review). BUG-2902
+> is `done` and **already landed half of this issue's Proposed Solution**. The
+> `run_test` action on main now reads:
+>
+> ```bash
+> echo "exit_code=$RC" >> "$${ABS_DIR}/test-results.txt"
+> echo "exit_code=$RC pass_rate=$(grep '^pass_rate=' $${ABS_DIR}/test-results.txt | tail -1)"
+> ```
+>
+> So the `tail -1` → `grep '^pass_rate='` swap and the sidecar `exit_code=`
+> append are both in. Consequences for this issue:
+>
+> - `depends_on: BUG-2902` is **dropped** — satisfied; this is ready to implement.
+> - The remaining code delta is **deleting one literal `pass_rate=` prefix** from
+>   the final `echo`. Nothing else.
+> - Two defects not previously captured are folded in below: an **unquoted path**
+>   in the surviving `grep`, and the **SKIP branch's** bare `echo "SKIP"`, which
+>   makes this issue's stated Expected Behavior unachievable as originally
+>   worded.
 
 `oracles/code-run-gate.yaml`'s `run_test` state never evaluates its pass-rate threshold.
 Two independent defects combine:
@@ -81,12 +99,16 @@ defect is cosmetic and P3 rather than a live wrong answer.
 
 `scripts/little_loops/loops/oracles/code-run-gate.yaml` — `run_test` state:
 
+**As of 2026-07-29, post-BUG-2902** — `scripts/little_loops/loops/oracles/code-run-gate.yaml`,
+`run_test` state (lines ~239-250):
+
 ```yaml
-      echo "exit_code=$RC pass_rate=$(tail -1 $${ABS_DIR}/test-results.txt)"
+      echo "exit_code=$RC" >> "$${ABS_DIR}/test-results.txt"
+      echo "exit_code=$RC pass_rate=$(grep '^pass_rate=' $${ABS_DIR}/test-results.txt | tail -1)"
     capture: pass_rate
     evaluate:
       type: output_numeric
-      key: pass_rate          # <-- silently dropped by EvaluateConfig.from_dict
+      key: pass_rate          # live since e2ea3c56 (ENH-2895)
       operator: "ge"
       target: 0.95
     on_yes: run_typecheck
@@ -94,26 +116,49 @@ defect is cosmetic and P3 rather than a live wrong answer.
     on_error: run_typecheck
 ```
 
-The preceding shell writes `pass_rate=<rate>` as the last line of
-`${ABS_DIR}/test-results.txt`, so `$(tail -1 ...)` expands to `pass_rate=0.99`, giving
-stdout `exit_code=0 pass_rate=pass_rate=0.99`.
+The `grep` already returns a `pass_rate=`-prefixed line, so the literal
+`pass_rate=` in the `echo` prefixes it a second time: stdout is
+`exit_code=0 pass_rate=pass_rate=0.99`. (The original `tail -1` form is gone;
+only the redundant literal prefix survives.)
 
 Consequences:
 
-- `evaluate_output_numeric` → `verdict="error"` on every run.
-- The pass-rate gate is unenforced; the oracle's `GATE_PASS`/`GATE_FAILED` verdict does
-  not reflect test pass rate at all.
-- `capture: pass_rate` captures the malformed blob, not the number, so any downstream
-  consumer (notably `aggregate`) reading `${captured.pass_rate.output}` gets a string.
-- The loop's `description` block advertises a `min_pass_rate` parameter (lines 40-45)
-  that has no effect.
+- `capture: pass_rate` captures the doubly-prefixed blob rather than a clean
+  labelled line. No verdict depends on it — `aggregate` reads sidecar *files*,
+  not `${captured.pass_rate.*}` — which is why this is cosmetic and P3.
+- The evaluator itself is correct: `output_numeric`'s regex takes the **last**
+  match, absorbing the double prefix.
+
+Two further defects in the same block, found during the 2026-07-29 review:
+
+- **Unquoted path.** `grep '^pass_rate=' $${ABS_DIR}/test-results.txt` is
+  unquoted and breaks on a `run_dir` containing spaces. Every other path
+  reference in this file is quoted; this one was missed when BUG-2902 replaced
+  the `tail -1`.
+- **SKIP branch emits no `pass_rate` key.** When `test_cmd` is null the action
+  `exit 0`s after a bare `echo "SKIP"`. With `key: pass_rate` live, the
+  evaluator finds no match and returns `verdict="error"` on *every* skipped
+  run. Harmless today (all three routes converge on `run_typecheck`), but it
+  contradicts the Expected Behavior below.
 
 ## Expected Behavior
 
-`run_test` extracts the numeric pass rate, compares it to `min_pass_rate` (default 0.95)
-with `operator: ge`, and yields `yes`/`no` accordingly. `on_error` fires only on genuine
-evaluation failure. The oracle's aggregate verdict reflects whether the test suite
-actually met the threshold.
+`run_test` extracts the numeric pass rate, compares it against the threshold
+with `operator: ge`, and yields `yes`/`no` accordingly. The oracle's aggregate
+verdict reflects whether the test suite actually met the threshold.
+
+`on_error` should fire only on genuine evaluation failure. **This does not hold
+today for the SKIP path** (see above). Pick one when implementing:
+
+- have the SKIP branch emit `echo "SKIP pass_rate=1.0"` so the evaluator has a
+  key to extract and returns `yes` (preferred — cheap, and makes the skip
+  honest); or
+- explicitly document the SKIP path as an accepted `error`-verdict case and
+  drop the "only on genuine failure" claim.
+
+Note the threshold itself is currently the hardcoded `target: 0.95`, **not**
+`${context.min_pass_rate}` — wiring the parameter through is **ENH-2905's**
+scope, not this issue's.
 
 ## Motivation
 
@@ -141,21 +186,33 @@ the echo fixed, since the value after the first `=` is not numeric.
 ## Proposed Solution
 
 ENH-2895 is `done`, so `key: pass_rate` stays and the evaluator extracts the
-labelled field. Emit the pass-rate line once, preserving the exit code:
+labelled field. Emit the pass-rate line once, preserving the exit code, and
+quote the path:
 
 ```yaml
       RATE_LINE=$(grep '^pass_rate=' "$${ABS_DIR}/test-results.txt" | tail -1)  # pass_rate=<n>
       echo "exit_code=$RC $${RATE_LINE}"
 ```
 
+That single change fixes both the double prefix (the literal `pass_rate=` is
+gone; the label now comes only from the grepped line) and the unquoted path.
+
 Note this **keeps** `exit_code=$RC` on stdout. An earlier draft of this issue
 proposed `echo "$${RATE_LINE#pass_rate=}"`, which strips the label *and* drops
 the exit code entirely — wrong on both counts now that `key:` is live and
 BUG-2902 depends on the exit code being present.
 
-The `grep '^pass_rate=' | tail -1` form replaces the bare `tail -1` deliberately:
-BUG-2902 appends an `exit_code=` line into the same file, which would break a
-positional `tail -1` read. Coordinate with that issue's step 3.
+The `grep '^pass_rate=' | tail -1` form (rather than a bare `tail -1`) is
+already on main — BUG-2902 landed it when it started appending an `exit_code=`
+line to the same file, which would break a positional read. Only the redundant
+literal prefix and the missing quotes remain.
+
+Separately, decide the SKIP-branch question raised under Expected Behavior. The
+recommended form:
+
+```bash
+        echo "SKIP pass_rate=1.0"
+```
 
 An earlier "Without ENH-2895 — echo the bare number and drop `key:`" branch has
 been deleted; that issue is closed and the branch is dead.
@@ -177,18 +234,27 @@ strict sense that no verdict depends on it.
 
 1. Add a failing test asserting the final `echo` emits a single-prefixed
    `pass_rate=<n>` (today it emits `pass_rate=pass_rate=<n>`).
-2. Fix the double-prefix in the final `echo`.
-3. Resolve the `capture: pass_rate` value shape so it holds the labelled line,
-   not the malformed blob. **Do not** modify the `aggregate` consumer — that is
-   BUG-2902's (see Scope Boundary).
+2. Fix the double-prefix in the final `echo`, and quote `"$${ABS_DIR}/test-results.txt"`
+   in the surviving `grep`. Add a test covering a `run_dir` path containing a
+   space, which the unquoted form silently breaks on.
+3. Resolve the SKIP branch: emit `echo "SKIP pass_rate=1.0"` so a skipped gate
+   yields `yes` rather than `error`, and assert it. (If instead accepting the
+   `error` verdict, update Expected Behavior and skip this step.)
 4. Assert the state's own evaluator verdict is honoured: a run at 0.5 with
    threshold 0.95 must yield `no` from `evaluate_output_numeric`. Do **not**
-   assert this reaches the aggregate verdict — that path is BUG-2902's.
-5. Confirm `python -m pytest scripts/tests/` exits 0.
+   assert this reaches the aggregate verdict — that path is BUG-2902's (`done`).
+5. Confirm `ll-loop validate oracles/code-run-gate` passes.
+6. Confirm `python -m pytest scripts/tests/` exits 0.
 
-**Out of scope** (BUG-2902's): the sidecar `exit_code=` write and the `aggregate`
-detector. **Out of scope entirely** (withdrawn, see BUG-2902's Rejected
-Approach): the `on_no`/`on_error` routing split.
+Note the previous step 3 ("resolve the `capture: pass_rate` value shape") has
+been removed as redundant — the capture holds whatever the final `echo` emits,
+so step 2 satisfies it automatically.
+
+**Out of scope** (BUG-2902's, now `done`): the sidecar `exit_code=` write and the
+`aggregate` exit-code detector. **Out of scope** (ENH-2905's): wiring
+`target:` to `${context.min_pass_rate}`, and the `aggregate` pass-rate detector.
+**Out of scope entirely** (withdrawn, see BUG-2902's Rejected Approach): the
+`on_no`/`on_error` routing split.
 
 ## Impact
 
@@ -234,10 +300,15 @@ missing sidecar `exit_code=` write). Note that BUG-2902 was **rediagnosed** on
 withdrawn as harmful, not reassigned — the converging routing is deliberate and
 uniform across all five gate states. Neither issue should implement it.
 
-Both issues edit the same `run_test` block, so BUG-2902 (P2) should land first.
-They interact directly: BUG-2902 appends an `exit_code=` line to
-`test-results.txt`, which breaks the positional `tail -1` pass-rate read this
-issue's fix replaces with a `grep '^pass_rate='` extraction.
+Both issues edit the same `run_test` block, so BUG-2902 (P2) landed first — it
+is now `done`, and in the process it already applied the `grep '^pass_rate='`
+extraction this issue had proposed. Only the redundant literal `pass_rate=`
+prefix, the unquoted path, and the SKIP-branch key remain.
+
+[ENH-2905] owns the other half of the `min_pass_rate` story: wiring
+`run_test`'s hardcoded `target: 0.95` to `${context.min_pass_rate}`, and adding
+a pass-rate detector to `aggregate`. It touches the same `evaluate:` block, so
+land this issue first (it is a strictly smaller edit).
 
 ---
 
