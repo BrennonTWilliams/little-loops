@@ -950,3 +950,4 @@ states:
 
   failed:
     terminal: true
+    failure: true

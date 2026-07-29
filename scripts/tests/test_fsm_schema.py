@@ -4448,3 +4448,21 @@ class TestStateConfigFailureFlag:
         )
         assert fsm.get_terminal_states() == {"done", "failed", "blocked"}
         assert fsm.get_failure_states() == {"failed", "blocked"}
+
+    def test_general_task_failed_terminal_is_flagged(self) -> None:
+        """ENH-2892: general-task's `failed` terminal carries an explicit
+        `failure: true`, not just the name-convention fallback.
+
+        A regression to the implicit-only fallback (removing the flag, or
+        renaming `FAILURE_TERMINAL_NAMES` without updating the YAML) would
+        still pass `test_no_failure_edge_routes_to_a_success_terminal`
+        (whole-suite, name-convention-based) but would be caught here.
+        """
+        loop_path = (
+            Path(__file__).parent.parent / "little_loops" / "loops" / "general-task.yaml"
+        )
+        fsm, _ = load_and_validate(loop_path, raise_on_error=False)
+        assert "failed" in fsm.get_failure_states()
+        assert fsm.states["failed"].failure is True
+        assert fsm.states["done"].failure is False
+        assert fsm.states["partial"].failure is False

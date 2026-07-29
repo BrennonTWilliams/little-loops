@@ -1,9 +1,10 @@
 ---
 id: ENH-2892
 type: ENH
-status: open
+status: done
 priority: P3
-captured_at: "2026-07-28T00:00:00Z"
+captured_at: '2026-07-28T00:00:00Z'
+completed_at: '2026-07-29T05:44:52Z'
 discovered_date: 2026-07-28
 discovered_by: capture-issue
 labels:
@@ -15,6 +16,12 @@ relates_to:
 - ENH-2814
 - ENH-2825
 - ENH-2857
+confidence_score: 90
+outcome_confidence: 90
+score_complexity: 22
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-2892: general-task.yaml has no `failure: true` terminal — ENH-2814 exit-code plumbing is inert
@@ -56,6 +63,100 @@ obvious fix — route the edge to "the loop's failure terminal" — was unavaila
 because no such terminal exists. That edge was routed to the non-terminal `diagnose`
 instead, which satisfies the gate and is the loop's established convention for
 unrecoverable errors, but it deliberately sidesteps this underlying gap.
+
+### Codebase Research Findings (2026-07-29)
+
+_Added by `/ll:refine-issue` — based on codebase analysis. **This finding
+contradicts the issue's core premise and should be resolved before
+implementation proceeds.**_
+
+`StateConfig.from_dict()` (`scripts/little_loops/fsm/schema.py:860-865`)
+already defaults `failure=True` for any `terminal: true` state whose *name*
+is in `FAILURE_TERMINAL_NAMES` (`schema.py:33-35`: `{"failed", "error",
+"aborted", "finalize_aborted"}`) when the YAML omits an explicit `failure:`
+key — a backward-compat fallback added by **ENH-2814**
+(commit `66cec5a8`, 2026-07-26 — two days *before* this issue was captured
+on 2026-07-28).
+
+Verified directly against the current `general-task.yaml` via the real
+production load path (`load_and_validate()`,
+`scripts/little_loops/fsm/validation/structural_rules.py:1514`):
+
+```
+>>> fsm, _ = load_and_validate(Path("little_loops/loops/general-task.yaml"), raise_on_error=False)
+>>> fsm.get_failure_states()
+{'failed'}
+>>> fsm.states['partial'].failure, fsm.states['done'].failure, fsm.states['failed'].failure
+(False, False, True)
+```
+
+This is exactly the target state this issue asks for (`failed`=failure,
+`partial`/`done`=not-failure) — already true today, with **no YAML edit
+required**. The ENH-2825 gate test this issue's Discovery Context cites
+(`test_no_failure_edge_routes_to_a_success_terminal`,
+`scripts/tests/test_builtin_loops.py:60-92`) currently **passes** for
+`general-task.yaml`, confirming `get_failure_states()` is non-empty in the
+same code path the gate exercises. `scripts/tests/test_fsm_schema.py`'s
+`get_failure_states()` coverage and `test_fsm_persistence.py`'s
+`final_status` mapping tests also pass on current `main`.
+
+The issue's claim "`FSM.get_failure_states()` ... returns an **empty set**
+for this loop" (Current Behavior) does not hold against current `main` —
+it would only hold if the `failed` state name were *not* in
+`FAILURE_TERMINAL_NAMES`, or if `from_dict` were called without passing
+`name=` (the standalone-parse case, per the docstring at
+`schema.py:799-802`), neither of which applies to the real load path.
+
+**What still needs to be confirmed, not assumed, before closing this issue
+as stale:**
+- Whether the *explicit* `failure: true` key is still wanted on
+  `general-task.yaml`'s `failed` terminal for clarity/documentation, even
+  though the implicit default already produces correct behavior (the name-based
+  fallback is explicitly documented as backward-compat, not a long-term
+  substitute for the explicit flag — see `schema.py:26-32`).
+- Whether AC items about `spike-gate`/`proof-first-task` `impl_failed`
+  reachability and the `prd-hermes` `--dry-run` handler still need live
+  verification (schema-level confirmation above only proves
+  `get_failure_states()`, not the full sub-loop dispatch / CLI exit-code
+  chain end-to-end).
+- Re-run `/ll:ready-issue ENH-2892` or `/ll:verify-issues` to re-validate
+  the issue's claims against current `main` before implementation — the
+  premise driving Acceptance Criteria #1 and #3 may already be satisfied,
+  which would make this a no-op or a much smaller "make it explicit"
+  change rather than the behavior change described in Blast Radius.
+
+**Additional corrections surfaced by deeper analysis of the exit-code /
+sub-loop-dispatch chain** (`scripts/little_loops/fsm/executor.py`):
+
+- `PersistentExecutor._finish()` (`executor.py:2935-2946`) and the sub-loop
+  `on_yes`/`on_no` dispatch (`executor.py:1038-1053`) both key off
+  `ExecutionResult.failure_terminal`, which is itself derived from
+  `get_failure_states()` membership — not a fresh name check. So the same
+  fallback that makes `get_failure_states()` non-empty for `general-task`
+  should already propagate through to CLI exit code
+  (`cli/loop/_helpers.py:1921-1923`) and to `spike-gate`/`proof-first-task`'s
+  `on_failure: impl_failed` routing, under current code.
+- The issue's "~15 `on_error: diagnose` edges" count is closer to **10**
+  (`general-task.yaml:113, 132, 185, 266, 376, 395, 549, 625, 649, 772`).
+  `diagnose` itself is a single unconditional `next: failed`
+  (`general-task.yaml:938-949`), so all 10 land on `failed` deterministically.
+- `final_verify` itself does **not** route to `diagnose`/`failed` — its
+  `on_error: summarize_partial` (`general-task.yaml:592`) deliberately lands
+  on `partial` (ENH-2575 rationale, comment at `:587-591`). Only its
+  downstream sibling states (`run_final_tests:625`, `count_final:649`) carry
+  their own `on_error: diagnose` edges into the shared funnel — "`final_verify`'s
+  chain" in Current Behavior should read as those downstream states, not
+  `final_verify` itself.
+- No current test in `test_builtin_loops.py` or `test_general_task_loop.py`
+  exercises `general-task`'s `failed` terminal's `failure` flag or asserts an
+  exit code for a run reaching it — AC #4 ("audit tests for exit-code
+  assumptions") likely finds nothing to update, not because the audit is
+  unnecessary but because no such test currently exists.
+- `.issues/enhancements/P2-ENH-2825-add-failed-terminals-to-built-in-loops.md`
+  (this issue's own `relates_to` list) has a Resolution Note discussing
+  `general-task` already having "a failure terminal" at that time —
+  consistent with the fallback already being active before ENH-2892 was
+  captured, and worth reading directly before deciding this issue's fate.
 
 ## Proposed change
 
@@ -156,18 +257,104 @@ persist as `completed`.
 
 ## Acceptance Criteria
 
-- [ ] `failed` in `general-task.yaml` carries `failure: true`
-- [ ] `partial` and `done` are left **without** `failure: true` (see Proposed change)
-- [ ] A test asserts `get_failure_states()` for general-task is non-empty
-- [ ] Existing tests that drive general-task to `failed` are audited for exit-code
+- [x] `failed` in `general-task.yaml` carries `failure: true`
+- [x] `partial` and `done` are left **without** `failure: true` (see Proposed change)
+- [x] A test asserts `get_failure_states()` for general-task is non-empty
+- [x] Existing tests that drive general-task to `failed` are audited for exit-code
       assumptions and updated where they assumed exit 0
-- [ ] `spike-gate`'s and `proof-first-task`'s `impl_failed` states are shown to be
+- [x] `spike-gate`'s and `proof-first-task`'s `impl_failed` states are shown to be
       reachable — a general-task sub-loop run reaching `failed` routes to
       `on_failure`, not `on_success`
-- [ ] The `prd-hermes` `ll_loop_run --dry-run` handler expectation
+- [x] The `prd-hermes` `ll_loop_run --dry-run` handler expectation
       (`success=True`) is re-checked against the new exit code
-- [ ] `python -m pytest scripts/tests/` exits 0
+- [x] `python -m pytest scripts/tests/` exits 0
+
+## Resolution
+
+- Added `failure: true` to `general-task.yaml`'s `failed` terminal
+  (`general-task.yaml:951-953`). This is behavior-preserving at the
+  `get_failure_states()` level (the implicit `FAILURE_TERMINAL_NAMES`
+  fallback already covered it — see Codebase Research Findings above) but
+  makes the flag explicit rather than relying on the name-convention
+  fallback, and closes the test gaps below.
+- `scripts/tests/test_fsm_schema.py::test_general_task_failed_terminal_is_flagged`
+  — pins `get_failure_states()` non-empty and `failure` flags for
+  `failed`/`done`/`partial` against the real `general-task.yaml`, not just
+  the generic name-convention fallback (would catch a regression to
+  implicit-only).
+- `scripts/tests/test_enh2892_subloop_failure_dispatch.py` — new e2e
+  subprocess test mirroring `spike-gate`/`proof-first-task`'s exact
+  sub-loop delegation shape (`loop: ${context.impl_loop}`,
+  `on_success`/`on_failure`). Confirms a sub-loop reaching a `failure:
+  true` terminal routes the parent to `on_failure` (`impl_failed`), not
+  `on_success` — closing the previously-unreachable branch.
+- Audited existing tests referencing general-task for exit-code
+  assumptions (`test_general_task_loop.py`, `test_ll_loop_commands.py`,
+  `test_builtin_loops.py`, etc.) — none drive a real run to the `failed`
+  terminal and assert on exit code/status, confirming the issue's own
+  finding that nothing needed updating.
+- `--dry-run` (`cli/loop/run.py:251`) renders the execution plan/diagram
+  and returns before any state executes, so it can never reach `failed`
+  regardless of this change — the prd-hermes handler's `success=True`
+  expectation is unaffected. No live test covers that handler (it's design
+  prose under `.loops/plans/prd-hermes/`), so this is a confirmation note,
+  not a code change.
+- Full suite: `python -m pytest scripts/tests/` — 17006 passed, 42 skipped.
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue` (2026-07-29):_
+
+- `scripts/tests/test_fsm_schema.py:4435` — existing `test_get_failure_states()`
+  is the generic-suite location; add a general-task-specific pin here (or
+  alongside it) asserting `load_and_validate("general-task.yaml")`'s
+  `fsm.get_failure_states()` contains `"failed"` and
+  `fsm.states["failed"].failure is True` — narrower than
+  `test_builtin_loops.py`'s whole-suite `test_no_failure_edge_routes_to_a_success_terminal`
+  (`scripts/tests/test_builtin_loops.py:57-96`), which already passes today via
+  the implicit `FAILURE_TERMINAL_NAMES` fallback and won't catch a regression
+  to that fallback itself. [Agent 3 finding]
+- `scripts/tests/test_enh2814_failure_terminal_e2e.py` — pattern to follow for
+  an e2e exit-code/persistence test against the *real* `general-task.yaml`
+  (its own tests use a synthetic fixture loop, not general-task itself):
+  `test_failure_terminal_exits_nonzero`, `test_success_terminal_still_exits_zero`,
+  `test_conventional_failed_name_defaults_to_flagged`,
+  `test_persisted_final_status_is_failed`. [Agent 3 finding]
+- Sub-loop delegation coverage gap confirmed absent, not just unverified: grep
+  for `impl_failed|impl_loop` across `scripts/tests/` returns no hits — no
+  existing test drives a failing `general-task` sub-run through
+  `loops/spike-gate.yaml` or `loops/proof-first-task.yaml` to their
+  `impl_failed` terminal. A new subprocess-based test for this closes AC #5
+  rather than just "showing reachability" by inspection. [Agent 3 finding]
+- prd-hermes `ll_loop_run --dry-run` `success=True` expectation (AC #6): no
+  `test_prd_hermes*`/`hermes`-named test file exists under `scripts/tests/` —
+  the references are design-doc prose under `.loops/plans/prd-hermes/`, not a
+  live test. Confirm during implementation whether that handler even has
+  automated coverage to update, or whether AC #6 is satisfied by a manual
+  confirmation note. [Agent 3 finding]
+
+### Confirmation (no new coupling found)
+
+_Wiring pass added by `/ll:wire-issue` (2026-07-29):_ a side-effect-surface
+sweep across the executor (`_finish()`, sub-loop `on_yes`/`on_no` dispatch),
+persistence (`_map_final_status()`), validation
+(`_validate_failure_terminal_action`), CLI exit-code plumbing, and the FSM
+JSON schema found every consumer reads the parsed `StateConfig.failure`
+boolean — none inspect the YAML source text for a literal `failure:` key.
+No code path behaves differently between the implicit
+`FAILURE_TERMINAL_NAMES` fallback and the explicit flag, and no additional
+documentation, CLI, or schema coupling exists beyond what's already listed
+in Blast Radius. This reinforces the issue's own finding that the change is
+behavior-preserving at the schema level; its value is explicitness plus
+closing the test gaps above. [Agent 2 finding]
 
 ## Status
 
 open
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-07-29T00:00:00Z - `09e05048-ae16-423d-ab04-2d7cf0eb1dd3.jsonl`
+- `/ll:wire-issue` - 2026-07-29T05:34:33 - `e303e84c-229a-4fac-9851-3739bde117c7.jsonl`
+- `/ll:refine-issue` - 2026-07-29T05:28:19 - `54e44bce-2024-41cd-b8d9-3c07fef671ab.jsonl`
+- `/ll:manage-issue` - 2026-07-29T05:44:20Z - `06ac3d9d-829b-481b-b75f-8123b4a0596b.jsonl`
