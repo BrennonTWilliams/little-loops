@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from little_loops.fsm.loop_paths import get_builtin_loops_dir, resolve_loop_path

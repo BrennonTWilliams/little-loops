@@ -133,7 +133,6 @@ class TestProgressPathsIsolation:
         assert len(overlap_warnings) == 1
 
 
-
 class TestCaptureReachabilityValidation:
     """ENH-1961: static validation of captured variable reachability in FSM validator."""
 
@@ -916,7 +915,6 @@ class TestCaptureReachabilityValidation:
         assert unknown_warnings == []
 
 
-
 class TestLoopReferenceValidation:
     """BUG-2305 / sprint-refine audit: _validate_loop_references emits ERROR for
     unresolvable static loop: refs (promoted from WARNING — a static ref that fails
@@ -1019,7 +1017,6 @@ class TestLoopReferenceValidation:
         assert ref_warnings == [], (
             f"Expected no loop-reference warning for resolvable ref, got: {ref_warnings}"
         )
-
 
 
 class TestPolicyDimensionsScored:
@@ -1174,5 +1171,3 @@ class TestPolicyDimensionsScored:
         )
         errors = _validate_policy_dimensions_scored(fsm)
         assert errors == []
-
-

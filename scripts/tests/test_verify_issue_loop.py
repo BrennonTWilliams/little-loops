@@ -752,7 +752,7 @@ class TestMergedSkillModeDispatch:
         assert "criteria" in content and "adversarial" in content
         assert "default" in content.lower()
         # An absent mode must resolve silently, not error/prompt.
-        assert "silently" in content.lower() or "MODE=\"criteria\"" in content
+        assert "silently" in content.lower() or 'MODE="criteria"' in content
 
     def test_criteria_and_adversarial_yaml_have_distinct_timeouts(self) -> None:
         """A spine merge is most likely to silently flatten per-mode timeout to

@@ -43,9 +43,7 @@ class DeprecatedFrontmatterEntry:
 
     def __post_init__(self) -> None:
         if not self.reason or not self.reason.strip():
-            raise ValueError(
-                "DeprecatedFrontmatterEntry requires a non-empty prose reason"
-            )
+            raise ValueError("DeprecatedFrontmatterEntry requires a non-empty prose reason")
 
 
 # Deprecated frontmatter *keys* — presence of the key itself is the signal.

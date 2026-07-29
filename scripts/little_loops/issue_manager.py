@@ -1454,16 +1454,10 @@ class AutoManager:
         self.logger.success(f"Processed {self.processed_count} issue(s)")
         if self.only_ids:
             completed = set(self.state_manager.state.completed_issues)
-            unreached = {
-                p
-                for p in self.only_ids
-                if not any(_id_matches(c, p) for c in completed)
-            }
+            unreached = {p for p in self.only_ids if not any(_id_matches(c, p) for c in completed)}
             if unreached:
                 for requested_id in sorted(unreached):
-                    self.logger.error(
-                        f"  {requested_id}: {self._unreachable_reason(requested_id)}"
-                    )
+                    self.logger.error(f"  {requested_id}: {self._unreachable_reason(requested_id)}")
             if self.processed_count == 0:
                 return 1
         return 0

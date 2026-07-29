@@ -9,14 +9,12 @@ from __future__ import annotations
 import re
 
 from little_loops.fsm.schema import FSMLoop
-
 from little_loops.fsm.validation._base import (
     NON_LLM_EVALUATOR_TYPES,
     ValidationError,
     ValidationSeverity,
     _is_llm_judged,
 )
-
 
 # Meta-loop detector: action string patterns that indicate harness artifact writes
 _META_LOOP_ACTION_PATTERNS: tuple[re.Pattern[str], ...] = (
@@ -46,6 +44,7 @@ _MULTIMODAL_EVAL_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\.(png|jpg|jpeg|webp)\b.*\b(read|view|evaluate|score|judge)", re.IGNORECASE),
 )
 
+
 def _is_meta_loop(fsm: FSMLoop) -> bool:
     """Return True if fsm is classified as a meta-loop.
 
@@ -69,6 +68,7 @@ def _is_meta_loop(fsm: FSMLoop) -> bool:
             if token in state.action:
                 return True
     return False
+
 
 def _validate_meta_loop_evaluation(fsm: FSMLoop) -> list[ValidationError]:
     """Validate meta-loop evaluation rules MR-1 and MR-2.
@@ -126,6 +126,7 @@ def _validate_meta_loop_evaluation(fsm: FSMLoop) -> list[ValidationError]:
 
     return errors
 
+
 def _validate_harness_multimodal_evaluator_blind_spot(fsm: FSMLoop) -> list[ValidationError]:
     """Warn when harness loops use LLM multimodal eval as sole gate to terminal.
 
@@ -170,6 +171,7 @@ def _validate_harness_multimodal_evaluator_blind_spot(fsm: FSMLoop) -> list[Vali
 
     return errors
 
+
 def _find_shared_tmp_writes(fsm: FSMLoop) -> list[tuple[str, str]]:
     """Return (state_name, matched_path) for every action referencing shared .loops/tmp/.
 
@@ -184,6 +186,7 @@ def _find_shared_tmp_writes(fsm: FSMLoop) -> list[tuple[str, str]]:
         for match in _SHARED_TMP_PATH_RE.finditer(state.action):
             findings.append((state_name, match.group(0)))
     return findings
+
 
 def _validate_artifact_isolation(fsm: FSMLoop) -> list[ValidationError]:
     """Validate rule MR-3: loops must isolate artifacts to ${context.run_dir}.
@@ -216,6 +219,7 @@ def _validate_artifact_isolation(fsm: FSMLoop) -> list[ValidationError]:
             )
         )
     return errors
+
 
 def _validate_partial_route_dead_end(fsm: FSMLoop) -> list[ValidationError]:
     """Validate rule MR-4: LLM-judged states with only on_yes have a partial/no dead-end.
@@ -259,6 +263,7 @@ def _validate_partial_route_dead_end(fsm: FSMLoop) -> list[ValidationError]:
             )
         )
     return errors
+
 
 def _validate_artifact_overwrite(fsm: FSMLoop) -> list[ValidationError]:
     """Validate rule MR-5 (ENH-1957): harness loops should version artifacts per iteration.
@@ -349,6 +354,7 @@ def _validate_artifact_overwrite(fsm: FSMLoop) -> list[ValidationError]:
 
     return errors
 
+
 def _validate_generator_fix_discipline(fsm: FSMLoop) -> list[ValidationError]:
     """Validate rule MR-6 (ENH-2079): meta-loops should not hand-patch generator artifacts.
 
@@ -417,6 +423,7 @@ def _validate_generator_fix_discipline(fsm: FSMLoop) -> list[ValidationError]:
                 )
 
     return errors
+
 
 def _has_baseline_reference(fsm: FSMLoop, capture_names: set[str]) -> bool:
     """Return True if any evaluate block references a captured variable."""

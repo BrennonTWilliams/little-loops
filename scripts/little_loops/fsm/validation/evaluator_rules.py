@@ -9,7 +9,6 @@ from __future__ import annotations
 import re
 
 from little_loops.fsm.schema import FSMLoop, PruningProfileConfig, StateConfig
-
 from little_loops.fsm.validation._base import (
     _SKILL_INVOKE_RE,
     ValidationError,
@@ -17,7 +16,6 @@ from little_loops.fsm.validation._base import (
     _effective_session_mode,
     _is_llm_judged,
 )
-
 
 # MR-10: parse-swallow detector. Flags shell states that call json.loads/json.load,
 # catch JSONDecodeError/ValueError/Exception, and explicitly exit 0 — without an
@@ -29,6 +27,7 @@ _PARSE_EXCEPT_CATCHING_RE = re.compile(
 )
 
 _ZERO_EXIT_RE = re.compile(r"\b(?:sys\.exit|exit)\s*\(\s*0\s*\)")
+
 
 def _validate_terminal_action_ok(fsm: FSMLoop) -> list[ValidationError]:
     """Validate rule BUG-2813: non-empty ``action`` on a ``terminal: true`` state.
@@ -76,6 +75,7 @@ def _validate_terminal_action_ok(fsm: FSMLoop) -> list[ValidationError]:
                 )
             )
     return errors
+
 
 def _validate_parse_swallow(fsm: FSMLoop) -> list[ValidationError]:
     """Validate rule MR-10: shell state silently swallows a JSON parse failure with exit 0.
@@ -125,6 +125,7 @@ def _validate_parse_swallow(fsm: FSMLoop) -> list[ValidationError]:
         )
     return errors
 
+
 # MR-13 (ENH-2860): abandonment-mechanism heuristics — a shell action that
 # rewrites a checkbox line to the `[!]` abandonment marker, or rewrites a
 # checkbox to `[x]` alongside an "abandoned" annotation (the pre-ENH-2857
@@ -132,9 +133,7 @@ def _validate_parse_swallow(fsm: FSMLoop) -> list[ValidationError]:
 # context var.
 _ABANDON_BANG_MARKER_RE = re.compile(r"-\s*\\?\[!\\?\]")
 
-_ABANDON_CHECKED_ANNOTATION_RE = re.compile(
-    r"\\?\[x\\?\].{0,80}abandon", re.IGNORECASE | re.DOTALL
-)
+_ABANDON_CHECKED_ANNOTATION_RE = re.compile(r"\\?\[x\\?\].{0,80}abandon", re.IGNORECASE | re.DOTALL)
 
 _ABANDON_ATTEMPT_CAP_RE = re.compile(r"max_step_attempts")
 
@@ -151,6 +150,7 @@ _ABANDONED_KEY_EMIT_RE = re.compile(r'"abandoned"\s*:')
 _HARDCODE_VERDICT_SUCCESS_RE = re.compile(
     r'"verdict"\s*:\s*"success"|\bverdict\s*=\s*success\b', re.IGNORECASE
 )
+
 
 def _validate_abandonment_verdict(fsm: FSMLoop) -> list[ValidationError]:
     """Validate rule MR-13 (ENH-2860): abandonment must reach summary.json and downgrade the verdict.
@@ -240,11 +240,13 @@ def _validate_abandonment_verdict(fsm: FSMLoop) -> list[ValidationError]:
 
     return errors
 
+
 def _effective_pruning_profile(fsm: FSMLoop, state: StateConfig) -> PruningProfileConfig | None:
     """Resolve the effective pruning profile for a state: state override, then loop default."""
     if state.pruning_profile is not None:
         return state.pruning_profile
     return fsm.pruning_profile
+
 
 def _validate_pruning_profile(
     fsm: FSMLoop, orchestration_request_path: str | None = None
@@ -362,7 +364,9 @@ def _validate_pruning_profile(
             )
     return errors
 
+
 _EVIDENCE_CONTRACT_KEYWORDS: frozenset[str] = frozenset({"verbatim", "quote", "evidence"})
+
 
 def _validate_llm_evidence_contract(fsm: FSMLoop) -> list[ValidationError]:
     """Validate rule MR-8 (ENH-2342): LLM-judged state prompts should include evidence-contract keywords.
@@ -405,6 +409,7 @@ def _validate_llm_evidence_contract(fsm: FSMLoop) -> list[ValidationError]:
             )
     return errors
 
+
 def _validate_haiku_pinned_generator(fsm: FSMLoop) -> list[ValidationError]:
     """Validate rule (ENH-2713): haiku-pinned generator states.
 
@@ -440,6 +445,7 @@ def _validate_haiku_pinned_generator(fsm: FSMLoop) -> list[ValidationError]:
             )
         )
     return errors
+
 
 def _validate_session_mode_evaluator_inheritance(fsm: FSMLoop) -> list[ValidationError]:
     """Validate rule (FEAT-2711): an evaluator state must not inherit session continuity.
@@ -488,6 +494,7 @@ def _validate_session_mode_evaluator_inheritance(fsm: FSMLoop) -> list[Validatio
             )
         )
     return errors
+
 
 def _validate_classify_route_default(fsm: FSMLoop) -> list[ValidationError]:
     """Validate that classify states with a route: table include a default: fallback.

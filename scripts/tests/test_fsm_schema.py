@@ -265,12 +265,7 @@ class TestEvaluateConfig:
         between the two lists means the schema either rejects a field the
         Python loader accepts (as `line` did, ENH-2896) or vice versa.
         """
-        schema_path = (
-            Path(__file__).parent.parent
-            / "little_loops"
-            / "fsm"
-            / "fsm-loop-schema.json"
-        )
+        schema_path = Path(__file__).parent.parent / "little_loops" / "fsm" / "fsm-loop-schema.json"
         schema = json.loads(schema_path.read_text())
         schema_keys = set(schema["definitions"]["evaluateConfig"]["properties"].keys())
 
@@ -4458,9 +4453,7 @@ class TestStateConfigFailureFlag:
         still pass `test_no_failure_edge_routes_to_a_success_terminal`
         (whole-suite, name-convention-based) but would be caught here.
         """
-        loop_path = (
-            Path(__file__).parent.parent / "little_loops" / "loops" / "general-task.yaml"
-        )
+        loop_path = Path(__file__).parent.parent / "little_loops" / "loops" / "general-task.yaml"
         fsm, _ = load_and_validate(loop_path, raise_on_error=False)
         assert "failed" in fsm.get_failure_states()
         assert fsm.states["failed"].failure is True

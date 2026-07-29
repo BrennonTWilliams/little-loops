@@ -92,7 +92,6 @@ class TestExtraRoutesReachability:
         assert any("not reachable" in e.message for e in warnings)
 
 
-
 class TestDescriptionFieldValidation:
     """ENH-1331: warn when top-level description field is absent."""
 
@@ -144,7 +143,6 @@ class TestDescriptionFieldValidation:
             if e.severity == ValidationSeverity.WARNING and "No 'description' field" in e.message
         ]
         assert len(description_warnings) == 1
-
 
 
 class TestRateLimitFieldValidation:
@@ -347,7 +345,6 @@ class TestRateLimitFieldValidation:
         assert rate_errors == []
 
 
-
 class TestHarborScorerEvaluatorValidation:
     """Validate that harbor_scorer is accepted by _validate_evaluator."""
 
@@ -363,7 +360,6 @@ class TestHarborScorerEvaluatorValidation:
         config.type = "unknown_type_xyz"  # type: ignore[assignment]
         errors = _validate_evaluator("score", config)
         assert any("Unknown evaluator type" in e.message for e in errors)
-
 
 
 class TestActionStallEvaluatorValidation:
@@ -392,7 +388,6 @@ class TestActionStallEvaluatorValidation:
         config = EvaluateConfig(type="action_stall", max_repeat=-1)
         errors = _validate_evaluator("check", config)
         assert any("max_repeat" in e.message for e in errors)
-
 
 
 class TestComparatorEvaluatorValidation:
@@ -436,7 +431,6 @@ class TestComparatorEvaluatorValidation:
         assert len(mr1_errors) >= 1, "MR-1 should fire for comparator-only meta-loop"
 
 
-
 class TestContractEvaluatorValidation:
     """Validate contract evaluator type registration and MR-1 behavior."""
 
@@ -478,7 +472,6 @@ class TestContractEvaluatorValidation:
         errors = validate_fsm(loop)
         mr1_errors = [e for e in errors if "non-LLM evaluator" in e.message]
         assert len(mr1_errors) >= 1, "MR-1 should fire for contract-only meta-loop"
-
 
 
 class TestParameterValidation:
@@ -535,7 +528,6 @@ class TestParameterValidation:
         fsm = self._fsm_with_params({"p": spec})
         errors = validate_fsm(fsm)
         assert any("Unknown parameter type" in e.message for e in errors)
-
 
 
 class TestWithBindingValidation:
@@ -652,7 +644,6 @@ class TestWithBindingValidation:
         assert not any("no transition" in e.message.lower() for e in errors)
 
 
-
 class TestThrottleValidation:
     """Tests for throttle field validation (ENH-1115)."""
 
@@ -702,7 +693,6 @@ class TestThrottleValidation:
         errors = validate_fsm(fsm)
         throttle_errors = [e for e in errors if "throttle" in e.message.lower()]
         assert throttle_errors == []
-
 
 
 class TestCostCeilingValidation:
@@ -778,7 +768,6 @@ class TestCostCeilingValidation:
         assert ceiling_errors == []
 
 
-
 class TestPromptSizeGuardValidation:
     """Tests for prompt_size_guard validation (ENH-2486)."""
 
@@ -805,7 +794,6 @@ class TestPromptSizeGuardValidation:
     def test_negative_warn_chars_rejected(self) -> None:
         errors = validate_fsm(self._make_fsm(PromptSizeGuardConfig(warn_chars=-1)))
         assert any("prompt_size_guard.warn_chars" in e.path and ">= 0" in e.message for e in errors)
-
 
 
 class TestTargetsValidation:
@@ -850,7 +838,6 @@ class TestTargetsValidation:
         fsm = self._make_fsm([TargetFileSpec(file="not-yaml.json")])
         errors = validate_fsm(fsm)
         assert any("not-yaml.json" in e.message for e in errors)
-
 
 
 class TestCircuitValidation:
@@ -1021,7 +1008,6 @@ class TestCircuitValidation:
         assert unknown_warnings == []
 
 
-
 class TestVisibilityValidation:
     """Visibility tier field: recognized top-level key + value validation."""
 
@@ -1077,7 +1063,6 @@ class TestVisibilityValidation:
 
 
 BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "little_loops" / "loops"
-
 
 
 class TestModelStateValidation:
@@ -1153,7 +1138,6 @@ class TestModelStateValidation:
         assert model_warnings == []
 
 
-
 class TestEffortStateValidation:
     """ENH-2869: effort: override validation — mirrors TestModelStateValidation."""
 
@@ -1227,7 +1211,6 @@ class TestEffortStateValidation:
         assert effort_warnings == []
 
 
-
 class TestOnMaxIterationsValidation:
     """Tests for ENH-1631: on_max_iterations validation."""
 
@@ -1286,7 +1269,6 @@ class TestOnMaxIterationsValidation:
 
 
 COUNTER_ACTION = 'N=$((N + 1)); printf "%d" "$N" > /tmp/counter.txt'
-
 
 
 class TestZeroRetryCounterValidation:
@@ -1436,7 +1418,6 @@ class TestZeroRetryCounterValidation:
         assert len(warnings) >= 1
 
 
-
 class TestRetryableExitCodesValidation:
     """ENH-1678: retryable_exit_codes validation."""
 
@@ -1500,7 +1481,6 @@ class TestRetryableExitCodesValidation:
         )
 
 
-
 class TestValidateStateLearningGuard:
     """ENH-1741: _validate_state_action learning guard accepts targets_csv."""
 
@@ -1554,7 +1534,6 @@ class TestValidateStateLearningGuard:
         assert len(target_errors) == 1, (
             f"Expected one ERROR for missing targets/targets_csv, got: {target_errors}"
         )
-
 
 
 class TestRequiredInputsValidation:
@@ -1611,7 +1590,6 @@ class TestRequiredInputsValidation:
             if e.severity == ValidationSeverity.WARNING and "required_inputs" in e.path
         ]
         assert guard_warnings == []
-
 
 
 class TestValidateFragmentBindings:
@@ -1742,7 +1720,6 @@ class TestValidateFragmentBindings:
         assert errors == []
 
 
-
 class TestFailureTerminalActionFlagDriven:
     """ENH-2814: _validate_failure_terminal_action reads the `failure` flag."""
 
@@ -1827,5 +1804,3 @@ class TestFailureTerminalActionFlagDriven:
 # ---------------------------------------------------------------------------
 # MR-13 (ENH-2860) — abandonment must reach summary.json and downgrade verdict
 # ---------------------------------------------------------------------------
-
-

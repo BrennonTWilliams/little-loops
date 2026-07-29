@@ -54,7 +54,7 @@ class TestSignatureShape:
     def test_accepts_varied_real_signature_shapes(self):
         body = "\n".join(
             [
-                "- `def foo(a: int, b: str = \"x\") -> Bar`",
+                '- `def foo(a: int, b: str = "x") -> Bar`',
                 "- `async def fetch(self, url: str) -> dict[str, list[int]]`",
                 "- `Class.method(self, *args, **kwargs)`",
                 "- `render() -> None`",

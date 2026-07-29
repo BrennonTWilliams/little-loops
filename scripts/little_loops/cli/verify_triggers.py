@@ -222,9 +222,7 @@ def _match_score(phrasing: str, keywords: set[str]) -> int:
     return len(phrasing_tokens & keywords)
 
 
-def _best_match_skills(
-    phrasing: str, skill_keywords: dict[str, set[str]]
-) -> set[str]:
+def _best_match_skills(phrasing: str, skill_keywords: dict[str, set[str]]) -> set[str]:
     """Skills tied for the highest ``_match_score`` against *phrasing*.
 
     Models host routing, which resolves a phrasing to a single best-matching

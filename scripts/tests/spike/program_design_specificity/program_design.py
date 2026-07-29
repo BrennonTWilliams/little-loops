@@ -38,7 +38,9 @@ _SIG_CALL = re.compile(
 )
 
 # Dataclass/field-shaped: `sha: str`, `entries: list[CodeRef]`.
-_SIG_FIELD = re.compile(_LEAD + r"(?P<name>[A-Za-z_]\w*)[ \t]*:[ \t]*(?P<type>" + _TYPE + r")" + _TAIL)
+_SIG_FIELD = re.compile(
+    _LEAD + r"(?P<name>[A-Za-z_]\w*)[ \t]*:[ \t]*(?P<type>" + _TYPE + r")" + _TAIL
+)
 
 # A parameter list is signature-like only if every entry is an identifier,
 # optionally annotated/defaulted — never an English clause.

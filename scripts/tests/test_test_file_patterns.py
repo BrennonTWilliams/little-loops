@@ -99,9 +99,7 @@ class TestTemplateDefaults:
         assert isinstance(patterns, list)
         assert len(patterns) > 0
 
-    def test_template_defaults_include_shared_fixture_equivalent(
-        self, template_name: str
-    ) -> None:
+    def test_template_defaults_include_shared_fixture_equivalent(self, template_name: str) -> None:
         """Every default set includes conftest.py or the ecosystem's equivalent."""
         patterns = self._load_patterns(template_name)
         shared_fixture_markers = {

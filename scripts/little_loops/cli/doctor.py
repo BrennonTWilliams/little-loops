@@ -680,7 +680,10 @@ def _full_host_map_data() -> dict:
 
     exit_code, errors = _verify_host_map_run()
     if exit_code == 0:
-        return {"status": "full", "note": "adapter host-capability map agrees with all cross-checks"}
+        return {
+            "status": "full",
+            "note": "adapter host-capability map agrees with all cross-checks",
+        }
     return {"status": "unsupported", "note": "; ".join(errors)}
 
 

@@ -3783,9 +3783,7 @@ class TestFormatGradedChecker:
         bugs_dir = tmp_path / "bugs"
         bugs_dir.mkdir()
         issue_file = bugs_dir / "P3-BUG-9004-test-bug.md"
-        body = _CLEAN_BUG_BODY.replace(
-            "status: open", "status: open\nsuperseded_by: BUG-9000"
-        )
+        body = _CLEAN_BUG_BODY.replace("status: open", "status: open\nsuperseded_by: BUG-9000")
         issue_file.write_text(body)
 
         gaps = check_format_gaps(issue_file)

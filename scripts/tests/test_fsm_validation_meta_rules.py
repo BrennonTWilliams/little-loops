@@ -261,7 +261,6 @@ class TestMetaLoopValidation:
         assert unknown_warnings == []
 
 
-
 class TestArtifactIsolation:
     """MR-3: loops must isolate artifacts to ${context.run_dir}, not shared .loops/tmp/."""
 
@@ -356,7 +355,6 @@ class TestArtifactIsolation:
         _, warnings = load_and_validate(loop_yaml)
         unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
         assert unknown_warnings == []
-
 
 
 class TestPartialRouteDeadEnd:
@@ -543,7 +541,6 @@ class TestPartialRouteDeadEnd:
         assert unknown_warnings == []
 
 
-
 class TestHarnessMultimodalEvaluatorBlindSpot:
     """ENH-1819: WARNING when harness loops use LLM multimodal eval as sole gate to terminal."""
 
@@ -658,7 +655,6 @@ class TestHarnessMultimodalEvaluatorBlindSpot:
         assert len(blind_spot_warnings) == 1, (
             f"Expected one blind-spot warning in validate_fsm output, got: {blind_spot_warnings}"
         )
-
 
 
 class TestArtifactVersioning:
@@ -834,7 +830,6 @@ class TestArtifactVersioning:
         assert unknown_warnings == []
 
 
-
 class TestGeneratorFixDiscipline:
     """MR-6 (ENH-2079): meta-loops should not hand-patch LLM-generator artifacts."""
 
@@ -916,5 +911,3 @@ class TestGeneratorFixDiscipline:
             if e.severity == ValidationSeverity.WARNING and "ENH-2079" in e.message
         ]
         assert len(mr6) == 1
-
-

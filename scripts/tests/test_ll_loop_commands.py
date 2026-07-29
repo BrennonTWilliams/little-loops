@@ -348,7 +348,7 @@ states:
             "states:\n"
             "  summarize:\n"
             "    action_type: shell\n"
-            '    action: |\n'
+            "    action: |\n"
             '      printf \'{"verdict":"success"}\\n\' > summary.json\n'
             "    terminal: true\n"
         )
@@ -378,7 +378,7 @@ states:
             "states:\n"
             "  summarize:\n"
             "    action_type: shell\n"
-            '    action: |\n'
+            "    action: |\n"
             '      printf \'{"verdict":"success"}\\n\' > summary.json\n'
             "    terminal: true\n"
         )

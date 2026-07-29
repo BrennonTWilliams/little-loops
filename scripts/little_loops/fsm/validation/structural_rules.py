@@ -19,8 +19,12 @@ import yaml
 from little_loops.fsm.evaluators import _NUMERIC_OPERATORS
 from little_loops.fsm.fragments import resolve_flow, resolve_fragments, resolve_inheritance
 from little_loops.fsm.loop_paths import resolve_loop_path
-from little_loops.fsm.schema import EvaluateConfig, FSMLoop, StateConfig, evaluate_config_known_fields
-
+from little_loops.fsm.schema import (
+    EvaluateConfig,
+    FSMLoop,
+    StateConfig,
+    evaluate_config_known_fields,
+)
 from little_loops.fsm.validation._base import (
     EVALUATOR_REQUIRED_FIELDS,
     KNOWN_TOP_LEVEL_KEYS,
@@ -205,6 +209,7 @@ def _validate_evaluator(state_name: str, evaluate: EvaluateConfig) -> list[Valid
 
     return errors
 
+
 def _validate_parameters(fsm: FSMLoop) -> list[ValidationError]:
     """Validate the loop's top-level parameters: block.
 
@@ -247,6 +252,7 @@ def _validate_parameters(fsm: FSMLoop) -> list[ValidationError]:
             )
 
     return errors
+
 
 def _validate_with_bindings(fsm: FSMLoop, loop_dir: Path) -> list[ValidationError]:
     """Validate with: bindings against child loop parameter contracts.
@@ -322,6 +328,7 @@ def _validate_with_bindings(fsm: FSMLoop, loop_dir: Path) -> list[ValidationErro
 
     return errors
 
+
 def _validate_fragment_bindings(fsm: FSMLoop, loop_dir: Path) -> list[ValidationError]:
     """Validate fragment with: bindings against fragment parameter contracts.
 
@@ -392,6 +399,7 @@ def _validate_fragment_bindings(fsm: FSMLoop, loop_dir: Path) -> list[Validation
                 )
 
     return errors
+
 
 def _validate_state_action(state_name: str, state: StateConfig) -> list[ValidationError]:
     """Validate state action configuration.
@@ -539,6 +547,7 @@ def _validate_state_action(state_name: str, state: StateConfig) -> list[Validati
         )
 
     return errors
+
 
 def _validate_state_routing(state_name: str, state: StateConfig) -> list[ValidationError]:
     """Validate state routing configuration.
@@ -745,6 +754,7 @@ def _validate_state_routing(state_name: str, state: StateConfig) -> list[Validat
 
     return errors
 
+
 def _validate_state_cost_ceiling(
     state_name: str, state: StateConfig, path: str
 ) -> list[ValidationError]:
@@ -822,6 +832,7 @@ def _validate_state_cost_ceiling(
 
     return errors
 
+
 def _validate_targets(fsm: FSMLoop) -> list[ValidationError]:
     """Validate top-level targets[] entries (ENH-1552).
 
@@ -838,6 +849,7 @@ def _validate_targets(fsm: FSMLoop) -> list[ValidationError]:
                 )
             )
     return errors
+
 
 def _validate_failure_terminal_action(fsm: FSMLoop) -> list[ValidationError]:
     """Warn when a failure terminal state has no diagnostic predecessor.
@@ -890,6 +902,7 @@ def _validate_failure_terminal_action(fsm: FSMLoop) -> list[ValidationError]:
             )
 
     return errors
+
 
 def validate_fsm(
     fsm: FSMLoop, orchestration_request_path: str | None = None
@@ -1095,6 +1108,7 @@ def validate_fsm(
 
     return errors
 
+
 # Regex patterns for detecting counter-increment actions.
 # Must contain a printf/echo writing to a file AND an arithmetic increment.
 _COUNTER_FILE_WRITE_RE = re.compile(r"(?:printf|echo)\s+.*>")
@@ -1105,6 +1119,7 @@ _COUNTER_INCREMENT_RE = re.compile(
     r"|\+=1"  # compound assignment
     r"|awk\s+.*\+\+"  # awk with increment
 )
+
 
 def _validate_zero_retry_counter(fsm: FSMLoop) -> list[ValidationError]:
     """Detect counter + output_numeric combos that yield zero effective retries.
@@ -1157,9 +1172,11 @@ def _validate_zero_retry_counter(fsm: FSMLoop) -> list[ValidationError]:
 
     return errors
 
+
 def _is_counter_action(action: str) -> bool:
     """Return True if the action string contains a counter-increment pattern."""
     return bool(_COUNTER_FILE_WRITE_RE.search(action) and _COUNTER_INCREMENT_RE.search(action))
+
 
 def _suggested_target(operator: str, target: float) -> str:
     """Suggest a target value that allows at least one retry."""
@@ -1171,6 +1188,7 @@ def _suggested_target(operator: str, target: float) -> str:
         return "1"
     # For other cases, suggest target+1 as a default nudge
     return str(int(target) + 1)
+
 
 def _validate_input_key_without_guard(fsm: FSMLoop) -> list[ValidationError]:
     """Warn when a loop sets a custom input_key but omits required_inputs.
@@ -1196,6 +1214,7 @@ def _validate_input_key_without_guard(fsm: FSMLoop) -> list[ValidationError]:
         )
     ]
 
+
 def _validate_on_max_steps(fsm: FSMLoop, defined_states: set[str]) -> list[ValidationError]:
     """Validate the top-level `on_max_steps` field (BUG-2204).
 
@@ -1216,6 +1235,7 @@ def _validate_on_max_steps(fsm: FSMLoop, defined_states: set[str]) -> list[Valid
         )
     return errors
 
+
 def _validate_on_max_iterations(fsm: FSMLoop, defined_states: set[str]) -> list[ValidationError]:
     """Validate the top-level `on_max_iterations` field (BUG-2204: iteration-cap summary state).
 
@@ -1235,6 +1255,7 @@ def _validate_on_max_iterations(fsm: FSMLoop, defined_states: set[str]) -> list[
             )
         )
     return errors
+
 
 def _validate_host_guard(fsm: FSMLoop, defined_states: set[str]) -> list[ValidationError]:
     """Validate the top-level ``host_guard:`` block (ENH-2452 / ENH-2453).
@@ -1361,6 +1382,7 @@ def _validate_host_guard(fsm: FSMLoop, defined_states: set[str]) -> list[Validat
 
     return errors
 
+
 def _validate_prompt_size_guard(fsm: FSMLoop) -> list[ValidationError]:
     """Validate the top-level ``prompt_size_guard:`` block (ENH-2486).
 
@@ -1379,6 +1401,7 @@ def _validate_prompt_size_guard(fsm: FSMLoop) -> list[ValidationError]:
         )
 
     return errors
+
 
 def _validate_circuit(fsm: FSMLoop, defined_states: set[str]) -> list[ValidationError]:
     """Validate the top-level `circuit:` block (FEAT-1637).
@@ -1427,6 +1450,7 @@ def _validate_circuit(fsm: FSMLoop, defined_states: set[str]) -> list[Validation
 
     return errors
 
+
 def is_runnable_loop(path: Path) -> bool:
     """Cheap check for whether a YAML file is a runnable FSM loop definition.
 
@@ -1454,6 +1478,7 @@ def is_runnable_loop(path: Path) -> bool:
             return False
     has_flow = "states" in data or "flow" in data
     return "name" in data and "initial" in data and has_flow
+
 
 def _validate_evaluate_unknown_keys(
     fsm: FSMLoop, raw_data: dict[str, Any]

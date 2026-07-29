@@ -485,9 +485,7 @@ class TestContentAwareHeadMoved:
                 return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
             return real_run(*args, **kwargs)  # type: ignore[arg-type]
 
-        with patch(
-            "little_loops.codequery.codegraph.subprocess.run", side_effect=_fake_run
-        ):
+        with patch("little_loops.codequery.codegraph.subprocess.run", side_effect=_fake_run):
             status = CodegraphProvider().status()
 
         assert sync_calls == []
@@ -528,13 +526,9 @@ class TestAutoSync:
             "little_loops.codequery.codegraph.subprocess.run", side_effect=_fake_run
         )
 
-    def test_binary_absent_is_noop(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_binary_absent_is_noop(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         self._stale_repo(tmp_path, monkeypatch)
-        monkeypatch.setattr(
-            "little_loops.codequery.codegraph.shutil.which", lambda _name: None
-        )
+        monkeypatch.setattr("little_loops.codequery.codegraph.shutil.which", lambda _name: None)
         sync_calls, patcher = self._spy_on_sync_calls()
         with patcher:
             status = CodegraphProvider().status()
@@ -593,9 +587,7 @@ class TestAutoSync:
                 raise subprocess.TimeoutExpired(cmd="codegraph", timeout=30)
             return real_run(*args, **kwargs)  # type: ignore[arg-type]
 
-        with patch(
-            "little_loops.codequery.codegraph.subprocess.run", side_effect=_raise_timeout
-        ):
+        with patch("little_loops.codequery.codegraph.subprocess.run", side_effect=_raise_timeout):
             status = CodegraphProvider().status()
 
         assert status.available is True

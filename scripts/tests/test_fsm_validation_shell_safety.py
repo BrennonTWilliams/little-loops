@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 from little_loops.fsm.schema import (
     FSMLoop,
     StateConfig,
@@ -95,7 +94,6 @@ class TestBashDefaultInterpolation:
         _, warnings = load_and_validate(loop_yaml)
         unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
         assert unknown_warnings == []
-
 
 
 class TestOverescapedShell:
@@ -199,7 +197,6 @@ class TestOverescapedShell:
         _, warnings = load_and_validate(loop_yaml)
         unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
         assert unknown_warnings == []
-
 
 
 class TestUnsafeContextInterpolation:
@@ -335,5 +332,3 @@ class TestUnsafeContextInterpolation:
         _, warnings = load_and_validate(loop_yaml)
         unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
         assert unknown_warnings == []
-
-

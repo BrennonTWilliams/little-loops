@@ -548,9 +548,7 @@ class TestSelectStepShellAction:
         run_dir = _setup_run_dir(tmp_path)
         step_line = "- [ ] Step 5: minor prep work"
         (run_dir / "plan.md").write_text(
-            "# Task Plan\n"
-            f"{step_line}\n"
-            "- [ ] Step 13: needs output from Steps 5, 6\n"
+            f"# Task Plan\n{step_line}\n- [ ] Step 13: needs output from Steps 5, 6\n"
         )
         (run_dir / "step-attempts.txt").write_text(f"{step_line}\n" * 3)
         result = self._run_with_attempts(tmp_path)
@@ -1909,9 +1907,7 @@ class TestENH2575PartialCredit:
             "- [x] Tests pass [hard]\n"
             "- [ ] Coverage met [hard]\n"
         )
-        (run_dir / "plan.md").write_text(
-            "# Task Plan\n- [x] Step 1: done\n- [ ] Step 2: pending\n"
-        )
+        (run_dir / "plan.md").write_text("# Task Plan\n- [x] Step 1: done\n- [ ] Step 2: pending\n")
         result = _bash(self._load_script(run_dir), cwd=tmp_path)
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         import json
@@ -2020,7 +2016,7 @@ class TestENH2858StandingCriteria:
         assert "exits 0" in action
         # "no new errors" appears only as the forbidden phrasing example, negated
         # by "never" immediately before it — never bare/unqualified in the prompt.
-        assert "never as a delta claim like \"no new errors\"" in action
+        assert 'never as a delta claim like "no new errors"' in action
         assert "enumerated allowlist" in action
 
     def test_check_baseline_tests_writes_baseline_ref_to_run_dir(self, raw_data: dict) -> None:
@@ -2048,10 +2044,14 @@ class TestENH2858StandingCriteria:
     def test_check_provisional_markers_routes_no_to_summarize_partial(self, raw_data: dict) -> None:
         assert raw_data["states"]["check_provisional_markers"]["on_no"] == "summarize_partial"
 
-    def test_check_provisional_markers_routes_yes_to_summarize_success(self, raw_data: dict) -> None:
+    def test_check_provisional_markers_routes_yes_to_summarize_success(
+        self, raw_data: dict
+    ) -> None:
         assert raw_data["states"]["check_provisional_markers"]["on_yes"] == "summarize_success"
 
-    def test_check_provisional_markers_routes_error_to_summarize_partial(self, raw_data: dict) -> None:
+    def test_check_provisional_markers_routes_error_to_summarize_partial(
+        self, raw_data: dict
+    ) -> None:
         assert raw_data["states"]["check_provisional_markers"]["on_error"] == "summarize_partial"
 
     def test_marker_grep_skips_with_note_outside_git_repo(self, tmp_path: Path) -> None:

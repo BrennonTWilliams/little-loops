@@ -225,7 +225,9 @@ class TestErrorHandling:
         assert result.exit_code == 0
         assert result.feedback is None
 
-    def test_malformed_state_file_passes_through(self, clock: _Clock, monkeypatch, tmp_path) -> None:
+    def test_malformed_state_file_passes_through(
+        self, clock: _Clock, monkeypatch, tmp_path
+    ) -> None:
         state_dir = tmp_path / ".ll"
         state_dir.mkdir(parents=True, exist_ok=True)
         (state_dir / _STATE_FILENAME).write_text("not json{{{")

@@ -680,9 +680,7 @@ class TestRenderArtifactHeaderLines:
         from little_loops.cli.loop._helpers import _render_artifact_header_lines
 
         fsm = _make_test_fsm()
-        lines = _render_artifact_header_lines(
-            fsm, None, "claude-opus-4-8", None, 200, effort="low"
-        )
+        lines = _render_artifact_header_lines(fsm, None, "claude-opus-4-8", None, 200, effort="low")
         model_line = next(ln for ln in lines if "model:" in ln)
         assert "claude-opus-4-8 [LOW]" in model_line
         assert "effort:" not in model_line

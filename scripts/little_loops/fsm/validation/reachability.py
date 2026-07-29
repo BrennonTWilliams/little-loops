@@ -12,13 +12,11 @@ from pathlib import Path
 
 from little_loops.fsm.loop_paths import resolve_loop_path
 from little_loops.fsm.schema import FSMLoop
-
 from little_loops.fsm.validation._base import (
     ValidationError,
     ValidationSeverity,
     _strip_interpolation_prefix,
 )
-
 
 # ENH-1961: Regex for extracting captured variable names from ${captured.<var>.*} references
 _CAPTURED_REF_RE = re.compile(r"\$\{captured\.(\w+)")
@@ -38,6 +36,7 @@ _CAPTURED_REF_FULL_RE = re.compile(r"\$\{captured\.(\w+)([^}]*)\}")
 # with any other second segment (e.g. `.extracted.output`) is referencing a
 # field that doesn't exist there (BUG-2812).
 _SUB_LOOP_CAPTURE_OWN_FIELDS: frozenset[str] = frozenset({"output", "exit_code"})
+
 
 def _unguarded_captured_refs(text: str) -> set[tuple[str, ...]]:
     """Return dotted-path tuples for `${captured...}` refs WITHOUT a
@@ -60,6 +59,7 @@ def _unguarded_captured_refs(text: str) -> set[tuple[str, ...]]:
         extra_segments = [seg for seg in remainder.split(".") if seg]
         refs.add((var_name, *extra_segments))
     return refs
+
 
 def _validate_loop_references(fsm: FSMLoop, loop_dir: Path) -> list[ValidationError]:
     """Validate that every state's loop: reference resolves to an actual loop file.
@@ -96,6 +96,7 @@ def _validate_loop_references(fsm: FSMLoop, loop_dir: Path) -> list[ValidationEr
                 )
             )
     return errors
+
 
 def _validate_policy_dimensions_scored(fsm: FSMLoop) -> list[ValidationError]:
     """Validate that policy_rules predicates only reference dimensions that are actually scored.
@@ -184,6 +185,7 @@ def _validate_policy_dimensions_scored(fsm: FSMLoop) -> list[ValidationError]:
         )
     return errors
 
+
 def _validate_progress_paths_isolation(fsm: FSMLoop) -> list[ValidationError]:
     """Warn when a state's action writes to a file listed in progress_paths (BUG-1767).
 
@@ -227,6 +229,7 @@ def _validate_progress_paths_isolation(fsm: FSMLoop) -> list[ValidationError]:
                     )
                 )
     return errors
+
 
 def _dominated_by_any(fsm: FSMLoop, dominators: set[str], dominated: str) -> bool:
     """Return True if the set ``dominators`` collectively dominates ``dominated``.
@@ -277,6 +280,7 @@ def _dominated_by_any(fsm: FSMLoop, dominators: set[str], dominated: str) -> boo
     # Dominated not reachable without the dominators → they dominate
     return True
 
+
 def _dominates(fsm: FSMLoop, dominator: str, dominated: str) -> bool:
     """Return True if dominator dominates dominated in the FSM graph.
 
@@ -286,6 +290,7 @@ def _dominates(fsm: FSMLoop, dominator: str, dominated: str) -> bool:
     if dominator not in fsm.states:
         return False
     return _dominated_by_any(fsm, {dominator}, dominated)
+
 
 def _find_bypass_path_any(fsm: FSMLoop, dominators: set[str], dominated: str) -> list[str]:
     """Find an example path from initial to dominated that bypasses all dominators.
@@ -324,6 +329,7 @@ def _find_bypass_path_any(fsm: FSMLoop, dominators: set[str], dominated: str) ->
 
     return []
 
+
 def _find_bypass_path(fsm: FSMLoop, dominator: str, dominated: str) -> list[str]:
     """Find an example path from initial to dominated that bypasses dominator.
 
@@ -331,12 +337,14 @@ def _find_bypass_path(fsm: FSMLoop, dominator: str, dominated: str) -> list[str]
     """
     return _find_bypass_path_any(fsm, {dominator}, dominated)
 
+
 def _has_sub_loop_state(fsm: FSMLoop) -> bool:
     """Return True if any state in the FSM has ``loop:`` set (delegates to a child loop).
 
     Used by ENH-1961 to distinguish "capture lives in a sub-loop" from "capture is missing".
     """
     return any(state.loop is not None for state in fsm.states.values())
+
 
 def _validate_capture_reachability(fsm: FSMLoop) -> list[ValidationError]:
     """Validate that ``${captured.*}`` references are dominated by their capturing states.

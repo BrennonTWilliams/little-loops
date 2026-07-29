@@ -432,7 +432,9 @@ def process_agents(
     # emitter (agent_output_format is not None); omp declares neither, so it
     # stays excluded and continues to hit emitter.emit_agent's raise below.
     entry = HOST_CAPABILITIES.get(getattr(emitter, "name", ""))
-    degraded = entry is not None and entry.subagents == "none" and entry.agent_output_format is not None
+    degraded = (
+        entry is not None and entry.subagents == "none" and entry.agent_output_format is not None
+    )
 
     for agent_md in sorted(agents_dir.glob("*.md")):
         agent_name = agent_md.stem
@@ -460,7 +462,9 @@ def process_agents(
         }
 
         try:
-            result = _emit_degraded_agent(agent_meta) if degraded else emitter.emit_agent(agent_meta)
+            result = (
+                _emit_degraded_agent(agent_meta) if degraded else emitter.emit_agent(agent_meta)
+            )
         except AdapterError as exc:
             if not quiet:
                 print(f"  ERROR  {agent_name}: {exc}", file=sys.stderr)

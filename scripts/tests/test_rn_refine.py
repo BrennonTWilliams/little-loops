@@ -1683,9 +1683,25 @@ class TestStepwiseChainPlumbing:
         rd = tmp_path / "run"
         rd.mkdir()
         subprocess.run(["git", "init", "-q"], cwd=tmp_path)
-        subprocess.run(["git", "-c", "user.email=a@b.c", "-c", "user.name=a", "commit", "--allow-empty", "-q", "-m", "seed"], cwd=tmp_path)
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.email=a@b.c",
+                "-c",
+                "user.name=a",
+                "commit",
+                "--allow-empty",
+                "-q",
+                "-m",
+                "seed",
+            ],
+            cwd=tmp_path,
+        )
         action = _load_rn_refine().states["reset_leaf_repair"].action
-        rendered = _render(action, captured={"run_dir": {"output": str(rd)}, "input": {"output": "n1"}})
+        rendered = _render(
+            action, captured={"run_dir": {"output": str(rd)}, "input": {"output": "n1"}}
+        )
         result = _bash(rendered, tmp_path)
         assert result.returncode == 0, result.stderr
         assert (rd / "leaf-repair-count.txt").read_text() == "0"
@@ -1725,7 +1741,18 @@ class TestStepwiseChainPlumbing:
         rd.mkdir()
         subprocess.run(["git", "init", "-q"], cwd=tmp_path)
         subprocess.run(
-            ["git", "-c", "user.email=a@b.c", "-c", "user.name=a", "commit", "--allow-empty", "-q", "-m", "baseline"],
+            [
+                "git",
+                "-c",
+                "user.email=a@b.c",
+                "-c",
+                "user.name=a",
+                "commit",
+                "--allow-empty",
+                "-q",
+                "-m",
+                "baseline",
+            ],
             cwd=tmp_path,
         )
         baseline = subprocess.run(
@@ -1735,11 +1762,23 @@ class TestStepwiseChainPlumbing:
         (tmp_path / "dirty.txt").write_text("half-implemented")
         subprocess.run(["git", "add", "-A"], cwd=tmp_path)
         subprocess.run(
-            ["git", "-c", "user.email=a@b.c", "-c", "user.name=a", "commit", "-q", "-m", "bad leaf"],
+            [
+                "git",
+                "-c",
+                "user.email=a@b.c",
+                "-c",
+                "user.name=a",
+                "commit",
+                "-q",
+                "-m",
+                "bad leaf",
+            ],
             cwd=tmp_path,
         )
         action = _load_rn_refine().states["revert_leaf_failed"].action
-        rendered = _render(action, captured={"run_dir": {"output": str(rd)}, "input": {"output": "n4"}})
+        rendered = _render(
+            action, captured={"run_dir": {"output": str(rd)}, "input": {"output": "n4"}}
+        )
         result = _bash(rendered, tmp_path)
         assert result.returncode == 0, result.stderr
         head = subprocess.run(
@@ -1753,7 +1792,9 @@ class TestStepwiseChainPlumbing:
         rd = tmp_path / "run"
         rd.mkdir()
         action = _load_rn_refine().states["record_leaf_failed"].action
-        rendered = _render(action, captured={"run_dir": {"output": str(rd)}, "input": {"output": "n4"}})
+        rendered = _render(
+            action, captured={"run_dir": {"output": str(rd)}, "input": {"output": "n4"}}
+        )
         result = _bash(rendered, tmp_path)
         assert result.returncode == 0, result.stderr
         assert (rd / "leaf_impl_n4.txt").read_text() == "IMPLEMENT_FAILED"
@@ -1763,7 +1804,9 @@ class TestStepwiseChainPlumbing:
         rd.mkdir()
         (rd / "leaf-deviation-note.txt").write_text("switched approach X for Y")
         action = _load_rn_refine().states["record_deviation"].action
-        rendered = _render(action, captured={"run_dir": {"output": str(rd)}, "input": {"output": "n2"}})
+        rendered = _render(
+            action, captured={"run_dir": {"output": str(rd)}, "input": {"output": "n2"}}
+        )
         result = _bash(rendered, tmp_path)
         assert result.returncode == 0, result.stderr
         assert "n2" in (rd / "deviations.md").read_text()
@@ -1775,12 +1818,25 @@ class TestStepwiseChainPlumbing:
         rd.mkdir()
         subprocess.run(["git", "init", "-q"], cwd=tmp_path)
         subprocess.run(
-            ["git", "-c", "user.email=a@b.c", "-c", "user.name=a", "commit", "--allow-empty", "-q", "-m", "baseline"],
+            [
+                "git",
+                "-c",
+                "user.email=a@b.c",
+                "-c",
+                "user.name=a",
+                "commit",
+                "--allow-empty",
+                "-q",
+                "-m",
+                "baseline",
+            ],
             cwd=tmp_path,
         )
         (tmp_path / "implemented.txt").write_text("done")
         action = _load_rn_refine().states["commit_leaf"].action
-        rendered = _render(action, captured={"run_dir": {"output": str(rd)}, "input": {"output": "n5"}})
+        rendered = _render(
+            action, captured={"run_dir": {"output": str(rd)}, "input": {"output": "n5"}}
+        )
         result = _bash(rendered, tmp_path)
         assert result.returncode == 0, result.stderr
         assert "COMMITTED" in result.stdout
@@ -1794,7 +1850,9 @@ class TestStepwiseChainPlumbing:
         rd = tmp_path / "run"
         rd.mkdir()
         action = _load_rn_refine().states["record_leaf_done"].action
-        rendered = _render(action, captured={"run_dir": {"output": str(rd)}, "input": {"output": "n6"}})
+        rendered = _render(
+            action, captured={"run_dir": {"output": str(rd)}, "input": {"output": "n6"}}
+        )
         result = _bash(rendered, tmp_path)
         assert result.returncode == 0, result.stderr
         assert (rd / "leaf_impl_n6.txt").read_text() == "verified"
@@ -1804,7 +1862,9 @@ class TestStepwiseChainPlumbing:
         rd.mkdir()
         (rd / "leaf-was-deviated-n6.txt").touch()
         action = _load_rn_refine().states["record_leaf_done"].action
-        rendered = _render(action, captured={"run_dir": {"output": str(rd)}, "input": {"output": "n6"}})
+        rendered = _render(
+            action, captured={"run_dir": {"output": str(rd)}, "input": {"output": "n6"}}
+        )
         result = _bash(rendered, tmp_path)
         assert result.returncode == 0, result.stderr
         assert (rd / "leaf_impl_n6.txt").read_text() == "deviated"

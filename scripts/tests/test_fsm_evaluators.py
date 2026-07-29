@@ -171,9 +171,7 @@ class TestOutputNumericEvaluator:
 
     def test_key_inline_multi_field(self) -> None:
         """key extracts the value when multiple fields share a line."""
-        result = evaluate_output_numeric(
-            "exit_code=0 pass_rate=0.99", "ge", 0.95, key="pass_rate"
-        )
+        result = evaluate_output_numeric("exit_code=0 pass_rate=0.99", "ge", 0.95, key="pass_rate")
         assert result.verdict == "yes"
         assert result.details["value"] == 0.99
 

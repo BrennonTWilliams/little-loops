@@ -158,9 +158,7 @@ def _check_emitter_agreement() -> list[str]:
                 "agent_output_format is set — degraded emission has nowhere to write"
             )
         if gemini_entry.subagents == "native" and not gemini_entry.agents:
-            errors.append(
-                "map entry 'gemini' declares subagents='native' but agents=False"
-            )
+            errors.append("map entry 'gemini' declares subagents='native' but agents=False")
 
     omp_entry = HOST_CAPABILITIES.get("omp")
     if omp_entry is not None and (omp_entry.agents or omp_entry.commands):

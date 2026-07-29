@@ -287,7 +287,12 @@ class CodegraphProvider:
         )
         head_moved = (
             _content_aware_head_moved(
-                root, indexed_at, content_hashes, scan.focus_dirs, scan.exclude_patterns, commit_count
+                root,
+                indexed_at,
+                content_hashes,
+                scan.focus_dirs,
+                scan.exclude_patterns,
+                commit_count,
             )
             if commit_count
             else 0

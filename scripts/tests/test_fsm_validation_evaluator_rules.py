@@ -164,7 +164,6 @@ class TestHaikuPinnedGenerator:
         assert unknown_warnings == []
 
 
-
 class TestClassifyRouteDefault:
     """Classify-route-default WARNING check (ENH-2165)."""
 
@@ -254,7 +253,6 @@ class TestClassifyRouteDefault:
         )
         errors = _validate_classify_route_default(fsm)
         assert errors == []
-
 
 
 class TestLLMEvidenceContractValidation:
@@ -429,7 +427,6 @@ print(data)
 """
 
 
-
 class TestParseSwallow:
     """MR-10: shell state silently swallows a JSON parse failure with exit 0."""
 
@@ -538,7 +535,6 @@ class TestParseSwallow:
         _, warnings = load_and_validate(loop_yaml, raise_on_error=False)
         unknown = [w for w in warnings if "Unknown top-level" in w.message]
         assert unknown == [], f"parse_swallow_ok flagged as unknown: {unknown}"
-
 
 
 class TestSessionModeEvaluatorInheritance:
@@ -703,7 +699,6 @@ class TestSessionModeEvaluatorInheritance:
         assert fsm is not None
         unknown_key_errors = [e for e in errors if "Unknown top-level" in e.message]
         assert unknown_key_errors == []
-
 
 
 class TestPruningProfileCoverageValidation:
@@ -957,7 +952,6 @@ class TestPruningProfileCoverageValidation:
         assert len(warnings) == 1, f"Expected one MR-12 coverage WARNING, got: {warnings}"
 
 
-
 class TestTerminalActionOk:
     """BUG-2813: non-empty `action` on a `terminal: true` state is dead code."""
 
@@ -1043,7 +1037,6 @@ class TestTerminalActionOk:
         assert errors == []
 
 
-
 class TestAbandonmentVerdict:
     """MR-13: abandonment mechanism must emit an "abandoned" key; a hardcoded
     "verdict":"success" must be guarded by an abandonment/failure counter."""
@@ -1087,7 +1080,7 @@ class TestAbandonmentVerdict:
         fsm = self._simple_fsm(
             {
                 "select_step": make_state(
-                    action='PRIOR=$(cat attempts.txt); '
+                    action="PRIOR=$(cat attempts.txt); "
                     'if [ "$PRIOR" -ge "${context.max_step_attempts}" ]; then echo cap; fi',
                     action_type="shell",
                     on_yes="done",
@@ -1143,7 +1136,7 @@ class TestAbandonmentVerdict:
             {
                 "finalize": make_state(
                     action=(
-                        'ABANDONED=$(count abandoned.txt); '
+                        "ABANDONED=$(count abandoned.txt); "
                         'if [ "$ABANDONED" -gt 0 ]; then VERDICT=incomplete-abandoned; '
                         "else VERDICT=success; fi; "
                         'printf \'{"verdict":"%s","abandoned":%s}\\n\' "$VERDICT" "$ABANDONED"'
@@ -1195,9 +1188,7 @@ class TestAbandonmentVerdict:
         ]
         assert len(mr13) == 1
 
-    def test_mr13_abandonment_verdict_ok_recognized_as_top_level_key(
-        self, tmp_path: Path
-    ) -> None:
+    def test_mr13_abandonment_verdict_ok_recognized_as_top_level_key(self, tmp_path: Path) -> None:
         """A YAML with top-level abandonment_verdict_ok produces no Unknown-top-level warning."""
         loop_yaml = tmp_path / "loop.yaml"
         loop_yaml.write_text(

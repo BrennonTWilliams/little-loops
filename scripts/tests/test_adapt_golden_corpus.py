@@ -64,7 +64,9 @@ def test_codex_skill_emission_matches_golden_corpus(tmp_path: Path) -> None:
         openai_yaml = skill_md.parent / "agents" / "openai.yaml"
         if case["codex_openai_yaml"] is not None:
             assert openai_yaml.exists(), f"{name}: expected openai.yaml"
-            assert openai_yaml.read_text() == case["codex_openai_yaml"], f"{name}: openai.yaml changed"
+            assert openai_yaml.read_text() == case["codex_openai_yaml"], (
+                f"{name}: openai.yaml changed"
+            )
         else:
             assert not openai_yaml.exists(), f"{name}: unexpected openai.yaml"
 
@@ -86,7 +88,9 @@ def test_gemini_skill_emission_matches_golden_corpus(tmp_path: Path) -> None:
         assert result == case["gemini_result"], f"{name}: gemini result changed"
         out_path = tmp_path / name / ".gemini" / "skills" / name / "SKILL.md"
         if case["gemini_skill_md"] is not None:
-            assert out_path.read_text() == case["gemini_skill_md"], f"{name}: gemini SKILL.md changed"
+            assert out_path.read_text() == case["gemini_skill_md"], (
+                f"{name}: gemini SKILL.md changed"
+            )
 
 
 def test_codex_command_emission_matches_golden_corpus(tmp_path: Path) -> None:
@@ -113,9 +117,13 @@ def test_codex_command_emission_matches_golden_corpus(tmp_path: Path) -> None:
         out_skill_md = output_dir / f"ll-{stem}" / "SKILL.md"
         out_openai_yaml = output_dir / f"ll-{stem}" / "agents" / "openai.yaml"
         if case["codex_skill_md"] is not None:
-            assert out_skill_md.read_text() == case["codex_skill_md"], f"{stem}: codex SKILL.md changed"
+            assert out_skill_md.read_text() == case["codex_skill_md"], (
+                f"{stem}: codex SKILL.md changed"
+            )
         if case["codex_openai_yaml"] is not None:
-            assert out_openai_yaml.read_text() == case["codex_openai_yaml"], f"{stem}: openai.yaml changed"
+            assert out_openai_yaml.read_text() == case["codex_openai_yaml"], (
+                f"{stem}: openai.yaml changed"
+            )
 
 
 def test_gemini_command_emission_matches_golden_corpus(tmp_path: Path) -> None:

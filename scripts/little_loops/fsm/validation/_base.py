@@ -18,6 +18,7 @@ class ValidationSeverity(Enum):
     ERROR = "error"
     WARNING = "warning"
 
+
 @dataclass
 class ValidationError:
     """Structured validation error.
@@ -38,6 +39,7 @@ class ValidationError:
         if self.path:
             return f"{prefix} {self.path}: {self.message}"
         return f"{prefix} {self.message}"
+
 
 # Evaluator type to required fields mapping
 EVALUATOR_REQUIRED_FIELDS: dict[str, list[str]] = {
@@ -141,6 +143,7 @@ VALID_PARAMETER_TYPES: frozenset[str] = frozenset(
     {"string", "integer", "number", "boolean", "enum", "path"}
 )
 
+
 def _check_param_type(value: Any, spec: ParameterSpec) -> str | None:
     """Return an error message if value does not match spec.type, else None."""
     if spec.type == "string" and not isinstance(value, str):
@@ -154,6 +157,7 @@ def _check_param_type(value: Any, spec: ParameterSpec) -> str | None:
     if spec.type == "enum" and spec.values and value not in spec.values:
         return f"expected one of {spec.values!r}, got {value!r}"
     return None
+
 
 def _is_llm_judged(state: StateConfig) -> bool:
     """Return True if this state will be graded by the default LLM judge.
@@ -173,7 +177,9 @@ def _is_llm_judged(state: StateConfig) -> bool:
         return False
     return state.evaluate.type in ("llm_structured", "check_semantic")
 
+
 _SKILL_INVOKE_RE = re.compile(r"/ll:([a-zA-Z0-9_-]+)")
+
 
 def _effective_session_mode(fsm: FSMLoop, state: StateConfig) -> str:
     """Resolve the effective session_mode for a state: state override, then loop default.
@@ -185,13 +191,16 @@ def _effective_session_mode(fsm: FSMLoop, state: StateConfig) -> str:
         return state.session_mode
     return fsm.session_mode or "fresh"
 
+
 # Matches common interpolation prefixes used in loop YAML paths so we can
 # extract the portable relative component for action-string scanning.
 _INTERPOLATION_PREFIX_RE = re.compile(r"^\$\{[^}]+\}/")
 
+
 def _strip_interpolation_prefix(path: str) -> str:
     """Return the path with any leading ${...}/ prefix removed."""
     return _INTERPOLATION_PREFIX_RE.sub("", path)
+
 
 def _find_reachable_states(fsm: FSMLoop) -> set[str]:
     """Find all states reachable from the initial state.

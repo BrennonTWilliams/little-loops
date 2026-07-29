@@ -8,9 +8,7 @@ from __future__ import annotations
 import re
 
 from little_loops.fsm.schema import FSMLoop
-
 from little_loops.fsm.validation._base import ValidationError, ValidationSeverity
-
 
 # MR-7: bash-default interpolation detector. Matches ${namespace.path:-default}
 # (unescaped bash `:- ` default form) that the FSM interpolator does not support.
@@ -42,6 +40,7 @@ _UNSAFE_CONTEXT_INTERP_RE = re.compile(
 # shell metacharacters.
 _QUOTED_HEREDOC_START_RE = re.compile(r"<<-?\s*['\"](\w+)['\"]")
 
+
 def _find_bash_default_tokens(fsm: FSMLoop) -> list[tuple[str, str]]:
     """Return (state_name, matched_token) for every action with unescaped ${ns.path:-...}.
 
@@ -56,6 +55,7 @@ def _find_bash_default_tokens(fsm: FSMLoop) -> list[tuple[str, str]]:
         for match in _BASH_DEFAULT_RE.finditer(state.action):
             findings.append((state_name, match.group(0)))
     return findings
+
 
 def _validate_bash_default_interpolation(fsm: FSMLoop) -> list[ValidationError]:
     """Validate rule MR-7 (ENH-2348): unescaped bash :-default interpolation.
@@ -90,6 +90,7 @@ def _validate_bash_default_interpolation(fsm: FSMLoop) -> list[ValidationError]:
             )
         )
     return errors
+
 
 def _validate_overescaped_shell(fsm: FSMLoop) -> list[ValidationError]:
     """Validate rule MR-9: over-escaped shell ``$$`` that expands to the PID.
@@ -143,6 +144,7 @@ def _validate_overescaped_shell(fsm: FSMLoop) -> list[ValidationError]:
             )
     return errors
 
+
 def _find_unsafe_context_interpolations(fsm: FSMLoop) -> list[tuple[str, str]]:
     """Return (state_name, matched_token) for user-controlled ${context.*} vars
     interpolated into a shell body outside a safe position.
@@ -184,6 +186,7 @@ def _find_unsafe_context_interpolations(fsm: FSMLoop) -> list[tuple[str, str]]:
                     continue  # inside a single-quoted string
                 findings.append((state_name, token))
     return findings
+
 
 def _validate_unsafe_context_interpolation(fsm: FSMLoop) -> list[ValidationError]:
     """Validate rule MR-11 (BUG-2622): unsafe raw shell interpolation of user context.

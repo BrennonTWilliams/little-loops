@@ -181,9 +181,7 @@ class TestCheckDecisionAtDequeueStructural:
         """
         states = data["states"]
         node = states["dequeue_next"].get("on_yes")
-        assert node != "refine_current", (
-            "dequeue_next must not bypass the decision gate (BUG-2513)"
-        )
+        assert node != "refine_current", "dequeue_next must not bypass the decision gate (BUG-2513)"
         seen: set[str] = set()
         while node and node != "check_decision_at_dequeue" and node not in seen:
             seen.add(node)

@@ -149,9 +149,7 @@ def _run_skill(spec: ActionSpec) -> RunnerResult:
                 stdout="",
                 stderr="",
                 exit_code=proc.returncode,
-                tool_trace=[
-                    {"index": c.index, "name": c.name, "input": c.input} for c in trace
-                ],
+                tool_trace=[{"index": c.index, "name": c.name, "input": c.input} for c in trace],
             )
         except subprocess.TimeoutExpired:
             return RunnerResult(
@@ -159,9 +157,7 @@ def _run_skill(spec: ActionSpec) -> RunnerResult:
                 stderr="",
                 exit_code=124,
                 timed_out=True,
-                tool_trace=[
-                    {"index": c.index, "name": c.name, "input": c.input} for c in trace
-                ],
+                tool_trace=[{"index": c.index, "name": c.name, "input": c.input} for c in trace],
             )
 
     if stream_callback is not None:

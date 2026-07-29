@@ -4731,9 +4731,7 @@ class TestAutodevLoop:
         issues_dir.mkdir(parents=True)
 
         def _write_issue(issue_id: str, blocked_by: list[str]) -> None:
-            blocked_yaml = (
-                "[]" if not blocked_by else "[" + ", ".join(blocked_by) + "]"
-            )
+            blocked_yaml = "[]" if not blocked_by else "[" + ", ".join(blocked_by) + "]"
             (issues_dir / f"P3-{issue_id}-example.md").write_text(
                 f"---\nid: {issue_id}\ntype: {issue_id.split('-')[0]}\n"
                 f"blocked_by: {blocked_yaml}\n---\n\n# {issue_id}\n"
@@ -4742,10 +4740,7 @@ class TestAutodevLoop:
         bin_dir = tmp_path / "bin"
         bin_dir.mkdir()
         stub = bin_dir / "ll-issues"
-        stub.write_text(
-            "#!/bin/sh\n"
-            'echo \'[{"id": "ENH-9001"}]\'\n'
-        )
+        stub.write_text('#!/bin/sh\necho \'[{"id": "ENH-9001"}]\'\n')
         stub.chmod(0o755)
         env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
 
@@ -4819,9 +4814,7 @@ class TestAutodevLoop:
         run_dir = tmp_path / "run"
         run_dir.mkdir(parents=True)
         (run_dir / "autodev-skipped.txt").write_text(
-            "ENH-1001  refine_failed\n"
-            "BUG-2865  already_completed\n"
-            "FEAT-2001  blocked_by_unmet\n"
+            "ENH-1001  refine_failed\nBUG-2865  already_completed\nFEAT-2001  blocked_by_unmet\n"
         )
         script = action.replace("${context.run_dir}", str(run_dir))
         script = script.replace("$${", "${")
@@ -4901,9 +4894,7 @@ class TestAutodevLoop:
         action = state.get("action", "")
         script = action.replace("${context.run_dir}", str(run_dir))
         script = script.replace("$${", "${")
-        result = subprocess.run(
-            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True
-        )
+        result = subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
         summary_path = run_dir / "summary.json"
         summary = json.loads(summary_path.read_text()) if summary_path.exists() else {}
         return summary, result.stdout
@@ -4919,8 +4910,7 @@ class TestAutodevLoop:
         (run_dir / "autodev-staged.txt").write_text("FEAT-108\n")
         script_path = run_dir / "ll-issues"
         script_path.write_text(
-            "#!/bin/sh\n"
-            'if [ "$1" = "show" ]; then echo \'{"status": "Open"}\'; fi\n'
+            '#!/bin/sh\nif [ "$1" = "show" ]; then echo \'{"status": "Open"}\'; fi\n'
         )
         script_path.chmod(0o755)
         env = dict(**{"PATH": f"{run_dir}:{__import__('os').environ['PATH']}"})
@@ -4951,8 +4941,7 @@ class TestAutodevLoop:
         (run_dir / "autodev-staged.txt").write_text("FEAT-200\n")
         script_path = run_dir / "ll-issues"
         script_path.write_text(
-            "#!/bin/sh\n"
-            'if [ "$1" = "show" ]; then echo \'{"status": "Done"}\'; fi\n'
+            '#!/bin/sh\nif [ "$1" = "show" ]; then echo \'{"status": "Done"}\'; fi\n'
         )
         script_path.chmod(0o755)
         env = dict(**{"PATH": f"{run_dir}:{__import__('os').environ['PATH']}"})
@@ -10566,9 +10555,7 @@ class TestCodeRunGateOracle:
 
         run_dir = tmp_path / "run"
         run_dir.mkdir()
-        (run_dir / "commands.json").write_text(
-            '{"test_cmd": "exit 1"}', encoding="utf-8"
-        )
+        (run_dir / "commands.json").write_text('{"test_cmd": "exit 1"}', encoding="utf-8")
 
         action = data["states"]["run_test"]["action"]
         # Loop YAML actions use $${...} to escape FSM interpolation of
@@ -10622,9 +10609,7 @@ class TestCodeRunGateOracle:
         assert test_results.splitlines()[0].startswith("SKIP")
         assert "exit_code=" not in test_results
 
-    def _run_test_and_aggregate(
-        self, data: dict, run_dir, commands_json: str
-    ):
+    def _run_test_and_aggregate(self, data: dict, run_dir, commands_json: str):
         """Shared harness: run run_test's real action, then aggregate's real
         action, against a staged run_dir. Returns (run_test_result,
         aggregate_result, verdict_file_contents)."""
@@ -12705,9 +12690,7 @@ class TestGeneralTaskLoop:
         action = state.get("action", "")
         assert "baseline-ref.txt" in action
 
-    def test_check_provisional_markers_routes_to_summarize_partial_on_hit(
-        self, data: dict
-    ) -> None:
+    def test_check_provisional_markers_routes_to_summarize_partial_on_hit(self, data: dict) -> None:
         state = data["states"].get("check_provisional_markers", {})
         assert state.get("on_no") == "summarize_partial"
 
