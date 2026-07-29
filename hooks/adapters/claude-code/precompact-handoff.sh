@@ -6,5 +6,6 @@
 # which routes to ``little_loops.hooks.pre_compact_handoff.handle``.
 #
 INPUT=$(cat)
-echo "$INPUT" | python -m little_loops.hooks pre_compact_handoff
+PY="${LL_PYTHON:-$(command -v python3 || command -v python || echo python)}"
+echo "$INPUT" | "$PY" -m little_loops.hooks pre_compact_handoff
 exit $?

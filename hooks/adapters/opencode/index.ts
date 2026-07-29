@@ -2,7 +2,7 @@
  * OpenCode adapter for little-loops hook intents.
  *
  * Mirrors the shape of hooks/adapters/claude-code/{session-start,precompact}.sh:
- * spawn `python -m little_loops.hooks <intent>`, pipe the host event payload as
+ * spawn `$PY -m little_loops.hooks <intent>`, pipe the host event payload as
  * JSON to stdin, propagate stdout/stderr/exit-code back to OpenCode. No logic
  * lives here; the adapter is purely a transport. Host identity is conveyed via
  * the LL_HOOK_HOST environment variable so the Python dispatcher constructs
@@ -25,12 +25,21 @@ interface SpawnResult {
   exitCode: number;
 }
 
+// Interpreter resolution (BUG-2921): a bare `python` fails silently (fail-open,
+// exit 127) under a minimal hook-process PATH. Mirror the shell adapters'
+// LL_PYTHON → python3 → python chain. Bun.which returns null (never throws) when
+// a name is not on PATH, so the final literal preserves the prior behavior.
+// Resolved once at module scope — the plugin factory is long-lived, so there is
+// no reason to re-probe PATH on every hook event.
+const PY =
+  process.env.LL_PYTHON ?? Bun.which("python3") ?? Bun.which("python") ?? "python";
+
 const spawnIntent = async (
   intent: Intent,
   payload: unknown,
   cwd: string,
 ): Promise<SpawnResult> => {
-  const proc = Bun.spawn(["python", "-m", "little_loops.hooks", intent], {
+  const proc = Bun.spawn([PY, "-m", "little_loops.hooks", intent], {
     cwd,
     env: { ...process.env, LL_HOOK_HOST: "opencode" },
     stdin: "pipe",

@@ -28,8 +28,10 @@ export default {
 };
 ```
 
-The adapter resolves `python` from the ambient `PATH`. Ensure
-`little_loops` is installed in that interpreter (`pip install -e
+The adapter resolves its interpreter as `$LL_PYTHON` → `python3` → `python`
+(BUG-2921), matching the shell adapters. Set `LL_PYTHON` to pin a specific
+interpreter; otherwise the first of `python3`/`python` on the ambient `PATH`
+wins. Ensure `little_loops` is installed in that interpreter (`pip install -e
 ./scripts`).
 
 ## Event → Intent Mapping (MVP)

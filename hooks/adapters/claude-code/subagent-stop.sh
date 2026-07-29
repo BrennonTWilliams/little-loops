@@ -8,5 +8,6 @@
 # stderr feedback satisfy the Claude Code shell-hook contract directly.
 #
 INPUT=$(cat)
-echo "$INPUT" | python -m little_loops.hooks subagent_stop
+PY="${LL_PYTHON:-$(command -v python3 || command -v python || echo python)}"
+echo "$INPUT" | "$PY" -m little_loops.hooks subagent_stop
 exit $?

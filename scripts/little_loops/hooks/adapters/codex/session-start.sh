@@ -13,5 +13,6 @@
 #
 export LL_HOOK_HOST=codex
 INPUT=$(cat)
-echo "$INPUT" | python -m little_loops.hooks session_start
+PY="${LL_PYTHON:-$(command -v python3 || command -v python || echo python)}"
+echo "$INPUT" | "$PY" -m little_loops.hooks session_start
 exit $?

@@ -1,16 +1,18 @@
 ---
 id: BUG-2921
-title: kimi plugin-manifest hooks — cwd locality fix + print-mode/doc caveats (0.30.0)
+title: "kimi plugin-manifest hooks \u2014 cwd locality fix + print-mode/doc caveats\
+  \ (0.30.0)"
 type: BUG
-status: open
+status: done
 priority: P2
-captured_at: "2026-07-29T19:25:44Z"
+captured_at: '2026-07-29T19:25:44Z'
 discovered_date: 2026-07-29
 discovered_by: capture-issue
 parent: EPIC-2910
 labels:
 - kimi
 - host-compat
+completed_at: '2026-07-29T21:22:25Z'
 ---
 
 # BUG-2921: kimi plugin-manifest hooks — cwd locality fix + print-mode/doc caveats (0.30.0)
@@ -55,7 +57,8 @@ headless automation.
    PATH (proven: exit 127). Not the cause here (the TUI hook process
    inherits the full user PATH), but a real portability fix: shims now
    resolve `LL_PYTHON` → `python3` → `python`. The codex and claude-code
-   adapters share the old pattern — separate hardening candidate.
+   adapters shared the old pattern and were hardened the same way under this
+   issue (see Remaining work), as was the opencode TypeScript adapter.
 5. **Kimi behavior: `kimi -p` (print mode) does not fire plugin hooks.**
    A print-mode run post-install produced no shim execution, while
    config.toml `[[hooks]]` fire fine in print mode (FEAT-2911 spike).
@@ -70,11 +73,27 @@ headless automation.
 - [x] Live verification (TUI session telemetry in project DB)
 - [x] Docs: `docs/kimi/hook-events.md` (print-mode + cwd + display-gap
       notes), `HOST_COMPATIBILITY.md` `[^kimiplugin]` + Installation row
-- [ ] Optional: report upstream — (a) `/plugins info` does not render a
-      Hooks section; (b) print mode does not load plugin hooks (or document
-      it). Watch the kimi changelog and re-test on releases.
-- [ ] Close after user confirms a TUI session shows expected hook effects
-      (e.g. session-start context) with the synced shims.
+- [x] Close after user confirms a TUI session shows expected hook effects
+      (e.g. session-start context) with the synced shims — **confirmed
+      2026-07-29**; expected hook effects observed in a TUI session.
+- [x] Port the interpreter guard to the sibling adapters (finding 4's
+      "separate hardening candidate"): all 10
+      `hooks/adapters/claude-code/*.sh` and all 6
+      `scripts/little_loops/hooks/adapters/codex/*.sh` now resolve
+      `LL_PYTHON` → `python3` → `python` instead of invoking bare `python`.
+      86 adapter/dispatcher tests pass. The kimi cd-to-payload-`cwd` fix was
+      deliberately *not* ported — it exists because kimi spawns plugin hooks
+      with `cwd = plugin root`; Claude Code and Codex already spawn in the
+      project directory. `hooks/adapters/opencode/index.ts` was hardened too:
+      module-scope `LL_PYTHON ?? Bun.which("python3") ?? Bun.which("python") ??
+      "python"` (Bun.which is the `command -v` counterpart, returns null rather
+      than throwing). Verified with the Bun-backed integration tests (4 pass,
+      not skipped) plus a direct override check. All four hosts now share one
+      interpreter-resolution contract.
+- [ ] Deferred (not closure-blocking): report upstream — (a) `/plugins info`
+      does not render a Hooks section; (b) print mode does not load plugin
+      hooks (or document it). Watch the kimi changelog and re-test on
+      releases. Tracked under EPIC-2910, not this issue.
 
 ## Integration Map
 
@@ -82,6 +101,8 @@ headless automation.
 - `scripts/little_loops/hooks/adapters/kimi/*.sh` (all 8) — cd-to-payload-cwd + LL_PYTHON hardening
 - `scripts/tests/test_kimi_adapter.py` — cd regression test + assertion updates
 - `~/.kimi-code/plugins/managed/ll/...` — managed copy synced (diagnostic only; permanent fix lands via plugin reinstall)
+- `hooks/adapters/claude-code/*.sh` (all 10) — LL_PYTHON interpreter guard
+- `scripts/little_loops/hooks/adapters/codex/*.sh` (all 6) — LL_PYTHON interpreter guard (flips Codex trust status to `Modified`; users re-trust once)
 
 ### Files Modified (docs)
 - `docs/kimi/hook-events.md`, `docs/reference/HOST_COMPATIBILITY.md`, this issue
@@ -100,7 +121,7 @@ headless automation.
 
 ---
 
-**Open** | Created: 2026-07-29 | Priority: P2
+**Done** | Created: 2026-07-29 | Completed: 2026-07-29 | Priority: P2
 
 ---
 
