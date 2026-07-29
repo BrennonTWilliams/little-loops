@@ -2,15 +2,16 @@
 id: ENH-2912
 title: KimiRunner stub in host_runner.py
 type: ENH
-status: open
+status: done
 priority: P2
 parent: EPIC-2910
-captured_at: "2026-07-29T15:55:00Z"
+captured_at: '2026-07-29T15:55:00Z'
 discovered_date: 2026-07-29
 discovered_by: capture-issue
 labels:
 - kimi
 - host-compat
+completed_at: '2026-07-29T20:54:05Z'
 ---
 
 # ENH-2912: KimiRunner stub in host_runner.py
@@ -74,6 +75,7 @@ error, exactly as `PiRunner` did before Pi support was complete.
 - **Breaking Change**: No.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-07-29T20:54:13 - `7dce485a-c75c-400c-ac56-53fcf2521623.jsonl`
 - `/ll:capture-issue` - 2026-07-29T15:55:00Z - kimi-code host adapter planning session
 
 ---

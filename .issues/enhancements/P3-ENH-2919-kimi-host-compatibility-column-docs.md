@@ -2,7 +2,7 @@
 id: ENH-2919
 title: HOST_COMPATIBILITY.md kimi-code column + docs/kimi/ onboarding
 type: ENH
-status: open
+status: done
 priority: P3
 parent: EPIC-2910
 captured_at: '2026-07-29T15:55:00Z'
@@ -13,6 +13,7 @@ labels:
 - host-compat
 depends_on:
 - FEAT-2916
+completed_at: '2026-07-29T20:54:07Z'
 ---
 
 # ENH-2919: HOST_COMPATIBILITY.md kimi-code column + docs/kimi/ onboarding
@@ -69,6 +70,7 @@ component table, and new kimi users get a dedicated onboarding path.
 - **Breaking Change**: No.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-07-29T20:54:15 - `7dce485a-c75c-400c-ac56-53fcf2521623.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-29T20:39:42 - `7dce485a-c75c-400c-ac56-53fcf2521623.jsonl`
 - `/ll:capture-issue` - 2026-07-29T15:55:00Z - kimi-code host adapter planning session
 

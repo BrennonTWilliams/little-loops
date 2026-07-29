@@ -1,16 +1,17 @@
 ---
 id: ENH-2913
-title: Config probe — .kimi-code/ll-config.json in _config_candidates()
+title: "Config probe \u2014 .kimi-code/ll-config.json in _config_candidates()"
 type: ENH
-status: open
+status: done
 priority: P3
 parent: EPIC-2910
-captured_at: "2026-07-29T15:55:00Z"
+captured_at: '2026-07-29T15:55:00Z'
 discovered_date: 2026-07-29
 discovered_by: capture-issue
 labels:
 - kimi
 - host-compat
+completed_at: '2026-07-29T20:54:06Z'
 ---
 
 # ENH-2913: Config probe — .kimi-code/ll-config.json in _config_candidates()
@@ -61,6 +62,7 @@ of the runner and hook-adapter work.
 - **Breaking Change**: No.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-07-29T20:54:13 - `7dce485a-c75c-400c-ac56-53fcf2521623.jsonl`
 - `/ll:capture-issue` - 2026-07-29T15:55:00Z - kimi-code host adapter planning session
 
 ---

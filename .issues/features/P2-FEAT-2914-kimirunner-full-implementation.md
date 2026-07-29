@@ -1,18 +1,20 @@
 ---
 id: FEAT-2914
-title: KimiRunner full implementation (build_streaming, build_blocking_json, build_detached, build_version_check)
+title: KimiRunner full implementation (build_streaming, build_blocking_json, build_detached,
+  build_version_check)
 type: FEAT
-status: open
+status: done
 priority: P2
 parent: EPIC-2910
 depends_on:
 - ENH-2912
-captured_at: "2026-07-29T15:55:00Z"
+captured_at: '2026-07-29T15:55:00Z'
 discovered_date: 2026-07-29
 discovered_by: capture-issue
 labels:
 - kimi
 - host-compat
+completed_at: '2026-07-29T20:54:06Z'
 ---
 
 # FEAT-2914: KimiRunner full implementation (build_streaming, build_blocking_json, build_detached, build_version_check)
@@ -80,6 +82,7 @@ subtleties are kimi's lack of a single-blob JSON mode and the
 - **Breaking Change**: No.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-07-29T20:54:14 - `7dce485a-c75c-400c-ac56-53fcf2521623.jsonl`
 - `/ll:capture-issue` - 2026-07-29T15:55:00Z - kimi-code host adapter planning session
 
 ---

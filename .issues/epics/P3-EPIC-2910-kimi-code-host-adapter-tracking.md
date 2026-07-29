@@ -108,27 +108,29 @@ every cell is ✓, ✗ (with a tracking issue), or N/A.
 ## Children
 
 - **FEAT-2911** — Research spike: kimi-cli binary surface, hook events, plugin discovery — ✅ **done**
-- **ENH-2912** — KimiRunner stub in host_runner.py — open (XS; next up — critical-path entry point)
-- **ENH-2913** — Config probe — .kimi-code/ll-config.json in _config_candidates() — open (XS, independent)
-- **FEAT-2914** — KimiRunner full implementation (build_streaming, build_blocking_json, build_detached, build_version_check) — open (blocked on ENH-2912)
-- **FEAT-2915** — Hook adapter — hooks/adapters/kimi + ll-init wiring + shared write_agents_md() — open (critical path)
-- **FEAT-2916** — ll-adapt emitter for kimi-code — open (atomic with HOST_COMPATIBILITY adapter row)
-- **FEAT-2917** — kimi.plugin.json packaging — open (independent)
-- **ENH-2918** — Conformance + host-list plumbing for kimi-code — open (independent)
-- **ENH-2919** — HOST_COMPATIBILITY.md kimi-code column + docs/kimi/ onboarding — open (final gate)
+- **ENH-2912** — KimiRunner stub in host_runner.py — ✅ **done** (landed as full runner with FEAT-2914, no stub stage)
+- **ENH-2913** — Config probe — .kimi-code/ll-config.json in _config_candidates() — ✅ **done**
+- **FEAT-2914** — KimiRunner full implementation (build_streaming, build_blocking_json, build_detached, build_version_check) — ✅ **done**
+- **FEAT-2915** — Hook adapter — hooks/adapters/kimi + ll-init wiring + shared write_agents_md() — ✅ **done**
+- **FEAT-2916** — ll-adapt emitter for kimi-code — ✅ **done** (adapter row landed atomically)
+- **FEAT-2917** — kimi.plugin.json packaging — ✅ **done** (plugin-hooks caveat spun out to BUG-2921)
+- **ENH-2918** — Conformance + host-list plumbing for kimi-code — ✅ **done**
+- **ENH-2919** — HOST_COMPATIBILITY.md kimi-code column + docs/kimi/ onboarding — ✅ **done**
 - **BUG-2921** — kimi plugin-manifest hooks inert on 0.30.0; config.toml managed block is the working route — open (captured from live plugin-install validation)
 
 ## Implementation Steps
 
 1. ✅ Land research spike (FEAT-2911) — all downstream work depends on its findings. **done**
-2. Add `KimiRunner` stub to `host_runner.py` + `_PROBE_ORDER` entry (ENH-2912). ← **next up**
-3. Implement full `KimiRunner` (FEAT-2914) and the hook adapter + `ll-init`
-   wiring (FEAT-2915) — the critical path.
-4. Independent tracks (any order, parallel with 3): config probe (ENH-2913),
+2. ✅ Add `KimiRunner` stub to `host_runner.py` + `_PROBE_ORDER` entry (ENH-2912). **done** (landed as full runner, no stub stage)
+3. ✅ Implement full `KimiRunner` (FEAT-2914) and the hook adapter + `ll-init`
+   wiring (FEAT-2915) — the critical path. **done**
+4. ✅ Independent tracks (any order, parallel with 3): config probe (ENH-2913),
    ll-adapt emitter (FEAT-2916), plugin packaging (FEAT-2917),
-   conformance/plumbing (ENH-2918).
-5. Docs last: complete the HOST_COMPATIBILITY.md kimi-code column and land
-   `docs/kimi/` onboarding (ENH-2919).
+   conformance/plumbing (ENH-2918). **done**
+5. ✅ Docs last: complete the HOST_COMPATIBILITY.md kimi-code column and land
+   `docs/kimi/` onboarding (ENH-2919). **done**
+6. Remaining: live end-to-end smoke (`LL_HOST_CLI=kimi-code ll-auto`,
+   `/plugins install` in the kimi TUI) and BUG-2921.
 
 ## Success Metrics
 
@@ -227,7 +229,25 @@ docs/kimi/) and the live end-to-end smoke (`LL_HOST_CLI=kimi-code ll-auto`,
 `wire.jsonl` uses a typed-event schema — `ll-session backfill` can locate but
 not yet parse kimi session logs (follow-up needed under ENH-2918).
 
+2026-07-29 (VERIFIED — /ll:verify-issues): All integration-map claims verified
+against the codebase. Implementation has progressed beyond what this file
+describes: every child listed as "open" above (ENH-2912, ENH-2913, FEAT-2914,
+FEAT-2915, FEAT-2916, FEAT-2917, ENH-2918) has its code landed, and ENH-2919's
+deliverables also exist — the kimi-code column is complete across the
+HOST_COMPATIBILITY.md tables (hook intents, discovery, runner capabilities),
+the `docs/kimi/` onboarding trio (`getting-started.md`, `hook-events.md`,
+`automation.md`) is in place, and `KimiRunner` appears in
+`docs/ARCHITECTURE.md` and the README. The Children table statuses and the
+"Remaining: ENH-2919" note were stale at verification time; all eight open
+children were subsequently closed (`status: done`) in this same session and
+the Children table / Implementation Steps updated to match. Genuinely
+remaining: the live end-to-end smoke (`LL_HOST_CLI=kimi-code ll-auto`,
+`/plugins install` in the kimi TUI) and BUG-2921 (plugin-manifest hooks
+inert). Minor drift: Integration Map promises a README under
+`hooks/adapters/kimi/`; only the 8 shims + `hooks.toml` are present.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-07-29T20:51:41 - `7dce485a-c75c-400c-ac56-53fcf2521623.jsonl`
 - `/ll:capture-issue` - 2026-07-29T15:55:00Z - kimi-code host adapter planning session
 
 ---

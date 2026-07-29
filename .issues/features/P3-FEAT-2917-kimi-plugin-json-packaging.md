@@ -2,15 +2,16 @@
 id: FEAT-2917
 title: kimi.plugin.json packaging (kimi-native install path)
 type: FEAT
-status: open
+status: done
 priority: P3
 parent: EPIC-2910
-captured_at: "2026-07-29T15:55:00Z"
+captured_at: '2026-07-29T15:55:00Z'
 discovered_date: 2026-07-29
 discovered_by: capture-issue
 labels:
 - kimi
 - host-compat
+completed_at: '2026-07-29T20:54:06Z'
 ---
 
 # FEAT-2917: kimi.plugin.json packaging (kimi-native install path)
@@ -63,6 +64,7 @@ limitation), which the README section must note.
 - **Breaking Change**: No.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-07-29T20:54:15 - `7dce485a-c75c-400c-ac56-53fcf2521623.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-29T20:39:42 - `7dce485a-c75c-400c-ac56-53fcf2521623.jsonl`
 - `/ll:capture-issue` - 2026-07-29T15:55:00Z - kimi-code host adapter planning session
 
