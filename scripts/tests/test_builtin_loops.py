@@ -4698,6 +4698,104 @@ class TestAutodevLoop:
                 f"{closed_id} must not double-count in the generic Skipped bucket: {skipped_line!r}"
             )
 
+    # --- BUG-2908: closure verification / phantom verdict --------------------
+
+    def test_check_passed_stages_instead_of_passes(self, data: dict) -> None:
+        """check_passed must write to autodev-staged.txt, not autodev-passed.txt directly —
+        finalize_done is the only state allowed to populate autodev-passed.txt, and only
+        after verifying closure (BUG-2908)."""
+        action = data["states"].get("check_passed", {}).get("action", "")
+        assert "autodev-staged.txt" in action
+        assert "autodev-passed.txt" not in action
+
+    def test_finalize_done_uses_shell_exit_fragment(self, data: dict) -> None:
+        """finalize_done must route on exit code so a phantom verdict can divert to
+        the failed terminal instead of unconditionally reaching done (BUG-2908)."""
+        state = data["states"].get("finalize_done", {})
+        assert state.get("fragment") == "shell_exit"
+        assert state.get("on_yes") == "done"
+        assert state.get("on_no") == "failed"
+
+    def _run_finalize_done(self, data: dict, run_dir: Path) -> tuple[dict, str]:
+        state = data["states"].get("finalize_done", {})
+        action = state.get("action", "")
+        script = action.replace("${context.run_dir}", str(run_dir))
+        script = script.replace("$${", "${")
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True
+        )
+        summary_path = run_dir / "summary.json"
+        summary = json.loads(summary_path.read_text()) if summary_path.exists() else {}
+        return summary, result.stdout
+
+    def test_finalize_done_reports_phantom_when_staged_but_not_closed(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-2908: an issue that only staged past thresholds (check_passed) but whose
+        implementation never actually closed it must NOT be counted as Passed — it must
+        land in the unverified bucket and the run must report verdict=phantom with a
+        non-zero exit (so the FSM routes to `failed`, not `done`)."""
+        run_dir = tmp_path
+        (run_dir / "autodev-staged.txt").write_text("FEAT-108\n")
+        script_path = run_dir / "ll-issues"
+        script_path.write_text(
+            "#!/bin/sh\n"
+            'if [ "$1" = "show" ]; then echo \'{"status": "Open"}\'; fi\n'
+        )
+        script_path.chmod(0o755)
+        env = dict(**{"PATH": f"{run_dir}:{__import__('os').environ['PATH']}"})
+        state = data["states"].get("finalize_done", {})
+        script = state.get("action", "").replace("${context.run_dir}", str(run_dir))
+        script = script.replace("$${", "${")
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True, env=env
+        )
+        assert result.returncode != 0, "phantom verdict must exit non-zero"
+        summary = json.loads((run_dir / "summary.json").read_text())
+        assert summary["verdict"] == "phantom"
+        assert summary["closed"] == 0
+        assert summary["not_closed"] == 1
+        passed_path = run_dir / "autodev-passed.txt"
+        assert "FEAT-108" not in (passed_path.read_text() if passed_path.exists() else "")
+        assert "FEAT-108" in (run_dir / "autodev-unverified.txt").read_text()
+        out = result.stdout
+        unverified_line = [ln for ln in out.splitlines() if ln.startswith("Unverified")]
+        assert unverified_line and "FEAT-108" in unverified_line[0]
+
+    def test_finalize_done_promotes_verified_closure_to_passed(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-2908: an issue staged past thresholds AND actually closed (status: done)
+        must be promoted to autodev-passed.txt and the run must report verdict=success."""
+        run_dir = tmp_path
+        (run_dir / "autodev-staged.txt").write_text("FEAT-200\n")
+        script_path = run_dir / "ll-issues"
+        script_path.write_text(
+            "#!/bin/sh\n"
+            'if [ "$1" = "show" ]; then echo \'{"status": "Done"}\'; fi\n'
+        )
+        script_path.chmod(0o755)
+        env = dict(**{"PATH": f"{run_dir}:{__import__('os').environ['PATH']}"})
+        state = data["states"].get("finalize_done", {})
+        script = state.get("action", "").replace("${context.run_dir}", str(run_dir))
+        script = script.replace("$${", "${")
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True, env=env
+        )
+        assert result.returncode == 0, f"success verdict must exit zero: {result.stderr}"
+        summary = json.loads((run_dir / "summary.json").read_text())
+        assert summary["verdict"] == "success"
+        assert summary["closed"] == 1
+        assert summary["not_closed"] == 0
+        assert "FEAT-200" in (run_dir / "autodev-passed.txt").read_text()
+
+    def test_finalize_done_no_op_when_nothing_staged(self, data: dict, tmp_path: Path) -> None:
+        """An empty run (nothing staged, nothing in-flight) must report verdict=no-op
+        with a zero exit code, not phantom — an empty backlog is not a failure."""
+        run_dir = tmp_path
+        summary, _ = self._run_finalize_done(data, run_dir)
+        assert summary["verdict"] == "no-op"
+
     def test_implement_current_uses_shell_exit_fragment(self, data: dict) -> None:
         """implement_current must use shell_exit fragment for exit-code-aware routing."""
         state = data["states"].get("implement_current", {})
@@ -9853,14 +9951,17 @@ class TestGeneratorEvaluatorOracle:
         assert "lib/harness.yaml" in imports, "must import lib/harness.yaml"
 
     def test_max_steps_covers_intended_cycle_count(self, data: dict) -> None:
-        """BUG-2824: the oracle's cycle is 7 states; the budget must buy several
-        full scored cycles, not silently cap out at ~2.8 (the observed defect)."""
+        """BUG-2824: the oracle's fresh-screenshot cycle is 8 states (ENH-2903
+        added score_gate); the budget must buy several full scored cycles, not
+        silently cap out early."""
         INTENDED_CYCLES = 5
+        CYCLE_STATES = 8
         max_steps = data.get("max_steps", 0)
-        assert max_steps >= 7 * INTENDED_CYCLES, (
-            f"max_steps={max_steps} does not buy {INTENDED_CYCLES} full 7-state "
-            "cycles (generate -> evaluate -> snapshot -> score -> record_score -> "
-            "check_stall -> check_diff_stall)"
+        assert max_steps >= CYCLE_STATES * INTENDED_CYCLES, (
+            f"max_steps={max_steps} does not buy {INTENDED_CYCLES} full "
+            f"{CYCLE_STATES}-state cycles (generate -> evaluate -> snapshot -> "
+            "score_gate -> score -> record_score -> check_stall -> "
+            "check_diff_stall)"
         )
 
     def test_has_on_max_steps_summary_handler(self, data: dict) -> None:
@@ -9881,6 +9982,64 @@ class TestGeneratorEvaluatorOracle:
         check_stall's plateau detector armed with a permanently short history."""
         state = data["states"].get("record_score", {})
         assert state.get("on_error"), "record_score must declare on_error"
+
+    def test_snapshot_routes_to_score_gate(self, data: dict) -> None:
+        """ENH-2903: snapshot must route to score_gate, not straight to score,
+        so a missing/stale screenshot never reaches the rubric scorer."""
+        state = data["states"].get("snapshot", {})
+        assert state.get("next") == "score_gate"
+
+    def test_snapshot_writes_screenshot_misses_counter(self, data: dict) -> None:
+        """ENH-2903: snapshot must detect a missing/stale screenshot.png or a
+        missing artifact copy and persist the consecutive-miss count under
+        run_dir (MR-3)."""
+        action = data["states"].get("snapshot", {}).get("action", "")
+        assert ".screenshot_misses" in action
+        assert "${context.run_dir}" in action
+        assert ".loops/tmp/" not in action, "must not write to bare .loops/tmp/ (MR-3)"
+
+    def test_score_gate_routes_fresh_screenshot_to_score(self, data: dict) -> None:
+        """ENH-2903: a fresh screenshot (miss count 0) must still reach score —
+        no behavior change for consumers whose screenshots succeed."""
+        state = data["states"].get("score_gate", {})
+        assert state.get("on_yes") == "score"
+        assert state.get("on_no") == "check_screenshot_abandon"
+
+    def test_check_screenshot_abandon_routes_to_summary_on_cap(self, data: dict) -> None:
+        state = data["states"].get("check_screenshot_abandon", {})
+        assert state.get("on_yes") == "screenshot_abandoned_summary"
+        assert state.get("on_no") == "record_screenshot_skip"
+
+    def test_record_screenshot_skip_falls_through_to_stall_chain(self, data: dict) -> None:
+        """ENH-2903 AC: score does not silently rubric-score a stale screenshot;
+        a below-cap miss skips score/record_score and rejoins check_stall."""
+        state = data["states"].get("record_screenshot_skip", {})
+        assert state.get("next") == "check_stall"
+
+    def test_screenshot_abandoned_summary_emits_abandoned_key(self, data: dict) -> None:
+        """MR-13: the convergence path must emit an "abandoned" key into
+        summary.json and route to a terminal distinct from done (downgraded
+        verdict)."""
+        state = data["states"].get("screenshot_abandoned_summary", {})
+        action = state.get("action", "")
+        assert '"abandoned":' in action
+        assert "summary.json" in action
+        assert state.get("terminal") is not True, (
+            "must be non-terminal (terminal-action-ok) so its action actually runs"
+        )
+        assert state.get("next") == "screenshot_abandoned"
+
+    def test_screenshot_abandoned_is_terminal_and_distinct_from_done(self, data: dict) -> None:
+        state = data["states"].get("screenshot_abandoned", {})
+        assert state.get("terminal") is True
+        assert "screenshot_abandoned" != "done"
+
+    def test_generator_evaluator_no_mr13_warnings(self) -> None:
+        """ENH-2903: the new screenshot-miss abandonment mechanism must satisfy
+        MR-13 on its own (no abandonment_verdict_ok suppression needed)."""
+        _, warnings = load_and_validate(self.LOOP_FILE)
+        mr13_warnings = [w for w in warnings if "abandon" in w.message.lower()]
+        assert not mr13_warnings, f"unexpected MR-13 warnings: {mr13_warnings}"
 
 
 class TestGeneratorEvaluatorCliOracle:
@@ -12189,7 +12348,21 @@ class TestValidatorWarningBudget:
     #   BUG-2112 Approach B: the validator now parses the `:default=` suffix (see
     #   _unguarded_captured_refs in fsm/validation.py) and no longer flags guarded
     #   references, so those entries were removed too.
-    ALLOWLIST: dict[tuple[str, str], set[str]] = {}
+    ALLOWLIST: dict[tuple[str, str], set[str]] = {
+        # ENH-2903: generator-evaluator-cli overrides `snapshot` locally (its own
+        # `evaluate` already discriminates CAPTURED vs not, so the screenshot-miss
+        # ambiguity this issue fixes doesn't apply there) rather than routing
+        # through the inherited score_gate/check_screenshot_abandon chain. The
+        # states are still present after `from:` inheritance resolution but
+        # genuinely unreachable for this variant.
+        ("generator-evaluator-cli", "unreachable"): {
+            "states.score_gate",
+            "states.check_screenshot_abandon",
+            "states.record_screenshot_skip",
+            "states.screenshot_abandoned_summary",
+            "states.screenshot_abandoned",
+        },
+    }
 
     @pytest.fixture
     def builtin_loops(self) -> list[Path]:

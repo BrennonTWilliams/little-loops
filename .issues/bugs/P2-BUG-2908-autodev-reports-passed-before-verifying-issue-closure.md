@@ -2,8 +2,9 @@
 id: BUG-2908
 type: BUG
 priority: P2
-status: open
-captured_at: "2026-07-29T02:59:11Z"
+status: done
+captured_at: '2026-07-29T02:59:11Z'
+completed_at: '2026-07-29T04:50:43Z'
 discovered_date: 2026-07-29
 discovered_by: capture-issue
 labels:
@@ -14,6 +15,12 @@ labels:
 relates_to:
 - BUG-2907
 - BUG-2636
+confidence_score: 100
+outcome_confidence: 76
+score_complexity: 14
+score_test_coverage: 20
+score_ambiguity: 22
+score_change_surface: 20
 ---
 
 # BUG-2908: `autodev` reports `Passed` at threshold-pass time, never verifying closure
@@ -192,6 +199,84 @@ routes to a `failed`-class terminal instead of `done`.
 - `scripts/little_loops/fsm/validation/` — MR-13 lint (`abandonment_verdict_ok`)
   should stop flagging `autodev` once this lands
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- All 6 `autodev-passed.txt` write sites in `scripts/little_loops/loops/autodev.yaml`,
+  confirmed by line number:
+  - `init` (line 63) — clears the file (`printf '' > ${context.run_dir}/autodev-passed.txt`), not an append
+  - `check_passed` (line 365) — the site quoted in Current Behavior above
+  - `recheck_after_decide` (line 539) — same `check-readiness && echo ... >>` shape,
+    reached via `on_yes: assert_decision_cleared` → still pre-implementation
+  - `recheck_scores` (line 983) — readiness/outcome + Program-Design hard-AND gate
+  - `regate_after_atomic_remediation` (line 1492) — `GATE=PASS` python-computed
+    gate (checks `confidence`/`outcome`/`outcome_gate_waived` via
+    `ll-issues show --json`), not a `check-readiness` shell call like the others
+  - `recheck_after_size_review` (line 1656) — same `GATE=PASS` shape as
+    `regate_after_atomic_remediation`
+  - So Step 3's "redirect every writer" touches 5 append sites (the `init`
+    clear stays as-is, just renamed to `autodev-staged.txt`).
+- `finalize_done` spans lines 1792–1859; the `failed` terminal immediately
+  follows at 1860–1862 and is reached only via `finalize_done`'s `on_error`
+  (per the ENH-2825 comment at 1857–1859) — i.e. only if the summary-printing
+  shell itself throws, never as a function of ledger contents. This confirms
+  Root Cause point 2: there is no verdict-driven route to `failed` today.
+- `auto-refine-and-implement.yaml`'s `finalize` state spans lines 692–982.
+  It does **not** read any `summary.json` from autodev (autodev writes none) —
+  it re-derives ground truth independently from `.issues/completed/` and
+  `ll-issues list --json --status done` diffs against a pre-run baseline, and
+  treats `autodev-passed.txt` as unverified raw input feeding its own
+  `NOT_CLOSED` computation (`comm -23` at lines 817–828). Concretely:
+  - `CLOSED` union computed at lines 716–772
+  - `NOT_CLOSED` = passed-ledger minus closed-union, lines 817–828
+  - `VERDICT` cascade (`incomplete-abandoned` > `success` > `partial-with-errors`
+    > `partial` > `phantom` > `no-op`) at lines 937–953
+  - `summary.json` emission at lines 955–956; exit-code branch
+    (`phantom|incomplete-abandoned` → `exit 1`) at lines 964–981
+  - This is the exact shape Proposed Solution Step 3 should port.
+- `delegate` (lines 258–281) in `auto-refine-and-implement.yaml` routes both
+  `on_success` and `on_failure` to `recheck_set` regardless of autodev's
+  terminal name — the comment at 262–264 notes this is deliberate, since
+  `finalize`'s ground-truth diff is already treated as authoritative. This
+  means Implementation Step 7 ("re-check auto-refine-and-implement's verdict
+  recovery") is lower-risk than it sounds: the parent loop does not currently
+  branch on autodev's terminal at all, only on the shared ledger files, so
+  adding `autodev-staged.txt`/`autodev-unverified.txt` alongside the existing
+  `autodev-passed.txt` should not require changing `delegate`'s routing —
+  only confirming `finalize`'s `NOT_CLOSED` diff still sees the same (now
+  correctly-gated) `autodev-passed.txt` contents.
+- Existing `ll-issues show <ID> --json` + lowercase-status idiom (the same
+  one this issue's Proposed Solution Step 2 already specifies) is already used
+  three more times in `autodev.yaml` itself — `mark_gate_blocked` (~line 733),
+  `record_decision_unresolved` (~line 571), `check_parent_resolved` (~line 896)
+  — confirming it's the established in-repo convention, not a new idiom.
+- MR-13 lint (`abandonment_verdict_ok`) lives in
+  `scripts/little_loops/fsm/validation/evaluator_rules.py` lines 160–238
+  (suppression flag registered in `_base.py:124`). The rule requires either an
+  abandonment-counter-gated verdict branch or a literal `"abandoned":` key in
+  the same `printf`/write — port the `"abandoned":%s` field name verbatim from
+  `auto-refine-and-implement.yaml` line 955–956 to satisfy it without needing
+  the suppression flag.
+- Test file: `scripts/tests/test_builtin_loops.py` — `TestAutoRefineAndImplementLoop`
+  spans lines 2508–3577 (`test_finalize_writes_summary_json` at line 2573 is
+  the closest existing model). `TestAutodevLoop` spans lines 4127–6126; there
+  is currently no test asserting closure verification in `finalize_done` —
+  confirming this is a real gap, not just an operational observation.
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md` — line 977 references `autodev-passed.txt`/`autodev-skipped.txt` closure accounting, and the FSM flow diagram (lines 998–1050) has no `failed` terminal edge at all, only `done`. Both go stale once the ledger is renamed and `finalize_done` gains a `phantom` → `failed` route — update the diagram and the ledger-name prose together.
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py::TestAutoRefineAndImplementLoop::test_finalize_sources_autodev_ledgers` (~line 2866) — asserts `"autodev-passed.txt" in action` against `auto-refine-and-implement.yaml`'s own `finalize` action, which reads autodev's ledger directly (see `auto-refine-and-implement.yaml` line 821's `NOT_CLOSED` diff). Once autodev only populates `autodev-passed.txt` post-verification inside `finalize_done`, this cross-loop consumer's read must be re-verified for ordering (does `auto-refine-and-implement`'s `finalize` run after autodev's `finalize_done` has already promoted verified IDs?) — not just the literal string.
+- `scripts/tests/test_fsm_validation_evaluator_rules.py` — covers the MR-13 `abandonment_verdict_ok` rule (`scripts/little_loops/fsm/validation/evaluator_rules.py` lines 160–238, flag registered in `scripts/little_loops/fsm/validation/_base.py:124`); needs a case confirming `autodev.yaml` no longer triggers the warning once `finalize_done` emits the `"abandoned"` key.
+- `scripts/tests/test_builtin_loops.py::TestAutodevLoop::test_finalize_done_buckets_already_resolved_separately` (~line 4666) — asserts literal `printf`-derived stdout lines (`"Passed"`/`"Skipped"`/`"Already-resolved"`) from the current unconditional summary format; breaks once `finalize_done` moves to `summary.json`-based verdict emission and must be rewritten against the new JSON keys (or kept alongside the `printf` block if both are retained).
+- `scripts/tests/test_builtin_loops.py::TestAutoRefineAndImplementLoop::test_finalize_stale_inflight_counts_as_unresolved` (line 3302) and `test_finalize_inflight_not_counted_when_issue_closed` (line 3316) — closest existing analog to the closure-verification gap this issue fixes; fork `finalize_done`'s new tests from these rather than from scratch. Reuse the `_run_finalize`-style harness (`_write_done_in_place_fixture` line 2874, `_run_finalize` line 2886) and the `script.replace("$${", "${")` bash-unescape convention (line 4683) when executing `finalize_done`'s raw action under `bash -c`.
+
 ## Implementation Steps
 
 1. Read `auto-refine-and-implement.yaml`'s finalize block end to end; it is the
@@ -207,6 +292,15 @@ routes to a `failed`-class terminal instead of `done`.
 6. Confirm `ll-loop validate autodev` no longer reports the MR-13 warning.
 7. Re-check `auto-refine-and-implement`'s verdict recovery against the new
    autodev summary so the parent does not double-count.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+8. Update `auto-refine-and-implement.yaml`'s `finalize` state (line 821's `NOT_CLOSED` diff, and the `test_finalize_sources_autodev_ledgers` test) to read the post-verification `autodev-passed.txt` — confirm `finalize_done` runs and promotes verified IDs before the parent loop's `finalize` reads the shared `run_dir`, or switch the parent to read autodev's new `summary.json` `closed`/`not_closed` fields directly instead of the raw ledger.
+9. Update `docs/guides/LOOPS_REFERENCE.md` — the ledger-name prose (line 977) and the FSM flow diagram (lines 998–1050, which currently has no `failed` terminal edge).
+10. Update `scripts/tests/test_fsm_validation_evaluator_rules.py` to assert the MR-13 `abandonment_verdict_ok` warning no longer fires on `autodev.yaml`.
+11. Disambiguate the `phantom` verdict namespace: `auto-refine-and-implement.yaml`'s `finalize` already computes its own independent `phantom` verdict (line 990) into its own `summary.json`, unrelated to autodev's new `phantom` verdict — the two loops' `summary.json` files use the same term for different things; call this out in review so it isn't mistaken for the same signal.
 
 ## Impact
 
@@ -229,7 +323,40 @@ routes to a `failed`-class terminal instead of `done`.
 | `scripts/little_loops/loops/auto-refine-and-implement.yaml` | reference verdict/summary implementation from BUG-2636 |
 | `audit-loop-run-autodev-2026-07-29T013824.md` | audit report with verbatim run evidence |
 
+## Resolution
+
+Implemented per the Proposed Solution: all 5 `autodev-passed.txt` writer sites
+(`check_passed`, `recheck_after_decide`, `snap_and_size_review`,
+`regate_after_atomic_remediation`, `recheck_after_size_review`) now write to
+`autodev-staged.txt` instead. `finalize_done` promotes staged IDs to
+`autodev-passed.txt` only after verifying `ll-issues show <ID> --json` reports
+`done`/`completed`/`cancelled`; anything else lands in `autodev-unverified.txt`
+and is printed as its own "Unverified" bucket. A residual `autodev-inflight`
+sentinel not present in the closed set is folded into the unverified bucket
+(`inflight_at_finalize`) rather than a standalone warning line. `finalize_done`
+now computes a `verdict` (`success`/`partial`/`phantom`/`no-op`), writes
+`summary.json` (`verdict`/`closed`/`not_closed`/`skipped`/`gate_blocked`/
+`decision_unresolved`/`inflight_unresolved`/`abandoned`), and uses the
+`shell_exit` fragment to route `phantom` to the existing `failed` terminal
+instead of unconditionally reaching `done` — mirroring BUG-2636's fix to the
+sibling `auto-refine-and-implement.yaml` loop. `ll-loop validate autodev`
+reports no MR-13 violation. `auto-refine-and-implement.yaml`'s `finalize`
+required no change: it already reads `autodev-passed.txt` as unverified input
+and independently re-derives `NOT_CLOSED` from ground truth, so it now sees a
+stricter (verified) `autodev-passed.txt` for free.
+
+Added 5 new tests in `TestAutodevLoop` covering the staging rename, the
+`shell_exit` routing, the phantom-verdict path (staged but not closed), the
+success-verdict promotion path (staged and closed), and the no-op path (empty
+run). Full suite (16998 passed, 42 skipped), mypy, ruff, and `ll-loop validate
+autodev` all pass.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-07-29T04:39:37 - `af9a0a97-5511-494a-bcc3-920e9cd2b956.jsonl`
+- `/ll:manage-issue` - 2026-07-29T04:49:58 - `8931f7da-faad-4eb5-a844-90797caee5f7.jsonl`
+- `/ll:confidence-check` - 2026-07-28T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2828a3ac-fb8d-434e-9f4b-6464bcd9a41a.jsonl`
+- `/ll:wire-issue` - 2026-07-29T04:37:08 - `e826257c-e24e-4ba3-8c9a-ad010fb5afa6.jsonl`
+- `/ll:refine-issue` - 2026-07-29T04:30:27 - `02359fbd-135a-4ebd-8765-9966522956be.jsonl`
 - `/ll:capture-issue` - 2026-07-29T02:59:11Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a15bf47-b270-4d12-a74c-47b9c005a000.jsonl`
 
 ---

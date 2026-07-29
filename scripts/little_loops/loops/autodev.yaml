@@ -60,7 +60,9 @@ states:
         echo "ERROR: input is required. Usage: ll-loop run autodev \"ID1,ID2\""
         exit 1
       fi
+      printf '' > ${context.run_dir}/autodev-staged.txt
       printf '' > ${context.run_dir}/autodev-passed.txt
+      printf '' > ${context.run_dir}/autodev-unverified.txt
       printf '' > ${context.run_dir}/autodev-skipped.txt
       printf '' > ${context.run_dir}/autodev-gate-blocked.txt
       printf '' > ${context.run_dir}/autodev-decision-unresolved.txt
@@ -356,13 +358,15 @@ states:
     # Verify confidence and outcome scores meet project thresholds. Even on
     # sub-loop success the issue may not have met thresholds —
     # refine-to-ready-issue can exit via breakdown_issue → done rather than a
-    # genuine confidence pass. Records passing issues in autodev-passed.txt
+    # genuine confidence pass. BUG-2908: records staged (not yet
+    # closure-verified) issues in autodev-staged.txt — finalize_done promotes
+    # only those it can verify closed to autodev-passed.txt.
     # and routes to implement_current to interleave implementation.
     action: |
       ll-issues check-readiness ${captured.input.output} \
         --readiness ${context.readiness_threshold} \
         --outcome ${context.outcome_threshold} \
-        && echo "${captured.input.output}" >> ${context.run_dir}/autodev-passed.txt
+        && echo "${captured.input.output}" >> ${context.run_dir}/autodev-staged.txt
     fragment: shell_exit
     on_yes: implement_current
     on_no: triage_outcome_failure
@@ -536,7 +540,7 @@ states:
       ll-issues check-readiness ${captured.input.output} \
         --readiness ${context.readiness_threshold} \
         --outcome ${context.outcome_threshold} \
-        && echo "${captured.input.output}" >> ${context.run_dir}/autodev-passed.txt
+        && echo "${captured.input.output}" >> ${context.run_dir}/autodev-staged.txt
     fragment: shell_exit
     on_yes: assert_decision_cleared
     on_no: snap_and_size_review
@@ -980,7 +984,7 @@ states:
         --readiness ${context.readiness_threshold} \
         --outcome ${context.outcome_threshold} \
         && [ "$DESIGN_FAIL" != "true" ] \
-        && echo "$ID" >> ${context.run_dir}/autodev-passed.txt
+        && echo "$ID" >> ${context.run_dir}/autodev-staged.txt
     fragment: shell_exit
     on_yes: decide_current
     on_no: check_decision_before_size_review
@@ -1489,7 +1493,7 @@ states:
         GATE="FAIL"
       fi
       if [ "$GATE" = "PASS" ]; then
-        echo "$ID" >> ${context.run_dir}/autodev-passed.txt
+        echo "$ID" >> ${context.run_dir}/autodev-staged.txt
       else
         STATUS=$(ll-issues show "$ID" --json 2>/dev/null \
           | python3 -c "import json,sys; print((json.load(sys.stdin).get('status') or '').lower())" \
@@ -1653,7 +1657,7 @@ states:
         GATE="FAIL"
       fi
       if [ "$GATE" = "PASS" ]; then
-        echo "$ID" >> ${context.run_dir}/autodev-passed.txt
+        echo "$ID" >> ${context.run_dir}/autodev-staged.txt
       else
         # BUG-2729 postmortem: never flip an already-resolved issue to
         # deferred — a done/cancelled status here means the sub-loop (or
@@ -1792,7 +1796,31 @@ states:
   finalize_done:
     action_type: shell
     action: |
+      # BUG-2908: check_passed/recheck_*/regate_* only ever recorded that an
+      # issue STAGED past the readiness/outcome thresholds — that happens
+      # before implement_current runs, so a no-op or crashed implementation
+      # left the same ID in autodev-passed.txt as a genuinely closed one, with
+      # nothing to ever revoke the entry. Promote staged IDs to
+      # autodev-passed.txt here, ONLY once verified closed; anything staged
+      # but not closed lands in autodev-unverified.txt instead so it can be
+      # reported and gate the verdict below rather than laundered as a pass.
+      STAGED_IDS=$(cat ${context.run_dir}/autodev-staged.txt 2>/dev/null \
+        | grep -v '^[[:space:]]*$' | sort -u || true)
+      for ID in $STAGED_IDS; do
+        STATUS=$(ll-issues show "$ID" --json 2>/dev/null \
+          | python3 -c "import json,sys; print((json.load(sys.stdin).get('status') or '').lower())" \
+          2>/dev/null || echo "")
+        case "$STATUS" in
+          done|completed|cancelled)
+            echo "$ID" >> ${context.run_dir}/autodev-passed.txt ;;
+          *)
+            echo "$ID" >> ${context.run_dir}/autodev-unverified.txt ;;
+        esac
+      done
+
       PASSED_IDS=$(cat ${context.run_dir}/autodev-passed.txt 2>/dev/null \
+        | grep -v '^[[:space:]]*$' | sort -u || true)
+      UNVERIFIED_IDS=$(cat ${context.run_dir}/autodev-unverified.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
       # ENH-2727: exclude infra-class skips from the generic Skipped bucket so
       # they are surfaced separately (re-runnable) below and not double-counted.
@@ -1825,14 +1853,29 @@ states:
       DECISION_UNRESOLVED_COUNT=$(echo "$DECISION_UNRESOLVED_IDS" | grep -c '[^[:space:]]' || true)
       [ -z "$DECISION_UNRESOLVED_COUNT" ] && DECISION_UNRESOLVED_COUNT=0
 
+      INFLIGHT=$(cat ${context.run_dir}/autodev-inflight 2>/dev/null | tr -d '[:space:]' || true)
+      # BUG-2908 Step 4: a residual autodev-inflight sentinel at finalize means
+      # dequeue_next dispatched an issue that never reached passed/skipped —
+      # fold it into the unverified bucket (with a distinct reason) instead of
+      # a standalone advisory line so it feeds the verdict below rather than
+      # being invisible to it.
+      ABANDONED=0
+      if [ -n "$INFLIGHT" ] && ! grep -qxF "$INFLIGHT" ${context.run_dir}/autodev-passed.txt 2>/dev/null; then
+        ABANDONED=1
+        echo "$INFLIGHT  inflight_at_finalize" >> ${context.run_dir}/autodev-unverified.txt
+      fi
+      UNVERIFIED_IDS=$(cat ${context.run_dir}/autodev-unverified.txt 2>/dev/null \
+        | grep -v '^[[:space:]]*$' | sort -u || true)
+      UNVERIFIED_COUNT=$(echo "$UNVERIFIED_IDS" | grep -c '[^[:space:]]' || true)
+      [ -z "$UNVERIFIED_COUNT" ] && UNVERIFIED_COUNT=0
+
       PASSED_LIST=$(echo "$PASSED_IDS" | tr '\n' ',' | sed 's/,$//')
       SKIPPED_LIST=$(echo "$SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
       INFRA_SKIPPED_LIST=$(echo "$INFRA_SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
       ALREADY_RESOLVED_LIST=$(echo "$ALREADY_RESOLVED_IDS" | tr '\n' ',' | sed 's/,$//')
       GATE_BLOCKED_LIST=$(echo "$GATE_BLOCKED_IDS" | tr '\n' ',' | sed 's/,$//')
       DECISION_UNRESOLVED_LIST=$(echo "$DECISION_UNRESOLVED_IDS" | tr '\n' ',' | sed 's/,$//')
-
-      INFLIGHT=$(cat ${context.run_dir}/autodev-inflight 2>/dev/null | tr -d '[:space:]' || true)
+      UNVERIFIED_LIST=$(echo "$UNVERIFIED_IDS" | tr '\n' ',' | sed 's/,$//')
 
       printf '\n=== Autodev Summary ===\n\n'
       printf 'Passed       (%d): %s\n' "$PASSED_COUNT" "$${PASSED_LIST:-none}"
@@ -1849,11 +1892,41 @@ states:
       if [ "$DECISION_UNRESOLVED_COUNT" -gt 0 ]; then
         printf 'Decision-unresolved (%d): %s  (resolve with /ll:decide-issue, then re-run)\n' "$DECISION_UNRESOLVED_COUNT" "$DECISION_UNRESOLVED_LIST"
       fi
-      if [ -n "$INFLIGHT" ]; then
-        printf 'WARNING: in-flight issue not resolved: %s (re-queue to retry)\n' "$INFLIGHT"
+      if [ "$UNVERIFIED_COUNT" -gt 0 ]; then
+        printf 'Unverified   (%d): %s  (threshold passed; implementation did not close — re-queue to retry)\n' "$UNVERIFIED_COUNT" "$UNVERIFIED_LIST"
       fi
       printf '\n'
-    next: done
+
+      # BUG-2908: verdict reflects verified closure, not threshold-pass. A run
+      # only reports success/partial when at least one issue is verifiably
+      # closed; anything staged-but-unverified or abandoned mid-flight makes
+      # it phantom regardless of legitimate skips (decomposed/gate-blocked/
+      # decision-unresolved/low-readiness parking is not a failure signal).
+      if [ "$PASSED_COUNT" -gt 0 ] && [ "$UNVERIFIED_COUNT" -eq 0 ] && [ "$ABANDONED" -eq 0 ]; then
+        VERDICT=success
+      elif [ "$PASSED_COUNT" -gt 0 ]; then
+        VERDICT=partial
+      elif [ "$UNVERIFIED_COUNT" -gt 0 ] || [ "$ABANDONED" -gt 0 ]; then
+        VERDICT=phantom
+      else
+        VERDICT=no-op
+      fi
+
+      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"gate_blocked":%s,"decision_unresolved":%s,"inflight_unresolved":%s,"abandoned":%s}\n' \
+        "$VERDICT" "$PASSED_COUNT" "$UNVERIFIED_COUNT" "$SKIPPED_COUNT" "$GATE_BLOCKED_COUNT" "$DECISION_UNRESOLVED_COUNT" "$ABANDONED" "$ABANDONED" \
+        > ${context.run_dir}/summary.json
+
+      # BUG-2908: route the FSM terminal on verified closure, not "reached the
+      # end" — mirrors BUG-2636's fix to auto-refine-and-implement.yaml's
+      # finalize. Only `phantom` diverts to `failed`; success/partial/no-op
+      # (a genuinely empty or fully-parked backlog) still render `done`.
+      case "$VERDICT" in
+        phantom) exit 1 ;;
+        *) exit 0 ;;
+      esac
+    fragment: shell_exit
+    on_yes: done
+    on_no: failed
     # ENH-2825: if the summary itself cannot be emitted, the operator has no
     # record of what passed or skipped — exit 2 rather than reporting success.
     on_error: failed
