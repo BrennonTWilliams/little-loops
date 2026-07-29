@@ -88,7 +88,12 @@ states:
     description: |
       Per-iteration artifact versioning — copies the current artifact and screenshot
       into an iter-N/ subdirectory within the run directory. Iteration counter is
-      tracked via .iter_counter file. Runs unconditionally (next: score).
+      tracked via .iter_counter file.
+      ENH-2903: also detects a missing/stale screenshot.png or a missing artifact
+      copy (evaluate's on_yes/on_no/on_error all route here identically, so this
+      is the only place downstream of evaluate that can see the failure) and
+      records the consecutive-miss count to .screenshot_misses under run_dir
+      (MR-3). Runs unconditionally (next: score_gate, which reads the counter).
     action_type: shell
     action: |
       RUN_DIR="${context.run_dir}"
@@ -96,9 +101,94 @@ states:
       COUNTER=$((COUNTER + 1))
       echo "$COUNTER" > "$RUN_DIR/.iter_counter"
       mkdir -p "$RUN_DIR/iter-$COUNTER"
-      cp "$RUN_DIR/${context.artifact_path}" "$RUN_DIR/iter-$COUNTER/" 2>/dev/null || true
+
+      MISS=0
+      if cp "$RUN_DIR/${context.artifact_path}" "$RUN_DIR/iter-$COUNTER/" 2>/dev/null; then
+        ART_MTIME=$(stat -f %m "$RUN_DIR/${context.artifact_path}" 2>/dev/null || stat -c %Y "$RUN_DIR/${context.artifact_path}" 2>/dev/null || echo 0)
+      else
+        MISS=1
+        ART_MTIME=0
+      fi
+
+      if [ -f "$RUN_DIR/screenshot.png" ]; then
+        SHOT_MTIME=$(stat -f %m "$RUN_DIR/screenshot.png" 2>/dev/null || stat -c %Y "$RUN_DIR/screenshot.png" 2>/dev/null || echo 0)
+        if [ "$SHOT_MTIME" -lt "$ART_MTIME" ]; then
+          MISS=1
+        fi
+      else
+        MISS=1
+      fi
       cp "$RUN_DIR/screenshot.png" "$RUN_DIR/iter-$COUNTER/" 2>/dev/null || true
-    next: score
+
+      PREV_MISSES=$(cat "$RUN_DIR/.screenshot_misses" 2>/dev/null || echo 0)
+      if [ "$MISS" -eq 1 ]; then
+        MISSES=$((PREV_MISSES + 1))
+      else
+        MISSES=0
+      fi
+      echo "$MISSES" > "$RUN_DIR/.screenshot_misses"
+      echo "iter=$COUNTER screenshot_miss=$MISS consecutive_misses=$MISSES"
+    next: score_gate
+
+  score_gate:
+    description: |
+      ENH-2903 screenshot-miss gate (first half). Reads .screenshot_misses,
+      written by snapshot above. A count of 0 means this iteration's screenshot
+      is fresh — proceed to score exactly as before (no behavior change for
+      consumers whose screenshots succeed). A nonzero count routes to
+      check_screenshot_abandon to distinguish a transient miss (skip scoring,
+      keep iterating) from a persistent one (abandon).
+    action_type: shell
+    action: |
+      MISS_COUNT=$(cat "${context.run_dir}/.screenshot_misses" 2>/dev/null || echo 0)
+      if [ "$MISS_COUNT" -eq 0 ]; then
+        echo "SCORE"
+      else
+        echo "MISS count=$MISS_COUNT"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "SCORE"
+    on_yes: score
+    on_no: check_screenshot_abandon
+    on_error: check_screenshot_abandon
+
+  check_screenshot_abandon:
+    description: |
+      ENH-2903 screenshot-miss gate (second half). score_gate has already
+      ruled out the fresh-screenshot case; this distinguishes a below-cap
+      transient miss (skip rubric-scoring this round only, per AC "score does
+      not silently rubric-score a stale screenshot") from a persistent one
+      (converge to an honest abandoned verdict rather than exhausting
+      max_steps — MR-13). The cap is a max_step_attempts-style attempt cap on
+      consecutive screenshot misses, distinct from the loop's own max_steps.
+    action_type: shell
+    action: |
+      screenshot_max_step_attempts=3
+      MISS_COUNT=$(cat "${context.run_dir}/.screenshot_misses" 2>/dev/null || echo 0)
+      if [ "$MISS_COUNT" -ge "$screenshot_max_step_attempts" ]; then
+        echo "ABANDON count=$MISS_COUNT cap=$screenshot_max_step_attempts"
+      else
+        echo "SKIP count=$MISS_COUNT cap=$screenshot_max_step_attempts"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "ABANDON"
+    on_yes: screenshot_abandoned_summary
+    on_no: record_screenshot_skip
+    on_error: record_screenshot_skip
+
+  record_screenshot_skip:
+    description: |
+      Below-cap screenshot miss: do not rubric-score a stale/missing
+      screenshot. Skips score/record_score entirely for this iteration and
+      falls through to the existing stall-convergence chain (check_stall /
+      check_diff_stall) so a run stuck on repeated misses still converges
+      instead of looping generate/evaluate/snapshot indefinitely.
+    action_type: shell
+    action: |
+      echo "skipping rubric score this iteration: no fresh screenshot"
+    next: check_stall
 
   score:
     # Scoped numeric-scoring override (ENH-2428, Option B): keeps the shared
@@ -193,6 +283,34 @@ states:
 
   failed:
     terminal: true
+
+  screenshot_abandoned_summary:
+    # MR-13 penultimate summary state (ENH-2903, the rn-implement::report /
+    # general-task summarize_success shape). Reached only when
+    # check_screenshot_abandon's max_step_attempts-style cap is breached — the
+    # loop has never managed to capture a usable screenshot for that many
+    # consecutive iterations. Non-terminal (terminal-action-ok: a terminal
+    # state's own action is dead code), so this writes summary.json with an
+    # explicit "abandoned" key and a downgraded verdict before routing to the
+    # screenshot_abandoned terminal. The best-scoring iteration already on
+    # disk (if any) is untouched under iter-N/.
+    action_type: shell
+    action: |
+      MISS_COUNT=$(cat "${context.run_dir}/.screenshot_misses" 2>/dev/null || echo 0)
+      printf '{"verdict":"abandoned-screenshot","abandoned":%s}\n' "$MISS_COUNT" > "${context.run_dir}/summary.json"
+      echo "generator-evaluator: abandoned after $MISS_COUNT consecutive screenshot misses"
+    next: screenshot_abandoned
+    on_error: screenshot_abandoned
+
+  screenshot_abandoned:
+    # Distinct from done: a downgraded verdict for a run whose screenshot
+    # capture never recovered, so parent dispatch does not treat this as an
+    # ordinary ALL_PASS success. failure: true (ENH-2825) so the run exits
+    # non-zero and persists as a failure terminal, not "completed" — both
+    # screenshot_abandoned_summary's on_error edge into this terminal and the
+    # abandoned outcome itself are genuine non-successes.
+    terminal: true
+    failure: true
 
   max_steps_summary:
     # HARNESS (BUG-2824): terminal-doubling summary state fired when the engine
