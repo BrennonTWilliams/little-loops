@@ -20,6 +20,7 @@ from little_loops.adapters.core import (
     resolve_emitter,
 )
 from little_loops.adapters.gemini import GeminiEmitter
+from little_loops.adapters.kimi import KimiEmitter
 
 # =============================================================================
 # Fixture helpers
@@ -1082,3 +1083,226 @@ class TestFixtureHostRegistration:
         # Native subagents means process_agents calls emitter.emit_agent
         # directly (no degraded-mode routing for this host).
         assert len(emitter.agent_calls) == 1
+
+
+# =============================================================================
+# KimiEmitter.emit_skill (EPIC-2910, FEAT-2916)
+# =============================================================================
+
+
+class TestKimiEmitterEmitSkill:
+    def _meta(
+        self,
+        tmp_path: Path,
+        name: str,
+        apply: bool = True,
+        include_name: bool = False,
+        include_short_desc: bool = False,
+        description: str = "Use when user asks for tasks.",
+    ) -> dict:
+        skill_path = _make_skill_with_short_desc(
+            tmp_path,
+            name,
+            description=description,
+            include_name=include_name,
+            include_short_desc=include_short_desc,
+        )
+        content = skill_path.read_text()
+        fm = _read_frontmatter(content) or {}
+        return {
+            "skill_name": name,
+            "skill_path": skill_path,
+            "content": content,
+            "fm": fm,
+            "apply": apply,
+            "quiet": True,
+        }
+
+    def _out_path(self, tmp_path: Path, name: str) -> Path:
+        return tmp_path / ".kimi-code" / "skills" / name / "SKILL.md"
+
+    def test_writes_to_kimi_skills_dir(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill")
+        KimiEmitter().emit_skill(meta)
+        assert self._out_path(tmp_path, "my-skill").exists()
+
+    def test_injects_name_when_absent(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill", include_name=False)
+        KimiEmitter().emit_skill(meta)
+        content = self._out_path(tmp_path, "my-skill").read_text()
+        assert "name: my-skill" in content
+
+    def test_does_not_duplicate_name_when_present(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill", include_name=True)
+        KimiEmitter().emit_skill(meta)
+        content = self._out_path(tmp_path, "my-skill").read_text()
+        assert content.count("name: my-skill") == 1
+
+    def test_strips_metadata_short_description(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill", include_short_desc=True)
+        KimiEmitter().emit_skill(meta)
+        content = self._out_path(tmp_path, "my-skill").read_text()
+        assert "short-description:" not in content
+
+    def test_returns_adapted_on_first_run(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill")
+        assert KimiEmitter().emit_skill(meta) == "adapted"
+
+    def test_dry_run_does_not_write(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill", apply=False)
+        KimiEmitter().emit_skill(meta)
+        assert not self._out_path(tmp_path, "my-skill").exists()
+
+    def test_already_adapted_returns_skipped(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill")
+        KimiEmitter().emit_skill(meta)
+        assert KimiEmitter().emit_skill(meta) == "skipped"
+
+
+# =============================================================================
+# KimiEmitter.emit_command — bridged into .kimi-code/skills/ll-<stem>/
+# =============================================================================
+
+
+class TestKimiEmitterEmitCommand:
+    def _meta(
+        self,
+        tmp_path: Path,
+        stem: str,
+        apply: bool = True,
+        description: str = "Run this command.",
+        body: str = "# My Command\n\nDo the thing with $ARGUMENTS.\n",
+    ) -> dict:
+        commands_dir = tmp_path / "commands"
+        commands_dir.mkdir(exist_ok=True)
+        cmd_md = commands_dir / f"{stem}.md"
+        cmd_md.write_text(f"---\ndescription: {description}\n---\n\n{body}")
+        content = cmd_md.read_text()
+        fm = _read_frontmatter(content) or {}
+        return {
+            "stem": stem,
+            "cmd_path": cmd_md,
+            "content": content,
+            "fm": fm,
+            "output_dir": tmp_path / "skills",  # ignored by KimiEmitter
+            "apply": apply,
+            "quiet": True,
+        }
+
+    def _out_path(self, tmp_path: Path, stem: str) -> Path:
+        return tmp_path / ".kimi-code" / "skills" / f"ll-{stem}" / "SKILL.md"
+
+    def test_bridges_into_kimi_skills_dir(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd")
+        KimiEmitter().emit_command(meta)
+        assert self._out_path(tmp_path, "my-cmd").exists()
+
+    def test_injects_ll_prefixed_name(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd")
+        KimiEmitter().emit_command(meta)
+        content = self._out_path(tmp_path, "my-cmd").read_text()
+        assert "name: ll-my-cmd" in content
+
+    def test_body_passes_through_verbatim(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd", body="Do the thing with $ARGUMENTS.\n")
+        KimiEmitter().emit_command(meta)
+        content = self._out_path(tmp_path, "my-cmd").read_text()
+        assert "Do the thing with $ARGUMENTS." in content
+
+    def test_returns_adapted_on_first_run(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd")
+        assert KimiEmitter().emit_command(meta) == "adapted"
+
+    def test_dry_run_does_not_write(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd", apply=False)
+        KimiEmitter().emit_command(meta)
+        assert not self._out_path(tmp_path, "my-cmd").exists()
+
+    def test_already_adapted_returns_skipped(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd")
+        KimiEmitter().emit_command(meta)
+        assert KimiEmitter().emit_command(meta) == "skipped"
+
+
+# =============================================================================
+# KimiEmitter.emit_agent — native Claude-style agent files (no degraded mode)
+# =============================================================================
+
+
+class TestKimiEmitterEmitAgent:
+    def _meta(self, tmp_path: Path, name: str, apply: bool = True, **kwargs: object) -> dict:
+        agent_md = _make_agent(tmp_path, name, **kwargs)  # type: ignore[arg-type]
+        return {
+            "agent_name": name,
+            "agent_path": agent_md,
+            "content": agent_md.read_text(),
+            "fm": {},
+            "output_dir": tmp_path / ".kimi-code" / "agents",
+            "apply": apply,
+            "quiet": True,
+        }
+
+    def _out_path(self, tmp_path: Path, name: str) -> Path:
+        return tmp_path / ".kimi-code" / "agents" / f"{name}.md"
+
+    def test_writes_native_agent_file(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-agent", body="Do the thing.")
+        KimiEmitter().emit_agent(meta)
+        content = self._out_path(tmp_path, "my-agent").read_text()
+        assert "Do the thing." in content
+
+    def test_not_degraded_no_inline_preamble(self, tmp_path: Path) -> None:
+        """kimi spawns real subagents — output must NOT carry the ENH-2874 degraded preamble."""
+        meta = self._meta(tmp_path, "my-agent")
+        KimiEmitter().emit_agent(meta)
+        content = self._out_path(tmp_path, "my-agent").read_text()
+        assert "degraded mode" not in content
+        assert "inline" not in content.lower()
+
+    def test_frontmatter_preserved(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-agent")
+        KimiEmitter().emit_agent(meta)
+        content = self._out_path(tmp_path, "my-agent").read_text()
+        assert content.startswith("---\nname: my-agent")
+
+    def test_dry_run_does_not_write(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-agent", apply=False)
+        KimiEmitter().emit_agent(meta)
+        assert not self._out_path(tmp_path, "my-agent").exists()
+
+    def test_rerun_with_apply_skips_unchanged(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-agent")
+        KimiEmitter().emit_agent(meta)
+        assert KimiEmitter().emit_agent(meta) == "skipped"
+
+
+# =============================================================================
+# resolve_emitter: kimi-code registration (suffixed key — see EPIC-2910 naming)
+# =============================================================================
+
+
+class TestResolveEmitterKimi:
+    def test_kimi_returns_kimi_emitter(self) -> None:
+        assert isinstance(resolve_emitter("kimi-code"), KimiEmitter)
+
+    def test_kimi_emitter_satisfies_protocol(self) -> None:
+        assert isinstance(resolve_emitter("kimi-code"), HostEmitter)
+
+    def test_kimi_emitter_name_matches_runner_key(self) -> None:
+        """Emitter key equals the host_runner registry key so ll-verify-host-map
+        check 2 cross-validates kimi (deliberate break from the un-suffixed
+        emitter convention)."""
+        from little_loops.host_runner import _HOST_RUNNER_REGISTRY
+
+        assert resolve_emitter("kimi-code").name == "kimi-code"
+        assert "kimi-code" in _HOST_RUNNER_REGISTRY
+
+    def test_process_agents_does_not_route_kimi_to_degraded(self, tmp_path: Path) -> None:
+        """subagents="native" → process_agents calls emit_agent directly."""
+        _make_agent(tmp_path, "agent-a")
+        out_dir = tmp_path / ".kimi-code" / "agents"
+        adapted, skipped, errors = process_agents(
+            KimiEmitter(), tmp_path / "agents", out_dir, True, True
+        )
+        assert (adapted, skipped, errors) == (1, 0, 0)
+        assert "degraded mode" not in (out_dir / "agent-a.md").read_text()

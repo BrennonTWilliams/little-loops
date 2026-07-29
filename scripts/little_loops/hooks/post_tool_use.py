@@ -149,7 +149,14 @@ def handle(event: LLHookEvent) -> LLHookResult:
     raw_path = _extract_file_path(tool_name, tool_input)
 
     if config is not None and feature_enabled(config, "analytics.enabled"):
-        tool_response = payload.get("tool_response", {}) or {}
+        # Host-tolerant extraction: Claude/Codex send ``tool_response`` (dict);
+        # Kimi Code sends ``tool_output`` (string) instead (FEAT-2915). The
+        # absent ``cache_hit``/``tool_call`` keys on kimi payloads are already
+        # tolerated by the falsy/isinstance guards below.
+        tool_response = payload.get("tool_response")
+        if tool_response is None:
+            tool_response = payload.get("tool_output")
+        tool_response = tool_response or {}
         bytes_in = len(json.dumps(tool_input, default=str))
         bytes_out = len(json.dumps(tool_response, default=str))
         cache_hit = 1 if payload.get("cache_hit") else 0

@@ -52,12 +52,14 @@ _FEATURE_LABELS: dict[str, str] = {
 _HOST_CHOICES: list[tuple[str, str]] = [
     ("Claude Code  (global plugin — no adapter file needed)", "claude-code"),
     ("Codex CLI  (writes .codex/hooks.json)", "codex"),
+    ("Kimi Code  (managed block in ~/.kimi-code/config.toml)", "kimi-code"),
     ("Pi  (not yet available — EPIC-1622)", "pi"),
 ]
 
 _HOST_LABELS: dict[str, str] = {
     "claude-code": "Claude Code",
     "codex": "Codex CLI",
+    "kimi-code": "Kimi Code",
     "pi": "Pi",
 }
 
@@ -858,6 +860,7 @@ def _apply_config(
     from little_loops.init.cli import _dispatch_host_adapters
     from little_loops.init.validate import validate_deps
     from little_loops.init.writers import (
+        AGENTS_MD_HOSTS,
         deploy_design_tokens,
         deploy_goals,
         deploy_issue_templates,
@@ -866,6 +869,7 @@ def _apply_config(
         merge_settings,
         merge_with_existing,
         update_gitignore,
+        write_agents_md,
         write_claude_md,
         write_config,
     )
@@ -906,6 +910,11 @@ def _apply_config(
 
     if claude_md_opt_in:
         write_claude_md(project_root)
+
+    # AGENTS.md is the cross-tool convention read by codex / kimi-code
+    # (AGENTS_MD_HOSTS); claude-specific content stays in CLAUDE.md.
+    if any(h in AGENTS_MD_HOSTS for h in hosts):
+        write_agents_md(project_root)
 
     _dispatch_host_adapters(hosts, project_root, plugin_root, force=force)
 

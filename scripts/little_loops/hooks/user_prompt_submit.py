@@ -63,6 +63,25 @@ def _load_config(cwd: Path) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+def _extract_prompt_text(raw: Any) -> str:
+    """Return the prompt text from a host payload's ``prompt`` field.
+
+    Claude Code sends ``prompt`` as a plain string; Kimi Code sends an array
+    of content blocks (``[{"type": "text", "text": "..."}]``). Mixed or
+    missing shapes degrade to ``""`` (the bypass path) rather than raising.
+    """
+    if isinstance(raw, str):
+        return raw
+    if isinstance(raw, list):
+        parts = [
+            block["text"]
+            for block in raw
+            if isinstance(block, dict) and isinstance(block.get("text"), str)
+        ]
+        return "\n".join(parts)
+    return ""
+
+
 def handle(event: LLHookEvent) -> LLHookResult:
     """Apply prompt optimization if enabled; return rendered template on stdout.
 
@@ -70,9 +89,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
     ``resolve_config_path()`` for host-aware config lookup (probes
     ``.codex/ll-config.json`` first when ``LL_HOOK_HOST=codex``).
     """
-    user_prompt = event.payload.get("prompt", "")
-    if not isinstance(user_prompt, str):
-        user_prompt = ""
+    user_prompt = _extract_prompt_text(event.payload.get("prompt", ""))
 
     if not user_prompt.strip():
         return LLHookResult(exit_code=0)

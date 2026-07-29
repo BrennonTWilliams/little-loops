@@ -52,6 +52,7 @@ __all__ = [
     "HostInvocation",
     "HostNotConfigured",
     "HostRunner",
+    "KimiRunner",
     "OmpRunner",
     "OpenCodeRunner",
     "PiRunner",
@@ -1319,6 +1320,210 @@ class OmpRunner:
         )
 
 
+class KimiRunner:
+    """``HostRunner`` for the ``kimi`` CLI (Kimi Code CLI).
+
+    Flag translation verified by the FEAT-2911 research spike
+    (``thoughts/research/kimi-cli-surface.md``, kimi 0.30.0); tracked under
+    EPIC-2910 (ENH-2912 registration, FEAT-2914 wiring).
+
+    Key facts (vs. :class:`ClaudeCodeRunner`):
+
+    - ``-p <prompt>`` and ``--output-format stream-json`` are **identical**
+      flag names to Claude Code. There is **no single-blob** ``json`` output
+      mode — ``build_blocking_json`` also streams, and callers consume the
+      final ``role="assistant"`` event (same posture as
+      :meth:`CodexRunner.build_blocking_json`).
+    - Permission skip is **implicit**: ``kimi -p`` runs under the auto
+      permission policy, and ``--yolo``/``--auto``/``--plan`` are *rejected*
+      in combination with ``-p`` (verified: ``error: Cannot combine
+      --prompt with --yolo.``). No permission flag is ever emitted.
+    - Resume maps to ``--continue`` (most recent session in cwd).
+    - Agent selection is native via ``--agent <name>`` — but kimi rejects
+      ``--agent`` combined with ``--continue``/``--session``, so when
+      ``resume=True`` the agent is dropped with
+      :class:`CapabilityNotSupported`.
+    - Tool allowlist has no CLI flag — tool policy lives in agent files or
+      the global ``[tools]`` config table. The ``tools`` parameter is dropped
+      with :class:`CapabilityNotSupported`.
+    - ``workspace_root`` maps to ``--add-dir`` (additive workspace dir,
+      **not** a jail → ``workspace_sandboxed=False``).
+    - Print mode defaults to ``print_background_mode=steer``: the process
+      stays alive while background tasks are pending, feeding completions
+      back as synthetic user messages. ``build_detached`` callers should not
+      expect exit at the first final answer when the model backgrounds work.
+    """
+
+    name = "kimi-code"
+
+    capabilities = HostCapabilities(
+        streaming=True,
+        permission_skip=True,
+        agent_select=True,
+        tool_allowlist=False,
+    )
+
+    def detect(self) -> bool:
+        return shutil.which("kimi") is not None
+
+    def build_streaming(
+        self,
+        *,
+        prompt: str,
+        working_dir: Path | None = None,
+        resume: bool = False,
+        agent: str | None = None,
+        tools: list[str] | None = None,
+        model: str | None = None,
+        automation_profile: str | None = None,
+        workspace_root: Path | None = None,
+    ) -> HostInvocation:
+        if tools:
+            warnings.warn(
+                "kimi has no tool-allowlist CLI flag; tool policy lives in "
+                "agent files (tools/disallowedTools) or the global [tools] "
+                "config table. The 'tools' parameter will be ignored.",
+                CapabilityNotSupported,
+                stacklevel=2,
+            )
+        effective_agent = agent
+        if agent and resume:
+            warnings.warn(
+                "kimi rejects --agent combined with --continue/--session (the "
+                "agent is bound at session creation). The 'agent' parameter "
+                "will be ignored on resume.",
+                CapabilityNotSupported,
+                stacklevel=2,
+            )
+            effective_agent = None
+
+        # Flags first, ``-p <prompt>`` last: kimi's argument parser treats a
+        # bare positional after options as a subcommand (verified in the
+        # FEAT-2911 spike), so the prompt must terminate argv.
+        args: list[str] = ["--output-format", "stream-json"]
+        if resume:
+            args += ["--continue"]
+        if effective_agent:
+            args += ["--agent", effective_agent]
+        if workspace_root is not None:
+            args += ["--add-dir", str(workspace_root)]
+        if model:
+            args += ["--model", model]
+        args += ["-p", prompt]
+
+        env: dict[str, str] = {
+            "LL_NON_INTERACTIVE": "1",
+            "DANGEROUSLY_SKIP_PERMISSIONS": "1",
+        }
+        if automation_profile is not None:
+            env["LL_AUTOMATION"] = "1"
+            env["LL_AUTOMATION_PROFILE"] = automation_profile
+        env.update(GeminiRunner._worktree_env(working_dir))
+
+        return HostInvocation(
+            binary="kimi",
+            args=args,
+            env=env,
+            capabilities=self.capabilities,
+        )
+
+    def build_blocking_json(
+        self,
+        *,
+        prompt: str,
+        model: str | None = None,
+        json_schema: dict | None = None,
+    ) -> HostInvocation:
+        if json_schema:
+            warnings.warn(
+                "kimi has no structured-output schema flag; the 'json_schema' "
+                "parameter will be ignored (prompt-and-parse fallback).",
+                CapabilityNotSupported,
+                stacklevel=2,
+            )
+        # kimi supports only ``text`` and ``stream-json`` output formats — no
+        # single-blob JSON mode. Stream and let the caller consume the final
+        # ``role="assistant"`` event (same posture as CodexRunner).
+        args: list[str] = ["--output-format", "stream-json"]
+        if model:
+            args += ["--model", model]
+        args += ["-p", prompt]
+        return HostInvocation(
+            binary="kimi",
+            args=args,
+            env={"LL_NON_INTERACTIVE": "1", "DANGEROUSLY_SKIP_PERMISSIONS": "1"},
+            capabilities=self.capabilities,
+        )
+
+    def build_version_check(self) -> HostInvocation:
+        return HostInvocation(
+            binary="kimi",
+            args=["--version"],
+            env={},
+            capabilities=self.capabilities,
+        )
+
+    def build_detached(self, *, prompt: str) -> HostInvocation:
+        # See class docstring: print mode defaults to
+        # ``print_background_mode=steer`` — the process stays alive while
+        # background tasks are pending. Detached callers must not assume exit
+        # at the first final answer.
+        return HostInvocation(
+            binary="kimi",
+            args=["-p", prompt],
+            env={"LL_NON_INTERACTIVE": "1", "DANGEROUSLY_SKIP_PERMISSIONS": "1"},
+            capabilities=self.capabilities,
+        )
+
+    def describe_capabilities(self) -> CapabilityReport:
+        return CapabilityReport(
+            host=self.name,
+            binary="kimi",
+            version="",
+            capabilities=[
+                CapabilityEntry("streaming", "full", "--output-format stream-json"),
+                CapabilityEntry(
+                    "permission_skip",
+                    "full",
+                    "implicit in -p print mode (auto permission policy); "
+                    "--yolo/--auto/--plan are rejected with -p",
+                ),
+                CapabilityEntry(
+                    "agent_select",
+                    "partial",
+                    "--agent <name> honored, but rejected in combination with "
+                    "--continue/--session; dropped with CapabilityNotSupported "
+                    "on resume",
+                ),
+                CapabilityEntry(
+                    "tool_allowlist",
+                    "unsupported",
+                    "kimi has no --tools flag; tool policy lives in agent files "
+                    "or the global [tools] config table. The 'tools' parameter "
+                    "is dropped with CapabilityNotSupported.",
+                ),
+                CapabilityEntry(
+                    "json_schema",
+                    "unsupported",
+                    "kimi has no structured-output schema flag; parameter is "
+                    "dropped with CapabilityNotSupported",
+                ),
+                CapabilityEntry(
+                    "structured_output",
+                    "unsupported",
+                    "kimi has no single-blob JSON mode and no inline schema flag; "
+                    "FSM evaluators fall back to prompt-and-parse",
+                ),
+                CapabilityEntry(
+                    "workspace_sandboxed",
+                    "unsupported",
+                    "--add-dir is additive, not a jail; workspace_root widens "
+                    "rather than confines access",
+                ),
+            ],
+        )
+
+
 # Built-in host runners keyed by their ``name`` attribute. Extensions may
 # register additional runners but built-ins always win on collision —
 # mirrors ``hooks/__init__.py:_dispatch_table`` (built-ins shadow extensions).
@@ -1329,24 +1534,30 @@ _HOST_RUNNER_REGISTRY: dict[str, type[HostRunner]] = {
     "pi": PiRunner,
     "gemini": GeminiRunner,
     "omp": OmpRunner,
+    "kimi-code": KimiRunner,
 }
 
 # Order of probing when no explicit host is configured. Matches the binary
-# names users typically have on PATH; extends as new runners land.
+# names users typically have on PATH; extends as new runners land. Append
+# new hosts at the END: probe order decides auto-detection when several
+# host CLIs share PATH, and inserting mid-list would change resolution for
+# existing users who happen to have the new binary installed.
 _PROBE_ORDER: list[tuple[str, str]] = [
     ("claude-code", "claude"),
     ("codex", "codex"),
     ("pi", "pi"),
     ("gemini", "gemini"),
     ("omp", "omp"),
+    ("kimi-code", "kimi"),
 ]
 
 
 def _remediation_hint() -> str:
     return (
-        "Set LL_HOST_CLI=<host> (one of: claude-code, codex, opencode, pi, gemini, omp), "
-        "or LL_HOOK_HOST, or configure orchestration.host_cli in ll-config.json, "
-        "or install a supported host CLI on PATH (claude, codex, pi, gemini, or omp)."
+        "Set LL_HOST_CLI=<host> (one of: claude-code, codex, opencode, pi, gemini, omp, "
+        "kimi-code), or LL_HOOK_HOST, or configure orchestration.host_cli in "
+        "ll-config.json, or install a supported host CLI on PATH (claude, codex, pi, "
+        "gemini, omp, or kimi)."
     )
 
 
@@ -1360,7 +1571,7 @@ def resolve_host(env: dict[str, str] | None = None) -> HostRunner:
        host identifier so users with an existing hook config don't need a
        second knob.
     3. Binary probe: ``claude`` → ``codex`` → ``pi`` → ``gemini`` → ``omp``
-       (see ``_PROBE_ORDER``).
+       → ``kimi`` (see ``_PROBE_ORDER`).
     4. Raise :class:`HostNotConfigured` with a remediation hint.
 
     Args:

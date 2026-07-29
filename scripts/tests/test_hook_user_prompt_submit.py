@@ -568,3 +568,117 @@ class TestPromptOptEventCapture:
         result = handle(_event({"prompt": "implement authentication flow"}))
         assert result.exit_code == 0
         assert result.stdout, "template must still render when the DB write fails"
+
+
+class TestKimiPromptBlocks:
+    """FEAT-2915: kimi-code sends ``prompt`` as an array of content blocks.
+
+    Verified shape (thoughts/research/kimi-cli-surface.md, kimi 0.30.0):
+    ``prompt = [{"type": "text", "text": "..."}]``. The handler must join
+    block texts instead of treating the payload as a missing prompt.
+    """
+
+    def _write_opt_config(self, project_dir: Path) -> None:
+        ll_dir = project_dir / ".ll"
+        ll_dir.mkdir(parents=True, exist_ok=True)
+        config = {
+            "prompt_optimization": {
+                "enabled": True,
+                "mode": "quick",
+                "confirm": "false",
+                "bypass_prefix": "*",
+            }
+        }
+        (ll_dir / "ll-config.json").write_text(json.dumps(config), encoding="utf-8")
+
+    def test_kimi_block_array_prompt_renders(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A kimi block-array prompt is extracted and reaches the rendered template."""
+        self._write_opt_config(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+
+        result = handle(
+            _event(
+                {"prompt": [{"type": "text", "text": "implement authentication flow"}]},
+                cwd=str(tmp_path),
+            )
+        )
+        assert result.exit_code == 0
+        assert result.stdout, "kimi block-array prompt must render the optimization template"
+        assert "implement authentication flow" in result.stdout
+
+    def test_kimi_multi_block_array_joins_texts(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Multiple text blocks join (newline-separated) into one prompt string."""
+        self._write_opt_config(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+
+        result = handle(
+            _event(
+                {
+                    "prompt": [
+                        {"type": "text", "text": "first part of the request"},
+                        {"type": "text", "text": "second part of the request"},
+                    ]
+                },
+                cwd=str(tmp_path),
+            )
+        )
+        assert result.exit_code == 0
+        assert result.stdout
+        assert "first part of the request" in result.stdout
+        assert "second part of the request" in result.stdout
+
+    def test_kimi_mixed_blocks_skip_non_text(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Non-text / malformed blocks are skipped, not fatal."""
+        self._write_opt_config(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+
+        result = handle(
+            _event(
+                {
+                    "prompt": [
+                        {"type": "image", "source": "data:..."},
+                        "a stray string",
+                        {"type": "text"},
+                        {"type": "text", "text": "the actual prompt text"},
+                    ]
+                },
+                cwd=str(tmp_path),
+            )
+        )
+        assert result.exit_code == 0
+        assert result.stdout
+        assert "the actual prompt text" in result.stdout
+
+    def test_non_string_non_list_prompt_degrades_to_empty(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A dict/int/None prompt takes the empty-prompt bypass path (exit 0, no stdout)."""
+        self._write_opt_config(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        for bad_prompt in ({"text": "x"}, 42, None):
+            result = handle(_event({"prompt": bad_prompt}, cwd=str(tmp_path)))
+            assert result.exit_code == 0
+            assert not result.stdout
+
+    def test_claude_string_prompt_unchanged(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression guard: claude's plain-string prompt still renders."""
+        self._write_opt_config(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+
+        result = handle(_event({"prompt": "implement authentication flow"}, cwd=str(tmp_path)))
+        assert result.exit_code == 0
+        assert result.stdout
+        assert "implement authentication flow" in result.stdout

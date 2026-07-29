@@ -375,8 +375,8 @@ def get_project_folder(cwd: Path | None = None, *, host: str | None = None) -> P
     Args:
         cwd: Working directory to map. If None, uses current directory.
         host: Host identifier (``"claude-code"``, ``"codex"``, ``"opencode"``,
-            ``"pi"``). If None, auto-detects from ``LL_HOOK_HOST`` env var
-            (default ``"claude-code"``).
+            ``"pi"``, ``"kimi-code"``). If None, auto-detects from
+            ``LL_HOOK_HOST`` env var (default ``"claude-code"``).
 
     Returns:
         Path to the host's project session folder, or None if not found.
@@ -403,6 +403,8 @@ def get_project_folder(cwd: Path | None = None, *, host: str | None = None) -> P
         return _get_opencode_project_folder(encoded_path)
     elif host == "pi":
         return _get_pi_project_folder(encoded_path)
+    elif host == "kimi-code":
+        return _get_kimi_project_folder(cwd)
     return None
 
 
@@ -428,6 +430,45 @@ def _get_pi_project_folder(encoded_path: str) -> Path | None:
     """Probe the Pi session directory (stub; Pi adapter deferred per FEAT-992)."""
     project_folder = Path.home() / ".pi" / "projects" / encoded_path
     return project_folder if project_folder.exists() else None
+
+
+def _get_kimi_project_folder(cwd: Path) -> Path | None:
+    """Resolve the Kimi Code workspace session folder for *cwd*.
+
+    Kimi keys session logs by workspace id (``wd_<name>_<hash>`` under
+    ``$KIMI_CODE_HOME/sessions/``), not by dash-encoding the project path —
+    but ``session_index.jsonl`` maps ``workDir`` → ``sessionDir`` directly
+    (FEAT-2911 spike, kimi 0.30.0), so no re-encoding is needed. Returns the
+    workspace folder containing the project's ``session_*/`` directories
+    (most recently indexed session wins), or ``None`` when kimi has no
+    recorded sessions for *cwd*.
+
+    Note: kimi wire files (``session_*/agents/main/wire.jsonl``) use a
+    typed-event schema, not Claude's message schema — extraction-layer
+    parsing for backfill is tracked separately (ENH-2918).
+    """
+    kimi_home = Path(os.environ.get("KIMI_CODE_HOME") or (Path.home() / ".kimi-code"))
+    index = kimi_home / "session_index.jsonl"
+    if not index.is_file():
+        return None
+    target = str(cwd.resolve())
+    workspace_folder: Path | None = None
+    try:
+        for line in index.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if entry.get("workDir") == target:
+                session_dir = Path(entry.get("sessionDir") or "")
+                if session_dir.parent.is_dir():
+                    workspace_folder = session_dir.parent
+    except OSError:
+        return None
+    return workspace_folder
 
 
 def extract_user_messages(

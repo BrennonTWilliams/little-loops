@@ -1260,6 +1260,55 @@ class TestResolveConfigPath:
 
         assert resolve_config_path(tmp_path) == ll_cfg
 
+    def test_kimi_path_takes_precedence_when_host_kimi(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``LL_HOOK_HOST=kimi-code`` puts ``.kimi-code/ll-config.json`` ahead of ``.ll/`` (ENH-2913)."""
+        from little_loops.config.core import resolve_config_path
+
+        monkeypatch.setenv("LL_HOOK_HOST", "kimi-code")
+        monkeypatch.delenv("LL_STATE_DIR", raising=False)
+        (tmp_path / ".kimi-code").mkdir()
+        kimi_cfg = tmp_path / ".kimi-code" / "ll-config.json"
+        kimi_cfg.write_text('{"kimi": true}')
+        (tmp_path / ".ll").mkdir(exist_ok=True)
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"ll": true}')
+        (tmp_path / "ll-config.json").write_text('{"root": true}')
+
+        assert resolve_config_path(tmp_path) == kimi_cfg
+
+    def test_kimi_path_takes_precedence_when_state_dir_kimi(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``LL_STATE_DIR=.kimi-code`` is an alternate trigger for the kimi probe order (ENH-2913)."""
+        from little_loops.config.core import resolve_config_path
+
+        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
+        monkeypatch.setenv("LL_STATE_DIR", ".kimi-code")
+        (tmp_path / ".kimi-code").mkdir()
+        kimi_cfg = tmp_path / ".kimi-code" / "ll-config.json"
+        kimi_cfg.write_text('{"kimi": true}')
+        (tmp_path / ".ll").mkdir(exist_ok=True)
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"ll": true}')
+
+        assert resolve_config_path(tmp_path) == kimi_cfg
+
+    def test_kimi_path_ignored_without_host_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``.kimi-code/ll-config.json`` is NOT probed when no host env var is set."""
+        from little_loops.config.core import resolve_config_path
+
+        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
+        monkeypatch.delenv("LL_STATE_DIR", raising=False)
+        (tmp_path / ".kimi-code").mkdir()
+        (tmp_path / ".kimi-code" / "ll-config.json").write_text('{"kimi": true}')
+        (tmp_path / ".ll").mkdir(exist_ok=True)
+        ll_cfg = tmp_path / ".ll" / "ll-config.json"
+        ll_cfg.write_text('{"ll": true}')
+
+        assert resolve_config_path(tmp_path) == ll_cfg
+
     def test_opencode_host_uses_default_order(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

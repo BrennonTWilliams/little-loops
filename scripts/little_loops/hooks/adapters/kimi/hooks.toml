@@ -1,0 +1,55 @@
+# ll-gen-version: {{LL_GEN_VERSION}}
+#
+# little-loops hook adapter for Kimi Code CLI (FEAT-2915, EPIC-2910).
+#
+# This template is installed as a marker-delimited managed block in
+# $KIMI_CODE_HOME/config.toml (default ~/.kimi-code/config.toml) by
+# `ll-init --hosts kimi-code` — see
+# little_loops.init.writers.install_kimi_adapter. Kimi Code has no
+# project-local hook file (.kimi-code/local.toml only supports
+# [workspace]), so hooks are user-level.
+#
+# {{LL_PLUGIN_ROOT}} is substituted with the absolute path of the
+# installed little_loops package directory at install time.
+
+[[hooks]]
+event = "SessionStart"
+matcher = "startup"
+command = "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/kimi/session-start.sh"
+timeout = 30
+
+[[hooks]]
+event = "PreCompact"
+matcher = "manual|auto"
+command = "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/kimi/pre-compact.sh"
+timeout = 30
+
+[[hooks]]
+event = "UserPromptSubmit"
+command = "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/kimi/user-prompt-submit.sh"
+timeout = 30
+
+[[hooks]]
+event = "PreToolUse"
+command = "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/kimi/pre-tool-use.sh"
+timeout = 30
+
+[[hooks]]
+event = "PostToolUse"
+command = "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/kimi/post-tool-use.sh"
+timeout = 30
+
+[[hooks]]
+event = "SessionEnd"
+command = "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/kimi/session-end.sh"
+timeout = 30
+
+[[hooks]]
+event = "SubagentStart"
+command = "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/kimi/subagent-start.sh"
+timeout = 30
+
+[[hooks]]
+event = "SubagentStop"
+command = "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/kimi/subagent-stop.sh"
+timeout = 30

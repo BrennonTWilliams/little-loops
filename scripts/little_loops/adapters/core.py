@@ -45,10 +45,14 @@ class HostEmitter(Protocol):
 # Lazy-import registry: host name → (module_path, class_name).
 # Concrete modules import from this module (AdapterError, helpers), so we must
 # not import them at the module level — only resolve on demand via importlib.
+# NOTE: keys must match their host_runner registry key where both exist —
+# ll-verify-host-map check 2 only cross-validates the intersection, which is
+# why kimi-code is registered with its suffixed runner key (EPIC-2910).
 _EMITTER_MAP: dict[str, tuple[str, str]] = {
     "codex": ("little_loops.adapters.codex", "CodexEmitter"),
     "gemini": ("little_loops.adapters.gemini", "GeminiEmitter"),
     "omp": ("little_loops.adapters.omp", "OmpEmitter"),
+    "kimi-code": ("little_loops.adapters.kimi", "KimiEmitter"),
 }
 
 
@@ -56,7 +60,7 @@ def resolve_emitter(host: str) -> HostEmitter:
     """Return a :class:`HostEmitter` instance for *host*.
 
     Args:
-        host: One of ``"codex"``, ``"gemini"``, ``"omp"``.
+        host: One of ``"codex"``, ``"gemini"``, ``"omp"``, ``"kimi-code"``.
 
     Returns:
         A :class:`HostEmitter` ready to emit skills, commands, and agents.

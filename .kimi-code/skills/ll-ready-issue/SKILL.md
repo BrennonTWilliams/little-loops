@@ -1,0 +1,547 @@
+---
+name: ll-ready-issue
+description: Analyze and validate an issue file for accuracy, utility, and completeness, then auto-correct to make implementation-ready or close if invalid
+argument-hint: "[issue-id]"
+allowed-tools:
+  - Read
+  - Glob
+  - Edit
+  - Task
+  - Bash(git:*)
+  - Bash(ll-history-context:*)
+arguments:
+  - name: issue_id
+    description: Issue ID to validate (e.g., BUG-004, FEAT-001)
+    required: false
+  - name: flags
+    description: "Optional flags: --deep (use sub-agents for comprehensive validation), --check (check-only for FSM evaluators)"
+    required: false
+---
+
+# Ready Issue
+
+You are tasked with analyzing an issue file to determine if it's ready for implementation. You should:
+1. Auto-correct any fixable issues
+2. Close issues that should not be implemented
+3. Only reject issues that truly need manual intervention
+
+## Configuration
+
+This command uses project configuration from `.ll/ll-config.json`:
+- **Issues base**: `{{config.issues.base_dir}}`
+- **Categories**: `{{config.issues.categories}}`
+- **Templates dir**: `{{config.issues.templates_dir}}` (custom section JSON directory, or plugin default if null)
+- **Template style**: `{{config.issues.capture_template}}` (full, minimal, or legacy — controls which creation variant to use when assembling sections)
+- **Status enum**: `open`, `in_progress`, `blocked`, `deferred`, `done`, `cancelled` — see `.claude/CLAUDE.md` § Issue File Format for full enum and forbidden synonyms.
+
+## Process
+
+### 0. Parse Flags
+
+```bash
+FLAGS="${flags:-}"
+CHECK_MODE=false
+DEEP_MODE=false
+
+if [[ "$FLAGS" == *"--deep"* ]]; then DEEP_MODE=true; fi
+if [[ "$FLAGS" == *"--check"* ]]; then CHECK_MODE=true; fi
+```
+
+### 0.5. Check Mode Behavior (--check)
+
+**When `CHECK_MODE` is true**: Run validation logic (sections 1-4) without applying auto-corrections or writing session logs. After determining the verdict:
+- If verdict is READY or CORRECTED: print `[ID] ready: [verdict]` and `exit 0`
+- If verdict is BLOCKED, NOT_READY, CLOSE, or any other: print `[ID] ready: [verdict]` and `exit 1`
+
+This integrates with FSM `evaluate: type: exit_code` routing (0=success, 1=failure, 2+=error).
+
+### 1. Find Issue File
+
+```bash
+ISSUE_INPUT="${issue_id}"
+
+# Detect if input is a file path (contains "/" or ends with ".md")
+# This allows ll-auto to retry with explicit paths on ID mismatch
+if [[ "$ISSUE_INPUT" == *"/"* ]] || [[ "$ISSUE_INPUT" == *.md ]]; then
+    # Input is an explicit file path
+    if [ -f "$ISSUE_INPUT" ]; then
+        FILE="$ISSUE_INPUT"
+        echo "Found: $FILE"
+    else
+        echo "WARNING: File not found at specified path: $ISSUE_INPUT"
+        echo "Falling back to ID search..."
+        ISSUE_ID="$ISSUE_INPUT"
+    fi
+else
+    # Input is an issue ID
+    ISSUE_ID="$ISSUE_INPUT"
+fi
+
+# Only search if FILE not already set (path detection didn't find it)
+if [ -z "$FILE" ]; then
+    FILE=$(ll-issues path "${ISSUE_ID}" 2>/dev/null)
+fi
+```
+
+### 1.5 Deep Validation (--deep flag)
+
+When `--deep` flag is specified, use sub-agents for comprehensive validation:
+
+#### Spawn Validation Agents
+
+1. **codebase-locator** - Verify file paths exist
+   ```
+   Verify the following file paths from issue [ISSUE-ID] exist in the codebase:
+   - [List files mentioned in issue]
+
+   Return: EXISTS or NOT_FOUND for each path, with suggested alternatives if not found.
+   ```
+
+2. **codebase-analyzer** - Verify code claims
+   ```
+   Verify the code claims in issue [ISSUE-ID]:
+   - Line numbers are accurate
+   - Code snippets match current code
+   - Described behavior still exists
+
+   Return: MATCH or MISMATCH for each claim, with current state if different.
+   ```
+
+#### Compare Issue Claims vs Reality
+
+| Claim in Issue | Verified | Notes |
+|----------------|----------|-------|
+| File X exists at path | YES/NO | [Current location or "deleted"] |
+| Line N contains Y | YES/NO | [Actual content at line N] |
+| Bug behavior occurs | YES/NO | [Current behavior observed] |
+| Function Z exists | YES/NO | [Renamed to / Removed in commit] |
+
+#### Deep Validation Outcome
+
+If deep validation reveals significant discrepancies:
+- Auto-correct where possible (update paths, line numbers)
+- Use CLOSE verdict if issue is obsolete (already fixed, invalid refs)
+- Include detailed evidence in VALIDATION table
+
+### 2. Validate Issue Content
+
+Check for completeness:
+
+Before running validation checks, query for prior corrections:
+
+```bash
+HIST=$(ll-history-context {{issue_id}} 2>/dev/null || true)
+```
+
+If matches exist, add each correction as a `Historical Concerns` sub-bullet in the validation checklist with severity `warning`. Graceful degradation: if DB missing, skip section silently.
+
+#### Required Sections
+
+Run `ll-issues sections {type}` to get the per-type template, where `{type}` is `bug`, `feat`, or `enh` based on the issue type, and verify:
+- [ ] All `common_sections` where `required: true` are present and non-empty (Summary, Current Behavior, Expected Behavior, Impact, Status) — `Labels` is now a frontmatter field (`labels:`) not a required body section (post-ENH-1392)
+- [ ] All `type_sections` entries where `level: "required"` are present and non-empty
+- [ ] Proposed Solution section is present (even if marked TBD)
+
+**Backward Compatibility (v2.0)**:
+- Sections marked `deprecated: true` in template are still valid and should be accepted
+- Old section names (e.g., "User Story", "Current Pain Point") are supported alongside new names ("Use Case", "Motivation")
+- Both old and new formats are considered VALID
+
+#### Code References
+- [ ] File paths exist in codebase
+- [ ] Line numbers are accurate (or can be corrected using anchor)
+- [ ] Code snippets match current code
+- [ ] Anchor field present and valid (function/class name exists)
+- [ ] No `file:line` references outside code fences (flag any found; auto-fix: run `ll-issues anchor-sweep --dry-run` to preview anchor replacements)
+
+**Using Stable Anchors for Validation**:
+If line numbers are outdated but an Anchor field exists:
+1. Search for the anchor (function/class name or unique string) in the referenced file
+2. Find the current line numbers for that anchor
+3. Update line references automatically
+4. Note in CORRECTIONS_MADE: `[line_drift] Updated line N -> M using anchor 'function_name'`
+
+#### Symbol Existence Gate (Branch-Aware)
+
+Before deciding that a cited symbol is missing, **name the branch you inspected**.
+The verifier reads files in the current working directory, so its
+"symbol not found" claim is only meaningful relative to a specific branch — and
+inside an EPIC worktree forked from the wrong base, a symbol that genuinely
+exists on the EPIC's intended base can read as absent, producing a false
+`NOT_READY` (ENH-2653).
+
+1. **Report the inspected branch.** Run the detached-HEAD-safe idiom (mirrors
+   `worktree_utils.detect_default_branch`) and record both the branch and the
+   worktree root:
+
+   ```bash
+   BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+   # Detached HEAD reports the literal "HEAD"; fall back to the short SHA so the
+   # output still names *something* falsifiable.
+   if [ "$BRANCH" = "HEAD" ]; then
+       BRANCH="detached@$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+   fi
+   WORKTREE=$(git rev-parse --show-toplevel 2>/dev/null || echo "unknown")
+   echo "Inspected branch: $BRANCH (worktree: $WORKTREE)"
+   ```
+
+   Every symbol-existence claim in your output **must name `$BRANCH`** (e.g.
+   "symbol `Tableau` not found on inspected branch `epic/foo`"), never the bare
+   phrase "the current branch". Emit the branch in the `## INSPECTED_BRANCH`
+   output section.
+
+2. **Downgrade suspected base-branch mismatches to a concern, not a rejection.**
+   When a cited symbol is absent on `$BRANCH`, ask whether it could live on a
+   different base before rejecting. Use the three-state
+   `PASS | WARN | NOT_READY` shape (mirror the Learning-Test Gate WARN-vs-block
+   split above):
+   - **PASS** — all cited symbols exist on `$BRANCH`.
+   - **WARN** (base-branch mismatch suspected) — the symbol is absent on
+     `$BRANCH`, **and** the issue is an EPIC child (`parent:` climbs to an
+     `EPIC-` ancestor) or the EPIC declares a `base_branch:` (see FEAT-2652)
+     that differs from `$BRANCH`. Emit
+     `Symbol Existence | WARN | symbols not on inspected branch <BRANCH>; EPIC target base may differ`
+     plus a `## CONCERNS` bullet. **Do not set NOT_READY for this case** — a
+     wrong-base absence is a concern the human resolves by re-basing, not a hard
+     block.
+   - If the EPIC declares **no** target base, raise the WARN concern
+     "EPIC declared no target_branch — assuming cwd `$BRANCH` is authoritative"
+     rather than silently trusting `cwd`.
+   - **NOT_READY** — the symbol is absent on `$BRANCH` and there is no plausible
+     alternate base (not an EPIC child, no differing declared base). Only then is
+     the absence a genuine blocker.
+
+#### Dependency Status
+Run `ll-issues format-check [ISSUE-ID] --format json` (FEAT-2849) instead of
+independently re-parsing a `## Blocked By` section — this reconciles with the
+same `prose_dep_drift`/`stale_prose_dep` taxonomy `/ll:refine-issue` and
+`/ll:wire-issue` gate on, rather than running a second, unrelated prose check.
+
+- [ ] `prose_dep_drift` non-empty (prose names an active issue absent from
+      `blocked_by`/`depends_on`):
+  - Flag as BLOCKED: "Blocked by [ID] (prose dependency not reflected in
+    frontmatter) which is still open"
+  - **Set verdict to BLOCKED** — this overrides READY and CORRECTED
+- [ ] `stale_prose_dep` non-empty (prose names a `done`/`cancelled` issue):
+  - Not a blocker. Auto-correct by removing/updating the stale prose text and
+    record the correction in `CORRECTIONS_MADE`.
+- [ ] Also check each structured `blocked_by`/`depends_on` entry's frontmatter
+  `status` field using `ll-issues list --id [BLOCKER-ID] --json`:
+  - If any has `status: open`, `status: in_progress`, or `status: blocked`:
+    flag as BLOCKED and **set verdict to BLOCKED** (overrides READY/CORRECTED).
+  - If all have `status: done`, `status: cancelled`, or don't exist: PASS.
+- [ ] No `prose_dep_drift`, no open structured blocker: PASS (no blockers).
+- [ ] `program_design_nonspecific` non-empty, or `missing`/`empty` contains
+      `Program Design` (ENH-2852): **surface only, never block.** Report it as an
+      advisory line ("Program Design section is prose, not concrete
+      types/signatures/call path — run `/ll:refine-issue`, or set
+      `program_design_not_applicable: true` if trivial") and offer to fill it in.
+      Do **not** set the verdict to BLOCKED or NOT_READY on this. The blocking
+      decision for program design happens once, at `/ll:confidence-check`, where
+      the reconcile-before-defer remedy path exists; two gates enforcing the same
+      requirement with different remedies is how an issue gets stuck between them.
+
+**Note**: Open blockers (structured or prose-drift) force the verdict to
+`BLOCKED`. This overrides any corrections made. Record corrections in
+`CORRECTIONS_MADE` as usual, but the top-level verdict must be `BLOCKED`.
+
+#### Learning Test Gate
+- [ ] Check if `learning_tests_required` exists in frontmatter:
+  - If absent or empty: PASS (gate is opt-in; skip this section entirely)
+  - If present: for each target string, run `ll-learning-tests check "<target>"`
+    - `status: proven` → PASS row in VALIDATION table: `Learning Tests | PASS | "<target>" proven`
+    - `status: stale` → WARN row: `Learning Tests | WARN | "<target>" stale — re-run /ll:explore-api "<target>"`
+    - `status: refuted` → **Auto-invoke** `Skill("explore-api", "<target>")` to re-explore the assumption, then re-run `ll-learning-tests check "<target>"`. If still `refuted`: `❌ Refuted assumption: "<target>" — see registry for refutation details` + **Set verdict to NOT_READY**. If now `proven` or `stale`: apply that status and continue.
+    - Record not found (None returned) → **Auto-invoke** `Skill("explore-api", "<target>")` to create the proof record, then re-run `ll-learning-tests check "<target>"` and apply the refreshed status. If still `missing` after exploration: `❌ Unproven assumption: "<target>"` + **Set verdict to NOT_READY**.
+- Refuted or missing targets block readiness and override READY/CORRECTED.
+- Stale targets produce a WARN but do not block.
+
+#### Decisions Gate
+Gate on the decisions log so its **absence** is the only clean skip; a query
+**failure** must surface as a WARN row, never as a silent clean pass (BUG-2423). Run
+without `|| true` and branch on the exit status — do **not** blackhole stderr. The
+log is hybrid storage — a legacy `.ll/decisions.yaml` flat file and/or
+`.ll/decisions.d/*.json` fragments — so gate on either (a fresh, never-compacted
+install has only the fragment dir):
+
+```bash
+if [ -f .ll/decisions.yaml ] || [ -d .ll/decisions.d ]; then
+    required_rules=$(ll-issues decisions list --type rule --enforcement required --active-only --format json)
+    if [ $? -ne 0 ]; then
+        echo "⚠ [DECISIONS] required-rule query failed — gate did NOT run" >&2   # → WARN row, not PASS
+    elif [ -n "$required_rules" ] && [ "$required_rules" != "[]" ]; then
+        exceptions=$(ll-issues decisions list --type exception)
+        if [ $? -ne 0 ]; then
+            echo "⚠ [DECISIONS] exception lookup failed — cannot confirm suppression" >&2
+        fi
+        # For each required rule, check whether this issue's proposed solution conflicts.
+    fi
+fi
+```
+
+- If the required-rule query **fails** (non-zero exit): WARN row in VALIDATION table — `Decisions | WARN | required-rule query failed — gate did not run` (do **not** emit a PASS; the gate did not run).
+- If the decisions log is absent (no `.ll/decisions.yaml` **and** no `.ll/decisions.d/`), or the query succeeds with no rules: SKIPPED/PASS (decisions log is opt-in; gracefully skip entirely).
+- If rules present, for each required rule check if this issue's proposed solution conflicts:
+  - If an exception entry has `rule_ref` matching this rule's ID and `issue` matching this issue's ID: suppress the violation
+  - If violation found and not suppressed: FAIL row in VALIDATION table: `Decisions | FAIL | Rule <ID>: <rule text> violated`
+  - If no violation: PASS row: `Decisions | PASS | All required rules satisfied`
+  - If exception suppresses the violation: PASS row: `Decisions | PASS | Rule <ID> suppressed by exception <exception_id>`
+- An absent decisions log (neither `.ll/decisions.yaml` nor `.ll/decisions.d/`) is never an error — governance is opt-in.
+
+#### Metadata
+- [ ] Priority prefix in filename
+- [ ] Issue ID format correct
+- [ ] Labels section present
+- [ ] Status section present
+
+### 3. Check for Closure Conditions
+
+**IMPORTANT**: Before returning NOT_READY, check if the issue should be CLOSED instead:
+
+| Condition | Close Reason | Close Status |
+|-----------|--------------|--------------|
+| Bug behavior no longer exists in code | already_fixed | Closed - Already Fixed |
+| Feature/enhancement already implemented | already_fixed | Closed - Already Fixed |
+| Referenced files/functions don't exist and can't be found | invalid_ref | Closed - Invalid |
+| Issue is too stale/outdated to be relevant | stale | Closed - Invalid |
+| Issue is too vague even after attempting to clarify | too_vague | Closed - Invalid |
+| Duplicate of another issue | duplicate | Closed - Duplicate |
+| Out of scope or rejected requirement | wont_do | Closed - Won't Do |
+| Matches completed issue, files modified since fix | regression_likely | Regression - Reopen as Regression |
+| Matches completed issue, can't confirm regression | possible_regression | Possible Regression - Needs Review |
+
+### 4. Determine Verdict
+
+| Verdict | Meaning | When to Use |
+|---------|---------|-------------|
+| READY | Issue is complete and accurate | No changes needed |
+| CORRECTED | Auto-corrections made, now ready | Fixed issues, proceed to implementation |
+| BLOCKED | Issue has unresolved blocking dependencies | Any structured blocker or `prose_dep_drift` entry resolves to an active issue |
+| NOT_READY | Cannot auto-correct | Needs manual intervention (use sparingly) |
+| CLOSE | Issue should not be implemented | See closure conditions above |
+| REGRESSION_LIKELY | Matches completed issue with evidence | Files modified since original fix |
+| POSSIBLE_REGRESSION | Matches completed issue, uncertain | No fix commit or files tracked |
+
+**Priority order**:
+1. First, try to auto-correct any issues
+2. If any structured blocker or `prose_dep_drift` entry resolves to an active issue, use BLOCKED (overrides READY/CORRECTED)
+3. If issue is invalid/obsolete, use CLOSE
+4. If issue matches completed issue, analyze for regression (see Regression Detection below)
+5. Only use NOT_READY if manual intervention is truly required
+
+### 4.5 Regression Detection (when matching completed issues)
+
+When an issue appears to match a completed issue, perform regression analysis:
+
+1. **Check for completed issue match**: Search for similar issues with `ll-issues list --status done --json`
+2. **Extract fix metadata** from matched completed issue's Resolution section:
+   - `Fix Commit`: SHA of the commit that fixed the issue
+   - `Files Changed`: List of files modified by the fix
+3. **Classify the match**:
+   | Scenario | Classification | Verdict |
+   |----------|----------------|---------|
+   | No fix commit tracked | UNVERIFIED | POSSIBLE_REGRESSION |
+   | Fix commit not in history | INVALID_FIX | REGRESSION_LIKELY |
+   | Files modified AFTER fix | REGRESSION | REGRESSION_LIKELY |
+   | Files NOT modified after fix | INVALID_FIX | REGRESSION_LIKELY |
+
+### 5. Auto-Correction
+
+If issues found, attempt to fix:
+
+1. **Update file paths** if files have moved
+2. **Correct line numbers** if code has shifted
+3. **Add missing sections** with placeholder text
+4. **Update code snippets** to match current code
+5. **Add verification notes** documenting changes
+6. **Infer `testable: false`** if not already set — scan the issue title + description (case-insensitive) for doc-only signal keywords: "doc", "docs", "documentation", "broken link", "broken anchor", "readme", "changelog", "spelling", "typo", "guide", "fix link". If 2+ keywords match and `testable` field is absent, add `testable: false` to frontmatter and record `[content_fix] Added testable: false (inferred: documentation-only issue)` in CORRECTIONS_MADE. Use verdict CORRECTED. Never overwrite an existing `testable` value.
+7. **Save the corrected issue file** with your changes
+8. **Append Session Log entry** to the issue file using the Bash tool:
+
+```bash
+ll-issues append-log <path-to-issue-file> /ll:ready-issue
+```
+
+If `ll-issues` is not available, fall back to manually appending with **exactly** this format (backticks required):
+
+```
+- `/ll:ready-issue` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
+```
+
+After making corrections, use verdict CORRECTED (not READY or NOT_READY).
+
+**IMPORTANT**: The `## VALIDATED_FILE` section is REQUIRED for ALL verdicts (READY, CORRECTED, NOT_READY, and CLOSE). This enables automation to verify the correct file was processed. Never omit this section.
+
+### 6. Output Format
+
+```markdown
+## VERDICT
+[READY|CORRECTED|BLOCKED|NOT_READY|CLOSE|REGRESSION_LIKELY|POSSIBLE_REGRESSION]
+
+## VALIDATED_FILE
+[REQUIRED for ALL verdicts - Absolute path to the issue file that was validated, e.g., /path/to/.issues/bugs/P1-BUG-002-description.md]
+
+## INSPECTED_BRANCH
+[REQUIRED for ALL verdicts - The branch and worktree the symbol-existence checks ran against, e.g., `epic/tableau (worktree: /path/to/wt)`. Naming this makes every "symbol not found" claim falsifiable (ENH-2653).]
+
+## BLOCKED_BY
+[Only include this section if verdict is BLOCKED]
+- [ISSUE-ID]: [Path to active issue file, e.g., .issues/features/P2-FEAT-555-description.md]
+- [Repeat for each open blocker]
+
+## CLOSE_REASON
+[Only include this section if verdict is CLOSE]
+- Reason: already_fixed|invalid_ref|stale|too_vague|duplicate|wont_do
+- Evidence: [Specific evidence supporting closure, e.g., "The function foo() was removed in commit abc123" or "Feature X already exists in src/features/x.py"]
+
+## CLOSE_STATUS
+[Only include this section if verdict is CLOSE]
+Closed - Already Fixed | Closed - Invalid | Closed - Duplicate | Closed - Won't Do
+
+## MATCHED_COMPLETED_ISSUE
+[Only include this section if verdict is REGRESSION_LIKELY or POSSIBLE_REGRESSION]
+- **Issue ID**: [Matched completed issue ID, e.g., BUG-003]
+- **Path**: [Path to matched completed issue]
+- **Similarity**: [Match score, e.g., 0.85]
+- **Matched Terms**: [Terms that triggered the match]
+
+## REGRESSION_EVIDENCE
+[Only include this section if verdict is REGRESSION_LIKELY or POSSIBLE_REGRESSION]
+- **Classification**: REGRESSION | INVALID_FIX | UNVERIFIED
+- **Fix Commit**: [SHA or "Not tracked"]
+- **Fix Commit Exists**: Yes | No
+- **Files Changed in Fix**: [List of files from original fix]
+- **Files Modified Since Fix**: [Files that were changed after the fix]
+- **Related Commits**: [Commits that modified the fixed files]
+- **Days Since Fix**: [Number of days]
+
+## RECOMMENDED_ACTION
+[Only include this section if verdict is REGRESSION_LIKELY or POSSIBLE_REGRESSION]
+- For REGRESSION: "Reopen completed issue as regression - fix was broken by later changes"
+- For INVALID_FIX: "Reopen completed issue - original fix never resolved the issue"
+- For UNVERIFIED: "Cannot determine regression status - recommend manual review"
+
+## REGRESSION_NOTE_TEMPLATE
+[Only include this section if verdict is REGRESSION_LIKELY or POSSIBLE_REGRESSION]
+```
+## Regression
+
+- **Date**: [Today's date]
+- **Classification**: [REGRESSION | INVALID_FIX]
+- **Original Fix Commit**: [SHA]
+- **Files Modified Since Fix**: [List]
+- **Related Commits**: [List]
+
+### Evidence
+[Description of why this is classified as regression/invalid fix]
+
+### New Findings
+[Current manifestation of the issue]
+```
+
+## VALIDATION
+
+| Check | Status | Details |
+|-------|--------|---------|
+| Summary | PASS | Clear description |
+| File paths | PASS | All files exist |
+| Line numbers | WARN | Updated 3 references |
+| Code snippets | PASS | Match current code |
+| Priority | PASS | P2 prefix present |
+| Sections | PASS | All required present |
+| Blockers | PASS/BLOCKED | "All blockers completed" or "Open blockers: FEAT-010, BUG-015" |
+| Learning Tests | PASS/WARN/NOT_READY | "All targets proven" or "Stale: target-name" or "Unproven: target-name" |
+| Symbol Existence | PASS/WARN/NOT_READY | "All symbols on branch `epic/foo`" or "symbols not on inspected branch `epic/foo`; EPIC target base may differ" (WARN = suspected base-branch mismatch, not a block — ENH-2653) |
+
+## CONCERNS
+- [List any issues that couldn't be auto-corrected]
+- [Or "None" if all checks pass]
+
+## CORRECTIONS_MADE
+- [line_drift] Updated line 42 -> 45 in src/module.py reference using anchor 'process_data'
+- [file_moved] Updated path from old/path.py to new/path.py
+- [content_fix] Added missing ## Expected Behavior section
+- [content_fix] Refreshed code snippet on line 20
+- [issue_status] Related issue ENH-042 marked as completed
+- [Or "None" if no corrections needed]
+
+**Correction categories**: Use these prefixes for tracking patterns:
+- `[line_drift]` - Line numbers changed since scan
+- `[file_moved]` - File path changed since scan
+- `[content_fix]` - Content accuracy correction (missing sections, wrong info)
+- `[issue_status]` - Related issue status updated
+- `[anchor_rewrite]` - `file:line` reference rewritten to enclosing function/class/section anchor
+
+## READY_FOR
+- Implementation: Yes/No
+- Automated processing: Yes/No
+
+## NEXT_STEPS
+- [Recommended actions if not ready]
+- [If NOT_READY and issue has been refined 2+ times: "Run `/ll:issue-size-review [ISSUE_ID]` — persistent readiness gaps often mean the issue is too large or ambiguously scoped, not just under-researched"]
+- [Or "Proceed to implementation with: `/ll:manage-issue [issue_type] [action] [ISSUE_ID]`" if ready/corrected]
+- [Or "Reopen completed issue [ISSUE_ID] as regression" if REGRESSION_LIKELY]
+```
+
+---
+
+## Arguments
+
+$ARGUMENTS
+
+- **issue_id** (optional): Specific issue ID to validate
+  - If provided, validates that specific issue
+  - If omitted, finds and validates highest priority issue
+
+- **flags** (optional): Modify validation behavior
+  - `--deep` - Use sub-agents for comprehensive validation (verifies file paths, line numbers, code snippets against actual codebase)
+  - `--check` — Check-only mode for FSM loop evaluators. Run validation without auto-corrections, print `[ID] ready: [verdict]`, exit 0 if READY/CORRECTED, exit 1 otherwise.
+
+---
+
+## Examples
+
+```bash
+# Validate specific issue (standard validation)
+/ll:ready-issue BUG-042
+
+# Validate with deep research (comprehensive verification)
+/ll:ready-issue BUG-042 --deep
+
+# Validate highest priority issue
+/ll:ready-issue
+
+# Deep validation on highest priority
+/ll:ready-issue --deep
+
+# Check-only mode for FSM loop evaluators (exit 0 if ready, exit 1 if not)
+/ll:ready-issue BUG-042 --check
+
+# After validation, implement
+/ll:manage-issue bug fix BUG-042
+```
+
+---
+
+## Integration
+
+This command is typically run before `/ll:manage-issue` to ensure:
+1. Issue is accurate and up-to-date
+2. Implementation can proceed smoothly
+3. No surprises during development
+
+The automation scripts (`ll-auto`, `ll-parallel`) run this automatically before each issue.
+
+### Verdict Handling by Automation
+
+| Verdict | Automation Action |
+|---------|-------------------|
+| READY | Proceed to implementation |
+| CORRECTED | Proceed to implementation (corrections saved) |
+| BLOCKED | Skip issue; do not implement until blockers are resolved |
+| NOT_READY | Mark as failed, skip issue |
+| CLOSE | Set `status: done` in frontmatter with closure note |
+| REGRESSION_LIKELY | Reopen completed issue with classification and evidence |
+| POSSIBLE_REGRESSION | Flag for manual review, may reopen if confirmed |
+
+**Note**: The completed directory is a SIBLING to category directories (bugs/, features/, enhancements/), not a subdirectory within them.

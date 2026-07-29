@@ -32,8 +32,12 @@ _TOGGLEABLE_FEATURES: frozenset[str] = frozenset(
     }
 )
 
-# Recognized host names for --hosts validation; mirrors _HOST_RUNNER_REGISTRY keys.
-_KNOWN_HOSTS: frozenset[str] = frozenset({"claude-code", "codex", "opencode", "pi"})
+# Recognized host names for --hosts validation. Only hosts with install
+# wiring (or an explicit graceful-degradation branch) in
+# _dispatch_host_adapters belong here — it does NOT mirror
+# _HOST_RUNNER_REGISTRY keys: gemini/omp are deliberately absent because they
+# have no install wiring and would warn "Unknown host".
+_KNOWN_HOSTS: frozenset[str] = frozenset({"claude-code", "codex", "opencode", "pi", "kimi-code"})
 
 
 def _plugin_version() -> str:
@@ -67,6 +71,10 @@ def _detect_hosts(project_root: Path) -> list[str]:
         detected.append("opencode")
     if shutil.which("pi"):
         detected.append("pi")
+    # Appended LAST for auto-detection stability — inserting mid-list would
+    # change resolution for users who happen to install the kimi binary.
+    if shutil.which("kimi") or (project_root / ".kimi-code").exists():
+        detected.append("kimi-code")
     return detected or ["claude-code"]
 
 
@@ -78,7 +86,7 @@ def _dispatch_host_adapters(
     dry_run: bool = False,
 ) -> None:
     """Install adapters for each selected host; print per-host post-install notes."""
-    from little_loops.init.writers import install_codex_adapter
+    from little_loops.init.writers import install_codex_adapter, install_kimi_adapter
 
     for host in hosts:
         if host not in _KNOWN_HOSTS:
@@ -102,6 +110,26 @@ def _dispatch_host_adapters(
                 print(
                     "[Codex] Note: Codex will show a hook-trust dialog on next session start. "
                     "Hooks are silently skipped (HookRunStatus::Untrusted) until trusted."
+                )
+        elif host == "kimi-code":
+            installed = install_kimi_adapter(
+                project_root, plugin_root, force=force, dry_run=dry_run
+            )
+            if installed is None:
+                print(
+                    "[Kimi] Warning: adapter template not found in package install; "
+                    "kimi config.toml managed block was not written.",
+                    file=sys.stderr,
+                )
+            elif installed and not dry_run:
+                from little_loops.init.writers import kimi_config_path
+
+                print(
+                    f"[Kimi] Hook adapter installed to {kimi_config_path()} (managed block)"
+                )
+                print(
+                    "[Kimi] Note: hooks are user-level (kimi has no project-local hook "
+                    "file) and take effect in new kimi sessions."
                 )
         elif host == "opencode":
             print("[OpenCode] Adapter not yet available — opencode orchestration not yet wired.")
@@ -282,6 +310,7 @@ def _run_yes(
     from little_loops.init.introspect import introspect
     from little_loops.init.validate import validate_deps
     from little_loops.init.writers import (
+        AGENTS_MD_HOSTS,
         deploy_design_tokens,
         deploy_goals,
         deploy_issue_templates,
@@ -291,6 +320,7 @@ def _run_yes(
         merge_settings,
         merge_with_existing,
         update_gitignore,
+        write_agents_md,
         write_claude_md,
         write_config,
     )
@@ -498,6 +528,11 @@ def _run_yes(
 
     write_claude_md(project_root, dry_run=dry_run)
 
+    # AGENTS.md is the cross-tool convention read by codex / kimi-code
+    # (AGENTS_MD_HOSTS); claude-specific content stays in CLAUDE.md.
+    if any(h in AGENTS_MD_HOSTS for h in hosts):
+        write_agents_md(project_root, dry_run=dry_run)
+
     if upgrade and not dry_run:
         # Host-parameterized surface refresh: force-regenerate adapters and run
         # the scope-aware claude-code plugin update (FEAT-2387).
@@ -605,6 +640,7 @@ def _run_apply(
     """Apply writes from a --plan JSON (file path or raw JSON string)."""
     from little_loops.init.validate import validate_deps
     from little_loops.init.writers import (
+        AGENTS_MD_HOSTS,
         deploy_design_tokens,
         deploy_goals,
         deploy_issue_templates,
@@ -614,6 +650,7 @@ def _run_apply(
         merge_settings,
         merge_with_existing,
         update_gitignore,
+        write_agents_md,
         write_claude_md,
         write_config,
     )
@@ -663,6 +700,11 @@ def _run_apply(
     merge_settings(project_root, extra_permissions=extra_permissions)
 
     write_claude_md(project_root)
+
+    # AGENTS.md is the cross-tool convention read by codex / kimi-code
+    # (AGENTS_MD_HOSTS); claude-specific content stays in CLAUDE.md.
+    if any(h in AGENTS_MD_HOSTS for h in hosts):
+        write_agents_md(project_root)
 
     _dispatch_host_adapters(hosts, project_root, plugin_root, force=force)
 
@@ -745,7 +787,7 @@ Exit codes:
             default=None,
             help=(
                 "Host harnesses to install adapters for "
-                "(claude-code, codex, pi). Defaults to auto-detected hosts."
+                "(claude-code, codex, kimi-code, pi). Defaults to auto-detected hosts."
             ),
         )
         parser.add_argument(

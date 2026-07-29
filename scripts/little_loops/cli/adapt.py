@@ -50,7 +50,7 @@ Examples:
             "--host",
             required=True,
             metavar="HOST",
-            help="Target host (e.g. codex, omp)",
+            help="Target host (e.g. codex, omp, kimi-code)",
         )
         parser.add_argument(
             "--apply",

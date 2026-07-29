@@ -1,0 +1,498 @@
+---
+name: manage-issue
+description: Use when asked to implement an issue end-to-end or start implementing FEAT-NNN.
+argument-hint: "[type] [action] [issue-id]"
+allowed-tools:
+  - Bash(git:*)
+  - Bash(ll-history-context:*)
+arguments:
+  - name: issue_type
+    description: "Type of issue (bug|feature|enhancement|epic). Note: epic issues are coordination containers — manage-issue surfaces them but redirects to child issues for implementation."
+    required: true
+  - name: action
+    description: Action to perform (fix|implement|improve|verify|plan)
+    required: true
+  - name: issue_id
+    description: Specific issue ID (e.g., BUG-004). If empty, finds highest priority.
+    required: false
+  - name: flags
+    description: "Optional flags: --plan-only (stop after planning), --resume (continue from checkpoint), --gates (enable phase gates for manual verification), --dry-run (alias for --plan-only), --quick (skip deep research and confidence check), --force-implement (bypass confidence gate)"
+    required: false
+metadata:
+trigger_fixtures:
+  should_fire:
+    - "implement this issue end-to-end starting with FEAT-NNN"
+    - "start implementing FEAT-NNN end-to-end"
+  should_not_fire:
+    - "fix this issue's template structure"
+    - "run a pre-implementation confidence check"
+---
+
+# Manage Issue
+
+You are tasked with autonomously managing issues across the project. This command handles the full lifecycle: planning, implementation, verification, and completion.
+
+## Configuration
+
+This command uses project configuration from `.ll/ll-config.json`:
+- **Issues base**: `{{config.issues.base_dir}}`
+- **Categories**: `{{config.issues.categories}}`
+- **Source dir**: `{{config.project.src_dir}}`
+- **Test command**: `{{config.project.test_cmd}}`
+- **Lint command**: `{{config.project.lint_cmd}}`
+- **Custom verification**: `{{config.commands.custom_verification}}`
+- **Status enum**: `open`, `in_progress`, `blocked`, `deferred`, `done`, `cancelled` — see `.claude/CLAUDE.md` § Issue File Format for full enum and forbidden synonyms.
+
+### Workflow Settings
+- **Phase gates**: Disabled by default (enable with `--gates` flag)
+- **Deep research**: Always enabled (Phase 1.5 spawns codebase-locator, codebase-analyzer, codebase-pattern-finder)
+
+### Directory Structure
+
+**IMPORTANT**: Issues stay in their type directory for their entire lifecycle — status (`done`, `deferred`, `cancelled`, …) lives ONLY in frontmatter. NEVER create or move files into `completed/` or `deferred/` directories; those are legacy locations (pre-ENH-1418) that must not be recreated.
+
+```
+{{config.issues.base_dir}}/
+├── bugs/           # All bugs, any status (status: frontmatter, not location)
+├── features/       # All features, any status
+├── enhancements/   # All enhancements, any status
+└── epics/          # All epics — coordination containers, NOT directly implementable
+```
+
+**EPIC handling**: An EPIC is a coordination container, not a directly implementable unit. When `issue_type=epic`, do NOT proceed to implementation — instead, list the EPIC's child issues (via `parent: EPIC-NNN` references in child issues or the EPIC's `children:` frontmatter), and redirect the user to run `/ll:manage-issue` on individual children, or to run `/ll:create-sprint` with the children for grouped execution. `ll-auto` and `ll-parallel` should be invoked with `--type BUG,FEAT,ENH` to skip EPICs in batch runs.
+
+---
+
+## Phase 1: Find Issue
+
+If issue_id is provided, locate that specific issue. Otherwise, find the highest priority issue of the specified type.
+
+```bash
+ISSUE_TYPE="${issue_type}"
+ISSUE_ID="${issue_id}"
+ISSUE_DIR="{{config.issues.base_dir}}"
+
+# Map issue_type to directory
+case "$ISSUE_TYPE" in
+    bug) SEARCH_DIR="$ISSUE_DIR/bugs" ;;
+    feature) SEARCH_DIR="$ISSUE_DIR/features" ;;
+    enhancement) SEARCH_DIR="$ISSUE_DIR/enhancements" ;;
+    epic) SEARCH_DIR="$ISSUE_DIR/epics" ;;
+esac
+
+# Find issue file
+# Use strict matching: ID must be bounded by delimiters (-, _, .) to avoid
+# matching BUG-1 against BUG-10 or ENH-1 against issue-enh-01-...
+if [ -n "$ISSUE_ID" ]; then
+    ISSUE_FILE=$(ll-issues path "${ISSUE_ID}" 2>/dev/null)
+else
+    # Find highest priority (P0 > P1 > P2 > ...)
+    for P in P0 P1 P2 P3 P4 P5; do
+        ISSUE_FILE=$(ls "$SEARCH_DIR"/$P-*.md 2>/dev/null | sort | head -1)
+        if [ -n "$ISSUE_FILE" ]; then
+            break
+        fi
+    done
+fi
+```
+
+---
+
+## Phase 1.5: Deep Research
+
+Before creating an implementation plan, spawn parallel sub-agents to gather comprehensive context about the issue.
+
+**Skip this phase if**: Action is `verify` (verification doesn't need deep research), or `--quick` flag is set (proceed directly to planning with issue file context only)
+
+### Research Tasks
+
+Spawn these agents in parallel using the Task tool:
+1. **codebase-locator** - Find all related files
+2. **codebase-analyzer** - Understand current implementation
+3. **codebase-pattern-finder** - Find similar patterns and reusable code
+
+Also fetch effort context: `EFFORT=$(ll-history-context --for-skill manage-issue --effort {{issue_id}} 2>/dev/null || true)`. If non-empty, include session count and cycle time in the plan preamble under "## Historical Effort".
+
+**CRITICAL**: Wait for ALL sub-agent tasks' results synchronously in this same turn before proceeding to planning.
+
+See [templates.md](templates.md) for detailed agent prompts and research findings template.
+
+---
+
+## Phase 2: Create Implementation Plan
+
+After reading the issue and completing research, create a comprehensive plan.
+
+**If `--plan-only` or `--dry-run` flag is set**: Stop after writing the plan (do not implement).
+
+### Recommended: Pre-Implementation Confidence Check
+
+Before creating the plan, consider running the `confidence-check` skill to validate implementation readiness. This is advisory (non-blocking) and uses the research findings from Phase 1.5:
+
+```
+Use Skill tool with:
+  skill: "ll:confidence-check"
+  args: "[ISSUE-ID]"
+```
+
+- **Score >=70**: Proceed to plan creation
+- **Score <70**: Review the gaps identified and consider addressing them before planning
+- **Skip if**: Action is `verify`, `--quick` flag is set, or time constraints require proceeding immediately
+
+### No Open Questions Rule
+
+**CRITICAL**: Before writing the plan, resolve ALL open questions:
+
+1. **Unclear Requirements** → Ask for clarification or research further
+2. **Technical Uncertainty** → Spawn additional research tasks
+3. **Design Decisions** → Present options to user, get explicit approval (**only with `--gates` flag**; without `--gates`, make the best autonomous decision and document the rationale in the plan)
+
+**The plan must be complete and actionable with no unresolved questions.**
+
+If questions arise that cannot be resolved, mark the issue as `NOT_READY` rather than proceeding with assumptions.
+
+### Plan Creation Steps
+
+1. **Read the issue file** completely
+2. **Incorporate research findings** from Phase 1.5
+3. **Resolve any remaining questions** before proceeding
+4. **Design the solution** with specific changes
+5. **Write plan** to `thoughts/shared/plans/YYYY-MM-DD-[ISSUE-ID]-management.md`
+
+### Enhanced Plan Template
+
+See [templates.md](templates.md) for the full Enhanced Plan Template structure.
+
+---
+
+## Phase 2.3: Decision Gate
+
+**Skip this phase if**: Action is `verify` or `plan`, or `--quick` flag is set.
+
+Check the issue's `decision_needed` frontmatter field before proceeding to implementation. If `true` and `--force-implement` is not set, HALT and direct the user to run `/ll:decide-issue [ISSUE_ID]`. If absent/false, proceed silently to Phase 2.5.
+
+See [templates.md](templates.md) for the full gate pseudocode and halt/warn message text.
+
+---
+
+## Phase 2.5: Confidence Gate Check
+
+**Skip this phase if**: Action is `verify` or `plan`, `--quick` flag is set, or `config.commands.confidence_gate.enabled` is `false` (default).
+
+When `config.commands.confidence_gate.enabled` is `true`, check the issue's `confidence_score` frontmatter before proceeding to implementation. If absent or below `readiness_threshold` and `--force-implement` is not set, HALT and direct the user to run `/ll:confidence-check [ID]`. Otherwise (score meets threshold, or `--force-implement` set), proceed to Phase 3.
+
+See [templates.md](templates.md) for the full gate pseudocode and halt/warn message text.
+
+---
+
+## Phase 3a: Write Tests — Red (TDD Mode)
+
+**Skip this phase if**: `config.commands.tdd_mode` is `false` (default), action is `verify` or `plan`, OR issue frontmatter `testable: false`.
+
+When `config.commands.tdd_mode` is `true` and action is not `verify` or `plan`, check the issue's `testable` frontmatter field before writing tests:
+
+```
+READ testable from issue YAML frontmatter
+
+IF testable is false:
+  LOG: "⏭ Phase 3a skipped: testable: false in issue frontmatter"
+  SKIP to Phase 3b (Implementation)
+
+ELSE (testable is absent or true):
+  PROCEED with Phase 3a (Write Tests — Red)
+```
+
+When proceeding, write tests BEFORE implementation:
+
+1. **Read the plan's "Phase 0: Write Tests (Red)" section** for test specifications
+2. **Write test files** based on the issue's acceptance criteria and the plan's test specifications
+3. **Run tests** against the current (unmodified) codebase:
+
+```bash
+{{config.project.test_cmd}} [newly_written_test_files] -v
+```
+
+4. **Validate Red phase** — check test output:
+
+```
+RUN {{config.project.test_cmd}} on new test files
+
+IF exit code is 0 (tests pass):
+  HALT: "✗ Red phase failed: tests pass against current code.
+         Tests should fail before implementation. Review test logic."
+  Fix tests to properly assert expected behavior, then re-run.
+
+IF exit code is non-zero:
+  SCAN test output:
+    IF output contains "FAILED" (pytest assertion failures):
+      LOG: "✓ Red phase passed: tests fail with assertion errors as expected."
+      PROCEED to Phase 3b (Implementation)
+
+    IF output contains "ERROR", "ImportError", "SyntaxError", or "ModuleNotFoundError":
+      HALT: "✗ Red phase invalid: tests have structural errors, not assertion failures.
+             Fix import paths, syntax, or test setup before proceeding."
+      Fix test code and re-run validation.
+```
+
+5. **Commit test files** (optional, if `--gates` flag is set and user approves)
+
+> **Phase Gate** (requires `--gates` flag): After Red validation passes, pause to show test files written and validation results before proceeding to implementation.
+
+---
+
+## Phase 3 (3b in TDD Mode): Implement
+
+> **TDD Mode note**: When `config.commands.tdd_mode` is `true`, this phase is Phase 3b. The goal is to make the Phase 3a tests pass (Green). After implementation, verify that all Phase 3a tests now pass before proceeding to Phase 4.
+
+### Resuming Work (--resume flag)
+
+If `--resume` flag is specified:
+
+1. **Read continuation prompt** from `$(pwd)/.ll/ll-continue-prompt.md` (project-level path, if exists)
+2. **Locate existing plan** matching the issue ID pattern
+3. **Scan for progress** - look for `[x]` checkmarks in success criteria
+4. **Present resume status** and verify previous work
+5. **Continue from first unchecked item**
+
+See [templates.md](templates.md) for the resume status display format.
+
+### Implementation Process
+
+1. **Create todo list** with TodoWrite
+2. **Follow the plan** phase by phase
+3. **Make atomic changes** - focused and minimal
+4. **Mark todos complete** as you finish
+5. **Update checkboxes in plan** as you complete each section
+
+### Documentation Implementation Guidance
+
+**IMPORTANT**: The `improve` action requires implementation, not just verification:
+
+- For **documentation issues**: Edit or create the documentation files described in the issue
+  - "Improve docs.md" means edit the file to add/update content, not review it for correctness
+  - Make actual changes to improve clarity, completeness, or accuracy
+  - Do not skip to verification without making file changes
+
+- For **code issues**: Follow the same implementation process as `fix` and `implement` actions
+
+- **All issue types**: The `improve` action is NOT a verification-only action (unlike `verify`)
+
+### Context Monitoring & Proactive Handoff
+
+**IMPORTANT**: Monitor context usage throughout implementation. When context is running low:
+
+See [templates.md](templates.md) for the Session Continuation (handoff) template.
+
+**Handoff Protocol**:
+
+1. **Detect low context** - If you notice context approaching limits (conversation getting long, many files read), find a natural stopping point at a phase boundary.
+
+2. **Generate handoff** - Before context exhaustion, write a continuation prompt to `$(pwd)/.ll/ll-continue-prompt.md` (absolute path derived from the current working directory — **never** to `~/.ll/ll-continue-prompt.md`) using the Session Continuation template.
+
+3. **Signal handoff** - Output a clear message:
+```
+CONTEXT_HANDOFF: Ready for fresh session
+Continuation prompt written to: <project-root>/.ll/ll-continue-prompt.md
+To continue: Start new session with content from that file
+```
+
+4. **Stop cleanly** - Do not attempt further work after signaling handoff.
+
+This ensures work can continue with fresh context quality rather than degraded post-compaction context.
+
+### Implementation Guidelines
+
+See [templates.md](templates.md) for the standing implementation guidelines.
+
+### Phase Gate Protocol (requires --gates)
+
+After completing each implementation phase:
+
+1. **Run automated verification** - Execute all automated success criteria from the plan
+2. **Present pause message** - List automated checks passed and manual steps to verify
+3. **Wait for human confirmation** - Do NOT proceed until confirmation received
+
+See [templates.md](templates.md) for the phase gate pause message format.
+
+### Default Behavior
+
+By default (no `--gates` flag):
+- Skip all phase gate pauses
+- Execute all phases sequentially
+- Report all results in final output
+- If critical errors occur, mark as INCOMPLETE
+- **Do NOT use `AskUserQuestion` or any interactive tools** — all decisions must be made autonomously
+
+> **Note**: The `improve` action requires full implementation (Plan → Implement → Verify → Complete). Do not interpret `improve` as a verification-only action or skip the Implementation phase. For all issue types including documentation, `improve` means make changes to files, not just review or verify them.
+
+### Mismatch Handling Protocol
+
+When reality diverges from the plan during implementation:
+
+1. **Detect mismatch** - File doesn't exist, code structure differs, dependencies changed
+2. **Present issue clearly** - Show expected vs. actual situation
+3. **With `--gates` flag**: Use AskUserQuestion with options (Adapt/Update plan/Stop)
+4. **Without `--gates` flag (default)**: Do NOT use `AskUserQuestion`. Adapt if minor, mark `INCOMPLETE` if significant
+5. **Record a Deviations note** - By default (no `--gates` flag) and with `--gates`, if the
+   issue has a `## Program Design` section and the implemented shape departs from it
+   (different signature, different call path, different type shape), use `Edit` to append a
+   dated entry under a `### Deviations` subsection immediately after `## Program Design`
+   (creating the subsection on first use) stating what the design said, what was
+   implemented, and why. Never modify the original `Types`/`Signatures`/`Call Path`
+   content — this is additive only. Skip silently if there is no `## Program Design`
+   section or implementation matched it exactly.
+
+See [templates.md](templates.md) for mismatch detection and reporting formats.
+
+---
+
+## Phase 4: Verify
+
+Run each verification command if configured (non-null). Skip silently if not configured, reporting SKIP status.
+
+```bash
+# Run tests if test_cmd is configured (non-null)
+{{config.project.test_cmd}} tests/ -v
+
+# Run linting if lint_cmd is configured (non-null)
+{{config.project.lint_cmd}} {{config.project.src_dir}}
+
+# Run type checking if type_cmd is configured (non-null)
+{{config.project.type_cmd}} {{config.project.src_dir}}
+
+# Run build if build_cmd is configured (non-null)
+{{config.project.build_cmd}}
+
+# Run smoke test if run_cmd is configured (non-null). For long-running processes (servers), start in background, wait briefly for startup, then terminate.
+{{config.project.run_cmd}}
+
+# Run custom verification (if configured)
+# {{config.commands.custom_verification}}
+```
+
+All configured checks must pass before proceeding. Unconfigured (null) checks are skipped.
+
+### Headless-Safe Final Test Run
+
+**CRITICAL for headless automation.** `ll-auto`, `ll-parallel`, and `ll-sprint` drive
+this skill through a single non-interactive `claude -p` turn — there is **no**
+interactive "scheduled wakeup" or "completion notification" mechanism in that turn.
+Run the final verification suite **foreground-blocking** (`run_in_background: false`)
+and wait for its result before proceeding. For large output, use the scratch-pad
+redirect that pipes to a file and tails the summary:
+
+```bash
+mkdir -p .loops/tmp/scratch && {{config.project.test_cmd}} > .loops/tmp/scratch/test-results.txt 2>&1; tail -20 .loops/tmp/scratch/test-results.txt
+```
+
+- **Never** background the result-blocking final test suite (no `run_in_background:
+  true`, no trailing `&`) when your next action depends on its result, and **never**
+  narrate waiting for a scheduled wakeup or completion notification and then end the
+  turn. That signal never fires under `claude -p`, so the turn ends before Phase 5
+  (set-status + commit) runs — leaving the work uncommitted and the issue still `open`.
+- This does **not** apply to the `run_cmd` smoke test above: its documented
+  start-in-background / wait-briefly / terminate pattern for long-running servers is
+  still correct. Only the result-blocking final test suite must be foreground.
+- Once the final suite passes, continue **in the same turn** to Phase 5 to finalize
+  (set `status: done`, then commit the scoped changes) — do not stop at the test run.
+
+---
+
+## Phase 4.5: Integration Review
+
+After verification passes, review new/modified code for integration quality before completing the issue.
+
+**Skip this phase if**: Action is `verify` (verification-only mode)
+
+See [templates.md](templates.md) for the Integration Report template and handling warnings guidance.
+
+---
+
+## Phase 5: Complete Issue Lifecycle
+
+### 1. Update Issue File
+
+See [templates.md](templates.md) for the Resolution section template.
+
+### 1.5. Append Session Log Entry
+
+Append a session log entry to the issue file before moving it. Find the current session JSONL path in `~/.claude/projects/` and add an entry.
+
+See [templates.md](templates.md) for the Session Log entry format.
+
+### 1.6. Inject `completed_at` Timestamp
+
+Before flipping the status, add a `completed_at` field to its YAML frontmatter with the current ISO 8601 UTC timestamp. Use shell `date -u +"%Y-%m-%dT%H:%M:%SZ"` format (Z-suffixed, matches the `captured_at` precedent and the Python helper `_completed_at_now()`). Use the Edit tool to insert the line into the issue's frontmatter block (after `captured_at` if present, otherwise alongside the other timestamp fields):
+
+See [templates.md](templates.md) for the frontmatter placement example.
+
+This parallels the Python-driven completion paths (`ll-auto`, `ll-parallel`) that
+inject `completed_at` via `update_frontmatter`; the interactive path must match so
+all completion paths produce consistent frontmatter.
+
+### 2. Update Issue Status
+
+Set `status: done` using `ll-issues set-status`:
+
+```bash
+ll-issues set-status ISSUE_ID done
+```
+
+For EPIC closure, use `--cascade` to propagate the status to active children:
+
+```bash
+ll-issues set-status EPIC_ID done --cascade
+```
+
+This atomically updates the `status:` field in frontmatter without touching any other fields. Do NOT use `git mv` or the `Edit` tool to flip the status field directly — `set-status` is the canonical path and handles field preservation correctly. Do NOT move the file to a `completed/` directory — status is tracked via frontmatter.
+
+### 3. Commit All Changes
+
+Commit source changes and updated issue file together in a single commit.
+
+**Changelog gate (ENH-2467):** a commit whose staged set is entirely under
+`.issues/` (status flips, session-log appends — no source/docs/tests/config) is
+internal housekeeping and must not surface in release notes. Demote its subject
+to `chore(issues):`, which `/ll:manage-release` excludes from changelogs; the
+commit stays in git history so the lifecycle remains auditable.
+
+```bash
+git add [modified files] "[issue_file_path]"
+# Changelog gate: detect .issues/-only commits (ENH-2467)
+CHANGED=$(git diff --cached --name-only)
+NON_ISSUES=$(printf '%s\n' "$CHANGED" | grep -v '^\.issues/' || true)
+```
+
+If `$NON_ISSUES` is empty, commit with the demoted subject
+`chore(issues): [action] [ISSUE-ID] [short-slug]` plus a body line noting the
+demotion ("Issue-tracker housekeeping only — excluded from changelog (ENH-2467)")
+and the usual `Closes [ISSUE-ID]` trailer. Otherwise (source-only or mixed) keep
+the standard conventional-commit subject:
+
+```bash
+git commit -m "[action]([component]): [description]
+
+[issue_type] [ISSUE-ID]: [title]
+
+- [change 1]
+- [change 2]
+
+Closes [ISSUE-ID]
+"
+```
+
+---
+
+## Final Report
+
+See [templates.md](templates.md) for the Final Report template.
+
+---
+
+## Arguments
+
+$ARGUMENTS
+
+The argument schema (issue_type, action, issue_id, flags) is defined in this
+file's YAML frontmatter. See [templates.md](templates.md) for the full
+per-argument reference and usage examples.

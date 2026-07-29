@@ -1,0 +1,374 @@
+---
+name: ll-help
+description: List all available little-loops commands with descriptions
+allowed-tools:
+  - Read
+  - Glob
+---
+
+# Little Loops Help
+
+Display all available `/ll:` commands organized by category.
+
+## Process
+
+Output the following command reference:
+
+```
+================================================================================
+LITTLE LOOPS - Command Reference
+================================================================================
+
+ISSUE DISCOVERY
+---------------
+/ll:capture-issue [input]
+    Capture issues from conversation or natural language description
+    Input: optional - analyzes conversation if omitted
+
+/ll:scan-codebase [flags]
+    Scan codebase to identify bugs, enhancements, and features
+    Flags: --quick, --deep, --focus [area]
+
+/ll:scan-product
+    Scan codebase for product-focused issues using goals file if present, or auto-discovering goals
+    Requires: product.enabled in ll-config.json
+    Skills: product-analyzer
+
+/ll:product-analyzer [focus-area]
+    Analyze product goals and return raw YAML findings (no issue files created)
+    focus-area: gaps|ux|opportunities|<goal-id>|<persona> (optional)
+    Note: Use /ll:scan-product for full workflow with issue file creation
+
+/ll:audit-architecture [focus] [flags]
+    Analyze codebase architecture for patterns and improvements
+    Focus: large-files, integration, patterns, organization, all
+    Flags: --deep
+
+    Skills: issue-workflow, issue-size-review, map-dependencies
+    CLI: ll-deps
+
+ISSUE REFINEMENT
+----------------
+/ll:normalize-issues
+    Find and fix issue filenames lacking valid IDs (BUG-001, etc.)
+
+/ll:prioritize-issues
+    Analyze issues and assign priority levels (P0-P5)
+
+/ll:align-issues <category> [flags]
+    Validate active issues against key documents for relevance and alignment
+    Categories: architecture, product, --all
+    Flags: --verbose, --dry-run, --issues ID[,ID,...]
+    Requires: documents.enabled in ll-config.json
+
+/ll:format-issue [issue_id]
+    Format issue files to align with template v2.0 structure
+
+/ll:refine-issue <issue_id> [flags]
+    Refine issue with codebase-driven research to fill knowledge gaps
+    Flags: --auto (non-interactive), --dry-run (preview), --gap-analysis (additive-only fill), --full-rewrite (legacy full-rewrite mode)
+
+/ll:wire-issue <issue_id> [flags]
+    Trace full codebase wiring for a refined issue — finds missing callers,
+    registrations, docs, and tests the implementation plan must touch
+    Flags: --auto (non-interactive), --dry-run (preview)
+
+/ll:link-epics [flags]
+    Assign parentless open issues to open epics (--mode assign, default), or
+    cluster them into proposed new EPICs (--mode synthesize), via Jaccard similarity
+    Flags: --mode assign|synthesize, --auto (apply proposals without prompting),
+    --min-score <threshold>, --min-cluster N (synthesize only, default: 2)
+
+/ll:verify-issues
+    Verify all issue files against current codebase state
+
+/ll:tradeoff-review-issues [issue-ids]
+    Evaluate issues for utility vs complexity trade-offs
+    Recommends implement, update, or close/defer for each issue
+    Args: issue-ids - comma-separated IDs to filter (e.g., "BUG-123,FEAT-456"); omit to scan all
+
+/ll:audit-issue-conflicts [EPIC-NNNN | ID,ID,...] [flags]
+    Scan open issues for conflicting requirements, objectives, or
+    architectural decisions — outputs a ranked conflict report. Pass an
+    EPIC-NNNN to scope the scan to that EPIC's transitive children, or a
+    comma-separated issue-ID list to scope to exactly those issues.
+    Flags: --auto (non-interactive), --dry-run (report only), --cross-theme
+
+/ll:ready-issue [issue_id]
+    Validate issue file for accuracy and auto-correct problems
+
+    Skills: issue-size-review, map-dependencies, confidence-check
+
+PLANNING & IMPLEMENTATION
+--------------------------
+/ll:create-sprint [name] [--issues]
+    Create sprint definition with curated list of issues
+
+/ll:review-sprint [sprint_name]
+    AI-guided sprint health check and optimization
+
+/ll:review-epic <epic_id> [flags]
+    Audit EPIC health: stalled children, scope drift, missing coverage, closure readiness
+    Flags: --skip-drift (skip LLM scope-drift and missing-coverage passes)
+
+/ll:scope-epic <theme> [flags]
+    Decompose a theme or goal into an EPIC with 3–8 pre-wired child issue stubs
+    Flags: --from-doc <path>, --priority <P0-P5>
+
+/ll:manage-issue <type> <action> [issue_id] [flags]
+    Autonomously manage issues - plan, implement, verify, complete
+    Types: bug, feature, enhancement
+    Actions: fix, implement, improve, verify
+    Flags: --plan-only, --dry-run, --resume, --gates, --quick
+
+/ll:iterate-plan [plan_path]
+    Iterate on existing implementation plans with updates
+
+    CLI: ll-auto, ll-parallel, ll-sprint
+
+SCANNING & ANALYSIS
+-------------------
+/ll:find-dead-code
+    Analyze codebase for deprecated, unused, or dead code
+
+/ll:explore-api "<target>" [--assume "<claim>"]...
+    Guide an Ingest → Hypothesize → Execute → Refine exploration of an external
+    API/library and persist a LearnTestRecord to .ll/learning-tests/<slug>.md
+    so future agents can skip rediscovery (via ll-learning-tests check)
+    CLI: ll-learning-tests
+
+CODE QUALITY
+------------
+/ll:check-code [mode]
+    Run code quality checks (lint, format, types)
+    Modes: lint, format, types, all, fix
+
+/ll:run-tests [scope] [pattern]
+    Run test suites with common patterns
+    Scopes: unit, integration, all, affected
+    Pattern: optional pytest -k filter
+
+/ll:audit-docs [scope]
+    Audit documentation for accuracy and completeness
+    Scope: full, readme, file:<path>
+
+/ll:update-docs [--since <date|git-ref>] [--fix]
+    Identify stale/missing docs from git commits and completed issues since a date
+    Default since: last commit touching a doc file (or .ll/ll-update-docs.watermark)
+
+GIT & RELEASE
+-------------
+/ll:commit
+    Create git commits with user approval (no Claude attribution)
+
+/ll:open-pr [target_branch] [--draft]
+    Open a pull request for the current branch
+    Flags: --draft (create as draft PR)
+
+/ll:describe-pr
+    Generate comprehensive PR descriptions from branch changes
+
+/ll:manage-release [action] [version]
+    Manage releases - create git tags, generate changelogs
+
+/ll:sync-issues [mode]
+    Sync local issues with GitHub Issues (push/pull/status)
+    Requires: sync.enabled in ll-config.json
+
+/ll:cleanup-worktrees [mode]
+    Clean orphaned git worktrees from interrupted runs
+
+    CLI: ll-sync
+
+AUTOMATION & LOOPS
+------------------
+/ll:create-loop
+    Interactive FSM loop creation wizard
+
+/ll:create-eval-from-issues <issue-id> [issue-id...]
+    Generate a ready-to-run FSM eval harness YAML from one or more issue IDs
+    Synthesizes execute prompt and llm_structured evaluation criteria from issue context
+    Output: .loops/eval-harness-<slug>.yaml (validated before writing)
+
+/ll:verify-issue-loop <issue-id> [--mode criteria|adversarial]
+    Generate an FSM verification loop YAML from a single issue's acceptance criteria
+    mode: criteria (default) - one verify-criterion-N state per criterion, llm_structured pass/fail
+    mode: adversarial - probes boundary values, malformed/hostile inputs, and failure modes;
+      FAIL if fewer than 3 probe classes attempted
+    Output: .loops/verify-<ISSUE-ID>-<slug>.yaml or .loops/adversarial-<ISSUE-ID>-<slug>.yaml (validated before writing)
+
+/ll:loop-suggester [file]
+    Suggest FSM loops from user message history
+
+/ll:simplify-loop [name] [flags]
+    Refactor a loop into fewer, reusable units without changing behavior:
+    collapse linear state chains into flow: shorthand and extract cohesive
+    regions into sub-loops
+    Flags: --dry-run, --auto, --flows-only, --subloops-only, --yes
+
+/ll:audit-loop-run <loop-name|run-id> [flags]
+    Audit loop effectiveness: detect phantom success, verify artifact mutations,
+    score against rubric, and propose improvements
+    Flags: --no-rubric-audit, --resolved
+    Verdicts: met, partial, phantom, honest-failure, degraded
+
+    Skills: workflow-automation-proposer
+    CLI: ll-loop
+
+META-ANALYSIS
+-------------
+/ll:audit-claude-config [scope] [flags]
+    Comprehensive audit of Claude Code plugin configuration
+    Scope: all, global, project, hooks, mcp, agents, commands, skills
+    Flags: --non-interactive, --fix
+
+/ll:analyze-workflows [file]
+    Analyze user message patterns for automation opportunities
+
+    Skills: analyze-history
+    CLI: ll-messages, ll-history, ll-workflows, ll-issues
+
+/ll:improve-claude-md [flags]
+    Rewrite CLAUDE.md using <important if="condition"> blocks for scoped instruction attention
+    Flags: --dry-run (preview without writing), --file <path> (default: .claude/CLAUDE.md)
+
+SESSION & CONFIG
+----------------
+/ll:init [flags]
+    Initialize little-loops: plan -> inspect (settle ambiguous values from repo) -> apply -> smoke-check
+    Flags: --force, --dry-run, --hosts, --codex, --upgrade
+
+/ll:configure [area]
+    Interactive configuration editor
+
+/ll:help
+    List all available little-loops commands with descriptions
+
+/ll:handoff [context]
+    Generate continuation prompt for session handoff
+
+/ll:resume [prompt_file]
+    Resume from a previous session's continuation prompt
+
+/ll:toggle-autoprompt [setting]
+    Toggle automatic prompt optimization settings
+    Settings: enabled, mode, confirm, status
+
+/ll:update [flags]
+    Update little-loops plugin and pip package to the latest version
+    Flags: --plugin, --package, --all, --dry-run
+
+/ll:publish <version|patch|minor|major> [--dry-run]
+    Bump version in all source files (maintainers only — project-local .claude/commands/, not shipped)
+
+CLI TOOLS (pip install little-loops)
+------------------------------------
+ll-action         Invoke ll skills as one-shot commands with JSON-structured output
+ll-harness        One-shot runner evaluation — skill, cmd, mcp, prompt, or dsl with exit-code and semantic criteria
+ll-auto           Process all backlog issues sequentially in priority order
+ll-parallel       Process issues concurrently using isolated git worktrees
+ll-sprint         Define and execute curated issue sets with dependency-aware ordering
+ll-loop           Execute FSM-based automation loops
+ll-workflows      Identify multi-step workflow patterns from user message history
+ll-messages       Extract user messages from Claude Code logs
+ll-history        View issue statistics, analysis, and generate docs from history
+ll-deps           Cross-issue dependency analysis and validation
+ll-sync           Sync local issues with GitHub Issues
+ll-issues         Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, set-status, clusters, anchor-sweep, fingerprint, epic-progress, decisions (list, add, outcome, generate, sync, suggest-rules, promote, extract-from-completed))
+ll-verify-docs    Verify documented counts match actual file counts
+ll-verify-skill-budget Check skill description token footprint against listing budget
+ll-verify-skills  Check that no SKILL.md exceeds 500 lines
+ll-verify-triggers Validate skill description trigger accuracy against fixtures
+ll-verify-design-tokens Lint design-token profiles for half-flipped (incomplete dark) themes
+ll-verify-des-audit  Walk the source tree and verify every event-emit site maps to a registered DES variant (F5 adoption gate)
+ll-check-links    Check markdown documentation for broken links
+ll-gitignore      Suggest and apply .gitignore patterns based on untracked files
+ll-migrate        Migrate completed/deferred issues to type-based directories (one-time, ENH-1390)
+ll-migrate-relationships Rename deprecated relationship frontmatter keys in all issue files (one-time, ENH-1434)
+ll-migrate-status Normalize non-canonical status: values to canonical ones (one-time, ENH-1551)
+ll-create-extension Scaffold a new little-loops extension project
+ll-generate-schemas Regenerate JSON Schema files for all LLEvent types (maintainer tool)
+ll-generate-skill-descriptions Auto-generate ≤100-char skill descriptions via Claude CLI (release utility)
+ll-adapt         Generate host-specific artefacts for a given host (--host codex --apply regenerates skills, commands, agent TOMLs)
+ll-doctor         Check host CLI capability support and little-loops install surface
+ll-learning-tests Query and manage the learning test registry (check/list/mark-stale/orphans/prove)
+ll-logs           Discover, extract, and analyze ll-relevant log entries from Claude project logs (sequences for tool-chain n-grams; stats for skill frequency/correction telemetry; dead-skills for never/rarely-invoked skill detection; scan-failures for mining failed ll-* calls into bug candidates)
+ll-session        Query the unified SQLite session store (search/recent/backfill/path/grep/expand/describe)
+ll-ctx-stats      Show context-window analytics for the current project (per-tool byte vs. context savings; skill-health signals; waste view over token spend on no-artifact runs)
+ll-history-context Render a ## Historical Context block for an issue from .ll/history.db
+ll-config         Resolve and print a single dot-path config value (ll-config get <key>)
+ll-queue          Persisted work-item queue: add/list/status/remove/run commands (FEAT-2682, FEAT-2683)
+
+================================================================================
+Usage: /ll:<command> [arguments] [flags]
+
+FLAG CONVENTIONS
+----------------
+Flags are optional modifiers passed after arguments. Common flags:
+
+  --quick       Reduce analysis depth for faster results
+  --deep        Increase thoroughness, accept longer execution
+  --focus X     Narrow scope to area X (e.g., security, performance)
+  --dry-run     Show what would happen without making changes
+  --auto        Non-interactive mode (no prompts)
+  --verbose     Include detailed output
+  --all         Process all items instead of single item
+
+Not all commands support all flags. Check each command's documentation.
+
+Configuration: .ll/ll-config.json
+Documentation: https://github.com/BrennonTWilliams/little-loops
+================================================================================
+```
+
+---
+
+## Quick Reference Table
+
+**Issue Discovery**: `capture-issue`, `scan-codebase`, `scan-product`, `audit-architecture`, `scope-epic`
+**Issue Refinement**: `normalize-issues`, `prioritize-issues`, `align-issues`, `format-issue`, `refine-issue`, `wire-issue`, `verify-issues`, `tradeoff-review-issues`, `ready-issue`, `audit-issue-conflicts`
+**Planning & Implementation**: `create-sprint`, `review-sprint`, `review-epic`, `manage-issue`, `iterate-plan`, `spike`
+**Scanning & Analysis**: `find-dead-code`, `explore-api`
+**Code Quality**: `check-code`, `run-tests`, `audit-docs`, `update-docs`
+**Git & Release**: `commit`, `open-pr`, `describe-pr`, `manage-release`, `sync-issues`, `cleanup-worktrees`
+**Automation & Loops**: `create-loop`, `create-eval-from-issues`, `loop-suggester`, `simplify-loop`, `audit-loop-run`, `verify-issue-loop`
+**Meta-Analysis**: `audit-claude-config`, `analyze-workflows`, `improve-claude-md`
+**Session & Config**: `init`, `configure`, `help`, `handoff`, `resume`, `toggle-autoprompt`, `update`, `publish` *(maintainers only — project-local)*
+
+---
+
+## Examples
+
+```bash
+# Get started with a new project
+ll-init
+
+# Run all code quality checks
+/ll:check-code
+
+# Find and fix issues automatically
+/ll:scan-codebase
+/ll:normalize-issues
+/ll:prioritize-issues
+/ll:manage-issue bug fix
+
+# Prepare for a pull request
+/ll:run-tests all
+/ll:check-code
+/ll:commit
+/ll:open-pr
+```
+
+---
+
+## Integration
+
+This command is typically used when:
+- Starting a new session to remember available commands
+- Looking up command syntax and arguments
+- Discovering workflow patterns
+
+Related documentation:
+- Plugin configuration: `.ll/ll-config.json`
+- Issue tracking: `.issues/` directory
+- Project documentation: `CONTRIBUTING.md`

@@ -34,6 +34,7 @@ from little_loops.init.writers import (
     deploy_design_tokens,
     deploy_goals,
     install_codex_adapter,
+    install_kimi_adapter,
     load_existing_config,
     make_issue_dirs,
     make_learning_tests_dir,
@@ -42,6 +43,7 @@ from little_loops.init.writers import (
     read_adapter_gen_version,
     strip_none_leaves,
     update_gitignore,
+    write_agents_md,
     write_claude_md,
     write_config,
 )
@@ -1216,6 +1218,159 @@ class TestInstallCodexAdapter:
 
 
 # ===========================================================================
+# TestInstallKimiAdapter
+# ===========================================================================
+
+
+class TestInstallKimiAdapter:
+    """FEAT-2915: managed-block install into the user-level kimi config.toml."""
+
+    @pytest.fixture
+    def kimi_home(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        """Point KIMI_CODE_HOME at a scratch dir so tests never touch the real one."""
+        home = tmp_path / "kimi-home"
+        monkeypatch.setenv("KIMI_CODE_HOME", str(home))
+        return home
+
+    def test_installs_managed_block_creates_file(
+        self, tmp_path: Path, kimi_home: Path
+    ) -> None:
+        import little_loops.init.writers as writers_mod
+
+        installed = install_kimi_adapter(tmp_path, tmp_path)
+        assert installed is True
+        dest = kimi_home / "config.toml"
+        assert dest.exists()
+        content = dest.read_text()
+        assert content.startswith("# >>> little-loops kimi hooks (managed, do not edit)")
+        assert "# <<< little-loops kimi hooks" in content
+        # Substitution value is the in-package little_loops root (not plugin_root)
+        assert str(Path(writers_mod.__file__).parent.parent) in content
+        assert "{{LL_PLUGIN_ROOT}}" not in content
+        assert "{{LL_GEN_VERSION}}" not in content
+
+    def test_creates_parent_dir_when_missing(self, tmp_path: Path, kimi_home: Path) -> None:
+        assert not kimi_home.exists()
+        installed = install_kimi_adapter(tmp_path, tmp_path)
+        assert installed is True
+        assert (kimi_home / "config.toml").exists()
+
+    def test_writes_gen_version_marker(self, tmp_path: Path, kimi_home: Path) -> None:
+        with patch(
+            "little_loops.init.install_check.installed_package_version",
+            return_value="9.9.9",
+        ):
+            install_kimi_adapter(tmp_path, tmp_path)
+        content = (kimi_home / "config.toml").read_text()
+        assert "# ll-gen-version: 9.9.9" in content
+
+    def test_idempotent_at_same_gen_version(self, tmp_path: Path, kimi_home: Path) -> None:
+        with patch(
+            "little_loops.init.install_check.installed_package_version",
+            return_value="9.9.9",
+        ):
+            first = install_kimi_adapter(tmp_path, tmp_path)
+            second = install_kimi_adapter(tmp_path, tmp_path)
+        assert first is True
+        assert second is False
+
+    def test_replaces_block_on_version_change(self, tmp_path: Path, kimi_home: Path) -> None:
+        """A block stamped with an older version is replaced in place (update path)."""
+        with patch(
+            "little_loops.init.install_check.installed_package_version",
+            return_value="9.9.9",
+        ):
+            install_kimi_adapter(tmp_path, tmp_path)
+        with patch(
+            "little_loops.init.install_check.installed_package_version",
+            return_value="10.0.0",
+        ):
+            replaced = install_kimi_adapter(tmp_path, tmp_path)
+        assert replaced is True
+        content = (kimi_home / "config.toml").read_text()
+        assert "# ll-gen-version: 10.0.0" in content
+        assert "9.9.9" not in content
+        # Exactly one managed block — replacement, not append.
+        assert content.count("# >>> little-loops kimi hooks") == 1
+        assert content.count("# <<< little-loops kimi hooks") == 1
+
+    def test_force_replaces_same_version(self, tmp_path: Path, kimi_home: Path) -> None:
+        with patch(
+            "little_loops.init.install_check.installed_package_version",
+            return_value="9.9.9",
+        ):
+            install_kimi_adapter(tmp_path, tmp_path)
+            forced = install_kimi_adapter(tmp_path, tmp_path, force=True)
+        assert forced is True
+
+    def test_preserves_user_content_outside_markers(
+        self, tmp_path: Path, kimi_home: Path
+    ) -> None:
+        kimi_home.mkdir(parents=True)
+        dest = kimi_home / "config.toml"
+        dest.write_text('[workspace]\nname = "mine"\n\n[models]\n', encoding="utf-8")
+        install_kimi_adapter(tmp_path, tmp_path)
+        content = dest.read_text()
+        assert content.startswith('[workspace]\nname = "mine"\n\n[models]\n')
+        assert "# >>> little-loops kimi hooks" in content
+
+        # And user content above the block survives a version-change replace.
+        with patch(
+            "little_loops.init.install_check.installed_package_version",
+            return_value="10.0.0",
+        ):
+            install_kimi_adapter(tmp_path, tmp_path)
+        content = dest.read_text()
+        assert content.startswith('[workspace]\nname = "mine"\n\n[models]\n')
+        assert "# ll-gen-version: 10.0.0" in content
+
+    def test_dry_run_writes_nothing(
+        self, tmp_path: Path, kimi_home: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        installed = install_kimi_adapter(tmp_path, tmp_path, dry_run=True)
+        assert installed is True
+        assert not (kimi_home / "config.toml").exists()
+        assert "[write]" in capsys.readouterr().out
+
+    def test_dry_run_reports_noop_at_same_version(
+        self, tmp_path: Path, kimi_home: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        with patch(
+            "little_loops.init.install_check.installed_package_version",
+            return_value="9.9.9",
+        ):
+            install_kimi_adapter(tmp_path, tmp_path)
+            capsys.readouterr()
+            installed = install_kimi_adapter(tmp_path, tmp_path, dry_run=True)
+        assert installed is False
+        assert capsys.readouterr().out == ""
+
+    def test_skips_when_template_missing(
+        self, tmp_path: Path, kimi_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.init import writers as writers_mod
+
+        monkeypatch.setattr(
+            writers_mod,
+            "_kimi_template_path",
+            lambda: tmp_path / "nonexistent" / "hooks.toml",
+        )
+        installed = install_kimi_adapter(tmp_path, tmp_path)
+        assert installed is None
+
+    def test_honors_kimi_code_home_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Without KIMI_CODE_HOME the default is ~/.kimi-code/config.toml."""
+        from little_loops.init.writers import kimi_config_path
+
+        monkeypatch.delenv("KIMI_CODE_HOME", raising=False)
+        assert kimi_config_path() == Path.home() / ".kimi-code" / "config.toml"
+        monkeypatch.setenv("KIMI_CODE_HOME", str(tmp_path / "custom"))
+        assert kimi_config_path() == tmp_path / "custom" / "config.toml"
+
+
+# ===========================================================================
 # TestWriteClaudeMd
 # ===========================================================================
 
@@ -1311,6 +1466,88 @@ class TestWriteClaudeMd:
         content = (tmp_path / ".claude" / "CLAUDE.md").read_text(encoding="utf-8")
         for tool in ("ll-auto", "ll-loop", "ll-issues", "ll-logs"):
             assert f"`{tool}`" in content
+
+
+# ===========================================================================
+# TestWriteAgentsMd
+# ===========================================================================
+
+
+class TestWriteAgentsMd:
+    """FEAT-2915: host-shared AGENTS.md writer (codex / kimi-code consume AGENTS.md)."""
+
+    def test_creates_root_agents_md_when_absent(self, tmp_path: Path) -> None:
+        result = write_agents_md(tmp_path)
+        dest = tmp_path / "AGENTS.md"
+        assert result is True
+        assert dest.exists()
+        content = dest.read_text(encoding="utf-8")
+        assert "## little-loops CLI Commands" in content
+        assert "# Project Configuration" in content
+
+    def test_prefers_dot_kimi_agents_md(self, tmp_path: Path) -> None:
+        dot_kimi = tmp_path / ".kimi-code" / "AGENTS.md"
+        dot_kimi.parent.mkdir(parents=True)
+        dot_kimi.write_text("# Kimi Config\n", encoding="utf-8")
+        result = write_agents_md(tmp_path)
+        assert result is True
+        assert "## little-loops CLI Commands" in dot_kimi.read_text(encoding="utf-8")
+        assert not (tmp_path / "AGENTS.md").exists()
+
+    def test_appends_to_existing_root_agents_md(self, tmp_path: Path) -> None:
+        root_md = tmp_path / "AGENTS.md"
+        root_md.write_text("# My Project\n\nSome existing content.\n", encoding="utf-8")
+        result = write_agents_md(tmp_path)
+        assert result is True
+        content = root_md.read_text(encoding="utf-8")
+        assert "# My Project" in content
+        assert "Some existing content." in content
+        assert "## little-loops CLI Commands" in content
+
+    def test_noop_when_section_present(self, tmp_path: Path) -> None:
+        dest = tmp_path / "AGENTS.md"
+        dest.write_text("# Config\n\n## little-loops CLI Commands\n\nAlready here.\n")
+        original_mtime = dest.stat().st_mtime
+        result = write_agents_md(tmp_path)
+        assert result is False
+        assert dest.stat().st_mtime == original_mtime
+
+    def test_idempotent_second_run(self, tmp_path: Path) -> None:
+        assert write_agents_md(tmp_path) is True
+        assert write_agents_md(tmp_path) is False
+
+    def test_dry_run_create(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+        result = write_agents_md(tmp_path, dry_run=True)
+        assert result is True
+        assert not (tmp_path / "AGENTS.md").exists()
+        out = capsys.readouterr().out
+        assert "[write]" in out
+        assert "AGENTS.md" in out
+
+    def test_dry_run_append(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+        dest = tmp_path / "AGENTS.md"
+        dest.write_text("# Existing\n", encoding="utf-8")
+        original = dest.read_text(encoding="utf-8")
+        result = write_agents_md(tmp_path, dry_run=True)
+        assert result is True
+        assert dest.read_text(encoding="utf-8") == original  # unchanged
+        out = capsys.readouterr().out
+        assert "[update]" in out
+        assert "AGENTS.md" in out
+
+    def test_content_is_host_generic(self, tmp_path: Path) -> None:
+        """AGENTS.md must not carry the Claude-specific description lines."""
+        write_agents_md(tmp_path)
+        content = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+        assert "Claude" not in content
+        for tool in ("ll-auto", "ll-loop", "ll-issues", "ll-logs", "ll-messages"):
+            assert f"`{tool}`" in content
+
+    def test_claude_md_keeps_claude_specific_lines(self, tmp_path: Path) -> None:
+        """Regression guard: write_claude_md output still names Claude Code."""
+        write_claude_md(tmp_path)
+        content = (tmp_path / ".claude" / "CLAUDE.md").read_text(encoding="utf-8")
+        assert "Claude Code logs" in content
 
 
 # ===========================================================================
@@ -2357,6 +2594,35 @@ class TestDetectHosts:
             hosts = _detect_hosts(tmp_path)
         assert "opencode" in hosts
 
+    def test_kimi_binary_detected(self, tmp_path: Path) -> None:
+        from little_loops.init.cli import _detect_hosts
+
+        with patch(
+            "little_loops.init.cli.shutil.which",
+            side_effect=lambda b: b if b == "kimi" else None,
+        ):
+            hosts = _detect_hosts(tmp_path)
+        assert "kimi-code" in hosts
+
+    def test_kimi_dir_detected(self, tmp_path: Path) -> None:
+        from little_loops.init.cli import _detect_hosts
+
+        (tmp_path / ".kimi-code").mkdir()
+        with patch("little_loops.init.cli.shutil.which", return_value=None):
+            hosts = _detect_hosts(tmp_path)
+        assert "kimi-code" in hosts
+
+    def test_kimi_detected_last(self, tmp_path: Path) -> None:
+        """kimi-code is appended LAST for auto-detection stability."""
+        from little_loops.init.cli import _detect_hosts
+
+        with patch(
+            "little_loops.init.cli.shutil.which",
+            side_effect=lambda b: b if b in ("claude", "codex", "kimi") else None,
+        ):
+            hosts = _detect_hosts(tmp_path)
+        assert hosts[-1] == "kimi-code"
+
     def test_nothing_detected_defaults_to_claude_code(self, tmp_path: Path) -> None:
         from little_loops.init.cli import _detect_hosts
 
@@ -2398,6 +2664,54 @@ class TestHostDispatch:
             code = main_init(["--yes", "--hosts", "claude-code", "--root", str(tmp_project)])
         assert code == 0
         assert not (tmp_project / ".codex" / "hooks.json").exists()
+
+    def test_hosts_kimi_code_installs_adapter(
+        self, tmp_project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.init.cli import main_init
+
+        kimi_home = tmp_project / "kimi-home"
+        monkeypatch.setenv("KIMI_CODE_HOME", str(kimi_home))
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--yes", "--hosts", "kimi-code", "--root", str(tmp_project)])
+        assert code == 0
+        config_toml = kimi_home / "config.toml"
+        assert config_toml.exists()
+        content = config_toml.read_text()
+        assert "# >>> little-loops kimi hooks (managed, do not edit)" in content
+        assert "# <<< little-loops kimi hooks" in content
+        assert "hooks/adapters/kimi/session-start.sh" in content
+        # Selecting kimi-code also produces AGENTS.md (FEAT-2915).
+        assert (tmp_project / "AGENTS.md").exists()
+
+    def test_hosts_kimi_code_post_install_note(
+        self, tmp_project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    ) -> None:
+        from little_loops.init.cli import main_init
+
+        monkeypatch.setenv("KIMI_CODE_HOME", str(tmp_project / "kimi-home"))
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--yes", "--hosts", "kimi-code", "--root", str(tmp_project)])
+        assert code == 0
+        out = capsys.readouterr().out
+        assert "[Kimi] Hook adapter installed" in out
+        assert "user-level" in out
+
+    def test_hosts_codex_produces_agents_md(self, tmp_project: Path) -> None:
+        from little_loops.init.cli import main_init
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--yes", "--hosts", "codex", "--root", str(tmp_project)])
+        assert code == 0
+        assert (tmp_project / "AGENTS.md").exists()
+
+    def test_hosts_claude_code_no_agents_md(self, tmp_project: Path) -> None:
+        from little_loops.init.cli import main_init
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--yes", "--hosts", "claude-code", "--root", str(tmp_project)])
+        assert code == 0
+        assert not (tmp_project / "AGENTS.md").exists()
 
     def test_hosts_pi_graceful_unavailable(
         self, tmp_project: Path, capsys: pytest.CaptureFixture[str]

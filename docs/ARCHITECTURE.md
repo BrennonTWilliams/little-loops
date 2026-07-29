@@ -23,7 +23,7 @@ flowchart TB
     subgraph "Claude Code Plugin"
         CMD[Commands<br/>29 slash commands]
         AGT[Agents<br/>9 specialized agents]
-        SKL[Skills<br/>41 composable skills]
+        SKL[Skills<br/>40 composable skills]
     end
 
     subgraph "Configuration"
@@ -109,7 +109,7 @@ little-loops/
 │       ├── user-prompt-check.sh
 │       └── lib/
 │           └── common.sh    # Shared shell functions
-├── skills/                  # 41 skill definitions
+├── skills/                  # 40 skill definitions
 │   ├── analyze-history/     # Proactive
 │   │   └── SKILL.md
 │   ├── debug-loop-run/      # User-invoked
@@ -253,7 +253,7 @@ little-loops/
         ├── text_utils.py        # Text processing utilities
         ├── pii.py               # PII detection and redaction utilities
         ├── subprocess_utils.py  # Subprocess handling
-        ├── host_runner.py       # Host CLI abstraction (HostRunner Protocol + ClaudeCodeRunner + CodexRunner + GeminiRunner + OmpRunner + OpenCodeRunner + PiRunner)
+        ├── host_runner.py       # Host CLI abstraction (HostRunner Protocol + ClaudeCodeRunner + CodexRunner + GeminiRunner + OmpRunner + KimiRunner + OpenCodeRunner + PiRunner)
         ├── sprint.py            # Sprint definition and management
         ├── sync.py              # GitHub Issues sync
         ├── goals_parser.py      # Goals file parsing
@@ -341,12 +341,15 @@ little-loops/
             ├── prompts/
             │   └── optimize-prompt-hook.md  # Package data: prompt optimization template
             └── adapters/
-                └── codex/
-                    ├── hooks.json        # Package data: Codex adapter hooks template
-                    ├── session-start.sh  # SessionStart → session_start (sets LL_HOOK_HOST=codex)
-                    ├── pre-compact.sh    # PreCompact → pre_compact (sets LL_HOOK_HOST=codex)
-                    ├── prompt-submit.sh  # UserPromptSubmit → user_prompt_submit (sets LL_HOOK_HOST=codex)
-                    └── post-tool-use.sh  # PostToolUse → post_tool_use (sets LL_HOOK_HOST=codex)
+                ├── codex/
+                │   ├── hooks.json        # Package data: Codex adapter hooks template
+                │   ├── session-start.sh  # SessionStart → session_start (sets LL_HOOK_HOST=codex)
+                │   ├── pre-compact.sh    # PreCompact → pre_compact (sets LL_HOOK_HOST=codex)
+                │   ├── prompt-submit.sh  # UserPromptSubmit → user_prompt_submit (sets LL_HOOK_HOST=codex)
+                │   └── post-tool-use.sh  # PostToolUse → post_tool_use (sets LL_HOOK_HOST=codex)
+                └── kimi/
+                    ├── hooks.toml        # Package data: Kimi adapter hooks template (managed [[hooks]] block)
+                    └── *.sh              # 8 shims: SessionStart/PreCompact/UserPromptSubmit/PreToolUse/PostToolUse/SessionEnd/SubagentStart/SubagentStop (set LL_HOOK_HOST=kimi-code)
 ```
 
 ---
@@ -855,7 +858,7 @@ Sitting alongside the hook-intent layer is the `host_runner` abstraction
 (`scripts/little_loops/host_runner.py`). Where hook intents normalize
 *incoming* host events into the `LLHookEvent` envelope, the host runner
 normalizes *outgoing* CLI invocations: every shell-out to a host CLI
-(`claude`, `codex`, `opencode`, `pi`, `gemini`, `omp`) is built through a `HostRunner`
+(`claude`, `codex`, `opencode`, `pi`, `gemini`, `omp`, `kimi`) is built through a `HostRunner`
 implementation rather than hard-coded argv. This makes the orchestration
 layer host-agnostic and keeps host-specific argv shape out of call sites
 like `ll-auto`, `ll-parallel`, `ll-action`, `ll-loop`, FSM evaluators, and
@@ -870,6 +873,7 @@ FSM handoff.
 | `CodexRunner` | Production runner for the `codex` CLI; auto-detected when `codex` is on PATH |
 | `GeminiRunner` | Production runner for the `gemini` CLI (Gemini CLI); auto-detected when `gemini` is on PATH (ENH-2185) |
 | `OmpRunner` | Production runner for the oh-my-pi `omp` CLI; auto-detected when `omp` is on PATH (FEAT-1850) |
+| `KimiRunner` | Production runner for the Kimi Code `kimi` CLI; auto-detected when `kimi` is on PATH (FEAT-2911 flag translation, FEAT-2914 wiring; `thoughts/research/kimi-cli-surface.md`) |
 | `OpenCodeRunner` | Stub for the `opencode` CLI (FEAT-1472 stub state) |
 | `PiRunner` | Frozen stub for the vanilla pi-mono `pi` CLI (cancelled — ARCHITECTURE-050; superseded by `OmpRunner`) |
 | `resolve_host()` | Discovery entry point — honors `LL_HOST_CLI` / `orchestration.host_cli` overrides, then probes `PATH` for known host binaries |
@@ -1299,9 +1303,10 @@ The merge coordinator is a sophisticated git operations state machine that handl
 
 `adapters/capabilities.py` (ENH-2873/ENH-2874) is a declarative per-host
 capability map for `ll-adapt`'s build-time artifact generation: one
-`HostCapabilityEntry` per adapter host (`codex`, `gemini`, `omp`) in
-`adapters/core.py`'s `_EMITTER_MAP`, replacing knowledge that was previously
-scattered as conditional code across `codex.py`/`gemini.py`/`omp.py`. Each
+`HostCapabilityEntry` per adapter host (`codex`, `gemini`, `omp`,
+`kimi-code`) in `adapters/core.py`'s `_EMITTER_MAP`, replacing knowledge
+that was previously scattered as conditional code across
+`codex.py`/`gemini.py`/`omp.py`/`kimi.py`. Each
 entry's `SubagentSupport` field (`"native"` vs `"none"`, ENH-2874) drives
 whether `core.py` emits a real subagent file for a role or falls back to a
 degraded inline-role file (`0af1e555`) when the target host can't spawn
@@ -1311,7 +1316,7 @@ This is distinct from `host_runner.HostCapabilities` (Option B, decided
 2026-07-28): that is a **runtime** invocation surface — "what can this host's
 CLI do when it's running" (`claude-code`/`opencode`/`pi`) — while
 `capabilities.py` is a **build-time** surface with a different host set
-(`codex`/`gemini`/`omp`) and no inheritance relationship between the two.
+(`codex`/`gemini`/`omp`/`kimi-code`) and no inheritance relationship between the two.
 See `docs/reference/HOST_COMPATIBILITY.md` for the parity matrix both sides
 are checked against.
 

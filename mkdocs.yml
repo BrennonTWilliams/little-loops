@@ -94,6 +94,10 @@ nav:
     - Overview: codex/README.md
     - Getting Started: codex/getting-started.md
     - Usage: codex/usage.md
+  - Kimi Code:
+    - Getting Started: kimi/getting-started.md
+    - Hook Events: kimi/hook-events.md
+    - Automation: kimi/automation.md
   - Development:
     - Testing: development/TESTING.md
     - E2E Testing: development/E2E_TESTING.md

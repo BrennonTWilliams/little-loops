@@ -76,6 +76,8 @@ ll-init
 
 **Using Codex CLI?** Run `ll-init --hosts codex` and `ll-adapt --host codex --apply` — see [docs/codex/getting-started.md](docs/codex/getting-started.md). OpenCode and Pi adapters aren't wired yet — `ll-init --hosts opencode`/`--hosts pi` currently install nothing.
 
+**Using Kimi Code CLI?** Run `ll-init --hosts kimi-code` and `ll-adapt --host kimi-code --apply`, then install the plugin for the `/ll:*` slash-command surface and lifecycle hooks (`/plugins install https://github.com/BrennonTWilliams/little-loops` in the kimi TUI — installs are per-user, not per-project). Set `LL_HOST_CLI=kimi-code` to drive `ll-auto`/`ll-loop` with kimi. See [docs/kimi/getting-started.md](docs/kimi/getting-started.md).
+
 <details>
 <summary>Alternative install methods</summary>
 
@@ -174,9 +176,9 @@ ll-loop run harness-optimize -b        # Score-gated hill climbing in the backgr
 
 - **29 slash commands** — issue discovery, refinement, planning, code quality, git, automation
 - **9 specialized agents** — codebase analysis, quality assurance, automation, and research
-- **41 skills** — deterministic harnesses for common workflows (confidence checks, issue wiring, loop creation)
+- **40 skills** — deterministic harnesses for common workflows (confidence checks, issue wiring, loop creation)
 - **46 typed CLI tools** — `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, and more
-- **101 FSM loops** — recurring automation workflows (backlog triage, sprint building, eval harnesses)
+- **102 FSM loops** — recurring automation workflows (backlog triage, sprint building, eval harnesses)
 - **Configuration system** — project-type templates for Python, JS/TS, Go, Rust, Java, .NET, and generic
 - **Design tokens** — WCAG AA palette template set with FSM context injection for artifact-generating loops
 - **Observability** — every run logged, archived, and queryable: `ll-loop history`, `ll-history`, and a per-project `.ll/history.db`

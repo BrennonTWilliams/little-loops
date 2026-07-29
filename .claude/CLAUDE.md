@@ -26,7 +26,7 @@ up "in another project" is usually a working-tree change here, not a released bu
 ## Project Configuration
 
 - **Plugin manifest**: `.claude-plugin/plugin.json`
-- **Config schema**: `config-schema.json`
+- **Config schema**: `scripts/little_loops/config-schema.json`
 - **Project config**: `.ll/ll-config.json` (read this for project-specific settings)
 - **Local overrides**: `.ll/ll.local.md` (user-specific, gitignored)
 - **Hooks**: `hooks/hooks.json`

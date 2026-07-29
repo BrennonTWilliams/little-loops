@@ -187,6 +187,94 @@ class TestGetProjectFolder:
         result = get_project_folder(host="pi")
         assert result == project_dir
 
+    def test_host_kimi_resolves_via_session_index(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """host="kimi-code" resolves the workspace folder via session_index.jsonl (ENH-2918)."""
+        fake_home = tmp_path / "home"
+        kimi_home = fake_home / ".kimi-code"
+        session_dir = kimi_home / "sessions" / "wd_proj_abc123def456" / "session_1"
+        session_dir.mkdir(parents=True)
+        (kimi_home / "session_index.jsonl").write_text(
+            json.dumps(
+                {
+                    "sessionId": "session_1",
+                    "sessionDir": str(session_dir),
+                    "workDir": str(tmp_path.resolve()),
+                }
+            )
+            + "\n"
+        )
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.delenv("KIMI_CODE_HOME", raising=False)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_project_folder(host="kimi-code")
+        assert result == session_dir.parent
+
+    def test_host_kimi_honors_kimi_code_home_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """KIMI_CODE_HOME relocates the session-index probe."""
+        custom_home = tmp_path / "kimi-home"
+        session_dir = custom_home / "sessions" / "wd_proj_abc123def456" / "session_1"
+        session_dir.mkdir(parents=True)
+        (custom_home / "session_index.jsonl").write_text(
+            json.dumps(
+                {
+                    "sessionId": "session_1",
+                    "sessionDir": str(session_dir),
+                    "workDir": str(tmp_path.resolve()),
+                }
+            )
+            + "\n"
+        )
+        # Point Path.home() somewhere with NO .kimi-code so only the env var works.
+        monkeypatch.setattr(Path, "home", lambda: tmp_path / "nowhere")
+        monkeypatch.setenv("KIMI_CODE_HOME", str(custom_home))
+        monkeypatch.chdir(tmp_path)
+
+        result = get_project_folder(host="kimi-code")
+        assert result == session_dir.parent
+
+    def test_host_kimi_returns_none_without_index(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Returns None when no session_index.jsonl exists."""
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.delenv("KIMI_CODE_HOME", raising=False)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_project_folder(host="kimi-code")
+        assert result is None
+
+    def test_host_kimi_ignores_other_workdirs(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Index entries for other projects do not match."""
+        fake_home = tmp_path / "home"
+        kimi_home = fake_home / ".kimi-code"
+        session_dir = kimi_home / "sessions" / "wd_other_abc123def456" / "session_9"
+        session_dir.mkdir(parents=True)
+        (kimi_home / "session_index.jsonl").write_text(
+            json.dumps(
+                {
+                    "sessionId": "session_9",
+                    "sessionDir": str(session_dir),
+                    "workDir": "/some/other/project",
+                }
+            )
+            + "\n"
+        )
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.delenv("KIMI_CODE_HOME", raising=False)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_project_folder(host="kimi-code")
+        assert result is None
+
     def test_host_auto_detect_from_env(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

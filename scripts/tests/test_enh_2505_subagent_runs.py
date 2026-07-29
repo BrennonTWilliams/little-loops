@@ -338,3 +338,141 @@ class TestBackfillSubagentRuns:
         finally:
             conn.close()
         assert count == 0
+
+
+class TestKimiSubagentPayloadTolerance:
+    """FEAT-2915: kimi-code sends ``agent_name`` (the type label) and no
+    ``agent_id``; SubagentStop carries the full result text as ``response``
+    instead of ``agent_transcript_path``.
+
+    Verified shapes (thoughts/research/kimi-cli-surface.md, kimi 0.30.0):
+    SubagentStart ``{agent_name, prompt}``; SubagentStop ``{agent_name,
+    response}``. Because kimi has no per-instance ``agent_id``, the writers
+    no-op — the ``agent_type`` fallback is what these tests pin down.
+    """
+
+    def test_kimi_start_agent_name_fallback_no_crash(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """kimi-shaped SubagentStart (agent_name, no agent_id) is a clean no-op."""
+        monkeypatch.chdir(tmp_path)
+        event = LLHookEvent(
+            host="kimi-code",
+            intent="subagent_start",
+            session_id="parent-1",
+            payload={"agent_name": "coder", "prompt": "fix the bug"},
+        )
+        result = subagent_start_handle(event)
+        assert result.exit_code == 0
+        # No agent_id → no row (the writers no-op on a missing agent_id).
+        db = tmp_path / ".ll" / "history.db"
+        if db.exists():
+            conn = connect(db)
+            try:
+                count = conn.execute("SELECT COUNT(*) FROM subagent_runs").fetchone()[0]
+            finally:
+                conn.close()
+            assert count == 0
+
+    def test_kimi_stop_response_fallback_no_crash(self, tmp_path: Path, monkeypatch) -> None:
+        """kimi-shaped SubagentStop (agent_name + response, no agent_id) is a clean no-op."""
+        monkeypatch.chdir(tmp_path)
+        event = LLHookEvent(
+            host="kimi-code",
+            intent="subagent_stop",
+            session_id="parent-1",
+            payload={"agent_name": "coder", "response": "fixed the bug"},
+        )
+        result = subagent_stop_handle(event)
+        assert result.exit_code == 0
+
+    def test_agent_name_used_as_type_when_agent_id_present(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """The agent_name → agent_type fallback applies when a row can be written."""
+        monkeypatch.chdir(tmp_path)
+        event = LLHookEvent(
+            host="kimi-code",
+            intent="subagent_start",
+            session_id="parent-1",
+            payload={"agent_id": "agent-xyz", "agent_name": "coder"},
+        )
+        result = subagent_start_handle(event)
+        assert result.exit_code == 0
+        conn = connect(tmp_path / ".ll" / "history.db")
+        try:
+            row = conn.execute(
+                "SELECT * FROM subagent_runs WHERE agent_id = 'agent-xyz'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+        assert row["agent_type"] == "coder"
+
+    def test_response_surfaces_via_transcript_field_when_agent_id_present(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """kimi's ``response`` text lands in agent_transcript_path on the stop row."""
+        monkeypatch.chdir(tmp_path)
+        subagent_start_handle(
+            LLHookEvent(
+                host="kimi-code",
+                intent="subagent_start",
+                session_id="parent-1",
+                payload={"agent_id": "agent-xyz", "agent_name": "coder"},
+            )
+        )
+        result = subagent_stop_handle(
+            LLHookEvent(
+                host="kimi-code",
+                intent="subagent_stop",
+                session_id="parent-1",
+                payload={"agent_id": "agent-xyz", "agent_name": "coder", "response": "done"},
+            )
+        )
+        assert result.exit_code == 0
+        conn = connect(tmp_path / ".ll" / "history.db")
+        try:
+            row = conn.execute(
+                "SELECT * FROM subagent_runs WHERE agent_id = 'agent-xyz'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row["status"] == "completed"
+        assert row["agent_type"] == "coder"
+        assert row["agent_transcript_path"] == "done"
+
+    def test_claude_fields_still_preferred(self, tmp_path: Path, monkeypatch) -> None:
+        """Regression guard: claude's agent_type/agent_transcript_path win when present."""
+        monkeypatch.chdir(tmp_path)
+        subagent_start_handle(
+            LLHookEvent(
+                host="claude-code",
+                intent="subagent_start",
+                session_id="parent-1",
+                payload={"agent_id": "agent-abc", "agent_type": "Explore"},
+            )
+        )
+        subagent_stop_handle(
+            LLHookEvent(
+                host="claude-code",
+                intent="subagent_stop",
+                session_id="parent-1",
+                payload={
+                    "agent_id": "agent-abc",
+                    "agent_type": "Explore",
+                    "agent_name": "should-not-win",
+                    "agent_transcript_path": "/tmp/t.jsonl",
+                    "response": "should-not-win",
+                },
+            )
+        )
+        conn = connect(tmp_path / ".ll" / "history.db")
+        try:
+            row = conn.execute(
+                "SELECT * FROM subagent_runs WHERE agent_id = 'agent-abc'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row["agent_type"] == "Explore"
+        assert row["agent_transcript_path"] == "/tmp/t.jsonl"

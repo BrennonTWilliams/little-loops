@@ -1,0 +1,67 @@
+{
+  "name": "ll",
+  "version": "1.153.0",
+  "description": "Development workflow toolkit with issue management, code quality commands, and automated processing — Kimi Code CLI edition",
+  "author": {
+    "name": "little-loops",
+    "url": "https://github.com/BrennonTWilliams"
+  },
+  "repository": "https://github.com/BrennonTWilliams/little-loops",
+  "license": "MIT",
+  "homepage": "https://github.com/BrennonTWilliams/little-loops",
+  "keywords": [
+    "development",
+    "workflow",
+    "issue-management",
+    "automation",
+    "code-quality"
+  ],
+  "interface": {
+    "displayName": "little-loops",
+    "shortDescription": "Issue management, quality commands, and FSM-loop automation (/ll:*)"
+  },
+  "skills": ["./skills/"],
+  "commands": ["./commands/"],
+  "hooks": [
+    {
+      "event": "SessionStart",
+      "command": "bash ./scripts/little_loops/hooks/adapters/kimi/session-start.sh",
+      "timeout": 30
+    },
+    {
+      "event": "PreCompact",
+      "command": "bash ./scripts/little_loops/hooks/adapters/kimi/pre-compact.sh",
+      "timeout": 30
+    },
+    {
+      "event": "UserPromptSubmit",
+      "command": "bash ./scripts/little_loops/hooks/adapters/kimi/user-prompt-submit.sh",
+      "timeout": 30
+    },
+    {
+      "event": "PreToolUse",
+      "command": "bash ./scripts/little_loops/hooks/adapters/kimi/pre-tool-use.sh",
+      "timeout": 30
+    },
+    {
+      "event": "PostToolUse",
+      "command": "bash ./scripts/little_loops/hooks/adapters/kimi/post-tool-use.sh",
+      "timeout": 30
+    },
+    {
+      "event": "SessionEnd",
+      "command": "bash ./scripts/little_loops/hooks/adapters/kimi/session-end.sh",
+      "timeout": 30
+    },
+    {
+      "event": "SubagentStart",
+      "command": "bash ./scripts/little_loops/hooks/adapters/kimi/subagent-start.sh",
+      "timeout": 30
+    },
+    {
+      "event": "SubagentStop",
+      "command": "bash ./scripts/little_loops/hooks/adapters/kimi/subagent-stop.sh",
+      "timeout": 30
+    }
+  ]
+}

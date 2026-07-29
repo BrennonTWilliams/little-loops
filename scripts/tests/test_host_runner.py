@@ -31,6 +31,7 @@ from little_loops.host_runner import (
     HostInvocation,
     HostNotConfigured,
     HostRunner,
+    KimiRunner,
     OmpRunner,
     OpenCodeRunner,
     PiRunner,
@@ -802,6 +803,189 @@ class TestGeminiRunner:
 
     def test_satisfies_host_runner_protocol(self) -> None:
         assert isinstance(GeminiRunner(), HostRunner)
+
+
+class TestKimiRunner:
+    """KimiRunner builds argv per the FEAT-2911 flag-translation table.
+
+    Source: ``thoughts/research/kimi-cli-surface.md`` (EPIC-2910; ENH-2912
+    registration, FEAT-2914 wiring), verified against kimi 0.30.0.
+    """
+
+    def test_kimi_runner_registered(self) -> None:
+        from little_loops import host_runner as hr
+
+        assert "kimi-code" in hr._HOST_RUNNER_REGISTRY
+        assert hr._HOST_RUNNER_REGISTRY["kimi-code"] is KimiRunner
+
+    def test_kimi_in_probe_order_appended_last(self) -> None:
+        """New hosts append to _PROBE_ORDER to keep auto-detection stable."""
+        from little_loops import host_runner as hr
+
+        assert hr._PROBE_ORDER[-1] == ("kimi-code", "kimi")
+
+    def test_resolve_host_picks_kimi_via_env(self, isolated_env: None) -> None:
+        runner = resolve_host(env={"LL_HOST_CLI": "kimi-code"})
+        assert isinstance(runner, KimiRunner)
+        assert runner.name == "kimi-code"
+
+    def test_kimi_runner_probed_when_on_path(
+        self, isolated_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """resolve_host() auto-detects KimiRunner when only kimi is on PATH."""
+        monkeypatch.setattr(
+            "little_loops.host_runner.shutil.which",
+            lambda binary: "/usr/local/bin/kimi" if binary == "kimi" else None,
+        )
+        runner = resolve_host(env={})
+        assert isinstance(runner, KimiRunner)
+        invocation = runner.build_streaming(prompt="hi")
+        assert invocation.binary == "kimi"
+
+    def test_kimi_runner_flag_translation(self) -> None:
+        """Snapshot of build_streaming argv against the verified translation table."""
+        runner = KimiRunner()
+        invocation = runner.build_streaming(prompt="/ll:ready-issue BUG-001")
+
+        assert [invocation.binary, *invocation.args] == [
+            "kimi",
+            "--output-format",
+            "stream-json",
+            "-p",
+            "/ll:ready-issue BUG-001",
+        ]
+
+    def test_build_streaming_emits_no_permission_flag(self) -> None:
+        """kimi -p runs under auto permissions; --yolo/--auto/--plan are rejected with -p."""
+        runner = KimiRunner()
+        invocation = runner.build_streaming(prompt="hi")
+        for flag in ("--yolo", "--auto", "--plan", "--dangerously-skip-permissions"):
+            assert flag not in invocation.args
+
+    def test_build_streaming_resume_maps_to_continue(self) -> None:
+        runner = KimiRunner()
+        invocation = runner.build_streaming(prompt="follow up", resume=True)
+        assert "--continue" in invocation.args
+
+    def test_build_streaming_agent_maps_to_agent_flag(self) -> None:
+        runner = KimiRunner()
+        invocation = runner.build_streaming(prompt="hi", agent="explore")
+        idx = invocation.args.index("--agent")
+        assert invocation.args[idx + 1] == "explore"
+
+    def test_build_streaming_agent_dropped_on_resume(self) -> None:
+        """kimi rejects --agent combined with --continue; warn and drop the agent."""
+        runner = KimiRunner()
+        with pytest.warns(CapabilityNotSupported, match="agent"):
+            invocation = runner.build_streaming(prompt="hi", agent="explore", resume=True)
+        assert "--agent" not in invocation.args
+        assert "--continue" in invocation.args
+
+    def test_build_streaming_with_model(self) -> None:
+        runner = KimiRunner()
+        invocation = runner.build_streaming(prompt="hi", model="kimi-code/k3")
+        idx = invocation.args.index("--model")
+        assert invocation.args[idx + 1] == "kimi-code/k3"
+
+    def test_build_streaming_workspace_root_maps_to_add_dir(self, tmp_path: Path) -> None:
+        runner = KimiRunner()
+        invocation = runner.build_streaming(prompt="hi", workspace_root=tmp_path)
+        idx = invocation.args.index("--add-dir")
+        assert invocation.args[idx + 1] == str(tmp_path)
+        assert invocation.capabilities.workspace_sandboxed is False
+
+    def test_build_streaming_emits_warning_for_tools(self) -> None:
+        runner = KimiRunner()
+        with pytest.warns(CapabilityNotSupported, match="tool"):
+            runner.build_streaming(prompt="hi", tools=["Read", "Edit"])
+
+    def test_build_streaming_prompt_terminates_argv(self) -> None:
+        """kimi's parser treats a bare positional after options as a subcommand."""
+        runner = KimiRunner()
+        invocation = runner.build_streaming(
+            prompt="hi", model="kimi-code/k3", workspace_root=Path("/tmp/x")
+        )
+        assert invocation.args[-2:] == ["-p", "hi"]
+
+    def test_build_blocking_json_streams(self) -> None:
+        """kimi has no single-blob JSON mode — blocking_json uses stream-json."""
+        runner = KimiRunner()
+        invocation = runner.build_blocking_json(prompt="hello")
+        assert [invocation.binary, *invocation.args] == [
+            "kimi",
+            "--output-format",
+            "stream-json",
+            "-p",
+            "hello",
+        ]
+
+    def test_build_blocking_json_warns_and_drops_schema(self) -> None:
+        runner = KimiRunner()
+        with pytest.warns(CapabilityNotSupported, match="schema"):
+            invocation = runner.build_blocking_json(prompt="hi", json_schema={"type": "object"})
+        assert "--json-schema" not in invocation.args
+        assert invocation.cleanup_paths == ()
+
+    def test_build_version_check(self) -> None:
+        runner = KimiRunner()
+        invocation = runner.build_version_check()
+        assert invocation.binary == "kimi"
+        assert invocation.args == ["--version"]
+
+    def test_build_detached(self) -> None:
+        runner = KimiRunner()
+        invocation = runner.build_detached(prompt="hi there")
+        assert invocation.binary == "kimi"
+        assert invocation.args == ["-p", "hi there"]
+
+    def test_build_streaming_worktree_env(self, tmp_path: Path) -> None:
+        """Linked-worktree .git file sets GIT_DIR/GIT_WORK_TREE like ClaudeCodeRunner."""
+        gitdir = tmp_path / "repo-gitdir"
+        gitdir.mkdir()
+        (tmp_path / ".git").write_text(f"gitdir: {gitdir}\n")
+        runner = KimiRunner()
+        invocation = runner.build_streaming(prompt="hi", working_dir=tmp_path)
+        assert invocation.env["GIT_WORK_TREE"] == str(tmp_path)
+        assert invocation.env["GIT_DIR"] == str(gitdir.resolve())
+
+    def test_all_builds_include_non_interactive_env(self) -> None:
+        """All build_* methods set LL_NON_INTERACTIVE and DANGEROUSLY_SKIP_PERMISSIONS (BUG-2110)."""
+        runner = KimiRunner()
+        for invocation in (
+            runner.build_streaming(prompt="hi"),
+            runner.build_blocking_json(prompt="hi"),
+            runner.build_detached(prompt="hi"),
+        ):
+            assert invocation.env.get("LL_NON_INTERACTIVE") == "1"
+            assert invocation.env.get("DANGEROUSLY_SKIP_PERMISSIONS") == "1"
+
+    def test_automation_profile_env(self) -> None:
+        runner = KimiRunner()
+        invocation = runner.build_streaming(prompt="hi", automation_profile="autodev")
+        assert invocation.env["LL_AUTOMATION"] == "1"
+        assert invocation.env["LL_AUTOMATION_PROFILE"] == "autodev"
+
+    def test_capabilities_flags(self) -> None:
+        caps = KimiRunner().capabilities
+        assert caps.streaming is True
+        assert caps.permission_skip is True
+        assert caps.agent_select is True
+        assert caps.tool_allowlist is False
+        assert caps.structured_output is False
+        assert caps.workspace_sandboxed is False
+
+    def test_satisfies_host_runner_protocol(self) -> None:
+        assert isinstance(KimiRunner(), HostRunner)
+
+    def test_kimi_runner_returns_capability_report(self) -> None:
+        report = KimiRunner().describe_capabilities()
+        assert isinstance(report, CapabilityReport)
+        assert report.host == "kimi-code"
+        assert report.binary == "kimi"
+        by_name = {e.name: e for e in report.capabilities}
+        assert by_name["streaming"].status == "full"
+        assert by_name["agent_select"].status == "partial"
+        assert by_name["tool_allowlist"].status == "unsupported"
 
 
 class TestOmpRunner:

@@ -552,3 +552,95 @@ class TestIssueAutoCommitPostToolUse:
         result = handle(_event(payload, cwd=str(tmp_path)))
         assert result.exit_code == 0
         assert git_calls == [], f"Expected no git calls with no config, got: {git_calls}"
+
+
+class TestKimiToolOutputTolerance:
+    """FEAT-2915: kimi-code sends ``tool_output`` (string) instead of
+    ``tool_response`` (dict), and no ``cache_hit``/``tool_call`` keys.
+
+    Verified shape (thoughts/research/kimi-cli-surface.md, kimi 0.30.0):
+    ``{tool_name, tool_input, tool_call_id, tool_output}``.
+    """
+
+    def test_kimi_tool_output_string_writes_row(self, tmp_path, monkeypatch) -> None:
+        """bytes_out is measured from kimi's tool_output string; row still written."""
+        _write_config(tmp_path, analytics_enabled=True)
+        monkeypatch.chdir(tmp_path)
+        payload = {
+            "tool_name": "Bash",
+            "tool_input": {"command": "ls -la"},
+            "tool_call_id": "Bash_0",
+            "tool_output": "total 0",
+            "session_id": "sess-k1",
+        }
+
+        result = handle(_event(payload, cwd=str(tmp_path)))
+        assert result.exit_code == 0
+
+        db_path = tmp_path / ".ll" / "history.db"
+        assert db_path.is_file(), "handler must create history.db on first write"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            row = conn.execute(
+                "SELECT tool_name, session_id, bytes_in, bytes_out, cache_hit FROM tool_events"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None, "expected one tool_events row"
+        tool_name, session_id, bytes_in, bytes_out, cache_hit = row
+        assert tool_name == "Bash"
+        assert session_id == "sess-k1"
+        assert bytes_in == len(json.dumps(payload["tool_input"]))
+        # tool_output (string) is the byte source when tool_response is absent.
+        assert bytes_out == len(json.dumps(payload["tool_output"]))
+        # kimi sends no cache_hit — defaults to 0.
+        assert cache_hit == 0
+
+    def test_kimi_payload_without_cache_hit_and_tool_call(self, tmp_path, monkeypatch) -> None:
+        """The telemetry path tolerates kimi's missing cache_hit/tool_call keys."""
+        _write_config(tmp_path, analytics_enabled=True)
+        monkeypatch.chdir(tmp_path)
+
+        result = handle(
+            _event(
+                {
+                    "tool_name": "Read",
+                    "tool_input": {"file_path": "scripts/foo.py"},
+                    "tool_call_id": "Read_0",
+                    "tool_output": "file contents here",
+                },
+                cwd=str(tmp_path),
+            )
+        )
+        assert result.exit_code == 0
+
+        db_path = tmp_path / ".ll" / "history.db"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            cache_hit, latency_ms = conn.execute(
+                "SELECT cache_hit, latency_ms FROM tool_events"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert cache_hit == 0
+        assert latency_ms is None
+
+    def test_tool_response_still_preferred_over_tool_output(self, tmp_path, monkeypatch) -> None:
+        """Regression guard: claude's tool_response (dict) wins when both are present."""
+        _write_config(tmp_path, analytics_enabled=True)
+        monkeypatch.chdir(tmp_path)
+        payload = {
+            "tool_name": "Bash",
+            "tool_input": {"command": "ls"},
+            "tool_response": {"exit_code": 0, "stdout": "from-response"},
+            "tool_output": "from-output",
+        }
+        handle(_event(payload, cwd=str(tmp_path)))
+
+        db_path = tmp_path / ".ll" / "history.db"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            (bytes_out,) = conn.execute("SELECT bytes_out FROM tool_events").fetchone()
+        finally:
+            conn.close()
+        assert bytes_out == len(json.dumps(payload["tool_response"]))

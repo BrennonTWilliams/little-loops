@@ -1168,7 +1168,7 @@ Settings for the host CLI used by orchestration scripts (`ll-auto`, `ll-parallel
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `host_cli` | (auto-detected) | Override the host CLI: `"claude-code"`, `"codex"`, `"opencode"`, or `"pi"`. Mirrors the `LL_HOST_CLI` environment variable; env var takes precedence if both are set. |
+| `host_cli` | (auto-detected) | Override the host CLI: `"claude-code"`, `"codex"`, `"opencode"`, `"pi"`, `"gemini"`, `"omp"`, or `"kimi-code"`. Mirrors the `LL_HOST_CLI` environment variable; env var takes precedence if both are set. |
 | `request_path` | `"cli"` | Dispatch mechanism for prompt-mode FSM states: `"cli"` (default, unchanged — CLI shell subprocess via `resolve_host()`), `"sdk"` (opt-in, calls the `anthropic` SDK's `messages.create()` directly — required for the F1 prompt-caching discount, since `cache_control` is unreachable over the CLI path), or `"batch"` (opt-in, submits via the Message Batches API for a flat 50% discount on input+output tokens, FEAT-2710). Per-state `StateConfig.request_path` overrides this default the same way `State.model` overrides `run_model`. |
 
 Credentials (and any other environment variables) can live in a gitignored

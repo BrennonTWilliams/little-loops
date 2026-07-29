@@ -116,4 +116,23 @@ HOST_CAPABILITIES: dict[str, HostCapabilityEntry] = {
         hooks=False,
         subagents="none",
     ),
+    "kimi-code": HostCapabilityEntry(
+        host="kimi-code",
+        config_dir=".kimi-code",
+        skill_output_format="SKILL.md (name injected when absent, metadata.short-description stripped)",
+        # Kimi has no project-local *commands* discovery outside plugin
+        # manifests (FEAT-2917 covers that route), so commands bridge into
+        # skills — the codex bridging pattern, minus the openai.yaml sidecar.
+        command_output_format="bridged into .kimi-code/skills/ll-<stem>/ (SKILL.md)",
+        # FEAT-2911 spike: kimi natively loads Claude-style agent files and
+        # spawns real subagents — native emission, no degraded mode (ENH-2874
+        # not needed). Key deliberately suffixed to match the runner registry
+        # key so ll-verify-host-map check 2 cross-validates kimi (EPIC-2910).
+        agent_output_format="Markdown, native Claude-style agent file (.kimi-code/agents/<name>.md)",
+        frontmatter_fields_read=("description", "name"),
+        agents=True,
+        commands=True,
+        hooks=True,
+        subagents="native",
+    ),
 }

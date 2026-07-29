@@ -1,6 +1,6 @@
 # Host Compatibility Matrix
 
-> **Last Updated: 2026-07-28** — update this date whenever a matrix cell changes status.
+> **Last Updated: 2026-07-29** — update this date whenever a matrix cell changes status.
 
 little-loops integrates with multiple coding-agent host CLIs. This page is
 the authoritative parity matrix — what is wired where, and which gaps are
@@ -20,16 +20,16 @@ Hook intents are dispatched through the host-agnostic Python layer at
 `hooks/adapters/<host>/` and translates the host's native hook protocol
 into `LLHookEvent` payloads.
 
-| Hook intent          | Claude Code | OpenCode      | Codex CLI     | Gemini CLI    |
-| -------------------- | ----------- | ------------- | ------------- | ------------- |
-| `session_start`      | ✓           | ✓             | ✓ (matcher=`startup`) | (deferred)[^gemini] — `SessionStart`; advisory only |
-| `pre_compact`        | ✓           | ✓             | ✓             | (deferred)[^gemini] — `PreCompress`; advisory, async |
-| `user_prompt_submit` | ✓           | (deferred)    | ✓             | (deferred)[^gemini] — `BeforeAgent` |
-| `pre_tool_use`       | ✓ (active)[^hot] | (opt-in)[^hot] | (opt-in)[^hot] | (deferred)[^gemini] — `BeforeTool` |
-| `post_tool_use`      | ✓           | ✓ (fire-and-forget)[^hot] | ✓ (fire-and-forget)[^hot] | (deferred)[^gemini] — `AfterTool` |
-| `session_end`        | ✓ (dispatched from `SessionStart` event → `session_end` intent[^ssend]) | (deferred)    | (deferred)    | (deferred)[^gemini] — `SessionEnd`; best-effort |
-| `post_compact`       | N/A         | N/A           | (deferred)[^postcompact] | N/A — no equivalent |
-| `permission_request` | N/A         | N/A           | (deferred)[^permreq] | N/A — `Notification` hook is observability-only |
+| Hook intent          | Claude Code | OpenCode      | Codex CLI     | Gemini CLI    | Kimi Code                                                            |
+| -------------------- | ----------- | ------------- | ------------- | ------------- | -------------------------------------------------------------------- |
+| `session_start`      | ✓           | ✓             | ✓ (matcher=`startup`) | (deferred)[^gemini] — `SessionStart`; advisory only | ✓ — `transcript_path` absent (guarded)[^kimi]  |
+| `pre_compact`        | ✓           | ✓             | ✓             | (deferred)[^gemini] — `PreCompress`; advisory, async | ✓[^kimi]                                         |
+| `user_prompt_submit` | ✓           | (deferred)    | ✓             | (deferred)[^gemini] — `BeforeAgent` | ✓ (blockable; block-array prompt handled)[^kimi] |
+| `pre_tool_use`       | ✓ (active)[^hot] | (opt-in)[^hot] | (opt-in)[^hot] | (deferred)[^gemini] — `BeforeTool` | ✓ (active, blockable)[^kimi]                     |
+| `post_tool_use`      | ✓           | ✓ (fire-and-forget)[^hot] | ✓ (fire-and-forget)[^hot] | (deferred)[^gemini] — `AfterTool` | ✓ — `tool_output` payload tolerated (FEAT-2915)[^kimi] |
+| `session_end`        | ✓ (dispatched from `SessionStart` event → `session_end` intent[^ssend]) | (deferred)    | (deferred)    | (deferred)[^gemini] — `SessionEnd`; best-effort | ✓ — native `SessionEnd`; no SessionStart workaround needed[^kimi] |
+| `post_compact`       | N/A         | N/A           | (deferred)[^postcompact] | N/A — no equivalent | (deferred)[^kimi] — kimi fires `PostCompact`; unwired |
+| `permission_request` | N/A         | N/A           | (deferred)[^permreq] | N/A — `Notification` hook is observability-only | (deferred)[^kimi] — kimi fires `PermissionRequest`/`Result`; unwired |
 
 [^hot]: Hot-path intents (`pre_tool_use` / `post_tool_use`) fire on every
     tool invocation and require a latency budget. Research decision
@@ -94,12 +94,32 @@ into `LLHookEvent` payloads.
     instructions (FEAT-2190) are still pending — hook-intent and discovery cells
     stay `(deferred)` until those land.
 
+[^kimi]: Kimi Code CLI (`kimi` binary) support is tracked by **EPIC-2910**.
+    Research spike **FEAT-2911** (2026-07-29) machine-verified the full
+    adapter surface on kimi 0.30.0 — binary flags, stream-json event shapes,
+    hook payloads, session-log layout, skills/commands/agents discovery, and
+    plugin packaging. Research artifact:
+    `thoughts/research/kimi-cli-surface.md`. **Landed:** `KimiRunner`
+    (ENH-2912 registration / FEAT-2914 wiring — all four `build_*` methods),
+    the `.kimi-code/ll-config.json` config probe (ENH-2913), the hook adapter
+    (FEAT-2915 — eight events wired via a managed `[[hooks]]` block in
+    `~/.kimi-code/config.toml`, including `subagent_start`/`subagent_stop`
+    intents, which have no rows in the table above), the `ll-adapt` emitter
+    (FEAT-2916), `kimi.plugin.json` packaging (FEAT-2917), and
+    `session_index.jsonl`-based session-log resolution (FEAT-2918).
+    Payload drift vs Claude is absorbed by host-tolerant accessors in the
+    Python handlers (block-array `prompt`, `tool_output` for `tool_response`,
+    `agent_name` for `agent_type`) — the Bash shims stay dumb. **Deferred:**
+    `post_compact` and `permission_request` — kimi fires `PostCompact` and
+    `PermissionRequest`/`PermissionResult` events, but there is no adapter
+    wiring and no current consumer (EPIC-2910 follow-up).
+
 ## Slash-command and skill discovery
 
-| Surface                  | Claude Code               | OpenCode                  | Codex CLI                 | Gemini CLI                |
-| ------------------------ | ------------------------- | ------------------------- | ------------------------- | ------------------------- |
-| Slash-command discovery  | ✓ `.claude/commands/*.md` | ✓ via plugin registration | ✓ — `commands/*.md` bridged to `skills/ll-<name>/SKILL.md` by `ll-adapt --host codex` (FEAT-1493)[^cmds] | (deferred)[^gemini] — `.gemini/commands/*.toml`; TOML format; bridge script needed |
-| Skill discovery          | ✓ `.claude/skills/*/SKILL.md` | ✓ via plugin registration | ✓ — `~/.codex/skills/<name>/SKILL.md`; all ll skills adapted by `ll-adapt --host codex` (FEAT-1486)[^cmds] | (deferred)[^gemini] — `.gemini/skills/<name>/SKILL.md`; compatible format; minor adaptation (add `name:`) |
+| Surface                  | Claude Code               | OpenCode                  | Codex CLI                 | Gemini CLI                | Kimi Code |
+| ------------------------ | ------------------------- | ------------------------- | ------------------------- | ------------------------- | --------- |
+| Slash-command discovery  | ✓ `.claude/commands/*.md` | ✓ via plugin registration | ✓ — `commands/*.md` bridged to `skills/ll-<name>/SKILL.md` by `ll-adapt --host codex` (FEAT-1493)[^cmds] | (deferred)[^gemini] — `.gemini/commands/*.toml`; TOML format; bridge script needed | ✓ — `kimi.plugin.json` (plugin id `ll`) registers `commands/*.md` as `/ll:<name>` (same namespace as the Claude plugin); project-local bridged skills via `ll-adapt --host kimi-code --apply` (FEAT-2916)[^kimi] |
+| Skill discovery          | ✓ `.claude/skills/*/SKILL.md` | ✓ via plugin registration | ✓ — `~/.codex/skills/<name>/SKILL.md`; all ll skills adapted by `ll-adapt --host codex` (FEAT-1486)[^cmds] | (deferred)[^gemini] — `.gemini/skills/<name>/SKILL.md`; compatible format; minor adaptation (add `name:`) | ✓ — `.kimi-code/skills/` is a native scan dir; SKILL.md near-1:1 (extra frontmatter keys tolerated)[^kimi] |
 
 [^cmds]: Codex has no `.codex/prompts/` slash-command path (that reference in
     prior footnotes was speculative — no such surface exists in the current
@@ -125,15 +145,15 @@ into `LLHookEvent` payloads.
 
 Runtime capabilities reported by `ll-doctor` for each host runner.
 
-| Capability       | Claude Code | OpenCode | Codex CLI                          | Gemini CLI                         | omp                                |
-| ---------------- | ----------- | -------- | ---------------------------------- | ---------------------------------- | ---------------------------------- |
-| Streaming        | ✓           | ✓        | ✓                                  | ✓ (`--output-format stream-json`)[^gemini]      | ✓ (`--mode json`, JSONL)[^omp]     |
-| Permission skip  | ✓           | ✗        | ✗[^runnercap]                      | ✓ (`--approval-mode=yolo`)[^gemini] | ✓ (implicit — print mode never prompts)[^omp] |
-| Agent selection  | ✓           | ✗        | partial (subagents)[^agent]        | ✗ — skills activate implicitly; no `--agent` flag[^gemini] | ✗ — subagents spawn in-session; no `--agent` flag[^omp] |
-| Tool allowlist   | ✓           | ✗        | ✗[^runnercap]                      | ✗ — Policy Engine (TOML); not a simple flag[^gemini] | ✓ (`--tools <comma-list>`)[^omp]   |
-| `json_schema`    | ✓[^schema]  | ✗        | partial (file-mediated)[^schema]   | ✗[^gemini]                         | ✗[^omp]                            |
-| `structured_output` | ✓        | ✗        | ✗[^struct]                         | ✗[^struct]                         | ✗[^struct]                         |
-| Token reporting  | ✓           | ✗[^tok]  | ✗[^tok]                            | ✗[^gemini]                         | ✗[^omp]                            |
+| Capability       | Claude Code | OpenCode | Codex CLI                          | Gemini CLI                         | omp                                | Kimi Code |
+| ---------------- | ----------- | -------- | ---------------------------------- | ---------------------------------- | ---------------------------------- | --------- |
+| Streaming        | ✓           | ✓        | ✓                                  | ✓ (`--output-format stream-json`)[^gemini]      | ✓ (`--mode json`, JSONL)[^omp]     | ✓ (`--output-format stream-json`)[^kimi] |
+| Permission skip  | ✓           | ✗        | ✗[^runnercap]                      | ✓ (`--approval-mode=yolo`)[^gemini] | ✓ (implicit — print mode never prompts)[^omp] | ✓ (implicit — `-p` runs under the auto permission policy; `--yolo`/`--auto`/`--plan` are rejected with `-p`)[^kimi] |
+| Agent selection  | ✓           | ✗        | partial (subagents)[^agent]        | ✗ — skills activate implicitly; no `--agent` flag[^gemini] | ✗ — subagents spawn in-session; no `--agent` flag[^omp] | partial (native `--agent`; rejected with `--continue` — dropped with warning on resume)[^kimi] |
+| Tool allowlist   | ✓           | ✗        | ✗[^runnercap]                      | ✗ — Policy Engine (TOML); not a simple flag[^gemini] | ✓ (`--tools <comma-list>`)[^omp]   | ✗ — no `--tools` flag; tool policy via agent files / global `[tools]` config[^kimi] |
+| `json_schema`    | ✓[^schema]  | ✗        | partial (file-mediated)[^schema]   | ✗[^gemini]                         | ✗[^omp]                            | ✗[^kimi] |
+| `structured_output` | ✓        | ✗        | ✗[^struct]                         | ✗[^struct]                         | ✗[^struct]                         | ✗[^struct] — no single-blob JSON mode; blocking consumers take the final assistant stream event[^kimi] |
+| Token reporting  | ✓           | ✗[^tok]  | ✗[^tok]                            | ✗[^gemini]                         | ✗[^omp]                            | ✗ — no usage events in stream-json (0.30.0)[^kimi] |
 
 [^omp]: oh-my-pi (`omp` binary, Bun package `@oh-my-pi/pi-coding-agent`) support
     is tracked by **EPIC-2258**. The runner core (`OmpRunner`, FEAT-1850) and the
@@ -194,7 +214,7 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
 ## Adapter Host Capabilities
 
 Build-time capabilities of `ll-adapt`'s per-host output emitters
-(`scripts/little_loops/adapters/{codex,gemini,omp}.py`), authored in
+(`scripts/little_loops/adapters/{codex,gemini,omp,kimi}.py`), authored in
 `scripts/little_loops/adapters/capabilities.py`'s `HOST_CAPABILITIES` map
 (ENH-2873). This is a **distinct surface from "Runner Capabilities" above**:
 this table describes what `ll-adapt` writes to disk for a host (build-time
@@ -211,6 +231,7 @@ and the emitters' actual behavior — see its module docstring for the checks.
 | codex  | `.codex`   | SKILL.md + `agents/openai.yaml` sidecar (Codex Skills API) | bridged into `skills/ll-<stem>/`         | TOML (`.codex/agents/<name>.toml`) | native    | ✓      | ✓        | ✓     |
 | gemini | `.gemini`  | SKILL.md (name injected, `metadata.short-description` stripped) | TOML (`.gemini/commands/<stem>.toml`)    | Markdown, degraded mode (`.gemini/agents/<name>.md`) — authored body verbatim, prefixed with an inline-execution + one-line-disclosure preamble (ENH-2874) | none      | ✓      | ✓        | ✗     |
 | omp    | N/A        | N/A — unimplemented stub, raises `AdapterError` | N/A — unimplemented stub, raises `AdapterError` | N/A — unimplemented stub, raises `AdapterError` | none      | ✗      | ✗        | ✗     |
+| kimi-code | `.kimi-code` | SKILL.md (name injected when absent, `metadata.short-description` stripped) | bridged into `.kimi-code/skills/ll-<stem>/` (SKILL.md) — no project-local commands surface outside plugins | Markdown, native Claude-style agent file (`.kimi-code/agents/<name>.md`) | native | ✓ | ✓ | ✓ |
 
 omp's emitter (`adapters/omp.py`) is a 28-line placeholder tracked by
 **EPIC-2258**; every `emit_*` method raises, including for agents — it has no
@@ -231,7 +252,7 @@ agents exit preview and gain native subagent spawning later, the capability
 map's `subagents` flips to `native` and `agent_output_format` switches to
 describe the native format — no other code changes required.
 
-> **Last Verified: 2026-07-28** — this table was re-checked against the
+> **Last Verified: 2026-07-29** — this table was re-checked against the
 > emitters' actual source (not just re-dated); distinct from *Last Updated*
 > above, which only means the file text changed. Update both dates when the
 > table changes; update only *Last Verified* after a re-check that finds no
@@ -242,23 +263,24 @@ describe the native format — no other code changes required.
 The orchestration tools (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-action`, `ll-loop`,
 FSM evaluators, FSM handoff) route every host CLI invocation through
 `scripts/little_loops/host_runner.py`. The `HostRunner` Protocol is
-satisfied by six concrete runners — `ClaudeCodeRunner` (production),
+satisfied by seven concrete runners — `ClaudeCodeRunner` (production),
 `CodexRunner` (wired, auto-detects when `codex` is on PATH),
 `GeminiRunner` (wired, ENH-2185), `OmpRunner` (wired, FEAT-1850),
-`OpenCodeRunner` (stub), and `PiRunner` (frozen stub) — so adding a new
+`KimiRunner` (wired, FEAT-2914), `OpenCodeRunner` (stub), and
+`PiRunner` (frozen stub) — so adding a new
 host is a matter of fleshing out the corresponding runner rather than
 touching call sites.
 
-| Tool                          | Claude Code | OpenCode      | Codex CLI    | Gemini CLI   | omp          |
-| ----------------------------- | ----------- | ------------- | ------------ | ------------ | ------------ |
-| `ll-auto`                     | ✓           | stub[^orch]   | ✓            | ✓            | ✓            |
-| `ll-parallel`                 | ✓           | stub[^orch]   | ✓            | ✓            | ✓            |
-| `ll-action`                   | ✓           | stub[^orch]   | ✓            | ✓            | ✓            |
-| `ll-loop`                     | ✓           | stub[^orch]   | ✓            | ✓            | ✓            |
-| `ll-harness`                  | ✓           | stub[^orch]   | ✓            | ✓            | ✓            |
-| `ll-sprint`                   | ✓           | stub[^orch]   | ✓            | ✓            | ✓            |
-| FSM evaluators / handoff      | ✓           | stub[^orch]   | ✓            | ✓            | ✓            |
-| Conformance harness[^conf]    | ✓           | stub[^orch]   | ✓            | ✓            | ✓            |
+| Tool                          | Claude Code | OpenCode      | Codex CLI    | Gemini CLI   | omp          | Kimi Code    |
+| ----------------------------- | ----------- | ------------- | ------------ | ------------ | ------------ | ------------ |
+| `ll-auto`                     | ✓           | stub[^orch]   | ✓            | ✓            | ✓            | ✓            |
+| `ll-parallel`                 | ✓           | stub[^orch]   | ✓            | ✓            | ✓            | ✓            |
+| `ll-action`                   | ✓           | stub[^orch]   | ✓            | ✓            | ✓            | ✓            |
+| `ll-loop`                     | ✓           | stub[^orch]   | ✓            | ✓            | ✓            | ✓            |
+| `ll-harness`                  | ✓           | stub[^orch]   | ✓            | ✓            | ✓            | ✓            |
+| `ll-sprint`                   | ✓           | stub[^orch]   | ✓            | ✓            | ✓            | ✓            |
+| FSM evaluators / handoff      | ✓           | stub[^orch]   | ✓            | ✓            | ✓            | ✓            |
+| Conformance harness[^conf]    | ✓           | stub[^orch]   | ✓            | ✓            | ✓            | ✓            |
 
 [^conf]: Generic host-parametrized conformance harness (FEAT-2259). Run with
     `pytest -m conformance scripts/tests/` or per-host with
@@ -268,7 +290,7 @@ touching call sites.
 [^orch]: All call sites in the table route through
     `scripts/little_loops/host_runner.py` (`HostRunner` Protocol +
     `ClaudeCodeRunner` + `CodexRunner` + `GeminiRunner` + `OmpRunner` +
-    `OpenCodeRunner` + `PiRunner`).
+    `KimiRunner` + `OpenCodeRunner` + `PiRunner`).
     Wiring a non-Claude host means registering a new `HostRunner`
     implementation; the orchestration layer no longer hard-codes the
     `claude` binary or its argv. **stub** = runner is registered so
@@ -295,22 +317,25 @@ Resolved by `resolve_config_path()` in
 | Codex CLI   | `.codex/ll-config.json` → `.ll/ll-config.json` → root-level `ll-config.json`             |
 | Gemini CLI  | `.gemini/ll-config.json` → `.ll/ll-config.json` → root-level `ll-config.json` (ENH-2187) |
 | omp         | `.omp/ll-config.json` → `.ll/ll-config.json` → root-level `ll-config.json` (FEAT-2262)   |
+| Kimi Code   | `.kimi-code/ll-config.json` → `.ll/ll-config.json` → root-level `ll-config.json` (ENH-2913) |
 
 The host-specific order is triggered by either `LL_HOOK_HOST=<host>` or
-the matching `LL_STATE_DIR` value (`.codex`, `.gemini`, `.omp`) in the
-environment. Each adapter sets the former; users can set the latter
-manually to force the host probe order without invoking the adapter.
+the matching `LL_STATE_DIR` value (`.codex`, `.gemini`, `.omp`,
+`.kimi-code`) in the environment. Each adapter sets the former; users can
+set the latter manually to force the host probe order without invoking
+the adapter.
 
 ## State directory
 
-| State surface                       | Claude Code | OpenCode | Codex CLI |
-| ----------------------------------- | ----------- | -------- | --------- |
-| Config file                         | `.ll/`      | `.ll/`   | `.codex/` (first) then `.ll/` |
-| Issue tracking (`.issues/`)         | `.issues/`  | `.issues/` | `.issues/` (same path)[^state] |
-| FSM runs (`.loops/`)                | `.loops/`   | `.loops/` | `.loops/` (same path)[^state] |
-| Scratch pads (`.loops/tmp/scratch/`) | `.loops/tmp/scratch/` | `.loops/tmp/scratch/` | `.loops/tmp/scratch/` (same path)[^state] |
-| Continuation prompt                 | `.ll/ll-continue-prompt.md` | `.ll/ll-continue-prompt.md` | `.ll/ll-continue-prompt.md` (same path)[^state] |
-| Session store (`SQLiteTransport`)   | `.ll/history.db` | `.ll/history.db` | `.ll/history.db` (same path)[^state] |
+| State surface                       | Claude Code | OpenCode | Codex CLI | Kimi Code |
+| ----------------------------------- | ----------- | -------- | --------- | --------- |
+| Config file                         | `.ll/`      | `.ll/`   | `.codex/` (first) then `.ll/` | `.kimi-code/` (first) then `.ll/` |
+| Issue tracking (`.issues/`)         | `.issues/`  | `.issues/` | `.issues/` (same path)[^state] | `.issues/` (same path)[^state] |
+| FSM runs (`.loops/`)                | `.loops/`   | `.loops/` | `.loops/` (same path)[^state] | `.loops/` (same path)[^state] |
+| Scratch pads (`.loops/tmp/scratch/`) | `.loops/tmp/scratch/` | `.loops/tmp/scratch/` | `.loops/tmp/scratch/` (same path)[^state] | `.loops/tmp/scratch/` (same path)[^state] |
+| Continuation prompt                 | `.ll/ll-continue-prompt.md` | `.ll/ll-continue-prompt.md` | `.ll/ll-continue-prompt.md` (same path)[^state] | `.ll/ll-continue-prompt.md` (same path)[^state] |
+| Session store (`SQLiteTransport`)   | `.ll/history.db` | `.ll/history.db` | `.ll/history.db` (same path)[^state] | `.ll/history.db` (same path)[^state] |
+| Session logs (`get_project_folder()`) | `~/.claude/projects/<dash-encoded cwd>/` | `~/.opencode/projects/<dash-encoded cwd>/` | `~/.codex/projects/<dash-encoded cwd>/` | ✓ — `~/.kimi-code/sessions/wd_*/` resolved via `~/.kimi-code/session_index.jsonl` (`workDir` → `sessionDir`; FEAT-2918)[^kimiwire] |
 
 [^state]: FEAT-957 deliberately scopes `LL_STATE_DIR=.codex` to the
     config probe only. Other state directories remain at their default
@@ -318,21 +343,26 @@ manually to force the host probe order without invoking the adapter.
     state redirection, file a separate issue — do not silently expand
     `LL_STATE_DIR`'s reach.
 
+[^kimiwire]: Kimi wire files (`session_*/agents/main/wire.jsonl`) use a
+    typed-event schema, not Claude's message schema — session-folder
+    *resolution* works (FEAT-2918), but `ll-session backfill` message
+    *extraction* does not parse them yet (ENH-2918 follow-up).
+
 ## Installation
 
-| Action                              | Claude Code                   | OpenCode                                 | Codex CLI                                |
-| ----------------------------------- | ----------------------------- | ---------------------------------------- | ---------------------------------------- |
-| Install command                     | Plugin auto-enables           | `bun install` under `hooks/adapters/opencode/` | `ll-init --hosts codex` writes `.codex/hooks.json` |
-| Trust prompt on first run           | N/A (plugin trust model)      | N/A                                      | **Yes** — Codex shows a hook-trust dialog; user must "Trust All" or "Review Hooks" before hooks fire |
-| Host identification env var         | (default, no var needed)      | `LL_HOOK_HOST=opencode`                  | `LL_HOOK_HOST=codex`                     |
-| Adapter runtime                     | Bash + Python                 | TypeScript / Bun + Python                | Bash + Python                            |
+| Action                              | Claude Code                   | OpenCode                                 | Codex CLI                                | Kimi Code |
+| ----------------------------------- | ----------------------------- | ---------------------------------------- | ---------------------------------------- | --------- |
+| Install command                     | Plugin auto-enables           | `bun install` under `hooks/adapters/opencode/` | `ll-init --hosts codex` writes `.codex/hooks.json` | `ll-init --hosts kimi-code` installs a managed `[[hooks]]` block into `~/.kimi-code/config.toml` (user-level — kimi has no project-local hook file); optional plugin install of repo-root `kimi.plugin.json` via `/plugins install` (per-user only) |
+| Trust prompt on first run           | N/A (plugin trust model)      | N/A                                      | **Yes** — Codex shows a hook-trust dialog; user must "Trust All" or "Review Hooks" before hooks fire | N/A — no trust dialog; hooks take effect in new sessions |
+| Host identification env var         | (default, no var needed)      | `LL_HOOK_HOST=opencode`                  | `LL_HOOK_HOST=codex`                     | `LL_HOOK_HOST=kimi-code` |
+| Adapter runtime                     | Bash + Python                 | TypeScript / Bun + Python                | Bash + Python                            | Bash + Python |
 
 ## Environment variables
 
 | Env var          | Description |
 | ---------------- | ----------- |
-| `LL_HOST_CLI`         | Override host runner selection (`claude-code`, `codex`, `opencode`, `pi`, `gemini`, `omp`). Takes precedence over binary probe and `orchestration.host_cli` config. |
-| `LL_HOOK_HOST`        | Identify the host to hook adapters (`claude-code`, `opencode`, `codex`). Set by each adapter before invoking the Python hook layer. |
+| `LL_HOST_CLI`         | Override host runner selection (`claude-code`, `codex`, `opencode`, `pi`, `gemini`, `omp`, `kimi-code`). Takes precedence over binary probe and `orchestration.host_cli` config. |
+| `LL_HOOK_HOST`        | Identify the host to hook adapters (`claude-code`, `opencode`, `codex`, `kimi-code`). Set by each adapter before invoking the Python hook layer. |
 | `LL_STATE_DIR`        | Scope config probe to a host-specific directory (e.g. `.codex`). Affects config resolution only — other state paths are unaffected (see [^state]). |
 | `LL_HISTORY_DB`       | Override the default `.ll/history.db` session-store path (e.g. for test isolation). Takes precedence over the `history.db_path` config key, which is the persistent per-project alternative for a durable relocation. |
 | `LL_NON_INTERACTIVE`  | Set to `"1"` by all `build_*` host runner methods to signal that a skill is running in a non-interactive automation context. Skills check this (via `[[ -n "${LL_NON_INTERACTIVE:-}" ]]`) to auto-enable `--auto` mode and skip `AskUserQuestion` prompts. Use `DANGEROUSLY_SKIP_PERMISSIONS` as a fallback during the migration period. |
@@ -342,6 +372,7 @@ manually to force the host probe order without invoking the adapter.
 - Claude Code: [`hooks/adapters/claude-code/`](../../hooks/adapters/claude-code/) — Bash shim
 - OpenCode: [`hooks/adapters/opencode/`](../../hooks/adapters/opencode/) — TypeScript/Bun plugin
 - Codex CLI: [`scripts/little_loops/hooks/adapters/codex/`](../../scripts/little_loops/hooks/adapters/codex/) — Bash shim with `matcher: "startup"` (SessionStart), plus PreCompact / UserPromptSubmit / PostToolUse handlers
+- Kimi Code: [`scripts/little_loops/hooks/adapters/kimi/`](../../scripts/little_loops/hooks/adapters/kimi/) — Bash shims + `hooks.toml` template (managed `[[hooks]]` block installed into `~/.kimi-code/config.toml` by `ll-init`; eight events: SessionStart, PreCompact, UserPromptSubmit, PreToolUse, PostToolUse, SessionEnd, SubagentStart/Stop)
 
 Each adapter is a thin transport (`spawn → set env → pipe stdin → exit`);
 all real logic lives in `scripts/little_loops/hooks/`.
@@ -369,7 +400,13 @@ For a user-facing walkthrough of Codex CLI setup and usage, see:
 - [`docs/codex/getting-started.md`](../codex/getting-started.md) — install, trust prompt, config file, skill discovery
 - [`docs/codex/usage.md`](../codex/usage.md) — orchestration CLIs, skill invocation, current limitations
 
-This matrix is the authoritative parity reference; the Codex docs above are the user-facing onboarding entry point.
+For Kimi Code CLI setup and usage, see:
+
+- [`docs/kimi/getting-started.md`](../kimi/getting-started.md) — install, hook adapter, plugin, skill/command discovery
+- [`docs/kimi/hook-events.md`](../kimi/hook-events.md) — event → intent mapping, payload drift, blockable events
+- [`docs/kimi/automation.md`](../kimi/automation.md) — orchestration CLIs under kimi, runner flags, current limitations
+
+This matrix is the authoritative parity reference; the per-host docs above are the user-facing onboarding entry points.
 
 ## Tracking issues
 
@@ -398,3 +435,8 @@ This matrix is the authoritative parity reference; the Codex docs above are the 
 - **EPIC-2178** — Gemini CLI host adapter tracking (this matrix's Gemini column).
 - **FEAT-2179** — Research spike: gemini-cli binary surface, hook events, and plugin
   discovery (completed — all cells confirmed; see `thoughts/research/gemini-cli-surface.md`).
+- **EPIC-2910** — Kimi Code CLI host adapter tracking (this matrix's Kimi Code
+  column). Research spike **FEAT-2911** completed 2026-07-29 (see
+  `thoughts/research/kimi-cli-surface.md`); runner, config probe, hook
+  adapter, emitter, plugin packaging, and session-log resolution all landed
+  (ENH-2912/2913, FEAT-2914/2915/2916/2917/2918) — see [^kimi].

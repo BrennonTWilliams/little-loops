@@ -174,7 +174,7 @@ little-loops/
 │   ├── web-search-researcher.md
 │   └── workflow-pattern-analyzer.md
 ├── hooks/                # Lifecycle hooks
-├── skills/               # 41 skill definitions (user-invocable workflows)
+├── skills/               # 40 skill definitions (user-invocable workflows)
 │   ├── analyze-history/              # Analyze issue history and trends
 │   ├── debug-loop-run/               # Analyze loop execution history
 │   ├── audit-loop-run/               # Audit loop goal achievement

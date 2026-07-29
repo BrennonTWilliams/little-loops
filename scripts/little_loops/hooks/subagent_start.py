@@ -5,7 +5,9 @@ a host adapter (e.g. ``hooks/adapters/claude-code/subagent-start.sh``) parses
 the host's stdin payload into an :class:`LLHookEvent`. The payload carries
 ``agent_id`` (spawn-local identifier, scoped to the parent session — not a
 ``sessions.session_id``) and ``agent_type`` (the subagent label, e.g.
-``"Explore"``, ``"codebase-locator"``).
+``"Explore"``, ``"codebase-locator"``). Kimi Code sends ``agent_name`` (the
+type label) and no ``agent_id``; the handler falls back to it for
+``agent_type`` (FEAT-2915).
 
 Best-effort per the EPIC-1707 contract: never blocks or raises. A missing
 ``agent_id`` is a silent no-op, never a hard failure.
@@ -27,7 +29,8 @@ def handle(event: LLHookEvent) -> LLHookResult:
     try:
         payload = event.payload or {}
         agent_id = payload.get("agent_id")
-        agent_type = payload.get("agent_type")
+        # Kimi Code sends ``agent_name`` (the type label) and no ``agent_id``.
+        agent_type = payload.get("agent_type") or payload.get("agent_name")
 
         from little_loops.session_store import record_subagent_run_start, resolve_history_db
 

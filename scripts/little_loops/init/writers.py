@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -90,46 +91,106 @@ _ISSUE_SUBDIRS: tuple[str, ...] = (
     "epics",
 )
 
-# Sentinel string used to detect whether the ll section already exists in CLAUDE.md
+# Sentinel string used to detect whether the ll section already exists in
+# CLAUDE.md / AGENTS.md
 _CLAUDE_MD_SECTION_MARKER = "## little-loops"
 
+# Host-generic ll-* CLI one-liners shared by the CLAUDE.md and AGENTS.md
+# writers (FEAT-2915). write_claude_md applies _CLAUDE_MD_DESC_OVERRIDES so
+# its emitted block stays byte-identical to the pre-shared-constant version;
+# AGENTS.md (read by Codex, Kimi Code, and other non-Claude hosts) gets the
+# generic text.
+_LL_COMMANDS: tuple[tuple[str, str], ...] = (
+    ("ll-action", "Invoke ll skills as one-shot commands with JSON-structured output"),
+    (
+        "ll-harness",
+        "One-shot runner evaluation (skill, cmd, mcp, prompt, dsl) with exit-code and semantic criteria",
+    ),
+    ("ll-auto", "Process all backlog issues sequentially in priority order"),
+    ("ll-parallel", "Process issues concurrently using isolated git worktrees"),
+    ("ll-sprint", "Define and execute curated issue sets with dependency-aware ordering"),
+    ("ll-loop", "Execute FSM-based automation loops"),
+    ("ll-workflows", "Identify multi-step workflow patterns from user message history"),
+    ("ll-messages", "Extract user messages from host session logs"),
+    (
+        "ll-history",
+        "View completed issue statistics, analysis, and export topic-filtered excerpts from history",
+    ),
+    (
+        "ll-history-context",
+        "Render a `## Historical Context` block for an issue from `.ll/history.db`",
+    ),
+    ("ll-deps", "Cross-issue dependency analysis and validation"),
+    ("ll-sync", "Sync local issues with GitHub Issues"),
+    ("ll-verify-docs", "Verify documented counts match actual file counts"),
+    ("ll-verify-package-data", "Lint __file__ escapes and verify manifest assets are in-wheel"),
+    ("ll-verify-skills", "Check that no SKILL.md exceeds 500 lines"),
+    ("ll-check-links", "Check markdown documentation for broken links"),
+    (
+        "ll-issues",
+        "Issue management and visualization (next-id, list, show, path, sequence, "
+        "impact-effort, refine-status, set-status, anchor-sweep, fingerprint, "
+        "epic-progress, decisions)",
+    ),
+    ("ll-gitignore", "Suggest and apply `.gitignore` patterns based on untracked files"),
+    ("ll-create-extension", "Scaffold a new little-loops extension project"),
+    (
+        "ll-generate-schemas",
+        "Regenerate JSON Schema files for all LLEvent types (maintainer tool)",
+    ),
+    ("ll-learning-tests", "Query and manage the learning test registry (check/list/mark-stale)"),
+    (
+        "ll-logs",
+        "Discover, extract, and analyze (sequences, scan-failures) ll-relevant "
+        "log entries from host project logs",
+    ),
+    ("ll-doctor", "Check host CLI capability support for little-loops features"),
+    (
+        "ll-ctx-stats",
+        "Show context-window analytics for the current project (per-tool byte vs. "
+        "context savings; skill-health signals; waste view over token spend on "
+        "no-artifact runs)",
+    ),
+    ("ll-adapt", "Generate host-specific artefacts for a given host (``--host codex``, etc.)"),
+    (
+        "ll-adapt-skills-for-codex",
+        "Add Codex Skills API frontmatter to skills and bridge commands (alias for ll-adapt --host codex)",
+    ),
+    (
+        "ll-adapt-agents-for-codex",
+        "Generate `.codex/agents/*.toml` from `agents/*.md` (alias for ll-adapt --host codex)",
+    ),
+)
+
+# Claude-specific description overrides — write_claude_md's emitted block is
+# unchanged from before the shared-constant refactor (FEAT-2915).
+_CLAUDE_MD_DESC_OVERRIDES: dict[str, str] = {
+    "ll-messages": "Extract user messages from Claude Code logs",
+    "ll-logs": (
+        "Discover, extract, and analyze (sequences, scan-failures) ll-relevant "
+        "log entries from Claude project logs"
+    ),
+}
+
+
+def _render_commands_block(desc_overrides: dict[str, str] | None = None) -> str:
+    """Render the canonical ## little-loops CLI Commands block."""
+    overrides = desc_overrides or {}
+    lines = ["", "## little-loops CLI Commands", ""]
+    lines.extend(f"- `{name}` - {overrides.get(name, desc)}" for name, desc in _LL_COMMANDS)
+    lines.extend(["", 'Install: `pip install -e "./scripts[dev]"`', ""])
+    return "\n".join(lines)
+
+
 # Canonical CLI Commands block appended/created by write_claude_md (Step 11 of the skill)
-_CLAUDE_MD_COMMANDS_BLOCK = """\
+_CLAUDE_MD_COMMANDS_BLOCK = _render_commands_block(_CLAUDE_MD_DESC_OVERRIDES)
 
-## little-loops CLI Commands
-
-- `ll-action` - Invoke ll skills as one-shot commands with JSON-structured output
-- `ll-harness` - One-shot runner evaluation (skill, cmd, mcp, prompt, dsl) with exit-code and semantic criteria
-- `ll-auto` - Process all backlog issues sequentially in priority order
-- `ll-parallel` - Process issues concurrently using isolated git worktrees
-- `ll-sprint` - Define and execute curated issue sets with dependency-aware ordering
-- `ll-loop` - Execute FSM-based automation loops
-- `ll-workflows` - Identify multi-step workflow patterns from user message history
-- `ll-messages` - Extract user messages from Claude Code logs
-- `ll-history` - View completed issue statistics, analysis, and export topic-filtered excerpts from history
-- `ll-history-context` - Render a `## Historical Context` block for an issue from `.ll/history.db`
-- `ll-deps` - Cross-issue dependency analysis and validation
-- `ll-sync` - Sync local issues with GitHub Issues
-- `ll-verify-docs` - Verify documented counts match actual file counts
-- `ll-verify-package-data` - Lint __file__ escapes and verify manifest assets are in-wheel
-- `ll-verify-skills` - Check that no SKILL.md exceeds 500 lines
-- `ll-check-links` - Check markdown documentation for broken links
-- `ll-issues` - Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, set-status, anchor-sweep, fingerprint, epic-progress, decisions)
-- `ll-gitignore` - Suggest and apply `.gitignore` patterns based on untracked files
-- `ll-create-extension` - Scaffold a new little-loops extension project
-- `ll-generate-schemas` - Regenerate JSON Schema files for all LLEvent types (maintainer tool)
-- `ll-learning-tests` - Query and manage the learning test registry (check/list/mark-stale)
-- `ll-logs` - Discover, extract, and analyze (sequences, scan-failures) ll-relevant log entries from Claude project logs
-- `ll-doctor` - Check host CLI capability support for little-loops features
-- `ll-ctx-stats` - Show context-window analytics for the current project (per-tool byte vs. context savings; skill-health signals; waste view over token spend on no-artifact runs)
-- `ll-adapt` - Generate host-specific artefacts for a given host (``--host codex``, etc.)
-- `ll-adapt-skills-for-codex` - Add Codex Skills API frontmatter to skills and bridge commands (alias for ll-adapt --host codex)
-- `ll-adapt-agents-for-codex` - Generate `.codex/agents/*.toml` from `agents/*.md` (alias for ll-adapt --host codex)
-
-Install: `pip install -e "./scripts[dev]"`
-"""
+# Host-generic variant appended/created by write_agents_md (AGENTS.md is the
+# cross-tool convention; Claude-specific wording stays in CLAUDE.md).
+_AGENTS_MD_COMMANDS_BLOCK = _render_commands_block()
 
 _CLAUDE_MD_NEW_FILE_CONTENT = "# Project Configuration\n" + _CLAUDE_MD_COMMANDS_BLOCK
+_AGENTS_MD_NEW_FILE_CONTENT = "# Project Configuration\n" + _AGENTS_MD_COMMANDS_BLOCK
 
 
 def load_existing_config(project_root: Path) -> dict[str, Any]:
@@ -457,6 +518,59 @@ def write_claude_md(project_root: Path, dry_run: bool = False) -> bool:
     return True
 
 
+# Hosts whose primary instructions file is AGENTS.md (the cross-tool
+# convention). ll-init writes AGENTS.md only when one of these hosts is
+# selected; Claude-specific content stays in CLAUDE.md (write_claude_md).
+AGENTS_MD_HOSTS: tuple[str, ...] = ("codex", "kimi-code")
+
+
+def write_agents_md(project_root: Path, dry_run: bool = False) -> bool:
+    """Append the canonical ## little-loops CLI Commands block to AGENTS.md.
+
+    AGENTS.md is the cross-tool instructions convention read by Codex, Kimi
+    Code, and other non-Claude hosts (see AGENTS_MD_HOSTS). Detection order:
+    .kimi-code/AGENTS.md, then AGENTS.md. If neither exists, creates root
+    AGENTS.md. Idempotent: returns False without writing if the section is
+    already present.
+
+    Args:
+        project_root: Project root directory.
+        dry_run: If True, print planned action; do not write files.
+
+    Returns:
+        True if the file was created or modified; False if no changes needed.
+    """
+    dot_kimi = project_root / ".kimi-code" / "AGENTS.md"
+    root_agents = project_root / "AGENTS.md"
+
+    if dot_kimi.exists():
+        target = dot_kimi
+    elif root_agents.exists():
+        target = root_agents
+    else:
+        target = root_agents
+
+    rel = str(target.relative_to(project_root))
+
+    if target.exists():
+        existing = target.read_text(encoding="utf-8")
+        if _CLAUDE_MD_SECTION_MARKER in existing:
+            return False
+        if dry_run:
+            print(f"[update] {rel} (append ## little-loops CLI Commands)")
+            return True
+        new_content = existing.rstrip("\n") + "\n" + _AGENTS_MD_COMMANDS_BLOCK
+        atomic_write(target, new_content)
+    else:
+        if dry_run:
+            print(f"[write] {rel} (ll- CLI command documentation)")
+            return True
+        target.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write(target, _AGENTS_MD_NEW_FILE_CONTENT)
+
+    return True
+
+
 def _codex_template_path() -> Path:
     """Return the in-package path to the Codex adapter hooks.json template."""
     return Path(__file__).parent.parent / "hooks" / "adapters" / "codex" / "hooks.json"
@@ -509,6 +623,140 @@ def install_codex_adapter(
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     atomic_write(dest, rendered)
+    return True
+
+
+def _kimi_template_path() -> Path:
+    """Return the in-package path to the Kimi adapter hooks.toml template."""
+    return Path(__file__).parent.parent / "hooks" / "adapters" / "kimi" / "hooks.toml"
+
+
+def kimi_config_path() -> Path:
+    """Return the user-level Kimi Code config.toml path.
+
+    Honors the ``KIMI_CODE_HOME`` env var (default ``~/.kimi-code``). Kimi
+    has no project-local hook file, so this user-level config is the only
+    hook install target.
+    """
+    home = os.environ.get("KIMI_CODE_HOME")
+    base = Path(home) if home else Path.home() / ".kimi-code"
+    return base / "config.toml"
+
+
+# Markers delimiting the little-loops managed block in the kimi config.toml.
+# install_kimi_adapter never modifies content outside them.
+_KIMI_BLOCK_BEGIN = "# >>> little-loops kimi hooks (managed, do not edit)"
+_KIMI_BLOCK_END = "# <<< little-loops kimi hooks"
+_KIMI_GEN_VERSION_PREFIX = "# ll-gen-version:"
+
+
+def _kimi_block_span(content: str) -> tuple[int, int] | None:
+    """Return the (start, end) span of the managed block in *content*.
+
+    ``end`` is exclusive and covers the END marker itself (not its trailing
+    newline). Returns None when the block is absent or the markers are
+    unpaired — the caller treats that as "not installed" and appends a
+    fresh block.
+    """
+    begin = content.find(_KIMI_BLOCK_BEGIN)
+    end = content.find(_KIMI_BLOCK_END)
+    if begin == -1 or end == -1 or end <= begin:
+        return None
+    return begin, end + len(_KIMI_BLOCK_END)
+
+
+def _kimi_block_gen_version(content: str, span: tuple[int, int]) -> str | None:
+    """Return the ``ll-gen-version`` stamped inside the managed block, or None."""
+    for line in content[span[0] : span[1]].splitlines():
+        if line.startswith(_KIMI_GEN_VERSION_PREFIX):
+            return line[len(_KIMI_GEN_VERSION_PREFIX) :].strip()
+    return None
+
+
+def install_kimi_adapter(
+    project_root: Path,
+    plugin_root: Path,
+    force: bool = False,
+    dry_run: bool = False,
+) -> bool | None:
+    """Install the Kimi hook adapter as a managed block in the user-level config.toml.
+
+    **Note:** *project_root* is deliberately unused for the destination —
+    Kimi Code has no project-local hook file (``.kimi-code/local.toml`` only
+    supports ``[workspace]``), so hooks are installed into the **user-level**
+    ``$KIMI_CODE_HOME/config.toml`` (default ``~/.kimi-code/config.toml``,
+    honoring the ``KIMI_CODE_HOME`` env var). The parameter is kept only for
+    signature parity with :func:`install_codex_adapter`.
+
+    Reads ``little_loops/hooks/adapters/kimi/hooks.toml`` from the installed
+    package, substitutes ``{{LL_PLUGIN_ROOT}}`` with the ``little_loops``
+    package directory and ``{{LL_GEN_VERSION}}`` with the installed package
+    version, and inserts the result as a marker-delimited managed block::
+
+        # >>> little-loops kimi hooks (managed, do not edit)
+        ...rendered [[hooks]] entries...
+        # <<< little-loops kimi hooks
+
+    Idempotent: a managed block whose ``# ll-gen-version:`` stamp matches the
+    installed package is left untouched (returns False). A block stamped with
+    a different version is replaced in place — this is the update path. The
+    file (and parent directory) is created when missing. Content outside the
+    markers is never modified.
+
+    Args:
+        project_root: Project root directory. Unused for the destination
+            (hooks are user-level for kimi — see above).
+        plugin_root: Unused; kept for call-site compatibility.
+        force: If True, replace an existing managed block even when its gen
+            version already matches.
+        dry_run: If True, print planned write; do not modify files.
+
+    Returns:
+        True if written (or would be, for dry_run); False if already
+        installed at the same gen version without ``force``; None if the
+        source template is missing (package install corrupted).
+    """
+    template_path = _kimi_template_path()
+    if not template_path.exists():
+        return None
+
+    from little_loops.init.install_check import installed_package_version
+
+    package_root = str(Path(__file__).parent.parent)
+    gen_version = installed_package_version() or ""
+    rendered = (
+        template_path.read_text(encoding="utf-8")
+        .replace("{{LL_PLUGIN_ROOT}}", package_root)
+        .replace("{{LL_GEN_VERSION}}", gen_version)
+    )
+    block = f"{_KIMI_BLOCK_BEGIN}\n{rendered.rstrip()}\n{_KIMI_BLOCK_END}\n"
+
+    dest = kimi_config_path()
+    existing = dest.read_text(encoding="utf-8") if dest.exists() else ""
+    span = _kimi_block_span(existing)
+
+    if span is not None and not force and _kimi_block_gen_version(existing, span) == gen_version:
+        return False
+
+    if dry_run:
+        action = "replace little-loops managed block" if span is not None else "add little-loops managed block"
+        print(f"[write] {dest} ({action})")
+        return True
+
+    if span is not None:
+        remainder = existing[span[1] :]
+        if remainder.startswith("\n"):
+            remainder = remainder[1:]
+        new_content = existing[: span[0]] + block + remainder
+    elif existing and not existing.endswith("\n"):
+        new_content = existing + "\n\n" + block
+    elif existing:
+        new_content = existing + "\n" + block
+    else:
+        new_content = block
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write(dest, new_content)
     return True
 
 

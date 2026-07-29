@@ -170,7 +170,7 @@ Examples:
     )
     backfill_parser.add_argument(
         "--host",
-        choices=["claude-code", "codex", "opencode", "pi"],
+        choices=["claude-code", "codex", "opencode", "pi", "kimi-code"],
         default=None,
         help="Host to discover session logs for (default: auto-detect from LL_HOOK_HOST env)",
     )
