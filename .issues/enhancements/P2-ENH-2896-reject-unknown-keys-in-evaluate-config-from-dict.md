@@ -68,12 +68,21 @@ Two candidate strictness levels:
   unknown evaluate keys. Non-breaking; surfaces existing drift across user loops without
   hard-failing anyone's working automation.
 - **ERROR at load**: `from_dict` raises on unknown keys. Strongest guarantee, but
-  breaks any third-party or user loop currently carrying a stray key — including,
-  today, two of our own built-ins.
+  breaks any third-party or user loop currently carrying a stray key. ~~including,
+  today, two of our own built-ins.~~
 
-Recommended sequencing: land the WARN lint first, fix BUG-2893/BUG-2894 and any other
-hits it surfaces, then consider promoting to ERROR in a subsequent release. Record this
-as a decision.
+> **UPDATED 2026-07-28** by `/ll:audit-issue-conflicts`: **the built-in sweep is
+> already clean.** Commit `e2ea3c56` (ENH-2895) made `key` a real field on
+> `EvaluateConfig`, so neither `docs-sync.yaml` nor `oracles/code-run-gate.yaml`
+> is an unknown-key hit any more. The stated blocker on ERROR-at-load is gone,
+> and **this issue now has no ordering constraint in either direction** relative
+> to BUG-2893 (closeable) or BUG-2894 (rescoped to a shell-format defect no
+> schema lint can see). WARN-vs-ERROR remains a live decision — but decide it on
+> third-party/user-loop compatibility grounds, not on our own built-ins.
+
+Recommended sequencing: ~~land the WARN lint first, fix BUG-2893/BUG-2894 and any other
+hits it surfaces, then consider promoting to ERROR in a subsequent release.~~ Record the
+WARN-vs-ERROR choice as a decision; the built-in-sweep precondition is already met.
 
 A useful refinement either way: suggest the nearest known field name
 (`difflib.get_close_matches`) so `key` → *did you mean `line`? `path`?* guides the author
@@ -99,6 +108,25 @@ keep it out of this issue's minimum scope.
    severity, and a top-level suppression flag consistent with the MR-* table.
 4. Audit sibling `from_dict` implementations in `fsm/schema.py` for the same silent-drop
    pattern and decide whether to generalize the check.
+5. **Fix and gate the JSON-schema/dataclass parity drift** (added by
+   `/ll:audit-issue-conflicts`). Commit `e2ea3c56` set
+   `"additionalProperties": false` on `evaluateConfig` in
+   `scripts/little_loops/fsm/fsm-loop-schema.json` — creating exactly the
+   second hand-maintained field list this issue exists to eliminate. It is
+   **already out of sync**:
+
+   ```
+   dataclass-only: ['line']
+   schema-only:    []
+   ```
+
+   So a loop legitimately using `line:` — the documented `classify` evaluator
+   selector — is rejected by the JSON schema today. This is currently *latent*,
+   not live: `fsm-loop-schema.json` has no runtime consumer under
+   `scripts/little_loops/` (it is an editor/docs artifact). Add `line` to the
+   schema and a test asserting `dataclasses.fields(EvaluateConfig)` and the
+   schema's `evaluateConfig.properties` keys stay in lockstep, so the two lists
+   can never drift again.
 
 ## Integration Map
 
@@ -114,8 +142,11 @@ keep it out of this issue's minimum scope.
 2. Implement known-field derivation from `dataclasses.fields`.
 3. Add the validation rule with close-match suggestions; assign the rule id and
    suppression flag.
-4. Run it across all built-in loops; expect hits in `docs-sync.yaml` and
-   `oracles/code-run-gate.yaml` (and possibly others — that sweep is a deliverable).
+4. Run it across all built-in loops. ~~expect hits in `docs-sync.yaml` and
+   `oracles/code-run-gate.yaml`~~ — **both are clean post-`e2ea3c56`**; the sweep
+   is still a deliverable, but expect zero hits unless it surfaces something new.
+4a. Fix the `fsm-loop-schema.json` parity drift (missing `line`) and add the
+   schema/dataclass lockstep test — see Proposed Solution step 5.
 5. Document the rule in `.claude/CLAUDE.md` and the harness guide.
 6. Record the WARN-now / ERROR-later decision via `ll-issues decisions add`.
 7. Confirm `python -m pytest scripts/tests/` exits 0.
@@ -139,6 +170,7 @@ keep it out of this issue's minimum scope.
 | `docs/reference/API.md` | `little_loops.fsm.schema` / `validation` reference |
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-28T23:20:23 - `c53b272d-061d-4930-bc4e-fede59dd7ae2.jsonl`
 - `/ll:verify-issues` - 2026-07-28T22:25:21 - `f37e3f6b-746f-494f-89ff-1a095c8399bf.jsonl`
 - `/ll:capture-issue` - 2026-07-28T22:13:33Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c5d6d08-1571-414a-8fb3-349dddc4e1fc.jsonl`
 

@@ -2,11 +2,14 @@
 id: BUG-2898
 type: bug
 priority: P2
-status: open
-captured_at: "2026-07-28T22:29:06Z"
+status: cancelled
+captured_at: '2026-07-28T22:29:06Z'
 discovered_date: 2026-07-28
 discovered_by: capture-issue
-relates_to: [BUG-2897, BUG-2899]
+relates_to:
+- BUG-2897
+- BUG-2899
+closed_reason: superseded
 ---
 
 # BUG-2898: `ll-issues sequence --type` drops cross-type dependencies instead of respecting them
@@ -214,6 +217,7 @@ blocker does exist on disk.
   (edge-dropping and warning-suppression mechanism)
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-28T23:17:14 - `139954b3-6523-4f66-ba64-f2917d895a02.jsonl`
 - `/ll:capture-issue` - 2026-07-28T22:29:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/73139eea-b48b-4fa0-a6fa-0b390a284d9f.jsonl`
 
 ---
@@ -221,3 +225,18 @@ blocker does exist on disk.
 ## Status
 
 **Status**: open
+
+---
+
+## Resolution
+
+- **Completed**: 2026-07-28
+- **Reason**: Superseded by BUG-2897 via conflict resolution audit
+- **Proposed change**: Merged into BUG-2897. Both issues restructured the same
+  `cmd_sequence()` graph-construction into a "build wide / display narrow"
+  split, but on different widening axes, and this issue's proposed
+  `all_active = find_issues(config)` snippet re-introduced the exact
+  `status_filter=None` defect BUG-2897 exists to fix. The `--type`-at-display-time
+  fix, the empty-result message split, and this issue's acceptance criteria are
+  absorbed into BUG-2897's `## Scope Addition` section as the second widening
+  axis of a single change.

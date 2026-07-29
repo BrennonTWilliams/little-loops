@@ -2,7 +2,7 @@
 id: BUG-2893
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-28T22:13:33Z'
 discovered_date: 2026-07-28
 discovered_by: capture-issue
@@ -12,6 +12,7 @@ relates_to:
 - ENH-2896
 depends_on:
 - ENH-2895
+completed_at: '2026-07-28T23:20:22Z'
 ---
 
 # BUG-2893: docs-sync inert `evaluate.key` traps the loop in a verify_docs retry cycle
@@ -144,6 +145,7 @@ verify rather than `error`.
 | `.claude/CLAUDE.md` | Loop Authoring rules; `ll-loop validate` gate table |
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-28T23:20:23 - `c53b272d-061d-4930-bc4e-fede59dd7ae2.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-28T22:30:33 - `0c009821-2287-4712-ab12-876baba4cf48.jsonl`
 - `/ll:verify-issues` - 2026-07-28T22:25:20 - `f37e3f6b-746f-494f-89ff-1a095c8399bf.jsonl`
 - `/ll:capture-issue` - 2026-07-28T22:13:33Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c5d6d08-1571-414a-8fb3-349dddc4e1fc.jsonl`
@@ -153,3 +155,27 @@ verify rather than `error`.
 ## Status
 
 open
+
+---
+
+## Resolution
+
+- **Completed**: 2026-07-28
+- **Reason**: Fixed by commit `e2ea3c56` (ENH-2895), confirmed by
+  `/ll:audit-issue-conflicts`
+- **Proposed change**: This issue's own stated branch was taken verbatim — *"If
+  ENH-2895 lands: no change needed to `docs-sync.yaml` — the existing YAML
+  becomes correct as written."* `EvaluateConfig.key` now exists
+  (`fsm/schema.py`), is wired through `from_dict`, and `evaluate_output_numeric`
+  extracts it by regex. Verified live against this loop's exact stdout:
+  `evaluate_output_numeric('remaining_findings=0', 'eq', 0, key='remaining_findings')`
+  returns `verdict='yes'` — the reported failure no longer reproduces.
+
+  The regression test this issue asked for is **already present**:
+  `scripts/tests/test_builtin_loops.py::test_route_results_key_dispatches_correctly`
+  asserts `config.key == "remaining_findings"`, `yes` on `remaining_findings=0`,
+  and `no` on `remaining_findings=2`.
+
+  Note for the record: this issue named the state `check_findings`; the actual
+  state at `scripts/little_loops/loops/docs-sync.yaml:45` is `route_results`.
+  The quoted `evaluate:` block was otherwise verbatim.

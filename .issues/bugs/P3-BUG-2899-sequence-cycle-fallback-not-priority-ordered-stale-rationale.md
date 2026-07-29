@@ -3,10 +3,14 @@ id: BUG-2899
 type: bug
 priority: P3
 status: open
-captured_at: "2026-07-28T22:29:06Z"
+captured_at: '2026-07-28T22:29:06Z'
 discovered_date: 2026-07-28
 discovered_by: capture-issue
-relates_to: [BUG-2897, BUG-2898]
+relates_to:
+- BUG-2897
+- BUG-2898
+blocked_by:
+- BUG-2897
 ---
 
 # BUG-2899: `ll-issues sequence` cycle fallback isn't priority-ordered and prints stale rationale
@@ -110,8 +114,23 @@ except ValueError as exc:
     print(f"Warning: dependency cycle detected — {exc}")
     print("Ordering below is priority-only; cycle members cannot be sequenced.\n")
     cycle_ids = {i for cycle in graph.detect_cycles() for i in cycle}
-    ordered = sorted(issues, key=lambda i: (i.priority_int, i.issue_id))
+    ordered = sorted(display_issues, key=lambda i: (i.priority_int, i.issue_id))
 ```
+
+**Sort the display list, not `issues`** (revised by
+`/ll:audit-issue-conflicts`, conflict C2/C3). This issue is `blocked_by:
+BUG-2897`, which restructures `cmd_sequence()` so the loaded `issues` list
+becomes a *non-terminal superset* — it deliberately includes `deferred` issues,
+and (absorbing BUG-2898) is no longer `--type`-filtered either. Sorting raw
+`issues` here would therefore render deferred and out-of-type issues in the
+cycle-path output, violating BUG-2897's constraint that "the display filter must
+stay narrow."
+
+Use the post-split narrow list (`display_issues`) as the sort source, and place
+the shared status/type display filter **below** the `try`/`except` so it covers
+*both* the success and the cycle-fallback branches. Placing it only in the
+success path is the C3 defect: `--type` would silently list every type whenever
+a cycle is present.
 
 Then thread `cycle_ids` into the rationale builder: when
 `issue.issue_id in cycle_ids`, emit the cycle marker *instead of* the
@@ -166,7 +185,11 @@ at current backlog sizes; worth a comment rather than a refactor.
 
 1. Write the multi-directory cycle fixture; assert priority ordering — confirm it
    fails against current code.
-2. Replace `ordered = issues` with the explicit priority sort.
+2. Replace `ordered = issues` with the explicit priority sort over the *display*
+   list (`display_issues`), not the raw loaded list — see the Proposed Solution
+   note. Requires BUG-2897 to have landed the build-wide/display-narrow split.
+2a. Move the status/type display filter below the `try`/`except` so the
+   cycle-fallback branch is filtered identically to the success branch.
 3. Capture `cycle_ids` from `graph.detect_cycles()` in the except branch.
 4. Thread `cycle_ids` into rationale construction; suppress stale
    `blocked by:` / `after:` parts for cycle members.
@@ -231,6 +254,7 @@ the graph was rejected as non-DAG.
   ordering that the fallback incorrectly assumes is priority-sorted)
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-28T23:18:36 - `139954b3-6523-4f66-ba64-f2917d895a02.jsonl`
 - `/ll:capture-issue` - 2026-07-28T22:29:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/73139eea-b48b-4fa0-a6fa-0b390a284d9f.jsonl`
 
 ---

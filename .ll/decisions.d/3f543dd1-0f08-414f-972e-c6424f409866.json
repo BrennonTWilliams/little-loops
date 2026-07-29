@@ -1,0 +1,11 @@
+{
+  "id": "ca2ab786-6b6a-450a-8f70-f9d190d29d71",
+  "type": "decision",
+  "timestamp": "2026-07-28T22:33:08Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "blocked_by/depends_on are graph-derived and active-only while blocks is raw frontmatter; align blocks to graph.blocks for contract coherence.",
+  "rule": "Captured: sequence --json blocks field not graph-derived",
+  "scope": "issue",
+  "issue": "ENH-2900"
+}

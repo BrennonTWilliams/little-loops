@@ -10,19 +10,42 @@ relates_to:
 - BUG-2893
 - ENH-2895
 - ENH-2896
+- BUG-2902
 depends_on:
-- ENH-2895
+- BUG-2902
 ---
 
 # BUG-2894: code-run-gate `run_test` evaluator returns error on every invocation
 
 ## Summary
 
+> **RESCOPED 2026-07-28** by `/ll:audit-issue-conflicts`. **Cause 1 is fixed on
+> main** by commit `e2ea3c56` (ENH-2895), which added `EvaluateConfig.key` and
+> wired it into `from_dict`. Verified live against this state's exact stdout:
+> `evaluate_output_numeric('exit_code=1 pass_rate=pass_rate=0.40', 'ge', 0.95,
+> key='pass_rate')` now returns `verdict='no' value=0.40` — the regex extractor
+> takes the **last** match, so it absorbs the double-prefix and the gate
+> discriminates correctly.
+>
+> **The stale `depends_on: ENH-2895` has been dropped** — that issue is `done`.
+>
+> **DE-SCOPED 2026-07-28** by a second `/ll:audit-issue-conflicts` pass. The
+> `on_no`/`on_error` routing split **and** the `${captured.pass_rate.*}` →
+> `aggregate` consumer audit are now owned solely by **BUG-2902** (P2). They
+> were left duplicated here after BUG-2902 was split out; steps 4 and 6 have
+> been removed accordingly.
+>
+> **What remains in scope:** the cosmetic double-prefix cleanup only — the
+> final `echo`'s `pass_rate=pass_rate=` emission and the shape of the
+> `capture: pass_rate` value. Both are cosmetic post-`e2ea3c56`, which is why
+> this stays P3.
+
 `oracles/code-run-gate.yaml`'s `run_test` state never evaluates its pass-rate threshold.
 Two independent defects combine:
 
-1. `evaluate.key: pass_rate` is not a field on `EvaluateConfig` and is silently dropped
-   at load time, so `evaluate_output_numeric` parses the whole stdout line.
+1. ~~`evaluate.key: pass_rate` is not a field on `EvaluateConfig` and is silently dropped
+   at load time, so `evaluate_output_numeric` parses the whole stdout line.~~
+   **FIXED by `e2ea3c56` (ENH-2895).**
 2. The state's final `echo` double-prefixes the value — it emits
    `exit_code=0 pass_rate=pass_rate=0.99`, because `tail -1` on the results file already
    returns a `pass_rate=`-prefixed line.
@@ -31,9 +54,11 @@ The result is a `ValueError` in `float()` and a permanent `verdict="error"`. The
 `min_pass_rate` parameter and the `operator: ge` / `target: 0.95` comparison are
 entirely inert.
 
-This is currently **benign** only because `on_no` and `on_error` both route to
-`run_typecheck` — the loop proceeds, but a test run at 40% pass rate is indistinguishable
-from one at 100%.
+~~This is currently **benign** only because `on_no` and `on_error` both route to
+`run_typecheck`.~~ **No longer true post-`e2ea3c56`**: the evaluator now
+discriminates correctly and emits real `no` verdicts, which the shared
+`on_no`/`on_error` → `run_typecheck` routing then discards. That routing defect
+is **BUG-2902's** and is not addressed here.
 
 ## Current Behavior
 
@@ -111,37 +136,45 @@ Then either:
   (`echo "$RATE_LINE"`), letting the evaluator extract the field.
 - **Without ENH-2895**: echo the bare number as above and drop `key:`.
 
-Separately, verify what `aggregate` does with `${captured.pass_rate.*}` and correct it
-to consume the numeric value.
+Verifying what `aggregate` does with `${captured.pass_rate.*}` is **BUG-2902's**
+scope, not this issue's.
 
 ## Integration Map
 
-- `scripts/little_loops/loops/oracles/code-run-gate.yaml` — `run_test`, `aggregate` states
+- `scripts/little_loops/loops/oracles/code-run-gate.yaml` — `run_test` state only
+  (the `aggregate` state is BUG-2902's)
 - `scripts/little_loops/fsm/evaluators.py` — `evaluate_output_numeric`
 - `scripts/little_loops/fsm/schema.py` — `EvaluateConfig`
 - `scripts/tests/test_builtin_loops.py` — regression coverage
 
 ## Implementation Steps
 
-1. Add a failing test: feed `run_test`'s literal stdout to the evaluator and assert the
-   current verdict is `error`.
+1. Add a failing test asserting the final `echo` emits a single-prefixed
+   `pass_rate=<n>` (today it emits `pass_rate=pass_rate=<n>`).
 2. Fix the double-prefix in the final `echo`.
-3. Resolve `key:` per ENH-2895 (implement) or drop it (bare number).
-4. Trace `${captured.pass_rate.*}` into `aggregate` and fix any consumer expecting a number.
-5. Assert `min_pass_rate` is honoured: a run at 0.5 with threshold 0.95 must yield `no`.
-6. Consider whether `on_no` and `on_error` should still share `run_typecheck` once the
-   gate is live — the shared target is what masked this defect.
-7. Confirm `python -m pytest scripts/tests/` exits 0.
+3. Resolve the `capture: pass_rate` value shape so it holds the labelled line,
+   not the malformed blob. **Do not** modify the `aggregate` consumer — that
+   audit is BUG-2902's (see Scope Boundary).
+4. Assert `min_pass_rate` is honoured: a run at 0.5 with threshold 0.95 must yield `no`.
+5. Confirm `python -m pytest scripts/tests/` exits 0.
+
+**Out of scope** (owned by BUG-2902): the `on_no`/`on_error` routing split, and
+tracing `${captured.pass_rate.*}` into `aggregate`.
 
 ## Impact
 
-- **Severity**: Medium — no incorrect behaviour today (shared routing target), but the
-  advertised gate provides no signal, which is worse than an absent gate because
-  downstream MR-1 reasoning treats it as a real non-LLM evaluator.
+- **Severity**: Medium — ~~no incorrect behaviour today (shared routing target), but the
+  advertised gate provides no signal~~ **superseded post-`e2ea3c56`**: the gate now
+  emits correct `yes`/`no` verdicts, but the shared `on_no`/`on_error` →
+  `run_typecheck` routing discards every `no`. The oracle went from
+  "toothless but honest" to "discriminating correctly and then throwing the
+  answer away" — a behaviour change that shipped on main unreviewed. See
+  BUG-2902.
 - **Blast radius**: `rn-implement` and `rn-remediate` delegations, plus direct
   `ll-loop run oracles/code-run-gate` callers.
-- **Risk of fix**: Low-to-medium — enabling a previously-inert gate may start failing
-  runs that silently passed. Worth a deliberate look at step 6.
+- **Risk of fix**: Low — this issue's remaining scope is cosmetic (echo shape).
+  The risky half, enabling a previously-inert gate that may start failing runs
+  which silently passed, moved to BUG-2902 along with the routing split.
 
 ## Related Key Documentation
 
@@ -152,9 +185,25 @@ to consume the numeric value.
 | `.claude/CLAUDE.md` | `ll-loop diagnose-evaluators`; Loop Authoring rules |
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-29T00:04:13 - `00aa385f-3c68-486e-aadc-2dadfb4a2e42.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-07-28T23:20:23 - `c53b272d-061d-4930-bc4e-fede59dd7ae2.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-28T22:30:33 - `0c009821-2287-4712-ab12-876baba4cf48.jsonl`
 - `/ll:verify-issues` - 2026-07-28T22:25:20 - `f37e3f6b-746f-494f-89ff-1a095c8399bf.jsonl`
 - `/ll:capture-issue` - 2026-07-28T22:13:33Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c5d6d08-1571-414a-8fb3-349dddc4e1fc.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue covers the `run_test`
+state's **cosmetic output shape only** — the `pass_rate=pass_rate=` double-prefix
+in the final `echo`, and the resulting `capture: pass_rate` value shape. Related
+issue [BUG-2902] covers the `on_no`/`on_error` routing split and the
+`${captured.pass_rate.*}` → `aggregate` consumer audit; those were duplicated
+here after BUG-2902 was split out of this issue's step 6, and have now been
+removed from this issue's Implementation Steps.
+
+Both issues edit the same `run_test` block, so BUG-2902 (P2) should land first.
 
 ---
 

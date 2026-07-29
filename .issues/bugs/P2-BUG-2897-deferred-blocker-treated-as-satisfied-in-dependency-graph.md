@@ -7,6 +7,7 @@ captured_at: "2026-07-28T22:29:06Z"
 discovered_date: 2026-07-28
 discovered_by: capture-issue
 relates_to: [BUG-2898, BUG-2899]
+supersedes: [BUG-2898]
 ---
 
 # BUG-2897: A `deferred` blocker is silently treated as satisfied by the dependency graph
@@ -233,6 +234,7 @@ to silence legitimate `done` references.
 - `scripts/little_loops/cli/issues/sequence.py` — `cmd_sequence()`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-07-28T23:17:14 - `139954b3-6523-4f66-ba64-f2917d895a02.jsonl`
 - `/ll:capture-issue` - 2026-07-28T22:29:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/73139eea-b48b-4fa0-a6fa-0b390a284d9f.jsonl`
 
 ---
@@ -240,3 +242,58 @@ to silence legitimate `done` references.
 ## Status
 
 **Status**: open
+
+---
+
+## Scope Addition
+
+**Source**: Merged from BUG-2898 during `/ll:audit-issue-conflicts` conflict resolution.
+
+BUG-2898 (`--type` drops cross-type dependencies) is absorbed here because it
+required the *same* "build the graph wide, filter the display narrow"
+restructuring of `cmd_sequence()`, on a second axis. Landing them separately
+risked two conflicting rewrites of the same function — BUG-2898's proposed
+`all_active = find_issues(config)` is the bare default call whose
+`status_filter=None` path is precisely the defect this issue fixes.
+
+The merged change is a single restructuring with **two** widening axes and one
+narrowing step:
+
+1. **Build wide** — one graph-construction call that widens on both axes:
+
+```python
+from little_loops.issue_progress import _ALL_STATUSES, _TERMINAL_STATUSES
+
+non_terminal = _ALL_STATUSES - _TERMINAL_STATUSES  # includes deferred
+graph_issues = find_issues(config, status_filter=non_terminal)  # NO type_prefixes
+graph = DependencyGraph.from_issues(graph_issues, all_known_ids=all_known_ids)
+```
+
+   Note the absence of `type_prefixes` — that is BUG-2898's half. Passing
+   `type_prefixes={args.type}` here is what drops cross-type prerequisites.
+
+2. **Display narrow** — apply *both* narrowings to the ordered display list,
+   below the `try`/`except` so the cycle-fallback path is covered too:
+
+```python
+display = [i for i in ordered if i.status in ACTIVE_STATUSES]   # BUG-2897 half
+type_prefix = getattr(args, "type", None)
+if type_prefix:                                                  # BUG-2898 half
+    display = [i for i in display if i.issue_id.split("-", 1)[0] == type_prefix]
+shown = display[:limit]
+```
+
+3. **Empty-result message** (from BUG-2898) — the current early return
+   (`if not issues: print("No active issues found.")`) fires before graph
+   construction. With this change, "no active issues at all" and "no issues of
+   the requested type" become distinguishable and should print different
+   messages.
+
+Absorbed acceptance criteria from BUG-2898:
+
+- Under `--type BUG`, an issue blocked by a non-BUG prerequisite still reports
+  that blocker rather than appearing unblocked.
+- `--json` `blocked_by`/`depends_on` are non-empty for a cross-type-blocked
+  issue under `--type`.
+- The dropped-edge warning is no longer suppressed misleadingly for out-of-type
+  prerequisites that exist on disk.

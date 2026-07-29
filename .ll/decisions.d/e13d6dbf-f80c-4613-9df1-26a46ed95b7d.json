@@ -1,0 +1,14 @@
+{
+  "id": "8a3a68de-e439-4bdf-b30d-4bc15512826a",
+  "type": "rule",
+  "timestamp": "2026-07-28T23:19:37Z",
+  "category": "architecture",
+  "labels": [
+    "extracted",
+    "global"
+  ],
+  "rationale": "Without a new session, the child inherits the parent's process group, so os.killpg on timeout kills the parent runner itself instead of the hung child tree \u2014 this happened once already and every other _kill_process_group call site already had the flag.",
+  "rule": "Any subprocess.Popen whose process may be killed via os.killpg must be spawned with start_new_session=True",
+  "enforcement": "advisory",
+  "issue": "BUG-2901"
+}
