@@ -1284,6 +1284,10 @@ what forms the unsatisfiable cycle. `--json` adds an always-present
 (which would break the single JSON document on stdout); check that field to
 detect a degraded fallback ordering programmatically.
 
+`--json`'s `"blocks"` field is graph-derived like `"blocked_by"` and
+`"depends_on"`: non-terminal-filtered (excludes `done`/`cancelled`, includes
+`deferred`) and sorted, not the raw frontmatter declaration order (ENH-2900).
+
 #### `ll-issues impact-effort` / `ll-issues ie`
 
 Display an impact vs. effort matrix for active issues.

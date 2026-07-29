@@ -1745,6 +1745,55 @@ class TestSequenceDeferredAndCrossTypeBlockers:
         assert beta["blocked_by"] == ["BUG-001"]
         assert beta["deferred_blockers"] == ["BUG-001"]
 
+    def test_sequence_json_blocks_field_graph_derived(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """`blocks` matches `blocked_by`'s non-terminal-filtered, sorted, graph-derived
+        semantics (ENH-2900): excludes a `done` target, includes a `deferred` one, and
+        is reciprocal with the blocked issue's `blocked_by`."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+
+        # BUG-001 blocks an active issue (BUG-002), a done issue (BUG-003),
+        # and is blocked-by-declared from a deferred issue's perspective (BUG-004).
+        (bugs_dir / "P1-BUG-001-alpha.md").write_text(
+            "---\nstatus: open\n---\n\n# BUG-001: Alpha\n"
+        )
+        (bugs_dir / "P3-BUG-002-beta.md").write_text(
+            "---\nstatus: open\nblocked_by:\n  - BUG-001\n---\n\n# BUG-002: Beta\n"
+        )
+        (bugs_dir / "P3-BUG-003-gamma.md").write_text(
+            "---\nstatus: done\nblocked_by:\n  - BUG-001\n---\n\n# BUG-003: Gamma\n"
+        )
+        (bugs_dir / "P1-BUG-004-delta.md").write_text(
+            "---\nstatus: deferred\nblocked_by:\n  - BUG-001\n---\n\n# BUG-004: Delta\n"
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "sequence", "--json", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        alpha = next(item for item in data if item["id"] == "BUG-001")
+        beta = next(item for item in data if item["id"] == "BUG-002")
+
+        assert isinstance(alpha["blocks"], list)
+        assert alpha["blocks"] == sorted(alpha["blocks"])
+        assert "BUG-003" not in alpha["blocks"]  # done target excluded
+        assert "BUG-004" in alpha["blocks"]  # deferred target included
+        assert "BUG-002" in alpha["blocks"]
+        assert beta["blocked_by"] == ["BUG-001"]  # reciprocal with blocked issue's blocked_by
+
     def test_sequence_type_filter_still_reports_cross_type_blocker(
         self,
         temp_project_dir: Path,

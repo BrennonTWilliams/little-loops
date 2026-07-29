@@ -2,8 +2,9 @@
 id: ENH-2900
 type: enhancement
 priority: P4
-status: open
+status: done
 captured_at: '2026-07-28T22:29:06Z'
+completed_at: '2026-07-29T02:41:47Z'
 discovered_date: 2026-07-28
 discovered_by: capture-issue
 relates_to:
@@ -13,6 +14,12 @@ relates_to:
 depends_on:
 - BUG-2897
 - BUG-2899
+confidence_score: 100
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-2900: `ll-issues sequence --json` `blocks` is raw frontmatter while `blocked_by` is graph-derived
@@ -172,9 +179,78 @@ assume.
   silently narrows back to active-only. The `done`-exclusion test above passes
   both before and after BUG-2897, so it does not pin the new contract on its own.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Current code confirmed stale.** `scripts/little_loops/cli/issues/sequence.py`
+  `cmd_sequence()`'s `--json` dict literal (lines 144–161) is unchanged from
+  what this issue describes: `"blocks": issue.blocks` at line 156, sibling to
+  `"blocked_by": sorted(graph.blocked_by.get(issue.issue_id, set()))` (line
+  150), `"deferred_blockers"` (151–155, graph-derived), and
+  `"depends_on": sorted(graph.get_pending_prerequisites(issue.issue_id))`
+  (157). A fourth sibling, `"in_cycle": issue.issue_id in cycle_ids` (line
+  159, from BUG-2899), already landed in the same literal — confirming the
+  "land in one commit with BUG-2899" ordering note below is now moot (BUG-2899
+  is done) and this really is a single-line change to an existing literal, not
+  a coordinated multi-field rewrite.
+- **Both hard-ordering dependencies have landed.** BUG-2897 and BUG-2899 (this
+  issue's `depends_on`) both show `status: done`. BUG-2898 (which BUG-2897
+  absorbed, per this issue's own Scope Boundary note) has also landed. This
+  issue is unblocked for implementation.
+- **`graph.blocks` is correctly scoped, verified against current code.**
+  `DependencyGraph.from_issues()` (`dependency_graph.py:56–152`) populates
+  `graph.blocks` bidirectionally with `graph.blocked_by` in both the
+  `blocked_by:`-declaration pass (lines 103–118) and the one-sided
+  `blocks:`-declaration reconciliation pass (124–134) — every edge write to
+  `blocked_by` has a paired write to `blocks`, so there is no code path that
+  populates one without the other. Non-terminal filtering (done/cancelled
+  excluded, deferred included) comes from the caller's input list
+  (`find_issues_for_graph()`, called at `sequence.py:68`), not from
+  `from_issues()` itself — `graph.blocks` inherits the same non-terminal scope
+  as `graph.blocked_by` for free.
+- **`--type` filtering confirmed NOT applied at graph-construction time**
+  (`sequence.py:64–68`): the graph is always built from the full non-terminal
+  issue set; `--type` only narrows the `display` list afterward (lines
+  111–112). Adopting `graph.blocks` will not be silently truncated under
+  `--type`, matching current `blocked_by`/`depends_on` behavior.
+- **Existing test gap, concrete location.** `test_sequence_json_output`
+  (`test_issues_cli.py:1480–1512`) asserts `"blocks" in item` and
+  `isinstance(item["blocked_by"], list)` but has **no** `isinstance` check on
+  `blocks` itself, and no sort/graph-derivation assertion. The class
+  `TestSequenceDeferredAndCrossTypeBlockers` (`test_issues_cli.py:1678+`,
+  which already contains `test_sequence_json_deferred_blockers_field` at
+  1715–1747) is the natural home for the new `blocks`-specific tests this
+  issue calls for — it already has the deferred-target fixture pattern to
+  adapt (flip `blocked_by:`/`blocks:` roles: give the blocker issue no
+  frontmatter `blocks:` field and assert `graph.blocks` derives it from the
+  blocked issue's `blocked_by:` declaration).
+- **Two additional raw-`blocks` consumers found beyond `ll-issues show --json`**
+  (already listed above): `scripts/little_loops/cli/issues/show.py` uses
+  `frontmatter.get("blocks")` directly at line 253/450 (confirmed, no
+  `DependencyGraph` constructed in that code path at all — a larger follow-up
+  than a one-line swap), and
+  `scripts/little_loops/cli/issues/clusters.py:306–307,411–414` also reads raw
+  `issue.blocks` for edge-type filtering (elsewhere in the same file,
+  `clusters.py` also correctly uses `graph.blocks` for color annotation,
+  giving a same-file example of both the bug pattern and the fix pattern to
+  reference in a follow-up issue).
+- **Consumer grep confirmed clean.** No caller of `sequence --json` reading a
+  `blocks` field was found under `.claude/`, `skills/`, `commands/`, or
+  `scripts/little_loops/loops/` — Implementation Step 1's grep is satisfied;
+  the JSON output has no known in-repo consumer of the raw semantics.
+
 ### Documentation
 - `docs/reference/API.md` — `ll-issues sequence --json` field descriptions, if
   the schema is documented there
+- `docs/reference/CLI.md` — `#### \`ll-issues sequence\` / \`ll-issues seq\``
+  section (lines 1249–1286, confirmed by `/ll:wire-issue`) documents the
+  `--json` flag's added fields — `unverified_prose_deps`, `in_cycle`,
+  `blocked_by`/`depends_on` ordering — but never describes `blocks`'
+  semantics at all. Not broken by this change, but the natural place to add a
+  one-line note now that `blocks` shares `blocked_by`'s non-terminal-filtered,
+  sorted contract, matching how its siblings are documented in the same
+  section.
 
 ### Configuration
 - N/A
@@ -185,7 +261,10 @@ assume.
 2. Add a test asserting `blocks` excludes closed targets and is sorted.
 3. Change the `"blocks"` entry to `sorted(graph.blocks.get(...))`.
 4. Spot-check sibling JSON emitters for the same mismatch; file follow-ups if found.
-5. Run `python -m pytest scripts/tests/`.
+5. Update `docs/reference/CLI.md`'s `ll-issues sequence` `--json` section to
+   describe `blocks`' non-terminal-filtered, sorted semantics alongside its
+   documented siblings (added by `/ll:wire-issue`).
+6. Run `python -m pytest scripts/tests/`.
 
 ## Impact
 
@@ -205,6 +284,10 @@ assume.
 | `docs/ARCHITECTURE.md` | Consumers of dependency data across orchestration layers |
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-29T02:41:20Z - `c47096c9-6c91-42e9-95a4-d19ac29cd14b.jsonl`
+- `/ll:confidence-check` - 2026-07-29T02:35:16Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ed43db14-1397-48e6-bdce-3bfec2b6bd95.jsonl`
+- `/ll:wire-issue` - 2026-07-29T02:33:48 - `b8c451e1-3b1e-4664-aecc-2d17cdcc6ec3.jsonl`
+- `/ll:refine-issue` - 2026-07-29T02:27:59 - `a0bd30bd-5609-470e-b72c-eb9b2ccd37b5.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-29T00:04:13 - `00aa385f-3c68-486e-aadc-2dadfb4a2e42.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-28T23:18:36 - `139954b3-6523-4f66-ba64-f2917d895a02.jsonl`
 - `/ll:capture-issue` - 2026-07-28T22:29:06Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/73139eea-b48b-4fa0-a6fa-0b390a284d9f.jsonl`

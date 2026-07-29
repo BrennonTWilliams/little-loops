@@ -153,7 +153,7 @@ def cmd_sequence(config: BRConfig, args: argparse.Namespace) -> int:
                         for b in graph.blocked_by.get(issue.issue_id, set())
                         if issue_statuses.get(b) == "deferred"
                     ),
-                    "blocks": issue.blocks,
+                    "blocks": sorted(graph.blocks.get(issue.issue_id, set())),
                     "depends_on": sorted(graph.get_pending_prerequisites(issue.issue_id)),
                     "unverified_prose_deps": prose_deps_for(issue),
                     "in_cycle": issue.issue_id in cycle_ids,
