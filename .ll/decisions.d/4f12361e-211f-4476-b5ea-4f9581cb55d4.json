@@ -1,0 +1,12 @@
+{
+  "id": "c33a3c23-6fee-41ce-be4d-bc3991270810",
+  "type": "decision",
+  "timestamp": "2026-07-29T01:40:35Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses existing skip_blocked superset/filter pattern in issue_parser.py; scored 11/12 vs Option B's 5/12 (broad default-filter change would surface deferred issues in 10+ work-selection call sites)",
+  "rule": "Option A (narrow) \u2014 fix at graph-building call sites via non-terminal superset load, reuse skip_blocked precedent",
+  "scope": "issue",
+  "alternatives_rejected": "Option B (broaden find_issues default filter) \u2014 high blast radius across next-issue/dequeue/sprint call sites",
+  "issue": "BUG-2897"
+}

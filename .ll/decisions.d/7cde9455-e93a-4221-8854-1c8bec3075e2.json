@@ -1,0 +1,11 @@
+{
+  "id": "513c7358-5d0f-41dc-92aa-0e3c0bf15c48",
+  "type": "decision",
+  "timestamp": "2026-07-29T00:49:02Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "run_action() refuses LOOP by design; the queue must reach the FSM executor directly (subprocess-per-entry preferred) rather than registering a LOOP handler in the dispatch table.",
+  "rule": "Captured: ll-queue run dispatches RunnerType.LOOP via PersistentExecutor",
+  "scope": "issue",
+  "issue": "FEAT-2906"
+}
