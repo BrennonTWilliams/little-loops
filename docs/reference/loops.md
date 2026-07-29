@@ -489,10 +489,35 @@ generate  (prompt: LLM renders artifact)
   on_error          → failed
 
 evaluate  (fragment: playwright_screenshot)
-  on_yes/no/error → snapshot      # graceful degradation if Playwright unavailable
+  on_yes/no/error → snapshot      # graceful degradation if Playwright unavailable —
+                                   # a timeout/failed capture arrives as on_no, not
+                                   # on_error (output_contains never consults exit
+                                   # code), so routing alone cannot discriminate a
+                                   # bad artifact from a screenshot we never got
 
-snapshot  (shell: copy artifact + screenshot to iter-N/ subdir for versioning)
-  → score  (unconditional)
+snapshot  (shell: copy artifact + screenshot to iter-N/ subdir for versioning;
+           ENH-2903: also detects a missing/stale screenshot.png or a missing
+           artifact copy and records the consecutive-miss count to
+           ${run_dir}/.screenshot_misses)
+  → score_gate  (unconditional)
+
+score_gate  (shell: reads .screenshot_misses — ENH-2903)
+  on_yes (miss count 0, fresh screenshot) → score
+  on_no  (nonzero miss count)             → check_screenshot_abandon
+
+check_screenshot_abandon  (shell: compares .screenshot_misses against a
+                           max_step_attempts-style cap of 3 — ENH-2903)
+  on_yes (cap breached)     → screenshot_abandoned_summary
+  on_no  (below-cap miss)   → record_screenshot_skip
+
+record_screenshot_skip  (shell: skip rubric-scoring this iteration — never scores
+                         a stale/missing screenshot)
+  → check_stall  (unconditional, rejoins the normal convergence chain)
+
+screenshot_abandoned_summary  (shell: writes ${run_dir}/summary.json with an
+                               "abandoned" key — MR-13 penultimate state)
+  → screenshot_abandoned  (terminal, failure: true — downgraded verdict,
+                           distinct from done)
 
 score  (fragment: ll_rubric_score; local numeric-score override — emits SCORE: <0-10>)
   on_yes  → done  (terminal)
@@ -515,14 +540,15 @@ check_diff_stall  (fragment: diff_stall_gate; max_stall=3 — secondary/OR: byte
   on_error                      → generate
 ```
 
-**Budget** (BUG-2824): `max_steps: 40` — the cycle above costs 7 states, so 40
-buys 5+ full scored iterations, enough for `check_diff_stall`'s `max_stall: 3`
-to actually be reachable before the step cap (the previous `max_steps: 20`
-capped the loop at ~2.8 cycles, making the plateau detector structurally
-unreachable). `on_max_steps: max_steps_summary` fires a terminal-doubling
-summary state (BUG-158 shape) on exhaustion, so callers can distinguish
-"ran out of budget with usable output on disk" from a genuine crash, instead
-of silently discarding a generated-but-unscored artifact.
+**Budget** (BUG-2824): `max_steps: 40` — the fresh-screenshot cycle above costs
+8 states (ENH-2903 added `score_gate`), so 40 buys 5 full scored iterations,
+enough for `check_diff_stall`'s `max_stall: 3` to actually be reachable before
+the step cap (the previous `max_steps: 20` capped the loop at ~2.8 cycles,
+making the plateau detector structurally unreachable). `on_max_steps:
+max_steps_summary` fires a terminal-doubling summary state (BUG-158 shape) on
+exhaustion, so callers can distinguish "ran out of budget with usable output
+on disk" from a genuine crash, instead of silently discarding a
+generated-but-unscored artifact.
 
 ### Fragment dependency
 
@@ -535,7 +561,7 @@ Imports `lib/harness.yaml` for the `playwright_screenshot` fragment used in the 
 **Category**: oracle sub-loop
 **File**: `scripts/little_loops/loops/oracles/generator-evaluator-cli.yaml`
 
-CLI-render oracle variant of `generator-evaluator`, created via `from: generator-evaluator` inheritance (first oracle to use `from:` — FEAT-2269). Overrides two states from the parent: `evaluate` (replaces Playwright screenshot with a caller-provided shell render command) and `snapshot` (replaces single `screenshot.png` copy with multi-file `views/*.png` copy). All other states (`generate`, `score`, `record_score`, `check_stall`, `check_diff_stall`, `done`, `failed`) are inherited unchanged.
+CLI-render oracle variant of `generator-evaluator`, created via `from: generator-evaluator` inheritance (first oracle to use `from:` — FEAT-2269). Overrides two states from the parent: `evaluate` (replaces Playwright screenshot with a caller-provided shell render command) and `snapshot` (replaces single `screenshot.png` copy with multi-file `views/*.png` copy, routing straight to `score` as before). All other states (`generate`, `score`, `record_score`, `check_stall`, `check_diff_stall`, `done`, `failed`) are inherited unchanged. `render_command`'s own `CAPTURED`/not-`CAPTURED` evaluator already discriminates a failed render (`on_no`/`on_error → failed`) before `snapshot` ever runs, so this variant does not need the ENH-2903 `score_gate`/`check_screenshot_abandon` screenshot-miss chain the parent gained — those inherited states remain present but unreachable here (allowlisted in `test_deterministic_warning_categories_do_not_regrow`).
 
 Intended for any CLI-rendered artifact: OpenSCAD, graphviz, manim, CNC toolchains, etc. Currently used only by `openscad-model-generator` as a reusable component; `openscad-model-generator` invokes the oracle directly for its inner generate → render → score cycle.
 
