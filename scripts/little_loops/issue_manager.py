@@ -37,7 +37,7 @@ from little_loops.issue_lifecycle import (
     create_issue_from_failure,
     verify_issue_completed,
 )
-from little_loops.issue_parser import IssueInfo, IssueParser, find_issues_for_graph
+from little_loops.issue_parser import IssueInfo, IssueParser, find_issues, find_issues_for_graph
 from little_loops.learning_tests.extractor import resolve_learning_targets
 from little_loops.learning_tests.gate import run_learning_gate_for_issue
 from little_loops.logger import Logger, format_duration
@@ -1339,11 +1339,69 @@ class AutoManager:
         if blocked_count > 0:
             self.logger.warning(f"{blocked_count} issue(s) remain blocked - check dependencies")
 
+    def _unreachable_reason(self, requested_id: str) -> str:
+        """Classify why a requested `--only` ID never came back from the queue.
+
+        Args:
+            requested_id: The raw `--only` pattern/ID as supplied by the caller
+
+        Returns:
+            A human-readable reason string, one of `not_found`, `already_<status>`,
+            "in a dependency cycle", or "blocked by: <comma-joined blocker ids>".
+            When `requested_id` matches multiple issues in the graph (a numeric or
+            prefix pattern), reasons for each match are joined with "; ".
+        """
+        completed = set(self.state_manager.state.completed_issues)
+        all_in_graph = set(self.dep_graph.issues.keys())
+        matches = sorted(i for i in all_in_graph if _id_matches(i, requested_id))
+
+        if not matches:
+            # find_issues_for_graph() (used to build self.dep_graph) only returns
+            # non-terminal issues, so an already-done/cancelled ID is absent from
+            # `all_in_graph` too. Fall back to an unfiltered lookup to tell that
+            # apart from a genuinely nonexistent ID.
+            from little_loops.issue_progress import _ALL_STATUSES
+
+            all_issues = find_issues(
+                self.config, category=self.category, status_filter=set(_ALL_STATUSES)
+            )
+            terminal_matches = sorted(
+                i.issue_id for i in all_issues if _id_matches(i.issue_id, requested_id)
+            )
+            if not terminal_matches:
+                return "not_found"
+            status_by_id = {i.issue_id: i.status for i in all_issues}
+            return "; ".join(
+                f"{issue_id}: already_{status_by_id[issue_id]}" for issue_id in terminal_matches
+            )
+
+        cycles = self.dep_graph.detect_cycles() if self.dep_graph.has_cycles() else []
+
+        reasons = []
+        for issue_id in matches:
+            info = self.dep_graph.issues[issue_id]
+            if info.status in ("done", "cancelled", "deferred") or issue_id in completed:
+                status = "completed" if issue_id in completed else info.status
+                reasons.append(f"{issue_id}: already_{status}")
+                continue
+            if any(issue_id in cycle for cycle in cycles):
+                reasons.append(f"{issue_id}: in a dependency cycle")
+                continue
+            blockers = self.dep_graph.get_blocking_issues(issue_id, completed)
+            if blockers:
+                reasons.append(f"{issue_id} blocked by: {', '.join(sorted(blockers))}")
+            else:
+                reasons.append(f"{issue_id}: filtered out")
+        return "; ".join(reasons)
+
     def run(self) -> int:
         """Run the automation loop.
 
         Returns:
-            Exit code: 0 = success or empty queue, 1 = all issues gate-blocked when --only used
+            Exit code: 0 = success, or (no `--only`) an empty/fully-blocked backlog.
+            1 = `--only` was used and none of the requested IDs were processed —
+            covers both "attempted and failed" and "never eligible" (blocked,
+            in a cycle, not found, or already terminal).
         """
         run_start_time = time.time()
         self.logger.info("Starting automated issue management...")
@@ -1394,8 +1452,20 @@ class AutoManager:
 
         self._log_timing_summary(run_start_time)
         self.logger.success(f"Processed {self.processed_count} issue(s)")
-        if self.only_ids and attempted_count > 0 and self.processed_count == 0:
-            return 1
+        if self.only_ids:
+            completed = set(self.state_manager.state.completed_issues)
+            unreached = {
+                p
+                for p in self.only_ids
+                if not any(_id_matches(c, p) for c in completed)
+            }
+            if unreached:
+                for requested_id in sorted(unreached):
+                    self.logger.error(
+                        f"  {requested_id}: {self._unreachable_reason(requested_id)}"
+                    )
+            if self.processed_count == 0:
+                return 1
         return 0
 
     def _log_timing_summary(self, run_start_time: float) -> None:

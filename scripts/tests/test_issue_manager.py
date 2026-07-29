@@ -3264,6 +3264,91 @@ class TestAutoManagerRun:
 
         assert result == 1
 
+    def test_run_returns_one_when_only_ids_never_eligible(self, full_project: Path) -> None:
+        """run() exits 1 when the --only target is blocked and never dequeued at all.
+
+        Regression test for BUG-2907: unlike gate-blocked (attempted, then
+        failed), a `blocked_by`-blocked issue never comes back from
+        `_get_next_issue()` at all, so `attempted_count` stays 0. The exit
+        code must still be 1, and the blocker IDs should appear in the log.
+        """
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        issues_dir = full_project / ".issues" / "bugs"
+        (issues_dir / "P1-BUG-005-blocker.md").write_text(
+            "# BUG-005: Blocker\n\n## Summary\nUnfinished blocker"
+        )
+        (issues_dir / "P1-BUG-006-target.md").write_text(
+            "---\nblocked_by: [BUG-005]\n---\n# BUG-006: Target\n\n## Summary\nBlocked target"
+        )
+
+        config = BRConfig(full_project)
+
+        with patch("little_loops.issue_manager.process_issue_inplace") as mock_process:
+            with patch("little_loops.issue_manager.check_git_status", return_value=False):
+                manager = AutoManager(
+                    config,
+                    dry_run=False,
+                    only_ids={"BUG-006"},
+                    db_path=config.project_root / ".ll" / "history.db",
+                )
+
+                result = manager.run()
+
+        # BUG-006 was never dequeued, so process_issue_inplace must not be called
+        mock_process.assert_not_called()
+        assert result == 1
+
+    def test_run_returns_one_when_only_id_not_found(self, full_project: Path) -> None:
+        """run() exits 1 when the --only target doesn't exist in .issues/ at all."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        config = BRConfig(full_project)
+
+        with patch("little_loops.issue_manager.process_issue_inplace") as mock_process:
+            with patch("little_loops.issue_manager.check_git_status", return_value=False):
+                manager = AutoManager(
+                    config,
+                    dry_run=False,
+                    only_ids={"BUG-999"},
+                    db_path=config.project_root / ".ll" / "history.db",
+                )
+
+                result = manager.run()
+
+        mock_process.assert_not_called()
+        assert result == 1
+
+    def test_unreachable_reason_classifications(self, full_project: Path) -> None:
+        """`_unreachable_reason` distinguishes not_found/blocked/already_done directly."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        issues_dir = full_project / ".issues" / "bugs"
+        (issues_dir / "P1-BUG-005-blocker.md").write_text(
+            "# BUG-005: Blocker\n\n## Summary\nUnfinished blocker"
+        )
+        (issues_dir / "P1-BUG-006-target.md").write_text(
+            "---\nblocked_by: [BUG-005]\n---\n# BUG-006: Target\n\n## Summary\nBlocked target"
+        )
+        (issues_dir / "P1-BUG-007-done.md").write_text(
+            "---\nstatus: done\n---\n# BUG-007: Done\n\n## Summary\nAlready finished"
+        )
+
+        config = BRConfig(full_project)
+        with patch("little_loops.issue_manager.check_git_status", return_value=False):
+            manager = AutoManager(
+                config,
+                dry_run=False,
+                db_path=config.project_root / ".ll" / "history.db",
+            )
+
+        assert manager._unreachable_reason("BUG-999") == "not_found"
+        assert "BUG-006 blocked by: BUG-005" in manager._unreachable_reason("BUG-006")
+        assert manager._unreachable_reason("BUG-007") == "BUG-007: already_done"
+
 
 class TestSignalHandler:
     """Tests for graceful shutdown signal handling (ENH-207)."""
