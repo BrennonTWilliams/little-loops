@@ -13,6 +13,7 @@ labels:
 relates_to:
 - ENH-2852
 - ENH-2870
+- ENH-2927
 ---
 
 # ENH-2924: find_project_root should prefer a .git ancestor over the nearest .ll directory
@@ -27,7 +28,7 @@ relates_to:
 
 ## Expected Behavior
 
-Project-root resolution does not trust the nearest `.ll` blindly. When a `.git` ancestor exists above `start`, the root is the highest ancestor that still contains `.ll` (equivalently: the `.git` root when it also has `.ll`), and a nearer `.ll` without `.git` is treated as a stray and skipped — or, at minimum, resolution prefers the `.git` ancestor over a `.ll`-only ancestor when both exist. Non-git projects keep working exactly as today (nearest `.ll` wins when no `.git` ancestor exists). A regression test plants a stray `.ll` in a subdirectory of a real repo and asserts resolution still returns the repo root.
+Project-root resolution does not trust the nearest `.ll` blindly. The selection rule, precisely: **walk ancestors nearest-out and return the first candidate that contains both `.ll` and `.git`; if no ancestor has both, fall back to today's nearest-`.ll` behavior.** `.git` presence is checked with `.exists()`, NOT `is_dir()` — in git worktrees and submodules `.git` is a *file*, and this project runs heavily inside worktrees (`ll-parallel`, epic branches). Consequences of the rule: a stray `.ll` in a plain subdirectory is skipped (repo root has both and wins); a monorepo subproject (`.git` only at repo root, legit `.ll` at `packages/foo/`) keeps resolving to `packages/foo` via the fallback; a worktree checkout with its own `.git` file and `.ll` resolves to itself (correct — it is a real project); non-git projects keep nearest-`.ll` semantics unchanged. A regression test plants a stray `.ll` in a subdirectory of a real repo and asserts resolution still returns the repo root.
 
 ## Motivation
 
@@ -35,7 +36,7 @@ The gate's fail-open design exists to prevent mass-defer for reasons unrelated t
 
 ## Proposed Solution
 
-In `find_project_root()`, collect all ancestors of `start` containing `.ll`; if any ancestor (up to the filesystem root or the first `.git`-bearing ancestor) contains `.git`, return the outermost `.ll`-bearing ancestor at or within the `.git` root. Concretely: prefer the candidate that also has a `.git` sibling entry; fall back to nearest `.ll` when no `.git` exists anywhere above (preserving behavior for non-git installs). Keep the function total and side-effect-free as today — it currently never raises, and `OSError` on `start.resolve()` returns `None`.
+In `find_project_root()`, walk `(current, *current.parents)` as today, but return the first candidate where `(candidate / ".ll").is_dir() and (candidate / ".git").exists()` (`.exists()`, not `is_dir()` — worktree/submodule `.git` is a file). Remember the first `.ll`-only candidate seen during the same walk; if the walk completes with no both-bearing ancestor, return that remembered nearest-`.ll` candidate (preserving behavior for non-git installs and monorepo subprojects). Single pass, keep the function total and side-effect-free as today — it currently never raises, and `OSError` on `start.resolve()` returns `None`.
 
 Alternative considered and rejected in ENH-2870: deleting stray dirs before arming (done manually, 2026-07-29) — treats symptoms; the dirs regenerate on the next mis-rooted invocation.
 
@@ -52,7 +53,7 @@ Alternative considered and rejected in ENH-2870: deleting stray dirs before armi
 - Other root-finding helpers in the codebase (e.g. config/history discovery) should be checked for the same nearest-`.ll` assumption during implementation — scope the fix to `find_project_root` but note siblings in the PR
 
 ### Tests
-- `scripts/tests/test_program_design_gate.py` — new case: stray `.ll` in a subdirectory of a `tmp_path` git repo still resolves to the repo root; plus a non-git fallback case asserting nearest-`.ll` behavior is unchanged
+- `scripts/tests/test_program_design_gate.py` — new cases: (a) stray `.ll` in a subdirectory of a `tmp_path` git repo still resolves to the repo root; (b) non-git fallback asserting nearest-`.ll` behavior is unchanged; (c) worktree-style root where `.git` is a *file* still wins over a stray `.ll` below it; (d) monorepo subproject (`.git` only at repo root, `.ll` only at `packages/foo/`) still resolves to `packages/foo`
 
 ### Documentation
 - N/A — behavior-contract clarification only; the module docstring's fail-open contract is unchanged
@@ -71,7 +72,7 @@ Alternative considered and rejected in ENH-2870: deleting stray dirs before armi
 
 **In scope:** `find_project_root()` root-selection logic and its two callers' regression coverage.
 
-**Out of scope:** auditing or changing other root-discovery helpers beyond noting them in the PR; deleting existing stray `.ll` dirs automatically (a separate hygiene question); any change to the stamp, grandfathering, or fail-open semantics.
+**Out of scope:** auditing or changing other root-discovery helpers beyond noting them in the PR; deleting existing stray `.ll` dirs automatically (a separate hygiene question); stopping `ll-*` CLIs from *creating* stray `.ll/` dirs at cwd in the first place — that generation-side root cause is captured separately as ENH-2927; any change to the stamp, grandfathering, or fail-open semantics.
 
 ## Impact
 

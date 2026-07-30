@@ -64,7 +64,8 @@ DEFAULT_DOC_FILES = [
 ```
 
 `grep -rn DEFAULT_DOC_FILES scripts/ --include='*.py'` returns **only its own
-definition** — it is referenced nowhere. `check_links()` instead does:
+definition** — it is referenced nowhere. `check_markdown_links()` (line 259, the
+function behind the `main_check_links` CLI entry in `cli/docs.py:313`) instead does:
 
 ```python
 md_files = list(base_dir.rglob("*.md"))    # line 284
@@ -79,6 +80,10 @@ walking the entire tree: `node_modules/`, `.pytest_cache/`, `.loops/` run artifa
 except urllib.error.HTTPError as e:
     return LinkOutcome.BROKEN, f"HTTP {e.code}"
 ```
+
+There is a **second classification site**: line 208 returns
+`LinkOutcome.BROKEN, f"HTTP {response.status}"` for non-2xx statuses that come back
+through the success path (no exception raised). Both sites need the same tiering.
 
 No discrimination by status code. The `LinkOutcome.BROKEN` docstring (line 50) reads
 "the host answered and said no" — but a 429 means "you asked too fast" and a 401/403
@@ -95,13 +100,16 @@ visibility but do not gate, matching the ENH-2836 precedent for unreachable link
 
 ## Proposed Solution
 
-**Scope** — wire `DEFAULT_DOC_FILES` into `check_links()` as the default file set,
-replacing the bare `rglob`. Keep a positional path override (already shown in
-`--help` examples as `ll-check-links docs/`). Additionally apply a hard directory
-denylist — `node_modules/`, `.pytest_cache/`, `.venv/`, `.git/`, `.loops/` — so an
-explicit wider path still cannot drag in vendored or generated markdown.
+**Scope** — wire `DEFAULT_DOC_FILES` into `check_markdown_links()` as the default
+file set, replacing the bare `rglob`. Keep a positional path override (already shown
+in `--help` examples as `ll-check-links docs/`). Additionally apply a hard directory
+denylist — `node_modules/`, `.pytest_cache/`, `.venv/`, `.git/`, `.loops/`, `.ll/` —
+so an explicit wider path still cannot drag in vendored or generated markdown
+(stray/quarantined `.ll/` contents included).
 
-**Status classification** — add a third outcome tier:
+**Status classification** — add a third outcome tier via a single shared
+status-code classifier applied at **both** sites (the non-2xx success path at line
+208 and the `HTTPError` handler at line 210–211):
 
 - `404`, `410` → `BROKEN` (fatal; the host asserts it is gone)
 - `429`, `401`, `403`, `5xx` → new `INDETERMINATE` outcome — reported in output, does
@@ -109,9 +117,43 @@ explicit wider path still cannot drag in vendored or generated markdown.
 - `--strict-network` gates `INDETERMINATE` as well as `UNREACHABLE`, consistent with
   existing behavior
 
+The tier must be threaded through the result model and every consumer:
+`LinkResult.status`, `LinkCheckResult` counters, `has_errors`, the JSON formatter
+(`"has_errors"` key, line 527), and the `ll-doctor --full` adapter
+(`cli/doctor.py:774` `_full_check_links_data()`), which currently gates on
+`result.broken_links > 0` and string-filters `r.status == "broken"` /
+`"unreachable"`. The adapter should surface `INDETERMINATE` as an informational
+finding, the way it already handles unreachable.
+
 **Rate-limit hygiene** — honor `Retry-After` on 429 with backoff in the existing
-retry path, and lower the default `--workers` from 10. A 429 is evidence the checker
-was too aggressive, not evidence about the link.
+retry path, capping the honored delay (e.g. ≤30s) and the total per-run retry
+budget so a large or adversarial `Retry-After` cannot stall the run; and lower the
+default `--workers` from 10. A 429 is evidence the checker was too aggressive, not
+evidence about the link.
+
+## Program Design
+
+### Types
+
+- `LinkOutcome.INDETERMINATE` — new enum member alongside `VALID`/`BROKEN`/`UNREACHABLE` in `scripts/little_loops/link_checker.py`; carried through `LinkResult.status` as the string `"indeterminate"` and counted on `LinkCheckResult` as `indeterminate_links: int`.
+
+### Signatures
+
+- `_classify_http_status(code: int) -> LinkOutcome`
+
+  New shared status→tier classifier: `404`/`410` → `BROKEN`; `429`/`401`/`403`/`5xx` → `INDETERMINATE`.
+
+- `check_markdown_links(base_dir: Path, ignore_patterns: list[str], files: list[Path] | None = None) -> LinkCheckResult`
+
+  Default file set from `DEFAULT_DOC_FILES` globs plus a hard directory denylist, replacing `base_dir.rglob("*.md")` (existing keyword args unchanged; `files` is additive).
+
+- `_check_url_once(url: str, timeout: int) -> tuple[LinkOutcome, str | None]`
+
+  Both classification sites (non-2xx success path and `HTTPError` handler) route through `_classify_http_status`.
+
+### Call Path
+
+`main_check_links` (`scripts/little_loops/cli/docs.py`) → `check_markdown_links` → `_check_url_once` → `_classify_http_status`; and `_full_check_links_data` (`scripts/little_loops/cli/doctor.py`) → `check_markdown_links`, with `_full_check_links_data` growing an informational branch on `indeterminate_links` mirroring its existing `unreachable_links` branch. `has_errors` on `LinkCheckResult` continues to gate only on `BROKEN`; `--strict-network` extends to `INDETERMINATE`.
 
 ## Impact
 
@@ -124,18 +166,28 @@ captured in loop run artifacts.
 
 ## Acceptance Criteria
 
-- [ ] `DEFAULT_DOC_FILES` is referenced by `check_links()`; no dead constant remains.
+- [ ] `DEFAULT_DOC_FILES` is referenced by `check_markdown_links()`; no dead
+      constant remains.
 - [ ] `ll-check-links` with no arguments does not visit `node_modules/`,
       `.pytest_cache/`, `.loops/`, `thoughts/`, or `.issues/`.
 - [ ] An explicit path argument still cannot pull in `node_modules/` or
       `.pytest_cache/` (denylist applies regardless of scope).
-- [ ] HTTP 429/401/403/5xx are reported but do not set exit code 1; 404/410 still do.
+- [ ] HTTP 429/401/403/5xx are reported but do not set exit code 1; 404/410 still
+      do. Both classification sites (line 208 success path and the `HTTPError`
+      handler) route through the same shared classifier.
 - [ ] `--strict-network` gates on `INDETERMINATE` as well as `UNREACHABLE`.
-- [ ] 429 responses honor `Retry-After` before retrying.
+- [ ] `ll-doctor --full`'s `_full_check_links_data()` adapter handles the
+      `INDETERMINATE` tier (reported as informational, not error) and does not
+      break on the new `LinkResult.status` value.
+- [ ] 429 responses honor `Retry-After` before retrying, with the delay capped
+      (≤30s) and a bounded total retry budget per run.
 - [ ] Unit tests cover each status-code tier's outcome classification and the scope
       denylist, using a stubbed fetch layer (no live network in the suite).
-- [ ] `ll-doctor --full` `check_links` passes on a clean tree, or reports a small
-      actionable count of genuine 404s.
+- [ ] `ll-doctor --full` `check_links` reports only genuine 404/410s. A residual
+      red count from `docs/research/dreaming-research-synthesis.md` (~33 rotted
+      bibliography URLs) is expected until the follow-up content-triage issue
+      lands — this issue does not make the gate green, it makes the red count
+      honest and actionable.
 
 ## Scope Boundaries
 
@@ -144,7 +196,9 @@ classification; corresponding tests in `scripts/tests/`.
 
 **Out of scope:** fixing the ~33 rotted bibliography URLs in
 `docs/research/dreaming-research-synthesis.md`. That is content triage, not a tooling
-defect — file separately once this lands and the real 404 list is legible. Consider
+defect — file separately once this lands and the real 404 list is legible. Note the
+consequence: because `DEFAULT_DOC_FILES` includes `docs/**/*.md`, the `ll-doctor
+--full` gate stays red (with a small honest count) until that follow-up lands. Consider
 annotating that file as a citation list rather than chasing dead academic URLs.
 
 Also out of scope: the `claude_md_suppression` and `auto_commit` ✗ marks in

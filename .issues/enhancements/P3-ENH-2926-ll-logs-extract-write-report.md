@@ -8,6 +8,8 @@ discovered_date: 2026-07-29
 discovered_by: scope-review
 relates_to:
 - ENH-2925
+blocked_by:
+- ENH-2925
 labels:
 - ll-logs
 - cli-consistency
