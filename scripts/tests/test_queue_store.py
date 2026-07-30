@@ -107,6 +107,18 @@ class TestAddEntry:
         assert get_entry(skill_entry.id, db).action.runner == RunnerType.SKILL
         assert get_entry(cmd_entry.id, db).action.runner == RunnerType.CMD
 
+    def test_timeout_none_round_trips_as_json_null(self, tmp_path: Path) -> None:
+        """BUG-2928: a LOOP entry's unbounded timeout survives JSON serialize/deserialize."""
+        db = tmp_path / "queue.db"
+        entry = add_entry(
+            ActionSpec(name="my-loop", runner=RunnerType.LOOP, target="my-loop", timeout=None),
+            db_path=db,
+        )
+
+        fetched = get_entry(entry.id, db)
+        assert fetched is not None
+        assert fetched.action.timeout is None
+
 
 class TestListEntries:
     def test_empty_queue(self, tmp_path: Path) -> None:

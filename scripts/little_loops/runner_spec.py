@@ -87,7 +87,7 @@ class ActionSpec:
     runner: RunnerType
     target: str
     args: dict[str, Any] = field(default_factory=dict)
-    timeout: int = 120
+    timeout: int | None = 120
 
 
 def _run_skill(spec: ActionSpec) -> RunnerResult:
@@ -113,6 +113,8 @@ def _run_skill(spec: ActionSpec) -> RunnerResult:
     is forwarded as ``working_dir`` and as ``workspace_root`` so a
     ``workspace_sandboxed`` host confines tool access to it.
     """
+    assert spec.timeout is not None, "SKILL runner requires a concrete timeout (BUG-2928)"
+
     runner_args: list[str] = spec.args.get("runner_args") or []
     parts = [f"/ll:{spec.target}"] + runner_args
     prompt = " ".join(parts)
@@ -202,6 +204,8 @@ def _run_cmd(spec: ActionSpec) -> RunnerResult:
     ``for line in process.stdout`` loop never reaches the wait() call while
     the child holds stdout open without exiting.
     """
+    assert spec.timeout is not None, "CMD runner requires a concrete timeout (BUG-2928)"
+
     process = subprocess.Popen(
         ["bash", "-c", spec.target],
         stdout=subprocess.PIPE,
@@ -272,6 +276,8 @@ def _run_mcp(spec: ActionSpec) -> RunnerResult:
     not runner dispatch, and their error reporting predates (and differs
     from) the shared :class:`RunnerResult`/``_evaluate_and_report`` path.
     """
+    assert spec.timeout is not None, "MCP runner requires a concrete timeout (BUG-2928)"
+
     server, tool = spec.target.split(":", 1)
     params: dict[str, Any] = spec.args.get("mcp_params") or {}
     response, exit_code = call_mcp_tool(server, tool, params, timeout=spec.timeout)

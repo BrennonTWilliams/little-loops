@@ -2792,7 +2792,7 @@ Persisted work-item queue, backed by a dedicated `.ll/queue.db` (FEAT-2682) — 
 | `--runner {skill,cmd,mcp,prompt,loop}` | Force a specific runner kind instead of classifying `TARGET` |
 | `--arg KEY=VALUE` | Extra `ActionSpec` arg (repeatable) |
 | `--input INPUT` | (FEAT-2906) Input for a `LOOP`-runner target, same semantics as `ll-loop run <loop> [input]` — stored verbatim and interpreted at dequeue time, not re-parsed here |
-| `--timeout N` | Timeout in seconds (default: 120) |
+| `--timeout N` | Subprocess timeout in seconds. Default is per-runner: unbounded (no outer deadline) for `--runner loop`, since the FSM already enforces its own budget stack (`timeout:`/`max_steps`); `120` for every other runner kind. An explicit `--timeout N` always overrides (BUG-2928). |
 | `--json` | Output the new entry as JSON |
 
 Without `--runner`, `TARGET` is classified in order: an FSM loop name (resolved the same way `ll-loop run` resolves a loop), a skill/command name (resolved via `skills/<name>/SKILL.md` / `commands/<name>.md`), else falls back to a raw CLI invocation.

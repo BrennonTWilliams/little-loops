@@ -241,10 +241,13 @@ class TestCmdRunLoopDispatch:
         target: str = "some-loop",
         *,
         input_value: str | None = None,
+        timeout: int | None = None,
     ) -> str:
         argv = ["ll-queue", "add", target, "--runner", "loop", "--json"]
         if input_value is not None:
             argv += ["--input", input_value]
+        if timeout is not None:
+            argv += ["--timeout", str(timeout)]
         with patch("sys.argv", argv):
             main_queue()
         return json.loads(capsys.readouterr().out)["id"]
@@ -268,6 +271,35 @@ class TestCmdRunLoopDispatch:
         cmd = mock_subproc.call_args[0][0]
         assert cmd[:3] == ["ll-loop", "run", "some-loop"]
         assert get_entry(entry_id).status == "done"
+
+    def test_loop_entry_default_timeout_is_unbounded(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """BUG-2928: no outer subprocess deadline for a LOOP entry by default."""
+        self._add_loop(capsys)
+
+        with patch("little_loops.cli.queue.subprocess.run") as mock_subproc:
+            mock_subproc.return_value.returncode = 0
+            mock_subproc.return_value.stdout = ""
+            mock_subproc.return_value.stderr = ""
+            with patch("sys.argv", ["ll-queue", "run", "--json"]):
+                main_queue()
+
+        assert mock_subproc.call_args.kwargs["timeout"] is None
+
+    def test_loop_entry_explicit_timeout_still_honored(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self._add_loop(capsys, timeout=30)
+
+        with patch("little_loops.cli.queue.subprocess.run") as mock_subproc:
+            mock_subproc.return_value.returncode = 0
+            mock_subproc.return_value.stdout = ""
+            mock_subproc.return_value.stderr = ""
+            with patch("sys.argv", ["ll-queue", "run", "--json"]):
+                main_queue()
+
+        assert mock_subproc.call_args.kwargs["timeout"] == 30
 
     def test_loop_entry_input_passed_as_positional(
         self, capsys: pytest.CaptureFixture[str]

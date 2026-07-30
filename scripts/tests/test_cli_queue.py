@@ -98,6 +98,22 @@ class TestClassifyAction:
         )
         assert "loop_input" not in spec.args
 
+    def test_loop_runner_no_explicit_timeout_resolves_to_none(self) -> None:
+        """BUG-2928: LOOP entries default to unbounded (no outer subprocess deadline)."""
+        spec = _classify_action("anything", runner_override="loop", timeout=None, arg_pairs=None)
+        assert spec.runner == RunnerType.LOOP
+        assert spec.timeout is None
+
+    def test_non_loop_runner_no_explicit_timeout_resolves_to_120(self) -> None:
+        """BUG-2928: non-LOOP runners keep the 120s default."""
+        spec = _classify_action("anything", runner_override="skill", timeout=None, arg_pairs=None)
+        assert spec.runner == RunnerType.SKILL
+        assert spec.timeout == 120
+
+        spec = _classify_action("anything", runner_override="cmd", timeout=None, arg_pairs=None)
+        assert spec.runner == RunnerType.CMD
+        assert spec.timeout == 120
+
 
 class TestCmdAdd:
     def test_add_persists_entry(self, capsys: pytest.CaptureFixture[str]) -> None:
@@ -159,6 +175,33 @@ class TestCmdAdd:
         ):
             result = main_queue()
         assert result == 2
+
+    def test_add_loop_runner_defaults_to_unbounded_timeout(self) -> None:
+        """BUG-2928: no --timeout on a LOOP add stores timeout: null."""
+        with patch("sys.argv", ["ll-queue", "add", "some-loop", "--runner", "loop"]):
+            result = main_queue()
+        assert result == 0
+
+        entries = list_entries()
+        assert entries[0].action.timeout is None
+
+    def test_add_loop_runner_explicit_timeout_overrides_default(self) -> None:
+        with patch(
+            "sys.argv", ["ll-queue", "add", "some-loop", "--runner", "loop", "--timeout", "30"]
+        ):
+            result = main_queue()
+        assert result == 0
+
+        entries = list_entries()
+        assert entries[0].action.timeout == 30
+
+    def test_add_skill_runner_still_defaults_to_120(self) -> None:
+        with patch("sys.argv", ["ll-queue", "add", "audit-docs", "--runner", "skill"]):
+            result = main_queue()
+        assert result == 0
+
+        entries = list_entries()
+        assert entries[0].action.timeout == 120
 
 
 class TestCmdList:

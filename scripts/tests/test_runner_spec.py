@@ -45,6 +45,31 @@ class TestActionSpecFrozen:
         with pytest.raises(dataclasses.FrozenInstanceError):
             spec.target = "echo bye"  # type: ignore[misc]
 
+    def test_timeout_none_is_constructible(self) -> None:
+        """BUG-2928: timeout widened from int to int | None to admit "no outer bound"."""
+        spec = ActionSpec(name="x", runner=RunnerType.LOOP, target="loops/x.yaml", timeout=None)
+        assert spec.timeout is None
+
+
+class TestDefaultTimeoutFor:
+    """BUG-2928: per-runner default subprocess timeout resolved in cli/queue.py."""
+
+    def test_loop_default_is_none(self) -> None:
+        from little_loops.cli.queue import _default_timeout_for
+
+        assert _default_timeout_for(RunnerType.LOOP) is None
+
+    @pytest.mark.parametrize(
+        "runner", [RunnerType.SKILL, RunnerType.CMD, RunnerType.MCP, RunnerType.PROMPT]
+    )
+    def test_non_loop_defaults_are_concrete_ints(self, runner: RunnerType) -> None:
+        """CMD/MCP dispatch handlers do raw deadline arithmetic and raise TypeError on None."""
+        from little_loops.cli.queue import _default_timeout_for
+
+        result = _default_timeout_for(runner)
+        assert result == 120
+        assert result is not None
+
 
 class TestRunnerResultReexport:
     def test_runner_result_importable_from_harness(self) -> None:

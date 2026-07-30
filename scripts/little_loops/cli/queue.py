@@ -12,10 +12,13 @@ import argparse
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from little_loops.queue_store import DEFAULT_DB_PATH as QUEUE_DB_PATH
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
+
+if TYPE_CHECKING:
+    from little_loops.runner_spec import RunnerType
 
 __all__ = ["main_queue"]
 
@@ -27,11 +30,34 @@ _STATUS_COLOR: dict[str, str] = {
 }
 
 
+def _default_timeout_for(runner: RunnerType) -> int | None:
+    """Per-runner default subprocess timeout, in seconds (BUG-2928).
+
+    A ``LOOP`` target already carries its own FSM budget stack (loop-level
+    ``timeout:``, ``max_steps``, per-state/action timeouts), so it gets no
+    outer subprocess deadline — a bound 240x shorter than a typical loop
+    timeout only kills the child process before the executor's own
+    termination path can flush state and write ``summary.json``. Every other
+    runner has no internal budget of its own and keeps the 120s default.
+
+    Must return a concrete ``int`` for ``CMD``/``MCP`` specifically: their
+    dispatch handlers (``runner_spec._run_cmd``, ``mcp_call.call_mcp_tool``)
+    do raw deadline arithmetic on ``timeout`` and raise ``TypeError`` on
+    ``None``. Only ``SKILL``/``PROMPT``/``LOOP`` forward ``timeout`` straight
+    to ``subprocess.run``, which tolerates ``None`` natively.
+    """
+    from little_loops.runner_spec import RunnerType
+
+    if runner is RunnerType.LOOP:
+        return None
+    return 120
+
+
 def _classify_action(
     target: str,
     *,
     runner_override: str | None,
-    timeout: int,
+    timeout: int | None,
     arg_pairs: list[str] | None,
     input_value: str | None = None,
 ) -> Any:
@@ -47,6 +73,10 @@ def _classify_action(
     ``args["loop_input"]``, not re-interpreted here — ``ll-loop run``'s
     positional does its own ``json.loads``/context-key coercion against the
     loop's *loaded* FSM, which ``ll-queue add`` never loads.
+
+    ``timeout`` of ``None`` means "no explicit ``--timeout``" — the per-runner
+    default from :func:`_default_timeout_for` is resolved here, after the
+    runner is known (BUG-2928). An explicit value always overrides.
     """
     from little_loops.cli.loop._helpers import resolve_loop_path
     from little_loops.config.core import BRConfig
@@ -64,27 +94,41 @@ def _classify_action(
 
     if runner_override is not None:
         runner = RunnerType(runner_override)
+        resolved_timeout = timeout if timeout is not None else _default_timeout_for(runner)
         return ActionSpec(
-            name=target, runner=runner, target=target, args=args_dict, timeout=timeout
+            name=target, runner=runner, target=target, args=args_dict, timeout=resolved_timeout
         )
 
     loops_dir = Path(BRConfig(Path.cwd()).loops.loops_dir)
     try:
         resolve_loop_path(target, loops_dir)
+        resolved_timeout = timeout if timeout is not None else _default_timeout_for(RunnerType.LOOP)
         return ActionSpec(
-            name=target, runner=RunnerType.LOOP, target=target, args=args_dict, timeout=timeout
+            name=target,
+            runner=RunnerType.LOOP,
+            target=target,
+            args=args_dict,
+            timeout=resolved_timeout,
         )
     except FileNotFoundError:
         pass
 
     plugin_root = _find_plugin_root()
     if _resolve_content_path(plugin_root, target) is not None:
+        resolved_timeout = (
+            timeout if timeout is not None else _default_timeout_for(RunnerType.SKILL)
+        )
         return ActionSpec(
-            name=target, runner=RunnerType.SKILL, target=target, args=args_dict, timeout=timeout
+            name=target,
+            runner=RunnerType.SKILL,
+            target=target,
+            args=args_dict,
+            timeout=resolved_timeout,
         )
 
+    resolved_timeout = timeout if timeout is not None else _default_timeout_for(RunnerType.CMD)
     return ActionSpec(
-        name=target, runner=RunnerType.CMD, target=target, args=args_dict, timeout=timeout
+        name=target, runner=RunnerType.CMD, target=target, args=args_dict, timeout=resolved_timeout
     )
 
 
@@ -386,7 +430,10 @@ Examples:
             help="Extra ActionSpec arg (repeatable)",
         )
         add_parser.add_argument(
-            "--timeout", type=int, default=120, help="Timeout in seconds (default: 120)"
+            "--timeout",
+            type=int,
+            default=None,
+            help="Timeout in seconds (default: 120, unbounded for --runner loop)",
         )
         add_parser.add_argument(
             "--input",
