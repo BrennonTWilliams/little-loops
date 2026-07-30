@@ -102,6 +102,9 @@ changelog-data.json
 .ll/history.db
 .ll/history.db-shm
 .ll/history.db-wal
+.ll/queue.db
+.ll/queue.db-shm
+.ll/queue.db-wal
 .ll/ll-update-docs.watermark
 .ll/ll-continue-prompt.md
 .ll/ll-context-handoff-needed
