@@ -23,7 +23,10 @@ blocks:
 Nothing in little-loops records the commit SHA a work item started from. Every
 orchestrator — `autodev.yaml`'s `dequeue_next`, `ll-parallel`'s per-issue
 worktree creation, `ll-sprint`'s waves — begins work against some tree state and
-then discards the fact.
+then discards the fact. (`ll-sprint run` delegates execution to the same
+`ParallelOrchestrator` as `ll-parallel` — `cli/sprint/run.py:23` — so stamping
+`ll-parallel`'s worker creation covers sprint waves transitively; no separate
+`ll-sprint` stamp is needed.)
 
 Stamp that SHA at the point work is dequeued, in a location downstream checks
 can read. Carved out of ENH-2853, where it was one of eight workstreams and the
@@ -86,8 +89,10 @@ does not stamp keeps working unchanged.
 4. **Persist to `.ll/history.db`** where a run is already recorded, so the stamp
    outlives the run directory. Concretely: additive nullable columns
    (`base_sha TEXT`, `base_dirty INTEGER`) on the existing run rows —
-   `loop_runs` for the autodev/FSM path and `orchestration_runs` for
-   `ll-parallel` — via a new `_MIGRATIONS` entry (NULL = "unstamped", matching
+   `loop_runs` (`session_store/schema.py:553`) for the autodev/FSM path and
+   `orchestration_runs` (`session_store/schema.py:523`) for
+   `ll-parallel` — via a new `_MIGRATIONS` entry in
+   `session_store/schema.py` (NULL = "unstamped", matching
    the reader's `None` contract). No new table.
 
 ## Design Notes
@@ -140,7 +145,11 @@ does not stamp keeps working unchanged.
   call sites
 - `scripts/little_loops/worktree_utils.py` — only if an additive parameter is
   the cleanest carrier; prefer stamping at the caller
-- `scripts/little_loops/session_store.py` — persist the stamp on the run record
+- `scripts/little_loops/session_store/schema.py` — the `_MIGRATIONS` entry adding
+  the nullable stamp columns — and `scripts/little_loops/session_store/writers.py`
+  — persist the stamp on the run record (note: `session_store.py` was split into
+  the `session_store/` package by ENH-2890; the former flat-module line refs in
+  this issue's research are stale)
 
 ### Dependent Files (Callers of the shared worktree primitives)
 - `scripts/little_loops/fsm/executor.py` (~L927)
@@ -154,7 +163,7 @@ does not stamp keeps working unchanged.
 ### Similar Patterns
 - `autodev.yaml`'s `autodev-pre-readiness.txt` snapshot (FEAT-2751) — run-dir
   handshake-file convention this stamp copies
-- `scripts/little_loops/session_store.py:_backfill_commit_events()` (~L2001) —
+- `scripts/little_loops/session_store/writers.py:_backfill_commit_events()` (~L781) —
   established `git log` subprocess-invocation shape (timeout, `cwd=repo_root`,
   `capture_output=True, text=True`)
 - `scripts/tests/test_worker_pool.py:TestSetupWorktreeAndCleanup` (~L634, e.g.
@@ -169,7 +178,9 @@ does not stamp keeps working unchanged.
   no existing test executes `dequeue_next` live
 - `scripts/tests/test_worker_pool.py`, `scripts/tests/test_orchestrator.py` —
   the latter patches `setup_worktree` at ~7 sites (L1761-1888)
-- `scripts/tests/test_session_store.py` — stamp persistence
+- `scripts/tests/test_session_store_writers.py` / `test_session_store_schema.py` —
+  stamp persistence (the flat `test_session_store.py` no longer exists; the suite
+  was split alongside the ENH-2890 package split)
 
 ### Consumers
 - `ENH-2853` — pre-patch test-failure check (primary consumer; blocked on this)
@@ -183,7 +194,10 @@ that returns `None` when unstamped; persistence onto the existing run record.
 
 **Out of scope:** the merge-base fallback logic itself and any use of the base
 state (ENH-2853 owns both); stamping `ll-loop run --worktree` or the epic-branch
-verify path — neither dequeues work items; changing `setup_worktree()` /
+verify path — neither dequeues work items; a separate `ll-sprint` stamp —
+`ll-sprint run` delegates to the same `ParallelOrchestrator` as `ll-parallel`
+(`cli/sprint/run.py:23`), so the `ll-parallel` stamp covers sprint waves;
+changing `setup_worktree()` /
 `cleanup_worktree()` semantics for their four existing callers.
 
 ## Impact

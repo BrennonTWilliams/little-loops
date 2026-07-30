@@ -11,6 +11,12 @@ parent: EPIC-2856
 labels:
 - rework
 - observability
+confidence_score: 96
+outcome_confidence: 82
+score_complexity: 20
+score_test_coverage: 22
+score_ambiguity: 20
+score_change_surface: 20
 ---
 
 # FEAT-2867: Measure rework rate as the quality-adjustment term on batch throughput
@@ -33,9 +39,11 @@ is unanswerable.
 Rework is the epic's subject and its unit of success, and it is the cheapest
 thing in the set to compute — `.ll/history.db` already carries the raw material:
 
-- `commit_events` (`commit_sha` UNIQUE, `issue_id`, `files_json`) already
-  attributes commits to issues via `record_commit_event()` / `_infer_issue_id()`,
-  read through `history_reader.py::recent_commit_events()`.
+- `commit_events` (`commit_sha` UNIQUE, `issue_id`, `files_json`;
+  `session_store/schema.py:405-418`) already attributes commits to issues via
+  `record_commit_event()` / `_infer_issue_id()`
+  (`session_store/writers.py:728` / `:704`), read through
+  `history_reader.py::recent_commit_events()`.
 - Issue status transitions and closure metadata are already on disk and mirrored
   into the store.
 
@@ -131,7 +139,7 @@ Output:
   were attributable, so a low-coverage window is visibly weak evidence rather
   than a clean-looking figure.
 - **Reopen detection reads `issue_events`, and its dedup shapes what is
-  countable** (verified 2026-07-27). `session_store.py`'s `issue_events` table
+  countable** (verified 2026-07-27). `session_store/schema.py`'s `issue_events` table
   records per-transition rows (written by the EventBus producer and
   `ll-issues set-status`), so "reached `done` and later left it" is detectable
   from transition history — current-status-only issue files are not the source.
@@ -148,6 +156,23 @@ Output:
   superseded issue is `cancelled`, the replacement declares `supersedes:` — is
   the edge to follow; do not treat every `cancelled` as rework, and do not count
   `deferred` (the issue was never delivered, so nothing was redone).
+- **The quality-adjustment formula is pinned** (added 2026-07-29).
+  `quality_adjusted = closed × (1 − rework_share)` per window, where
+  `rework_share = max(reopen_rate, revert_rate)` — the two signals that mean
+  "the delivered work came back," as opposed to follow-up/touch-back, which can
+  reflect ordinary maintenance on living code rather than redone work. Report
+  the chosen `rework_share` inputs alongside the result so the discount is
+  auditable, and keep the formula a named constant in `rework.py` so a future
+  recalibration is a one-line change, not a schema migration.
+- **The orchestrator label join needs verification, not assumption** (added
+  2026-07-29). Window labels require joining each closed issue to the run that
+  produced it — the plausible path is `issue_events.session_id` (added by
+  ENH-2458, `session_store/schema.py:366`) joined to the session/run record's
+  orchestrator identity. Verify during implementation that this join actually
+  carries orchestrator identity for `ll-auto` / `ll-parallel` / `ll-sprint`
+  runs; if coverage is partial, unlabeled windows fall back to an explicit
+  "unattributed" bucket — which feeds the same attribution-coverage reporting
+  rather than silently dropping.
 
 ## Acceptance Criteria
 
@@ -159,7 +184,11 @@ Output:
       window compared.
 - [ ] Windows are labeled by the orchestrator that produced the work.
 - [ ] Quality-adjusted throughput is reported alongside the raw closed-issue
-      count, with the two visibly distinguished.
+      count, with the two visibly distinguished, computed as
+      `closed × (1 − max(reopen_rate, revert_rate))` per the pinned formula in
+      Design Notes.
+- [ ] Windows whose closed issues cannot be joined to an orchestrator are
+      reported in an explicit "unattributed" bucket rather than dropped.
 - [ ] The share of the window's commits that were issue-attributable is reported,
       so low-coverage windows are visibly weak evidence.
 - [ ] Supersession (`cancelled` + a replacement declaring `supersedes:`) counts
@@ -197,8 +226,9 @@ Output:
   classification
 
 ### Dependent Files (Reused Infrastructure)
-- `scripts/little_loops/session_store.py` `commit_events` table (schema ~L677) —
-  the commit ↔ issue attribution this feature joins on
+- `scripts/little_loops/session_store/schema.py` `commit_events` table (:405-418;
+  the flat `session_store.py` was split into the `session_store/` package by
+  ENH-2890) — the commit ↔ issue attribution this feature joins on
 - `scripts/little_loops/history_reader.py:_connect_readonly()` (~L417) —
   read-only DB idiom
 - `scripts/little_loops/issue_history/quality.py:analyze_rejection_rates()`

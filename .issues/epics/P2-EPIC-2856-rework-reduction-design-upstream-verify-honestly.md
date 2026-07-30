@@ -14,6 +14,9 @@ relates_to:
 - ENH-2865
 - ENH-2866
 - FEAT-2867
+- ENH-2870
+- ENH-2871
+- FEAT-2878
 labels:
 - epic
 - rework
@@ -109,6 +112,8 @@ multi-tenant reporting.
   throughput
 - **FEAT-2855** — Track codebase maintainability trend as an observability
   dimension
+- **FEAT-2878** — Trace-level assertions in the eval harness, with optional
+  multi-host divergence runs
 
 ### Revisions from the 2026-07-27 epic review
 
