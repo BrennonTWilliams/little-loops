@@ -1,0 +1,60 @@
+name: rl-rlhf
+category: rl
+description: |
+  RLHF-style iterative improvement loop — generates a candidate output,
+  scores its quality (0–10), and refines until the quality target is met.
+  Replace generate/refine actions with your content generation logic and
+  the score action with your quality assessment command.
+initial: generate
+context:
+  quality_dimension: "password strength: length + lower + upper + digit + symbol"
+states:
+  generate:
+    action: |
+      # Real scenario: build a password candidate, weakest possible start.
+      echo "abc"
+    action_type: shell
+    capture: candidate
+    next: score
+  score:
+    action: |
+      pw="${captured.candidate.output}"
+      score=0
+      len=$${#pw}
+      [ "$len" -ge 8 ] && score=$((score+2))
+      echo "$pw" | grep -q '[a-z]' && score=$((score+2))
+      echo "$pw" | grep -q '[A-Z]' && score=$((score+2))
+      echo "$pw" | grep -q '[0-9]' && score=$((score+2))
+      echo "$pw" | grep -q '[^a-zA-Z0-9]' && score=$((score+2))
+      echo "$score"
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: ge
+      target: 8
+    on_yes: done
+    on_no: refine
+    on_error: failed
+  refine:
+    action: |
+      pw="${captured.candidate.output}"
+      case "$pw" in
+        *[0-9]*) ;;
+        *) pw="$${pw}7" ;;
+      esac
+      echo "$pw" | grep -q '[A-Z]' || pw="$${pw^}"
+      echo "$pw" | grep -q '[^a-zA-Z0-9]' || pw="$${pw}!"
+      while [ $${#pw} -lt 8 ]; do pw="$${pw}x"; done
+      echo "$pw"
+    action_type: shell
+    capture: candidate
+    next: score
+  done:
+    terminal: true
+
+  # ENH-2825: a scorer that errors has not scored 8+ — exit 2, not 0.
+  failed:
+    terminal: true
+    failure: true
+max_steps: 30
+on_handoff: spawn
