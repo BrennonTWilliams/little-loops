@@ -312,13 +312,13 @@ calls `cmd_set_status` → `DeferReason`, and whose output is ranked by
 - [ ] The design-gate discriminator in `recheck_after_size_review` short-circuits ahead of
       the generic `low_readiness` write and reuses the existing BUG-2803 one-shot remedy
       handshake (no new remedy infrastructure).
-- [ ] **Before** the stamp is written, the stray `.ll/` directories that shadow
+- [x] **Before** the stamp is written, the stray `.ll/` directories that shadow
       `find_project_root()` are cleared, and a sweep confirms it: for a sample of issues
       across `.issues/{bugs,features,enhancements,epics}/`,
       `find_project_root(<issue path>)` returns the repo root — not the containing issue
       directory. Arming with these present mass-fails every issue on unresolvable
       anchors regardless of design quality.
-- [ ] `.ll/program-design-cutover.json` is written for this repo with the pinned
+- [x] `.ll/program-design-cutover.json` is written for this repo with the pinned
       two-key schema, dated the day after the gate-arming merge (strictly-earlier
       exemption comparison per ENH-2852).
 - [ ] `docs/reference/API.md`'s deferred-triage reason-code list includes
@@ -433,6 +433,33 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Completed**: 2026-07-27
 - **Status**: Completed (automated fallback)
 - **Implementation**: Command exited early but issue was addressed
+
+### Gate arming — completed 2026-07-29
+
+The stamp-arming ACs left incomplete by the automated fallback were finished
+manually on 2026-07-29:
+
+- Stray `.ll/` dirs found at `scripts/.ll` (stray `history.db` + doc-drift state),
+  `hooks/adapters/opencode/.ll` (hook state), plus empty `scripts/little_loops/.ll`
+  and `skills/.ll`. Non-empty dirs were relocated to
+  `.ll/stray-quarantine-2026-07-29/` (not deleted — preserves the stray history);
+  the empty ones removed. Post-clear sweep: `find_project_root()` returns the repo
+  root for sample issues across `.issues/{bugs,features,enhancements,epics}/`.
+- `.ll/program-design-cutover.json` written as
+  `{"sha": "19364ea9dde9a32972647437277169314bff11da", "date": "2026-07-30"}` —
+  the day after arming, so every pre-gate issue is strictly earlier and exempt.
+  Verified: a synthetic post-cutover issue is gated; all five open EPIC-2856
+  children report `gated=False`.
+- **Rollback, two granularities**: project-wide, `rm .ll/program-design-cutover.json`
+  fully disarms the gate (fail-open by construction — `read_cutover_stamp()`
+  returns `None` on absent/unparseable and `program_design_gate_active()` then
+  returns `False`); per-issue, `program_design_not_applicable: true` in the issue
+  frontmatter exempts a single issue. Neither needs a code revert. The per-issue
+  escape hatch is the one to hit first during a live `ll-auto` run.
+- Note: the stray `.ll` dirs regenerate whenever an `ll-*` command runs from a
+  subdirectory — the sweep must be re-checked if the gate ever mass-fails. The
+  latent trap (`find_project_root` preferring nearest `.ll` over a `.git`
+  ancestor) remains unaddressed, as scoped out above.
 
 
 ### Files Changed

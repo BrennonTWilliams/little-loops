@@ -163,6 +163,52 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Risk**: Medium - `setup_worktree()`/`cleanup_worktree()` are called directly by `fsm/executor.py`, `cli/loop/run.py`, and `parallel/orchestrator.py`; any signature change must stay additive to avoid breaking those call sites. The check itself is otherwise isolated (worktree-scoped, non-mutating on failure).
 - **Breaking Change**: No - additive worktree variant and additive evidence-bundle fields; existing semantic criteria and call sites are unaffected.
 
+## Program Design
+
+Added 2026-07-29 (post-gate quality pass; the issue remains grandfathered under the
+2026-07-30 cutover stamp — this section exists so `/ll:manage-issue` can track
+Deviations against it, per ENH-2871).
+
+### Types
+
+- `PrePatchTestOutcome` — one candidate test's result: `nodeid: str`, `file: str`, `added: bool`, `pre_patch: str`, `category: str`, `error_kind: str | None`
+- `PrePatchEvidence` — the per-step evidence bundle: `base_ref: str`, `base_source: str`, `outcomes: list[PrePatchTestOutcome]`, `skipped_reason: str | None`, `to_dict() -> dict`
+
+Both are new plain-field `@dataclass`es with `to_dict()` in a new module
+`scripts/little_loops/prepatch_check.py`, following the `Gap`/`GapAnalysis`
+convention. `category` is one of `pass | fail | error | timeout | flaky`;
+`error_kind` distinguishes a collection/import error naming a post-patch module
+from any other infrastructure error. `base_source` is `dequeue-stamp` or
+`merge-base`, so the bundle names the base actually used. `skipped_reason` is set
+when the config off-switch disables the check, so the skip is explicit.
+
+### Signatures
+
+- `run_prepatch_check(step_diff: str, base_sha: str | None, timeout_s: int) -> PrePatchEvidence`
+- `collect_candidate_nodeids(step_diff: str, repo_root: Path) -> list[str]`
+- `setup_prepatch_worktree(base_ref: str, test_patch: str, src_dir: str | None) -> Path`
+- `is_test_file(path: str, config: BRConfig | None) -> bool`
+
+The first two are new in `prepatch_check.py`. `setup_prepatch_worktree()` is a new
+additive sibling in `worktree_utils.py` wrapping `setup_worktree()` (fork from
+`base_ref` via the existing `base_branch` parameter) plus the new partial-diff
+`git apply` of the test-file portion; `setup_worktree()` /
+`cleanup_worktree()` signatures are unchanged. `is_test_file()` /
+`filter_test_files()` are ENH-2865's existing shared module, consumed for
+candidate identification and never re-implemented here.
+
+### Call Path
+
+`_evaluate_and_report` -> `run_prepatch_check` -> `collect_candidate_nodeids` -> `filter_test_files`
+
+`run_prepatch_check` -> `setup_prepatch_worktree` -> `setup_worktree` -> `cleanup_worktree`
+
+`_evaluate_and_report()` attaches the returned `PrePatchEvidence` alongside the
+existing `HarnessEvalOutcome`. The worktree create → run-in-isolation →
+teardown-in-finally shape and the src_dir PYTHONPATH-injection fix are taken
+from `verify_epic_branch_before_merge`, and per-test pass/fail/error
+classification mirrors `LLHistoryPlugin`.
+
 ## Acceptance Criteria
 
 - [ ] Newly added and modified test functions are identified from the verification step's diff.
@@ -185,6 +231,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - [ ] The check makes no LLM calls.
 - [ ] Tests cover: a fake test that passes pre-patch, a genuine test that fails pre-patch, a test that errors pre-patch, and the zero-test case.
 
+
+## Status
 
 **Open** | Created: 2026-07-27 | Priority: P2
 
