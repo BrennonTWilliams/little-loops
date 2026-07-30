@@ -37,6 +37,9 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+# moved to little_loops.paths (ENH-2924)
+from little_loops.paths import find_project_root  # noqa: F401
+
 logger = logging.getLogger(__name__)
 
 #: Injected repo-resolution predicate: ``symbol -> is defined somewhere in the repo``.
@@ -291,18 +294,6 @@ def grade_program_design(body: str, resolver: Resolver) -> DesignVerdict:
 
 
 # --------------------------------------------------------------------- cutover stamp
-
-
-def find_project_root(start: Path) -> Path | None:
-    """Return the nearest ancestor of *start* containing a ``.ll`` directory."""
-    try:
-        current = start.resolve()
-    except OSError:
-        return None
-    for candidate in (current, *current.parents):
-        if (candidate / ".ll").is_dir():
-            return candidate
-    return None
 
 
 def _is_true(value: Any) -> bool:

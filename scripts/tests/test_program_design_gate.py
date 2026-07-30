@@ -306,6 +306,66 @@ class TestRealRepoResolution:
         assert git_grep_resolver("never_defined_anywhere", tmp_path) is False
 
 
+class TestFindProjectRoot:
+    """`find_project_root` prefers a `.git` ancestor over the nearest `.ll` (ENH-2924)."""
+
+    def test_stray_ll_in_subdirectory_still_resolves_to_repo_root(self, tmp_path: Path) -> None:
+        """(b) A stray `.ll` below the repo root is skipped in favor of the repo root."""
+        from little_loops.paths import find_project_root
+
+        _init_repo(tmp_path)
+        (tmp_path / ".ll").mkdir()
+        sub = tmp_path / "scripts" / "little_loops"
+        sub.mkdir(parents=True)
+        (sub / ".ll").mkdir()
+
+        assert find_project_root(sub) == tmp_path
+
+    def test_non_git_project_keeps_nearest_ll_semantics(self, tmp_path: Path) -> None:
+        """(c) With no `.git` anywhere, the nearest `.ll` ancestor still wins."""
+        from little_loops.paths import find_project_root
+
+        sub = tmp_path / "a" / "b"
+        sub.mkdir(parents=True)
+        (sub / ".ll").mkdir()
+
+        assert find_project_root(sub) == sub
+
+    def test_worktree_git_file_wins_over_stray_ll_below_it(self, tmp_path: Path) -> None:
+        """(d) A worktree's `.git` *file* still beats a stray `.ll` below it."""
+        from little_loops.paths import find_project_root
+
+        (tmp_path / ".git").write_text("gitdir: /elsewhere/.git/worktrees/x\n", encoding="utf-8")
+        (tmp_path / ".ll").mkdir()
+        sub = tmp_path / "scripts"
+        sub.mkdir()
+        (sub / ".ll").mkdir()
+
+        assert find_project_root(sub) == tmp_path
+
+    def test_monorepo_subproject_resolves_to_ll_only_subdir(self, tmp_path: Path) -> None:
+        """(e) `.git` only at the repo root, `.ll` only at a subproject, resolves there."""
+        from little_loops.paths import find_project_root
+
+        _init_repo(tmp_path)
+        sub = tmp_path / "packages" / "foo"
+        sub.mkdir(parents=True)
+        (sub / ".ll").mkdir()
+
+        assert find_project_root(sub) == sub
+
+    def test_ll_above_repo_boundary_is_never_returned(self, tmp_path: Path) -> None:
+        """(f) A `.ll` above the repo root (e.g. `~/.ll`) is out of bounds — returns None."""
+        from little_loops.paths import find_project_root
+
+        (tmp_path / ".ll").mkdir()
+        repo = tmp_path / "project"
+        repo.mkdir()
+        _init_repo(repo)
+
+        assert find_project_root(repo) is None
+
+
 # --------------------------------------------------------------------- cutover stamp
 
 
@@ -470,6 +530,24 @@ class TestFormatGapsWiring:
         assert gaps.program_design_nonspecific == []
         assert gaps.has_gaps is False
 
+    def test_stray_ll_ancestor_of_issue_does_not_disable_the_gate(self, tmp_path: Path) -> None:
+        """(a) regression: a stray `.ll` under `.issues/` must not shadow the stamped root."""
+        from little_loops.issue_parser import check_format_gaps
+        from little_loops.issues.program_design import program_design_gate_active
+
+        issue_file = _make_project(
+            tmp_path, stamp_date="2026-07-01", body=_clean_bug_body(program_design=None)
+        )
+        _init_repo(tmp_path)
+        _commit_all(tmp_path)
+        (tmp_path / ".issues" / ".ll").mkdir()
+
+        content = issue_file.read_text(encoding="utf-8")
+        assert program_design_gate_active(issue_file, content) is True
+
+        gaps = check_format_gaps(issue_file)
+        assert gaps.missing == ["Program Design"]
+
     def test_escape_hatch_skips_the_gate(self, tmp_path: Path) -> None:
         """`program_design_not_applicable: true` fully skips the section (AC)."""
         from little_loops.issue_parser import check_format_gaps
@@ -504,3 +582,13 @@ class TestFormatGapsWiring:
 
         assert gaps.has_gaps is True
         assert gaps.to_dict()["program_design_nonspecific"] == ["Program Design: no signature"]
+
+
+class TestFindProjectRootReexport:
+    """`find_project_root` moved to `little_loops.paths`; the old import path stays live."""
+
+    def test_reexported_from_issues_program_design(self) -> None:
+        from little_loops.issues.program_design import find_project_root as old
+        from little_loops.paths import find_project_root as new
+
+        assert old is new
