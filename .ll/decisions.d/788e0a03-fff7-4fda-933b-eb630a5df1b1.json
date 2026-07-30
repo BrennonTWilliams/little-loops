@@ -1,0 +1,11 @@
+{
+  "id": "fba119c9-a442-4fd9-ac8b-ffa03f833372",
+  "type": "decision",
+  "timestamp": "2026-07-30T02:43:33Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Stray .ll dirs from subdirectory ll-* runs shadow project-root resolution; with the program-design gate armed this mass-fails gated issues on unresolvable anchors. Fix the resolver, not the symptoms.",
+  "rule": "Captured: find_project_root should prefer a .git ancestor over the nearest .ll directory",
+  "scope": "issue",
+  "issue": "ENH-2924"
+}
