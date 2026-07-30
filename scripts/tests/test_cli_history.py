@@ -150,6 +150,62 @@ class TestHistoryAnalyzeYaml:
 
 
 # ---------------------------------------------------------------------------
+# rework subcommand (FEAT-2867)
+# ---------------------------------------------------------------------------
+
+
+class TestHistoryReworkSubcommand:
+    """Test the rework subcommand's argument wiring and format routing."""
+
+    def test_rework_text_default_empty_history(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+        (tmp_path / ".issues").mkdir(exist_ok=True)
+
+        with patch.object(sys, "argv", ["ll-history", "rework"]):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                result = main_history()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Rework Rate Analysis" in captured.out
+        assert "No closed-issue history found" in captured.out
+
+    def test_rework_json_format_routes_to_json_formatter(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+        (tmp_path / ".issues").mkdir(exist_ok=True)
+
+        with patch.object(sys, "argv", ["ll-history", "rework", "--format", "json"]):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                result = main_history()
+
+        assert result == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["windows"] == []
+        assert payload["min_sample_size"] == 5
+
+    def test_rework_min_sample_and_follow_up_days_flags_accepted(self, tmp_path: Path) -> None:
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+        (tmp_path / ".issues").mkdir(exist_ok=True)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-history", "rework", "--min-sample", "2", "--follow-up-days", "7"],
+        ):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
+                result = main_history()
+
+        assert result == 0
+
+
+# ---------------------------------------------------------------------------
 # sessions subcommand — json output
 # ---------------------------------------------------------------------------
 

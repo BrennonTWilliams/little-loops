@@ -23,12 +23,17 @@ def main_history() -> int:
     """
     with cli_event_context(DEFAULT_DB_PATH, "ll-history", sys.argv[1:]):
         from little_loops.issue_history import (
+            analyze_rework,
             calculate_analysis,
             calculate_summary,
             format_analysis_json,
             format_analysis_markdown,
             format_analysis_text,
             format_analysis_yaml,
+            format_rework_json,
+            format_rework_markdown,
+            format_rework_text,
+            format_rework_yaml,
             format_summary_json,
             format_summary_text,
             scan_completed_issues,
@@ -49,6 +54,8 @@ Examples:
   %(prog)s analyze --compare 30 # Compare last 30 days to previous
   %(prog)s export "session log"  # Export topic-filtered issue excerpts
   %(prog)s export "sprint CLI" --output docs/arch/sprint.md
+  %(prog)s rework               # Reopen/follow-up/touch-back/revert rates
+  %(prog)s rework --format json # Rework analysis as JSON
 """,
         )
 
@@ -186,6 +193,34 @@ Examples:
             help="Relevance scoring method: intersection (default), bm25, or hybrid",
         )
 
+        # rework subcommand (FEAT-2867)
+        rework_parser = subparsers.add_parser(
+            "rework",
+            help="Reopen/follow-up/touch-back/revert rates and quality-adjusted throughput",
+        )
+        rework_parser.add_argument(
+            "-f",
+            "--format",
+            type=str,
+            choices=["text", "json", "markdown", "yaml"],
+            default="text",
+            help="Output format (default: text)",
+        )
+        rework_parser.add_argument(
+            "--min-sample",
+            type=int,
+            default=None,
+            metavar="N",
+            help="Minimum closed issues per window before a rate is reported (default: 5)",
+        )
+        rework_parser.add_argument(
+            "--follow-up-days",
+            type=int,
+            default=None,
+            metavar="N",
+            help="Lookahead window in days for follow-up/touch-back detection (default: 14)",
+        )
+
         # sessions subcommand (ENH-1711)
         sessions_parser = subparsers.add_parser(
             "sessions",
@@ -290,6 +325,41 @@ Examples:
                 print(format_analysis_markdown(analysis))
             else:
                 print(format_analysis_text(analysis))
+
+            return 0
+
+        if args.command == "rework":
+            from little_loops.issue_history.rework import (
+                FOLLOW_UP_WINDOW_DAYS,
+                MIN_SAMPLE_SIZE,
+            )
+            from little_loops.issue_parser import find_issues
+
+            db_path = resolve_history_db(project_root / DEFAULT_DB_PATH)
+            all_statuses = {
+                "open",
+                "in_progress",
+                "blocked",
+                "deferred",
+                "done",
+                "cancelled",
+            }
+            all_issues = find_issues(config, status_filter=all_statuses)
+            rework_analysis = analyze_rework(
+                all_issues,
+                db=db_path,
+                min_sample=args.min_sample or MIN_SAMPLE_SIZE,
+                follow_up_days=args.follow_up_days or FOLLOW_UP_WINDOW_DAYS,
+            )
+
+            if args.format == "json":
+                print(format_rework_json(rework_analysis))
+            elif args.format == "yaml":
+                print(format_rework_yaml(rework_analysis))
+            elif args.format == "markdown":
+                print(format_rework_markdown(rework_analysis))
+            else:
+                print(format_rework_text(rework_analysis))
 
             return 0
 

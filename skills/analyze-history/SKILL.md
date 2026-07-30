@@ -22,6 +22,8 @@ Proactively offer or invoke this skill when the user:
 - Inquires about technical debt health
 - Wants to compare recent performance to historical
 - Asks about subsystem or module health
+- Asks about rework, reopen rate, revert rate, or whether closed work "stuck"
+- Wants a quality-adjusted throughput figure instead of a raw closed-issue count
 
 ## How to Use
 
@@ -101,6 +103,9 @@ ll-history export "API layer" --since 2026-01-01 --type ENH
 | "Show quarterly trends" | `ll-history analyze --period quarterly` |
 | "Generate docs about the sprint system" | `ll-history export "sprint system"` |
 | "Document our auth changes since January" | `ll-history export "authentication" --since 2026-01-01` |
+| "What's our rework rate?" | `ll-history rework` |
+| "Did the design gate reduce rework?" | `ll-history rework --format markdown` |
+| "How much of our throughput is real vs. redone work?" | `ll-history rework --format json` |
 
 ## Interpretation Guide
 

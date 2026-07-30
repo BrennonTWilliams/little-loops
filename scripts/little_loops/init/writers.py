@@ -114,7 +114,8 @@ _LL_COMMANDS: tuple[tuple[str, str], ...] = (
     ("ll-messages", "Extract user messages from host session logs"),
     (
         "ll-history",
-        "View completed issue statistics, analysis, and export topic-filtered excerpts from history",
+        "View completed issue statistics, analysis, rework-rate signals, and export "
+        "topic-filtered excerpts from history",
     ),
     (
         "ll-history-context",

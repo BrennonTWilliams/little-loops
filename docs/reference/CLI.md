@@ -2168,6 +2168,32 @@ Export topic-filtered excerpts from completed issue history.
 | `--type` | | Filter by type: `BUG`, `FEAT`, `ENH`, `EPIC` |
 | `--scoring` | | Relevance method: `intersection` (default), `bm25`, `hybrid` |
 
+#### `ll-history rework`
+
+Reopen/follow-up/touch-back/revert rates as a time series across `(calendar month, orchestrator)`
+windows, plus a quality-adjusted throughput figure (FEAT-2867) — the epic-level rework
+measurement EPIC-2856 promises. Sourced entirely from `issue_events`/`commit_events`/
+`orchestration_runs` in `.ll/history.db` plus on-disk `supersedes:` edges; read-only, no LLM calls.
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--format` | `-f` | Output format: `text` (default), `json`, `markdown`, `yaml` |
+| `--min-sample N` | | Minimum closed issues per window before a rate is reported (default: 5) |
+| `--follow-up-days N` | | Lookahead window in days for follow-up/touch-back detection (default: 14) |
+
+Each window reports: `reopen`/`follow_up`/`touch_back`/`revert` rates (each with an
+`improving`/`stable`/`degrading` verdict against the earliest window sharing its orchestrator
+label), `quality_adjusted` throughput (`closed x (1 - max(reopen_rate, revert_rate))`, the pinned
+formula), and `commit_attribution_coverage` (share of the window's commits carrying an
+`issue_id`, flagged `low_attribution_coverage` below 50%). Windows below `--min-sample` report
+`insufficient_history: true` instead of a computed ratio. Issues with no matching
+`orchestration_runs` row fall into the `unattributed` orchestrator bucket rather than being
+dropped. Reopen rate counts issues that ever reopened (or were cancelled-and-superseded via a
+`supersedes:` edge), not reopen events — `issue_events` dedups per `(issue_id, transition)`, so a
+second done→open→done cycle collapses into the first. Revert rate is computed from commit-message
+lineage (`This reverts commit <sha>`) only; diff-inverse detection is out of scope. Orchestrator
+attribution is correlational, not causal.
+
 #### `ll-history sessions <ISSUE_ID>`
 
 List sessions that co-occurred with the given issue's active period. Queries the `issue_sessions` VIEW (v5 schema, ENH-1711) which joins `issue_events` to `message_events` via overlapping timestamps. Issues processed after ENH-1839 populate `captured_at` immediately on live events; a prior `ll-session backfill` pass (or ENH-1830 auto-backfill) is only needed for older issues.

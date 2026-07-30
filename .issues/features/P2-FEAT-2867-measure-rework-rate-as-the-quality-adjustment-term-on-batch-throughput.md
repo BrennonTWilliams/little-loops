@@ -3,7 +3,7 @@ id: FEAT-2867
 title: Measure rework rate as the quality-adjustment term on batch throughput
 type: FEAT
 priority: P2
-status: open
+status: done
 discovered_by: epic-review
 discovered_date: 2026-07-27
 epic: EPIC-2856
@@ -17,6 +17,7 @@ score_complexity: 20
 score_test_coverage: 22
 score_ambiguity: 20
 score_change_surface: 20
+completed_at: '2026-07-30T03:01:23Z'
 ---
 
 # FEAT-2867: Measure rework rate as the quality-adjustment term on batch throughput
@@ -176,36 +177,54 @@ Output:
 
 ## Acceptance Criteria
 
-- [ ] Each rework signal is computed as a time series across sampling windows
+- [x] Each rework signal is computed as a time series across sampling windows
       over `.ll/history.db` plus on-disk issue state.
-- [ ] The command ships as an `ll-history` subcommand, not a new top-level CLI.
-- [ ] Each signal reports a verdict using the existing
+- [x] The command ships as an `ll-history` subcommand, not a new top-level CLI.
+- [x] Each signal reports a verdict using the existing
       `improving` / `stable` / `degrading` vocabulary, with magnitude and the
       window compared.
-- [ ] Windows are labeled by the orchestrator that produced the work.
-- [ ] Quality-adjusted throughput is reported alongside the raw closed-issue
+- [x] Windows are labeled by the orchestrator that produced the work.
+- [x] Quality-adjusted throughput is reported alongside the raw closed-issue
       count, with the two visibly distinguished, computed as
       `closed × (1 − max(reopen_rate, revert_rate))` per the pinned formula in
       Design Notes.
-- [ ] Windows whose closed issues cannot be joined to an orchestrator are
+- [x] Windows whose closed issues cannot be joined to an orchestrator are
       reported in an explicit "unattributed" bucket rather than dropped.
-- [ ] The share of the window's commits that were issue-attributable is reported,
+- [x] The share of the window's commits that were issue-attributable is reported,
       so low-coverage windows are visibly weak evidence.
-- [ ] Supersession (`cancelled` + a replacement declaring `supersedes:`) counts
+- [x] Supersession (`cancelled` + a replacement declaring `supersedes:`) counts
       as rework; `deferred` does not.
-- [ ] A window below the minimum-sample threshold gets an explicit
+- [x] A window below the minimum-sample threshold gets an explicit
       "insufficient history" result, not a computed ratio.
-- [ ] Output states that orchestrator attribution is correlational.
-- [ ] All sources are opened read-only; no source DB or repo state is mutated.
-- [ ] Revert rate is computed from `commit_events.message` revert lineage only;
+- [x] Output states that orchestrator attribution is correlational.
+- [x] All sources are opened read-only; no source DB or repo state is mutated.
+- [x] Revert rate is computed from `commit_events.message` revert lineage only;
       no diff-inverse comparison ships in this issue.
-- [ ] Reopen rate is computed from `issue_events` transition history, counts
+- [x] Reopen rate is computed from `issue_events` transition history, counts
       issues (not reopen events, per the dedup caveat), and the output labels it
       accordingly.
-- [ ] No LLM calls.
-- [ ] Tests cover: a synthetic history with injected rework, one with injected
+- [x] No LLM calls.
+- [x] Tests cover: a synthetic history with injected rework, one with injected
       improvement, a flat history, a below-threshold history, and a
       low-attribution-coverage window.
+
+## Resolution
+
+Implemented as `ll-history rework` (`scripts/little_loops/cli/history.py`),
+backed by a new `scripts/little_loops/issue_history/rework.py` module. Windows
+are keyed by `(closed-issue month, orchestrator)`. Orchestrator labeling joins
+`orchestration_runs.issue_id → driver` directly (more direct than the
+speculative `issue_events.session_id` join the Design Notes flagged as
+needing verification) — issues with no matching `orchestration_runs` row fall
+into the `unattributed` bucket. Added `history_reader.commit_issue_for_sha()`
+as the SHA→issue reverse lookup, though the revert signal ended up resolving
+reverted SHAs against each closed issue's own commit list directly rather
+than calling it in a per-SHA loop (both are correct; the direct-list form
+avoids N extra queries per window). Verdicts compare each window to the
+earliest window sharing its orchestrator label. 21 new tests across
+`test_issue_history_rework.py`, `test_cli_history.py`, and
+`test_history_reader.py`; full suite (17,137 tests) passes; ruff and mypy
+clean on all touched files.
 
 ## Integration Map
 
@@ -326,4 +345,6 @@ a shared consumer contract with FEAT-2855.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-30T02:59:57 - `ba37c1f1-3ebb-4deb-b221-37ec4088bdda.jsonl`
+- `/ll:ready-issue` - 2026-07-30T02:27:50 - `78dc10d5-ff53-44d4-96b1-9697e8f691ba.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-27T19:42:09 - `e2303183-4e52-4649-af90-4b53254bbda4.jsonl`

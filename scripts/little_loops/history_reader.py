@@ -30,6 +30,7 @@ Public API:
     cost_attribution(group_by, ...) -> list[dict]
     waste_attribution(since, ...) -> list[dict] (ENH-2722)
     recent_commit_events(branch, issue_id, ...) -> list[CommitEvent]
+    commit_issue_for_sha(commit_sha, ...) -> str | None (ENH-2458 reverse lookup, FEAT-2867)
     recent_test_runs(branch, head_sha, ...) -> list[RunEvent]
     recent_orchestration_runs(driver, issue_id, ...) -> list[OrchestrationRun]
     aggregate_orchestration_runs(group_by, ...) -> list[dict]
@@ -1297,6 +1298,35 @@ def recent_commit_events(
     finally:
         conn.close()
     return [_row_to_dataclass(row, CommitEvent) for row in rows]
+
+
+def commit_issue_for_sha(
+    commit_sha: str,
+    *,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> str | None:
+    """Return the issue_id attributed to *commit_sha*, or None (FEAT-2867).
+
+    Reverse of ``recent_commit_events(issue_id=...)`` — that function looks up
+    commits *for* an issue; this looks up the issue *for* a commit. Needed by
+    the revert-rate signal to resolve a ``git revert``'s "This reverts commit
+    <sha>" lineage back to the issue that owned the reverted commit.
+    """
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return None
+    try:
+        row = conn.execute(
+            "SELECT issue_id FROM commit_events WHERE commit_sha = ? LIMIT 1",
+            (commit_sha,),
+        ).fetchone()
+    except sqlite3.Error:
+        logger.warning("history_reader: commit_issue_for_sha query failed", exc_info=True)
+        return None
+    finally:
+        conn.close()
+    return row["issue_id"] if row is not None else None
 
 
 def recent_prompt_opt_events(

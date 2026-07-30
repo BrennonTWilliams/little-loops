@@ -4083,6 +4083,7 @@ Entry point for `ll-history` command. Display summary statistics, analysis, and 
 | `summary` | Show issue statistics (count, velocity, type/priority breakdown) |
 | `analyze` | Full analysis with trends, subsystems, and debt metrics |
 | `export` | Export topic-filtered excerpts from completed issue history |
+| `rework` | Reopen/follow-up/touch-back/revert rates and quality-adjusted throughput (FEAT-2867) |
 
 **Global options (all sub-commands):**
 - `--intent QUERY` - Intent query for output filtering (no-op until FTS5 ranking lands; ENH-1114)

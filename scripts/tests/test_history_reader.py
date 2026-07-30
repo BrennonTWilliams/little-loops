@@ -1799,6 +1799,18 @@ class TestNewEventReaders:
         assert len(by_branch) == 1
         assert by_branch[0].issue_id == "BUG-1"
 
+    def test_commit_issue_for_sha_reverse_lookup(self, tmp_path: Path) -> None:
+        """FEAT-2867: SHA -> issue_id, the reverse of recent_commit_events(issue_id=...)."""
+        from little_loops.history_reader import commit_issue_for_sha
+        from little_loops.session_store import record_commit_event
+
+        db = tmp_path / "history.db"
+        record_commit_event(db, "sha1", "fix BUG-1", ts="2026-07-01T10:00:00Z")
+
+        assert commit_issue_for_sha("sha1", db=db) == "BUG-1"
+        assert commit_issue_for_sha("nonexistent", db=db) is None
+        assert commit_issue_for_sha("sha1", db=tmp_path / "missing.db") is None
+
     def test_recent_prompt_opt_events_filters(self, tmp_path: Path) -> None:
         from little_loops.history_reader import recent_prompt_opt_events
         from little_loops.session_store import record_prompt_opt_event

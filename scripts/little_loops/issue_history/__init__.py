@@ -133,6 +133,17 @@ from little_loops.issue_history.quality import (
     detect_manual_patterns,
 )
 from little_loops.issue_history.regressions import analyze_regression_clustering
+from little_loops.issue_history.rework import (
+    ReworkAnalysis,
+    ReworkSignal,
+    ReworkWindow,
+    analyze_rework,
+    format_rework_json,
+    format_rework_markdown,
+    format_rework_text,
+    format_rework_yaml,
+    quality_adjusted_throughput,
+)
 from little_loops.issue_history.summary import calculate_summary
 
 __all__ = [
@@ -168,6 +179,9 @@ __all__ = [
     "CrossCuttingSmell",
     "CrossCuttingAnalysis",
     "HistoryAnalysis",
+    "ReworkSignal",
+    "ReworkWindow",
+    "ReworkAnalysis",
     # Parsing and scanning
     "parse_completed_issue",
     "scan_completed_issues",
@@ -188,6 +202,8 @@ __all__ = [
     "analyze_agent_effectiveness",
     "analyze_complexity_proxy",
     "detect_cross_cutting_smells",
+    "analyze_rework",
+    "quality_adjusted_throughput",
     # Formatting functions
     "format_summary_text",
     "format_summary_json",
@@ -195,6 +211,10 @@ __all__ = [
     "format_analysis_json",
     "format_analysis_markdown",
     "format_analysis_yaml",
+    "format_rework_text",
+    "format_rework_json",
+    "format_rework_markdown",
+    "format_rework_yaml",
     # Documentation synthesis
     "synthesize_docs",
     "score_relevance",
