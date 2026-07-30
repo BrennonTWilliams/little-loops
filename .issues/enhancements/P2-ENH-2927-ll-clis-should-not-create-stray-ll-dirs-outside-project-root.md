@@ -1,11 +1,13 @@
 ---
 id: ENH-2927
-title: ll-* CLIs should not implicitly create .ll/ directories outside a resolved project root
+title: ll-* CLIs should not implicitly create .ll/ directories outside a resolved
+  project root
 type: ENH
-status: open
+status: done
 priority: P2
 discovered_date: 2026-07-30
 discovered_by: review
+completed_at: '2026-07-30T23:52:55Z'
 labels:
 - robustness
 - cli
@@ -15,6 +17,12 @@ relates_to:
 - ENH-2870
 blocked_by:
 - ENH-2924
+confidence_score: 98
+outcome_confidence: 75
+score_complexity: 17
+score_test_coverage: 22
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-2927: ll-* CLIs should not implicitly create `.ll/` directories outside a resolved project root
@@ -170,10 +178,203 @@ there surface as untracked noise instead.
    the user's file.
 5. Regression tests (below).
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the
+implementation:_
+
+6. Update `scripts/tests/test_session_store_db.py::TestDbPathResolution::test_default_when_neither_set`
+   and `::test_malformed_config_falls_back_to_default` — both hard-code the pre-reroute
+   cwd-relative `DEFAULT_DB_PATH` equality and will fail once `_resolve_db_path`'s
+   default branch routes through `resolve_ll_dir`.
+7. Update `scripts/tests/test_decisions.py::test_resolve_path_none_uses_cwd_default` —
+   same cwd-relative assertion shape for `decisions_sync._resolve_path`, a sibling of
+   `decisions.py`'s own `_resolve_path` named in the step-3 sweep; classify both
+   together.
+8. Add new tests for `resolve_ll_dir` itself (model on `TestFindProjectRoot`,
+   `test_program_design_gate.py:309-366`, plus the `create=False`-no-mkdir shape from
+   `test_pure_lookup_no_mkdir`), and net-new coverage for `queue_store.py`'s and
+   `decisions.py`'s default-path/cwd branches, which have zero existing coverage today.
+9. Update `docs/reference/API.md` (transport.py `log_dir` cwd claim, extension.py
+   construction-time mkdir claim, queue/learning-tests path prose) and
+   `docs/reference/CONFIGURATION.md` / `docs/guides/HISTORY_SESSION_GUIDE.md`'s
+   "relative paths resolve against the project root" rows to match actual
+   post-reroute behavior.
+
 Deliberately **not** in this issue: making `BRConfig` resolve its root upward. That
 fixes a real second-order bug (subdirectory invocations run on default config) but is a
 behavior change with much wider blast radius than stray-directory hygiene. Capture it
 separately once this lands.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis (2026-07-30, after ENH-2924
+landed):_
+
+**`resolve_ll_dir` does not exist yet.** `scripts/little_loops/paths.py` currently
+contains only `find_project_root(start: Path) -> Path | None` (line 14) — ENH-2924's
+`.git`-ancestor-preferring walk, confirmed still unconsumed outside its own module and
+`issues/program_design.py`'s re-export (`from little_loops.paths import
+find_project_root  # noqa: F401`, used at `program_design.py:375,397`). No caller in
+`scripts/` invokes it for DB/config/hook-state resolution yet, matching the issue's
+premise.
+
+**Step 3's sweep, run**: the grep commands in step 3 turn up a much larger surface than
+the three measured call sites. Handing the implementer the actual result set so the
+sweep doesn't need re-running:
+
+- `subprocess_utils.py:98,102` — `CONTINUATION_PROMPT_PATH = Path(".ll/ll-continue-prompt.md")`, `SENTINEL_PATH = Path(".ll/ll-context-handoff-needed")`
+- `decisions.py:23,559` — `_DEFAULT_LOG_PATH = Path(".ll") / "decisions.yaml"`; `db_path = project_root / ".ll" / "history.db"`
+- `learning_tests/__init__.py:23` — `_DEFAULT_BASE_DIR = Path(".ll") / "learning-tests"`
+- `extension.py:123` — `self._log_path = log_path or Path(".ll/extension-events.jsonl")`
+- `queue_store.py:55,159` — `DEFAULT_DB_PATH = Path(".ll/queue.db")` + its `mkdir`
+- `cli/ctx_stats.py:36-37` — `DEFAULT_DB_RELPATH`, `DEFAULT_STATE_RELPATH` under `Path(".ll")`
+- `transport.py:623` — `base = log_dir if log_dir is not None else Path(".ll")`
+- `issue_manager.py:620` — `(config.repo_path or Path.cwd()) / ".ll" / "ll-context-state.json"`
+- `session_store/lifecycle.py:1035` — `registry_dir = Path(".ll") / "learning-tests"`
+- `hooks/pre_compact.py:122,180`, `hooks/pre_compact_handoff.py:159`, `hooks/session_start.py:46-47,156,168`, `hooks/post_tool_use.py:193,240`, `hooks/subagent_start.py:38`, `hooks/subagent_stop.py:43`, `hooks/sweep_stale_refs.py:216`, `hooks/__init__.py:210`, `hooks/learning_tests_gate.py:116`, `hooks/install_learning_gate.py:118`, `learning_tests/release_gate.py:52` — all construct `cwd / ".ll" / <name>` (mostly `history.db` or `learning-tests`) directly rather than through a shared resolver
+- `cli/loop/run.py:179`, `cli/doctor.py:281`, `cli/logs.py:898,902,1249,1252,1652`, `cli/history_context.py:339`, `cli/verify_design_tokens.py:190`, `cli/verify_decisions.py:36`, `cli/issues/check_readiness.py:34`, `cli/issues/next_action.py:37` — same pattern in CLI code; the `issues/` pair already goes through `config.project_root`, which per `config/core.py:220` is only `.resolve()`d cwd, not upward-walked
+- `workflow_sequence/__init__.py:50,233,235` — `Path(".ll/workflow-analysis/...")` literals
+- 14 FSM loop YAMLs (`general-task.yaml`, `harness-multi-item.yaml`, `fix-quality-and-tests.yaml`, `test-coverage-improvement.yaml`, `auto-refine-and-implement.yaml`, `recursive-refine.yaml`, `rn-implement.yaml`, `rl-coding-agent.yaml`, `dead-code-cleanup.yaml`, `refine-to-ready-issue.yaml`, `evaluation-quality.yaml`, `harness-plan-research-implement-report.yaml`, `harness-single-shot.yaml`, `migrate-sdk-version.yaml`) embed inline Python reading `Path('.ll/ll-config.json')` inside `shell` action bodies — a distinct mechanism (FSM-subprocess cwd, not an importable Python call site) worth flagging to whoever does the sweep triage, but likely `create=False` read-paths already covered by "graceful empty" handling rather than new offenders.
+
+Classify per the issue's own triage rule (read-path / write-path / init-path) rather
+than rerouting all of these in this issue — `queue_store.py` and `session_store/*` are
+plausible write-path candidates for a follow-up sweep pass; most of the hook/CLI hits
+above are `history.db`/`learning-tests` resolution that should collapse onto the same
+`resolve_ll_dir` call `_config_db_path()` will use, once that's rerouted, rather than
+needing individual fixes.
+
+**Pattern precedent for `resolve_ll_dir`'s shape** — no existing helper has this exact
+name, but two in-repo functions are the closest style match and are worth mirroring:
+- `resolve_config_path(project_root: Path) -> Path | None` (`config/core.py:120-144`) —
+  docstring states explicitly: "Pure lookup — does not create directories or mutate
+  global state... callers that need `.ll/` to exist must create it themselves." Returns
+  `None` on no match, never raises.
+- `resolve_history_db(path=None) -> Path` / `_resolve_db_path()`
+  (`session_store/db.py:62-95`) — optional-arg-with-`None`-default signature, thin
+  public wrapper delegating to a private impl, env → config → default precedence
+  documented in the docstring.
+
+**No `CLAUDE_PROJECT_DIR` precedent exists anywhere in `scripts/` or `hooks/`** —
+confirmed via repo-wide grep; only doc prose (`docs/claude-code/*.md`,
+`docs/reference/HOST_COMPATIBILITY.md`) and issue text reference it. This will be a
+genuinely new pattern for the codebase, not an existing convention to follow. The
+`os.environ.get(...)`-for-config style itself is well-worn (`LL_HOOK_HOST`,
+`LL_HISTORY_DB`, `LL_DOC_DRIFT_DISABLE`, `LL_STATE_DIR`), so the new read should match
+that shape.
+
+**Test patterns to model the new tests after:**
+- `TestFindProjectRoot` in `scripts/tests/test_program_design_gate.py:309-366` — real
+  git-repo fixtures (`_init_repo`/`_commit_all`, lines 94-103) rather than mocked
+  filesystem state; `resolve_ll_dir`'s tests should sit beside this class and reuse the
+  same fixtures.
+- `test_pure_lookup_no_mkdir` in `scripts/tests/test_config.py:1179-1187` — the
+  `assert not (probe / ".ll").exists()` shape is the exact assertion form ENH-2927's own
+  Tests section calls for; the same pattern recurs at
+  `test_pre_compact.py:89,359,373,387,401`, `test_hook_post_tool_use.py:150,163,402`,
+  `test_hook_user_prompt_submit.py:131,289,542,552`, `test_pre_compact_handoff.py:265,470`,
+  `test_record_hook_event_shim.py:78,84,89`, `test_init_tui.py:194,426`,
+  `integration/test_init_e2e.py:48`.
+- `clock` fixture (`monkeypatch.chdir(tmp_path)`) in
+  `scripts/tests/test_edit_batch_hook.py:48-54`, mirrored in
+  `scripts/tests/test_drift_check.py:40-45` — the existing isolation mechanism the new
+  `CLAUDE_PROJECT_DIR`-aware tests should extend rather than replace.
+- `test_dispatch_post_tool_use_happy_path` in `scripts/tests/test_hook_intents.py:333-359`
+  — real subprocess invocation (`cwd=str(tmp_path)`) asserting
+  `not (tmp_path / ".ll" / "history.db").exists()`; closest existing precedent for the
+  "invoking `ll-doctor` from a subdirectory" test this issue's Tests section specifies.
+- `TestOptOut.test_env_var_disable_skips_entirely` in `test_drift_check.py:55-61` — the
+  template to extend for the new env-var-aware (`CLAUDE_PROJECT_DIR`) no-op assertion.
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+These already call `resolve_history_db()` / `ensure_db()` and inherit the fixed
+resolution automatically once `session_store/db.py` is rerouted — no direct edit
+needed, but they are the observable blast radius and worth a smoke pass after the
+reroute lands:
+- `scripts/little_loops/cli/parallel.py`, `scripts/little_loops/cli/sprint/run.py`
+- `scripts/little_loops/fsm/executor.py`, `scripts/little_loops/fsm/continuity.py`
+- `scripts/little_loops/parallel/worker_pool.py`,
+  `scripts/little_loops/parallel/orchestrator.py`,
+  `scripts/little_loops/parallel/merge_coordinator.py`
+- `scripts/little_loops/history_reader.py` (via `ensure_db()`)
+- `scripts/little_loops/user_messages.py`, `scripts/little_loops/pytest_history_plugin.py`
+- `scripts/little_loops/cli/session.py` — calls `resolve_config_path()` directly
+  (not `resolve_history_db()`); same upward-resolution question applies but this
+  callsite is **out of scope** per the issue's explicit "not making `BRConfig` /
+  `resolve_config_path` walk upward" boundary — flagging only so it isn't mistaken
+  for an in-scope caller.
+- `scripts/little_loops/hooks/user_prompt_submit.py` — same `resolve_config_path()`
+  caveat as above.
+
+**Adjacent same-shape sibling not in the issue's own sweep list:**
+`decisions_sync.py`'s `_resolve_path(None)` (distinct from `decisions.py:26-27`'s own
+`_resolve_path`, which the sweep does name) has the identical
+`Path.cwd() / ".ll" / "decisions.yaml"` shape and the same stray-creation risk.
+Classify alongside `decisions.py` in the step-3 triage pass.
+
+**Write-path missed by the sweep's Python-only grep:** `docs/ARCHITECTURE.md:1541-1550`
+documents `mkdir -p .ll/spikes/` inside an FSM loop's `shell` action body (not a
+`.py` file), so the sweep's `grep --include='*.py'` commands don't catch it. It is a
+genuine write-path candidate, not a read-path like the other 14 FSM YAML hits already
+noted — flag for the same read/write/init triage.
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+**Will break once the default-path branch reroutes through `resolve_ll_dir`:**
+- `scripts/tests/test_session_store_db.py::TestDbPathResolution::test_default_when_neither_set`
+  (lines 119-126) — hard-codes `resolve_history_db(None) == DEFAULT_DB_PATH` (the bare
+  relative path) with no ancestor `.ll`/`.git`; fails whether `resolve_ll_dir` returns
+  `None` or an absolute path.
+- `scripts/tests/test_session_store_db.py::TestDbPathResolution::test_malformed_config_falls_back_to_default`
+  (lines 128-138) — same equality shape, additionally creates a `.ll/` dir first, so the
+  outcome depends on how `resolve_ll_dir` treats "root found but config unreadable."
+- `scripts/tests/test_decisions.py::test_resolve_path_none_uses_cwd_default` (553-561) —
+  asserts `decisions_sync._resolve_path(None) == Path.cwd() / ".ll" / "decisions.yaml"`
+  with no `monkeypatch.chdir`; breaks (or becomes coincidentally-fragile) once that
+  sibling resolver is rerouted per the note above.
+
+**New coverage needed, no existing test exercises the default-path/cwd branch today:**
+- `resolve_ll_dir` itself — model on `TestFindProjectRoot`
+  (`scripts/tests/test_program_design_gate.py:309-366`), layering in the
+  `create=False`-no-mkdir assertion shape from `test_pure_lookup_no_mkdir`
+  (`test_config.py:1179-1187`) and a new `create=True`-does-mkdir case (no existing
+  precedent for that half).
+- `queue_store.py`'s `DEFAULT_DB_PATH` / default-cwd resolution — `test_queue_store.py`'s
+  `TestEnsureDb` only exercises explicit paths (lines 52+); the default branch has zero
+  coverage today.
+- `decisions.py`'s own `_resolve_path` (distinct from `decisions_sync.py`'s, which is
+  covered) — currently untested directly.
+- A CLI "not inside a little-loops project; run `ll-init`" fail-clean exit path — no
+  existing test or source string matches this phrasing anywhere in the repo; this is a
+  net-new error contract with no precedent to model against.
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+These doc files assert cwd-vs-root path behavior in prose that becomes stale (or, for
+the `CONFIGURATION.md` rows, newly-true) once the reroute lands:
+- `docs/reference/API.md` — lines 2466 (`AutoManager` default `SQLiteTransport` wiring),
+  4310/9067/9071 (`queue_store.DEFAULT_DB_PATH` location prose),
+  6347/6374/6376/6386/6394/6410 (`.ll/learning-tests/` registry path prose), 9469
+  (`transport.py`'s `log_dir` "under the current working directory" claim — describes
+  the exact cwd-anchoring this issue removes), 9544 (`extension.py`'s `log_path`
+  "parent directories are created on construction" claim — describes the exact
+  incidental-mkdir behavior this issue eliminates).
+- `docs/reference/CONFIGURATION.md:671` (`queue.db_path`) and
+  `docs/guides/HISTORY_SESSION_GUIDE.md:533` (`history.db_path`) — both already assert
+  "relative paths resolve against the project root," which today is only true by
+  accident (cwd == root); this issue makes the claim actually true. Update if the prose
+  currently implies upward resolution that doesn't yet exist.
+- `docs/reference/CONFIGURATION.md:823` (`ll-artifact`'s `default_output_dir`) — same
+  "resolve against the project root" language but not a `.ll/`-relative path and not in
+  the issue's sweep; flagging as an adjacent claim to decide in/out of scope, not
+  asserting it must change here.
 
 ## Program Design
 
@@ -239,6 +440,10 @@ inside `.ll/`.
   `.ll/` creation.
 
 ## Session Log
+- implementation - 2026-07-30 - added `resolve_ll_dir(start=None, create=False)` to `little_loops.paths`; rerouted `session_store/db.py` (`_config_db_path`/`_resolve_db_path`), `queue_store.py` (`ensure_db` via new `_resolve_queue_db_path`), `decisions.py`/`decisions_sync.py` (`_resolve_path`) to anchor their default DB/log locations at the resolved project root instead of bare cwd; `hooks/edit_batch_nudge.py` and `hooks/drift_check.py` now resolve state paths at call time via `CLAUDE_PROJECT_DIR` then `resolve_ll_dir(create=True)`, silently no-opping (exit 0, nothing written) when neither locates a project. Updated `test_session_store_db.py`/`test_decisions.py`'s pre-reroute cwd-relative assertions; added new coverage for `resolve_ll_dir` (`test_program_design_gate.py::TestResolveLlDir`), `queue_store`'s default-path branch, `decisions.py`'s own `_resolve_path`, and a new `test_stray_ll_regression.py` exercising `ll-doctor`/`ll-issues list` from a project subdirectory. Left the 14 FSM-YAML inline-Python `.ll` reads, `docs/ARCHITECTURE.md`'s `mkdir -p .ll/spikes/`, and the many CLI/hook call sites that already funnel through `resolve_history_db()`/`ensure_db()` untouched per the issue's own triage (they inherit the fix automatically or are explicitly flagged out of effort). Full suite: 17221 passed, 42 skipped.
+- `/ll:ready-issue` - 2026-07-30T23:28:28 - `22cdc69f-3e91-43db-a57b-fee760cd419d.jsonl`
+- `/ll:wire-issue` - 2026-07-30T23:24:34 - `4c514e4e-f2d3-40c7-946f-554e7fb67310.jsonl`
+- `/ll:refine-issue` - 2026-07-30T23:18:45 - `85a60c84-dffb-4099-af91-7ac4ae818c17.jsonl`
 - review - 2026-07-30 - replaced the assumed creation-site inventory with a measured one; added `CLAUDE_PROJECT_DIR`, hook-no-op, and `ll-init` gitignore items; moved `resolve_ll_dir` to `little_loops.paths`
 - partial implementation - 2026-07-30 - landed the gitignore half early (step 4, unblocked by `paths.py`): `_GITIGNORE_ENTRIES` nested-ignore pair + `history.db*`/`queue.db*`/`*.lock`, repo `.gitignore` queue.db entries (`36f62c53`), two regression tests. Remaining scope is the `resolve_ll_dir` rerouting, still `blocked_by: ENH-2924`.
 

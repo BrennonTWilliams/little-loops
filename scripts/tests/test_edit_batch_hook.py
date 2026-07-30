@@ -47,8 +47,17 @@ class _Clock:
 
 @pytest.fixture
 def clock(monkeypatch: pytest.MonkeyPatch, tmp_path) -> _Clock:
-    """Isolate the state file to ``tmp_path`` and give the handler a fake clock."""
+    """Isolate the state file to ``tmp_path`` and give the handler a fake clock.
+
+    ``tmp_path`` must itself resolve as a project root (ENH-2927 routes state
+    resolution through ``resolve_ll_dir``, which requires a discoverable
+    ``.ll/`` on the walk) — otherwise the handler silently no-ops rather than
+    writing state, and every assertion below would see ``exit_code == 0``
+    regardless of the run counter.
+    """
     monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    (tmp_path / ".ll").mkdir()
     c = _Clock()
     monkeypatch.setattr(edit_batch_nudge, "_now", c)
     return c
@@ -192,30 +201,70 @@ class TestStatefulNudge:
         assert all(r.exit_code == 0 for r in results[:-1])
         assert results[-1].exit_code == 2
 
-    def test_state_records_nudged_flag(self, clock: _Clock) -> None:
+    def test_state_records_nudged_flag(self, clock: _Clock, tmp_path) -> None:
         """Persisted state includes ``nudged`` so a process restart inherits the latch."""
-        from little_loops.hooks.edit_batch_nudge import _load_state
+        from little_loops.hooks.edit_batch_nudge import _STATE_FILENAME, _load_state
 
         gap = _BATCH_WINDOW_SECONDS + 1.0
         for _ in range(_NUDGE_THRESHOLD):
             self._edit()
             clock.advance(gap)
-        state = _load_state()
+        state = _load_state(tmp_path / ".ll" / _STATE_FILENAME)
         assert state.get("session_id") == "s1"
         assert state.get("nudged") is True
         assert state.get("run") == 0
 
-    def test_state_omits_nudged_until_first_fire(self, clock: _Clock) -> None:
+    def test_state_omits_nudged_until_first_fire(self, clock: _Clock, tmp_path) -> None:
         """Pre-fire state records ``nudged: False`` so the latch is explicit, not implicit."""
-        from little_loops.hooks.edit_batch_nudge import _load_state
+        from little_loops.hooks.edit_batch_nudge import _STATE_FILENAME, _load_state
 
         gap = _BATCH_WINDOW_SECONDS + 1.0
         # One unbatched edit — well below threshold.
         self._edit()
         clock.advance(gap)
-        state = _load_state()
+        state = _load_state(tmp_path / ".ll" / _STATE_FILENAME)
         assert state.get("nudged") is False
         assert state.get("run") == 1
+
+
+class TestNoStrayDirCreation:
+    """ENH-2927: the hook must never create ``.ll/`` outside a resolved project."""
+
+    def test_no_project_and_no_claude_project_dir_is_noop(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path
+    ) -> None:
+        """cwd outside any project, no CLAUDE_PROJECT_DIR: exit 0, nothing created."""
+        outside = tmp_path / "not-a-project"
+        outside.mkdir()
+        monkeypatch.chdir(outside)
+        monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+        monkeypatch.setattr(edit_batch_nudge, "_now", _Clock())
+        # Enough unbatched edits to hit the nudge threshold if state were writable.
+        result = None
+        for _ in range(_NUDGE_THRESHOLD):
+            result = handle(_event({"tool_name": "Edit", "session_id": "s1"}, cwd=str(outside)))
+        assert result is not None
+        assert result.exit_code == 0
+        assert result.feedback is None
+        assert not (outside / ".ll").exists()
+
+    def test_claude_project_dir_anchors_state_there(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path
+    ) -> None:
+        """CLAUDE_PROJECT_DIR wins over cwd — state lands at that root, not cwd."""
+        from little_loops.hooks.edit_batch_nudge import _STATE_FILENAME
+
+        project_root = tmp_path / "the-project"
+        project_root.mkdir()
+        subdir = project_root / "sub"
+        subdir.mkdir()
+        monkeypatch.chdir(subdir)
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project_root))
+        monkeypatch.setattr(edit_batch_nudge, "_now", _Clock())
+        result = handle(_event({"tool_name": "Edit", "session_id": "s1"}, cwd=str(subdir)))
+        assert result.exit_code == 0
+        assert (project_root / ".ll" / _STATE_FILENAME).is_file()
+        assert not (subdir / ".ll").exists()
 
 
 class TestRobustness:
@@ -223,6 +272,8 @@ class TestRobustness:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path
     ) -> None:
         monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+        (tmp_path / ".ll").mkdir()
         monkeypatch.setattr(edit_batch_nudge, "_now", _Clock())
 
         def _boom(*_a, **_k):

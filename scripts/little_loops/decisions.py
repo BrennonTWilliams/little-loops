@@ -24,7 +24,22 @@ _DEFAULT_LOG_PATH = Path(".ll") / "decisions.yaml"
 
 
 def _resolve_path(path: Path | None) -> Path:
-    return path if path is not None else Path.cwd() / _DEFAULT_LOG_PATH
+    """Resolve the decisions log path, anchoring the default at the resolved
+    project root (ENH-2927) instead of a bare cwd-relative path.
+
+    An explicit *path* is always returned verbatim. For ``None``, delegates
+    to :func:`~little_loops.paths.resolve_ll_dir`; when no project root
+    resolves at all, falls back to a cwd-anchored default rather than
+    inventing a root.
+    """
+    if path is not None:
+        return path
+    from little_loops.paths import resolve_ll_dir
+
+    ll_dir = resolve_ll_dir()
+    if ll_dir is not None:
+        return ll_dir / "decisions.yaml"
+    return Path.cwd() / _DEFAULT_LOG_PATH
 
 
 def _fragments_dir(log_path: Path) -> Path:

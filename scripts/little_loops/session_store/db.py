@@ -35,17 +35,23 @@ def _is_default_shaped(path: Path | str | None) -> bool:
 def _config_db_path() -> Path | None:
     """Best-effort read of ``history.db_path`` from the project config (ENH-2623).
 
-    Returns the configured path (relative paths resolved against the project
-    root, i.e. the current working directory), or ``None`` when the key is
-    unset or the config is missing/malformed. Never raises — mirroring the
-    guarded ``resolve_config_path`` + ``json.loads`` pattern the bootstrap hooks
+    Returns the configured path (relative paths resolved against the
+    resolved project root — see :func:`~little_loops.paths.resolve_ll_dir`,
+    ENH-2927 — rather than the bare current working directory), or ``None``
+    when the key is unset, no project root resolves, or the config is
+    missing/malformed. Never raises — mirroring the guarded
+    ``resolve_config_path`` + ``json.loads`` pattern the bootstrap hooks
     use — so the hot ``SessionStart`` / ``UserPromptSubmit`` path is never
     blocked by a bad config file.
     """
     try:
         from little_loops.config.core import resolve_config_path
+        from little_loops.paths import resolve_ll_dir
 
-        root = Path.cwd()
+        ll_dir = resolve_ll_dir()
+        if ll_dir is None:
+            return None
+        root = ll_dir.parent
         cfg_path = resolve_config_path(root)
         if cfg_path is None:
             return None
@@ -72,6 +78,18 @@ def _resolve_db_path(path: Path | str | None = None) -> Path:
     callers that hand an explicit location (recompress maintenance, tests) are
     always honored — resolving the historical ``resolve_history_db`` /
     ``ensure_db`` divergence into one rule.
+
+    For a default-shaped *path* with no env override and no config key, the
+    default now anchors at the resolved project root (ENH-2927) instead of a
+    bare cwd-relative ``DEFAULT_DB_PATH`` — the exact rerouting that stops
+    ``ll-doctor``/``ll-ctx-stats``/``ll-gitignore`` from creating stray
+    ``.ll/`` directories when invoked from a project subdirectory. When no
+    project root resolves at all (no ``.git`` boundary, no ``.ll`` anywhere
+    upward), this falls back to a cwd-*absolute* form of the legacy default
+    (``Path.cwd() / DEFAULT_DB_PATH``) rather than inventing a root — same
+    on-disk location as the old bare-relative default, just resolved eagerly
+    instead of left for the sqlite layer to interpret relative to whatever
+    cwd happens to be at connect-time.
     """
     if not _is_default_shaped(path):
         return Path(path)  # type: ignore[arg-type]
@@ -81,7 +99,12 @@ def _resolve_db_path(path: Path | str | None = None) -> Path:
     cfg = _config_db_path()
     if cfg is not None:
         return cfg
-    return Path(path) if path is not None else DEFAULT_DB_PATH
+    from little_loops.paths import resolve_ll_dir
+
+    ll_dir = resolve_ll_dir()
+    if ll_dir is not None:
+        return ll_dir / "history.db"
+    return Path.cwd() / DEFAULT_DB_PATH
 
 
 def resolve_history_db(path: Path | str | None = None) -> Path:

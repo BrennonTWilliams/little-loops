@@ -54,6 +54,41 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = Path(".ll/queue.db")
 
+
+def _is_default_shaped(path: Path | str) -> bool:
+    """True when *path* names the default queue DB location (ENH-2927).
+
+    Mirrors ``session_store.db._is_default_shaped``: matched by basename +
+    parent (not strict equality), so an already-absolute cwd-based
+    ``.ll/queue.db`` a caller constructed still routes through resolution. Any
+    other path is a deliberate override and is returned verbatim.
+    """
+    p = Path(path)
+    if p == DEFAULT_DB_PATH:
+        return True
+    return p.name == "queue.db" and p.parent.name == ".ll"
+
+
+def _resolve_queue_db_path(path: Path | str = DEFAULT_DB_PATH) -> Path:
+    """Resolve *path* to an absolute location, anchoring the default at the
+    resolved project root (ENH-2927) instead of a bare cwd-relative path.
+
+    A deliberate (non-default-shaped) override is returned verbatim. For the
+    default, delegates to :func:`~little_loops.paths.resolve_ll_dir`; when no
+    project root resolves at all, falls back to a cwd-absolute form of the
+    legacy default rather than inventing a root.
+    """
+    p = Path(path)
+    if not _is_default_shaped(p):
+        return p
+    from little_loops.paths import resolve_ll_dir
+
+    ll_dir = resolve_ll_dir()
+    if ll_dir is not None:
+        return ll_dir / "queue.db"
+    return Path.cwd() / DEFAULT_DB_PATH
+
+
 # Lower-is-higher-precedence tiers, mirroring
 # ``IssuePriorityQueue.DEFAULT_PRIORITIES`` (parallel/priority_queue.py).
 PRIORITY_TIERS: tuple[str, ...] = ("P0", "P1", "P2", "P3", "P4", "P5")
@@ -155,7 +190,7 @@ def ensure_db(path: Path | str = DEFAULT_DB_PATH) -> Path:
     Idempotent: safe to call on every invocation. The parent directory is
     created if absent. Returns the resolved database path.
     """
-    db_path = Path(path)
+    db_path = _resolve_queue_db_path(path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
     try:

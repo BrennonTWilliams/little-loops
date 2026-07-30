@@ -366,6 +366,84 @@ class TestFindProjectRoot:
         assert find_project_root(repo) is None
 
 
+class TestResolveLlDir:
+    """`resolve_ll_dir` (ENH-2927): sole authority for creating `.ll/` outside `ll-init`."""
+
+    def test_pure_lookup_no_mkdir(self, tmp_path: Path) -> None:
+        """create=False (the default) never creates .ll/, even when no root resolves."""
+        from little_loops.paths import resolve_ll_dir
+
+        probe = tmp_path / "probe"
+        probe.mkdir()
+        result = resolve_ll_dir(probe)
+        assert result is None
+        assert not (probe / ".ll").exists()
+
+    def test_returns_none_when_no_root_resolves(self, tmp_path: Path) -> None:
+        from little_loops.paths import resolve_ll_dir
+
+        sub = tmp_path / "a" / "b"
+        sub.mkdir(parents=True)
+        assert resolve_ll_dir(sub) is None
+
+    def test_finds_existing_ll_dir_at_ancestor(self, tmp_path: Path) -> None:
+        """When an ancestor already has .ll/, resolve_ll_dir returns it without creating anything."""
+        from little_loops.paths import resolve_ll_dir
+
+        _init_repo(tmp_path)
+        (tmp_path / ".ll").mkdir()
+        sub = tmp_path / "scripts" / "little_loops"
+        sub.mkdir(parents=True)
+
+        result = resolve_ll_dir(sub)
+        assert result == tmp_path / ".ll"
+        # Pure lookup: no stray .ll/ created at the subdirectory.
+        assert not (sub / ".ll").exists()
+
+    def test_create_true_creates_ll_dir_at_resolved_root(self, tmp_path: Path) -> None:
+        """create=True materializes .ll/ at the resolved root, not at start."""
+        from little_loops.paths import resolve_ll_dir
+
+        _init_repo(tmp_path)
+        (tmp_path / ".ll").mkdir()
+        sub = tmp_path / "scripts"
+        sub.mkdir()
+
+        result = resolve_ll_dir(sub, create=True)
+        assert result == tmp_path / ".ll"
+        assert (tmp_path / ".ll").is_dir()
+        assert not (sub / ".ll").exists()
+
+    def test_create_true_is_idempotent_on_existing_ll_dir(self, tmp_path: Path) -> None:
+        from little_loops.paths import resolve_ll_dir
+
+        _init_repo(tmp_path)
+        (tmp_path / ".ll").mkdir()
+
+        result = resolve_ll_dir(tmp_path, create=True)
+        assert result == tmp_path / ".ll"
+        assert (tmp_path / ".ll").is_dir()
+
+    def test_create_true_does_not_invent_a_root_when_none_resolves(self, tmp_path: Path) -> None:
+        """create=True still returns None (and creates nothing) when no root resolves at all."""
+        from little_loops.paths import resolve_ll_dir
+
+        probe = tmp_path / "no-project-anywhere"
+        probe.mkdir()
+        result = resolve_ll_dir(probe, create=True)
+        assert result is None
+        assert not (probe / ".ll").exists()
+
+    def test_default_start_is_cwd(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from little_loops.paths import resolve_ll_dir
+
+        _init_repo(tmp_path)
+        (tmp_path / ".ll").mkdir()
+        monkeypatch.chdir(tmp_path)
+
+        assert resolve_ll_dir() == tmp_path / ".ll"
+
+
 # --------------------------------------------------------------------- cutover stamp
 
 

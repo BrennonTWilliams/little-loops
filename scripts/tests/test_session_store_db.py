@@ -119,20 +119,32 @@ class TestDbPathResolution:
     def test_default_when_neither_set(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """No env, no config → DEFAULT_DB_PATH."""
+        """No env, no config, no resolvable project root → cwd-absolute default (ENH-2927).
+
+        ``tmp_path`` here has no ``.git``/``.ll`` anywhere on its walk, so
+        ``resolve_ll_dir()`` can't find a project root; the fallback is a
+        cwd-*absolute* form of the legacy relative ``DEFAULT_DB_PATH`` — same
+        on-disk location, but no longer the bare relative constant (which
+        would resolve against whatever cwd happens to be at connect-time).
+        """
         DEFAULT_DB_PATH, resolve_history_db = self._resolvers()
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("LL_HISTORY_DB", raising=False)
-        assert resolve_history_db(None) == DEFAULT_DB_PATH
+        assert resolve_history_db(None) == tmp_path / DEFAULT_DB_PATH
 
     def test_malformed_config_falls_back_to_default(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A malformed ll-config.json must not raise; resolution falls through to default."""
-        DEFAULT_DB_PATH, resolve_history_db = self._resolvers()
+        """A malformed ll-config.json must not raise; resolution falls through to default.
+
+        ``tmp_path / .ll`` exists here, so it *does* resolve as a project root
+        (ENH-2927) — the expected default is anchored there via
+        ``resolve_ll_dir()``, not the bare relative ``DEFAULT_DB_PATH``.
+        """
+        _, resolve_history_db = self._resolvers()
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("LL_HISTORY_DB", raising=False)
         ll_dir = tmp_path / ".ll"
         ll_dir.mkdir()
         (ll_dir / "ll-config.json").write_text("{ not valid json", encoding="utf-8")
-        assert resolve_history_db(None) == DEFAULT_DB_PATH
+        assert resolve_history_db(None) == ll_dir / "history.db"

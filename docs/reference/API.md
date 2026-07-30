@@ -2461,9 +2461,9 @@ AutoManager(
 - `label_filter` - If provided, only process issues carrying one of these labels
 - `verbose` - Whether to output progress messages
 - `preview_full` - Show full issue body in dry-run preview (default: summary only)
-- `db_path` - Override path for the SQLite session store (default: `.ll/history.db`)
+- `db_path` - Override path for the SQLite session store (default: `.ll/history.db`, resolved via `resolve_history_db()` — anchored at the resolved project root, ENH-2927, not the bare cwd)
 
-**Behavior:** On construction, `AutoManager` creates an internal `EventBus` and wires a `SQLiteTransport(db_path or DEFAULT_DB_PATH)` to it automatically. Issue lifecycle events (`issue.completed`, `issue.deferred`, `issue.skipped`, `issue.started`, etc.) are recorded live during `run()` without any additional configuration.
+**Behavior:** On construction, `AutoManager` creates an internal `EventBus` and wires a `SQLiteTransport(db_path or DEFAULT_DB_PATH)` to it automatically. `SQLiteTransport.__init__` resolves its path via `resolve_history_db()`, so the default anchors at the resolved project root rather than the working directory. Issue lifecycle events (`issue.completed`, `issue.deferred`, `issue.skipped`, `issue.started`, etc.) are recorded live during `run()` without any additional configuration.
 
 #### Methods
 
@@ -9064,7 +9064,7 @@ Unchanged in shape from its pre-extraction definition in `cli/harness.py`; that 
 
 ## little_loops.queue_store
 
-Persisted queue-entry store for `ll-queue` (FEAT-2682), backing a dedicated `.ll/queue.db` — distinct from `ll-loop queue`'s PID-liveness marker mechanism (`cli/loop/queue.py`), which FEAT-2684 preserves unchanged as a compat shim rather than migrating. Modeled directly on `session_store`'s migration/`connect`/`ensure_db` shape (own `_MIGRATIONS`/`SCHEMA_VERSION`, copied rather than shared).
+Persisted queue-entry store for `ll-queue` (FEAT-2682), backing a dedicated `.ll/queue.db` — distinct from `ll-loop queue`'s PID-liveness marker mechanism (`cli/loop/queue.py`), which FEAT-2684 preserves unchanged as a compat shim rather than migrating. Modeled directly on `session_store`'s migration/`connect`/`ensure_db` shape (own `_MIGRATIONS`/`SCHEMA_VERSION`, copied rather than shared). `ensure_db()`'s default-shaped `DEFAULT_DB_PATH` argument resolves via `resolve_ll_dir()` (ENH-2927), anchoring at the resolved project root rather than the bare working directory; an explicit non-default `db_path` is always honored verbatim.
 
 ```python
 from little_loops.queue_store import (

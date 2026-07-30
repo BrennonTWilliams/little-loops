@@ -26,8 +26,12 @@ full model-generation time (seconds+). So two edits closer than
 farther apart advance the unbatched run. ``MultiEdit`` is inherently batched and
 always resets the run.
 
-State lives in ``.ll/ll-edit-batch-state.json`` (resolved against the process
-cwd, matching the other hooks) as a single record
+State lives in ``.ll/ll-edit-batch-state.json``, resolved at call time
+(ENH-2927) via ``CLAUDE_PROJECT_DIR`` (when the host sets it) or else upward
+resolution from the event's cwd through
+:func:`~little_loops.paths.resolve_ll_dir`; when neither locates a project
+this hook is a silent no-op (never writes, never errors — see
+:func:`_resolve_state_path`). The record shape is
 ``{"session_id", "run", "last_ts", "nudged"}``; a changed ``session_id`` resets
 the run *and* clears ``nudged``. All state I/O is best-effort — any failure
 degrades to a silent pass-through (``exit_code=0``) so the hook never raises
@@ -51,12 +55,14 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
 
 from little_loops.file_utils import acquire_lock, atomic_write_json
 from little_loops.hooks.types import LLHookEvent, LLHookResult
+from little_loops.paths import resolve_ll_dir
 
 _EDIT_TOOLS = frozenset({"Edit", "Write", "MultiEdit"})
 
@@ -67,7 +73,7 @@ _BATCH_WINDOW_SECONDS = 3.0
 # Nudge once a run of consecutive unbatched single edits reaches this length.
 _NUDGE_THRESHOLD = 3
 
-_STATE_PATH = Path(".ll/ll-edit-batch-state.json")
+_STATE_FILENAME = "ll-edit-batch-state.json"
 
 _NUDGE = (
     "Edit-batching reminder: when your next changes are independent and target "
@@ -83,24 +89,50 @@ def _now() -> float:
     return time.time()
 
 
-def _load_state() -> dict[str, Any]:
+def _resolve_state_path(cwd: Path) -> Path | None:
+    """Resolve ``.ll/ll-edit-batch-state.json`` without ever creating a stray dir.
+
+    ENH-2927: prefers ``CLAUDE_PROJECT_DIR`` (the host-provided project root)
+    when set, else walks upward from *cwd* via
+    :func:`~little_loops.paths.resolve_ll_dir`. Returns ``None`` when neither
+    locates a project — callers must treat that as "no-op", never as an error,
+    since a hook running in an arbitrary cwd (no project anywhere) must never
+    fabricate a ``.ll/`` there.
+    """
+    project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
+    if project_dir:
+        # The host vouches for this being the project root — use it directly
+        # rather than re-deriving one via upward resolution.
+        try:
+            ll_dir = Path(project_dir) / ".ll"
+            ll_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            return None
+        return ll_dir / _STATE_FILENAME
+    resolved_ll_dir = resolve_ll_dir(start=cwd, create=True)
+    if resolved_ll_dir is None:
+        return None
+    return resolved_ll_dir / _STATE_FILENAME
+
+
+def _load_state(state_path: Path) -> dict[str, Any]:
     """Best-effort read of the counter file; empty dict on any error."""
     try:
-        data = json.loads(_STATE_PATH.read_text())
+        data = json.loads(state_path.read_text())
         return data if isinstance(data, dict) else {}
     except (OSError, json.JSONDecodeError, ValueError):
         return {}
 
 
-def _persist_state(state: dict[str, Any]) -> None:
+def _persist_state(state_path: Path, state: dict[str, Any]) -> None:
     """Best-effort atomic write under a short advisory lock (never raises)."""
-    lock = _STATE_PATH.with_suffix(_STATE_PATH.suffix + ".lock")
+    lock = state_path.with_suffix(state_path.suffix + ".lock")
     try:
         with acquire_lock(lock, timeout=3.0):
-            atomic_write_json(_STATE_PATH, state)
+            atomic_write_json(state_path, state)
     except TimeoutError:
         with contextlib.suppress(OSError, ValueError):
-            atomic_write_json(_STATE_PATH, state)  # best-effort fallback
+            atomic_write_json(state_path, state)  # best-effort fallback
     except (OSError, ValueError):
         pass
 
@@ -114,9 +146,17 @@ def handle(event: LLHookEvent) -> LLHookResult:
     # Any failure in the stateful path degrades to a silent pass-through so the
     # hook never raises and never reverts to spamming on every edit.
     try:
+        raw_cwd = event.payload.get("cwd") or event.cwd or ""
+        cwd = Path(raw_cwd) if raw_cwd else Path.cwd()
+        state_path = _resolve_state_path(cwd)
+        if state_path is None:
+            # No resolvable project (and no CLAUDE_PROJECT_DIR): silently
+            # no-op rather than creating a stray `.ll/` at cwd (ENH-2927).
+            return LLHookResult(exit_code=0)
+
         now = _now()
         session = event.payload.get("session_id") or ""
-        state = _load_state()
+        state = _load_state(state_path)
         same_session = state.get("session_id") == session
         run = int(state.get("run", 0)) if same_session else 0
         last_ts = state.get("last_ts") if same_session else None
@@ -140,12 +180,13 @@ def handle(event: LLHookEvent) -> LLHookResult:
                 run = 0
 
         _persist_state(
+            state_path,
             {
                 "session_id": session,
                 "run": run,
                 "last_ts": now,
                 "nudged": nudge or (same_session and bool(state.get("nudged"))),
-            }
+            },
         )
         return LLHookResult(exit_code=2, feedback=_NUDGE) if nudge else LLHookResult(exit_code=0)
     except Exception:  # pragma: no cover — defense in depth; never raise from a hook

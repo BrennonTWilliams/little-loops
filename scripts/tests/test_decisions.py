@@ -72,6 +72,40 @@ def sample_exception() -> ExceptionEntry:
     )
 
 
+class TestResolvePath:
+    """decisions.py's own `_resolve_path` (ENH-2927; distinct from decisions_sync's sibling)."""
+
+    def test_explicit_path_returned_verbatim(self, tmp_path: Path) -> None:
+        from little_loops.decisions import _resolve_path
+
+        explicit = tmp_path / "custom" / "decisions.yaml"
+        assert _resolve_path(explicit) == explicit
+
+    def test_none_anchors_at_resolved_project_root(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.decisions import _resolve_path
+
+        project_root = tmp_path / "project"
+        (project_root / ".ll").mkdir(parents=True)
+        sub = project_root / "sub"
+        sub.mkdir()
+        monkeypatch.chdir(sub)
+
+        assert _resolve_path(None) == project_root / ".ll" / "decisions.yaml"
+
+    def test_none_falls_back_to_cwd_when_no_root_resolves(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.decisions import _resolve_path
+
+        isolated = tmp_path / "no-project-anywhere"
+        isolated.mkdir()
+        monkeypatch.chdir(isolated)
+
+        assert _resolve_path(None) == isolated / ".ll" / "decisions.yaml"
+
+
 class TestLoadDecisions:
     """Tests for load_decisions()."""
 
@@ -550,14 +584,21 @@ class TestSyncToLocalMd:
         final_target = mock_replace.call_args[0][1]
         assert str(ll_local) == str(final_target)
 
-    def test_resolve_path_none_uses_cwd_default(self, tmp_path: Path) -> None:
-        """_resolve_path(None) uses Path.cwd() / '.ll/decisions.yaml'."""
+    def test_resolve_path_none_uses_cwd_default(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """_resolve_path(None) falls back to a cwd-anchored default (ENH-2927).
+
+        Explicitly ``chdir``s to an isolated ``tmp_path`` with no ``.git``/
+        ``.ll`` ancestor, rather than relying on whatever cwd pytest happened
+        to be invoked from (fragile — this repo's own root carries a tracked
+        ``.ll/``, which would coincidentally resolve to the same answer).
+        """
         from little_loops.decisions_sync import _resolve_path
 
+        monkeypatch.chdir(tmp_path)
         resolved = _resolve_path(None)
-        import pathlib
-
-        expected = pathlib.Path.cwd() / ".ll" / "decisions.yaml"
+        expected = tmp_path / ".ll" / "decisions.yaml"
         assert resolved == expected
 
     def test_replaces_last_active_rules_section_when_multiple_present(

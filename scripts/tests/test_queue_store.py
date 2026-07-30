@@ -66,6 +66,53 @@ class TestEnsureDb:
         assert int(row[0]) == SCHEMA_VERSION
 
 
+class TestDefaultPathResolution:
+    """ENH-2927: the default DEFAULT_DB_PATH branch anchors at resolve_ll_dir(), not bare cwd."""
+
+    def test_default_anchors_at_resolved_project_root(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.queue_store import DEFAULT_DB_PATH
+
+        project_root = tmp_path / "project"
+        (project_root / ".ll").mkdir(parents=True)
+        sub = project_root / "sub"
+        sub.mkdir()
+        monkeypatch.chdir(sub)
+
+        result = ensure_db(DEFAULT_DB_PATH)
+        assert result == project_root / ".ll" / "queue.db"
+        assert result.exists()
+        # No stray .ll/ created at the subdirectory cwd.
+        assert not (sub / ".ll").exists()
+
+    def test_default_falls_back_to_cwd_when_no_root_resolves(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.queue_store import DEFAULT_DB_PATH
+
+        isolated = tmp_path / "no-project-anywhere"
+        isolated.mkdir()
+        monkeypatch.chdir(isolated)
+
+        result = ensure_db(DEFAULT_DB_PATH)
+        assert result == isolated / DEFAULT_DB_PATH
+        assert result.exists()
+
+    def test_explicit_path_overrides_default_resolution(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A deliberate non-default-shaped path is never rerouted through resolve_ll_dir."""
+        project_root = tmp_path / "project"
+        (project_root / ".ll").mkdir(parents=True)
+        monkeypatch.chdir(project_root)
+
+        explicit = tmp_path / "elsewhere" / "custom.db"
+        result = ensure_db(explicit)
+        assert result == explicit
+        assert result.exists()
+
+
 class TestAddEntry:
     def test_persists_entry(self, tmp_path: Path) -> None:
         db = tmp_path / "queue.db"

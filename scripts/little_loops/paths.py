@@ -40,3 +40,44 @@ def find_project_root(start: Path) -> Path | None:
         if has_git:
             break
     return fallback
+
+
+def resolve_ll_dir(start: Path | None = None, create: bool = False) -> Path | None:
+    """Return the resolved project's ``.ll/`` directory, optionally creating it.
+
+    Delegates upward resolution to :func:`find_project_root`, starting from
+    *start* (``Path.cwd()`` when omitted). Sole authority for *creating*
+    ``.ll/`` outside of ``ll-init`` itself (ENH-2927) — every other consumer
+    (session store, hook state files, decisions log, queue DB) should resolve
+    through this function rather than building ``Path(".ll/...")`` against a
+    bare cwd, which is what let stray ``.ll/`` directories accumulate outside
+    the project root.
+
+    When ``create`` is False (the default), this is a pure lookup: mirrors
+    :func:`~little_loops.config.core.resolve_config_path`'s contract of never
+    creating directories or mutating global state. Returns ``<root>/.ll`` when
+    ``find_project_root`` resolves a root (which itself requires an existing
+    ``.ll`` somewhere on the walk), or ``None`` when no root resolves.
+
+    When ``create`` is True and a root resolves, ensures ``<root>/.ll`` exists
+    (``mkdir(parents=True, exist_ok=True)``) and returns it. When ``create``
+    is True but no root resolves at all — no ``.git`` boundary and no
+    existing ``.ll`` anywhere upward — this still returns ``None`` rather than
+    inventing a root at *start*; callers that want to originate a brand-new
+    project (``ll-init``) must choose an explicit root themselves instead of
+    relying on this helper to guess one.
+
+    Never raises: an ``OSError`` from the ``mkdir`` call (e.g. a read-only
+    filesystem) is swallowed and ``None`` is returned, matching the
+    never-raise contract the rest of this module follows.
+    """
+    root = find_project_root(start if start is not None else Path.cwd())
+    if root is None:
+        return None
+    ll_dir = root / ".ll"
+    if create:
+        try:
+            ll_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            return None
+    return ll_dir

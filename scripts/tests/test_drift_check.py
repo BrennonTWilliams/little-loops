@@ -39,7 +39,14 @@ class _Clock:
 
 @pytest.fixture
 def clock(monkeypatch: pytest.MonkeyPatch, tmp_path) -> _Clock:
+    """Isolate the state file to ``tmp_path`` and give the handler a fake clock.
+
+    ``tmp_path`` must itself resolve as a project root (ENH-2927 routes state
+    resolution through ``resolve_ll_dir``) or the handler silently no-ops.
+    """
     monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    (tmp_path / ".ll").mkdir(exist_ok=True)
     c = _Clock()
     monkeypatch.setattr(drift_check, "_now", c)
     return c
@@ -59,6 +66,44 @@ class TestOptOut:
         assert result.exit_code == 0
         assert result.feedback is None
         assert not (tmp_path / ".ll" / _STATE_FILENAME).exists()
+
+
+class TestNoStrayDirCreation:
+    """ENH-2927: a hook must never create ``.ll/`` outside a resolved project."""
+
+    def test_no_project_and_no_claude_project_dir_is_noop(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path
+    ) -> None:
+        """cwd outside any project, no CLAUDE_PROJECT_DIR: exit 0, no state written."""
+        outside = tmp_path / "not-a-project"
+        outside.mkdir()
+        monkeypatch.chdir(outside)
+        monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+        monkeypatch.setattr(drift_check, "_now", _Clock())
+        result = handle(_event(cwd=str(outside)))
+        assert result.exit_code == 0
+        assert result.feedback is None
+        assert not (outside / ".ll").exists()
+
+    def test_claude_project_dir_anchors_state_there(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path
+    ) -> None:
+        """CLAUDE_PROJECT_DIR wins over cwd — state lands at that root, not cwd."""
+        project_root = tmp_path / "the-project"
+        project_root.mkdir()
+        subdir = project_root / "sub"
+        subdir.mkdir()
+        monkeypatch.chdir(subdir)
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project_root))
+        monkeypatch.setattr(drift_check, "_now", _Clock())
+        monkeypatch.setattr(
+            "little_loops.doc_counts.verify_documentation",
+            lambda base_dir=None: _mock_verification([]),
+        )
+        result = handle(_event(cwd=str(subdir)))
+        assert result.exit_code == 0
+        assert (project_root / ".ll" / _STATE_FILENAME).is_file()
+        assert not (subdir / ".ll").exists()
 
 
 class TestNoFindings:
