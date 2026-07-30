@@ -12,7 +12,23 @@ from typing import Any
 from little_loops.file_utils import atomic_write, atomic_write_json
 from little_loops.init.core import strip_none_leaves
 
-# Entries added to .gitignore by ll-init (idempotently)
+# Entries added to .gitignore by ll-init (idempotently).
+#
+# ``.ll/`` follows the ``.claude/`` model: the **repo-root** directory is tracked and
+# committed (the decisions log ``.ll/decisions.yaml`` + ``.ll/decisions.d/*.json``,
+# the learning-test registry, ``templates/``, ``ll-goals.md`` — curated artifacts a
+# team shares), with machine-local state ignored file-by-file. Every **nested**
+# ``.ll/`` is ignored outright: those are strays created when an ``ll-*`` command or
+# hook runs from a subdirectory (ENH-2927), never something to commit.
+#
+# Order is load-bearing: git is last-match-wins, so ``!/.ll/`` must follow ``**/.ll/``.
+# The negation un-excludes the *directory entry*, so git still descends into the root
+# ``.ll/`` and applies the per-file ignores above — git's "cannot re-include a file
+# under an excluded parent" rule does not apply here.
+#
+# Glob forms (``.ll/history.db*``) rather than one entry per suffix: they cover the
+# sqlite ``-shm``/``-wal`` siblings and keep each entry a non-substring of every other,
+# which ``test_partial_entries_only_appends_missing`` relies on.
 _GITIGNORE_COMMENT = "# little-loops state files"
 _GITIGNORE_ENTRIES: tuple[str, ...] = (
     ".auto-manage-state.json",
@@ -20,6 +36,12 @@ _GITIGNORE_ENTRIES: tuple[str, ...] = (
     ".ll/ll-context-state.json",
     ".ll/ll-sync-state.json",
     ".ll/ll-session-events.jsonl",
+    ".ll/history.db*",
+    ".ll/queue.db*",
+    ".ll/*.lock",
+    # Nested .ll/ strays — ignore at any depth, keep the repo-root .ll/ tracked.
+    "**/.ll/",
+    "!/.ll/",
 )
 
 # Canonical permission entries for .claude/settings*.json (Step 10 of the skill).

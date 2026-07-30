@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import importlib.metadata
 import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -878,6 +880,58 @@ class TestUpdateGitignore:
         # Should appear exactly once
         for entry in _GITIGNORE_ENTRIES:
             assert content.count(entry) == 1
+
+    def test_negation_follows_nested_ignore(self) -> None:
+        """``!/.ll/`` must come after ``**/.ll/`` — git is last-match-wins."""
+        entries = list(_GITIGNORE_ENTRIES)
+        assert entries.index("**/.ll/") < entries.index("!/.ll/")
+
+    def test_root_ll_tracked_nested_ll_ignored(self, tmp_project: Path) -> None:
+        """The ``.claude/`` model: root ``.ll/`` committed, nested ``.ll/`` ignored.
+
+        Exercises the real ``git check-ignore`` rather than asserting on pattern
+        strings — this is the test that fails if anyone collapses the
+        ``**/.ll/`` + ``!/.ll/`` pair into a bare ``.ll/`` (ENH-2927).
+        """
+        if shutil.which("git") is None:
+            pytest.skip("git not available")
+        subprocess.run(["git", "init", "-q"], cwd=tmp_project, check=True)
+        update_gitignore(tmp_project)
+
+        tracked = [
+            ".ll/decisions.yaml",
+            ".ll/decisions.d/a.json",
+            ".ll/templates/bug-sections.json",
+            ".ll/ll-goals.md",
+        ]
+        ignored = [
+            ".ll/history.db",
+            ".ll/history.db-wal",
+            ".ll/queue.db",
+            ".ll/ll-context-state.json",
+            ".ll/x.lock",
+            "sub/.ll/history.db",
+            ".issues/epics/.ll/stray.json",
+        ]
+        for rel in tracked + ignored:
+            path = tmp_project / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.touch()
+
+        def is_ignored(rel: str) -> bool:
+            return (
+                subprocess.run(
+                    ["git", "check-ignore", "-q", rel],
+                    cwd=tmp_project,
+                    capture_output=True,
+                ).returncode
+                == 0
+            )
+
+        for rel in tracked:
+            assert not is_ignored(rel), f"{rel} must stay tracked (shared team artifact)"
+        for rel in ignored:
+            assert is_ignored(rel), f"{rel} must be ignored (machine-local or stray)"
 
 
 # ===========================================================================

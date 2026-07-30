@@ -146,13 +146,28 @@ there surface as untracked noise instead.
    `grep -rn -B3 "mkdir(parents=True" scripts/little_loops --include='*.py' | grep '\.ll'`.
    Classify each as read-path (`create=False`, error or graceful empty), write-path
    (anchor at resolved root), or init-path (`ll-init`, allowed to create).
-4. Add the ordered pair `**/.ll/` then `!/.ll/` to `_GITIGNORE_ENTRIES` in
-   `init/writers.py`. Order is load-bearing — git applies last-match-wins, so the
-   negation must follow the ignore, and `update_gitignore`'s idempotent append must
-   preserve tuple order rather than sorting or de-duplicating across the pair. A
-   consuming project that already carries a broader hand-written `.ll/` line *after*
-   this block would still ignore its root `.ll/`; detect that case and warn rather
-   than silently rewriting the user's file.
+4. ~~Add the ordered pair `**/.ll/` then `!/.ll/` to `_GITIGNORE_ENTRIES`.~~
+   **DONE — landed ahead of the rest of this issue (2026-07-30).** It depended on
+   nothing else here, and it fixed a live gap. What shipped:
+   - `_GITIGNORE_ENTRIES` (`init/writers.py:17`) gained `.ll/history.db*`,
+     `.ll/queue.db*`, `.ll/*.lock`, then the ordered pair `**/.ll/`, `!/.ll/`.
+     Glob forms rather than one entry per sqlite suffix, so each entry stays a
+     non-substring of every other — `test_partial_entries_only_appends_missing`
+     asserts `content.count(entry) == 1`.
+   - `history.db` was **not** previously ignored for consuming projects, so a fresh
+     `ll-init` left them committing a SQLite session DB. Fixed by the same change.
+   - This repo's own `.gitignore` gained the `.ll/queue.db{,-shm,-wal}` entries
+     FEAT-2906 never added (commit `36f62c53`).
+   - Two tests in `TestUpdateGitignore` (`scripts/tests/test_init_core.py`):
+     `test_negation_follows_nested_ignore` (order invariant) and
+     `test_root_ll_tracked_nested_ll_ignored` (real `git check-ignore` over the
+     tracked/ignored matrix). `scripts/tests/test_init_core.py`: 259 passed.
+
+   Still open from this step: a consuming project that already carries a broader
+   hand-written `.ll/` line *after* the ll-init block would still ignore its root
+   `.ll/`. `update_gitignore` appends only missing entries and does not inspect
+   surrounding lines, so detect that case and warn rather than silently rewriting
+   the user's file.
 5. Regression tests (below).
 
 Deliberately **not** in this issue: making `BRConfig` resolve its root upward. That
@@ -188,13 +203,13 @@ separately once this lands.
   `CLAUDE_PROJECT_DIR` exit 0, emit nothing, and create nothing.
 - `edit_batch_nudge` with `CLAUDE_PROJECT_DIR` set to a `tmp_path` root writes state
   there, not at cwd.
-- `ll-init` on a fresh `tmp_path` project writes `**/.ll/` followed by `!/.ll/` into
-  `.gitignore` idempotently (re-running adds no duplicate, and the negation stays
-  after the ignore).
-- **Root-`.ll/` protection:** in a `tmp_path` git repo initialized by `ll-init`, assert
-  `git check-ignore` reports the root `.ll/decisions.yaml` and `.ll/decisions.d/` as
-  **not** ignored, while a planted `sub/.ll/` **is** ignored. This is the test that
-  fails if anyone later collapses the pair into a bare `.ll/`.
+- ~~`ll-init` writes the ordered pair idempotently.~~ **DONE** —
+  `test_negation_follows_nested_ignore`.
+- ~~**Root-`.ll/` protection**~~ **DONE** — `test_root_ll_tracked_nested_ll_ignored`
+  runs real `git check-ignore` over the matrix above; fails if anyone collapses the
+  pair into a bare `.ll/`.
+- A consuming `.gitignore` with a broader `.ll/` line after the ll-init block produces
+  a warning, not a silent rewrite (still open).
 
 ## Scope Boundaries
 
@@ -214,9 +229,9 @@ inside `.ll/`.
   resolution against a case no observed stray has yet triggered; this issue stops the
   pollution that demonstrably regenerates every couple of days, in this repo and every
   consuming one.
-- **Effort**: Small-Medium — the measured inventory is three call sites plus a sweep;
-  the original "spans several modules" estimate assumed a larger offender set than
-  exists.
+- **Effort**: Small — the measured inventory is three call sites plus a sweep, and the
+  gitignore half is already landed. The original "spans several modules" estimate
+  assumed a larger offender set than exists.
 - **Risk**: Low-Medium — a missed write-path anchored at cwd today would start erroring
   instead of silently writing to the wrong place; that surfacing is the point. The hook
   no-op rule keeps the risky path (hooks in arbitrary cwd) fail-quiet.
@@ -225,6 +240,7 @@ inside `.ll/`.
 
 ## Session Log
 - review - 2026-07-30 - replaced the assumed creation-site inventory with a measured one; added `CLAUDE_PROJECT_DIR`, hook-no-op, and `ll-init` gitignore items; moved `resolve_ll_dir` to `little_loops.paths`
+- partial implementation - 2026-07-30 - landed the gitignore half early (step 4, unblocked by `paths.py`): `_GITIGNORE_ENTRIES` nested-ignore pair + `history.db*`/`queue.db*`/`*.lock`, repo `.gitignore` queue.db entries (`36f62c53`), two regression tests. Remaining scope is the `resolve_ll_dir` rerouting, still `blocked_by: ENH-2924`.
 
 ## Status
 
