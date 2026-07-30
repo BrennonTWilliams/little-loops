@@ -13,7 +13,7 @@ from unittest.mock import patch
 import pytest
 
 from little_loops.cli.queue import main_queue
-from little_loops.queue_store import get_entry, list_entries, update_entry_result
+from little_loops.queue_store import claim_entry, get_entry, list_entries, update_entry_result
 from little_loops.runner_spec import RunnerResult
 
 
@@ -187,6 +187,34 @@ class TestCmdRunOnlyPending:
         entries = {e.id: e for e in list_entries()}
         assert entries[done_id].status == "done"
         assert entries[pending_id].status == "done"
+
+
+class TestCmdRunClaimContention:
+    """BUG-2929: a lost claim advances the drain loop instead of dispatching or breaking."""
+
+    def test_run_skips_already_claimed_entry(self, capsys: pytest.CaptureFixture[str]) -> None:
+        first_id = _add_and_get_id(capsys, "first")
+        second_id = _add_and_get_id(capsys, "second")
+
+        # Simulate another drainer having already won the claim on the first entry.
+        assert claim_entry(first_id) is True
+
+        dispatched: list[str] = []
+
+        def fake_run_action(spec: object) -> RunnerResult:
+            dispatched.append(spec.target)  # type: ignore[attr-defined]
+            return RunnerResult(stdout="ok", stderr="", exit_code=0)
+
+        with patch("little_loops.runner_spec.run_action", side_effect=fake_run_action):
+            with patch("sys.argv", ["ll-queue", "run", "--json"]):
+                result = main_queue()
+
+        assert result == 0
+        assert dispatched == ["second"]
+        first_entry = get_entry(first_id)
+        second_entry = get_entry(second_id)
+        assert first_entry is not None and first_entry.status == "running"
+        assert second_entry is not None and second_entry.status == "done"
 
 
 class TestQueueRunExitCodeVerdict:

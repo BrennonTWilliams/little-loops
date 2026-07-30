@@ -47,6 +47,7 @@ __all__ = [
     "resolve_entry",
     "remove_entry",
     "update_entry_result",
+    "claim_entry",
 ]
 
 logger = logging.getLogger(__name__)
@@ -349,5 +350,34 @@ def update_entry_result(
         )
         conn.commit()
     finally:
+        conn.close()
+    return cur.rowcount > 0
+
+
+def claim_entry(entry_id: str, db_path: Path | str = DEFAULT_DB_PATH) -> bool:
+    """Atomically transition *entry_id* from ``pending`` to ``running``.
+
+    Returns True iff this caller won the claim. Uses ``BEGIN IMMEDIATE``
+    (mirroring :func:`_apply_migrations`) so the pending-check and the write
+    happen inside one transaction, closing the TOCTOU race a Python-side
+    read-then-write against :func:`update_entry_result` would leave open when
+    multiple drainers race for the same entry (BUG-2929).
+    """
+    conn = connect(db_path)
+    prior_isolation = conn.isolation_level
+    conn.isolation_level = None
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            cur = conn.execute(
+                "UPDATE queue_entries SET status = 'running' WHERE id = ? AND status = 'pending'",
+                (entry_id,),
+            )
+            conn.execute("COMMIT")
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
+    finally:
+        conn.isolation_level = prior_isolation
         conn.close()
     return cur.rowcount > 0

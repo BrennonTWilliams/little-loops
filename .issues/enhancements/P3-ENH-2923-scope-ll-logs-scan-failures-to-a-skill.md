@@ -10,6 +10,7 @@ relates_to:
 - ENH-2925
 blocked_by:
 - ENH-2925
+parent: EPIC-1918
 ---
 
 # ENH-2923: Scope `ll-logs scan-failures` to a specific skill

@@ -5,6 +5,7 @@ from __future__ import annotations
 import itertools
 import re
 import sqlite3
+import threading
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,7 @@ from little_loops.queue_store import (
     SCHEMA_VERSION,
     AmbiguousEntryIdError,
     add_entry,
+    claim_entry,
     connect,
     ensure_db,
     get_entry,
@@ -223,6 +225,55 @@ class TestUpdateEntryResult:
         db = tmp_path / "queue.db"
         ensure_db(db)
         assert update_entry_result("does-not-exist", "done", None, db_path=db) is False
+
+
+class TestClaimEntry:
+    def test_claims_pending_entry(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry = add_entry(_spec(), db_path=db)
+        assert claim_entry(entry.id, db_path=db) is True
+
+        fetched = get_entry(entry.id, db)
+        assert fetched.status == "running"
+
+    def test_returns_false_for_non_pending_entry(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry = add_entry(_spec(), db_path=db)
+        assert claim_entry(entry.id, db_path=db) is True  # pending -> running
+        assert claim_entry(entry.id, db_path=db) is False  # already running
+
+        update_entry_result(entry.id, "done", None, db_path=db)
+        assert claim_entry(entry.id, db_path=db) is False  # done
+
+    def test_returns_false_for_unknown_id(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        ensure_db(db)
+        assert claim_entry("does-not-exist", db_path=db) is False
+
+    def test_concurrent_claims_exactly_one_winner(self, tmp_path: Path) -> None:
+        """Two threads racing claim_entry() on the same pending row: exactly one wins (BUG-2929)."""
+        db = tmp_path / "queue.db"
+        entry = add_entry(_spec(), db_path=db)
+
+        results: list[bool] = []
+        results_lock = threading.Lock()
+        barrier = threading.Barrier(2)
+
+        def try_claim() -> None:
+            barrier.wait()
+            result = claim_entry(entry.id, db_path=db)
+            with results_lock:
+                results.append(result)
+
+        t1 = threading.Thread(target=try_claim)
+        t2 = threading.Thread(target=try_claim)
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        assert sorted(results) == [False, True]
+        assert get_entry(entry.id, db).status == "running"
 
 
 class TestConnect:

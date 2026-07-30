@@ -84,6 +84,8 @@ from the corpus instead of leaving it as a passive archive.
 - **ENH-2132** — Deduplicate ll-logs signal detection logic (_extract_tool_name / _extract_eval_invocation)
 - **ENH-2133** — ll-logs sequences _compute_edges rebuilds transition counter per n-gram (O(K·N²))
 - **ENH-2134** — ll-logs minor code cleanup bundle (double import, readlines vs streaming, Path wrap)
+- **ENH-2923** — Scope `ll-logs scan-failures` to a specific skill
+- **ENH-2926** — `ll-logs extract`: report what was written instead of succeeding silently
 
 ## Scope
 

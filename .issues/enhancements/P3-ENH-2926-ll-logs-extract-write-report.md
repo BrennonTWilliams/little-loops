@@ -13,6 +13,7 @@ blocked_by:
 labels:
 - ll-logs
 - cli-consistency
+parent: EPIC-1918
 ---
 
 # ENH-2926: `ll-logs extract` — report what was written instead of succeeding silently

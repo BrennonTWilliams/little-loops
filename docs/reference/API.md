@@ -9080,10 +9080,11 @@ from little_loops.queue_store import (
     resolve_entry,          # exact id or 8+-char prefix; raises AmbiguousEntryIdError on a multi-match prefix
     remove_entry,
     update_entry_result,   # for the FEAT-2683 worker loop to record status/result
+    claim_entry,          # atomic pending->running acquisition write (BUG-2929)
 )
 ```
 
-Schema: `queue_entries(id, action, enqueued_at, priority, status, result)`. `action` is a JSON-serialized `ActionSpec` (`little_loops.runner_spec`); `priority` is stored as the 0(P0)-5(P5) numeric rank so `ORDER BY priority ASC, enqueued_at ASC` reproduces `QueuedIssue.__lt__`'s tiered-then-FIFO ordering without importing that class (it's typed concretely against `IssueInfo`). `result` is `NULL` until a worker calls `update_entry_result()`.
+Schema: `queue_entries(id, action, enqueued_at, priority, status, result)`. `action` is a JSON-serialized `ActionSpec` (`little_loops.runner_spec`); `priority` is stored as the 0(P0)-5(P5) numeric rank so `ORDER BY priority ASC, enqueued_at ASC` reproduces `QueuedIssue.__lt__`'s tiered-then-FIFO ordering without importing that class (it's typed concretely against `IssueInfo`). Acquisition and completion are distinct writes: `claim_entry()` performs the `pending` -> `running` transition inside a `BEGIN IMMEDIATE` transaction so concurrent drainers cannot both win the same entry, and `update_entry_result()` performs the completion write once the caller already owns the entry (`result` is `NULL` until then).
 
 ---
 

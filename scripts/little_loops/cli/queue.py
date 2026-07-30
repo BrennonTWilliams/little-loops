@@ -324,7 +324,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     runner kinds continue through ``run_action()`` unchanged.
     """
     from little_loops.cli.output import colorize, print_json
-    from little_loops.queue_store import list_entries, update_entry_result
+    from little_loops.queue_store import claim_entry, list_entries, update_entry_result
     from little_loops.runner_spec import RunnerType, run_action
 
     json_mode = getattr(args, "json", False)
@@ -334,8 +334,13 @@ def cmd_run(args: argparse.Namespace) -> int:
         pending = [e for e in list_entries(QUEUE_DB_PATH) if e.status == "pending"]
         if not pending:
             break
-        entry = pending[0]
-        update_entry_result(entry.id, "running", None, db_path=QUEUE_DB_PATH)
+        entry = next(
+            (e for e in pending if claim_entry(e.id, db_path=QUEUE_DB_PATH)), None
+        )
+        if entry is None:
+            # Every currently-pending entry lost its claim to another drainer;
+            # re-read on the next iteration rather than treating this as drained.
+            continue
 
         try:
             if entry.action.runner is RunnerType.LOOP:
