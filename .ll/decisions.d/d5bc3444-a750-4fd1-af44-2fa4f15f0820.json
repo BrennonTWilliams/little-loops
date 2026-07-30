@@ -1,0 +1,11 @@
+{
+  "id": "fdd94a01-c10c-4f0d-aa18-4810045c98d3",
+  "type": "decision",
+  "timestamp": "2026-07-30T02:14:43Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "No way to get skill-specific failure analytics without grepping the full-project scan output.",
+  "rule": "Captured: Scope ll-logs scan-failures to a specific skill",
+  "scope": "issue",
+  "issue": "ENH-2923"
+}
