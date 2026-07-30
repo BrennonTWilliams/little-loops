@@ -3,7 +3,7 @@ id: FEAT-2855
 title: Track codebase maintainability trend as an observability dimension
 type: FEAT
 priority: P3
-status: open
+status: deferred
 discovered_date: 2026-07-27
 epic: EPIC-2856
 parent: EPIC-2856
@@ -12,6 +12,8 @@ labels:
 - verification
 blocked_by:
 - FEAT-2867
+deferred_by: human
+deferred_date: '2026-07-30T02:32:21Z'
 ---
 
 # FEAT-2855: Track codebase maintainability trend as an observability dimension
