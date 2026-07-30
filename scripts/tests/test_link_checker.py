@@ -323,7 +323,7 @@ class TestCheckMarkdownLinks:
     def test_check_with_valid_links(self, tmp_path: Path) -> None:
         """All links are valid (mocked)."""
         # Create test markdown file
-        test_file = tmp_path / "test.md"
+        test_file = tmp_path / "README.md"
         test_file.write_text(
             """
 # Test
@@ -344,7 +344,7 @@ class TestCheckMarkdownLinks:
 
     def test_check_with_broken_link(self, tmp_path: Path) -> None:
         """Broken links are detected."""
-        test_file = tmp_path / "test.md"
+        test_file = tmp_path / "README.md"
         test_file.write_text("[Link](https://invalid.example.com)\n")
 
         with patch("little_loops.link_checker.check_url_outcome") as mock_check:
@@ -358,7 +358,7 @@ class TestCheckMarkdownLinks:
 
     def test_check_with_unreachable_link(self, tmp_path: Path) -> None:
         """Unreachable (network) links are counted separately and don't set has_errors."""
-        test_file = tmp_path / "test.md"
+        test_file = tmp_path / "README.md"
         test_file.write_text("[Link](https://timeout.example.com)\n")
 
         with patch("little_loops.link_checker.check_url_outcome") as mock_check:
@@ -373,7 +373,7 @@ class TestCheckMarkdownLinks:
 
     def test_check_with_internal_links(self, tmp_path: Path) -> None:
         """Internal references are tracked separately."""
-        test_file = tmp_path / "test.md"
+        test_file = tmp_path / "README.md"
         test_file.write_text(
             """
 [Internal](./other.md)
@@ -389,7 +389,7 @@ class TestCheckMarkdownLinks:
 
     def test_check_with_ignored_links(self, tmp_path: Path) -> None:
         """Ignored patterns work correctly."""
-        test_file = tmp_path / "test.md"
+        test_file = tmp_path / "README.md"
         test_file.write_text("[Local](http://localhost:8080)\n")
 
         result = check_markdown_links(tmp_path, [r"^http://localhost"], timeout=10)
@@ -399,14 +399,16 @@ class TestCheckMarkdownLinks:
         assert result.broken_links == 0
 
     def test_check_multiple_files(self, tmp_path: Path) -> None:
-        """Check multiple markdown files."""
-        (tmp_path / "test1.md").write_text("[Link1](https://one.com)\n")
-        (tmp_path / "test2.md").write_text("[Link2](https://two.com)\n")
+        """Check multiple markdown files (explicit files= override, ENH-2920)."""
+        file1 = tmp_path / "test1.md"
+        file2 = tmp_path / "test2.md"
+        file1.write_text("[Link1](https://one.com)\n")
+        file2.write_text("[Link2](https://two.com)\n")
 
         with patch("little_loops.link_checker.check_url_outcome") as mock_check:
             mock_check.return_value = (LinkOutcome.VALID, None)
 
-            result = check_markdown_links(tmp_path, [], timeout=10)
+            result = check_markdown_links(tmp_path, [], timeout=10, files=[file1, file2])
 
             assert result.total_links == 2
             assert result.valid_links == 2
@@ -434,7 +436,7 @@ class TestCheckMarkdownLinks:
 
     def test_check_with_max_workers(self, tmp_path: Path) -> None:
         """max_workers parameter is forwarded to ThreadPoolExecutor."""
-        (tmp_path / "test.md").write_text("[Link](https://example.com)\n")
+        (tmp_path / "README.md").write_text("[Link](https://example.com)\n")
 
         with (
             patch("little_loops.link_checker.check_url_outcome") as mock_check,
@@ -456,9 +458,11 @@ class TestCheckMarkdownLinks:
 
     def test_check_concurrent_mixed_results(self, tmp_path: Path) -> None:
         """Concurrent checking handles mixed valid/broken results."""
-        (tmp_path / "test.md").write_text("[Good](https://good.com)\n[Bad](https://bad.com)\n")
+        (tmp_path / "README.md").write_text("[Good](https://good.com)\n[Bad](https://bad.com)\n")
 
-        def mock_check_url_outcome(url: str, timeout: int = 10) -> tuple[LinkOutcome, str | None]:
+        def mock_check_url_outcome(
+            url: str, timeout: int = 10, *args: object, **kwargs: object
+        ) -> tuple[LinkOutcome, str | None]:
             if "good" in url:
                 return LinkOutcome.VALID, None
             return LinkOutcome.BROKEN, "HTTP 404"
@@ -474,7 +478,7 @@ class TestCheckMarkdownLinks:
 
     def test_check_sequential_with_max_workers_1(self, tmp_path: Path) -> None:
         """max_workers=1 works correctly (sequential fallback)."""
-        (tmp_path / "test.md").write_text(
+        (tmp_path / "README.md").write_text(
             "[A](https://a.com)\n[B](https://b.com)\n[C](https://c.com)\n"
         )
 
@@ -493,7 +497,7 @@ class TestActionSeverity:
 
     def test_broken_link_gets_mention_severity(self, tmp_path: Path) -> None:
         """check_markdown_links tags broken links as mention-severity."""
-        test_file = tmp_path / "test.md"
+        test_file = tmp_path / "README.md"
         test_file.write_text("[Link](https://invalid.example.com)\n")
 
         with patch("little_loops.link_checker.check_url_outcome") as mock_check:
@@ -507,7 +511,7 @@ class TestActionSeverity:
 
     def test_unreachable_link_gets_mention_severity(self, tmp_path: Path) -> None:
         """check_markdown_links tags unreachable links as mention-severity."""
-        test_file = tmp_path / "test.md"
+        test_file = tmp_path / "README.md"
         test_file.write_text("[Link](https://timeout.example.com)\n")
 
         with patch("little_loops.link_checker.check_url_outcome") as mock_check:
@@ -521,7 +525,7 @@ class TestActionSeverity:
 
     def test_valid_link_gets_auto_severity(self, tmp_path: Path) -> None:
         """check_markdown_links tags valid links as auto-severity (no action needed)."""
-        test_file = tmp_path / "test.md"
+        test_file = tmp_path / "README.md"
         test_file.write_text("[Link](https://example.com)\n")
 
         with patch("little_loops.link_checker.check_url_outcome") as mock_check:
@@ -789,3 +793,270 @@ class TestFormatters:
         assert "## ❌ Broken Links" not in output
         assert "Unreachable Links" in output
         assert "**Unreachable**: 1" in output
+
+
+class TestClassifyHttpStatus:
+    """Tests for _classify_http_status (ENH-2920)."""
+
+    def test_404_is_broken(self) -> None:
+        from little_loops.link_checker import _classify_http_status
+
+        assert _classify_http_status(404) is LinkOutcome.BROKEN
+
+    def test_410_is_broken(self) -> None:
+        from little_loops.link_checker import _classify_http_status
+
+        assert _classify_http_status(410) is LinkOutcome.BROKEN
+
+    def test_429_is_indeterminate(self) -> None:
+        from little_loops.link_checker import _classify_http_status
+
+        assert _classify_http_status(429) is LinkOutcome.INDETERMINATE
+
+    def test_401_is_indeterminate(self) -> None:
+        from little_loops.link_checker import _classify_http_status
+
+        assert _classify_http_status(401) is LinkOutcome.INDETERMINATE
+
+    def test_403_is_indeterminate(self) -> None:
+        from little_loops.link_checker import _classify_http_status
+
+        assert _classify_http_status(403) is LinkOutcome.INDETERMINATE
+
+    def test_5xx_is_indeterminate(self) -> None:
+        from little_loops.link_checker import _classify_http_status
+
+        assert _classify_http_status(500) is LinkOutcome.INDETERMINATE
+        assert _classify_http_status(503) is LinkOutcome.INDETERMINATE
+
+    def test_other_4xx_defaults_broken(self) -> None:
+        from little_loops.link_checker import _classify_http_status
+
+        assert _classify_http_status(400) is LinkOutcome.BROKEN
+
+
+class TestCheckUrlOutcomeIndeterminate:
+    """Tests for INDETERMINATE classification and 429 retry behavior (ENH-2920)."""
+
+    @patch("urllib.request.urlopen")
+    def test_http_429_is_indeterminate_not_broken(self, mock_urlopen: Mock) -> None:
+        import urllib.error
+
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            "https://example.com", 429, "Too Many Requests", {}, None
+        )
+
+        outcome, error = check_url_outcome("https://example.com", retry_on_429=False)
+        assert outcome is LinkOutcome.INDETERMINATE
+        assert "HTTP 429" in error
+
+    @patch("urllib.request.urlopen")
+    def test_http_401_is_indeterminate(self, mock_urlopen: Mock) -> None:
+        import urllib.error
+
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            "https://example.com", 401, "Unauthorized", {}, None
+        )
+
+        outcome, _ = check_url_outcome("https://example.com")
+        assert outcome is LinkOutcome.INDETERMINATE
+
+    @patch("urllib.request.urlopen")
+    def test_success_path_non_2xx_also_classified(self, mock_urlopen: Mock) -> None:
+        """The non-2xx success path (no exception) also routes through the classifier."""
+        mock_response = Mock()
+        mock_response.status = 404
+        mock_response.headers = {}
+        mock_urlopen.return_value.__enter__.return_value = mock_response
+
+        outcome, error = check_url_outcome("https://example.com")
+        assert outcome is LinkOutcome.BROKEN
+        assert "HTTP 404" in error
+
+    @patch("time.sleep")
+    @patch("urllib.request.urlopen")
+    def test_429_retries_honoring_retry_after_header(
+        self, mock_urlopen: Mock, mock_sleep: Mock
+    ) -> None:
+        import urllib.error
+
+        mock_response = Mock()
+        mock_response.status = 200
+        mock_urlopen.side_effect = [
+            urllib.error.HTTPError(
+                "https://example.com", 429, "Too Many Requests", {"Retry-After": "2"}, None
+            ),
+            Mock(__enter__=Mock(return_value=mock_response), __exit__=Mock(return_value=False)),
+        ]
+
+        outcome, _ = check_url_outcome("https://example.com")
+
+        assert outcome is LinkOutcome.VALID
+        assert mock_urlopen.call_count == 2
+        mock_sleep.assert_called_once_with(2.0)
+
+    @patch("time.sleep")
+    @patch("urllib.request.urlopen")
+    def test_429_retry_after_capped_at_30_seconds(
+        self, mock_urlopen: Mock, mock_sleep: Mock
+    ) -> None:
+        import urllib.error
+
+        mock_response = Mock()
+        mock_response.status = 200
+        mock_urlopen.side_effect = [
+            urllib.error.HTTPError(
+                "https://example.com", 429, "Too Many Requests", {"Retry-After": "9999"}, None
+            ),
+            Mock(__enter__=Mock(return_value=mock_response), __exit__=Mock(return_value=False)),
+        ]
+
+        check_url_outcome("https://example.com")
+
+        mock_sleep.assert_called_once_with(30.0)
+
+    @patch("time.sleep")
+    @patch("urllib.request.urlopen")
+    def test_429_uses_fallback_delay_when_no_header(
+        self, mock_urlopen: Mock, mock_sleep: Mock
+    ) -> None:
+        import urllib.error
+
+        mock_response = Mock()
+        mock_response.status = 200
+        mock_urlopen.side_effect = [
+            urllib.error.HTTPError("https://example.com", 429, "Too Many Requests", {}, None),
+            Mock(__enter__=Mock(return_value=mock_response), __exit__=Mock(return_value=False)),
+        ]
+
+        check_url_outcome("https://example.com", fallback_retry_delay=7.5)
+
+        mock_sleep.assert_called_once_with(7.5)
+
+    @patch("urllib.request.urlopen")
+    def test_429_not_retried_when_retry_on_429_false(self, mock_urlopen: Mock) -> None:
+        import urllib.error
+
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            "https://example.com", 429, "Too Many Requests", {"Retry-After": "1"}, None
+        )
+
+        outcome, _ = check_url_outcome("https://example.com", retry_on_429=False)
+
+        assert outcome is LinkOutcome.INDETERMINATE
+        assert mock_urlopen.call_count == 1
+
+    @patch("urllib.request.urlopen")
+    def test_429_retry_budget_exhausted_skips_retry(self, mock_urlopen: Mock) -> None:
+        import urllib.error
+
+        from little_loops.link_checker import Retry429Budget
+
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            "https://example.com", 429, "Too Many Requests", {"Retry-After": "1"}, None
+        )
+        budget = Retry429Budget(limit=0)
+
+        outcome, _ = check_url_outcome("https://example.com", retry_budget=budget)
+
+        assert outcome is LinkOutcome.INDETERMINATE
+        assert mock_urlopen.call_count == 1
+
+
+class TestCheckMarkdownLinksScopeAndIndeterminate:
+    """Tests for default doc-scope glob, directory denylist, and INDETERMINATE
+    aggregation in check_markdown_links (ENH-2920)."""
+
+    def test_default_scope_ignores_files_outside_doc_scope(self, tmp_path: Path) -> None:
+        """A markdown file outside DEFAULT_DOC_FILES is not scanned by default."""
+        (tmp_path / "random.md").write_text("[Link](https://example.com)\n")
+
+        result = check_markdown_links(tmp_path, [], timeout=10)
+
+        assert result.total_links == 0
+
+    def test_default_scope_includes_readme_and_docs(self, tmp_path: Path) -> None:
+        (tmp_path / "README.md").write_text("[Link](https://one.com)\n")
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "guide.md").write_text("[Link](https://two.com)\n")
+
+        with patch("little_loops.link_checker.check_url_outcome") as mock_check:
+            mock_check.return_value = (LinkOutcome.VALID, None)
+            result = check_markdown_links(tmp_path, [], timeout=10)
+
+        assert result.total_links == 2
+
+    def test_check_markdown_links_excludes_node_modules(self, tmp_path: Path) -> None:
+        """node_modules/ is denylisted even though the filename matches DEFAULT_DOC_FILES scope."""
+        vendored = tmp_path / "docs" / "node_modules" / "pkg"
+        vendored.mkdir(parents=True)
+        (vendored / "README.md").write_text("[Broken](https://dead.example.com)\n")
+
+        result = check_markdown_links(tmp_path, [], timeout=10)
+
+        assert result.total_links == 0
+
+    def test_explicit_files_still_denylisted(self, tmp_path: Path) -> None:
+        """The denylist applies even to an explicit files= override."""
+        vendored = tmp_path / "node_modules" / "pkg" / "README.md"
+        vendored.parent.mkdir(parents=True)
+        vendored.write_text("[Broken](https://dead.example.com)\n")
+
+        result = check_markdown_links(tmp_path, [], timeout=10, files=[vendored])
+
+        assert result.total_links == 0
+
+    def test_check_with_indeterminate_link(self, tmp_path: Path) -> None:
+        """Indeterminate links are counted separately and don't set has_errors."""
+        (tmp_path / "README.md").write_text("[Link](https://ratelimited.example.com)\n")
+
+        with patch("little_loops.link_checker.check_url_outcome") as mock_check:
+            mock_check.return_value = (LinkOutcome.INDETERMINATE, "HTTP 429")
+
+            result = check_markdown_links(tmp_path, [], timeout=10)
+
+        assert result.total_links == 1
+        assert result.indeterminate_links == 1
+        assert result.broken_links == 0
+        assert result.has_errors is False
+
+
+class TestLoadRetryConfig:
+    """Tests for load_retry_config (ENH-2920)."""
+
+    def test_defaults_when_no_config_file(self, tmp_path: Path) -> None:
+        from little_loops.link_checker import load_retry_config
+
+        config = load_retry_config(tmp_path)
+        assert config["retry_on_429"] is True
+        assert config["fallback_retry_delay"] == 5.0
+
+    def test_reads_retry_on_429_and_fallback_delay(self, tmp_path: Path) -> None:
+        from little_loops.link_checker import load_retry_config
+
+        (tmp_path / ".mlc.config.json").write_text(
+            json.dumps({"retryOn429": False, "fallbackRetryDelay": "10s"})
+        )
+
+        config = load_retry_config(tmp_path)
+        assert config["retry_on_429"] is False
+        assert config["fallback_retry_delay"] == 10.0
+
+    def test_parses_milliseconds(self, tmp_path: Path) -> None:
+        from little_loops.link_checker import load_retry_config
+
+        (tmp_path / ".mlc.config.json").write_text(
+            json.dumps({"fallbackRetryDelay": "500ms"})
+        )
+
+        config = load_retry_config(tmp_path)
+        assert config["fallback_retry_delay"] == 0.5
+
+    def test_invalid_json_falls_back_to_defaults(self, tmp_path: Path) -> None:
+        from little_loops.link_checker import load_retry_config
+
+        (tmp_path / ".mlc.config.json").write_text("not json")
+
+        config = load_retry_config(tmp_path)
+        assert config["retry_on_429"] is True

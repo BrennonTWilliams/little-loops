@@ -200,6 +200,28 @@ class TestFullAdapters:
         assert data["severity"] == "informational"
         assert "3" in data["note"]
 
+    def test_check_links_reports_informational_on_indeterminate_only(self) -> None:
+        """INDETERMINATE (429/401/403/5xx) is warn-tier, not error-tier (ENH-2920)."""
+        from little_loops import link_checker
+
+        result = link_checker.LinkCheckResult(indeterminate_links=4)
+        with patch.object(link_checker, "check_markdown_links", return_value=result):
+            data = _full_check_links_data()
+        assert data["status"] == "unsupported"
+        assert data["severity"] == "informational"
+        assert "4" in data["note"]
+
+    def test_check_links_broken_and_indeterminate_reports_error(self) -> None:
+        """Broken links take priority over co-occurring indeterminate ones (ENH-2920)."""
+        from little_loops import link_checker
+
+        result = link_checker.LinkCheckResult(broken_links=1, indeterminate_links=4)
+        with patch.object(link_checker, "check_markdown_links", return_value=result):
+            data = _full_check_links_data()
+        assert data["status"] == "unsupported"
+        assert data["severity"] == "error"
+        assert "1" in data["note"]
+
     def test_check_links_surfaces_action_severity_findings(self) -> None:
         from little_loops import link_checker
 

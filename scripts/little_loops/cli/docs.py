@@ -391,8 +391,8 @@ Exit codes:
             "-w",
             "--workers",
             type=int,
-            default=10,
-            help="Maximum concurrent HTTP requests (default: 10)",
+            default=4,
+            help="Maximum concurrent HTTP requests (default: 4)",
         )
 
         parser.add_argument(
@@ -439,6 +439,8 @@ Exit codes:
         # genuine broken link (host answered "no") does.
         if result.has_errors:
             return 1
-        if args.strict_network and result.unreachable_links > 0:
+        if args.strict_network and (
+            result.unreachable_links > 0 or result.indeterminate_links > 0
+        ):
             return 1
         return 0

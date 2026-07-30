@@ -237,11 +237,17 @@ class TestMainVerifyDocs:
 class TestMainCheckLinks:
     """Tests for main_check_links entry point."""
 
-    def _make_link_result(self, has_errors: bool = False, unreachable_links: int = 0) -> MagicMock:
+    def _make_link_result(
+        self,
+        has_errors: bool = False,
+        unreachable_links: int = 0,
+        indeterminate_links: int = 0,
+    ) -> MagicMock:
         """Create a mock LinkCheckResult."""
         result = MagicMock()
         result.has_errors = has_errors
         result.unreachable_links = unreachable_links
+        result.indeterminate_links = indeterminate_links
         return result
 
     def test_text_output_default_no_errors(self) -> None:
@@ -317,6 +323,42 @@ class TestMainCheckLinks:
                 return_value=mock_result,
             ),
             patch("little_loops.link_checker.format_result_text", return_value="UNREACHABLE"),
+            patch("builtins.print"),
+        ):
+            result = main_check_links()
+
+        assert result == 1
+
+    def test_indeterminate_only_returns_0_by_default(self) -> None:
+        """INDETERMINATE (429/401/403/5xx) links don't fail the gate by default (ENH-2920)."""
+        mock_result = self._make_link_result(has_errors=False, indeterminate_links=4)
+
+        with (
+            patch("sys.argv", ["ll-check-links"]),
+            patch("little_loops.link_checker.load_ignore_patterns", return_value=[]),
+            patch(
+                "little_loops.link_checker.check_markdown_links",
+                return_value=mock_result,
+            ),
+            patch("little_loops.link_checker.format_result_text", return_value="INDETERMINATE"),
+            patch("builtins.print"),
+        ):
+            result = main_check_links()
+
+        assert result == 0
+
+    def test_indeterminate_with_strict_network_returns_1(self) -> None:
+        """--strict-network also gates on INDETERMINATE links (ENH-2920)."""
+        mock_result = self._make_link_result(has_errors=False, indeterminate_links=4)
+
+        with (
+            patch("sys.argv", ["ll-check-links", "--strict-network"]),
+            patch("little_loops.link_checker.load_ignore_patterns", return_value=[]),
+            patch(
+                "little_loops.link_checker.check_markdown_links",
+                return_value=mock_result,
+            ),
+            patch("little_loops.link_checker.format_result_text", return_value="INDETERMINATE"),
             patch("builtins.print"),
         ):
             result = main_check_links()

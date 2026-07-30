@@ -808,6 +808,24 @@ def _full_check_links_data() -> dict:
                 if r.status == "unreachable"
             ],
         }
+    if result.indeterminate_links > 0:
+        return {
+            "status": "unsupported",
+            "severity": "informational",
+            "note": (
+                f"{result.indeterminate_links} indeterminate link(s) "
+                "(rate-limited/auth-walled/server error)"
+            ),
+            "findings": [
+                FindingDetail(
+                    label=r.url,
+                    action_severity=r.action_severity,
+                    route_owner=r.route_owner,
+                )
+                for r in result.results
+                if r.status == "indeterminate"
+            ],
+        }
     return {
         "status": "full",
         "severity": "error",

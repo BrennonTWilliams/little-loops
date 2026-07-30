@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import re
 import socket
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -21,6 +22,18 @@ from typing import Literal
 # Retry-with-backoff before classifying a transient network failure as
 # unreachable (a chunk of "broken" results can be one slow host hit serially).
 _RETRY_BACKOFF_SECONDS = 0.2
+
+# Cap on how long a 429 Retry-After (or fallback delay) is allowed to stall a
+# single check, so a large/adversarial header value can't stall the run.
+_MAX_RETRY_AFTER_SECONDS = 30.0
+
+# Total number of 429 retries allowed across one check_markdown_links() run,
+# so a page that 429s on every link can't multiply the run's wall-clock cost.
+_DEFAULT_429_RETRY_BUDGET = 50
+
+# Directory names that can never contribute markdown files, regardless of
+# scope (default glob or an explicit wider base_dir/files override).
+_DENYLISTED_DIR_NAMES = {"node_modules", ".pytest_cache", ".venv", ".git", ".loops", ".ll"}
 
 # Markdown link patterns
 MARKDOWN_LINK_PATTERN = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
@@ -47,15 +60,38 @@ DEFAULT_DOC_FILES = [
 class LinkOutcome(Enum):
     """Classification of an external link check result.
 
-    BROKEN means the host answered and said no (HTTP error status).
-    UNREACHABLE means no usable answer came back (timeout, DNS failure,
-    connection reset/refused) - ambient network noise, not a repo defect.
+    BROKEN means the host authoritatively said the resource is gone
+    (404/410). UNREACHABLE means no usable answer came back (timeout, DNS
+    failure, connection reset/refused) - ambient network noise, not a repo
+    defect. INDETERMINATE means the host answered but the status reflects
+    checker aggressiveness or missing credentials (429/401/403/5xx), not
+    evidence the link is dead.
     """
 
     VALID = "valid"
     BROKEN = "broken"
     UNREACHABLE = "unreachable"
+    INDETERMINATE = "indeterminate"
     IGNORED = "ignored"
+
+
+# Status codes that authoritatively assert the resource is gone.
+_BROKEN_STATUS_CODES = {404, 410}
+
+# Status codes that reflect checker aggressiveness or missing credentials,
+# not evidence about the link itself.
+_INDETERMINATE_STATUS_CODES = {401, 403, 429}
+
+
+def _classify_http_status(code: int) -> LinkOutcome:
+    """Classify a non-2xx/3xx HTTP status into a LinkOutcome tier.
+
+    404/410 -> BROKEN (fatal). 429/401/403/5xx -> INDETERMINATE (reported,
+    non-fatal). Any other status defaults to BROKEN.
+    """
+    if code in _INDETERMINATE_STATUS_CODES or 500 <= code < 600:
+        return LinkOutcome.INDETERMINATE
+    return LinkOutcome.BROKEN
 
 
 @dataclass
@@ -100,6 +136,9 @@ class LinkCheckResult:
         broken_links: Number of broken links (host answered, said no)
         unreachable_links: Number of unreachable links (timeout, DNS, connection reset -
             ambient network noise, not a repo defect)
+        indeterminate_links: Number of links whose status reflects checker
+            aggressiveness or missing credentials (429/401/403/5xx) rather
+            than evidence the link is dead - reported, not gating
         ignored_links: Number of ignored links
         internal_links: Number of internal file references
         results: List of individual link results
@@ -109,6 +148,7 @@ class LinkCheckResult:
     valid_links: int = 0
     broken_links: int = 0
     unreachable_links: int = 0
+    indeterminate_links: int = 0
     ignored_links: int = 0
     internal_links: int = 0
     results: list[LinkResult] = field(default_factory=list)
@@ -196,27 +236,76 @@ def _classify_url_error(reason: object) -> bool:
     return isinstance(reason, _UNREACHABLE_REASON_TYPES)
 
 
-def _check_url_once(url: str, timeout: int) -> tuple[LinkOutcome, str | None]:
-    """Single-attempt URL check, no retry."""
+def _parse_retry_after(headers: object) -> float | None:
+    """Parse a numeric-seconds Retry-After header value, if present.
+
+    HTTP-date Retry-After values are not parsed (rare in practice for the
+    hosts this checker hits) and fall through to the caller's fallback delay.
+    """
+    if headers is None:
+        return None
+    value = headers.get("Retry-After") if hasattr(headers, "get") else None
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _check_url_once(url: str, timeout: int) -> tuple[LinkOutcome, str | None, float | None]:
+    """Single-attempt URL check, no retry.
+
+    Returns (outcome, error_message, retry_after_seconds). retry_after_seconds
+    is only ever non-None for an INDETERMINATE 429 outcome.
+    """
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "little-loops-link-checker/1.0"})
         req.get_method = lambda: "HEAD"  # type: ignore[method-assign]
 
         with urllib.request.urlopen(req, timeout=timeout) as response:
             if 200 <= response.status < 400:
-                return LinkOutcome.VALID, None
-            return LinkOutcome.BROKEN, f"HTTP {response.status}"
+                return LinkOutcome.VALID, None, None
+            outcome = _classify_http_status(response.status)
+            retry_after = (
+                _parse_retry_after(getattr(response, "headers", None))
+                if outcome is LinkOutcome.INDETERMINATE
+                else None
+            )
+            return outcome, f"HTTP {response.status}", retry_after
 
     except urllib.error.HTTPError as e:
-        return LinkOutcome.BROKEN, f"HTTP {e.code}"
+        outcome = _classify_http_status(e.code)
+        retry_after = (
+            _parse_retry_after(getattr(e, "headers", None))
+            if outcome is LinkOutcome.INDETERMINATE
+            else None
+        )
+        return outcome, f"HTTP {e.code}", retry_after
     except urllib.error.URLError as e:
         if _classify_url_error(e.reason):
-            return LinkOutcome.UNREACHABLE, f"Connection error: {e.reason}"
-        return LinkOutcome.BROKEN, f"Connection error: {e.reason}"
+            return LinkOutcome.UNREACHABLE, f"Connection error: {e.reason}", None
+        return LinkOutcome.BROKEN, f"Connection error: {e.reason}", None
     except TimeoutError:
-        return LinkOutcome.UNREACHABLE, "Timeout"
+        return LinkOutcome.UNREACHABLE, "Timeout", None
     except Exception as e:
-        return LinkOutcome.BROKEN, str(e)
+        return LinkOutcome.BROKEN, str(e), None
+
+
+class Retry429Budget:
+    """Thread-safe cap on total 429 retries across one check run."""
+
+    def __init__(self, limit: int = _DEFAULT_429_RETRY_BUDGET) -> None:
+        self._limit = limit
+        self._lock = threading.Lock()
+        self._used = 0
+
+    def try_consume(self) -> bool:
+        with self._lock:
+            if self._used >= self._limit:
+                return False
+            self._used += 1
+            return True
 
 
 def check_url(url: str, timeout: int = 10) -> tuple[bool, str | None]:
@@ -239,21 +328,59 @@ def check_url(url: str, timeout: int = 10) -> tuple[bool, str | None]:
     return outcome is LinkOutcome.VALID, error
 
 
-def check_url_outcome(url: str, timeout: int = 10) -> tuple[LinkOutcome, str | None]:
-    """Check a URL and classify the result as VALID, BROKEN, or UNREACHABLE.
+def check_url_outcome(
+    url: str,
+    timeout: int = 10,
+    retry_budget: Retry429Budget | None = None,
+    retry_on_429: bool = True,
+    fallback_retry_delay: float = 5.0,
+) -> tuple[LinkOutcome, str | None]:
+    """Check a URL and classify the result as VALID, BROKEN, UNREACHABLE, or INDETERMINATE.
+
+    An UNREACHABLE outcome is always retried once. An INDETERMINATE 429 is
+    retried once too, honoring the Retry-After header (capped at
+    `_MAX_RETRY_AFTER_SECONDS`) or `fallback_retry_delay` when absent, gated
+    on `retry_on_429` and on `retry_budget` (a per-run cap; unbounded when
+    no budget object is supplied).
 
     Args:
         url: URL to check
         timeout: Request timeout in seconds
+        retry_budget: Optional shared per-run cap on 429 retries
+        retry_on_429: Whether to retry a 429 at all (from .mlc.config.json)
+        fallback_retry_delay: Delay to use when no Retry-After header is present
 
     Returns:
         Tuple of (outcome, error_message)
     """
-    outcome, error = _check_url_once(url, timeout)
+    outcome, error, retry_after = _check_url_once(url, timeout)
     if outcome is LinkOutcome.UNREACHABLE:
         time.sleep(_RETRY_BACKOFF_SECONDS)
-        outcome, error = _check_url_once(url, timeout)
+        outcome, error, retry_after = _check_url_once(url, timeout)
+    elif (
+        outcome is LinkOutcome.INDETERMINATE
+        and error is not None
+        and error.startswith("HTTP 429")
+        and retry_on_429
+        and (retry_budget is None or retry_budget.try_consume())
+    ):
+        delay = retry_after if retry_after is not None else fallback_retry_delay
+        delay = min(delay, _MAX_RETRY_AFTER_SECONDS)
+        time.sleep(delay)
+        outcome, error, retry_after = _check_url_once(url, timeout)
     return outcome, error
+
+
+def _is_denylisted(path: Path, base_dir: Path) -> bool:
+    """True if any path component names a directory that can never contribute
+    markdown files (vendored deps, tool caches, run artifacts), regardless of
+    scope - applies to both the default glob and an explicit files override.
+    """
+    try:
+        rel = path.relative_to(base_dir)
+    except ValueError:
+        rel = path
+    return any(part in _DENYLISTED_DIR_NAMES for part in rel.parts)
 
 
 def check_markdown_links(
@@ -262,6 +389,7 @@ def check_markdown_links(
     timeout: int = 10,
     verbose: bool = False,
     max_workers: int = 10,
+    files: list[Path] | None = None,
 ) -> LinkCheckResult:
     """Check all markdown files for broken links.
 
@@ -271,6 +399,9 @@ def check_markdown_links(
         timeout: Request timeout in seconds
         verbose: Whether to show progress
         max_workers: Maximum concurrent HTTP requests
+        files: Explicit file list to check instead of the default doc-scope
+            glob (`DEFAULT_DOC_FILES`). Still subject to the directory
+            denylist.
 
     Returns:
         LinkCheckResult with all findings
@@ -279,9 +410,20 @@ def check_markdown_links(
         ignore_patterns = DEFAULT_IGNORE_PATTERNS.copy()
 
     result = LinkCheckResult()
+    retry_config = load_retry_config(base_dir)
+    retry_budget = Retry429Budget()
 
-    # Find all markdown files
-    md_files = list(base_dir.rglob("*.md"))
+    # Find markdown files within the declared documentation scope, never the
+    # whole tree - DEFAULT_DOC_FILES globs plus a hard directory denylist so
+    # an explicit wider base_dir/files override still can't drag in vendored
+    # or generated markdown.
+    if files is not None:
+        md_files = list(files)
+    else:
+        md_files = []
+        for pattern in DEFAULT_DOC_FILES:
+            md_files.extend(base_dir.glob(pattern))
+    md_files = [f for f in md_files if not _is_denylisted(f, base_dir)]
 
     # Pass 1: Classify links, collect HTTP URLs for concurrent checking
     http_checks: list[tuple[str, str | None, int, str]] = []  # (url, link_text, line, file)
@@ -358,7 +500,14 @@ def check_markdown_links(
     if http_checks:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_meta = {
-                executor.submit(check_url_outcome, url, timeout): (
+                executor.submit(
+                    check_url_outcome,
+                    url,
+                    timeout,
+                    retry_budget,
+                    bool(retry_config["retry_on_429"]),
+                    float(retry_config["fallback_retry_delay"]),
+                ): (
                     url,
                     link_text,
                     line_num,
@@ -390,6 +539,19 @@ def check_markdown_links(
                             file=file_str,
                             line=line_num,
                             status="unreachable",
+                            error=error,
+                            link_text=link_text,
+                            action_severity="mention",
+                        )
+                    )
+                elif outcome is LinkOutcome.INDETERMINATE:
+                    result.indeterminate_links += 1
+                    result.results.append(
+                        LinkResult(
+                            url=url,
+                            file=file_str,
+                            line=line_num,
+                            status="indeterminate",
                             error=error,
                             link_text=link_text,
                             action_severity="mention",
@@ -451,6 +613,49 @@ def load_ignore_patterns(base_dir: Path) -> list[str]:
     return patterns
 
 
+def _parse_delay_string(value: str, default: float) -> float:
+    """Parse a duration like "5s" or "500ms" into seconds; `default` on no match."""
+    match = re.match(r"^(\d+(?:\.\d+)?)(ms|s)?$", value.strip())
+    if not match:
+        return default
+    amount = float(match.group(1))
+    unit = match.group(2) or "s"
+    return amount / 1000 if unit == "ms" else amount
+
+
+def load_retry_config(base_dir: Path) -> dict[str, bool | float]:
+    """Load 429 retry tuning from .mlc.config.json's already-declared but
+    previously-unread `retryOn429`/`fallbackRetryDelay` keys.
+
+    Args:
+        base_dir: Base directory path
+
+    Returns:
+        Dict with "retry_on_429" (bool) and "fallback_retry_delay" (float, seconds)
+    """
+    config: dict[str, bool | float] = {"retry_on_429": True, "fallback_retry_delay": 5.0}
+
+    config_file = base_dir / ".mlc.config.json"
+    if not config_file.exists():
+        return config
+
+    try:
+        with open(config_file) as f:
+            raw = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return config
+
+    if "retryOn429" in raw:
+        config["retry_on_429"] = bool(raw["retryOn429"])
+    fallback = raw.get("fallbackRetryDelay")
+    if isinstance(fallback, str):
+        config["fallback_retry_delay"] = _parse_delay_string(
+            fallback, float(config["fallback_retry_delay"])
+        )
+
+    return config
+
+
 def format_result_text(result: LinkCheckResult) -> str:
     """Format link check result as text.
 
@@ -475,20 +680,37 @@ def format_result_text(result: LinkCheckResult) -> str:
                     lines.append(f"    Error: {r.error}")
                 lines.append("")
 
-    elif result.unreachable_links > 0:
-        lines.append(
-            f"⚠ {result.unreachable_links} link(s) unreachable (network - not a broken link):"
-        )
-        lines.append("")
+    elif result.unreachable_links > 0 or result.indeterminate_links > 0:
+        if result.unreachable_links > 0:
+            lines.append(
+                f"⚠ {result.unreachable_links} link(s) unreachable (network - not a broken link):"
+            )
+            lines.append("")
 
-        for r in result.results:
-            if r.status == "unreachable":
-                text_part = f"[{r.link_text}]" if r.link_text else ""
-                lines.append(f"  {text_part}({r.url})")
-                lines.append(f"    at {r.file}:{r.line}")
-                if r.error:
-                    lines.append(f"    Error: {r.error}")
-                lines.append("")
+            for r in result.results:
+                if r.status == "unreachable":
+                    text_part = f"[{r.link_text}]" if r.link_text else ""
+                    lines.append(f"  {text_part}({r.url})")
+                    lines.append(f"    at {r.file}:{r.line}")
+                    if r.error:
+                        lines.append(f"    Error: {r.error}")
+                    lines.append("")
+
+        if result.indeterminate_links > 0:
+            lines.append(
+                f"⚠ {result.indeterminate_links} link(s) indeterminate "
+                "(rate-limited/auth-walled/server error - not a confirmed broken link):"
+            )
+            lines.append("")
+
+            for r in result.results:
+                if r.status == "indeterminate":
+                    text_part = f"[{r.link_text}]" if r.link_text else ""
+                    lines.append(f"  {text_part}({r.url})")
+                    lines.append(f"    at {r.file}:{r.line}")
+                    if r.error:
+                        lines.append(f"    Error: {r.error}")
+                    lines.append("")
 
     else:
         lines.append(
@@ -496,12 +718,13 @@ def format_result_text(result: LinkCheckResult) -> str:
             f"({result.internal_links} internal, {result.ignored_links} ignored)"
         )
 
-    if result.has_errors or result.unreachable_links > 0:
+    if result.has_errors or result.unreachable_links > 0 or result.indeterminate_links > 0:
         lines.append("Summary:")
         lines.append(f"  Total links: {result.total_links}")
         lines.append(f"  Valid: {result.valid_links}")
         lines.append(f"  Broken: {result.broken_links}")
         lines.append(f"  Unreachable: {result.unreachable_links}")
+        lines.append(f"  Indeterminate: {result.indeterminate_links}")
         lines.append(f"  Internal refs: {result.internal_links}")
         lines.append(f"  Ignored: {result.ignored_links}")
 
@@ -522,6 +745,7 @@ def format_result_json(result: LinkCheckResult) -> str:
         "valid_links": result.valid_links,
         "broken_links": result.broken_links,
         "unreachable_links": result.unreachable_links,
+        "indeterminate_links": result.indeterminate_links,
         "ignored_links": result.ignored_links,
         "internal_links": result.internal_links,
         "has_errors": result.has_errors,
@@ -559,6 +783,7 @@ def format_result_markdown(result: LinkCheckResult) -> str:
     lines.append(f"- **Valid**: {result.valid_links}")
     lines.append(f"- **Broken**: {result.broken_links}")
     lines.append(f"- **Unreachable**: {result.unreachable_links}")
+    lines.append(f"- **Indeterminate**: {result.indeterminate_links}")
     lines.append(f"- **Internal references**: {result.internal_links}")
     lines.append(f"- **Ignored**: {result.ignored_links}")
     lines.append("")
@@ -589,7 +814,23 @@ def format_result_markdown(result: LinkCheckResult) -> str:
                 lines.append(f"| `{url_display}` | `{r.file}` | {r.line} | {error_display} |")
         lines.append("")
 
-    if not result.has_errors and result.unreachable_links == 0:
+    if result.indeterminate_links > 0:
+        lines.append(
+            "## ⚠️ Indeterminate Links (rate-limited/auth-walled/server error "
+            "- not a confirmed broken link)"
+        )
+        lines.append("")
+        lines.append("| URL | File | Line | Error |")
+        lines.append("|-----|------|------|-------|")
+
+        for r in result.results:
+            if r.status == "indeterminate":
+                url_display = r.url[:60] + "..." if len(r.url) > 60 else r.url
+                error_display = r.error or "Unknown"
+                lines.append(f"| `{url_display}` | `{r.file}` | {r.line} | {error_display} |")
+        lines.append("")
+
+    if not result.has_errors and result.unreachable_links == 0 and result.indeterminate_links == 0:
         lines.append("## ✅ All Links Valid")
         lines.append("")
         lines.append(
