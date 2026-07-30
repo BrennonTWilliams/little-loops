@@ -1,0 +1,18 @@
+Exception in thread Thread-7 (raiser):
+Traceback (most recent call last):
+  File "/Users/brennon/miniforge3/lib/python3.12/threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "/Users/brennon/miniforge3/lib/python3.12/threading.py", line 1012, in run
+    self._target(*self._args, **self._kwargs)
+  File "/var/folders/dg/j0h3vvbj20n6gd7077j8v5qr0000gn/T/tmp.EcyGlnfLyT/proof.py", line 98, in raiser
+    raise ValueError("boom from thread")
+ValueError: boom from thread
+claim1: daemon thread created, daemon attr = True
+claim2: lock order = ['holder_acquired', 'waiter_trying', 'holder_releasing', 'waiter_acquired']
+claim3: second acquire (non-blocking) by same thread returns: False
+claim4: RLock acquired twice by same thread without blocking - success
+claim5a: wait without set, timeout=0.2 -> returned False after 0.20s
+claim5b: wait with set() from another thread -> returned True
+claim6: thread-local results = {'a': 'A', 'b': 'B'}
+claim7: main thread survived join() after target raised exception
+RESULTS: {'daemon_is_daemon_attr': True, 'lock_blocks': True, 'lock_non_reentrant': True, 'rlock_reentrant': True, 'event_wait_timeout_false': True, 'event_wait_true_on_set': True, 'thread_local_isolated': True, 'exception_does_not_propagate': True}

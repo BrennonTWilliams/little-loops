@@ -1,0 +1,11 @@
+{
+  "id": "a6174d66-33bd-4c3d-8060-3bddddc6943c",
+  "type": "decision",
+  "timestamp": "2026-07-30T21:32:08Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Durable supervisor owns .ll/queue.db; the in-process EventBus is a fan-out sink with no delivery guarantee, so completion events are at most a wake optimization, not the transport for advancing the queue.",
+  "rule": "Captured: ll-queue run --watch long-lived drainer",
+  "scope": "issue",
+  "issue": "FEAT-2930"
+}
