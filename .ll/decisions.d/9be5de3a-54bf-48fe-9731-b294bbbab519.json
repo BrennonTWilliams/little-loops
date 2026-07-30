@@ -1,0 +1,11 @@
+{
+  "id": "999c9f85-73a2-46c9-b1a0-92ccfab2acdc",
+  "type": "decision",
+  "timestamp": "2026-07-30T23:23:09Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "ENH-1841 gated file_events/corrections but deferred skills/cli_commands until ENH-1833/1834 landed; those shipped but the follow-up wiring was never done, leaving the config keys inert.",
+  "rule": "Captured: Wire analytics.capture.skills and cli_commands gates",
+  "scope": "issue",
+  "issue": "ENH-2932"
+}
