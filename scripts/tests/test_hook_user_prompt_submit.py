@@ -308,6 +308,34 @@ class TestUserPromptSubmitSkillWrite:
         result = handle(_event({"prompt": "/ll:ready-issue ENH-1833"}, cwd=str(tmp_path)))
         assert result.exit_code == 0
 
+    def test_skill_prompt_write_skipped_when_capture_skills_gate_excludes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """analytics.capture.skills narrowed to exclude the invoked skill suppresses the write."""
+        import sqlite3 as _sqlite3
+
+        _write_config(
+            tmp_path, analytics_enabled=True, analytics_capture={"skills": ["other-skill"]}
+        )
+        monkeypatch.chdir(tmp_path)
+
+        result = handle(
+            _event(
+                {"prompt": "/ll:refine-issue ENH-2932", "session_id": "sess-sk3"},
+                cwd=str(tmp_path),
+            )
+        )
+        assert result.exit_code == 0
+
+        db_path = tmp_path / ".ll" / "history.db"
+        if db_path.exists():
+            conn = _sqlite3.connect(str(db_path))
+            try:
+                count = conn.execute("SELECT COUNT(*) FROM skill_events").fetchone()[0]
+            finally:
+                conn.close()
+            assert count == 0, "capture.skills gate must suppress the skill_events write"
+
 
 class TestPromptOptimizationRender:
     """BUG-2275: prompt optimization renders from in-package template, not module constant."""

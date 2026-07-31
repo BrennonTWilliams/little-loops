@@ -127,12 +127,15 @@ def handle(event: LLHookEvent) -> LLHookResult:
                     record_correction(
                         cwd / ".ll" / "history.db", session_id, user_prompt, "user_prompt_submit"
                     )
-        # TODO(ENH-1835): wire analytics.capture.cli_commands gate when ENH-1834 lands
         m = re.match(r"^/ll:([a-z][a-z0-9-]*)(.*)", user_prompt.strip(), re.DOTALL)
         if m:
             with contextlib.suppress(Exception):
                 record_skill_event(
-                    cwd / ".ll" / "history.db", session_id, m.group(1), m.group(2).strip()[:200]
+                    cwd / ".ll" / "history.db",
+                    session_id,
+                    m.group(1),
+                    m.group(2).strip()[:200],
+                    config=config,
                 )
 
     if config is None:

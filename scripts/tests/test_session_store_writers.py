@@ -380,13 +380,28 @@ class TestRecordSkillEvent:
         assert any(r["kind"] == "skill" for r in results)
 
     def test_record_skill_event_config_stub_accepted(self, tmp_path: Path) -> None:
-        """config= param is accepted (forward-compat stub for ENH-1835); no gate applied."""
+        """An empty capture config is permissive (skills defaults to ["*"]); no suppression."""
         from little_loops.session_store import recent, record_skill_event
 
         db = tmp_path / "session.db"
         record_skill_event(db, "sess-s3", "check-code", "", config={"analytics": {}})
         rows = recent(db, kind="skill")
-        assert len(rows) == 1, "config stub must not suppress the write"
+        assert len(rows) == 1, "permissive default capture.skills must not suppress the write"
+
+    def test_record_skill_event_gate_disabled(self, tmp_path: Path) -> None:
+        """capture.skills narrowed to exclude skill_name suppresses the write."""
+        from little_loops.session_store import recent, record_skill_event
+
+        db = tmp_path / "session.db"
+        record_skill_event(
+            db,
+            "sess-s4",
+            "check-code",
+            "",
+            config={"analytics": {"capture": {"skills": ["other-skill"]}}},
+        )
+        rows = recent(db, kind="skill")
+        assert len(rows) == 0, "record_skill_event must be a no-op when capture.skills excludes it"
 
 
 class TestCliEventContext:
@@ -521,6 +536,21 @@ class TestCliEventContext:
         assert rows[0]["binary"] == "ll-explicit"
         # env_db must be empty (not written to)
         assert not env_db.exists()
+
+    def test_cli_event_context_gate_disabled(self, tmp_path: Path) -> None:
+        """capture.cli_commands narrowed to exclude binary suppresses the row write."""
+        db = tmp_path / "session.db"
+        ran = False
+        with cli_event_context(
+            db,
+            binary="ll-issues",
+            args=["show", "2701"],
+            config={"analytics": {"capture": {"cli_commands": ["not-this-binary"]}}},
+        ):
+            ran = True
+        assert ran, "wrapped command body must run even when the cli_commands gate excludes it"
+        rows = recent(db, kind="cli")
+        assert len(rows) == 0, "cli_event_context must skip the row write when gated off"
 
 
 class TestMineCorrectionsFromMessages:
@@ -792,6 +822,35 @@ class TestSkillEventContext:
         with skill_event_context(tmp_path, None, "broken-db-skill", ""):
             ran = True
         assert ran
+
+    def test_config_permissive_default_still_writes(self, tmp_path: Path) -> None:
+        """An empty capture config is permissive (skills defaults to ["*"]); row still written."""
+        from little_loops.session_store import skill_event_context
+
+        db = tmp_path / "history.db"
+        with skill_event_context(
+            db, "sess-4", "check-code", "", config={"analytics": {}}
+        ) as completion:
+            pass
+        assert completion.exit_code == 0
+        rows = recent(db, kind="skill")
+        assert len(rows) == 1
+
+    def test_gate_disabled_still_yields_completion(self, tmp_path: Path) -> None:
+        """capture.skills narrowed to exclude skill_name still yields a completion, skips write."""
+        from little_loops.session_store import SkillEventCompletion, skill_event_context
+
+        db = tmp_path / "history.db"
+        with skill_event_context(
+            db,
+            "sess-5",
+            "check-code",
+            "",
+            config={"analytics": {"capture": {"skills": ["other-skill"]}}},
+        ) as completion:
+            assert isinstance(completion, SkillEventCompletion)
+        rows = recent(db, kind="skill")
+        assert len(rows) == 0, "skill_event_context must skip the row write when gated off"
 
 
 class TestInferIssueId:

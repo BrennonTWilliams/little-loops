@@ -263,9 +263,17 @@ def record_skill_event(
 ) -> None:
     """Write one row to ``skill_events`` and index it in ``search_index``.
 
-    The ``config`` parameter is a forward-compatibility stub for ENH-1835, which
-    will inject a per-skill analytics gate without changing this signature.
+    Gated by ``analytics.capture.skills`` (ENH-2932): when ``config`` is provided,
+    ``skill_name`` must match one of the configured glob patterns or the write is
+    suppressed. Missing ``capture`` key or missing ``config`` defaults to permissive
+    (no behavior change).
     """
+    if config is not None:
+        from little_loops.config.features import AnalyticsCaptureConfig, feature_enabled_for
+
+        capture = AnalyticsCaptureConfig.from_dict(config.get("analytics", {}).get("capture", {}))
+        if not feature_enabled_for({"skills": capture.skills}, "skills", skill_name):
+            return
     args = args[:200]
     conn = _pkg.connect(db_path)
     ts = _now()
@@ -416,8 +424,10 @@ def cli_event_context(
     exit ``UPDATE`` never masks a successful command either. Only errors raised by
     the wrapped body propagate.
 
-    The ``config`` parameter is a forward-compatibility stub for ENH-1835 gating;
-    it is accepted but not yet used.
+    Gated by ``analytics.capture.cli_commands`` (ENH-2932): when ``config`` is
+    provided, ``binary`` must match one of the configured glob patterns or the
+    row write is suppressed (the wrapped body still runs). Missing ``capture``
+    key or missing ``config`` defaults to permissive (no behavior change).
     """
     if args is None:
         args = []
@@ -426,23 +436,30 @@ def cli_event_context(
     row_id: int | None = None
     start = time.time()
     ts = _now()
-    try:
-        conn = _pkg.connect(effective_path)
-        cursor = conn.execute(
-            "INSERT INTO cli_events(ts, binary, args) VALUES(?, ?, ?)",
-            (ts, binary, json.dumps(args[:50])),
-        )
-        row_id = cursor.lastrowid
-        conn.commit()
-    except sqlite3.Error:
-        logger.warning("cli_event_context: insert failed for %r", binary, exc_info=True)
-        if conn is not None:
-            try:
-                conn.close()
-            except sqlite3.Error:
-                pass
-        conn = None
-        row_id = None
+    gate_open = True
+    if config is not None:
+        from little_loops.config.features import AnalyticsCaptureConfig, feature_enabled_for
+
+        capture = AnalyticsCaptureConfig.from_dict(config.get("analytics", {}).get("capture", {}))
+        gate_open = feature_enabled_for({"cli_commands": capture.cli_commands}, "cli_commands", binary)
+    if gate_open:
+        try:
+            conn = _pkg.connect(effective_path)
+            cursor = conn.execute(
+                "INSERT INTO cli_events(ts, binary, args) VALUES(?, ?, ?)",
+                (ts, binary, json.dumps(args[:50])),
+            )
+            row_id = cursor.lastrowid
+            conn.commit()
+        except sqlite3.Error:
+            logger.warning("cli_event_context: insert failed for %r", binary, exc_info=True)
+            if conn is not None:
+                try:
+                    conn.close()
+                except sqlite3.Error:
+                    pass
+            conn = None
+            row_id = None
     exit_code = 0
     try:
         yield
@@ -499,34 +516,49 @@ def skill_event_context(
     EPIC-1707 graceful-degradation contract — a missing or locked database
     never blocks the skill run (the body still executes; the row is skipped).
 
-    The ``config`` parameter is a forward-compatibility stub for per-skill
-    analytics gating (ENH-1835); it is accepted but not yet used.
+    Gated by ``analytics.capture.skills`` (ENH-2932): when ``config`` is provided,
+    ``skill_name`` must match one of the configured glob patterns or the row write
+    is suppressed (the wrapped body still runs, yielding a default
+    ``SkillEventCompletion()``). Missing ``capture`` key or missing ``config``
+    defaults to permissive (no behavior change).
     """
     args = args[:200]
     conn: sqlite3.Connection | None = None
     row_id: int | None = None
     effective_path = resolve_history_db(db_path)
     ts = _now()
-    try:
-        conn = _pkg.connect(effective_path)
-        cursor = conn.execute(
-            "INSERT INTO skill_events(ts, session_id, skill_name, args) VALUES(?, ?, ?, ?)",
-            (ts, session_id, skill_name, args),
-        )
-        row_id = cursor.lastrowid
-        _index(
-            conn, content=skill_name, kind="skill", ref=session_id or "", anchor=skill_name, ts=ts
-        )
-        conn.commit()
-    except sqlite3.Error:
-        logger.warning("skill_event_context: insert failed for %r", skill_name, exc_info=True)
-        if conn is not None:
-            try:
-                conn.close()
-            except sqlite3.Error:
-                pass
-        conn = None
-        row_id = None
+    gate_open = True
+    if config is not None:
+        from little_loops.config.features import AnalyticsCaptureConfig, feature_enabled_for
+
+        capture = AnalyticsCaptureConfig.from_dict(config.get("analytics", {}).get("capture", {}))
+        gate_open = feature_enabled_for({"skills": capture.skills}, "skills", skill_name)
+    if gate_open:
+        try:
+            conn = _pkg.connect(effective_path)
+            cursor = conn.execute(
+                "INSERT INTO skill_events(ts, session_id, skill_name, args) VALUES(?, ?, ?, ?)",
+                (ts, session_id, skill_name, args),
+            )
+            row_id = cursor.lastrowid
+            _index(
+                conn,
+                content=skill_name,
+                kind="skill",
+                ref=session_id or "",
+                anchor=skill_name,
+                ts=ts,
+            )
+            conn.commit()
+        except sqlite3.Error:
+            logger.warning("skill_event_context: insert failed for %r", skill_name, exc_info=True)
+            if conn is not None:
+                try:
+                    conn.close()
+                except sqlite3.Error:
+                    pass
+            conn = None
+            row_id = None
     start = time.time()
     completion = SkillEventCompletion()
     try:

@@ -243,7 +243,6 @@ def handle(event: LLHookEvent) -> LLHookResult:
                         tool_name,
                         issue_id,
                     )
-            # TODO(ENH-1835): wire analytics.capture.skills gate when ENH-1833 lands
 
     if config is not None and tool_name in {"Write", "Edit"} and raw_path:
         _maybe_auto_commit(config, cwd, raw_path, tool_name)
