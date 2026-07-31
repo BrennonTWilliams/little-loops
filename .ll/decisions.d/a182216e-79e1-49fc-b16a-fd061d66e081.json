@@ -1,0 +1,11 @@
+{
+  "id": "efdc5f4c-ecdf-4f3e-8aac-674faf2cf0b7",
+  "type": "decision",
+  "timestamp": "2026-07-31T21:56:35Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Phase 3b Pattern E: alternatives + imperative decide-marker + no preference materializes to Option A/B and routes to full scoring; check-decidable parity; NO_ACTIONABLE_DECISIONS defers as decision_unresolved",
+  "rule": "Captured: decide-issue scores un-preferenced decision directives",
+  "scope": "issue",
+  "issue": "ENH-2936"
+}

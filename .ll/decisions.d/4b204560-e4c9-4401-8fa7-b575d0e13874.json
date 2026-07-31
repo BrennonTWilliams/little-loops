@@ -1,0 +1,11 @@
+{
+  "id": "4594b88e-8d23-467b-b6c8-e27a4898b26b",
+  "type": "decision",
+  "timestamp": "2026-07-31T21:56:36Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Scope claims whose justification is refuted by the issue's own findings are rewrite-eligible: correct factually or convert to an explicit decision directive",
+  "rule": "Captured: reconcile-issue rewrites contradicted Scope Boundaries claims",
+  "scope": "issue",
+  "issue": "ENH-2937"
+}

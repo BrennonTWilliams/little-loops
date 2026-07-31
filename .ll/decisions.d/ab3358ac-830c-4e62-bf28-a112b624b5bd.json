@@ -1,0 +1,12 @@
+{
+  "id": "61df2043-0432-431a-ae96-d69797937335",
+  "type": "decision",
+  "timestamp": "2026-07-31T21:47:56Z",
+  "category": "scope",
+  "labels": [],
+  "rationale": "cli/queue.py never calls session_store.writers \u2014 no orchestration_runs/loop_runs row exists for a queue entry, so the shared reader helper could never resolve a queue-side stamp. A LOOP entry it dequeues is driven via a subprocess 'll-loop run', whose own run (e.g. autodev.yaml dequeue_next) is stamped at site 1, so no issue-work path goes unstamped; SKILL/CMD/MCP/PROMPT entries are not issue orchestration and have no run row to stamp.",
+  "rule": "ll-queue run is exempt from the dequeue-time SHA stamp (out of scope for ENH-2866)",
+  "scope": "issue",
+  "alternatives_rejected": "Stamping into the QueueEntry result JSON blob: unreadable by the shared reader helper, violating the single-reader AC; a first-ever direct writers call from cli/queue.py: new persistence surface for no consumer.",
+  "issue": "ENH-2866"
+}

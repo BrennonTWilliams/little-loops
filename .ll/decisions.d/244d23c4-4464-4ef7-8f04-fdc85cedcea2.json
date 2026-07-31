@@ -1,0 +1,12 @@
+{
+  "id": "4f66ef35-2608-4099-ae4b-72c8233bfbd1",
+  "type": "decision",
+  "timestamp": "2026-07-31T21:47:56Z",
+  "category": "scope",
+  "labels": [],
+  "rationale": "cli/sprint/run.py's _run_issue_with_wall_clock_timeout() calls process_issue_inplace() directly (sequential, no worktree) and feeds two record_orchestration_run(driver='ll-sprint') calls (~L694, ~L842) that pass no base SHA. Capturing inside process_issue_inplace() and returning the stamp on IssueProcessingResult gives one capture point shared by ll-auto and sprint-sequential; each caller forwards it to its own record_orchestration_run call. Worktree-mode sprint waves remain covered transitively by the ll-parallel stamp.",
+  "rule": "ll-sprint's sequential process_issue_inplace() path is IN scope for the SHA stamp, covered as a variant of the ll-auto site: capture pre-Phase-1 inside process_issue_inplace() and expose base_sha/base_dirty on IssueProcessingResult",
+  "scope": "issue",
+  "alternatives_rejected": "Separate rev-parse in cli/sprint/run.py: duplicates the capture and can race with Phase 1 mutations; exempting the path: leaves the exact merge-base-fallback gap this issue exists to close.",
+  "issue": "ENH-2866"
+}
