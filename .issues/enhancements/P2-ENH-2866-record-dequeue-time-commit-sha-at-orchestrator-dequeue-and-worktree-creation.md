@@ -113,6 +113,8 @@ does not stamp keeps working unchanged.
   stamp time; a dirty base means a pre-patch reconstruction is approximate and
   the consumer should be able to say so rather than assert a clean comparison.
 - No LLM involvement — this is a `git rev-parse` and a file write.
+- **`ll-auto` is a third dequeue site and was missing from the stamp set** (placement review, 2026-07-30). This issue's Motivation names `ll-auto` as a case where a verification step spans multiple commits and merge-base is wrong — but the Proposed Change stamps only `autodev.yaml`'s `dequeue_next` and `ll-parallel`'s worker creation. `ll-auto` routes through neither: `cli/auto.py` → `issue_manager.py`'s `AutoProcessor` is its own sequential dequeue loop, not a wrapper over `autodev.yaml` (a grep of `issue_manager.py` for `autodev` returns only a comment at L905). As written, the one orchestrator the Motivation calls out would always take ENH-2853's merge-base fallback. Stamp `issue_manager.py`'s per-issue dequeue as a third site. Check first whether the `_baseline_sha` it already computes for `verify_work_was_done()` (~L1072, ~L1109) is the same value — if so this is a persistence change, not a new capture.
+- **`ll-queue run` is a fourth dequeue site — stamp it or exempt it explicitly** (placement review, 2026-07-30). FEAT-2906's `ll-queue run` serially dequeues `pending` entries and drives each to completion, which makes it an orchestrator by this issue's own definition ("the point work is dequeued"). Decide during implementation: stamp it alongside the other three, or record in § Scope Boundaries why it is exempt. Leaving it unaddressed reproduces exactly the `ll-auto` gap this note corrects.
 
 ## Acceptance Criteria
 
@@ -135,14 +137,33 @@ does not stamp keeps working unchanged.
       `ll-parallel` worker creation, the reader returning `None` when unstamped,
       and the dirty-tree flag.
 
+_Added 2026-07-30 (placement review) — see Design Notes:_
+
+- [ ] `ll-auto` records the stamp at its own per-issue dequeue in
+      `issue_manager.py`, resolved before Phase 1 mutates the issue file. A test
+      covers it, and asserts an `ll-auto` run is not left taking the merge-base
+      fallback.
+- [ ] All three orchestrators write the stamp in a form the *same* reader helper
+      resolves — no per-orchestrator lookup logic.
+- [ ] `ll-queue run` is either stamped or explicitly exempted in
+      § Scope Boundaries with a stated reason.
+
 ## Integration Map
 
 ### Files to Modify
+
+_`issue_manager.py` added 2026-07-30 (placement review) — see Design Notes,
+"`ll-auto` is a third dequeue site."_
+
 - `scripts/little_loops/loops/autodev.yaml` — `dequeue_next` (~L80-141); the
   pre-readiness snapshot at ~L104-117 is the idiom to follow
 - `scripts/little_loops/parallel/worker_pool.py` /
   `scripts/little_loops/parallel/orchestrator.py` — per-issue worktree creation
   call sites
+- `scripts/little_loops/issue_manager.py` — `ll-auto`'s own sequential dequeue,
+  which routes through neither of the two sites above. Stamp at the point the
+  issue is taken, before Phase 1 mutates the issue file; check whether the
+  existing `_baseline_sha` (~L1072, ~L1109) already holds the right value
 - `scripts/little_loops/worktree_utils.py` — only if an additive parameter is
   the cleanest carrier; prefer stamping at the caller
 - `scripts/little_loops/session_store/schema.py` — the `_MIGRATIONS` entry adding
@@ -189,8 +210,14 @@ does not stamp keeps working unchanged.
 ## Scope Boundaries
 
 **In scope:** capturing the SHA (plus dirty-tree flag) at `autodev.yaml`'s
-`dequeue_next` and `ll-parallel`'s per-issue worktree creation; one reader helper
-that returns `None` when unstamped; persistence onto the existing run record.
+`dequeue_next`, `ll-parallel`'s per-issue worktree creation, and (added
+2026-07-30, placement review) `issue_manager.py`'s `ll-auto` dequeue; one reader
+helper that returns `None` when unstamped; persistence onto the existing run
+record.
+
+**Open decision (2026-07-30):** `ll-queue run` (FEAT-2906) also dequeues work
+items. Stamp it or move it to *Out of scope* with a stated reason before
+implementation — do not leave it unaddressed.
 
 **Out of scope:** the merge-base fallback logic itself and any use of the base
 state (ENH-2853 owns both); stamping `ll-loop run --worktree` or the epic-branch
@@ -215,4 +242,5 @@ uses for its readiness snapshot, and one reader.
 
 
 ## Session Log
+- gate-placement review (manual, no skill) - 2026-07-30 - added `issue_manager.py` (`ll-auto`) as a third stamp site and `ll-queue run` as an open decision; Design Notes, Files to Modify, 3 ACs, Scope Boundaries
 - `/ll:audit-issue-conflicts` - 2026-07-27T19:42:08 - `e2303183-4e52-4649-af90-4b53254bbda4.jsonl`

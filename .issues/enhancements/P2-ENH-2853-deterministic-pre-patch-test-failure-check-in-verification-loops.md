@@ -76,6 +76,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Define the base state explicitly.** Under `ll-auto`/`ll-sprint` a verification step may span multiple commits. "Pre-patch" means the tree at the SHA recorded when the issue was dequeued (fall back to merge-base with the base branch when no dequeue SHA is recorded) — not simply `HEAD~1`.
 - **The dequeue-SHA stamp is ENH-2866, not this issue** (split at epic review, 2026-07-27). Nothing records a dequeue SHA today, so this issue's primary base-state path would be dead code without it; ENH-2866 adds the stamp at `autodev.yaml`'s `dequeue_next` and `ll-parallel`'s worktree creation, plus a reader helper that returns `None` when unstamped. This issue *consumes* that helper and implements the merge-base fallback behind it. Until a given orchestrator stamps, its runs take the fallback — which is why the evidence bundle must name the base actually used.
 - **Test-file identification is ENH-2865, not this issue** (split at epic review, 2026-07-27). Both this check and ENH-2854's tamper guard need to classify paths as test files; the `project.test_patterns` config key, its template defaults (including the load-bearing `conftest.py` entry), and the shared `test_file_patterns.py` module land once in ENH-2865 and are consumed here. This removes the former circular `blocked_by` between this issue and ENH-2854 — neither depends on the other now; both depend on ENH-2865.
+- **Gate placement: the check must be hosted by a reusable oracle loop, not by `ll-harness`** (placement review, 2026-07-30). The prior Integration Map installed the check in `cli/harness.py:_evaluate_and_report()` and in `/ll:verify-issue-loop`'s generator. Both are off every production verification path:
+  - **No orchestrator invokes `ll-harness`.** A repo-wide grep for `ll-harness` across `scripts/little_loops/` returns only its own CLI (`cli/harness.py`), the shared `runner_spec.py` abstraction, telemetry readers (`history_reader.py:2797+`), and a permission string in `init/writers.py:70`. Nothing in `ll-auto`, `ll-parallel`, `ll-sprint`, or any `loops/*.yaml` calls it — it is a hand-run one-shot tool.
+  - **`/ll:verify-issue-loop` is a generator.** A check emitted there exists only inside per-issue loop YAML someone chose to generate, never in a standing path.
+  - The actual chokepoint for "did these tests prove anything" is `oracles/code-run-gate.yaml`'s `run_test` state, delegated to by `rn-refine.yaml:483`, `rn-remediate.yaml:543`, and `rn-implement`'s `run_code_gate` (`loops/README.md:64`). Hosting the check there is what makes it reachable from every green-suite transition in the `rn-*` family.
+  - **Follow the learning-test gate's three-layer shape**, which is this repo's established pattern for a gate that must reach both FSM and CLI callers: gate logic in a reusable internal loop (`ready-to-implement-gate.yaml`), a thin Python adapter that shells out to it (`learning_tests/gate.py:run_learning_gate_for_issue()`), and orchestrator hooks that all call the adapter behind one shared skip flag (`cli_args.py:214` → `issue_manager.py:880`, `worker_pool.py:64`, `cli/sprint/run.py:222`). `cli/harness.py` and `/ll:verify-issue-loop` become *consumers* of the oracle, not owners of the check.
+- **Evidence-bundle transport follows the host** (placement review, 2026-07-30). With the check hosted by an oracle rather than `ll-harness`, `PrePatchEvidence` can no longer ride a harness-local `HarnessEvalOutcome`. It must reach the parent through the oracle's existing parent↔sub-loop token channel (the `subloop_outcome_<ID>.txt` idiom `code-run-gate` already uses) with the full bundle written under `${context.run_dir}/` per MR-3, and/or persisted to `.ll/history.db`. The harness path then reads the same artifact rather than producing its own.
+- **Oracle skip convention** (placement review, 2026-07-30). If the check lands as an additive state inside `code-run-gate.yaml` rather than a sibling oracle, its enable/disable knob must follow that oracle's established null-command short-circuit: an unset parameter routes to a SKIP pass-through, not a failure. This is the same mechanism as the config off-switch already required by Design Notes ("Price the check"), expressed in the oracle's idiom.
 
 ### Codebase Research Findings
 
@@ -98,9 +105,21 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ## Integration Map
 
 ### Files to Modify / Create
-- `scripts/little_loops/worktree_utils.py` — extend or wrap `setup_worktree()` (line 155) with a pre-patch variant: fork from a dequeue-time SHA / merge-base via the existing `base_branch` param, then apply only the test-file portion of the diff (new logic — no `git apply`-based partial-diff helper exists in the repo today).
-- `scripts/little_loops/cli/harness.py` — add the pre-patch evidence bundle alongside the existing `HarnessEvalOutcome` (line 242) / `_evaluate_and_report()` (line 251) single-check path.
-- `skills/verify-issue-loop/SKILL.md` — wire in the new deterministic state type; today (~L150-165, plus `templates.md`) this skill only generates LLM-judged `llm_structured` states with no deterministic check type at all (line refs verified 2026-07-29 after the skill's restructuring).
+
+_Rewritten 2026-07-30 (placement review) — the check is hosted by a reusable oracle loop; `ll-harness` and `/ll:verify-issue-loop` are demoted from owners to consumers. See Design Notes, "Gate placement"._
+
+**Layer 1 — gate core (no FSM or CLI knowledge):**
+- `scripts/little_loops/prepatch_check.py` (new) — `run_prepatch_check()`, `collect_candidate_nodeids()`, and the `PrePatchTestOutcome` / `PrePatchEvidence` dataclasses per § Program Design. Consumes ENH-2865's `test_file_patterns` module for identification and ENH-2866's reader helper for the base SHA.
+- `scripts/little_loops/worktree_utils.py` — new additive sibling `setup_prepatch_worktree()` wrapping `setup_worktree()` (line 155): fork from the dequeue-time SHA / merge-base via the existing `base_branch` param, then `git apply` only the test-file portion of the diff (new logic — no partial-diff helper exists in the repo today). `setup_worktree()` / `cleanup_worktree()` signatures unchanged.
+
+**Layer 2 — oracle host (the reachability fix):**
+- `scripts/little_loops/loops/oracles/code-run-gate.yaml` — add the pre-patch check as an additive state alongside `run_test` (L201-249), gated by a new optional parameter that short-circuits to SKIP when unset (matching the oracle's existing null-command convention). Alternatively land it as a sibling `oracles/prepatch-test-gate.yaml` invoked from the same point; pin the choice during implementation. Either way the verdict and the evidence-bundle path travel the existing parent↔sub-loop token channel.
+
+**Layer 3 — consumers (read the oracle's result; do not re-implement the check):**
+- `scripts/little_loops/cli/harness.py` — surface the pre-patch evidence alongside the existing `HarnessEvalOutcome` (line 242) / `_evaluate_and_report()` (line 251) path by reading the oracle's artifact, not by hosting the check.
+- `skills/verify-issue-loop/SKILL.md` — document the deterministic state type as a delegation to the oracle; today (~L150-165, plus `templates.md`) this skill only generates LLM-judged `llm_structured` states with no deterministic check type at all (line refs verified 2026-07-29 after the skill's restructuring).
+
+_No longer this issue's install sites (they were the sole install sites before the 2026-07-30 placement review): `cli/harness.py` and `/ll:verify-issue-loop` as owners of the check._
 
 _Split out at epic review (2026-07-27) — no longer this issue's scope, consumed as dependencies:_
 - `scripts/little_loops/loops/autodev.yaml` `dequeue_next` + `ll-parallel` worktree-creation SHA stamps → **ENH-2866**
@@ -155,6 +174,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Not this issue**: `ENH-2854`'s tamper-guard `revert` policy — a peer that shares the ENH-2865 module but has no dependency edge in either direction; the only interaction is ordering (its revert must run after this check reads the step's diff), which is a constraint documented on ENH-2854, not a blocking edge here.
 - **Not this issue**: replacing or removing the existing LLM-judged semantic criteria in verification loops — this check is additive alongside them, never a substitute.
 - **Not this issue**: running the full test suite pre-patch — only the identified candidate test node IDs are run (see Design Notes, "Price the check").
+- **Not this issue** (added 2026-07-30, placement review): hooking the check into `ll-auto` / `ll-parallel` / `ll-sprint` as a standalone CLI-level pre-flight. Those orchestrators reach it transitively through the `rn-*` loops that delegate to the oracle. If a direct non-FSM entry point is later wanted, it is an additive Python adapter over the same `prepatch_check.py` core (the `learning_tests/gate.py` shape), not a second implementation — and a separate issue.
 
 ## Impact
 
@@ -162,6 +182,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Effort**: Large - New worktree-fork-plus-partial-diff-apply primitive, a new per-test evidence-bundle dataclass, a new deterministic FSM state type wired into `/ll:verify-issue-loop`, and import-isolation handling for editable installs; touches `worktree_utils.py`, `cli/harness.py`, and `skills/verify-issue-loop/SKILL.md`.
 - **Risk**: Medium - `setup_worktree()`/`cleanup_worktree()` are called directly by `fsm/executor.py`, `cli/loop/run.py`, and `parallel/orchestrator.py`; any signature change must stay additive to avoid breaking those call sites. The check itself is otherwise isolated (worktree-scoped, non-mutating on failure).
 - **Breaking Change**: No - additive worktree variant and additive evidence-bundle fields; existing semantic criteria and call sites are unaffected.
+- **Placement correction (2026-07-30)**: the prior install sites (`cli/harness.py`, `/ll:verify-issue-loop`) put the check on paths no orchestrator reaches, so as previously scoped this issue would have shipped without closing the hole it describes. Re-hosting it on an oracle loop does not increase the core's effort but adds an oracle state, the token-channel evidence transport, and delegation tests. Effort stays **Large**; re-run size review before implementation.
 
 ## Program Design
 
@@ -199,12 +220,18 @@ candidate identification and never re-implemented here.
 
 ### Call Path
 
-`_evaluate_and_report` -> `run_prepatch_check` -> `collect_candidate_nodeids` -> `filter_test_files`
+_Call path updated 2026-07-30 (placement review): the entry point is the oracle
+state, not `_evaluate_and_report()`._
+
+`oracles/` pre-patch state -> `run_prepatch_check` -> `collect_candidate_nodeids` -> `filter_test_files`
 
 `run_prepatch_check` -> `setup_prepatch_worktree` -> `setup_worktree` -> `cleanup_worktree`
 
-`_evaluate_and_report()` attaches the returned `PrePatchEvidence` alongside the
-existing `HarnessEvalOutcome`. The worktree create → run-in-isolation →
+The oracle state emits its verdict on the parent↔sub-loop token channel and
+writes the `PrePatchEvidence` bundle under `${context.run_dir}/`.
+`_evaluate_and_report()` in `cli/harness.py` reads that bundle and surfaces it
+alongside the existing `HarnessEvalOutcome` — it does not call
+`run_prepatch_check()` itself. The worktree create → run-in-isolation →
 teardown-in-finally shape and the src_dir PYTHONPATH-injection fix are taken
 from `verify_epic_branch_before_merge`, and per-test pass/fail/error
 classification mirrors `LLHistoryPlugin`.
@@ -231,12 +258,22 @@ classification mirrors `LLHistoryPlugin`.
 - [ ] The check makes no LLM calls.
 - [ ] Tests cover: a fake test that passes pre-patch, a genuine test that fails pre-patch, a test that errors pre-patch, and the zero-test case.
 
+_Added 2026-07-30 (placement review) — see Design Notes, "Gate placement":_
+
+- [ ] The check is hosted by a reusable oracle loop (an additive state in `oracles/code-run-gate.yaml` or a sibling `oracles/prepatch-test-gate.yaml`), reachable via sub-loop delegation — not implemented inside `cli/harness.py`.
+- [ ] The check is reachable from the `rn-*` family's green-suite transitions; a test asserts the delegating loop (`rn-implement` / `rn-remediate` / `rn-refine`) routes through the pre-patch state.
+- [ ] The gate core lives in `prepatch_check.py` with no FSM or CLI imports, so the oracle and any Python caller invoke the same implementation.
+- [ ] `cli/harness.py` surfaces the pre-patch evidence by reading the oracle's artifact; it does not call `run_prepatch_check()` directly, and a test asserts the check is not re-implemented there.
+- [ ] The evidence bundle reaches the parent via the parent↔sub-loop token channel with the full bundle written under `${context.run_dir}/` (MR-3), rather than only inside a harness-local dataclass.
+- [ ] When the check's enabling parameter is unset, the oracle state short-circuits to a SKIP pass-through (matching `code-run-gate`'s null-command convention) rather than failing the gate.
+
 
 ## Status
 
 **Open** | Created: 2026-07-27 | Priority: P2
 
 ## Session Log
+- gate-placement review (manual, no skill) - 2026-07-30 - rewrote `### Files to Modify / Create`, the Program Design call path, added Design Notes "Gate placement" / "Evidence-bundle transport" / "Oracle skip convention", 6 ACs, 1 Scope Boundary, 1 Impact note
 - `/ll:format-issue` - 2026-07-27T20:01:08 - `74d428f0-7103-4a58-9168-ff504878fb04.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-27T19:42:08 - `e2303183-4e52-4649-af90-4b53254bbda4.jsonl`
 - `/ll:wire-issue` - 2026-07-27T16:58:09 - `8416c0b2-f15d-4605-9d27-7401bd127ac6.jsonl`
