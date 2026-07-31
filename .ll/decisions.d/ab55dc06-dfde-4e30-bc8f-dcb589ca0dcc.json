@@ -1,0 +1,12 @@
+{
+  "id": "7d926849-e2e7-49b2-9fe1-c54689b956d6",
+  "type": "decision",
+  "timestamp": "2026-07-31T04:07:32Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "tamper_guard gets a dedicated enum-validity WARN validator (unlike session_mode's inheritance-only check), which justifies schema-level documentation/IDE validation; avoids stacking a second silently-invisible field on top of session_mode's existing schema gap.",
+  "rule": "Option A - explicit JSON-schema properties for tamper_guard (matching pruning_profile shape)",
+  "scope": "issue",
+  "alternatives_rejected": "Option B - dataclass-only field following session_mode precedent (no fsm-loop-schema.json entry); simpler but forgoes schema-level enum documentation for a field with real value-validity semantics.",
+  "issue": "ENH-2934"
+}

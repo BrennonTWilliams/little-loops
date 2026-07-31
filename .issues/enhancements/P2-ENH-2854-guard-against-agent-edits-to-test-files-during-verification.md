@@ -3,15 +3,21 @@ id: ENH-2854
 title: Guard against agent edits to test files during verification
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: 2026-07-27
 epic: EPIC-2856
 parent: EPIC-2856
 labels:
 - rework
 - verification
-blocked_by:
-- ENH-2865
+confidence_score: 100
+outcome_confidence: 58
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 20
+score_change_surface: 10
+size: Very Large
+completed_at: '2026-07-31T03:25:32Z'
 ---
 
 # ENH-2854: Guard against agent edits to test files during verification
@@ -65,9 +71,55 @@ A verification step declaring `tamper_guard:` snapshots test-file content hashes
 - **The non-FSM path needs a policy default source — this is the one justified `config-schema.json` key** (placement review, 2026-07-30). Design Notes previously ruled out a project-global config key categorically. That decision is correct *for FSM states* (the policy belongs to the state whose scope it describes) but leaves `ll-auto`'s Python verification path with no policy source at all, since there is no state to carry the key. Resolve it as a precedence chain: state-level `tamper_guard:` wins inside loops; a project-global config key supplies the default for the non-FSM path (and as the loop-level fallback); the built-in default remains `fail`. The `code_query.staleness` 3-mode-enum-with-default shape (`config-schema.json` ~L1296) is now both the shape *and* the location precedent for that key.
 - **Config-level tamper is the guard's blind spot — close it in the snapshot set** (added 2026-07-29). Hashing only files matching `project.test_patterns` misses the cheapest green-suite attack that touches no test file at all: editing pytest configuration — `addopts = --deselect ...` or `-k "not slow"` in `pytest.ini` / `pyproject.toml [tool.pytest.ini_options]` / `tox.ini`, `collect_ignore` outside `conftest.py`, or `--ignore` in an invoked script. The snapshot set must therefore include the *resolved pytest config files* (whichever of `pytest.ini`, `pyproject.toml`, `tox.ini`, `setup.cfg` pytest actually reads for the run) alongside the test-pattern-matched files. These are few, cheap to hash, and almost never legitimately edited during a verification step; treat them under the same policy as test files and name them separately in the report so a config change is visibly a config change.
 
+## Program Design
+
+_Added by `/ll:refine-issue` (2026-07-30 pass) — the Program Design gate (ENH-2852)
+flagged this section as missing (see Confidence Check Notes below)._
+
+### Types
+
+- `TamperPolicy = Literal["revert", "fail", "allow"]`
+- `TamperFinding`: dataclass — `path: str`, `kind: Literal["modified", "deleted", "added"]`, `is_config: bool`
+- `TamperSnapshot = dict[str, str | None]` — path → sha256, `None` for a path that is missing/unreadable at snapshot time
+- `TamperReport`: dataclass — `policy: TamperPolicy`, `findings: list[TamperFinding]`, `reverted: list[str]`, `passed: bool`
+
+### Signatures
+
+- `snapshot_test_paths(paths: list[str], repo_root: Path) -> TamperSnapshot`
+- `compare_snapshots(before: TamperSnapshot, after: TamperSnapshot) -> list[TamperFinding]`
+- `resolved_pytest_config_paths(repo_root: Path) -> list[str]`
+- `apply_tamper_policy(policy: TamperPolicy, findings: list[TamperFinding], repo_root: Path) -> TamperReport`
+- `run_tamper_guard(changed_files: list[str], config: BRConfig, policy: TamperPolicy, repo_root: Path) -> TamperReport`
+
+### Call Path
+
+FSM adapter (state-level `tamper_guard:` key): `StateConfig` → `executor._execute_state` →
+`run_tamper_guard` → `filter_test_files` → `snapshot_test_paths` (on state entry) →
+`compare_snapshots` (on state exit) → `apply_tamper_policy`.
+
+Python adapter (`ll-auto` / `ll-parallel` / `ll-sprint`): `verify_work_was_done` →
+`run_tamper_guard` → `filter_test_files` → `snapshot_test_paths` → `compare_snapshots` →
+`apply_tamper_policy`.
+
+`apply_tamper_policy`'s `revert` branch reuses `_cleanup_leaked_files`'s tracked-vs-untracked
+git split; `snapshot_test_paths`'s hashing reuses `_sha256_file`'s shape (both cited in
+Similar Patterns below). `BRConfig` is the config object `filter_test_files` and
+`run_tamper_guard` both read `project.test_patterns` from.
+
 ## Integration Map
 
 _Added by `/ll:refine-issue` — based on codebase analysis. No code implements this guard today; this is new machinery threaded through the FSM executor, config schema, and a new shared module._
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` (2026-07-30 pass) — the `blocked_by: ENH-2865` edge above has been removed: ENH-2865 completed 2026-07-28, so the dependency is resolved, not just unblocked._
+
+- **ENH-2865's module now exists and is directly consumable**: `scripts/little_loops/test_file_patterns.py` (55 lines) exports `is_test_file(path: str, config: BRConfig | None = None) -> bool` and `filter_test_files(paths: list[str], config: BRConfig | None = None) -> list[str]`, both reading `config.project.test_patterns` and matching via `little_loops.git_operations.file_matches_pattern`. Both are pure/deterministic (no git calls, no filesystem stat). The guard core should call `filter_test_files()` directly rather than re-deriving test-file membership.
+- **State-key declaration site correction**: the Integration Map's "Layer 2" entry above names `scripts/little_loops/fsm/definition.py` for declaring the `tamper_guard:` state field — this is wrong. The `StateConfig` dataclass (where `model:`, `session_mode:`, `pruning_profile:` are declared, ~L677-690) actually lives in `scripts/little_loops/fsm/schema.py` (~L570-699); the JSON Schema counterpart is `scripts/little_loops/fsm/fsm-loop-schema.json` (state-level string props ~L567-572, loop-level default + `_ok` suppression flag ~L354-358).
+- **A closer WARN-validator template than the learning-gate analogy**: `scripts/little_loops/fsm/validation/evaluator_rules.py:450-496`, `_validate_session_mode_evaluator_inheritance()`, is the exact recipe for "declare a bare `str | None` state field, enforce its enum only in the validation layer, WARN on misuse, gate the rule behind a suppression flag." The suppression-flag allowlist is `scripts/little_loops/fsm/validation/_base.py` (~L120-122, `pruning_profile_ok`/`session_mode_ok`); a `tamper_guard_ok` flag needs registering there. Hook the new validator into the pipeline the same way `_validate_pruning_profile()` is wired in `scripts/little_loops/fsm/validation/structural_rules.py` (~L1082), and register it for import in `scripts/little_loops/fsm/validation/__init__.py` (which also maintains the running MR-rule-code docstring registry — add an entry there per this repo's own convention).
+- **Reusable content-hashing utility, not previously cited**: `scripts/little_loops/codequery/codegraph.py` already has a snapshot-vs-current-bytes comparator: `_sha256_file()` (~L140-146, `hashlib.sha256(path.read_bytes()).hexdigest()`, `None` on `OSError`) and `_content_aware_head_moved()` (~L157-185, builds a `{path: sha256}` baseline dict and flags any path whose current hash differs or is missing). The guard core's snapshot/compare step should reuse this shape rather than writing file-hashing from scratch — it is the only existing content-hash-over-a-file-set comparator in the codebase (every other `hashlib` use in `scripts/little_loops/` is single-string cache-key hashing, e.g. `evaluate_diff_stall`'s `hashlib.md5(scope_str...)`).
+- **Line-number drift in this issue's own citations** (confirmed against current code, all in `scripts/little_loops/`): `fsm/executor.py`'s stall-detector hook is actually at L1408-1439 (cited ~L1398-1429); `fsm/evaluators.py:evaluate_diff_stall()` actually runs L594-686 (cited ~L572-665, and the function extends past the cited end); `fsm/executor.py:_evaluate()` is at L1955 (cited L1954, negligible). `worker_pool.py:_cleanup_leaked_files()` (L1362), `work_verification.py:verify_work_was_done()` (L44), and `config-schema.json:code_query.staleness` (L1307-1312) are all confirmed exact. Re-verify line numbers at implementation time regardless — these will drift further before this issue is picked up.
+- **`work_verification.verify_work_was_done()` signature confirmed**: `verify_work_was_done(logger: Logger, changed_files: list[str] | None = None, baseline_sha: str | None = None) -> bool`. When `changed_files` is `None` (the `ll-auto` path), it derives the set itself from three sequential `git diff` calls (uncommitted, staged, committed-since-`baseline_sha`) — this is the natural point for the Python adapter to intersect the changed-file set against `filter_test_files()` before deciding revert/fail/allow. `issue_manager.py`'s two call sites needing the hook are confirmed at L1072 and L1109 (Phase 3 spans L1049-1129, not L1052-1109 as cited); `worker_pool.py`'s call site is confirmed exact at L596, with `_verify_work_was_done()` at L1212.
 
 ### Files to Modify
 
@@ -85,6 +137,10 @@ _Rewritten 2026-07-30 (placement review) — split into a core plus two adapters
 - `scripts/little_loops/work_verification.py` — call the guard core from the shared verification path. This module is already imported by `issue_manager.py:31` and `worker_pool.py:38`, and `verify_work_was_done()` (L44) already receives the changed-file set the guard needs. `filter_excluded_files()`/`EXCLUDED_DIRECTORIES` (L18-41) remains the inclusion/exclusion-predicate shape reference.
 - `scripts/little_loops/issue_manager.py` (~L1052-1109, Phase 3) and `scripts/little_loops/parallel/worker_pool.py` (~L596, `_verify_work_was_done` L1212) — confirm the guard fires on both call sites; prefer inheriting it from `work_verification.py` over adding two independent hooks.
 - `scripts/little_loops/config-schema.json` — the non-FSM policy default key (see Design Notes); `code_query.staleness` (~L1296) is the shape and location precedent.
+
+_Wiring pass added by `/ll:wire-issue` (2026-07-31):_
+- `scripts/little_loops/config/core.py` — `ProjectConfig` (~L148-195: field/default declaration, `from_dict()` at ~L172-195, and the reverse-serialization block at ~L866-872) is the Python-side mirror `config-schema.json` keys are triple-declared against; a schema entry alone is not sufficient. If the new policy-default key lands under `project.*`, this dataclass needs the matching field/`from_dict`/serialization lines. If it instead mirrors `code_query.staleness` more literally as a sibling `CodeQueryConfig` field (`scripts/little_loops/config/features.py:834-847`), that dataclass needs them instead — either way, exactly one `scripts/little_loops/config/*.py` dataclass outside the files already listed needs a matching change [Agent 2 finding].
+- `scripts/little_loops/config/core.py:912` — `BRConfig.resolve_variable()` (the method `ll-config get <key>` wraps, per `.claude/CLAUDE.md`'s `ll-config` entry) should be smoke-checked to confirm the new key resolves through it [Agent 2 finding].
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/loops/oracles/code-run-gate.yaml:run_test` (L201-249) — existing test-execution oracle state; likely host for the new snapshot/compare wrapping.
@@ -105,6 +161,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_fsm_evaluators.py:TestDiffStallEvaluator` (~L1461-1610), exercising `evaluate_diff_stall()` — the two-invocation "baseline call, then compare call" pattern (`test_first_iteration_returns_success` → `test_different_diff_returns_success` → threshold tests) maps directly onto snapshot-then-compare; its `clean_state_files` autouse fixture (L1474) and `test_dispatch_diff_stall` (L1581) evaluator-dispatch wiring test are the templates a new tamper-guard evaluator's tests should copy [Agent 3 finding].
 - `scripts/little_loops/fsm/executor.py`'s stall-detector integration (~L1398-1429: `self._stall_detector.record`/`.check()` → abort-or-route, applied as a side-channel check independent of the main evaluator verdict) is the closest existing structural analog for how the tamper guard should hook into `_execute_state` [Agent 3 finding].
 
+_Wiring pass added by `/ll:wire-issue` (2026-07-31):_
+- `scripts/tests/test_fsm_executor.py:8680`, `TestStallDetector` — a stronger copy template than `TestCodeRunGateOracle` for the FSM hook specifically: it drives a real `FSMExecutor.run()` through a minimal `FSMLoop`/`StateConfig` fixture with a `MockActionRunner` and asserts on `result.terminated_by`/routed events, exercising the exact side-channel-near-`_execute_state` shape the tamper guard needs, rather than a whole-oracle-loop integration test [Agent 3 finding].
+- `scripts/tests/test_fsm_validation_evaluator_rules.py:540`, `TestSessionModeEvaluatorInheritance` (testing `_validate_session_mode_evaluator_inheritance()`, `fsm/validation/evaluator_rules.py:450-496`) — the exact copy template for the new WARN validator's test class: an `_fsm(...)` fixture helper, `test_fires_for_*`/`test_does_not_fire_for_*` pairs, a `test_suppressed_by_<flag>_ok` case, and a `test_wired_into_validate_fsm` case asserting the rule fires through the top-level `validate_fsm()` aggregator, not just the private function [Agent 3 finding].
+- `scripts/little_loops/fsm/fsm-loop-schema.json`'s `stateConfig` definition (starts ~L403) sets `additionalProperties: false` (confirmed ~L652) — the same drift risk `test_fsm_schema.py:261-277`'s `test_schema_json_evaluate_config_properties_match_dataclass_fields` (ENH-2896) was added to catch for `EvaluateConfig`. A `tamper_guard` field added to `StateConfig` (`fsm/schema.py`) but omitted from `stateConfig.properties` would be silently rejected by schema validation with no existing test catching it — the state-config equivalent of that lockstep test should be added alongside this issue's own schema change [Agent 3 finding].
+
 ### Tests
 - FSM-schema test for the new `tamper_guard:` state key (decided location — loop YAML, not `config-schema.json`; the `project.test_patterns` schema test belongs to ENH-2865). Follow the existing per-key state-field tests around `fsm/definition.py`'s schema.
 - `scripts/tests/test_codequery_codegraph.py:TestStalenessMatrix` — pattern to replicate for the `revert`/`fail`/`allow` policy matrix. Confirmed the only comparable 3-mode-policy test class in the codebase [Agent 3 finding].
@@ -114,6 +175,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_builtin_loops.py:TestCodeRunGateOracle`, `TestCodeRunGateOracleWiring`, `TestVerifyStateConfigReadShell` — update if the guard's hook rewrites the `verify`/`code-run-gate` state `action` strings these tests assert on literally; confirmed no existing test in `test_rn_implement.py`/`test_builtin_loops.py` currently references tamper-guard concepts [Agent 3 finding].
 - Config-schema round-trip note: no existing test performs strict `additionalProperties: false` jsonschema validation against a real config fixture (`test_config_schema.py`/`test_config.py`/`test_config_properties.py` all confirmed to use structural JSON-key assertions only) — adding `project.test_patterns` cannot break an existing round-trip test; only the new `test_test_patterns_in_schema`-style test needs writing [Agent 3 finding].
 
+_Wiring pass added by `/ll:wire-issue` (2026-07-31):_
+- `scripts/little_loops/git_operations.py:15-18` re-exports `verify_work_was_done` (`from little_loops.work_verification import (... verify_work_was_done, ...)  # noqa: F401`) for backward compatibility. Three distinct import/patch surfaces now resolve to it: `little_loops.work_verification.verify_work_was_done`, `little_loops.git_operations.verify_work_was_done` (used directly by `scripts/tests/test_subprocess_mocks.py:~451-545`, 7 test cases), and `"little_loops.issue_manager.verify_work_was_done"` (the name patched in `scripts/tests/test_issue_manager.py:~2632-2932`, 6+ call sites). Existing tests that patch `verify_work_was_done` wholesale will bypass the new `run_tamper_guard` call path entirely — tamper-guard-specific tests must patch/exercise `run_tamper_guard` (or its call site inside `verify_work_was_done`), not stub `verify_work_was_done` itself, or they silently don't exercise the guard [Agent 2 finding].
+- `scripts/tests/test_worker_pool.py:1316-1350` — four existing direct unit tests of `_verify_work_was_done` (`test_verify_work_was_done_accepts_code_changes`, `_rejects_no_changes`, `_rejects_excluded_only`, `_respects_config`) not previously listed under Tests; these operate on a pre-collected `changed_files` list plus exclusion/config checks (distinct from `work_verification.verify_work_was_done`'s git-diff detection) and are the existing coverage the Python adapter's worker_pool hook extends [Agent 3 finding].
+- `scripts/tests/test_work_verification.py:512-539`, `TestVerifyWorkWasDoneIntegration` — the existing integration-style test class (mocks `subprocess.run`, calls `verify_work_was_done` end-to-end) where a tamper-guard-tripped scenario (a diff touching only test-pattern-matched files) should be added [Agent 3 finding].
+- `scripts/tests/test_config_schema.py:359`, `test_project_test_patterns_in_schema` — a second worked example immediately following `test_health_url_in_schema` (L337), giving two consecutive templates for the new policy-key schema-presence test [Agent 3 finding].
+
 ### Configuration
 - `project.test_patterns` — owned by **ENH-2865** (schema entry, `ProjectConfig` field, per-template defaults, `CONFIGURATION.md` row). Consumed here; not defined here.
 - The `revert` / `fail` / `allow` policy key **is** this issue's — decided: a state-level `tamper_guard:` key in loop YAML (with optional loop-level default), **not** a `config-schema.json` entry. `config-schema.json:code_query.staleness` (~L1296) remains the shape reference for a 3-mode enum with a default, consumed via branching as in `codequery/codegraph.py:CodegraphProvider.status()` (~L156-224); the FSM schema (`fsm/definition.py` / `ll-loop validate`) is where the key is declared and linted.
@@ -121,6 +188,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Documentation
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CONFIGURATION.md` — the `### project` table's `test_patterns` row (including the deliberate-non-introspection note about `_COMMAND_FIELDS`) is written by **ENH-2865**; this issue adds only the new `revert`/`fail`/`allow` tamper-guard policy key's row to the same table (~L294-305), in the same shape.
+
+_Wiring pass added by `/ll:wire-issue` (2026-07-31):_
+- `docs/guides/LOOPS_GUIDE.md` — every other state-level key (`model:`, `pruning_profile:` L606-636, `session_mode:` L640-662) gets its own prose subsection with a YAML example and a cross-reference to the validator that lints it. This is distinct from the `CONFIGURATION.md` row (which documents the *config default*, not the *loop-YAML key*) — a new `tamper_guard:` subsection following the `pruning_profile:`/`session_mode:` pattern is needed here [Agent 2 finding].
+- `docs/reference/API.md` — the `## little_loops.X` module index table (~L33) needs a row for the new `little_loops.test_tamper_guard` module (every other module gets one); the existing `## little_loops.work_verification` section (~L2293-2364) documents `verify_work_was_done`'s signature literally and goes stale if the Python adapter changes it; `### ProjectConfig` (~L386-406) reproduces the dataclass field list verbatim with `# ENH-NNNN` provenance comments and needs a new field row (with `# ENH-2854`) if the policy-default key lands on `ProjectConfig` [Agent 2 finding].
+- `docs/reference/CLI.md:761-787` (`ll-loop validate` rule catalog) and the consolidated suppression-flag sentence at `docs/reference/CLI.md:779` — need a new entry for the tamper-guard WARN validator and its `tamper_guard_ok` suppression flag, in addition to the `.claude/CLAUDE.md` rule table already implied by this repo's own convention [Agent 2 finding].
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:313,326` — the guide's own MR-rule-code summary strings need the new validator folded in if it's given an MR code, or explicitly left out (matching how `session-mode-eval`/`pruning_profile`/`terminal-action-ok` are named-not-MR-coded) if it isn't [Agent 2 finding].
 
 ## Scope Boundaries
 
@@ -180,13 +253,96 @@ _Added 2026-07-30 (placement review) — see Design Notes, "Gate placement":_
 - [ ] `revert` on the non-FSM path uses the same git tracked-vs-untracked handling as `worker_pool.py:_cleanup_leaked_files()` (L1362) rather than a second revert implementation.
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-07-30_
+
+**Readiness Score**: 95/100 → PROCEED (overridden — see Gaps to Address)
+**Outcome Confidence**: 58/100 → LOW
+
+### Gaps to Address
+- Program Design gate (ENH-2852) forces `STOP — ADDRESS GAPS` regardless of aggregate score: this issue has no `## Program Design` section with concrete types/signatures/call path. The issue's `### Codebase Research Findings` and `### Files to Modify` sections already carry file:line-level detail, but the gate requires a dedicated, repo-resolvable Program Design section. Run `/ll:refine-issue` or `/ll:reconcile-issue` to populate it, or set `program_design_not_applicable: true` if judged genuinely inapplicable (unlikely here given the amount of new machinery — a guard core module, an FSM adapter, and a Python adapter — this issue introduces).
+
+### Outcome Risk Factors
+- Moderate cross-module depth: the guard core, the FSM adapter (executor.py hook + schema + validator), and the Python adapter (work_verification.py + two orchestrator call sites + a new config key) span ~8 files across three layers with a shared precedence chain — more surface than a single-site change, raising integration risk between the layers.
+- No existing test file covers this guard yet (`scripts/tests/test_test_file_tamper_guard.py` is net-new); the issue cites strong structural analogs to copy (`TestStalenessMatrix`, `TestDiffStallEvaluator`) but the policy-precedence chain across state/loop/config-default/built-in levels is a new interaction surface those analogs don't individually cover.
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-07-30_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 58/100 → LOW
+
+The Program Design gate (ENH-2852) that previously forced `STOP — ADDRESS GAPS`
+now passes: the `## Program Design` section (types, signatures, call path) was
+populated by the 2026-07-30 `/ll:refine-issue` pass, and `ll-issues format-check
+ENH-2854 --format json` confirms both `program_design_nonspecific` and the
+`missing`/`empty` Program Design entry are empty. All five readiness criteria
+score full marks: no existing tamper-guard code (`grep -rn "tamper_guard"` across
+`scripts/` returns nothing), the design follows verified structural precedents
+(`StateConfig`'s `pruning_profile`/`session_mode` fields at `fsm/schema.py:685-690`,
+the stall-detector side-channel hook at `fsm/executor.py:~1408-1439`, the
+`code_query.staleness` 3-mode enum at `config-schema.json:1307`), ENH-2865's
+`test_file_patterns.py` module and `work_verification.verify_work_was_done()`
+are confirmed to exist with the cited signatures, and ENH-2853 is a peer with no
+blocking dependency edge.
+
+### Outcome Risk Factors
+- Moderate cross-module depth: the guard core, FSM adapter (executor hook +
+  schema + validator), and Python adapter (`work_verification.py` + two
+  orchestrator call sites + a new config key) span roughly 8-10 code files
+  across three layers plus a validation-suppression-flag registration and
+  doc updates — more surface than a single-site change, raising integration
+  risk between the layers even though each individual site follows a cited
+  precedent.
+- No existing test file covers this guard yet
+  (`scripts/tests/test_test_file_tamper_guard.py` is net-new); the issue cites
+  strong structural analogs to copy (`TestStalenessMatrix`,
+  `TestDiffStallEvaluator`, `TestStallDetector`,
+  `TestSessionModeEvaluatorInheritance`), but the policy-precedence chain
+  across state/loop/config-default/built-in levels is a new interaction
+  surface those analogs don't individually cover.
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-07-30
+- **Reason**: Issue too large for single session (size-review score 11/11,
+  Very Large). The issue's own Impact section anticipated this: "if it
+  scores Very Large, the FSM adapter and the Python adapter are a clean
+  sequential split over a shared core."
+
+### Decomposed Into
+- ENH-2933: Tamper guard core - snapshot/compare/revert over test files
+- ENH-2934: Tamper guard FSM adapter - state-level tamper_guard key
+- ENH-2935: Tamper guard Python adapter - ll-auto/ll-parallel/ll-sprint coverage
+
 ## Status
 
-**Open** | Created: 2026-07-27 | Priority: P2
+**Done** | Created: 2026-07-27 | Priority: P2
 
 ## Session Log
+- `/ll:issue-size-review` - 2026-07-31T03:22:37 - `8a99a216-98a4-4273-8b35-65acee67e859.jsonl`
+- `/ll:confidence-check` - 2026-07-31T03:20:13 - `3a9377ba-111e-4b12-af5b-d51941552579.jsonl`
+- `/ll:wire-issue` - 2026-07-31T03:17:19 - `6eefcd5c-eb60-4ad0-863d-5e903c51410f.jsonl`
+- `/ll:refine-issue` - 2026-07-31T03:09:49 - `98f2371c-8850-4871-9e42-25d5c3dc25c1.jsonl`
+- `/ll:confidence-check` - 2026-07-30T00:00:00 - `1e8905af-5b3f-4a28-9295-5acc3ad4a358.jsonl`
+- `/ll:refine-issue` - 2026-07-31T02:28:34 - `567ffd0e-2852-4419-9e29-36ccbb071297.jsonl`
 - gate-placement review (manual, no skill) - 2026-07-30 - rewrote `### Files to Modify` into core/FSM-adapter/Python-adapter layers, added Design Notes "Gate placement" + non-FSM policy-default decision, 6 ACs, 1 Impact note
 - `/ll:format-issue` - 2026-07-27T20:01:34 - `74d428f0-7103-4a58-9168-ff504878fb04.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-27T19:42:08 - `e2303183-4e52-4649-af90-4b53254bbda4.jsonl`
 - `/ll:wire-issue` - 2026-07-27T17:06:41 - `addc0661-0c81-4c9b-99bf-77c7e6079b2c.jsonl`
 - `/ll:refine-issue` - 2026-07-27T16:32:16 - `72c3b345-e826-4b46-a5ba-58f62b13e67c.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Closed**: 2026-07-31
+- **Decomposed into**: ENH-2933, ENH-2934, ENH-2935
+
+Work for ENH-2854 is now carried by its child issues; this parent was closed by rn-decompose.

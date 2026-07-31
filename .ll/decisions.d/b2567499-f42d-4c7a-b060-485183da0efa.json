@@ -1,0 +1,12 @@
+{
+  "id": "ac071f57-b30a-4dcf-971c-4d78348a5c9d",
+  "type": "decision",
+  "timestamp": "2026-07-31T02:09:48Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches ENH-1841 precedent exactly (writer-level gate, caller migration deferred); keeps Small-effort sizing honest; 47 CLI call sites (not ~40) is a materially larger surface that should be a separate follow-up per this codebase's convention of splitting mechanism wiring from per-surface propagation",
+  "rule": "Option A: writer-level gating only (record_skill_event/skill_event_context/cli_event_context), no CLI caller-side config= threading in this issue",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: expand scope to thread config= through ~40(47) ll-* CLI entry points calling cli_event_context()/skill_event_context()",
+  "issue": "ENH-2932"
+}

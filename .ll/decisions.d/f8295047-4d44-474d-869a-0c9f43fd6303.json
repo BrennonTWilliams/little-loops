@@ -1,0 +1,12 @@
+{
+  "id": "7ad87039-7b8c-4d82-ba5a-7c35cdb359fa",
+  "type": "decision",
+  "timestamp": "2026-07-31T04:59:50Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "test_tamper_guard.py is already the shared module executor.py delegates to for three other primitives; ENH-240 precedent shows this codebase consolidates duplicated git-enumeration logic rather than letting copies drift; Option A would violate the issue's own AC against a second independently-maintained hook.",
+  "rule": "Option B - extract candidate-path/changed-files enumeration into a shared helper in test_tamper_guard.py",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: duplicate the git ls-files/git diff enumeration directly in work_verification.py",
+  "issue": "ENH-2935"
+}

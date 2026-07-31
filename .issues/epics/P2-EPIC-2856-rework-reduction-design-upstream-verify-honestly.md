@@ -1,6 +1,6 @@
 ---
 id: EPIC-2856
-title: "Rework reduction — design upstream, verify honestly"
+title: "Rework reduction \u2014 design upstream, verify honestly"
 type: EPIC
 status: open
 priority: P2
@@ -9,7 +9,6 @@ discovered_date: 2026-07-27
 relates_to:
 - ENH-2852
 - ENH-2853
-- ENH-2854
 - FEAT-2855
 - ENH-2865
 - ENH-2866
@@ -17,6 +16,9 @@ relates_to:
 - ENH-2870
 - ENH-2871
 - FEAT-2878
+- ENH-2933
+- ENH-2934
+- ENH-2935
 labels:
 - epic
 - rework
