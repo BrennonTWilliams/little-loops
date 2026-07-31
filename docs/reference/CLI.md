@@ -2797,6 +2797,19 @@ Persisted work-item queue, backed by a dedicated `.ll/queue.db` (FEAT-2682) — 
 
 Without `--runner`, `TARGET` is classified in order: an FSM loop name (resolved the same way `ll-loop run` resolves a loop), a skill/command name (resolved via `skills/<name>/SKILL.md` / `commands/<name>.md`), else falls back to a raw CLI invocation.
 
+**`list` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output all entries as JSON |
+| `--wide` | (ENH-2931) Show the untruncated args/timeout summary instead of truncating to 40 chars |
+
+Each row appends an args/timeout summary to the `runner:target` column: the entry's
+`loop_input` (if any), the effective `timeout` (`timeout=∞` for the unbounded `LOOP`
+default), and — for `running` entries — elapsed time since `enqueuedAt`. Truncated to
+40 chars unless `--wide` is passed; full values remain available via `ll-queue status
+<id> --json`.
+
 **`status`/`remove` flags:**
 
 | Flag | Description |
@@ -2817,6 +2830,7 @@ ll-queue add audit-docs                                  # Enqueue a skill (clas
 ll-queue add "pytest scripts/tests/" --runner cmd --priority P1
 ll-queue add rn-refine --input '{"issue_id": "FEAT-2900"}' --priority P1
 ll-queue list --json
+ll-queue list --wide                                      # Untruncated args/timeout summary
 ll-queue status abcd1234
 ll-queue remove abcd1234 --force
 ll-queue run                                              # Execute all pending entries serially

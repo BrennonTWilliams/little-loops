@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -18,7 +19,7 @@ from little_loops.queue_store import DEFAULT_DB_PATH as QUEUE_DB_PATH
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
 if TYPE_CHECKING:
-    from little_loops.runner_spec import RunnerType
+    from little_loops.runner_spec import ActionSpec, RunnerType
 
 __all__ = ["main_queue"]
 
@@ -28,6 +29,47 @@ _STATUS_COLOR: dict[str, str] = {
     "done": "32",
     "failed": "38;5;208",
 }
+
+# Truncation budget for the args/timeout summary suffix (ENH-2931).
+# Deliberately a constant, not shutil.get_terminal_size() — terminal
+# detection makes row output environment-dependent, so assertions on it
+# would pass or fail based on the harness's TTY width. --wide bypasses
+# this constant rather than raising it.
+_ARGS_SUMMARY_WIDTH = 40
+
+
+def _format_action_summary(entry: Any, *, wide: bool = False) -> str:
+    """Render ``runner:target`` plus an args/timeout/elapsed suffix (ENH-2931).
+
+    Truncated to :data:`_ARGS_SUMMARY_WIDTH` unless *wide*. A stored
+    ``ActionSpec.timeout`` of ``None`` unambiguously means "LOOP, no
+    override" (see ``_classify_action``'s docstring) — rendered as
+    ``timeout=∞`` rather than omitted, since "no timeout" is the fact an
+    operator most needs to see post-BUG-2928.
+    """
+    from little_loops.cli.output import format_relative_time
+
+    action: ActionSpec = entry.action
+    base = f"{action.runner.value}:{action.target}"
+
+    suffix_parts: list[str] = []
+    loop_input = action.args.get("loop_input")
+    if loop_input is not None:
+        suffix_parts.append(f"input={loop_input}")
+    timeout_str = "∞" if action.timeout is None else str(action.timeout)
+    suffix_parts.append(f"timeout={timeout_str}")
+    if entry.status == "running":
+        elapsed = (
+            datetime.now(UTC)
+            - datetime.strptime(entry.enqueued_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+        ).total_seconds()
+        suffix_parts.append(f"queued {format_relative_time(elapsed)}")
+
+    suffix = "  ".join(suffix_parts)
+    if not wide and len(suffix) > _ARGS_SUMMARY_WIDTH:
+        suffix = suffix[: _ARGS_SUMMARY_WIDTH - 1] + "…"
+
+    return f"{base}  {suffix}"
 
 
 def _default_timeout_for(runner: RunnerType) -> int | None:
@@ -176,6 +218,7 @@ def cmd_list(args: argparse.Namespace) -> int:
         print("Queue is empty")
         return 0
 
+    wide = getattr(args, "wide", False)
     print(colorize(f"Queue entries ({len(entries)}):", "1"))
     print()
     for entry in entries:
@@ -184,7 +227,7 @@ def cmd_list(args: argparse.Namespace) -> int:
         print(
             f"  {colorize(short_id, '34')}  {colorize(entry.priority, '1')}  "
             f"{colorize(entry.status, status_color)}  "
-            f"{entry.action.runner.value}:{entry.action.target}  {entry.enqueued_at}"
+            f"{_format_action_summary(entry, wide=wide)}  {entry.enqueued_at}"
         )
     return 0
 
@@ -452,6 +495,12 @@ Examples:
             "list", help="List all queue entries", description="List persisted queue entries"
         )
         list_parser.add_argument("--json", action="store_true", default=False, help="JSON output")
+        list_parser.add_argument(
+            "--wide",
+            action="store_true",
+            default=False,
+            help="Show untruncated args/timeout summary",
+        )
 
         status_parser = subparsers.add_parser(
             "status",

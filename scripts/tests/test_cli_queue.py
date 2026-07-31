@@ -235,6 +235,100 @@ class TestCmdList:
         data = json.loads(capsys.readouterr().out)
         assert [e["action"]["target"] for e in data] == ["high", "low"]
 
+    def test_list_shows_loop_input_and_timeout(self, capsys: pytest.CaptureFixture[str]) -> None:
+        with patch(
+            "sys.argv",
+            ["ll-queue", "add", "autodev", "--runner", "loop", "--input", "BUG-1"],
+        ):
+            main_queue()
+        capsys.readouterr()
+
+        with patch("sys.argv", ["ll-queue", "list"]):
+            result = main_queue()
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "input=BUG-1" in out
+        assert "timeout=∞" in out
+
+    def test_list_shows_finite_timeout(self, capsys: pytest.CaptureFixture[str]) -> None:
+        with patch("sys.argv", ["ll-queue", "add", "audit-docs", "--runner", "skill"]):
+            main_queue()
+        capsys.readouterr()
+
+        with patch("sys.argv", ["ll-queue", "list"]):
+            result = main_queue()
+        assert result == 0
+        assert "timeout=120" in capsys.readouterr().out
+
+    def test_list_truncates_long_input_by_default(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        long_input = "x" * 100
+        with patch(
+            "sys.argv",
+            ["ll-queue", "add", "autodev", "--runner", "loop", "--input", long_input],
+        ):
+            main_queue()
+        capsys.readouterr()
+
+        with patch("sys.argv", ["ll-queue", "list"]):
+            main_queue()
+        out = capsys.readouterr().out
+        assert long_input not in out
+        assert "…" in out
+
+    def test_list_wide_bypasses_truncation(self, capsys: pytest.CaptureFixture[str]) -> None:
+        long_input = "x" * 100
+        with patch(
+            "sys.argv",
+            ["ll-queue", "add", "autodev", "--runner", "loop", "--input", long_input],
+        ):
+            main_queue()
+        capsys.readouterr()
+
+        with patch("sys.argv", ["ll-queue", "list", "--wide"]):
+            main_queue()
+        assert long_input in capsys.readouterr().out
+
+    def test_list_wide_flag_round_trip_through_argparse(self) -> None:
+        with patch("sys.argv", ["ll-queue", "list", "--wide"]):
+            result = main_queue()
+        assert result == 0
+
+    def test_list_running_entry_shows_elapsed_time(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.queue_store import update_entry_result
+
+        with patch("sys.argv", ["ll-queue", "add", "audit-docs", "--json"]):
+            main_queue()
+        entry_id = json.loads(capsys.readouterr().out)["id"]
+        update_entry_result(entry_id, "running", None)
+
+        with patch("sys.argv", ["ll-queue", "list"]):
+            result = main_queue()
+        assert result == 0
+        assert "ago" in capsys.readouterr().out
+
+    def test_list_json_unaffected_by_summary_change(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with patch(
+            "sys.argv",
+            ["ll-queue", "add", "autodev", "--runner", "loop", "--input", "BUG-1", "--json"],
+        ):
+            main_queue()
+        capsys.readouterr()
+
+        with patch("sys.argv", ["ll-queue", "list", "--json"]):
+            result = main_queue()
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert len(data) == 1
+        assert data[0]["action"]["args"] == {"loop_input": "BUG-1"}
+        assert data[0]["action"]["timeout"] is None
+        assert "summary" not in data[0]
+
 
 class TestCmdStatus:
     def test_status_found(self, capsys: pytest.CaptureFixture[str]) -> None:

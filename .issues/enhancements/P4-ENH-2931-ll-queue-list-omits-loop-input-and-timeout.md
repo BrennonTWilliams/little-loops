@@ -1,10 +1,12 @@
 ---
 id: ENH-2931
-title: "`ll-queue list` omits `loop_input` and `timeout`, hiding what an entry will actually do"
+title: '`ll-queue list` omits `loop_input` and `timeout`, hiding what an entry will
+  actually do'
 type: ENH
-status: open
+status: done
 priority: P4
 captured_at: '2026-07-30T21:27:49Z'
+completed_at: '2026-07-31T00:15:39Z'
 discovered_date: 2026-07-30
 discovered_by: capture-issue
 relates_to:
@@ -15,6 +17,12 @@ labels:
 - queue
 - cli
 - dx
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-2931: `ll-queue list` omits `loop_input` and `timeout`
@@ -161,21 +169,72 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   rendering and the `--json` no-regression AC should extend this class
   directly rather than adding a parallel test module.
 
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — the `### ll-queue` section (anchor line 2772) has a
+  per-subcommand flags table for `add` (line 2786), `status`/`remove` (line
+  2800), and `run` (line 2810), but no table for `list` — it only appears in
+  the Subcommands summary table (line 2781). Add a `list` flags table
+  (`--json`, `--wide`) in the same position/format, and add a
+  `ll-queue list --wide` line to the Examples block (line 2814-2823) alongside
+  the existing `ll-queue list --json` (line 2819). [Agent 2 finding]
+- `.claude/CLAUDE.md` — the `ll-queue` CLI Tools bullet already carries an
+  appended parenthetical note documenting the `--timeout` default split
+  (BUG-2928); consider appending a similar short note for `--wide` following
+  that precedent. Optional — not required for AC completeness. [Agent 2
+  finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_cli_queue.py` (`TestCmdList`, line 207) — nothing today
+  pins `cmd_list`'s non-JSON row string at all (existing tests only assert on
+  `--json` output or the "empty" message), so this is new coverage, not an
+  update:
+  - Non-JSON row rendering: a `LOOP` entry with `--input` shows the args/timeout
+    summary in plain `list` output.
+  - Truncation at narrow width, modeled on
+    `test_issues_cli.py:test_list_truncates_long_title_at_narrow_width` (line
+    1239).
+  - `--wide` bypasses truncation, modeled on
+    `test_ll_loop_commands.py:test_no_truncate_flag_bypasses_truncation`
+    (~line 2019).
+  - `--wide` argparse round-trip, modeled on
+    `test_ll_loop_commands.py:test_no_truncate_flag_round_trip_through_argparse`
+    (~line 2057).
+  - Elapsed-time rendering: verify `format_relative_time`
+    (`cli/output.py:220`) reuse produces an "... ago" suffix for a `running`
+    entry's `enqueued_at`. No existing test covers this *shared* function
+    directly — only the unrelated duplicated private `_format_relative_time`
+    in `cli/loop/lifecycle.py` is tested (`TestFormatRelativeTime`,
+    `test_ll_loop_commands.py:1493`). [Agent 3 finding]
+  - `--json` non-regression: confirm the JSON branch (`queue.py:171-173`,
+    which returns before any new formatting code runs) is untouched by the
+    new summary/`--wide` logic. [Agent 3 finding]
+
+No missing callers/importers or registration/manifest gaps: `_format_action_summary()`
+is a new private helper in `queue.py` with no existing callers to update, and no
+`plugin.json`/entry-point/skill registration references `ll-queue list`'s row
+format (Agent 1 confirmed the only registration surface, the `ll-queue`
+entry point in `scripts/pyproject.toml`, is unaffected — the subcommand
+already exists).
+
 ## Acceptance Criteria
 
-- [ ] `ll-queue list` distinguishes two entries that share a target but differ in
+- [x] `ll-queue list` distinguishes two entries that share a target but differ in
       `args.loop_input`.
-- [ ] The effective `timeout` is visible in the listing, including an explicit
+- [x] The effective `timeout` is visible in the listing, including an explicit
       rendering for the unbounded `LOOP` default.
-- [ ] A `running` entry's row shows elapsed time.
-- [ ] Long inputs are truncated rather than wrapping the row; `--wide` emits the
+- [x] A `running` entry's row shows elapsed time.
+- [x] Long inputs are truncated rather than wrapping the row; `--wide` emits the
       untruncated value.
-- [ ] Truncation width does not vary with terminal size (no
+- [x] Truncation width does not vary with terminal size (no
       `get_terminal_size()` call on the listing path).
-- [ ] `ll-queue list --json` output is byte-identical to pre-change — this is a
+- [x] `ll-queue list --json` output is byte-identical to pre-change — this is a
       human-output change only. (`--json` exists today at `cli/queue.py:170`;
       this is a firm no-regression assertion, not a conditional one.)
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `python -m pytest scripts/tests/` exits 0.
 
 ## Scope Boundaries
 
@@ -212,9 +271,40 @@ dispatch behavior touched.
 - **FEAT-2682** — established the listing format
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-31T00:14:33Z - `26bd1a9c-0a33-4d94-bbd3-21ef246430a3.jsonl`
+- `/ll:ready-issue` - 2026-07-31T00:07:47 - `4a881036-e4cf-46a4-bbf5-b3867b1789f7.jsonl`
+- `/ll:confidence-check` - 2026-07-31T00:06:03Z - `838782e5-bdf6-4eb0-a9fe-12113aa526ec.jsonl`
+- `/ll:wire-issue` - 2026-07-31T00:04:10 - `3ccc0d7f-0d5c-409a-a148-34f9dd9beddb.jsonl`
 - `/ll:refine-issue` - 2026-07-30T23:58:31 - `9b52783e-0bad-43ac-ab91-23ced0cc7008.jsonl`
 - `/ll:capture-issue` - 2026-07-30T21:27:49Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f37dc1-b451-4197-a82c-a55434adcd06.jsonl`
 - Pre-implementation review - 2026-07-30 - confirmed `ll-queue list --json` exists (`cli/queue.py:170`), so the no-regression AC is now unconditional. Pinned truncation to a module constant rather than terminal width (test determinism) and added `--wide`. Added an elapsed-time column for `running` entries — the only visibility into a wedged `LOOP` entry now that BUG-2928 removed its timeout — with a note that true run-time needs FEAT-2930's `claimed_at`. Marked as implement-before-FEAT-2930 despite the P4/P2 ordering.
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-07-31
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/cli/queue.py`: added `_ARGS_SUMMARY_WIDTH` constant and
+  `_format_action_summary()` helper rendering `loop_input`, effective `timeout`
+  (`timeout=∞` for unbounded `LOOP`), and elapsed time (via
+  `cli/output.py:format_relative_time`) for `running` entries; wired into
+  `cmd_list`'s row loop; added `--wide` flag to bypass truncation.
+- `scripts/tests/test_cli_queue.py`: added 8 tests to `TestCmdList` covering
+  loop-input/timeout rendering, finite-timeout rendering, default truncation,
+  `--wide` bypass, argparse round-trip, running-entry elapsed time, and
+  `--json` non-regression.
+- `docs/reference/CLI.md`: added a `list` flags table (`--json`, `--wide`) and
+  a `ll-queue list --wide` example.
+- `.claude/CLAUDE.md`: appended a short note on the new `list` summary
+  rendering and `--wide`.
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 17228 passed, 42 skipped)
+- Lint: PASS (`ruff check scripts/little_loops/cli/queue.py scripts/tests/test_cli_queue.py`)
+- Types: PASS (`python -m mypy scripts/little_loops/cli/queue.py`)
+- Integration: PASS (manual smoke test of `ll-queue list`/`--wide`/`--json`)
 
 ## Status
 
