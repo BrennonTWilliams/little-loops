@@ -44,13 +44,17 @@ class TamperReport:
     passed: bool = True
 
 
+def _sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
 def _sha256_file(path: Path) -> str | None:
     """Return the sha256 hex digest of *path*'s on-disk bytes, or None if unreadable."""
     try:
         data = path.read_bytes()
     except OSError:
         return None
-    return hashlib.sha256(data).hexdigest()
+    return _sha256_bytes(data)
 
 
 def snapshot_test_paths(paths: list[str], repo_root: Path) -> TamperSnapshot:
@@ -59,6 +63,65 @@ def snapshot_test_paths(paths: list[str], repo_root: Path) -> TamperSnapshot:
     A path missing or unreadable at snapshot time maps to None.
     """
     return {path: _sha256_file(repo_root / path) for path in paths}
+
+
+def snapshot_test_paths_at_ref(repo_root: Path, ref: str, paths: list[str]) -> TamperSnapshot:
+    """Hash *paths* as they existed at git *ref*, for a caller with no live pre-step snapshot.
+
+    Adapters that bracket a single state's action (ENH-2934) capture ``before``
+    via ``snapshot_test_paths`` immediately prior to running it. The non-FSM
+    orchestrators (ENH-2935) verify once, after the whole run already
+    happened, so there is no such live moment to snapshot from -- this
+    reconstructs the equivalent "before" from the git object store instead. A
+    path absent at *ref* (added since) maps to None, matching
+    ``snapshot_test_paths``'s missing-file convention.
+    """
+    snapshot: TamperSnapshot = {}
+    for path in paths:
+        proc = _git(repo_root, "show", f"{ref}:{path}")
+        snapshot[path] = _sha256_bytes(proc.encode()) if proc is not None else None
+    return snapshot
+
+
+def tamper_guard_candidate_paths(repo_root: Path, config: BRConfig | None = None) -> list[str]:
+    """Return the test-file + pytest-config paths to snapshot for the tamper guard.
+
+    Enumerates tracked + untracked (non-ignored) repo files via git and
+    narrows to test files (``test_file_patterns.filter_test_files``) plus the
+    pytest config file(s) this repo actually reads
+    (``resolved_pytest_config_paths``). Falls back to just the config paths if
+    the git call fails (still lets the config-file half of the guard
+    function). Shared by both adapters (ENH-2934's FSM executor and
+    ENH-2935's non-FSM ``work_verification`` hook) so there is exactly one
+    enumeration implementation.
+    """
+    config_paths = resolved_pytest_config_paths(repo_root)
+    ls_files_out = _git(repo_root, "ls-files", "--cached", "--others", "--exclude-standard")
+    if ls_files_out is None:
+        return sorted(set(config_paths))
+    all_paths = [line for line in ls_files_out.splitlines() if line]
+    effective_config = config if config is not None else BRConfig(repo_root)
+    return sorted(
+        set(filter_test_files(all_paths, config=effective_config)) | set(config_paths)
+    )
+
+
+def tamper_guard_changed_files(repo_root: Path) -> list[str]:
+    """Return repo-relative paths touched since the guard's entry snapshot.
+
+    Unions unstaged+staged modifications against HEAD with untracked
+    (non-ignored) files, so a newly-added test file is visible to
+    ``run_tamper_guard`` even though it couldn't have been in the entry
+    snapshot. Shared by both adapters -- see ``tamper_guard_candidate_paths``.
+    """
+    diff_out = _git(repo_root, "diff", "--name-only", "HEAD")
+    untracked_out = _git(repo_root, "ls-files", "--others", "--exclude-standard")
+    changed: set[str] = set()
+    if diff_out is not None:
+        changed.update(line for line in diff_out.splitlines() if line)
+    if untracked_out is not None:
+        changed.update(line for line in untracked_out.splitlines() if line)
+    return sorted(changed)
 
 
 def compare_snapshots(before: TamperSnapshot, after: TamperSnapshot) -> list[TamperFinding]:

@@ -10823,6 +10823,31 @@ class TestTamperGuardExecutorHook:
         assert result.final_state == "done"
         assert (repo / "tests" / "test_x.py").read_text() == original
 
+    def test_project_config_key_never_overrides_state_level_policy(
+        self, tmp_path: Path
+    ) -> None:
+        """ENH-2935: the non-FSM project config key (tamper_guard.policy) is
+        consumed only by work_verification.py's non-FSM hook -- it never
+        overrides an explicit FSM state-level tamper_guard: key. Setting the
+        project config to "allow" must not weaken a state-level "fail"."""
+        import json
+
+        repo = self._repo(tmp_path)
+        (repo / ".ll").mkdir(exist_ok=True)
+        (repo / ".ll" / "ll-config.json").write_text(
+            json.dumps({"tamper_guard": {"policy": "allow"}})
+        )
+
+        def mutate() -> None:
+            (repo / "tests" / "test_x.py").write_text("def test_x():\n    pass  # tampered\n")
+
+        runner = self._TamperingActionRunner(mutate=mutate, exit_code=0)
+        executor = FSMExecutor(self._fsm("fail"), action_runner=runner, working_dir=repo)
+        result = executor.run()
+
+        assert result.final_state == "blocked"
+        assert result.failure_terminal is True
+
     def test_no_guard_when_key_absent(self, tmp_path: Path) -> None:
         """A state with no tamper_guard key gets no guard at all — tampering
         a test file during its action has no effect on routing."""

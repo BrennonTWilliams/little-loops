@@ -10,6 +10,7 @@ Tests cover:
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -536,3 +537,86 @@ class TestVerifyWorkWasDoneIntegration:
 
         assert result is False
         mock_run.assert_not_called()
+
+
+class TestVerifyWorkWasDoneTamperGuard:
+    """ENH-2935: verify_work_was_done() hooks the tamper guard (ENH-2933) into
+    the non-FSM ll-auto/ll-parallel/ll-sprint verification path.
+
+    Uses a real git repo + BRConfig (rather than mocked subprocess) since the
+    guard reconstructs its "before" snapshot from git history
+    (``snapshot_test_paths_at_ref``), which a blanket ``subprocess.run`` mock
+    can't represent faithfully.
+    """
+
+    @pytest.fixture
+    def mock_logger(self) -> MagicMock:
+        return MagicMock()
+
+    def _repo_with_committed_test(self, tmp_path: Path) -> Path:
+        from tests.helpers import copy_git_template
+
+        repo = tmp_path / "repo"
+        copy_git_template(repo)
+        (repo / "tests").mkdir()
+        (repo / "tests" / "test_x.py").write_text("def test_x():\n    assert 1 == 1\n")
+        subprocess.run(["git", "add", "tests/test_x.py"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-m", "add test"], cwd=repo, check=True)
+        return repo
+
+    def test_weakened_test_trips_fail_policy(self, mock_logger: MagicMock, tmp_path: Path) -> None:
+        """A test weakened alongside real source changes still fails verification
+        under the default (fail) policy -- no FSM state involved."""
+        from little_loops.config import BRConfig
+
+        repo = self._repo_with_committed_test(tmp_path)
+        (repo / "src.py").write_text("def add(a, b):\n    return a + b\n")
+        (repo / "tests" / "test_x.py").write_text("def test_x():\n    pass  # assert 1 == 1\n")
+
+        config = BRConfig(repo)
+        result = verify_work_was_done(
+            mock_logger, changed_files=["src.py", "tests/test_x.py"], config=config
+        )
+
+        assert result is False
+
+    def test_allow_policy_does_not_trip(self, mock_logger: MagicMock, tmp_path: Path) -> None:
+        """The 'allow' policy never fails verification, even with findings."""
+        from little_loops.config import BRConfig
+
+        repo = self._repo_with_committed_test(tmp_path)
+        (repo / "src.py").write_text("def add(a, b):\n    return a + b\n")
+        (repo / "tests" / "test_x.py").write_text("def test_x():\n    pass  # assert 1 == 1\n")
+
+        config = BRConfig(repo)
+        config._tamper_guard.policy = "allow"
+        result = verify_work_was_done(
+            mock_logger, changed_files=["src.py", "tests/test_x.py"], config=config
+        )
+
+        assert result is True
+
+    def test_no_config_skips_guard(self, mock_logger: MagicMock, tmp_path: Path) -> None:
+        """Without a config, the pre-ENH-2935 behavior is unchanged: no guard runs."""
+        repo = self._repo_with_committed_test(tmp_path)
+        (repo / "tests" / "test_x.py").write_text("def test_x():\n    pass  # assert 1 == 1\n")
+
+        result = verify_work_was_done(
+            mock_logger, changed_files=["tests/test_x.py"], config=None
+        )
+
+        assert result is True
+
+    def test_untampered_source_change_passes(
+        self, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """A normal source-only change with untouched tests passes the guard."""
+        from little_loops.config import BRConfig
+
+        repo = self._repo_with_committed_test(tmp_path)
+        (repo / "src.py").write_text("def add(a, b):\n    return a + b\n")
+
+        config = BRConfig(repo)
+        result = verify_work_was_done(mock_logger, changed_files=["src.py"], config=config)
+
+        assert result is True

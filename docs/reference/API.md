@@ -136,6 +136,7 @@ BRConfig(project_root: Path)
 | `sync` | `SyncConfig` | GitHub Issues sync settings |
 | `dependency_mapping` | `DependencyMappingConfig` | Overlap detection thresholds |
 | `code_query` | `CodeQueryConfig` | Code-query provider selection, codegraph db path, and staleness policy (inert until a provider consumes it, see [CONFIGURATION.md#code_query](CONFIGURATION.md#code_query)) |
+| `tamper_guard` | `TamperGuardConfig` | Non-FSM tamper guard default policy (ENH-2935), consumed by `work_verification.verify_work_was_done()`, see [CONFIGURATION.md#tamper_guard](CONFIGURATION.md#tamper_guard) |
 | `refine_status` | `RefineStatusConfig` | refine-status display settings |
 | `cli` | `CliConfig` | CLI output settings (color toggle and color overrides) |
 | `design_tokens` | `DesignTokensConfig` | Design system token settings |
@@ -2335,24 +2336,37 @@ def verify_work_was_done(
     logger: Logger,
     changed_files: list[str] | None = None,
     baseline_sha: str | None = None,
+    config: BRConfig | None = None,
+    repo_root: Path | None = None,
 ) -> bool
 ```
 
 Verify that actual work was done (not just issue file moves).
 
-Prevents marking issues as "completed" when no actual fix was implemented. Returns `True` if there are file changes outside of excluded directories.
+Prevents marking issues as "completed" when no actual fix was implemented. Returns `True` if there are file changes outside of excluded directories and the tamper guard did not fail them.
 
 Detection runs in three modes (first match wins):
 1. **Pre-computed list** (`changed_files` provided) — used by `ll-parallel` via `worker_pool.py`
 2. **Uncommitted/staged** — `git diff --name-only` + `git diff --cached --name-only`
 3. **Commit-range** (`baseline_sha` provided and HEAD has moved) — `git diff --name-only <baseline_sha>..HEAD` — covers the common case where the agent commits mid-phase and exits with a clean working tree
 
+When meaningful changes are found and `config` is supplied, the tamper guard (ENH-2933,
+`little_loops.test_tamper_guard.run_tamper_guard`) also runs against the changed-file set
+(ENH-2935) — the non-FSM counterpart to the FSM's `tamper_guard:` state key (ENH-2934). Unlike
+the FSM adapter, this path has no live pre-step snapshot (verification runs once, after the
+whole run already happened), so "before" is reconstructed from git history
+(`snapshot_test_paths_at_ref`) using *baseline_sha* (or `HEAD` when unset) as the reference
+point. The guard is skipped entirely when `config` is omitted, preserving pre-ENH-2935
+behavior for callers with no project config in scope.
+
 **Parameters:**
 - `logger` - Logger for output
 - `changed_files` - Optional pre-computed file list. If `None`, detects via `git diff` and `git diff --cached`
-- `baseline_sha` - Optional git SHA captured before Phase 2 began. When provided and HEAD has advanced beyond this SHA, checks for non-excluded files committed in the range; enables detection of mid-phase commits in `ll-auto`
+- `baseline_sha` - Optional git SHA captured before Phase 2 began. When provided and HEAD has advanced beyond this SHA, checks for non-excluded files committed in the range; enables detection of mid-phase commits in `ll-auto`. Also used as the tamper guard's "before" git reference when `config` is supplied.
+- `config` - Optional `BRConfig` used to resolve the tamper guard's default policy (`tamper_guard.policy`, default `"fail"`) and test-file patterns. Both `ll-auto` (`issue_manager.py`) and `ll-parallel`/`ll-sprint` (`worker_pool.py`) always have one in scope and pass it through.
+- `repo_root` - Optional repo root the tamper guard runs against; defaults to `config.project_root` when `config` is given.
 
-**Returns:** `True` if meaningful file changes were detected
+**Returns:** `True` if meaningful file changes were detected and the tamper guard did not fail them
 
 **Example:**
 

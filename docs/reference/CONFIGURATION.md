@@ -1026,6 +1026,20 @@ Code-query provider selection, codegraph db path, and staleness policy, consumed
 | `codegraph.auto_sync` | `true` | Auto-run `codegraph sync --quiet` when the index is stale (ENH-2863). No-op if the `codegraph` binary isn't on `PATH`; never raises on failure/timeout. |
 | `staleness` | `"warn"` | How to treat a stale codegraph database relative to source changes. One of `strict`, `warn`, `off`. |
 
+### `tamper_guard`
+
+Default tamper-guard policy for the non-FSM verification path (`ll-auto`/`ll-parallel`/
+`ll-sprint`, via `work_verification.py`'s `verify_work_was_done()`, ENH-2935). It supplies
+the default that both orchestrators use to resolve `run_tamper_guard`'s (ENH-2933) policy
+when weakened/deleted test files are detected in the changed-file set. This key is separate
+from the FSM `tamper_guard:` state key (ENH-2934, see the
+[Loops Guide](../guides/LOOPS_GUIDE.md) "Tamper Guard" section) — it never overrides an
+explicit state-level `tamper_guard:` key.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `policy` | `"fail"` | Action taken when a test file (or pytest config file) is modified/deleted since the run began. One of `revert` (restore tracked files via `git checkout --`), `fail` (verification fails), `allow` (no-op, findings recorded but ignored). |
+
 ### `issues.next_issue`
 
 Selection behavior for `ll-issues next-issue` / `next-issues`. Picks which issue (or ranked list) the commands return. The default `confidence_first` preset is byte-identical to the legacy hardcoded ordering; the default *dependency filter* (ENH-2436) now skips issues with unresolved blockers unless `--include-blocked` is passed. See the [CLI reference](./API.md#next-issue) for the flag.

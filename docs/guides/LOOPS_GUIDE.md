@@ -692,6 +692,13 @@ The snapshot is taken at *this guarded state's own entry*, never at run start �
 
 `ll-loop validate` warns on an unrecognized `tamper_guard` value (anything outside `revert`/`fail`/`allow`) at either the loop or state level — suppress with `tamper_guard_ok: true` at the loop top-level.
 
+This `tamper_guard:` key is FSM-only. `ll-auto`, `ll-parallel`, and `ll-sprint` verify
+completed work in plain Python (`work_verification.py`), never entering the FSM, so this key
+never applies to them. That non-FSM path has its own guard hook (ENH-2935) driven by the
+[`tamper_guard.policy` project config key](./CONFIGURATION.md#tamper_guard) instead — the two
+are independent; the project config key never overrides an explicit state-level `tamper_guard:`
+key here.
+
 ### Handoff Behavior
 
 When a loop detects that Claude's context window is approaching its limit, it triggers a **handoff**. Set `on_handoff` at the loop level (not per state):

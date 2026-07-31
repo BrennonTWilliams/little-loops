@@ -1313,6 +1313,19 @@
       },
       "additionalProperties": false
     },
+    "tamper_guard": {
+      "type": "object",
+      "description": "Non-FSM tamper guard default policy for ll-auto/ll-parallel/ll-sprint verification (ENH-2935). Supplies the default for work_verification.py's verify_work_was_done() and the FSM adapter's (ENH-2934) loop-level fallback; never overrides an explicit state-level tamper_guard: key",
+      "properties": {
+        "policy": {
+          "type": "string",
+          "enum": ["revert", "fail", "allow"],
+          "description": "Default tamper-guard policy applied when no more specific override applies",
+          "default": "fail"
+        }
+      },
+      "additionalProperties": false
+    },
     "cli": {
       "type": "object",
       "description": "CLI output settings",

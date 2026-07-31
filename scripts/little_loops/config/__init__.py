@@ -73,6 +73,7 @@ from little_loops.config.features import (
     SprintsConfig,
     StreamingParityConfig,
     SyncConfig,
+    TamperGuardConfig,
     WebhookEventsConfig,
 )
 from little_loops.config.orchestration import (
@@ -143,4 +144,5 @@ __all__ = [
     "HistoryConfig",
     "PreCompactRubricConfig",
     "SessionDigestConfig",
+    "TamperGuardConfig",
 ]

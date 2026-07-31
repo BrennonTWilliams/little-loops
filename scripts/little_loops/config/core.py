@@ -39,6 +39,7 @@ from little_loops.config.features import (
     ScanConfig,
     SprintsConfig,
     SyncConfig,
+    TamperGuardConfig,
 )
 from little_loops.config.orchestration import OrchestrationConfig
 from little_loops.env_file import load_env_fallback
@@ -285,6 +286,9 @@ class BRConfig:
         )
         self._history = HistoryConfig.from_dict(self._raw_config.get("history", {}))
         self._queue = QueueConfig.from_dict(self._raw_config.get("queue", {}))
+        self._tamper_guard = TamperGuardConfig.from_dict(
+            self._raw_config.get("tamper_guard", {})
+        )
 
     @property
     def project(self) -> ProjectConfig:
@@ -375,6 +379,11 @@ class BRConfig:
     def refine_status(self) -> RefineStatusConfig:
         """Get refine-status display configuration."""
         return self._refine_status
+
+    @property
+    def tamper_guard(self) -> TamperGuardConfig:
+        """Get non-FSM tamper guard default-policy configuration (ENH-2935)."""
+        return self._tamper_guard
 
     @property
     def events(self) -> EventsConfig:
@@ -870,6 +879,9 @@ class BRConfig:
                     "auto_sync": self._code_query.codegraph.auto_sync,
                 },
                 "staleness": self._code_query.staleness,
+            },
+            "tamper_guard": {
+                "policy": self._tamper_guard.policy,
             },
             "cli": {
                 "color": self._cli.color,

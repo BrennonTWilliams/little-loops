@@ -30,6 +30,9 @@ from little_loops.test_tamper_guard import (
     resolved_pytest_config_paths,
     run_tamper_guard,
     snapshot_test_paths,
+    snapshot_test_paths_at_ref,
+    tamper_guard_candidate_paths,
+    tamper_guard_changed_files,
 )
 from tests.helpers import copy_git_template
 
@@ -147,6 +150,83 @@ class TestResolvedPytestConfigPaths:
 
     def test_no_config_files_returns_empty(self, tmp_path: Path) -> None:
         assert resolved_pytest_config_paths(tmp_path) == []
+
+
+class TestSnapshotTestPathsAtRef:
+    """ENH-2935: reconstructing "before" from git history for the non-FSM path."""
+
+    def test_hashes_content_at_ref(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "test_x.py").write_text("def test_x(): assert True\n")
+        _git(repo, "add", "test_x.py")
+        _git(repo, "commit", "-m", "add test")
+
+        (repo / "test_x.py").write_text("def test_x(): pass\n")
+
+        at_head = snapshot_test_paths_at_ref(repo, "HEAD", ["test_x.py"])
+        on_disk = snapshot_test_paths(["test_x.py"], repo)
+        assert at_head["test_x.py"] != on_disk["test_x.py"]
+
+    def test_path_absent_at_ref_maps_to_none(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "README.md").write_text("hi\n")
+        _git(repo, "add", "README.md")
+        _git(repo, "commit", "-m", "init")
+
+        snap = snapshot_test_paths_at_ref(repo, "HEAD", ["test_new.py"])
+        assert snap["test_new.py"] is None
+
+
+class TestTamperGuardCandidatePaths:
+    """ENH-2935: shared enumeration used by both the FSM and non-FSM adapters."""
+
+    def test_finds_tracked_test_files(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "tests").mkdir()
+        (repo / "tests" / "test_x.py").write_text("def test_x(): assert True\n")
+        (repo / "README.md").write_text("hi\n")
+        _git(repo, "add", "tests/test_x.py", "README.md")
+        _git(repo, "commit", "-m", "init")
+
+        paths = tamper_guard_candidate_paths(repo)
+        assert "tests/test_x.py" in paths
+        assert "README.md" not in paths
+
+    def test_includes_untracked_test_files(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "README.md").write_text("hi\n")
+        _git(repo, "add", "README.md")
+        _git(repo, "commit", "-m", "init")
+        (repo / "tests").mkdir()
+        (repo / "tests" / "test_new.py").write_text("def test_new(): assert True\n")
+
+        paths = tamper_guard_candidate_paths(repo)
+        assert "tests/test_new.py" in paths
+
+
+class TestTamperGuardChangedFiles:
+    """ENH-2935: shared changed-files enumeration used by both adapters."""
+
+    def test_detects_modified_and_untracked(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "test_x.py").write_text("def test_x(): assert True\n")
+        _git(repo, "add", "test_x.py")
+        _git(repo, "commit", "-m", "add test")
+
+        (repo / "test_x.py").write_text("def test_x(): pass\n")
+        (repo / "test_new.py").write_text("def test_new(): assert True\n")
+
+        changed = tamper_guard_changed_files(repo)
+        assert "test_x.py" in changed
+        assert "test_new.py" in changed
+
+    def test_no_changes_returns_empty(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "README.md").write_text("hi\n")
+        _git(repo, "add", "README.md")
+        _git(repo, "commit", "-m", "init")
+
+        assert tamper_guard_changed_files(repo) == []
 
 
 class TestApplyTamperPolicy:

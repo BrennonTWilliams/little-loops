@@ -1069,7 +1069,7 @@ def process_issue_inplace(
                     # evidence-of-work path so completed-but-unfinalized work is not
                     # silently parked. verify_work_was_done excludes thoughts/, so the
                     # plan file itself never counts as work (BUG-280 invariant preserved).
-                    if not verify_work_was_done(logger, baseline_sha=_baseline_sha):
+                    if not verify_work_was_done(logger, baseline_sha=_baseline_sha, config=config):
                         logger.info(
                             f"Plan created at {plan_path}, awaiting approval - "
                             "issue will remain incomplete until plan is approved and implemented"
@@ -1106,7 +1106,9 @@ def process_issue_inplace(
                         logger.warning(f"Content marker completion failed for {info.issue_id}")
                 else:
                     # CRITICAL: Verify actual implementation work was done
-                    work_done = verify_work_was_done(logger, baseline_sha=_baseline_sha)
+                    work_done = verify_work_was_done(
+                        logger, baseline_sha=_baseline_sha, config=config
+                    )
                     if work_done:
                         logger.info("Evidence of code changes found - completing lifecycle...")
                         verified = complete_issue_lifecycle(

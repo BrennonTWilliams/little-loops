@@ -849,6 +849,18 @@ class CodeQueryConfig:
 
 
 @dataclass
+class TamperGuardConfig:
+    """Non-FSM tamper guard default policy (ENH-2935)."""
+
+    policy: str = "fail"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> TamperGuardConfig:
+        """Create TamperGuardConfig from dictionary."""
+        return cls(policy=data.get("policy", "fail"))
+
+
+@dataclass
 class SocketEventsConfig:
     """UnixSocketTransport configuration."""
 

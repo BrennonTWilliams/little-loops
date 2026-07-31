@@ -594,7 +594,7 @@ class WorkerPool:
             # Pass full filename for better doc-only keyword matching
             issue_filename = issue.path.stem if issue.path else ""
             work_verified, verification_error = self._verify_work_was_done(
-                changed_files, issue.issue_id, issue_filename
+                changed_files, issue.issue_id, issue_filename, worktree_path
             )
 
             if manage_result.returncode != 0:
@@ -1210,7 +1210,11 @@ class WorkerPool:
         return True, ""
 
     def _verify_work_was_done(
-        self, changed_files: list[str], issue_id: str, issue_filename: str = ""
+        self,
+        changed_files: list[str],
+        issue_id: str,
+        issue_filename: str = "",
+        worktree_path: Path | None = None,
     ) -> tuple[bool, str]:
         """Verify that actual implementation work was done.
 
@@ -1221,6 +1225,8 @@ class WorkerPool:
             changed_files: List of files changed during processing
             issue_id: The issue ID being processed (unused, kept for compatibility)
             issue_filename: Full issue filename (unused, kept for compatibility)
+            worktree_path: Worktree the tamper guard (ENH-2933/ENH-2935) runs
+                against; defaults to cwd when omitted.
 
         Returns:
             Tuple of (success, error_message)
@@ -1233,7 +1239,9 @@ class WorkerPool:
             return True, ""
 
         # Use shared verification function
-        if verify_work_was_done(self.logger, changed_files):
+        if verify_work_was_done(
+            self.logger, changed_files, config=self.br_config, repo_root=worktree_path
+        ):
             return True, ""
 
         # Generate descriptive error with actual excluded files

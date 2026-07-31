@@ -1349,6 +1349,29 @@ class TestWorkerPoolHelpers:
 
         assert success is True
 
+    def test_verify_work_was_done_tamper_guard_trips(
+        self, worker_pool: WorkerPool, tmp_path: Path
+    ) -> None:
+        """ENH-2935: a weakened test in the worktree trips the shared tamper
+        guard the same way it does for `ll-auto`, via one shared hook."""
+        from tests.helpers import copy_git_template
+
+        worktree = tmp_path / "worktree"
+        copy_git_template(worktree)
+        (worktree / "tests").mkdir()
+        (worktree / "tests" / "test_x.py").write_text("def test_x():\n    assert 1 == 1\n")
+        subprocess.run(["git", "add", "tests/test_x.py"], cwd=worktree, check=True)
+        subprocess.run(["git", "commit", "-m", "add test"], cwd=worktree, check=True)
+
+        (worktree / "src.py").write_text("def add(a, b):\n    return a + b\n")
+        (worktree / "tests" / "test_x.py").write_text("def test_x():\n    pass  # weakened\n")
+
+        success, error = worker_pool._verify_work_was_done(
+            ["src.py", "tests/test_x.py"], "BUG-001", worktree_path=worktree
+        )
+
+        assert success is False
+
     def test_get_main_repo_baseline(
         self,
         worker_pool: WorkerPool,

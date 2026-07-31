@@ -2847,7 +2847,72 @@ class TestFallbackVerification:
                                             sample_issue, mock_config, mock_logger
                                         )
 
-        mock_verify.assert_called_once_with(mock_logger, baseline_sha=test_sha)
+        mock_verify.assert_called_once_with(
+            mock_logger, baseline_sha=test_sha, config=mock_config
+        )
+
+    def test_tamper_guard_trips_end_to_end_no_fsm_involved(
+        self,
+        mock_config: BRConfig,
+        sample_issue: IssueInfo,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """ENH-2935: an ll-auto run whose agent weakened a test trips the
+        shared tamper guard with no FSM state involved. Exercises the real
+        verify_work_was_done() -> run_tamper_guard() call chain (not a
+        wholesale verify_work_was_done stub) against a real git repo, per
+        this issue's own test-authoring requirement."""
+        import subprocess
+
+        from little_loops.config import BRConfig as RealBRConfig
+        from little_loops.issue_manager import process_issue_inplace
+        from tests.helpers import copy_git_template
+
+        repo = tmp_path / "repo"
+        copy_git_template(repo)
+        (repo / "tests").mkdir()
+        (repo / "tests" / "test_x.py").write_text("def test_x():\n    assert 1 == 1\n")
+        subprocess.run(["git", "add", "tests/test_x.py"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-m", "add test"], cwd=repo, check=True)
+
+        # Weaken the test in place, uncommitted -- the state an agent would
+        # leave behind after "implementing" by gutting the assertion.
+        (repo / "tests" / "test_x.py").write_text("def test_x():\n    pass  # weakened\n")
+
+        real_config = RealBRConfig(repo)
+
+        mock_logger = MagicMock()
+
+        ready_result = MagicMock()
+        ready_result.returncode = 0
+        ready_result.stdout = f"## VERDICT\nREADY\n\n## VALIDATED_FILE\n{sample_issue.path}"
+
+        impl_result = MagicMock()
+        impl_result.returncode = 0
+        impl_result.stdout = "Implementation successful"
+        impl_result.stderr = ""
+
+        monkeypatch.chdir(repo)
+
+        with patch("little_loops.issue_manager.run_claude_command", return_value=ready_result):
+            with patch(
+                "little_loops.issue_manager.run_with_continuation", return_value=impl_result
+            ):
+                with patch("little_loops.issue_manager.verify_issue_completed", return_value=False):
+                    with patch(
+                        "little_loops.issue_manager.detect_plan_creation", return_value=None
+                    ):
+                        with patch(
+                            "little_loops.issue_manager.check_content_markers",
+                            return_value=False,
+                        ):
+                            result = process_issue_inplace(
+                                sample_issue, real_config, mock_logger
+                            )
+
+        assert not result.success
+        mock_logger.error.assert_called()
 
     def test_plan_present_but_uncommitted_work_routes_to_evidence_path(
         self, mock_config: BRConfig, sample_issue: IssueInfo

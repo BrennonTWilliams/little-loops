@@ -61,6 +61,7 @@ from little_loops.config import (
     SocketEventsConfig,
     SprintsConfig,
     SyncConfig,
+    TamperGuardConfig,
     WebhookEventsConfig,
 )
 
@@ -2428,6 +2429,41 @@ class TestCodeQueryConfig:
         config = BRConfig(temp_project_dir)
         assert config.resolve_variable("code_query.provider") == "auto"
         assert config.resolve_variable("code_query.staleness") == "warn"
+
+
+class TestTamperGuardConfig:
+    """Tests for TamperGuardConfig dataclass (ENH-2935)."""
+
+    def test_from_dict_with_defaults(self) -> None:
+        config = TamperGuardConfig.from_dict({})
+        assert config.policy == "fail"
+
+    def test_from_dict_with_all_fields(self) -> None:
+        config = TamperGuardConfig.from_dict({"policy": "revert"})
+        assert config.policy == "revert"
+
+    def test_brconfig_defaults(self, temp_project_dir: Path) -> None:
+        config = BRConfig(temp_project_dir)
+        assert config.tamper_guard.policy == "fail"
+
+    def test_brconfig_loads_from_file(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        sample_config["tamper_guard"] = {"policy": "allow"}
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        assert config.tamper_guard.policy == "allow"
+
+    def test_tamper_guard_in_to_dict(self, temp_project_dir: Path) -> None:
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+        assert result["tamper_guard"] == {"policy": "fail"}
+
+    def test_resolve_variable_tamper_guard(self, temp_project_dir: Path) -> None:
+        config = BRConfig(temp_project_dir)
+        assert config.resolve_variable("tamper_guard.policy") == "fail"
 
 
 class TestCliColorsLoggerConfig:

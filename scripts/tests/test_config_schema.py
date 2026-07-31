@@ -356,6 +356,22 @@ class TestConfigSchema:
             "project.health_url must default to null"
         )
 
+    def test_tamper_guard_in_schema(self) -> None:
+        """ENH-2935: tamper_guard.policy must be declared in config-schema.json.
+
+        Supplies the default policy for the non-FSM verification path
+        (work_verification.py) and, per the issue's Program Design, the FSM
+        adapter's (ENH-2934) loop-level fallback -- but never overrides an
+        explicit state-level tamper_guard: key.
+        """
+        data = json.loads(_load_schema_text())
+        assert "tamper_guard" in data["properties"]
+        tamper_guard = data["properties"]["tamper_guard"]
+        assert tamper_guard["additionalProperties"] is False
+        policy_prop = tamper_guard["properties"]["policy"]
+        assert policy_prop["enum"] == ["revert", "fail", "allow"]
+        assert policy_prop["default"] == "fail"
+
     def test_project_test_patterns_in_schema(self) -> None:
         """ENH-2865: project.test_patterns must be declared in config-schema.json.
 

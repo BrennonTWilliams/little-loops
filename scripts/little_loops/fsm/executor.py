@@ -1314,65 +1314,24 @@ class FSMExecutor:
     def _tamper_guard_candidate_paths(self, repo_root: Path) -> list[str]:
         """Return the test-file + pytest-config paths to snapshot for the tamper guard.
 
-        Enumerates tracked + untracked (non-ignored) repo files via git and
-        narrows to test files (``test_file_patterns.filter_test_files``) plus
-        the pytest config file(s) this repo actually reads
-        (``resolved_pytest_config_paths``). Falls back to just the config
-        paths if the git call fails (still lets the config-file half of the
-        guard function).
+        Delegates to the shared enumeration in ``test_tamper_guard`` (ENH-2935)
+        so this adapter and the non-FSM ``work_verification`` hook share one
+        implementation.
         """
-        from little_loops.config import BRConfig
-        from little_loops.test_file_patterns import filter_test_files
-        from little_loops.test_tamper_guard import resolved_pytest_config_paths
+        from little_loops.test_tamper_guard import tamper_guard_candidate_paths
 
-        config_paths = resolved_pytest_config_paths(repo_root)
-        try:
-            proc = subprocess.run(
-                ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
-                cwd=str(repo_root),
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            return sorted(set(config_paths))
-        if proc.returncode != 0:
-            return sorted(set(config_paths))
-        all_paths = [line for line in proc.stdout.splitlines() if line]
-        config = BRConfig(repo_root)
-        return sorted(set(filter_test_files(all_paths, config=config)) | set(config_paths))
+        return tamper_guard_candidate_paths(repo_root)
 
     def _tamper_guard_changed_files(self, repo_root: Path) -> list[str]:
         """Return repo-relative paths touched since the guard's entry snapshot.
 
-        Unions unstaged+staged modifications against HEAD with untracked
-        (non-ignored) files, so a newly-added test file is visible to
-        ``run_tamper_guard`` even though it couldn't have been in the
-        entry snapshot.
+        Delegates to the shared enumeration in ``test_tamper_guard`` (ENH-2935)
+        so this adapter and the non-FSM ``work_verification`` hook share one
+        implementation.
         """
-        try:
-            diff_proc = subprocess.run(
-                ["git", "diff", "--name-only", "HEAD"],
-                cwd=str(repo_root),
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            untracked_proc = subprocess.run(
-                ["git", "ls-files", "--others", "--exclude-standard"],
-                cwd=str(repo_root),
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            return []
-        changed: set[str] = set()
-        if diff_proc.returncode == 0:
-            changed.update(line for line in diff_proc.stdout.splitlines() if line)
-        if untracked_proc.returncode == 0:
-            changed.update(line for line in untracked_proc.stdout.splitlines() if line)
-        return sorted(changed)
+        from little_loops.test_tamper_guard import tamper_guard_changed_files
+
+        return tamper_guard_changed_files(repo_root)
 
     def _execute_state(self, state: StateConfig) -> str | None:
         """Execute a single state and return next state name.
