@@ -157,6 +157,64 @@ class TestCheckDecidableWidenedOptions:
         assert "OPTIONS_MISSING" in result.stderr
 
 
+class TestCheckDecidablePatternEDirective:
+    """Un-preferenced decision directive shape (ENH-2936): an imperative decide-marker
+    co-occurring with 2+ named alternatives and no stated preference is decidable."""
+
+    def test_scope_boundaries_directive_exit_zero(self, temp_project_dir: Path) -> None:
+        body = (
+            "---\n"
+            "id: FEAT-9104\n"
+            "title: Test\n"
+            "type: feature\n"
+            "status: open\n"
+            "priority: P3\n"
+            "decision_needed: true\n"
+            "---\n\n"
+            "# FEAT-9104\n\n"
+            "## Summary\n\nTest.\n\n"
+            "## Proposed Solution\n\nNo options here.\n\n"
+            "## Scope Boundaries\n\n"
+            "- stamp it or move it to Out of scope with a stated reason — do not "
+            "leave it unaddressed\n\n"
+            "## Labels\n\n`feature`\n\n"
+        )
+        _write_issue(temp_project_dir, body)
+        result = _invoke(temp_project_dir, "check-decidable", "FEAT-9104")
+        assert result.returncode == 0, (
+            f"Un-preferenced decision directive must be decidable, got "
+            f"{result.returncode}: stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+        assert "Scope Boundaries" in result.stdout
+
+    def test_bare_or_prose_without_imperative_marker_exit_one(
+        self, temp_project_dir: Path
+    ) -> None:
+        """Guardrail: bare 'X or Y' prose with no imperative decide-marker must NOT
+        be treated as decidable — that is the settled-informal-list case automation
+        must not re-litigate."""
+        body = (
+            "---\n"
+            "id: FEAT-9105\n"
+            "title: Test\n"
+            "type: feature\n"
+            "status: open\n"
+            "priority: P3\n"
+            "decision_needed: true\n"
+            "---\n\n"
+            "# FEAT-9105\n\n"
+            "## Summary\n\nTest.\n\n"
+            "## Proposed Solution\n\nNo options here.\n\n"
+            "## Scope Boundaries\n\n"
+            "- stamp it or move it to Out of scope with a stated reason\n\n"
+            "## Labels\n\n`feature`\n\n"
+        )
+        _write_issue(temp_project_dir, body)
+        result = _invoke(temp_project_dir, "check-decidable", "FEAT-9105")
+        assert result.returncode == 1
+        assert "OPTIONS_MISSING" in result.stderr
+
+
 class TestCheckDecidableErrorHandling:
     """The probe handles missing issues gracefully (exit 1 with error token)."""
 

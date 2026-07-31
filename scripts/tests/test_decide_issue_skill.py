@@ -633,3 +633,61 @@ class TestPhase3bMaterializeInformalDecisions:
             "Phase 3b must preserve the original lock-in-only path for cases where "
             "alternatives are already structured or no reformattable shape was found"
         )
+
+
+class TestPattern3bDirectiveAlternatives:
+    """Phase 3b must document Provisional Pattern E — un-preferenced decision
+    directive (ENH-2936): 2+ named alternatives co-occurring with an imperative
+    decide-marker but no stated preference, routed to Phase 4 scoring."""
+
+    def _phase_text(self) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index("## Phase 3b: Inline Decision Scan")
+        next_heading = content.find("\n## Phase 4:", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_pattern_e_documented(self) -> None:
+        assert "Pattern E" in self._phase_text(), (
+            "Phase 3b must document Provisional Pattern E (un-preferenced decision directive)"
+        )
+
+    def test_imperative_marker_described(self) -> None:
+        text = self._phase_text().lower()
+        assert "imperative decide-marker" in text or "imperative" in text, (
+            "Pattern E must describe the imperative decide-marker requirement"
+        )
+
+    def test_no_preference_requirement_described(self) -> None:
+        normalized = " ".join(self._phase_text().split())
+        assert "NO stated preference" in normalized, (
+            "Pattern E must require the passage to state no preference"
+        )
+
+    def test_bare_or_prose_guardrail_documented(self) -> None:
+        normalized = " ".join(self._phase_text().split())
+        assert "Bare" in normalized and "explicitly NOT Pattern E" in normalized, (
+            "Pattern E must document that bare 'X or Y' prose without an imperative "
+            "marker is explicitly excluded (the settled-informal-list guardrail)"
+        )
+
+    def test_scan_scope_narrower_than_patterns_a_d(self) -> None:
+        text = self._phase_text()
+        assert "Scope Boundaries" in text, (
+            "Pattern E's scan scope must include ## Scope Boundaries, where ENH-2866's "
+            "directive lived"
+        )
+
+    def test_pattern_e_routes_to_materialize_and_score(self) -> None:
+        text = self._phase_text()
+        assert "Pattern E match" in text, (
+            "Resolution Logic must classify Pattern E matches and route them through "
+            "the materialize-and-score path (steps 1-2), skipping the clear-winner/"
+            "ambiguous classification"
+        )
+
+    def test_pattern_d_cross_references_pattern_e(self) -> None:
+        text = self._phase_text()
+        assert "Pattern E" in text.split("Provisional Pattern D")[1].split(
+            "Provisional Pattern E"
+        )[0], "Pattern D's Requirement note must cross-reference Pattern E for the no-preference case"

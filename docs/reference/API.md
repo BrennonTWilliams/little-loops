@@ -908,7 +908,14 @@ the FSM-facing companion to `/ll:decide-issue --validate-only`, mirroring how
 tier (in precedence order: `### Option X` headers, `**Option X**` bold labels, numbered
 `N. **Option`/`...approach` items, `- (x)`/`- Option X` bullets) that has any; widens to
 `## Codebase Research Findings` / `## Implementation Status` when `## Proposed Solution`
-yields 0, mirroring Phase 3's own widening.
+yields 0, mirroring Phase 3's own widening; then to a whole-document H2 scan (ENH-2821);
+then, as a final tier, to the Pattern E "un-preferenced decision directive" heuristic
+(`_locate_directive_alternatives`, ENH-2936) — an imperative decide-marker ("decide before
+implementation", "do not leave unaddressed", "must be decided", "pick one") co-occurring
+within 3 lines of a 2+-alternative "X or Y" shape, with no stated preference, scanned over
+`## Scope Boundaries` / `## Proposed Change` / `## Proposed Solution` / `## Open Questions`.
+A Pattern E match always reports count 2 — it only proves a decision exists, not how many
+alternatives.
 
 **Parameters:**
 - `content` - Full issue file text
@@ -3905,6 +3912,11 @@ Lists `status: deferred` issues with `deferred_by: automation` — the discrimin
 `mark_gate_blocked`, `record_decision_unresolved`, `recheck_after_size_review`,
 `regate_after_atomic_remediation` (BUG-2734) — added by ENH-2666 to align autodev's not-ready
 handling to the same model) — showing `deferred_reason` and age-since-`deferred_date`.
+`recheck_after_size_review` writes `decision_unresolved` itself (ENH-2936, not just
+`design_gate_failed`/`readiness_stagnated`/`low_readiness`) when its own re-check of
+`decision_needed` on the score-failing path finds the flag still armed — a fourth
+`decision_unresolved` source alongside `assert_decision_cleared` and
+`check_decision_after_decide_error`.
 `deferred_by: human` (or absent) issues are excluded.
 `remediation_stalled` entries rank above `blocked_by_unmet`, above `gate_blocked`, above
 `decision_unresolved`, above `oversized_atomic` (BUG-2734: readiness passed but a Very Large,

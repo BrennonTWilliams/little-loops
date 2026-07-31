@@ -256,19 +256,34 @@ Requirement: the referent must exist as a Pattern-4 bullet option in `## Propose
 concrete alternatives named inline in an unresolved `## Open Questions` item (ENH-2715) — e.g.
 "could do X or Y" with a stated preference; no pre-existing bullet is required for this shape,
 since the alternatives are materialized as structured options in Resolution Logic step 1 below.
-A marker (or an Open-Questions item naming a preference among 2+ alternatives) with a
-resolvable referent is a **clear winner** — treat as decided.
+A marker (or an Open-Questions item naming a preference) with a resolvable referent is a
+**clear winner** — treat as decided. Same shape, **no** stated preference → Pattern E below.
 ```
+
+### Provisional Pattern E — Un-preferenced decision directive (ENH-2936)
+```
+Match: 2+ concrete alternatives ("X or Y", enumerated alternatives) named within ~3 lines of an
+imperative decide-marker ("decide before implementation", "do not leave (it/this) unaddressed",
+"must be decided", "decision needed/required before", "pick one") — but with NO stated
+preference (no Pattern-D-style recommendation marker naming one of them as the winner). Bare
+"X or Y" prose with no imperative marker is explicitly NOT Pattern E (the settled-informal-list
+case Phase 3's auto-mode conservatism already protects against).
+Scan scope (narrower than Patterns A–D): `## Scope Boundaries`, `## Proposed Change` /
+`## Proposed Solution`, and unresolved `## Open Questions` items.
+Candidate: the alternatives named in the matched passage, verbatim.
+```
+See [reference.md](reference.md) for the full match rationale and worked example.
 
 For each provisional pattern match, read 3–5 lines of surrounding context to determine if one approach is clearly stated (not merely listed as a possibility).
 
 ### Resolution Logic
 
 Classify each match as:
+- **Pattern E match**: route directly to steps 1–2 below — no preference to classify.
 - **Clear winner**: the provisional wrapper names exactly one concrete approach and surrounding context treats it as the intended design.
 - **Ambiguous**: multiple alternatives listed, no single preference expressed.
 
-**If exactly one clear winner is found:**
+**If a Pattern E match is found, or exactly one clear winner is found:**
 
 1. **Materialize alternatives, if not already structured (ENH-2715)**: check whether the clear
    winner's named alternatives already exist as `### Option A`/`### Option B` (Pattern 1) or
@@ -285,8 +300,8 @@ Classify each match as:
 
    **Option B**: [second alternative, verbatim from the existing text]
    ```
-   If the alternatives were already structured as Pattern 1/2 blocks, this step is a no-op —
-   proceed directly to step 3.
+   If already structured, this step is a no-op: **clear winner** → step 3; **Pattern E match**
+   → step 2 (re-scan immediately finds `OPTIONS >= 2`).
 2. **Re-scan and route to full scoring (ENH-2715)**: after materializing, re-run the Phase 3
    extraction. If it now finds `OPTIONS >= 2` (the materialized blocks match Pattern 2): log
    `✓ Phase 3b: materialized informal decision as structured options — proceeding to Phase 4
@@ -467,16 +482,7 @@ options table, scoring table, decision, changes applied, dry-run preview, next s
 - **Before**: `/ll:refine-issue --auto` — deposits implementation options, sets `decision_needed: true`
 - **After**: `/ll:wire-issue` — traces callers and integration points for the now-selected implementation approach
 
-### When to Use vs. Related Commands
-
-| Skill | Purpose |
-|-------|---------|
-| `refine-issue` | Fills knowledge gaps; may deposit competing options |
-| `decide-issue` | Selects the best option from competing alternatives using codebase evidence |
-| `wire-issue` | Traces all wiring touchpoints for the selected implementation |
-| `confidence-check` | Evaluates implementation readiness score |
-
-`decide-issue` is specifically for the "refine-issue deposited multiple options but hasn't selected one" problem. It consumes `decision_needed: true` and produces a clear, annotated winner so the pipeline can continue.
+See [reference.md](reference.md) for the "When to Use vs. Related Commands" table.
 
 ### FSM callers
 

@@ -478,6 +478,49 @@ class TestRecheckAfterSizeReviewDesignGateBranch:
         assert design_fail_idx < gate_fail_write_idx < gate_pass_check_idx
 
 
+class TestRecheckAfterSizeReviewDecisionUnresolvedBranch:
+    """ENH-2936: the score-failing deferral cascade must re-check decision_needed
+    and defer as decision_unresolved instead of readiness_stagnated/low_readiness
+    when the flag is still armed (ENH-2866 postmortem)."""
+
+    def test_decision_branch_present(self) -> None:
+        action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
+        assert "DECISION_NEEDED" in action
+        assert '--reason decision_unresolved' in action
+        assert 'echo "$ID  decision_unresolved"' in action
+
+    def test_decision_branch_ordered_after_design_gate_before_stagnation(self) -> None:
+        """Required order: after resolved_by_subloop and the design-gate branch,
+        before the CYCLE_COUNT >= 2 readiness_stagnated backstop."""
+        action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
+        resolved_idx = action.index('echo "$ID  resolved_by_subloop"')
+        design_defer_idx = action.index('echo "$ID  design_gate_failed"')
+        decision_idx = action.index('echo "$ID  decision_unresolved"')
+        stagnated_idx = action.index('echo "$ID  readiness_stagnated"')
+        assert resolved_idx < design_defer_idx < decision_idx < stagnated_idx
+
+    def test_decision_branch_ordered_before_low_readiness(self) -> None:
+        """The new branch must sit entirely before the BUG-2803 pre-deferral-remedy
+        handshake and the low_readiness deferral it guards — never spliced between
+        the fired marker and its low_readiness write (that ordering is separately
+        covered by test_recheck_after_size_review_arms_remedy_before_low_readiness
+        in test_builtin_loops.py)."""
+        action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
+        decision_idx = action.index('echo "$ID  decision_unresolved"')
+        low_readiness_idx = action.index('echo "$ID  low_readiness"')
+        assert decision_idx < low_readiness_idx
+        assert action.index("autodev-pre-deferral-remedy-fired") < low_readiness_idx
+
+    def test_decision_branch_reads_decision_needed_from_existing_json_payload(self) -> None:
+        """No new subprocess call beyond the existing ll-issues show --json fetch
+        pattern already used for GATE/STATUS/CUR_CONFIDENCE."""
+        action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
+        decision_section = action[action.index("DECISION_NEEDED=") :]
+        branch = decision_section[: decision_section.index('echo "$ID  decision_unresolved"')]
+        assert "ll-issues show" in branch
+        assert "decision_needed" in branch
+
+
 class TestRegateAfterAtomicRemediationDesignGateBranch:
     """ENH-2870: a design-caused FAIL at regate_after_atomic_remediation must
     never be labelled oversized_atomic — it routes to the shared reconcile

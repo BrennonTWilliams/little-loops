@@ -1826,6 +1826,24 @@ states:
           ll-issues set-status "$ID" deferred --by automation --reason design_gate_failed 2>/dev/null || true
           exit 1
         fi
+        # ENH-2936: the score-failing deferral cascade never consulted
+        # decision_needed, so an issue whose decide-issue run correctly found
+        # nothing actionable (Pattern E's own bar included) fell through to
+        # readiness_stagnated/low_readiness — a truthful-sounding but wrong
+        # reason (ENH-2866 postmortem). Re-check the flag directly, mirroring
+        # assert_decision_cleared / check_decision_after_decide_error's idiom,
+        # before the stagnation/low-readiness branches below get a chance to
+        # mask it.
+        DECISION_NEEDED=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
+      import json, sys
+      d = json.load(sys.stdin)
+      print(str(d.get('decision_needed')).lower())" 2>/dev/null || echo "false")
+        if [ "$DECISION_NEEDED" = "true" ]; then
+          echo "$ID  decision_unresolved" >> ${context.run_dir}/autodev-skipped.txt
+          rm -f ${context.run_dir}/autodev-inflight
+          ll-issues set-status "$ID" deferred --by automation --reason decision_unresolved 2>/dev/null || true
+          exit 1
+        fi
         if [ "$CYCLE_COUNT" -ge 2 ] 2>/dev/null && [ -n "$PRE_READINESS" ] && [ "$CUR_CONFIDENCE" -le "$PRE_READINESS" ] 2>/dev/null; then
           echo "$ID  readiness_stagnated" >> ${context.run_dir}/autodev-skipped.txt
           rm -f ${context.run_dir}/autodev-inflight

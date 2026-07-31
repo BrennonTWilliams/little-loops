@@ -446,6 +446,84 @@ def _iter_h2_sections(content: str) -> list[tuple[str, int, int]]:
     return sections
 
 
+# ENH-2936: Pattern E — un-preferenced decision directive. Mirrors
+# skills/decide-issue/SKILL.md Phase 3b Provisional Pattern E: an issue can name 2+
+# concrete alternatives plus an imperative to decide ("stamp it or move it to Out
+# of scope — do not leave it unaddressed") without stating a preference. Pattern D
+# (declarative recommendation) requires a stated preference, so this shape falls
+# through every other tier — this heuristic closes that gap for the deterministic
+# probe (ll-issues check-decidable) the same way the LLM skill's Pattern E does.
+_DECIDE_IMPERATIVE_RE = re.compile(
+    r"\bdecide before implementation\b"
+    r"|\bdo not leave (?:it |this )?unaddressed\b"
+    r"|\bpick one\b"
+    r"|\bmust be decided\b"
+    r"|\bdecision (?:needed|required) before\b",
+    re.IGNORECASE,
+)
+
+# A stated preference disqualifies the passage from Pattern E — that shape is
+# already Pattern D's job (declarative recommendation with a resolvable referent).
+_PREFERENCE_MARKER_RE = re.compile(
+    r"\*\*recommended\*\*"
+    r"|\brecommendation is\b"
+    r"|\bsupersedes\b"
+    r"|\bleaning toward\b"
+    r"|\bpreferred\b"
+    r"|>\s*\*\*selected:\*\*",
+    re.IGNORECASE,
+)
+
+_INLINE_OR_RE = re.compile(r"\bor\b", re.IGNORECASE)
+
+# Sections where a "decide before implementation" imperative is written — narrower
+# than Patterns A-D's whole-document scan (ENH-2936's Expected Behavior scope).
+_DIRECTIVE_ALTERNATIVES_SECTIONS = (
+    "Scope Boundaries",
+    "Proposed Change",
+    "Proposed Solution",
+    "Open Questions",
+)
+
+
+def _locate_directive_alternatives(content: str) -> tuple[int, str | None]:
+    """Locate an un-preferenced decision directive (ENH-2936, Pattern E).
+
+    A passage counts when an imperative decide-marker (:data:`_DECIDE_IMPERATIVE_RE`)
+    and a 2+-alternative "X or Y" shape co-occur within 3 lines, with no stated
+    preference marker (:data:`_PREFERENCE_MARKER_RE`) or resolved-question marker
+    (:data:`_RESOLVED_QUESTION_MARKER_RE`) in that same window. Bare "X or Y" prose
+    with no imperative marker never matches — that is the settled-informal-list case
+    Pattern 4's auto-mode conservatism protects elsewhere.
+
+    Each window is whitespace-normalized (lines joined with a single space) before
+    matching, so a soft-wrapped marker or alternative split across lines by markdown's
+    line length (e.g. "do not leave\n  it unaddressed") still matches — a per-line-only
+    search would miss it.
+
+    Returns:
+        ``(2, containing_heading)`` on a match — this heuristic only proves "a
+        decision exists here", never how many alternatives, so a match always
+        reports 2 (the minimum Phase 4 scoring requires). ``(0, None)`` otherwise.
+    """
+    for heading in _DIRECTIVE_ALTERNATIVES_SECTIONS:
+        body = _section_body(content, heading)
+        if not body:
+            continue
+        lines = body.splitlines()
+        for i in range(len(lines)):
+            window = " ".join(" ".join(lines[max(0, i - 3) : i + 4]).split())
+            if not _DECIDE_IMPERATIVE_RE.search(window):
+                continue
+            if _PREFERENCE_MARKER_RE.search(window):
+                continue
+            if _RESOLVED_QUESTION_MARKER_RE.search(window):
+                continue
+            if _INLINE_OR_RE.search(window):
+                return 2, heading
+    return 0, None
+
+
 def locate_enumerable_options(content: str) -> tuple[int, str | None]:
     """Locate enumerable option blocks anywhere in *content* (ENH-2821).
 
@@ -453,7 +531,9 @@ def locate_enumerable_options(content: str) -> tuple[int, str | None]:
     then :data:`_OPTION_FALLBACK_SECTIONS` — matching :func:`count_enumerable_options`'s
     original behavior; (2) a whole-document fallback over every H2 section (which,
     by construction, includes nested H3 subsections and decorated/suffixed H2
-    headings) when the scoped scan finds nothing.
+    headings) when the scoped scan finds nothing; (3) the Pattern E directive-alternatives
+    heuristic (:func:`_locate_directive_alternatives`, ENH-2936) when even the
+    whole-document fallback finds nothing.
 
     Returns:
         ``(count, containing_heading)``. ``containing_heading`` is the exact H2/section
@@ -479,7 +559,10 @@ def locate_enumerable_options(content: str) -> tuple[int, str | None]:
         if count > best:
             best = count
             best_heading = heading_text
-    return best, best_heading
+    if best:
+        return best, best_heading
+
+    return _locate_directive_alternatives(content)
 
 
 def count_enumerable_options(content: str) -> int:

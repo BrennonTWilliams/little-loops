@@ -1615,7 +1615,7 @@ ll-issues cf FEAT-518 implementation_ready # Exit 0 if implementation_ready: tru
 
 #### `ll-issues check-decidable`
 
-Exit 0 if an issue has >=1 enumerable option to decide between (ENH-2443). Deterministic (no-LLM) companion to `/ll:decide-issue --validate-only` — re-implements the same option-extraction patterns in pure Python (`count_enumerable_options`), so FSM `shell` states can pre-check decidability without dispatching an LLM call. Mirrors the `ll-issues format-check` / `ensure_formatted` precedent (ENH-2426).
+Exit 0 if an issue has >=1 enumerable option to decide between (ENH-2443). Deterministic (no-LLM) companion to `/ll:decide-issue --validate-only` — re-implements the same option-extraction patterns in pure Python (`count_enumerable_options`), so FSM `shell` states can pre-check decidability without dispatching an LLM call. Mirrors the `ll-issues format-check` / `ensure_formatted` precedent (ENH-2426). Also covers Pattern E — un-preferenced decision directives (ENH-2936): a passage naming 2+ concrete alternatives alongside an imperative decide-marker ("decide before implementation", "do not leave unaddressed") but no stated preference, not just formal `### Option A/B` blocks.
 
 | Argument | Description |
 |----------|-------------|

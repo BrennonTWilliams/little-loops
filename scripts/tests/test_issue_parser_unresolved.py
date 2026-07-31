@@ -305,3 +305,111 @@ class TestCoverageAwareSurface:
         content = FIXTURE_PATH.read_text()
         assert count_unresolved_options(content) == 0
         assert count_open_questions_in_sections(content) > 0
+
+
+class TestPatternEDirectiveAlternatives:
+    """_locate_directive_alternatives / locate_enumerable_options Pattern E tier
+    (ENH-2936): an imperative decide-marker co-occurring with 2+ named alternatives
+    and no stated preference, scanned over Scope Boundaries / Proposed Change /
+    Proposed Solution / Open Questions."""
+
+    def test_scope_boundaries_directive_is_decidable(self) -> None:
+        """ENH-2866 shape: imperative marker + alternatives, no preference."""
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = (
+            "## Scope Boundaries\n"
+            "\n"
+            "- stamp it or move it to Out of scope with a stated reason — do not "
+            "leave it unaddressed\n"
+        )
+        count, heading = locate_enumerable_options(content)
+        assert count == 2
+        assert heading == "Scope Boundaries"
+
+    def test_bare_or_prose_without_imperative_marker_not_decidable(self) -> None:
+        """Guardrail: bare 'X or Y' prose with no imperative marker must NOT match —
+        that is the settled-informal-list case automation must not re-litigate."""
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = (
+            "## Scope Boundaries\n"
+            "\n"
+            "- stamp it or move it to Out of scope with a stated reason\n"
+        )
+        count, heading = locate_enumerable_options(content)
+        assert count == 0
+        assert heading is None
+
+    def test_stated_preference_disqualifies_pattern_e(self) -> None:
+        """A stated preference is Pattern D's job, not Pattern E's — the passage
+        must not double-count as an un-preferenced directive."""
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = (
+            "## Scope Boundaries\n"
+            "\n"
+            "- stamp it or move it to Out of scope — do not leave it unaddressed. "
+            "**Recommended**: stamp it.\n"
+        )
+        count, heading = locate_enumerable_options(content)
+        assert count == 0
+        assert heading is None
+
+    def test_resolved_marker_disqualifies_pattern_e(self) -> None:
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = (
+            "## Open Questions\n"
+            "\n"
+            "- Fork vs. flag — decide before implementation, X or Y. "
+            "✅ RESOLVED (2026-06-04).\n"
+        )
+        count, heading = locate_enumerable_options(content)
+        assert count == 0
+        assert heading is None
+
+    def test_out_of_scan_scope_section_not_matched(self) -> None:
+        """Pattern E's scan scope is narrower than Patterns A-D's whole-document
+        scan — a directive sitting in an unrelated section is not picked up."""
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = (
+            "## Motivation\n"
+            "\n"
+            "- pick one: X or Y — must be decided before implementation.\n"
+        )
+        count, heading = locate_enumerable_options(content)
+        assert count == 0
+        assert heading is None
+
+    def test_proposed_solution_directive_is_decidable(self) -> None:
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = (
+            "## Proposed Solution\n"
+            "\n"
+            "Either extend the existing CLI or add a new subcommand — this must "
+            "be decided before implementation.\n"
+        )
+        count, heading = locate_enumerable_options(content)
+        assert count == 2
+        assert heading == "Proposed Solution"
+
+    def test_line_wrapped_marker_still_matches(self) -> None:
+        """Regression: markdown line-wraps at ~80 chars split an imperative marker
+        across lines (e.g. 'do not leave\\n  it unaddressed') — the heuristic must
+        normalize whitespace within its window, not search line-by-line only."""
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = (
+            "## Scope Boundaries\n"
+            "\n"
+            "- **In scope**: stamp it or move it to Out of scope with a stated "
+            "reason — do not leave\n"
+            "  it unaddressed.\n"
+            "- **Out of scope**: nothing else.\n"
+        )
+        count, heading = locate_enumerable_options(content)
+        assert count == 2
+        assert heading == "Scope Boundaries"
