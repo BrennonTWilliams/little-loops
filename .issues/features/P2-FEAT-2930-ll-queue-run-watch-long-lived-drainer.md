@@ -1,6 +1,7 @@
 ---
 id: FEAT-2930
-title: "`ll-queue run --watch`: long-lived drainer so queued work starts without a manual run"
+title: '`ll-queue run --watch`: long-lived drainer so queued work starts without a
+  manual run'
 type: FEAT
 status: open
 priority: P2
@@ -17,6 +18,14 @@ labels:
 - queue
 - cli
 - scheduling
+learning_tests_required:
+- psutil
+confidence_score: 90
+outcome_confidence: 71
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # FEAT-2930: `ll-queue run --watch` — long-lived drainer
@@ -261,15 +270,127 @@ visibility an operator has into a wedged entry under a watcher.
 - `scripts/little_loops/cli/queue.py` — `cmd_run` split, `run` subparser flags,
   signal handling, `_reclaim_stale`, `cmd_requeue`
 - `scripts/little_loops/queue_store.py` — `_MIGRATIONS` entry for
-  `claimed_at`/`owner_pid`; `claim_entry` populates both
+  `claimed_at`/`owner_pid`; `claim_entry` populates both. Also hand-bump the
+  `SCHEMA_VERSION` constant (`:98`, currently literal `1`, not derived from
+  `len(_MIGRATIONS)`) to `2`. Decide whether `QueueEntry.to_dict()`/`_from_row()`
+  (`:258-283`) should surface the two new columns — that's the single choke
+  point `ll-queue status --json`/`list --json` go through, so it's the natural
+  place for `_reclaim_stale`/`requeue` output to report `owner_pid`. Also decide
+  whether `update_entry_result` (`:373-389`) should null `owner_pid` on a
+  `done`/`failed` write (data hygiene, not correctness — `_reclaim_stale`'s
+  `WHERE status = 'running'` filter already excludes completed entries either
+  way).
+- `scripts/pyproject.toml` — move `psutil` from `[project.optional-dependencies].dev`
+  (`:125-127`, currently justified only by pytest-xdist core detection) to
+  `[project].dependencies` (`:40-52`), with a **new** inline justification
+  comment for `_reclaim_stale`'s PID-liveness identity check — the existing
+  dev-extras comment's rationale (xdist) doesn't apply at the new location, and
+  `.claude/CLAUDE.md`'s dependency policy requires a pin-adjacent justification.
+  Note this also fixes a pre-existing latent gap: `cli/loop/queue.py:17` already
+  imports `psutil` unconditionally at module scope despite it being declared
+  dev-only today, so a bare `pip install little-loops` already risks an
+  `ImportError` on that code path.
 - `scripts/tests/` — new coverage for watch pickup, both signal stages, stale
-  reclaim, requeue, and the busy-spin regression
+  reclaim, requeue, and the busy-spin regression (see Tests subsection below for
+  concrete patterns to follow)
 
 ### Documentation
 - `.claude/CLAUDE.md` § CLI Tools — the `ll-queue` entry describes `run` as
   serially dequeuing pending entries; extend to mention `--watch`,
   `--poll-interval`, the NDJSON streaming departure, and `requeue`
-- `docs/reference/API.md` — `queue_store` schema gains two columns
+- `docs/reference/API.md` — `queue_store` schema gains two columns. Two distinct
+  restatements need updating, not one: the module-index one-liner (`:81`,
+  `"schema {id, action, enqueuedAt, priority, status, result}"`) and the fuller
+  prose description.
+- `docs/reference/CLI.md` § `### ll-queue` (`:2772-2837`) — _Wiring pass added
+  by `/ll:wire-issue`:_ not in the original Integration Map, but this is the
+  fullest existing prose description of `run`'s one-shot semantics:
+  - Subcommand table (`:2778-2784`) needs a `requeue ID [--force]` row.
+  - `run` flags table (`:2823-2825`, currently only `--json`) needs
+    `--watch`/`--poll-interval` rows, plus a note that `--json` under `--watch`
+    is NDJSON — a deliberate departure from this file's own stated house
+    convention.
+  - The `run` prose paragraph (`:2821`) states dispatch semantics but nothing
+    about blocking/exit — needs the one-shot-vs-watch distinction.
+  - Examples block (`:2827-2837`, ends with `ll-queue run  # Execute all
+    pending entries serially`) — add a `--watch` example and a `requeue`
+    example.
+- `docs/ARCHITECTURE.md` § "Queue DB (ll-queue)" (`:843-851`) — _Wiring pass
+  added by `/ll:wire-issue`:_ the `queue_entries` schema table row (`:849`,
+  hand-written prose `id, action (JSON ActionSpec), enqueued_at, priority,
+  status, result`) will drift the moment the migration lands; add
+  `claimed_at`/`owner_pid`. The paragraph at `:851` narrating `claim_entry`'s
+  transaction ("performs the `pending` -> `running` acquisition") should
+  mention it now also stamps ownership — it's the closest thing to a written
+  contract for that function beyond its docstring. Also check the nearby prose
+  describing the lost-claim path ("a lost claim advances to the next pending
+  candidate rather than dispatching or breaking the drain loop") for staleness
+  once the poll-sleep is added there.
+- `commands/help.md:299` — _Wiring pass added by `/ll:wire-issue`:_ the
+  `ll-queue` catalog one-liner ("Persisted work-item queue: add/list/status/
+  remove/run commands (FEAT-2682, FEAT-2683)") needs `requeue` added to stay in
+  sync with the actual subcommand set.
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_ concrete patterns confirmed to exist
+in the codebase for each new testable surface (all currently unexercised for
+`cli/queue.py`/`queue_store.py`):
+- **Migration test** — new class in `test_queue_store.py` (no
+  migration-specific test class exists there today), modeled on
+  `test_session_store_schema.py:679-702`'s `test_v8_to_v9_migration`: replay
+  `_MIGRATIONS[:N-1]`, hand-stamp the prior `schema_version` via `INSERT OR
+  IGNORE INTO meta`, call `ensure_db()`, assert the new columns exist and
+  `schema_version` advanced.
+- **Watch-loop sleep-poll test** — no existing precedent for a
+  drain-then-poll-forever loop specifically, but `_cmd_tail` in
+  `cli/logs.py:725-754` (an unbounded `while True` + `time.sleep(0.1)`, same
+  shape) is tested in `test_ll_logs.py` `TestTail` by patching
+  `little_loops.cli.logs.time.sleep` with a `side_effect` that raises after N
+  calls (`:678`) rather than trying to interrupt a truly infinite loop. Apply
+  the same technique to `little_loops.cli.queue.time.sleep`, or drive the
+  `threading.Event` the Program Design already specifies for `_drain_once`.
+- **Two-stage signal handler test** — model on `test_sprint.py:588-647`'s
+  `_sprint_signal_handler` coverage: call the handler function directly with
+  `signal.SIGINT`/`SIGTERM` and inspect the module-global flag / logger output
+  / `sys.exit` on the second call — not a subprocess-based test.
+- **PID-liveness / `_reclaim_stale` test** — no existing "reclaim a stranded
+  entry via PID-liveness sweep" test exists anywhere; model a new
+  `TestReclaimStale` class on `test_cli_loop_queue.py:420-489`'s confirmed
+  module-qualified mock targets — `patch("little_loops.cli.queue.psutil.Process",
+  ...)` and `patch("little_loops.cli.queue.os.kill", ...)` (not `psutil.Process`
+  directly), covering both an identity-unverifiable case (`side_effect`) and a
+  genuine-identity case (`return_value` with `cmdline` set).
+- **Process-group kill test** — model on `test_cli_loop_lifecycle.py:139-560+`'s
+  `patch("little_loops.cli.loop.lifecycle.os.killpg", ...)` pattern for
+  `_kill_with_timeout`/`_signal_process_group`; new test needs
+  `patch("little_loops.cli.queue.os.killpg", ...)` asserting SIGTERM-then-
+  escalation and `ProcessLookupError`/`PermissionError` swallowed.
+- **NDJSON flush test — genuine gap, no precedent to copy**: no existing test
+  in the codebase mocks `sys.stdout.isatty()` or asserts `flush=True` was
+  honored per-line on piped non-TTY stdout. `_emit()`
+  (`cli/action.py:170-171`) is the implementation model but has no flush-
+  assertion test of its own to copy. Needs either a real subprocess with
+  `subprocess.PIPE` stdout, or `patch("sys.stdout")` with a `MagicMock` to
+  assert `.flush()` was called after each `print()`.
+- **`requeue` dispatch test** — add a case to `test_cli_queue.py`'s
+  `main_queue` dispatch tests (`TestCmdRemove`-adjacent, `:364-410`), following
+  the existing `remove` dispatch shape.
+- **Non-breaking confirmation**: `TestCmdRunClaimContention.test_run_skips_already_claimed_entry`
+  (`test_cli_queue_run.py:195-217`) and `TestEnsureDb`
+  (`test_queue_store.py:51-66`) should keep passing unmodified — neither
+  asserts the literal `queue_entries` column set or lost-claim timing. A new
+  test exercising the actual lost-claim retry-and-succeed path needs
+  `patch("little_loops.cli.queue.time.sleep")` to stay fast once the busy-spin
+  fix lands there.
+- **`claim_entry`'s sole caller is confirmed as `cli/queue.py:381`** (plus the
+  direct-call test) — no other module imports it, so its signature/behavior
+  change from populating `claimed_at`/`owner_pid` needs no update elsewhere.
+- `ll-verify-kinds` (`cli/verify_kinds.py:31-40`) is hardcoded to
+  `session_store._MIGRATIONS`/`_KIND_TABLE` only and does not walk
+  `queue_store._MIGRATIONS` — no gate needs updating, and none exists to catch
+  a malformed migration here either (non-finding, stated so no implementer
+  assumes this gate provides coverage).
 
 ### Related
 - **BUG-2929** (`done`) — atomic claim, already landed; without it a second
@@ -284,6 +405,102 @@ visibility an operator has into a wedged entry under a watcher.
 - **FEAT-2684** — `ll-loop queue` PID-liveness compat shim; a separate mechanism,
   but its `psutil` identity-checked liveness test is the pattern `_reclaim_stale`
   should reuse rather than reinvent
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Current anchors (line numbers drift-corrected as of this research pass):**
+- `cmd_run` — `scripts/little_loops/cli/queue.py:361-429` (not `:316`; the drain
+  `while True:` loop is at line 376, `if not pending: break` at 378-379).
+- Lost-claim path — `scripts/little_loops/cli/queue.py:383-386` (not `:~342`).
+- `_run_loop_entry`'s `subprocess.run(...)` call — `scripts/little_loops/cli/queue.py:344`
+  (not `:280`); it does **not** pass `start_new_session=True` today, unlike
+  every other subprocess launch site in the codebase (`runner_spec.py:214`,
+  `mcp_call.py:211`, `fsm/runners.py:238`, `subprocess_utils.py:426`) —
+  confirms Implementation Step 4 is adding something genuinely absent here,
+  not toggling an existing flag.
+- `run` subparser (single `--json` flag today, no `--watch`/`--poll-interval`)
+  — `scripts/little_loops/cli/queue.py:527-533`.
+- `main_queue` dispatch chain (`if/elif` on `parsed.command`) —
+  `scripts/little_loops/cli/queue.py:432-549`; a new `requeue` subcommand
+  slots in alongside `remove` (`:513-525`), following its
+  `_not_found_or_ambiguous`/`resolve_entry` shape.
+
+**PID-liveness reuse — one nuance the issue's Stale-entry reclaim section
+doesn't call out:** there are two distinct existing primitives, not one:
+- `_process_alive(pid)` — `scripts/little_loops/fsm/concurrency.py:56-68` —
+  bare `os.kill(pid, 0)` liveness only, no psutil. Already imported
+  cross-module (`cli/loop/queue.py:21`), so cross-module reuse has precedent.
+- `_verify_queue_pid_identity(pid, entry)` —
+  `scripts/little_loops/cli/loop/queue.py:88-113` — the psutil-based
+  *identity* check (confirms the live PID is genuinely an `ll-loop` process,
+  not just alive) that "the pattern `_reclaim_stale` should reuse" refers to.
+  It is private to `cli/loop/queue.py` and matches on `"ll-loop" in cmdline or
+  "little_loops.cli.loop" in cmdline` — reuse requires either (a) promoting a
+  shared copy parameterized by marker string (`"ll-queue"` /
+  `"little_loops.cli.queue"` for this issue), or (b) a small duplicate.
+  Recommend (a) to avoid near-identical duplicated logic across the two
+  queue implementations.
+- **Dependency note**: `psutil` is declared only under `[dev]` extras in
+  `scripts/pyproject.toml`, not `[project] dependencies`, yet
+  `cli/loop/queue.py` already imports it unconditionally at module scope — a
+  de facto runtime dependency today. `_reclaim_stale` extending that use
+  doesn't introduce a new question, but formalizing the pin under
+  `[project] dependencies` (with the inline justification comment
+  `.claude/CLAUDE.md`'s dependency policy requires) is in scope for
+  correctness even though Implementation Steps doesn't list it.
+
+**Signal-handling precedent — `_loop_signal_handler` is explicitly unsafe for
+this reuse:** `cmd_run`'s own docstring already notes
+`register_loop_signal_handlers`/`_loop_signal_handler`
+(`cli/loop/_helpers.py:121-244`) is unsafe to invoke repeatedly within one
+`ll-queue run` process (module-global state). Better-fitting precedents for
+the two pieces this issue needs:
+- Two-stage *signal-handler flag* shape (first signal sets a flag and logs,
+  second signal exits): `_sprint_signal_handler` in
+  `scripts/little_loops/cli/sprint/run.py:108-127`, wired via
+  `signal.signal(SIGINT/SIGTERM, ...)` at `:343-344`.
+- Proper setup/handler/restore triad (preserves and restores the original
+  handler on exit): `parallel/orchestrator.py`'s
+  `_setup_signal_handlers`/`_signal_handler`/`_restore_signal_handlers`
+  (`:233-243`, `:676-681`).
+- Two-stage **child-kill escalation** via process group (SIGTERM, wait, then
+  SIGKILL) — the closest precedent for "forward SIGTERM to the child on the
+  second signal": `_kill_with_timeout`/`_signal_process_group` in
+  `scripts/little_loops/cli/loop/lifecycle.py:88-128`, using
+  `os.getpgid`/`os.killpg` (falls back to single-PID `os.kill`). This already
+  assumes `start_new_session=True` (session leader, `PGID == PID`) — exactly
+  the launch mode Implementation Step 4 specifies — making it a closer model
+  than `parallel/worker_pool.py`'s simpler terminate/wait/kill (`:241-249`).
+
+**NDJSON precedent — a concrete existing implementation to follow:** `_emit()`
+in `scripts/little_loops/cli/action.py:170-171`
+(`print(json.dumps(event), flush=True)`, no `indent=`) is the closest
+existing NDJSON emitter in the codebase. `cli/messages.py:234-236/260-262/283-285`
+is a second, `--stdout`-flag-gated precedent (per-record `print(json.dumps(...))`,
+no explicit `flush=True`). Recommend modeling `--watch --json` directly on
+`_emit()`'s shape.
+
+**Migration test precedent:** `queue_store.py` has no migration-specific test
+class today (`test_queue_store.py`'s `TestEnsureDb`, lines 51-60, only covers
+create/idempotent). `scripts/tests/test_session_store_schema.py`'s
+`test_v8_to_v9_migration`-style tests (e.g. lines 679-702) — replay
+`_MIGRATIONS[:N-1]`, hand-stamp the prior `schema_version`, call `ensure_db()`,
+assert the new column/index exists and `schema_version` advanced — are the
+pattern to follow for the new `claimed_at`/`owner_pid` migration test.
+
+**Test mocking convention:** existing psutil/subprocess mocking in this test
+family patches the *module-qualified* import path (e.g.
+`little_loops.cli.loop.queue.psutil.Process`,
+`little_loops.cli.loop.queue.os.kill`), not the library path directly.
+`scripts/tests/test_cli_queue_run.py`'s `TestCmdRunLoopDispatch` (mocks
+`little_loops.cli.queue.subprocess.run`) and `TestCmdRunClaimContention`
+(`test_run_skips_already_claimed_entry`) are the direct existing precedents
+to extend for the watch-pickup, signal-stage, and busy-spin-regression tests
+— the busy-spin regression test likely wants
+`patch("little_loops.cli.queue.time.sleep")` with a call-count/elapsed-time
+assertion.
 
 ## Impact
 
@@ -302,6 +519,9 @@ signals by default. Mitigated by BUG-2929's atomic claim (already landed), the
 `owner_pid` reclaim sweep, and explicit tests for both signal stages.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-07-31T00:31:02Z - `16d96c23-32fa-49ec-ab21-23083dc4339d.jsonl`
+- `/ll:wire-issue` - 2026-07-31T00:28:04 - `7dfa71ff-fe70-45e9-8f8d-d2cbacf58017.jsonl`
+- `/ll:refine-issue` - 2026-07-31T00:22:00 - `d82db468-8c38-4808-83e2-a20eea418eca.jsonl`
 - `/ll:capture-issue` - 2026-07-30T21:27:49Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f37dc1-b451-4197-a82c-a55434adcd06.jsonl`
 - Pre-implementation review - 2026-07-30 - BUG-2929 and BUG-2928 both verified `done`; dropped the stale `depends_on` (unblocked). Added three requirements the original deferred or left open: decided two-stage signal semantics (the `LOOP` child is an unbounded `subprocess.run` that does not inherit the parent's `SIGTERM`); `claimed_at`/`owner_pid` columns plus PID-liveness reclaim and `ll-queue requeue`, since a daemon makes stranded-`running` the normal failure mode and the schema records no owner; and the poll sleep on `cmd_run`'s existing lost-claim `continue`, which becomes a hot loop once two drainers can coexist. Specified `--json` as NDJSON explicitly. Sequenced after ENH-2931. Effort/risk revised up to Medium.
 
