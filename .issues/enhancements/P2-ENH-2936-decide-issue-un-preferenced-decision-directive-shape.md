@@ -25,13 +25,18 @@ falls through every extraction pattern, the skill exits `NO_ACTIONABLE_DECISIONS
    the named alternatives as `**Option A**`/`**Option B**` blocks (reusing ENH-2715
    step 1's machinery) and route to Phase 4–7 evidence-based scoring, which exists
    precisely to pick a winner when no preference is stated.
-2. **Companion CLI**: teach `ll-issues check-decidable` the same pattern, or the FSM
-   gate keeps exiting 1 and routing loops to `/ll:refine-issue` instead of decide —
-   making the skill fix dead code in automation.
-3. **Orchestrator visibility**: a decide run that ends `NO_ACTIONABLE_DECISIONS` while
-   `decision_needed` stays `true` should feed autodev's existing `decision_unresolved`
-   deferral code (ENH-2666, `record_decision_unresolved`), not fall through to
-   `readiness_stagnated`.
+2. **Companion CLI**: teach `ll-issues check-decidable` the same pattern so the FSM
+   pre-gate agrees with the skill. (Note: exit 1 does not permanently divert to refine —
+   both `autodev.yaml` and `rn-remediate.yaml` bound the `deposit_options` detour to one
+   retry and fall through to decide anyway. The parity fix buys gate agreement and skips
+   a wasted refine call per issue; it is not load-bearing for the skill fix.)
+3. **Orchestrator visibility**: close the one remaining gap on the score-failing path.
+   Autodev already routes "decide ran, flag still armed" to `record_decision_unresolved`
+   on the score-passing path (`assert_decision_cleared`, BUG-2595) and the error path
+   (`check_decision_after_decide_error`, ENH-2717). The gap is `recheck_after_decide` →
+   `on_no: snap_and_size_review` → `recheck_after_size_review`, whose deferral cascade
+   checks design-gate/stagnation/low-readiness but never consults `decision_needed` —
+   the exact path ENH-2866 took (outcome 56 < threshold).
 
 ## Motivation
 
@@ -61,12 +66,17 @@ the wrong ask.
   `decision_needed` unchanged.
 - The scan scope for the ENH-2715 inline shape is `## Open Questions`; ENH-2866's
   directive lived in `## Scope Boundaries` prose.
-- `ll-issues check-decidable` re-implements Patterns 1–4 only; it exits 1 on this shape,
-  so `rn-remediate`/`autodev` route to `/ll:refine-issue --auto` (which cannot resolve
-  it either) instead of decide.
-- autodev has no edge from a completed-but-declined decide run to
-  `record_decision_unresolved`; the issue eventually defers as `readiness_stagnated`
-  (or `low_readiness`).
+- `ll-issues check-decidable` (`scripts/little_loops/cli/issues/check_decidable.py`, a
+  thin wrapper over `issue_parser.locate_enumerable_options()`) counts enumerable option
+  blocks only; it exits 1 on this shape, sending `rn-remediate`/`autodev` on a bounded
+  one-retry `deposit_options` detour through `/ll:refine-issue --auto` (which cannot
+  resolve it either) before falling through to decide.
+- autodev's edges to `record_decision_unresolved` cover the score-passing path
+  (`assert_decision_cleared`) and the decide-error path
+  (`check_decision_after_decide_error`), but NOT the score-failing path: the
+  `recheck_after_size_review` deferral cascade (design-gate → stagnation →
+  low-readiness) never checks `decision_needed`, so the issue defers as
+  `readiness_stagnated` (or `low_readiness`).
 
 ## Expected Behavior
 
@@ -102,14 +112,18 @@ explicitly *asks* for a decision, so scoring it re-litigates nothing. Fire only 
    preference marker. Resolution: reuse ENH-2715 step 1 materialization → re-scan →
    route to Phase 4 scoring (the step-2 path). Update the Pattern D "Requirement" note
    to point at Pattern E for the no-preference case.
-2. **`ll-issues check-decidable`** (scripts/little_loops/ — locate the existing
-   implementation from ENH-2443) — add the Pattern E heuristic to the counting logic so
-   the FSM pre-gate agrees with the skill.
-3. **Orchestrator wiring** — in `loops/autodev.yaml` (and `rn-remediate` if it consumes
-   decide results), detect the `NO_ACTIONABLE_DECISIONS` outcome token (or re-check
-   `decision_needed` still true after a decide run) and route to the existing
-   `record_decision_unresolved` deferral state instead of continuing to the
-   readiness-stagnation path.
+2. **`ll-issues check-decidable`** — add the Pattern E heuristic in
+   `scripts/little_loops/issue_parser.py` (alongside `locate_enumerable_options()`) so
+   the FSM pre-gate agrees with the skill; `check_decidable.py` calls it. Keep the
+   heuristic tight (2+ named alternatives co-located within ~3 lines of an imperative
+   decide-marker, no preference marker) — bare "X or Y" prose must keep exiting 1.
+3. **Orchestrator wiring** — in `scripts/little_loops/loops/autodev.yaml`, add a
+   `decision_needed` re-check to `recheck_after_size_review`'s deferral cascade
+   (after the design-gate branch, before the `readiness_stagnated` branch): when the
+   flag is still armed, defer as `decision_unresolved` via the same set-status idiom
+   `record_decision_unresolved` uses. Re-checking the flag is the established idiom
+   (`assert_decision_cleared`, `check_decision_after_decide_error`) — do NOT invent
+   `NO_ACTIONABLE_DECISIONS` outcome-token parsing.
 
 **Alternative considered (softer variant)**: have Pattern E score the options but write
 the result only as a recommendation, leaving `decision_needed: true` for manual
@@ -128,15 +142,22 @@ for every such issue; the full-scoring path already leaves an audited rationale
 ## Integration Map
 
 ### Files to Modify
-- `skills/decide-issue/SKILL.md` (Phase 3b patterns + resolution logic; mind the 500-line
-  cap — overflow goes to `skills/decide-issue/reference.md` per the ENH-494 companion
-  pattern)
-- `ll-issues check-decidable` implementation (locate via `grep -r "check-decidable" scripts/`)
-- `loops/autodev.yaml` (and possibly `loops/rn-remediate.yaml`) deferral routing
+- `skills/decide-issue/SKILL.md` (Phase 3b patterns + resolution logic). **The file is
+  at 491/500 lines** (ll-verify-skills cap), so overflow extraction to
+  `skills/decide-issue/reference.md` (currently 107 lines) is guaranteed, not
+  contingent — plan the split up front per the ENH-494 companion pattern.
+- `scripts/little_loops/issue_parser.py` (Pattern E heuristic, shared home so
+  `check_decidable.py` and any future probe reuse it)
+- `scripts/little_loops/cli/issues/check_decidable.py` (call the new heuristic as a
+  fallback when `locate_enumerable_options()` finds 0)
+- `scripts/little_loops/loops/autodev.yaml` (`recheck_after_size_review` deferral
+  cascade only; `rn-remediate.yaml` needs no change — its decide path already
+  escalates via `check_convergence`)
 
 ### Tests
-- Existing check-decidable tests from ENH-2443 (extend with un-preferenced fixtures)
-- Loop-validation tests if autodev routing changes (`scripts/tests/test_builtin_loops.py`)
+- Existing issue_parser/check-decidable tests from ENH-2443 (extend with
+  un-preferenced fixtures, both with and without the imperative marker)
+- Loop-validation tests for the autodev routing change (`scripts/tests/test_builtin_loops.py`)
 
 ### Documentation
 - `docs/reference/API.md` if check-decidable's documented pattern set is enumerated there
@@ -151,9 +172,10 @@ for every such issue; the full-scoring path already leaves an audited rationale
 - [ ] The same fixture without the imperative marker (bare "X or Y" prose) is NOT
       treated as decidable (guardrail holds).
 - [ ] `ll-issues check-decidable` exits 0 on the first fixture and 1 on the second.
-- [ ] After a decide run ending `NO_ACTIONABLE_DECISIONS` with `decision_needed: true`,
-      autodev defers the issue with reason `decision_unresolved` (not
-      `readiness_stagnated`).
+- [ ] On the score-failing path (decide ran, `decision_needed` still `true`, scores
+      below threshold), `recheck_after_size_review`'s deferral cascade defers the issue
+      with reason `decision_unresolved` (not `readiness_stagnated`/`low_readiness`) —
+      structural assertion in `test_builtin_loops.py`.
 - [ ] `python -m pytest scripts/tests/` passes.
 
 ## Session Log

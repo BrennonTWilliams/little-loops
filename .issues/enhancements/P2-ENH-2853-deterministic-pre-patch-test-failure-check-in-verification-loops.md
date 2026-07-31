@@ -15,6 +15,12 @@ blocked_by:
 - ENH-2866
 learning_tests_required:
 - pytest
+confidence_score: 82
+outcome_confidence: 60
+score_complexity: 14
+score_test_coverage: 16
+score_ambiguity: 14
+score_change_surface: 16
 ---
 
 # ENH-2853: Deterministic pre-patch test-failure check in verification loops
