@@ -231,6 +231,70 @@ def add_max_issues_arg(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_corpus_target_args(
+    parser: argparse.ArgumentParser,
+    *,
+    required: bool = True,
+    project_help: str = "Working directory of the target project",
+    all_help: str = "Include all projects with ll activity",
+) -> None:
+    """Add a --project/--all mutually exclusive target-selection group.
+
+    Args:
+        parser: The argument parser to add the group to
+        required: Whether one of --project/--all must be specified
+        project_help: Help text for --project (subcommands vary this)
+        all_help: Help text for --all (subcommands vary this)
+    """
+    target_group = parser.add_mutually_exclusive_group(required=required)
+    target_group.add_argument(
+        "--project",
+        type=Path,
+        metavar="DIR",
+        help=project_help,
+    )
+    target_group.add_argument(
+        "--all",
+        action="store_true",
+        help=all_help,
+    )
+
+
+def add_window_args(parser: argparse.ArgumentParser, *, noun: str = "records") -> None:
+    """Add --window-days/--since/--until date-window arguments.
+
+    ``--window-days`` and ``--since`` are mutually exclusive (both express a
+    lower bound); ``--until`` is added outside that group so it composes with
+    either, allowing a closed date range (``--since X --until Y``).
+
+    Args:
+        parser: The argument parser to add the arguments to
+        noun: Word describing what is being windowed, for help text (e.g. "runs")
+    """
+    window_group = parser.add_mutually_exclusive_group()
+    window_group.add_argument(
+        "--window-days",
+        type=int,
+        default=None,
+        metavar="D",
+        help=f"Only consider {noun} within the last D calendar days",
+    )
+    window_group.add_argument(
+        "--since",
+        type=str,
+        default=None,
+        metavar="DATE",
+        help=f"Only consider {noun} on or after DATE (YYYY-MM-DD)",
+    )
+    parser.add_argument(
+        "--until",
+        type=str,
+        default=None,
+        metavar="DATE",
+        help=f"Only consider {noun} on or before DATE (YYYY-MM-DD)",
+    )
+
+
 def add_json_arg(parser: argparse.ArgumentParser, help_text: str = "Output as JSON") -> None:
     """Add --json/-j argument for machine-readable output.
 
@@ -479,6 +543,8 @@ __all__ = [
     "add_type_arg",
     "add_priority_arg",
     "add_json_arg",
+    "add_corpus_target_args",
+    "add_window_args",
     "add_label_arg",
     "add_max_workers_arg",
     "add_timeout_arg",

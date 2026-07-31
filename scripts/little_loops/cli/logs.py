@@ -11,7 +11,8 @@ import sys
 import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from datetime import time as dt_time
 from pathlib import Path
 
 from little_loops.analytics.association import compute_lift, compute_pmi
@@ -19,7 +20,7 @@ from little_loops.cli.loop.info import (  # private symbol: cross-module couplin
     _format_history_event,
 )
 from little_loops.cli.output import configure_output, print_json, table, use_color_enabled
-from little_loops.cli_args import add_json_arg
+from little_loops.cli_args import add_corpus_target_args, add_json_arg, add_window_args
 from little_loops.config import BRConfig
 from little_loops.logger import Logger
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context, resolve_history_db
@@ -232,7 +233,7 @@ class InvocationEvent:
 
 
 def _extract_ll_event_streams(
-    project_folder: Path, *, cutoff: datetime | None = None
+    project_folder: Path, *, cutoff: datetime | None = None, until: datetime | None = None
 ) -> dict[str, list[InvocationEvent]]:
     """Extract per-session ordered ll-invocation event streams from JSONL files.
 
@@ -243,6 +244,7 @@ def _extract_ll_event_streams(
     Args:
         project_folder: Path to the claude project session directory.
         cutoff: If set, exclude records with timestamps before this datetime.
+        until: If set, exclude records with timestamps after this datetime.
 
     Returns:
         Dict of ``{session_id: [InvocationEvent, ...]}`` with events sorted by timestamp.
@@ -279,9 +281,11 @@ def _extract_ll_event_streams(
         except OSError:
             continue
 
-    # Apply wall-clock cutoff filter
+    # Apply wall-clock cutoff/until filters
     if cutoff is not None:
         all_events = [e for e in all_events if _parse_iso_timestamp(e.timestamp) >= cutoff]
+    if until is not None:
+        all_events = [e for e in all_events if _parse_iso_timestamp(e.timestamp) <= until]
 
     # Bucket by session and sort
     for evt in all_events:
@@ -393,6 +397,38 @@ def _parse_iso_timestamp(ts: str) -> datetime:
         return dt
     except (ValueError, TypeError):
         return datetime.min.replace(tzinfo=UTC)
+
+
+def _resolve_window(args: argparse.Namespace) -> tuple[datetime | None, datetime | None]:
+    """Resolve --window-days/--since/--until into a UTC-aware (cutoff, until) pair.
+
+    ``--since``/``--window-days`` are mutually exclusive (enforced by argparse);
+    ``--until`` composes with either, so a closed date range works. Built as
+    UTC-aware datetimes (not calendar dates) since every call site filters
+    against ``_parse_iso_timestamp()`` results, which are UTC-aware.
+    """
+    since = getattr(args, "since", None)
+    until_raw = getattr(args, "until", None)
+    window_days = getattr(args, "window_days", None)
+
+    if since is not None:
+        cutoff = datetime.combine(date.fromisoformat(since), dt_time.min, tzinfo=UTC)
+    elif window_days is not None:
+        cutoff = datetime.now(UTC) - timedelta(days=window_days)
+    else:
+        cutoff = None
+
+    until = (
+        datetime.combine(date.fromisoformat(until_raw), dt_time.max, tzinfo=UTC)
+        if until_raw is not None
+        else None
+    )
+
+    if cutoff is not None and until is not None and cutoff > until:
+        print("error: --since is later than --until", file=sys.stderr)
+        sys.exit(2)
+
+    return cutoff, until
 
 
 @dataclass
@@ -571,16 +607,12 @@ def _cmd_sequences(args: argparse.Namespace, logger: Logger) -> int:
             if folder is not None:
                 project_items.append((decoded_path, folder))
 
-    cutoff = (
-        datetime.now(UTC) - timedelta(days=args.window_days)
-        if args.window_days is not None
-        else None
-    )
+    cutoff, until = _resolve_window(args)
 
     # Aggregate events across all projects
     all_events: dict[str, list[InvocationEvent]] = {}
     for _cwd_path, project_folder in project_items:
-        events = _extract_ll_event_streams(project_folder, cutoff=cutoff)
+        events = _extract_ll_event_streams(project_folder, cutoff=cutoff, until=until)
         for sid, evt_list in events.items():
             all_events.setdefault(sid, []).extend(evt_list)
 
@@ -761,6 +793,7 @@ def _aggregate_skill_stats(
     db_path: Path,
     *,
     cutoff: datetime | None = None,
+    until: datetime | None = None,
 ) -> dict[str, dict[str, int]] | None:
     """Aggregate per-skill invocation and correction counts from history.db.
 
@@ -786,6 +819,8 @@ def _aggregate_skill_stats(
 
         if cutoff is not None:
             skill_rows = [r for r in skill_rows if _parse_iso_timestamp(r["ts"] or "") >= cutoff]
+        if until is not None:
+            skill_rows = [r for r in skill_rows if _parse_iso_timestamp(r["ts"] or "") <= until]
 
         stats: dict[str, dict[str, int]] = defaultdict(lambda: {"invocations": 0, "corrections": 0})
         for row in skill_rows:
@@ -902,15 +937,11 @@ def _cmd_dead_skills(args: argparse.Namespace, logger: Logger) -> int:
         db_paths = [p / ".ll" / "history.db" for p in decoded_paths]
         catalog_root = Path.cwd()
 
-    cutoff = (
-        datetime.now(UTC) - timedelta(days=args.window_days)
-        if args.window_days is not None
-        else None
-    )
+    cutoff, until = _resolve_window(args)
 
     merged: dict[str, int] = defaultdict(int)
     for db_path in db_paths:
-        result = _aggregate_skill_stats(db_path, cutoff=cutoff)
+        result = _aggregate_skill_stats(db_path, cutoff=cutoff, until=until)
         if result is None:
             continue
         for skill, counts in result.items():
@@ -924,8 +955,17 @@ def _cmd_dead_skills(args: argparse.Namespace, logger: Logger) -> int:
         return 0
 
     threshold = args.threshold
+    sort_key = getattr(args, "sort", "tier")
+    if sort_key == "name":
+        ordered_names = sorted(catalog_names)
+    else:
+        ordered_names = sorted(
+            catalog_names,
+            key=lambda n: (0 if merged.get(n, 0) == 0 else 1, merged.get(n, 0), n),
+        )
+
     rows = []
-    for name in sorted(catalog_names):
+    for name in ordered_names:
         count = merged.get(name, 0)
         if count == 0:
             rows.append({"skill": name, "invocations": 0, "tier": "never"})
@@ -1144,11 +1184,15 @@ def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
             except OSError:
                 continue
 
-    # Apply wall-clock cutoff filter
-    if args.window_days is not None:
-        cutoff = datetime.now(UTC) - timedelta(days=args.window_days)
+    # Apply wall-clock cutoff/until filters
+    cutoff, until = _resolve_window(args)
+    if cutoff is not None:
         raw_clusters = {
             k: v for k, v in raw_clusters.items() if _parse_iso_timestamp(v[3]) >= cutoff
+        }
+    if until is not None:
+        raw_clusters = {
+            k: v for k, v in raw_clusters.items() if _parse_iso_timestamp(v[3]) <= until
         }
 
     # Drop content-free clusters (bare "Exit code N" with no error body)
@@ -1169,6 +1213,10 @@ def _cmd_scan_failures(args: argparse.Namespace, logger: Logger) -> int:
         key=lambda c: c.count,
         reverse=True,
     )
+
+    limit = getattr(args, "limit", 0) or 0
+    if limit:
+        clusters = clusters[:limit]
 
     if not clusters:
         if not args.json:
@@ -1251,16 +1299,12 @@ def _cmd_stats(args: argparse.Namespace, logger: Logger) -> int:
         decoded_paths = discover_all_projects(logger)
         db_paths = [p / ".ll" / "history.db" for p in decoded_paths]
 
-    cutoff = (
-        datetime.now(UTC) - timedelta(days=args.window_days)
-        if args.window_days is not None
-        else None
-    )
+    cutoff, until = _resolve_window(args)
 
     merged: dict[str, dict[str, int]] = defaultdict(lambda: {"invocations": 0, "corrections": 0})
     found_any_db = False
     for db_path in db_paths:
-        result = _aggregate_skill_stats(db_path, cutoff=cutoff)
+        result = _aggregate_skill_stats(db_path, cutoff=cutoff, until=until)
         if result is None:
             continue
         found_any_db = True
@@ -1796,6 +1840,7 @@ def _collect_loop_runs(
     *,
     loop_filter: str | None = None,
     cutoff: datetime | None = None,
+    until: datetime | None = None,
 ) -> list[_LoopRunRecord]:
     """Collect archived loop runs from a project's .loops/.history/ directory."""
     history_dir = project_path / ".loops" / ".history"
@@ -1825,6 +1870,9 @@ def _collect_loop_runs(
             ts = terminal.get("ts", "")
             if cutoff is not None and ts:
                 if _parse_iso_timestamp(ts) < cutoff:
+                    continue
+            if until is not None and ts:
+                if _parse_iso_timestamp(ts) > until:
                     continue
             attribution = "builtin" if loop_name in builtin_names else "custom"
             records.append(
@@ -1859,6 +1907,9 @@ def _collect_loop_runs(
                 if cutoff is not None and ts:
                     if _parse_iso_timestamp(ts) < cutoff:
                         continue
+                if until is not None and ts:
+                    if _parse_iso_timestamp(ts) > until:
+                        continue
                 attribution = "builtin" if loop_name in builtin_names else "custom"
                 records.append(
                     _LoopRunRecord(
@@ -1881,11 +1932,7 @@ def _cmd_loop_fleet(args: argparse.Namespace, logger: Logger) -> int:
     import statistics as _statistics
 
     builtin_names = _get_builtin_loop_names()
-    cutoff = (
-        datetime.now(UTC) - timedelta(days=args.window_days)
-        if args.window_days is not None
-        else None
-    )
+    cutoff, until = _resolve_window(args)
     loop_filter: str | None = getattr(args, "loop", None)
 
     if args.project:
@@ -1896,7 +1943,9 @@ def _cmd_loop_fleet(args: argparse.Namespace, logger: Logger) -> int:
     all_runs: list[_LoopRunRecord] = []
     for proj in projects:
         all_runs.extend(
-            _collect_loop_runs(proj, builtin_names, loop_filter=loop_filter, cutoff=cutoff)
+            _collect_loop_runs(
+                proj, builtin_names, loop_filter=loop_filter, cutoff=cutoff, until=until
+            )
         )
 
     if not all_runs:
@@ -1907,6 +1956,10 @@ def _cmd_loop_fleet(args: argparse.Namespace, logger: Logger) -> int:
         return 0
 
     if args.json:
+        limit = getattr(args, "limit", 0) or 0
+        sorted_runs = sorted(all_runs, key=lambda r: r.ts, reverse=True)
+        if limit:
+            sorted_runs = sorted_runs[:limit]
         print_json(
             [
                 {
@@ -1919,7 +1972,7 @@ def _cmd_loop_fleet(args: argparse.Namespace, logger: Logger) -> int:
                     "ts": r.ts,
                     "attribution": r.attribution,
                 }
-                for r in sorted(all_runs, key=lambda r: r.ts, reverse=True)
+                for r in sorted_runs
             ]
         )
         return 0
@@ -1929,7 +1982,7 @@ def _cmd_loop_fleet(args: argparse.Namespace, logger: Logger) -> int:
     for r in all_runs:
         by_loop[r.loop_name].append(r)
 
-    rows = []
+    entries = []
     for loop_name in sorted(by_loop):
         runs = by_loop[loop_name]
         total = len(runs)
@@ -1940,17 +1993,28 @@ def _cmd_loop_fleet(args: argparse.Namespace, logger: Logger) -> int:
         top_outcome = Counter(r.outcome for r in runs).most_common(1)[0][0]
         projects_list = sorted({r.project_path.name for r in runs})
         attribution = runs[0].attribution
-        rows.append(
-            [
-                loop_name,
-                attribution,
-                str(total),
-                f"{success_pct}%",
-                f"{med_iter:.1f}",
-                top_outcome,
-                ", ".join(projects_list[:3]) + ("…" if len(projects_list) > 3 else ""),
-            ]
+        entries.append(
+            (loop_name, attribution, total, success_pct, med_iter, top_outcome, projects_list)
         )
+
+    sort_key = getattr(args, "sort", "success")
+    if sort_key == "name":
+        entries.sort(key=lambda e: e[0])
+    else:
+        entries.sort(key=lambda e: (e[3], e[0]))  # success ascending (worst first), tie-break name
+
+    rows = [
+        [
+            loop_name,
+            attribution,
+            str(total),
+            f"{success_pct}%",
+            f"{med_iter:.1f}",
+            top_outcome,
+            ", ".join(projects_list[:3]) + ("…" if len(projects_list) > 3 else ""),
+        ]
+        for loop_name, attribution, total, success_pct, med_iter, top_outcome, projects_list in entries
+    ]
 
     print(table(["Loop", "Type", "Runs", "Success%", "Med-Iter", "Top Outcome", "Projects"], rows))
     return 0
@@ -1998,18 +2062,7 @@ Examples:
         "extract",
         help="Extract ll-relevant JSONL records to logs/<slug>/<session-id>.jsonl",
     )
-    target_group = extract_parser.add_mutually_exclusive_group(required=True)
-    target_group.add_argument(
-        "--project",
-        type=Path,
-        metavar="DIR",
-        help="Working directory of the target project",
-    )
-    target_group.add_argument(
-        "--all",
-        action="store_true",
-        help="Extract all projects with ll activity",
-    )
+    add_corpus_target_args(extract_parser, all_help="Extract all projects with ll activity")
     extract_parser.add_argument(
         "--cmd",
         metavar="TOOL",
@@ -2020,18 +2073,7 @@ Examples:
         "sequences",
         help="Extract tool-chain n-grams of ll invocations from JSONL logs",
     )
-    sequences_target = sequences_parser.add_mutually_exclusive_group(required=True)
-    sequences_target.add_argument(
-        "--project",
-        type=Path,
-        metavar="DIR",
-        help="Working directory of the target project",
-    )
-    sequences_target.add_argument(
-        "--all",
-        action="store_true",
-        help="Analyze all projects with ll activity",
-    )
+    add_corpus_target_args(sequences_parser, all_help="Analyze all projects with ll activity")
     sequences_parser.add_argument(
         "--min-len",
         type=int,
@@ -2053,38 +2095,15 @@ Examples:
         metavar="N",
         help="Limit output to top N chains by frequency",
     )
-    sequences_parser.add_argument(
-        "--window-days",
-        type=int,
-        default=None,
-        metavar="D",
-        help="Only consider records within the last D calendar days",
-    )
+    add_window_args(sequences_parser)
     add_json_arg(sequences_parser)
 
     stats_parser = subparsers.add_parser(
         "stats",
         help="Aggregate skill invocation frequency and correction rate from history.db",
     )
-    stats_target = stats_parser.add_mutually_exclusive_group(required=True)
-    stats_target.add_argument(
-        "--project",
-        type=Path,
-        metavar="DIR",
-        help="Working directory of the target project",
-    )
-    stats_target.add_argument(
-        "--all",
-        action="store_true",
-        help="Aggregate across all projects with ll activity",
-    )
-    stats_parser.add_argument(
-        "--window-days",
-        type=int,
-        default=None,
-        metavar="D",
-        help="Only consider records within the last D calendar days",
-    )
+    add_corpus_target_args(stats_parser, all_help="Aggregate across all projects with ll activity")
+    add_window_args(stats_parser)
     stats_parser.add_argument(
         "--sort",
         choices=["freq", "corrections"],
@@ -2097,25 +2116,8 @@ Examples:
         "scan-failures",
         help="Mine failed ll-* calls from interactive session logs and propose bug issues",
     )
-    scan_failures_target = scan_failures_parser.add_mutually_exclusive_group(required=True)
-    scan_failures_target.add_argument(
-        "--project",
-        type=Path,
-        metavar="DIR",
-        help="Working directory of the target project",
-    )
-    scan_failures_target.add_argument(
-        "--all",
-        action="store_true",
-        help="Scan all projects with ll activity",
-    )
-    scan_failures_parser.add_argument(
-        "--window-days",
-        type=int,
-        default=None,
-        metavar="D",
-        help="Only consider records within the last D calendar days",
-    )
+    add_corpus_target_args(scan_failures_parser, all_help="Scan all projects with ll activity")
+    add_window_args(scan_failures_parser)
     scan_failures_parser.add_argument(
         "--capture",
         action="store_true",
@@ -2126,37 +2128,37 @@ Examples:
         action="store_true",
         help="Allow --capture to include failures from projects other than the current directory (only meaningful with --all)",
     )
+    scan_failures_parser.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Cap output to top N clusters by count (0 = unlimited)",
+    )
     add_json_arg(scan_failures_parser)
 
     dead_skills_parser = subparsers.add_parser(
         "dead-skills",
         help="List catalog skills/commands with zero or low invocations across the corpus",
     )
-    dead_skills_target = dead_skills_parser.add_mutually_exclusive_group(required=True)
-    dead_skills_target.add_argument(
-        "--project",
-        type=Path,
-        metavar="DIR",
-        help="Working directory of the target project (also used as catalog root)",
+    add_corpus_target_args(
+        dead_skills_parser,
+        project_help="Working directory of the target project (also used as catalog root)",
+        all_help="Aggregate across all projects; catalog loaded from current directory",
     )
-    dead_skills_target.add_argument(
-        "--all",
-        action="store_true",
-        help="Aggregate across all projects; catalog loaded from current directory",
-    )
-    dead_skills_parser.add_argument(
-        "--window-days",
-        type=int,
-        default=None,
-        metavar="D",
-        help="Only consider records within the last D calendar days",
-    )
+    add_window_args(dead_skills_parser)
     dead_skills_parser.add_argument(
         "--threshold",
         type=int,
         default=3,
         metavar="N",
         help="Skills with invocations <= N are 'rarely' invoked (default: 3)",
+    )
+    dead_skills_parser.add_argument(
+        "--sort",
+        choices=["tier", "name"],
+        default="tier",
+        help="Sort by tier (never before rarely) then count, or alphabetically (default: tier)",
     )
     add_json_arg(dead_skills_parser)
 
@@ -2210,35 +2212,33 @@ Examples:
         "loop-fleet",
         help="Aggregate cross-project loop-run outcomes for built-in loop improvement",
     )
-    loop_fleet_target = loop_fleet_parser.add_mutually_exclusive_group(required=True)
-    loop_fleet_target.add_argument(
-        "--project",
-        type=Path,
-        metavar="DIR",
-        help="Working directory of the target project",
-    )
-    loop_fleet_target.add_argument(
-        "--all",
-        action="store_true",
-        help="Aggregate across all projects with ll activity",
+    add_corpus_target_args(
+        loop_fleet_parser, all_help="Aggregate across all projects with ll activity"
     )
     loop_fleet_parser.add_argument(
         "--loop",
         metavar="NAME",
         help="Filter to a specific loop name",
     )
-    loop_fleet_parser.add_argument(
-        "--window-days",
-        type=int,
-        default=None,
-        metavar="D",
-        help="Only consider runs within the last D calendar days",
-    )
+    add_window_args(loop_fleet_parser, noun="runs")
     loop_fleet_parser.add_argument(
         "--existing-only",
         action="store_true",
         default=False,
         help="Skip projects that no longer exist on disk (passed to discover; only meaningful with --all)",
+    )
+    loop_fleet_parser.add_argument(
+        "--sort",
+        choices=["success", "name"],
+        default="success",
+        help="Sort by success rate ascending (worst first) or alphabetically (default: success)",
+    )
+    loop_fleet_parser.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Cap --json output to N most recent runs (0 = unlimited)",
     )
     add_json_arg(loop_fleet_parser)
 

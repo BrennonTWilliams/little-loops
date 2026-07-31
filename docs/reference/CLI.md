@@ -2479,9 +2479,11 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `--min-count M` | | Minimum occurrence count to include (default: 1) |
 | `--top N` | | Limit output to top N chains by frequency |
 | `--window-days D` | | Only consider records within D days of latest record |
+| `--since DATE` | | Only consider records on or after DATE (YYYY-MM-DD); mutually exclusive with `--window-days` |
+| `--until DATE` | | Only consider records on or before DATE (YYYY-MM-DD); composes with `--window-days` or `--since` for a closed range |
 | `--json` | `-j` | Output as JSON: `[{"chain": [...], "count": N, "edges": [{"from": "...", "to": "...", "freq": f, "pmi": 1.23, "lift": 3.4}], "pmi": 1.23, "lift": 3.4}]`; `pmi`/`lift` are optional additive fields; `lift < 1.0` signals a frequency-prior-equivalent pair |
 
-`--all` and `--project` are mutually exclusive for `extract`, `sequences`, `stats`, `dead-skills`, `scan-failures`, and `eval-export`.
+`--all` and `--project` are mutually exclusive for `extract`, `sequences`, `stats`, `dead-skills`, `scan-failures`, `loop-fleet`, and `eval-export`. `--window-days` and `--since` are mutually exclusive (both express a lower bound); `--until` composes with either.
 
 **`stats` flags:**
 
@@ -2490,6 +2492,8 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `--all` | | Aggregate across all projects with ll activity |
 | `--project DIR` | | Working directory of the target project |
 | `--window-days D` | | Only consider records within D days of latest record |
+| `--since DATE` | | Only consider records on or after DATE (YYYY-MM-DD); mutually exclusive with `--window-days` |
+| `--until DATE` | | Only consider records on or before DATE (YYYY-MM-DD) |
 | `--sort {freq,corrections}` | | Sort by invocation frequency or correction count (default: freq) |
 | `--json` | `-j` | Output as JSON: `[{"skill": str, "invocations": int, "corrections": int, "correction_rate": float}]` |
 
@@ -2500,7 +2504,10 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `--all` | | Aggregate across all projects; catalog loaded from current directory |
 | `--project DIR` | | Working directory of the target project (also used as catalog root) |
 | `--window-days D` | | Only consider records within D days of latest record |
+| `--since DATE` | | Only consider records on or after DATE (YYYY-MM-DD); mutually exclusive with `--window-days` |
+| `--until DATE` | | Only consider records on or before DATE (YYYY-MM-DD) |
 | `--threshold N` | | Skills with invocations ≤ N are "rarely" invoked (default: 3) |
+| `--sort {tier,name}` | | Sort by tier (never before rarely) then invocation count, or alphabetically (default: tier) |
 | `--json` | `-j` | Output as JSON: `[{"skill": str, "invocations": int, "tier": "never"\|"rarely"}]` |
 
 **`scan-failures` flags:**
@@ -2510,8 +2517,11 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `--all` | | Scan all projects with ll activity |
 | `--project DIR` | | Working directory of the target project |
 | `--window-days D` | | Only consider records within D days of latest record |
+| `--since DATE` | | Only consider records on or after DATE (YYYY-MM-DD); mutually exclusive with `--window-days` |
+| `--until DATE` | | Only consider records on or before DATE (YYYY-MM-DD) |
 | `--capture` | | Create BUG issue files for each failure cluster. When combined with `--all`, scopes capture to `Path.cwd()` by default — foreign-project clusters are reported but not filed. Use `--capture-foreign` to also create issues for clusters from other projects |
 | `--capture-foreign` | | When `--capture --all` is active, also create BUG issues for failure clusters from projects outside the current working directory |
+| `--limit N` | | Cap output to top N clusters by count (0 = unlimited, default) |
 | `--json` | `-j` | Output as JSON: `[{"tool": str, "count": int, "normalized_sig": str, "sample_error": str, "session_ids": [...]}]` |
 
 **`diff` flags:**
@@ -2533,6 +2543,21 @@ Discover and extract ll-relevant JSONL entries from Claude Code session logs. Al
 | `--out PATH` | | Write output to file (default: stdout) |
 | `--json` | `-j` | JSON output instead of default YAML |
 
+**`loop-fleet` flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--all` | | Aggregate across all projects with ll activity |
+| `--project DIR` | | Working directory of the target project |
+| `--loop NAME` | | Filter to a specific loop name |
+| `--window-days D` | | Only consider runs within D days of latest run |
+| `--since DATE` | | Only consider runs on or after DATE (YYYY-MM-DD); mutually exclusive with `--window-days` |
+| `--until DATE` | | Only consider runs on or before DATE (YYYY-MM-DD) |
+| `--existing-only` | | Skip projects that no longer exist on disk (only meaningful with `--all`) |
+| `--sort {success,name}` | | Sort by success rate ascending (worst first) or alphabetically (default: success) |
+| `--limit N` | | Cap `--json` output to N most recent per-run rows (0 = unlimited, default); does not affect the aggregated table |
+| `--json` | `-j` | Output as JSON: one row per run — `[{"loop_name": str, "project": str, "run_folder": str, "final_state": str, "iterations": int, "outcome": str, "ts": str, "attribution": "builtin"\|"custom"}]` |
+
 **Examples:**
 ```bash
 ll-logs discover                          # List all projects with ll activity
@@ -2549,13 +2574,19 @@ ll-logs stats --all                      # Skill frequency/correction table acro
 ll-logs stats --project /path --json     # JSON stats for one project
 ll-logs stats --all --sort corrections   # Sort by correction count (highest first)
 ll-logs stats --all --window-days 30     # Limit to last 30 days of data
+ll-logs stats --all --since 2026-01-01 --until 2026-01-31  # Closed date range
 ll-logs dead-skills --project /path/to/proj --json  # List never/rarely-invoked skills as JSON
 ll-logs dead-skills --project . --threshold 5       # Skills with <=5 invocations
 ll-logs dead-skills --all --window-days 90          # Dead skills across all projects, last 90 days
+ll-logs dead-skills --all --sort name               # Alphabetical order instead of tier-then-count
 ll-logs scan-failures --all                         # Report all failed ll-* calls across all projects
 ll-logs scan-failures --project /path --json        # JSON failure clusters for one project
 ll-logs scan-failures --all --window-days 30        # Only failures from last 30 days
+ll-logs scan-failures --all --limit 10              # Top 10 failure clusters by count
 ll-logs scan-failures --all --capture               # Create BUG issues for each failure cluster
+ll-logs loop-fleet --all                            # Loop success-rate table, worst-first
+ll-logs loop-fleet --project . --sort name          # Alphabetical instead of success-rate order
+ll-logs loop-fleet --all --json --limit 50          # Most recent 50 per-run JSON rows
 ll-logs diff SESSION_A SESSION_B                    # Compare behavioral diff between two sessions
 ll-logs diff SESSION_A SESSION_B --json             # Diff output as JSON
 ll-logs eval-export --project .                     # Export all fixtures from current project (YAML)

@@ -2996,6 +2996,93 @@ class TestMainLogsIntegration:
 
         assert result == 0
 
+    def test_stats_since_until_returns_0(self) -> None:
+        """ll-logs stats --since/--until returns 0 on success (no DB present)."""
+        from little_loops.cli import main_logs
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+
+            with (
+                patch.object(
+                    sys,
+                    "argv",
+                    [
+                        "ll-logs",
+                        "stats",
+                        "--all",
+                        "--since",
+                        "2026-01-01",
+                        "--until",
+                        "2026-01-31",
+                    ],
+                ),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+        assert result == 0
+
+    def test_dead_skills_sort_name_returns_0(self) -> None:
+        """ll-logs dead-skills --sort name returns 0 on success."""
+        from little_loops.cli import main_logs
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+
+            with (
+                patch.object(sys, "argv", ["ll-logs", "dead-skills", "--all", "--sort", "name"]),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+        assert result == 0
+
+    def test_scan_failures_limit_returns_0(self) -> None:
+        """ll-logs scan-failures --limit returns 0 on success (empty corpus)."""
+        from little_loops.cli import main_logs
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+
+            with (
+                patch.object(sys, "argv", ["ll-logs", "scan-failures", "--all", "--limit", "5"]),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+        assert result == 0
+
+    def test_loop_fleet_sort_and_limit_returns_0(self) -> None:
+        """ll-logs loop-fleet --sort/--limit returns 0 on success (no runs)."""
+        from little_loops.cli import main_logs
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True)
+
+            with (
+                patch.object(
+                    sys,
+                    "argv",
+                    [
+                        "ll-logs",
+                        "loop-fleet",
+                        "--all",
+                        "--sort",
+                        "name",
+                        "--limit",
+                        "5",
+                        "-j",
+                    ],
+                ),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+        assert result == 0
+
     def test_discover_finds_ll_project(self, capsys) -> None:
         """ll-logs discover outputs paths for projects with ll activity."""
         import json

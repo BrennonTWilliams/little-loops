@@ -824,6 +824,33 @@ class TestArgumentParsingSequences:
             args = _parse_args()
         assert args.json is True
 
+    def test_sequences_since_and_until_flags(self) -> None:
+        """sequences --since/--until are accepted and compose."""
+        with patch(
+            "sys.argv",
+            [
+                "ll-logs",
+                "sequences",
+                "--all",
+                "--since",
+                "2026-01-01",
+                "--until",
+                "2026-01-31",
+            ],
+        ):
+            args = _parse_args()
+        assert args.since == "2026-01-01"
+        assert args.until == "2026-01-31"
+
+    def test_sequences_window_days_and_since_mutually_exclusive(self) -> None:
+        """sequences --window-days and --since cannot be combined."""
+        with patch(
+            "sys.argv",
+            ["ll-logs", "sequences", "--all", "--window-days", "7", "--since", "2026-01-01"],
+        ):
+            with pytest.raises(SystemExit):
+                _parse_args()
+
     def test_sequences_project_and_all_mutually_exclusive(self) -> None:
         """sequences requires --project or --all (mutually exclusive)."""
         with patch("sys.argv", ["ll-logs", "sequences"]):
@@ -1084,6 +1111,57 @@ class TestSequences:
             assert "ll-issues" in captured.out
             # Old records outside window should be excluded
             assert "ll-old-command" not in captured.out
+
+    def test_sequences_until_filter(self, capsys) -> None:
+        """sequences --until excludes records newer than the given date."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            output_cwd = Path(tmpdir) / "output"
+            output_cwd.mkdir(parents=True, exist_ok=True)
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    {
+                        **self._assistant_bash_record("ll-issues list", "s1"),
+                        "timestamp": "2026-01-15T00:00:00Z",
+                    },
+                    {
+                        **self._assistant_bash_record("ll-issues show", "s1"),
+                        "timestamp": "2026-01-15T00:00:01Z",
+                    },
+                    {
+                        **self._assistant_bash_record("ll-too-new-command", "s2"),
+                        "timestamp": "2026-03-01T00:00:00Z",
+                    },
+                ],
+            )
+
+            with (
+                patch(
+                    "sys.argv",
+                    [
+                        "ll-logs",
+                        "sequences",
+                        "--project",
+                        str(project_path),
+                        "--until",
+                        "2026-01-31",
+                    ],
+                ),
+                patch("pathlib.Path.home", return_value=home),
+                patch("little_loops.cli.logs.Path.cwd", return_value=output_cwd),
+            ):
+                result = main_logs()
+
+            assert result == 0
+            captured = capsys.readouterr()
+            assert "ll-issues" in captured.out
+            assert "ll-too-new-command" not in captured.out
 
     def test_sequences_json_output(self, capsys) -> None:
         """sequences --json outputs valid JSON matching expected schema."""
@@ -1877,6 +1955,113 @@ class TestStats:
             with pytest.raises(SystemExit):
                 _parse_args()
 
+    def test_stats_window_days_and_since_mutually_exclusive(self) -> None:
+        """--window-days and --since cannot be combined."""
+        with patch(
+            "sys.argv",
+            ["ll-logs", "stats", "--all", "--window-days", "7", "--since", "2026-01-01"],
+        ):
+            with pytest.raises(SystemExit):
+                _parse_args()
+
+    def test_stats_since_later_than_until_errors(self, tmp_path: Path) -> None:
+        """--since later than --until causes _resolve_window to exit non-zero."""
+        with patch(
+            "sys.argv",
+            [
+                "ll-logs",
+                "stats",
+                "--project",
+                str(tmp_path),
+                "--since",
+                "2026-06-01",
+                "--until",
+                "2026-01-01",
+            ],
+        ):
+            with pytest.raises(SystemExit):
+                main_logs()
+
+    def test_stats_until_filters_newer_records(self, tmp_path: Path) -> None:
+        """stats --until excludes records newer than the given date."""
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        _populate_skill_events(
+            db_path,
+            [
+                ("2026-01-15T00:00:00Z", "s1", "in-range-skill", ""),
+                ("2026-03-01T00:00:00Z", "s1", "too-new-skill", ""),
+            ],
+        )
+
+        captured: list[str] = []
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "ll-logs",
+                    "stats",
+                    "--project",
+                    str(tmp_path),
+                    "--until",
+                    "2026-01-31",
+                    "--json",
+                ],
+            ),
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else ""),
+            ),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        data = json.loads("\n".join(captured))
+        skill_names = {r["skill"] for r in data}
+        assert "in-range-skill" in skill_names
+        assert "too-new-skill" not in skill_names
+
+    def test_stats_since_and_until_closed_range(self, tmp_path: Path) -> None:
+        """stats --since combined with --until scopes to a closed date range."""
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        _populate_skill_events(
+            db_path,
+            [
+                ("2026-01-01T00:00:00Z", "s1", "too-old-skill", ""),
+                ("2026-02-15T00:00:00Z", "s1", "in-range-skill", ""),
+                ("2026-04-01T00:00:00Z", "s1", "too-new-skill", ""),
+            ],
+        )
+
+        captured: list[str] = []
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "ll-logs",
+                    "stats",
+                    "--project",
+                    str(tmp_path),
+                    "--since",
+                    "2026-02-01",
+                    "--until",
+                    "2026-03-01",
+                    "--json",
+                ],
+            ),
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else ""),
+            ),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        data = json.loads("\n".join(captured))
+        skill_names = {r["skill"] for r in data}
+        assert skill_names == {"in-range-skill"}
+
     def test_stats_json_flag(self) -> None:
         """--json flag is accepted."""
         with patch("sys.argv", ["ll-logs", "stats", "--all", "--json"]):
@@ -2224,6 +2409,132 @@ class TestDeadSkills:
             args = _parse_args()
         assert args.json is True
 
+    def test_dead_skills_sort_default_tier(self) -> None:
+        """--sort defaults to 'tier'."""
+        with patch("sys.argv", ["ll-logs", "dead-skills", "--all"]):
+            args = _parse_args()
+        assert args.sort == "tier"
+
+    def test_dead_skills_sort_name_is_accepted(self) -> None:
+        """--sort name is accepted."""
+        with patch("sys.argv", ["ll-logs", "dead-skills", "--all", "--sort", "name"]):
+            args = _parse_args()
+        assert args.sort == "name"
+
+    def test_dead_skills_until_filters_newer_invocations(self, tmp_path: Path) -> None:
+        """dead-skills --until excludes invocations newer than the given date."""
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        skills_dir = tmp_path / "skills"
+        self._make_skill(skills_dir, "future-active-skill")
+        # All invocations for this skill fall after --until, so it should read as "never".
+        _populate_skill_events(
+            db_path,
+            [
+                ("2026-06-01T00:00:00Z", "s1", "future-active-skill", ""),
+                ("2026-06-01T00:01:00Z", "s1", "future-active-skill", ""),
+                ("2026-06-01T00:02:00Z", "s1", "future-active-skill", ""),
+                ("2026-06-01T00:03:00Z", "s1", "future-active-skill", ""),
+            ],
+        )
+
+        captured: list[str] = []
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "ll-logs",
+                    "dead-skills",
+                    "--project",
+                    str(tmp_path),
+                    "--until",
+                    "2026-01-01",
+                    "--json",
+                ],
+            ),
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else ""),
+            ),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        data = json.loads("\n".join(captured))
+        skills_found = {r["skill"]: r for r in data}
+        assert skills_found["future-active-skill"]["tier"] == "never"
+
+    def test_dead_skills_sort_tier_orders_never_before_rarely(self, tmp_path: Path) -> None:
+        """Default --sort tier lists 'never' rows before 'rarely' rows."""
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        skills_dir = tmp_path / "skills"
+        self._make_skill(skills_dir, "a-rarely-skill")
+        self._make_skill(skills_dir, "z-never-skill")
+        _populate_skill_events(
+            db_path,
+            [
+                ("2026-01-01T00:00:00Z", "s1", "a-rarely-skill", ""),
+            ],
+        )
+
+        captured: list[str] = []
+        with (
+            patch("sys.argv", ["ll-logs", "dead-skills", "--project", str(tmp_path), "--json"]),
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else ""),
+            ),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        data = json.loads("\n".join(captured))
+        tiers = [r["tier"] for r in data]
+        # "never" (z-never-skill) must precede "rarely" (a-rarely-skill) despite alphabetical
+        # order putting a- before z-.
+        assert tiers.index("never") < tiers.index("rarely")
+
+    def test_dead_skills_sort_name_restores_alphabetical(self, tmp_path: Path) -> None:
+        """--sort name orders rows alphabetically regardless of tier."""
+        db_path = tmp_path / ".ll" / "history.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        skills_dir = tmp_path / "skills"
+        self._make_skill(skills_dir, "a-rarely-skill")
+        self._make_skill(skills_dir, "z-never-skill")
+        _populate_skill_events(
+            db_path,
+            [
+                ("2026-01-01T00:00:00Z", "s1", "a-rarely-skill", ""),
+            ],
+        )
+
+        captured: list[str] = []
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "ll-logs",
+                    "dead-skills",
+                    "--project",
+                    str(tmp_path),
+                    "--sort",
+                    "name",
+                    "--json",
+                ],
+            ),
+            patch(
+                "builtins.print",
+                side_effect=lambda *a, **kw: captured.append(str(a[0]) if a else ""),
+            ),
+        ):
+            result = main_logs()
+
+        assert result == 0
+        data = json.loads("\n".join(captured))
+        names = [r["skill"] for r in data]
+        assert names == sorted(names)
+
     def test_dead_skills_never_invoked_appears(self, tmp_path: Path) -> None:
         """A catalog skill with zero invocations appears with tier='never'."""
         db_path = tmp_path / ".ll" / "history.db"
@@ -2477,6 +2788,96 @@ class TestScanFailures:
             args = _parse_args()
         assert args.window_days == 7
 
+    def test_scan_failures_since_flag(self) -> None:
+        """--since is accepted."""
+        with patch("sys.argv", ["ll-logs", "scan-failures", "--all", "--since", "2026-01-01"]):
+            args = _parse_args()
+        assert args.since == "2026-01-01"
+
+    def test_scan_failures_until_flag(self) -> None:
+        """--until is accepted."""
+        with patch("sys.argv", ["ll-logs", "scan-failures", "--all", "--until", "2026-01-01"]):
+            args = _parse_args()
+        assert args.until == "2026-01-01"
+
+    def test_scan_failures_window_days_and_since_mutually_exclusive(self) -> None:
+        """--window-days and --since cannot be combined."""
+        with patch(
+            "sys.argv",
+            ["ll-logs", "scan-failures", "--all", "--window-days", "7", "--since", "2026-01-01"],
+        ):
+            with pytest.raises(SystemExit):
+                _parse_args()
+
+    def test_scan_failures_limit_flag(self) -> None:
+        """--limit is accepted and stored as int."""
+        with patch("sys.argv", ["ll-logs", "scan-failures", "--all", "--limit", "3"]):
+            args = _parse_args()
+        assert args.limit == 3
+
+    def test_scan_failures_limit_caps_clusters_by_count(self, capsys) -> None:
+        """--limit caps output to the top N clusters by count."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    # ll-issues: 2 occurrences (higher count)
+                    self._assistant_bash_record("ll-issues list", tool_use_id="t1"),
+                    self._user_tool_result_record(
+                        "t1", "ll-issues: error: signature-A", is_error=True
+                    ),
+                    self._assistant_bash_record(
+                        "ll-issues list", tool_use_id="t2", session_id="sess-2"
+                    ),
+                    self._user_tool_result_record(
+                        "t2",
+                        "ll-issues: error: signature-A",
+                        is_error=True,
+                        session_id="sess-2",
+                    ),
+                    # ll-history: 1 occurrence (lower count)
+                    self._assistant_bash_record(
+                        "ll-history summary", tool_use_id="t3", session_id="sess-3"
+                    ),
+                    self._user_tool_result_record(
+                        "t3", "ll-history: error: signature-B", is_error=True, session_id="sess-3"
+                    ),
+                ],
+            )
+
+            captured_lines: list[str] = []
+            with (
+                patch(
+                    "sys.argv",
+                    [
+                        "ll-logs",
+                        "scan-failures",
+                        "--project",
+                        str(project_path),
+                        "--limit",
+                        "1",
+                        "--json",
+                    ],
+                ),
+                patch("pathlib.Path.home", return_value=home),
+                patch(
+                    "builtins.print",
+                    side_effect=lambda *a, **kw: captured_lines.append(str(a[0]) if a else ""),
+                ),
+            ):
+                result = main_logs()
+
+        assert result == 0
+        data = json.loads("\n".join(captured_lines))
+        assert len(data) == 1
+        assert data[0]["count"] == 2
+
     def test_scan_failures_window_days_behavioral(self, capsys) -> None:
         """scan-failures --window-days uses wall-clock anchor to exclude old failures."""
         now = datetime.now(UTC)
@@ -2534,6 +2935,60 @@ class TestScanFailures:
         captured = capsys.readouterr()
         assert "ll-history" in captured.out
         assert "ll-old-tool" not in captured.out
+
+    def test_scan_failures_until_behavioral(self, capsys) -> None:
+        """scan-failures --until excludes failures newer than the given date."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir) / "home"
+            claude_projects = home / ".claude" / "projects"
+            claude_projects.mkdir(parents=True, exist_ok=True)
+
+            project_path = self._make_project_dir(
+                claude_projects,
+                home,
+                "myproject",
+                [
+                    self._assistant_bash_record(
+                        "ll-history --bad-flag", tool_use_id="t1", timestamp="2026-01-15T00:00:00Z"
+                    ),
+                    self._user_tool_result_record(
+                        tool_use_id="t1",
+                        content="ll-history: error: unrecognized arguments: --bad-flag",
+                        is_error=True,
+                        timestamp="2026-01-15T00:00:00Z",
+                    ),
+                    self._assistant_bash_record(
+                        "ll-issues --bad", tool_use_id="t2", timestamp="2026-03-01T00:00:00Z"
+                    ),
+                    self._user_tool_result_record(
+                        tool_use_id="t2",
+                        content="ll-issues: error: too-new failure signature",
+                        is_error=True,
+                        timestamp="2026-03-01T00:00:00Z",
+                    ),
+                ],
+            )
+
+            with (
+                patch(
+                    "sys.argv",
+                    [
+                        "ll-logs",
+                        "scan-failures",
+                        "--project",
+                        str(project_path),
+                        "--until",
+                        "2026-01-31",
+                    ],
+                ),
+                patch("pathlib.Path.home", return_value=home),
+            ):
+                result = main_logs()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "ll-history" in captured.out
+        assert "ll-issues" not in captured.out
 
     def test_scan_failures_window_days_cross_project(self, capsys) -> None:
         """scan-failures --all --window-days uses the same calendar cutoff for all projects."""
@@ -4204,6 +4659,131 @@ class TestLoopFleet:
         out = capsys.readouterr().out
         # Only one row for rn-build despite 3 runs
         assert out.count("rn-build") == 1
+
+    def test_loop_fleet_sort_default_success(self) -> None:
+        """--sort defaults to 'success'."""
+        with patch("sys.argv", ["ll-logs", "loop-fleet", "--all"]):
+            args = _parse_args()
+        assert args.sort == "success"
+
+    def test_loop_fleet_sort_name_is_accepted(self) -> None:
+        """--sort name is accepted."""
+        with patch("sys.argv", ["ll-logs", "loop-fleet", "--all", "--sort", "name"]):
+            args = _parse_args()
+        assert args.sort == "name"
+
+    def test_loop_fleet_limit_parsed(self) -> None:
+        """--limit is accepted and stored as int."""
+        with patch("sys.argv", ["ll-logs", "loop-fleet", "--all", "--limit", "5"]):
+            args = _parse_args()
+        assert args.limit == 5
+
+    def test_loop_fleet_sort_success_orders_worst_first(self, capsys, tmp_path) -> None:
+        """Default --sort success lists the lowest success-rate loop first."""
+        project_path = tmp_path / "proj"
+        project_path.mkdir()
+        # rn-good: 1 run, converged (100% success)
+        self._make_history_run(
+            project_path,
+            "2026-01-01T000000-rn-good",
+            [self._loop_complete(final_state="done", terminated_by="terminal")],
+        )
+        # rn-bad: 1 run, failed (0% success)
+        self._make_history_run(
+            project_path,
+            "2026-01-02T000000-rn-bad",
+            [self._loop_complete(final_state="failed", terminated_by="terminal")],
+        )
+
+        with patch("sys.argv", ["ll-logs", "loop-fleet", "--project", str(project_path)]):
+            result = main_logs()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert out.index("rn-bad") < out.index("rn-good")
+
+    def test_loop_fleet_sort_name_restores_alphabetical(self, capsys, tmp_path) -> None:
+        """--sort name orders rows alphabetically regardless of success rate."""
+        project_path = tmp_path / "proj"
+        project_path.mkdir()
+        # Name ordering is the reverse of success ordering, so the two sort modes
+        # produce different row orders: aaa-good sorts first by name, but zzz-bad
+        # sorts first by (worst) success rate.
+        self._make_history_run(
+            project_path,
+            "2026-01-01T000000-rn-aaa-good",
+            [self._loop_complete(final_state="done", terminated_by="terminal")],
+        )
+        self._make_history_run(
+            project_path,
+            "2026-01-02T000000-rn-zzz-bad",
+            [self._loop_complete(final_state="failed", terminated_by="terminal")],
+        )
+
+        with patch(
+            "sys.argv",
+            ["ll-logs", "loop-fleet", "--project", str(project_path), "--sort", "name"],
+        ):
+            result = main_logs()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert out.index("rn-aaa-good") < out.index("rn-zzz-bad")
+
+    def test_loop_fleet_limit_caps_json_run_rows(self, capsys, tmp_path) -> None:
+        """--limit caps --json output to N most-recent per-run rows, not the table."""
+        project_path = tmp_path / "proj"
+        project_path.mkdir()
+        for i in range(3):
+            self._make_history_run(
+                project_path,
+                f"2026-01-0{i + 1}T000000-rn-build",
+                [self._loop_complete(ts=f"2026-01-0{i + 1}T00:00:00+00:00")],
+            )
+
+        with patch(
+            "sys.argv",
+            ["ll-logs", "loop-fleet", "--project", str(project_path), "--limit", "2", "-j"],
+        ):
+            result = main_logs()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert len(data) == 2
+
+    def test_loop_fleet_until_excludes_newer_runs(self, capsys, tmp_path) -> None:
+        """--until excludes runs newer than the given date."""
+        project_path = tmp_path / "proj"
+        project_path.mkdir()
+        self._make_history_run(
+            project_path,
+            "2026-01-01T000000-rn-old",
+            [self._loop_complete(ts="2026-01-15T00:00:00+00:00")],
+        )
+        self._make_history_run(
+            project_path,
+            "2026-03-01T000000-rn-new",
+            [self._loop_complete(ts="2026-03-01T00:00:00+00:00")],
+        )
+
+        with patch(
+            "sys.argv",
+            [
+                "ll-logs",
+                "loop-fleet",
+                "--project",
+                str(project_path),
+                "--until",
+                "2026-01-31",
+                "-j",
+            ],
+        ):
+            result = main_logs()
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert len(data) == 1
+        assert data[0]["loop_name"] == "rn-old"
 
     def test_collect_loop_runs_legacy_nested_layout(self, tmp_path) -> None:
         """_collect_loop_runs handles legacy .history/<loop_name>/<run_id>/events.jsonl layout."""

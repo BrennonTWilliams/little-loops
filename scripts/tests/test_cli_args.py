@@ -18,6 +18,7 @@ from little_loops.cli_args import (
     add_common_auto_args,
     add_common_parallel_args,
     add_config_arg,
+    add_corpus_target_args,
     add_dry_run_arg,
     add_idle_timeout_arg,
     add_json_arg,
@@ -29,6 +30,7 @@ from little_loops.cli_args import (
     add_skip_arg,
     add_timeout_arg,
     add_type_arg,
+    add_window_args,
     parse_issue_ids,
     parse_issue_ids_ordered,
     parse_issue_types,
@@ -516,6 +518,101 @@ class TestAddJsonArg:
         add_json_arg(parser)
         help_text = parser.format_help()
         assert "Output as JSON" in help_text
+
+
+class TestAddCorpusTargetArgs:
+    """Tests for add_corpus_target_args() function."""
+
+    def test_project_and_all_mutually_exclusive(self) -> None:
+        """--project and --all cannot both be given."""
+        parser = argparse.ArgumentParser()
+        add_corpus_target_args(parser)
+        with pytest.raises(SystemExit):
+            parser.parse_args(["--project", "/tmp/foo", "--all"])
+
+    def test_required_by_default(self) -> None:
+        """One of --project/--all must be given when required is not overridden."""
+        parser = argparse.ArgumentParser()
+        add_corpus_target_args(parser)
+        with pytest.raises(SystemExit):
+            parser.parse_args([])
+
+    def test_not_required_when_false(self) -> None:
+        """Neither flag is required when required=False."""
+        parser = argparse.ArgumentParser()
+        add_corpus_target_args(parser, required=False)
+        args = parser.parse_args([])
+        assert args.project is None
+        assert args.all is False
+
+    def test_project_parses_as_path(self) -> None:
+        """--project is parsed as a Path."""
+        parser = argparse.ArgumentParser()
+        add_corpus_target_args(parser)
+        args = parser.parse_args(["--project", "/tmp/foo"])
+        assert args.project == Path("/tmp/foo")
+        assert args.all is False
+
+    def test_all_flag(self) -> None:
+        """--all sets the store_true flag."""
+        parser = argparse.ArgumentParser()
+        add_corpus_target_args(parser)
+        args = parser.parse_args(["--all"])
+        assert args.all is True
+        assert args.project is None
+
+    def test_custom_help_text(self) -> None:
+        """Custom project_help/all_help are honored, letting callers preserve wording."""
+        parser = argparse.ArgumentParser()
+        add_corpus_target_args(
+            parser, project_help="Custom project help", all_help="Custom all help"
+        )
+        help_text = parser.format_help()
+        assert "Custom project help" in help_text
+        assert "Custom all help" in help_text
+
+
+class TestAddWindowArgs:
+    """Tests for add_window_args() function."""
+
+    def test_defaults_are_none(self) -> None:
+        """--window-days/--since/--until all default to None."""
+        parser = argparse.ArgumentParser()
+        add_window_args(parser)
+        args = parser.parse_args([])
+        assert args.window_days is None
+        assert args.since is None
+        assert args.until is None
+
+    def test_window_days_and_since_mutually_exclusive(self) -> None:
+        """--window-days and --since cannot both be given."""
+        parser = argparse.ArgumentParser()
+        add_window_args(parser)
+        with pytest.raises(SystemExit):
+            parser.parse_args(["--window-days", "7", "--since", "2026-01-01"])
+
+    def test_since_and_until_compose(self) -> None:
+        """--since and --until are NOT mutually exclusive (closed date range)."""
+        parser = argparse.ArgumentParser()
+        add_window_args(parser)
+        args = parser.parse_args(["--since", "2026-01-01", "--until", "2026-01-31"])
+        assert args.since == "2026-01-01"
+        assert args.until == "2026-01-31"
+
+    def test_window_days_and_until_compose(self) -> None:
+        """--window-days and --until are NOT mutually exclusive."""
+        parser = argparse.ArgumentParser()
+        add_window_args(parser)
+        args = parser.parse_args(["--window-days", "7", "--until", "2026-01-31"])
+        assert args.window_days == 7
+        assert args.until == "2026-01-31"
+
+    def test_noun_customizes_help_text(self) -> None:
+        """The noun kwarg customizes help text (e.g. 'runs' vs 'records')."""
+        parser = argparse.ArgumentParser()
+        add_window_args(parser, noun="runs")
+        help_text = parser.format_help()
+        assert "runs" in help_text
 
 
 class TestParsePriorities:
