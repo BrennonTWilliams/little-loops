@@ -46,6 +46,7 @@ from little_loops.fsm.validation.evaluator_rules import (
     _validate_parse_swallow,
     _validate_pruning_profile,
     _validate_session_mode_evaluator_inheritance,
+    _validate_tamper_guard,
     _validate_terminal_action_ok,
 )
 from little_loops.fsm.validation.meta_rules import (
@@ -1105,6 +1106,7 @@ def validate_fsm(
     errors.extend(_validate_llm_evidence_contract(fsm))
     errors.extend(_validate_haiku_pinned_generator(fsm))
     errors.extend(_validate_session_mode_evaluator_inheritance(fsm))
+    errors.extend(_validate_tamper_guard(fsm))
 
     return errors
 

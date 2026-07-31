@@ -661,6 +661,37 @@ A state resolving to `continue` has the *prior* chained state's summary prepende
 
 Because summary injection primes the model with the prior state's own conclusions, an evaluator state (`check_semantic`/`llm_structured`, or any default-LLM-judged prompt state) that inherits `continue` loses independent judgment — the FSM's `validate` step warns on this (suppress with `session_mode_ok: true` at the loop top-level for the rare intentional case).
 
+### Tamper Guard
+
+An agent verification state (typically the state that gates a transition on a green test suite) can edit test files to force a pass rather than fix the underlying code — commenting out an assertion, deleting a failing test, weakening a bound. `tamper_guard:` (ENH-2934) opts a state into detecting exactly that: it snapshots test-file content on entry and compares on exit, deterministically (no LLM calls — this adapter delegates entirely to the ENH-2933 guard core):
+
+```yaml
+name: verify-then-ship
+tamper_guard: fail          # loop-level default for all states
+states:
+  implement:
+    action: /ll:manage-issue ${captured.issue.output}
+    action_type: prompt
+    next: verify              # no tamper_guard here — a TDD implement phase legitimately writes tests
+  verify:
+    action: python -m pytest scripts/tests/
+    tamper_guard: revert    # state-level override — this state's own policy wins
+    on_yes: done
+    on_no: implement
+  done:
+    terminal: true
+```
+
+| Value | Behavior |
+|-------|----------|
+| `revert` | Restores modified/deleted *tracked* test files to their pre-existing git state before scoring proceeds. Never touches a newly-added test file (that's a different, pre-patch check's job — ENH-2853). Untracked modified/deleted files have no git state to restore from and are left as unresolved findings. |
+| `fail` | No mutation. Any finding (modified/deleted/added test file, or a pytest config file) fails the transition — the guarded state routes `on_no`/`on_error` the same way a failed evaluator verdict would, with the touched files visible in the routed evidence. |
+| `allow` | No mutation, always proceeds — findings are still recorded in run evidence for visibility, but nothing blocks. |
+
+The snapshot is taken at *this guarded state's own entry*, never at run start — a TDD-mode implement phase that legitimately adds tests earlier in the run never trips a later, separate verify state's guard. A `tamper_guard:` at the loop level sets the default for every state; a state-level `tamper_guard:` overrides it, exactly like `pruning_profile:`/`session_mode:` above.
+
+`ll-loop validate` warns on an unrecognized `tamper_guard` value (anything outside `revert`/`fail`/`allow`) at either the loop or state level — suppress with `tamper_guard_ok: true` at the loop top-level.
+
 ### Handoff Behavior
 
 When a loop detects that Claude's context window is approaching its limit, it triggers a **handoff**. Set `on_handoff` at the loop level (not per state):

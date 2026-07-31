@@ -4459,3 +4459,109 @@ class TestStateConfigFailureFlag:
         assert fsm.states["failed"].failure is True
         assert fsm.states["done"].failure is False
         assert fsm.states["partial"].failure is False
+
+
+class TestTamperGuard:
+    """ENH-2934: tamper_guard (revert|fail|allow) field round-trip serialization.
+
+    Mirrors TestSessionMode's pattern — state-overridable str | None, plus a
+    loop-level default + its own `_ok` suppression flag.
+    """
+
+    def test_state_tamper_guard_round_trips(self) -> None:
+        state = StateConfig(action="run.sh", tamper_guard="fail")
+        d = state.to_dict()
+        assert d.get("tamper_guard") == "fail"
+        restored = StateConfig.from_dict(d)
+        assert restored.tamper_guard == "fail"
+
+    def test_state_tamper_guard_none_omitted_from_dict(self) -> None:
+        state = StateConfig(action="run.sh")
+        d = state.to_dict()
+        assert "tamper_guard" not in d
+
+    def test_state_tamper_guard_defaults_none(self) -> None:
+        state = StateConfig.from_dict({"action": "run.sh"})
+        assert state.tamper_guard is None
+
+    def test_fsmloop_tamper_guard_round_trips(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            tamper_guard="revert",
+        )
+        d = fsm.to_dict()
+        assert d.get("tamper_guard") == "revert"
+        restored = FSMLoop.from_dict(d)
+        assert restored.tamper_guard == "revert"
+
+    def test_fsmloop_default_omits_tamper_guard_key(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+        )
+        d = fsm.to_dict()
+        assert "tamper_guard" not in d
+
+    def test_fsmloop_tamper_guard_ok_round_trips(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+            tamper_guard_ok=True,
+        )
+        d = fsm.to_dict()
+        assert d.get("tamper_guard_ok") is True
+        restored = FSMLoop.from_dict(d)
+        assert restored.tamper_guard_ok is True
+
+    def test_fsmloop_tamper_guard_ok_false_omitted_from_dict(self) -> None:
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(terminal=True)},
+        )
+        d = fsm.to_dict()
+        assert "tamper_guard_ok" not in d
+
+    def test_fsmloop_tamper_guard_ok_defaults_false(self) -> None:
+        fsm = FSMLoop.from_dict(
+            {"name": "test", "initial": "s", "states": {"s": {"terminal": True}}}
+        )
+        assert fsm.tamper_guard_ok is False
+
+    def test_state_wins_over_loop_default(self) -> None:
+        """Precedence: an explicit state-level tamper_guard always wins over
+        the loop-level default (ENH-2934 acceptance criterion)."""
+        from little_loops.fsm.validation import _effective_tamper_guard
+
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(action="run.sh", tamper_guard="allow")},
+            tamper_guard="fail",
+        )
+        assert _effective_tamper_guard(fsm, fsm.states["s"]) == "allow"
+
+    def test_state_inherits_loop_default_when_unset(self) -> None:
+        from little_loops.fsm.validation import _effective_tamper_guard
+
+        fsm = FSMLoop(
+            name="test",
+            initial="s",
+            states={"s": StateConfig(action="run.sh")},
+            tamper_guard="fail",
+        )
+        assert _effective_tamper_guard(fsm, fsm.states["s"]) == "fail"
+
+    def test_schema_json_declares_state_and_loop_level_tamper_guard(self) -> None:
+        """ENH-2934: tamper_guard is present in fsm-loop-schema.json at both
+        the state level (stateConfig.properties, additionalProperties: false)
+        and the loop top-level (properties, additionalProperties: false)."""
+        schema_path = Path(__file__).parent.parent / "little_loops" / "fsm" / "fsm-loop-schema.json"
+        schema = json.loads(schema_path.read_text())
+        assert "tamper_guard" in schema["definitions"]["stateConfig"]["properties"]
+        assert "tamper_guard" in schema["properties"]
+        assert "tamper_guard_ok" in schema["properties"]

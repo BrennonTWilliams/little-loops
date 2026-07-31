@@ -10697,3 +10697,190 @@ class TestSessionModeContinuity:
         executor._exhaust_rate_limit(state, "a", {"short_retries": 1, "long_retries": 0})
 
         assert executor._continuity_summary is None
+
+
+class TestTamperGuardExecutorHook:
+    """ENH-2934: state-level tamper_guard executor hook — snapshot-on-entry /
+    compare-on-exit around a guarded state's action, with fail-policy
+    transition enforcement. Mirrors TestStallDetector's real-FSMExecutor.run()
+    + MockActionRunner-style approach, but needs an actual git repo on disk
+    since the guard shells out to git — uses tests/helpers.copy_git_template
+    the same way test_test_tamper_guard.py does.
+    """
+
+    class _TamperingActionRunner:
+        """Minimal ActionRunner that mutates the filesystem as a side effect."""
+
+        def __init__(self, mutate: Any = None, exit_code: int = 0) -> None:
+            self.mutate = mutate
+            self.exit_code = exit_code
+            self.calls: list[str] = []
+
+        def run(
+            self,
+            action: str,
+            timeout: int,
+            is_slash_command: bool,
+            on_output_line: Any = None,
+            agent: str | None = None,
+            tools: list[str] | None = None,
+            on_usage: Any = None,
+            on_usage_detailed: Any = None,
+            model: str | None = None,
+            working_dir: Any = None,
+            automation_profile: str | None = None,
+        ) -> ActionResult:
+            del (
+                timeout,
+                is_slash_command,
+                on_output_line,
+                agent,
+                tools,
+                on_usage,
+                on_usage_detailed,
+                model,
+                working_dir,
+                automation_profile,
+            )
+            self.calls.append(action)
+            if self.mutate is not None:
+                self.mutate()
+            return ActionResult(
+                output="",
+                stderr="",
+                exit_code=self.exit_code,
+                duration_ms=10,
+                usage_events=[],
+                result_seen=False,
+            )
+
+    def _repo(self, tmp_path: Path) -> Path:
+        import subprocess
+
+        from tests.helpers import copy_git_template
+
+        copy_git_template(tmp_path)
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_x.py").write_text("def test_x():\n    assert True\n")
+        subprocess.run(["git", "add", "."], cwd=tmp_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "init"], cwd=tmp_path, check=True, capture_output=True
+        )
+        return tmp_path
+
+    def _fsm(self, policy: str | None) -> FSMLoop:
+        return FSMLoop(
+            name="tamper-guard-test",
+            initial="verify",
+            states={
+                "verify": StateConfig(
+                    action="run tests",
+                    tamper_guard=policy,
+                    on_yes="done",
+                    on_no="blocked",
+                ),
+                "done": StateConfig(terminal=True),
+                "blocked": StateConfig(terminal=True, failure=True),
+            },
+        )
+
+    def test_fail_policy_routes_to_on_no_when_test_file_tampered(self, tmp_path: Path) -> None:
+        repo = self._repo(tmp_path)
+
+        def mutate() -> None:
+            (repo / "tests" / "test_x.py").write_text("def test_x():\n    pass  # tampered\n")
+
+        runner = self._TamperingActionRunner(mutate=mutate, exit_code=0)
+        executor = FSMExecutor(self._fsm("fail"), action_runner=runner, working_dir=repo)
+        result = executor.run()
+
+        assert result.final_state == "blocked"
+        assert result.failure_terminal is True
+
+    def test_allow_policy_proceeds_despite_tamper(self, tmp_path: Path) -> None:
+        repo = self._repo(tmp_path)
+
+        def mutate() -> None:
+            (repo / "tests" / "test_x.py").write_text("def test_x():\n    pass  # tampered\n")
+
+        runner = self._TamperingActionRunner(mutate=mutate, exit_code=0)
+        executor = FSMExecutor(self._fsm("allow"), action_runner=runner, working_dir=repo)
+        result = executor.run()
+
+        assert result.final_state == "done"
+
+    def test_revert_policy_restores_tampered_tracked_file(self, tmp_path: Path) -> None:
+        repo = self._repo(tmp_path)
+        original = (repo / "tests" / "test_x.py").read_text()
+
+        def mutate() -> None:
+            (repo / "tests" / "test_x.py").write_text("def test_x():\n    pass  # tampered\n")
+
+        runner = self._TamperingActionRunner(mutate=mutate, exit_code=0)
+        executor = FSMExecutor(self._fsm("revert"), action_runner=runner, working_dir=repo)
+        result = executor.run()
+
+        assert result.final_state == "done"
+        assert (repo / "tests" / "test_x.py").read_text() == original
+
+    def test_no_guard_when_key_absent(self, tmp_path: Path) -> None:
+        """A state with no tamper_guard key gets no guard at all — tampering
+        a test file during its action has no effect on routing."""
+        repo = self._repo(tmp_path)
+
+        def mutate() -> None:
+            (repo / "tests" / "test_x.py").write_text("def test_x():\n    pass  # tampered\n")
+
+        runner = self._TamperingActionRunner(mutate=mutate, exit_code=0)
+        executor = FSMExecutor(self._fsm(None), action_runner=runner, working_dir=repo)
+        result = executor.run()
+
+        assert result.final_state == "done"
+
+    def test_tdd_mode_does_not_trip_guard_on_separate_verify_state(self, tmp_path: Path) -> None:
+        """A TDD-mode implement phase that legitimately writes a new test file
+        must not trip a later, separate verify state's guard — the snapshot is
+        taken at the guarded state's own entry, never at run start."""
+        repo = self._repo(tmp_path)
+
+        def write_new_test() -> None:
+            (repo / "tests" / "test_new.py").write_text("def test_new():\n    assert True\n")
+
+        class _TwoStepRunner:
+            def __init__(self) -> None:
+                self.calls: list[str] = []
+
+            def run(self, action: str, *args: Any, **kwargs: Any) -> ActionResult:
+                self.calls.append(action)
+                if action == "write test":
+                    write_new_test()
+                return ActionResult(
+                    output="",
+                    stderr="",
+                    exit_code=0,
+                    duration_ms=10,
+                    usage_events=[],
+                    result_seen=False,
+                )
+
+        fsm = FSMLoop(
+            name="tdd-tamper-test",
+            initial="implement",
+            states={
+                "implement": StateConfig(action="write test", next="verify"),
+                "verify": StateConfig(
+                    action="run tests",
+                    tamper_guard="fail",
+                    on_yes="done",
+                    on_no="blocked",
+                ),
+                "done": StateConfig(terminal=True),
+                "blocked": StateConfig(terminal=True, failure=True),
+            },
+        )
+        runner = _TwoStepRunner()
+        executor = FSMExecutor(fsm, action_runner=runner, working_dir=repo)
+        result = executor.run()
+
+        assert runner.calls == ["write test", "run tests"]
+        assert result.final_state == "done"

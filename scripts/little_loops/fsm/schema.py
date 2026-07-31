@@ -683,6 +683,11 @@ class StateConfig:
     learning: LearningConfig | None = None
     cost_ceiling: CostCeilingConfig | None = None
     pruning_profile: PruningProfileConfig | None = None
+    # ENH-2934: tamper-guard policy ("revert" | "fail" | "allow") for this
+    # state. State override of the loop-level default (FSMLoop.tamper_guard).
+    # Presence (state or inherited loop default) is what marks this state as
+    # guarded; the executor snapshots test files on entry and compares on exit.
+    tamper_guard: str | None = None
     # FEAT-2711 continuity-chain marker: "fresh" (default) or "continue". State
     # override of the loop-level default (FSMLoop.session_mode). "continue"
     # injects the prior chained state's compact-summary into this state's
@@ -783,6 +788,8 @@ class StateConfig:
             result["cost_ceiling"] = self.cost_ceiling.to_dict()
         if self.pruning_profile is not None:
             result["pruning_profile"] = self.pruning_profile.to_dict()
+        if self.tamper_guard is not None:
+            result["tamper_guard"] = self.tamper_guard
         if self.session_mode is not None:
             result["session_mode"] = self.session_mode
         if self.effort is not None:
@@ -890,6 +897,7 @@ class StateConfig:
             learning=learning,
             cost_ceiling=cost_ceiling,
             pruning_profile=pruning_profile,
+            tamper_guard=data.get("tamper_guard"),
             session_mode=data.get("session_mode"),
             effort=data.get("effort"),
             fragment_name=data.get("fragment_name"),
@@ -1298,6 +1306,11 @@ class FSMLoop:
     # Loop-level default automation-context pruning profile (ENH-2714); state-level
     # StateConfig.pruning_profile overrides it. None (default) = full unpruned behavior.
     pruning_profile: PruningProfileConfig | None = None
+    # ENH-2934: loop-level default tamper-guard policy; state-level
+    # StateConfig.tamper_guard overrides it. None (default) = no guard.
+    tamper_guard: str | None = None
+    # ENH-2934 suppression flag: silences the unrecognized-tamper_guard-value warning.
+    tamper_guard_ok: bool = False
     # Loop-level default continuity-chain marker (FEAT-2711); state-level
     # StateConfig.session_mode overrides it. None/"fresh" (default) preserves
     # current fresh-session-per-state behavior exactly.
@@ -1414,6 +1427,11 @@ class FSMLoop:
 
         if self.pruning_profile is not None:
             result["pruning_profile"] = self.pruning_profile.to_dict()
+
+        if self.tamper_guard is not None:
+            result["tamper_guard"] = self.tamper_guard
+        if self.tamper_guard_ok:
+            result["tamper_guard_ok"] = self.tamper_guard_ok
 
         if self.session_mode is not None:
             result["session_mode"] = self.session_mode
@@ -1541,6 +1559,8 @@ class FSMLoop:
             host_guard=host_guard,
             prompt_size_guard=prompt_size_guard,
             pruning_profile=pruning_profile,
+            tamper_guard=data.get("tamper_guard"),
+            tamper_guard_ok=data.get("tamper_guard_ok", False),
             session_mode=data.get("session_mode"),
             session_mode_ok=data.get("session_mode_ok", False),
             meta_self_eval_ok=data.get("meta_self_eval_ok", False),

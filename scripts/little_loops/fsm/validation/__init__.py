@@ -18,9 +18,10 @@ Package layout (ENH-2774 split from the former flat ``validation.py``):
     shell_safety.py:      MR-7, MR-9, MR-11 (bash-default interpolation,
                           over-escaped shell, unsafe context interpolation)
     evaluator_rules.py:   MR-8, MR-10, MR-12, MR-13, haiku-gen, session-mode-eval,
-                          classify-route-default (evidence contract, parse-swallow,
-                          pruning-profile, terminal-action/abandonment-verdict,
-                          haiku-pinned generator, session-mode inheritance)
+                          classify-route-default, tamper-guard (evidence contract,
+                          parse-swallow, pruning-profile, terminal-action/abandonment-verdict,
+                          haiku-pinned generator, session-mode inheritance,
+                          ENH-2934 tamper_guard value validity)
     reachability.py:      static loop refs, capture-reachability, policy-table,
                           progress-paths-isolation
     structural_rules.py:  entry points (validate_fsm, load_and_validate,
@@ -70,6 +71,7 @@ from little_loops.fsm.validation.evaluator_rules import (
     _PARSE_EXCEPT_CATCHING_RE,
     _ZERO_EXIT_RE,
     _effective_pruning_profile,
+    _effective_tamper_guard,
     _validate_abandonment_verdict,
     _validate_classify_route_default,
     _validate_haiku_pinned_generator,
@@ -77,6 +79,7 @@ from little_loops.fsm.validation.evaluator_rules import (
     _validate_parse_swallow,
     _validate_pruning_profile,
     _validate_session_mode_evaluator_inheritance,
+    _validate_tamper_guard,
     _validate_terminal_action_ok,
 )
 from little_loops.fsm.validation.meta_rules import (
@@ -195,6 +198,7 @@ __all__ = [
     "_dominates",
     "_effective_pruning_profile",
     "_effective_session_mode",
+    "_effective_tamper_guard",
     "_find_bash_default_tokens",
     "_find_bypass_path",
     "_find_bypass_path_any",
@@ -239,6 +243,7 @@ __all__ = [
     "_validate_prompt_size_guard",
     "_validate_pruning_profile",
     "_validate_session_mode_evaluator_inheritance",
+    "_validate_tamper_guard",
     "_validate_state_action",
     "_validate_state_cost_ceiling",
     "_validate_state_routing",

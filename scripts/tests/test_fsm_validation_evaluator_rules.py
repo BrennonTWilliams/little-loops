@@ -23,6 +23,7 @@ from little_loops.fsm.validation import (
     _validate_parse_swallow,
     _validate_pruning_profile,
     _validate_session_mode_evaluator_inheritance,
+    _validate_tamper_guard,
     _validate_terminal_action_ok,
     load_and_validate,
     validate_fsm,
@@ -1236,3 +1237,104 @@ class TestAbandonmentVerdict:
         fsm, _ = load_and_validate(loop_path)
         errors = _validate_abandonment_verdict(fsm)
         assert errors == [], f"auto-refine-and-implement.yaml triggered MR-13: {errors}"
+
+
+class TestTamperGuardValidation:
+    """ENH-2934: unrecognized tamper_guard values get a WARN.
+
+    Mirrors TestSessionModeEvaluatorInheritance's _fsm()/suppression-flag pattern.
+    """
+
+    def _fsm(
+        self,
+        work_state: StateConfig,
+        *,
+        loop_tamper_guard: str | None = None,
+        tamper_guard_ok: bool = False,
+    ) -> FSMLoop:
+        return FSMLoop(
+            name="test-loop",
+            initial="work",
+            states={
+                "work": work_state,
+                "done": make_state(terminal=True),
+            },
+            tamper_guard=loop_tamper_guard,
+            tamper_guard_ok=tamper_guard_ok,
+        )
+
+    def test_fires_for_state_with_unrecognized_value(self) -> None:
+        fsm = self._fsm(
+            make_state(action="run.sh", tamper_guard="bogus", on_yes="done", on_no="work")
+        )
+        errors = _validate_tamper_guard(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+        assert errors[0].path == "states.work.tamper_guard"
+        assert "(ENH-2934)" in errors[0].message
+
+    def test_fires_for_unrecognized_loop_level_default(self) -> None:
+        fsm = self._fsm(
+            make_state(action="run.sh", on_yes="done", on_no="work"),
+            loop_tamper_guard="bogus",
+        )
+        errors = _validate_tamper_guard(fsm)
+        assert len(errors) == 1
+        assert errors[0].path == "tamper_guard"
+
+    def test_does_not_fire_for_recognized_values(self) -> None:
+        for value in ("revert", "fail", "allow"):
+            fsm = self._fsm(
+                make_state(action="run.sh", tamper_guard=value, on_yes="done", on_no="work")
+            )
+            errors = _validate_tamper_guard(fsm)
+            assert errors == [], f"{value!r} should not be flagged"
+
+    def test_does_not_fire_when_unset(self) -> None:
+        fsm = self._fsm(make_state(action="run.sh", on_yes="done", on_no="work"))
+        errors = _validate_tamper_guard(fsm)
+        assert errors == []
+
+    def test_suppressed_by_tamper_guard_ok(self) -> None:
+        fsm = self._fsm(
+            make_state(action="run.sh", tamper_guard="bogus", on_yes="done", on_no="work"),
+            tamper_guard_ok=True,
+        )
+        errors = _validate_tamper_guard(fsm)
+        assert errors == []
+
+    def test_wired_into_validate_fsm(self) -> None:
+        fsm = self._fsm(
+            make_state(action="run.sh", tamper_guard="bogus", on_yes="done", on_no="work")
+        )
+        all_errors = validate_fsm(fsm)
+        matches = [
+            e
+            for e in all_errors
+            if e.severity == ValidationSeverity.WARNING and "(ENH-2934)" in e.message
+        ]
+        assert len(matches) == 1
+
+    def test_tamper_guard_recognized_as_top_level_key(self, tmp_path: Path) -> None:
+        """A YAML with top-level tamper_guard/tamper_guard_ok produces no
+        Unknown-top-level-key warning."""
+        loop_yaml = tmp_path / "loop.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: Tamper-guard smoke test\n"
+            "initial: work\n"
+            "tamper_guard: fail\n"
+            "tamper_guard_ok: true\n"
+            "states:\n"
+            "  work:\n"
+            "    action: run.sh\n"
+            "    on_yes: done\n"
+            "    on_no: work\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        _, violations = load_and_validate(loop_yaml, raise_on_error=False)
+        unknown_key_warnings = [
+            v for v in violations if "unknown" in v.message.lower() and "tamper_guard" in v.message
+        ]
+        assert unknown_key_warnings == []

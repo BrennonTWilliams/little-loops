@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from dataclasses import replace as _dc_replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from little_loops.fsm.continuity import summarize_completed_state
 from little_loops.fsm.evaluators import (
@@ -1292,6 +1292,88 @@ class FSMExecutor:
 
         return None
 
+    def _effective_tamper_guard_policy(
+        self, state: StateConfig
+    ) -> Literal["revert", "fail", "allow"] | None:
+        """Resolve the effective tamper_guard policy for *state*: state override, then loop default.
+
+        Returns None (no guard) when unset, or when the resolved value is not
+        one of {"revert", "fail", "allow"} — an unrecognized value is already
+        flagged by the ``_validate_tamper_guard`` lint rule at validation time;
+        the executor simply treats it as absent rather than guessing.
+        """
+        raw_policy = state.tamper_guard or self.fsm.tamper_guard
+        if raw_policy == "revert":
+            return "revert"
+        if raw_policy == "fail":
+            return "fail"
+        if raw_policy == "allow":
+            return "allow"
+        return None
+
+    def _tamper_guard_candidate_paths(self, repo_root: Path) -> list[str]:
+        """Return the test-file + pytest-config paths to snapshot for the tamper guard.
+
+        Enumerates tracked + untracked (non-ignored) repo files via git and
+        narrows to test files (``test_file_patterns.filter_test_files``) plus
+        the pytest config file(s) this repo actually reads
+        (``resolved_pytest_config_paths``). Falls back to just the config
+        paths if the git call fails (still lets the config-file half of the
+        guard function).
+        """
+        from little_loops.config import BRConfig
+        from little_loops.test_file_patterns import filter_test_files
+        from little_loops.test_tamper_guard import resolved_pytest_config_paths
+
+        config_paths = resolved_pytest_config_paths(repo_root)
+        try:
+            proc = subprocess.run(
+                ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+                cwd=str(repo_root),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return sorted(set(config_paths))
+        if proc.returncode != 0:
+            return sorted(set(config_paths))
+        all_paths = [line for line in proc.stdout.splitlines() if line]
+        config = BRConfig(repo_root)
+        return sorted(set(filter_test_files(all_paths, config=config)) | set(config_paths))
+
+    def _tamper_guard_changed_files(self, repo_root: Path) -> list[str]:
+        """Return repo-relative paths touched since the guard's entry snapshot.
+
+        Unions unstaged+staged modifications against HEAD with untracked
+        (non-ignored) files, so a newly-added test file is visible to
+        ``run_tamper_guard`` even though it couldn't have been in the
+        entry snapshot.
+        """
+        try:
+            diff_proc = subprocess.run(
+                ["git", "diff", "--name-only", "HEAD"],
+                cwd=str(repo_root),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            untracked_proc = subprocess.run(
+                ["git", "ls-files", "--others", "--exclude-standard"],
+                cwd=str(repo_root),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return []
+        changed: set[str] = set()
+        if diff_proc.returncode == 0:
+            changed.update(line for line in diff_proc.stdout.splitlines() if line)
+        if untracked_proc.returncode == 0:
+            changed.update(line for line in untracked_proc.stdout.splitlines() if line)
+        return sorted(changed)
+
     def _execute_state(self, state: StateConfig) -> str | None:
         """Execute a single state and return next state name.
 
@@ -1363,6 +1445,21 @@ class FSMExecutor:
                     return error_target
             return interpolate(state.next, ctx)
 
+        # ENH-2934: tamper guard snapshot-on-entry. Bracket the action dispatch
+        # below (not the whole state) so the snapshot reflects test-file state
+        # immediately before this guarded state's own action runs — a TDD
+        # implement phase that legitimately wrote tests earlier in the run
+        # must not trip a later, separate verify state's guard.
+        _tamper_policy = self._effective_tamper_guard_policy(state)
+        _tamper_repo_root = self.working_dir or Path.cwd()
+        _tamper_before = None
+        if _tamper_policy is not None and state.action and self._action_mode(state) != "contract":
+            from little_loops.test_tamper_guard import snapshot_test_paths
+
+            _tamper_before = snapshot_test_paths(
+                self._tamper_guard_candidate_paths(_tamper_repo_root), _tamper_repo_root
+            )
+
         # Execute action if present
         action_result = None
         if state.action and self._action_mode(state) != "contract":
@@ -1385,6 +1482,37 @@ class FSMExecutor:
 
         # Evaluate
         eval_result = self._evaluate(state, action_result, ctx)
+
+        # ENH-2934: tamper guard compare-on-exit + fail-policy enforcement.
+        # Runs regardless of the action's own verdict — a tamper-relevant file
+        # change can happen whether or not the action itself succeeded.
+        if _tamper_before is not None:
+            from little_loops.config import BRConfig
+            from little_loops.test_tamper_guard import run_tamper_guard
+
+            assert _tamper_policy is not None
+            tamper_report = run_tamper_guard(
+                _tamper_before,
+                self._tamper_guard_changed_files(_tamper_repo_root),
+                BRConfig(_tamper_repo_root),
+                _tamper_policy,
+                _tamper_repo_root,
+            )
+            ctx.context["_tamper_guard"] = {
+                "policy": tamper_report.policy,
+                "passed": tamper_report.passed,
+                "findings": [
+                    {"path": f.path, "kind": f.kind, "is_config": f.is_config}
+                    for f in tamper_report.findings
+                ],
+                "reverted": tamper_report.reverted,
+            }
+            if _tamper_policy == "fail" and not tamper_report.passed:
+                forced_verdict = "no" if state.on_no else "error"
+                eval_result = EvaluationResult(
+                    verdict=forced_verdict,
+                    details={"tamper_guard": ctx.context["_tamper_guard"]},
+                )
         # ENH-2522: track last action exit_code so the shutdown helper can
         # distinguish a SIGKILL (exit_code=-9) from a clean Ctrl-C.
         if action_result is not None:

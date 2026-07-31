@@ -360,6 +360,16 @@
       "default": false,
       "description": "ENH-2714 MR-12: suppresses the self-contradictory-allowlist (ERROR) and catalog-suppressed-but-skill-invoking (WARN) pruning-profile validation rule."
     },
+    "tamper_guard": {
+      "type": "string",
+      "enum": ["revert", "fail", "allow"],
+      "description": "ENH-2934: loop-level default tamper-guard policy for verification states; state-level tamper_guard overrides it. Unset (default) = no guard. 'revert' restores tampered test files before scoring; 'fail' fails the transition on any tamper finding; 'allow' proceeds but still records findings in run evidence."
+    },
+    "tamper_guard_ok": {
+      "type": "boolean",
+      "default": false,
+      "description": "ENH-2934: suppresses the unrecognized-tamper_guard-value (WARN) validation rule."
+    },
     "terminal_action_ok": {
       "type": "boolean",
       "default": false,
@@ -567,6 +577,11 @@
         "pruning_profile": {
           "$ref": "#/definitions/pruningProfileConfig",
           "description": "ENH-2714: state-level automation-context static-prefix pruning profile override. Takes precedence over the loop-level default when set."
+        },
+        "tamper_guard": {
+          "type": "string",
+          "enum": ["revert", "fail", "allow"],
+          "description": "ENH-2934: state-level tamper-guard policy override. Takes precedence over the loop-level default when set. Presence (state or inherited loop default) marks this state as guarded: test files are snapshotted on entry and compared on exit."
         },
         "model": {
           "type": "string",

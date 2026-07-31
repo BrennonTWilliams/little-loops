@@ -365,6 +365,62 @@ def _validate_pruning_profile(
     return errors
 
 
+_TAMPER_GUARD_VALUES: frozenset[str] = frozenset({"revert", "fail", "allow"})
+
+
+def _effective_tamper_guard(fsm: FSMLoop, state: StateConfig) -> str | None:
+    """Resolve the effective tamper_guard policy for a state: state override, then loop default."""
+    if state.tamper_guard is not None:
+        return state.tamper_guard
+    return fsm.tamper_guard
+
+
+def _validate_tamper_guard(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate rule (ENH-2934): unrecognized ``tamper_guard`` values.
+
+    ``StateConfig.tamper_guard``/``FSMLoop.tamper_guard`` accept any string at
+    the dataclass layer (like ``session_mode``) with no built-in enum
+    rejection. This WARNs on a value outside ``{"revert", "fail", "allow"}``.
+
+    Checks the loop-level default (if set) once, plus each state's own
+    override (if set) — not every state's *inherited* value, which would
+    duplicate one bad loop-level default across every state that doesn't
+    override it.
+
+    Suppressed by ``tamper_guard_ok: true`` at the loop top-level.
+    """
+    if fsm.tamper_guard_ok:
+        return []
+    errors: list[ValidationError] = []
+    if fsm.tamper_guard is not None and fsm.tamper_guard not in _TAMPER_GUARD_VALUES:
+        errors.append(
+            ValidationError(
+                message=(
+                    f"loop-level tamper_guard: {fsm.tamper_guard!r} is not one of "
+                    f"{sorted(_TAMPER_GUARD_VALUES)!r}. Set a valid value, or "
+                    "`tamper_guard_ok: true` at the loop top-level to suppress. (ENH-2934)"
+                ),
+                path="tamper_guard",
+                severity=ValidationSeverity.WARNING,
+            )
+        )
+    for state_name, state in fsm.states.items():
+        if state.tamper_guard is None or state.tamper_guard in _TAMPER_GUARD_VALUES:
+            continue
+        errors.append(
+            ValidationError(
+                message=(
+                    f"[state: {state_name}] tamper_guard: {state.tamper_guard!r} is not "
+                    f"one of {sorted(_TAMPER_GUARD_VALUES)!r}. Set a valid value, or "
+                    "`tamper_guard_ok: true` at the loop top-level to suppress. (ENH-2934)"
+                ),
+                path=f"states.{state_name}.tamper_guard",
+                severity=ValidationSeverity.WARNING,
+            )
+        )
+    return errors
+
+
 _EVIDENCE_CONTRACT_KEYWORDS: frozenset[str] = frozenset({"verbatim", "quote", "evidence"})
 
 
