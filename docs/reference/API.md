@@ -78,7 +78,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.output` | Output-parsing subpackage — stop-sequence / prefill JSON helpers (`extract_between_tags`, `parse_prefilled_json`) for bounding LLM output-token cost (FEAT-2470). |
 | `little_loops.pricing` | Model pricing constants (USD per million tokens) for token cost estimation across the model registry. `INTRO_PRICING` overrides `MODEL_PRICING` for a model while a time-bounded introductory rate is active (e.g. Sonnet 5's $2/$10 rate through 2026-08-31 inclusive, ENH-2835); `estimate_cost_usd()` checks `date.today()` against each entry's `expires` date and falls back to standard `MODEL_PRICING` once it lapses. |
 | `little_loops.pytest_history_plugin` | Pytest plugin (registered under `pytest11` entry point) that records test-run pass/fail counts, duration, and failing node IDs into `.ll/history.db` (ENH-2459). |
-| `little_loops.queue_store` | Persisted `ll-queue` entry store (`.ll/queue.db`; FEAT-2682) — schema `{id, action, enqueuedAt, priority, status, result}` with tiered `(priority, enqueuedAt)` ordering. |
+| `little_loops.queue_store` | Persisted `ll-queue` entry store (`.ll/queue.db`; FEAT-2682) — schema `{id, action, enqueuedAt, priority, status, result, claimedAt, ownerPid}` with tiered `(priority, enqueuedAt)` ordering. |
 | `little_loops.recursive_finalize` | Decomposed-parent lifecycle and EPIC re-linking. Powers `ll-issues finalize-decomposition` (ENH-1977 Fix 4), invoked from `rn-decompose` and `autodev`'s decomposition states (ENH-2615). |
 | `little_loops.session_store` | Unified per-project SQLite + FTS5 history store (`.ll/history.db`; FEAT-1112) — single source of truth for tool events, file modifications, issue transitions, loop runs, and user corrections. |
 | `little_loops.sft_formatter` | SFT (supervised fine-tuning) data format converters — ChatML and siblings — used by `ll-messages --sft-format`. |
@@ -4313,9 +4313,11 @@ Entry point for `ll-queue` command (FEAT-2682). Persisted work-item queue backed
 
 **Subcommands:**
 - `add TARGET` — Classify and persist a new entry. Without `--runner`, `TARGET` is classified in order: an FSM loop name (resolves via `resolve_loop_path`), a skill/command name (resolves via `skills/<name>/SKILL.md` / `commands/<name>.md`), else a raw CLI invocation. Optional `--priority {P0..P5}` (default `P3`), `--runner {skill,cmd,mcp,prompt,loop}` (skip classification), `--arg KEY=VALUE` (repeatable), `--timeout N` (default 120), `--json`
-- `list` — List all entries ordered by priority tier then FIFO within tier; optional `--json`
+- `list` — List all entries ordered by priority tier then FIFO within tier; optional `--json`, `--wide` (untruncated args/timeout/elapsed summary, ENH-2931)
 - `status ID` — Show one entry by full id or 8+-char prefix; optional `--json`
 - `remove ID` — Delete a `pending` entry by full id or 8+-char prefix; `--force` removes a non-pending entry too; optional `--json`
+- `run` — Serially dequeue and dispatch `pending` entries in priority/FIFO order (FEAT-2683). Optional `--json` (single array; NDJSON under `--watch`). `--watch` (FEAT-2930) turns this into a long-lived drainer: after draining, sleep-polls (`--poll-interval`, default 3s) for new entries instead of exiting. Shutdown is two-stage — a first `SIGINT`/`SIGTERM` finishes the in-flight entry and exits 0 without claiming more; a second forwards `SIGTERM` to an in-flight `LOOP` child's process group, marks that entry `failed` with `error: "interrupted by operator"`, and exits 0. Also runs `_reclaim_stale` on startup and each idle poll, returning `running` entries with a dead `owner_pid` to `pending`
+- `requeue ID [--force]` — Return a stranded `running` entry to `pending` (FEAT-2930). Without `--force`, refuses if the owner still looks alive (same psutil identity check `_reclaim_stale` uses); `--force` overrides for the "owner alive but wedged" case. Optional `--json`
 
 ---
 
@@ -9070,7 +9072,7 @@ Persisted queue-entry store for `ll-queue` (FEAT-2682), backing a dedicated `.ll
 from little_loops.queue_store import (
     DEFAULT_DB_PATH,     # Path(".ll/queue.db")
     PRIORITY_TIERS,      # ("P0", "P1", "P2", "P3", "P4", "P5")
-    QueueEntry,           # id, action: ActionSpec, enqueued_at, priority, status, result
+    QueueEntry,           # id, action: ActionSpec, enqueued_at, priority, status, result, claimed_at, owner_pid
     AmbiguousEntryIdError,
     ensure_db,
     connect,
@@ -9079,12 +9081,13 @@ from little_loops.queue_store import (
     get_entry,              # exact id lookup
     resolve_entry,          # exact id or 8+-char prefix; raises AmbiguousEntryIdError on a multi-match prefix
     remove_entry,
-    update_entry_result,   # for the FEAT-2683 worker loop to record status/result
-    claim_entry,          # atomic pending->running acquisition write (BUG-2929)
+    update_entry_result,   # for the FEAT-2683 worker loop to record status/result; also nulls claimed_at/owner_pid
+    claim_entry,          # atomic pending->running acquisition write (BUG-2929); stamps claimed_at/owner_pid (FEAT-2930)
+    reset_to_pending,      # running->pending; shared by _reclaim_stale and `ll-queue requeue` (FEAT-2930)
 )
 ```
 
-Schema: `queue_entries(id, action, enqueued_at, priority, status, result)`. `action` is a JSON-serialized `ActionSpec` (`little_loops.runner_spec`); `priority` is stored as the 0(P0)-5(P5) numeric rank so `ORDER BY priority ASC, enqueued_at ASC` reproduces `QueuedIssue.__lt__`'s tiered-then-FIFO ordering without importing that class (it's typed concretely against `IssueInfo`). Acquisition and completion are distinct writes: `claim_entry()` performs the `pending` -> `running` transition inside a `BEGIN IMMEDIATE` transaction so concurrent drainers cannot both win the same entry, and `update_entry_result()` performs the completion write once the caller already owns the entry (`result` is `NULL` until then).
+Schema: `queue_entries(id, action, enqueued_at, priority, status, result, claimed_at, owner_pid)`. `action` is a JSON-serialized `ActionSpec` (`little_loops.runner_spec`); `priority` is stored as the 0(P0)-5(P5) numeric rank so `ORDER BY priority ASC, enqueued_at ASC` reproduces `QueuedIssue.__lt__`'s tiered-then-FIFO ordering without importing that class (it's typed concretely against `IssueInfo`). Acquisition and completion are distinct writes: `claim_entry()` performs the `pending` -> `running` transition inside a `BEGIN IMMEDIATE` transaction so concurrent drainers cannot both win the same entry, stamping `claimed_at`/`owner_pid` (default `os.getpid()`) in the same transaction (FEAT-2930); `update_entry_result()` performs the completion write once the caller already owns the entry (`result` is `NULL` until then) and nulls both ownership columns. `reset_to_pending()` (FEAT-2930) is the inverse — `running` -> `pending`, clearing ownership — shared by `cli/queue.py`'s `_reclaim_stale` sweep (a `--watch` drainer's dead-owner cleanup) and the `ll-queue requeue` manual escape hatch.
 
 ---
 

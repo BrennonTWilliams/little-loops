@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 import uuid
 from dataclasses import dataclass
@@ -48,6 +49,7 @@ __all__ = [
     "remove_entry",
     "update_entry_result",
     "claim_entry",
+    "reset_to_pending",
 ]
 
 logger = logging.getLogger(__name__)
@@ -95,7 +97,7 @@ PRIORITY_TIERS: tuple[str, ...] = ("P0", "P1", "P2", "P3", "P4", "P5")
 
 _BUSY_TIMEOUT_MS = 5000
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _MIGRATIONS: list[str] = [
     """
@@ -113,6 +115,13 @@ _MIGRATIONS: list[str] = [
     );
     CREATE INDEX IF NOT EXISTS idx_queue_entries_order
         ON queue_entries(priority, enqueued_at);
+    """,
+    # FEAT-2930: ownership tracking for the --watch long-lived drainer's
+    # stale-entry reclaim. Both nullable — existing rows are unaffected, and a
+    # `done`/`failed` entry has neither set once update_entry_result runs.
+    """
+    ALTER TABLE queue_entries ADD COLUMN claimed_at TEXT;
+    ALTER TABLE queue_entries ADD COLUMN owner_pid INTEGER;
     """,
 ]
 
@@ -254,6 +263,8 @@ class QueueEntry:
     priority: str
     status: str
     result: dict[str, Any] | None = None
+    claimed_at: str | None = None
+    owner_pid: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -269,6 +280,8 @@ class QueueEntry:
             "priority": self.priority,
             "status": self.status,
             "result": self.result,
+            "claimedAt": self.claimed_at,
+            "ownerPid": self.owner_pid,
         }
 
     @classmethod
@@ -280,6 +293,8 @@ class QueueEntry:
             priority=PRIORITY_TIERS[row["priority"]],
             status=row["status"],
             result=json.loads(row["result"]) if row["result"] else None,
+            claimed_at=row["claimed_at"],
+            owner_pid=row["owner_pid"],
         )
 
 
@@ -370,17 +385,45 @@ def remove_entry(entry_id: str, db_path: Path | str = DEFAULT_DB_PATH) -> bool:
     return cur.rowcount > 0
 
 
+def reset_to_pending(entry_id: str, db_path: Path | str = DEFAULT_DB_PATH) -> bool:
+    """Return a ``running`` entry to ``pending``, clearing ``claimed_at``/``owner_pid``.
+
+    Shared by FEAT-2930's ``_reclaim_stale`` sweep and ``ll-queue requeue``.
+    Only ``running`` entries transition — a ``pending``/``done``/``failed``
+    entry is left untouched. Returns True iff a row was updated.
+    """
+    conn = connect(db_path)
+    try:
+        cur = conn.execute(
+            "UPDATE queue_entries SET status = 'pending', claimed_at = NULL, owner_pid = NULL "
+            "WHERE id = ? AND status = 'running'",
+            (entry_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return cur.rowcount > 0
+
+
 def update_entry_result(
     entry_id: str,
     status: str,
     result: dict[str, Any] | None,
     db_path: Path | str = DEFAULT_DB_PATH,
 ) -> bool:
-    """Update *entry_id*'s ``status``/``result`` (for the FEAT-2683 worker). Returns True if updated."""
+    """Update *entry_id*'s ``status``/``result`` (for the FEAT-2683 worker). Returns True if updated.
+
+    Also nulls ``owner_pid``/``claimed_at`` (FEAT-2930): a ``done``/``failed``
+    entry is never a candidate for :func:`_reclaim_stale`'s
+    ``WHERE status = 'running'`` sweep either way, but leaving a stale
+    ``owner_pid`` on a finished entry is a data-hygiene footgun for anything
+    that later reads it directly.
+    """
     conn = connect(db_path)
     try:
         cur = conn.execute(
-            "UPDATE queue_entries SET status = ?, result = ? WHERE id = ?",
+            "UPDATE queue_entries SET status = ?, result = ?, claimed_at = NULL, "
+            "owner_pid = NULL WHERE id = ?",
             (status, json.dumps(result) if result is not None else None, entry_id),
         )
         conn.commit()
@@ -389,7 +432,9 @@ def update_entry_result(
     return cur.rowcount > 0
 
 
-def claim_entry(entry_id: str, db_path: Path | str = DEFAULT_DB_PATH) -> bool:
+def claim_entry(
+    entry_id: str, db_path: Path | str = DEFAULT_DB_PATH, *, owner_pid: int | None = None
+) -> bool:
     """Atomically transition *entry_id* from ``pending`` to ``running``.
 
     Returns True iff this caller won the claim. Uses ``BEGIN IMMEDIATE``
@@ -397,7 +442,14 @@ def claim_entry(entry_id: str, db_path: Path | str = DEFAULT_DB_PATH) -> bool:
     happen inside one transaction, closing the TOCTOU race a Python-side
     read-then-write against :func:`update_entry_result` would leave open when
     multiple drainers race for the same entry (BUG-2929).
+
+    *owner_pid* (FEAT-2930), when given, is stamped alongside ``claimed_at``
+    so a later :func:`_reclaim_stale <little_loops.cli.queue._reclaim_stale>`
+    sweep can tell whether the claiming process is still alive. Defaults to
+    ``os.getpid()``.
     """
+    pid = owner_pid if owner_pid is not None else os.getpid()
+    claimed_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     conn = connect(db_path)
     prior_isolation = conn.isolation_level
     conn.isolation_level = None
@@ -405,8 +457,9 @@ def claim_entry(entry_id: str, db_path: Path | str = DEFAULT_DB_PATH) -> bool:
         conn.execute("BEGIN IMMEDIATE")
         try:
             cur = conn.execute(
-                "UPDATE queue_entries SET status = 'running' WHERE id = ? AND status = 'pending'",
-                (entry_id,),
+                "UPDATE queue_entries SET status = 'running', claimed_at = ?, owner_pid = ? "
+                "WHERE id = ? AND status = 'pending'",
+                (claimed_at, pid, entry_id),
             )
             conn.execute("COMMIT")
         except BaseException:

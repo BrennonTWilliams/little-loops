@@ -7,13 +7,22 @@ issue's Acceptance Criteria ("independent of FEAT-2682's persistence tests").
 from __future__ import annotations
 
 import json
+import signal
+import threading
 from pathlib import Path
-from unittest.mock import patch
+from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from little_loops.cli.queue import main_queue
-from little_loops.queue_store import claim_entry, get_entry, list_entries, update_entry_result
+from little_loops.queue_store import (
+    DEFAULT_DB_PATH,
+    claim_entry,
+    get_entry,
+    list_entries,
+    update_entry_result,
+)
 from little_loops.runner_spec import RunnerResult
 
 
@@ -280,24 +289,32 @@ class TestCmdRunLoopDispatch:
             main_queue()
         return json.loads(capsys.readouterr().out)["id"]
 
+    def _mock_popen(self, mock_popen: Any, *, returncode: int, stdout: str, stderr: str) -> Any:
+        """Configure a `subprocess.Popen` mock for FEAT-2930's Popen/communicate dispatch."""
+        proc = mock_popen.return_value
+        proc.communicate.return_value = (stdout, stderr)
+        proc.returncode = returncode
+        proc.poll.return_value = returncode
+        proc.pid = 12345
+        return proc
+
     def test_loop_entry_intercepted_before_run_action(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
         entry_id = self._add_loop(capsys)
 
         with patch("little_loops.runner_spec.run_action") as mock_run_action:
-            with patch("little_loops.cli.queue.subprocess.run") as mock_subproc:
-                mock_subproc.return_value.returncode = 0
-                mock_subproc.return_value.stdout = "ok"
-                mock_subproc.return_value.stderr = ""
+            with patch("little_loops.cli.queue.subprocess.Popen") as mock_popen:
+                self._mock_popen(mock_popen, returncode=0, stdout="ok", stderr="")
                 with patch("sys.argv", ["ll-queue", "run", "--json"]):
                     result = main_queue()
 
         assert result == 0
         mock_run_action.assert_not_called()
-        assert mock_subproc.called
-        cmd = mock_subproc.call_args[0][0]
+        assert mock_popen.called
+        cmd = mock_popen.call_args[0][0]
         assert cmd[:3] == ["ll-loop", "run", "some-loop"]
+        assert mock_popen.call_args.kwargs["start_new_session"] is True
         assert get_entry(entry_id).status == "done"
 
     def test_loop_entry_default_timeout_is_unbounded(
@@ -306,42 +323,36 @@ class TestCmdRunLoopDispatch:
         """BUG-2928: no outer subprocess deadline for a LOOP entry by default."""
         self._add_loop(capsys)
 
-        with patch("little_loops.cli.queue.subprocess.run") as mock_subproc:
-            mock_subproc.return_value.returncode = 0
-            mock_subproc.return_value.stdout = ""
-            mock_subproc.return_value.stderr = ""
+        with patch("little_loops.cli.queue.subprocess.Popen") as mock_popen:
+            self._mock_popen(mock_popen, returncode=0, stdout="", stderr="")
             with patch("sys.argv", ["ll-queue", "run", "--json"]):
                 main_queue()
 
-        assert mock_subproc.call_args.kwargs["timeout"] is None
+        assert mock_popen.return_value.communicate.call_args.kwargs["timeout"] is None
 
     def test_loop_entry_explicit_timeout_still_honored(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
         self._add_loop(capsys, timeout=30)
 
-        with patch("little_loops.cli.queue.subprocess.run") as mock_subproc:
-            mock_subproc.return_value.returncode = 0
-            mock_subproc.return_value.stdout = ""
-            mock_subproc.return_value.stderr = ""
+        with patch("little_loops.cli.queue.subprocess.Popen") as mock_popen:
+            self._mock_popen(mock_popen, returncode=0, stdout="", stderr="")
             with patch("sys.argv", ["ll-queue", "run", "--json"]):
                 main_queue()
 
-        assert mock_subproc.call_args.kwargs["timeout"] == 30
+        assert mock_popen.return_value.communicate.call_args.kwargs["timeout"] == 30
 
     def test_loop_entry_input_passed_as_positional(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
         self._add_loop(capsys, input_value='{"issue_id": "BUG-1"}')
 
-        with patch("little_loops.cli.queue.subprocess.run") as mock_subproc:
-            mock_subproc.return_value.returncode = 0
-            mock_subproc.return_value.stdout = ""
-            mock_subproc.return_value.stderr = ""
+        with patch("little_loops.cli.queue.subprocess.Popen") as mock_popen:
+            self._mock_popen(mock_popen, returncode=0, stdout="", stderr="")
             with patch("sys.argv", ["ll-queue", "run", "--json"]):
                 main_queue()
 
-        cmd = mock_subproc.call_args[0][0]
+        cmd = mock_popen.call_args[0][0]
         assert cmd == ["ll-loop", "run", "some-loop", '{"issue_id": "BUG-1"}']
 
     def test_loop_entry_terminal_failure_exit_code_marks_failed(
@@ -351,10 +362,10 @@ class TestCmdRunLoopDispatch:
 
         entry_id = self._add_loop(capsys)
 
-        with patch("little_loops.cli.queue.subprocess.run") as mock_subproc:
-            mock_subproc.return_value.returncode = FAILURE_TERMINAL_EXIT_CODE
-            mock_subproc.return_value.stdout = ""
-            mock_subproc.return_value.stderr = "blocked"
+        with patch("little_loops.cli.queue.subprocess.Popen") as mock_popen:
+            self._mock_popen(
+                mock_popen, returncode=FAILURE_TERMINAL_EXIT_CODE, stdout="", stderr="blocked"
+            )
             with patch("sys.argv", ["ll-queue", "run", "--json"]):
                 main_queue()
 
@@ -369,10 +380,8 @@ class TestCmdRunLoopDispatch:
     ) -> None:
         entry_id = self._add_loop(capsys)
 
-        with patch("little_loops.cli.queue.subprocess.run") as mock_subproc:
-            mock_subproc.return_value.returncode = 1
-            mock_subproc.return_value.stdout = ""
-            mock_subproc.return_value.stderr = "error"
+        with patch("little_loops.cli.queue.subprocess.Popen") as mock_popen:
+            self._mock_popen(mock_popen, returncode=1, stdout="", stderr="error")
             with patch("sys.argv", ["ll-queue", "run", "--json"]):
                 main_queue()
 
@@ -392,3 +401,302 @@ class TestCmdRunLoopDispatch:
 
         mock_run_action.assert_called_once()
         assert get_entry(entry_id).status == "done"
+
+
+class _StopWatch(Exception):
+    """Sentinel raised from a mocked `time.sleep` to break out of `--watch`'s loop (FEAT-2930)."""
+
+
+class TestWatchPickup:
+    """FEAT-2930: `ll-queue run --watch` picks up entries enqueued after it started."""
+
+    def test_watch_picks_up_entry_added_after_start(self, capsys: pytest.CaptureFixture[str]) -> None:
+        dispatched: list[str] = []
+        late_id: dict[str, str] = {}
+
+        def fake_run_action(spec: object) -> RunnerResult:
+            dispatched.append(spec.target)  # type: ignore[attr-defined]
+            return RunnerResult(stdout="ok", stderr="", exit_code=0)
+
+        calls = {"n": 0}
+
+        def fake_sleep(interval: float) -> None:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                late_id["id"] = _add_and_get_id(capsys, "late-entry")
+            else:
+                raise _StopWatch
+
+        with patch("little_loops.runner_spec.run_action", side_effect=fake_run_action):
+            with patch("little_loops.cli.queue.time.sleep", side_effect=fake_sleep):
+                with patch("sys.argv", ["ll-queue", "run", "--watch", "--json"]):
+                    with pytest.raises(_StopWatch):
+                        main_queue()
+
+        assert dispatched == ["late-entry"]
+        assert get_entry(late_id["id"]).status == "done"  # type: ignore[union-attr]
+
+
+class TestWatchBusySpinFix:
+    """FEAT-2930: the lost-claim path sleeps `poll_interval` instead of busy-spinning."""
+
+    def test_lost_claim_sleeps_before_retry(self, capsys: pytest.CaptureFixture[str]) -> None:
+        entry_id = _add_and_get_id(capsys, "audit-docs")
+        assert claim_entry(entry_id) is True  # simulate another drainer winning the claim
+
+        sleep_calls: list[float] = []
+
+        def fake_sleep(interval: float) -> None:
+            sleep_calls.append(interval)
+            if len(sleep_calls) >= 2:
+                raise _StopWatch
+
+        with patch("little_loops.cli.queue.time.sleep", side_effect=fake_sleep):
+            with patch("sys.argv", ["ll-queue", "run", "--watch", "--poll-interval", "7", "--json"]):
+                with pytest.raises(_StopWatch):
+                    main_queue()
+
+        assert sleep_calls
+        assert all(interval == 7 for interval in sleep_calls)
+
+
+class TestSignalHandler:
+    """FEAT-2930: two-stage shutdown — model on `_sprint_signal_handler` (test_sprint.py)."""
+
+    def test_first_signal_sets_stop_only(self) -> None:
+        from little_loops.cli.queue import _make_signal_handler
+
+        stop = threading.Event()
+        force_stop = threading.Event()
+        handler = _make_signal_handler(stop, force_stop, json_mode=True)
+
+        handler(signal.SIGTERM, None)
+
+        assert stop.is_set()
+        assert not force_stop.is_set()
+
+    def test_second_signal_sets_force_stop_and_kills_child(self) -> None:
+        from little_loops.cli.queue import _make_signal_handler
+
+        stop = threading.Event()
+        stop.set()
+        force_stop = threading.Event()
+        handler = _make_signal_handler(stop, force_stop, json_mode=True)
+
+        with patch("little_loops.cli.queue._kill_current_loop_proc") as mock_kill:
+            handler(signal.SIGTERM, None)
+
+        assert force_stop.is_set()
+        mock_kill.assert_called_once()
+
+    def test_idle_poll_leaves_nothing_running(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """An idle wait (no entry in flight) claims nothing — the "nothing left running" half of
+        the shutdown contract; the signal-delivery half is covered by the two tests above."""
+
+        def fake_sleep(interval: float) -> None:
+            raise _StopWatch
+
+        with patch("little_loops.cli.queue.time.sleep", side_effect=fake_sleep):
+            with patch("sys.argv", ["ll-queue", "run", "--watch", "--json"]):
+                with pytest.raises(_StopWatch):
+                    main_queue()
+
+        assert list_entries() == []
+
+
+class TestKillCurrentLoopProc:
+    """FEAT-2930: forwards SIGTERM to the in-flight LOOP subprocess's process group."""
+
+    def test_no_proc_in_flight_returns_false(self) -> None:
+        import little_loops.cli.queue as queue_mod
+
+        queue_mod._current_loop_proc = None
+        assert queue_mod._kill_current_loop_proc() is False
+
+    def test_already_exited_returns_false(self) -> None:
+        import little_loops.cli.queue as queue_mod
+
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = 0
+        queue_mod._current_loop_proc = mock_proc
+        try:
+            assert queue_mod._kill_current_loop_proc() is False
+        finally:
+            queue_mod._current_loop_proc = None
+
+    def test_kills_process_group(self) -> None:
+        import little_loops.cli.queue as queue_mod
+
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        mock_proc.pid = 999
+        queue_mod._current_loop_proc = mock_proc
+        try:
+            with patch("little_loops.cli.queue.os.getpgid", return_value=999):
+                with patch("little_loops.cli.queue.os.killpg") as mock_killpg:
+                    result = queue_mod._kill_current_loop_proc()
+            assert result is True
+            mock_killpg.assert_called_once_with(999, signal.SIGTERM)
+        finally:
+            queue_mod._current_loop_proc = None
+
+    def test_swallows_process_lookup_error(self) -> None:
+        import little_loops.cli.queue as queue_mod
+
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        mock_proc.pid = 999
+        queue_mod._current_loop_proc = mock_proc
+        try:
+            with patch("little_loops.cli.queue.os.getpgid", side_effect=ProcessLookupError()):
+                assert queue_mod._kill_current_loop_proc() is False
+        finally:
+            queue_mod._current_loop_proc = None
+
+    def test_swallows_permission_error_from_killpg(self) -> None:
+        import little_loops.cli.queue as queue_mod
+
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        mock_proc.pid = 999
+        queue_mod._current_loop_proc = mock_proc
+        try:
+            with patch("little_loops.cli.queue.os.getpgid", return_value=999):
+                with patch("little_loops.cli.queue.os.killpg", side_effect=PermissionError()):
+                    assert queue_mod._kill_current_loop_proc() is False
+        finally:
+            queue_mod._current_loop_proc = None
+
+
+class TestReclaimStale:
+    """FEAT-2930: `_reclaim_stale` sweeps `running` entries with a dead `owner_pid`."""
+
+    def test_reclaims_entry_with_dead_owner(self, capsys: pytest.CaptureFixture[str]) -> None:
+        from little_loops.cli.queue import _reclaim_stale
+
+        entry_id = _add_and_get_id(capsys, "audit-docs")
+        claim_entry(entry_id, owner_pid=999999)  # not a live pid the mock will confirm
+
+        with patch("little_loops.cli.queue.psutil.Process", side_effect=Exception("no such process")):
+            count = _reclaim_stale(DEFAULT_DB_PATH)
+
+        assert count == 1
+        assert get_entry(entry_id).status == "pending"  # type: ignore[union-attr]
+
+    def test_leaves_entry_with_live_identified_owner(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.cli.queue import _reclaim_stale
+
+        entry_id = _add_and_get_id(capsys, "audit-docs")
+        claim_entry(entry_id, owner_pid=4321)
+
+        mock_proc = MagicMock()
+        mock_proc.cmdline.return_value = ["python", "-m", "little_loops.cli.queue", "run", "--watch"]
+        with patch("little_loops.cli.queue.psutil.Process", return_value=mock_proc):
+            count = _reclaim_stale(DEFAULT_DB_PATH)
+
+        assert count == 0
+        assert get_entry(entry_id).status == "running"  # type: ignore[union-attr]
+
+    def test_ignores_non_running_entries(self, capsys: pytest.CaptureFixture[str]) -> None:
+        from little_loops.cli.queue import _reclaim_stale
+
+        _add_and_get_id(capsys, "audit-docs")  # stays pending
+
+        with patch("little_loops.cli.queue.psutil.Process", side_effect=Exception("dead")):
+            count = _reclaim_stale(DEFAULT_DB_PATH)
+
+        assert count == 0
+
+
+
+class TestCmdRequeue:
+    """FEAT-2930: `ll-queue requeue <id>` — manual escape hatch for a stranded `running` entry."""
+
+    def test_requeues_entry_with_dead_owner(self, capsys: pytest.CaptureFixture[str]) -> None:
+        entry_id = _add_and_get_id(capsys, "audit-docs")
+        claim_entry(entry_id, owner_pid=999999)
+
+        with patch("little_loops.cli.queue.psutil.Process", side_effect=Exception("no such process")):
+            with patch("sys.argv", ["ll-queue", "requeue", entry_id, "--json"]):
+                result = main_queue()
+
+        assert result == 0
+        assert get_entry(entry_id).status == "pending"  # type: ignore[union-attr]
+
+    def test_refuses_without_force_when_owner_alive(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        entry_id = _add_and_get_id(capsys, "audit-docs")
+        claim_entry(entry_id, owner_pid=4321)
+
+        mock_proc = MagicMock()
+        mock_proc.cmdline.return_value = ["python", "-m", "little_loops.cli.queue", "run"]
+        with patch("little_loops.cli.queue.psutil.Process", return_value=mock_proc):
+            with patch("sys.argv", ["ll-queue", "requeue", entry_id, "--json"]):
+                result = main_queue()
+
+        assert result == 1
+        assert get_entry(entry_id).status == "running"  # type: ignore[union-attr]
+
+    def test_force_requeues_even_when_owner_alive(self, capsys: pytest.CaptureFixture[str]) -> None:
+        entry_id = _add_and_get_id(capsys, "audit-docs")
+        claim_entry(entry_id, owner_pid=4321)
+
+        mock_proc = MagicMock()
+        mock_proc.cmdline.return_value = ["python", "-m", "little_loops.cli.queue", "run"]
+        with patch("little_loops.cli.queue.psutil.Process", return_value=mock_proc):
+            with patch("sys.argv", ["ll-queue", "requeue", entry_id, "--force", "--json"]):
+                result = main_queue()
+
+        assert result == 0
+        assert get_entry(entry_id).status == "pending"  # type: ignore[union-attr]
+
+    def test_refuses_non_running_entry(self, capsys: pytest.CaptureFixture[str]) -> None:
+        entry_id = _add_and_get_id(capsys, "audit-docs")  # still pending
+
+        with patch("sys.argv", ["ll-queue", "requeue", entry_id, "--json"]):
+            result = main_queue()
+
+        assert result == 1
+        assert get_entry(entry_id).status == "pending"  # type: ignore[union-attr]
+
+    def test_unknown_id_returns_error(self, capsys: pytest.CaptureFixture[str]) -> None:
+        with patch("sys.argv", ["ll-queue", "requeue", "does-not-exist-00", "--json"]):
+            result = main_queue()
+
+        assert result == 1
+
+
+class TestWatchNdjsonFlush:
+    """FEAT-2930: `--watch --json` emits one flushed NDJSON object per processed entry."""
+
+    def test_emits_one_json_line_per_entry_flushed(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        entry_id = _add_and_get_id(capsys, "audit-docs")
+
+        def fake_sleep(interval: float) -> None:
+            raise _StopWatch
+
+        with patch(
+            "little_loops.runner_spec.run_action",
+            return_value=RunnerResult(stdout="ok", stderr="", exit_code=0),
+        ):
+            with patch("little_loops.cli.queue.time.sleep", side_effect=fake_sleep):
+                with patch("sys.stdout") as mock_stdout:
+                    mock_stdout.isatty.return_value = False
+                    with patch("sys.argv", ["ll-queue", "run", "--watch", "--json"]):
+                        with pytest.raises(_StopWatch):
+                            main_queue()
+
+        printed = "".join(
+            call.args[0] for call in mock_stdout.write.call_args_list if call.args
+        )
+        lines = [line for line in printed.splitlines() if line.strip()]
+        assert len(lines) == 1
+        record = json.loads(lines[0])
+        assert record["id"] == entry_id
+        assert record["status"] == "done"
+        assert mock_stdout.flush.called

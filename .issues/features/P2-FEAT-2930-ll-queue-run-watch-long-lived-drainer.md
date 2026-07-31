@@ -3,9 +3,10 @@ id: FEAT-2930
 title: '`ll-queue run --watch`: long-lived drainer so queued work starts without a
   manual run'
 type: FEAT
-status: open
+status: done
 priority: P2
 captured_at: '2026-07-30T21:27:49Z'
+completed_at: '2026-07-31T01:02:14Z'
 discovered_date: 2026-07-30
 discovered_by: capture-issue
 relates_to:
@@ -214,24 +215,24 @@ poll sleep must cover that path, not only the empty-queue path.
 
 ## Acceptance Criteria
 
-- [ ] `ll-queue run --watch` picks up an entry enqueued after it started.
-- [ ] `ll-queue run` without `--watch` behaves exactly as today (drain, exit 0),
+- [x] `ll-queue run --watch` picks up an entry enqueued after it started.
+- [x] `ll-queue run` without `--watch` behaves exactly as today (drain, exit 0),
       including its single-array `--json` output.
-- [ ] `--poll-interval` is honored; the default is documented in `--help`.
-- [ ] `SIGTERM` during an idle wait exits 0; no entry is left in `running`.
-- [ ] A first `SIGTERM` mid-entry lets that entry finish and records its real
+- [x] `--poll-interval` is honored; the default is documented in `--help`.
+- [x] `SIGTERM` during an idle wait exits 0; no entry is left in `running`.
+- [x] A first `SIGTERM` mid-entry lets that entry finish and records its real
       result; the drainer then exits 0 without claiming further work.
-- [ ] A second `SIGTERM` terminates the in-flight child process and marks the
+- [x] A second `SIGTERM` terminates the in-flight child process and marks the
       entry `failed`; the child is confirmed dead (no orphaned `ll-loop run`).
-- [ ] A `running` entry whose `owner_pid` is dead is returned to `pending` by a
+- [x] A `running` entry whose `owner_pid` is dead is returned to `pending` by a
       subsequently-started watcher, and then executes.
-- [ ] `ll-queue requeue <id>` returns a stranded `running` entry to `pending`.
-- [ ] The lost-claim path sleeps rather than spinning: with two drainers racing a
+- [x] `ll-queue requeue <id>` returns a stranded `running` entry to `pending`.
+- [x] The lost-claim path sleeps rather than spinning: with two drainers racing a
       single entry, the loser's poll count over a fixed interval is bounded by
       `--poll-interval`, not by CPU speed.
-- [ ] `--json` under `--watch` emits one NDJSON object per line per processed
+- [x] `--json` under `--watch` emits one NDJSON object per line per processed
       entry, flushed per entry (assert on a piped, non-TTY stdout).
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `python -m pytest scripts/tests/` exits 0.
 
 ## Scope Boundaries
 
@@ -519,6 +520,8 @@ signals by default. Mitigated by BUG-2929's atomic claim (already landed), the
 `owner_pid` reclaim sweep, and explicit tests for both signal stages.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-07-31T01:01:26Z - `ac46b638-cc76-4783-9d30-43fe42c3223f.jsonl`
+- `/ll:ready-issue` - 2026-07-31T00:32:59 - `321fe859-f6e6-4283-a6bc-c7014269623d.jsonl`
 - `/ll:confidence-check` - 2026-07-31T00:31:02Z - `16d96c23-32fa-49ec-ab21-23083dc4339d.jsonl`
 - `/ll:wire-issue` - 2026-07-31T00:28:04 - `7dfa71ff-fe70-45e9-8f8d-d2cbacf58017.jsonl`
 - `/ll:refine-issue` - 2026-07-31T00:22:00 - `d82db468-8c38-4808-83e2-a20eea418eca.jsonl`

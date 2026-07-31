@@ -49,6 +49,13 @@ dependencies = [
     # turns an unverified upstream shape change into a loud install failure
     # instead of a silent oracle break.
     "anthropic>=0.104,<1.0",
+    # FEAT-2930: `ll-queue run --watch`'s stale-entry reclaim needs a
+    # PID-liveness *identity* check (not just os.kill(pid, 0)), so a recycled
+    # PID isn't mistaken for the original owner. cli/loop/queue.py already
+    # imports this unconditionally at module scope despite it being dev-only
+    # today (a latent ImportError risk on a bare `pip install little-loops`);
+    # this promotion also fixes that.
+    "psutil>=5.9",
 ]
 
 [project.urls]
@@ -122,9 +129,9 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "pytest-xdist>=3.0",
-    # psutil backs xdist's `-n logical` core detection; declare it explicitly so
-    # a fresh install doesn't silently fall back to a different worker count.
-    "psutil>=5.9",
+    # psutil moved to [project].dependencies (FEAT-2930) — it now backs both
+    # xdist's `-n logical` core detection and _reclaim_stale's PID-liveness
+    # identity check, so it's no longer dev-only.
     "pytest-timeout>=2.0",
     "hypothesis>=6.0",
     "mutmut>=3.0",

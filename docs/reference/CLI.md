@@ -2771,7 +2771,7 @@ Pruning is dual-gated by `analytics.retention` config: both `min_project_age_day
 
 ### ll-queue
 
-Persisted work-item queue, backed by a dedicated `.ll/queue.db` (FEAT-2682) — distinct from [`ll-loop queue`](#queue-entries-loopsqueue)'s PID-liveness marker mechanism, which FEAT-2684 preserves unchanged as a compat shim rather than migrating. Schema: `{id, action, enqueuedAt, priority, status, result}`, ordered by priority tier then FIFO within tier.
+Persisted work-item queue, backed by a dedicated `.ll/queue.db` (FEAT-2682) — distinct from [`ll-loop queue`](#queue-entries-loopsqueue)'s PID-liveness marker mechanism, which FEAT-2684 preserves unchanged as a compat shim rather than migrating. Schema: `{id, action, enqueuedAt, priority, status, result, claimedAt, ownerPid}`, ordered by priority tier then FIFO within tier.
 
 **Subcommands:**
 
@@ -2781,7 +2781,8 @@ Persisted work-item queue, backed by a dedicated `.ll/queue.db` (FEAT-2682) — 
 | `list` | List all entries, ordered by priority then FIFO |
 | `status ID` | Show one entry's state and result by full id or 8+-char prefix |
 | `remove ID` | Delete a `pending` entry by full id or 8+-char prefix |
-| `run` | Serially dequeue and dispatch all `pending` entries in priority/FIFO order |
+| `run` | Serially dequeue and dispatch all `pending` entries in priority/FIFO order; `--watch` (FEAT-2930) keeps it running |
+| `requeue ID [--force]` | (FEAT-2930) Return a stranded `running` entry to `pending` |
 
 **`add` flags:**
 
@@ -2820,9 +2821,25 @@ default), and — for `running` entries — elapsed time since `enqueuedAt`. Tru
 
 **`run`** (FEAT-2906): `SKILL`/`CMD`/`MCP`/`PROMPT` entries dispatch through `run_action()`; `LOOP` entries are intercepted beforehand and driven via a subprocess `ll-loop run <target> [input]` shell-out (process isolation, matching `worker_pool.py`/`cli/sprint/run.py`'s precedent) — never through `run_action()`, whose contract explicitly refuses `RunnerType.LOOP`. Exit code `0` → `done`; `FAILURE_TERMINAL_EXIT_CODE` (2) or any other nonzero → `failed`, with `stdout`/`stderr` captured into the entry's `result`.
 
+Without `--watch`, this behavior is unchanged: drain what's pending, then exit. With `--watch` (FEAT-2930), it becomes a long-lived drainer — after draining, it sleep-polls for new entries (`--poll-interval`, default 3s) instead of exiting. Shutdown is two-stage: a first `SIGINT`/`SIGTERM` lets the in-flight entry finish and records its real result, then exits 0 without claiming further work; a second forwards `SIGTERM` to an in-flight `LOOP` child's process group (launched with `start_new_session=True`), marks that entry `failed` with `error: "interrupted by operator"`, and exits 0. An idle wait (no entry in flight) exits 0 immediately on either signal. On startup and each idle poll, a `--watch` drainer also sweeps `running` entries whose `owner_pid` is dead back to `pending` (psutil identity-checked liveness, same approach as `ll-loop queue`'s FEAT-2684 mechanism but parameterized for `ll-queue`'s own process markers) — a `SIGKILL`ed/OOM-killed/rebooted owner is the normal failure mode for a long-lived drainer, not a rare one.
+
+**`--json` under `--watch` is NDJSON, a deliberate departure from this file's single-array `--json` convention**: one compact JSON object per line, one line per processed entry, flushed immediately — a watcher never reaches a natural end-of-list, so it can't emit one accumulated array. Without `--watch`, `--json` is unchanged (single array).
+
 | Flag | Description |
 |------|-------------|
-| `--json` | Output the list of processed entries as JSON |
+| `--json` | Output processed entries as JSON — a single array without `--watch`, NDJSON (one object per line) with it |
+| `--watch` | (FEAT-2930) Long-lived drainer: sleep-poll for new work instead of exiting after draining |
+| `--poll-interval SECONDS` | (FEAT-2930) Seconds between polls under `--watch` (default: `3`) |
+
+**`requeue` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `ID` | Entry id — full uuid or an 8+-char prefix (required, positional) |
+| `--force` | Requeue even if the owner process still appears alive |
+| `--json` | Output as JSON |
+
+`requeue` (FEAT-2930) is the manual escape hatch for a `running` entry whose owner is gone or wedged. Without `--force`, it refuses (leaving the entry `running`) when the owner still looks alive — that's the automatic stale-reclaim sweep's job. `--force` is for the case the sweep can't decide: owner still alive but wedged, per the operator's own judgement. Errors if the entry isn't `running` at all.
 
 **Examples:**
 ```bash
@@ -2834,6 +2851,8 @@ ll-queue list --wide                                      # Untruncated args/tim
 ll-queue status abcd1234
 ll-queue remove abcd1234 --force
 ll-queue run                                              # Execute all pending entries serially
+ll-queue run --watch --poll-interval 5                    # Long-lived drainer, polling every 5s
+ll-queue requeue abcd1234                                 # Return a stranded running entry to pending
 ```
 
 ---

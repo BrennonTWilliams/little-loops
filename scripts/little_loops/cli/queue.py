@@ -9,17 +9,40 @@ shim rather than migrating.
 from __future__ import annotations
 
 import argparse
+import json
+import os
+import signal
 import subprocess
 import sys
+import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+import psutil
 
 from little_loops.queue_store import DEFAULT_DB_PATH as QUEUE_DB_PATH
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from little_loops.queue_store import QueueEntry
     from little_loops.runner_spec import ActionSpec, RunnerType
+
+# Default --poll-interval, in seconds, for `ll-queue run --watch` (FEAT-2930):
+# a sleep-poll, not a busy loop. Also the sleep applied to the lost-claim
+# retry path (below), which the one-shot drainer hits only in the rare case
+# of a second, concurrent drainer.
+_DEFAULT_POLL_INTERVAL = 3.0
+
+# The in-flight LOOP entry's subprocess (FEAT-2930), tracked at module scope
+# so the second-signal handler in `_run_watch` can forward SIGTERM to it. A
+# LOOP entry's subprocess.run/Popen call does not inherit the parent's
+# signals (BUG-2928 removed its outer timeout, making this the only way to
+# stop a wedged loop short of killing the whole drainer).
+_current_loop_proc: subprocess.Popen[str] | None = None
 
 __all__ = ["main_queue"]
 
@@ -331,7 +354,15 @@ def _run_loop_entry(action: Any) -> Any:
     ``--input``) is passed through as the bare positional, matching
     ``cli/loop/next_loop.py:_build_command``'s construction pattern — the
     same coercion ``ll-loop run <loop> [input]`` already applies FSM-side.
+
+    Launched with ``start_new_session=True`` (FEAT-2930) so the child is a
+    process-group leader that ``_kill_current_loop_proc`` can target via
+    ``os.killpg`` on a second shutdown signal, and tracked in the module-level
+    ``_current_loop_proc`` for the duration of the call so that handler can
+    find it.
     """
+    global _current_loop_proc
+
     from little_loops.fsm.types import FAILURE_TERMINAL_EXIT_CODE
     from little_loops.runner_spec import RunnerResult
 
@@ -341,39 +372,91 @@ def _run_loop_entry(action: Any) -> Any:
         cmd.append(loop_input)
 
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=action.timeout)
-    except subprocess.TimeoutExpired as exc:
-        return RunnerResult(
-            stdout=str(exc.stdout or ""),
-            stderr=str(exc.stderr or ""),
-            exit_code=-1,
-            timed_out=True,
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
         )
     except FileNotFoundError as exc:
         return RunnerResult(stdout="", stderr="", exit_code=-1, error=str(exc))
 
-    error = "terminal failure" if proc.returncode == FAILURE_TERMINAL_EXIT_CODE else None
-    return RunnerResult(
-        stdout=proc.stdout, stderr=proc.stderr, exit_code=proc.returncode, error=error
-    )
+    _current_loop_proc = proc
+    try:
+        stdout, stderr = proc.communicate(timeout=action.timeout)
+        returncode = proc.returncode
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        stdout, stderr = proc.communicate()
+        return RunnerResult(stdout=stdout or "", stderr=stderr or "", exit_code=-1, timed_out=True)
+    finally:
+        _current_loop_proc = None
+
+    error = "terminal failure" if returncode == FAILURE_TERMINAL_EXIT_CODE else None
+    return RunnerResult(stdout=stdout, stderr=stderr, exit_code=returncode, error=error)
 
 
-def cmd_run(args: argparse.Namespace) -> int:
-    """Dequeue pending entries in priority/FIFO order and dispatch each entry.
+def _kill_current_loop_proc() -> bool:
+    """Forward SIGTERM to the in-flight LOOP subprocess's process group, if any (FEAT-2930).
+
+    Returns True iff a live process was actually signaled. Safe to call when
+    no LOOP entry is in flight (returns False). Mirrors
+    ``cli/loop/lifecycle.py``'s ``_kill_with_timeout``/``_signal_process_group``
+    escalation shape, minus the SIGKILL escalation wait — the drainer exits
+    right after this on a second signal rather than babysitting the kill.
+    """
+    proc = _current_loop_proc
+    if proc is None or proc.poll() is not None:
+        return False
+    try:
+        pgid = os.getpgid(proc.pid)
+    except ProcessLookupError:
+        return False
+    try:
+        os.killpg(pgid, signal.SIGTERM)
+    except AttributeError:
+        try:
+            proc.terminate()
+        except OSError:
+            return False
+    except (ProcessLookupError, PermissionError):
+        return False
+    return True
+
+
+def _drain_once(
+    stop: threading.Event,
+    force_stop: threading.Event,
+    *,
+    poll_interval: float = _DEFAULT_POLL_INTERVAL,
+    on_entry: Callable[[QueueEntry, dict[str, Any]], None] | None = None,
+) -> list[dict[str, Any]]:
+    """Drain currently-pending entries once; the shared body for one-shot and ``--watch``.
 
     ``RunnerType.LOOP`` entries are intercepted before ``run_action()`` (which
     deliberately never dispatches them, see ``runner_spec.py``) and driven
     via a subprocess ``ll-loop run`` shell-out instead (FEAT-2906). All other
     runner kinds continue through ``run_action()`` unchanged.
+
+    *stop* is checked before each claim, so a graceful shutdown (first
+    signal) stops claiming new work without interrupting an entry already in
+    flight. The lost-claim path (every currently-pending entry claimed by
+    another drainer between the read and the claim) sleeps *poll_interval*
+    before retrying instead of busy-spinning — a rare race for the one-shot
+    drainer, routine once ``--watch`` makes concurrent drainers normal.
+
+    *force_stop*, when set by a second shutdown signal mid-entry, marks that
+    entry ``failed`` with ``error: "interrupted by operator"`` regardless of
+    its actual result, then stops draining further entries even if more are
+    pending.
     """
-    from little_loops.cli.output import colorize, print_json
     from little_loops.queue_store import claim_entry, list_entries, update_entry_result
     from little_loops.runner_spec import RunnerType, run_action
 
-    json_mode = getattr(args, "json", False)
     processed: list[dict[str, Any]] = []
 
-    while True:
+    while not stop.is_set():
         pending = [e for e in list_entries(QUEUE_DB_PATH) if e.status == "pending"]
         if not pending:
             break
@@ -383,6 +466,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         if entry is None:
             # Every currently-pending entry lost its claim to another drainer;
             # re-read on the next iteration rather than treating this as drained.
+            time.sleep(poll_interval)
             continue
 
         try:
@@ -407,15 +491,98 @@ def cmd_run(args: argparse.Namespace) -> int:
                 else "failed"
             )
 
-        update_entry_result(entry.id, status, result_dict, db_path=QUEUE_DB_PATH)
-        processed.append({"id": entry.id, "status": status, "result": result_dict})
+        if force_stop.is_set() and status != "done":
+            status = "failed"
+            result_dict["error"] = "interrupted by operator"
 
-        if not json_mode:
-            status_color = _STATUS_COLOR.get(status, "0")
-            print(
-                f"  {colorize(entry.id[:8], '34')}  {colorize(status, status_color)}  "
-                f"{entry.action.runner.value}:{entry.action.target}"
+        update_entry_result(entry.id, status, result_dict, db_path=QUEUE_DB_PATH)
+        record = {"id": entry.id, "status": status, "result": result_dict}
+        processed.append(record)
+        if on_entry is not None:
+            on_entry(entry, record)
+
+        if force_stop.is_set():
+            break
+
+    return processed
+
+
+def _verify_owner_alive(pid: int | None, claimed_at: str | None) -> bool:
+    """Return True if *pid* is alive and identifiably an ``ll-queue`` drainer (FEAT-2930).
+
+    Parallels ``cli/loop/queue.py``'s ``_verify_queue_pid_identity`` (a
+    separate, untouched mechanism per that module's docstring), parameterized
+    for this store's own process markers instead of ``ll-loop``'s — a bare
+    ``os.kill(pid, 0)`` liveness check would risk resurrecting work under a
+    recycled PID. Any psutil error or unparseable timestamp yields False, so
+    the caller (``_reclaim_stale``) treats an unverifiable owner as dead.
+    """
+    if pid is None:
+        return False
+    try:
+        proc = psutil.Process(pid)
+        cmdline = " ".join(proc.cmdline())
+        if "ll-queue" in cmdline or "little_loops.cli.queue" in cmdline:
+            return True
+        if claimed_at:
+            claimed_ts = (
+                datetime.strptime(claimed_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC).timestamp()
             )
+            if proc.create_time() <= claimed_ts:
+                return True
+        return False
+    except Exception:
+        return False
+
+
+def _reclaim_stale(db_path: Path | str) -> int:
+    """Return ``running`` entries whose ``owner_pid`` is dead to ``pending`` (FEAT-2930).
+
+    Run on watcher startup and on each idle poll — a long-lived drainer makes
+    a ``SIGKILL``ed/OOM-killed/rebooted owner the normal failure mode rather
+    than a rare one a human is present to witness. Returns the count
+    reclaimed.
+    """
+    from little_loops.queue_store import list_entries, reset_to_pending
+
+    running = [e for e in list_entries(db_path) if e.status == "running"]
+    reclaimed = 0
+    for entry in running:
+        if _verify_owner_alive(entry.owner_pid, entry.claimed_at):
+            continue
+        if reset_to_pending(entry.id, db_path=db_path):
+            reclaimed += 1
+    return reclaimed
+
+
+def cmd_run(args: argparse.Namespace) -> int:
+    """Dequeue pending entries in priority/FIFO order and dispatch each entry.
+
+    Without ``--watch``: drain what's pending, then exit (unchanged one-shot
+    behavior). With ``--watch``: drain, then sleep-poll for new work
+    indefinitely (FEAT-2930) — see ``_run_watch``.
+    """
+    from little_loops.cli.output import colorize, print_json
+
+    json_mode = getattr(args, "json", False)
+    poll_interval = getattr(args, "poll_interval", _DEFAULT_POLL_INTERVAL)
+
+    if getattr(args, "watch", False):
+        return _run_watch(json_mode, poll_interval)
+
+    stop = threading.Event()
+    force_stop = threading.Event()
+
+    def _print_line(entry: QueueEntry, record: dict[str, Any]) -> None:
+        if json_mode:
+            return
+        status_color = _STATUS_COLOR.get(record["status"], "0")
+        print(
+            f"  {colorize(entry.id[:8], '34')}  {colorize(record['status'], status_color)}  "
+            f"{entry.action.runner.value}:{entry.action.target}"
+        )
+
+    processed = _drain_once(stop, force_stop, poll_interval=poll_interval, on_entry=_print_line)
 
     if json_mode:
         print_json(processed)
@@ -429,12 +596,141 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _make_signal_handler(
+    stop: threading.Event, force_stop: threading.Event, *, json_mode: bool
+) -> Callable[[int, Any], None]:
+    """Build the two-stage shutdown signal handler for ``--watch`` (FEAT-2930).
+
+    First call: sets *stop* so the drain loop stops claiming new work after
+    the in-flight entry finishes. Second call (``stop`` already set): sets
+    *force_stop* and forwards SIGTERM to any in-flight LOOP subprocess via
+    :func:`_kill_current_loop_proc`. A standalone function (not a closure
+    over ``_run_watch``) so it can be exercised directly in tests, mirroring
+    ``cli/sprint/run.py``'s ``_sprint_signal_handler``.
+    """
+
+    def _handle_signal(signum: int, frame: Any) -> None:
+        if stop.is_set():
+            force_stop.set()
+            _kill_current_loop_proc()
+            if not json_mode:
+                print("\nForce shutdown: terminating in-flight entry", file=sys.stderr)
+        else:
+            stop.set()
+            if not json_mode:
+                print("\nShutdown requested: finishing current entry, will exit", file=sys.stderr)
+
+    return _handle_signal
+
+
+def _run_watch(json_mode: bool, poll_interval: float) -> int:
+    """Long-lived drainer: drain, then sleep-poll for new work indefinitely (FEAT-2930).
+
+    Shutdown semantics: a first ``SIGINT``/``SIGTERM`` lets the in-flight
+    entry finish and records its real result, then exits 0 without claiming
+    further work. A second signal forwards ``SIGTERM`` to an in-flight LOOP
+    child's process group, marks that entry ``failed`` with
+    ``error: "interrupted by operator"``, and exits 0. An idle wait (no entry
+    in flight) exits 0 immediately on either signal — nothing is left
+    ``running``.
+
+    ``--json`` emits NDJSON (one compact object per processed entry, flushed
+    immediately) rather than the one-shot's single accumulated array, since a
+    watcher never reaches a natural end-of-list.
+    """
+    from little_loops.cli.output import colorize
+
+    stop = threading.Event()
+    force_stop = threading.Event()
+    handler = _make_signal_handler(stop, force_stop, json_mode=json_mode)
+
+    prev_int = signal.signal(signal.SIGINT, handler)
+    prev_term = signal.signal(signal.SIGTERM, handler)
+
+    def _emit(entry: QueueEntry, record: dict[str, Any]) -> None:
+        if json_mode:
+            print(json.dumps(record), flush=True)
+        else:
+            status_color = _STATUS_COLOR.get(record["status"], "0")
+            print(
+                f"  {colorize(entry.id[:8], '34')}  {colorize(record['status'], status_color)}  "
+                f"{entry.action.runner.value}:{entry.action.target}",
+                flush=True,
+            )
+
+    def _report_reclaim(count: int) -> None:
+        if count and not json_mode:
+            plural = "y" if count == 1 else "ies"
+            print(colorize(f"Reclaimed {count} stale entr{plural}", "33"))
+
+    try:
+        _report_reclaim(_reclaim_stale(QUEUE_DB_PATH))
+
+        while not stop.is_set():
+            _drain_once(stop, force_stop, poll_interval=poll_interval, on_entry=_emit)
+            if stop.is_set():
+                break
+            time.sleep(poll_interval)
+            _report_reclaim(_reclaim_stale(QUEUE_DB_PATH))
+    finally:
+        signal.signal(signal.SIGINT, prev_int)
+        signal.signal(signal.SIGTERM, prev_term)
+
+    return 0
+
+
+def cmd_requeue(args: argparse.Namespace) -> int:
+    """Return a stranded ``running`` entry to ``pending`` (FEAT-2930 manual escape hatch).
+
+    Without ``--force``, refuses (with a clear message) when the entry's
+    ``owner_pid`` still looks alive — that's the automatic ``_reclaim_stale``
+    sweep's job, and a live owner is presumably still working the entry.
+    ``--force`` is for the case the sweep can't decide: owner still alive but
+    wedged, per the operator's own judgement.
+    """
+    from little_loops.cli.output import colorize, print_json
+    from little_loops.queue_store import reset_to_pending
+
+    code = _not_found_or_ambiguous(args)
+    if code is not None:
+        return code
+    entry = args._resolved_entry
+    json_mode = getattr(args, "json", False)
+    force = getattr(args, "force", False)
+
+    if entry.status != "running":
+        msg = f"Entry '{entry.id[:8]}' is {entry.status}, not running; nothing to requeue"
+        if json_mode:
+            print_json({"error": msg, "id": entry.id})
+        else:
+            print(msg, file=sys.stderr)
+        return 1
+
+    if not force and _verify_owner_alive(entry.owner_pid, entry.claimed_at):
+        msg = (
+            f"Entry '{entry.id[:8]}' owner (pid {entry.owner_pid}) appears alive; "
+            "use --force to requeue anyway"
+        )
+        if json_mode:
+            print_json({"error": msg, "id": entry.id})
+        else:
+            print(msg, file=sys.stderr)
+        return 1
+
+    reset_to_pending(entry.id, db_path=QUEUE_DB_PATH)
+    if json_mode:
+        print_json({"requeued": entry.id})
+    else:
+        print(f"Requeued {colorize(entry.id[:8], '34')}")
+    return 0
+
+
 def main_queue() -> int:
     """CLI handler for ll-queue subcommands."""
     with cli_event_context(DEFAULT_DB_PATH, "ll-queue", sys.argv[1:]):
         parser = argparse.ArgumentParser(
             prog="ll-queue",
-            description="Persisted work-item queue: add/list/status/remove/run commands",
+            description="Persisted work-item queue: add/list/status/remove/run/requeue commands",
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog="""
 Examples:
@@ -444,6 +740,8 @@ Examples:
   ll-queue status abcd1234
   ll-queue remove abcd1234 --force
   ll-queue run
+  ll-queue run --watch --poll-interval 5
+  ll-queue requeue abcd1234
 """,
         )
 
@@ -530,7 +828,45 @@ Examples:
             description="Serially dispatch each pending entry: SKILL/CMD/MCP/PROMPT through "
             "run_action(), LOOP entries via a subprocess `ll-loop run` shell-out",
         )
-        run_parser.add_argument("--json", action="store_true", default=False, help="JSON output")
+        run_parser.add_argument(
+            "--json",
+            action="store_true",
+            default=False,
+            help="JSON output. Under --watch, emits NDJSON (one object per line per "
+            "processed entry) instead of a single array.",
+        )
+        run_parser.add_argument(
+            "--watch",
+            action="store_true",
+            default=False,
+            help="Long-lived drainer: after draining, sleep-poll for new entries "
+            "instead of exiting. Ctrl-C once for a graceful drain, twice to force-stop "
+            "the in-flight entry.",
+        )
+        run_parser.add_argument(
+            "--poll-interval",
+            type=float,
+            default=_DEFAULT_POLL_INTERVAL,
+            help=f"Seconds between polls under --watch (default: {_DEFAULT_POLL_INTERVAL})",
+        )
+
+        requeue_parser = subparsers.add_parser(
+            "requeue",
+            help="Return a stranded `running` entry to `pending`",
+            description="Manual escape hatch for a running entry whose owner process "
+            "is gone or wedged; a --watch drainer's stale-entry sweep already "
+            "handles the common dead-owner case automatically on startup/idle poll",
+        )
+        requeue_parser.add_argument("id", help="Entry id (full uuid or 8+-char prefix)")
+        requeue_parser.add_argument(
+            "--force",
+            action="store_true",
+            default=False,
+            help="Requeue even if the owner process still appears alive",
+        )
+        requeue_parser.add_argument(
+            "--json", action="store_true", default=False, help="JSON output"
+        )
 
         parsed = parser.parse_args()
 
@@ -544,6 +880,8 @@ Examples:
             return cmd_remove(parsed)
         elif parsed.command == "run":
             return cmd_run(parsed)
+        elif parsed.command == "requeue":
+            return cmd_requeue(parsed)
         else:
             parser.print_help()
             return 1

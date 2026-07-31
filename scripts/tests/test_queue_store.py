@@ -21,6 +21,7 @@ from little_loops.queue_store import (
     get_entry,
     list_entries,
     remove_entry,
+    reset_to_pending,
     resolve_entry,
     update_entry_result,
 )
@@ -331,3 +332,75 @@ class TestConnect:
             assert conn.row_factory is sqlite3.Row
         finally:
             conn.close()
+
+
+class TestV1ToV2Migration:
+    """FEAT-2930: v1 -> v2 adds claimed_at/owner_pid to queue_entries."""
+
+    def test_v1_to_v2_migration(self, tmp_path: Path) -> None:
+        """Manually bootstrap a v1 schema, then verify ensure_db() applies the v2 migration."""
+        db = tmp_path / "queue.db"
+        from little_loops.queue_store import _MIGRATIONS
+
+        conn = sqlite3.connect(str(db))
+        try:
+            conn.executescript(_MIGRATIONS[0])
+            conn.execute("INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', '1')")
+            conn.commit()
+        finally:
+            conn.close()
+
+        ensure_db(db)
+
+        conn = sqlite3.connect(str(db))
+        try:
+            version = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(queue_entries)")}
+        finally:
+            conn.close()
+
+        assert int(version[0]) == SCHEMA_VERSION
+        assert {"claimed_at", "owner_pid"}.issubset(columns)
+
+    def test_claim_entry_populates_new_columns(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry = add_entry(_spec(), db_path=db)
+        assert claim_entry(entry.id, db_path=db, owner_pid=4242) is True
+        claimed = get_entry(entry.id, db)
+        assert claimed is not None
+        assert claimed.owner_pid == 4242
+        assert claimed.claimed_at is not None
+
+    def test_update_entry_result_clears_owner_columns(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry = add_entry(_spec(), db_path=db)
+        claim_entry(entry.id, db_path=db, owner_pid=4242)
+        update_entry_result(entry.id, "done", {"exit_code": 0}, db_path=db)
+        done = get_entry(entry.id, db)
+        assert done is not None
+        assert done.owner_pid is None
+        assert done.claimed_at is None
+
+
+class TestResetToPending:
+    def test_resets_running_entry(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry = add_entry(_spec(), db_path=db)
+        claim_entry(entry.id, db_path=db, owner_pid=4242)
+        assert reset_to_pending(entry.id, db_path=db) is True
+        reset = get_entry(entry.id, db)
+        assert reset is not None
+        assert reset.status == "pending"
+        assert reset.owner_pid is None
+        assert reset.claimed_at is None
+
+    def test_leaves_non_running_entry_untouched(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry = add_entry(_spec(), db_path=db)  # still pending
+        assert reset_to_pending(entry.id, db_path=db) is False
+        assert get_entry(entry.id, db).status == "pending"  # type: ignore[union-attr]
+
+    def test_returns_false_for_unknown_id(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        ensure_db(db)
+        assert reset_to_pending("does-not-exist", db_path=db) is False
