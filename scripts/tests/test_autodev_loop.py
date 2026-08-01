@@ -18,6 +18,7 @@ moving the score.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -476,6 +477,114 @@ class TestRecheckAfterSizeReviewDesignGateBranch:
         gate_fail_write_idx = action.index('GATE="FAIL"')
         gate_pass_check_idx = action.index('if [ "$GATE" = "PASS" ]')
         assert design_fail_idx < gate_fail_write_idx < gate_pass_check_idx
+
+
+def _run_pre_deferral_remedy_selector(
+    *,
+    gate_marker: str,
+    spike_attempted: bool = False,
+    reconcile_attempted: bool = False,
+    score_ambiguity: int = 0,
+    score_complexity: int = 0,
+    score_test_coverage: int = 0,
+    score_change_surface: int = 0,
+) -> str:
+    """Run the real BUG-2803/ENH-2978 REMEDY selector python one-liner against
+    synthetic input, mirroring _run_reconcile_predicate's subprocess-execution
+    approach for check_reconcile_needed."""
+    action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
+    marker = (
+        'REMEDY=$(GATE_MARKER="$GATE_MARKER" ll-issues show "$ID" --json 2>/dev/null'
+        ' | python3 -c "'
+    )
+    idx = action.index(marker)
+    tail = action[idx + len(marker) :]
+    script, _, _ = tail.partition('" 2>/dev/null || echo "")')
+    payload = json.dumps(
+        {
+            "spike_attempted": "true" if spike_attempted else "false",
+            "reconcile_attempted": "true" if reconcile_attempted else "false",
+            "score_ambiguity": score_ambiguity,
+            "score_complexity": score_complexity,
+            "score_test_coverage": score_test_coverage,
+            "score_change_surface": score_change_surface,
+        }
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        input=payload,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "GATE_MARKER": gate_marker},
+    )
+    return result.stdout.strip()
+
+
+class TestRecheckAfterSizeReviewMeasurementGateBranch:
+    """ENH-2978: an explicit unresolved measurement/proof gate in the issue
+    body forces the BUG-2803 pre-deferral remedy to spike, independent of
+    which outcome-confidence subscore is weakest."""
+
+    def test_marker_literals_present_in_action(self) -> None:
+        action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
+        for literal in (
+            "do not start otherwise",
+            "measurement \\(gate\\)",
+            "pre-implementation measurement",
+        ):
+            assert literal in action
+
+    def test_gate_check_precedes_ambiguity_fallback(self) -> None:
+        action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
+        gate_idx = action.index("GATE_MARKER")
+        fallback_idx = action.index("amb = int(d.get('score_ambiguity')")
+        assert gate_idx < fallback_idx
+
+    def test_marker_present_forces_spike_even_when_ambiguity_not_weakest(self) -> None:
+        """The precedence case ENH-2978 exists to fix: gate marker present,
+        but score_ambiguity is NOT the strictly weakest subscore."""
+        remedy = _run_pre_deferral_remedy_selector(
+            gate_marker="true",
+            score_ambiguity=18,
+            score_complexity=14,
+            score_test_coverage=25,
+            score_change_surface=25,
+        )
+        assert remedy == "spike"
+
+    def test_marker_absent_falls_back_to_ambiguity_weakest_regression(self) -> None:
+        remedy = _run_pre_deferral_remedy_selector(
+            gate_marker="false",
+            score_ambiguity=5,
+            score_complexity=14,
+            score_test_coverage=25,
+            score_change_surface=25,
+        )
+        assert remedy == "spike"
+
+    def test_marker_absent_and_ambiguity_not_weakest_falls_back_to_reconcile_regression(
+        self,
+    ) -> None:
+        remedy = _run_pre_deferral_remedy_selector(
+            gate_marker="false",
+            score_ambiguity=18,
+            score_complexity=14,
+            score_test_coverage=25,
+            score_change_surface=25,
+        )
+        assert remedy == "reconcile"
+
+    def test_marker_present_but_already_attempted_yields_no_remedy(self) -> None:
+        """The attempted-flags guard must still take precedence over the gate
+        marker — a spike already run this cycle must not re-arm."""
+        remedy = _run_pre_deferral_remedy_selector(
+            gate_marker="true",
+            spike_attempted=True,
+            score_ambiguity=18,
+            score_complexity=14,
+        )
+        assert remedy == ""
 
 
 class TestRecheckAfterSizeReviewDecisionUnresolvedBranch:

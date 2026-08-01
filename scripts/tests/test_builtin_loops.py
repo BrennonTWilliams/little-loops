@@ -5586,6 +5586,21 @@ class TestAutodevLoop:
             in action
         )
 
+    def test_recheck_after_size_review_measurement_gate_precedes_ambiguity_fallback(
+        self, data: dict
+    ) -> None:
+        """ENH-2978: the unresolved measurement/proof-gate body-text check must
+        run before the score_ambiguity subscore fallback within the BUG-2803
+        remedy-arming block, and its marker literals must be present."""
+        action = data["states"].get("recheck_after_size_review", {}).get("action", "")
+        assert "GATE_MARKER" in action
+        assert "do not start otherwise" in action
+        assert "measurement \\(gate\\)" in action
+        assert "pre-implementation measurement" in action
+        assert action.index("GATE_MARKER") < action.index(
+            "amb = int(d.get('score_ambiguity')"
+        ), "the measurement-gate check must run before the ambiguity-subscore fallback"
+
     def test_dequeue_next_clears_pre_deferral_remedy_files(self, data: dict) -> None:
         """BUG-2803: dequeue_next must clear the pre-deferral remedy handshake and
         fired-marker files so they never leak across issues within a run."""

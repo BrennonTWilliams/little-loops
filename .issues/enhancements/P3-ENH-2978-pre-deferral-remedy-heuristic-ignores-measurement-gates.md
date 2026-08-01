@@ -4,8 +4,9 @@ title: dispatch_pre_deferral_remedy spike-vs-reconcile heuristic ignores unresol
   measurement gates
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-08-01T20:40:01Z'
+completed_at: '2026-08-01T21:55:20Z'
 discovered_date: 2026-08-01
 discovered_by: capture-issue
 testable: true
@@ -336,6 +337,33 @@ existing FSM state's `action:` block.
 `dispatch_pre_deferral_remedy` (routing block gains a body-text gate check)
 -> `run_spike` | `reconcile_current`
 
+## Scope Boundaries
+
+- Out of scope: extending `/ll:confidence-check` Phase 4.10's signal-phrase
+  list to cover measurement-gate phrasing (Option B, tracked as related
+  follow-on work via `relates_to: ENH-2569`).
+- Out of scope: changes to `check_spike_needed`'s `spike_needed`/
+  `spike_attempted` frontmatter-flag mechanism (`autodev.yaml:1181-1213`).
+- Out of scope: changes to `dispatch_pre_deferral_remedy`'s `on_yes`/`on_no`/
+  `on_error` routing (`autodev.yaml:1915-1939`) — it already consumes
+  `REMEDY` as an opaque string and needs no edit under Option A.
+
+## Impact
+
+- **Priority**: P3 - Localized FSM routing bug in a one-shot pre-deferral
+  remedy dispatch; not on the critical path but causes affected issues to
+  deadlock into `readiness_stagnated` with no automatic recovery, requiring a
+  human to notice and manually run `/ll:spike`.
+- **Effort**: Small - a single grep-based condition added to an existing
+  shell `action:` block, reusing an idiom already established twice
+  elsewhere in this codebase (`recursive-refine.yaml:557-564`,
+  `autodev.yaml:911-925`/`:1298-1312`).
+- **Risk**: Low - change is localized to `recheck_after_size_review`'s
+  `REMEDY` computation (`autodev.yaml:1864-1874`); downstream consumers
+  (`dispatch_pre_deferral_remedy`) already treat `REMEDY` as an opaque
+  string, so no signature or contract change propagates outward.
+- **Breaking Change**: No
+
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-08-01_
@@ -347,6 +375,8 @@ _Added by `/ll:confidence-check` on 2026-08-01_
 - Program Design gate (ENH-2852) fails: `ll-issues format-check ENH-2978 --format json` reports `program_design_nonspecific`: "no signature-shaped line found in Types/Signatures; no call-path anchor resolves against the repo: recheck_after_size_review, check_pre_deferral_remedy, dispatch_pre_deferral_remedy, run_spike, reconcile_current". The `## Program Design` section's Call Path names FSM state identifiers, which the linter's anchor resolution does not recognize as repo-resolvable symbols (it expects Python signatures/call paths). Remedy: either add a concrete signature-shaped line describing the inline Python/shell block being added (e.g. the `REMEDY = ...` assignment or the grep condition it depends on) so the linter finds a resolvable anchor, or set `program_design_not_applicable: true` in frontmatter if this FSM-state-only edit is judged out of scope for the gate.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-01T21:54:56 - `b2bfd5a3-5550-443c-acd1-9f59cf5a7c3a.jsonl`
+- `/ll:ready-issue` - 2026-08-01T21:48:18 - `ba23eb0c-9675-4487-be35-a68b2c48fd0c.jsonl`
 - `/ll:confidence-check` - 2026-08-01T21:32:58 - `81202fd6-c61f-4d4d-a599-fc5de22c4b09.jsonl`
 - `/ll:wire-issue` - 2026-08-01T21:29:50 - `ddf85c02-adc5-41f4-b252-16c06a0e5d2e.jsonl`
 - `/ll:confidence-check` - 2026-08-01T21:04:26 - `18e44701-3ef7-47f6-98f5-75f5ccda0086.jsonl`
@@ -356,3 +386,7 @@ _Added by `/ll:confidence-check` on 2026-08-01_
 - `/ll:capture-issue` - 2026-08-01T20:40:46 - `7bdcd321-6d37-4867-b143-d41a1b34670a.jsonl`
 
 - `/ll:capture-issue` - 2026-08-01T20:40:01 - conversation
+
+## Status
+
+**Open** | Created: 2026-08-01 | Priority: P3

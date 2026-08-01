@@ -1860,13 +1860,26 @@ states:
         # else reconcile. The run-dir fired marker (cleared at dequeue_next)
         # bounds this to one extra remedy per issue per run even if the
         # remedy skill fails to stamp its frontmatter flag.
+        # ENH-2978: an explicit unresolved measurement/proof gate in the issue
+        # body ("do not start otherwise" style language) means the readiness
+        # gap is an unproven-mechanism problem, not an ambiguity problem —
+        # route straight to spike regardless of which subscore is weakest.
+        # The ambiguity-subscore comparison remains the fallback when no such
+        # gate marker is present.
         FIRED=${context.run_dir}/autodev-pre-deferral-remedy-fired
         if [ ! -f "$FIRED" ]; then
-          REMEDY=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
-      import json, sys
+          ISSUE_FILE=$(ll-issues path "$ID" 2>/dev/null || echo "")
+          GATE_MARKER="false"
+          if [ -n "$ISSUE_FILE" ] && grep -qiE 'do not start otherwise|measurement \(gate\)|pre-implementation measurement' "$ISSUE_FILE" 2>/dev/null; then
+            GATE_MARKER="true"
+          fi
+          REMEDY=$(GATE_MARKER="$GATE_MARKER" ll-issues show "$ID" --json 2>/dev/null | python3 -c "
+      import json, os, sys
       d = json.load(sys.stdin)
       if d.get('spike_attempted') == 'true' or d.get('reconcile_attempted') == 'true':
           print('')
+      elif os.environ.get('GATE_MARKER') == 'true':
+          print('spike')
       else:
           amb = int(d.get('score_ambiguity') or 0)
           others = [int(d.get(k) or 0) for k in
