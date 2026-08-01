@@ -1,0 +1,12 @@
+{
+  "id": "1836ef23-a485-408e-9dc0-bcbd5753b183",
+  "type": "decision",
+  "timestamp": "2026-08-01T03:41:05Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "The tamper guard flags ANY test-file byte change in its window (compare_snapshots reports modified/added/deleted; apply_tamper_policy never reverts 'added'), so the step's only guard-legal behavior is to write nothing. A non-writing step needs no agent: 'run the project test command and report' is subprocess.run(config.project.test_cmd). That removes the per-issue agent cost Option B's config gate existed to bound, so no TamperGuardConfig field, config-schema.json entry, or core.py to_dict() change is needed, and default-on is safe with one enforcement tier instead of two. An agent allowed to write inside the bracket would add the tampering opportunity it then pays to catch.",
+  "rule": "Deterministic (non-agent) post-implement verify step, default-on, no config gate (Option D)",
+  "scope": "issue",
+  "alternatives_rejected": "Option B (config-gated opt-in agent step) \u2014 superseded; its LearningTestsConfig.enabled precedent answers a cost question that only exists if the step is an agent. Option A (default-on agent) \u2014 carries the cost B tried to bound. Option C (fold into existing Phase 3) \u2014 verify_issue_completed() is a pure frontmatter read and rn-implement.yaml has no test/check-code state, so there is no host to fold into.",
+  "issue": "ENH-2958"
+}

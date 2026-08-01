@@ -141,7 +141,7 @@ Both edits are inside `_execute_state`'s compare-on-exit block:
 - `fsm/executor.py:1460` — append to a list rather than assign.
 - `fsm/executor.py:1469-1474` — replace the verdict-flip with a routing-shape-
   independent failure path, mirroring `_check_throttle`'s `"__STOP__"`
-  short-circuit convention already used at `executor.py:1428-1430`.
+  short-circuit convention already used at `executor.py:1436-1437`.
 
 Optional lint: `_validate_tamper_guard` (`fsm/validation/evaluator_rules.py:378`)
 gains a convergent-routing check under the existing `tamper_guard_ok`
@@ -229,3 +229,7 @@ four distinct inert shapes have now been found in a single sitting.
 ## Status
 
 **Open** | Created: 2026-07-31 | Priority: P2
+
+
+## Session Log
+- `/ll:ready-issue` - 2026-08-01T04:40:13 - `f98fbba4-eb8e-4e2d-89e9-ed18419f01f9.jsonl`

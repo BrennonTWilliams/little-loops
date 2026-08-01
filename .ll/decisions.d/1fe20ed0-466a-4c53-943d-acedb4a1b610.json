@@ -1,0 +1,12 @@
+{
+  "id": "485be622-4a18-420b-ac06-5ef5cb7897fd",
+  "type": "decision",
+  "timestamp": "2026-08-01T03:29:58Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "FEAT-2942 already commits to a full link-epics rewrite that is a superset of the shallow wiring ENH-2941 could add; wiring now risks double-editing the file with an unverified find-similar --batch integration.",
+  "rule": "Defer link-epics wiring to FEAT-2942 (amend Scope Boundaries/AC #2 instead of touching skills/link-epics/SKILL.md in ENH-2941)",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: add an Implementation Step wiring link-epics Step 3 to find-similar/find-similar --batch directly in ENH-2941",
+  "issue": "ENH-2941"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "942c1d2d-2fe2-4ee5-bc7a-589c5fa4072b",
+  "type": "decision",
+  "timestamp": "2026-08-01T04:14:49Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Single-ID format-check emits corpus-wide parent_issue deprecation warnings (21 of 22 lines); corpus load is legitimate for prose_dep_drift status resolution, so scope the warning emission not the scan.",
+  "rule": "Captured: Scope format-check's deprecation warnings to the targeted issue",
+  "scope": "issue",
+  "issue": "ENH-2961"
+}

@@ -22,14 +22,14 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 10
 score_change_surface: 18
-decision_needed: true
+decision_needed: false
 ---
 
 # ENH-2941: Similarity foundation — `ll-issues find-similar` on a single Jaccard implementation
 
 ## Summary
 
-Word-overlap similarity is specified in prose in at least three places — `skills/link-epics/SKILL.md` L87–99, `skills/capture-issue/SKILL.md` L195–200, and `commands/normalize-issues.md`'s confidence formula — while `scripts/little_loops/text_utils.py` (`extract_words` L131, `calculate_word_overlap` L148) is the canonical implementation. link-epics L100–105 explicitly documents that the prose and Python stop-word lists have already diverged. Consolidate onto `text_utils.py` and expose it as `ll-issues find-similar`.
+Word-overlap similarity is specified in prose in three places — `skills/link-epics/SKILL.md` L87–99, `skills/capture-issue/SKILL.md` L195–200 (Phase 2 Scoring), and `skills/capture-issue/SKILL.md` L219 (the FTS-keyword bash regex) — while `scripts/little_loops/text_utils.py` (`extract_words` L131, `calculate_word_overlap` L148) is the canonical implementation. link-epics L100–105 explicitly documents that the prose and Python stop-word lists have already diverged. Consolidate onto `text_utils.py` and expose it as `ll-issues find-similar`.
 
 ## Current Behavior
 
@@ -50,14 +50,30 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Expected Behavior
 
-- `ll-issues find-similar "<title or text>" [--against open|all] [--threshold 0.4] [--limit N] --json` → ranked candidates `{id, title, path, score}`.
-- `ll-issues find-similar --batch [--threshold] --json` → pairwise similarity over the corpus (fills the "no batch fingerprint similarity" gap; input for dedup/conflict tooling).
+- `ll-issues find-similar "<title or text>" [--against open|all] [--threshold T] [--limit N] --json` → ranked candidates `{id, title, path, score}`.
+- `ll-issues find-similar --batch [--against open|all] [--threshold T] [--limit N] --json` → pairwise similarity over the corpus (fills the "no batch fingerprint similarity" gap; input for dedup/conflict tooling).
 - `skills/capture-issue/SKILL.md` Phase 2 dedup becomes one CLI call; LLM keeps conversation mining, drafting, and the accept/merge decision on returned candidates.
 - Distinction from `ll-issues search` stated in `--help` and docs: `search` filters/sorts by fields and substrings; `find-similar` scores fuzzy text similarity. They may share `issue_parser.find_issues` plumbing but have different contracts.
 
+#### Comparison field: titles only (decided)
+
+Both modes score the input text against each candidate issue's **title**, never its full file body. This is not a free choice:
+
+- The consumer being replaced is already title-vs-title — `skills/capture-issue/SKILL.md` L192 ("Calculate word overlap between new issue title and existing title").
+- Jaccard is symmetric, so a 6-word query against a ~500-word issue body caps at `6/500 ≈ 0.012`. Under content mode the configured 0.5/0.8 duplicate bands are mathematically unreachable and every call returns empty. This is why `search_issues_by_content()` (`issue_discovery/search.py:109`) uses a hardcoded `score > 0.1` instead — it is a *precedent for the corpus-scan loop shape only*, not for the comparison field.
+- `IssueInfo` (`issue_parser.py:1030`) already carries `title`, so title mode needs no file reads; content mode would require reading all ~2,864 issue files per invocation.
+
+Full-content similarity is **out of scope** — if it is ever wanted it arrives as an explicit `--field content` flag with its own (much lower) threshold default, in a separate issue.
+
+#### Threshold default (decided)
+
+Default is `config.issues.duplicate_detection.similar_threshold` (`0.5`, `config/features.py` L110-123) — the same field `capture-issue`'s Phase 2 prose already interpolates. `--threshold` overrides it. The earlier `0.4` literal in this issue was illustrative and is not the default; `CaptureIssueConfig.dup_overlap_threshold` (`0.7`) governs the *history-DB FTS* warning path only (see Scope Boundaries) and is not read by `find-similar`.
+
 ## Proposed Solution
 
-Thin CLI over `text_utils.extract_words`/`calculate_word_overlap` + `issue_parser.find_issues` (include done/cancelled under `--against all`). Ensure `ll-issues fingerprint` output is reusable here; add `--json` to fingerprint if missing. Thresholds default from config where `capture-issue` currently reads them.
+Thin CLI over `text_utils.extract_words`/`calculate_word_overlap` + `issue_parser.find_issues` (include done/cancelled under `--against all`, via `issue_progress._ALL_STATUSES`). Comparison field is the issue **title** and the threshold defaults to `config.issues.duplicate_detection.similar_threshold` — both decided under Expected Behavior above.
+
+~~Ensure `ll-issues fingerprint` output is reusable here; add `--json` to fingerprint if missing.~~ **Correction (research finding)**: `cli/issues/fingerprint.py:66` already unconditionally prints `json.dumps(...)`; there is no `--json` flag to add and nothing to change in that file.
 
 ### Codebase Research Findings
 
@@ -73,19 +89,46 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - Import-eagerness nuance for the new subcommand: `cli/issues/__init__.py`'s ~25 `cmd_*` imports (lines 22-72, including `cmd_fingerprint`) are eager at the top of `main_issues()`, not lazy per-dispatch (only `sections` deviates, importing lazily at its own dispatch branch, line 922-923) — `cmd_find_similar` should follow the majority eager-import pattern at the `main_issues()` top level, while `text_utils`/`issue_parser` imports stay lazy *inside* `cmd_find_similar` itself (mirroring `cmd_fingerprint`'s existing two-tier import style).
 - Minor line-drift correction (no semantic change): file/line refs cited in earlier research have shifted as the codebase grew — `find_issues()` is now at `issue_parser.py:1526` (was L1508), `_matches_status` at `:1569` (was L1551), `find_issues_for_graph()` at `:1651` (was L1633). For `--against all`, `issue_progress.py` defines `_ALL_STATUSES = frozenset({"open", "in_progress", "blocked", "done", "cancelled", "deferred"})` (line 12) — pass this frozenset directly as `status_filter` (not `find_issues_for_graph`'s non-terminal subset).
 
+### Scope Gap Decision (materialized by `/ll:decide-issue` from the "Scope Gap Flagged" directive below)
+
+**Option A**: Add an Implementation Step to point `skills/link-epics/SKILL.md` Step 3 at `find-similar` (single-text mode, for `A2: Score and Select`) / `find-similar --batch` (pairwise mode, for `S1: Cluster Orphans by Jaccard Similarity`).
+
+**Option B**: Amend Scope Boundaries and AC #2 to explicitly exclude `link-epics` from this issue and defer that wiring to FEAT-2942 (which already touches `link-epics` per this issue's `blocks:` edge).
+
+> **Selected:** Option B — FEAT-2942 already commits to a full link-epics rewrite that would immediately redo any shallow edit made here, and the `--batch` output shape has no verified integration with link-epics' union-find clustering yet.
+
+### Decision Rationale
+
+_Added by `/ll:decide-issue`:_
+
+**Selected**: Option B — amend Scope Boundaries and AC #2 to exclude `link-epics` wiring from ENH-2941; defer it to FEAT-2942.
+
+**Reasoning**: FEAT-2942 (`.issues/features/P2-FEAT-2942-ll-issues-link-epics-cluster-and-propose.md`) already explicitly scopes a full rewrite of `skills/link-epics/SKILL.md` ("delegate, ~362 → well under 100 lines") with its own AC requiring "no scoring/clustering algorithm prose" and "similarity comes solely from `text_utils.py`" — a strict superset of what Option A would achieve. ENH-2941's `blocks: [FEAT-2942]` edge already sequences that work to happen right after this issue lands. Wiring link-epics now (Option A) means editing the same file twice in quick succession — a shallow Jaccard-formula swap here, then FEAT-2942's full clustering-logic rewrite moments later — and would do so using an unverified integration: `find-similar --batch`'s pairwise output shape has never been checked against link-epics' `S1: Cluster Orphans` union-find consumer, since `find-similar` doesn't exist in the codebase yet (this issue creates it). Option B's cost is a text-only AC amendment, which is itself explicitly anticipated by Option B's own wording.
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|:---:|:---:|:---:|:---:|:---:|
+| A — wire link-epics now | 2 | 1 | 1 | 1 | 5/12 |
+| B — defer to FEAT-2942 | 3 | 3 | 2 | 3 | **11/12** |
+
+**Key evidence**:
+- FEAT-2942 AC #2/#3 already require "no scoring/clustering algorithm prose" and "similarity comes solely from `text_utils.py`" in `link-epics/SKILL.md` — a superset of Option A's scope.
+- `skills/link-epics/SKILL.md` Step 3 (L87-105) is small (19 lines, 2 call sites: `A2` under `--mode assign`, `S1` under `--mode synthesize`) but its existing test (`test_jaccard_scoring_documented`, `test_link_epics_skill.py:53-56`) only asserts the literal string "Jaccard" is present — weak backstop for a premature partial edit.
+- No `find-similar`/`find-similar --batch` implementation exists yet to verify against link-epics' union-find clustering consumption pattern.
+
 ## Implementation Steps
 
 1. Add `find_similar` module under `scripts/little_loops/cli/issues/`; wire subparser + alias.
 2. Single-text mode, then `--batch` pairwise mode.
 3. Slim `skills/capture-issue/SKILL.md` Phase 2 (~65 lines of prose → one call).
 4. ~~Update the normalize-issues confidence prose reference (full conversion lands in ENH-2944; here just stop restating the formula).~~ **Correction (research finding)**: `commands/normalize-issues.md` contains no Jaccard/word-overlap prose to slim — its confidence formula (L176-200) scores type misclassification, unrelated to text similarity. Drop this step; there is nothing to update in that file for this issue.
-5. Tests: known-similar/dissimilar fixture pairs, threshold behavior, `--batch` output shape, stop-word source is `text_utils` only.
+5. Tests: known-similar/dissimilar fixture pairs, threshold behavior (including that the default reads the config field), title-only comparison guard, `--batch` `--against` default and output shape, stop-word source is `text_utils` only.
+9. In `skills/capture-issue/SKILL.md`, annotate the L219 `grep -vE` stop-word regex as an FTS-query shim (not the similarity stop-word list) and leave the `ll-session --fts` block otherwise intact.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-6. **Resolve the link-epics scope gap first** (see Integration Map "Scope Gap Flagged"): either add a step to point `skills/link-epics/SKILL.md` Step 3 at `find-similar`/`find-similar --batch`, or amend Scope Boundaries/AC #2 to explicitly exclude it and defer to FEAT-2942.
+6. ~~Resolve the link-epics scope gap first~~ **Resolved by `/ll:decide-issue`**: Option B selected — `skills/link-epics/SKILL.md` is explicitly out of scope for this issue (see Scope Boundaries); no implementation step needed here. That wiring is deferred to FEAT-2942, which already scopes a full rewrite of the file.
 7. Add docs: `docs/reference/CLI.md` (new `find-similar`/`fs` section), `docs/reference/API.md` (new `main_issues()` table row), `commands/help.md` L276, `.claude/CLAUDE.md` `ll-issues` bullet.
 8. Add `scripts/tests/test_capture_issue_skill.py::TestCaptureIssueNearDuplicateCheck` assertion that rewritten Phase 2 prose references `ll-issues find-similar`.
 
@@ -115,15 +158,23 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `commands/help.md` L276 — add `find-similar` to the `ll-issues` subcommand summary line [Agent 1/2 finding]
 - `.claude/CLAUDE.md` — add `find-similar`/`fs` to the `ll-issues` CLI Tools bullet [Agent 2 finding]
 
-### Scope Gap Flagged (not auto-resolved — needs an explicit decision)
+### Scope Gap Flagged — RESOLVED by `/ll:decide-issue`
 
-- `skills/link-epics/SKILL.md` `## Step 3: Word Extraction and Jaccard Similarity (shared)` — this file's own prose (stop-word list + `score = |A∩B|/|A∪B|` formula) is one of the "three places" named in this issue's Summary, and this issue's own Scope Boundaries lists "removing prose Jaccard/stop-word restatements" as in-scope, and AC #2 requires "No skill/command markdown restates the Jaccard formula or a stop-word list." But **Implementation Steps has no step covering link-epics** — only capture-issue's Phase 2 (Step 3) is listed, and Step 4 (which would have touched normalize-issues) was struck as moot. The link-epics prose block itself self-documents as "out of scope" for a *different*, earlier issue — that disclaimer predates ENH-2941 and does not resolve ENH-2941's own scope language. **Resolve before implementation**: either add an Implementation Step to point link-epics Step 3 at `find-similar` (single-text mode for `A2: Score and Select`) / `find-similar --batch` (pairwise mode for `S1: Cluster Orphans by Jaccard Similarity`), or explicitly amend Scope Boundaries/AC #2 to exclude link-epics and defer it to FEAT-2942 (which already touches link-epics per this issue's `blocks:` edge) [Agent 1 + Agent 2 finding, cross-confirmed]
-- `skills/capture-issue/SKILL.md` `#### Search History DB for Near-Duplicates` — the `KEYWORDS=$(...)` bash one-liner (L219 in current text) embeds its own independent ~40-word stop-word regex feeding `ll-session search --fts`, distinct from the main Phase 2 Scoring prose named in Implementation Step 3. Decide explicitly whether this FTS-keyword-extraction shim collapses onto `find-similar` output or stays separate (it isn't a Jaccard score, so may legitimately stay) [Agent 2 finding]
+_See Option A/B decision under Proposed Solution → "Scope Gap Decision" / "Decision Rationale"._
+
+- ~~`skills/link-epics/SKILL.md` `## Step 3: Word Extraction and Jaccard Similarity (shared)` — this file's own prose (stop-word list + `score = |A∩B|/|A∪B|` formula) is one of the "three places" named in this issue's Summary...~~ **Resolved: Option B selected.** Scope Boundaries and AC #2 have been amended to explicitly exclude `skills/link-epics/SKILL.md` from this issue; that file's Jaccard/stop-word prose is deferred to FEAT-2942, which already scopes a full rewrite of it (delegate ~362 → well under 100 lines, with its own AC requiring no scoring/clustering prose). No Implementation Step is needed here for link-epics. [Agent 1 + Agent 2 finding, cross-confirmed; decided per evidence in Decision Rationale]
+- ~~`skills/capture-issue/SKILL.md` `#### Search History DB for Near-Duplicates` — decide explicitly whether this FTS-keyword-extraction shim collapses onto `find-similar` output or stays separate~~ **RESOLVED: stays separate.** The `KEYWORDS=$(...)` one-liner (L219) feeds `ll-session search --fts` — a full-text query over `.ll/history.db`, not a Jaccard score over `.issues/`. It answers a different question (*was something like this recently closed/deferred?*) against a different corpus, and its `config.history.capture_issue.dup_overlap_threshold` (0.7) governs a warning band, not ranking. `find-similar` does not read `history.db` and must not absorb it.
+
+  Two consequences, both in scope here:
+  1. Its inline ~40-word stop-word regex is a fourth independently-maintained list, so AC #2 would fail if read literally. The regex stays (a bash `grep -vE` cannot call `text_utils`), but a comment must mark it as an FTS-query-keyword shim, explicitly *not* the similarity stop-word list — with `text_utils._COMMON_WORDS` named as canonical for anything that scores.
+  2. AC #3 is scoped to the word-overlap pass only (reworded below); the history-DB check remains a second, separate invocation. [Agent 2 finding; decided during pre-implementation review]
 
 ### Tests
 
 - `scripts/tests/test_ll_issues_find_similar.py` (new) — model class-for-class on `TestIssuesCLIFingerprint` in `test_ll_issues_fingerprint.py` (one `test_*` per output-shape assertion, `test_find_similar_fs_alias` mirroring `test_fingerprint_fp_alias`); add `--json`/`--limit` flag tests modeled on `TestSearchOutputFormats.test_json_output`/`test_limit` in `test_issues_search.py` [Agent 3 finding]
 - Known-similar/dissimilar fixture pairs — no reusable existing fixture; author new ones following the `search_issues_dir` fixture shape in `test_issues_search.py` (temp `.issues/` corpus with deliberately distinct vs. near-duplicate titles/summaries) [Agent 3 finding]
+- Title-only guard (new, per pre-implementation review): one fixture issue whose **title** shares almost nothing with the query but whose **body** repeats the query terms heavily. It must score below threshold. A full-content implementation would rank it first, so this test is what makes the "Comparison field" decision enforceable rather than advisory.
+- Config-derived threshold test: patch `config.issues.duplicate_detection.similar_threshold` and assert the no-`--threshold` invocation's cutoff moves with it (catches a hardcoded `0.5`/`0.4`).
 - `scripts/tests/test_capture_issue_skill.py::TestCaptureIssueNearDuplicateCheck` — add a new assertion (e.g. `test_find_similar_command_documented`) that the rewritten Phase 2 prose references `ll-issues find-similar`/`fs`; this is a coverage gap, not existing breakage — the three existing assertions (`ll-session`, `--kind issue`, `2>/dev/null`) only break if the FTS5-check prose itself is also altered during the Phase 2 rewrite [Agent 3 finding]
 
 ### Codebase Research Findings
@@ -145,18 +196,33 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ### Signatures
 
-- `find_similar(text: str, against: Literal["open", "all"], threshold: float, limit: int, issues_dir: Path) -> list[SimilarityMatch]` — built on `text_utils.extract_words` / `calculate_word_overlap` + `issue_parser.find_issues`
-- `batch_similarity(threshold: float, issues_dir: Path) -> list[SimilarityPair]`
+- `find_similar(config: BRConfig, text: str, against: str = "open", threshold: float = None, limit: int = None) -> list[SimilarityMatch]`
+  - Built on `text_utils.extract_words` / `calculate_word_overlap` + `issue_parser.find_issues`. Scores against `IssueInfo.title` only (see Expected Behavior → "Comparison field").
+- `batch_similarity(config: BRConfig, against: str = "open", threshold: float = None, limit: int = None) -> list[SimilarityPair]`
+  - Same `against` axis as single mode; also title-only.
 - Subparser wiring in `scripts/little_loops/cli/issues/__init__.py` (`find-similar`, alias `fs`)
+
+**Annotation notes** (the lines above are kept comma-free inside the parens so the `program_design_nonspecific` linter can parse them; write the real code with the precise types): `against` is `Literal["open", "all"]`; `threshold` and `limit` are `float | None` / `int | None`, where `None` means "resolve from config" (threshold) and "no cap" (limit); make `against`/`threshold`/`limit` keyword-only with a `*` marker.
+
+**Parameter note**: both take `config: BRConfig`, not an `issues_dir: Path` — `find_issues()` (`issue_parser.py:1684`) is `find_issues(config, ...)` and there is no `issues_dir`-taking variant. An earlier draft of this section said `issues_dir: Path`, which contradicted the Call Path below.
+
+### Batch-mode scale
+
+`--against all` is the whole corpus: **2,864 issue files at time of writing → ~4.1M pairs**. `--against open` is 66 issues → ~2,145 pairs. Hence:
+
+- `--batch` defaults to `--against open`; `--against all` is opt-in and expected to be slow (O(n²) `set` intersections; no index).
+- Pairwise loop follows `issue_history/coupling.py`'s `analyze_coupling()` shape (`for i, a in enumerate(items): for b in items[i+1:]`), applying the threshold filter inline during pair generation so only surviving pairs are retained in memory.
+- Word-sets are extracted **once per issue** before the pairwise loop, not recomputed per pair.
+- `--limit` truncates the sorted output; it does not bound the comparison work.
 
 ### Call Path
 
-- `find_similar()` -> `find_issues()` (existing, `issue_parser.py`) -> `extract_words()` -> `calculate_word_overlap()` (existing, `text_utils.py`)
+- `find_similar()` -> `find_issues(config, ...)` (existing, `issue_parser.py:1684`) -> `extract_words()` -> `calculate_word_overlap()` (existing, `text_utils.py`)
 
 ## Scope Boundaries
 
-- In scope: the two similarity modes, `--json` output, capture-issue Phase 2 slimming, removing prose Jaccard/stop-word restatements.
-- Out of scope: clustering or EPIC proposal logic (FEAT-2942), embedding/FTS-based similarity, normalize-issues' full conversion (ENH-2944).
+- In scope: the two similarity modes (title-only comparison), `--json` output, capture-issue Phase 2 Scoring slimming, removing prose Jaccard/stop-word restatements in `skills/capture-issue/SKILL.md`.
+- Out of scope: clustering or EPIC proposal logic (FEAT-2942), embedding/FTS-based similarity, full-content (`--field content`) similarity, normalize-issues' full conversion (ENH-2944), **`skills/link-epics/SKILL.md` Step 3's Jaccard/stop-word prose — deferred to FEAT-2942, which already scopes a full rewrite of that file** (decided by `/ll:decide-issue`, see Proposed Solution → "Scope Gap Decision"), and **capture-issue's `#### Search History DB for Near-Duplicates` `ll-session --fts` block, which stays a separate invocation** (see Integration Map → Scope Gap Flagged).
 
 ## Impact
 
@@ -171,8 +237,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ## Acceptance Criteria
 
 - [ ] `ll-issues find-similar` returns ranked JSON candidates; deterministic for fixed input
-- [ ] No skill/command markdown restates the Jaccard formula or a stop-word list
-- [ ] capture-issue's dedup phase is a single CLI invocation
+- [ ] Both modes score against issue **titles** only; a fixture pair that is title-dissimilar but body-similar scores below threshold (guards against a full-content implementation slipping in)
+- [ ] Threshold defaults to `config.issues.duplicate_detection.similar_threshold`; `--threshold` overrides. A test asserts the default tracks the config field rather than a hardcoded literal
+- [ ] `--batch` accepts `--against open|all` and defaults to `open`
+- [ ] No skill/command markdown *in scope of this issue* restates the Jaccard formula or a stop-word list — `skills/capture-issue/SKILL.md` Phase 2 Scoring prose is fully slimmed; `skills/link-epics/SKILL.md` Step 3 is explicitly out of scope (deferred to FEAT-2942, see Scope Boundaries). The capture-issue L219 FTS-keyword `grep -vE` regex is exempt but must carry a comment marking it a query shim, not the similarity stop-word list
+- [ ] capture-issue's **word-overlap dedup pass** is a single CLI invocation (the separate `ll-session --fts` history-DB check is unaffected and remains a second call)
 - [ ] Issue body distinction vs `ll-issues search` documented in help text
 - [ ] pytest coverage in `scripts/tests/`
 
@@ -188,10 +257,12 @@ _Added by `/ll:confidence-check` on 2026-07-31_
 **Outcome Confidence**: 71/100 → MODERATE
 
 ### Outcome Risk Factors
-- The "Scope Gap Flagged" section documents an open decision on `skills/link-epics/SKILL.md` Step 3: either add an Implementation Step pointing it at `find-similar`/`find-similar --batch`, or amend Scope Boundaries/AC #2 to explicitly exclude link-epics and defer to FEAT-2942. Resolve before implementing — AC #2 ("No skill/command markdown restates the Jaccard formula...") cannot be verified as satisfied while this is undecided.
+- ~~The "Scope Gap Flagged" section documents an open decision on `skills/link-epics/SKILL.md` Step 3~~ **Stale — both scope gaps are now closed**: link-epics deferred to FEAT-2942 (`/ll:decide-issue`, Option B), and the capture-issue FTS shim resolved as "stays separate" during pre-implementation review. AC #2 is now verifiable as written.
 - Moderate breadth: ~10 change sites span new CLI code, a subparser edit, two skill-markdown files, four docs files, and two test files. Sequence commits by subsystem (CLI + tests, then skill slimming, then docs) to keep review tractable.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-08-01T03:33:35 - `8d629237-6e8e-4fce-b70b-99b321168357.jsonl`
+- `/ll:decide-issue` - 2026-08-01T03:29:58 - `8d629237-6e8e-4fce-b70b-99b321168357.jsonl`
 - `/ll:confidence-check` - 2026-08-01T02:21:26 - `01c8092d-4a0b-4561-9d74-6ed782c0fd00.jsonl`
 - `/ll:decide-issue` - 2026-08-01T02:18:49 - `a581959f-feb1-4836-b054-1873762e2efd.jsonl`
 - `/ll:refine-issue` - 2026-08-01T02:17:10 - `59471451-3cbc-48fe-998a-1caf4de5dce5.jsonl`
