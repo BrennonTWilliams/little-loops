@@ -1,20 +1,16 @@
 ---
-status: done
-completed_at: 2026-03-03T00:00:00Z
----
-# ENH-522: Add Hybrid Relevance Scoring to ll-history generate-docs
-
----
 issue_id: ENH-522
 issue_type: ENH
 priority: P3
 status: done
-discovered_date: 2026-03-02
+discovered_date: '2026-03-02'
 discovered_by: capture-issue
 confidence_score: 95
 outcome_confidence: 86
-completed_date: 2026-03-03
+completed_date: '2026-03-03'
+completed_at: '2026-03-03T00:00:00Z'
 ---
+# ENH-522: Add Hybrid Relevance Scoring to ll-history generate-docs
 
 ## Summary
 

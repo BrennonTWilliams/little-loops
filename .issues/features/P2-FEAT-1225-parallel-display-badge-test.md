@@ -1,15 +1,12 @@
 ---
+discovered_date: '2026-04-21'
+discovered_by: issue-size-review
+size: Small
 status: done
-completed_at: 2026-04-21T00:00:00Z
+completed_at: '2026-04-21T00:00:00Z'
+parent: FEAT-1201
 ---
 > **Status: Won't Do** — superseded by multi-loop parallel approach (simpler, no inter-loop coordination needed)
-
----
-discovered_date: "2026-04-21"
-discovered_by: issue-size-review
-parent_issue: FEAT-1201
-size: Small
----
 
 # FEAT-1225: Parallel Display Badge Test and Constant
 

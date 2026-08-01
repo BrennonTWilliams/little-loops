@@ -1963,6 +1963,69 @@ class TestDependencyParsing:
         assert any("parent_issue" in r.message for r in caplog.records)
         assert any("deprecated" in r.message for r in caplog.records)
 
+    def test_deprecated_key_warning_emitted_once_per_file(
+        self, tmp_path: Path, caplog: Any
+    ) -> None:
+        """Re-parsing the same file must not re-emit its deprecation warning.
+
+        `ll-issues list --group-by epic` sweeps the issue tree twice, which used
+        to print every deprecated key once per sweep (21 files -> 42 lines).
+        """
+        import json
+        import logging
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
+        )
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        issue_file = bugs_dir / "P2-ENH-003-repeat.md"
+        issue_file.write_text("---\nparent_issue: EPIC-30\n---\n# ENH-003: Repeat\n")
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        with caplog.at_level(logging.WARNING, logger="little_loops.issue_parser"):
+            first = parser.parse_file(issue_file)
+            second = parser.parse_file(issue_file)
+
+        # The alias still resolves on every parse — only the logging is deduped.
+        assert first.parent == "EPIC-30"
+        assert second.parent == "EPIC-30"
+        assert len([r for r in caplog.records if "parent_issue" in r.message]) == 1
+
+    def test_deprecated_key_warnings_are_per_file_not_global(
+        self, tmp_path: Path, caplog: Any
+    ) -> None:
+        """Two different files with the same deprecated key each warn once."""
+        import json
+        import logging
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
+        )
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        first_file = bugs_dir / "P2-ENH-004-a.md"
+        second_file = bugs_dir / "P2-ENH-005-b.md"
+        first_file.write_text("---\nparent_issue: EPIC-40\n---\n# ENH-004: A\n")
+        second_file.write_text("---\nparent_issue: EPIC-41\n---\n# ENH-005: B\n")
+
+        config = BRConfig(tmp_path)
+        parser = IssueParser(config)
+        with caplog.at_level(logging.WARNING, logger="little_loops.issue_parser"):
+            parser.parse_file(first_file)
+            parser.parse_file(second_file)
+
+        assert len([r for r in caplog.records if "parent_issue" in r.message]) == 2
+
     def test_parse_base_branch_from_frontmatter(self, tmp_path: Path) -> None:
         """base_branch: frontmatter key is parsed into IssueInfo.base_branch."""
         import json

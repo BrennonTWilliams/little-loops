@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import re
 import textwrap
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -468,3 +469,41 @@ def update_frontmatter(content: str, updates: dict[str, Any]) -> str:
     existing.update(updates)
     fm_text = yaml.dump(existing, default_flow_style=False, sort_keys=False).strip()
     return f"{content[:body_start]}{fm_text}{content[body_end:]}"
+
+
+def remove_frontmatter_keys(content: str, keys: Iterable[str]) -> str:
+    """Delete *keys* from every frontmatter block in *content*.
+
+    The deletion counterpart to :func:`update_frontmatter`. Operates only within
+    the spans reported by :func:`_iter_frontmatter_blocks`, so a body line that
+    happens to start with ``<key>:`` — a prose mention, a table cell, a fenced
+    example — is never touched. Removes the key's line plus any deeper-indented
+    continuation lines (block scalars, list items), which a single-line regex
+    would otherwise orphan into invalid YAML.
+
+    Unlike :func:`update_frontmatter` this does not round-trip the block through
+    YAML, so the formatting of every surviving key is preserved byte-for-byte.
+
+    Args:
+        content: Full file content, possibly with existing frontmatter
+        keys: Frontmatter keys to remove; absent keys are ignored
+
+    Returns:
+        Content with the keys removed from all frontmatter blocks
+    """
+    keys = list(keys)
+    if not keys:
+        return content
+
+    for key in keys:
+        key_re = re.compile(
+            rf"^{re.escape(key)}:.*(?:\n[ \t]+\S.*|\n[ \t]*-[ \t].*)*\n?", re.MULTILINE
+        )
+        # Rewrite blocks back-to-front so earlier spans stay valid as we splice.
+        for block in reversed(_iter_frontmatter_blocks(content)):
+            if key not in block.data:
+                continue
+            body_start, body_end = block.body_span
+            body = key_re.sub("", content[body_start:body_end])
+            content = content[:body_start] + body + content[body_end:]
+    return content

@@ -11,13 +11,16 @@ relates_to:
 - ENH-2854
 - ENH-2935
 - BUG-2954
+- BUG-2959
 confidence_score: 96
-outcome_confidence: 75
-score_complexity: 14
+outcome_confidence: 77
+score_complexity: 15
 score_test_coverage: 25
 score_ambiguity: 18
-score_change_surface: 18
+score_change_surface: 19
 decision_needed: false
+blocked_by:
+- BUG-2962
 ---
 
 # ENH-2958: Dedicated post-implement verify step for non-FSM orchestrators
@@ -68,53 +71,77 @@ BUG-2954 works around this gap rather than closing it. Because no window can
 separate legitimate TDD test writes from tampering on these paths, BUG-2954
 replaces the window with a content-based weakening heuristic (assertion
 counts, test-function counts, skip markers). That is a reasonable mitigation,
-but it is strictly weaker than the FSM path's byte-level strictness: a
-tampering edit that preserves assertion and test counts — inverting a
-comparison, loosening a bound, swapping an expected value — is invisible to
-it, while the FSM path catches any byte change.
+but it is weaker within the implement window than a byte-level comparison
+would be: a tampering edit that preserves assertion and test counts —
+inverting a comparison, loosening a bound, swapping an expected value — is
+invisible to it.
 
 Capturing this keeps the divergence visible. Without it, the gap survives
-only as a bullet inside a bug that is about to close, and the two paths
-quietly enforce different standards.
+only as a bullet inside a bug that is about to close.
+
+### What a new step does and does not buy (review correction, 2026-07-31)
+
+Two claims in this issue's original framing were wrong and are corrected
+here, because they change what the implementation must and must not do:
+
+- **A post-implement bracket does not cover implement-phase tampering.** The
+  guard is a pure byte diff — `compare_snapshots` reports every
+  `modified`/`added`/`deleted` test path
+  (`test_tamper_guard.py:39-44`, `apply_tamper_policy` `L207+`); it has no
+  notion of "weakening." A window opened *after* Phase 2 returns cannot see
+  anything Phase 2 did. The primary threat — the implement agent loosening an
+  existing test so its own code passes — stays entirely outside the new
+  bracket. **BUG-2954's heuristic remains the only coverage of the implement
+  window and must keep running unconditionally**, including when the new step
+  is enabled. The original Proposed Solution bullet demoting it to an
+  opt-out-only fallback has been removed; doing that would be a net loss of
+  coverage on the threat this whole guard exists for.
+- **The FSM path it is being brought to parity with is dormant.** No shipped
+  loop YAML sets `tamper_guard:` — grepping `*.yaml` under
+  `scripts/little_loops/loops/` (including `autodev.yaml` and
+  `rn-implement.yaml`) returns nothing, so
+  `_effective_tamper_guard_policy` (`fsm/executor.py:1295-1312`) resolves to
+  `None` for every state and the `L1407-1474` bracket never fires in
+  practice. The asymmetry is therefore between a live non-FSM guard and an
+  unused FSM capability, not between two enforcing paths. A far cheaper
+  prerequisite is to set `tamper_guard: fail` on `rn-implement.yaml`'s verify
+  state and confirm the FSM bracket works end-to-end before replicating its
+  shape here.
 
 ## Proposed Solution
 
 Introduce a post-implement verification invocation in the non-FSM
 orchestrators and bracket the tamper guard around it:
 
-- Add a Phase 2.5 agent step between implement and the existing local
-  verification — the natural content is running the project's test command
-  and reporting results, which is work the orchestrators already want.
+- Add a Phase 2.5 step between implement and the existing local verification —
+  running the project's test command and reporting results, which is work the
+  orchestrators already want.
 - Capture `snapshot_test_paths(...)` immediately before that step and compare
   immediately after, exactly as `fsm/executor.py:1407-1474` does.
-- Once that window exists, the non-FSM path can adopt full byte-level
-  strictness and BUG-2954's weakening heuristic becomes a fallback for
-  configurations that opt out of the extra step.
+- The window covers **only that step**. BUG-2954's weakening heuristic keeps
+  running over the implement window unconditionally — the two are additive,
+  not alternatives. See Motivation → "What a new step does and does not buy."
 
 ### Open questions
 
-- **Cost.** This adds an agent invocation per issue across all three
-  orchestrators — a real increase in wall-clock and token spend on every
-  run. Whether that is worth uniform guard strictness is the central
-  trade-off, and a legitimate reason to decline this issue.
-- **Opt-in vs default.** A config key gating the extra step would bound the
-  cost, at the price of two enforcement tiers to reason about.
-- **Overlap with existing verification.** `/ll:run-tests` and the learning-
-  test gate already invoke agents in adjacent contexts; this step may be
-  better folded into one of them than added alongside.
+_None remain._ All three original questions are resolved by the Option D
+selection under "Options Considered":
 
-See Option A/B/C decision under Proposed Solution → Codebase Research Findings.
+- ~~**Cost.**~~ A deterministic subprocess step adds no agent invocation, so
+  there is no per-issue token cost to weigh.
+- ~~**Opt-in vs default.**~~ With no cost to bound, no config gate is needed;
+  the step is default-on and there is one enforcement tier.
+- ~~**Overlap with existing verification.**~~ `/ll:run-tests` and the
+  learning-test gate are agent invocations; Option D introduces none, so
+  there is nothing to fold into them.
 
-### Codebase Research Findings
+### Options Considered
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Option A**: Default-on new post-implement verify step — every `ll-auto`/
 `ll-parallel`/`ll-sprint` issue run pays the extra agent invocation
 unconditionally, no config key.
-
-> **Selected:** Option B — config-gated opt-in, matching the codebase's
-> established convention for features that add per-issue agent-invocation cost.
 
 **Option B**: Config-gated opt-in new step — add
 `TamperGuardConfig.post_implement_verify_step: bool = False`
@@ -145,41 +172,83 @@ inside an existing function name rather than a new one — no cost savings,
 only lost clarity (a "zero-cost verify" function silently gaining a real
 one).
 
-**Recommended**: Option B — matches the codebase's own established
-convention for exactly this kind of change (new per-issue agent
-invocation), and Option C has no ready host to fold into.
+**Option D** (_added by review, 2026-07-31 — not scored by the original
+`/ll:decide-issue` pass_): **deterministic, non-agent verify step, default-on,
+no config key.** Options A–C all assume the new step must be an agent
+invocation, and the entire cost/opt-in debate follows from that assumption.
+It does not hold. The guard flags *any* test-file byte change inside its
+window — `compare_snapshots` reports `modified`/`added`/`deleted` alike, and
+`apply_tamper_policy` (`test_tamper_guard.py:207+`) explicitly never reverts
+an `added` finding, so under `policy: fail` a new test file written inside the
+window is an unrecoverable hard fail. The step's only guard-legal behavior is
+therefore to write nothing. But the step's stated content — run the project's
+test command, report the result — needs no agent to do that; it is
+`subprocess.run(config.project.test_cmd)`.
+
+That collapses the trade-off in this issue's favor:
+
+- No per-issue token or wall-clock agent cost, so nothing needs bounding →
+  no `TamperGuardConfig` field, no `config-schema.json` entry, no
+  `config/core.py:883` `to_dict()` change, no `resolve_variable` round-trip
+  test. Wiring steps 6, 7 and 10 drop out entirely.
+- Default-on is safe, so there is exactly one enforcement tier to reason
+  about rather than two.
+- The bracket still does real work: it detects any test-file mutation
+  occurring between the end of Phase 2 and the completion decision,
+  including by concurrent workers or by later Phase 3 machinery.
+
+The counter-argument for an agent — that it could diagnose and fix a failing
+test run — is precisely the behavior the guard is built to veto. An agent
+allowed to write inside the bracket adds a tampering opportunity and then
+pays to catch it; that is a wash at real cost.
+
+> **Selected:** Option D — deterministic non-agent verify step, default-on,
+> no config gate. Supersedes the earlier Option B selection; see Decision
+> Rationale.
+
+**Recommended**: Option D.
 
 ### Decision Rationale
 
-**Selected: Option B** — config-gated opt-in (`TamperGuardConfig.post_implement_verify_step: bool = False`).
+**Selected: Option D** — deterministic non-agent post-implement verify step,
+default-on, no config gate. _Supersedes the earlier Option B selection
+(`/ll:decide-issue`, 2026-08-01), which was made before the guard's
+any-byte-change semantics and the `added`-findings-are-unrevertable behavior
+were established. The decisions log still records B; it should be updated._
 
-Option B is the only option consistent with how this codebase already
-gates every other feature that adds a new per-issue agent invocation or
-runtime cost: `LearningTestsConfig.enabled: bool = False`
-(`config/features.py:484`), guarded `is True` (not truthy) at
-`issue_manager.py:874` and short-circuited before target resolution at
-`worker_pool.py:62` specifically so disabled runs incur zero cost. Every
-other cost-adding boolean in `config/features.py`
-(`PreCompactRubricConfig`, `DecisionsConfig`, `SyncConfig`) follows the
-same default-off shape; default-`True` booleans in that file are reserved
-for passive toggles on already-present machinery, not new invocations.
-Option C (fold into existing Phase 3 verification) has no real host:
+Option B's reasoning was internally sound — `LearningTestsConfig.enabled:
+bool = False` (`config/features.py:484`), gated `is True` at
+`issue_manager.py:874` and short-circuited at `worker_pool.py:62`, is
+genuinely this codebase's convention for features adding per-issue agent
+cost. It just answers a question that only exists if the step is an agent.
+Option D removes the cost, so the convention does not apply.
+
+Option A (default-on agent) carries the cost B was trying to bound. Option C
+(fold into existing Phase 3) still has no real host:
 `verify_issue_completed()` (`issue_lifecycle.py:501-535`) is a pure
-frontmatter read today, and `rn-implement.yaml` has no
-test/check-code/confidence-check states either — "folding in" would still
-mean writing a new invocation, just inside a function callers currently
-assume is free, which is worse than a clearly-named new gated step.
+frontmatter read, and `rn-implement.yaml` has no test/check-code state
+either — folding in would mean putting a new invocation inside a function
+callers assume is free.
 
 | Option | Consistency | Simplicity | Testability | Risk | Total |
 |--------|:-----------:|:----------:|:------------:|:----:|:-----:|
-| A — default-on | 0 | 3 | 2 | 1 | 6/12 |
-| **B — config-gated opt-in** | **3** | 2 | 3 | 3 | **11/12** |
+| A — default-on agent | 0 | 3 | 2 | 1 | 6/12 |
+| B — config-gated opt-in agent | 3 | 2 | 3 | 3 | 11/12 |
 | C — fold into existing verify | 0 | 1 | 1 | 1 | 3/12 |
+| **D — deterministic, no agent** | 2 | **3** | **3** | **3** | **11/12** |
 
-Key evidence: `config/features.py:484` (`LearningTestsConfig.enabled`),
-`issue_manager.py:874`, `worker_pool.py:62`, `issue_lifecycle.py:501-535`
-(Phase 3 is a frontmatter-only check today, no agent invocation to fold
-into).
+D ties B on total but wins on the tiebreak that matters: it delivers the same
+bracket with strictly less machinery (no config field, no schema entry, no
+`to_dict` wiring, no second enforcement tier) and no recurring cost. It
+scores 2 rather than 3 on consistency only because a default-on step is
+unusual here — a convention that exists to bound agent cost, which D has none
+of.
+
+Key evidence: `test_tamper_guard.py:39-44` (`TamperFinding.kind` covers
+`added`), `test_tamper_guard.py:207+` (`apply_tamper_policy` never reverts
+`added`), `issue_lifecycle.py:501-535` (Phase 3 is a frontmatter-only check
+today), `config/features.py:484` / `issue_manager.py:874` /
+`worker_pool.py:62` (the gating convention Option B invoked).
 
 ## Integration Map
 
@@ -191,26 +260,21 @@ into).
 - `scripts/little_loops/work_verification.py` — accept a live pre-step
   snapshot once one genuinely exists, rather than reconstructing "before"
   from git history.
-- `scripts/little_loops/config/features.py:851-860` — `TamperGuardConfig`
-  dataclass needs the new gating field (e.g. `post_implement_verify_step`)
-  and a `from_dict` default, if the cost/opt-in question resolves to a config
-  gate. Named in this issue's own Codebase Research Findings as the natural
-  home for the field, but not previously listed here as a file to modify.
-  _Wiring pass added by `/ll:wire-issue`._
-- `scripts/little_loops/config-schema.json:1316-1328` — the `tamper_guard`
-  object schema has `"additionalProperties": false`; a new
-  `TamperGuardConfig` field silently fails config validation unless a
-  matching `"properties"` entry is added here alongside the dataclass
-  change. _Wiring pass added by `/ll:wire-issue`._
-- `scripts/little_loops/config/core.py` — `BRConfig.to_dict()`'s
-  `tamper_guard` block (`L883-885`) hardcodes
-  `{"policy": self._tamper_guard.policy}`; a new
-  `TamperGuardConfig.post_implement_verify_step` field must be added to
-  this block or `ll-config get tamper_guard.post_implement_verify_step`
-  (via `resolve_variable()`, `L924-946`, which walks `to_dict()`) silently
-  resolves to `None` even though the dataclass field exists and is
-  readable directly via `config.tamper_guard.post_implement_verify_step`.
-  _Wiring pass added by `/ll:wire-issue` (2nd pass)._
+**Not applicable under Option D** — the three config touchpoints below were
+identified by `/ll:wire-issue` for the superseded Option B (config-gated
+agent step). Option D adds no config key, so none of them are edited. They
+are retained only so a future re-selection of B does not have to re-derive
+them:
+
+- ~~`scripts/little_loops/config/features.py:851-860`~~ — `TamperGuardConfig`
+  would need the gating field and a `from_dict` default.
+- ~~`scripts/little_loops/config-schema.json:1316-1328`~~ — the `tamper_guard`
+  object schema has `"additionalProperties": false`, so a new field silently
+  fails validation without a matching `"properties"` entry.
+- ~~`scripts/little_loops/config/core.py:883-885`~~ — `BRConfig.to_dict()`'s
+  `tamper_guard` block hardcodes `{"policy": ...}`, so a new field would
+  resolve to `None` through `resolve_variable()` (`L924-946`) even though it
+  exists on the dataclass.
 
 ### Similar Patterns
 - `scripts/little_loops/fsm/executor.py:1407-1474` — the snapshot-on-entry /
@@ -225,8 +289,11 @@ into).
   by `/ll:wire-issue`._
 
 ### Configuration
-- Likely a new key gating the step (see Open questions); to be settled during
-  refinement.
+- **None.** Option D introduces no new config key. The step is deterministic
+  and default-on; `tamper_guard.policy` continues to govern what happens when
+  the bracket trips. The `TamperGuardConfig` / `config-schema.json` /
+  `config/core.py` `to_dict()` touchpoints listed under "Files to Modify"
+  apply only to the superseded Option B and are marked as such there.
 
 ### Documentation
 
@@ -278,17 +345,15 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   Between the failure-handling block resolving (`~L1049`) and the
   `# Phase 3: Verify completion` comment, nothing runs — no agent call, no
   local check — confirming this is the seam to insert the new step into.
-- **`worker_pool.py`'s current tamper-guard call already drops `baseline_sha`.**
-  Step 7's `_verify_work_was_done` call site (`L593-598`) calls
-  `verify_work_was_done(self.logger, changed_files, config=self.br_config,
-  repo_root=worktree_path)` — it omits `baseline_sha` entirely, so
-  `_run_non_fsm_tamper_guard`'s reconstruction falls back to `"HEAD"` (current
-  HEAD at verify time, not the pre-implement point). This is a second,
-  narrower gap on the parallel path beyond the one this issue already
-  describes: even the git-reconstruction fallback is weaker here than on the
-  `ll-auto` path, which does thread `_baseline_sha`. The natural seam for the
-  new step is between Step 5's agent call (`L533-541`) and Step 6
-  (`L562-563`), with the live snapshot captured just before `L533`.
+- **`worker_pool.py`'s current tamper-guard call drops `baseline_sha` —
+  now split out as BUG-2959.** Step 7's `_verify_work_was_done` call site
+  (`L596-598`) omits `baseline_sha`, so `_run_non_fsm_tamper_guard`'s
+  reconstruction falls back to `"HEAD"` at verify time. That is a live defect
+  in the shipped guard, independent of this enhancement, and is tracked
+  separately in **BUG-2959** — do not fix it here. What remains relevant to
+  this issue: the natural seam for the new step is between Step 5's implement
+  call (`L533-541`) and Step 6 (`L562-563`), with the snapshot captured just
+  before `L533`.
 - **`ll-sprint` needs no separate change.** `cli/sprint/run.py` has no
   independent implement/verify phase logic — single-issue dispatch calls
   `issue_manager.process_issue_inplace(...)` directly (`L58-80`, `L802-812`),
@@ -397,25 +462,38 @@ _Wiring pass added by `/ll:wire-issue` (2nd pass):_
 
 ## Program Design
 
-_Sketch only — the cost/opt-in trade-off under Open questions determines
-whether a config gate exists and where the boundary sits. Re-run
-`/ll:refine-issue` after that decision before implementing._
+_Reflects the Option D selection (deterministic, non-agent step). The earlier
+"sketch only, re-refine before implementing" caveat is resolved — the
+cost/opt-in question it was waiting on is answered._
 
 ### Types
 
 New dataclass `VerifyStepResult`, returned by the new step so callers can
 distinguish "guard tripped" from "step itself failed":
 
-- `ran: bool`
+- `ran: bool` — False when the step was skipped or errored before the
+  bracket closed; signals callers to fall back to the git-reconstructed
+  "before" rather than trusting a partial snapshot.
 - `tamper_passed: bool`
 - `error: str`
+
+`TamperReport` (`test_tamper_guard.py:39-44`: `policy`, `findings`,
+`reverted`, `passed`) is the structural precedent; `VerifyStepResult` should
+carry one rather than re-flatten its fields.
 
 ### Signatures
 
 - `run_post_implement_verify(logger: Logger, config: BRConfig, repo_root: Path) -> VerifyStepResult`
 
-Captures `snapshot_test_paths` before dispatching the agent invocation and
-calls `run_tamper_guard` immediately after, mirroring the FSM bracket.
+Captures `snapshot_test_paths` before running the project's test command via
+`subprocess.run(config.project.test_cmd)` and calls `run_tamper_guard`
+immediately after, mirroring the FSM bracket's structure without its agent
+dispatch.
+
+The test command's own exit code does **not** gate completion — a failing
+test suite is Phase 3's existing business, and making this step block on it
+would change completion semantics well beyond this issue's scope. Only the
+tamper verdict is consumed here.
 
 ### Call Path
 
@@ -440,7 +518,8 @@ should reproduce this exact routing distinction: `"fail"` blocks completion
 (propagates a failure the existing Phase 3 failure path already knows how to
 handle), `"revert"` self-heals silently, `"allow"` records only.
 
-For the agent invocation itself, both non-FSM orchestrators already have a
+_Superseded by the Option D selection — retained for a future re-selection of
+an agent-based option:_ both non-FSM orchestrators already have a
 one-shot dispatch convention to reuse: `issue_manager.py`'s Phase 2 calls
 `run_with_continuation(_initial_cmd, logger, timeout=..., ...,
 resume_command=_slash_cmd, ...)` (`L946-960`), and `worker_pool.py`'s Step 5
@@ -460,62 +539,100 @@ wrap or carry a copy of rather than duplicate.
 
 ## Implementation Steps
 
-1. Decide the cost/opt-in question above — this gates everything else.
-2. Add the post-implement agent step to `issue_manager.py`, bracketed by
-   `snapshot_test_paths` / `run_tamper_guard`.
-3. Mirror it in `parallel/worker_pool.py`.
-4. Let `work_verification` consume the live snapshot instead of the
-   git-reconstructed "before" when the step ran.
-5. Add tests proving the non-FSM path now matches the FSM path's strictness,
-   including a count-preserving tamper (inverted comparison) that BUG-2954's
-   heuristic cannot catch.
+1. ~~Decide the cost/opt-in question above.~~ **Resolved: Option D** —
+   deterministic non-agent step, default-on, no config gate. See Decision
+   Rationale.
+2. Add `run_post_implement_verify` to `issue_manager.py` between Phase 2 and
+   Phase 3, bracketed by `snapshot_test_paths` / `run_tamper_guard`, running
+   `config.project.test_cmd` in a subprocess as the step body.
+3. Mirror it in `parallel/worker_pool.py` between Step 5 and Step 6.
+4. Let `work_verification` consume the live snapshot (new optional
+   `pre_step_snapshot: TamperSnapshot | None = None` param on
+   `verify_work_was_done`, threaded to `_run_non_fsm_tamper_guard`) instead of
+   the git-reconstructed "before" **when the step ran**; fall back to today's
+   reconstruction when it did not.
+5. Verify BUG-2954's implement-window heuristic still runs unconditionally —
+   the new bracket covers a different window and does not replace it.
+6. Add tests for the new bracket, including a tamper made *inside* the
+   window that a count-preserving heuristic cannot catch (inverted
+   comparison).
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in
 the implementation:_
 
-6. If step 1 resolves to a config gate, add the field to
-   `TamperGuardConfig` (`config/features.py:851-860`) and a matching
-   `"properties"` entry in `config-schema.json`'s `tamper_guard` object
-   (`L1316-1328`, `additionalProperties: false` rejects unknown keys
-   silently otherwise).
-7. Update `test_config.py:2434-2466` (`TestTamperGuardConfig`, esp.
-   `test_tamper_guard_in_to_dict`) and `test_config_schema.py:359-371`
-   (`test_tamper_guard_in_schema`) for the new field.
-8. Update `test_issue_manager.py:2797`
-   (`test_baseline_sha_passed_to_verify_work_was_done`) if Phase 2.5 passes
-   `pre_step_snapshot` at the same `verify_work_was_done` call site the test
-   asserts exact kwargs on.
-9. Update `docs/reference/API.md` (`L2360-2367`'s now-false "no live
-   pre-step snapshot" claim, `L139`'s `BRConfig` table),
-   `docs/reference/CONFIGURATION.md` (`L1029-1041` tamper_guard table), and
-   `docs/guides/LOOPS_GUIDE.md` (`L695-700`'s "tamper_guard is FSM-only"
-   claim) to reflect the now-symmetric bracket.
-10. Add the new field to `BRConfig.to_dict()`'s `tamper_guard` block
-    (`config/core.py:883-885`) alongside the `config-schema.json`/dataclass
-    changes in step 6 — otherwise `ll-config get
-    tamper_guard.post_implement_verify_step` silently resolves to `None`
-    via `resolve_variable()` even though the field exists on the dataclass.
-11. Update `docs/ARCHITECTURE.md`'s § "Sequential Mode (ll-auto)" sequence
-    diagram (`L411-450`) to show the new Phase 2.5 step between the
-    existing `Phase 2: Implementation` (`L431`) and `Phase 3: Verification`
-    (`L437`) notes.
+7. Update `test_issue_manager.py:2797`
+   (`test_baseline_sha_passed_to_verify_work_was_done`) — it asserts exact
+   kwargs on the `verify_work_was_done` call site Phase 2.5 will add
+   `pre_step_snapshot` to.
+8. Update `docs/reference/API.md` (`L2360-2367`'s now-false "no live
+   pre-step snapshot" claim) and `docs/guides/LOOPS_GUIDE.md` (`L695-700`'s
+   "tamper_guard is FSM-only" claim) to describe both paths — live snapshot
+   when the step ran, git reconstruction otherwise.
+9. Update `docs/ARCHITECTURE.md`'s § "Sequential Mode (ll-auto)" sequence
+   diagram (`L411-450`) to show the new Phase 2.5 step between the existing
+   `Phase 2: Implementation` (`L431`) and `Phase 3: Verification` (`L437`)
+   notes.
+
+_Dropped by the Option D selection (no new config key):_ the original wiring
+steps adding a `TamperGuardConfig` field + `config-schema.json` `properties`
+entry, updating `test_config.py:2434-2466` / `test_config_schema.py:359-371`,
+adding the field to `BRConfig.to_dict()` (`config/core.py:883-885`), and the
+`docs/reference/CONFIGURATION.md` `L1029-1041` / `API.md:139` table rows. All
+apply only if an agent-based option is re-selected.
+
+## Acceptance Criteria
+
+- [ ] `run_post_implement_verify` exists and runs between implement and
+      verification on both the `ll-auto` (`issue_manager.process_issue_inplace`)
+      and `ll-parallel` (`WorkerPool._run_worker`) paths.
+- [ ] The step captures `snapshot_test_paths(...)` immediately before running
+      `config.project.test_cmd` and calls `run_tamper_guard` immediately
+      after — the FSM bracket's shape (`fsm/executor.py:1407-1474`), with no
+      agent invocation and no new config key.
+- [ ] Policy routing matches the FSM adapter: `fail` blocks completion via the
+      existing Phase 3 failure path, `revert` self-heals and only blocks on
+      residual unresolved findings, `allow` records only.
+- [ ] A test-file mutation made *inside* the window is caught byte-for-byte,
+      including a count-preserving edit (inverted comparison) that BUG-2954's
+      heuristic cannot detect.
+- [ ] A legitimate TDD test write made during Phase 2 does **not** trip the
+      new bracket — mirroring
+      `test_fsm_executor.py:10865`
+      (`test_tdd_mode_does_not_trip_guard_on_separate_verify_state`).
+- [ ] BUG-2954's implement-window heuristic still runs unconditionally when
+      the new step is enabled; a test asserts it is not bypassed.
+- [ ] When the step does not run or errors before its bracket closes
+      (`VerifyStepResult.ran is False`), `verify_work_was_done` falls back to
+      today's git-reconstructed "before" rather than trusting a partial
+      snapshot; a test covers this path.
+- [ ] The step's own test-command exit code does not by itself block
+      completion — only the tamper verdict is consumed.
+- [ ] `ll-sprint` inherits the behavior with no `cli/sprint/run.py` edit;
+      `test_sprint_integration.py`, `test_cli_sprint.py`, and `test_sprint.py`
+      still pass unmodified or are updated only for mocked call ordering.
+- [ ] `python -m pytest scripts/tests/` exits 0.
 
 ## Scope Boundaries
 
 **In scope:**
-- A post-implement agent verification step in `issue_manager.py` and
-  `parallel/worker_pool.py`, with the tamper guard bracketed around it.
+- A deterministic (non-agent) post-implement verification step in
+  `issue_manager.py` and `parallel/worker_pool.py`, with the tamper guard
+  bracketed around it.
 - Letting `work_verification` consume a live pre-step snapshot when that step
   ran, instead of reconstructing "before" from git history.
 
 **Out of scope:**
-- The FSM adapter (`fsm/executor.py`) — already correct by construction; this
-  issue exists to bring the non-FSM paths up to its behavior, not to change
-  it.
-- BUG-2954's content-based weakening classifier — it stays as the fallback
-  for runs where the new step did not execute. This issue does not remove it.
+- The FSM adapter (`fsm/executor.py`) — this issue mirrors its bracket shape,
+  it does not change it. Note the FSM guard is currently dormant (no shipped
+  loop YAML sets `tamper_guard:`); enabling it on `rn-implement.yaml` is a
+  separate, cheaper piece of work.
+- BUG-2954's content-based weakening classifier — it covers the *implement*
+  window, which this issue's bracket does not reach. It keeps running
+  unconditionally and is not weakened, demoted, or removed here.
+- BUG-2959's missing `baseline_sha` on the `ll-parallel` guard call — a live
+  defect in the existing reconstruction path, fixed separately.
 - BUG-2957's config-file section scoping — an orthogonal defect in what
   counts as a config finding, independent of when the snapshot is taken.
 - Changing `tamper_guard.policy` semantics or defaults.
@@ -528,13 +645,22 @@ the implementation:_
 ## Impact
 
 - **Priority**: P4 — the guard is functional after BUG-2954; this closes a
-  strictness gap rather than a live failure. Should be explicitly declined
-  rather than silently dropped if the cost is judged too high.
-- **Effort**: Medium-Large — a new phase in two orchestrators plus per-issue
-  runtime cost across all three entry points.
-- **Risk**: Medium — adds an agent invocation to every issue run; a failure
-  or timeout in the new step must not itself block completion.
-- **Breaking Change**: No — additive, though it changes per-issue runtime.
+  narrower strictness gap than originally claimed (it covers the
+  post-implement window only, not the implement window). Reasonable to
+  decline; if declined, do so explicitly.
+- **Effort**: Medium — a new phase in two orchestrators plus a signature
+  change on `verify_work_was_done`. Reduced from Medium-Large by the Option D
+  selection, which drops the config/schema/`to_dict` wiring entirely.
+- **Risk**: Low-Medium — no agent invocation is added, so the per-issue cost
+  concern is gone; the residual risk is the `verify_work_was_done` signature
+  change on a symbol re-exported as public API
+  (`scripts/little_loops/__init__.py:67,124`) and the one remaining breaking
+  test (`test_issue_manager.py:2797`). A failure or timeout in the new step
+  must still not itself block completion.
+  _(Superseded: "Medium — adds an agent invocation to every issue run."
+  Option D adds no agent.)_
+- **Breaking Change**: No — additive, though it adds a test-suite run per
+  issue.
 
 ## Related Key Documentation
 
@@ -542,25 +668,40 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` — 2026-07-31:_
+_Re-run `/ll:confidence-check` — 2026-07-31 (post-Option D):_
+
+**Readiness: 96/100 | Outcome Confidence: 77/100 — PROCEED**
+
+All file/line anchors, tamper-guard primitives, the dormant-FSM claim (no
+shipped loop YAML sets `tamper_guard:`), and the one remaining breaking test
+(`test_issue_manager.py:2797`) were verified against the code. Only
+`docs/reference/API.md`'s "no live pre-step snapshot" sentence has drifted —
+it is at `L2388`, not `L2360-2367`.
+
+The historical 80/54 assessment below predates the Option D selection; its
+first two items are resolved and its third no longer names
+`test_config.py`/`test_config_schema.py` as breaking (no config field is
+added). Retained for provenance only.
+
+_Superseded — `/ll:confidence-check`, earlier 2026-07-31:_
 
 **Readiness: 80/100 | Outcome Confidence: 54/100**
 
 ### Concerns
 
-- The issue's own Program Design section is explicitly marked "Sketch only"
+- ~~The issue's own Program Design section is explicitly marked "Sketch only"
   and instructs re-running `/ll:refine-issue` after the cost/opt-in decision
-  is made — implementation should not start against the current sketch.
+  is made — implementation should not start against the current sketch.~~
+  _Resolved 2026-07-31: the decision is made (Option D) and the caveat is
+  removed._
 
 ### Outcome Risk Factors
 
-- **Open decision blocks scope.** The "Open questions" section leaves the
-  central cost/opt-in trade-off unresolved (config gate vs. default-on vs.
-  folding into existing verification). This is an open question that must
-  resolve before implementing — it determines whether
-  `config/features.py`'s `TamperGuardConfig` and `config-schema.json` are in
-  scope at all (Implementation Step 6 is conditional on it), so starting
-  without a decision risks building the wrong shape.
+- **RESOLVED** (2026-07-31) — ~~Open decision blocks scope: the "Open
+  questions" section leaves the central cost/opt-in trade-off unresolved
+  (config gate vs. default-on vs. folding into existing verification).~~
+  Option D selected; `config/features.py` and `config-schema.json` are out of
+  scope.
 - **Change surface extends beyond the two orchestrators.**
   `verify_work_was_done()` is re-exported as public API
   (`scripts/little_loops/__init__.py:67,124`); the new `pre_step_snapshot`
@@ -569,12 +710,14 @@ _Added by `/ll:confidence-check` — 2026-07-31:_
   (`test_issue_manager.py:2797`, `test_config.py:2459-2462`,
   `test_config_schema.py:359-371`), which raises the chance of collateral
   breakage during implementation.
-- **Every issue run pays a new runtime cost.** The Impact section itself
-  flags this as a legitimate reason to decline the issue — the decision to
-  proceed should weigh wall-clock/token cost across `ll-auto`,
-  `ll-parallel`, and `ll-sprint` before code is written.
+- ~~**Every issue run pays a new runtime cost.**~~ _Resolved 2026-07-31:
+  Option D's step is a deterministic subprocess, not an agent invocation, so
+  there is no token cost. A test-suite run per issue is still wall-clock
+  cost worth confirming against `config.project.test_cmd`'s typical
+  duration._
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-01T04:10:20 - `c4f8fb71-6904-4172-ab17-927fabb72f99.jsonl`
 - `/ll:confidence-check` - 2026-07-31T00:00:00Z - `01c8092d-4a0b-4561-9d74-6ed782c0fd00.jsonl`
 - `/ll:wire-issue` - 2026-08-01T02:17:07 - `59471451-3cbc-48fe-998a-1caf4de5dce5.jsonl`
 - `/ll:decide-issue` - 2026-08-01T02:08:24 - `ed49dcf9-c710-4f44-b8b9-6b8c5b53764c.jsonl`

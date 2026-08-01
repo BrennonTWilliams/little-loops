@@ -1,7 +1,6 @@
 ---
 id: FEAT-1222
 priority: P2
-parent_issue: FEAT-1219
 discovered_date: '2026-04-21'
 discovered_by: issue-size-review
 size: Very Large
@@ -13,6 +12,7 @@ score_ambiguity: 25
 score_change_surface: 18
 status: done
 completed_at: '2026-04-21T00:00:00Z'
+parent: FEAT-1219
 ---
 > **Status: Won't Do** — superseded by multi-loop parallel approach (simpler, no inter-loop coordination needed)
 

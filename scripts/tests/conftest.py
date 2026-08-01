@@ -13,6 +13,8 @@ from typing import Any
 import pytest
 from hypothesis import settings as _hypothesis_settings
 
+from little_loops.issue_parser import reset_deprecated_key_warnings
+
 # =============================================================================
 # Hypothesis fuzz depth profiles
 # =============================================================================
@@ -727,3 +729,22 @@ def _restore_cmd_run_env_vars(monkeypatch: pytest.MonkeyPatch) -> Generator[None
         monkeypatch.setenv(var, "")
         monkeypatch.delenv(var)
     yield
+
+
+# =============================================================================
+# Deprecated-frontmatter-key warning ledger
+# =============================================================================
+
+
+@pytest.fixture(autouse=True)
+def _reset_deprecated_key_warnings() -> Generator[None, None, None]:
+    """Clear ``issue_parser``'s once-per-process deprecated-key warning ledger.
+
+    The ledger suppresses repeat warnings for a path already reported, so
+    without this reset the first test to parse a given file would swallow the
+    warning for every later test that parses the same path — making
+    warning-assertion tests order-dependent.
+    """
+    reset_deprecated_key_warnings()
+    yield
+    reset_deprecated_key_warnings()

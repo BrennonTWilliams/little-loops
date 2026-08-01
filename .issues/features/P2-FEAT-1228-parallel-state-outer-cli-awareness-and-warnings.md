@@ -1,13 +1,6 @@
 ---
-status: done
-completed_at: 2026-04-21T00:00:00Z
----
-> **Status: Won't Do** — superseded by multi-loop parallel approach (simpler, no inter-loop coordination needed)
-
----
-discovered_date: "2026-04-21"
+discovered_date: '2026-04-21'
 discovered_by: issue-size-review
-parent_issue: FEAT-1080
 size: Small
 confidence_score: 95
 outcome_confidence: 88
@@ -15,7 +8,11 @@ score_complexity: 3
 score_test_coverage: 4
 score_ambiguity: 4
 score_change_surface: 3
+status: done
+completed_at: '2026-04-21T00:00:00Z'
+parent: FEAT-1080
 ---
+> **Status: Won't Do** — superseded by multi-loop parallel approach (simpler, no inter-loop coordination needed)
 
 # FEAT-1228: Deprecate ll-parallel in Favor of FSM Parallel States
 

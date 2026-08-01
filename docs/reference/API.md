@@ -6323,6 +6323,7 @@ Shared YAML-subset frontmatter read/write utilities used by issue_parser, sync, 
 | `parse_skill_frontmatter` | Extract flat key/value pairs from SKILL.md frontmatter, resolving block scalars |
 | `strip_frontmatter` | Remove YAML frontmatter block, returning the body |
 | `update_frontmatter` | Merge updates into (or create) the YAML frontmatter block |
+| `remove_frontmatter_keys` | Delete keys from every frontmatter block, leaving the body untouched |
 
 ### parse_frontmatter
 
@@ -6396,6 +6397,41 @@ from little_loops.frontmatter import update_frontmatter
 content = "---\npriority: P1\n---\n\n# Title\n"
 result = update_frontmatter(content, {"completed_at": "2026-04-18T12:00:00Z"})
 ```
+
+### remove_frontmatter_keys
+
+```python
+def remove_frontmatter_keys(
+    content: str, keys: Iterable[str]
+) -> str
+```
+
+The deletion counterpart to `update_frontmatter`. Removes each key from *every*
+frontmatter block, including the key's continuation lines (block scalars, list
+items) so nothing is orphaned into invalid YAML. Absent keys are ignored.
+
+Operates only within the spans of real frontmatter blocks, so a body line that
+happens to start with `<key>:` — a prose mention, a table cell, a fenced YAML
+example — is never rewritten. Unlike `update_frontmatter` it does not round-trip
+the block through YAML, so the formatting of every surviving key is preserved
+byte-for-byte.
+
+**Parameters:**
+- `content` - Full file content, possibly with existing frontmatter
+- `keys` - Frontmatter keys to remove
+
+**Returns:** Content with the keys removed from all frontmatter blocks.
+
+**Example:**
+```python
+from little_loops.frontmatter import remove_frontmatter_keys
+
+content = "---\nid: BUG-1\nparent_issue: EPIC-9\n---\n\n# Title\n"
+result = remove_frontmatter_keys(content, ["parent_issue"])
+```
+
+Used by `ll-migrate-relationships` to drop a deprecated relationship key after
+`update_frontmatter` has written its canonical replacement.
 
 ---
 

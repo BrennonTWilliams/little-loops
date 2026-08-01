@@ -1,14 +1,14 @@
 ---
+discovered_date: '2026-04-18'
+discovered_by: capture-issue
+depends_on:
+- FEAT-1075
+- FEAT-1076
+- FEAT-1174
 status: done
-completed_at: 2026-04-21T00:00:00Z
+completed_at: '2026-04-21T00:00:00Z'
 ---
 > **Status: Won't Do** — superseded by multi-loop parallel approach (simpler, no inter-loop coordination needed)
-
----
-discovered_date: "2026-04-18"
-discovered_by: capture-issue
-depends_on: [FEAT-1075, FEAT-1076, FEAT-1174]
----
 
 # ENH-1165: Signal Handler Cannot Reach Parallel Worker Threads
 

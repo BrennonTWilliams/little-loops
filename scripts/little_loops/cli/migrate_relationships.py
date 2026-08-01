@@ -3,47 +3,40 @@
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 from pathlib import Path
 
 from little_loops.cli_args import add_config_arg, add_dry_run_arg
-from little_loops.frontmatter import parse_frontmatter
+from little_loops.config import BRConfig
+from little_loops.frontmatter import (
+    parse_frontmatter,
+    remove_frontmatter_keys,
+    update_frontmatter,
+)
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
-_FM_FIELD_RE = re.compile(r"^---\s*$", re.MULTILINE)
-
-_PARENT_ISSUE_RE = re.compile(r"^parent_issue:(.*)$", re.MULTILINE)
-_RELATED_RE = re.compile(r"^related:(.*)$", re.MULTILINE)
-
-
-def _set_fields(content: str, fields: dict[str, str]) -> str:
-    """Set frontmatter fields via direct string manipulation (avoids yaml roundtrip).
-
-    Replaces existing fields in-place; inserts missing fields before the closing
-    ``---`` marker. Prepends a new frontmatter block if none exists.
-    """
-    if not content.startswith("---\n"):
-        lines = "\n".join(f"{k}: {v}" for k, v in fields.items())
-        return f"---\n{lines}\n---\n{content}"
-
-    result = content
-    for key, value in fields.items():
-        line = f"{key}: {value}"
-        key_re = re.compile(rf"^{re.escape(key)}:.*$", re.MULTILINE)
-        if key_re.search(result):
-            result = key_re.sub(line, result)
-        else:
-            # Insert before the closing --- of the frontmatter
-            markers = list(_FM_FIELD_RE.finditer(result))
-            if len(markers) >= 2:
-                pos = markers[1].start()
-                result = result[:pos] + f"{line}\n" + result[pos:]
-    return result
+# Deprecated key -> canonical replacement, in the order they are reported.
+_RENAMES: tuple[tuple[str, str], ...] = (
+    ("parent_issue", "parent"),
+    ("related", "relates_to"),
+    ("target_branch", "base_branch"),
+)
 
 
 def _migrate_content(content: str) -> tuple[str, list[str]]:
-    """Rename relationship keys in frontmatter. Returns (updated_content, list_of_renames)."""
+    """Rename deprecated relationship keys in frontmatter.
+
+    Writes the canonical key into the *canonical* (``id:``-bearing) block via
+    :func:`update_frontmatter` — on a file carrying more than one frontmatter
+    block, a hand-rolled splice would land it in the wrong one (BUG-2955). When
+    a file already carries the canonical key, the deprecated one is dropped
+    rather than promoted, matching the parser's ``if parent is None`` precedence
+    in :func:`little_loops.issue_parser.IssueParser.parse_file`.
+
+    Returns:
+        ``(updated_content, list_of_renames)``; an empty rename list means the
+        file needs no change.
+    """
     fm = parse_frontmatter(content)
     if not fm:
         return content, []
@@ -51,21 +44,16 @@ def _migrate_content(content: str) -> tuple[str, list[str]]:
     renames: list[str] = []
     result = content
 
-    if "parent_issue" in fm:
-        value = str(fm["parent_issue"])
-        result = _set_fields(result, {"parent": value})
-        result = _PARENT_ISSUE_RE.sub("", result)
-        # Clean up blank line left by removal
-        result = re.sub(r"\n{3,}", "\n\n", result)
-        renames.append(f"parent_issue: {value!r} → parent: {value!r}")
-
-    if "related" in fm:
-        value_raw = _RELATED_RE.search(content)
-        raw_suffix = value_raw.group(1) if value_raw else ""
-        result = _set_fields(result, {"relates_to": fm["related"]})
-        result = _RELATED_RE.sub("", result)
-        result = re.sub(r"\n{3,}", "\n\n", result)
-        renames.append(f"related:{raw_suffix} → relates_to:{raw_suffix}")
+    for old_key, new_key in _RENAMES:
+        if old_key not in fm:
+            continue
+        value = fm[old_key]
+        if new_key in fm:
+            renames.append(f"{old_key}: {value!r} dropped ({new_key}: {fm[new_key]!r} already set)")
+        else:
+            result = update_frontmatter(result, {new_key: value})
+            renames.append(f"{old_key}: {value!r} → {new_key}: {value!r}")
+        result = remove_frontmatter_keys(result, [old_key])
 
     return result, renames
 
@@ -73,7 +61,8 @@ def _migrate_content(content: str) -> tuple[str, list[str]]:
 def main_migrate_relationships() -> int:
     """Entry point for ll-migrate-relationships command.
 
-    Renames parent_issue: -> parent: and related: -> relates_to: in all issue files.
+    Renames parent_issue: -> parent:, related: -> relates_to:, and
+    target_branch: -> base_branch: in all issue files.
 
     Returns:
         Exit code (0 = success, 1 = error)
@@ -82,8 +71,9 @@ def main_migrate_relationships() -> int:
         parser = argparse.ArgumentParser(
             prog="ll-migrate-relationships",
             description=(
-                "Rename parent_issue: → parent: and related: → relates_to: "
-                "in all issue frontmatter files. One-time migration for ENH-1431."
+                "Rename parent_issue: → parent:, related: → relates_to:, and "
+                "target_branch: → base_branch: in all issue frontmatter files. "
+                "One-time migration for ENH-1431."
             ),
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog="""
@@ -99,9 +89,12 @@ Examples:
         dry_run: bool = args.dry_run
         repo_root: Path = args.config or Path.cwd()
 
-        issues_dir = repo_root / ".issues"
+        # Honor a project's configured issues.base_dir — a hardcoded ".issues"
+        # made this CLI a silent no-op on any project that renamed it.
+        base_dir = BRConfig(repo_root).issues.base_dir
+        issues_dir = repo_root / base_dir
         if not issues_dir.exists():
-            print(f"No .issues/ directory found at {repo_root}")
+            print(f"No {base_dir}/ directory found at {repo_root}")
             return 1
 
         if dry_run:

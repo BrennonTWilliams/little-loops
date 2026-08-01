@@ -36,6 +36,49 @@ _ISSUE_TYPE_RE = re.compile(r"-(BUG|FEAT|ENH|EPIC)-")
 _FILENAME_ID_RE = re.compile(r"(BUG|FEAT|ENH|EPIC)-(\d+)")
 
 
+# (resolved path, deprecated key) pairs already warned about this process.
+_WARNED_DEPRECATED_KEYS: set[tuple[str, str]] = set()
+
+
+def _warn_deprecated_key(issue_path: Path, old_key: str, new_key: str) -> None:
+    """Warn once per process that *issue_path* uses a deprecated frontmatter key.
+
+    Several commands parse the whole issue tree more than once in a single run
+    — ``ll-issues list --group-by epic`` and ``--parent`` each layer a second
+    ``find_issues()`` sweep on top of the first, and ``next-issue``/``sequence``/
+    ``deps`` pair ``find_issues()`` with ``find_issues_for_graph()``. Without
+    this guard every deprecated key is reported once per sweep, which is how a
+    21-file backlog produced 42 identical warning lines.
+
+    Keyed on the *resolved* path rather than the bare filename: ``tmp_path``
+    fixtures across the test suite reuse basenames freely, and collapsing two
+    genuinely different files into one key would silence a real warning.
+    """
+    try:
+        key_path = str(issue_path.resolve())
+    except OSError:  # pragma: no cover - unresolvable path (broken symlink, races)
+        key_path = str(issue_path)
+
+    if (key_path, old_key) in _WARNED_DEPRECATED_KEYS:
+        return
+    _WARNED_DEPRECATED_KEYS.add((key_path, old_key))
+    logger.warning(
+        "%s: deprecated frontmatter key '%s' — rename to '%s'",
+        issue_path.name,
+        old_key,
+        new_key,
+    )
+
+
+def reset_deprecated_key_warnings() -> None:
+    """Clear the once-per-process warning ledger.
+
+    Test-support hook: without it, whichever test parses a given file first
+    swallows the warning for every later test that parses the same path.
+    """
+    _WARNED_DEPRECATED_KEYS.clear()
+
+
 def is_normalized(filename: str) -> bool:
     """Check whether an issue filename conforms to naming conventions.
 
@@ -1330,28 +1373,19 @@ class IssueParser:
 
         parent = frontmatter.get("parent")
         if parent is None and (alias_val := frontmatter.get("parent_issue")):
-            logger.warning(
-                "%s: deprecated frontmatter key 'parent_issue' — rename to 'parent'",
-                issue_path.name,
-            )
+            _warn_deprecated_key(issue_path, "parent_issue", "parent")
             parent = alias_val
 
         base_branch = frontmatter.get("base_branch")
         if base_branch is None and (alias_val := frontmatter.get("target_branch")):
-            logger.warning(
-                "%s: deprecated frontmatter key 'target_branch' — rename to 'base_branch'",
-                issue_path.name,
-            )
+            _warn_deprecated_key(issue_path, "target_branch", "base_branch")
             base_branch = alias_val
 
         duplicate_of = frontmatter.get("duplicate_of")
 
         relates_to: list[str] = []
         if alias_val := frontmatter.get("related"):
-            logger.warning(
-                "%s: deprecated frontmatter key 'related' — rename to 'relates_to'",
-                issue_path.name,
-            )
+            _warn_deprecated_key(issue_path, "related", "relates_to")
             relates_to = (
                 [id.strip() for id in alias_val.strip("\"'").split(",") if id.strip()]
                 if isinstance(alias_val, str)

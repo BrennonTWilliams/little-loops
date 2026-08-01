@@ -1,17 +1,14 @@
 ---
-status: done
-completed_at: 2026-04-21T00:00:00Z
----
-> **Status: Won't Do** — superseded by multi-loop parallel approach (simpler, no inter-loop coordination needed)
-
----
-discovered_date: "2026-04-12"
+discovered_date: '2026-04-12'
 discovered_by: issue-size-review
-parent_issue: FEAT-1083
 testable: false
 confidence_score: 95
 outcome_confidence: 85
+status: done
+completed_at: '2026-04-21T00:00:00Z'
+parent: FEAT-1083
 ---
+> **Status: Won't Do** — superseded by multi-loop parallel approach (simpler, no inter-loop coordination needed)
 
 # FEAT-1086: Parallel State — Architecture and Contributing Docs
 

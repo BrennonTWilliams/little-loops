@@ -1,14 +1,15 @@
 ---
+discovered_date: '2026-04-20'
+discovered_by: parallel-family-review
+depends_on:
+- FEAT-1074
+- FEAT-1075
+- FEAT-1076
+- FEAT-1084
 status: done
-completed_at: 2026-04-21T00:00:00Z
+completed_at: '2026-04-21T00:00:00Z'
 ---
 > **Status: Won't Do** — superseded by multi-loop parallel approach (simpler, no inter-loop coordination needed)
-
----
-discovered_date: "2026-04-20"
-discovered_by: parallel-family-review
-depends_on: [FEAT-1074, FEAT-1075, FEAT-1076, FEAT-1084]
----
 
 # ENH-1186: Parallel State v1 Scope and Limitations (Consolidated Doc)
 

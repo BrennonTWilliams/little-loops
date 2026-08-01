@@ -1,15 +1,14 @@
 ---
+discovered_date: '2026-04-20'
+discovered_by: parallel-fsm-review
+depends_on:
+- FEAT-1075
+- FEAT-1076
 status: done
-completed_at: 2026-04-21T00:00:00Z
+completed_at: '2026-04-21T00:00:00Z'
+parent: ENH-1175
 ---
 > **Status: Won't Do** — superseded by multi-loop parallel approach (simpler, no inter-loop coordination needed)
-
----
-discovered_date: "2026-04-20"
-discovered_by: parallel-fsm-review
-depends_on: [FEAT-1075, FEAT-1076]
-parent_issue: ENH-1175
----
 
 # FEAT-1184: Parallel Worker Side-Effect Cleanup Contract
 

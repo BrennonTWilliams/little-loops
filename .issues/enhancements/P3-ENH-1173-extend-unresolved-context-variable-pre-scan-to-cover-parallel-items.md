@@ -1,15 +1,14 @@
 ---
+discovered_date: '2026-04-18'
+discovered_by: review
+captured_at: '2026-04-18T00:00:00Z'
+related_issues:
+- FEAT-1074
+- FEAT-1076
 status: done
-completed_at: 2026-04-21T00:00:00Z
+completed_at: '2026-04-21T00:00:00Z'
 ---
 > **Status: Won't Do** — superseded by multi-loop parallel approach (simpler, no inter-loop coordination needed)
-
----
-discovered_date: "2026-04-18"
-discovered_by: review
-captured_at: "2026-04-18T00:00:00Z"
-related_issues: [FEAT-1074, FEAT-1076]
----
 
 # ENH-1173: Extend Unresolved-Context-Variable Pre-Scan to Cover `state.parallel.items`
 
