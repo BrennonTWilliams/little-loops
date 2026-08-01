@@ -30,6 +30,18 @@ logger = logging.getLogger(__name__)
 # Also handles bold markdown: "- **ENH-1000**: description"
 ISSUE_ID_PATTERN = re.compile(r"^[-*]\s+\*{0,2}([A-Z]+-\d+)", re.MULTILINE)
 
+# Top-level bullet markers only (FEAT-2948): "- [ ]"/"- [x]" checkboxes, plain
+# "- "/"* " bullets, and "N. " numbered items. Matched with re.match against the
+# *unstripped* line, so any leading whitespace before the marker (a sub-bullet)
+# fails to match by construction — this is the "skip indented items" rule from
+# skills/verify-issue-loop/SKILL.md:129-135.
+_CRITERION_BULLET_PATTERN = re.compile(r"^(?:-\s*\[[xX ]\]\s+|[-*]\s+|\d+\.\s+)(.+)$")
+
+# Sections checked in priority order by IssueParser.extract_criteria(): Acceptance
+# Criteria is preferred; Expected Behavior is the fallback when Acceptance Criteria
+# is absent or has no top-level bullets.
+_CRITERIA_SECTION_NAMES = ("Acceptance Criteria", "Expected Behavior")
+
 
 _NORMALIZED_RE = re.compile(r"^P[0-5]-(BUG|FEAT|ENH|EPIC)-[0-9]{3,}-[a-z0-9-]+\.md$")
 _ISSUE_TYPE_RE = re.compile(r"-(BUG|FEAT|ENH|EPIC)-")
@@ -234,6 +246,7 @@ class FormatGaps:
     program_design_nonspecific: list[str] = field(default_factory=list)
     deprecated_key: list[str] = field(default_factory=list)
     multi_frontmatter: list[str] = field(default_factory=list)
+    testable: list[str] = field(default_factory=list)
 
     @property
     def has_gaps(self) -> bool:
@@ -249,6 +262,7 @@ class FormatGaps:
             or self.program_design_nonspecific
             or self.deprecated_key
             or self.multi_frontmatter
+            or self.testable
         )
 
     def to_dict(self) -> dict[str, list[str]]:
@@ -264,6 +278,7 @@ class FormatGaps:
             "program_design_nonspecific": self.program_design_nonspecific,
             "deprecated_key": self.deprecated_key,
             "multi_frontmatter": self.multi_frontmatter,
+            "testable": self.testable,
         }
 
 
@@ -471,7 +486,58 @@ def check_format_gaps(
             elif prose_id not in structured_deps:
                 gaps.prose_dep_drift.append(prose_id)
 
+    if "testable" not in fm:
+        from little_loops.frontmatter import strip_frontmatter as _strip_fm
+
+        title = str(fm.get("title") or "").strip()
+        if not title:
+            title_match = re.search(r"^#\s+(.+)$", content, re.MULTILINE)
+            title = title_match.group(1) if title_match else ""
+        scan_text = f"{title}\n{_strip_fm(content)}"
+        if _count_testable_keyword_matches(scan_text) >= _TESTABLE_KEYWORD_THRESHOLD:
+            gaps.testable.append(issue_path.name)
+
     return gaps
+
+
+# Ported verbatim from skills/format-issue/SKILL.md's Testable Inference section
+# (doc-only detection): 11 case-insensitive signal keywords; 2+ distinct matches
+# is an advisory that the issue is documentation-only (testable: false candidate).
+_TESTABLE_SIGNAL_KEYWORDS: tuple[str, ...] = (
+    "doc",
+    "docs",
+    "documentation",
+    "broken link",
+    "broken anchor",
+    "readme",
+    "changelog",
+    "spelling",
+    "typo",
+    "guide",
+    "fix link",
+)
+_TESTABLE_KEYWORD_THRESHOLD = 2
+
+
+def _count_testable_keyword_matches(text: str) -> int:
+    """Count distinct `_TESTABLE_SIGNAL_KEYWORDS` present (case-insensitive) in *text*."""
+    lowered = text.lower()
+    return sum(1 for kw in _TESTABLE_SIGNAL_KEYWORDS if kw in lowered)
+
+
+def infer_testable(issue: IssueInfo) -> bool:
+    """Doc-only keyword inference: True when the issue looks documentation-only.
+
+    Opt-in helper a caller can use to decide whether to write `testable: false`
+    via `frontmatter.update_frontmatter` — not invoked automatically by
+    `check_format_gaps`, which is a pure read-only linter. Mirrors the same
+    2+-distinct-keyword-match rule as `check_format_gaps`'s `testable` gap.
+    """
+    from little_loops.frontmatter import strip_frontmatter as _strip
+
+    body = issue.path.read_text(encoding="utf-8")
+    scan_text = f"{issue.title}\n{_strip(body)}"
+    return _count_testable_keyword_matches(scan_text) >= _TESTABLE_KEYWORD_THRESHOLD
 
 
 # ENH-2443: deterministic (non-LLM) re-implementation of skills/decide-issue/SKILL.md
@@ -1070,6 +1136,19 @@ class ProductImpact:
 
 
 @dataclass
+class CriterionSlot:
+    """One extracted top-level bullet from an issue's criteria section (FEAT-2948).
+
+    Consumed by ``ll-loop scaffold-verify`` to build one verification state per
+    criterion; ``state_name`` is the FSM state the scaffold will emit.
+    """
+
+    index: int
+    source_text: str
+    state_name: str
+
+
+@dataclass
 class IssueInfo:
     """Parsed information from an issue file.
 
@@ -1645,6 +1724,64 @@ class IssueParser:
         # Extract issue IDs from list items
         issue_ids = ISSUE_ID_PATTERN.findall(section_content)
         return issue_ids
+
+    def extract_criteria(self, issue_path: Path) -> list[CriterionSlot]:
+        """Extract ordered top-level criteria bullets for ``ll-loop scaffold-verify`` (FEAT-2948).
+
+        Generalizes ``_parse_section_items()``'s section-location logic (header
+        regex, slice to next ``## `` header, code-fence stripping) but extracts
+        bullet text instead of issue IDs. Tries ``## Acceptance Criteria`` first;
+        falls back to ``## Expected Behavior`` when Acceptance Criteria is absent
+        or yields no top-level bullets (the primary/fallback rule the Program
+        Design calls out). Sub-bullets (indented items) are skipped — only
+        column-0 bullets count, per skills/verify-issue-loop/SKILL.md:129-135.
+
+        Args:
+            issue_path: Path to the issue markdown file.
+
+        Returns:
+            Ordered ``CriterionSlot`` list (1-indexed), or ``[]`` if neither
+            section has usable bullets.
+        """
+        content = self._read_content(issue_path)
+        if not content:
+            return []
+
+        content_without_code = self._strip_code_fences(content)
+
+        for section_name in _CRITERIA_SECTION_NAMES:
+            section_pattern = rf"^##\s+{re.escape(section_name)}\s*$"
+            match = re.search(section_pattern, content_without_code, re.MULTILINE | re.IGNORECASE)
+            if not match:
+                continue
+
+            start = match.end()
+            next_section = re.search(r"^##\s+", content_without_code[start:], re.MULTILINE)
+            section_content = (
+                content_without_code[start : start + next_section.start()]
+                if next_section
+                else content_without_code[start:]
+            )
+
+            bullets: list[str] = []
+            for line in section_content.splitlines():
+                if not line.strip():
+                    continue
+                bullet_match = _CRITERION_BULLET_PATTERN.match(line)
+                if bullet_match:
+                    bullets.append(bullet_match.group(1).strip())
+
+            if bullets:
+                return [
+                    CriterionSlot(
+                        index=i,
+                        source_text=text,
+                        state_name=f"verify-criterion-{i}",
+                    )
+                    for i, text in enumerate(bullets, start=1)
+                ]
+
+        return []
 
     def _strip_code_fences(self, content: str) -> str:
         """Remove code fence blocks from content.

@@ -50,6 +50,8 @@ def _mock_handlers(monkeypatch: pytest.MonkeyPatch) -> dict[str, MagicMock]:
         ("little_loops.cli.loop.queue", ["cmd_queue_list", "cmd_queue_remove"]),
         ("little_loops.cli.loop.run", ["cmd_run"]),
         ("little_loops.cli.loop.testing", ["cmd_test", "cmd_simulate"]),
+        ("little_loops.cli.loop.scaffold_eval", ["cmd_scaffold_eval"]),
+        ("little_loops.cli.loop.scaffold_verify", ["cmd_scaffold_verify"]),
     ]
     for module_path, names in handler_specs:
         for name in names:
@@ -139,6 +141,38 @@ class TestMainLoopDispatch:
 
         assert result == 0
         mocks["cmd_validate"].assert_called_once()
+
+    # -- scaffold-eval / scaffold-verify (FEAT-2948) --
+
+    def test_scaffold_eval_routes_to_handler(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """main_loop dispatches 'scaffold-eval' to cmd_scaffold_eval, not the loop-name shorthand."""
+        project = _make_loop_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-loop", "scaffold-eval", "--issues", "FEAT-1"]):
+            result = main_loop()
+
+        assert result == 0
+        mocks["cmd_scaffold_eval"].assert_called_once()
+        mocks["cmd_run"].assert_not_called()
+
+    def test_scaffold_verify_routes_to_handler(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """main_loop dispatches 'scaffold-verify' to cmd_scaffold_verify, not the loop-name shorthand."""
+        project = _make_loop_project(tmp_path)
+        monkeypatch.chdir(project)
+        mocks = _mock_handlers(monkeypatch)
+
+        with patch.object(sys, "argv", ["ll-loop", "scaffold-verify", "FEAT-1"]):
+            result = main_loop()
+
+        assert result == 0
+        mocks["cmd_scaffold_verify"].assert_called_once()
+        mocks["cmd_run"].assert_not_called()
 
     def test_validate_json_flag_forwarded(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

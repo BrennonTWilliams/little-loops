@@ -620,7 +620,7 @@ Also supports `--dsl <source-file>` to generate DSL-native fill-in-the-blank/tra
 - `issue_ids` (required without `--dsl`): One or more issue IDs (e.g., `FEAT-919`, `ENH-950`). Accepts open and completed issues.
 - `--dsl <source-file>` (optional): Path to a loop YAML or issue file. Generates DSL-native eval tasks under `evals/dsl/<source-name>/` instead of an FSM harness. Run the generated tasks with `ll-harness dsl evals/dsl/<source-name>/`.
 
-**Output (standard mode):** `.loops/eval-harness-<slug>.yaml` (validated with `ll-loop validate` before writing)
+**Output (standard mode):** `.loops/eval-harness-<slug>.yaml`, generated via `ll-loop scaffold-eval` (`little_loops.cli.loop.scaffold_eval`) and validated in-process with `fsm.validation.validate_fsm()` before the skill fills its `<EXECUTE_PROMPT>`/`<EVALUATION_CRITERIA_PROMPT>` placeholders and writes the file
 
 **Output (DSL mode):** `evals/dsl/<source-name>/task-01.yaml`, `task-02.yaml`, ... (Option B lightweight schema)
 
@@ -647,7 +647,7 @@ Generate a ready-to-run FSM verification loop YAML from a single issue ID. Two m
 - `issue_id` (required): A single issue ID (e.g., `FEAT-919`, `ENH-950`, `BUG-347`). Accepts open or completed issues.
 - `mode` (optional): `criteria` (default) or `adversarial`. Absent `mode` resolves silently to `criteria`.
 
-**Output:** `.loops/verify-<ISSUE-ID>-<slug>.yaml` (`criteria` mode) or `.loops/adversarial-<ISSUE-ID>-<slug>.yaml` (`adversarial` mode), each validated with `ll-loop validate` before writing.
+**Output:** `.loops/verify-<ISSUE-ID>-<slug>.yaml` (`criteria` mode) or `.loops/adversarial-<ISSUE-ID>-<slug>.yaml` (`adversarial` mode), generated via `ll-loop scaffold-verify` (`little_loops.cli.loop.scaffold_verify`) and validated in-process with `fsm.validation.validate_fsm()` before the skill writes the file. Unlike `create-eval-from-issues`, the emitted YAML is immediately runnable — no placeholder slots remain.
 
 **Structure:**
 - `mode: criteria` — one `verify-criterion-N` state per acceptance criterion with an `llm_structured` pass/fail evaluator; linear pass-routing (`on_yes: verify-criterion-<N+1>` or `done`; `on_no: failed`).

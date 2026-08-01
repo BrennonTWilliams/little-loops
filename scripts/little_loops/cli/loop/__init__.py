@@ -41,6 +41,8 @@ def main_loop() -> int:
         from little_loops.cli.loop.queue import cmd_queue_list, cmd_queue_remove
         from little_loops.cli.loop.rename import cmd_rename
         from little_loops.cli.loop.run import cmd_run
+        from little_loops.cli.loop.scaffold_eval import cmd_scaffold_eval
+        from little_loops.cli.loop.scaffold_verify import cmd_scaffold_verify
         from little_loops.cli.loop.testing import cmd_simulate, cmd_test
         from little_loops.config import BRConfig
         from little_loops.logger import Logger
@@ -78,6 +80,8 @@ def main_loop() -> int:
             "rename",
             "cleanup",
             "audit",
+            "scaffold-eval",
+            "scaffold-verify",
             # aliases
             "r",
             "c",
@@ -996,6 +1000,55 @@ Examples:
             "-j", "--json", action="store_true", help="Output counters as JSON"
         )
 
+        # Scaffold-eval subcommand (FEAT-2948)
+        scaffold_eval_parser = subparsers.add_parser(
+            "scaffold-eval",
+            help="Generate FSM eval-harness loop YAML from one or more issue IDs",
+        )
+        scaffold_eval_parser.set_defaults(command="scaffold-eval")
+        scaffold_eval_parser.add_argument(
+            "--issues",
+            required=True,
+            metavar="ID[,ID...]",
+            help="Comma-separated issue IDs (e.g. FEAT-1,FEAT-2)",
+        )
+        scaffold_eval_parser.add_argument(
+            "--dsl",
+            action="store_true",
+            help="Not implemented here — use /ll:create-eval-from-issues --dsl instead",
+        )
+        scaffold_eval_parser.add_argument(
+            "--out", type=Path, default=None, metavar="PATH", help="Write generated YAML to PATH"
+        )
+        scaffold_eval_parser.add_argument(
+            "--stdout", action="store_true", help="Print generated YAML to stdout"
+        )
+        scaffold_eval_parser.add_argument(
+            "-j", "--json", action="store_true", help="Output ScaffoldResult as JSON"
+        )
+
+        # Scaffold-verify subcommand (FEAT-2948)
+        scaffold_verify_parser = subparsers.add_parser(
+            "scaffold-verify",
+            help="Generate a single-issue FSM verification loop YAML from acceptance criteria",
+        )
+        scaffold_verify_parser.set_defaults(command="scaffold-verify")
+        scaffold_verify_parser.add_argument("issue_id", help="Issue ID (e.g. FEAT-919)")
+        scaffold_verify_parser.add_argument(
+            "--adversarial",
+            action="store_true",
+            help="Emit the fixed 3-probe adversarial template instead of criteria mode",
+        )
+        scaffold_verify_parser.add_argument(
+            "--out", type=Path, default=None, metavar="PATH", help="Write generated YAML to PATH"
+        )
+        scaffold_verify_parser.add_argument(
+            "--stdout", action="store_true", help="Print generated YAML to stdout"
+        )
+        scaffold_verify_parser.add_argument(
+            "-j", "--json", action="store_true", help="Output ScaffoldResult as JSON"
+        )
+
         args = parser.parse_args(argv)
 
         # Backfill run defaults from config when CLI flags are at their argparse defaults.
@@ -1055,6 +1108,10 @@ Examples:
             return cmd_cleanup(args, loops_dir)
         elif args.command == "audit":
             return cmd_audit(args, loops_dir)
+        elif args.command == "scaffold-eval":
+            return cmd_scaffold_eval(args, loops_dir)
+        elif args.command == "scaffold-verify":
+            return cmd_scaffold_verify(args, loops_dir)
         elif args.command == "queue":
             if getattr(args, "queue_command", None) == "list":
                 return cmd_queue_list(args, loops_dir)

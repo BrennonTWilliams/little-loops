@@ -954,6 +954,42 @@ ll-loop fragments lib/harness.yaml        # list built-in Playwright screenshot 
 ll-loop fragments .loops/my-lib.yaml      # list project-local fragment library
 ```
 
+#### `ll-loop scaffold-eval`
+
+Generate FSM eval-harness loop YAML in Python from one or more issue IDs (FEAT-2948) — the mechanical port of `/ll:create-eval-from-issues`'s Variant A/B templates and Proof-First Gate chaining. Builds `FSMLoop`/`StateConfig` objects directly, validates via `fsm.validation.validate_fsm()` in-process, and emits YAML with `<EXECUTE_PROMPT>`/`<EVALUATION_CRITERIA_PROMPT>` placeholder slots for the skill (or caller) to fill — the state graph and chaining are never hand-assembled.
+
+| Flag | Description |
+|------|-------------|
+| `--issues ID[,ID...]` | Comma-separated issue IDs (required). 1 issue → Variant A (`initial: execute`); 2+ → Variant B (`initial: discover`) |
+| `--dsl` | Not implemented here; the skill's DSL fill-in-the-blank/transform/correction generator is a separate code path — errors with a pointer to `/ll:create-eval-from-issues --dsl` |
+| `--out PATH` | Write the generated YAML to PATH |
+| `--stdout` | Print the generated YAML to stdout |
+| `-j`, `--json` | Output the `ScaffoldResult` (`yaml_path`, `yaml_text`, `placeholders`, `validated`, `errors`) as JSON |
+
+**Examples:**
+```bash
+ll-loop scaffold-eval --issues FEAT-919 --stdout            # single-issue Variant A
+ll-loop scaffold-eval --issues FEAT-919,ENH-950 --json       # multi-issue Variant B, JSON result
+```
+
+#### `ll-loop scaffold-verify`
+
+Generate a single-issue FSM verification loop YAML in Python (FEAT-2948) — the mechanical port of `/ll:verify-issue-loop`'s criteria-mode linear chain and fixed adversarial 3-probe template. Extracts criteria via `IssueParser.extract_criteria()` (bullet-marker normalization: checkboxes, plain bullets, numbered lists; sub-bullets skipped), builds and validates the `FSMLoop` in-process, and selects the timeout in code (1800s criteria / 2700s adversarial). Unlike `scaffold-eval`, the output has no placeholder slots — criteria/adversarial prompt text is fully determined by the issue's own title and criterion text, so the emitted YAML is immediately runnable.
+
+| Flag | Description |
+|------|-------------|
+| `issue_id` | Issue ID (positional, required) |
+| `--adversarial` | Emit the fixed 3-probe adversarial template instead of criteria mode |
+| `--out PATH` | Write the generated YAML to PATH |
+| `--stdout` | Print the generated YAML to stdout |
+| `-j`, `--json` | Output the `ScaffoldResult` as JSON |
+
+**Examples:**
+```bash
+ll-loop scaffold-verify FEAT-919 --stdout                   # criteria mode
+ll-loop scaffold-verify FEAT-919 --adversarial --json        # adversarial mode, JSON result
+```
+
 #### `ll-loop next-loop`
 
 Inspect `.loops/.history/` and suggest the next loop(s) to run, with resolved input parameters where available. Useful for unattended chaining or scheduled follow-up work.

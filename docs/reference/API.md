@@ -3893,6 +3893,42 @@ registers POSIX signal handlers for `SIGINT` (Ctrl-C) and `SIGTERM`
 The end-to-end SIGINT contract is locked by
 `scripts/tests/test_fsm_signal_integration.py`.
 
+### little_loops.cli.loop.scaffold_eval / scaffold_verify
+
+`ll-loop scaffold-eval`/`ll-loop scaffold-verify` (FEAT-2948) generate FSM loop
+YAML in Python instead of `/ll:create-eval-from-issues`/`/ll:verify-issue-loop`
+hand-assembling it in prose. Both build `FSMLoop`/`StateConfig` objects
+(`little_loops.fsm.schema`) directly and validate them in-process via
+`fsm.validation.validate_fsm()` before returning.
+
+```python
+def scaffold_eval(issue_ids: list[str], dsl: bool) -> ScaffoldResult
+def scaffold_verify(issue_id: str, adversarial: bool) -> ScaffoldResult
+```
+
+- `scaffold_eval` (`little_loops/cli/loop/scaffold_eval.py`): Variant A (1 issue,
+  `initial: execute`) or Variant B (2+ issues, `initial: discover`/`advance`),
+  including Proof-First Gate `check_proof_<slug>` chaining/splicing when
+  `learning_tests.enabled` and an issue's `learning_tests_required` is non-empty.
+  Emits `<EXECUTE_PROMPT>`/`<EVALUATION_CRITERIA_PROMPT>` placeholder slots — the
+  prompt/criteria text genuinely requires LLM synthesis. `dsl=True` is rejected
+  with a pointer back to `/ll:create-eval-from-issues --dsl` (a separate,
+  already-prose-only DSL task generator, out of scope here).
+- `scaffold_verify` (`little_loops/cli/loop/scaffold_verify.py`): criteria mode
+  (default) builds one `verify-criterion-N` state per `CriterionSlot` extracted
+  via `IssueParser.extract_criteria()`; `adversarial=True` emits the fixed
+  3-probe template (`probe-boundary`/`probe-malformed-hostile`/
+  `probe-failure-mode` → non-LLM `count_probes` gate) verbatim. Timeout selection
+  is code: 1800s criteria / 2700s adversarial. Output has no placeholder slots.
+- `ScaffoldResult` (`little_loops/cli/loop/_scaffold_core.py`, shared by both):
+  `yaml_path: Path | None`, `yaml_text: str`, `placeholders: list[str]`,
+  `validated: bool`, `errors: list[str]`.
+- `IssueParser.extract_criteria(issue_path) -> list[CriterionSlot]`
+  (`little_loops/issue_parser.py`): generalizes `_parse_section_items()`'s
+  section-location logic to extract top-level bullet text (checkboxes, plain
+  bullets, numbered lists; indented sub-bullets skipped) from `## Acceptance
+  Criteria`, falling back to `## Expected Behavior` when empty.
+
 ### main_issues
 
 ```python
