@@ -1,9 +1,9 @@
 ---
 id: FEAT-2416
-title: "Greenfield project archetypes with type-specific run-gates and routing"
+title: Greenfield project archetypes with type-specific run-gates and routing
 type: FEAT
 priority: P3
-status: open
+status: deferred
 parent: EPIC-2412
 captured_at: '2026-06-30T00:00:00Z'
 discovered_date: 2026-06-30
@@ -19,6 +19,8 @@ labels:
 - archetypes
 - rn-build
 - coverage
+deferred_by: human
+deferred_date: '2026-08-01T16:04:11Z'
 ---
 
 # FEAT-2416: Greenfield project archetypes with type-specific run-gates and routing

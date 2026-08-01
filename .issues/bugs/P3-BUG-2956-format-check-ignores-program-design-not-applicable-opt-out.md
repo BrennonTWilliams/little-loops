@@ -4,7 +4,7 @@ title: format-check reports Program Design missing despite program_design_not_ap
   opt-out
 type: BUG
 priority: P3
-status: open
+status: cancelled
 captured_at: '2026-08-01T01:11:34Z'
 discovered_date: 2026-08-01
 discovered_by: capture-issue
@@ -22,6 +22,7 @@ score_test_coverage: 25
 score_ambiguity: 0
 score_change_surface: 10
 size: Large
+closed_reason: already_fixed
 ---
 
 # BUG-2956: `format-check` reports `Program Design` missing despite the `program_design_not_applicable` opt-out
@@ -215,9 +216,64 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Effort**: Small — one condition, plus a regression test.
 - **Risk**: Low — strictly loosens a check for issues that explicitly opted out.
 
+## Resolution
+
+**Cancelled 2026-08-01 — not reproducible; the described defect never existed.**
+Closure code `already_fixed` (the nearest available; there is no
+`not_reproducible` code in the enum).
+
+The bug claims `missing` is computed from an unfiltered `required` set while
+`program_design_nonspecific` honors the opt-out. The code was never written
+that way. `check_format_gaps()` (`issue_parser.py:293`) computes
+`required = _gate_program_design(...)` at `L396` — **upstream of both** gap
+classes (`gaps.missing` at `L399`, `program_design_nonspecific` at
+`L419-436`). `_gate_program_design()` (`L116`) drops `"Program Design"` from
+`required` whenever `program_design_gate_active()`
+(`issues/program_design.py:366`) is `False`, covering all three exemptions:
+unarmed gate, `program_design_not_applicable: true`, and grandfathering. The
+two classes are two views of one already-filtered set and cannot drift apart.
+
+The shared-filter design landed in `cb022145` (2026-07-27), *before* this
+issue was captured (2026-08-01) — so there was no window in which the
+described behavior was possible.
+
+Evidence, from three independent passes:
+- `/ll:refine-issue` ran the exact repro (`ll-issues format-check ENH-2937
+  --format json`) and got `"missing": []`.
+- `/ll:confidence-check` re-verified the same and scored Readiness 50 → STOP,
+  recommending closure rather than implementation.
+- 14 existing regression tests already cover the scenario and pass on `main`:
+  `test_program_design_gate.py::TestFormatGapsWiring`
+  (`test_escape_hatch_skips_the_gate` `L629`,
+  `test_grandfathered_issue_reports_no_program_design_gap` `L542`,
+  `test_unstamped_project_reports_no_program_design_gap` `L530`) and
+  `test_ll_issues_format_check.py::TestFormatCheckProgramDesign`
+  (`test_escape_hatch_passes_after_cutover` `L824`).
+
+The Root Cause section's quoted docstring qualifier (`issue_parser.py:264-269`)
+describes `program_design_nonspecific`'s own semantics; it does not imply an
+unfiltered `missing` path. That misreading is the origin of the report.
+
+No code change was made. The wiring analysis this issue accumulated
+(`autodev.yaml`'s three duplicated `DESIGN_FAIL` predicates at `~L1094-1113`,
+`L1593-1619`, `L1757-1783`; `rn-remediate.yaml`'s `ensure_formatted` gate;
+the `ll-adapt`-generated skill mirrors with no sync test) is real and
+independently useful — if any of it is worth acting on, it needs its own
+issue rather than a revival of this one.
+
+### Related observation recorded elsewhere
+
+A separate limit of this gate — the resolution requirement checks that a
+call-path anchor *resolves*, never that it is *relevant*, so it is technically
+clearable by naming any unrelated repo symbol — was considered for capture
+here and instead recorded as a contract note in
+`scripts/little_loops/issues/program_design.py`'s module docstring, alongside
+the existing "Resolution-indifference" and "Fail open" contracts. It is an
+accepted trade-off with no observed harm, not a tracked defect.
+
 ## Status
 
-**Open** | Created: 2026-08-01 | Priority: P3
+**Cancelled** | Created: 2026-08-01 | Closed: 2026-08-01 | Priority: P3
 
 ## Confidence Check Notes
 
