@@ -3,7 +3,7 @@ id: ENH-2965
 title: Content-based attribution of dirty paths for callers with no pre-run snapshot
 type: ENH
 priority: P2
-status: open
+status: cancelled
 discovered_date: 2026-08-01
 discovered_by: human
 testable: true
@@ -23,9 +23,12 @@ score_change_surface: 18
 decision_needed: false
 size: Very Large
 reconcile_attempted: true
-deferred_by: automation
-deferred_date: '2026-08-01T20:35:17Z'
-deferred_reason: readiness_stagnated
+cancelled_reason: >-
+  Pre-implementation measurement gate failed (2026-08-01): attributable-only
+  10.6% (Option A) / 16.4% (Option B) against a n=574 commit corpus, below the
+  ~20% threshold this issue set for itself. The measurement additionally
+  invalidated the unattributable-only -> COMMITTED mapping as a hollow-closure
+  risk. Effort redirected to BUG-2963's snapshot path.
 ---
 
 # ENH-2965: Content-based attribution of dirty paths for callers with no pre-run snapshot
@@ -112,6 +115,57 @@ attributable-only / unattributable-only / mixed.
   to invest the effort in BUG-2963's snapshot path, which is a strictly better
   discriminator, and close this issue as `cancelled`.
 - Record the measured rate in this issue before proceeding.
+
+### Measured result (2026-08-01, tree `674a52fa`) — GATE FAILS
+
+Replayed against the repo's own history. Corpus: every commit whose subject
+names exactly one issue ID that exists in `.issues/` (one commit ≈ one run
+window), changed-file set noise-filtered through the real
+`filter_ll_noise()`, classified against that issue's own declared hints using
+this issue's Matching rule. n=574 commits.
+
+| Verdict | Option A (as-is) | Option B (widened headings) |
+|---|---|---|
+| attributable-only | 61 (**10.6%**) | 94 (**16.4%**) |
+| unattributable-only | 293 (51.0%) | 238 (41.5%) |
+| mixed | 220 (38.3%) | 242 (42.2%) |
+
+A coarser per-issue variant (union of all commits per issue, n=2300) gives
+8.8% / 12.0% — worse, as expected from unioning follow-ups.
+
+**Both options fall below the ~20% threshold**, and 16.4% is an *optimistic*
+upper bound: hints are read from each issue's current body, which in some cases
+had its Integration Map updated during or after implementation.
+
+The predicted cause is confirmed. Undeclared paths forcing `mixed` under
+Option B, by root: `scripts/` 717, `docs/` 240, `skills/` 104, `commands/` 25,
+`hooks/` 13, `CHANGELOG.md` 11, `README.md` 11, `CONTRIBUTING.md` 11. Issues
+routinely touch files their Integration Map never names — most often their own
+new test files under `scripts/tests/` and doc updates.
+
+### Design flaw surfaced by the measurement: unattributable-only is a hollow closure
+
+The measurement also invalidates a premise the design rests on, independent of
+the hit rate. Expected Behavior maps **unattributable-only → warn, commit the
+issue file alone, `COMMITTED`**, on the reading that unattributable dirt is "a
+human's unrelated WIP in a shared tree" (BUG-2421's premise).
+
+At 41.5% of real runs, *nothing* in the changed set matches the issue's own
+declared hints. In that population the unattributable dirt **is** the
+deliverable, not a bystander's WIP — so the design would mark the issue `done`
+while committing only the issue file, leaving the entire deliverable
+uncommitted. That is the same hollow closure BUG-2963 exists to prevent, in a
+stronger form than the `mixed` case the partial-attribution guard was written to
+catch. BUG-2963's teardown backstop still preserves the tree to
+`refs/ll/abandoned/*` at worktree-removal sites, so this is a false `done`
+rather than data loss — but it converts today's *safe refusal* into a false
+success for the single largest slice of the distribution.
+
+The rule "unattributable ⇒ not this issue's work" is not supported by the data;
+the base rate of an issue's own deliverable failing to match its declared hints
+is too high for that inference to hold. Any revival of this issue must drop the
+unattributable-only → `COMMITTED` mapping and refuse there too, which leaves
+only the 16.4% attributable-only slice as the recoverable population.
 
 ## Motivation
 
@@ -650,8 +704,27 @@ under [Accepted risk](#accepted-risk-pre-existing-edits-to-a-declared-file).
 
 ## Status
 
-Open and unblocked — BUG-2963 landed in `709fa788`, so the `blocked_by` edge
-was removed; the remaining gate is the hit-rate measurement, not a dependency.
+**Cancelled 2026-08-01** — the pre-implementation gate was run and failed; see
+[Measured result](#measured-result-2026-08-01-tree-674a52fa--gate-fails).
+Attributable-only is 10.6% (Option A) / 16.4% (Option B), both under the ~20%
+threshold this issue set for itself, and the measurement additionally
+invalidated the unattributable-only → `COMMITTED` mapping as a hollow-closure
+risk. Per Proposed Solution step 0 and the gate's own instruction, the effort is
+redirected to BUG-2963's snapshot path, which is a strictly better
+discriminator. Cancelled rather than deferred: this is a settled negative
+result, not work waiting on a blocker.
+
+The one piece worth carrying forward independently is the optional item under
+[Documentation](#documentation) — adding a `### Files to Create` subsection to
+the standard Integration Map template
+(`scripts/little_loops/templates/feat-sections.json`). That is what would
+actually move the hit rate for any future revival; the `file_hints.py` regex
+widen alone does not.
+
+Prior state: open and unblocked — BUG-2963 landed in `709fa788`, so the
+`blocked_by` edge was removed; the remaining gate was the hit-rate measurement,
+not a dependency. An automation pass had deferred it `readiness_stagnated` on
+2026-08-01T20:35:17Z; that deferral is superseded by this cancellation.
 Split out of BUG-2963 on 2026-08-01 to keep the P1
 data-loss fix small: attribution is the part with real false-refusal and
 shared-utility risk, and the original single-issue scope scored
