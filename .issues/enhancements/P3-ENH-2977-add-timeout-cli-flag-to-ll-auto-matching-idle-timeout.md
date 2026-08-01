@@ -74,6 +74,10 @@ invocation, with the same precedence and shape as `--idle-timeout`:
 covered both; verify rather than assume) — the point of this issue is
 symmetry, so a half-symmetric result would be worse than none.
 
+> Resolved by research (see Integration Map → Codebase Research Findings):
+> `ll-parallel` already has `--timeout` (`cli/parallel.py:172,259`). Scope is
+> `ll-auto` only — no `parallel.py` change is in scope for this issue.
+
 **Out of scope:**
 
 - Changing the `3600` default.
@@ -137,14 +141,53 @@ value off `config.automation`.
 ### Similar Patterns
 
 - The `--idle-timeout` block in `cli/auto.py` is the template to copy.
-- `scripts/little_loops/cli/cli_args.py` — check whether the shared-argument
+- `scripts/little_loops/cli_args.py` — check whether the shared-argument
   helpers are the right home for a paired timeout-flag helper before
   duplicating the declaration across `auto.py` and `parallel.py`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- The shared-helper question above is already answered: `add_timeout_arg(parser,
+  default=None)` exists at `scripts/little_loops/cli_args.py:100-122`, styled
+  to mirror `add_idle_timeout_arg` (`cli_args.py:125-136`) exactly — same
+  `default=None` / `type=int` shape, same "N seconds" help-text register. It
+  is exported in `__all__` (`cli_args.py:550`) but currently has exactly one
+  caller in the whole tree: `add_common_parallel_args`
+  (`cli_args.py:517-534`, calls it at line 526). No code path adds it to
+  `add_common_auto_args` (`cli_args.py:496-514`). This changes the shape of
+  the fix: the implementer does not need to write a new `argparse.add_argument`
+  block in `cli/auto.py` — the flag declaration already exists and needs only
+  to be called from `add_common_auto_args`, alongside the existing
+  `add_idle_timeout_arg(parser)` call at `cli_args.py:512`.
+- **This resolves the Scope Boundaries question below about `ll-parallel`.**
+  `scripts/little_loops/cli/parallel.py` already has `--timeout` fully wired
+  — `add_timeout_arg(parser)` is called at `parallel.py:172`, and the parsed
+  value flows to `timeout_seconds=args.timeout` in the parallel config at
+  `parallel.py:259` (alongside `idle_timeout_per_issue=args.idle_timeout` at
+  line 260). `ll-parallel --timeout` is not a gap; it ships today. The only
+  asymmetry is `ll-auto`, because `cli/auto.py` calls `add_common_auto_args`
+  (`auto.py:58`, wired via `cli_args.py:496-514`) rather than
+  `add_common_parallel_args`, and that helper never picked up
+  `add_timeout_arg`. No `parallel.py` change is needed for this issue.
+- Once `add_timeout_arg(parser)` is added to `add_common_auto_args`, the
+  `config.automation.timeout_seconds = args.timeout` assignment belongs in
+  `cli/auto.py` right next to the existing `if args.idle_timeout is not None:`
+  block (`auto.py:78-79`), following the identical `is not None` guard shape
+  already used there.
+
 ### Tests
 
-- `scripts/tests/test_cli_auto.py` (or the existing `ll-auto` CLI test module)
-  — `--timeout N` reaches `config.automation.timeout_seconds`; omitting it
+- `scripts/tests/test_cli_args.py` is the actual coverage location (not a
+  `test_cli_auto.py`, which does not exist in this tree) — specifically
+  `TestAddCommonAutoArgs.test_adds_all_expected_arguments`
+  (`test_cli_args.py:748-786`), which currently parses `--idle-timeout` and
+  `--handoff-threshold` but has no `--timeout` case. `TestAddCommonParallelArgs`
+  (`test_cli_args.py:789-827`) already exercises the identical assertion
+  (`assert args.timeout == 1800`, line 820) for the parallel side — the
+  pattern to mirror for the auto-side test.
+- `--timeout N` reaches `config.automation.timeout_seconds`; omitting it
   leaves the config/default value intact; `--timeout 0` is preserved as `0`
   rather than being coerced to the default by a falsy check.
 
@@ -178,3 +221,7 @@ Filed alongside BUG-2976 after reviewing a recovery plan for a timed-out
 `ll-auto --only FEAT-108` run in a downstream project. The plan's remedy for
 the timeout was a `.ll/ll-config.json` edit precisely because no CLI override
 exists.
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-08-01T20:18:53 - `52bc5a67-0032-4383-ae03-a6de98447a01.jsonl`

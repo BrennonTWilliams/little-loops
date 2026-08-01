@@ -1,0 +1,11 @@
+{
+  "id": "04340921-6991-4216-b21b-725c54cd6768",
+  "type": "decision",
+  "timestamp": "2026-08-01T20:40:47Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Observed on ENH-2965: heuristic only checks weakest outcome subscore, missing an explicit unresolved measurement-gate in the issue body, misrouting to reconcile and causing readiness_stagnated deadlock.",
+  "rule": "Captured: dispatch_pre_deferral_remedy spike-vs-reconcile heuristic ignores unresolved measurement gates",
+  "scope": "issue",
+  "issue": "ENH-2978"
+}

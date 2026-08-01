@@ -1,0 +1,12 @@
+{
+  "id": "a7c3024b-3850-4fe1-99ae-68c9c1c01ffc",
+  "type": "decision",
+  "timestamp": "2026-08-01T20:27:27Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Option A (reuse extract_file_hints as-is) cannot attribute the motivating BUG-2963 incident's own new files (normalize.py, rename.py, cleanup.py), which were declared only under Files-to-Create-style headings. Tied 9/12 on scoring; Consistency tiebreaker (3 vs 0) favors Option B, which has a direct precedent (_OPTION_HEADING_RE) and was confirmed by codebase research to be additive (no existing test fixtures in the four downstream consumers use Files-to-Create headings).",
+  "rule": "Option B: extend file_hints.py section-heading pattern to recognize Files-to-Create-style variants",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: reuse extract_file_hints()/_extract_write_target_files() as-is, dropping Files to Create support",
+  "issue": "ENH-2965"
+}

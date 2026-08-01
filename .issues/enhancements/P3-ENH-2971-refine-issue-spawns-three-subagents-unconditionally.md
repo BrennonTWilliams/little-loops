@@ -9,6 +9,10 @@ discovered_date: 2026-08-01
 discovered_by: capture-issue
 relates_to:
 - ENH-2972
+- ENH-2975
+- ENH-2968
+- ENH-2951
+decision_needed: true
 testable: true
 labels:
 - skills
@@ -126,6 +130,44 @@ stale rather than absent. A reference that resolves is not necessarily
 `--gap-analysis` path; `--full-rewrite` keeps the unconditional spawn, since
 a full rewrite is by definition not trusting what is there.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `_sweep_file(path: Path, dry_run: bool, result: SweepResult) -> None`
+  (`scripts/little_loops/issues/anchor_sweep.py:59`) cannot be fed section
+  text directly — it only accepts a filesystem `Path` and reads that file's
+  full content internally (`path.read_text(...)`, line 61). There is no
+  string/text entry point. Calling it against `## Integration Map` / `##
+  Root Cause` / `## Proposed Solution` text (as `triage_research_axes` would
+  need to) requires either writing each section's text to a temp file first,
+  or splitting the regex-scan/resolve logic out of `_sweep_file()` so it can
+  operate on an arbitrary string.
+- `SweepResult.skipped_refs` (same file) is an **aggregate integer counter**
+  across an entire sweep run, not a structured per-reference or per-axis
+  result — it carries no data on which reference failed, in which file, or
+  under which section heading. The per-reference detail exists only in a
+  `warnings.warn(...)` call (lines 75-80), not in any field callers can read.
+  Reusing `skipped_refs` as-is does not give `triage_research_axes` the
+  per-axis granularity the Program Design assumes; the reusable primitive is
+  `resolve_anchor()` (`scripts/little_loops/issues/anchors.py:59`), not
+  `_sweep_file()`/`SweepResult` itself.
+- Neither `_sweep_file()` nor `resolve_anchor()` takes a project-root
+  parameter — `resolve_anchor()` resolves referenced files exactly as
+  written in the issue text, relative to process CWD, with no
+  root-anchoring logic. `find_project_root(start: Path) -> Path | None`
+  (`scripts/little_loops/paths.py:14`) exists and is what the proposed
+  `triage_research_axes(issue_path, root)` would call to obtain `root`, but
+  composing it with anchor resolution (joining `root` against each
+  extracted reference path before resolving) does not exist today and would
+  need to be written.
+- Today, `commands/refine-issue.md` Step 5c only *cites* `_sweep_file()`/
+  `skipped_refs` in prose (lines 512, 516) as the conceptual definition of
+  "resolves" — there is no `Bash(...)` invocation of `ll-issues anchor-sweep`
+  anywhere in the command body, so this would be the first executable use of
+  anchor resolution inside `refine-issue.md` rather than a second caller of
+  an already-wired call.
+
 ## Integration Map
 
 ### Files to Modify
@@ -154,6 +196,46 @@ a full rewrite is by definition not trusting what is there.
   command, not Python). The measurable gate is the triage predicate itself if
   it is extracted to Python; if it stays prose, this ships unverified — see
   Scope Boundaries.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `scripts/tests/test_refine_issue_command.py` already exercises
+  `commands/refine-issue.md`'s prose structure directly, without any Python
+  extraction — e.g. `test_option_count_detection_block_present` and
+  `test_section_5c_exists_after_5b` locate a step by `content.index(...)`
+  and assert on substrings within that slice. This is precedent that a
+  prose-only triage rule in Step 3 is independently testable the same way
+  (assert the triage table/predicate text is present, and that the spawn
+  instruction is conditioned on it) — it does not require Python extraction
+  to get *a* real test, only to get a test of the triage predicate's actual
+  *behavior* on a given issue file (which a prose-structure assertion cannot
+  verify).
+- `scripts/little_loops/cli/verify_skill_prose.py`'s `PROSE_MARKERS` is a
+  curated tuple of exactly six regex markers (jaccard word-overlap,
+  inline stopword list, session-JSONL scan, inline `python3 -c`, `git mv`
+  glob loop, union-find/cluster-merge) — none matches gap-triage or
+  conditional-spawn phrasing. Leaving the triage predicate as prose would
+  **not** trip `ll-verify-skill-prose`'s exit code either way; the
+  extraction-to-Python convention this issue's Scope Boundaries invokes is
+  followed by precedent elsewhere in the codebase (`prose_deps.py`,
+  `anchor_sweep.py`), not enforced by this specific gate.
+- `scripts/little_loops/issue_history/models.py` has no `TestGap` class —
+  the actual dataclass is `Gap` (`models.py:259-281`, not frozen, `priority`
+  typed `str` with an inline comment rather than `Literal`, always paired
+  with a hand-written `to_dict()`). If `AxisCoverage` is modeled after it,
+  match `Gap`'s shape (plain `@dataclass`, `to_dict()`) rather than the
+  frozen/`Literal` shape the current Program Design signature proposes —
+  though `@dataclass(frozen=True)` does have precedent elsewhere
+  (`ProseMarker` in `verify_skill_prose.py:42-49`), so both shapes exist in
+  the codebase and neither is the sole convention.
+- No existing command conditions which subset of parallel research subagents
+  it spawns on a computed predicate — `scan-codebase.md`, `manage-release.md`,
+  `analyze-workflows.md`, and `refine-issue.md` itself all spawn their full
+  agent set unconditionally today. This confirms the proposed per-axis gating
+  is a new pattern in this codebase, not one with an existing spawn-gating
+  template to follow.
 
 ## Implementation Steps
 
@@ -192,6 +274,7 @@ a full rewrite is by definition not trusting what is there.
 _No documents linked._
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-01T20:15:33 - `ff34935c-8665-404f-842a-5e8bdb323ccc.jsonl`
 - `/ll:capture-issue` - 2026-08-01
 
 ---

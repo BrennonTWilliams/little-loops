@@ -10,6 +10,7 @@ discovered_by: capture-issue
 relates_to:
 - ENH-2946
 testable: true
+decision_needed: true
 labels:
 - issues
 - cli
@@ -104,6 +105,40 @@ is a single-digit fire count, and the measurement is cheap:
 `ll-issues format-check --all --format json` and count non-empty `testable`
 arrays.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis. The alternatives
+above are restated here in the `**Option X**` heading form the
+`check-decidable` probe (`locate_enumerable_options`,
+`scripts/little_loops/issue_parser.py`) scans for — the `**A.**`-prefix form
+above does not match its heading regex, so it was invisible to the decision
+gate despite being a genuine 4-option decision point._
+
+**Option A**: Narrow the scan surface. Match against the title and `##
+Summary` only, not the whole body. Most genuine doc-only issues announce
+themselves in the title ("fix broken link in X", "update CHANGELOG"). This
+alone likely removes most false positives, since the matches are usually in
+Integration Map/Documentation sections.
+
+**Option B**: Tighten the keyword list. Drop bare `doc`/`guide` (too common as
+substrings of ordinary prose), keep the high-signal multiword phrases
+(`broken link`, `broken anchor`, `fix link`, `typo`, `spelling`, `changelog`,
+`readme`). Consider requiring at least one *action-shaped* phrase rather than
+any two nouns.
+
+**Option C**: Raise the threshold from 2 to 3+ distinct matches. Cheapest
+change, but it only shifts the curve rather than fixing the surface problem —
+a long issue that discusses docs will still reach any fixed count.
+
+**Option D**: Negative signals. Suppress when the issue names code artifacts
+(`.py` paths, `def `/`class `, a `## Program Design` section with real
+signatures). A doc-only issue rarely has a populated Program Design.
+
+**Recommended**: Option A + Option B together, then re-measure against the
+backlog. The target is a single-digit fire count, and the measurement is
+cheap: `ll-issues format-check --all --format json` and count non-empty
+`testable` arrays.
+
 ## Integration Map
 
 ### Files to Modify
@@ -126,6 +161,55 @@ arrays.
   — its `_DOC_ONLY_BODY` fixture is deliberately doc-only and must keep
   tripping the rule after any tightening; it is the regression anchor for the
   rendering fix and should not be weakened to accommodate a new keyword list.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Correction to the section-extractor lead below**: `ll-issues sections`
+  (`cmd_sections` in `scripts/little_loops/cli/issues/sections.py:16-48`) is
+  **not** an issue-body section extractor — it prints/resolves the path of a
+  static per-type template JSON (`{type}-sections.json`) used when
+  *scaffolding a new issue*. It never reads an existing issue's markdown body.
+  Following this reference would cost the implementer a dead-end.
+- **The actual reusable helper** is `_section_body_with_offset(content,
+  heading)` / `_section_body(content, heading)`
+  (`scripts/little_loops/issue_parser.py:199-223`) — locates a `^## {heading}$`
+  line and returns text up to the next `^## ` line. `check_format_gaps`
+  **already calls this at `issue_parser.py:435`**
+  (`body = _section_body(content, name)`) for its `empty`/`boilerplate`/
+  `program_design_nonspecific` gap checks, so `_section_body(content,
+  "Summary")` is the same-pattern call to reuse for Option A — no new regex,
+  no new module.
+- Two other section-splitting implementations exist elsewhere in the codebase
+  (`issue_history/doc_synthesis.py:104-127`'s `_extract_section`, and
+  `issue_parser.py:662-677`'s `_iter_h2_sections` for multi-section
+  enumeration) but neither is what `check_format_gaps` itself already uses —
+  `_section_body` is the one already in the same call path.
+- **Pre-existing scope discrepancy** (independent of this issue, but relevant
+  context): both `skills/format-issue/SKILL.md:174-176` and
+  `skills/capture-issue/SKILL.md:261-263` already describe the scan surface
+  as "title + description text," not "title + entire body" — the Python
+  implementation (`scan_text = f"{title}\n{_strip_fm(content)}"`,
+  `issue_parser.py:496`) already scans more than either skill's prose
+  documents. The skills and the code disagree *today*, before any fix here.
+- **Test coverage gap**: neither `test_issue_parser.py:3950-3989`
+  (`TestInferTestable`) nor `test_ll_issues_format_check.py`'s `_DOC_ONLY_BODY`
+  fixture (lines 960-991) places any keyword hits outside the title/`##
+  Summary` — every existing assertion passes unchanged whether the scan
+  surface is the whole body or just title+Summary. Applying Option A alone
+  would not fail any current test, but no current test would catch a
+  regression in the narrowing either; a new case (keyword hits only in a
+  later section like Impact/Steps to Reproduce, with title+Summary
+  keyword-free) is needed to actually pin the Option A behavior change.
+- For Option D (negative signals), no `_has_code_signals`-shaped helper
+  exists anywhere in the codebase today. The closest prior art `check_format_gaps`
+  already imports from a sibling module for a similar purpose is
+  `program_design.py`'s `grade_issue_section`/`DesignVerdict` (wired in at
+  `issue_parser.py:446-451` for the `program_design_nonspecific` gap) and
+  `text_utils.py:14-90`'s `extract_file_paths` (path detection, not `def
+  `/`class ` keyword detection) — Option D would compose from these, not
+  start from scratch.
 
 ## Program Design
 
@@ -209,6 +293,7 @@ same inference and are currently kept in sync only by convention.
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-01T19:58:05 - `f7d70fe6-d3b1-4443-814c-32eee6e8b043.jsonl`
 - `/ll:capture-issue` - 2026-08-01T16:04:25 - `f9ef973a-acd3-40a7-a313-5e7a001f9a16.jsonl`
 
 ---

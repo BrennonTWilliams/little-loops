@@ -11,6 +11,7 @@ relates_to:
 - BUG-2954
 - ENH-2935
 - ENH-2933
+decision_needed: true
 ---
 
 # ENH-2964: Tamper-guard strength metric is a per-file aggregate count, with false positives on legitimate refactors and a same-count evasion hole
@@ -96,6 +97,33 @@ Neither addresses `assert True` backfill *within* a retained function without
 some notion of assertion triviality (e.g. discounting assertions whose operand
 is a literal constant) — worth scoping as a third, separable increment.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Option A**: Repo-wide rather than per-file strength delta. Sum strength
+across the whole candidate path set and compare totals, so a test moved from
+file A to file B nets to zero. Fixes both false-positive rows; does nothing for
+the false negative. Costs a `read_paths_at_ref` over every candidate path
+rather than only the modified ones.
+
+**Option B**: Per-test-function matching instead of aggregate counts. Key
+strength by test-function name, so a function that survives with fewer
+assertions is flagged even when file totals hold, and a function that
+disappears from A while appearing in B is recognized as a move. Fixes all
+three rows; materially more implementation than Option A.
+
+Evidence on relative implementation cost (see Integration Map → Codebase
+Research Findings for anchors): Option A's before/after-across-multiple-files
+primitive (`read_paths_at_ref`, `filter_weakening_findings`'s dict-shaped
+batching) already exists unchanged — only the summation target moves from
+per-path to whole-set. Option B's per-symbol identity primitive
+(`node.name.startswith("test")` inside `measure_test_strength`'s existing AST
+walk) also already exists — only the aggregation target changes from a counter
+to a name-keyed set/dict, mirroring the per-symbol pattern already in use at
+`codequery/fallback.py:111-130`. Both options build on functions that already
+exist in `test_tamper_guard.py`; neither requires a new module.
+
 ## Integration Map
 
 ### Files to Modify
@@ -123,6 +151,64 @@ is a literal constant) — worth scoping as a third, separable increment.
 ### Configuration
 - N/A — no new config key.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- The actual non-FSM caller is `scripts/little_loops/work_verification.py`, not
+  `test_tamper_guard.py` itself: `_run_non_fsm_tamper_guard()`
+  (`work_verification.py:63-143`) computes `candidate_paths =
+  tamper_guard_candidate_paths(repo_root, config=config)` (whole-repo test+config
+  files via git `ls-files`) and `changed = tamper_guard_changed_files(repo_root)`
+  (full changed-file set for the implement phase, from `git diff --name-only
+  HEAD` plus untracked files), then calls `run_tamper_guard(before, changed,
+  config, policy, repo_root, finding_filter=partial(filter_weakening_findings,
+  repo_root=repo_root, ref=ref))` (`work_verification.py:110-115`). Both
+  candidate options in `## Proposed Solution` build on this call site: the
+  caller already has the whole-diff, multi-file path set available when
+  `filter_weakening_findings` runs — option 1 (repo-wide sum) doesn't need a
+  new path-discovery step, only a change to what `filter_weakening_findings`
+  does with the set it's already handed.
+- The FSM adapter (`scripts/little_loops/fsm/executor.py`, `_check_tamper_guard`)
+  calls `run_tamper_guard(...)` with **no `finding_filter` argument** —
+  deliberately, per `run_tamper_guard`'s own docstring
+  (`test_tamper_guard.py:496-508`): "Defaults to None so callers that never pass
+  it (the FSM adapter) keep full byte-level strictness, unaffected." Any change
+  to `filter_weakening_findings`/`is_weakening` under this issue only affects
+  the non-FSM path; the FSM path's byte-strict behavior is untouched by
+  construction, not by an oversight that needs separate handling.
+- Additional existing test files not yet listed above that already exercise this
+  chokepoint and should keep passing unmodified: `scripts/tests/
+  test_work_verification.py` (integration coverage for the two-window guard
+  logic in `_run_non_fsm_tamper_guard`) and `scripts/tests/test_worker_pool.py`
+  (ll-parallel end-to-end tamper guard coverage).
+- `read_paths_at_ref(repo_root, ref, paths) -> dict[str, str | None]`
+  (`test_tamper_guard.py:112-120`) already batches git-ref-relative content
+  reads across an arbitrary path set, keyed by repo-relative path (`None` =
+  absent at that ref, not an exception). `filter_weakening_findings`
+  (`test_tamper_guard.py:302-331`) already builds `before_texts` via this
+  function and `after_texts` via on-disk reads as two same-shaped dicts — the
+  before/after-across-multiple-files primitive named in Proposed Solution
+  Option A already exists; no new read/diff utility is needed for that
+  direction.
+- This codebase has an existing per-symbol (not aggregate-count) AST-walk
+  pattern: `FallbackProvider.defines()`
+  (`scripts/little_loops/codequery/fallback.py:111-130`) walks `ast.parse` /
+  `ast.walk`, filters `FunctionDef`/`AsyncFunctionDef`, and keys results by
+  `node.name` rather than a total. `measure_test_strength()`
+  (`test_tamper_guard.py:235-281`) already imports `ast`, already walks the
+  tree, and already special-cases `node.name.startswith("test")` inside that
+  walk (`test_tamper_guard.py:266-268`) — it just increments a counter there
+  instead of recording the name. Option B (per-test-function matching) would
+  convert that one counter increment into a name-keyed set/dict; it does not
+  require a new AST-walking module.
+- `measure_test_strength()`'s own docstring already cites this issue as its
+  follow-up (`test_tamper_guard.py:246-250`), and BUG-2954 established the
+  precedent of layering a finer-grained filter on top of the existing
+  byte-hash comparison via `run_tamper_guard`'s `finding_filter` hook
+  (`test_tamper_guard.py:485-521`) rather than replacing it — the same
+  incremental-layering shape either option here would extend.
+
 ## Impact
 
 - **Priority**: P3 — narrower trigger than BUG-2954 (only refactor-shaped test
@@ -146,6 +232,9 @@ is a literal constant) — worth scoping as a third, separable increment.
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+
+## Session Log
+- `/ll:refine-issue` - 2026-08-01T19:51:12 - `d9b5af8b-d1a1-4e82-af36-c6b06a5fc367.jsonl`
 
 ---
 

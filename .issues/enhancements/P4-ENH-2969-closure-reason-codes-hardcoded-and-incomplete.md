@@ -43,6 +43,16 @@ closure reason in three docstrings — `output_parsing.py:263`
 (*"close_reason: str|None (e.g., 'already_fixed', 'invalid_ref')"*),
 `issue_lifecycle.py:285`, and `issue_lifecycle.py:670` — but:
 
+> ⚠ **Codebase Research Findings**: the two `issue_lifecycle.py` line
+> numbers above are stale against the current tree. Line 285 is inside
+> `classify_failure()`'s tool-cancellation branch and line 670 is inside
+> `_commit_issue_completion()`'s `_resolve_line` helper — neither mentions
+> `invalid_ref`. The actual current occurrences are `output_parsing.py:263`
+> (`parse_ready_issue_output()` Returns docstring), `issue_lifecycle.py:312`
+> (`_build_closure_resolution()` Args docstring), and
+> `issue_lifecycle.py:912` (`close_issue()` Args docstring). All three still
+> need the same resolution described in step 3 below.
+
 ```
 $ ll-issues set-status BUG-2956 cancelled --reason invalid_ref
 error: argument --reason: invalid choice: 'invalid_ref'
@@ -143,12 +153,17 @@ Unchanged except for where the valid set comes from.
 
 ### Files to Modify
 - `scripts/little_loops/issue_lifecycle.py` — `ClosureReason` beside
-  `DeferReason` (`L58`); the two example docstrings at `L285`, `L670`.
+  `DeferReason` (`L58`); the two example docstrings, currently at `L312`
+  (`_build_closure_resolution()`) and `L912` (`close_issue()`) — see the
+  Codebase Research Findings note under Current Behavior for why the
+  originally-cited `L285`/`L670` are stale.
 - `scripts/little_loops/cli/issues/set_status.py` — `L17`.
 - `scripts/little_loops/cli/issues/__init__.py` — the `--reason` help text
   (`~L803`) already describes the deferral/closure split in prose; update it
   to match whatever step 4 decides.
 - `scripts/little_loops/output_parsing.py` — the `L263` docstring example.
+- `docs/reference/CLI.md:1886` — the `--reason` flag's closure-code list in
+  the `set-status` reference table; keep in sync with the new enum members.
 
 ### Dependent Files
 - `scripts/little_loops/parallel/types.py:69` — documents `close_reason` with
@@ -156,6 +171,45 @@ Unchanged except for where the valid set comes from.
 - `.claude/CLAUDE.md` § Issue File Format — documents the deferral reason
   codes (ENH-2664) in detail but not the closure codes; adding them keeps the
   two symmetric. (See ENH-2970 — CLAUDE.md accuracy is being gated.)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `scripts/little_loops/issue_manager.py:773` (`process_issue_inplace`)
+  already special-cases `close_reason == "invalid_ref"` to skip file
+  operations for a stale/nonexistent reference. This is a live consumer that
+  already assumes `invalid_ref` is a valid closure code — it currently only
+  becomes reachable through non-CLI callers of `close_issue()`, since the
+  `set-status` CLI's argparse `choices=` rejects the value first. Adding
+  `invalid_ref` as a `ClosureReason` member (step 3) makes this existing
+  branch reachable via the CLI too, rather than introducing new behavior.
+- `docs/reference/CLI.md:1886` documents the `--reason` flag's closure codes
+  explicitly (`already_fixed`, `superseded`; ENH-2749/BUG-2844) alongside the
+  deferral codes — not previously listed as a doc site to update; add it to
+  the Files to Modify list alongside `.claude/CLAUDE.md`.
+- Multiple tests already exercise `invalid_ref` as a valid `close_reason`
+  through `parse_ready_issue_output()`/`close_issue()` (not the `set-status`
+  CLI, so the argparse gap has never surfaced there):
+  `test_output_parsing.py`, `test_issue_manager.py`,
+  `test_issue_lifecycle.py:136`, `test_issue_history_advanced_analytics.py`.
+- Existing closure-reason coverage in `test_set_status_cli.py` to extend
+  (step 6): `test_set_status_done_stamps_closed_reason` (`:431`),
+  `test_set_status_cancelled_superseded_stamps_closed_reason` (`:468`),
+  `test_set_status_cancelled_without_reason_omits_closed_reason` (`:505`),
+  `test_set_status_invalid_reason_rejected` (`:563`),
+  `test_set_status_deferral_reason_rejected_on_done` (`:594`),
+  `test_set_status_closed_reason_rejected_on_deferred` (`:630`). None of
+  these currently exercise a closure code beyond `already_fixed`/`superseded`.
+- The drift-guard test shape to model the new `ClosureReason` tests after
+  already exists for `DeferReason` in two complementary forms:
+  `TestDeferReasonEnum` (`test_issue_lifecycle.py:1977-1993`) asserts set
+  equality (`_DEFERRAL_REASON_CODES == frozenset(r.value for r in
+  DeferReason)`) as a pure drift guard, and
+  `test_set_status_deferred_stamps_autodev_reason_codes`
+  (`test_set_status_cli.py:336-390`, parametrized over `DeferReason` values)
+  round-trips each literal through `main_issues()` end-to-end (argv →
+  frontmatter write). Step 6 should add both forms for `ClosureReason`.
 
 ### Similar Patterns
 - `DeferReason` (`issue_lifecycle.py:58`) and its ENH-2870 migration — the
@@ -210,6 +264,7 @@ Unchanged except for where the valid set comes from.
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-01T20:23:46 - `1f45db6d-28e7-4a99-8a50-d33fd51d2130.jsonl`
 - `/ll:capture-issue` - 2026-08-01T16:20:52 - `15f4582a-2df6-4315-9f84-3f5730f550e5.jsonl`
 
 ---

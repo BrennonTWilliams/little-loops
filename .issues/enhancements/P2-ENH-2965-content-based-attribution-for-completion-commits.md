@@ -14,6 +14,18 @@ relates_to:
 labels:
 - issue-lifecycle
 - orchestration
+confidence_score: 80
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
+decision_needed: false
+size: Very Large
+reconcile_attempted: true
+deferred_by: automation
+deferred_date: '2026-08-01T20:35:17Z'
+deferred_reason: readiness_stagnated
 ---
 
 # ENH-2965: Content-based attribution of dirty paths for callers with no pre-run snapshot
@@ -355,6 +367,120 @@ leading `###` in the pattern as well as the title alternation:
 Recommendation: **(b)**, gated on adding the missing test coverage below —
 option (a) fails the motivating incident.
 
+#### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+This codebase already holds a convention for exactly the "hoist a duplicated
+heading regex to a single module-level constant" step called for under option
+(b): `_OPTION_HEADING_RE` (`scripts/little_loops/issue_parser.py:862-871`) is a
+private, `re.compile`-d, module-level constant with a comment describing the
+heading variants its alternation covers, threaded through one helper
+(`_iter_option_blocks`) rather than being recompiled at each call site.
+`file_hints.py`'s current two inline copies of the `Files to Modify|Files
+Changed` section pattern (`:301-304`, `:327-330`) are the outlier relative to
+that convention, not an instance of it — no separate precedent search is
+needed to justify the hoist.
+
+The `DirtyPathTriage` dataclass shape (plain, non-frozen, `list[str] =
+field(default_factory=list)`) is likewise a well-established pattern beyond
+just `FindingMatch`/`FileHints`: `WorkerResult` (`parallel/types.py:52-94`),
+`RegressionEvidence` (`issue_discovery/matching.py:44-59`), `OverlapResult`
+(`parallel/overlap_detector.py:24-39`), and `OrchestratorState`
+(`parallel/types.py:232-256`) all follow the same shape.
+
+There is no dedicated repo-relative POSIX path normalization utility in this
+codebase for the matching-rule comparison — `FileHints`/`overlap_detector.py`
+compare raw extracted strings as-is (`_directories_overlap()` /
+`_file_in_directory()`, `file_hints.py:247-284`, do only an ad hoc
+`.rstrip("/") + "/"`). The "normalized to repo-root-relative POSIX form"
+premise this issue's Matching rule states holds because `porcelain_paths()`
+(`git_operations.py:546`) already returns repo-root-relative POSIX strings by
+construction, not because a shared normalizer is called — there is nothing to
+add or call here, but an implementer should not go looking for one.
+
+#### Codebase Research Findings — Option-Count Detection (`/ll:refine-issue`)
+
+`decision_needed: true` is set in this issue's frontmatter, but
+`ll-issues check-decidable ENH-2965` currently returns `OPTIONS_MISSING`: the
+two alternatives above are written as `- **(a) ...**` / `- **(b) ...**`
+bullets, a form the decidability probe does not recognize. Restating the same
+alternatives (verbatim content, no new analysis) in the bold-label form the
+probe scans for:
+
+**Option A**: Reuse `extract_file_hints()` / `_extract_write_target_files()`
+as-is. Drop the `Files to Create` reference; attribute only against
+`### Files to Modify` / `### Files Changed`. Zero blast radius. Weaker
+attribution for new-file-heavy issues — which is the shape of the BUG-2963
+incident (`normalize.py`, `rename.py`, `cleanup.py` were all new files), so
+this option would have attributed nothing there.
+
+> **Selected:** Option B — extends the heading pattern to cover the
+> motivating incident's shape; see Decision Rationale below.
+
+**Option B**: Extend `file_hints.py`'s section pattern (`:300-304`,
+duplicated at `:322-325`) to recognize create-style headings, hoisting the
+duplicated regex to a single module-level constant as part of the change
+(this codebase's established convention for this exact situation — see
+`_OPTION_HEADING_RE`, `issue_parser.py:862-871`, confirmed by pattern-finder
+research above). Widens `extract_file_hints()`'s output for its three other
+consumers (`dependency_graph.py:472,487`, `overlap_detector.py:14,87,120`,
+`cli/issues/fingerprint.py`, `cli/sprint/manage.py`); each needs its tests
+re-checked.
+
+**Recommended**: Option B — gated on adding the missing test coverage
+described under Tests below; Option A fails the motivating incident.
+
+### Decision Rationale
+
+**Selected: Option B** (extend `file_hints.py`'s section-heading pattern to
+recognize `### Files to Create`-style variants, hoisting the duplicated regex
+to a single module-level constant).
+
+**Reasoning**: Option A is cheaper and carries zero blast radius, but it
+structurally cannot solve the problem this issue exists to fix — the BUG-2963
+incident's own new files (`normalize.py`, `rename.py`, `cleanup.py`) were
+declared only under `### Files to Create`-style headings, which
+`_extract_write_target_files()` does not scan today (confirmed at
+`file_hints.py:301-304`). An option that can't attribute the motivating case
+isn't a real fallback, regardless of how safe it is. Option B has a clean,
+already-established precedent for the exact refactor it requires
+(`_OPTION_HEADING_RE`, `issue_parser.py:868-871` — module-level compiled
+regex, heading alternation, single point of definition), and pattern-finder
+research confirmed none of the four downstream `extract_file_hints()`
+consumers (`dependency_graph.py`, `overlap_detector.py`, `fingerprint.py`,
+`cli/sprint/manage.py`) have existing test fixtures using `Files to Create`
+headings — so widening recognition doesn't flip any existing assertion, only
+adds previously-inert paths to their input. The added complexity is real
+(hoist + pattern widen, plus re-checking four consumer test suites) but
+contained and precedented.
+
+| Dimension | Option A | Option B |
+|---|---|---|
+| Consistency | 0/3 — fails the motivating incident entirely | 3/3 — direct codebase precedent, satisfies the issue's stated purpose |
+| Simplicity | 3/3 — zero code change | 2/3 — mechanical hoist + regex widen |
+| Testability | 3/3 — no new coverage needed | 2/3 — new heading-variant tests + 4 consumer suites to re-check |
+| Risk | 3/3 — zero blast radius | 2/3 — widens a shared utility across 4 consumers, but no existing test fixture uses `Files to Create` headings, so no assertion flips |
+| **Total** | **9/12** | **9/12** |
+
+Tied on total; Consistency is the tiebreaker per this skill's scoring rules,
+and Option B wins decisively there (3 vs 0) since Option A cannot attribute
+the exact new-file-heavy shape that motivated ENH-2965.
+
+**Key evidence**:
+- `file_hints.py:301-304`/`:327-330` — both extraction helpers scope to the
+  identical regex `r"###\s*(?:Files to Modify|Files Changed)\s*\n..."`, with
+  no `Files to Create` alternative.
+- `.issues/` corpus: `### Files to Create`-style headings appear in ~130-153
+  files (~7% of the corpus) — a real, non-trivial population, not an edge
+  case.
+- `scripts/tests/test_file_hints.py::TestExtractWriteTargetFiles` has zero
+  coverage of `Files to Create` today (neither positive nor
+  documented-gap-negative), and `test_dependency_graph.py` /
+  `test_overlap_detector.py` / `test_ll_issues_fingerprint.py` /
+  `test_sprint.py::TestSprintAnalyze` contain no `Files to Create` fixture
+  text — confirming the widen is additive, not fixture-breaking.
+
 ## Integration Map
 
 - `scripts/little_loops/issue_lifecycle.py:461-528` — `_triage_dirty_paths()`,
@@ -376,6 +502,13 @@ behavior widens silently:_
 - `scripts/little_loops/cli/issues/fingerprint.py`
 - `scripts/little_loops/cli/sprint/manage.py`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/parallel/__init__.py` — re-exports `FileHints` and
+  `extract_file_hints` in its own `__all__`, a second public surface (beyond
+  the four call sites above) through which the widened heading-recognition
+  behavior becomes externally visible under `little_loops.parallel`'s
+  namespace. No code change needed, only relevant under option (b).
+
 ### Documentation
 
 - `docs/reference/API.md` — the `close_issue` / `complete_issue_lifecycle`
@@ -385,6 +518,14 @@ behavior widens silently:_
   `### Files to Create` subsection to the standard Integration Map template, so
   future issues declare new files in a place attribution can find. Optional but
   it is what makes attribution reliable going forward.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/git_operations.py::snapshot_dirty_paths()` docstring
+  (~line 596-614) — describes the `pre_run_dirty` contract in
+  `close_issue()`/`complete_issue_lifecycle()` subtraction terms but doesn't
+  mention the new `pre_run_dirty is None` attribution fallback; a reader
+  following this docstring alone would still believe the `None` case is a
+  blanket refusal. Update alongside `docs/reference/API.md`.
 
 ### Tests
 
@@ -402,6 +543,32 @@ behavior widens silently:_
   `_abandon_and_stamp`, `preserve_dirty_tree`, and `NOT_CLOSED` propagation to
   `close_issue()` / `complete_issue_lifecycle()` currently have **zero**
   coverage. Confirm they exist and pass before building on them.
+
+  #### Codebase Research Findings
+
+  _Added by `/ll:refine-issue` — based on codebase analysis (tree `f95a5e74`):_
+
+  The "currently zero coverage" premise above is now stale — this precondition
+  is satisfied, not open. `TestCommitIssueCompletionScoped`
+  (`scripts/tests/test_issue_lifecycle.py:316+`) has direct, non-trivial
+  coverage of every BUG-2963 mechanism named above:
+  - `_completion_preflight`: `test_run_window_path_is_committed_with_the_issue_file`
+    (`:450-478`), `test_pre_existing_wip_is_left_untouched` (`:480-504`),
+    `test_no_snapshot_with_dirt_refuses` (`:506-521` — exercises exactly the
+    `:520-526` refusal branch this issue targets; its own docstring at
+    `:509-512` already flags itself as "the conservative branch ENH-2965 later
+    replaces with content-based attribution"), `test_noise_paths_never_force_a_refusal`
+    (`:523-535`), `test_issue_file_excluded_by_path_equality` (`:537-547`).
+  - `_abandon_and_stamp` / `preserve_dirty_tree`: `test_abandon_preserves_tree_non_destructively`
+    (`:549-572`), `test_deliverable_survives_worktree_removal` (`:637-672`, uses
+    `git worktree remove --force` to pin the P1 recoverability guarantee).
+  - `NOT_CLOSED` propagation end-to-end: `test_complete_issue_lifecycle_commits_the_deliverable`
+    (`:574-607`), `test_complete_issue_lifecycle_refuses_without_snapshot`
+    (`:609-635`), `test_commit_failure_rolls_back_and_preserves` (`:674+`).
+
+  `porcelain_paths()`, `preserve_dirty_tree()`, and `filter_ll_noise()` (consumed
+  by `_filter_completion_noise`, `issue_lifecycle.py:441`) live in
+  `scripts/little_loops/git_operations.py`, not `issue_lifecycle.py`.
 - **Regression test for the incident shape**: an issue declaring a new module in
   its Integration Map, with both the module and an undeclared test file dirty →
   must yield `NOT_CLOSED`, not a partial commit.
@@ -411,6 +578,61 @@ behavior widens silently:_
   it, plus cases for each heading variant listed above, **if option (b)**.
 - Re-check the tests of the four `extract_file_hints()` consumers above under
   option (b).
+
+  #### Codebase Research Findings
+
+  _Added by `/ll:refine-issue` — based on codebase analysis:_
+
+  Located test files for the four consumers named above: `scripts/tests/test_dependency_graph.py`,
+  `scripts/tests/test_overlap_detector.py`, `scripts/tests/test_ll_issues_fingerprint.py`,
+  and `scripts/tests/test_manage_issue_changelog_gate.py` (covers
+  `cli/sprint/manage.py`'s conflict analysis despite the name mismatch).
+
+  > ⚠ Correction (`/ll:refine-issue`, gap-analysis pass, tree `f95a5e74`):
+  > `test_manage_issue_changelog_gate.py` is unrelated — it covers the
+  > changelog-gate staged-diff/skill checks, not sprint conflict analysis
+  > (verified: no `sprint`/`analyze`/`hints` references in that file). The
+  > actual coverage for `cli/sprint/manage.py`'s `_cmd_sprint_analyze()` (the
+  > function that calls `extract_file_hints()`) is
+  > `scripts/tests/test_sprint.py::TestSprintAnalyze` (`:1879+`);
+  > `scripts/tests/test_cli_sprint.py` additionally covers the CLI
+  > routing/flag-forwarding for the `analyze`/`a` subcommand
+  > (`test_analyze_routes_to_handler`, `test_analyze_alias_a_routes_to_handler`,
+  > `test_analyze_forwards_format_flag`).
+
+_Wiring pass added by `/ll:wire-issue`:_
+- **`test_no_snapshot_with_dirt_refuses` must be rewritten, not just left
+  alongside new tests.** Its fixture issue body is
+  `"---\nstatus: done\n---\n\n# BUG-001: Test Bug\n"` — no `## Integration
+  Map` / `### Files to Modify` section at all — then dirties a bare
+  `something.py` and asserts `preflight.ok is False` /
+  `preflight.dirty_count == 1`. Under the new triage logic `something.py` is
+  declared nowhere, so it lands in "unattributable only," which this issue's
+  own design maps to `ok=True` (commit the issue file alone, warn) — the
+  opposite of what the test currently asserts. The existing "extend with the
+  three triage outcomes" framing above reads as additive; this one is a
+  required rewrite of existing assertions.
+- `scripts/tests/test_interceptor_extension.py:141,175` — imports and directly
+  constructs `_PreflightResult` (`_PreflightResult(ok=True,
+  run_window=frozenset())`) to patch `_completion_preflight`'s return value.
+  Unaffected as long as no new `_PreflightResult` members are added (per this
+  issue's own constraint), but re-check after implementation since it's a
+  second existing consumer of that type's shape.
+- No integration/e2e test currently exercises a `pre_run_dirty=None` close in
+  a dirty tree at the `ll-auto`/`ll-parallel`/orchestrator level — every
+  production caller there (`orchestrator.py:1097,1518`,
+  `issue_manager.py:808,1145,1167`) always passes an explicit snapshot. This
+  is consistent with the issue's stated scope (external API callers, not
+  `ll-auto`), so no new test is required, but the only place the new triage
+  logic is reachable in tests is the unit level in `test_issue_lifecycle.py`
+  — worth confirming that's an accepted coverage boundary, not an oversight.
+- `test_complete_issue_lifecycle_emits_event`
+  (`scripts/tests/test_issue_lifecycle.py:1682-1689`) has an inline comment
+  documenting today's blanket-refusal semantics ("a blanket `[main abc]
+  commit` would be parsed as a dirty path and ... refuse the close") — a
+  drive-by comment update once the branch changes, not a test-behavior risk
+  (this test mocks `subprocess.run` wholesale, so `run_window` is always
+  empty and it isn't exercised by the new logic).
 
 ## Impact
 
@@ -445,3 +667,52 @@ heading-scoped behavior; `_triage_dirty_paths()` took porcelain lines the
 pre-flight had already parsed; the return type was named `CompletionResult`
 instead of `_PreflightResult`. Added: the accepted-provenance-risk statement and
 the hit-rate measurement gate.
+
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-01_
+
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 63/100 → LOW
+
+### Concerns
+- The issue's own "Pre-implementation measurement (gate)" section has not been run: no attributable-only/unattributable-only/mixed hit rate is recorded anywhere in the file, and the Proposed Solution's step 0 says "Do not start otherwise." This is the single largest readiness gap — everything else in the issue (Program Design, matching rule, test plan) is unusually thorough and verified accurate against the current tree.
+- The option (a) vs option (b) design decision for extracting `### Files to Create`-style paths is recommended (b) but not formally locked — no `decision_needed`-style resolution exists yet in the file itself (this check is setting the flag now).
+
+### Outcome Risk Factors
+- Open decision: option (a) (reuse `file_hints.py` as-is) vs option (b) (extend its section-pattern regex) is unresolved — either choice changes the blast radius (0 dependents under (a) vs 4 consumers — `dependency_graph.py`, `overlap_detector.py`, `fingerprint.py`, `manage.py` — plus a package re-export under (b)) and should be pinned before implementation starts.
+- The unmeasured hit-rate gate could invalidate the entire issue: the issue's own text says if attributable-only comes in below ~20%, the correct outcome is to cancel this issue and invest in BUG-2963 instead, not to implement it. Implementation effort is contingent on data not yet collected.
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-01_
+
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 75/100 → MODERATE
+
+### Concerns
+- The "Pre-implementation measurement (gate)" section still has not been run: no attributable-only/unattributable-only/mixed hit rate is recorded anywhere in the file, and Proposed Solution step 0 still says "Do not start otherwise." This remains the single largest readiness gap; it is a precondition on whether to implement at all, not a design-time ambiguity, so it does not move the Ambiguity outcome score.
+- The option (a) vs (b) decision that the previous confidence-check flagged as open is now resolved: `/ll:decide-issue` selected Option B, `decision_needed` is `false`, and the Program Design/Decision Rationale sections give it full weight — this materially improved outcome confidence (63 → 75) and readiness Criterion C (Ambiguity, 10 → 18) versus the prior run.
+- Program Design gate (`ll-issues format-check --format json`) reports no `program_design_nonspecific` or missing/empty Program Design section — the gate is satisfied and does not block this issue.
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-01_
+
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 75/100 → MODERATE
+
+### Concerns
+- No change since the prior two confidence-check passes: HEAD (`f95a5e74`) is the exact tree the last reconcile pass verified against, and the "Pre-implementation measurement (gate)" hit-rate still has not been recorded anywhere in the file. Proposed Solution step 0 still reads "Do not start otherwise" — this remains the sole readiness gap (Dependencies Satisfied scores 0/20 for this reason alone; all four other readiness criteria are 20/20).
+- Program Design gate (`ll-issues format-check --format json`) reports no `program_design_nonspecific` / missing / empty findings — the gate is satisfied and does not block this issue.
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-01T20:34:49 - `b5ab73bb-1327-4a73-846d-c8deeb5e603d.jsonl`
+- `/ll:reconcile-issue` - 2026-08-01T20:32:53 - `6b6e2e81-bd4d-4201-b5a3-baf1a83177eb.jsonl`
+- `/ll:confidence-check` - 2026-08-01T20:30:08 - `ea89c7ad-c2c0-4853-8aba-bfc517aff062.jsonl`
+- `/ll:decide-issue` - 2026-08-01T20:27:33 - `d6aa2bcf-d196-4e65-8a21-094773ffa839.jsonl`
+- `/ll:refine-issue` - 2026-08-01T20:23:29 - `0ecc92e1-8533-47d1-bef7-5de9379cfd85.jsonl`
+- `/ll:confidence-check` - 2026-08-01T20:18:11 - `9eb7d6fe-3829-43b4-ab8d-409028f0f007.jsonl`
+- `/ll:wire-issue` - 2026-08-01T20:14:21 - `c5dcc62f-93fc-46c3-96d1-a487b53d3afa.jsonl`
+- `/ll:refine-issue` - 2026-08-01T20:07:28 - `ceba2490-6537-4a6b-a502-5312eb3582d2.jsonl`
