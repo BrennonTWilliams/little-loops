@@ -565,6 +565,22 @@ def _full_skills_check() -> list[CheckResult]:
     return [CheckResult(name="full:skills", status=data["status"], note=data["note"])]
 
 
+def _full_skill_prose_data() -> dict:
+    """Adapter over `scan_prose()` (ll-verify-skill-prose)."""
+    from little_loops.cli.verify_skill_prose import scan_prose
+
+    findings = scan_prose(Path.cwd())
+    if not findings:
+        return {"status": "full", "note": "no algorithm-as-prose markers found"}
+    return {"status": "unsupported", "note": f"{len(findings)} algorithm-as-prose finding(s)"}
+
+
+@register_full_check
+def _full_skill_prose_check() -> list[CheckResult]:
+    data = _full_skill_prose_data()
+    return [CheckResult(name="full:skill_prose", status=data["status"], note=data["note"])]
+
+
 def _full_triggers_data() -> dict:
     """Adapter over `_run_validation()`/`_any_failures()` (ll-verify-triggers)."""
     from little_loops.cli.verify_triggers import _any_failures, _run_validation

@@ -276,6 +276,7 @@ ll-sync           Sync local issues with GitHub Issues
 ll-issues         Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, set-status, clusters, anchor-sweep, fingerprint, find-similar, epic-progress, decisions (list, add, outcome, generate, sync, suggest-rules, promote, extract-from-completed))
 ll-verify-docs    Verify documented counts match actual file counts
 ll-verify-skill-budget Check skill description token footprint against listing budget
+ll-verify-skill-prose Scan skills/commands markdown for prose reimplementations of algorithms in scripts/little_loops/
 ll-verify-skills  Check that no SKILL.md exceeds 500 lines
 ll-verify-triggers Validate skill description trigger accuracy against fixtures
 ll-verify-design-tokens Lint design-token profiles for half-flipped (incomplete dark) themes

@@ -340,26 +340,8 @@ If `HAS_FINDINGS` is false: skip (clean bill of health — no update needed).
 
 If `HAS_FINDINGS` is true, append a `## Confidence Check Notes` section to the issue file using the Edit tool. Insert it before `## Session Log` (or before `## Status` if no session log exists):
 
-```markdown
-## Confidence Check Notes
-
-_Added by `/ll:confidence-check` on [YYYY-MM-DD]_
-
-**Readiness Score**: [N]/100 → [tier label]
-**Outcome Confidence**: [N]/100 → [label]
-
-### Concerns
-- [concern 1]
-- [concern 2]
-
-### Gaps to Address
-- [gap 1]
-_(omit this subsection if no gaps)_
-
-### Outcome Risk Factors
-- [risk 1 — phrase by dominant axis: "deep per-site complexity" for low-Depth issues, "broad enumeration across N sites" for high-Breadth issues]
-_(omit this subsection if no risk factors)_
-```
+See [rubric.md](rubric.md) § Confidence Check Notes template for the exact
+section to append.
 
 After appending findings (or skipping if no findings), stage the updated issue file:
 
@@ -367,14 +349,17 @@ After appending findings (or skipping if no findings), stage the updated issue f
 git add "[issue-file-path]"
 ```
 
-After the findings write-back step, append a session log entry to the issue file:
+After the findings write-back step, append a session log entry to the issue file. Use the Bash tool:
 
-```markdown
-## Session Log
-- `/ll:confidence-check` - [ISO timestamp] - `[path to current session JSONL]`
+```bash
+ll-issues append-log <path-to-issue-file> /ll:confidence-check
 ```
 
-To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). If `## Session Log` already exists, append below the header. If not, add before `## Status` footer.
+If `ll-issues` is not available, fall back to manually appending with **exactly** this format (backticks required). If `## Session Log` already exists, append below the header; if not, add before the `## Status` footer:
+
+```
+- `/ll:confidence-check` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
+```
 
 ### Phase 4.6: Decision-Needed Flag
 

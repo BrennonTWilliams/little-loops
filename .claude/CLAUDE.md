@@ -238,6 +238,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-sync` - Sync local issues with GitHub Issues
 - `ll-verify-docs` - Verify documented counts match actual file counts
 - `ll-verify-package-data` - Lint `__file__` escapes that break non-editable installs + verify manifest assets are in-wheel (exit 1 on any violation)
+- `ll-verify-skill-prose` - Scan `skills/*/SKILL.md` + `commands/*.md` for prose reimplementations of algorithms that exist in `scripts/little_loops/`; curated marker table (Jaccard/word-overlap, stop-word list, session-JSONL scan, inline `python3 -c`, `git mv` glob loops, union-find/cluster-merge), `<!-- ll-prose-ok: reason -->` suppression comment (exit 1 on any unsuppressed finding, ENH-2951)
 - `ll-verify-design-tokens` - Structural lint for half-flipped design-token themes: a theme that inverts `surface`+`text` but leaves `border`/`action` at light-tuned `semantic.json` defaults (exit 1 on any violation)
 - `ll-verify-des-audit` - Walk the source tree and verify every event-emit site maps to a registered DES variant (exit 1 on uncovered event types — the F5 adoption gate, ENH-2475)
 - `ll-verify-skill-budget` - Check skill description token footprint against listing budget (exit 1 if over)

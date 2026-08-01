@@ -3234,6 +3234,30 @@ ll-verify-package-data -C /path/to/root    # Run from a specific project root
 
 ---
 
+### ll-verify-skill-prose
+
+Scan `skills/*/SKILL.md` and `commands/*.md` for prose reimplementations of algorithms that already exist in `scripts/little_loops/`. A curated marker table (not a general duplicate-algorithm detector) catches six known shapes: a Jaccard/word-overlap formula spelled out in prose (owned by `text_utils.calculate_word_overlap`), an inline stop-word list (`text_utils.extract_words`), manual `~/.claude/projects/` session-JSONL scanning instructions (`ll-issues append-log`), inline `python3 -c` computation the model is told to run (the owning CLI), `git mv` loops over globbed/bracketed issue filenames (`ll-issues normalize`), and union-find/cluster-merge instructions (`ll-issues link-epics`). Skills with `disable-model-invocation: true` are skipped, matching `ll-verify-skills`.
+
+A `<!-- ll-prose-ok: reason -->` comment on the line immediately preceding a match suppresses that one finding.
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--json` | | Output as JSON |
+| `--directory` | `-C` | Project root containing `skills/` and `commands/` (default: cwd) |
+
+**Exit codes:** `0` = no unsuppressed findings; `1` = one or more unsuppressed findings.
+
+**Examples:**
+```bash
+ll-verify-skill-prose                      # Scan from cwd
+ll-verify-skill-prose --json               # Machine-readable JSON output
+ll-verify-skill-prose -C /path/to/root     # Scan a specific project root
+```
+
+---
+
 ### ll-verify-design-tokens
 
 Structural lint for *half-flipped* design-token theme profiles. A profile's `themes/dark.json` (or any theme) that inverts the foreground/background pair — overriding both `surface` and `text` to move onto a near-black surface — but leaves `border`/`action` falling through to the light-tuned `semantic.json` defaults produces harsh gridlines, muddy accents, and a `danger == action.primary` collision. This lint catches that class at authoring time.

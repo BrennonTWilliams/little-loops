@@ -94,6 +94,7 @@ _LL_PERMISSIONS: tuple[str, ...] = (
     "Bash(ll-verify-kinds:*)",
     "Bash(ll-verify-package-data:*)",
     "Bash(ll-verify-skill-budget:*)",
+    "Bash(ll-verify-skill-prose:*)",
     "Bash(ll-verify-skills:*)",
     "Bash(ll-verify-triggers:*)",
     "Bash(ll-workflows:*)",

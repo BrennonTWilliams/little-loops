@@ -284,36 +284,8 @@ decisions, and scope boundaries.
 
 Output this message and stop (exit 0).
 
-Otherwise, display the conflict report:
-
-```
-================================================================================
-AUDIT ISSUE CONFLICTS
-================================================================================
-
-Issues scanned: [N]
-Conflicts found: [C] ([H] high / [M] medium / [L] low)
-
-## HIGH SEVERITY
-
-| # | Type | Issues | Description | Recommendation |
-|---|------|--------|-------------|----------------|
-| 1 | [type] | [ID-A] vs [ID-B] | [description] | [recommendation] |
-
-## MEDIUM SEVERITY
-
-| # | Type | Issues | Description | Recommendation |
-|---|------|--------|-------------|----------------|
-| 2 | [type] | [ID-A] vs [ID-B] | [description] | [recommendation] |
-
-## LOW SEVERITY
-
-| # | Type | Issues | Description | Recommendation |
-|---|------|--------|-------------|----------------|
-| 3 | [type] | [ID-A] vs [ID-B] | [description] | [recommendation] |
-
-================================================================================
-```
+Otherwise, display the conflict report — see
+[verbatim-output.md](verbatim-output.md) § Conflict report template.
 
 ---
 

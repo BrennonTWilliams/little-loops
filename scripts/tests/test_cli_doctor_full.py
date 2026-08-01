@@ -18,6 +18,7 @@ from little_loops.cli.doctor import (
     _full_package_data_data,
     _full_section_data,
     _full_skill_budget_data,
+    _full_skill_prose_data,
     _full_skills_data,
     _full_triggers_data,
     _run_full_checks,
@@ -159,6 +160,25 @@ class TestFullAdapters:
             data = _full_package_data_data()
         assert data["status"] == "full"
 
+    def test_skill_prose_reports_full_when_clean(self) -> None:
+        import little_loops.cli.verify_skill_prose as verify_skill_prose_mod
+
+        with patch.object(verify_skill_prose_mod, "scan_prose", return_value=[]):
+            data = _full_skill_prose_data()
+        assert data["status"] == "full"
+
+    def test_skill_prose_reports_unsupported_on_findings(self) -> None:
+        import little_loops.cli.verify_skill_prose as verify_skill_prose_mod
+        from little_loops.cli.verify_skill_prose import ProseFinding
+
+        finding = ProseFinding(
+            path=None, line=1, marker="union_find_cluster_merge", owner_cli="ll-issues link-epics"
+        )
+        with patch.object(verify_skill_prose_mod, "scan_prose", return_value=[finding]):
+            data = _full_skill_prose_data()
+        assert data["status"] == "unsupported"
+        assert "1" in data["note"]
+
     def test_kinds_reports_unsupported_on_unregistered(self) -> None:
         import little_loops.cli.verify_kinds as verify_kinds_mod
 
@@ -261,6 +281,7 @@ class TestFullSection:
         assert names == {
             "full:docs",
             "full:skill_budget",
+            "full:skill_prose",
             "full:skills",
             "full:triggers",
             "full:decisions",

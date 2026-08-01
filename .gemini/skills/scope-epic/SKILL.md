@@ -313,12 +313,14 @@ Write the EPIC first, then each child in order. Call `ll-issues next-id` **immed
    Write to {{config.issues.base_dir}}/epics/[filename]
    ```
 
-5. **Append session log entry** to the EPIC file:
-   ```markdown
-   ## Session Log
-   - `/ll:scope-epic` - [ISO timestamp] - `[path to current session JSONL]`
+5. **Append session log entry** to the EPIC file using the Bash tool:
+   ```bash
+   ll-issues append-log <path-to-epic-file> /ll:scope-epic
    ```
-   Find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project, find the most recently modified `.jsonl` file (excluding `agent-*`).
+   If `ll-issues` is not available, fall back to manually appending with **exactly** this format (backticks required):
+   ```
+   - `/ll:scope-epic` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
+   ```
 
 > **Duplicate-ID recovery**: If the PostToolUse hook reports the file was deleted (duplicate integer ID), call `ll-issues next-id` again, generate a new filename, and retry.
 
