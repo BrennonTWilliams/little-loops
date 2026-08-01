@@ -50,7 +50,9 @@ class TestFlagParsing:
 
 
 class TestOptionExtractionPatterns:
-    """SKILL.md must document all three option extraction patterns in Phase 3."""
+    """SKILL.md must document that Phase 3 reads named pattern tiers from
+    `ll-issues locate-options --json` rather than re-implementing the regexes
+    itself (ENH-2950) — the pattern definitions live only in issue_parser.py."""
 
     def test_phase_3_extract_options_present(self) -> None:
         content = SKILL_FILE.read_text()
@@ -58,26 +60,35 @@ class TestOptionExtractionPatterns:
             "SKILL.md must contain a 'Phase 3: Extract Options' section"
         )
 
-    def test_pattern_1_section_headers_documented(self) -> None:
+    def test_locate_options_cli_call_documented(self) -> None:
         content = SKILL_FILE.read_text()
         phase3_start = content.index("Phase 3: Extract Options")
         phase4_start = content.index("Phase 4: Gather Codebase Evidence")
         phase3_text = content[phase3_start:phase4_start]
-        assert "Pattern 1" in phase3_text, "Phase 3 must document Pattern 1 (section headers)"
+        assert "ll-issues locate-options" in phase3_text, (
+            "Phase 3 must call ll-issues locate-options instead of re-scanning by hand"
+        )
 
-    def test_pattern_2_bold_labels_documented(self) -> None:
+    def test_section_header_pattern_name_documented(self) -> None:
         content = SKILL_FILE.read_text()
         phase3_start = content.index("Phase 3: Extract Options")
         phase4_start = content.index("Phase 4: Gather Codebase Evidence")
         phase3_text = content[phase3_start:phase4_start]
-        assert "Pattern 2" in phase3_text, "Phase 3 must document Pattern 2 (bold labels)"
+        assert "section_header" in phase3_text, "Phase 3 must name the section_header pattern tier"
 
-    def test_pattern_3_numbered_items_documented(self) -> None:
+    def test_bold_label_pattern_name_documented(self) -> None:
         content = SKILL_FILE.read_text()
         phase3_start = content.index("Phase 3: Extract Options")
         phase4_start = content.index("Phase 4: Gather Codebase Evidence")
         phase3_text = content[phase3_start:phase4_start]
-        assert "Pattern 3" in phase3_text, "Phase 3 must document Pattern 3 (numbered items)"
+        assert "bold_label" in phase3_text, "Phase 3 must name the bold_label pattern tier"
+
+    def test_numbered_pattern_name_documented(self) -> None:
+        content = SKILL_FILE.read_text()
+        phase3_start = content.index("Phase 3: Extract Options")
+        phase4_start = content.index("Phase 4: Gather Codebase Evidence")
+        phase3_text = content[phase3_start:phase4_start]
+        assert "numbered" in phase3_text, "Phase 3 must name the numbered pattern tier"
 
 
 class TestCodebasePatternFinderSpawn:
@@ -314,11 +325,12 @@ class TestPhase3bResolvedFilter:
 
 
 class TestPattern4BulletOptions:
-    """Phase 3 must document Pattern 4 (bullet-list options) — FEAT-389 design gap.
+    """Phase 3 must document the bullet pattern tier (bullet-list options) — FEAT-389
+    design gap.
 
     refine-issue commonly deposits options as `- (a) ...` / `- (b) ...` bullet lists in
-    `## Codebase Research Findings`. Pattern 4 catches these; the auto-mode guardrail keeps
-    them from being scored without an explicit author recommendation.
+    `## Codebase Research Findings`. The `bullet` tier catches these; the auto-mode
+    guardrail keeps them from being scored without an explicit author recommendation.
     """
 
     def _phase3_text(self) -> str:
@@ -328,13 +340,13 @@ class TestPattern4BulletOptions:
         return content[start:end]
 
     def test_pattern_4_documented(self) -> None:
-        assert "Pattern 4" in self._phase3_text(), (
-            "Phase 3 must document Pattern 4 (bullet-list options)"
+        assert "`bullet`" in self._phase3_text(), (
+            "Phase 3 must document the bullet pattern tier (bullet-list options)"
         )
 
     def test_bullet_list_match_documented(self) -> None:
         assert "bullet" in self._phase3_text().lower(), (
-            "Pattern 4 must describe bullet-list option matching"
+            "Phase 3 must describe bullet-list option matching"
         )
 
     def test_secondary_sections_scanned(self) -> None:
@@ -346,8 +358,8 @@ class TestPattern4BulletOptions:
     def test_auto_mode_bullet_guardrail_documented(self) -> None:
         text = self._phase3_text()
         assert "Pattern D" in text and "recommendation marker" in text.lower(), (
-            "Phase 3 Option Count Check must gate auto-mode Pattern-4 options behind a "
-            "declarative recommendation marker (Pattern D)"
+            "Phase 3 Option Count Check must gate auto-mode bullet-pattern options behind "
+            "a declarative recommendation marker (Pattern D)"
         )
 
 
@@ -401,8 +413,9 @@ class TestPhase2_5Detection:
 
     def test_phase_2_5_reuses_phase_3_patterns(self) -> None:
         text = self._phase_text()
-        assert "Patterns 1" in text or "Pattern 1" in text, (
-            "Phase 2.5 must document reusing Phase 3's option-extraction patterns"
+        assert "ll-issues locate-options" in text and "Phase 3" in text, (
+            "Phase 2.5 must document calling the same locate-options CLI Phase 3 uses, "
+            "reusing its option-extraction patterns"
         )
 
     def test_options_missing_token_documented(self) -> None:
@@ -474,9 +487,7 @@ class TestSingleOptionRegression:
         phase3_start = content.index("## Phase 3: Extract Options")
         phase3b_start = content.index("## Phase 3b")
         phase3_text = content[phase3_start:phase3b_start]
-        assert "len(OPTIONS) == 1" in phase3_text, (
-            "Phase 3 must still document the single-option branch"
-        )
+        assert "count == 1" in phase3_text, "Phase 3 must still document the single-option branch"
         assert "Clearing decision_needed if set" in phase3_text, (
             "Phase 3 must still document auto-clearing decision_needed for the single-option case"
         )
@@ -688,6 +699,6 @@ class TestPattern3bDirectiveAlternatives:
 
     def test_pattern_d_cross_references_pattern_e(self) -> None:
         text = self._phase_text()
-        assert "Pattern E" in text.split("Provisional Pattern D")[1].split(
-            "Provisional Pattern E"
-        )[0], "Pattern D's Requirement note must cross-reference Pattern E for the no-preference case"
+        assert (
+            "Pattern E" in text.split("Provisional Pattern D")[1].split("Provisional Pattern E")[0]
+        ), "Pattern D's Requirement note must cross-reference Pattern E for the no-preference case"

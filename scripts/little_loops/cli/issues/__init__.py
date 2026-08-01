@@ -58,6 +58,7 @@ def main_issues() -> int:
         from little_loops.cli.issues.impact_effort import cmd_impact_effort
         from little_loops.cli.issues.link import add_link_parser, cmd_link
         from little_loops.cli.issues.list_cmd import cmd_list
+        from little_loops.cli.issues.locate_options import cmd_locate_options
         from little_loops.cli.issues.next_action import cmd_next_action
         from little_loops.cli.issues.next_id import cmd_next_id
         from little_loops.cli.issues.next_issue import cmd_next_issue
@@ -96,6 +97,7 @@ Sub-commands:
   check-readiness  Exit 0 if an issue meets readiness and outcome thresholds
   check-flag       Exit 0 if a boolean frontmatter field equals 'true'
   check-decidable  Exit 0 if an issue has >=1 enumerable option to decide between
+  locate-options   Print count/pattern/heading/spans of enumerable options in an issue
   set-scores       Write confidence and dimension scores to issue frontmatter
   set-status       Transition an issue to a new status value
   link             Write or remove a dependency edge in issue frontmatter
@@ -660,6 +662,15 @@ Examples:
         cdec.add_argument("issue_id", help="Issue ID (e.g., 518, FEAT-518, P3-FEAT-518)")
         add_config_arg(cdec)
 
+        loc = subs.add_parser(
+            "locate-options",
+            help="Print count/pattern/heading/spans of enumerable options in an issue (ENH-2950)",
+        )
+        loc.set_defaults(command="locate-options")
+        loc.add_argument("issue_id", help="Issue ID (e.g., 518, FEAT-518, P3-FEAT-518)")
+        loc.add_argument("--json", "-j", action="store_true", help="Output as JSON object")
+        add_config_arg(loc)
+
         add_check_open_questions_parser(subs)
 
         cr = subs.add_parser(
@@ -891,6 +902,8 @@ Examples:
             return cmd_check_flag(config, args)
         if args.command == "check-decidable":
             return cmd_check_decidable(config, args)
+        if args.command == "locate-options":
+            return cmd_locate_options(config, args)
         if args.command == "check-open-questions":
             return cmd_check_open_questions(config, args)
         if args.command == "check-readiness":

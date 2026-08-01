@@ -31,9 +31,12 @@ def cmd_check_decidable(config: BRConfig, args: argparse.Namespace) -> int:
         print(f"Error: Issue '{args.issue_id}' not found.", file=sys.stderr)
         return 1
 
-    count, heading = locate_enumerable_options(path.read_text())
-    if count >= 1:
-        print(f"Decidable: {args.issue_id} has {count} enumerable option(s) in '{heading}'")
+    located = locate_enumerable_options(path.read_text())
+    if located.count >= 1:
+        print(
+            f"Decidable: {args.issue_id} has {located.count} enumerable option(s) "
+            f"in '{located.heading}'"
+        )
         return 0
 
     # ENH-2821: locate_enumerable_options() already scans the whole document

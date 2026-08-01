@@ -109,10 +109,18 @@ Read the full issue file to extract:
 ## Phase 2.5: Decidability Gate (ENH-2443)
 
 Before spending a full scoring pass (or, for direct/FSM callers, before running at all),
-determine whether there is anything to decide. Run the **same extraction patterns as Phase
-3** (Patterns 1–4, including the Pattern 4 → `## Codebase Research Findings` /
-`## Implementation Status` widening when Proposed Solution yields 0) to compute `OPTIONS`.
-Do not score, do not spawn agents, do not write to the issue file in this phase.
+determine whether there is anything to decide:
+
+```bash
+ll-issues locate-options "${ISSUE_ID}" --json
+```
+
+Read `count` off the returned JSON as `OPTIONS` — the same call Phase 3 makes, reusing
+Phase 3's option-extraction patterns (deterministic pattern precedence: section headers,
+bold labels, numbered/bullet items, then the un-preferenced-directive heuristic) rather
+than re-deriving them; that precedence lives entirely in
+`issue_parser.locate_enumerable_options` (ENH-2950). This phase does no scoring, spawns
+no agents, and performs no writes to the issue file — it only reads the CLI's result.
 
 **Branch:**
 - `OPTIONS >= 1` → decidable. If `VALIDATE_ONLY`: exit 0. Otherwise: continue to Phase 3
@@ -148,48 +156,35 @@ exit_code: 1
 
 ## Phase 3: Extract Options
 
-Scan the Proposed Solution section for options using these patterns (in order of precedence). If Proposed Solution yields 0 options, repeat the scan over `## Codebase Research Findings` and `## Implementation Status` — refined issues often deposit options there.
+Call the same CLI used in Phase 2.5 to get the option spans directly — do not re-scan the
+issue text by hand:
 
-### Pattern 1 — Section Headers
-```
-Match: lines matching /^### Option [A-Z0-9]/i
-Example: ### Option A, ### Option B, ### Option C
-Extract: the header text as the option title; body text until next ### or ## as option description
+```bash
+ll-issues locate-options "${ISSUE_ID}" --json
 ```
 
-### Pattern 2 — Bold Labels
-```
-Match: lines starting with **Option [A-Z0-9]** or **Option [0-9]+**
-Example: **Option A (recommended)**: ..., **Option B**: ...
-Extract: the bold label (stripped of **) as option title; rest of the line and following paragraph as description
-```
-
-### Pattern 3 — Numbered Top-Level Items
-```
-Match: numbered list items at top level: /^[0-9]+\.\s+\*\*Option/ or /^[0-9]+\.\s+[A-Z][^.]+approach/
-Example: 1. **Option A** (chosen): ..., 2. Use existing utility ...
-Extract: the item label or leading phrase as option title; full item text as description
-Note: only apply this pattern if Pattern 1 and Pattern 2 found 0 options
-```
-
-### Pattern 4 — Bullet-List Options
-```
-Match: bullet items naming lettered/numbered options: /^[-*]\s+\(([a-z0-9])\)\s+/ or /^[-*]\s+\*?\*?Option\s+([A-Z0-9])/
-Example: - (a) useEffect in SettingsSheet…, - (b) Hoist into App.tsx…, - **Option A**: …
-Extract: the (x)/Option label as option title; body text until the next bullet or heading as description
-Note: only apply if Patterns 1–3 found 0 options
-```
+The JSON result is `{id, count, pattern, heading, options: [{label, text, start_line, end_line}, ...]}`.
+`pattern` names which precedence tier fired: `section_header` (`### Option A`),
+`bold_label` (`**Option A**: ...`), `numbered` (`1. **Option A** ...`), `bullet`
+(`- (a) ...` / `- **Option A**: ...`), or `provisional_e` (an un-preferenced decision
+directive — see Phase 3b). `heading` is the section the options live under (`Proposed
+Solution`, or one of its fallback sections — `Codebase Research Findings` /
+`Implementation Status` — when Proposed Solution yields nothing; refined issues often
+deposit options there instead). Treat each
+`options[]` entry's `label`/`text` as the option title/description — the pattern
+definitions themselves live only in `issue_parser.py` (ENH-2950); this phase never
+re-derives them.
 
 ### Option Count Check
 
 After extraction:
 
-**Auto-mode bullet-list handling**: if the ONLY options found came from Pattern 4 and `AUTO_MODE = true`, do NOT route them to Phase 4 scoring — automation must not re-litigate an informal list the author may have already settled. Set `OPTIONS = 0` so flow proceeds to Phase 3b, where Pattern D resolves the case: a declarative recommendation marker naming one of the bullet options locks it in; absent a marker, `decision_needed` stays `true` for human review. In interactive mode, Pattern-4 options ARE scored through Phases 4–7 normally.
+**Auto-mode bullet-list handling**: if `pattern == "bullet"` and `AUTO_MODE = true`, do NOT route them to Phase 4 scoring — automation must not re-litigate an informal list the author may have already settled. Treat `OPTIONS` as empty so flow proceeds to Phase 3b, where Pattern D resolves the case: a declarative recommendation marker naming one of the bullet options locks it in; absent a marker, `decision_needed` stays `true` for human review. In interactive mode, bullet-pattern options ARE scored through Phases 4–7 normally.
 
-- If `OPTIONS` is empty and `AUTO_MODE = false`: print `No options found in Proposed Solution — nothing to decide.` and exit cleanly
-- If `OPTIONS` is empty and `AUTO_MODE = true`: proceed to Phase 3b (Inline Decision Scan)
-- If `len(OPTIONS) == 1`: print `Only one option present — no decision required. Clearing decision_needed if set.` then proceed to Phase 7 (frontmatter update only: set `decision_needed: false`)
-- If `len(OPTIONS) >= 2`: proceed to Phase 4
+- If `count == 0` and `AUTO_MODE = false`: print `No options found in Proposed Solution — nothing to decide.` and exit cleanly
+- If `count == 0` and `AUTO_MODE = true`: proceed to Phase 3b (Inline Decision Scan)
+- If `count == 1`: print `Only one option present — no decision required. Clearing decision_needed if set.` then proceed to Phase 7 (frontmatter update only: set `decision_needed: false`)
+- If `count >= 2`: proceed to Phase 4
 
 ---
 
@@ -260,18 +255,19 @@ A marker (or an Open-Questions item naming a preference) with a resolvable refer
 ```
 
 ### Provisional Pattern E — Un-preferenced decision directive (ENH-2936)
-```
-Match: 2+ concrete alternatives ("X or Y", enumerated alternatives) named within ~3 lines of an
-imperative decide-marker ("decide before implementation", "do not leave (it/this) unaddressed",
-"must be decided", "decision needed/required before", "pick one") — but with NO stated
-preference (no Pattern-D-style recommendation marker naming one of them as the winner). Bare
-"X or Y" prose with no imperative marker is explicitly NOT Pattern E (the settled-informal-list
-case Phase 3's auto-mode conservatism already protects against).
-Scan scope (narrower than Patterns A–D): `## Scope Boundaries`, `## Proposed Change` /
-`## Proposed Solution`, and unresolved `## Open Questions` items.
-Candidate: the alternatives named in the matched passage, verbatim.
-```
-See [reference.md](reference.md) for the full match rationale and worked example.
+
+Already detected by the Phase 3 `locate-options` call: when its JSON result has
+`pattern == "provisional_e"`, the single `options[0].text` entry is the matched window —
+2+ concrete alternatives ("X or Y", enumerated alternatives) named within ~3 lines of an
+imperative decide-marker ("decide before implementation", "do not leave (it/this)
+unaddressed", "must be decided", "decision needed/required before", "pick one"), with
+NO stated preference (no Pattern-D-style recommendation marker naming one of them as the
+winner). Bare "X or Y" prose with no imperative marker is explicitly NOT Pattern E (the
+settled-informal-list case Phase 3's auto-mode conservatism already protects against).
+Scan scope (narrower than Patterns A–D, and already applied by the CLI): `## Scope Boundaries`, `## Proposed Change` / `## Proposed Solution`, and unresolved `## Open Questions` items. Read the alternatives named in `options[0].text` verbatim as the
+candidates — no separate scan needed here. The precedence/exclusion regexes themselves
+live only in `issue_parser._locate_directive_alternatives` (ENH-2950); see
+[reference.md](reference.md) for the full match rationale and worked example.
 
 For each provisional pattern match, read 3–5 lines of surrounding context to determine if one approach is clearly stated (not merely listed as a possibility).
 
@@ -285,9 +281,9 @@ Classify each match as:
 **If a Pattern E match is found, or exactly one clear winner is found:**
 
 1. **Materialize alternatives, if not already structured (ENH-2715)**: check whether the clear
-   winner's named alternatives already exist as `### Option A`/`### Option B` (Pattern 1) or
-   `**Option A**`/`**Option B**` (Pattern 2) blocks under `## Proposed Solution`. They do NOT
-   for two cases this step exists to handle: (a) the referent is only a Pattern-4 bullet (`- (a)
+   winner's named alternatives already exist as `### Option A`/`### Option B` (`section_header`) or
+   `**Option A**`/`**Option B**` (`bold_label`) blocks under `## Proposed Solution`. They do NOT
+   for two cases this step exists to handle: (a) the referent is only a `bullet`-pattern item (`- (a)
    ...` / `- (b) ...`), or (b) the referent is an Open-Questions-named alternative with no
    pre-existing bullet at all. For either case, rewrite the named alternatives in place as
    `**Option A**`/`**Option B**` blocks under `## Proposed Solution`, reusing the exact
@@ -302,7 +298,7 @@ Classify each match as:
    If already structured, this step is a no-op: **clear winner** → step 3; **Pattern E match**
    → step 2 (re-scan immediately finds `OPTIONS >= 2`).
 2. **Re-scan and route to full scoring (ENH-2715)**: after materializing, re-run the Phase 3
-   extraction. If it now finds `OPTIONS >= 2` (the materialized blocks match Pattern 2): log
+   extraction. If it now finds `OPTIONS >= 2` (the materialized blocks match `bold_label`): log
    `✓ Phase 3b: materialized informal decision as structured options — proceeding to Phase 4
    scoring`, then proceed directly to **Phase 4** (Gather Codebase Evidence) for full
    evidence-based scoring instead of the lock-in-only exit in step 3. Phase 4–7 independently

@@ -895,27 +895,52 @@ function does not parse frontmatter itself.
 
 **Returns:** Set of normalized issue IDs, e.g. `{"FEAT-109"}`.
 
+#### locate_enumerable_options
+
+```python
+def locate_enumerable_options(content: str) -> LocatedOptions
+```
+
+Deterministic (no LLM) re-implementation of `skills/decide-issue/SKILL.md` Phase 3's
+option-extraction patterns (ENH-2443), widened to return spans rather than just a count
+(ENH-2950). Backs both `ll-issues check-decidable` (boolean gate, the FSM-facing
+companion to `/ll:decide-issue --validate-only`) and `ll-issues locate-options --json`
+(the full data frontend `/ll:decide-issue` Phase 3/3b reads instead of re-implementing
+this precedence chain in prose) — one code path, two CLI frontends, mirroring how
+`check_format_gaps` backs `ll-issues format-check`.
+
+Tries, in precedence order: the first `_OPTION_PATTERNS` tier (`### Option X` headers →
+`section_header`, `**Option X**` bold labels → `bold_label`, numbered `N. **Option`/
+`...approach` items → `numbered`, `- (x)`/`- Option X` bullets → `bullet`) with any match
+in `## Proposed Solution`; widening to `## Codebase Research Findings` / `##
+Implementation Status` when that yields 0; then a whole-document H2 scan (ENH-2821); then,
+as a final tier, the Pattern E "un-preferenced decision directive" heuristic
+(`_locate_directive_alternatives`, ENH-2936, reported as `pattern="provisional_e"`) — an
+imperative decide-marker ("decide before implementation", "do not leave unaddressed",
+"must be decided", "pick one") co-occurring within 3 lines of a 2+-alternative "X or Y"
+shape, with no stated preference, scanned over `## Scope Boundaries` / `## Proposed
+Change` / `## Proposed Solution` / `## Open Questions`. A Pattern E match always reports
+`count=2` with a single `LocatedOption` spanning the matched window — it only proves a
+decision exists, not how many alternatives, so individual alternatives are not split out.
+
+**Parameters:**
+- `content` - Full issue file text
+
+**Returns:** A `LocatedOptions` dataclass:
+- `count: int` - Number of options found (0 when there is nothing to decide)
+- `pattern: str | None` - Which tier fired (`section_header` | `bold_label` | `numbered` | `bullet` | `provisional_e`), or `None` when `count == 0`
+- `heading: str | None` - The section the options were found under, or `None` when `count == 0`
+- `options: list[LocatedOption]` - Per-option spans; each `LocatedOption` has `label: str`, `text: str`, `start_line: int`, `end_line: int` (1-indexed), and a `to_dict()` for JSON serialization. `LocatedOptions.to_dict()` nests the full option list.
+
 #### count_enumerable_options
 
 ```python
 def count_enumerable_options(content: str) -> int
 ```
 
-Deterministic (no LLM) re-implementation of `skills/decide-issue/SKILL.md` Phase 3's
-option-extraction patterns (ENH-2443). Backs the `ll-issues check-decidable` subcommand —
-the FSM-facing companion to `/ll:decide-issue --validate-only`, mirroring how
-`check_format_gaps` backs `ll-issues format-check`. Counts matches for the first pattern
-tier (in precedence order: `### Option X` headers, `**Option X**` bold labels, numbered
-`N. **Option`/`...approach` items, `- (x)`/`- Option X` bullets) that has any; widens to
-`## Codebase Research Findings` / `## Implementation Status` when `## Proposed Solution`
-yields 0, mirroring Phase 3's own widening; then to a whole-document H2 scan (ENH-2821);
-then, as a final tier, to the Pattern E "un-preferenced decision directive" heuristic
-(`_locate_directive_alternatives`, ENH-2936) — an imperative decide-marker ("decide before
-implementation", "do not leave unaddressed", "must be decided", "pick one") co-occurring
-within 3 lines of a 2+-alternative "X or Y" shape, with no stated preference, scanned over
-`## Scope Boundaries` / `## Proposed Change` / `## Proposed Solution` / `## Open Questions`.
-A Pattern E match always reports count 2 — it only proves a decision exists, not how many
-alternatives.
+Thin wrapper: `return locate_enumerable_options(content).count`. Kept for callers that
+only need the count, not the spans — see `locate_enumerable_options` above for the
+underlying pattern precedence.
 
 **Parameters:**
 - `content` - Full issue file text

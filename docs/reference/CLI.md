@@ -1631,6 +1631,28 @@ ll-issues check-decidable ENH-277    # Exit 0 — 2+ options found
 
 ---
 
+#### `ll-issues locate-options`
+
+Print count/pattern/heading/spans of enumerable options in an issue (ENH-2950). Data frontend over the same `issue_parser.locate_enumerable_options()` precedence chain `check-decidable` gates on — where `check-decidable` only reports an exit code, this exposes the full result so a consumer (notably `/ll:decide-issue` Phase 3/3b) can read option spans instead of re-implementing the same pattern precedence in prose.
+
+| Argument/Flag | Description |
+|---------------|-------------|
+| `issue_id` | Issue ID (e.g., `518`, `FEAT-518`, `P3-FEAT-518`) |
+| `--json`, `-j` | Output as JSON object |
+
+**Examples:**
+```bash
+ll-issues locate-options ENH-2950 --json
+# {"id": "ENH-2950", "count": 2, "pattern": "bold_label", "heading": "Proposed Solution",
+#  "options": [{"label": "Option A", "text": "...", "start_line": 12, "end_line": 14}, ...]}
+```
+
+`pattern` names which precedence tier fired: `section_header` (`### Option A`), `bold_label` (`**Option A**: ...`), `numbered` (`1. **Option A** ...`), `bullet` (`- (a) ...`), or `provisional_e` (an un-preferenced decision directive, ENH-2936 — `options` holds a single span covering the matched window rather than per-alternative entries, since that heuristic only proves a decision exists, not how many alternatives). `pattern`/`heading` are `null` and `options` is empty when `count` is 0.
+
+**FSM loop use**: Prefer `check-decidable` for a pure gate (`evaluate: {type: exit_code}`); use `locate-options --json` when a downstream state needs the actual option text, not just a boolean.
+
+---
+
 #### `ll-issues check-open-questions`
 
 Coverage-aware decidability probe (ENH-2446). Companion to `check-decidable` — exits 0 only when **both** (a) every option block in `## Proposed Solution` carries a `> **Selected:**` or `### Decision Rationale` marker AND (b) no bullet items in `## Edge Cases` / `## Confidence Check Notes` / `## Open Questions` carry an open-question signal (`Q:`, `?`, `open question`, `needs decision`, `decision needed`, `open decision`, `unresolved decision`, `decision point`) without a `✅ RESOLVED` / `✔ RESOLVED` / `**RESOLVED**` / `> **RESOLVED**` marker. Exits 1 with `OPEN_QUESTIONS_REMAIN: <ID> — N open question(s) and M unresolved option(s); run /ll:refine-issue <ID> --auto` otherwise.

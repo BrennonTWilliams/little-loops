@@ -141,10 +141,13 @@ def is_formatted(issue_path: Path, templates_dir: Path | None = None) -> bool:
 _DEPRECATION_CANONICAL_RE = re.compile(r"(?:Renamed to|Consolidated into|Redundant with) '([^']+)'")
 
 
-def _section_body(content: str, heading: str) -> str | None:
-    """Return the raw text between a ``## heading`` line and the next ``##`` line.
+def _section_body_with_offset(content: str, heading: str) -> tuple[str, int] | None:
+    """Return ``(body, absolute_start_offset)`` for a ``## heading`` section.
 
-    Returns None when the heading is absent.
+    ``absolute_start_offset`` is *body*'s start position within *content*, used by
+    span-reporting callers (e.g. :func:`locate_enumerable_options`, ENH-2950) to
+    translate body-relative match positions into document line numbers. Returns
+    None when the heading is absent.
     """
     pattern = rf"^##\s+{re.escape(heading)}\s*$"
     match = re.search(pattern, content, re.MULTILINE)
@@ -153,7 +156,16 @@ def _section_body(content: str, heading: str) -> str | None:
     start = match.end()
     next_match = re.search(r"^##\s", content[start:], re.MULTILINE)
     end = start + next_match.start() if next_match else len(content)
-    return content[start:end]
+    return content[start:end], start
+
+
+def _section_body(content: str, heading: str) -> str | None:
+    """Return the raw text between a ``## heading`` line and the next ``##`` line.
+
+    Returns None when the heading is absent.
+    """
+    result = _section_body_with_offset(content, heading)
+    return result[0] if result else None
 
 
 def _normalize_whitespace(text: str) -> str:
@@ -436,6 +448,51 @@ _OPTION_PATTERNS = (
 
 _OPTION_FALLBACK_SECTIONS = ("Codebase Research Findings", "Implementation Status")
 
+# Names for the _OPTION_PATTERNS tiers, in the same precedence order, plus the
+# non-regex Pattern E heuristic — reported as LocatedOptions.pattern (ENH-2950).
+_OPTION_PATTERN_NAMES = ("section_header", "bold_label", "numbered", "bullet")
+
+
+@dataclass
+class LocatedOption:
+    """One enumerable option span located by :func:`locate_enumerable_options` (ENH-2950)."""
+
+    label: str
+    text: str
+    start_line: int
+    end_line: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "label": self.label,
+            "text": self.text,
+            "start_line": self.start_line,
+            "end_line": self.end_line,
+        }
+
+
+@dataclass
+class LocatedOptions:
+    """Result of :func:`locate_enumerable_options` (ENH-2950).
+
+    Widens the original ``(count, heading)`` tuple to also carry which pattern
+    tier fired and the per-option spans that tier's regex already computed
+    internally — previously discarded by :func:`_count_options_in_text`.
+    """
+
+    count: int
+    pattern: str | None
+    heading: str | None
+    options: list[LocatedOption] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "count": self.count,
+            "pattern": self.pattern,
+            "heading": self.heading,
+            "options": [o.to_dict() for o in self.options],
+        }
+
 
 def _count_options_in_text(text: str) -> int:
     """Count matches for the first pattern tier (in precedence order) that has any."""
@@ -444,6 +501,53 @@ def _count_options_in_text(text: str) -> int:
         if n:
             return n
     return 0
+
+
+def _extract_option_label(match_text: str) -> str:
+    """Strip markdown decoration from a matched option heading/marker to get a label."""
+    label = match_text.strip()
+    label = re.sub(r"^\d+\.\s*", "", label)
+    label = re.sub(r"^[-*]\s*(?:\([a-z0-9]\)\s*)?", "", label)
+    label = label.strip("#").strip()
+    label = label.strip("*").strip()
+    return label
+
+
+def _locate_options_in_text(content: str, body: str, body_offset: int) -> LocatedOptions | None:
+    """Return spans for the first :data:`_OPTION_PATTERNS` tier with a match in *body*.
+
+    ``body_offset`` is *body*'s absolute start offset within *content*, used to
+    translate each match's position into a 1-indexed line number in *content*.
+    Returns None when no tier matches anywhere in *body*.
+    """
+    for pattern, pattern_name in zip(_OPTION_PATTERNS, _OPTION_PATTERN_NAMES, strict=True):
+        matches = list(pattern.finditer(body))
+        if not matches:
+            continue
+        options = []
+        for i, m in enumerate(matches):
+            line_start = body.rfind("\n", 0, m.start()) + 1
+            if i + 1 < len(matches):
+                block_end = body.rfind("\n", 0, matches[i + 1].start()) + 1
+            else:
+                block_end = len(body)
+            block_text = body[line_start:block_end].rstrip()
+            abs_start = body_offset + line_start
+            abs_end = body_offset + max(block_end - 1, line_start)
+            start_line = content.count("\n", 0, abs_start) + 1
+            end_line = content.count("\n", 0, abs_end) + 1
+            options.append(
+                LocatedOption(
+                    label=_extract_option_label(m.group(0)),
+                    text=block_text,
+                    start_line=start_line,
+                    end_line=end_line,
+                )
+            )
+        return LocatedOptions(
+            count=len(options), pattern=pattern_name, heading=None, options=options
+        )
+    return None
 
 
 def _iter_h2_sections(content: str) -> list[tuple[str, int, int]]:
@@ -504,7 +608,7 @@ _DIRECTIVE_ALTERNATIVES_SECTIONS = (
 )
 
 
-def _locate_directive_alternatives(content: str) -> tuple[int, str | None]:
+def _locate_directive_alternatives(content: str) -> LocatedOptions | None:
     """Locate an un-preferenced decision directive (ENH-2936, Pattern E).
 
     A passage counts when an imperative decide-marker (:data:`_DECIDE_IMPERATIVE_RE`)
@@ -520,17 +624,29 @@ def _locate_directive_alternatives(content: str) -> tuple[int, str | None]:
     search would miss it.
 
     Returns:
-        ``(2, containing_heading)`` on a match — this heuristic only proves "a
-        decision exists here", never how many alternatives, so a match always
-        reports 2 (the minimum Phase 4 scoring requires). ``(0, None)`` otherwise.
+        A ``LocatedOptions`` with ``count=2`` on a match — this heuristic only proves
+        "a decision exists here", never how many alternatives, so a match always
+        reports 2 (the minimum Phase 4 scoring requires). ``options`` holds a single
+        ``LocatedOption`` spanning the matched window — the individual "X" / "Y"
+        alternatives are not separated out (that would be a pattern-semantics change,
+        out of scope for ENH-2950). ``None`` when nothing matches.
     """
     for heading in _DIRECTIVE_ALTERNATIVES_SECTIONS:
-        body = _section_body(content, heading)
+        result = _section_body_with_offset(content, heading)
+        if result is None:
+            continue
+        body, body_offset = result
         if not body:
             continue
         lines = body.splitlines()
+        line_offsets = []
+        offset = 0
+        for line in lines:
+            line_offsets.append(offset)
+            offset += len(line) + 1
         for i in range(len(lines)):
-            window = " ".join(" ".join(lines[max(0, i - 3) : i + 4]).split())
+            lo, hi = max(0, i - 3), min(len(lines), i + 4)
+            window = " ".join(" ".join(lines[lo:hi]).split())
             if not _DECIDE_IMPERATIVE_RE.search(window):
                 continue
             if _PREFERENCE_MARKER_RE.search(window):
@@ -538,11 +654,33 @@ def _locate_directive_alternatives(content: str) -> tuple[int, str | None]:
             if _RESOLVED_QUESTION_MARKER_RE.search(window):
                 continue
             if _INLINE_OR_RE.search(window):
-                return 2, heading
-    return 0, None
+                window_start = body_offset + line_offsets[lo]
+                window_end_line_idx = hi - 1
+                window_end = (
+                    body_offset
+                    + line_offsets[window_end_line_idx]
+                    + len(lines[window_end_line_idx])
+                )
+                start_line = content.count("\n", 0, window_start) + 1
+                end_line = content.count("\n", 0, window_end) + 1
+                window_text = "\n".join(lines[lo:hi])
+                return LocatedOptions(
+                    count=2,
+                    pattern="provisional_e",
+                    heading=heading,
+                    options=[
+                        LocatedOption(
+                            label=heading,
+                            text=window_text,
+                            start_line=start_line,
+                            end_line=end_line,
+                        )
+                    ],
+                )
+    return None
 
 
-def locate_enumerable_options(content: str) -> tuple[int, str | None]:
+def locate_enumerable_options(content: str) -> LocatedOptions:
     """Locate enumerable option blocks anywhere in *content* (ENH-2821).
 
     Tries, in precedence order: (1) the scoped scan — ``## Proposed Solution``,
@@ -554,33 +692,45 @@ def locate_enumerable_options(content: str) -> tuple[int, str | None]:
     whole-document fallback finds nothing.
 
     Returns:
-        ``(count, containing_heading)``. ``containing_heading`` is the exact H2/section
-        name the options were found under, or ``None`` when *count* is 0 (nothing
-        found anywhere in the document).
+        A :class:`LocatedOptions`. ``heading`` is the exact H2/section name the
+        options were found under, or ``None`` when ``count`` is 0 (nothing found
+        anywhere in the document). ``pattern`` names which rule fired
+        (``section_header`` | ``bold_label`` | ``numbered`` | ``bullet`` |
+        ``provisional_e``), or ``None`` when ``count`` is 0. ``options`` carries the
+        per-option spans the firing pattern computed (ENH-2950) — previously
+        discarded by the tuple-returning predecessor of this function.
     """
-    body = _section_body(content, "Proposed Solution") or ""
-    count = _count_options_in_text(body)
-    if count:
-        return count, "Proposed Solution"
+    result = _section_body_with_offset(content, "Proposed Solution")
+    if result is not None:
+        body, body_offset = result
+        located = _locate_options_in_text(content, body, body_offset)
+        if located is not None:
+            located.heading = "Proposed Solution"
+            return located
 
     for heading in _OPTION_FALLBACK_SECTIONS:
-        fallback_body = _section_body(content, heading)
-        if fallback_body:
-            count = _count_options_in_text(fallback_body)
-            if count:
-                return count, heading
+        result = _section_body_with_offset(content, heading)
+        if result is not None:
+            body, body_offset = result
+            located = _locate_options_in_text(content, body, body_offset)
+            if located is not None:
+                located.heading = heading
+                return located
 
-    best = 0
-    best_heading: str | None = None
+    best: LocatedOptions | None = None
     for heading_text, start, end in _iter_h2_sections(content):
-        count = _count_options_in_text(content[start:end])
-        if count > best:
-            best = count
-            best_heading = heading_text
-    if best:
-        return best, best_heading
+        located = _locate_options_in_text(content, content[start:end], start)
+        if located is not None and (best is None or located.count > best.count):
+            located.heading = heading_text
+            best = located
+    if best is not None:
+        return best
 
-    return _locate_directive_alternatives(content)
+    directive = _locate_directive_alternatives(content)
+    if directive is not None:
+        return directive
+
+    return LocatedOptions(count=0, pattern=None, heading=None, options=[])
 
 
 def count_enumerable_options(content: str) -> int:
@@ -591,8 +741,7 @@ def count_enumerable_options(content: str) -> int:
     deposit options there instead), then to a whole-document scan when those also
     yield 0 — see :func:`locate_enumerable_options` for section attribution.
     """
-    count, _ = locate_enumerable_options(content)
-    return count
+    return locate_enumerable_options(content).count
 
 
 # ENH-2446: coverage-aware variants used by ll-issues check-open-questions.
@@ -645,6 +794,10 @@ def locate_unresolved_options(content: str) -> tuple[int, str | None]:
     to a whole-document scan (which covers nested H3s and decorated H2 headings)
     only when the scoped sections carry no option blocks at all — resolved or not.
 
+    Return-shape note (ENH-2950): unlike its sibling, this function still returns
+    the original ``(count, heading)`` tuple — it was not widened to ``LocatedOptions``.
+    Do not assume the two functions are interchangeable beyond precedence semantics.
+
     Returns:
         ``(unresolved_count, containing_heading)``. ``containing_heading`` names the
         first scoped section carrying any option block, or the whole-document
@@ -684,6 +837,11 @@ def count_unresolved_options(content: str) -> int:
     lack a resolution marker. An issue with resolved options PLUS unresolved open
     questions (free-form in ``## Edge Cases`` etc.) is the coverage gap this probe
     catches.
+
+    Return-shape note (ENH-2950): ``count_enumerable_options`` now reads ``.count``
+    off a ``LocatedOptions``; this function's own ``count_unresolved_options``
+    caller below still unpacks a plain ``(count, heading)`` tuple from
+    :func:`locate_unresolved_options`, which was not widened.
     """
     count, _ = locate_unresolved_options(content)
     return count

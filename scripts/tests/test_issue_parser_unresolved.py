@@ -16,6 +16,93 @@ FIXTURE_PATH = (
 )
 
 
+class TestLocatedOptionsDataclass:
+    """LocatedOption/LocatedOptions dataclass shape and to_dict() (ENH-2950)."""
+
+    def test_located_option_to_dict(self) -> None:
+        from little_loops.issue_parser import LocatedOption
+
+        option = LocatedOption(
+            label="Option A", text="**Option A**\nDo X.", start_line=3, end_line=4
+        )
+        assert option.to_dict() == {
+            "label": "Option A",
+            "text": "**Option A**\nDo X.",
+            "start_line": 3,
+            "end_line": 4,
+        }
+
+    def test_located_options_to_dict_nests_options(self) -> None:
+        from little_loops.issue_parser import LocatedOption, LocatedOptions
+
+        option = LocatedOption(
+            label="Option A", text="**Option A**\nDo X.", start_line=3, end_line=4
+        )
+        located = LocatedOptions(
+            count=1, pattern="bold_label", heading="Proposed Solution", options=[option]
+        )
+        assert located.to_dict() == {
+            "count": 1,
+            "pattern": "bold_label",
+            "heading": "Proposed Solution",
+            "options": [option.to_dict()],
+        }
+
+    def test_located_options_defaults_to_empty_options_list(self) -> None:
+        from little_loops.issue_parser import LocatedOptions
+
+        located = LocatedOptions(count=0, pattern=None, heading=None)
+        assert located.options == []
+        assert located.to_dict()["options"] == []
+
+
+class TestLocatedOptionsPatternNames:
+    """LocatedOptions.pattern names each _OPTION_PATTERNS tier by name (ENH-2950)."""
+
+    def test_section_header_pattern_name(self) -> None:
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = "## Proposed Solution\n\n### Option A\nDo X.\n\n### Option B\nDo Y.\n"
+        located = locate_enumerable_options(content)
+        assert located.pattern == "section_header"
+        assert len(located.options) == 2
+
+    def test_bold_label_pattern_name(self) -> None:
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = "## Proposed Solution\n\n**Option A**: Do X.\n\n**Option B**: Do Y.\n"
+        located = locate_enumerable_options(content)
+        assert located.pattern == "bold_label"
+        assert len(located.options) == 2
+
+    def test_numbered_pattern_name(self) -> None:
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = "## Proposed Solution\n\n1. **Option A**: Do X.\n2. **Option B**: Do Y.\n"
+        located = locate_enumerable_options(content)
+        assert located.pattern == "numbered"
+        assert len(located.options) == 2
+
+    def test_bullet_pattern_name(self) -> None:
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = "## Proposed Solution\n\n- (a) Do X.\n- (b) Do Y.\n"
+        located = locate_enumerable_options(content)
+        assert located.pattern == "bullet"
+        assert len(located.options) == 2
+
+    def test_provisional_e_pattern_name(self) -> None:
+        from little_loops.issue_parser import locate_enumerable_options
+
+        content = (
+            "## Scope Boundaries\n\n"
+            "- stamp it or move it to Out of scope with a stated reason — do not "
+            "leave it unaddressed\n"
+        )
+        located = locate_enumerable_options(content)
+        assert located.pattern == "provisional_e"
+
+
 class TestCountEnumerableOptions:
     """count_enumerable_options/locate_enumerable_options widen to a whole-document
     fallback scan when the scoped sections yield nothing (ENH-2821)."""
@@ -30,9 +117,9 @@ class TestCountEnumerableOptions:
         from little_loops.issue_parser import locate_enumerable_options
 
         content = "## Proposed Solution\n\n### Option A\nDo X.\n\n### Option B\nDo Y.\n"
-        count, heading = locate_enumerable_options(content)
-        assert count == 2
-        assert heading == "Proposed Solution"
+        located = locate_enumerable_options(content)
+        assert located.count == 2
+        assert located.heading == "Proposed Solution"
 
     def test_finds_options_nested_under_h3_in_unrelated_h2(self) -> None:
         """FEAT-2817 shape: options nested under an H3 inside ## Open Questions,
@@ -48,9 +135,9 @@ class TestCountEnumerableOptions:
             "**Option B**: Do Y.\n\n"
             "**Recommended**: Option A\n\n"
         )
-        count, heading = locate_enumerable_options(content)
-        assert count == 2
-        assert heading == "Open Questions"
+        located = locate_enumerable_options(content)
+        assert located.count == 2
+        assert located.heading == "Open Questions"
 
     def test_finds_options_under_decorated_fallback_heading(self) -> None:
         """A fallback heading decorated with a suffix still resolves via the
@@ -62,9 +149,9 @@ class TestCountEnumerableOptions:
             "## Codebase Research Findings — delegation architecture decision\n\n"
             "### Option A\nDo X.\n\n### Option B\nDo Y.\n"
         )
-        count, heading = locate_enumerable_options(content)
-        assert count == 2
-        assert heading == "Codebase Research Findings — delegation architecture decision"
+        located = locate_enumerable_options(content)
+        assert located.count == 2
+        assert located.heading == "Codebase Research Findings — delegation architecture decision"
 
 
 class TestCountUnresolvedOptions:
@@ -323,9 +410,9 @@ class TestPatternEDirectiveAlternatives:
             "- stamp it or move it to Out of scope with a stated reason — do not "
             "leave it unaddressed\n"
         )
-        count, heading = locate_enumerable_options(content)
-        assert count == 2
-        assert heading == "Scope Boundaries"
+        located = locate_enumerable_options(content)
+        assert located.count == 2
+        assert located.heading == "Scope Boundaries"
 
     def test_bare_or_prose_without_imperative_marker_not_decidable(self) -> None:
         """Guardrail: bare 'X or Y' prose with no imperative marker must NOT match —
@@ -333,13 +420,11 @@ class TestPatternEDirectiveAlternatives:
         from little_loops.issue_parser import locate_enumerable_options
 
         content = (
-            "## Scope Boundaries\n"
-            "\n"
-            "- stamp it or move it to Out of scope with a stated reason\n"
+            "## Scope Boundaries\n\n- stamp it or move it to Out of scope with a stated reason\n"
         )
-        count, heading = locate_enumerable_options(content)
-        assert count == 0
-        assert heading is None
+        located = locate_enumerable_options(content)
+        assert located.count == 0
+        assert located.heading is None
 
     def test_stated_preference_disqualifies_pattern_e(self) -> None:
         """A stated preference is Pattern D's job, not Pattern E's — the passage
@@ -352,9 +437,9 @@ class TestPatternEDirectiveAlternatives:
             "- stamp it or move it to Out of scope — do not leave it unaddressed. "
             "**Recommended**: stamp it.\n"
         )
-        count, heading = locate_enumerable_options(content)
-        assert count == 0
-        assert heading is None
+        located = locate_enumerable_options(content)
+        assert located.count == 0
+        assert located.heading is None
 
     def test_resolved_marker_disqualifies_pattern_e(self) -> None:
         from little_loops.issue_parser import locate_enumerable_options
@@ -365,23 +450,19 @@ class TestPatternEDirectiveAlternatives:
             "- Fork vs. flag — decide before implementation, X or Y. "
             "✅ RESOLVED (2026-06-04).\n"
         )
-        count, heading = locate_enumerable_options(content)
-        assert count == 0
-        assert heading is None
+        located = locate_enumerable_options(content)
+        assert located.count == 0
+        assert located.heading is None
 
     def test_out_of_scan_scope_section_not_matched(self) -> None:
         """Pattern E's scan scope is narrower than Patterns A-D's whole-document
         scan — a directive sitting in an unrelated section is not picked up."""
         from little_loops.issue_parser import locate_enumerable_options
 
-        content = (
-            "## Motivation\n"
-            "\n"
-            "- pick one: X or Y — must be decided before implementation.\n"
-        )
-        count, heading = locate_enumerable_options(content)
-        assert count == 0
-        assert heading is None
+        content = "## Motivation\n\n- pick one: X or Y — must be decided before implementation.\n"
+        located = locate_enumerable_options(content)
+        assert located.count == 0
+        assert located.heading is None
 
     def test_proposed_solution_directive_is_decidable(self) -> None:
         from little_loops.issue_parser import locate_enumerable_options
@@ -392,9 +473,9 @@ class TestPatternEDirectiveAlternatives:
             "Either extend the existing CLI or add a new subcommand — this must "
             "be decided before implementation.\n"
         )
-        count, heading = locate_enumerable_options(content)
-        assert count == 2
-        assert heading == "Proposed Solution"
+        located = locate_enumerable_options(content)
+        assert located.count == 2
+        assert located.heading == "Proposed Solution"
 
     def test_line_wrapped_marker_still_matches(self) -> None:
         """Regression: markdown line-wraps at ~80 chars split an imperative marker
@@ -410,6 +491,6 @@ class TestPatternEDirectiveAlternatives:
             "  it unaddressed.\n"
             "- **Out of scope**: nothing else.\n"
         )
-        count, heading = locate_enumerable_options(content)
-        assert count == 2
-        assert heading == "Scope Boundaries"
+        located = locate_enumerable_options(content)
+        assert located.count == 2
+        assert located.heading == "Scope Boundaries"
