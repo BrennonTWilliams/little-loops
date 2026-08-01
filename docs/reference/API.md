@@ -2370,6 +2370,7 @@ def verify_work_was_done(
     baseline_sha: str | None = None,
     config: BRConfig | None = None,
     repo_root: Path | None = None,
+    pre_step_snapshot: TamperSnapshot | None = None,
 ) -> bool
 ```
 
@@ -2384,18 +2385,26 @@ Detection runs in three modes (first match wins):
 
 When meaningful changes are found and `config` is supplied, the tamper guard (ENH-2933,
 `little_loops.test_tamper_guard.run_tamper_guard`) also runs against the changed-file set
-(ENH-2935) — the non-FSM counterpart to the FSM's `tamper_guard:` state key (ENH-2934). Unlike
-the FSM adapter, this path has no live pre-step snapshot (verification runs once, after the
-whole run already happened), so "before" is reconstructed from git history
-(`snapshot_test_paths_at_ref`) using *baseline_sha* (or `HEAD` when unset) as the reference
-point. The guard is skipped entirely when `config` is omitted, preserving pre-ENH-2935
-behavior for callers with no project config in scope. Because that window spans the whole
-implement phase (not just a dedicated verify step), non-FSM findings are filtered to edits
-that actually weaken the test suite (assertions/test functions removed, skip/skipif/xfail
-markers added, file deleted) rather than any byte change — the FSM adapter is unaffected and
-stays byte-level strict (BUG-2954). The strength metric is a per-file aggregate count, so it
-does not detect a same-count substitution and reads a count-reducing refactor (assertions
-extracted to a shared helper, a test moved to another file) as a weakening — see ENH-2964.
+(ENH-2935) — the non-FSM counterpart to the FSM's `tamper_guard:` state key (ENH-2934). It runs
+in up to two windows, ANDing the verdicts:
+
+1. **Implement window** (unconditional). "before" is reconstructed from git history
+   (`snapshot_test_paths_at_ref`) using *baseline_sha* (or `HEAD` when unset) as the reference
+   point. Because that window spans the whole implement phase (not just a dedicated verify
+   step), findings are filtered to edits that actually weaken the test suite
+   (assertions/test functions removed, skip/skipif/xfail markers added, file deleted) rather
+   than any byte change (BUG-2954). The strength metric is a per-file aggregate count, so it
+   does not detect a same-count substitution and reads a count-reducing refactor (assertions
+   extracted to a shared helper, a test moved to another file) as a weakening — see ENH-2964.
+2. **Post-implement window** (ENH-2958, only when `pre_step_snapshot` is given). Both
+   `issue_manager.py` (`ll-auto`) and `worker_pool.py` (`ll-parallel`/`ll-sprint`) capture a
+   live `snapshot_test_paths(...)` right after the implement call returns and thread it
+   through as `pre_step_snapshot`; this window is compared byte-strictly (no weakening
+   filter), mirroring the FSM adapter's snapshot-on-entry bracket, and catches a mutation
+   occurring strictly after implement returned (e.g. a worker's committed-leak recovery).
+
+The guard is skipped entirely when `config` is omitted, preserving pre-ENH-2935 behavior for
+callers with no project config in scope.
 
 **Parameters:**
 - `logger` - Logger for output

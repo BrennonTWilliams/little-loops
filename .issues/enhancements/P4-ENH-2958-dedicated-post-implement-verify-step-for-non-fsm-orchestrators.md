@@ -3,8 +3,9 @@ id: ENH-2958
 title: Dedicated post-implement verify step for non-FSM orchestrators
 type: ENH
 priority: P4
-status: open
+status: done
 captured_at: '2026-08-01T01:25:49Z'
+completed_at: '2026-08-01T16:05:14Z'
 discovered_date: 2026-08-01
 discovered_by: capture-issue
 relates_to:
@@ -1113,6 +1114,8 @@ _Superseded — `/ll:confidence-check`, earlier 2026-07-31:_
   duration._
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-01T16:04:19 - `f9ef973a-acd3-40a7-a313-5e7a001f9a16.jsonl`
+- `/ll:ready-issue` - 2026-08-01T15:48:42 - `0c7b9f68-0603-4a8d-8e6a-b7a664ad0b06.jsonl`
 - `/ll:confidence-check` - 2026-08-01T15:39:58 - `15f4582a-2df6-4315-9f84-3f5730f550e5.jsonl`
 - `/ll:confidence-check` - 2026-08-01T07:09:39 - `5c385d33-f128-49f6-856f-96945a2d4f98.jsonl`
 - `/ll:wire-issue` - 2026-08-01T07:08:10 - `b957ea0e-8caa-47a3-9bd7-782a17c6a284.jsonl`
@@ -1126,6 +1129,36 @@ _Superseded — `/ll:confidence-check`, earlier 2026-07-31:_
 - `/ll:wire-issue` - 2026-08-01T01:57:31 - `7c54f229-9ea2-4347-bbf8-25da4b88edbd.jsonl`
 - `/ll:refine-issue` - 2026-08-01T01:46:20 - `791535d4-3cff-4346-93b9-0e3280b0be01.jsonl`
 - `/ll:capture-issue` - 2026-08-01T01:25:49Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e6bb49e-330c-449c-8327-ffed663d51ae.jsonl`
+
+## Resolution
+
+Implemented Option E exactly as designed: no new step, no subprocess, no
+agent, no config key — moved the snapshot point instead.
+
+- `work_verification.py`: `_run_non_fsm_tamper_guard` and
+  `verify_work_was_done` gained an optional `pre_step_snapshot` param. The
+  guard now runs twice when it is supplied — the existing git-reconstructed
+  implement-window call (unchanged, with `filter_weakening_findings`) plus a
+  new byte-strict post-implement call — and ANDs the verdicts.
+- `issue_manager.py`: captures `snapshot_test_paths(...)` immediately after
+  Phase 2's implement call returns, threads it into both `verify_work_was_done`
+  call sites in the Phase 3 fallback path.
+- `parallel/worker_pool.py`: captures the same live snapshot immediately
+  after Step 5's implement call returns (before Step 8b's committed-leak
+  recovery), threads it through `_verify_work_was_done` into
+  `verify_work_was_done`, so Step 8b's cherry-picks land inside the bracket
+  by design.
+- `docs/reference/API.md` and `docs/guides/LOOPS_GUIDE.md` updated to
+  describe both windows instead of claiming the non-FSM path has no live
+  pre-step snapshot / is FSM-only.
+- Tests: `test_work_verification.py::TestVerifyWorkWasDonePostImplementBracket`
+  (5 new cases, including a count-preserving/inverted-comparison mutation
+  BUG-2954's heuristic cannot catch but the new window does, and a
+  legitimate TDD write before the snapshot that does not trip it),
+  `test_worker_pool.py` (2 new cases mirroring the same shape through the
+  parallel path), and the one named-breaking assertion
+  (`test_issue_manager.py:2797`) updated for the new kwarg.
+- `python -m pytest scripts/tests/` exits 0 (17596 passed, 42 skipped).
 
 ---
 

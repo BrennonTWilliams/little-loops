@@ -2848,7 +2848,10 @@ class TestFallbackVerification:
                                         )
 
         mock_verify.assert_called_once_with(
-            mock_logger, baseline_sha=test_sha, config=mock_config
+            mock_logger,
+            baseline_sha=test_sha,
+            config=mock_config,
+            pre_step_snapshot={},
         )
 
     def test_tamper_guard_trips_end_to_end_no_fsm_involved(

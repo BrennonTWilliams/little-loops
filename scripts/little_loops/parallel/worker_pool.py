@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     from little_loops.issue_parser import IssueInfo
     from little_loops.logger import Logger
     from little_loops.parallel.types import SprintWorkerContext
+    from little_loops.test_tamper_guard import TamperSnapshot
 
 
 def _run_per_worktree_proof_first_gate(
@@ -545,6 +546,21 @@ class WorkerPool:
                 issue_id=issue.issue_id,
             )
 
+            # ENH-2958: live post-implement tamper snapshot, captured here
+            # (end of Step 5) so _verify_work_was_done can bracket the
+            # post-implement window byte-strictly -- Step 8b's committed-leak
+            # recovery (below) lands inside this window by design. Imported
+            # lazily to avoid a circular import (test_tamper_guard ->
+            # config.core -> parallel.types -> parallel -> worker_pool).
+            from little_loops.test_tamper_guard import (
+                snapshot_test_paths,
+                tamper_guard_candidate_paths,
+            )
+
+            post_implement_snapshot = snapshot_test_paths(
+                tamper_guard_candidate_paths(worktree_path, config=self.br_config), worktree_path
+            )
+
             # Update stage for progress tracking (ENH-262)
             self.set_worker_stage(issue.issue_id, WorkerStage.VERIFYING)
 
@@ -604,6 +620,7 @@ class WorkerPool:
                 issue_filename,
                 worktree_path,
                 baseline_sha=tamper_baseline_sha,
+                pre_step_snapshot=post_implement_snapshot,
             )
 
             if manage_result.returncode != 0:
@@ -1225,6 +1242,7 @@ class WorkerPool:
         issue_filename: str = "",
         worktree_path: Path | None = None,
         baseline_sha: str | None = None,
+        pre_step_snapshot: TamperSnapshot | None = None,
     ) -> tuple[bool, str]:
         """Verify that actual implementation work was done.
 
@@ -1242,6 +1260,11 @@ class WorkerPool:
                 the guard falls back to the worktree's HEAD at verification
                 time, which is blind to test-weakening the agent already
                 committed inside the worktree.
+            pre_step_snapshot: Live snapshot captured right after Step 5's
+                implement call returns (ENH-2958) -- the tamper guard's
+                post-implement "before" reference, bracketing everything from
+                the end of implement through Step 8b's committed-leak
+                recovery.
 
         Returns:
             Tuple of (success, error_message)
@@ -1260,6 +1283,7 @@ class WorkerPool:
             baseline_sha=baseline_sha,
             config=self.br_config,
             repo_root=worktree_path,
+            pre_step_snapshot=pre_step_snapshot,
         ):
             return True, ""
 

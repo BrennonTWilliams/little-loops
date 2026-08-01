@@ -59,6 +59,7 @@ from little_loops.subprocess_utils import (
 from little_loops.subprocess_utils import (
     run_claude_command as _run_claude_base,
 )
+from little_loops.test_tamper_guard import snapshot_test_paths, tamper_guard_candidate_paths
 
 
 def _compute_relative_path(abs_path: Path, base_dir: Path | None = None) -> str:
@@ -963,6 +964,16 @@ def process_issue_inplace(
             result = subprocess.CompletedProcess(args=[], returncode=0)
     issue_timing["implement"] = phase2_timing.get("elapsed", 0.0)
 
+    # ENH-2958: live post-implement tamper snapshot, captured here (end of
+    # Phase 2) so verify_work_was_done can bracket the post-implement window
+    # byte-strictly, in addition to (not instead of) the existing
+    # git-reconstructed implement-window check.
+    _post_implement_repo_root = config.repo_path or Path.cwd()
+    _post_implement_snapshot = snapshot_test_paths(
+        tamper_guard_candidate_paths(_post_implement_repo_root, config=config),
+        _post_implement_repo_root,
+    )
+
     # Handle implementation failure
     if result.returncode != 0:
         # Guard: if the issue's frontmatter already shows status: done by the
@@ -1069,7 +1080,12 @@ def process_issue_inplace(
                     # evidence-of-work path so completed-but-unfinalized work is not
                     # silently parked. verify_work_was_done excludes thoughts/, so the
                     # plan file itself never counts as work (BUG-280 invariant preserved).
-                    if not verify_work_was_done(logger, baseline_sha=_baseline_sha, config=config):
+                    if not verify_work_was_done(
+                        logger,
+                        baseline_sha=_baseline_sha,
+                        config=config,
+                        pre_step_snapshot=_post_implement_snapshot,
+                    ):
                         logger.info(
                             f"Plan created at {plan_path}, awaiting approval - "
                             "issue will remain incomplete until plan is approved and implemented"
@@ -1107,7 +1123,10 @@ def process_issue_inplace(
                 else:
                     # CRITICAL: Verify actual implementation work was done
                     work_done = verify_work_was_done(
-                        logger, baseline_sha=_baseline_sha, config=config
+                        logger,
+                        baseline_sha=_baseline_sha,
+                        config=config,
+                        pre_step_snapshot=_post_implement_snapshot,
                     )
                     if work_done:
                         logger.info("Evidence of code changes found - completing lifecycle...")

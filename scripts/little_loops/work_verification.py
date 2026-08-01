@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from little_loops.config.core import BRConfig
     from little_loops.logger import Logger
-    from little_loops.test_tamper_guard import TamperPolicy
+    from little_loops.test_tamper_guard import TamperPolicy, TamperSnapshot
 
 
 # Directories that are excluded when verifying work was done.
@@ -65,25 +65,33 @@ def _run_non_fsm_tamper_guard(
     repo_root: Path,
     config: BRConfig,
     baseline_sha: str | None,
+    pre_step_snapshot: TamperSnapshot | None = None,
 ) -> bool:
     """Run the tamper guard (ENH-2933) against the current on-disk state.
 
-    Unlike the FSM adapter (ENH-2934), this path never captured a live
-    pre-step snapshot -- verification runs once, after the whole run already
-    happened -- so "before" is reconstructed from git history via
-    ``snapshot_test_paths_at_ref`` instead, using *baseline_sha* (or ``HEAD``
-    when unset) as the reference point.
+    Runs the guard twice and ANDs the verdicts, covering two distinct windows:
 
-    Because that window spans the whole implement phase -- including
-    legitimate TDD-mode test writes -- findings are narrowed via
-    ``filter_weakening_findings`` (BUG-2954) to edits that actually weaken the
-    test suite, not merely change its bytes. The FSM adapter passes no such
-    filter and stays byte-level strict.
+    1. *Implement window* (unconditional, unchanged). Because this window
+       spans the whole implement phase -- including legitimate TDD-mode test
+       writes -- there is no live pre-step snapshot for it, so "before" is
+       reconstructed from git history via ``snapshot_test_paths_at_ref``,
+       using *baseline_sha* (or ``HEAD`` when unset) as the reference point.
+       Findings are narrowed via ``filter_weakening_findings`` (BUG-2954) to
+       edits that actually weaken the test suite, not merely change its
+       bytes.
+    2. *Post-implement window* (ENH-2958, only when *pre_step_snapshot* is
+       given). A live snapshot captured at the end of the implement phase --
+       mirroring the FSM adapter's (ENH-2934) snapshot-on-entry bracket --
+       compared byte-strictly (no weakening filter) against the current
+       on-disk state. This catches a mutation occurring strictly after
+       implement returned (e.g. a worker's committed-leak recovery), which
+       the implement-window heuristic could miss if it happens to preserve
+       assertion/test counts.
 
-    Returns True when the guard passes (nothing found, or an "allow"/"revert"
-    policy resolved the findings); False only when a "fail" policy trips on
-    an unresolved finding -- the caller should treat that as verification
-    failure regardless of other evidence of work.
+    Returns True when both windows pass (nothing found, or an "allow"/
+    "revert" policy resolved the findings); False when either window's
+    "fail" policy trips on an unresolved finding -- the caller should treat
+    that as verification failure regardless of other evidence of work.
     """
     from functools import partial
 
@@ -99,9 +107,10 @@ def _run_non_fsm_tamper_guard(
 
     ref = baseline_sha or "HEAD"
     candidate_paths = tamper_guard_candidate_paths(repo_root, config=config)
-    before = snapshot_test_paths_at_ref(repo_root, ref, candidate_paths)
     changed = tamper_guard_changed_files(repo_root)
 
+    # Implement window: git-reconstructed "before", weakening-filtered.
+    before = snapshot_test_paths_at_ref(repo_root, ref, candidate_paths)
     finding_filter = partial(filter_weakening_findings, repo_root=repo_root, ref=ref)
     report = run_tamper_guard(before, changed, config, policy, repo_root, finding_filter)
     if not report.passed:
@@ -114,7 +123,24 @@ def _run_non_fsm_tamper_guard(
             f"Tamper guard ({report.policy}) found and handled: "
             f"{[f.path for f in report.findings]}"
         )
-    return report.passed
+    passed = report.passed
+
+    # Post-implement window (ENH-2958): live snapshot, byte-strict, no filter.
+    if pre_step_snapshot is not None:
+        post_report = run_tamper_guard(pre_step_snapshot, changed, config, policy, repo_root)
+        if not post_report.passed:
+            logger.error(
+                f"Post-implement tamper guard ({post_report.policy}) failed: "
+                f"{[f.path for f in post_report.findings]} not resolved"
+            )
+        elif post_report.findings:
+            logger.warning(
+                f"Post-implement tamper guard ({post_report.policy}) found and handled: "
+                f"{[f.path for f in post_report.findings]}"
+            )
+        passed = passed and post_report.passed
+
+    return passed
 
 
 def verify_work_was_done(
@@ -123,6 +149,7 @@ def verify_work_was_done(
     baseline_sha: str | None = None,
     config: BRConfig | None = None,
     repo_root: Path | None = None,
+    pre_step_snapshot: TamperSnapshot | None = None,
 ) -> bool:
     """Verify that actual work was done (not just issue file moves).
 
@@ -147,6 +174,13 @@ def verify_work_was_done(
             behavior unchanged.
         repo_root: Optional repo root the tamper guard runs against; defaults
             to config.project_root when config is given.
+        pre_step_snapshot: Optional live ``snapshot_test_paths(...)`` captured
+            by the caller at the end of the implement phase (ENH-2958). When
+            given, the tamper guard runs a second, byte-strict comparison
+            against this snapshot -- covering the post-implement window --
+            in addition to (not instead of) the git-reconstructed
+            implement-window comparison. ``None`` (the default) preserves
+            today's behavior unchanged: one git-reconstructed guard run.
 
     Returns:
         True if meaningful file changes were detected and the tamper guard
@@ -158,7 +192,9 @@ def verify_work_was_done(
     if config is None:
         return True
     resolved_repo_root = repo_root or config.project_root
-    if not _run_non_fsm_tamper_guard(logger, resolved_repo_root, config, baseline_sha):
+    if not _run_non_fsm_tamper_guard(
+        logger, resolved_repo_root, config, baseline_sha, pre_step_snapshot
+    ):
         return False
     return True
 

@@ -1446,6 +1446,44 @@ class TestWorkerPoolHelpers:
         )
         assert success is False
 
+    def test_verify_work_was_done_post_implement_snapshot_catches_mutation(
+        self, worker_pool: WorkerPool, tmp_path: Path
+    ) -> None:
+        """ENH-2958: a count-preserving edit (inverted comparison) landing
+        after the live post-implement snapshot was captured -- e.g. via Step
+        8b's committed-leak recovery -- is caught byte-strictly even though
+        BUG-2954's implement-window heuristic would not flag it as
+        weakening."""
+        from little_loops.test_tamper_guard import (
+            snapshot_test_paths,
+            tamper_guard_candidate_paths,
+        )
+        from tests.helpers import copy_git_template
+
+        worktree = tmp_path / "worktree"
+        copy_git_template(worktree)
+        (worktree / "tests").mkdir()
+        (worktree / "tests" / "test_x.py").write_text("def test_x():\n    assert 1 == 1\n")
+        subprocess.run(["git", "add", "tests/test_x.py"], cwd=worktree, check=True)
+        subprocess.run(["git", "commit", "-m", "add test"], cwd=worktree, check=True)
+
+        # End of Step 5 (implement): snapshot still matches the committed version.
+        candidate_paths = tamper_guard_candidate_paths(worktree, config=worker_pool.br_config)
+        pre_step_snapshot = snapshot_test_paths(candidate_paths, worktree)
+
+        # Step 8b-style post-implement mutation: same counts, inverted comparison.
+        (worktree / "src.py").write_text("def add(a, b):\n    return a + b\n")
+        (worktree / "tests" / "test_x.py").write_text("def test_x():\n    assert 1 == 2\n")
+
+        success, error = worker_pool._verify_work_was_done(
+            ["src.py", "tests/test_x.py"],
+            "BUG-001",
+            worktree_path=worktree,
+            pre_step_snapshot=pre_step_snapshot,
+        )
+
+        assert success is False
+
     def test_get_worktree_head_sha_returns_sha(
         self, worker_pool: WorkerPool, tmp_path: Path
     ) -> None:
@@ -1525,6 +1563,52 @@ class TestWorkerPoolHelpers:
 
         mock_verify.assert_called_once()
         assert mock_verify.call_args.kwargs["baseline_sha"] == test_sha
+
+    def test_process_issue_forwards_post_implement_snapshot_to_verify(
+        self,
+        worker_pool: WorkerPool,
+        mock_issue: MagicMock,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """ENH-2958: the live snapshot captured right after Step 5's implement
+        call returns is forwarded to _verify_work_was_done as
+        pre_step_snapshot -- mirrors test_issue_manager.py's
+        test_baseline_sha_passed_to_verify_work_was_done for the parallel path."""
+        ready_output = "## VERDICT: **READY**"
+
+        def mock_run_command(
+            cmd: str, path: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess([], 0, ready_output, "")
+
+        with patch.object(worker_pool, "_setup_worktree"):
+            with patch.object(worker_pool, "_get_main_repo_baseline", return_value=set()):
+                with patch.object(worker_pool, "_get_worktree_head_sha", return_value="deadbeef"):
+                    with patch.object(
+                        worker_pool, "_run_claude_command", side_effect=mock_run_command
+                    ):
+                        with patch.object(
+                            worker_pool, "_run_with_continuation"
+                        ) as mock_continuation:
+                            mock_continuation.return_value = subprocess.CompletedProcess(
+                                [], 0, "Implementation successful", ""
+                            )
+                            with patch.object(worker_pool, "_get_changed_files", return_value=[]):
+                                with patch.object(
+                                    worker_pool, "_detect_main_repo_leaks", return_value=[]
+                                ):
+                                    with patch.object(
+                                        worker_pool, "_detect_committed_leaks", return_value=[]
+                                    ):
+                                        with patch.object(
+                                            worker_pool,
+                                            "_verify_work_was_done",
+                                            return_value=(False, "no files changed"),
+                                        ) as mock_verify:
+                                            worker_pool._process_issue(mock_issue)
+
+        mock_verify.assert_called_once()
+        assert isinstance(mock_verify.call_args.kwargs["pre_step_snapshot"], dict)
 
     def test_get_main_repo_baseline(
         self,

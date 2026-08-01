@@ -640,3 +640,173 @@ class TestVerifyWorkWasDoneTamperGuard:
         )
 
         assert result is True
+
+
+class TestVerifyWorkWasDonePostImplementBracket:
+    """ENH-2958: verify_work_was_done() runs a second, byte-strict tamper
+    guard against a live ``pre_step_snapshot`` when one is supplied --
+    bracketing the post-implement window in addition to (not instead of)
+    BUG-2954's always-on, git-reconstructed implement-window check.
+    """
+
+    @pytest.fixture
+    def mock_logger(self) -> MagicMock:
+        return MagicMock()
+
+    def _repo_with_committed_test(self, tmp_path: Path) -> Path:
+        from tests.helpers import copy_git_template
+
+        repo = tmp_path / "repo"
+        copy_git_template(repo)
+        (repo / "tests").mkdir()
+        (repo / "tests" / "test_x.py").write_text("def test_x():\n    assert 1 == 1\n")
+        subprocess.run(["git", "add", "tests/test_x.py"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-m", "add test"], cwd=repo, check=True)
+        return repo
+
+    def test_no_live_snapshot_behavior_unchanged(
+        self, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """Omitting pre_step_snapshot (the default) is byte-identical to
+        pre-ENH-2958 behavior: one git-reconstructed guard run."""
+        from little_loops.config import BRConfig
+
+        repo = self._repo_with_committed_test(tmp_path)
+        (repo / "src.py").write_text("def add(a, b):\n    return a + b\n")
+
+        config = BRConfig(repo)
+        result = verify_work_was_done(mock_logger, changed_files=["src.py"], config=config)
+
+        assert result is True
+
+    def test_post_implement_mutation_caught_byte_for_byte(
+        self, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """A count-preserving edit (inverted comparison) landing after the
+        live snapshot was captured is caught byte-strictly by the new
+        post-implement window, even though BUG-2954's heuristic (call 1)
+        would not flag it as weakening -- same assertion/test-function
+        counts, just an inverted value."""
+        from little_loops.config import BRConfig
+        from little_loops.test_tamper_guard import (
+            snapshot_test_paths,
+            tamper_guard_candidate_paths,
+        )
+
+        repo = self._repo_with_committed_test(tmp_path)
+        config = BRConfig(repo)
+
+        # End of implement: test file still matches the committed version.
+        candidate_paths = tamper_guard_candidate_paths(repo, config=config)
+        pre_step_snapshot = snapshot_test_paths(candidate_paths, repo)
+
+        # Post-implement mutation (e.g. a worker's committed-leak recovery):
+        # same counts, inverted comparison -- invisible to filter_weakening_findings.
+        (repo / "tests" / "test_x.py").write_text("def test_x():\n    assert 1 == 2\n")
+        (repo / "src.py").write_text("def add(a, b):\n    return a + b\n")
+
+        result = verify_work_was_done(
+            mock_logger,
+            changed_files=["src.py", "tests/test_x.py"],
+            config=config,
+            pre_step_snapshot=pre_step_snapshot,
+        )
+
+        assert result is False
+
+    def test_legitimate_tdd_write_before_snapshot_does_not_trip_bracket(
+        self, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """A brand-new test file legitimately written during implement --
+        before the live snapshot was captured -- does not trip the new
+        bracket, mirroring the FSM adapter's separate-verify-state behavior
+        (test_fsm_executor.py's test_tdd_mode_does_not_trip_guard_on_separate_verify_state)."""
+        from little_loops.config import BRConfig
+        from little_loops.test_tamper_guard import (
+            snapshot_test_paths,
+            tamper_guard_candidate_paths,
+        )
+
+        repo = self._repo_with_committed_test(tmp_path)
+        config = BRConfig(repo)
+
+        # Implement phase writes a brand-new test file (TDD) and source.
+        (repo / "tests" / "test_new.py").write_text("def test_new():\n    assert True\n")
+        (repo / "src.py").write_text("def add(a, b):\n    return a + b\n")
+
+        # End of implement: snapshot captured AFTER the legitimate write.
+        candidate_paths = tamper_guard_candidate_paths(repo, config=config)
+        pre_step_snapshot = snapshot_test_paths(candidate_paths, repo)
+
+        result = verify_work_was_done(
+            mock_logger,
+            changed_files=["src.py", "tests/test_new.py"],
+            config=config,
+            pre_step_snapshot=pre_step_snapshot,
+        )
+
+        assert result is True
+
+    def test_implement_window_heuristic_still_runs_unconditionally(
+        self, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """BUG-2954's git-reconstructed implement-window check still fires --
+        and can still fail -- even when a live post-implement snapshot is
+        supplied and its own (post-implement) window passes. The two windows
+        are ANDed, not replaced."""
+        from little_loops.config import BRConfig
+        from little_loops.test_tamper_guard import (
+            snapshot_test_paths,
+            tamper_guard_candidate_paths,
+        )
+
+        repo = self._repo_with_committed_test(tmp_path)
+        config = BRConfig(repo)
+
+        # Weaken the committed test during "implement" (assertion count drops).
+        (repo / "tests" / "test_x.py").write_text("def test_x():\n    pass\n")
+        (repo / "src.py").write_text("def add(a, b):\n    return a + b\n")
+
+        # End of implement: snapshot captured AFTER the weakening write, so the
+        # post-implement window (call 2) sees no further change on its own and
+        # would pass in isolation.
+        candidate_paths = tamper_guard_candidate_paths(repo, config=config)
+        pre_step_snapshot = snapshot_test_paths(candidate_paths, repo)
+
+        result = verify_work_was_done(
+            mock_logger,
+            changed_files=["src.py", "tests/test_x.py"],
+            config=config,
+            pre_step_snapshot=pre_step_snapshot,
+        )
+
+        # Overall result is still False: call 1 (implement window, baseline
+        # HEAD == the pre-weakening commit) still fires independently.
+        assert result is False
+
+    def test_no_change_since_snapshot_passes_both_windows(
+        self, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """A normal source-only change with an untouched test file passes
+        both the implement-window and post-implement-window guards."""
+        from little_loops.config import BRConfig
+        from little_loops.test_tamper_guard import (
+            snapshot_test_paths,
+            tamper_guard_candidate_paths,
+        )
+
+        repo = self._repo_with_committed_test(tmp_path)
+        config = BRConfig(repo)
+        candidate_paths = tamper_guard_candidate_paths(repo, config=config)
+        pre_step_snapshot = snapshot_test_paths(candidate_paths, repo)
+
+        (repo / "src.py").write_text("def add(a, b):\n    return a + b\n")
+
+        result = verify_work_was_done(
+            mock_logger,
+            changed_files=["src.py"],
+            config=config,
+            pre_step_snapshot=pre_step_snapshot,
+        )
+
+        assert result is True

@@ -697,7 +697,10 @@ completed work in plain Python (`work_verification.py`), never entering the FSM,
 never applies to them. That non-FSM path has its own guard hook (ENH-2935) driven by the
 [`tamper_guard.policy` project config key](./CONFIGURATION.md#tamper_guard) instead — the two
 are independent; the project config key never overrides an explicit state-level `tamper_guard:`
-key here.
+key here. Since ENH-2958, the non-FSM path's guard also brackets a live post-implement window
+(a snapshot captured right after the implement phase returns, compared byte-strictly at the
+completion decision) in addition to its git-reconstructed implement-window check — the same
+snapshot-on-entry/compare-on-exit shape this FSM key uses, minus the dedicated state.
 
 ### Handoff Behavior
 
