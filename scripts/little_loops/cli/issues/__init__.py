@@ -64,7 +64,6 @@ def main_issues() -> int:
         from little_loops.cli.issues.next_id import cmd_next_id
         from little_loops.cli.issues.next_issue import cmd_next_issue
         from little_loops.cli.issues.next_issues import cmd_next_issues
-        from little_loops.cli.issues.normalize import add_normalize_parser, cmd_normalize
         from little_loops.cli.issues.path_cmd import cmd_path
         from little_loops.cli.issues.refine_status import cmd_refine_status
         from little_loops.cli.issues.search import cmd_search
@@ -108,7 +107,6 @@ Sub-commands:
   anchor-sweep     Rewrite file:line references in active issue files to anchor form
   fingerprint      Extract structured fingerprint (id, files, key_terms) from an issue file
   format-check     Deterministic structural linter for issue formatting (missing/renamed/empty/boilerplate/malformed_id/prose_dep_drift/stale_prose_dep)
-  normalize        Detect/fix filename ID mechanics: missing/duplicate/malformed IDs, legacy dirs, type misclassifications
   size             Deterministic size scoring (file/section/word-count signals) for issue-size-review
   decisions        Manage rules, decisions, and exceptions log (list/add/outcome/generate/sync)
 
@@ -899,7 +897,6 @@ Examples:
         add_epic_consistency_parser(subs)
         add_format_check_parser(subs)
         add_decisions_parser(subs)
-        add_normalize_parser(subs)
         add_size_parser(subs)
 
         args = parser.parse_args()
@@ -975,8 +972,6 @@ Examples:
             return cmd_epic_consistency(config, args)
         if args.command == "format-check":
             return cmd_format_check(config, args)
-        if args.command == "normalize":
-            return cmd_normalize(config, args)
         if args.command == "size":
             return cmd_size(config, args)
         if args.command == "decisions":

@@ -333,6 +333,7 @@ class TestFormatCheckJsonOutput:
             "program_design_nonspecific": [],
             "deprecated_key": [],
             "multi_frontmatter": [],
+            "testable": [],
         }
 
     def test_gapped_issue_json_output(

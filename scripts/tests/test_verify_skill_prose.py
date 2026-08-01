@@ -187,7 +187,7 @@ class TestMainEntryPoint:
         base = _make_tree(tmp_path)
         _write_skill(base, "clean-skill", "Nothing to see here.")
         with patch("sys.argv", ["ll-verify-skill-prose", "-C", str(base)]):
-            assert main_verify_skill_prose([]) == 0
+            assert main_verify_skill_prose(["-C", str(base)]) == 0
 
     def test_exits_one_on_finding(self, tmp_path: Path) -> None:
         base = _make_tree(tmp_path)

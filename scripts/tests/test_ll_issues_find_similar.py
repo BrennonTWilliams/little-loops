@@ -8,8 +8,6 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-import pytest
-
 
 def _write_issue(
     path: Path, issue_id: str, title: str, status: str = "open", body: str = ""
@@ -17,17 +15,15 @@ def _write_issue(
     path.write_text(f"---\nid: {issue_id}\nstatus: {status}\n---\n# {issue_id}: {title}\n\n{body}")
 
 
-def _run(
-    argv: list[str], temp_project_dir: Path, sample_config: dict[str, Any]
-) -> tuple[int, str]:
+def _run(argv: list[str], temp_project_dir: Path, sample_config: dict[str, Any]) -> tuple[int, str]:
     config_path = temp_project_dir / ".ll" / "ll-config.json"
     config_path.write_text(json.dumps(sample_config))
 
     with patch.object(sys, "argv", ["ll-issues", *argv, "--config", str(temp_project_dir)]):
-        from little_loops.cli import main_issues
-
-        import io
         import contextlib
+        import io
+
+        from little_loops.cli import main_issues
 
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
@@ -153,9 +149,7 @@ class TestIssuesCLIFindSimilar:
             "BUG-400",
             "token refresh logic",
         )
-        sample_config.setdefault("issues", {})["duplicate_detection"] = {
-            "similar_threshold": 0.99
-        }
+        sample_config.setdefault("issues", {})["duplicate_detection"] = {"similar_threshold": 0.99}
 
         result, out = _run(
             ["find-similar", "authentication token refresh failure"],
@@ -244,9 +238,7 @@ class TestIssuesCLIFindSimilar:
             "authentication token refresh failure",
         )
 
-        result, out = _run(
-            ["fs", "authentication token refresh"], temp_project_dir, sample_config
-        )
+        result, out = _run(["fs", "authentication token refresh"], temp_project_dir, sample_config)
 
         assert result == 0
         data = json.loads(out)
