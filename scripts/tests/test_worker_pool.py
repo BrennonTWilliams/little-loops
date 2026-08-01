@@ -1477,6 +1477,55 @@ class TestWorkerPoolHelpers:
 
         assert result == ""
 
+    def test_process_issue_forwards_worktree_head_sha_as_baseline(
+        self,
+        worker_pool: WorkerPool,
+        mock_issue: MagicMock,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """BUG-2959: _process_issue()'s Step 7 call site forwards the
+        worktree's pre-implement HEAD (captured at L538 via
+        _get_worktree_head_sha, before Step 5's implement invocation) to
+        _verify_work_was_done as baseline_sha -- mirrors
+        test_issue_manager.py's test_baseline_sha_passed_to_verify_work_was_done
+        for the sequential path."""
+        ready_output = "## VERDICT: **READY**"
+        test_sha = "deadbeef1234"
+
+        def mock_run_command(
+            cmd: str, path: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess([], 0, ready_output, "")
+
+        with patch.object(worker_pool, "_setup_worktree"):
+            with patch.object(worker_pool, "_get_main_repo_baseline", return_value=set()):
+                with patch.object(worker_pool, "_get_worktree_head_sha", return_value=test_sha):
+                    with patch.object(
+                        worker_pool, "_run_claude_command", side_effect=mock_run_command
+                    ):
+                        with patch.object(
+                            worker_pool, "_run_with_continuation"
+                        ) as mock_continuation:
+                            mock_continuation.return_value = subprocess.CompletedProcess(
+                                [], 0, "Implementation successful", ""
+                            )
+                            with patch.object(worker_pool, "_get_changed_files", return_value=[]):
+                                with patch.object(
+                                    worker_pool, "_detect_main_repo_leaks", return_value=[]
+                                ):
+                                    with patch.object(
+                                        worker_pool, "_detect_committed_leaks", return_value=[]
+                                    ):
+                                        with patch.object(
+                                            worker_pool,
+                                            "_verify_work_was_done",
+                                            return_value=(False, "no files changed"),
+                                        ) as mock_verify:
+                                            worker_pool._process_issue(mock_issue)
+
+        mock_verify.assert_called_once()
+        assert mock_verify.call_args.kwargs["baseline_sha"] == test_sha
+
     def test_get_main_repo_baseline(
         self,
         worker_pool: WorkerPool,

@@ -14,6 +14,9 @@ relates_to:
 - BUG-2957
 - ENH-2958
 - BUG-2959
+- ENH-2964
+status: done
+completed_date: 2026-08-01
 confidence_score: 80
 outcome_confidence: 82
 score_complexity: 14
@@ -35,7 +38,55 @@ makes Phase 3 verification refuse to close any `ll-auto`/`ll-parallel`/
 `ll-sprint`-driven issue that touches an existing test file — even when the
 implementation is fully correct and all tests pass.
 
+## Resolution (2026-08-01)
+
+**Fixed.** The content-aware weakening classifier shipped in commit `dc63a048`
+(which nominally carried BUG-2957 but explicitly notes it also carries this
+issue's changes — the two touch the same functions and were not independently
+committable), plus a follow-up commit adding `skipif` marker detection.
+
+Verified against source at close time:
+
+- `test_tamper_guard.py` — `TestStrength` (L51), `read_paths_at_ref` (L112),
+  `measure_test_strength` (L235), `is_weakening` (L278),
+  `filter_weakening_findings` (L296), and the `finding_filter` parameter on
+  `run_tamper_guard` (L485, applied L513-514) — Steps 1-2.
+- `work_verification.py:105-106` — `_run_non_fsm_tamper_guard` builds
+  `partial(filter_weakening_findings, repo_root=..., ref=...)` and passes it;
+  `verify_work_was_done`'s signature unchanged, as designed — Step 3.
+- `parallel/worker_pool.py` — `_get_worktree_head_sha` (L1519) captures the
+  worktree HEAD before Step 5, `_process_issue` forwards it as
+  `tamper_baseline_sha` (L538 → L606), `_verify_work_was_done` accepts and
+  forwards `baseline_sha` (L1227 → L1260) — Step 4.
+- `issue_manager.py:1122-1139` — rejection message split by cause, so a
+  tamper-guard veto is no longer reported as "no code changes detected" —
+  Step 5.
+- `docs/reference/API.md` (`### verify_work_was_done`) — documents the
+  weakening filter — Step 9.
+- Regression suite: `python -m pytest scripts/tests/test_test_tamper_guard.py
+  scripts/tests/test_work_verification.py scripts/tests/test_worker_pool.py
+  scripts/tests/test_issue_manager.py -q` → **392 passed**, including
+  `test_issue_manager.py::test_tamper_guard_trips_end_to_end_no_fsm_involved`
+  passing **unmodified** (Step 7's invariant) and
+  `test_fsm_executor.py::test_tdd_mode_does_not_trip_guard_on_separate_verify_state`
+  confirming the FSM path stayed byte-strict — Steps 6-8.
+
+**Follow-up review findings** (2026-08-01), addressed separately:
+
+- `measure_test_strength` matched only `("skip", "xfail")`, so
+  `@pytest.mark.skipif(True, reason=...)` — the most natural way to disable a
+  test while looking legitimate — scored `skip_markers=0` and slipped the
+  guard. Fixed in this issue's closing commit (`skipif` added to the decorator
+  set, with unit + `is_weakening` coverage).
+- The strength metric is a per-file aggregate count, so it reads a
+  count-reducing but coverage-preserving refactor (assertions extracted to a
+  shared helper, a test moved to another file) as a weakening, and misses a
+  same-count substitution (`assert real() == 5` → `assert True`). Out of scope
+  for this bug's fix; captured as **ENH-2964**.
+
 ## Current Behavior
+
+_Historical — describes the defect as filed, before the fix above._
 
 `issue_manager.py:921-926` captures `_baseline_sha` at the **start of Phase 2
 (implement)** — before any code or tests are written — for an older, unrelated
@@ -769,4 +820,4 @@ _Added by `/ll:confidence-check` on 2026-08-01_
 
 ## Status
 
-**Open** | Created: 2026-08-01 | Priority: P2
+**Done** | Created: 2026-08-01 | Completed: 2026-08-01 | Priority: P2

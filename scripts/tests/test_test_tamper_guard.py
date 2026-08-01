@@ -626,6 +626,19 @@ class TestMeasureTestStrength:
         assert strength is not None
         assert strength.skip_markers == 1
 
+    def test_skipif_decorator_counts_as_skip_marker(self) -> None:
+        """BUG-2954 follow-up: ``skipif`` is the natural way to disable a test
+        while looking legitimate, so it must count alongside ``skip``/``xfail``."""
+        source = (
+            "import pytest\n\n"
+            '@pytest.mark.skipif(True, reason="disabled")\n'
+            "def test_a():\n"
+            "    assert True\n"
+        )
+        strength = measure_test_strength(source, "test_x.py")
+        assert strength is not None
+        assert strength.skip_markers == 1
+
     def test_empty_source_has_zero_counts(self) -> None:
         strength = measure_test_strength("", "test_x.py")
         assert strength == TestStrength(assertions=0, test_functions=0, skip_markers=0)
@@ -652,6 +665,16 @@ class TestIsWeakening:
     def test_adding_a_skip_marker_is_weakening(self) -> None:
         before = "def test_a():\n    assert True\n"
         after = "import pytest\n\n@pytest.mark.skip\ndef test_a():\n    assert True\n"
+        assert is_weakening(before, after, "test_x.py") is True
+
+    def test_adding_a_skipif_marker_is_weakening(self) -> None:
+        before = "def test_a():\n    assert True\n"
+        after = (
+            "import pytest\n\n"
+            '@pytest.mark.skipif(True, reason="disabled")\n'
+            "def test_a():\n"
+            "    assert True\n"
+        )
         assert is_weakening(before, after, "test_x.py") is True
 
     def test_unmeasurable_side_is_conservatively_weakening(self) -> None:

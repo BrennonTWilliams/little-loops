@@ -2391,9 +2391,11 @@ whole run already happened), so "before" is reconstructed from git history
 point. The guard is skipped entirely when `config` is omitted, preserving pre-ENH-2935
 behavior for callers with no project config in scope. Because that window spans the whole
 implement phase (not just a dedicated verify step), non-FSM findings are filtered to edits
-that actually weaken the test suite (assertions/test functions removed, skip/xfail markers
-added, file deleted) rather than any byte change — the FSM adapter is unaffected and stays
-byte-level strict (BUG-2954).
+that actually weaken the test suite (assertions/test functions removed, skip/skipif/xfail
+markers added, file deleted) rather than any byte change — the FSM adapter is unaffected and
+stays byte-level strict (BUG-2954). The strength metric is a per-file aggregate count, so it
+does not detect a same-count substitution and reads a count-reducing refactor (assertions
+extracted to a shared helper, a test moved to another file) as a weakening — see ENH-2964.
 
 **Parameters:**
 - `logger` - Logger for output

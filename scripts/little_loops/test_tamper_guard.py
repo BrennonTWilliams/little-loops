@@ -237,11 +237,17 @@ def measure_test_strength(source: str, path: str) -> TestStrength | None:
 
     Counts ``ast.Assert`` nodes plus ``self.assert*``/``pytest.raises`` calls as
     assertions, ``FunctionDef``/``AsyncFunctionDef`` nodes named ``test*`` as test
-    functions, and ``skip``/``xfail`` decorators or ``pytest.skip(...)`` calls as
-    skip markers.
+    functions, and ``skip``/``skipif``/``xfail`` decorators or ``pytest.skip(...)``
+    calls as skip markers.
 
     Returns None for a non-Python *path* or an unparseable *source* -- callers
     must treat that conservatively (finding kept, per ``is_weakening``).
+
+    Known limitation: the metric is an aggregate count per file, so it cannot
+    see a same-count substitution (gutting real assertions and backfilling
+    ``assert True``), and it reads a legitimate refactor that reduces a file's
+    counts -- extracting repeated assertions into a shared helper, or moving a
+    test function out to another file -- as a weakening. See ENH-2964.
     """
     if not path.endswith(".py"):
         return None
@@ -261,7 +267,7 @@ def measure_test_strength(source: str, path: str) -> TestStrength | None:
             if node.name.startswith("test"):
                 test_functions += 1
             for decorator in node.decorator_list:
-                if _decorator_name(decorator) in ("skip", "xfail"):
+                if _decorator_name(decorator) in ("skip", "skipif", "xfail"):
                     skip_markers += 1
         elif isinstance(node, ast.Call):
             name = _call_name(node.func)
