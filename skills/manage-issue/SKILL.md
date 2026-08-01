@@ -417,9 +417,7 @@ See [templates.md](templates.md) for the Resolution section template.
 
 ### 1.5. Append Session Log Entry
 
-Append a session log entry to the issue file before moving it. Find the current session JSONL path in `~/.claude/projects/` and add an entry.
-
-See [templates.md](templates.md) for the Session Log entry format.
+Before moving it, append a session log entry to the issue file: `ll-issues append-log <path-to-issue-file> /ll:manage-issue`. See [templates.md](templates.md) for the fallback format when `ll-issues` is unavailable.
 
 ### 1.6. Inject `completed_at` Timestamp
 

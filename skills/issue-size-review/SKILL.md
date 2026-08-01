@@ -279,14 +279,17 @@ For each approved decomposition:
    - Determine target directory based on type (bugs/, features/, enhancements/)
    - Generate filename: `P[priority]-[TYPE]-[NNN]-[slug].md`
    - Write issue content using the Phase 4 draft template; the frontmatter block **must** include `parent: [PARENT-ID]` (bare issue ID, e.g. `ENH-179`) to make the parent→child relationship machine-readable
-   - For each child issue file created, append a session log entry:
+   - For each child issue file created, append a session log entry using the Bash tool:
 
-```markdown
-## Session Log
-- `/ll:issue-size-review` - [ISO timestamp] - `[path to current session JSONL]`
+```bash
+ll-issues append-log <path-to-child-issue-file> /ll:issue-size-review
 ```
 
-To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). If `## Session Log` already exists, append below the header. If not, add before `---` / `## Status` footer.
+If `ll-issues` is not available, fall back to manually appending with **exactly** this format (backticks required). If `## Session Log` already exists, append below the header; if not, add before `---` / `## Status` footer:
+
+```
+- `/ll:issue-size-review` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
+```
 
 3. **Update and move parent issue**:
    Add resolution section to parent:
@@ -307,14 +310,17 @@ To find the current session JSONL: look in `~/.claude/projects/` for the directo
 
    Update parent issue status to done (frontmatter `status: done`) using the Edit tool.
 
-   Before updating, append a session log entry to the parent issue file:
+   Before updating, append a session log entry to the parent issue file using the Bash tool:
 
-```markdown
-## Session Log
-- `/ll:issue-size-review` - [ISO timestamp] - `[path to current session JSONL]`
+```bash
+ll-issues append-log <path-to-parent-issue-file> /ll:issue-size-review
 ```
 
-To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). If `## Session Log` already exists, append below the header. If not, add before `---` / `## Status` footer.
+If `ll-issues` is not available, fall back to manually appending with **exactly** this format (backticks required). If `## Session Log` already exists, append below the header; if not, add before `---` / `## Status` footer:
+
+```
+- `/ll:issue-size-review` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
+```
 
 4. **Stage all changes**:
 

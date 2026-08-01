@@ -468,15 +468,14 @@ This integrates with FSM `evaluate: type: exit_code` routing (0=success, 1=failu
 
 ## Session Log
 
-After completing all evaluations, append a session log entry to each evaluated issue file.
+After completing all evaluations, append a session log entry to each evaluated issue file. Use the Bash tool:
 
-**Locate the session JSONL**: Search `~/.claude/projects/` for the directory whose name encodes the current working directory path (separators replaced by dashes). Find the most recently modified `.jsonl` file that does NOT start with `agent-`.
-
-**Append to `## Session Log`** in each issue file:
-```
-- `/ll:go-no-go` - [ISO timestamp] - `[path to session JSONL]`
+```bash
+ll-issues append-log <path-to-issue-file> /ll:go-no-go
 ```
 
-If `## Session Log` does not exist in the issue file, insert it before `## Status`.
+If `ll-issues` is not available, fall back to manually appending with **exactly** this format (backticks required). If `## Session Log` does not exist in the issue file, insert it before `## Status`:
 
-Use the `Edit` tool to append the session log entry. Use Bash(`git log --format="%ai" -1`) to get the current timestamp if needed, or use the current date in ISO 8601 format.
+```
+- `/ll:go-no-go` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
+```

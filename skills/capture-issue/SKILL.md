@@ -301,14 +301,17 @@ ELSE:
 
 See [templates.md](templates.md) for the complete issue file template structure.
 
-5. **Append session log entry** to the newly created issue file:
+5. **Append session log entry** to the newly created issue file. Use the Bash tool:
 
-```markdown
-## Session Log
-- `/ll:capture-issue` - [ISO timestamp] - `[path to current session JSONL]`
+```bash
+ll-issues append-log <path-to-issue-file> /ll:capture-issue
 ```
 
-To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). Add the `## Session Log` section before the `---` / `## Status` footer.
+If `ll-issues` is not available, fall back to manually appending with **exactly** this format (backticks required), adding the `## Session Log` section before the `---` / `## Status` footer:
+
+```
+- `/ll:capture-issue` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
+```
 
    For FEAT or EPIC captures, append a decision entry to the log (silent no-op when the decisions log is absent; skip entirely for BUG type). The log is hybrid storage — a legacy `.ll/decisions.yaml` flat file and/or `.ll/decisions.d/*.json` fragments — so gate on either (a fresh, never-compacted install has only the fragment dir):
 

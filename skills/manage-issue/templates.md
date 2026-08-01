@@ -385,14 +385,11 @@ Overall: PASS / WARN (with actionable findings)
 
 ### Session Log Entry Format
 
-```markdown
-## Session Log
-- `/ll:manage-issue` - [ISO timestamp] - `[path to current session JSONL]`
+The entry format below is produced automatically by `ll-issues append-log <path-to-issue-file> /ll:manage-issue` (see SKILL.md Phase 5 step 1.5). Use this fallback only if `ll-issues` is unavailable — append manually with **exactly** this format (backticks required); if the `## Session Log` section already exists, append below the header, otherwise add it before the `---` / `## Status` footer:
+
 ```
-
-To find the current session JSONL path: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), then find the most recently modified `.jsonl` file (excluding files starting with `agent-`).
-
-If the `## Session Log` section already exists, append the new entry below the header. If it doesn't exist, add it before the `---` / `## Status` footer.
+- `/ll:manage-issue` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
+```
 
 ### Resolution Section Template
 
