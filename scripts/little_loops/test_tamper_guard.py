@@ -245,9 +245,12 @@ def measure_test_strength(source: str, path: str) -> TestStrength | None:
 
     Known limitation: the metric is an aggregate count per file, so it cannot
     see a same-count substitution (gutting real assertions and backfilling
-    ``assert True``), and it reads a legitimate refactor that reduces a file's
-    counts -- extracting repeated assertions into a shared helper, or moving a
-    test function out to another file -- as a weakening. See ENH-2964.
+    ``assert True``, ENH-2964 row 5), and it reads a legitimate helper
+    extraction that reduces a file's raw assertion count as a weakening
+    (ENH-2964 row 1). A moved test function is netted out cross-file by
+    ``filter_weakening_findings`` (ENH-2964), so it is no longer a false
+    positive at that call site; this function's own per-file measurement is
+    unchanged.
     """
     if not path.endswith(".py"):
         return None
@@ -281,6 +284,16 @@ def measure_test_strength(source: str, path: str) -> TestStrength | None:
     )
 
 
+def _weakened(before: TestStrength, after: TestStrength) -> bool:
+    """Scalar weakening comparison shared by ``is_weakening`` and the
+    cross-file netting adjustment in ``filter_weakening_findings``."""
+    return (
+        after.assertions < before.assertions
+        or after.test_functions < before.test_functions
+        or after.skip_markers > before.skip_markers
+    )
+
+
 def is_weakening(before_src: str, after_src: str, path: str) -> bool:
     """True when *after_src* weakens *before_src* for the test file at *path*.
 
@@ -292,10 +305,28 @@ def is_weakening(before_src: str, after_src: str, path: str) -> bool:
     after = measure_test_strength(after_src, path)
     if before is None or after is None:
         return True
-    return (
-        after.assertions < before.assertions
-        or after.test_functions < before.test_functions
-        or after.skip_markers > before.skip_markers
+    return _weakened(before, after)
+
+
+def _test_functions(source: str) -> dict[str, ast.AST] | None:
+    """Top-level ``test*`` function nodes by name; None when unparseable."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return None
+    return {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test")
+    }
+
+
+def _subtract(total: TestStrength, parts: list[TestStrength]) -> TestStrength:
+    """Field-wise ``total - sum(parts)``, floored at 0."""
+    return TestStrength(
+        assertions=max(0, total.assertions - sum(p.assertions for p in parts)),
+        test_functions=max(0, total.test_functions - sum(p.test_functions for p in parts)),
+        skip_markers=max(0, total.skip_markers - sum(p.skip_markers for p in parts)),
     )
 
 
@@ -309,25 +340,79 @@ def filter_weakening_findings(
     source strength), keeps each ``modified`` finding whose ``is_weakening``
     is True, and drops ``added`` findings entirely -- a new test file cannot
     weaken the suite.
+
+    A ``modified`` finding that reads as weakening is then re-checked against
+    a cross-file-adjusted baseline (ENH-2964): if a test function present in
+    its ``before`` text is *newly present* elsewhere in this same finding
+    set -- another ``modified`` finding's ``after`` text, or any ``added``
+    finding's text -- that relocated function's strength is subtracted from
+    the ``before`` baseline before re-comparing. This nets out a test
+    function moved to another file without laundering an unrelated deletion
+    in the same file (ENH-2964 row 8) or a same-named-but-unrelated function
+    already living elsewhere before this run (ENH-2964 row 9), since
+    "relocated" only ever contains names newly present in *this run's*
+    findings, never a pre-existing name match against an untouched file.
     """
     modified_paths = [f.path for f in findings if f.kind == "modified" and not f.is_config]
     before_texts = read_paths_at_ref(repo_root, ref, modified_paths)
     after_texts = {path: _read_text(repo_root / path) for path in modified_paths}
 
+    added_paths = [f.path for f in findings if f.kind == "added" and not f.is_config]
+    added_texts = {path: _read_text(repo_root / path) for path in added_paths}
+
+    relocated: set[str] = set()
+    for path in added_paths:
+        names = _test_functions(added_texts[path])
+        if names is not None:
+            relocated.update(names)
+    for path in modified_paths:
+        before_src = before_texts.get(path)
+        after_src = after_texts.get(path)
+        if before_src is None or after_src is None:
+            continue
+        before_names = _test_functions(before_src)
+        after_names = _test_functions(after_src)
+        if before_names is None or after_names is None:
+            continue
+        relocated.update(set(after_names) - set(before_names))
+
     kept: list[TamperFinding] = []
     for finding in findings:
         if finding.is_config or finding.kind == "deleted":
             kept.append(finding)
-        elif finding.kind == "modified":
-            before_src = before_texts.get(finding.path)
-            after_src = after_texts.get(finding.path)
-            if (
-                before_src is None
-                or after_src is None
-                or is_weakening(before_src, after_src, finding.path)
-            ):
-                kept.append(finding)
-        # "added" findings are dropped.
+            continue
+        if finding.kind != "modified":
+            continue  # "added" findings are dropped.
+
+        before_src = before_texts.get(finding.path)
+        after_src = after_texts.get(finding.path)
+        if before_src is None or after_src is None:
+            kept.append(finding)
+            continue
+        if not is_weakening(before_src, after_src, finding.path):
+            continue
+
+        before_strength = measure_test_strength(before_src, finding.path)
+        before_names = _test_functions(before_src)
+        after_strength = measure_test_strength(after_src, finding.path)
+        if before_strength is None or before_names is None or after_strength is None or not relocated:
+            kept.append(finding)
+            continue
+
+        relocated_parts = [
+            part
+            for name, node in before_names.items()
+            if name in relocated
+            for part in [measure_test_strength(ast.unparse(node), finding.path)]
+            if part is not None
+        ]
+        if not relocated_parts:
+            kept.append(finding)
+            continue
+
+        adjusted_before = _subtract(before_strength, relocated_parts)
+        if _weakened(adjusted_before, after_strength):
+            kept.append(finding)
     return kept
 
 

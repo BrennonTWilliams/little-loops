@@ -2411,8 +2411,11 @@ in up to two windows, ANDing the verdicts:
    step), findings are filtered to edits that actually weaken the test suite
    (assertions/test functions removed, skip/skipif/xfail markers added, file deleted) rather
    than any byte change (BUG-2954). The strength metric is a per-file aggregate count, so it
-   does not detect a same-count substitution and reads a count-reducing refactor (assertions
-   extracted to a shared helper, a test moved to another file) as a weakening — see ENH-2964.
+   still does not detect a same-count substitution (real assertions gutted and backfilled with
+   `assert True`) and still reads assertions extracted into a shared helper as a weakening — see
+   ENH-2964. A test function moved to another file is no longer a false positive: the filter
+   nets a file's strength deficit against a same-named test function newly present elsewhere in
+   the same finding set (ENH-2964).
 2. **Post-implement window** (ENH-2958, only when `pre_step_snapshot` is given). Both
    `issue_manager.py` (`ll-auto`) and `worker_pool.py` (`ll-parallel`/`ll-sprint`) capture a
    live `snapshot_test_paths(...)` right after the implement call returns and thread it

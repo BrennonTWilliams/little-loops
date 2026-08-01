@@ -5,6 +5,7 @@ title: Tamper-guard strength metric is a per-file aggregate count, with false po
 type: ENH
 priority: P3
 captured_at: '2026-08-01T00:00:00Z'
+completed_at: '2026-08-01T22:46:37Z'
 discovered_date: 2026-08-01
 discovered_by: review
 relates_to:
@@ -19,6 +20,7 @@ score_complexity: 21
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+status: done
 ---
 
 # ENH-2964: Tamper-guard strength metric is a per-file aggregate count, with false positives on legitimate refactors and a same-count evasion hole
@@ -441,6 +443,7 @@ Additional criteria:
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-01T22:46:14 - `dbf963d5-eae9-42d1-9073-80b412860523.jsonl`
 - `/ll:confidence-check` - 2026-08-01T22:36:40 - `b680ac0d-bfa8-4297-b0d5-f93678c11559.jsonl`
 - `/ll:confidence-check` - 2026-08-01T22:33:14 - `446a45c6-99b0-4308-8fb4-ae64bdd94ebf.jsonl`
 - `/ll:decide-issue` - 2026-08-01T22:24:53 - `2af9d556-d7ad-4171-bfdd-d4ae5457547b.jsonl`

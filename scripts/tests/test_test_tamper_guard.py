@@ -682,6 +682,26 @@ class TestIsWeakening:
         after = "def test_a((:\n    pass\n"
         assert is_weakening(before, after, "test_x.py") is True
 
+    def test_helper_extraction_is_still_flagged_out_of_scope(self) -> None:
+        """ENH-2964 row 1: helper extraction stays a false positive at the
+        ``is_weakening`` level -- fixing it needs assertion attribution
+        through helper calls, a separate mechanism per the issue's Proposed
+        Solution. Reproduction verbatim from the issue's Current Behavior."""
+        before = "def test_a():\n    assert 1\n    assert 2\ndef test_b():\n    assert 3\n    assert 4\n"
+        after = (
+            "def _check(x):\n    assert x\n"
+            "def test_a():\n    _check(1); _check(2)\n"
+            "def test_b():\n    _check(3); _check(4)\n"
+        )
+        assert is_weakening(before, after, "test_x.py") is True
+
+    def test_same_count_assert_true_backfill_is_still_undetected_out_of_scope(self) -> None:
+        """ENH-2964 row 5: a same-count substitution stays a false negative --
+        needs an assertion-triviality mechanism, a separate increment."""
+        before = "def test_a():\n    assert compute() == 5\n"
+        after = "def test_a():\n    assert True\n"
+        assert is_weakening(before, after, "test_x.py") is False
+
 
 class TestReadPathsAtRef:
     def test_reads_text_content_at_ref(self, tmp_path: Path) -> None:
@@ -745,6 +765,152 @@ class TestFilterWeakeningFindings:
         finding = TamperFinding(path="pytest.ini", kind="modified", is_config=True)
         kept = filter_weakening_findings([finding], Path("/nonexistent"), "HEAD")
         assert kept == [finding]
+
+
+class TestFilterWeakeningFindingsCrossFileNetting:
+    """ENH-2964: cross-file strength netting for a test function moved out of
+    a modified file, without laundering an unrelated deletion or a
+    pre-existing name collision elsewhere."""
+
+    def test_moved_test_to_added_file_is_not_weakening(self, tmp_path: Path) -> None:
+        """AC row 2 (added destination)."""
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "test_a.py").write_text(
+            "def test_a():\n    assert 1 == 1\n\ndef test_b():\n    assert 2 == 2\n"
+        )
+        _git(repo, "add", "test_a.py")
+        _git(repo, "commit", "-m", "add tests")
+        (repo / "test_a.py").write_text("def test_a():\n    assert 1 == 1\n")
+        (repo / "test_b.py").write_text("def test_b():\n    assert 2 == 2\n")
+
+        findings = [
+            TamperFinding(path="test_a.py", kind="modified"),
+            TamperFinding(path="test_b.py", kind="added"),
+        ]
+        kept = filter_weakening_findings(findings, repo, "HEAD")
+        assert kept == []
+
+    def test_moved_test_to_modified_file_is_not_weakening(self, tmp_path: Path) -> None:
+        """AC row 2 (existing/modified destination -- the common split-an-
+        oversized-file case; not covered by reading ``added`` findings alone)."""
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "test_a.py").write_text(
+            "def test_a():\n    assert 1 == 1\n\ndef test_b():\n    assert 2 == 2\n"
+        )
+        (repo / "test_b.py").write_text("def test_c():\n    assert True\n")
+        _git(repo, "add", "test_a.py", "test_b.py")
+        _git(repo, "commit", "-m", "add tests")
+        (repo / "test_a.py").write_text("def test_a():\n    assert 1 == 1\n")
+        (repo / "test_b.py").write_text(
+            "def test_c():\n    assert True\n\ndef test_b():\n    assert 2 == 2\n"
+        )
+
+        findings = [
+            TamperFinding(path="test_a.py", kind="modified"),
+            TamperFinding(path="test_b.py", kind="modified"),
+        ]
+        kept = filter_weakening_findings(findings, repo, "HEAD")
+        assert kept == []
+
+    def test_unrelated_addition_elsewhere_does_not_net_against_deletion(
+        self, tmp_path: Path
+    ) -> None:
+        """AC row 6: delete a real test in A, add unrelated trivial
+        assertions in B -- must not net; the netting-evasion guard."""
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "test_a.py").write_text(
+            "def test_a():\n    assert 1 == 1\n\ndef test_b():\n    assert 2 == 2\n"
+        )
+        _git(repo, "add", "test_a.py")
+        _git(repo, "commit", "-m", "add tests")
+        (repo / "test_a.py").write_text("def test_a():\n    assert 1 == 1\n")
+        (repo / "test_c.py").write_text("def test_c():\n    assert True\n")
+
+        findings = [
+            TamperFinding(path="test_a.py", kind="modified"),
+            TamperFinding(path="test_c.py", kind="added"),
+        ]
+        kept = filter_weakening_findings(findings, repo, "HEAD")
+        assert [f.path for f in kept] == ["test_a.py"]
+
+    def test_move_plus_unrelated_deletion_in_same_file_still_flagged(
+        self, tmp_path: Path
+    ) -> None:
+        """AC row 8: move ``test_b`` out of A *and* delete an assertion from
+        A's retained ``test_a`` -- must not be laundered by the move; the
+        adjusted-baseline guard."""
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "test_a.py").write_text(
+            "def test_a():\n"
+            "    assert 1 == 1\n"
+            "    assert 2 == 2\n"
+            "def test_b():\n"
+            "    assert 3 == 3\n"
+            "    assert 4 == 4\n"
+        )
+        _git(repo, "add", "test_a.py")
+        _git(repo, "commit", "-m", "add tests")
+        (repo / "test_a.py").write_text("def test_a():\n    assert 1 == 1\n")
+        (repo / "test_b.py").write_text("def test_b():\n    assert 3 == 3\n    assert 4 == 4\n")
+
+        findings = [
+            TamperFinding(path="test_a.py", kind="modified"),
+            TamperFinding(path="test_b.py", kind="added"),
+        ]
+        kept = filter_weakening_findings(findings, repo, "HEAD")
+        assert [f.path for f in kept] == ["test_a.py"]
+
+    def test_name_collision_with_untouched_file_does_not_net(self, tmp_path: Path) -> None:
+        """AC row 9: delete ``test_to_dict`` from A while an unrelated,
+        unmodified B already defines its own ``test_to_dict`` -- must not
+        net; ``relocated`` only holds names newly present in this run's
+        findings, and B is not part of this run's finding set."""
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "test_a.py").write_text(
+            "def test_to_dict():\n    assert 1 == 1\n\ndef test_other():\n    assert True\n"
+        )
+        (repo / "test_b.py").write_text("def test_to_dict():\n    assert True\n")
+        _git(repo, "add", "test_a.py", "test_b.py")
+        _git(repo, "commit", "-m", "add tests")
+        (repo / "test_a.py").write_text("def test_other():\n    assert True\n")
+        # test_b.py untouched on disk -- not part of this run's finding set.
+
+        findings = [TamperFinding(path="test_a.py", kind="modified")]
+        kept = filter_weakening_findings(findings, repo, "HEAD")
+        assert kept == findings
+
+    def test_no_git_show_issued_for_added_paths(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AC: ``read_paths_at_ref`` is invoked only over ``modified`` finding
+        paths -- ``added`` paths are read from disk only, no new ``git show``
+        call for a path that has no finding."""
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "test_a.py").write_text(
+            "def test_a():\n    assert 1 == 1\n\ndef test_b():\n    assert 2 == 2\n"
+        )
+        _git(repo, "add", "test_a.py")
+        _git(repo, "commit", "-m", "add tests")
+        (repo / "test_a.py").write_text("def test_a():\n    assert 1 == 1\n")
+        (repo / "test_b.py").write_text("def test_b():\n    assert 2 == 2\n")
+
+        import little_loops.test_tamper_guard as module
+
+        original = module.read_paths_at_ref
+        seen_paths: list[str] = []
+
+        def _spy(repo_root: Path, ref: str, paths: list[str]) -> dict[str, str | None]:
+            seen_paths.extend(paths)
+            return original(repo_root, ref, paths)
+
+        monkeypatch.setattr(module, "read_paths_at_ref", _spy)
+
+        findings = [
+            TamperFinding(path="test_a.py", kind="modified"),
+            TamperFinding(path="test_b.py", kind="added"),
+        ]
+        filter_weakening_findings(findings, repo, "HEAD")
+        assert seen_paths == ["test_a.py"]
 
 
 class TestRunTamperGuardFindingFilter:
