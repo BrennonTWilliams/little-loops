@@ -41,21 +41,12 @@ max_steps: 10
 # the parent's `implement` state hash-match at both ends and produce no
 # finding. Only a mutation made *inside* this oracle's own window trips it.
 #
-# !! CURRENTLY DETECTS BUT DOES NOT ENFORCE — see BUG-2962. Verified end-to-end:
-# a `test_cmd` that rewrites `tests/test_x.py` mid-run is caught byte-exact
-# (`run_tamper_guard` -> passed=False, findings=[('tests/test_x.py','modified')]),
-# yet the oracle still emits GATE_PASS. The executor's only enforcement is a
-# verdict flip (`executor.py:1469-1474`, `forced_verdict = "no" if state.on_no
-# else "error"`), and every run_* state here routes on_yes/on_no/on_error to the
-# SAME successor by design (`aggregate` is the sole arbiter) — so flipping the
-# verdict is a no-op. The finding is also clobbered: `ctx.context["_tamper_guard"]`
-# (`executor.py:1460`) is overwritten by each later guarded state, so the 4
-# trailing SKIP states erase the evidence before `aggregate` runs.
-#
-# Kept enabled anyway: it is a strict improvement over dormant (findings are
-# now computed and observable in-process), it costs ~nothing, and it is the
-# prerequisite ENH-2958 asked to confirm. Do not treat it as enforcing until
-# BUG-2962 lands.
+# Enforced (BUG-2962): a fail-policy finding jumps the run straight to the
+# FSM's declared failure terminal (`failed`, ENH-2814) regardless of the
+# guarded state's own routing shape — the convergent on_yes/on_no/on_error
+# ->run_* shape here no longer defeats it. Findings accumulate across all
+# guarded states in `ctx.context["_tamper_guard"]` rather than being
+# clobbered by later clean states.
 tamper_guard: fail
 
 parameters:

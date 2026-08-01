@@ -10909,3 +10909,116 @@ class TestTamperGuardExecutorHook:
 
         assert runner.calls == ["write test", "run tests"]
         assert result.final_state == "done"
+
+    def test_fail_policy_blocks_convergent_routing(self, tmp_path: Path) -> None:
+        """BUG-2962: on_yes/on_no/on_error all route to the same successor —
+        a verdict flip is a no-op here, so enforcement must not depend on it.
+        The guard should jump straight to the FSM's declared failure terminal
+        instead."""
+        repo = self._repo(tmp_path)
+
+        def mutate() -> None:
+            (repo / "tests" / "test_x.py").write_text("def test_x():\n    pass  # tampered\n")
+
+        runner = self._TamperingActionRunner(mutate=mutate, exit_code=0)
+        fsm = FSMLoop(
+            name="tamper-convergent-test",
+            initial="verify",
+            states={
+                "verify": StateConfig(
+                    action="run tests",
+                    tamper_guard="fail",
+                    on_yes="done",
+                    on_no="done",
+                    on_error="done",
+                ),
+                "done": StateConfig(terminal=True),
+                "blocked": StateConfig(terminal=True, failure=True),
+            },
+        )
+        executor = FSMExecutor(fsm, action_runner=runner, working_dir=repo)
+        result = executor.run()
+
+        assert result.final_state == "blocked"
+        assert result.failure_terminal is True
+
+    def test_fail_policy_blocks_next_chained_state(self, tmp_path: Path) -> None:
+        """BUG-2962: a `next:`-chained state has no on_yes/on_no at all, so
+        the old verdict-flip enforcement never had anything to flip. The
+        guard must still block."""
+        repo = self._repo(tmp_path)
+
+        def mutate() -> None:
+            (repo / "tests" / "test_x.py").write_text("def test_x():\n    pass  # tampered\n")
+
+        runner = self._TamperingActionRunner(mutate=mutate, exit_code=0)
+        fsm = FSMLoop(
+            name="tamper-next-test",
+            initial="verify",
+            states={
+                "verify": StateConfig(action="run tests", tamper_guard="fail", next="done"),
+                "done": StateConfig(terminal=True),
+                "blocked": StateConfig(terminal=True, failure=True),
+            },
+        )
+        executor = FSMExecutor(fsm, action_runner=runner, working_dir=repo)
+        result = executor.run()
+
+        assert result.final_state == "blocked"
+        assert result.failure_terminal is True
+
+    def test_evidence_accumulates_across_guarded_states(self, tmp_path: Path) -> None:
+        """BUG-2962: an earlier guarded state's finding must survive later
+        clean guarded states rather than being clobbered, and `policy: allow`
+        must record every state's finding, not just the last."""
+        repo = self._repo(tmp_path)
+
+        def mutate() -> None:
+            (repo / "tests" / "test_x.py").write_text("def test_x():\n    pass  # tampered\n")
+
+        class _StepRunner:
+            def __init__(self) -> None:
+                self.calls: list[str] = []
+
+            def run(self, action: str, *args: Any, **kwargs: Any) -> ActionResult:
+                self.calls.append(action)
+                if action == "tamper":
+                    mutate()
+                return ActionResult(
+                    output="",
+                    stderr="",
+                    exit_code=0,
+                    duration_ms=10,
+                    usage_events=[],
+                    result_seen=False,
+                )
+
+        fsm = FSMLoop(
+            name="tamper-evidence-test",
+            initial="step1",
+            states={
+                "step1": StateConfig(
+                    action="tamper", tamper_guard="allow", on_yes="step2", on_no="step2"
+                ),
+                "step2": StateConfig(
+                    action="clean", tamper_guard="allow", on_yes="done", on_no="done"
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        runner = _StepRunner()
+        executor = FSMExecutor(fsm, action_runner=runner, working_dir=repo)
+        result = executor.run()
+
+        assert result.final_state == "done"
+        evidence = executor.fsm.context.get("_tamper_guard")
+        assert isinstance(evidence, list)
+        assert len(evidence) == 2
+        # `policy: allow` always reports passed=True (it never blocks) -- the
+        # tamper signal lives in `findings`, which must not be clobbered by
+        # step2's clean pass.
+        assert evidence[0]["state"] == "step1"
+        assert evidence[0]["findings"]
+        assert evidence[1]["state"] == "step2"
+        assert evidence[1]["passed"] is True
+        assert evidence[1]["findings"] == []

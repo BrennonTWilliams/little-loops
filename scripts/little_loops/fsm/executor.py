@@ -1333,6 +1333,78 @@ class FSMExecutor:
 
         return tamper_guard_changed_files(repo_root)
 
+    def _check_tamper_guard(
+        self,
+        state: StateConfig,
+        ctx: InterpolationContext,
+        tamper_before: Any,
+        tamper_policy: Literal["revert", "fail", "allow"] | None,
+        repo_root: Path,
+    ) -> str | None:
+        """Compare-on-exit + fail-policy enforcement for the tamper guard (BUG-2962).
+
+        Shared by both the `next:`-chained and on_yes/on_no/on_error routing
+        shapes in ``_execute_state`` so a guarded state's fail-policy finding
+        blocks the run regardless of how it routes.
+
+        Returns:
+            The forced next-state name when policy is "fail" and a finding is
+            present (accumulated evidence still gets recorded first), or None
+            when the caller should proceed with its normal routing (guard
+            inactive for this state, or nothing to enforce).
+        """
+        if tamper_before is None:
+            return None
+
+        from little_loops.config import BRConfig
+        from little_loops.test_tamper_guard import run_tamper_guard
+
+        assert tamper_policy is not None
+        tamper_report = run_tamper_guard(
+            tamper_before,
+            self._tamper_guard_changed_files(repo_root),
+            BRConfig(repo_root),
+            tamper_policy,
+            repo_root,
+        )
+        # Accumulate rather than overwrite. A later guarded state (e.g. a
+        # self-skipping SKIP state further down a convergent oracle) must not
+        # erase an earlier finding before an aggregator or `policy: allow`
+        # evidence consumer can read it.
+        tamper_record = {
+            "state": self.current_state,
+            "policy": tamper_report.policy,
+            "passed": tamper_report.passed,
+            "findings": [
+                {"path": f.path, "kind": f.kind, "is_config": f.is_config}
+                for f in tamper_report.findings
+            ],
+            "reverted": tamper_report.reverted,
+        }
+        ctx.context.setdefault("_tamper_guard", []).append(tamper_record)
+
+        if tamper_policy != "fail" or tamper_report.passed:
+            return None
+
+        # A verdict flip is only meaningful when on_yes/on_no/on_error
+        # diverge. Oracle gates like code-run-gate.yaml route every outcome
+        # to the same successor by design (a dedicated aggregator is the sole
+        # arbiter), which makes a flip a no-op, and a `next:`-chained state
+        # has no on_yes/on_no at all. Enforce independently of routing shape
+        # by jumping straight to the FSM's declared failure terminal
+        # (`StateConfig.failure`, ENH-2814) — the same "force past normal
+        # routing" convention `_check_throttle`'s "__STOP__" uses, but
+        # landing on a real terminal instead of aborting.
+        failure_states = self.fsm.get_failure_states()
+        if state.on_no and state.on_no in failure_states:
+            return state.on_no
+        if failure_states:
+            return sorted(failure_states)[0]
+        # No declared failure terminal anywhere in the FSM to route to —
+        # fall back to on_no directly (still correct when it diverges from
+        # on_yes) or leave routing to the caller's normal path.
+        return state.on_no
+
     def _execute_state(self, state: StateConfig) -> str | None:
         """Execute a single state and return next state name.
 
@@ -1361,6 +1433,30 @@ class FSMExecutor:
         if state.type == "learning" and state.learning is not None:
             return self._execute_learning_state(state, ctx)
 
+        # ENH-2934: tamper guard snapshot-on-entry. Bracket the action dispatch
+        # below (not the whole state) so the snapshot reflects test-file state
+        # immediately before this guarded state's own action runs — a TDD
+        # implement phase that legitimately wrote tests earlier in the run
+        # must not trip a later, separate verify state's guard.
+        #
+        # BUG-2962: computed here (before the `state.next:` branch), not just
+        # ahead of the non-`next:` action dispatch further down, so a
+        # `next:`-chained state (unconditional transition, no on_yes/on_no at
+        # all — e.g. code-run-gate.yaml's resolve_commands) is guarded too.
+        # The old placement put this entirely inside the `else` shape of that
+        # branch, so `next:`-chained states got no snapshot, no compare, and
+        # no enforcement whatsoever — a variant of the inert-guard bug this
+        # issue describes.
+        _tamper_policy = self._effective_tamper_guard_policy(state)
+        _tamper_repo_root = self.working_dir or Path.cwd()
+        _tamper_before = None
+        if _tamper_policy is not None and state.action and self._action_mode(state) != "contract":
+            from little_loops.test_tamper_guard import snapshot_test_paths
+
+            _tamper_before = snapshot_test_paths(
+                self._tamper_guard_candidate_paths(_tamper_repo_root), _tamper_repo_root
+            )
+
         # Handle unconditional transition
         if state.next:
             if state.action:
@@ -1382,6 +1478,14 @@ class FSMExecutor:
                     "exit_code": result.exit_code,
                     "state": self.current_state,
                 }
+                # BUG-2962: compare-on-exit + fail-policy enforcement, same as
+                # the non-`next:` path below — runs regardless of the
+                # action's own exit code, before any exit-code-based routing.
+                _tamper_next = self._check_tamper_guard(
+                    state, ctx, _tamper_before, _tamper_policy, _tamper_repo_root
+                )
+                if _tamper_next is not None:
+                    return _tamper_next
                 if result.exit_code is not None and result.exit_code < 0:
                     # Process killed by signal — do not silently advance via next
                     if state.on_error:
@@ -1403,21 +1507,6 @@ class FSMExecutor:
                         return error_target
                     return error_target
             return interpolate(state.next, ctx)
-
-        # ENH-2934: tamper guard snapshot-on-entry. Bracket the action dispatch
-        # below (not the whole state) so the snapshot reflects test-file state
-        # immediately before this guarded state's own action runs — a TDD
-        # implement phase that legitimately wrote tests earlier in the run
-        # must not trip a later, separate verify state's guard.
-        _tamper_policy = self._effective_tamper_guard_policy(state)
-        _tamper_repo_root = self.working_dir or Path.cwd()
-        _tamper_before = None
-        if _tamper_policy is not None and state.action and self._action_mode(state) != "contract":
-            from little_loops.test_tamper_guard import snapshot_test_paths
-
-            _tamper_before = snapshot_test_paths(
-                self._tamper_guard_candidate_paths(_tamper_repo_root), _tamper_repo_root
-            )
 
         # Execute action if present
         action_result = None
@@ -1445,33 +1534,11 @@ class FSMExecutor:
         # ENH-2934: tamper guard compare-on-exit + fail-policy enforcement.
         # Runs regardless of the action's own verdict — a tamper-relevant file
         # change can happen whether or not the action itself succeeded.
-        if _tamper_before is not None:
-            from little_loops.config import BRConfig
-            from little_loops.test_tamper_guard import run_tamper_guard
-
-            assert _tamper_policy is not None
-            tamper_report = run_tamper_guard(
-                _tamper_before,
-                self._tamper_guard_changed_files(_tamper_repo_root),
-                BRConfig(_tamper_repo_root),
-                _tamper_policy,
-                _tamper_repo_root,
-            )
-            ctx.context["_tamper_guard"] = {
-                "policy": tamper_report.policy,
-                "passed": tamper_report.passed,
-                "findings": [
-                    {"path": f.path, "kind": f.kind, "is_config": f.is_config}
-                    for f in tamper_report.findings
-                ],
-                "reverted": tamper_report.reverted,
-            }
-            if _tamper_policy == "fail" and not tamper_report.passed:
-                forced_verdict = "no" if state.on_no else "error"
-                eval_result = EvaluationResult(
-                    verdict=forced_verdict,
-                    details={"tamper_guard": ctx.context["_tamper_guard"]},
-                )
+        _tamper_next = self._check_tamper_guard(
+            state, ctx, _tamper_before, _tamper_policy, _tamper_repo_root
+        )
+        if _tamper_next is not None:
+            return _tamper_next
         # ENH-2522: track last action exit_code so the shutdown helper can
         # distinguish a SIGKILL (exit_code=-9) from a clean Ctrl-C.
         if action_result is not None:

@@ -1,11 +1,13 @@
 ---
 id: BUG-2962
-title: tamper_guard fail policy is inert on convergent routing and clobbers its own evidence
+title: tamper_guard fail policy is inert on convergent routing and clobbers its own
+  evidence
 type: BUG
 priority: P2
-status: open
+status: done
 discovered_date: 2026-07-31
 discovered_by: manual
+completed_at: '2026-08-01T04:55:36Z'
 blocks:
 - ENH-2958
 relates_to:
@@ -167,17 +169,17 @@ terminal, bypassing `EvaluationResult` verdict routing entirely.
 
 ## Acceptance Criteria
 
-- [ ] The reproduction above yields `GATE_FAILED` / a failure terminal.
-- [ ] A `fail`-policy finding on a state whose `on_yes`/`on_no`/`on_error`
+- [x] The reproduction above yields `GATE_FAILED` / a failure terminal.
+- [x] A `fail`-policy finding on a state whose `on_yes`/`on_no`/`on_error`
       converge still blocks the run; a test covers the convergent shape
       specifically.
-- [ ] A `fail`-policy finding on a `next:`-chained state blocks the run.
-- [ ] A finding on an early guarded state survives later clean guarded states
+- [x] A `fail`-policy finding on a `next:`-chained state blocks the run.
+- [x] A finding on an early guarded state survives later clean guarded states
       and is present in run evidence; a test covers the clobbering case.
-- [ ] `policy: allow` records all findings across states, not just the last.
-- [ ] Existing `TestTamperGuardExecutorHook` tests
+- [x] `policy: allow` records all findings across states, not just the last.
+- [x] Existing `TestTamperGuardExecutorHook` tests
       (`test_fsm_executor.py:10702`) still pass unmodified.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `python -m pytest scripts/tests/` exits 0.
 
 ## Notes
 
@@ -228,8 +230,35 @@ four distinct inert shapes have now been found in a single sitting.
 
 ## Status
 
-**Open** | Created: 2026-07-31 | Priority: P2
+**Done** | Created: 2026-07-31 | Priority: P2
+
+## Resolution
+
+Fixed in `fsm/executor.py`:
+
+1. **Routing-shape-independent enforcement.** A `_check_tamper_guard` helper
+   now handles compare-on-exit + fail-policy enforcement for both the
+   `next:`-chained path and the on_yes/on_no/on_error path. On a fail-policy
+   finding it jumps directly to the FSM's declared failure terminal
+   (`StateConfig.failure`, ENH-2814) rather than flipping the eval verdict —
+   effective regardless of whether routes converge, diverge, or use `next:`.
+2. **`next:`-chained states are now guarded at all.** The snapshot-on-entry
+   was previously computed only inside the branch that never runs for
+   `next:`-chained states (an unconditional-transition state returns before
+   ever reaching it) — a fifth inert-guard variant found while fixing the
+   other two. Snapshot-on-entry now runs before the `next:`/routing-shape
+   branch so both paths share one guard.
+3. **Evidence accumulates.** `ctx.context["_tamper_guard"]` is now a list of
+   per-state records (each tagged with `state`) appended via
+   `setdefault(...).append(...)`, instead of a single dict overwritten by
+   each guarded state's exit.
+
+`oracles/code-run-gate.yaml`'s inline comment was updated to drop the
+detect-only caveat now that the bracket enforces. Verified end-to-end against
+the issue's reproduction: `final_state` now lands on `failed` (a declared
+failure terminal) instead of `done`.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-01T04:54:48 - `ca2ef640-5939-449b-92d6-dadc0183d48d.jsonl`
 - `/ll:ready-issue` - 2026-08-01T04:40:13 - `f98fbba4-eb8e-4e2d-89e9-ed18419f01f9.jsonl`
