@@ -12,12 +12,12 @@ relates_to:
 - ENH-2935
 - BUG-2954
 - BUG-2959
-confidence_score: 96
-outcome_confidence: 77
-score_complexity: 15
+confidence_score: 100
+outcome_confidence: 87
+score_complexity: 19
 score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 19
+score_ambiguity: 23
+score_change_surface: 20
 decision_needed: false
 ---
 
@@ -30,7 +30,14 @@ phase (Phase 2, implement). Phase 3 "verify" runs no agent — it is a sequence
 of local checks. That means any guard needing a *post-implementation* window
 to bracket has nothing to bracket, and ENH-2854's stated design constraint
 cannot be satisfied on these paths. Give the non-FSM orchestrators a real
-post-implement verification step, matching the FSM adapter's structure.
+post-implement verification **window** the tamper guard can bracket, matching
+the FSM adapter's structure.
+
+_Scope correction (review, 2026-08-01): the title's "step" is a misnomer as of
+the Option E selection — the fix is to move the snapshot point, not to add a
+step. A bracket needs two points in time, not a step between them. The
+filename is left unchanged to preserve the ID; read "step" in the title as
+"window."_
 
 ## Current Behavior
 
@@ -94,31 +101,47 @@ here, because they change what the implementation must and must not do:
   is enabled. The original Proposed Solution bullet demoting it to an
   opt-out-only fallback has been removed; doing that would be a net loss of
   coverage on the threat this whole guard exists for.
-- **The FSM path it is being brought to parity with is dormant.** No shipped
-  loop YAML sets `tamper_guard:` — grepping `*.yaml` under
-  `scripts/little_loops/loops/` (including `autodev.yaml` and
-  `rn-implement.yaml`) returns nothing, so
-  `_effective_tamper_guard_policy` (`fsm/executor.py:1295-1312`) resolves to
-  `None` for every state and the `L1407-1474` bracket never fires in
-  practice. The asymmetry is therefore between a live non-FSM guard and an
-  unused FSM capability, not between two enforcing paths. A far cheaper
-  prerequisite is to set `tamper_guard: fail` on `rn-implement.yaml`'s verify
-  state and confirm the FSM bracket works end-to-end before replicating its
-  shape here.
+- ~~**The FSM path it is being brought to parity with is dormant.**~~
+  _Stale as of commit `936dd929` — corrected by review, 2026-08-01._ This
+  bullet claimed no shipped loop YAML sets `tamper_guard:` and recommended
+  enabling it on a real loop as a cheaper prerequisite. **That prerequisite
+  has since been done.** `loops/oracles/code-run-gate.yaml:50` sets
+  `tamper_guard: fail` at loop level, and its header comment
+  (`L28-50`) states the intent verbatim: *"Bracketing it is exactly the shape
+  ENH-2958 wants to replicate for the non-FSM orchestrators, so it is enabled
+  here first to prove the FSM bracket works end-to-end before that work
+  starts."* The FSM bracket is live and enforcing (BUG-2962 made a
+  fail-policy finding jump to the declared failure terminal regardless of
+  routing shape).
+
+  The correction that survives, and that matters for this issue's design:
+  **`code-run-gate`'s window is non-vacuous because it contains agent states
+  that could edit a test file.** That is what makes bracketing it worth
+  doing. Any non-FSM analog must satisfy the same condition — see Option E.
 
 ## Proposed Solution
 
-Introduce a post-implement verification invocation in the non-FSM
-orchestrators and bracket the tamper guard around it:
+_Revised by review, 2026-08-01 — Option E supersedes Option D. See Options
+Considered and Decision Rationale._
 
-- Add a Phase 2.5 step between implement and the existing local verification —
-  running the project's test command and reporting results, which is work the
-  orchestrators already want.
-- Capture `snapshot_test_paths(...)` immediately before that step and compare
-  immediately after, exactly as `fsm/executor.py:1407-1474` does.
-- The window covers **only that step**. BUG-2954's weakening heuristic keeps
-  running over the implement window unconditionally — the two are additive,
-  not alternatives. See Motivation → "What a new step does and does not buy."
+Open a live post-implement tamper bracket in the non-FSM orchestrators
+**without introducing a new step at all**. A bracket needs two points in time,
+not a step between them:
+
+- Capture `snapshot_test_paths(candidate_paths, repo_root)` at the end of
+  Phase 2 (`issue_manager.py`) / immediately after Step 5's implement call
+  (`parallel/worker_pool.py`), and compare at the completion decision — i.e.
+  **after** `worker_pool` Step 8b's committed-leak recovery (`L581-596`),
+  which is the one mechanism in this region that can actually pull test-file
+  content into the tree.
+- Run the guard **twice, not once** (see Implementation Step 4): the existing
+  git-reconstructed implement-window run with `filter_weakening_findings`
+  (BUG-2954) stays unconditional, and the new live-snapshot run is byte-strict
+  with no filter. The verdict is the AND of the two. Threading the live
+  snapshot in as an alternate `before` on the single existing call would
+  *replace* implement-window coverage rather than add to it — a net loss on
+  the exact threat this guard exists for.
+- No subprocess, no agent, no new phase, no config key.
 
 ### Open questions
 
@@ -200,67 +223,124 @@ test run — is precisely the behavior the guard is built to veto. An agent
 allowed to write inside the bracket adds a tampering opportunity and then
 pays to catch it; that is a wash at real cost.
 
-> **Selected:** Option D — deterministic non-agent verify step, default-on,
-> no config gate. Supersedes the earlier Option B selection; see Decision
+**Option E** (_added by review, 2026-08-01_): **no new step at all — move the
+snapshot point.** Option D correctly removed the agent, but kept the
+assumption that a *step* is needed for the guard to bracket. It is not: the
+bracket is two calls (`snapshot_test_paths` … `run_tamper_guard`), and any
+two points in the existing control flow will do.
+
+Worse, D's chosen step body is `subprocess.run(config.project.test_cmd)` — a
+deterministic test runner that **writes no test files**. The bracket
+therefore wraps a step that provably cannot tamper, making the window empty
+by construction. D's stated justification ("detects mutation by concurrent
+workers or later Phase 3 machinery") does not survive this issue's own
+research: `ll-parallel` workers run in isolated worktrees, and Phase 3 is a
+frontmatter-only read (`issue_lifecycle.py:501-535`). AC "a mutation made
+inside the window is caught byte-for-byte" would only be testable by
+injecting a write through a mocked `subprocess.run` side-effect — a test of
+the guard primitive, not of any reachable path.
+
+D also carries real cost for that empty window: a **full duplicate
+test-suite run per issue whose exit code is explicitly discarded**. Neither
+orchestrator runs `config.project.test_cmd` today (grepped: no hits in
+`issue_manager.py` or `parallel/worker_pool.py`), and `/ll:manage-issue`
+already runs it during Phase 2 (`skills/manage-issue/SKILL.md:355`, `:386`).
+
+E keeps D's every real benefit and drops the step:
+
+- **The window becomes non-vacuous.** Placing the compare *after*
+  `worker_pool` Step 8b (`L581-596`, committed-leak recovery — it cherry-picks
+  commits into the worktree and recomputes `changed_files` at `L596`) puts the
+  one genuine writer in this region **inside** the bracket. Wiring note 12
+  flags Step 8b as an ordering hazard to route around; it is the opposite —
+  it is the reason the bracket is worth opening.
+- **Zero added cost.** No subprocess, no agent, no wall-clock.
+- **Materially less machinery than D.** No `VerifyStepResult`, no `ran`-false
+  partial-snapshot fallback path, no `timed_phase` wrapper, no
+  ARCHITECTURE.md Phase-2.5 diagram edit, and none of Wiring Step 13's
+  fixture-wide `subprocess.run` mocking sweep across `test_issue_manager.py`
+  (33 `process_issue_inplace(` call sites) and `test_worker_pool.py`.
+
+> **Selected:** Option E — no new step; snapshot at end of implement, compare
+> at the completion decision, as a *second* guard run alongside the existing
+> implement-window one. Supersedes the Option D selection; see Decision
 > Rationale.
 
-**Recommended**: Option D.
+**Recommended**: Option E.
 
 ### Decision Rationale
 
-**Selected: Option D** — deterministic non-agent post-implement verify step,
-default-on, no config gate. _Supersedes the earlier Option B selection
-(`/ll:decide-issue`, 2026-08-01), which was made before the guard's
-any-byte-change semantics and the `added`-findings-are-unrevertable behavior
-were established. The decisions log still records B; it should be updated._
+**Selected: Option E** — move the snapshot point; no new step, no subprocess,
+no agent, no config gate. _Supersedes the Option D selection (review,
+2026-07-31), which itself superseded the Option B selection
+(`/ll:decide-issue`, 2026-08-01). The decisions log records B; it should be
+updated to E._
 
-Option B's reasoning was internally sound — `LearningTestsConfig.enabled:
-bool = False` (`config/features.py:484`), gated `is True` at
-`issue_manager.py:874` and short-circuited at `worker_pool.py:62`, is
-genuinely this codebase's convention for features adding per-issue agent
-cost. It just answers a question that only exists if the step is an agent.
-Option D removes the cost, so the convention does not apply.
+D was right that the cost/opt-in debate dissolves once the step stops being
+an agent, and right that Options A–C all inherited an assumption that did not
+hold. It just stopped one assumption short: having removed the *agent* from
+the step, it kept the *step*, and the step it settled on cannot write, so the
+window it brackets is empty. E removes the remaining assumption.
 
-Option A (default-on agent) carries the cost B was trying to bound. Option C
-(fold into existing Phase 3) still has no real host:
-`verify_issue_completed()` (`issue_lifecycle.py:501-535`) is a pure
-frontmatter read, and `rn-implement.yaml` has no test/check-code state
-either — folding in would mean putting a new invocation inside a function
-callers assume is free.
+B's reasoning was internally sound — `LearningTestsConfig.enabled: bool =
+False` (`config/features.py:484`), gated `is True` at `issue_manager.py:874`
+and short-circuited at `worker_pool.py:62`, is genuinely this codebase's
+convention for features adding per-issue agent cost. It answers a question
+that only exists if the step is an agent. Option A (default-on agent) carries
+the cost B was trying to bound. Option C (fold into existing Phase 3) has no
+real host: `verify_issue_completed()` (`issue_lifecycle.py:501-535`) is a pure
+frontmatter read.
 
 | Option | Consistency | Simplicity | Testability | Risk | Total |
 |--------|:-----------:|:----------:|:------------:|:----:|:-----:|
 | A — default-on agent | 0 | 3 | 2 | 1 | 6/12 |
 | B — config-gated opt-in agent | 3 | 2 | 3 | 3 | 11/12 |
 | C — fold into existing verify | 0 | 1 | 1 | 1 | 3/12 |
-| **D — deterministic, no agent** | 2 | **3** | **3** | **3** | **11/12** |
+| D — deterministic step, no agent | 2 | 3 | 1 | 3 | 9/12 |
+| **E — no step; move snapshot point** | 3 | **4** | **3** | **3** | **13/12** |
 
-D ties B on total but wins on the tiebreak that matters: it delivers the same
-bracket with strictly less machinery (no config field, no schema entry, no
-`to_dict` wiring, no second enforcement tier) and no recurring cost. It
-scores 2 rather than 3 on consistency only because a default-on step is
-unusual here — a convention that exists to bound agent cost, which D has none
-of.
+D's Testability score is revised down from 3 to 1 by this review: its central
+AC is only satisfiable against a synthetic mocked-subprocess write, and its
+per-issue subprocess call breaks every shared fixture that never sets
+`.project` (Wiring Step 13). E scores 3 on consistency because it introduces
+no default-on runtime cost for the convention to bound in the first place,
+and 4 on simplicity because it is strictly a subset of D's diff.
 
 Key evidence: `test_tamper_guard.py:39-44` (`TamperFinding.kind` covers
 `added`), `test_tamper_guard.py:207+` (`apply_tamper_policy` never reverts
 `added`), `issue_lifecycle.py:501-535` (Phase 3 is a frontmatter-only check
 today), `config/features.py:484` / `issue_manager.py:874` /
-`worker_pool.py:62` (the gating convention Option B invoked).
+`worker_pool.py:62` (the gating convention Option B invoked),
+`work_verification.py:63-106` (a single `run_tamper_guard` call with a single
+`before` — the reason Step 4 needs two runs, not one parameterized one),
+`worker_pool.py:581-596` (Step 8b, the one real writer in the bracketed
+region), `loops/oracles/code-run-gate.yaml:50` (the FSM bracket is live, not
+dormant).
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/issue_manager.py` — new phase between Phase 2
-  (~L927-964) and Phase 3 (~L1049).
-- `scripts/little_loops/parallel/worker_pool.py` — same step between Step 5
-  (`_run_with_continuation`, ~L537) and Step 7 (`_verify_work_was_done`).
-- `scripts/little_loops/work_verification.py` — accept a live pre-step
-  snapshot once one genuinely exists, rather than reconstructing "before"
-  from git history.
-**Not applicable under Option D** — the three config touchpoints below were
-identified by `/ll:wire-issue` for the superseded Option B (config-gated
-agent step). Option D adds no config key, so none of them are edited. They
+
+_Revised for Option E (no new step) — review, 2026-08-01._
+
+- `scripts/little_loops/issue_manager.py` — capture the live snapshot after
+  the Phase 2 implement call returns (~L946-960) and thread it into the
+  `verify_work_was_done` call (`L1109`). No new phase.
+- `scripts/little_loops/parallel/worker_pool.py` — capture after Step 5
+  (`_run_with_continuation`, ends ~L546), thread into `_verify_work_was_done`
+  (`L598-607`), which already forwards `baseline_sha` post-BUG-2959
+  (`L1221-1263`). Step 8b (`L581-596`) sits inside the resulting window by
+  design — see Implementation Step 12.
+- `scripts/little_loops/work_verification.py` — add the optional
+  `pre_step_snapshot` param and the **second** byte-strict `run_tamper_guard`
+  call in `_run_non_fsm_tamper_guard` (`L63-106`); the existing
+  git-reconstructed call and its `filter_weakening_findings` stay untouched
+  and unconditional.
+
+**Not applicable under Option D or E** — the three config touchpoints below
+were identified by `/ll:wire-issue` for the superseded Option B (config-gated
+agent step). Neither D nor E adds a config key, so none of them are edited.
+They
 are retained only so a future re-selection of B does not have to re-derive
 them:
 
@@ -288,8 +368,21 @@ _Wiring pass added by `/ll:wire-issue` (3rd pass):_
   regression sweep.
 
 ### Similar Patterns
-- `scripts/little_loops/fsm/executor.py:1407-1474` — the snapshot-on-entry /
-  compare-on-exit bracket to model this on.
+- `scripts/little_loops/fsm/executor.py` — the snapshot-on-entry /
+  compare-on-exit bracket to model this on. **Use the post-BUG-2962 anchors,
+  not `L1407-1474`** (stale, see Codebase Research Findings): snapshot-on-entry
+  at `L1436-1459`; compare-and-route extracted into
+  `_check_tamper_guard(state, ctx, tamper_before, tamper_policy, repo_root)`
+  (`L1336-1369` region), called from both exit paths (`L1480-1488`,
+  `L1537-1541`). `_check_tamper_guard` passes **no** `finding_filter` — that
+  is the byte-strictness Implementation Step 4's second guard call mirrors.
+  Re-verify all of these at implementation time.
+- `scripts/little_loops/loops/oracles/code-run-gate.yaml:50` — the live
+  loop-level `tamper_guard: fail` proving this bracket end-to-end on the FSM
+  side (commit `936dd929`). Its `L28-50` header comment names ENH-2958
+  directly and explains why the window is non-vacuous there (every action
+  state in the oracle could edit a test file but has no business doing so) —
+  the same test Option E's window has to pass.
 - `scripts/tests/test_fsm_executor.py:10702` `TestTamperGuardExecutorHook`,
   specifically `test_tdd_mode_does_not_trip_guard_on_separate_verify_state`
   (`L10865`) — the closest existing analog to this issue's core requirement
@@ -310,7 +403,12 @@ _Wiring pass added by `/ll:wire-issue` (3rd pass):_
   merge time rather than per-issue, so it does not overlap with the tamper
   bracket, but its subprocess-invocation and return-shape conventions are the
   closest model for `run_post_implement_verify`'s step body.
-- `scripts/little_loops/issue_manager.py:85-108` `timed_phase()` — the
+  _No longer applicable under Option E — there is no subprocess step body to
+  model. Retained for a future re-selection of Option D._
+- ~~`scripts/little_loops/issue_manager.py:85-108` `timed_phase()`~~ —
+  _not applicable under Option E: no new named phase is added, so there is
+  nothing to wrap. Retained below for a future re-selection of Option D._
+  `timed_phase()` is the
   established per-phase timing/logging context manager every named phase in
   `process_issue_inplace` already uses (`with timed_phase(logger, "Phase 2
   (implement)") as phase2_timing: ...`, logs `"{phase_name} completed in
@@ -618,43 +716,62 @@ _Wiring pass added by `/ll:wire-issue` (3rd pass):_
 
 ## Program Design
 
-_Reflects the Option D selection (deterministic, non-agent step). The earlier
-"sketch only, re-refine before implementing" caveat is resolved — the
-cost/opt-in question it was waiting on is answered._
+_Reflects the Option E selection (no new step; move the snapshot point).
+Supersedes the Option D design below it, which is retained struck-through for
+provenance._
 
 ### Types
 
-New dataclass `VerifyStepResult`, returned by the new step so callers can
-distinguish "guard tripped" from "step itself failed":
+**No new dataclass.** Option E's snapshot is a plain
+`TamperSnapshot | None` threaded from the orchestrator to
+`verify_work_was_done`; `None` means "no live snapshot was taken," which is
+the same fallback signal D's `VerifyStepResult.ran is False` encoded. There is
+no step that can partially run, so there is no partial-snapshot state to
+model.
 
-- `ran: bool` — False when the step was skipped or errored before the
-  bracket closed; signals callers to fall back to the git-reconstructed
-  "before" rather than trusting a partial snapshot.
-- `tamper_passed: bool`
-- `error: str`
-
-`TamperReport` (`test_tamper_guard.py:39-44`: `policy`, `findings`,
-`reverted`, `passed`) is the structural precedent; `VerifyStepResult` should
-carry one rather than re-flatten its fields.
+~~New dataclass `VerifyStepResult` (`ran: bool`, `tamper_passed: bool`,
+`error: str`), carrying a `TamperReport`.~~ _Dropped by Option E — it existed
+only to report the outcome of a step that no longer exists._
 
 ### Signatures
 
-- `run_post_implement_verify(logger: Logger, config: BRConfig, repo_root: Path) -> VerifyStepResult`
+- `verify_work_was_done(logger, changed_files=None, baseline_sha=None, config=None, repo_root=None, pre_step_snapshot: TamperSnapshot | None = None) -> bool`
+  — one new optional keyword-only-safe param on the existing public symbol
+  (`work_verification.py:120-126`, re-exported at `__init__.py:67,124` and
+  `git_operations.py:15-18`). No other signature changes.
 
-Captures `snapshot_test_paths` before running the project's test command via
-`subprocess.run(config.project.test_cmd)` and calls `run_tamper_guard`
-immediately after, mirroring the FSM bracket's structure without its agent
-dispatch.
+- `_run_non_fsm_tamper_guard(logger, repo_root, config, baseline_sha, pre_step_snapshot=None) -> bool`
+  — **must run the guard twice and AND the results** (see Implementation
+  Step 4):
 
-The test command's own exit code does **not** gate completion — a failing
-test suite is Phase 3's existing business, and making this step block on it
-would change completion semantics well beyond this issue's scope. Only the
-tamper verdict is consumed here.
+  1. *Implement window, unchanged and unconditional.*
+     `before = snapshot_test_paths_at_ref(repo_root, baseline_sha or "HEAD", candidate_paths)`,
+     `finding_filter = partial(filter_weakening_findings, repo_root=repo_root, ref=ref)`
+     — BUG-2954's heuristic.
+  2. *Post-implement window, new, only when `pre_step_snapshot is not None`.*
+     `before = pre_step_snapshot`, **no `finding_filter`** — byte-strict,
+     mirroring `fsm/executor.py`'s `_check_tamper_guard`, which passes none.
+
+  Both share the same `changed = tamper_guard_changed_files(repo_root)` and
+  the same resolved `policy`. This is the correction to the earlier
+  single-call design; see Implementation Step 4.
+
+~~`run_post_implement_verify(logger, config, repo_root) -> VerifyStepResult`,
+running `subprocess.run(config.project.test_cmd)` as its step body.~~
+_Dropped by Option E. The test command's exit code was already specified as
+not gating completion, so the run's only product was discarded — while
+costing a full duplicate suite run per issue (`/ll:manage-issue` already runs
+`config.project.test_cmd` at `skills/manage-issue/SKILL.md:355`, `:386`)._
 
 ### Call Path
 
-`process_issue_inplace` → `run_post_implement_verify` → `snapshot_test_paths`
-→ `run_tamper_guard` → `verify_work_was_done`
+`process_issue_inplace` → `snapshot_test_paths` (end of Phase 2) → … →
+`verify_work_was_done(pre_step_snapshot=…)` → `_run_non_fsm_tamper_guard` →
+`run_tamper_guard` ×2
+
+`WorkerPool._run_worker` → `snapshot_test_paths` (after Step 5) → Step 6 →
+Step 8 → Step 8b (leak recovery — **inside** the bracket) →
+`_verify_work_was_done(pre_step_snapshot=…)` → same as above
 
 ### Codebase Research Findings
 
@@ -695,23 +812,46 @@ wrap or carry a copy of rather than duplicate.
 
 ## Implementation Steps
 
-1. ~~Decide the cost/opt-in question above.~~ **Resolved: Option D** —
-   deterministic non-agent step, default-on, no config gate. See Decision
-   Rationale.
-2. Add `run_post_implement_verify` to `issue_manager.py` between Phase 2 and
-   Phase 3, bracketed by `snapshot_test_paths` / `run_tamper_guard`, running
-   `config.project.test_cmd` in a subprocess as the step body.
-3. Mirror it in `parallel/worker_pool.py` between Step 5 and Step 6.
-4. Let `work_verification` consume the live snapshot (new optional
-   `pre_step_snapshot: TamperSnapshot | None = None` param on
-   `verify_work_was_done`, threaded to `_run_non_fsm_tamper_guard`) instead of
-   the git-reconstructed "before" **when the step ran**; fall back to today's
-   reconstruction when it did not.
+1. ~~Decide the cost/opt-in question above.~~ **Resolved: Option E** — no new
+   step; snapshot at end of implement, compare at the completion decision. See
+   Decision Rationale.
+2. In `issue_manager.py`, capture
+   `snapshot_test_paths(tamper_guard_candidate_paths(repo_root, config=config), repo_root)`
+   at the end of Phase 2 (alongside the existing `_baseline_sha` capture at
+   `L921-926`, but *after* the implement call returns), and thread it into the
+   `verify_work_was_done(...)` call at `L1109`.
+3. Mirror in `parallel/worker_pool.py`: capture immediately after Step 5's
+   implement call returns (`~L546`), thread into the `_verify_work_was_done`
+   call (`L598-607`). Placing the capture there and the compare at Step 7 puts
+   Step 8b's leak-recovery cherry-picks (`L581-596`) **inside** the bracket,
+   which is intended — see Step 12.
+4. **Run the guard twice in `_run_non_fsm_tamper_guard`, do not swap `before`.**
+   _Corrected by review, 2026-08-01 — the previous wording ("use the live
+   snapshot **instead of** the git-reconstructed 'before' when the step ran")
+   directly contradicted the Acceptance Criterion that BUG-2954's
+   implement-window heuristic keeps running unconditionally._
+   `work_verification.py:63-106` makes exactly one `run_tamper_guard` call
+   with one `before`; parameterizing that `before` *replaces* implement-window
+   coverage with post-implement coverage rather than adding to it — a net loss
+   on the primary threat (the implement agent loosening an existing test).
+   Add a second call instead:
+   - call 1 — `before = snapshot_test_paths_at_ref(...)`, **with**
+     `filter_weakening_findings` (unchanged, runs on every invocation);
+   - call 2 — `before = pre_step_snapshot`, **without** any `finding_filter`
+     (byte-strict), skipped entirely when `pre_step_snapshot is None`;
+   - return the AND. This also subsumes former Wiring Step 11, which tried to
+     get byte-strictness by branching `finding_filter` on a single call — that
+     cannot preserve both windows.
 5. Verify BUG-2954's implement-window heuristic still runs unconditionally —
-   the new bracket covers a different window and does not replace it.
+   the new bracket covers a different window and does not replace it. Step 4's
+   two-call shape is what makes this true; a test must assert call 1 still
+   fires when `pre_step_snapshot` is supplied.
 6. Add tests for the new bracket, including a tamper made *inside* the
    window that a count-preserving heuristic cannot catch (inverted
-   comparison).
+   comparison). Under Option E this is testable against a real path — a
+   test-file edit landing between the end of implement and the completion
+   decision (e.g. arriving via a Step 8b cherry-pick) — rather than only via
+   a mocked-subprocess side-effect.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -720,41 +860,50 @@ the implementation:_
 
 7. Update `test_issue_manager.py:2797`
    (`test_baseline_sha_passed_to_verify_work_was_done`) — it asserts exact
-   kwargs on the `verify_work_was_done` call site Phase 2.5 will add
-   `pre_step_snapshot` to.
-8. Update `docs/reference/API.md` (`L2360-2367`'s now-false "no live
-   pre-step snapshot" claim) and `docs/guides/LOOPS_GUIDE.md` (`L695-700`'s
-   "tamper_guard is FSM-only" claim) to describe both paths — live snapshot
-   when the step ran, git reconstruction otherwise.
-9. Update `docs/ARCHITECTURE.md`'s § "Sequential Mode (ll-auto)" sequence
-   diagram (`L411-450`) to show the new Phase 2.5 step between the existing
-   `Phase 2: Implementation` (`L431`) and `Phase 3: Verification` (`L437`)
-   notes.
+   kwargs (`mock_verify.assert_called_once_with(mock_logger,
+   baseline_sha=test_sha, config=mock_config)`) on the
+   `verify_work_was_done` call site that gains `pre_step_snapshot`.
+8. Update `docs/reference/API.md` (the now-false "no live pre-step snapshot"
+   claim — **at `L2388`, not `L2360-2367`**; the older anchor is stale) and
+   `docs/guides/LOOPS_GUIDE.md` (`L695-700`'s "tamper_guard is FSM-only"
+   claim) to describe both windows — git-reconstructed implement window
+   always, live-snapshot post-implement window when a snapshot was threaded
+   through.
+9. ~~Update `docs/ARCHITECTURE.md`'s § "Sequential Mode (ll-auto)" sequence
+   diagram (`L411-450`) to show the new Phase 2.5 step.~~ _Dropped by Option
+   E — no new phase is added, so the `Phase 2: Implementation` (`L431`) /
+   `Phase 3: Verification` (`L437`) notes stay accurate. Optional: a one-line
+   note that the tamper snapshot is taken at the Phase 2/3 boundary._
 
 _Added by `/ll:wire-issue` (3rd pass):_
 
 10. Update `work_verification.py:71-75`'s in-source docstring on
     `_run_non_fsm_tamper_guard` (not just `docs/reference/API.md`) — it makes
     the same now-false "never captured a live pre-step snapshot" claim.
-11. Branch `finding_filter`/`filter_weakening_findings`
+11. ~~Branch `finding_filter`/`filter_weakening_findings`
     (`work_verification.py:98-106`) on whether `before` came from the new
-    live snapshot or the git-reconstructed fallback — the live-snapshot
-    bracket must stay byte-level strict (no weakening filter) to satisfy the
-    count-preserving-edit AC; threading `pre_step_snapshot` in as an
-    alternate `before` alone is not sufficient.
-12. Resolve the `worker_pool.py` insertion-point/ordering interaction with
-    Step 8b (`L581-596`, committed-leak recovery, which recomputes
-    `changed_files` and runs *after* the nominal "Step 7" position) before
-    placing the new bracket — a literal "between Step 5 and Step 7" insertion
-    closes the comparison window before Step 8b's leak-recovery cherry-picks
-    run.
-13. Thread `subprocess.run` mocking (or an inert `config.project.test_cmd`
-    stub) through the shared `mock_config` fixture in `test_issue_manager.py`
-    and the real-`BRConfig` `br_config` fixture in `test_worker_pool.py` —
-    the new unconditional subprocess call breaks far more existing tests than
-    the single named site (`test_issue_manager.py:2797`), since most
-    fixtures never set `.project` and would either raise on a `MagicMock`
-    `test_cmd` or spawn a genuine `pytest` subprocess.
+    live snapshot or the git-reconstructed fallback.~~ _Subsumed by the
+    corrected Step 4 — a single call cannot cover both windows no matter how
+    its filter is branched. Step 4's two-call shape supplies the
+    byte-strictness this step was reaching for._
+12. **Resolved by Option E: place the compare *after* Step 8b, deliberately.**
+    `worker_pool.py`'s real order is Step 5 (implement, ends `L546`) → Step 6
+    (`L567-568`) → Step 8 (leaked-to-main-repo detection, `L570-579`) →
+    Step 8b (committed-leak recovery — cherry-picks commits into the worktree
+    and recomputes `changed_files` at `L596`, `L581-596`) → Step 7
+    (`_verify_work_was_done`, `L598-607`). The earlier plan treated Step 8b as
+    a hazard to route around; it is the **one mechanism in this region that
+    can actually introduce test-file content**, and therefore the main reason
+    the bracket is not vacuous. Snapshot after Step 5, compare at Step 7 —
+    Step 8b lands inside the window by design.
+13. ~~Thread `subprocess.run` mocking (or an inert `config.project.test_cmd`
+    stub) through the shared `mock_config` / `br_config` fixtures in
+    `test_issue_manager.py` and `test_worker_pool.py`.~~ _Dropped by Option E
+    — no subprocess is added, so the 33 `process_issue_inplace(` call sites
+    whose `MagicMock(spec=BRConfig)` fixtures never set `.project` are
+    unaffected, and `test_worker_pool.py`'s real-`BRConfig` `br_config`
+    fixture (`L80-83`) will not spawn a genuine `pytest`. This was the single
+    largest blast-radius item in the plan and Option E removes it outright._
 14. Include `test_subprocess_mocks.py::TestVerifyWorkWasDone` (the
     `git_operations` re-export path) in the `verify_work_was_done`
     signature-change regression sweep alongside `test_work_verification.py`.
@@ -768,31 +917,42 @@ apply only if an agent-based option is re-selected.
 
 ## Acceptance Criteria
 
-- [ ] `run_post_implement_verify` exists and runs between implement and
-      verification on both the `ll-auto` (`issue_manager.process_issue_inplace`)
-      and `ll-parallel` (`WorkerPool._run_worker`) paths.
-- [ ] The step captures `snapshot_test_paths(...)` immediately before running
-      `config.project.test_cmd` and calls `run_tamper_guard` immediately
-      after — the FSM bracket's shape (`fsm/executor.py:1407-1474`), with no
-      agent invocation and no new config key.
-- [ ] Policy routing matches the FSM adapter: `fail` blocks completion via the
-      existing Phase 3 failure path, `revert` self-heals and only blocks on
-      residual unresolved findings, `allow` records only.
+- [ ] A live `snapshot_test_paths(...)` is captured at the end of the implement
+      phase on both the `ll-auto` (`issue_manager.process_issue_inplace`) and
+      `ll-parallel` (`WorkerPool._run_worker`) paths and threaded into
+      `verify_work_was_done(..., pre_step_snapshot=...)`. No new step, no
+      subprocess, no agent invocation, no new config key.
+- [ ] `_run_non_fsm_tamper_guard` runs `run_tamper_guard` **twice** when a
+      live snapshot is present — the git-reconstructed implement window
+      *with* `filter_weakening_findings`, and the live-snapshot post-implement
+      window *without* any filter — and ANDs the verdicts. A test asserts both
+      calls fire.
+- [ ] Policy routing matches the FSM adapter's `_check_tamper_guard`: `fail`
+      blocks completion via the existing verification-failure path, `revert`
+      self-heals via `apply_tamper_policy` and blocks only on residual
+      unresolved findings, `allow` records only.
+- [ ] `revert` is documented/tested as **not** self-healing an `added`
+      finding: `apply_tamper_policy` (`test_tamper_guard.py:207+`) never
+      reverts `added`, so a test file newly appearing inside the window is a
+      residual unresolved finding under `revert` and blocks. The AC is that
+      this behavior is asserted, not that it is changed.
 - [ ] A test-file mutation made *inside* the window is caught byte-for-byte,
       including a count-preserving edit (inverted comparison) that BUG-2954's
-      heuristic cannot detect.
-- [ ] A legitimate TDD test write made during Phase 2 does **not** trip the
-      new bracket — mirroring
-      `test_fsm_executor.py:10865`
+      heuristic cannot detect — exercised against a real path (content
+      arriving between implement's return and the completion decision, e.g. a
+      Step 8b cherry-pick), not only a synthetic injected write.
+- [ ] A legitimate TDD test write made during the implement phase does **not**
+      trip the new bracket — mirroring `test_fsm_executor.py:10865`
       (`test_tdd_mode_does_not_trip_guard_on_separate_verify_state`).
-- [ ] BUG-2954's implement-window heuristic still runs unconditionally when
-      the new step is enabled; a test asserts it is not bypassed.
-- [ ] When the step does not run or errors before its bracket closes
-      (`VerifyStepResult.ran is False`), `verify_work_was_done` falls back to
-      today's git-reconstructed "before" rather than trusting a partial
-      snapshot; a test covers this path.
-- [ ] The step's own test-command exit code does not by itself block
-      completion — only the tamper verdict is consumed.
+- [ ] BUG-2954's implement-window heuristic still runs unconditionally,
+      including when a live snapshot is supplied; a test asserts it is not
+      bypassed. _(This is the criterion the previous single-call Step 4 design
+      would have failed — see Implementation Step 4.)_
+- [ ] When no live snapshot is available (`pre_step_snapshot is None` — any
+      caller of the public `verify_work_was_done` outside the two
+      orchestrators, including the `git_operations` re-export path), behavior
+      is byte-identical to today: one git-reconstructed guard run with the
+      weakening filter. A test covers this path.
 - [ ] `ll-sprint` inherits the behavior with no `cli/sprint/run.py` edit;
       `test_sprint_integration.py`, `test_cli_sprint.py`, and `test_sprint.py`
       still pass unmodified or are updated only for mocked call ordering.
@@ -801,17 +961,24 @@ apply only if an agent-based option is re-selected.
 ## Scope Boundaries
 
 **In scope:**
-- A deterministic (non-agent) post-implement verification step in
-  `issue_manager.py` and `parallel/worker_pool.py`, with the tamper guard
-  bracketed around it.
-- Letting `work_verification` consume a live pre-step snapshot when that step
-  ran, instead of reconstructing "before" from git history.
+- A live post-implement tamper bracket in `issue_manager.py` and
+  `parallel/worker_pool.py` — snapshot at end of implement, compare at the
+  completion decision. No new step, subprocess, or agent.
+- Letting `work_verification` consume that live snapshot as a **second**,
+  byte-strict guard run alongside (not instead of) today's git-reconstructed
+  implement-window run.
 
 **Out of scope:**
 - The FSM adapter (`fsm/executor.py`) — this issue mirrors its bracket shape,
-  it does not change it. Note the FSM guard is currently dormant (no shipped
-  loop YAML sets `tamper_guard:`); enabling it on `rn-implement.yaml` is a
-  separate, cheaper piece of work.
+  it does not change it. _(Correction: the FSM guard is **not** dormant.
+  `loops/oracles/code-run-gate.yaml:50` sets `tamper_guard: fail`, landed in
+  `936dd929` explicitly to prove the bracket end-to-end before this issue —
+  so the "enable it on a real loop first" prerequisite is already satisfied.)_
+- Running the project's test suite from the orchestrators — considered as
+  Option D's step body and rejected: its exit code was specified as
+  non-gating, so it cost a full duplicate suite run per issue for a discarded
+  result. If the orchestrators should run tests, that is a separate issue with
+  its own justification.
 - BUG-2954's content-based weakening classifier — it covers the *implement*
   window, which this issue's bracket does not reach. It keeps running
   unconditionally and is not weakened, demoted, or removed here.
@@ -832,25 +999,70 @@ apply only if an agent-based option is re-selected.
   narrower strictness gap than originally claimed (it covers the
   post-implement window only, not the implement window). Reasonable to
   decline; if declined, do so explicitly.
-- **Effort**: Medium — a new phase in two orchestrators plus a signature
-  change on `verify_work_was_done`. Reduced from Medium-Large by the Option D
-  selection, which drops the config/schema/`to_dict` wiring entirely.
-- **Risk**: Low-Medium — no agent invocation is added, so the per-issue cost
-  concern is gone; the residual risk is the `verify_work_was_done` signature
-  change on a symbol re-exported as public API
-  (`scripts/little_loops/__init__.py:67,124`) and the one remaining breaking
-  test (`test_issue_manager.py:2797`). A failure or timeout in the new step
-  must still not itself block completion.
-  _(Superseded: "Medium — adds an agent invocation to every issue run."
-  Option D adds no agent.)_
-- **Breaking Change**: No — additive, though it adds a test-suite run per
-  issue.
+- **Effort**: Small — two snapshot captures, one optional param threaded
+  through `verify_work_was_done`, and a second `run_tamper_guard` call inside
+  `_run_non_fsm_tamper_guard`. Reduced from Medium by the Option E selection,
+  which drops the new step, `VerifyStepResult`, the `timed_phase` wrapper, the
+  ARCHITECTURE.md diagram edit, and the fixture-wide `subprocess.run` mocking
+  sweep (former Wiring Step 13).
+  _(Superseded: "Medium — a new phase in two orchestrators…" under Option D;
+  "Medium-Large" under Option B.)_
+- **Risk**: Low — no agent, no subprocess, no config key. Residual risk is
+  concentrated in two places: (1) the `verify_work_was_done` signature change
+  on a symbol re-exported as public API (`__init__.py:67,124`,
+  `git_operations.py:15-18`) with one known breaking test
+  (`test_issue_manager.py:2797`); (2) **false positives under the default
+  `policy: "fail"`** (`config/features.py:855`) — the bracket is default-on
+  and a trip marks an issue failed even when its code is correct, with no
+  per-run escape hatch short of a config change. Worth confirming on a real
+  `ll-parallel` wave (where Step 8b's cherry-picks are inside the window)
+  before relying on it. `allow` or `revert` remain available as project
+  defaults if `fail` proves noisy.
+  _(Superseded: "Low-Medium … a failure or timeout in the new step must not
+  block completion" — there is no step to fail; "Medium — adds an agent
+  invocation to every issue run" — no agent is added.)_
+- **Breaking Change**: No — purely additive, and with Option E it adds no
+  per-issue runtime cost at all.
+  _(Superseded: "though it adds a test-suite run per issue" — Option D only.)_
 
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Confidence Check Notes
+
+_Manual review — 2026-08-01 (post-Option E). Five findings applied to this
+issue:_
+
+1. **Blocking contradiction fixed.** Implementation Step 4 ("use the live
+   snapshot *instead of* the git-reconstructed before") contradicted the
+   Acceptance Criterion "BUG-2954's implement-window heuristic still runs
+   unconditionally." `_run_non_fsm_tamper_guard` makes one
+   `run_tamper_guard` call with one `before`
+   (`work_verification.py:63-106`, verified); parameterizing it replaces
+   implement-window coverage rather than adding to it. Step 4 now specifies
+   two calls ANDed together, and former Wiring Step 11 is subsumed.
+2. **Option D's window was empty by construction.** Its step body,
+   `subprocess.run(config.project.test_cmd)`, writes no test files, so the
+   bracket wrapped something that provably cannot tamper — while costing a
+   full duplicate suite run per issue whose exit code was explicitly
+   discarded (verified: neither orchestrator runs `test_cmd` today;
+   `/ll:manage-issue` already does at `SKILL.md:355`, `:386`). **Option E**
+   selected instead: no step, move the snapshot point, put `worker_pool`
+   Step 8b's leak-recovery cherry-picks inside the window.
+3. **"FSM path is dormant" was stale.**
+   `loops/oracles/code-run-gate.yaml:50` sets `tamper_guard: fail`
+   (commit `936dd929`), whose header comment names ENH-2958 and states it was
+   enabled first to prove the bracket. The cheaper prerequisite the issue
+   recommended is already done.
+4. **`revert` does not self-heal an `added` finding** — now an explicit AC
+   rather than an implication.
+5. **Default `policy: "fail"` + default-on bracket** flagged under Risk: a
+   false positive marks a correct issue failed with no per-run escape hatch.
+
+_Stale anchors corrected: `docs/reference/API.md` claim is at `L2388`;
+`fsm/executor.py:1407-1474` → `_check_tamper_guard` (`L1336-1369` region) with
+snapshot at `L1436-1459`._
 
 _Re-run `/ll:confidence-check` — 2026-07-31 (post-Option D):_
 
@@ -901,6 +1113,7 @@ _Superseded — `/ll:confidence-check`, earlier 2026-07-31:_
   duration._
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-01T15:39:58 - `15f4582a-2df6-4315-9f84-3f5730f550e5.jsonl`
 - `/ll:confidence-check` - 2026-08-01T07:09:39 - `5c385d33-f128-49f6-856f-96945a2d4f98.jsonl`
 - `/ll:wire-issue` - 2026-08-01T07:08:10 - `b957ea0e-8caa-47a3-9bd7-782a17c6a284.jsonl`
 - `/ll:refine-issue` - 2026-08-01T07:01:03 - `6bc490c4-efe2-4cf1-99d1-af44f9ef7911.jsonl`
