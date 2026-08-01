@@ -19,6 +19,17 @@ Two contracts are load-bearing:
   fresh ``ll-init`` project starts unstamped, and mass-deferring their backlog on
   upgrade is not acceptable. Arming the gate is writing the stamp.
 
+Known limit of the resolution requirement: it checks that an anchor *resolves*, never
+that it is *relevant*. Any repo-resolvable symbol satisfies it, so the check is
+technically clearable by naming an unrelated one. This is accepted, not overlooked —
+verifying relevance without a diff is the same problem the resolution-indifference
+contract above already declines to solve. In practice the requirement earns its keep as
+a forcing function: a greenfield design names only new symbols and therefore fails until
+its author goes looking for the existing code it plugs into, which is usually where the
+reuse it should have found is sitting. Weigh that against the false-positive cost before
+tightening or loosening this rule — a design that genuinely touches nothing existing
+must still be able to pass via ``program_design_not_applicable`` or an unarmed gate.
+
 Consumed by :func:`little_loops.issue_parser.check_format_gaps`, so every consumer of
 the gap set (``ll-issues format-check``, ``rn-remediate.yaml``'s ``ensure_formatted``,
 ``ll-issues sequence`` drift detection) inherits both the check and the exemption from
