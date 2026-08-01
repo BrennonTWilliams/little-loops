@@ -560,3 +560,151 @@ decision_needed: true
         assert "short-description: Use when stuff." in result
         assert "name: my-skill" in result
         assert "# Body" in result
+
+
+class TestMultiFrontmatterBlocks:
+    """Tests for double-frontmatter files (BUG-2955): an outer score_* block
+    prepended by the confidence-check scoring path, followed by the canonical
+    id:-bearing block."""
+
+    _DOUBLE_BLOCK = """---
+score_complexity: 18
+status: done
+---
+# Title
+
+---
+id: BUG-9001
+type: BUG
+priority: P3
+status: open
+---
+
+## Summary
+Body text.
+"""
+
+    def test_has_multiple_frontmatter_blocks_true(self) -> None:
+        from little_loops.frontmatter import has_multiple_frontmatter_blocks
+
+        assert has_multiple_frontmatter_blocks(self._DOUBLE_BLOCK) is True
+
+    def test_has_multiple_frontmatter_blocks_false_for_single_block(self) -> None:
+        from little_loops.frontmatter import has_multiple_frontmatter_blocks
+
+        content = "---\nid: BUG-1\nstatus: open\n---\n\n# Title\n"
+        assert has_multiple_frontmatter_blocks(content) is False
+
+    def test_parse_merges_outer_and_canonical_keys(self) -> None:
+        """Neither block's keys are dropped — the merged read exposes both."""
+        fm = parse_frontmatter(self._DOUBLE_BLOCK)
+
+        assert fm["score_complexity"] == "18"
+        assert fm["id"] == "BUG-9001"
+        assert fm["type"] == "BUG"
+
+    def test_parse_status_prefers_canonical_over_open_when_folding_synthetic_divergence(
+        self,
+    ) -> None:
+        """Synthetic divergent fixture (Current Behavior in BUG-2955): outer
+        block says done, canonical says open. Document-order merge means the
+        later (canonical) block's value wins — matching update_frontmatter's
+        write-target and never resurrecting a stale 'open'."""
+        content = """---
+score_complexity: 18
+status: done
+completed_at: '2026-08-01T01:08:02Z'
+---
+# Title
+
+---
+id: BUG-9002
+type: BUG
+priority: P3
+status: open
+---
+"""
+        fm = parse_frontmatter(content)
+        assert fm["status"] == "open"
+        # The canonical block's own status is stale by construction here (this
+        # is the exact malformed shape the migration folds away) — this test
+        # documents document-order-wins, not a "canonical always wins" policy
+        # (rejected in BUG-2955 as data-corrupting).
+
+    def test_update_writes_canonical_block_only(self) -> None:
+        """update_frontmatter splices into the id:-bearing block (flipping its
+        'status: open' to 'done') and leaves the outer score_* block's keys
+        untouched (it already said 'done')."""
+        result = update_frontmatter(self._DOUBLE_BLOCK, {"status": "done"})
+
+        assert "status: open" not in result
+        assert result.count("status: done") == 2
+        assert "score_complexity: 18" in result
+        assert result.count("score_complexity") == 1
+
+    def test_update_no_id_file_falls_back_to_first_block(self) -> None:
+        """A no-id: file (agent/skill/loop YAML shape) still round-trips
+        through the first-block fallback unchanged."""
+        content = "---\nname: my-skill\ndescription: test\n---\n\n# Body\n"
+        result = update_frontmatter(content, {"description": "updated"})
+
+        assert "description: updated" in result
+        assert "name: my-skill" in result
+
+    def test_single_block_file_unchanged_byte_for_byte(self) -> None:
+        """A normal single-block file (id: in the first block) parses
+        identically to the historical single-block-only behavior."""
+        content = "---\nid: BUG-1\nstatus: open\nlabels:\n- a\n- b\n---\n\n# Title\n"
+
+        fm = parse_frontmatter(content)
+        assert fm == {"id": "BUG-1", "status": "open", "labels": ["a", "b"]}
+
+    def test_fenced_yaml_block_in_body_not_treated_as_second_block(self) -> None:
+        """A ```yaml fenced code block containing '---' inside the body must
+        not be mistaken for a second frontmatter block."""
+        content = """---
+id: BUG-9003
+status: open
+---
+
+## Example
+
+```yaml
+---
+key: value
+---
+```
+"""
+        from little_loops.frontmatter import has_multiple_frontmatter_blocks
+
+        assert has_multiple_frontmatter_blocks(content) is False
+        fm = parse_frontmatter(content)
+        assert fm == {"id": "BUG-9003", "status": "open"}
+
+    def test_body_horizontal_rule_pair_not_treated_as_second_block(self) -> None:
+        """A pair of prose '---' horizontal rules in the header region (before
+        the first '## ' heading) whose enclosed text doesn't parse as a YAML
+        mapping is not mistaken for a second frontmatter block — this is what
+        keeps the scanner from the 912-file false-positive rate the naive
+        '^---$' heuristic produced (BUG-2955 Impact)."""
+        content = """---
+id: BUG-9004
+status: open
+---
+
+# Title
+
+---
+
+this is prose, not a YAML mapping, between two horizontal rules
+
+---
+
+## Summary
+Body.
+"""
+        from little_loops.frontmatter import has_multiple_frontmatter_blocks
+
+        assert has_multiple_frontmatter_blocks(content) is False
+        fm = parse_frontmatter(content)
+        assert fm == {"id": "BUG-9004", "status": "open"}

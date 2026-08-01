@@ -1,0 +1,11 @@
+{
+  "id": "5d300d79-61d0-488c-8f42-a6dce6cbc9f9",
+  "type": "decision",
+  "timestamp": "2026-08-01T01:27:44Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Non-FSM orchestrators have one agent phase, so ENH-2854's verify-step-scoped guard constraint is structurally unmeetable; BUG-2954 mitigates with a content-based weakening heuristic that is weaker than the FSM path's byte-level strictness.",
+  "rule": "Captured: Dedicated post-implement verify step for non-FSM orchestrators",
+  "scope": "issue",
+  "issue": "ENH-2958"
+}

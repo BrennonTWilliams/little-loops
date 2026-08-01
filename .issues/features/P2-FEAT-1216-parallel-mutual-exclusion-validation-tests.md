@@ -1,14 +1,8 @@
 ---
-status: done
-completed_at: 2026-04-21T00:00:00Z
----
-> **Status: Won't Do** — superseded by multi-loop parallel approach (simpler, no inter-loop coordination needed)
-
----
 id: FEAT-1216
 priority: P2
 parent_issue: FEAT-1213
-discovered_date: "2026-04-21"
+discovered_date: '2026-04-21'
 discovered_by: issue-size-review
 confidence_score: 86
 outcome_confidence: 93
@@ -17,7 +11,10 @@ score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 25
 size: Very Large
+status: done
+completed_at: '2026-04-21T00:00:00Z'
 ---
+> **Status: Won't Do** — superseded by multi-loop parallel approach (simpler, no inter-loop coordination needed)
 
 # FEAT-1216: Parallel Mutual Exclusion Validation Tests
 

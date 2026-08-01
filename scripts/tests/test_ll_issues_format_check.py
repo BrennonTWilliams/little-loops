@@ -236,6 +236,60 @@ class TestFormatCheckMalformedId:
 
 
 # ---------------------------------------------------------------------------
+# TestFormatCheckMultiFrontmatter
+# ---------------------------------------------------------------------------
+
+
+class TestFormatCheckMultiFrontmatter:
+    """An outer score_* block + canonical id:-bearing block exits 1 (BUG-2955)."""
+
+    def test_double_frontmatter_block_exits_one(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        outer_and_title = "\n".join(
+            [
+                "---",
+                "score_complexity: 18",
+                "status: done",
+                "---",
+                "# BUG-9110: Test bug",
+                "",
+            ]
+        )
+        canonical_and_body = _CLEAN_BUG_BODY.replace("id: BUG-9101", "id: BUG-9110")
+        body = outer_and_title + canonical_and_body
+        _write_issue(format_check_dir, "P3-BUG-9110-test-bug.md", body)
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9110", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "multi_frontmatter:" in out
+
+    def test_single_block_issue_has_no_multi_frontmatter_gap(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", "id: BUG-9111")
+        _write_issue(format_check_dir, "P3-BUG-9111-test-bug.md", body)
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9111", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 0
+        assert "multi_frontmatter:" not in out
+
+
+# ---------------------------------------------------------------------------
 # TestFormatCheckJsonOutput
 # ---------------------------------------------------------------------------
 
@@ -277,6 +331,7 @@ class TestFormatCheckJsonOutput:
             "stale_prose_dep": [],
             "program_design_nonspecific": [],
             "deprecated_key": [],
+            "multi_frontmatter": [],
         }
 
     def test_gapped_issue_json_output(

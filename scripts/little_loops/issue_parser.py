@@ -178,6 +178,7 @@ class FormatGaps:
     stale_prose_dep: list[str] = field(default_factory=list)
     program_design_nonspecific: list[str] = field(default_factory=list)
     deprecated_key: list[str] = field(default_factory=list)
+    multi_frontmatter: list[str] = field(default_factory=list)
 
     @property
     def has_gaps(self) -> bool:
@@ -192,6 +193,7 @@ class FormatGaps:
             or self.stale_prose_dep
             or self.program_design_nonspecific
             or self.deprecated_key
+            or self.multi_frontmatter
         )
 
     def to_dict(self) -> dict[str, list[str]]:
@@ -206,6 +208,7 @@ class FormatGaps:
             "stale_prose_dep": self.stale_prose_dep,
             "program_design_nonspecific": self.program_design_nonspecific,
             "deprecated_key": self.deprecated_key,
+            "multi_frontmatter": self.multi_frontmatter,
         }
 
 
@@ -273,6 +276,13 @@ def check_format_gaps(
             :data:`little_loops.frontmatter.DEPRECATED_STATUS_VALUES`). Each
             entry pairs the retired key/value with its mandatory prose reason,
             surfaced in the same output that reports the key.
+        multi_frontmatter: the issue carries more than one YAML frontmatter
+            block in its header region (BUG-2955,
+            :func:`little_loops.frontmatter.has_multiple_frontmatter_blocks`)
+            — e.g. an outer ``score_*`` block prepended by the confidence-check
+            scoring path, followed by the canonical ``id:``-bearing block. Read
+            paths merge both blocks so no data is lost, but the shape is
+            malformed and should be folded into a single block.
 
     Args:
         issue_path: Path to the issue markdown file.
@@ -296,6 +306,14 @@ def check_format_gaps(
         content = issue_path.read_text(encoding="utf-8")
     except Exception:
         return gaps
+
+    from little_loops.frontmatter import has_multiple_frontmatter_blocks
+
+    if has_multiple_frontmatter_blocks(content):
+        gaps.multi_frontmatter.append(
+            "issue carries more than one YAML frontmatter block "
+            "(fold into a single id:-bearing block — BUG-2955)"
+        )
 
     frontmatter = parse_frontmatter(content)
     for key, entry in DEPRECATED_FRONTMATTER_KEYS.items():

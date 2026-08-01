@@ -1,26 +1,26 @@
 ---
+id: ENH-2936
+type: ENH
+priority: P2
+status: done
+captured_at: '2026-07-31T21:54:57Z'
+completed_at: '2026-07-31T23:52:59Z'
+discovered_date: 2026-07-31
+discovered_by: capture-issue
+relates_to:
+- ENH-2715
+- ENH-2443
+- ENH-2866
+- ENH-2666
 confidence_score: 95
 outcome_confidence: 79
 score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
-status: done
-completed_at: '2026-07-31T23:53:39Z'
 ---
 # ENH-2936: decide-issue: score un-preferenced decision directives instead of NO_ACTIONABLE_DECISIONS
 
----
-id: ENH-2936
-type: ENH
-priority: P2
-status: open
-captured_at: "2026-07-31T21:54:57Z"
-completed_at: "2026-07-31T23:52:59Z"
-discovered_date: 2026-07-31
-discovered_by: capture-issue
-relates_to: [ENH-2715, ENH-2443, ENH-2866, ENH-2666]
----
 
 ## Summary
 

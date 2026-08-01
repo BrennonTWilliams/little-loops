@@ -8,7 +8,7 @@ parent: EPIC-2412
 captured_at: '2026-06-30T00:00:00Z'
 discovered_date: 2026-06-30
 discovered_by: capture-issue
-size: XLarge
+size: Very Large
 relates_to:
 - EPIC-2412
 - FEAT-2413

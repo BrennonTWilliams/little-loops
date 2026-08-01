@@ -1,0 +1,12 @@
+{
+  "id": "c241b04a-6046-462f-96bb-f331d4b397a1",
+  "type": "decision",
+  "timestamp": "2026-08-01T01:28:38Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Fixes the shared root cause (first-fence-only block selection in parse_frontmatter()/update_frontmatter()) rather than only the set_scores.py call site; lower risk per issue's own assessment; has a direct precedent (canonicalize_issue_id) and existing unit test coverage.",
+  "rule": "Option A: Normalize frontmatter block selection on read + write in frontmatter.py",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: stop creating the second block in set_scores.py + one-time migration (only patches the write path, not the shared parsing helpers; issue's own risk note rates it Medium vs Option A's Low)",
+  "issue": "BUG-2955"
+}

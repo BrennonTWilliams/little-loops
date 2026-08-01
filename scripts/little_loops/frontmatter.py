@@ -74,6 +74,183 @@ DEPRECATED_STATUS_VALUES: dict[str, DeprecatedFrontmatterEntry] = {
 }
 
 
+@dataclass(frozen=True)
+class FrontmatterBlock:
+    """One parsed ``---``-delimited frontmatter block located within a file (BUG-2955).
+
+    ``span`` covers the whole block including both fence lines; ``body_span``
+    covers only the YAML text between them (the slice ``update_frontmatter``
+    splices into). ``is_canonical`` is true when ``data`` carries an ``id``
+    key — the block that owns an issue's identity, as opposed to a
+    scoring-path-prepended block that carries only ``score_*`` keys.
+    """
+
+    span: tuple[int, int]
+    body_span: tuple[int, int]
+    data: dict[str, Any]
+    is_canonical: bool
+
+
+_FENCE_MARKER_RE = re.compile(r"(?m)^---[ \t]*$")
+_HEADER_BOUNDARY_RE = re.compile(r"(?m)^##[ \t]")
+
+
+def _mask_fenced_code(text: str) -> str:
+    """Blank out fenced code regions (``` `` `` / ``~~~``) to same-length
+    whitespace, so a ``---`` inside a fenced block can't be mistaken for a
+    frontmatter fence by :func:`_iter_frontmatter_blocks`. Preserves length
+    and line structure so offsets computed on the result still index
+    correctly into the original text.
+    """
+    lines = text.split("\n")
+    out: list[str] = []
+    fence_marker: str | None = None
+    for line in lines:
+        stripped = line.strip()
+        if fence_marker is None and (stripped.startswith("```") or stripped.startswith("~~~")):
+            fence_marker = stripped[:3]
+            out.append(" " * len(line))
+            continue
+        if fence_marker is not None:
+            if stripped.startswith(fence_marker):
+                fence_marker = None
+            out.append(" " * len(line))
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
+def _normalize_loaded_mapping(loaded: dict[Any, Any], *, coerce_types: bool) -> dict[str, Any]:
+    """Apply the historical scalar-normalization contract to a loaded YAML mapping.
+
+    Stringifies keys, strips trailing newlines from block scalars, normalizes
+    empty/``null``/``~`` values to ``None``, and (when ``coerce_types``) coerces
+    bare digit strings to ``int``. Does not canonicalize ``status`` synonyms —
+    callers that need that apply :data:`STATUS_SYNONYMS` themselves (BUG-2955
+    moved that step to :func:`_merge_blocks`, which runs it once on the
+    merged result rather than once per block).
+    """
+    result: dict[str, Any] = {}
+    for raw_key, value in loaded.items():
+        key = str(raw_key)
+        if isinstance(value, str):
+            value = value.rstrip("\n")
+            if value.lower() in ("null", "~", ""):
+                result[key] = None
+            elif coerce_types and value.isdigit():
+                result[key] = int(value)
+            else:
+                result[key] = value
+        else:
+            result[key] = value
+    return result
+
+
+def _parse_block_data(text: str, *, coerce_types: bool) -> dict[str, Any]:
+    """Parse one block's raw YAML text, falling back to the permissive line scan."""
+    try:
+        loaded = yaml.load(text, Loader=yaml.BaseLoader)
+    except yaml.YAMLError:
+        loaded = None
+    if not isinstance(loaded, dict):
+        return _parse_frontmatter_lines(text, coerce_types=coerce_types)
+    return _normalize_loaded_mapping(loaded, coerce_types=coerce_types)
+
+
+def _iter_frontmatter_blocks(content: str, *, coerce_types: bool = False) -> list[FrontmatterBlock]:
+    """Scan *content* for one or more ``---``-delimited frontmatter blocks (BUG-2955).
+
+    Scans only the header region — content up to the first ``^## `` heading —
+    and skips fenced code regions, so a ` ```yaml ` block or a body horizontal
+    rule is never mistaken for a second frontmatter block. The first candidate
+    block is always accepted, including via the permissive line-based fallback
+    for malformed YAML (matching the historical single-block contract). Any
+    later candidate block is accepted only when its body parses as a YAML
+    mapping — this is what keeps the scanner from false-positiving on prose
+    ``---`` horizontal rules, which measured at 912 files under a naive
+    ``^---$`` scan (see BUG-2955 Impact).
+
+    Returns:
+        Blocks in document order. Empty list if *content* has no frontmatter
+        at all, or an unterminated opening fence.
+    """
+    if not content or not content.startswith("---"):
+        return []
+
+    boundary_match = _HEADER_BOUNDARY_RE.search(content)
+    header_end = boundary_match.start() if boundary_match else len(content)
+    header = content[:header_end]
+    masked = _mask_fenced_code(header)
+    markers = list(_FENCE_MARKER_RE.finditer(masked))
+
+    blocks: list[FrontmatterBlock] = []
+    i = 0
+    is_first = True
+    while i + 1 < len(markers):
+        open_marker = markers[i]
+        close_marker = markers[i + 1]
+        i += 2
+
+        body_start = open_marker.end() + 1
+        body_end = close_marker.start() - 1
+        if body_end < body_start:
+            body_end = body_start
+        body_text = content[body_start:body_end]
+
+        if is_first:
+            data = _parse_block_data(body_text, coerce_types=coerce_types)
+            is_first = False
+        else:
+            try:
+                loaded = yaml.load(body_text, Loader=yaml.BaseLoader)
+            except yaml.YAMLError:
+                continue
+            if not isinstance(loaded, dict):
+                continue
+            data = _normalize_loaded_mapping(loaded, coerce_types=coerce_types)
+
+        blocks.append(
+            FrontmatterBlock(
+                span=(open_marker.start(), close_marker.end()),
+                body_span=(body_start, body_end),
+                data=data,
+                is_canonical="id" in data,
+            )
+        )
+    return blocks
+
+
+def _canonical_frontmatter_block(blocks: list[FrontmatterBlock]) -> FrontmatterBlock | None:
+    """Return the first block carrying an ``id`` key, or ``None`` if none does."""
+    for block in blocks:
+        if block.is_canonical:
+            return block
+    return None
+
+
+def _merge_blocks(blocks: list[FrontmatterBlock]) -> dict[str, Any]:
+    """Merge blocks in document order into one dict, then canonicalize ``status``.
+
+    Later blocks' keys overwrite earlier ones on conflict — a document-order
+    fallback, not a load-bearing precedence rule (see BUG-2955 Decision
+    Rationale: a static "canonical wins" rule would resurrect stale data on
+    the legacy double-block files). In practice this only matters for files
+    that still carry the malformed multi-block shape; the migration that
+    accompanies this fix folds all known instances into a single block.
+    """
+    merged: dict[str, Any] = {}
+    for block in blocks:
+        merged.update(block.data)
+    if "status" in merged and isinstance(merged["status"], str):
+        merged["status"] = STATUS_SYNONYMS.get(merged["status"], merged["status"])
+    return merged
+
+
+def has_multiple_frontmatter_blocks(content: str) -> bool:
+    """True when *content* carries more than one YAML frontmatter block (BUG-2955)."""
+    return len(_iter_frontmatter_blocks(content)) > 1
+
+
 def parse_frontmatter(content: str, *, coerce_types: bool = False) -> dict[str, Any]:
     """Extract YAML frontmatter from content.
 
@@ -93,6 +270,13 @@ def parse_frontmatter(content: str, *, coerce_types: bool = False) -> dict[str, 
     scan (top-level ``key: value`` pairs and single-line ``- item`` sequences),
     which emits a ``logging.WARNING`` for orphaned list items.
 
+    When *content* carries more than one frontmatter block (BUG-2955 — e.g. an
+    outer ``score_*`` block prepended by the confidence-check scoring path,
+    followed by the canonical ``id:``-bearing block), all blocks are merged in
+    document order via :func:`_merge_blocks` so neither block's keys are lost.
+    For the overwhelming single-block majority this is byte-identical to the
+    historical single-block-only behavior.
+
     Returns empty dict if no frontmatter found.
 
     Args:
@@ -102,44 +286,8 @@ def parse_frontmatter(content: str, *, coerce_types: bool = False) -> dict[str, 
     Returns:
         Dictionary of frontmatter fields, or empty dict
     """
-    if not content or not content.startswith("---"):
-        return {}
-
-    end_match = re.search(r"\n---\s*\n", content[3:])
-    if not end_match:
-        return {}
-
-    frontmatter_text = content[4 : 3 + end_match.start()]
-
-    try:
-        loaded = yaml.load(frontmatter_text, Loader=yaml.BaseLoader)
-    except yaml.YAMLError:
-        loaded = None
-
-    if not isinstance(loaded, dict):
-        # Invalid YAML or a non-mapping document: fall back to the permissive
-        # line-based scan (preserves the orphaned-list-item warning contract).
-        return _parse_frontmatter_lines(frontmatter_text, coerce_types=coerce_types)
-
-    result: dict[str, Any] = {}
-    for raw_key, value in loaded.items():
-        key = str(raw_key)
-        if isinstance(value, str):
-            # YAML block scalars (``|``/``>``) clip a trailing newline; the
-            # historical parser stripped it entirely. Match that contract
-            # (a no-op for single-line scalars, which never end in "\n").
-            value = value.rstrip("\n")
-            if value.lower() in ("null", "~", ""):
-                result[key] = None
-            elif coerce_types and value.isdigit():
-                result[key] = int(value)
-            else:
-                result[key] = value
-        else:
-            result[key] = value
-    if "status" in result and isinstance(result["status"], str):
-        result["status"] = STATUS_SYNONYMS.get(result["status"], result["status"])
-    return result
+    blocks = _iter_frontmatter_blocks(content, coerce_types=coerce_types)
+    return _merge_blocks(blocks)
 
 
 def _parse_frontmatter_lines(frontmatter_text: str, *, coerce_types: bool) -> dict[str, Any]:
@@ -295,6 +443,13 @@ def update_frontmatter(content: str, updates: dict[str, Any]) -> str:
     exists, a new one is prepended. Existing keys are overwritten with the
     new values.
 
+    When *content* carries more than one frontmatter block (BUG-2955), the
+    update is spliced into the **canonical** block — the one carrying an
+    ``id`` key — leaving every other block (e.g. an outer ``score_*`` block)
+    untouched. Falls back to the first block when no block carries ``id``,
+    preserving today's behavior for non-issue frontmatter (agent/skill/loop
+    YAML, which has no ``id`` key).
+
     Args:
         content: Full file content, possibly with existing frontmatter
         updates: Fields to add/update in frontmatter; values may be nested dicts
@@ -302,12 +457,14 @@ def update_frontmatter(content: str, updates: dict[str, Any]) -> str:
     Returns:
         Content with updated frontmatter block
     """
-    fm_match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
-    if not fm_match:
+    blocks = _iter_frontmatter_blocks(content)
+    if not blocks:
         fm_text = yaml.dump(dict(updates), default_flow_style=False, sort_keys=False).strip()
         return f"---\n{fm_text}\n---\n{content}"
 
-    existing: dict[str, Any] = yaml.safe_load(fm_match.group(1)) or {}
+    target = _canonical_frontmatter_block(blocks) or blocks[0]
+    body_start, body_end = target.body_span
+    existing: dict[str, Any] = yaml.safe_load(content[body_start:body_end]) or {}
     existing.update(updates)
     fm_text = yaml.dump(existing, default_flow_style=False, sort_keys=False).strip()
-    return f"---\n{fm_text}\n---{content[fm_match.end() :]}"
+    return f"{content[:body_start]}{fm_text}{content[body_end:]}"

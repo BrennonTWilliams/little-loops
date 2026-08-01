@@ -1,0 +1,12 @@
+{
+  "id": "258ee797-88d4-4885-9eac-8ef39ac115c7",
+  "type": "decision",
+  "timestamp": "2026-08-01T02:08:18Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "TamperGuardConfig.post_implement_verify_step defaults false, matching the codebase convention for any feature adding per-issue agent-invocation cost (LearningTestsConfig.enabled precedent); Option C (fold into existing Phase 3 verify) has no host since Phase 3 is a pure frontmatter check today.",
+  "rule": "Config-gated opt-in post-implement verify step (Option B)",
+  "scope": "issue",
+  "alternatives_rejected": "Option A (default-on, no config gate) \u2014 contradicts established default-off convention for cost-adding features; Option C (fold into existing verification step) \u2014 no existing agent-invoking verify step exists to fold into.",
+  "issue": "ENH-2958"
+}

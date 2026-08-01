@@ -19,7 +19,7 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
         "format-check",
         help="Deterministic structural linter for issue formatting "
         "(missing/renamed/empty/boilerplate/malformed_id/prose_dep_drift/"
-        "stale_prose_dep/program_design_nonspecific)",
+        "stale_prose_dep/program_design_nonspecific/deprecated_key/multi_frontmatter)",
     )
     p.set_defaults(command="format-check")
     p.add_argument(
@@ -99,13 +99,16 @@ def _print_gaps(gaps: FormatGaps) -> None:
         print(f"  program_design_nonspecific: {entry}")
     for entry in gaps.deprecated_key:
         print(f"  deprecated_key: {entry}")
+    for entry in gaps.multi_frontmatter:
+        print(f"  multi_frontmatter: {entry}")
 
 
 def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
     """Report structural format gaps for one issue, or sweep all active issues.
 
     Gap classes: missing/renamed/empty/boilerplate/malformed_id/
-    prose_dep_drift/stale_prose_dep/program_design_nonspecific/deprecated_key.
+    prose_dep_drift/stale_prose_dep/program_design_nonspecific/deprecated_key/
+    multi_frontmatter.
 
     Returns:
         0 when structurally compliant (all issues, in --all mode), 1 when gaps

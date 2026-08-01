@@ -1,4 +1,16 @@
 ---
+id: ENH-2937
+type: ENH
+priority: P3
+status: done
+captured_at: '2026-07-31T21:54:57Z'
+discovered_date: 2026-07-31
+discovered_by: capture-issue
+relates_to:
+- ENH-2866
+- ENH-2936
+- ENH-2689
+program_design_not_applicable: true
 confidence_score: 95
 outcome_confidence: 76
 score_complexity: 18
@@ -8,17 +20,6 @@ score_change_surface: 20
 ---
 # ENH-2937: reconcile-issue: rewrite Scope Boundaries claims contradicted by its own findings
 
----
-id: ENH-2937
-type: ENH
-priority: P3
-status: open
-captured_at: "2026-07-31T21:54:57Z"
-discovered_date: 2026-07-31
-discovered_by: capture-issue
-relates_to: [ENH-2866, ENH-2936, ENH-2689]
-program_design_not_applicable: true
----
 
 ## Summary
 
