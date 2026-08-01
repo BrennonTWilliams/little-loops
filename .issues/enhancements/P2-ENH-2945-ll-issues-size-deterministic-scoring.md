@@ -8,6 +8,8 @@ discovered_by: skill-audit
 discovered_date: 2026-07-31
 parent: EPIC-2938
 epic: EPIC-2938
+relates_to:
+- FEAT-2947
 labels:
 - cli
 - issues
@@ -34,6 +36,8 @@ labels:
 ## Proposed Solution
 
 Word/section/reference counting over `issue_parser.parse_file` output; label table as data. `--write` via `frontmatter.update_frontmatter`. Keep the signal weights in one place (module constant) so `issue-size-review --auto` (used by autodev's guard2 path) and the CLI can't diverge.
+
+**Ordering (soft dep on FEAT-2947)**: Phase 6's child-creation mechanics can only be deleted once `ll-issues create` exists. Land FEAT-2947 first within Wave 2; if this issue ships earlier, scope it to Phases 1–3 only and leave Phase 6's slimming to a follow-up rather than half-converting it.
 
 ## Implementation Steps
 
@@ -83,4 +87,5 @@ Word/section/reference counting over `issue_parser.parse_file` output; label tab
 - [ ] `ll-issues size --json` reproduces the skill's scoring table exactly (fixtures at boundaries 2/3, 7/8)
 - [ ] Skill retains only Phase 4–5 judgment + child-creation orchestration
 - [ ] No JSONL session-log hunting remains in the skill
+- [ ] Phase 6's ID/filename templating is either deleted in favor of `ll-issues create` (FEAT-2947 landed) or explicitly deferred — never left half-converted
 - [ ] pytest coverage in `scripts/tests/`

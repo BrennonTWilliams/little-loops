@@ -10,6 +10,8 @@ parent: EPIC-2938
 epic: EPIC-2938
 blocked_by:
 - ENH-2941
+relates_to:
+- FEAT-2947
 labels:
 - cli
 - issues
@@ -36,7 +38,9 @@ The skill's prose Jaccard has already diverged from `text_utils.py` (documented 
 
 ## Proposed Solution
 
-Build on ENH-2941's consolidated similarity (`text_utils.py`). Reuse `ll-issues link` / `frontmatter.update_frontmatter` for writes, `issue_parser.find_issues` for corpus, `get_next_issue_number` + EPIC template for synthesized-EPIC creation (or defer creation to FEAT-2947's `create` if landed).
+Build on ENH-2941's consolidated similarity (`text_utils.py`). Reuse `ll-issues link` / `frontmatter.update_frontmatter` for writes, `issue_parser.find_issues` for corpus.
+
+**Soft dep on FEAT-2947 — do not implement EPIC creation here.** Synthesize mode emits *cluster proposals*, not EPIC files; the actual creation call is `ll-issues create --type EPIC` (FEAT-2947). If FEAT-2947 has not landed, synthesize mode still ships proposal-only and the skill creates the EPIC as it does today. Two independent ID-allocation/templating implementations is exactly the duplication this epic exists to remove.
 
 **Naming/output collision note**: `ll-issues clusters` already exists and visualizes *dependency-edge* clusters. This subcommand scores *text-similarity* clusters — keep the name `link-epics`, and make `--json` output shapes clearly distinct (documented in help text).
 
@@ -85,6 +89,7 @@ A maintainer with dozens of orphan issues runs `ll-issues link-epics --mode assi
 - [ ] `skills/link-epics/SKILL.md` contains no scoring/clustering algorithm prose
 - [ ] Similarity comes solely from `text_utils.py` (no local stop-word list)
 - [ ] Help text distinguishes this from `ll-issues clusters`
+- [ ] No ID allocation, slugging, or EPIC-file templating in this subcommand — creation is delegated to `ll-issues create` (FEAT-2947) or left to the skill
 - [ ] pytest coverage in `scripts/tests/`
 
 ## Notes
