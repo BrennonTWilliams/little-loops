@@ -3,7 +3,7 @@ id: BUG-2963
 title: Scoped completion commit closes an issue while leaving its implementation uncommitted
 type: BUG
 priority: P1
-status: open
+status: done
 discovered_date: 2026-08-01
 discovered_by: human
 relates_to:
@@ -22,6 +22,7 @@ score_test_coverage: 15
 score_ambiguity: 18
 score_change_surface: 10
 decision_needed: false
+completed_at: '2026-08-01T17:48:26Z'
 ---
 
 # BUG-2963: Scoped completion commit closes an issue while leaving its implementation uncommitted
@@ -742,6 +743,8 @@ that score was recorded)
   preservation) have no existing scaffolding to extend.
 
 ## Session Log
+- `ll-auto` - 2026-08-01T17:48:26 - `87d7fbb4-06a0-4c91-98b5-406c1b1787ea.jsonl`
+- `/ll:ready-issue` - 2026-08-01T17:33:52 - `e1259496-a21c-4ea4-9500-5af4c0d169c1.jsonl`
 - `/ll:confidence-check` - 2026-08-01T16:49:29 - `e664e52a-8464-4540-89e2-6466b8edb359.jsonl`
 - `/ll:confidence-check` - 2026-08-01T16:33:29 - `bdc3763a-d563-49bc-9770-c94f54d36615.jsonl`
 - `/ll:decide-issue` - 2026-08-01T16:20:02 - `afc4adb0-0a95-4165-88c3-800e01745af6.jsonl`
