@@ -1,6 +1,6 @@
 ---
 id: FEAT-2942
-title: "ll-issues link-epics: cluster orphan issues and propose EPIC assignment/synthesis"
+title: 'll-issues link-epics: cluster orphan issues and propose EPIC assignment/synthesis'
 type: FEAT
 priority: P2
 status: open
@@ -10,6 +10,7 @@ parent: EPIC-2938
 epic: EPIC-2938
 blocked_by:
 - ENH-2941
+- FEAT-2947
 relates_to:
 - FEAT-2947
 labels:
@@ -95,3 +96,7 @@ A maintainer with dozens of orphan issues runs `ll-issues link-epics --mode assi
 ## Notes
 
 assign and synthesize are independently shippable — split into two issues if the union-find + synthesis half exceeds ~a day.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-01T00:26:02 - `6fbac205-468a-44ce-b7fb-4626b0ac42e4.jsonl`

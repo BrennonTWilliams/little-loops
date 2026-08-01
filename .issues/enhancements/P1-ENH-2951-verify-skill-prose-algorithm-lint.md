@@ -1,6 +1,7 @@
 ---
 id: ENH-2951
-title: "ll-verify-skill-prose: lint gate that fails on algorithm-as-prose in skill/command markdown"
+title: 'll-verify-skill-prose: lint gate that fails on algorithm-as-prose in skill/command
+  markdown'
 type: ENH
 priority: P1
 status: open
@@ -13,6 +14,9 @@ labels:
 - skills
 - determinism
 - gate
+relates_to:
+- ENH-2939
+- ENH-2941
 ---
 
 # ENH-2951: `ll-verify-skill-prose` — enforce EPIC-2938's core invariant
@@ -129,3 +133,8 @@ Exits 1 on any unsuppressed finding, matching the other `ll-verify-*` tools' con
 
 Deliberately a curated marker list, not a general duplicate-algorithm detector — the
 value is catching the six known shapes cheaply, not proving a hard problem.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-01T00:26:02 - `6fbac205-468a-44ce-b7fb-4626b0ac42e4.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-08-01T00:25:50 - `6fbac205-468a-44ce-b7fb-4626b0ac42e4.jsonl`
