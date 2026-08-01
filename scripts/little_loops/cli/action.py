@@ -70,11 +70,12 @@ def _record_verdict(
 ) -> None:
     """Best-effort verdict persistence for the 9 skill-bridged verifiers (ENH-2504).
 
-    No skill currently emits a structured verdict dict at this call site, so
-    the verdict defaults to a coarse exit-code read (0 -> "pass", else
-    "fail"). A ``VERDICT_JSON: {...}`` tagged line (the existing
+    Absent a ``VERDICT_JSON: {...}`` tagged line, the verdict defaults to a
+    coarse exit-code read (0 -> "pass", else "fail"). ``confidence-check``
+    emits ``VERDICT_JSON`` (ENH-2949); the remaining 8 verifiers do not yet,
+    so they still degrade to the coarse read. The tag (the existing
     :func:`extract_tagged_json` convention) overrides the coarse fields when
-    present, letting precision improve as skills adopt the tag without a
+    present, letting precision improve as more skills adopt it without a
     further schema change. Never raises — the caller wraps this best-effort.
     """
     if skill not in _VERIFIER_SKILLS:
@@ -120,14 +121,15 @@ def _record_review(
 ) -> None:
     """Best-effort review persistence for the 7 skill-bridged audits/reviews (ENH-2512).
 
-    No skill currently emits a structured review dict at this call site, so
-    the verdict defaults to a coarse exit-code read (0 -> "pass", else
-    "fail"). A ``REVIEW_JSON: {...}`` tagged line (the same
-    :func:`extract_tagged_json` convention ``VERDICT_JSON`` uses) overrides
-    the coarse fields when present, letting precision — including the
-    "refused" verdict a pre-flight gate can't express via exit code alone —
-    improve as skills adopt the tag without a further schema change. Never
-    raises — the caller wraps this best-effort.
+    ``audit-loop-run`` and ``audit-architecture`` emit ``REVIEW_JSON: {...}``;
+    the other 5 reviewers do not yet, so their verdict still defaults to a
+    coarse exit-code read (0 -> "pass", else "fail") when the tag is absent.
+    The tag (the same :func:`extract_tagged_json` convention
+    ``VERDICT_JSON`` uses) overrides the coarse fields when present, letting
+    precision — including the "refused" verdict a pre-flight gate can't
+    express via exit code alone — improve as more skills adopt the tag
+    without a further schema change. Never raises — the caller wraps this
+    best-effort.
     """
     if skill not in _REVIEWER_SKILLS:
         return

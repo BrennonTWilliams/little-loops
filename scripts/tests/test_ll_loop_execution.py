@@ -1784,6 +1784,19 @@ class TestCmdSimulate:
             except SystemExit as e:
                 assert e.code == 0
 
+    def test_audit_subcommand_registered(self) -> None:
+        """audit subcommand (ENH-2949) is registered in known_subcommands."""
+        import sys as _sys
+        from unittest.mock import patch as mock_patch
+
+        with mock_patch.object(_sys, "argv", ["ll-loop", "audit", "--help"]):
+            from little_loops.cli import main_loop
+
+            try:
+                main_loop()
+            except SystemExit as e:
+                assert e.code == 0
+
     def test_monitor_subcommand_registered(self) -> None:
         """monitor subcommand (FEAT-1764) is registered in known_subcommands."""
         import sys as _sys

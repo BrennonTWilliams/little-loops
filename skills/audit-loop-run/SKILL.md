@@ -203,41 +203,23 @@ Key signals to flag (fault subset only):
 
 ---
 
-## Step 5.5: Shallow-Iteration Check
+## Step 5.5: Shallow-Iteration Check (ENH-2949: `ll-loop audit --json`)
 
-Using the history loaded in Step 2 and the artifact evidence from Step 4, run the shallow-iteration heuristic:
-
-**1. Count tool calls**: Count the number of `action_complete` events in the loaded history. Call this `TOOL_CALL_COUNT`.
-
-**2. Identify auxiliary mutations**: Before trusting `git diff HEAD`, check whether the primary artifact path (or the run's working directory, e.g. `context.run_dir`) is gitignored:
+Run the deterministic counter CLI against the resolved run directory instead of counting events or scanning the filesystem by hand:
 
 ```bash
-git check-ignore <primary_path>
+ll-loop audit <LATEST_RUN_ID>-<loop_name> --json
 ```
 
-- **Not ignored** (exit code 1, or no primary path is under version control at all): use the `git diff HEAD` evidence collected in Step 4 as before — list all files that were created or modified and are **not** in the primary artifact path set (the paths identified in Step 4: `context.prompt_file`, `context.output_file`, `context.run_dir`, and similar path-like context keys). Call this count `AUX_MUTATION_COUNT`.
-- **Ignored** (exit code 0): `git diff HEAD` is structurally blind to this path, so a `git`-derived `AUX_MUTATION_COUNT` of `0` cannot be trusted. Fall back to a filesystem mutation scan scoped to the run's working directory, anchored on the run-start timestamp (`events[0].ts` from the history loaded in Step 2):
+(equivalently `ll-loop audit --latest <loop_name> --json` when you don't already have `LATEST_RUN_ID`). This returns a `RunAuditStats` JSON blob with `tool_call_count` (the number of `action_complete` events), `aux_mutation_count` (a filesystem-mtime scan of the run directory scoped to files modified since the run started, excluding the loop's own bookkeeping files — `null` when the run-start timestamp can't be parsed) and `diff_stall_present` (true when an `evaluate` event of `type: diff_stall` recorded `verdict` `"stall"` or `"no"`).
 
-  ```bash
-  # GNU find (Linux) — accepts an ISO timestamp string directly
-  find <run_dir> -type f -newermt "<run_start_ts>"
-
-  # BSD find (macOS default) — -newermt is unsupported; use a touched marker file instead
-  touch -d "<run_start_ts>" /tmp/run_start_marker && find <run_dir> -type f -newer /tmp/run_start_marker
-  ```
-
-  Count the resulting file list as `AUX_MUTATION_COUNT`.
-- **Neither signal available** (e.g. the run directory has already been cleaned up): do not default to `0`. Report `AUX_MUTATION_COUNT` as `unknown` and route the heuristic result to `unknown` in step 4 below (skip the warning rather than asserting a false positive).
-
-**3. Check for diff_stall corroboration**: Scan `evaluate` events in the history. For each, check whether the resolved FSM (loaded in Step 2) has `evaluate.type == "diff_stall"` for that state and the recorded `verdict` is `"stall"` or `"no"`. Call this `DIFF_STALL_PRESENT` (true/false).
-
-**4. Apply threshold** (default threshold: 30):
+Apply the threshold (default: 30) yourself using those three fields:
 
 ```
-IF AUX_MUTATION_COUNT == "unknown":
-  result = "unknown"          # no git or filesystem evidence available — skip, don't guess
-ELIF TOOL_CALL_COUNT > 30 AND AUX_MUTATION_COUNT == 0:
-  IF DIFF_STALL_PRESENT:
+IF aux_mutation_count is null:
+  result = "unknown"          # no filesystem evidence available — skip, don't guess
+ELIF tool_call_count > 30 AND aux_mutation_count == 0:
+  IF diff_stall_present:
     result = "corroborated"   # both heuristic and diff_stall agree
   ELSE:
     result = "warning"        # heuristic alone
@@ -247,33 +229,27 @@ ELSE:
 
 The default threshold of 30 `action_complete` events is intentionally conservative — most well-structured loops either produce auxiliary artifacts or converge within this budget. Loops that burn more than 30 iterations without creating helper structure are iterating without building.
 
-**5. Emit finding** when result is `"warning"` or `"corroborated"`:
+**Emit finding** when result is `"warning"` or `"corroborated"`:
 
 ```
-⚠ Shallow-iteration: <TOOL_CALL_COUNT> action_complete events with no auxiliary file mutations
+⚠ Shallow-iteration: <tool_call_count> action_complete events with no auxiliary file mutations
   outside the primary artifact path (<primary_paths>).
-  [Corroborated by diff_stall evaluator verdict in state '<state_name>'.]
+  [Corroborated by diff_stall evaluator verdict.]
   Remediation: add intermediate artifact-write states; break monolithic iteration into
   smaller sub-tasks that each produce a named helper file.
 ```
 
-Pass `result` and `TOOL_CALL_COUNT` to the scorecard in Step 6.
+Pass `result` and `tool_call_count` to the scorecard in Step 6.
+
+`ll-loop audit`'s auxiliary-mutation scan is filesystem-only (mtime since run start) — it does not attempt `git diff`/`git check-ignore` correlation, so it works uniformly whether or not the primary artifact path is gitignored. If you need git-history evidence for a specific artifact path, still use the `git log`/`git diff` commands from Step 4 directly; `aux_mutation_count` is a heuristic signal for this step's threshold only.
 
 ---
 
-## Step 5.6: Budget-Utilization Guard
+## Step 5.6: Budget-Utilization Guard (ENH-2949: `ll-loop audit --json`)
 
-Before accepting budget-exhaustion as a root cause, compute the budget utilization ratio:
+The same `ll-loop audit --json` call from Step 5.5 also returns `steps_consumed`, `max_steps` (resolved from the loop's FSM definition, or `null` if it couldn't be resolved), and `budget_utilization` (`steps_consumed / max_steps`, or `null` when `max_steps` is unavailable).
 
-```bash
-STEPS_CONSUMED=$(jq '[.[] | select(.event == "loop_complete")] | last | .iterations // 0' \
-  .loops/.history/<LATEST_RUN_ID>-<loop_name>/events.jsonl)
-MAX_STEPS=$(ll-loop show <loop_name> --resolved --json | jq '.max_steps // .max_iterations // 100')
-```
-
-If `STEPS_CONSUMED / MAX_STEPS < 0.3`, reject budget-exhaustion as the primary root cause — the loop consumed less than 30% of its budget, so it did not run out of steps.
-
-Note: there is no `steps_consumed` field in `state.json`; derive `STEPS_CONSUMED` from `loop_complete.iterations` in `events.jsonl`.
+If `budget_utilization < 0.3`, reject budget-exhaustion as the primary root cause — the loop consumed less than 30% of its budget, so it did not run out of steps. If `budget_utilization` is `null`, note that budget utilization could not be computed and skip this guard.
 
 ---
 

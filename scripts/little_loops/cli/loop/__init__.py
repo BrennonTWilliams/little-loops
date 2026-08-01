@@ -34,9 +34,12 @@ def main_loop() -> int:
             cmd_promote_baseline,
             cmd_show,
         )
+        from little_loops.cli.loop.audit import cmd_audit
+        from little_loops.cli.loop.cleanup import cmd_cleanup
         from little_loops.cli.loop.lifecycle import cmd_monitor, cmd_resume, cmd_status, cmd_stop
         from little_loops.cli.loop.next_loop import cmd_next_loop
         from little_loops.cli.loop.queue import cmd_queue_list, cmd_queue_remove
+        from little_loops.cli.loop.rename import cmd_rename
         from little_loops.cli.loop.run import cmd_run
         from little_loops.cli.loop.testing import cmd_simulate, cmd_test
         from little_loops.config import BRConfig
@@ -72,6 +75,9 @@ def main_loop() -> int:
             "edit-routes",
             "monitor",
             "queue",
+            "rename",
+            "cleanup",
+            "audit",
             # aliases
             "r",
             "c",
@@ -929,6 +935,67 @@ Examples:
             help="Emit the removal result as a JSON object",
         )
 
+        # Rename subcommand (ENH-2943)
+        rename_parser = subparsers.add_parser(
+            "rename",
+            help="Rename a loop and rewrite every reference to it",
+        )
+        rename_parser.set_defaults(command="rename")
+        rename_parser.add_argument("old_name", help="Current loop name (bare identifier)")
+        rename_parser.add_argument("new_name", help="New loop name (bare identifier)")
+        rename_parser.add_argument(
+            "--dry-run", action="store_true", help="Preview changes without applying them"
+        )
+        rename_parser.add_argument(
+            "--yes", action="store_true", help="Apply without confirmation prompt"
+        )
+
+        # Cleanup subcommand (ENH-2943)
+        cleanup_parser = subparsers.add_parser(
+            "cleanup",
+            help="Discover, classify, and clean up stuck/stale loop runs",
+        )
+        cleanup_parser.set_defaults(command="cleanup")
+        cleanup_parser.add_argument(
+            "--dry-run", action="store_true", help="Preview classification without acting"
+        )
+        cleanup_parser.add_argument(
+            "--threshold",
+            type=float,
+            default=15.0,
+            metavar="MINUTES",
+            help="Minutes before a 'running' loop is considered stuck (default: 15)",
+        )
+        cleanup_parser.add_argument(
+            "--interrupted-age",
+            type=float,
+            default=24.0,
+            metavar="HOURS",
+            help="Hours before an 'interrupted' loop is considered abandoned (default: 24)",
+        )
+        cleanup_parser.add_argument(
+            "-j", "--json", action="store_true", help="Output classification as a JSON array"
+        )
+
+        # Audit subcommand (ENH-2949)
+        audit_parser = subparsers.add_parser(
+            "audit",
+            help="Compute deterministic counters for an archived loop run",
+        )
+        audit_parser.set_defaults(command="audit")
+        audit_parser.add_argument(
+            "run", nargs="?", default=None, help="Run directory name (e.g. <run_id>-<loop_name>)"
+        )
+        audit_parser.add_argument(
+            "--latest", metavar="LOOP", help="Resolve the most recent archived run for LOOP"
+        )
+        audit_parser.add_argument(
+            "--max-steps", type=int, default=None, help="Override max_steps for budget utilization"
+        )
+        audit_parser.add_argument(
+            "-j", "--json", action="store_true", help="Output counters as JSON"
+        )
+
         args = parser.parse_args(argv)
 
         # Backfill run defaults from config when CLI flags are at their argparse defaults.
@@ -982,6 +1049,12 @@ Examples:
             return cmd_edit_routes(args.loop, args, loops_dir, logger)
         elif args.command == "monitor":
             return cmd_monitor(args, loops_dir)
+        elif args.command == "rename":
+            return cmd_rename(args, loops_dir)
+        elif args.command == "cleanup":
+            return cmd_cleanup(args, loops_dir)
+        elif args.command == "audit":
+            return cmd_audit(args, loops_dir)
         elif args.command == "queue":
             if getattr(args, "queue_command", None) == "list":
                 return cmd_queue_list(args, loops_dir)

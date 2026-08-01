@@ -392,6 +392,23 @@ OUTCOME CONFIDENCE: XX/100 → [HIGH CONFIDENCE | MODERATE | LOW | VERY LOW]
 ================================================================================
 ```
 
+Immediately after the block above (single-issue mode only — `--all` batch mode
+has no single `target_id` to attach a verdict to), emit a `VERDICT_JSON: {...}`
+tagged line (ENH-2949, the same `extract_tagged_json` convention
+`audit-loop-run`'s `REVIEW_JSON` trailer uses) so `_record_verdict()`
+(`cli/action.py`) persists a structured verdict instead of degrading to an
+exit-code-only reading:
+
+```
+VERDICT_JSON: {"verdict": "<pass|fail>", "confidence": <READINESS SCORE>, "target_id": "[ISSUE-ID]", "target_kind": "issue", "severity_counts": {"p0": 0, "p1": <Gaps to Address count>, "p2": 0, "info": 0}, "findings_count": <Gaps to Address count>}
+```
+
+`verdict` is `"pass"` when the readiness tier is `PROCEED` or
+`PROCEED WITH CAUTION`, `"fail"` for `STOP — ADDRESS GAPS` or
+`STOP — NOT READY`. `confidence` is the READINESS SCORE (0-100).
+`findings_count`/`severity_counts.p1` is the number of `### Gaps to Address`
+bullets (0 when the section is absent).
+
 ## Batch Output Format (--all mode)
 
 When processing all issues, output a summary table after all individual evaluations:
