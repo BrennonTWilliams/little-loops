@@ -3,7 +3,7 @@ id: ENH-2944
 title: 'll-issues normalize: filename/ID mechanics out of normalize-issues.md'
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_by: skill-audit
 discovered_date: 2026-07-31
 parent: EPIC-2938
@@ -22,6 +22,7 @@ score_test_coverage: 22
 score_ambiguity: 20
 score_change_surface: 20
 testable: true
+completed_at: '2026-08-01T23:20:46Z'
 ---
 
 # ENH-2944: `ll-issues normalize` — filename/ID mechanics

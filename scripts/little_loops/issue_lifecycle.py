@@ -1286,6 +1286,57 @@ def _build_skip_section(reason: str | None) -> str:
 """
 
 
+def git_mv_with_fallback(original_path: Path, new_path: Path, content: str | None = None) -> None:
+    """Rename a file via ``git mv``, with an atomic-write fallback for untracked files.
+
+    Shared by :func:`skip_issue` and ``ll-issues normalize`` (ENH-2944/ENH-2953).
+    Prefers ``git mv`` for tracked files to preserve history; falls back to an
+    atomic write + :meth:`Path.rename` when the file is untracked or ``git mv``
+    fails.
+
+    Args:
+        original_path: Current path to the file
+        new_path: Target path
+        content: When given, written to whichever path ends up holding the file
+            (the write happens before the git-mv-failure fallback rename, or
+            after a successful ``git mv``); when ``None``, the file's existing
+            content is carried over by ``git mv``/``rename`` alone
+
+    Raises:
+        FileNotFoundError: If original_path does not exist
+        FileExistsError: If new_path already exists
+    """
+    if not original_path.exists():
+        raise FileNotFoundError(f"File not found: {original_path}")
+    if new_path.exists():
+        raise FileExistsError(f"Target already exists: {new_path}")
+
+    if _is_git_tracked(original_path):
+        try:
+            result = subprocess.run(
+                ["git", "mv", str(original_path), str(new_path)],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            result = None  # type: ignore[assignment]
+
+        if result is None or result.returncode != 0:
+            # git mv failed — fall back to write + rename
+            if content is not None:
+                atomic_write(original_path, content, encoding="utf-8")
+            original_path.rename(new_path)
+        else:
+            if content is not None:
+                atomic_write(new_path, content, encoding="utf-8")
+    else:
+        # Not tracked — write updated content then rename atomically
+        if content is not None:
+            atomic_write(original_path, content, encoding="utf-8")
+        original_path.rename(new_path)
+
+
 def skip_issue(
     original_path: Path,
     new_path: Path,
@@ -1318,27 +1369,7 @@ def skip_issue(
     captured_at = parse_frontmatter(raw_content).get("captured_at")
     content = raw_content + _build_skip_section(reason)
 
-    if _is_git_tracked(original_path):
-        try:
-            result = subprocess.run(
-                ["git", "mv", str(original_path), str(new_path)],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-        except subprocess.TimeoutExpired:
-            result = None  # type: ignore[assignment]
-
-        if result is None or result.returncode != 0:
-            # git mv failed — fall back to write + rename
-            atomic_write(original_path, content, encoding="utf-8")
-            original_path.rename(new_path)
-        else:
-            atomic_write(new_path, content, encoding="utf-8")
-    else:
-        # Not tracked — write updated content then rename atomically
-        atomic_write(original_path, content, encoding="utf-8")
-        original_path.rename(new_path)
+    git_mv_with_fallback(original_path, new_path, content=content)
 
     if event_bus is not None:
         m = re.match(r"P\d+-([A-Z]+-\d+)-", new_path.name)

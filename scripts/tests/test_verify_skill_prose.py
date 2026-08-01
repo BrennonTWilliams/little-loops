@@ -14,9 +14,11 @@ from little_loops.cli.verify_skill_prose import (
 )
 
 # EPIC-2938's frozen baseline: real skills/*/SKILL.md + commands/*.md hits as of
-# ENH-2951's landing. Every one of these is future work for a sibling child of
-# EPIC-2938, not suppressed here — this test only guards against *growth*.
-BASELINE_COUNT = 23
+# ENH-2944's landing (re-counted 2026-08-01 via a live `ll-verify-skill-prose`
+# run — do not trust a number cited in issue prose without re-running it).
+# Every one of these is future work for a sibling child of EPIC-2938, not
+# suppressed here — this test only guards against *growth*.
+BASELINE_COUNT = 19
 
 
 def _make_tree(tmp_path: Path) -> Path:

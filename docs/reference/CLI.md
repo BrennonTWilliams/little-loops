@@ -1767,23 +1767,26 @@ ll-issues format-check --all --fix --apply    # write the previewed edges via `l
 
 #### `ll-issues normalize`
 
-Deterministic filename/ID-mechanics linter and fixer (ENH-2944), extracted from `commands/normalize-issues.md`'s mechanical rename/ID bookkeeping. Scans all categories/statuses for `missing_id`/`malformed_id` filenames (fail `is_normalized()`), `duplicate_id` (the same numeric ID used by >1 file — the oldest by git history keeps it, others get reassigned the next globally unique number via `get_next_issue_number()`), `legacy_dir` (non-empty `completed/`/`deferred/` directories, base-level or nested), and `type_mismatch` (a keyword-signal heuristic ported from the command's Step 1c: `confidence = signals_for_top_type / (total_signals + 1)`, flagged at ≥0.7).
+Deterministic filename/ID-mechanics linter and fixer (ENH-2944), extracted from `commands/normalize-issues.md`'s mechanical rename/ID bookkeeping. Scans all categories/statuses for `missing_id`/`malformed_filename` filenames (fail `is_normalized()` — `malformed_filename` distinct from `format-check`'s own `malformed_id` gap class, which is frontmatter `id:` vs. filename drift, not a filename shape problem), `duplicate_id` (the same numeric ID used by >1 file — the oldest by git history keeps it, others get reassigned the next globally unique number via `get_next_issue_number()`), `legacy_dir` (non-empty `completed/`/`deferred/` directories, base-level or nested), and `type_mismatch` (a keyword-signal heuristic ported from the command's Step 1c: `confidence = signals_for_top_type / (total_signals + 1)`, flagged at ≥0.7).
 
-`--auto` applies `missing_id`/`malformed_id`/`duplicate_id` findings via `git mv` (shared `git_mv_with_fallback()` helper in `issue_lifecycle.py`, also used by `ll-issues skip`) — it never overwrites an existing path and never allocates a colliding ID. `type_mismatch` findings are **never** auto-applied: reclassification is a semantic judgment left to the calling command's LLM-review step, not a deterministic rename.
+`--auto` applies `missing_id`/`malformed_filename`/`duplicate_id` findings via `git mv` (shared `git_mv_with_fallback()` helper in `issue_lifecycle.py`, also used by `ll-issues skip`) — it never overwrites an existing path and never allocates a colliding ID. Each rename also writes the new ID into the moved file's frontmatter `id:` and repoints any inbound `blocked_by`/`depends_on`/`parent`/`epic`/`relates_to`/`supersedes` edge that named the reassigned ID. `type_mismatch` findings are **never** auto-applied: reclassification is a semantic judgment left to the calling command's LLM-review step, not a deterministic rename.
 
 | Argument/Flag | Default | Description |
 |---------------|---------|-------------|
-| `--check` | `false` | Check-only: print one line per violation, exit 1 if any found, exit 0 if clean (FSM `evaluate: type: exit_code` gate; implies no writes) |
-| `--auto` | `false` | Apply ID-mechanics fixes via `git mv` |
+| `ISSUE_ID...` | — | Scope reported/applied findings to these issues; duplicate detection and ID allocation always stay corpus-wide |
+| `--check` | `false` | Check-only: exit 1 if any auto-fixable finding exists, 0 if clean (FSM `evaluate: type: exit_code` gate; implies no writes) |
+| `--auto` | `false` | Apply auto-fixable findings via `git mv` + frontmatter/edge sync |
+| `--strict` | `false` | Widen `--check`'s exit code to also cover `legacy_dir`/`type_mismatch` |
 | `--json` | `false` | Print `{"findings": [...], "applied": [...]}` instead of text |
 
 **Examples:**
 ```bash
 ll-issues normalize --check           # FSM gate: exit 0 clean / 1 violations found
 ll-issues normalize --auto --json     # apply ID-mechanics fixes, print JSON report
+ll-issues normalize ENH-2944 --auto   # scope to one issue
 ```
 
-**FSM loop use**: The `ensure_formatted` gate in `rn-remediate.yaml` calls this as a shell action with `evaluate: {type: exit_code}`, routing to `/ll:format-issue` only when a gap is found — replacing the older missing-headers-only inline check.
+No loop currently wires `normalize --check` into its routing — the exit-code contract above is designed for a future consumer (the convergence guarantee makes it safe to adopt later), not an existing gate.
 
 ---
 
