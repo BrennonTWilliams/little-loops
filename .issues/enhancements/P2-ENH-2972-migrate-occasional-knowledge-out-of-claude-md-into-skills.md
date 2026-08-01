@@ -15,6 +15,8 @@ labels:
 - context
 - claude-md
 - skills
+blocked_by:
+- ENH-2970
 ---
 
 # ENH-2972: Migrate occasional-knowledge sections out of `.claude/CLAUDE.md` into skills
@@ -183,6 +185,7 @@ above.
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-01T17:54:54 - `0f6b2c2e-0cc5-4e86-8aeb-792632143f0e.jsonl`
 - `/ll:capture-issue` - 2026-08-01
 
 ---

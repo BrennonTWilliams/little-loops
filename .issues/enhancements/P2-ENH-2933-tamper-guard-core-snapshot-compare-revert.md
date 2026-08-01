@@ -86,7 +86,7 @@ and motivation; this child implements the deterministic core mechanism.
 
 ## Design Notes
 
-- Test-file identification goes entirely through ENH-2865's
+- Test-file identification goes entirely through ENH-2973's
   `scripts/little_loops/test_file_patterns.py`
   (`is_test_file`/`filter_test_files`, reading `config.project.test_patterns`)
   — do not re-derive test-file membership here.
@@ -186,7 +186,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ### Call Path
 
-`run_tamper_guard` → `filter_test_files` (ENH-2865) → `snapshot_test_paths`
+`run_tamper_guard` → `filter_test_files` (ENH-2973) → `snapshot_test_paths`
 (called twice, before/after, by whichever adapter owns step timing) →
 `compare_snapshots` → `apply_tamper_policy`. Adapters (ENH-2934, ENH-2935)
 call `run_tamper_guard`; this module never calls into either adapter.
@@ -224,7 +224,7 @@ added test file) that couldn't have been in `before`'s path set.
   own issue text says "module-index row (~L33) for `little_loops.test_tamper_guard`
   if not already added by ENH-2933," but ENH-2933's own scope never claimed
   it — resolving that ownership gap here. Note: the closest precedent,
-  `test_file_patterns.py` (ENH-2865), did **not** get a Module Overview table
+  `test_file_patterns.py` (ENH-2973), did **not** get a Module Overview table
   row, only an inline prose mention under `### ProjectConfig` (~L406). Follow
   whichever of those two shapes is still accurate at implementation time;
   either way, add at least the inline mention so ENH-2935's assumption holds.
@@ -276,7 +276,7 @@ policies and all three finding kinds (modified/deleted/added), plus config-
 file findings.
 
 **Out of scope:**
-- `project.test_patterns` and `test_file_patterns.py` — owned by ENH-2865,
+- `project.test_patterns` and `test_file_patterns.py` — owned by ENH-2973,
   consumed here.
 - The FSM state-level `tamper_guard:` key, `ll-loop validate` lint, and the
   `executor.py` hook — ENH-2934.

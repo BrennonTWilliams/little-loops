@@ -303,7 +303,7 @@ Project-level settings for commands:
 | `build_cmd` | `null` | Optional build command |
 | `run_cmd` | `null` | Optional run/start command (smoke test) |
 | `health_url` | `null` | Optional service health probe URL (FEAT-2551, used by `oracles/code-run-gate` `service_health` state) |
-| `test_patterns` | See per-project-type template | Gitignore-style glob patterns identifying test files, matched via `little_loops.test_file_patterns` (ENH-2865, consumed by ENH-2853/ENH-2854) |
+| `test_patterns` | See per-project-type template | Gitignore-style glob patterns identifying test files, matched via `little_loops.test_file_patterns` (ENH-2973, consumed by ENH-2853/ENH-2854) |
 
 On a fresh (non-`--force`) `ll-init`, `src_dir`/`test_cmd`/`lint_cmd`/
 `format_cmd`/`type_cmd`/`scan.focus_dirs` are no longer pure template

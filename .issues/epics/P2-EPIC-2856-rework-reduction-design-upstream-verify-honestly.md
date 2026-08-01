@@ -10,7 +10,7 @@ relates_to:
 - ENH-2852
 - ENH-2853
 - FEAT-2855
-- ENH-2865
+- ENH-2973
 - ENH-2866
 - FEAT-2867
 - ENH-2870
@@ -91,7 +91,7 @@ multi-tenant reporting.
 
 **Substrate**
 
-- **ENH-2865** — Shared test-file identification module and `project.test_patterns`
+- **ENH-2973** — Shared test-file identification module and `project.test_patterns`
   config key
 - **ENH-2866** — Record dequeue-time commit SHA at orchestrator dequeue and
   worktree creation
@@ -122,13 +122,13 @@ multi-tenant reporting.
 - **ENH-2853 was oversized and is split.** It carried eight workstreams; the two
   that were independently landable and independently useful — the shared
   test-file identification substrate and the dequeue-SHA stamp — are now
-  ENH-2865 and ENH-2866. The stamp in particular had to come first: without it,
+  ENH-2973 and ENH-2866. The stamp in particular had to come first: without it,
   ENH-2853's primary base-state path is dead code and every run silently takes
   the merge-base fallback.
 - **The ENH-2853 ↔ ENH-2854 dependency was circular and is removed.** ENH-2853
   declared a hard `blocked_by: ENH-2854` while ENH-2854's `revert` policy
   depended on ENH-2853's semantics, and both proposed introducing the same
-  config key. Both now depend on ENH-2865 and on nothing from each other; their
+  config key. Both now depend on ENH-2973 and on nothing from each other; their
   only remaining interaction is an ordering constraint stated in ENH-2854
   (`revert` runs after the pre-patch check has read the step's diff), and each
   must be functional with the other absent.
@@ -144,7 +144,7 @@ multi-tenant reporting.
 
 1. **FEAT-2867** — establishes the baseline the rest are measured against. Cheap,
    read-only, no dependencies.
-2. **ENH-2865, ENH-2866** — small substrate, unblocks both verification children.
+2. **ENH-2973, ENH-2866** — small substrate, unblocks both verification children.
 3. **ENH-2853, ENH-2854** — now genuinely parallel; together they close the two
    cheapest holes in the verification story.
 4. **ENH-2852** — the design gate, whose effect FEAT-2867 can then detect either

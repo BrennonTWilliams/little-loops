@@ -401,7 +401,7 @@ class ProjectConfig:
     build_cmd: str | None = None
     run_cmd: str | None = None
     health_url: str | None = None
-    test_patterns: list[str] = field(default_factory=lambda: [...])  # ENH-2865
+    test_patterns: list[str] = field(default_factory=lambda: [...])  # ENH-2973
 ```
 
 `test_file_patterns.is_test_file(path, config=None)` is the shared, pure classifier consumers wire against `project.test_patterns` (508c5565): given a repo-relative, POSIX-normalized path, it returns whether the path matches any configured pattern via `git_operations.file_matches_pattern`, with no git calls, filesystem stat, or LLM invocation of its own. Per-project-type defaults live in `scripts/little_loops/templates/*.json`.

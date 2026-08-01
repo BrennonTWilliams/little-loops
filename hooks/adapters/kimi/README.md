@@ -114,7 +114,7 @@ blockable set as Claude Code.
   `.ll/ll-config.json`) still applies.
 - **Payload drift vs Claude Code** (verified on kimi 0.30.0; see
   `thoughts/research/kimi-cli-surface.md` §Q3). Handled by host-tolerant
-  accessors in the Python handlers (FEAT-2915) — the shims stay dumb:
+  accessors in the Python handlers (FEAT-2974) — the shims stay dumb:
 
   | Event | Kimi sends | Claude sends | Handler tolerance |
   |---|---|---|---|
@@ -157,4 +157,4 @@ sibling shims). It is automatically skipped if `bash` is not available on
   [`scripts/little_loops/hooks/adapters/codex/`](../../../scripts/little_loops/hooks/adapters/codex/),
   contract doc at [`hooks/adapters/codex/README.md`](../codex/README.md)) —
   the pattern this adapter follows
-- Tracking issue: FEAT-2915
+- Tracking issue: FEAT-2974

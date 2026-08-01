@@ -12,7 +12,7 @@ relates_to:
 - ENH-2912
 - ENH-2913
 - FEAT-2914
-- FEAT-2915
+- FEAT-2974
 - FEAT-2916
 - FEAT-2917
 - ENH-2918
@@ -86,7 +86,7 @@ every cell is ✓, ✗ (with a tracking issue), or N/A.
 - **`KimiRunner` stub** (ENH-2912) then **full implementation** (FEAT-2914)
   in `scripts/little_loops/host_runner.py`.
 - **Hook adapter** `hooks/adapters/kimi/` + `ll-init` wiring + shared
-  `write_agents_md()` (FEAT-2915).
+  `write_agents_md()` (FEAT-2974).
 - **Config probe** — `.kimi-code/ll-config.json` in `_config_candidates()`
   (ENH-2913).
 - **ll-adapt emitter** (FEAT-2916) — atomic with its HOST_COMPATIBILITY
@@ -111,7 +111,7 @@ every cell is ✓, ✗ (with a tracking issue), or N/A.
 - **ENH-2912** — KimiRunner stub in host_runner.py — ✅ **done** (landed as full runner with FEAT-2914, no stub stage)
 - **ENH-2913** — Config probe — .kimi-code/ll-config.json in _config_candidates() — ✅ **done**
 - **FEAT-2914** — KimiRunner full implementation (build_streaming, build_blocking_json, build_detached, build_version_check) — ✅ **done**
-- **FEAT-2915** — Hook adapter — hooks/adapters/kimi + ll-init wiring + shared write_agents_md() — ✅ **done**
+- **FEAT-2974** — Hook adapter — hooks/adapters/kimi + ll-init wiring + shared write_agents_md() — ✅ **done**
 - **FEAT-2916** — ll-adapt emitter for kimi-code — ✅ **done** (adapter row landed atomically)
 - **FEAT-2917** — kimi.plugin.json packaging — ✅ **done** (plugin-hooks caveat spun out to BUG-2921)
 - **ENH-2918** — Conformance + host-list plumbing for kimi-code — ✅ **done**
@@ -123,7 +123,7 @@ every cell is ✓, ✗ (with a tracking issue), or N/A.
 1. ✅ Land research spike (FEAT-2911) — all downstream work depends on its findings. **done**
 2. ✅ Add `KimiRunner` stub to `host_runner.py` + `_PROBE_ORDER` entry (ENH-2912). **done** (landed as full runner, no stub stage)
 3. ✅ Implement full `KimiRunner` (FEAT-2914) and the hook adapter + `ll-init`
-   wiring (FEAT-2915) — the critical path. **done**
+   wiring (FEAT-2974) — the critical path. **done**
 4. ✅ Independent tracks (any order, parallel with 3): config probe (ENH-2913),
    ll-adapt emitter (FEAT-2916), plugin packaging (FEAT-2917),
    conformance/plumbing (ENH-2918). **done**
@@ -205,7 +205,7 @@ adapter planning session. FEAT-2911 (research spike) is done —
 0.30.0. No implementation code exists yet: no `KimiRunner` in
 `host_runner.py`, no `hooks/adapters/kimi/`, no `.kimi-code` config probe, no
 emitter. Critical path: ENH-2912 (stub) → FEAT-2914 (full runner) +
-FEAT-2915 (hook adapter); ENH-2913, FEAT-2916, FEAT-2917, ENH-2918 are
+FEAT-2974 (hook adapter); ENH-2913, FEAT-2916, FEAT-2917, ENH-2918 are
 independent; ENH-2919 closes last.
 
 2026-07-29 (IN PROGRESS): Implementation landed same-day, ahead of the
@@ -215,7 +215,7 @@ and FEAT-2914 landed as one full `KimiRunner` (no stub stage). Done:
 (ENH-2913, 3 tests), hook adapter package `scripts/little_loops/hooks/adapters/kimi/`
 (8 shims + `hooks.toml` + README) with `install_kimi_adapter()` managed-block
 install into `~/.kimi-code/config.toml`, ll-init wiring, host-shared
-`write_agents_md()`, handler payload-tolerance fixes (FEAT-2915),
+`write_agents_md()`, handler payload-tolerance fixes (FEAT-2974),
 `KimiEmitter` + `HOST_CAPABILITIES`/`_EMITTER_MAP` keyed `kimi-code` with the
 adapter doc row landed atomically (FEAT-2916 — `ll-verify-host-map` green,
 `ll-adapt --host kimi-code --apply` → 55 adapted / 0 errors), repo-root
@@ -232,7 +232,7 @@ not yet parse kimi session logs (follow-up needed under ENH-2918).
 2026-07-29 (VERIFIED — /ll:verify-issues): All integration-map claims verified
 against the codebase. Implementation has progressed beyond what this file
 describes: every child listed as "open" above (ENH-2912, ENH-2913, FEAT-2914,
-FEAT-2915, FEAT-2916, FEAT-2917, ENH-2918) has its code landed, and ENH-2919's
+FEAT-2974, FEAT-2916, FEAT-2917, ENH-2918) has its code landed, and ENH-2919's
 deliverables also exist — the kimi-code column is complete across the
 HOST_COMPATIBILITY.md tables (hook intents, discovery, runner capabilities),
 the `docs/kimi/` onboarding trio (`getting-started.md`, `hook-events.md`,

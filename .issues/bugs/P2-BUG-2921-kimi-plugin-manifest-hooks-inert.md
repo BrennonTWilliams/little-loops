@@ -127,7 +127,7 @@ headless automation.
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): This issue's shim fixes (cd-to-payload-`cwd`, `LL_PYTHON` → `python3` → `python`) patch the adapter originally scoped in FEAT-2915. FEAT-2915's Implementation Step 1 describes the pre-fix 4-line shim shape; treat this issue's shipped shims as canonical there.
+**Note** (added by `/ll:audit-issue-conflicts`): This issue's shim fixes (cd-to-payload-`cwd`, `LL_PYTHON` → `python3` → `python`) patch the adapter originally scoped in FEAT-2974. FEAT-2974's Implementation Step 1 describes the pre-fix 4-line shim shape; treat this issue's shipped shims as canonical there.
 
 ---
 

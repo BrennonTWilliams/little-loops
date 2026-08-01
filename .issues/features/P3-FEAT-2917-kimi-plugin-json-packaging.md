@@ -20,7 +20,7 @@ completed_at: '2026-07-29T20:54:06Z'
 
 Add a repo-root `kimi.plugin.json`: name `"ll"`, skills `"./skills/"`,
 commands `"./commands/"`, a hooks array referencing the packaged adapter
-shims from FEAT-2915, and an optional `sessionStart.skill`. Plus a README
+shims from FEAT-2974, and an optional `sessionStart.skill`. Plus a README
 install section for the kimi-native path.
 
 ## Motivation
@@ -35,7 +35,7 @@ limitation), which the README section must note.
 
 1. Add `kimi.plugin.json` at the repo root: name `"ll"`, skills
    `"./skills/"`, commands `"./commands/"`, hooks array referencing the
-   packaged shims from FEAT-2915, optional `sessionStart.skill`.
+   packaged shims from FEAT-2974, optional `sessionStart.skill`.
 2. README install section: `kimi /plugins install <path-or-github-url>`,
    noting installs are per-user (kimi limitation).
 3. Manual exit criteria: `/plugins install` of the repo in the kimi TUI
@@ -53,7 +53,7 @@ limitation), which the README section must note.
 
 ### Dependent Files
 
-- `scripts/little_loops/hooks/adapters/kimi/` — shim paths referenced by the manifest (FEAT-2915)
+- `scripts/little_loops/hooks/adapters/kimi/` — shim paths referenced by the manifest (FEAT-2974)
 - `docs/kimi/` — onboarding docs point at this install path (ENH-2919)
 
 ## Impact

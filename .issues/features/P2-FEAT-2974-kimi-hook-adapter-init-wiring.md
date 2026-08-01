@@ -1,5 +1,5 @@
 ---
-id: FEAT-2915
+id: FEAT-2974
 title: "Hook adapter \u2014 hooks/adapters/kimi + ll-init wiring + shared write_agents_md()"
 type: FEAT
 status: done
@@ -14,7 +14,7 @@ labels:
 completed_at: '2026-07-29T20:54:06Z'
 ---
 
-# FEAT-2915: Hook adapter — hooks/adapters/kimi + ll-init wiring + shared write_agents_md()
+# FEAT-2974: Hook adapter — hooks/adapters/kimi + ll-init wiring + shared write_agents_md()
 
 ## Summary
 

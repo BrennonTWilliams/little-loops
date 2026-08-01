@@ -74,7 +74,7 @@ mechanical translations rather than guesswork.
 ### Dependent Files
 
 - `scripts/little_loops/host_runner.py` — `KimiRunner` flag translation source (FEAT-2914)
-- `scripts/little_loops/hooks/adapters/kimi/` — payload drift rows (FEAT-2915)
+- `scripts/little_loops/hooks/adapters/kimi/` — payload drift rows (FEAT-2974)
 - `docs/reference/HOST_COMPATIBILITY.md` — footnote target for the kimi-code column (ENH-2919)
 
 ## Impact

@@ -305,7 +305,7 @@ transition routing, and the state-over-loop-default resolution.
 - The non-FSM verification path (`ll-auto`/`ll-parallel`/`ll-sprint`,
   `work_verification.py`) and the project-global config default key —
   ENH-2935.
-- `project.test_patterns` — ENH-2865.
+- `project.test_patterns` — ENH-2973.
 
 ## Acceptance Criteria
 

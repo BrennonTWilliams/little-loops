@@ -11,7 +11,7 @@ labels:
 - rework
 - verification
 blocked_by:
-- ENH-2865
+- ENH-2973
 - ENH-2866
 learning_tests_required:
 - pytest
@@ -61,8 +61,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 6. Keep any `setup_worktree()`/`cleanup_worktree()` signature change additive — `scripts/little_loops/fsm/executor.py`, `scripts/little_loops/cli/loop/run.py`, and `scripts/little_loops/parallel/orchestrator.py` all call these directly today and are outside this issue's primary files.
 7. Update `skills/verify-issue-loop/SKILL.md` to document the new deterministic state type this issue introduces, adding a state-template example. (Note, verified 2026-07-29: the "no deterministic state type" boundary text the wiring pass cited at SKILL.md lines 211-219 no longer exists — the skill has been restructured and is now 212 lines with no `check_invariants`/`check_stall`/`check_concrete` mention. The substantive constraint stands: the skill only emits LLM-judged `llm_structured` states today — SKILL.md ~L150-165 and `templates.md` — so the work is additive documentation plus a template, not reconciling a prohibition.)
-8. ~~Schema-presence test for `project.test_patterns`~~ — moved to **ENH-2865**.
-9. ~~Per-language `project.test_patterns` template defaults~~ — moved to **ENH-2865**.
+8. ~~Schema-presence test for `project.test_patterns`~~ — moved to **ENH-2973**.
+9. ~~Per-language `project.test_patterns` template defaults~~ — moved to **ENH-2973**.
 
 ## Design Notes
 
@@ -81,7 +81,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Import isolation is load-bearing in editable-install repos.** A worktree checkout of the pre-patch tree can still import the *main-tree* package when the project is installed editable (the install pins an absolute path — see the epic-verify false-negative history in this repo). A "pre-patch" run that imports post-patch code passes trivially and the check reports garbage. The pre-patch run must resolve imports from the worktree (PYTHONPATH injection ahead of site-packages, or a fresh non-editable install into the worktree's environment), and a test must prove the isolation.
 - **Define the base state explicitly.** Under `ll-auto`/`ll-sprint` a verification step may span multiple commits. "Pre-patch" means the tree at the SHA recorded when the issue was dequeued (fall back to merge-base with the base branch when no dequeue SHA is recorded) — not simply `HEAD~1`.
 - **The dequeue-SHA stamp is ENH-2866, not this issue** (split at epic review, 2026-07-27). Nothing records a dequeue SHA today, so this issue's primary base-state path would be dead code without it; ENH-2866 adds the stamp at `autodev.yaml`'s `dequeue_next` and `ll-parallel`'s worktree creation, plus a reader helper that returns `None` when unstamped. This issue *consumes* that helper and implements the merge-base fallback behind it. Until a given orchestrator stamps, its runs take the fallback — which is why the evidence bundle must name the base actually used.
-- **Test-file identification is ENH-2865, not this issue** (split at epic review, 2026-07-27). Both this check and ENH-2854's tamper guard need to classify paths as test files; the `project.test_patterns` config key, its template defaults (including the load-bearing `conftest.py` entry), and the shared `test_file_patterns.py` module land once in ENH-2865 and are consumed here. This removes the former circular `blocked_by` between this issue and ENH-2854 — neither depends on the other now; both depend on ENH-2865.
+- **Test-file identification is ENH-2973, not this issue** (split at epic review, 2026-07-27). Both this check and ENH-2854's tamper guard need to classify paths as test files; the `project.test_patterns` config key, its template defaults (including the load-bearing `conftest.py` entry), and the shared `test_file_patterns.py` module land once in ENH-2973 and are consumed here. This removes the former circular `blocked_by` between this issue and ENH-2854 — neither depends on the other now; both depend on ENH-2973.
 - **Gate placement: the check must be hosted by a reusable oracle loop, not by `ll-harness`** (placement review, 2026-07-30). The prior Integration Map installed the check in `cli/harness.py:_evaluate_and_report()` and in `/ll:verify-issue-loop`'s generator. Both are off every production verification path:
   - **No orchestrator invokes `ll-harness`.** A repo-wide grep for `ll-harness` across `scripts/little_loops/` returns only its own CLI (`cli/harness.py`), the shared `runner_spec.py` abstraction, telemetry readers (`history_reader.py:2797+`), and a permission string in `init/writers.py:70`. Nothing in `ll-auto`, `ll-parallel`, `ll-sprint`, or any `loops/*.yaml` calls it — it is a hand-run one-shot tool.
   - **`/ll:verify-issue-loop` is a generator.** A check emitted there exists only inside per-issue loop YAML someone chose to generate, never in a standing path.
@@ -105,7 +105,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Per-test pass/fail/error classification — two existing patterns to choose between, neither currently wired to a pre/post-patch comparison**:
   - `scripts/little_loops/loops/oracles/code-run-gate.yaml`'s `run_test` state (lines 201-249) shells out to `test_cmd`, parses a `--json-report`-produced `pytest.json`'s `summary` dict (`total`/`passed`/`failed`), with a fallback to binary pass/fail when JSON reporting isn't configured. The `.ll/learning-tests/pytest-json-report.md` learning-test proof documents this exact contract (`summary.passed + failed + skipped == total`).
   - `scripts/little_loops/pytest_history_plugin.py`'s `LLHistoryPlugin` (line 81) classifies pass/fail/error natively via the `pytest_runtest_logreport` hook, distinguishing `call`-phase failures (real test failures) from `setup`/`teardown`-phase failures (errors) — directly matches this issue's "error-vs-fail" distinction requirement in Design Notes. Registered via the `pytest11` entry point in `scripts/pyproject.toml`.
-- **`project.test_patterns` is introduced by ENH-2865** (blocking), modeled on the existing `scan.focus_dirs` list-of-globs shape and resolved via `resolve_variable()` in `scripts/little_loops/config/core.py:886`. This issue only *consumes* the shared `scripts/little_loops/test_file_patterns.py` module; it neither defines the config key, its schema entry, nor its per-template defaults.
+- **`project.test_patterns` is introduced by ENH-2973** (blocking), modeled on the existing `scan.focus_dirs` list-of-globs shape and resolved via `resolve_variable()` in `scripts/little_loops/config/core.py:886`. This issue only *consumes* the shared `scripts/little_loops/test_file_patterns.py` module; it neither defines the config key, its schema entry, nor its per-template defaults.
 - **Evidence-bundle dataclass convention**: `scripts/little_loops/issue_history/models.py`'s `Gap`/`GapAnalysis` classes (lines 259-302) and `scripts/little_loops/cli/verify_design_tokens.py`'s `ThemeViolation`/`ProfileResult` (lines 49-60) both follow the same shape — plain-field `@dataclass` + `to_dict()` method, list fields capped to a top-N for serialization — which is the convention a new per-test evidence-bundle dataclass for this issue should follow. Note: the command doc's reference to a `TestGap` class in `issue_history/models.py` does not match current code; the actual class is named `Gap`.
 
 ## Integration Map
@@ -115,7 +115,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 _Rewritten 2026-07-30 (placement review) — the check is hosted by a reusable oracle loop; `ll-harness` and `/ll:verify-issue-loop` are demoted from owners to consumers. See Design Notes, "Gate placement"._
 
 **Layer 1 — gate core (no FSM or CLI knowledge):**
-- `scripts/little_loops/prepatch_check.py` (new) — `run_prepatch_check()`, `collect_candidate_nodeids()`, and the `PrePatchTestOutcome` / `PrePatchEvidence` dataclasses per § Program Design. Consumes ENH-2865's `test_file_patterns` module for identification and ENH-2866's reader helper for the base SHA.
+- `scripts/little_loops/prepatch_check.py` (new) — `run_prepatch_check()`, `collect_candidate_nodeids()`, and the `PrePatchTestOutcome` / `PrePatchEvidence` dataclasses per § Program Design. Consumes ENH-2973's `test_file_patterns` module for identification and ENH-2866's reader helper for the base SHA.
 - `scripts/little_loops/worktree_utils.py` — new additive sibling `setup_prepatch_worktree()` wrapping `setup_worktree()` (line 155): fork from the dequeue-time SHA / merge-base via the existing `base_branch` param, then `git apply` only the test-file portion of the diff (new logic — no partial-diff helper exists in the repo today). `setup_worktree()` / `cleanup_worktree()` signatures unchanged.
 
 **Layer 2 — oracle host (the reachability fix):**
@@ -129,7 +129,7 @@ _No longer this issue's install sites (they were the sole install sites before t
 
 _Split out at epic review (2026-07-27) — no longer this issue's scope, consumed as dependencies:_
 - `scripts/little_loops/loops/autodev.yaml` `dequeue_next` + `ll-parallel` worktree-creation SHA stamps → **ENH-2866**
-- `project.test_patterns` config key, template defaults, and `scripts/little_loops/test_file_patterns.py` → **ENH-2865**
+- `project.test_patterns` config key, template defaults, and `scripts/little_loops/test_file_patterns.py` → **ENH-2973**
 
 ### Similar Patterns to Follow
 - `verify_epic_branch_before_merge()` (`worktree_utils.py:364-494`) — create → run-in-isolation → teardown-in-`finally` shape, plus its `src_dir` PYTHONPATH-injection fix (lines 399-409, 467-473) for editable-install import isolation. See precedent bugs `BUG-2629`, `BUG-2640`, `BUG-2649`.
@@ -145,9 +145,9 @@ _Split out at epic review (2026-07-27) — no longer this issue's scope, consume
 - No existing test file covers pre-patch/post-patch test comparison; a new test module is needed.
 
 ### Related Issues
-- `ENH-2865` (blocking) — `project.test_patterns` + shared `test_file_patterns.py`.
+- `ENH-2973` (blocking) — `project.test_patterns` + shared `test_file_patterns.py`.
 - `ENH-2866` (blocking) — dequeue-time SHA stamp and its reader helper.
-- `ENH-2854` (peer, **not** a dependency in either direction as of the 2026-07-27 epic review) — consumes the same ENH-2865 module. The two interact only at ordering: ENH-2854's `revert` policy must run *after* this check has read the step's diff, which is stated as a constraint in ENH-2854 rather than a blocking edge.
+- `ENH-2854` (peer, **not** a dependency in either direction as of the 2026-07-27 epic review) — consumes the same ENH-2973 module. The two interact only at ordering: ENH-2854's `revert` policy must run *after* this check has read the step's diff, which is stated as a constraint in ENH-2854 rather than a blocking edge.
 
 ### Dependent Files (Callers/Importers)
 
@@ -164,7 +164,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/API.md:3455-3473` — existing prose block documents `verify_epic_branch_before_merge` / `setup_worktree(..., checkout_existing=True)`'s exact call shape; cross-reference here when adding the pre-patch/partial-diff-apply variant.
 - `skills/verify-issue-loop/SKILL.md` ~L150-165 and `templates.md` — the skill documents only `llm_structured` verify/probe states today. Add a bullet describing when the deterministic pre-patch state type applies, alongside a new state-template example in `templates.md`. (The "Important rules" boundary text at former lines 211-219 that the wiring pass flagged for reconciliation no longer exists after the skill's restructuring — verified 2026-07-29; the work is additive documentation, not editing a prohibition.)
 - `scripts/little_loops/cli/harness.py:117-128` (`--help` epilog / `_add_evaluator_flags()`) and the hard-coded JSON key set in `_evaluate_and_report()` (lines 283-294) / `_report()` (lines 320-339) — the new per-test evidence bundle is an additive key set here, not currently present; epilog text should mention it.
-- `docs/reference/CONFIGURATION.md` — no change here; the `### project` table's `project.test_patterns` row ships with ENH-2865.
+- `docs/reference/CONFIGURATION.md` — no change here; the `### project` table's `project.test_patterns` row ships with ENH-2973.
 
 ### Tests
 
@@ -176,15 +176,15 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Scope Boundaries
 
-- **Not this issue**: the dequeue-time SHA stamp and its reader helper (moved to **ENH-2866**); the `project.test_patterns` config key, its template defaults, and the shared `test_file_patterns.py` classification module (moved to **ENH-2865**). This issue only *consumes* both.
-- **Not this issue**: `ENH-2854`'s tamper-guard `revert` policy — a peer that shares the ENH-2865 module but has no dependency edge in either direction; the only interaction is ordering (its revert must run after this check reads the step's diff), which is a constraint documented on ENH-2854, not a blocking edge here.
+- **Not this issue**: the dequeue-time SHA stamp and its reader helper (moved to **ENH-2866**); the `project.test_patterns` config key, its template defaults, and the shared `test_file_patterns.py` classification module (moved to **ENH-2973**). This issue only *consumes* both.
+- **Not this issue**: `ENH-2854`'s tamper-guard `revert` policy — a peer that shares the ENH-2973 module but has no dependency edge in either direction; the only interaction is ordering (its revert must run after this check reads the step's diff), which is a constraint documented on ENH-2854, not a blocking edge here.
 - **Not this issue**: replacing or removing the existing LLM-judged semantic criteria in verification loops — this check is additive alongside them, never a substitute.
 - **Not this issue**: running the full test suite pre-patch — only the identified candidate test node IDs are run (see Design Notes, "Price the check").
 - **Not this issue** (added 2026-07-30, placement review): hooking the check into `ll-auto` / `ll-parallel` / `ll-sprint` as a standalone CLI-level pre-flight. Those orchestrators reach it transitively through the `rn-*` loops that delegate to the oracle. If a direct non-FSM entry point is later wanted, it is an additive Python adapter over the same `prepatch_check.py` core (the `learning_tests/gate.py` shape), not a second implementation — and a separate issue.
 
 ## Impact
 
-- **Priority**: P2 - Closes a real fake-evidence hole in verification loops (per epic EPIC-2856's rework-reduction goal), but is not blocking active work until its dependencies (ENH-2865, ENH-2866) land.
+- **Priority**: P2 - Closes a real fake-evidence hole in verification loops (per epic EPIC-2856's rework-reduction goal), but is not blocking active work until its dependencies (ENH-2973, ENH-2866) land.
 - **Effort**: Large - New worktree-fork-plus-partial-diff-apply primitive, a new per-test evidence-bundle dataclass, a new deterministic FSM state type wired into `/ll:verify-issue-loop`, and import-isolation handling for editable installs; touches `worktree_utils.py`, `cli/harness.py`, and `skills/verify-issue-loop/SKILL.md`.
 - **Risk**: Medium - `setup_worktree()`/`cleanup_worktree()` are called directly by `fsm/executor.py`, `cli/loop/run.py`, and `parallel/orchestrator.py`; any signature change must stay additive to avoid breaking those call sites. The check itself is otherwise isolated (worktree-scoped, non-mutating on failure).
 - **Breaking Change**: No - additive worktree variant and additive evidence-bundle fields; existing semantic criteria and call sites are unaffected.
@@ -221,7 +221,7 @@ additive sibling in `worktree_utils.py` wrapping `setup_worktree()` (fork from
 `base_ref` via the existing `base_branch` parameter) plus the new partial-diff
 `git apply` of the test-file portion; `setup_worktree()` /
 `cleanup_worktree()` signatures are unchanged. `is_test_file()` /
-`filter_test_files()` are ENH-2865's existing shared module, consumed for
+`filter_test_files()` are ENH-2973's existing shared module, consumed for
 candidate identification and never re-implemented here.
 
 ### Call Path
@@ -249,10 +249,10 @@ classification mirrors `LLHistoryPlugin`.
 - [ ] A newly *added* candidate test that passes pre-patch is hard-flagged and is not counted as verification evidence.
 - [ ] A *modified* candidate test that passes pre-patch is recorded in the evidence as soft by default, with a config option to escalate it to a hard flag.
 - [ ] A candidate test that fails or errors pre-patch is accepted as evidence; the evidence bundle records the error category (import/collection error naming a post-patch module vs. other infrastructure error).
-- [ ] `conftest.py` changes are applied to the pre-patch tree (guaranteed by ENH-2865's default patterns; assert it here rather than re-implementing it).
+- [ ] `conftest.py` changes are applied to the pre-patch tree (guaranteed by ENH-2973's default patterns; assert it here rather than re-implementing it).
 - [ ] The pre-patch run resolves imports from the pre-patch worktree, not the main tree's editable install; a test proves the isolation (post-patch-only module is unimportable in the pre-patch run).
 - [ ] The base state is the dequeue-time SHA when ENH-2866's reader returns one, else the merge-base with the base branch; the chosen base is named in the evidence bundle, and a test covers the unstamped fallback path.
-- [ ] Test-file identification is done via ENH-2865's shared module, not a glob list defined here.
+- [ ] Test-file identification is done via ENH-2973's shared module, not a glob list defined here.
 - [ ] The zero-candidate-tests case is reported explicitly rather than passing silently.
 - [ ] Per-test results (name, file, pre-patch outcome, post-patch outcome) appear in the verification evidence bundle.
 - [ ] The user's working tree is unchanged after the check runs, including on failure paths.

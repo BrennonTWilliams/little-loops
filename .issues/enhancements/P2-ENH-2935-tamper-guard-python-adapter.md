@@ -232,7 +232,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   when `changed_files` is `None` (the `ll-auto` path), it derives the set
   itself from three sequential `git diff` calls (uncommitted, staged,
   committed-since-`baseline_sha`) — intersect that derived set against
-  `filter_test_files()` (ENH-2865, via ENH-2933's core) before deciding
+  `filter_test_files()` (ENH-2973, via ENH-2933's core) before deciding
   revert/fail/allow.
 - `issue_manager.py`'s two call sites needing confirmation: L1072 and L1109
   (Phase 3 spans L1049-1129). `worker_pool.py`'s call site: L596,
@@ -322,7 +322,7 @@ and pass it through rather than constructing a new one:
 ### Call Path
 
 `verify_work_was_done` (`work_verification.py:44`) → `run_tamper_guard`
-(ENH-2933) → `filter_test_files` (ENH-2865) → `snapshot_test_paths` →
+(ENH-2933) → `filter_test_files` (ENH-2973) → `snapshot_test_paths` →
 `compare_snapshots` → `apply_tamper_policy`, with the policy resolved from
 the config key (via `BRConfig`) when no FSM-level override is in play.
 
@@ -418,7 +418,7 @@ non-FSM half (loop default > config key > built-in default).
 - The guard core itself — ENH-2933, consumed here.
 - The `tamper_guard:` FSM state key, its schema/lint, and the
   `executor.py` hook — ENH-2934.
-- `project.test_patterns` — ENH-2865.
+- `project.test_patterns` — ENH-2973.
 
 ## Acceptance Criteria
 

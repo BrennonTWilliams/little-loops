@@ -1,6 +1,6 @@
 # Kimi Code Hook Events
 
-How Kimi Code CLI hook events map to little-loops hook intents. All mappings on this page were machine-verified on kimi **0.30.0** by the FEAT-2911 research spike (`thoughts/research/kimi-cli-surface.md`); the adapter landed as FEAT-2915 under EPIC-2910.
+How Kimi Code CLI hook events map to little-loops hook intents. All mappings on this page were machine-verified on kimi **0.30.0** by the FEAT-2911 research spike (`thoughts/research/kimi-cli-surface.md`); the adapter landed as FEAT-2974 under EPIC-2910.
 
 The adapter shims (`scripts/little_loops/hooks/adapters/kimi/*.sh`) are deliberately dumb: each exports `LL_HOOK_HOST=kimi-code`, pipes the stdin JSON payload to `python -m little_loops.hooks <intent>`, and exits with its status. All payload handling lives in the host-agnostic Python layer (`scripts/little_loops/hooks/`).
 
@@ -28,7 +28,7 @@ Every payload carries the same snake_case base fields as Claude: `hook_event_nam
 
 ## Payload drift (handled in the Python handlers)
 
-Kimi's payload shapes drift from Claude's in four places. The shims stay dumb; the drift is absorbed by host-tolerant accessors in the intent handlers (FEAT-2915):
+Kimi's payload shapes drift from Claude's in four places. The shims stay dumb; the drift is absorbed by host-tolerant accessors in the intent handlers (FEAT-2974):
 
 | Event | Kimi sends | Handler expects | Resolution |
 | --- | --- | --- | --- |

@@ -1,5 +1,5 @@
 ---
-id: ENH-2865
+id: ENH-2973
 title: Shared test-file identification module and project.test_patterns config key
 type: ENH
 priority: P2
@@ -24,7 +24,7 @@ score_ambiguity: 20
 score_change_surface: 22
 ---
 
-# ENH-2865: Shared test-file identification module and `project.test_patterns` config key
+# ENH-2973: Shared test-file identification module and `project.test_patterns` config key
 
 ## Summary
 

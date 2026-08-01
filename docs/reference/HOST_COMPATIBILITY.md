@@ -26,7 +26,7 @@ into `LLHookEvent` payloads.
 | `pre_compact`        | ✓           | ✓             | ✓             | (deferred)[^gemini] — `PreCompress`; advisory, async | ✓[^kimi]                                         |
 | `user_prompt_submit` | ✓           | (deferred)    | ✓             | (deferred)[^gemini] — `BeforeAgent` | ✓ (blockable; block-array prompt handled)[^kimi] |
 | `pre_tool_use`       | ✓ (active)[^hot] | (opt-in)[^hot] | (opt-in)[^hot] | (deferred)[^gemini] — `BeforeTool` | ✓ (active, blockable)[^kimi]                     |
-| `post_tool_use`      | ✓           | ✓ (fire-and-forget)[^hot] | ✓ (fire-and-forget)[^hot] | (deferred)[^gemini] — `AfterTool` | ✓ — `tool_output` payload tolerated (FEAT-2915)[^kimi] |
+| `post_tool_use`      | ✓           | ✓ (fire-and-forget)[^hot] | ✓ (fire-and-forget)[^hot] | (deferred)[^gemini] — `AfterTool` | ✓ — `tool_output` payload tolerated (FEAT-2974)[^kimi] |
 | `session_end`        | ✓ (dispatched from `SessionStart` event → `session_end` intent[^ssend]) | (deferred)    | (deferred)    | (deferred)[^gemini] — `SessionEnd`; best-effort | ✓ — native `SessionEnd`; no SessionStart workaround needed[^kimi] |
 | `post_compact`       | N/A         | N/A           | (deferred)[^postcompact] | N/A — no equivalent | (deferred)[^kimi] — kimi fires `PostCompact`; unwired |
 | `permission_request` | N/A         | N/A           | (deferred)[^permreq] | N/A — `Notification` hook is observability-only | (deferred)[^kimi] — kimi fires `PermissionRequest`/`Result`; unwired |
@@ -102,7 +102,7 @@ into `LLHookEvent` payloads.
     `thoughts/research/kimi-cli-surface.md`. **Landed:** `KimiRunner`
     (ENH-2912 registration / FEAT-2914 wiring — all four `build_*` methods),
     the `.kimi-code/ll-config.json` config probe (ENH-2913), the hook adapter
-    (FEAT-2915 — eight events wired via a managed `[[hooks]]` block in
+    (FEAT-2974 — eight events wired via a managed `[[hooks]]` block in
     `~/.kimi-code/config.toml`, including `subagent_start`/`subagent_stop`
     intents, which have no rows in the table above), the `ll-adapt` emitter
     (FEAT-2916), `kimi.plugin.json` packaging (FEAT-2917), and

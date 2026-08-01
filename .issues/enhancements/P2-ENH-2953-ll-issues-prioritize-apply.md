@@ -196,3 +196,25 @@ _Verified 2026-08-01 against the working tree._
 - [ ] `ll-verify-skill-prose` reports no findings in `commands/prioritize-issues.md`, and `BASELINE_COUNT` in `scripts/tests/test_verify_skill_prose.py` is ratcheted down accordingly
 - [ ] pytest coverage in `scripts/tests/test_ll_issues_prioritize.py` (fixture tree of prioritized/unprioritized/terminal-status issues; `done`/`cancelled`/`deferred` issues are excluded from discovery)
 - [ ] Docs updated: new `ll-issues prioritize` section in `docs/reference/CLI.md`, `ll-issues` bullet in `.claude/CLAUDE.md`, `docs/guides/LOOPS_GUIDE.md:1004`, and `.kimi-code` mirror regenerated via `ll-adapt`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): the "Ratchet to 21" target in this
+issue's Codebase Research Findings / AC 6 is stale as of ENH-2944's 2026-08-01
+revision. ENH-2944 now reports the tree's *actual* live finding count is 21 (not
+23, the current `BASELINE_COUNT` constant), and plans to drop `BASELINE_COUNT`
+directly `23 → 19` on its own landing — anticipating this issue's 2 findings as
+well as its own. If this issue lands **before** ENH-2944, dropping `BASELINE_COUNT`
+to 21 would be correct (23 - this issue's 2). If it lands **after** ENH-2944,
+`BASELINE_COUNT` will already be at 19, and this issue must drop it to 17, not 21.
+Do not hardcode 21 — re-run `ll-verify-skill-prose` and ratchet
+`BASELINE_COUNT` to whatever the actual live finding count is after removing this
+issue's own two `prioritize-issues.md` findings, per ENH-2944's own instruction
+("whichever lands second must re-verify and re-lower rather than assume its own
+delta").
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-01T17:53:29 - `92537019-48b2-41a8-b0c0-d76fae16dd95.jsonl`

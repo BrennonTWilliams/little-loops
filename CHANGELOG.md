@@ -42,7 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `EvaluateConfig.from_dict` (root cause of BUG-2893/BUG-2894).
 - ENH-2860: New MR-13 validation rule — abandonment must reach `summary.json`
   and downgrade the verdict.
-- ENH-2865: Shared test-file identification module and a `project.test_patterns`
+- ENH-2973: Shared test-file identification module and a `project.test_patterns`
   config key.
 - ENH-2874: Degraded-mode agent fallbacks generated for hosts without subagent
   support, with mandatory disclosure.
