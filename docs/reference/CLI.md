@@ -1594,6 +1594,37 @@ ll-issues fp .issues/bugs/P2-BUG-042-example.md
 
 ---
 
+#### `ll-issues find-similar` / `ll-issues fs`
+
+Score title word-overlap similarity (Jaccard, via `text_utils.py`) between a query text and the issue corpus, or pairwise across the whole corpus in `--batch` mode. Distinct from `ll-issues search`: `search` filters/sorts issues by fields and substrings, while `find-similar` scores fuzzy text similarity between titles. Both modes compare **titles only**, never full issue bodies.
+
+| Argument/Flag | Description |
+|----------------|-------------|
+| `text` | Text to score against issue titles (omit when using `--batch`) |
+| `--batch` | Pairwise title-similarity scan over the corpus instead of single-text mode |
+| `--against open\|all` | Corpus to compare against (default: `open`) |
+| `--threshold T` | Minimum score to include (default: `config.issues.duplicate_detection.similar_threshold`) |
+| `--limit N`, `-n N` | Cap the number of returned results |
+
+**Output (JSON), single-text mode:**
+```json
+[{"id": "ENH-1801", "title": "Add fingerprint conflict detection", "path": ".issues/enhancements/P3-ENH-1801-example.md", "score": 0.667}]
+```
+
+**Output (JSON), `--batch` mode:**
+```json
+[{"a": "BUG-100", "b": "BUG-101", "score": 0.5}]
+```
+
+**Examples:**
+```bash
+ll-issues find-similar "auth token refresh failure" --against all
+ll-issues fs "auth token refresh failure" --threshold 0.6 --limit 5
+ll-issues find-similar --batch --against open
+```
+
+---
+
 #### `ll-issues check-flag` / `ll-issues cf`
 
 Exit 0 if a named boolean frontmatter field in the issue equals `true`. Designed for use as a shell gate in FSM loop states.

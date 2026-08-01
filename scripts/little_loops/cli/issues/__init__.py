@@ -50,6 +50,7 @@ def main_issues() -> int:
             add_finalize_decomposition_parser,
             cmd_finalize_decomposition,
         )
+        from little_loops.cli.issues.find_similar import cmd_find_similar
         from little_loops.cli.issues.fingerprint import cmd_fingerprint
         from little_loops.cli.issues.format_check import (
             add_format_check_parser,
@@ -834,6 +835,41 @@ Examples:
         )
         add_config_arg(fp)
 
+        fs = subs.add_parser(
+            "find-similar",
+            aliases=["fs"],
+            help="Score title similarity between TEXT (or all pairs) and the issue corpus",
+        )
+        fs.set_defaults(command="find-similar")
+        fs.add_argument(
+            "text",
+            nargs="?",
+            default=None,
+            help="Text to score against issue titles (title-only comparison); "
+            "omit when using --batch",
+        )
+        fs.add_argument(
+            "--batch",
+            action="store_true",
+            help="Pairwise title-similarity scan over the corpus instead of single-text mode",
+        )
+        fs.add_argument(
+            "--against",
+            choices=["open", "all"],
+            default="open",
+            help="Corpus to compare against: open issues (default) or all statuses",
+        )
+        fs.add_argument(
+            "--threshold",
+            type=float,
+            default=None,
+            metavar="T",
+            help="Minimum score to include (default: config.issues.duplicate_detection."
+            "similar_threshold)",
+        )
+        fs.add_argument("--limit", "-n", type=int, metavar="N", help="Cap results at N")
+        add_config_arg(fs)
+
         sk = subs.add_parser(
             "skip",
             help="Deprioritize an issue by bumping its priority prefix",
@@ -918,6 +954,8 @@ Examples:
             return cmd_anchor_sweep(config, args)
         if args.command == "fingerprint":
             return cmd_fingerprint(config, args)
+        if args.command == "find-similar":
+            return cmd_find_similar(config, args)
         if args.command == "skip":
             return cmd_skip(config, args)
         if args.command == "deferred-triage":
