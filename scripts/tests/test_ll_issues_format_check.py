@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import Any
@@ -839,3 +840,110 @@ class TestFormatCheckProgramDesign:
         out, _ = capsys.readouterr()
 
         assert result == 0, out
+
+
+# ---------------------------------------------------------------------------
+# TestFormatCheckDeprecationSuppression (ENH-2961)
+# ---------------------------------------------------------------------------
+
+
+def _issue_body(issue_id: str, *, deprecated_parent: str | None = None) -> str:
+    """Build a clean issue body for *issue_id*, optionally with a deprecated key."""
+    body = _CLEAN_BUG_BODY.replace("BUG-9101", issue_id)
+    if deprecated_parent is not None:
+        body = body.replace(f"id: {issue_id}", f"id: {issue_id}\nparent_issue: {deprecated_parent}")
+    return body
+
+
+class TestFormatCheckDeprecationSuppression:
+    """Single-ID ``format-check`` suppresses other issues' deprecation warnings."""
+
+    def test_single_id_suppresses_other_issues_warnings(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+        caplog: Any,
+    ) -> None:
+        _write_issue(format_check_dir, "P3-BUG-9701-test-bug.md", _issue_body("BUG-9701"))
+        _write_issue(
+            format_check_dir,
+            "P3-BUG-9702-test-bug.md",
+            _issue_body("BUG-9702", deprecated_parent="BUG-1"),
+        )
+        _write_issue(
+            format_check_dir,
+            "P3-BUG-9703-test-bug.md",
+            _issue_body("BUG-9703", deprecated_parent="BUG-1"),
+        )
+
+        with caplog.at_level(logging.WARNING, logger="little_loops.issue_parser"):
+            result = _invoke(
+                ["ll-issues", "format-check", "BUG-9701", "--config", str(temp_project_dir)]
+            )
+        out, err = capsys.readouterr()
+
+        assert result == 0
+        assert "BUG-9101" not in out  # sanity: template placeholder never leaks
+        assert not any(
+            "BUG-9702" in record.message or "BUG-9703" in record.message
+            for record in caplog.records
+        )
+        assert "2 other issue(s) have deprecated frontmatter keys" in err
+        assert "run `ll-issues format-check`" in err
+
+    def test_single_id_still_warns_for_targets_own_deprecated_key(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+        caplog: Any,
+    ) -> None:
+        _write_issue(
+            format_check_dir,
+            "P3-BUG-9704-test-bug.md",
+            _issue_body("BUG-9704", deprecated_parent="BUG-1"),
+        )
+
+        with caplog.at_level(logging.WARNING, logger="little_loops.issue_parser"):
+            _invoke(["ll-issues", "format-check", "BUG-9704", "--config", str(temp_project_dir)])
+        _, err = capsys.readouterr()
+
+        assert any(
+            "BUG-9704" in record.message and "parent_issue" in record.message
+            for record in caplog.records
+        )
+        # No *other* deprecated-key files exist, so the tally line is silent.
+        assert "have deprecated frontmatter keys" not in err
+
+    def test_full_sweep_still_reports_deprecated_keys(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+        caplog: Any,
+    ) -> None:
+        _write_issue(
+            format_check_dir,
+            "P3-BUG-9705-test-bug.md",
+            _issue_body("BUG-9705", deprecated_parent="BUG-1"),
+        )
+        _write_issue(
+            format_check_dir,
+            "P3-BUG-9706-test-bug.md",
+            _issue_body("BUG-9706", deprecated_parent="BUG-1"),
+        )
+
+        with caplog.at_level(logging.WARNING, logger="little_loops.issue_parser"):
+            result = _invoke(["ll-issues", "format-check", "--all", "--config", str(temp_project_dir)])
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "BUG-9705" in out
+        assert "BUG-9706" in out
+        warned_ids = {
+            record.args[0]
+            for record in caplog.records
+            if record.args and "parent_issue" in record.message
+        }
+        assert {"P3-BUG-9705-test-bug.md", "P3-BUG-9706-test-bug.md"} <= warned_ids

@@ -3,12 +3,53 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
     from little_loops.issue_parser import FormatGaps
+
+
+@contextmanager
+def _suppress_frontmatter_deprecations(
+    *, keep: str | None = None
+) -> Iterator[list[logging.LogRecord]]:
+    """Silence ``issue_parser``'s deprecated-frontmatter-key warnings for the block.
+
+    Modeled on ``acquire_lock()`` in ``file_utils.py``: install-yield-teardown,
+    guaranteed cleanup via ``finally``. Yields the list of records it swallowed
+    so the caller can tally them into a summary line (ENH-2961) — a single-ID
+    ``format-check`` parses the whole corpus just to build the status map used
+    for prose_dep_drift/stale_prose_dep resolution, and those unrelated files'
+    deprecation warnings drowned out the one verdict line the caller asked for.
+
+    *keep*, when given, is the targeted issue's filename (``path.name``): its
+    own warnings pass through undisturbed since the corpus-wide status-map
+    load parses every issue including the target, and ``issue_parser``'s
+    once-per-process dedup ledger would otherwise silently absorb the
+    warning before the target's own dedicated parse gets a chance to emit it.
+    """
+    captured: list[logging.LogRecord] = []
+
+    class _SwallowFilter(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:
+            if keep is not None and isinstance(record.args, tuple) and record.args:
+                if record.args[0] == keep:
+                    return True
+            captured.append(record)
+            return False
+
+    parser_logger = logging.getLogger("little_loops.issue_parser")
+    swallow_filter = _SwallowFilter()
+    parser_logger.addFilter(swallow_filter)
+    try:
+        yield captured
+    finally:
+        parser_logger.removeFilter(swallow_filter)
 
 
 def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.ArgumentParser:
@@ -129,7 +170,28 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
         print("Error: provide an issue ID or --all", file=sys.stderr)
         return 1
 
-    all_issues = find_issues(config, status_filter=set(_ALL_STATUSES))
+    path = None
+    if not check_all:
+        from little_loops.cli.issues.show import _resolve_issue_id
+
+        assert issue_id is not None
+        path = _resolve_issue_id(config, issue_id)
+        if path is None:
+            print(f"Error: Issue '{issue_id}' not found.", file=sys.stderr)
+            return 1
+
+    suppressed: list[logging.LogRecord] = []
+    if check_all:
+        all_issues = find_issues(config, status_filter=set(_ALL_STATUSES))
+    else:
+        # Single-ID mode: the corpus-wide load is still required to build
+        # issue_statuses (prose_dep_drift vs stale_prose_dep resolution), but
+        # its deprecation warnings are off-topic here — they concern files
+        # the caller isn't editing. Suppress and tally instead (ENH-2961);
+        # let the target's own warnings (if any) through.
+        assert path is not None
+        with _suppress_frontmatter_deprecations(keep=path.name) as suppressed:
+            all_issues = find_issues(config, status_filter=set(_ALL_STATUSES))
     issue_statuses = {info.issue_id: info.status for info in all_issues}
     templates_dir = resolve_templates_dir(config)
 
@@ -177,13 +239,8 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
             _print_gaps(gaps)
         return 1
 
-    from little_loops.cli.issues.show import _resolve_issue_id
-
     assert issue_id is not None
-    path = _resolve_issue_id(config, issue_id)
-    if path is None:
-        print(f"Error: Issue '{issue_id}' not found.", file=sys.stderr)
-        return 1
+    assert path is not None
 
     gaps = check_format_gaps(
         path,
@@ -201,6 +258,18 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
                 templates_dir=templates_dir,
                 issue_statuses=issue_statuses,
             )
+
+    if suppressed:
+        suppressed_issues = {
+            record.args[0]
+            for record in suppressed
+            if isinstance(record.args, tuple) and record.args
+        }
+        print(
+            f"({len(suppressed_issues)} other issue(s) have deprecated frontmatter keys — "
+            "run `ll-issues format-check` to list)",
+            file=sys.stderr,
+        )
 
     if fmt == "json":
         print_json(gaps.to_dict())
