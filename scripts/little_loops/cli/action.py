@@ -190,25 +190,23 @@ def _read_skill_description(skill_md: Path) -> str:
 
 
 def _load_skills() -> list[dict[str, str | None]]:
-    """Return skill list with name, description, and args from skills/*/SKILL.md files."""
-    from little_loops.frontmatter import parse_skill_frontmatter
+    """Return skill list with name, description, and args from skills/*/SKILL.md files.
+
+    Thin projection over `cli/help.py::collect_entries` (the shared
+    command+skill collector, FEAT-2940) — filtered to skills and reshaped to
+    this function's narrower historical `name`/`description`/`args` dict
+    contract, which `ll-action list --output json` and `test_action.py`'s
+    `TestLoadSkills` depend on byte-for-byte.
+    """
+    from little_loops.cli.help import collect_entries
 
     plugin_root = _find_plugin_root()
-    skills_dir = plugin_root / "skills"
-    skills = []
-    for skill_md in sorted(skills_dir.glob("*/SKILL.md")):
-        name = skill_md.parent.name
-        try:
-            content = skill_md.read_text()
-        except OSError:
-            content = ""
-        fm = parse_skill_frontmatter(content) if content else {}
-        description = str(fm.get("description", "") or "").strip().strip('"').strip("'")
-        # args: takes precedence over argument-hint: (aliasing for 19 existing skills)
-        raw_args = fm.get("args") or fm.get("argument-hint")
-        args: str | None = str(raw_args).strip().strip('"').strip("'") if raw_args else None
-        skills.append({"name": name, "description": description, "args": args})
-    return skills
+    entries = collect_entries(plugin_root)
+    return [
+        {"name": e.name, "description": e.description, "args": e.argument_hint}
+        for e in entries
+        if e.kind == "skill"
+    ]
 
 
 def cmd_invoke(args: argparse.Namespace) -> int:

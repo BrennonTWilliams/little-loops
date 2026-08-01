@@ -65,6 +65,7 @@ from little_loops.cli.doctor import main_doctor
 from little_loops.cli.generate_skill_descriptions import main_generate_skill_descriptions
 from little_loops.cli.gitignore import main_gitignore
 from little_loops.cli.harness import main_harness
+from little_loops.cli.help import main_help
 from little_loops.cli.history import main_history
 from little_loops.cli.history_context import main_history_context
 from little_loops.cli.issues import main_issues
@@ -103,6 +104,7 @@ __all__ = [
     "main_adapt",
     "main_artifact",
     "main_harness",
+    "main_help",
     "main_adapt_agents_for_codex",
     "main_adapt_skills_for_codex",
     "main_auto",
