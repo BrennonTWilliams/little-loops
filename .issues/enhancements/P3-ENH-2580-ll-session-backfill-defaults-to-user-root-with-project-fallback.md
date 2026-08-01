@@ -3,21 +3,31 @@ id: ENH-2580
 title: ll-session backfill defaults to user-root with project fallback
 type: ENH
 priority: P3
-status: open
+status: deferred
 discovered_date: 2026-07-08
-captured_at: "2026-07-08T00:00:00Z"
+captured_at: '2026-07-08T00:00:00Z'
 discovered_by: capture-issue
 parent: EPIC-2457
 labels:
-  - enhancement
-  - history-db
-  - backfill
-  - captured
+- enhancement
+- history-db
+- backfill
+- captured
 decision_needed: false
-decision_context: "Subprocess argv shape — see Proposed Solution Codebase Research Findings. Option A: stage merged JSONL list into a temp dir (zero worker signature change). Option B: extend worker signature to accept multiple --jsonl=path pairs (cleaner argv, more code change). Selected: Option B (per /ll:decide-issue on 2026-07-16; code evidence outweighed the original --rebuild-precedent rationale)."
+decision_context: "Subprocess argv shape \u2014 see Proposed Solution Codebase Research\
+  \ Findings. Option A: stage merged JSONL list into a temp dir (zero worker signature\
+  \ change). Option B: extend worker signature to accept multiple --jsonl=path pairs\
+  \ (cleaner argv, more code change). Selected: Option B (per /ll:decide-issue on\
+  \ 2026-07-16; code evidence outweighed the original --rebuild-precedent rationale)."
+deferred_by: human
+deferred_date: '2026-08-01T20:59:16Z'
 ---
 
 # ENH-2580: ll-session backfill defaults to user-root with project fallback
+
+## Deferral Note
+
+Deferred 2026-08-01: still wanted, but low priority — not being worked on soon.
 
 ## Summary
 
