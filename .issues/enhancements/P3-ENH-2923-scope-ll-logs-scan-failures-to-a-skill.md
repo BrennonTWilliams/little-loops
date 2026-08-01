@@ -8,8 +8,6 @@ discovered_date: 2026-07-29
 discovered_by: capture-issue
 relates_to:
 - ENH-2925
-blocked_by:
-- ENH-2925
 parent: EPIC-1918
 ---
 
@@ -81,9 +79,9 @@ Known limitation to state in `--help`: attribution is heuristic — a tool call
 made after a skill's turn completes but before the next user message may be
 mis-attributed to that skill. Acceptable for triage analytics.
 
-Sequencing: **blocked by ENH-2925**, which restructures the same subcommand's
-argparse surface (shared target/window parent parsers, `--limit`); land this
-flag on the consolidated parser.
+Sequencing: the consolidated parser (shared target/window parent parsers,
+`--limit`) has already landed on `scan-failures`; this flag lands on top of
+that existing surface rather than waiting on it.
 
 ## Acceptance Criteria
 
@@ -96,7 +94,7 @@ flag on the consolidated parser.
       the key-split approach is taken, note it in the changelog).
 - [ ] `--json` rows include a `skill` field (`null` when unattributed).
 - [ ] `--skill` composes with `--window-days`/`--since`/`--until` and
-      `--limit` from ENH-2925.
+      `--limit`.
 - [ ] Tests cover: marker-based attribution, `Skill` tool_use attribution,
       reset on a plain user message, unattributed failures excluded under
       `--skill`, and the prefix-equivalence acceptance — using synthetic JSONL
@@ -109,8 +107,8 @@ flag on the consolidated parser.
 stream walk; `--skill` flag; `skill` in `_FailureCluster` and JSON output;
 tests.
 
-**Out of scope:** `--skill` on `stats`/`dead-skills` (evaluated and dropped in
-ENH-2925's scope review); attribution via `.ll/history.db` session-store
+**Out of scope:** `--skill` on `stats`/`dead-skills` (evaluated and dropped
+during the shared-flags scope review); attribution via `.ll/history.db` session-store
 queries (scan-failures is deliberately JSONL-direct and cross-project — the
 history DB is per-project and not guaranteed backfilled); changing clustering
 signatures or `--capture` behavior.
