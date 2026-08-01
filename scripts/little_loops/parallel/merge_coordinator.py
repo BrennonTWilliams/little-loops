@@ -15,6 +15,7 @@ from pathlib import Path
 from queue import Empty, Queue
 from typing import TYPE_CHECKING
 
+from little_loops.git_operations import preserve_before_teardown
 from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.types import (
     MergeRequest,
@@ -1087,6 +1088,10 @@ class MergeCoordinator:
         """
         if not worktree_path.exists():
             return
+
+        # BUG-2963 #8: preserve any uncommitted non-noise work to a durable ref
+        # before `--force` discards it.
+        preserve_before_teardown(worktree_path, self.logger)
 
         # Remove worktree
         self._git_lock.run(

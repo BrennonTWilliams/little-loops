@@ -22,11 +22,15 @@ import pytest
 
 from little_loops.config import BRConfig
 from little_loops.frontmatter import parse_frontmatter
+from little_loops.git_operations import snapshot_dirty_paths
 from little_loops.issue_lifecycle import (
+    CompletionResult,
     FailureType,
+    _abandon_and_stamp,
     _build_closure_resolution,
     _build_completion_resolution,
     _commit_issue_completion,
+    _completion_preflight,
     _prepare_issue_content,
     classify_failure,
     close_issue,
@@ -251,7 +255,7 @@ class TestCommitIssueCompletion:
                 sample_issue_info, "fix", "BUG-001 fixed", mock_logger
             )
 
-        assert result is True
+        assert result is CompletionResult.COMMITTED
         mock_logger.success.assert_called()
 
         # BUG-2421: staging is scoped to the issue file only, never `git add -A`.
@@ -279,7 +283,9 @@ class TestCommitIssueCompletion:
         with patch("subprocess.run", side_effect=mock_run):
             result = _commit_issue_completion(sample_issue_info, "fix", "test", mock_logger)
 
-        assert result is True
+        # BUG-2963: "nothing to commit" means the content is already in an
+        # earlier commit, which is COMMITTED — not a refusal.
+        assert result is CompletionResult.COMMITTED
         mock_logger.info.assert_called()
 
     def test_commit_failure(self, sample_issue_info: IssueInfo, mock_logger: MagicMock) -> None:
@@ -295,8 +301,10 @@ class TestCommitIssueCompletion:
         with patch("subprocess.run", side_effect=mock_run):
             result = _commit_issue_completion(sample_issue_info, "fix", "test", mock_logger)
 
-        assert result is True  # Still returns True to continue flow
-        mock_logger.warning.assert_called()
+        # BUG-2963: a failed commit is no longer swallowed as success. The
+        # deliverable is not in a commit, so the caller must not close.
+        assert result is CompletionResult.NOT_CLOSED
+        mock_logger.error.assert_called()
 
 
 @pytest.fixture
@@ -370,7 +378,7 @@ class TestCommitIssueCompletionScoped:
 
         result = _commit_issue_completion(info, "fix", "BUG-001 fixed", mock_logger)
 
-        assert result is True
+        assert result is CompletionResult.COMMITTED
         committed = self._committed_files(temp_git_repo)
         assert committed == [".issues/bugs/P1-BUG-001-test-bug.md"], (
             f"completion commit must contain only the issue file, got {committed}"
@@ -402,7 +410,7 @@ class TestCommitIssueCompletionScoped:
         ).stdout.strip()
 
         result = _commit_issue_completion(info, "fix", "BUG-001 fixed", mock_logger)
-        assert result is True
+        assert result is CompletionResult.COMMITTED
 
         after = subprocess.run(
             ["git", "rev-list", "--count", "HEAD"],
@@ -415,6 +423,285 @@ class TestCommitIssueCompletionScoped:
         assert self._committed_files(temp_git_repo) == [".issues/bugs/P1-BUG-001-test-bug.md"]
         # No unrelated dirty paths → no skip warning.
         mock_logger.warning.assert_not_called()
+
+
+class TestCompletionPreflight:
+    """BUG-2963: discriminate this run's deliverable from pre-existing WIP.
+
+    The P1 this covers: ``complete_issue_lifecycle()`` marked an issue ``done``
+    and committed only the ``.md`` while the implementation sat uncommitted in
+    the working tree, to be destroyed when the worktree was pruned.
+    """
+
+    _make_issue = staticmethod(TestCommitIssueCompletionScoped._make_issue)
+    _committed_files = staticmethod(TestCommitIssueCompletionScoped._committed_files)
+    _status = staticmethod(TestCommitIssueCompletionScoped._status)
+
+    @staticmethod
+    def _abandoned_refs(repo_path: Path) -> list[str]:
+        return subprocess.run(
+            ["git", "for-each-ref", "--format=%(refname)", "refs/ll/abandoned/"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split()
+
+    def test_run_window_path_is_committed_with_the_issue_file(
+        self, temp_git_repo: Path, mock_logger: MagicMock
+    ) -> None:
+        """AC #1: a deliverable that appeared during the run lands in the commit."""
+        info = self._make_issue(temp_git_repo)
+        pre_run = snapshot_dirty_paths(temp_git_repo)
+
+        # The deliverable appears AFTER the snapshot — this is the run window.
+        (temp_git_repo / "deliverable.py").write_text("def implemented(): ...\n")
+
+        preflight = _completion_preflight(
+            info, mock_logger, pre_run_dirty=pre_run, repo_path=temp_git_repo
+        )
+        assert preflight.ok
+        assert preflight.run_window == frozenset({"deliverable.py"})
+
+        result = _commit_issue_completion(
+            info,
+            "fix",
+            "BUG-001 fixed",
+            mock_logger,
+            stage_paths=sorted(preflight.run_window),
+            repo_path=temp_git_repo,
+        )
+        assert result is CompletionResult.COMMITTED
+        assert sorted(self._committed_files(temp_git_repo)) == [
+            ".issues/bugs/P1-BUG-001-test-bug.md",
+            "deliverable.py",
+        ]
+
+    def test_pre_existing_wip_is_left_untouched(
+        self, temp_git_repo: Path, mock_logger: MagicMock
+    ) -> None:
+        """AC #2: BUG-2421's guarantee survives — pre-run dirt is not swept in."""
+        info = self._make_issue(temp_git_repo)
+        # Dirty BEFORE the snapshot → someone else's WIP.
+        (temp_git_repo / "unrelated_wip.py").write_text("# WIP\n")
+        pre_run = snapshot_dirty_paths(temp_git_repo)
+
+        preflight = _completion_preflight(
+            info, mock_logger, pre_run_dirty=pre_run, repo_path=temp_git_repo
+        )
+        assert preflight.ok
+        assert preflight.run_window == frozenset()
+
+        _commit_issue_completion(
+            info,
+            "fix",
+            "BUG-001 fixed",
+            mock_logger,
+            stage_paths=sorted(preflight.run_window),
+            repo_path=temp_git_repo,
+        )
+        assert self._committed_files(temp_git_repo) == [".issues/bugs/P1-BUG-001-test-bug.md"]
+        assert "unrelated_wip.py" in self._status(temp_git_repo)
+
+    def test_no_snapshot_with_dirt_refuses(
+        self, temp_git_repo: Path, mock_logger: MagicMock
+    ) -> None:
+        """AC #3: `pre_run_dirty=None` + non-noise dirt is a refusal, not a guess.
+
+        This is the conservative branch ENH-2965 later replaces with
+        content-based attribution.
+        """
+        info = self._make_issue(temp_git_repo)
+        (temp_git_repo / "something.py").write_text("x = 1\n")
+
+        preflight = _completion_preflight(
+            info, mock_logger, pre_run_dirty=None, repo_path=temp_git_repo
+        )
+        assert not preflight.ok
+        assert preflight.dirty_count == 1
+
+    def test_noise_paths_never_force_a_refusal(
+        self, temp_git_repo: Path, mock_logger: MagicMock
+    ) -> None:
+        """AC #8: `.ll/` and `.issues/` dirt alone must not block a close."""
+        info = self._make_issue(temp_git_repo)
+        (temp_git_repo / ".ll").mkdir(exist_ok=True)
+        (temp_git_repo / ".ll" / "decisions.d").mkdir(parents=True, exist_ok=True)
+        (temp_git_repo / ".ll" / "decisions.d" / "abc.json").write_text("{}\n")
+
+        preflight = _completion_preflight(
+            info, mock_logger, pre_run_dirty=None, repo_path=temp_git_repo
+        )
+        assert preflight.ok, "a .ll/-only dirty tree must not refuse the close"
+
+    def test_issue_file_excluded_by_path_equality(
+        self, temp_git_repo: Path, mock_logger: MagicMock
+    ) -> None:
+        """AC #9: the issue file itself never counts as a dirty deliverable."""
+        info = self._make_issue(temp_git_repo)
+        # The issue file is untracked/dirty here and is the ONLY dirty path.
+        preflight = _completion_preflight(
+            info, mock_logger, pre_run_dirty=None, repo_path=temp_git_repo
+        )
+        assert preflight.ok
+        assert preflight.run_window == frozenset()
+
+    def test_abandon_preserves_tree_non_destructively(
+        self, temp_git_repo: Path, mock_logger: MagicMock
+    ) -> None:
+        """AC #4 + #5: a durable ref is written and the tree is left byte-identical."""
+        info = self._make_issue(temp_git_repo)
+        (temp_git_repo / "deliverable.py").write_text("def implemented(): ...\n")
+        status_before = self._status(temp_git_repo)
+
+        _abandon_and_stamp(info, mock_logger, temp_git_repo, info.path, dirty_count=1)
+
+        refs = self._abandoned_refs(temp_git_repo)
+        assert len(refs) == 1, f"expected one abandoned ref, got {refs}"
+        # The preserved commit contains the abandoned content.
+        preserved = subprocess.run(
+            ["git", "show", f"{refs[0]}:deliverable.py"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        assert preserved == "def implemented(): ...\n"
+        # Non-destructive: the working tree still has the file.
+        assert (temp_git_repo / "deliverable.py").read_text() == "def implemented(): ...\n"
+        assert self._status(temp_git_repo) == status_before
+
+    def test_complete_issue_lifecycle_commits_the_deliverable(
+        self, temp_git_repo: Path, sample_config: BRConfig, mock_logger: MagicMock
+    ) -> None:
+        """AC #1 end-to-end: with a snapshot, the run's work lands in the commit.
+
+        The positive counterpart to the refusal test below — this is the shape
+        the P1 incident should have produced.
+        """
+        info = self._make_issue(temp_git_repo)
+        info.path.write_text("---\nstatus: in_progress\n---\n\n# BUG-001: Test Bug\n")
+        # Pre-existing WIP, present before the run starts.
+        (temp_git_repo / "someone_elses_wip.py").write_text("# not mine\n")
+        pre_run = snapshot_dirty_paths(temp_git_repo)
+        # The run produces its deliverable.
+        (temp_git_repo / "deliverable.py").write_text("def implemented(): ...\n")
+
+        result = complete_issue_lifecycle(
+            info,
+            sample_config,
+            mock_logger,
+            pre_run_dirty=pre_run,
+            repo_path=temp_git_repo,
+        )
+
+        assert result is True
+        committed = sorted(self._committed_files(temp_git_repo))
+        assert committed == [
+            ".issues/bugs/P1-BUG-001-test-bug.md",
+            "deliverable.py",
+        ], f"the deliverable must be committed with the issue file, got {committed}"
+        assert "status: done" in info.path.read_text()
+        # BUG-2421 preserved: the unrelated WIP was not swept in.
+        assert "someone_elses_wip.py" in self._status(temp_git_repo)
+        assert not self._abandoned_refs(temp_git_repo), "a successful close preserves nothing"
+
+    def test_complete_issue_lifecycle_refuses_without_snapshot(
+        self, temp_git_repo: Path, sample_config: BRConfig, mock_logger: MagicMock
+    ) -> None:
+        """The P1 end-to-end: no hollow `done`, and the work is preserved.
+
+        Before BUG-2963 this returned True, wrote `status: done`, and committed
+        the `.md` alone — destroying `deliverable.py` at worktree teardown.
+        """
+        info = self._make_issue(temp_git_repo)
+        info.path.write_text("---\nstatus: in_progress\n---\n\n# BUG-001: Test Bug\n")
+        (temp_git_repo / "deliverable.py").write_text("def implemented(): ...\n")
+
+        result = complete_issue_lifecycle(
+            info,
+            sample_config,
+            mock_logger,
+            pre_run_dirty=None,
+            repo_path=temp_git_repo,
+        )
+
+        assert result is False, "must not report success when the deliverable is uncommitted"
+        content = info.path.read_text()
+        assert "status: done" not in content, "AC #3: no hollow `done`"
+        assert "## Resolution" not in content, "AC #3: no orphan Resolution section"
+        assert "completed_at" not in content, "AC #3: no bogus completed_at"
+        assert len(self._abandoned_refs(temp_git_repo)) == 1, "AC #4: work preserved to a ref"
+        assert (temp_git_repo / "deliverable.py").exists(), "AC #5: preservation is non-destructive"
+
+    def test_deliverable_survives_worktree_removal(
+        self, temp_git_repo: Path, mock_logger: MagicMock
+    ) -> None:
+        """AC #6: the test that pins the P1 — recoverable after `worktree remove --force`."""
+        worktree = temp_git_repo.parent / "wt-bug-001"
+        subprocess.run(
+            ["git", "worktree", "add", "-b", "wt-branch", str(worktree)],
+            cwd=temp_git_repo,
+            capture_output=True,
+            check=True,
+        )
+        info = self._make_issue(worktree)
+        (worktree / "deliverable.py").write_text("def implemented(): ...\n")
+
+        _abandon_and_stamp(info, mock_logger, worktree, info.path, dirty_count=1)
+        refs = self._abandoned_refs(worktree)
+        assert len(refs) == 1
+
+        subprocess.run(
+            ["git", "worktree", "remove", "--force", str(worktree)],
+            cwd=temp_git_repo,
+            capture_output=True,
+            check=True,
+        )
+        assert not worktree.exists()
+
+        # The ref lives in the shared ref store, so the content is still there.
+        recovered = subprocess.run(
+            ["git", "show", f"{refs[0]}:deliverable.py"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert recovered.returncode == 0
+        assert recovered.stdout == "def implemented(): ...\n"
+
+    def test_commit_failure_rolls_back_and_preserves(
+        self, temp_git_repo: Path, sample_config: BRConfig, mock_logger: MagicMock
+    ) -> None:
+        """AC #10: a pre-commit hook rejection yields refusal + preservation, no bypass."""
+        info = self._make_issue(temp_git_repo)
+        info.path.write_text("---\nstatus: in_progress\n---\n\n# BUG-001: Test Bug\n")
+        pristine = info.path.read_text()
+        pre_run = snapshot_dirty_paths(temp_git_repo)
+        (temp_git_repo / "deliverable.py").write_text("def implemented(): ...\n")
+
+        hook = temp_git_repo / ".git" / "hooks" / "pre-commit"
+        hook.write_text("#!/bin/sh\nexit 1\n")
+        hook.chmod(0o755)
+
+        result = complete_issue_lifecycle(
+            info,
+            sample_config,
+            mock_logger,
+            pre_run_dirty=pre_run,
+            repo_path=temp_git_repo,
+        )
+
+        assert result is False
+        content = info.path.read_text()
+        assert "status: done" not in content
+        assert "## Resolution" not in content
+        # Rolled back to pristine content, then re-stamped in_progress.
+        assert "# BUG-001: Test Bug" in pristine
+        assert "status: in_progress" in content
+        assert len(self._abandoned_refs(temp_git_repo)) == 1
+        assert (temp_git_repo / "deliverable.py").exists()
 
 
 # =============================================================================
@@ -1349,6 +1636,12 @@ class TestEventBusEmission:
         bus.register(lambda e: received.append(e))
 
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            # BUG-2963: the completion pre-flight shells out to
+            # `git status --porcelain -z` before any mutation. Return a clean
+            # tree for it; a blanket "[main abc] commit" would be parsed as a
+            # dirty path and (with no pre_run_dirty snapshot) refuse the close.
+            if "status" in cmd:
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="[main abc] commit", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
@@ -1387,6 +1680,12 @@ class TestEventBusEmission:
         bus.register(lambda e: received.append(e))
 
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            # BUG-2963: the completion pre-flight shells out to
+            # `git status --porcelain -z` before any mutation. Return a clean
+            # tree for it; a blanket "[main abc] commit" would be parsed as a
+            # dirty path and (with no pre_run_dirty snapshot) refuse the close.
+            if "status" in cmd:
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="[main abc] commit", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
@@ -1421,6 +1720,12 @@ class TestEventBusEmission:
         bus.register(lambda e: received.append(e))
 
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            # BUG-2963: the completion pre-flight shells out to
+            # `git status --porcelain -z` before any mutation. Return a clean
+            # tree for it; a blanket "[main abc] commit" would be parsed as a
+            # dirty path and (with no pre_run_dirty snapshot) refuse the close.
+            if "status" in cmd:
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="[main abc] commit", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
@@ -1545,6 +1850,12 @@ class TestEventBusEmission:
         bus.register(lambda e: received.append(e))
 
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            # BUG-2963: the completion pre-flight shells out to
+            # `git status --porcelain -z` before any mutation. Return a clean
+            # tree for it; a blanket "[main abc] commit" would be parsed as a
+            # dirty path and (with no pre_run_dirty snapshot) refuse the close.
+            if "status" in cmd:
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="[main abc] commit", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
@@ -1596,6 +1907,12 @@ class TestEventBusEmission:
         )
 
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            # BUG-2963: the completion pre-flight shells out to
+            # `git status --porcelain -z` before any mutation. Return a clean
+            # tree for it; a blanket "[main abc] commit" would be parsed as a
+            # dirty path and (with no pre_run_dirty snapshot) refuse the close.
+            if "status" in cmd:
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="[main abc] commit", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):

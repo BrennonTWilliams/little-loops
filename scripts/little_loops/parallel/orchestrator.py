@@ -23,6 +23,7 @@ from uuid import uuid4
 
 from little_loops.events import EventBus
 from little_loops.frontmatter import parse_frontmatter, update_frontmatter
+from little_loops.git_operations import preserve_before_teardown, snapshot_dirty_paths
 from little_loops.issue_parser import IssueInfo
 from little_loops.logger import Logger, format_duration
 from little_loops.parallel.git_lock import GitLock
@@ -156,6 +157,16 @@ class ParallelOrchestrator:
         self._merged_epic_branches: set[str] = set()
         # Verify-gate failure messages, keyed by EPIC ID (ENH-2603).
         self._epic_branch_verify_failures: dict[str, str] = {}
+        # BUG-2963: pre-run dirty snapshot of the MAIN repo, captured at
+        # construction — before any worker is dispatched. Both `close_issue()`
+        # gates run here in the parent process, not in a worker's worktree, so
+        # this is the right tree to bracket: anything dirty now is the
+        # developer's pre-existing WIP. Workers commit inside their worktrees
+        # and land through the merge coordinator, so a close's run window
+        # against this snapshot is normally empty and the close proceeds.
+        # Supplying it (rather than `None`) is what keeps `ll-parallel` from
+        # flipping to refuse-on-any-incidental-dirt (Proposed Solution #9).
+        self._pre_run_dirty: frozenset[str] = snapshot_dirty_paths(self.repo_path)
 
         # Overlap detection (ENH-143)
         self.overlap_detector: OverlapDetector | None = (
@@ -338,6 +349,9 @@ class ParallelOrchestrator:
                             )
                         )
                         continue
+
+                    # BUG-2963 #8: preserve uncommitted non-noise work first.
+                    preserve_before_teardown(worktree_path, self.logger)
 
                     self._git_lock.run(
                         ["worktree", "unlock", str(worktree_path)],
@@ -639,7 +653,11 @@ class ParallelOrchestrator:
                                 "issue_id": info.issue_id,
                             },
                         )
-                    # Clean up the worktree after successful merge
+                    # Clean up the worktree after successful merge. BUG-2963 #8:
+                    # the merge lands committed work, but anything still dirty
+                    # here (a partial edit, an untracked artifact) is about to be
+                    # discarded by `--force` — preserve it first.
+                    preserve_before_teardown(info.worktree_path, self.logger)
                     self._git_lock.run(
                         ["worktree", "remove", "--force", str(info.worktree_path)],
                         cwd=self.repo_path,
@@ -1076,6 +1094,8 @@ class ParallelOrchestrator:
                     result.close_status,
                     interceptors=None,
                     event_bus=self._event_bus,
+                    pre_run_dirty=self._pre_run_dirty,
+                    repo_path=self.repo_path,
                 ):
                     self.queue.mark_completed(result.issue_id)
                 else:
@@ -1495,6 +1515,8 @@ class ParallelOrchestrator:
                 result.close_status,
                 interceptors=None,
                 event_bus=self._event_bus,
+                pre_run_dirty=self._pre_run_dirty,
+                repo_path=self.repo_path,
             ):
                 self.queue.mark_completed(result.issue_id)
             else:

@@ -15,6 +15,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from little_loops.git_operations import preserve_before_teardown
+
 if TYPE_CHECKING:
     from little_loops.logger import Logger
     from little_loops.parallel.git_lock import GitLock
@@ -294,6 +296,11 @@ def cleanup_worktree(
             timeout=10,
         )
         branch_name = branch_result.stdout.strip() if branch_result.returncode == 0 else None
+
+    # BUG-2963 #8: `--force` discards uncommitted work unconditionally. Snapshot
+    # anything non-noise to a durable ref first — the ref survives the removal
+    # because worktrees share the main repo's object database and ref store.
+    preserve_before_teardown(worktree_path, logger)
 
     git_lock.run(["worktree", "unlock", str(worktree_path)], cwd=repo_path, timeout=10)
     git_lock.run(

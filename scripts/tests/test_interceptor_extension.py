@@ -138,7 +138,7 @@ class TestInterceptorVeto:
         from unittest.mock import patch as upatch
 
         from little_loops.config import BRConfig
-        from little_loops.issue_lifecycle import close_issue
+        from little_loops.issue_lifecycle import _PreflightResult, close_issue
         from little_loops.logger import Logger
 
         config_data = {
@@ -164,8 +164,17 @@ class TestInterceptorVeto:
         ext = ReferenceInterceptorExtension()
 
         # Patch the commit step to avoid real git calls; status write happens
-        # in-place via frontmatter, so no file-move helper to patch.
-        with upatch("little_loops.issue_lifecycle._commit_issue_completion"):
+        # in-place via frontmatter, so no file-move helper to patch. The
+        # BUG-2963 pre-flight is patched for the same reason: tmp_path is not a
+        # git repo, so a real `git status` there fails and (correctly) refuses
+        # the close, which is not what this test is exercising.
+        with (
+            upatch("little_loops.issue_lifecycle._commit_issue_completion"),
+            upatch(
+                "little_loops.issue_lifecycle._completion_preflight",
+                return_value=_PreflightResult(ok=True, run_window=frozenset()),
+            ),
+        ):
             result = close_issue(
                 info=info,
                 config=config,

@@ -593,6 +593,43 @@ def porcelain_paths(raw: str) -> list[str]:
     return paths
 
 
+def snapshot_dirty_paths(repo_path: Path) -> frozenset[str]:
+    """Capture the set of currently-dirty paths, for BUG-2963's run window.
+
+    The ``pre_run_dirty`` snapshot that ``close_issue()`` /
+    ``complete_issue_lifecycle()`` subtract from the close-time porcelain
+    output: whatever is dirty *now* is pre-existing WIP, and anything that
+    appears later is this run's deliverable.
+
+    Capture this BEFORE the work runs. A snapshot taken afterwards already
+    contains the deliverable, which would classify the entire implementation as
+    pre-existing WIP and reproduce the incident this guard exists to prevent
+    (BUG-2963 Proposed Solution #1, anchor warning).
+
+    Args:
+        repo_path: Working tree to snapshot.
+
+    Returns:
+        Frozen set of repo-relative paths, unfiltered (the noise filter is
+        applied at close time, not here). Empty on any git failure — the
+        conservative direction, since an empty snapshot makes the run window
+        wider and so preserves more, never less.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain", "-z"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return frozenset()
+    if result.returncode != 0:
+        return frozenset()
+    return frozenset(porcelain_paths(result.stdout))
+
+
 def abandoned_ref_name(identifier: str) -> str:
     """Build a durable ``refs/ll/abandoned/<identifier>-<timestamp>`` ref name.
 
@@ -800,3 +837,50 @@ def has_non_noise_dirty_paths(repo_path: Path) -> tuple[bool, list[str]]:
     paths = porcelain_paths(status.stdout)
     non_noise = filter_ll_noise(paths)
     return (len(non_noise) > 0), non_noise
+
+
+def preserve_before_teardown(
+    worktree_path: Path,
+    logger: Logger | None = None,
+    identifier: str | None = None,
+) -> str | None:
+    """Preserve non-noise dirt to a durable ref before a worktree is destroyed.
+
+    BUG-2963 Proposed Solution #8 — the backstop that makes the data-loss P1
+    unreachable. Call immediately before any ``git worktree remove --force``.
+
+    The per-issue ``pre_run_dirty`` discriminator rescues only the *first*
+    orphan: a deliverable that survives one issue's close is present in the
+    *next* issue's pre-run snapshot, is therefore classified as pre-existing
+    WIP, is left alone by design — and is destroyed at teardown exactly as
+    before. This backstop closes that gap at the other end, and is the broader
+    guarantee: it holds for orphans from prior runs, from callers that never
+    snapshot, and from paths no issue ever claimed.
+
+    Args:
+        worktree_path: The worktree about to be removed.
+        logger: Optional logger. The preservation is reported at ``error``
+            level (via :func:`preserve_dirty_tree`) because reaching this path
+            at all means something was about to be lost.
+        identifier: Discriminator for the ref name; defaults to
+            ``worktree-<dir name>``.
+
+    Returns:
+        The preservation commit SHA, or ``None`` if there was nothing worth
+        preserving (clean or noise-only tree) or the worktree is already gone.
+    """
+    if not worktree_path.exists():
+        return None
+    has_dirt, paths = has_non_noise_dirty_paths(worktree_path)
+    if not has_dirt:
+        return None
+    if logger:
+        logger.error(
+            f"Worktree {worktree_path.name} holds {len(paths)} uncommitted non-noise "
+            f"path(s) at teardown; preserving before removal: {sorted(paths)[:10]}"
+        )
+    return preserve_dirty_tree(
+        worktree_path,
+        abandoned_ref_name(identifier or f"worktree-{worktree_path.name}"),
+        logger,
+    )

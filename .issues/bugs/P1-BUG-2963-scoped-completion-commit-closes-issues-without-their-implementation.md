@@ -3,7 +3,7 @@ id: BUG-2963
 title: Scoped completion commit closes an issue while leaving its implementation uncommitted
 type: BUG
 priority: P1
-status: open
+status: done
 discovered_date: 2026-08-01
 discovered_by: human
 relates_to:
@@ -22,7 +22,7 @@ score_test_coverage: 15
 score_ambiguity: 18
 score_change_surface: 10
 decision_needed: false
-completed_at: '2026-08-01T17:48:26Z'
+completed_at: '2026-08-01T19:50:39Z'
 ---
 
 # BUG-2963: Scoped completion commit closes an issue while leaving its implementation uncommitted
@@ -696,6 +696,60 @@ and neuter the fix) to `:922-927` alongside `_baseline_sha`; specified index
 unstaging + session-log handling on the commit-failure rollback; recommended
 `--porcelain -z` for the promoted `porcelain_paths()`.
 
+## Implementation (2026-08-01)
+
+Wiring completed on top of the half-wired core from `040e8c6b`. Deliberately
+**not** marked `done`: this issue's own contract is that an issue is complete
+only when its implementation is in a commit, and this work is still uncommitted.
+
+- `issue_lifecycle.py` — `close_issue()` and `complete_issue_lifecycle()` now
+  call `_completion_preflight()` before any mutation and translate
+  `CompletionResult.NOT_CLOSED` into a `False` return plus
+  `_abandon_and_stamp()`. On a commit-time failure the issue file is rolled
+  back to its pristine content (`prior_raw`); `complete_issue_lifecycle()`
+  additionally stamps `in_progress` for requeue via a new `set_status`
+  parameter, while `close_issue()` keeps the issue's original status.
+  `_abandon_and_stamp()` also fixed to stamp the recoverable **ref name** in
+  `abandoned_ref` (it was stamping `preserve_dirty_tree()`'s commit SHA); the
+  SHA is now kept alongside it as `abandoned_sha`.
+- `git_operations.py` — added `snapshot_dirty_paths()` (the shared pre-run
+  capture) and `preserve_before_teardown()` (Proposed Solution #8).
+- `issue_manager.py` — `_phase1_pre_run_dirty` at the top of
+  `process_issue_inplace()` feeds the Phase-1 `close_issue()`; `_pre_run_dirty`
+  at `:922` alongside `_baseline_sha` (correct anchor, per the review above)
+  feeds both `complete_issue_lifecycle()` sites.
+- `parallel/orchestrator.py` — `self._pre_run_dirty` captured at construction
+  feeds both `close_issue()` gates, so `ll-parallel` does not flip to
+  refuse-on-any-dirt (Proposed Solution #9's stated regression risk).
+- **Teardown backstop wired** — `preserve_before_teardown()` now called at all
+  four `git worktree remove --force` sites (`worktree_utils.py:cleanup_worktree`,
+  `merge_coordinator.py`, `orchestrator.py` ×2). This was previously unwired:
+  `has_non_noise_dirty_paths()` existed with zero callers, so AC #7 was unmet.
+- **defer/undefer untouched**, per the scope carve-out.
+
+Tests: 10 new in `test_issue_lifecycle.py::TestCompletionPreflight`, 15 new in
+`test_git_operations.py` (`TestPorcelainPaths`, `TestSnapshotAndPreserve`,
+`TestPreserveBeforeTeardown`). The 5 pre-existing `True`-contract tests were
+rewritten against `CompletionResult`; two event-bus tests and
+`test_auto_manager_wires_sqlite` needed their blanket `subprocess.run` mocks
+taught to return a clean tree for the pre-flight's `git status`, and
+`test_interceptor_extension.py` now patches `_completion_preflight` because its
+`tmp_path` is not a git repo.
+
+Verified: `python -m pytest scripts/tests/` → **17653 passed, 42 skipped**;
+`ruff check scripts/` clean; `mypy scripts/little_loops/` clean. The two
+end-to-end regression tests were confirmed to **fail** against a neutered
+pre-flight (reproducing the original P1: `complete_issue_lifecycle` returning
+`True` with the deliverable uncommitted), so they are real regression coverage.
+
+AC #11 confirmed rather than assumed: `test_builtin_loops.py` passes with no
+YAML edit to `auto-refine-and-implement.yaml` / `autodev.yaml`.
+
+Not done here: `_stage_and_commit_issue_scoped()` (Proposed Solution #7 —
+"confirmed conclusion: no code change"), and the pre-existing `ruff format`
+drift in `git_operations.py` / `test_issue_manager.py`, which predates this
+work (27 files repo-wide; `ruff format` is not a suite gate).
+
 Pre-implementation review, 2026-08-01 (manual): added Proposed Solution #8-#10,
 an `## Acceptance Criteria` section, the non-destructive preservation spec
 (#4), and the `porcelain_paths()` promotion. **The `confidence_score: 100` /
@@ -758,6 +812,26 @@ were updated to use the new preflight/abandon path, and 5 existing tests in
 the failure mode this issue describes, applied to itself. Reopening;
 remaining work: wire the four call sites, fix the 5 failing tests, and cover
 `porcelain_paths`/`preserve_dirty_tree` with the new unit tests noted above.
+
+### Clarifications (2026-08-01, ENH-2965 review)
+
+1. **`defer_issue`/`undefer_issue` — resolved, no wiring.** The reopen note
+   above names four call sites, but the Proposed Solution's **scope carve-out**
+   (`:307-314`) already settles this: only `close_issue()` and
+   `complete_issue_lifecycle()` — the "this work is delivered" claims — get the
+   `NOT_CLOSED` contract. The defer pair keeps its issue-file-only commit and
+   must never rewrite its terminal status on a failed commit, or it would
+   silently un-defer an issue and fight the autodev `deferred_by` /
+   `deferred_reason` policy. They already ignore `_commit_issue_completion()`'s
+   return value, so the `bool` → `CompletionResult` change needs no edit there.
+   Two call sites to wire, not four.
+2. **Test coverage is zero, not "5 failing tests."** The 5 failures are
+   pre-existing tests broken by the `bool` → `CompletionResult` return-type
+   change. Separately, `_completion_preflight` and `_abandon_and_stamp` have
+   **no** tests at all — `grep -rn "_completion_preflight\|_abandon_and_stamp"
+   scripts/tests/` returns nothing. Both need coverage alongside
+   `porcelain_paths`/`preserve_dirty_tree`, including the snapshot-less refusal
+   branch (`issue_lifecycle.py:520-526`) that ENH-2965 later replaces.
 
 ## Session Log
 - `ll-auto` - 2026-08-01T17:48:26 - `87d7fbb4-06a0-4c91-98b5-406c1b1787ea.jsonl`

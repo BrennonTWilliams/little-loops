@@ -231,6 +231,11 @@ class TestAutoManagerIntegration:
         mock_logger = MagicMock()
 
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            # BUG-2963: report a clean tree to the completion pre-flight's
+            # `git status --porcelain -z`; otherwise the canned commit stdout is
+            # parsed as a dirty path and the close is (correctly) refused.
+            if "status" in cmd:
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="[main abc] commit", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):

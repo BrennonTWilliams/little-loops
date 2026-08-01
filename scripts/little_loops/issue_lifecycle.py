@@ -535,6 +535,7 @@ def _abandon_and_stamp(
     original_path: Path,
     dirty_count: int,
     prior_raw: str | None = None,
+    set_status: str | None = None,
 ) -> None:
     """Preserve the working tree to a durable ref and stamp frontmatter (BUG-2963).
 
@@ -547,8 +548,20 @@ def _abandon_and_stamp(
     best-effort convenience for shared-tree (``ll-auto``) runs (Proposed
     Solution #6) — it lives in an uncommitted file, so it evaporates in a
     worktree about to be pruned. The durable signal is the ref itself.
+
+    Args:
+        set_status: Status to write after restoring *prior_raw*. Used by
+            ``complete_issue_lifecycle()`` to leave the issue ``in_progress``
+            so it is requeued (Proposed Solution #5). ``None`` keeps whatever
+            status the pristine content carried — correct for
+            ``close_issue()``, where a refused close should stay ``open``
+            rather than claim work is underway.
     """
-    ref = preserve_dirty_tree(repo_path, abandoned_ref_name(info.issue_id), logger)
+    ref_name = abandoned_ref_name(info.issue_id)
+    # preserve_dirty_tree returns the snapshot COMMIT SHA (or None when there
+    # was nothing to preserve / it failed); the durable handle callers recover
+    # through is the ref name, so stamp that and keep the sha alongside it.
+    preserved_sha = preserve_dirty_tree(repo_path, ref_name, logger)
     if prior_raw is not None:
         original_path.write_text(prior_raw, encoding="utf-8")
     if not original_path.exists():
@@ -556,8 +569,11 @@ def _abandon_and_stamp(
     try:
         content = original_path.read_text(encoding="utf-8")
         updates: dict[str, Any] = {"uncommitted_paths": dirty_count}
-        if ref:
-            updates["abandoned_ref"] = ref
+        if preserved_sha:
+            updates["abandoned_ref"] = ref_name
+            updates["abandoned_sha"] = preserved_sha
+        if set_status:
+            updates["status"] = set_status
         content = update_frontmatter(content, updates)
         original_path.write_text(content, encoding="utf-8")
     except Exception as e:
@@ -622,8 +638,9 @@ def _commit_issue_completion(
         return CompletionResult.NOT_CLOSED
 
     if stage_result.returncode != 0:
-        logger.error(f"{info.issue_id}: git add failed during completion commit: "
-                      f"{stage_result.stderr}")
+        logger.error(
+            f"{info.issue_id}: git add failed during completion commit: {stage_result.stderr}"
+        )
         subprocess.run(
             ["git", "reset", "--", *stage_targets],
             cwd=repo_root,
@@ -880,6 +897,8 @@ def close_issue(
     files_changed: list[str] | None = None,
     event_bus: EventBus | None = None,
     interceptors: list[Any] | None = None,
+    pre_run_dirty: frozenset[str] | None = None,
+    repo_path: Path | None = None,
 ) -> bool:
     """Close an issue by moving it to completed with closure status.
 
@@ -898,9 +917,18 @@ def close_issue(
         interceptors: Optional list of interceptor objects; each may implement
             ``before_issue_close(info) -> bool | None``.  Returning ``False``
             vetoes the close; ``None`` or any truthy value allows it to proceed.
+        pre_run_dirty: Snapshot of ``git status --porcelain`` paths taken before
+            this run started (BUG-2963). ``None`` — the conservative default for
+            external API callers — means any non-noise dirty path preserves the
+            tree to ``refs/ll/abandoned/*`` and refuses the close.
+        repo_path: Working tree to operate in. Defaults to the process cwd.
 
     Returns:
-        True if successful, False otherwise
+        True if the issue is closed AND its closure is in a commit. False if
+        the close was vetoed, failed, or was refused because the deliverable
+        could not be committed — in the refusal case the working tree has been
+        preserved to a durable ref and the issue file is left unmutated, so the
+        caller must treat the issue as still open (BUG-2963).
     """
     original_path = info.path
 
@@ -924,10 +952,23 @@ def close_issue(
                 if result is False:
                     return False
 
-    try:
-        captured_at = parse_frontmatter(original_path.read_text(encoding="utf-8")).get(
-            "captured_at"
+    # BUG-2963: discriminate this run's deliverable from pre-existing WIP
+    # BEFORE any content mutation, so a refusal has nothing to roll back.
+    repo_root = repo_path or Path.cwd()
+    preflight = _completion_preflight(
+        info, logger, pre_run_dirty=pre_run_dirty, repo_path=repo_root
+    )
+    if not preflight.ok:
+        _abandon_and_stamp(info, logger, repo_root, original_path, preflight.dirty_count)
+        logger.error(
+            f"Refusing to close {info.issue_id}: its deliverable could not be "
+            "committed; working tree preserved and issue left open"
         )
+        return False
+
+    try:
+        prior_raw = original_path.read_text(encoding="utf-8")
+        captured_at = parse_frontmatter(prior_raw).get("captured_at")
         # Prepare content with resolution section, then write status + completed_at
         resolution = _build_closure_resolution(
             close_status, close_reason, fix_commit, files_changed
@@ -947,7 +988,30 @@ Automated closure - issue determined to be invalid or already resolved.
 Issue: {info.issue_id}
 Reason: {close_reason}
 Status: {close_status}"""
-        _commit_issue_completion(info, "close", commit_body, logger)
+        commit_outcome = _commit_issue_completion(
+            info,
+            "close",
+            commit_body,
+            logger,
+            stage_paths=sorted(preflight.run_window),
+            repo_path=repo_root,
+        )
+        if commit_outcome is CompletionResult.NOT_CLOSED:
+            # Roll the mutation back to pristine and preserve the tree; the
+            # issue keeps its original status so it is not falsely `done`.
+            _abandon_and_stamp(
+                info,
+                logger,
+                repo_root,
+                original_path,
+                len(preflight.run_window),
+                prior_raw=prior_raw,
+            )
+            logger.error(
+                f"Refusing to close {info.issue_id}: completion commit failed; "
+                "working tree preserved and issue file rolled back"
+            )
+            return False
 
         logger.success(f"Closed {info.issue_id}: {close_status}")
         if event_bus is not None:
@@ -974,6 +1038,8 @@ def complete_issue_lifecycle(
     config: BRConfig,
     logger: Logger,
     event_bus: EventBus | None = None,
+    pre_run_dirty: frozenset[str] | None = None,
+    repo_path: Path | None = None,
 ) -> bool:
     """Fallback: Complete the issue lifecycle when command exited early.
 
@@ -981,14 +1047,25 @@ def complete_issue_lifecycle(
     resolution section to the existing file. Does not move the file (ENH-1418
     decoupled status from directory location).
 
+    This is the path BUG-2963 was filed against: it fires after an abnormal
+    subloop exit, exactly when the deliverable is most likely to be sitting
+    uncommitted in the working tree.
+
     Args:
         info: Issue info
         config: Project configuration
         logger: Logger for output
         event_bus: Optional EventBus for event emission
+        pre_run_dirty: Snapshot of ``git status --porcelain`` paths taken before
+            this run started (BUG-2963). Paths absent from it are this run's
+            deliverable and are committed alongside the issue file. ``None``
+            means any non-noise dirty path preserves the tree and refuses.
+        repo_path: Working tree to operate in. Defaults to the process cwd.
 
     Returns:
-        True if successful, False otherwise
+        True if the issue is `done` AND that state is in a commit. False if the
+        completion was refused — the tree is preserved to a durable ref and the
+        issue is left ``in_progress`` for requeue, never a hollow ``done``.
     """
     original_path = info.path
 
@@ -998,10 +1075,31 @@ def complete_issue_lifecycle(
 
     logger.info(f"Completing lifecycle for {info.issue_id} (command may have exited early)...")
 
-    try:
-        captured_at = parse_frontmatter(original_path.read_text(encoding="utf-8")).get(
-            "captured_at"
+    # BUG-2963: pre-flight before any mutation (Resolution section,
+    # status: done, completed_at, session-log append) so a refusal leaves the
+    # file untouched rather than half-closed.
+    repo_root = repo_path or Path.cwd()
+    preflight = _completion_preflight(
+        info, logger, pre_run_dirty=pre_run_dirty, repo_path=repo_root
+    )
+    if not preflight.ok:
+        _abandon_and_stamp(
+            info,
+            logger,
+            repo_root,
+            original_path,
+            preflight.dirty_count,
+            set_status="in_progress",
         )
+        logger.error(
+            f"Refusing to complete {info.issue_id}: its deliverable could not be "
+            "committed; working tree preserved and issue left in_progress"
+        )
+        return False
+
+    try:
+        prior_raw = original_path.read_text(encoding="utf-8")
+        captured_at = parse_frontmatter(prior_raw).get("captured_at")
         # Prepare content with resolution section, then write status + completed_at
         action = config.get_category_action(info.issue_type)
         resolution = _build_completion_resolution(action)
@@ -1021,7 +1119,33 @@ Automated fallback commit - command exited before completion.
 Issue: {info.issue_id}
 Action: {action}
 Status: Completed via fallback lifecycle completion"""
-        _commit_issue_completion(info, action, commit_body, logger)
+        commit_outcome = _commit_issue_completion(
+            info,
+            action,
+            commit_body,
+            logger,
+            stage_paths=sorted(preflight.run_window),
+            repo_path=repo_root,
+        )
+        if commit_outcome is CompletionResult.NOT_CLOSED:
+            # Roll back to pristine, then mark in_progress for requeue. The
+            # session-log line appended above is intentionally left in place on
+            # rollback: it is informational, not status-bearing (Program Design
+            # → Call Path).
+            _abandon_and_stamp(
+                info,
+                logger,
+                repo_root,
+                original_path,
+                len(preflight.run_window),
+                prior_raw=prior_raw,
+                set_status="in_progress",
+            )
+            logger.error(
+                f"Refusing to complete {info.issue_id}: completion commit failed; "
+                "working tree preserved and issue rolled back to in_progress"
+            )
+            return False
 
         logger.success(f"Completed lifecycle for {info.issue_id}")
         if event_bus is not None:
@@ -1045,6 +1169,14 @@ Status: Completed via fallback lifecycle completion"""
 # =============================================================================
 # Issue Deferral
 # =============================================================================
+#
+# BUG-2963 scope carve-out: `defer_issue()` / `undefer_issue()` deliberately do
+# NOT get the pre-flight/`NOT_CLOSED` contract that `close_issue()` and
+# `complete_issue_lifecycle()` carry. A deferral is not a claim that work was
+# delivered, so there is no hollow-closure risk to guard against; and mapping a
+# failed commit onto `status: in_progress` here would silently un-defer the
+# issue and fight autodev's deferral policy (`deferred_by`/`deferred_reason`).
+# They keep the issue-file-only commit and ignore the `CompletionResult`.
 
 
 def _build_deferred_section(reason: str) -> str:

@@ -2183,6 +2183,23 @@ print(report)
 
 Git utility functions for status checking and .gitignore management.
 
+### Porcelain parsing and dirty-tree preservation (BUG-2963)
+
+```python
+def porcelain_paths(raw: str) -> list[str]
+def snapshot_dirty_paths(repo_path: Path) -> frozenset[str]
+def abandoned_ref_name(identifier: str) -> str
+def preserve_dirty_tree(repo_path: Path, ref_name: str, logger: Logger | None = None) -> str | None
+def has_non_noise_dirty_paths(repo_path: Path) -> tuple[bool, list[str]]
+def filter_ll_noise(paths: list[str]) -> list[str]
+```
+
+- **`porcelain_paths`** — parse `git status --porcelain -z` (NUL-delimited) output into paths. The `-z` form is used deliberately: the newline format's `old -> new` rename arrow is ambiguous when a filename contains ` -> `, and its quoted paths are only quote-stripped, not octal-unescaped, so non-ASCII names arrive corrupted. Returns the *new* path for renames/copies.
+- **`snapshot_dirty_paths`** — capture the `pre_run_dirty` set for the completion pre-flight. **Must be called before the work runs**; a snapshot taken afterwards already contains the deliverable, which would classify the whole implementation as pre-existing WIP. Returns an empty set on any git failure — the direction that preserves more, never less.
+- **`abandoned_ref_name`** — build `refs/ll/abandoned/<identifier>-<timestamp>`.
+- **`preserve_dirty_tree`** — non-destructively snapshot a dirty tree to a durable ref via a throwaway `GIT_INDEX_FILE` (`add -A` → `write-tree` → `commit-tree` → `update-ref`), leaving the working tree and real index byte-identical. Returns the snapshot commit SHA, or `None` on a clean tree or error. **Never implemented with `git stash`** — stash removes the changes it is supposed to preserve. Because worktrees share the object database and ref store with the main repo, a ref written from inside a worktree survives `git worktree remove --force`; recover with `git show <ref>:<path>`. Nothing prunes these refs automatically.
+- **`has_non_noise_dirty_paths` / `filter_ll_noise`** — the noise filter (`.issues/`, `thoughts/`, `.ll/`) shared by the pre-flight and the worktree-teardown backstop. `EXCLUDED_DIRECTORIES` is intentionally left unmodified; the `.ll/` set is adjacent, so `verify_work_was_done()` still counts a `.ll/`-only change as real work.
+
 ### GitignorePattern
 
 Represents a suggested .gitignore pattern with metadata.
@@ -2613,6 +2630,8 @@ def close_issue(
     files_changed: list[str] | None = None,
     event_bus: EventBus | None = None,
     interceptors: list[Any] | None = None,
+    pre_run_dirty: frozenset[str] | None = None,
+    repo_path: Path | None = None,
 ) -> bool
 ```
 
@@ -2628,8 +2647,12 @@ Close an issue by moving to completed with closure status.
 - `files_changed` - List of files modified by the fix (for regression tracking)
 - `event_bus` - Optional `EventBus` for emitting lifecycle events during closure
 - `interceptors` - Optional list of interceptor objects; each may implement `before_issue_close(info) -> bool | None`. Returning `False` vetoes the close and causes this function to return `False` immediately without moving the issue file.
+- `pre_run_dirty` - Snapshot of `git status --porcelain` paths taken **before** this run started, from `git_operations.snapshot_dirty_paths()` (BUG-2963). Paths absent from it are this run's deliverable and are committed alongside the issue file; paths present in it are pre-existing WIP and are left untouched. `None` — the conservative default for external API callers — means the two sets cannot be separated, so any non-noise dirty path refuses the close.
+- `repo_path` - Working tree to operate in. Defaults to the process cwd.
 
-**Returns:** `True` if successful, `False` if vetoed by an interceptor or if an error occurs
+**Returns:** `True` if the issue is closed **and** its closure is in a commit. `False` if vetoed by an interceptor, if an error occurs, or if the close was **refused** because the deliverable could not be committed.
+
+**Refusal contract (BUG-2963):** on refusal the working tree is first preserved non-destructively to a durable `refs/ll/abandoned/<ID>-<timestamp>` ref (never `git stash`, which would remove the very changes it claims to preserve), the issue file is left unmutated — no `status: done`, no `## Resolution` section, no `completed_at` — and `uncommitted_paths` / `abandoned_ref` / `abandoned_sha` are stamped into its frontmatter as a best-effort convenience. Callers must treat a `False` return as "still open" and requeue. A pre-commit hook rejection is a legitimate refusal and is never bypassed with `--no-verify`.
 
 #### complete_issue_lifecycle
 
@@ -2639,18 +2662,26 @@ def complete_issue_lifecycle(
     config: BRConfig,
     logger: Logger,
     event_bus: EventBus | None = None,
+    pre_run_dirty: frozenset[str] | None = None,
+    repo_path: Path | None = None,
 ) -> bool
 ```
 
-Fallback: Complete issue lifecycle when command exited early.
+Fallback: Complete issue lifecycle when command exited early. This is the path BUG-2963 was filed against — it fires after an abnormal subloop exit, exactly when the deliverable is most likely to still be uncommitted.
 
 **Parameters:**
 - `info` - Issue info
 - `config` - Project configuration
 - `logger` - Logger for output
 - `event_bus` - Optional `EventBus` for emitting lifecycle events on completion
+- `pre_run_dirty` - As for `close_issue` above.
+- `repo_path` - Working tree to operate in. Defaults to the process cwd.
 
-**Returns:** `True` if successful
+**Returns:** `True` if the issue is `done` **and** that state is in a commit. `False` if the completion was refused.
+
+**Refusal contract (BUG-2963):** same as `close_issue`, except the issue is left `in_progress` rather than at its prior status, so it is requeued rather than silently dropped. Never a hollow `done`.
+
+> **Scope carve-out:** `defer_issue()` / `undefer_issue()` deliberately do **not** carry this contract. A deferral is not a claim that work was delivered, and mapping a failed commit onto `in_progress` there would silently un-defer an issue and fight autodev's `deferred_by` / `deferred_reason` policy.
 
 ---
 
