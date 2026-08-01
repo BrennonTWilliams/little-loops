@@ -11,7 +11,6 @@ import pytest
 from little_loops.cli.learning_tests import main_learning_tests
 from little_loops.learning_tests import Assertion, LearnTestRecord
 
-HELP_MD = Path(__file__).parent.parent.parent / "commands" / "help.md"
 CLI_REFERENCE = Path(__file__).parent.parent.parent / "docs" / "reference" / "CLI.md"
 
 
@@ -607,13 +606,15 @@ class TestMainLearningTestsOrphans:
 
 
 class TestDocWiring:
-    """Wiring assertions: ll-learning-tests must appear in help.md and CLI.md."""
+    """Wiring assertions: ll-learning-tests must appear in CLI.md.
 
-    def test_help_md_lists_ll_learning_tests(self) -> None:
-        content = HELP_MD.read_text()
-        assert "ll-learning-tests" in content, (
-            "commands/help.md must list ll-learning-tests in the CLI tools block"
-        )
+    A `commands/help.md`-targeted counterpart to this test existed before
+    FEAT-2940; removed because `commands/help.md` is now a thin wrapper
+    around the runtime-generated `ll-help` catalog rather than a static file
+    that lists bare `pip`-only CLI tools like `ll-learning-tests` (which has
+    no `commands/*.md`/`skills/*/SKILL.md` frontmatter for `ll-help` to
+    source a row from).
+    """
 
     def test_cli_reference_has_ll_learning_tests_section(self) -> None:
         content = CLI_REFERENCE.read_text()

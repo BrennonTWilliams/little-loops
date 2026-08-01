@@ -65,6 +65,7 @@ from little_loops.cli.doctor import main_doctor
 from little_loops.cli.generate_skill_descriptions import main_generate_skill_descriptions
 from little_loops.cli.gitignore import main_gitignore
 from little_loops.cli.harness import main_harness
+from little_loops.cli.help import main_help
 from little_loops.cli.history import main_history
 from little_loops.cli.history_context import main_history_context
 from little_loops.cli.issues import main_issues
@@ -94,6 +95,7 @@ from little_loops.cli.verify_design_tokens import main_verify_design_tokens
 from little_loops.cli.verify_host_map import main_verify_host_map
 from little_loops.cli.verify_kinds import main_verify_kinds
 from little_loops.cli.verify_package_data import main_verify_package_data
+from little_loops.cli.verify_skill_prose import main_verify_skill_prose
 from little_loops.cli.verify_triggers import main_verify_triggers
 from little_loops.init.cli import main_init
 
@@ -102,6 +104,7 @@ __all__ = [
     "main_adapt",
     "main_artifact",
     "main_harness",
+    "main_help",
     "main_adapt_agents_for_codex",
     "main_adapt_skills_for_codex",
     "main_auto",
@@ -142,6 +145,7 @@ __all__ = [
     "main_verify_package_data",
     "main_verify_kinds",
     "main_verify_skill_budget",
+    "main_verify_skill_prose",
     "main_verify_skills",
     "main_verify_triggers",
     # Re-exported for backward compatibility (used in tests)

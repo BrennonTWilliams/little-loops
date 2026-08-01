@@ -3893,6 +3893,42 @@ registers POSIX signal handlers for `SIGINT` (Ctrl-C) and `SIGTERM`
 The end-to-end SIGINT contract is locked by
 `scripts/tests/test_fsm_signal_integration.py`.
 
+### little_loops.cli.loop.scaffold_eval / scaffold_verify
+
+`ll-loop scaffold-eval`/`ll-loop scaffold-verify` (FEAT-2948) generate FSM loop
+YAML in Python instead of `/ll:create-eval-from-issues`/`/ll:verify-issue-loop`
+hand-assembling it in prose. Both build `FSMLoop`/`StateConfig` objects
+(`little_loops.fsm.schema`) directly and validate them in-process via
+`fsm.validation.validate_fsm()` before returning.
+
+```python
+def scaffold_eval(issue_ids: list[str], dsl: bool) -> ScaffoldResult
+def scaffold_verify(issue_id: str, adversarial: bool) -> ScaffoldResult
+```
+
+- `scaffold_eval` (`little_loops/cli/loop/scaffold_eval.py`): Variant A (1 issue,
+  `initial: execute`) or Variant B (2+ issues, `initial: discover`/`advance`),
+  including Proof-First Gate `check_proof_<slug>` chaining/splicing when
+  `learning_tests.enabled` and an issue's `learning_tests_required` is non-empty.
+  Emits `<EXECUTE_PROMPT>`/`<EVALUATION_CRITERIA_PROMPT>` placeholder slots — the
+  prompt/criteria text genuinely requires LLM synthesis. `dsl=True` is rejected
+  with a pointer back to `/ll:create-eval-from-issues --dsl` (a separate,
+  already-prose-only DSL task generator, out of scope here).
+- `scaffold_verify` (`little_loops/cli/loop/scaffold_verify.py`): criteria mode
+  (default) builds one `verify-criterion-N` state per `CriterionSlot` extracted
+  via `IssueParser.extract_criteria()`; `adversarial=True` emits the fixed
+  3-probe template (`probe-boundary`/`probe-malformed-hostile`/
+  `probe-failure-mode` → non-LLM `count_probes` gate) verbatim. Timeout selection
+  is code: 1800s criteria / 2700s adversarial. Output has no placeholder slots.
+- `ScaffoldResult` (`little_loops/cli/loop/_scaffold_core.py`, shared by both):
+  `yaml_path: Path | None`, `yaml_text: str`, `placeholders: list[str]`,
+  `validated: bool`, `errors: list[str]`.
+- `IssueParser.extract_criteria(issue_path) -> list[CriterionSlot]`
+  (`little_loops/issue_parser.py`): generalizes `_parse_section_items()`'s
+  section-location logic to extract top-level bullet text (checkboxes, plain
+  bullets, numbered lists; indented sub-bullets skipped) from `## Acceptance
+  Criteria`, falling back to `## Expected Behavior` when empty.
+
 ### main_issues
 
 ```python
@@ -3922,6 +3958,7 @@ Entry point for `ll-issues` command. Issue management and visualization utilitie
 | `clusters` | Visualize issue dependency clusters as box diagrams (`--include-orphans`, `--min-connections N`, `--json`, `--edges SET`, `--status SET`) |
 | `anchor-sweep` | Rewrite bare `file:line` references in active issue files to enclosing anchor form (`--dry-run`, `--issues-dir DIR`) |
 | `fingerprint` | Extract structured fingerprint (id, files_to_modify, key_terms) from an issue file as JSON; used by `audit-issue-conflicts` Phase 2b (`--cross-theme`) |
+| `find-similar` | Score title word-overlap similarity (Jaccard, `text_utils.py`) between text and the issue corpus, or pairwise via `--batch` (alias: `fs`); `--against open\|all`, `--threshold T`, `--limit N` (ENH-2941) |
 | `check-flag` | Exit 0 if a named boolean frontmatter field equals `true`; takes `issue_id` and `field` positional args |
 | `check-decidable` | Exit 0 if an issue has >=1 enumerable option to decide between (deterministic companion to `/ll:decide-issue --validate-only`, ENH-2443) |
 | `check-readiness` | Exit 0 if `confidence_score` and `outcome_confidence` meet thresholds; reads from `ll-config.json` or `--readiness`/`--outcome` flags |

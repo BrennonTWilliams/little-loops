@@ -422,12 +422,23 @@ Instead, update these files:
 | File | What to update |
 |------|---------------|
 | `docs/reference/CLI.md` | Full `### ll-<toolname>` section with flags and examples |
-| `commands/help.md` | One-line entry in the CLI TOOLS block |
 | `.claude/CLAUDE.md` | One-line entry in the CLI Tools list |
-| `skills/configure/areas.md` | Add tool name; increment "Authorize all N" count |
 | `README.md` | Increment `"N CLI tools"` count only — no new section |
+| `scripts/pyproject.toml` `[project.scripts]` | Register the entry point |
+| `skills/configure/areas.md` | Add tool name to the "Authorize all ll- commands" preset |
+| `little_loops/init/writers.py::_LL_PERMISSIONS` | Add `"Bash(ll-<toolname>:*)"` |
 
-Add a presence test in `scripts/tests/test_wiring_cli_registry.py` (consolidated CLI-tool wiring) that checks `CLI_REFERENCE`, `HELP_MD`, and `CLAUDE_MD` — not `README`. The structural guard in `test_readme_structure.py` will fail CI if a `### ll-` section lands in the README.
+`ll-verify-cli-allowlist` gates the last three (BUG-2764) — run it locally to
+self-check. `commands/help.md` is **not** hand-edited: `/ll:help` shells out to
+`ll-help`, which generates its catalog at runtime from `commands/*.md` and
+`skills/*/SKILL.md` frontmatter (FEAT-2940). A bare `pip`-only CLI tool with no
+`commands/*.md`/`skills/*/SKILL.md` counterpart (most `ll-*` entry points) never
+appears in that catalog — `docs/reference/CLI.md` is its only home.
+
+Add a presence test in `scripts/tests/test_wiring_cli_registry.py` (consolidated
+CLI-tool wiring) that checks `CLI_REFERENCE` and `CLAUDE_MD` — not `README`. The
+structural guard in `test_readme_structure.py` will fail CI if a `### ll-`
+section lands in the README.
 
 ## Creating Issues
 

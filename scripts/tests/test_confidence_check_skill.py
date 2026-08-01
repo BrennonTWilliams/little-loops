@@ -84,41 +84,42 @@ class TestConfidenceCheckSkillWriteBack:
         )
 
 
-class TestDecisionNeededFlagWriteBack:
-    """Phase 4.6 must document setting decision_needed: true when signal phrases found (BUG-1278)."""
+class TestFlagDelegationWriteBack:
+    """Phase 4.6 must delegate all four flags to `ll-issues set-flags` (ENH-2946).
+
+    Supersedes the old per-flag TestDecisionNeededFlagWriteBack /
+    TestMissingArtifactsFlagWriteBack / TestImplementationOrderRiskFlagWriteBack
+    classes — the phrase lists those tests asserted on now live solely in
+    `scripts/little_loops/cli/issues/set_flags.py` (and are unit-tested there
+    via `test_ll_issues_set_flags.py`), not duplicated in skill prose.
+    """
 
     def _phase_text(self) -> str:
         content = SKILL_FILE.read_text()
-        start = content.index("### Phase 4.6: Decision-Needed Flag")
+        start = content.index("### Phase 4.6: Delegate Flag Setting")
         next_heading = content.find("\n###", start + 1)
         end = next_heading if next_heading != -1 else len(content)
         return content[start:end]
 
     def test_phase_4_6_heading_exists(self) -> None:
         content = SKILL_FILE.read_text()
-        assert "Phase 4.6: Decision-Needed Flag" in content, (
-            "SKILL.md must contain a 'Phase 4.6: Decision-Needed Flag' section"
+        assert "Phase 4.6: Delegate Flag Setting" in content, (
+            "SKILL.md must contain a 'Phase 4.6: Delegate Flag Setting' section"
         )
 
-    def test_decision_needed_true_in_phase_4_6(self) -> None:
-        assert "decision_needed: true" in self._phase_text(), (
-            "Phase 4.6 must document setting decision_needed: true in frontmatter"
+    def test_delegates_to_set_flags_cli(self) -> None:
+        text = self._phase_text()
+        assert "ll-issues set-flags" in text, (
+            "Phase 4.6 must delegate flag setting to the ll-issues set-flags CLI"
         )
+        assert "--from-notes" in text
 
-    def test_signal_phrases_documented(self) -> None:
+    def test_no_phrase_list_duplicated(self) -> None:
+        """The literal decision_needed phrase list must not be re-duplicated in prose."""
         text = self._phase_text()
-        assert (
-            "open decision" in text
-            or "unresolved decision" in text
-            or "either/or" in text
-            or "resolve before starting" in text
-            or "open question" in text
-        ), "Phase 4.6 must document the signal phrases that trigger the flag"
-
-    def test_idempotency_guard_present(self) -> None:
-        text = self._phase_text()
-        assert "Idempotency" in text or "idempotent" in text.lower(), (
-            "Phase 4.6 must document the idempotency guard (skip if already true)"
+        assert "unresolved decision" not in text, (
+            "Phase 4.6 must not re-duplicate set_flags.py's phrase list — "
+            "the CLI is the single source of truth"
         )
 
     def test_check_mode_guard_in_phase_4_6(self) -> None:
@@ -131,99 +132,18 @@ class TestDecisionNeededFlagWriteBack:
             "Phase 4.6 must not use AskUserQuestion — flag write-back is unconditional"
         )
 
-
-class TestMissingArtifactsFlagWriteBack:
-    """Phase 4.7 must document setting missing_artifacts: true when artifact signal phrases found (ENH-1291)."""
-
-    def _phase_text(self) -> str:
-        content = SKILL_FILE.read_text()
-        start = content.index("### Phase 4.7: Missing-Artifacts Flag")
-        next_heading = content.find("\n###", start + 1)
-        end = next_heading if next_heading != -1 else len(content)
-        return content[start:end]
-
-    def test_phase_4_7_heading_exists(self) -> None:
-        content = SKILL_FILE.read_text()
-        assert "Phase 4.7: Missing-Artifacts Flag" in content, (
-            "SKILL.md must contain a 'Phase 4.7: Missing-Artifacts Flag' section"
-        )
-
-    def test_missing_artifacts_true_in_phase_4_7(self) -> None:
-        assert "missing_artifacts: true" in self._phase_text(), (
-            "Phase 4.7 must document setting missing_artifacts: true in frontmatter"
-        )
-
-    def test_signal_phrases_documented(self) -> None:
+    def test_depth_moderate_or_deep_flag_documented(self) -> None:
         text = self._phase_text()
-        assert "not yet created" in text or "does not exist" in text, (
-            "Phase 4.7 must document the signal phrases that trigger the flag"
+        assert "--depth-moderate-or-deep" in text, (
+            "Phase 4.6 must document passing --depth-moderate-or-deep when Criterion A "
+            "Depth was judged Moderate/Deep"
         )
 
-    def test_idempotency_guard_present(self) -> None:
+    def test_external_api_suppression_documented(self) -> None:
         text = self._phase_text()
-        assert "Idempotency" in text or "idempotent" in text.lower(), (
-            "Phase 4.7 must document the idempotency guard (skip if already true)"
-        )
-
-    def test_check_mode_guard_in_phase_4_7(self) -> None:
-        assert "CHECK_MODE" in self._phase_text(), (
-            "Phase 4.7 must include the CHECK_MODE skip guard (no writes in check mode)"
-        )
-
-    def test_no_ask_user_question_in_phase_4_7(self) -> None:
-        assert "AskUserQuestion" not in self._phase_text(), (
-            "Phase 4.7 must not use AskUserQuestion — flag write-back is unconditional"
-        )
-
-    def test_co_deliverable_suppression_documented(self) -> None:
-        text = self._phase_text()
-        assert "Files to Create" in text or "co-deliverable" in text.lower(), (
-            "Phase 4.7 must document the co-deliverable suppression check before setting the flag"
-        )
-
-
-class TestImplementationOrderRiskFlagWriteBack:
-    """Phase 4.9 must document setting implementation_order_risk: true when ordering advice found (ENH-1492)."""
-
-    def _phase_text(self) -> str:
-        content = SKILL_FILE.read_text()
-        start = content.index("### Phase 4.9: Implementation-Order Risk Flag")
-        next_heading = content.find("\n###", start + 1)
-        end = next_heading if next_heading != -1 else len(content)
-        return content[start:end]
-
-    def test_phase_4_9_heading_exists(self) -> None:
-        content = SKILL_FILE.read_text()
-        assert "Phase 4.9: Implementation-Order Risk Flag" in content, (
-            "SKILL.md must contain a 'Phase 4.9: Implementation-Order Risk Flag' section"
-        )
-
-    def test_implementation_order_risk_true_in_phase_4_9(self) -> None:
-        assert "implementation_order_risk: true" in self._phase_text(), (
-            "Phase 4.9 must document setting implementation_order_risk: true in frontmatter"
-        )
-
-    def test_signal_phrases_documented(self) -> None:
-        text = self._phase_text()
-        assert "co-deliverable" in text or "implement tests first" in text, (
-            "Phase 4.9 must document the signal phrases that trigger the flag"
-        )
-
-    def test_idempotency_guard_present(self) -> None:
-        text = self._phase_text()
-        assert "Idempotency" in text or "idempotent" in text.lower(), (
-            "Phase 4.9 must document the idempotency guard (skip if already true)"
-        )
-
-    def test_check_mode_guard_in_phase_4_9(self) -> None:
-        assert "CHECK_MODE" in self._phase_text(), (
-            "Phase 4.9 must include the CHECK_MODE skip guard (no writes in check mode)"
-        )
-
-    def test_no_ask_user_question_in_phase_4_9(self) -> None:
-        assert "AskUserQuestion" not in self._phase_text(), (
-            "Phase 4.9 must not use AskUserQuestion — flag write-back is unconditional"
-        )
+        assert "explore-api" in text and (
+            "third-party" in text.lower() or "external" in text.lower()
+        ), "Phase 4.6 must document the external-API suppression rule (advise /ll:explore-api)"
 
 
 class TestPhase45OutcomeThreshold:
@@ -253,7 +173,7 @@ class TestPhase45OutcomeThreshold:
     def test_phase_4_6_guard_uses_outcome_threshold(self) -> None:
         """Phase 4.6 guard must reference outcome_threshold, not hardcoded 60."""
         content = SKILL_FILE.read_text()
-        start = content.index("### Phase 4.6: Decision-Needed Flag")
+        start = content.index("### Phase 4.6: Delegate Flag Setting")
         next_heading = content.find("\n###", start + 1)
         end = next_heading if next_heading != -1 else len(content)
         phase_4_6_text = content[start:end]
@@ -332,69 +252,6 @@ class TestCriterionABreadthDepthSplit:
         content = SKILL_FILE.read_text()
         assert "#### Criterion A:" in content, (
             "The '#### Criterion A:' heading must be preserved exactly (used as section anchor)"
-        )
-
-
-class TestSpikeNeededFlagWriteBack:
-    """Phase 4.10 must document setting spike_needed: true when unproven-mechanism signal phrases found (ENH-2569)."""
-
-    def _phase_text(self) -> str:
-        content = SKILL_FILE.read_text()
-        start = content.index("### Phase 4.10: Spike-Needed Flag")
-        next_heading = content.find("\n###", start + 1)
-        end = next_heading if next_heading != -1 else len(content)
-        return content[start:end]
-
-    def test_phase_4_10_heading_exists(self) -> None:
-        content = SKILL_FILE.read_text()
-        assert "Phase 4.10: Spike-Needed Flag" in content, (
-            "SKILL.md must contain a 'Phase 4.10: Spike-Needed Flag' section"
-        )
-
-    def test_spike_needed_true_in_phase_4_10(self) -> None:
-        assert "spike_needed: true" in self._phase_text(), (
-            "Phase 4.10 must document setting spike_needed: true in frontmatter"
-        )
-
-    def test_signal_phrases_documented(self) -> None:
-        text = self._phase_text()
-        assert "no precedent" in text or "no existing test exercises" in text, (
-            "Phase 4.10 must document the signal phrases that trigger the flag"
-        )
-
-    def test_idempotency_guard_present(self) -> None:
-        text = self._phase_text()
-        assert "Idempotency" in text or "idempotent" in text.lower(), (
-            "Phase 4.10 must document the idempotency guard (skip if already true)"
-        )
-
-    def test_check_mode_guard_in_phase_4_10(self) -> None:
-        assert "CHECK_MODE" in self._phase_text(), (
-            "Phase 4.10 must include the CHECK_MODE skip guard (no writes in check mode)"
-        )
-
-    def test_no_ask_user_question_in_phase_4_10(self) -> None:
-        assert "AskUserQuestion" not in self._phase_text(), (
-            "Phase 4.10 must not use AskUserQuestion — flag write-back is unconditional"
-        )
-
-    def test_external_api_suppression_documented(self) -> None:
-        text = self._phase_text()
-        assert "explore-api" in text and (
-            "third-party" in text.lower() or "external" in text.lower()
-        ), "Phase 4.10 must document the external-API suppression rule (advise /ll:explore-api)"
-
-    def test_score_condition_documented(self) -> None:
-        text = self._phase_text()
-        assert "score_test_coverage" in text and "Depth" in text, (
-            "Phase 4.10 must document the score condition "
-            "(score_test_coverage <= 10 OR Criterion A Depth Moderate/Deep)"
-        )
-
-    def test_spike_attempted_guard_present(self) -> None:
-        text = self._phase_text()
-        assert "spike_attempted" in text or "spike_completed" in text, (
-            "Phase 4.10 must skip issues already carrying spike_attempted/spike_completed"
         )
 
 
@@ -499,3 +356,29 @@ class TestConfidenceCheckRubricLearningTestStatus:
         assert "−5" in RUBRIC_FILE.read_text(), (
             "rubric.md must include the −5 penalty row for stale learning test targets (ENH-2232)"
         )
+
+
+class TestVerdictJsonTrailer:
+    """rubric.md's single-issue output format must emit VERDICT_JSON (ENH-2949)."""
+
+    def test_verdict_json_tag_present(self) -> None:
+        assert "VERDICT_JSON:" in RUBRIC_FILE.read_text(), (
+            "rubric.md must document a VERDICT_JSON: trailer after the single-issue output "
+            "format so _record_verdict() captures structured fields (ENH-2949)"
+        )
+
+    def test_verdict_json_follows_single_issue_format(self) -> None:
+        content = RUBRIC_FILE.read_text()
+        single_start = content.index("## Output Format (single issue)")
+        batch_start = content.index("## Batch Output Format")
+        section = content[single_start:batch_start]
+        assert "VERDICT_JSON:" in section, (
+            "VERDICT_JSON trailer must be documented within the single-issue output section"
+        )
+
+    def test_verdict_json_has_required_fields(self) -> None:
+        content = RUBRIC_FILE.read_text()
+        idx = content.index('VERDICT_JSON: {"verdict"')
+        line = content[idx : idx + 400]
+        for field in ("verdict", "confidence", "target_id", "target_kind", "severity_counts", "findings_count"):
+            assert f'"{field}"' in line, f"VERDICT_JSON example must include the {field} field"

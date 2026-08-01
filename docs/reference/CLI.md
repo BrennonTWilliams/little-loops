@@ -954,6 +954,42 @@ ll-loop fragments lib/harness.yaml        # list built-in Playwright screenshot 
 ll-loop fragments .loops/my-lib.yaml      # list project-local fragment library
 ```
 
+#### `ll-loop scaffold-eval`
+
+Generate FSM eval-harness loop YAML in Python from one or more issue IDs (FEAT-2948) — the mechanical port of `/ll:create-eval-from-issues`'s Variant A/B templates and Proof-First Gate chaining. Builds `FSMLoop`/`StateConfig` objects directly, validates via `fsm.validation.validate_fsm()` in-process, and emits YAML with `<EXECUTE_PROMPT>`/`<EVALUATION_CRITERIA_PROMPT>` placeholder slots for the skill (or caller) to fill — the state graph and chaining are never hand-assembled.
+
+| Flag | Description |
+|------|-------------|
+| `--issues ID[,ID...]` | Comma-separated issue IDs (required). 1 issue → Variant A (`initial: execute`); 2+ → Variant B (`initial: discover`) |
+| `--dsl` | Not implemented here; the skill's DSL fill-in-the-blank/transform/correction generator is a separate code path — errors with a pointer to `/ll:create-eval-from-issues --dsl` |
+| `--out PATH` | Write the generated YAML to PATH |
+| `--stdout` | Print the generated YAML to stdout |
+| `-j`, `--json` | Output the `ScaffoldResult` (`yaml_path`, `yaml_text`, `placeholders`, `validated`, `errors`) as JSON |
+
+**Examples:**
+```bash
+ll-loop scaffold-eval --issues FEAT-919 --stdout            # single-issue Variant A
+ll-loop scaffold-eval --issues FEAT-919,ENH-950 --json       # multi-issue Variant B, JSON result
+```
+
+#### `ll-loop scaffold-verify`
+
+Generate a single-issue FSM verification loop YAML in Python (FEAT-2948) — the mechanical port of `/ll:verify-issue-loop`'s criteria-mode linear chain and fixed adversarial 3-probe template. Extracts criteria via `IssueParser.extract_criteria()` (bullet-marker normalization: checkboxes, plain bullets, numbered lists; sub-bullets skipped), builds and validates the `FSMLoop` in-process, and selects the timeout in code (1800s criteria / 2700s adversarial). Unlike `scaffold-eval`, the output has no placeholder slots — criteria/adversarial prompt text is fully determined by the issue's own title and criterion text, so the emitted YAML is immediately runnable.
+
+| Flag | Description |
+|------|-------------|
+| `issue_id` | Issue ID (positional, required) |
+| `--adversarial` | Emit the fixed 3-probe adversarial template instead of criteria mode |
+| `--out PATH` | Write the generated YAML to PATH |
+| `--stdout` | Print the generated YAML to stdout |
+| `-j`, `--json` | Output the `ScaffoldResult` as JSON |
+
+**Examples:**
+```bash
+ll-loop scaffold-verify FEAT-919 --stdout                   # criteria mode
+ll-loop scaffold-verify FEAT-919 --adversarial --json        # adversarial mode, JSON result
+```
+
 #### `ll-loop next-loop`
 
 Inspect `.loops/.history/` and suggest the next loop(s) to run, with resolved input parameters where available. Useful for unattended chaining or scheduled follow-up work.
@@ -1594,6 +1630,37 @@ ll-issues fp .issues/bugs/P2-BUG-042-example.md
 
 ---
 
+#### `ll-issues find-similar` / `ll-issues fs`
+
+Score title word-overlap similarity (Jaccard, via `text_utils.py`) between a query text and the issue corpus, or pairwise across the whole corpus in `--batch` mode. Distinct from `ll-issues search`: `search` filters/sorts issues by fields and substrings, while `find-similar` scores fuzzy text similarity between titles. Both modes compare **titles only**, never full issue bodies.
+
+| Argument/Flag | Description |
+|----------------|-------------|
+| `text` | Text to score against issue titles (omit when using `--batch`) |
+| `--batch` | Pairwise title-similarity scan over the corpus instead of single-text mode |
+| `--against open\|all` | Corpus to compare against (default: `open`) |
+| `--threshold T` | Minimum score to include (default: `config.issues.duplicate_detection.similar_threshold`) |
+| `--limit N`, `-n N` | Cap the number of returned results |
+
+**Output (JSON), single-text mode:**
+```json
+[{"id": "ENH-1801", "title": "Add fingerprint conflict detection", "path": ".issues/enhancements/P3-ENH-1801-example.md", "score": 0.667}]
+```
+
+**Output (JSON), `--batch` mode:**
+```json
+[{"a": "BUG-100", "b": "BUG-101", "score": 0.5}]
+```
+
+**Examples:**
+```bash
+ll-issues find-similar "auth token refresh failure" --against all
+ll-issues fs "auth token refresh failure" --threshold 0.6 --limit 5
+ll-issues find-similar --batch --against open
+```
+
+---
+
 #### `ll-issues check-flag` / `ll-issues cf`
 
 Exit 0 if a named boolean frontmatter field in the issue equals `true`. Designed for use as a shell gate in FSM loop states.
@@ -1696,7 +1763,67 @@ ll-issues format-check --all --fix            # preview blocked_by backfills for
 ll-issues format-check --all --fix --apply    # write the previewed edges via `ll-issues link`
 ```
 
+---
+
+#### `ll-issues normalize`
+
+Deterministic filename/ID-mechanics linter and fixer (ENH-2944), extracted from `commands/normalize-issues.md`'s mechanical rename/ID bookkeeping. Scans all categories/statuses for `missing_id`/`malformed_id` filenames (fail `is_normalized()`), `duplicate_id` (the same numeric ID used by >1 file — the oldest by git history keeps it, others get reassigned the next globally unique number via `get_next_issue_number()`), `legacy_dir` (non-empty `completed/`/`deferred/` directories, base-level or nested), and `type_mismatch` (a keyword-signal heuristic ported from the command's Step 1c: `confidence = signals_for_top_type / (total_signals + 1)`, flagged at ≥0.7).
+
+`--auto` applies `missing_id`/`malformed_id`/`duplicate_id` findings via `git mv` (shared `git_mv_with_fallback()` helper in `issue_lifecycle.py`, also used by `ll-issues skip`) — it never overwrites an existing path and never allocates a colliding ID. `type_mismatch` findings are **never** auto-applied: reclassification is a semantic judgment left to the calling command's LLM-review step, not a deterministic rename.
+
+| Argument/Flag | Default | Description |
+|---------------|---------|-------------|
+| `--check` | `false` | Check-only: print one line per violation, exit 1 if any found, exit 0 if clean (FSM `evaluate: type: exit_code` gate; implies no writes) |
+| `--auto` | `false` | Apply ID-mechanics fixes via `git mv` |
+| `--json` | `false` | Print `{"findings": [...], "applied": [...]}` instead of text |
+
+**Examples:**
+```bash
+ll-issues normalize --check           # FSM gate: exit 0 clean / 1 violations found
+ll-issues normalize --auto --json     # apply ID-mechanics fixes, print JSON report
+```
+
 **FSM loop use**: The `ensure_formatted` gate in `rn-remediate.yaml` calls this as a shell action with `evaluate: {type: exit_code}`, routing to `/ll:format-issue` only when a gap is found — replacing the older missing-headers-only inline check.
+
+---
+
+#### `ll-issues size`
+
+Deterministic size scoring for `issue-size-review` (ENH-2945), replacing the skill's
+hand-computed Phase 1-3 scoring table. Computes five signals over an issue's parsed body —
+`file_count` (>=3 distinct file paths via `text_utils.extract_file_paths`, +2), `section_complexity`
+(a `Proposed Solution`/`Implementation Steps`/`Implementation` section >300 words, +2),
+`multiple_concerns` (>=2 `###` subsections in that section, or "additionally"/"also need to"
+phrasing, +3), `dependency_mentions` (a `BUG-`/`FEAT-`/`ENH-`/`EPIC-` reference other than the
+issue's own ID, or "depends on"/"blocked by" phrasing, +2), and `word_count` (>800 words total,
++2) — for a 0-11 total mapped to a label: `Small` (0-2) / `Medium` (3-4) / `Large` (5-7) /
+`Very Large` (8+). The weight table (`SIZE_SIGNAL_WEIGHTS`) lives in
+`scripts/little_loops/cli/issues/size.py` as the single source both the CLI and the skill's
+prose reference.
+
+Exactly one of a bare `ISSUE_ID`, `--all`, or `--sprint NAME` selects the scoring target.
+`--all` scores active bugs/features/enhancements (excludes EPICs, matching the skill's original
+Phase 1 backlog scan). `--write` stamps the `size:` frontmatter field via `update_frontmatter`;
+without it, scoring is read-only.
+
+| Argument/Flag | Default | Description |
+|---------------|---------|-------------|
+| `ISSUE_ID` | — | Score a single issue (mutually exclusive with `--all`/`--sprint`) |
+| `--all` | `false` | Score all active bugs/features/enhancements |
+| `--sprint NAME` | — | Score only the issues listed in `.sprints/NAME.yaml` |
+| `--write` | `false` | Stamp `size:` frontmatter with the computed label |
+| `--json` | `false` | Print `[{"id", "score", "label", "signals": {...}}, ...]` instead of text |
+
+**Examples:**
+```bash
+ll-issues size ENH-2945                    # score one issue, text output
+ll-issues size --all --json                # score the backlog, JSON report
+ll-issues size --sprint my-sprint --write  # score + stamp size: for a sprint's issues
+```
+
+**Scope note**: this CLI covers Phases 1-3 only (scoring + frontmatter write-back). Phase 6's
+child-issue creation mechanics (ID/filename templating) remain in the skill pending
+`ll-issues create` (FEAT-2947) — deliberately left unconverted rather than half-migrated.
 
 ---
 
@@ -3199,6 +3326,30 @@ ll-verify-package-data --json              # Machine-readable JSON output
 ll-verify-package-data --lint-only         # Lint only (no manifest check)
 ll-verify-package-data --manifest-only     # Manifest check only
 ll-verify-package-data -C /path/to/root    # Run from a specific project root
+```
+
+---
+
+### ll-verify-skill-prose
+
+Scan `skills/*/SKILL.md` and `commands/*.md` for prose reimplementations of algorithms that already exist in `scripts/little_loops/`. A curated marker table (not a general duplicate-algorithm detector) catches six known shapes: a Jaccard/word-overlap formula spelled out in prose (owned by `text_utils.calculate_word_overlap`), an inline stop-word list (`text_utils.extract_words`), manual `~/.claude/projects/` session-JSONL scanning instructions (`ll-issues append-log`), inline `python3 -c` computation the model is told to run (the owning CLI), `git mv` loops over globbed/bracketed issue filenames (`ll-issues normalize`), and union-find/cluster-merge instructions (`ll-issues link-epics`). Skills with `disable-model-invocation: true` are skipped, matching `ll-verify-skills`.
+
+A `<!-- ll-prose-ok: reason -->` comment on the line immediately preceding a match suppresses that one finding.
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--json` | | Output as JSON |
+| `--directory` | `-C` | Project root containing `skills/` and `commands/` (default: cwd) |
+
+**Exit codes:** `0` = no unsuppressed findings; `1` = one or more unsuppressed findings.
+
+**Examples:**
+```bash
+ll-verify-skill-prose                      # Scan from cwd
+ll-verify-skill-prose --json               # Machine-readable JSON output
+ll-verify-skill-prose -C /path/to/root     # Scan a specific project root
 ```
 
 ---

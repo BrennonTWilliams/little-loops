@@ -577,33 +577,20 @@ class TestAssessLoopSkill:
             "Step 4 must list context.run_dir as a candidate path-like context key"
         )
 
-    def test_shallow_iteration_skill_step55_checks_gitignore(self) -> None:
-        """Step 5.5 must check git check-ignore before trusting a git-diff-derived AUX_MUTATION_COUNT of 0."""
+    def test_shallow_iteration_skill_step55_delegates_to_ll_loop_audit(self) -> None:
+        """Step 5.5 must delegate counting to `ll-loop audit --json` (ENH-2949), not hand-count events."""
         skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
         content = skill_path.read_text()
         step55_start = content.index("## Step 5.5:")
         step56_start = content.index("## Step 5.6:")
         step55_section = content[step55_start:step56_start]
-        assert "git check-ignore" in step55_section, (
-            "Step 5.5 must check git check-ignore against the primary artifact path"
+        assert "ll-loop audit" in step55_section, (
+            "Step 5.5 must invoke `ll-loop audit --json` instead of manually counting events"
         )
-
-    def test_shallow_iteration_skill_step55_has_filesystem_fallback(self) -> None:
-        """Step 5.5 must fall back to a filesystem mutation scan when the primary path is gitignored."""
-        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
-        content = skill_path.read_text()
-        step55_start = content.index("## Step 5.5:")
-        step56_start = content.index("## Step 5.6:")
-        step55_section = content[step55_start:step56_start]
-        assert "find" in step55_section and "-newermt" in step55_section, (
-            "Step 5.5 must use 'find ... -newermt' as the GNU filesystem fallback"
-        )
-        assert "-newer" in step55_section and "touch -d" in step55_section, (
-            "Step 5.5 must document a BSD find fallback (touch -d marker + find -newer)"
-        )
+        assert "--json" in step55_section
 
     def test_shallow_iteration_skill_step55_documents_unknown_outcome(self) -> None:
-        """Step 5.5 must report 'unknown' (not a false 0) when neither git nor filesystem evidence exists."""
+        """Step 5.5 must report 'unknown' (not a false 0) when no mutation evidence exists."""
         skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
         content = skill_path.read_text()
         step55_start = content.index("## Step 5.5:")
@@ -810,8 +797,8 @@ class TestPIDCorruptionDiscriminator:
         assert "0.3" in pre_step6, (
             "Skill must include a budget-utilization guard with ratio threshold 0.3 before Step 6"
         )
-        assert "loop_complete.iterations" in pre_step6 or "STEPS_CONSUMED" in pre_step6, (
-            "Budget guard must derive STEPS_CONSUMED from loop_complete.iterations in events.jsonl"
+        assert "steps_consumed" in pre_step6, (
+            "Budget guard must derive its ratio from `ll-loop audit --json`'s steps_consumed field (ENH-2949)"
         )
 
 

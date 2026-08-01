@@ -1,0 +1,12 @@
+{
+  "id": "5056c699-daa4-4f9a-8f06-21a46be72429",
+  "type": "decision",
+  "timestamp": "2026-08-01T11:22:07Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Measured block cost ~150 tokens, paid per-invocation not cumulatively; Option A yields ~0 net savings (must still read companion file); Option B needs new CLI surface for modest per-invocation savings on a P3, non-drift-prone item.",
+  "rule": "Option C \u2014 Leave as-is, document the decision",
+  "scope": "issue",
+  "alternatives_rejected": "Option A \u2014 Shared companion doc; Option B \u2014 CLI-parsed flags",
+  "issue": "ENH-2952"
+}

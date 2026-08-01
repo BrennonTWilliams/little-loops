@@ -163,58 +163,31 @@ No actionable issues found in this conversation. You can run this command with a
 
 ### Phase 2: Duplicate Detection
 
-For each issue to capture, search for existing duplicates. This phase performs three checks: (1) Jaccard scoring against active issues, (2) Jaccard scoring against completed/cancelled issues, and (3) an FTS5 near-duplicate check against the session history DB using `ll-session search --fts "<keywords>" --kind issue --limit 5 2>/dev/null || true`. If `.ll/history.db` is absent or the query returns no results, proceed silently without warning.
+For each issue to capture, search for existing duplicates. This phase performs two checks: (1) title word-overlap scoring against active and completed/cancelled issues via `ll-issues find-similar`, and (2) an FTS5 near-duplicate check against the session history DB using `ll-session search --fts "<keywords>" --kind issue --limit 5 2>/dev/null || true`. If `.ll/history.db` is absent or the query returns no results, proceed silently without warning.
 
-#### Search Active Issues
+#### Word-Overlap Scoring (Active + Completed Issues)
 
-Issue status lives in YAML frontmatter (`status: open|done|deferred|cancelled`),
-not in directory location. Active issues are those with `status: open` (or
-absent, which defaults to open).
+`find-similar` scores the candidate title against every issue's title using the canonical Jaccard implementation in `text_utils.py`. `--against all` includes `done`/`cancelled` issues alongside active ones, so one call replaces the separate active/completed passes:
 
 ```bash
-# List all .md files under category dirs and filter to status: open
-for dir in {{config.issues.base_dir}}/bugs/ {{config.issues.base_dir}}/features/ {{config.issues.base_dir}}/enhancements/ {{config.issues.base_dir}}/epics/; do
-    for f in "$dir"*.md; do
-        [ -f "$f" ] || continue
-        # Treat missing status: as "open"
-        status=$(awk '/^---$/{n++; next} n==1 && /^status:/{print $2; exit}' "$f")
-        case "${status:-open}" in
-            open|in_progress|blocked) echo "$f" ;;
-        esac
-    done
-done
+ll-issues find-similar "<new issue title>" --against all
 ```
 
-For each existing issue file:
-1. Read the file content
-2. Extract the title from the `# [TYPE]-[NNN]: [Title]` header
-3. Calculate word overlap between new issue title and existing title
-4. Also check for file path matches if the issue mentions specific files
-
-**Scoring:**
-- Extract significant words (3+ chars, excluding common words like "the", "and", "for")
-- Calculate Jaccard similarity: `intersection / union` of word sets
+Returns ranked `{id, title, path, score}` candidates:
 - Score >= {{config.issues.duplicate_detection.exact_threshold}} = exact duplicate
 - Score {{config.issues.duplicate_detection.similar_threshold}}-{{config.issues.duplicate_detection.exact_threshold}} = similar issue
-- Score < {{config.issues.duplicate_detection.similar_threshold}} = likely new issue
+- No returned candidate = likely new issue (find-similar's own default threshold is {{config.issues.duplicate_detection.similar_threshold}}, so anything below that never appears in the results)
 
-#### Search Completed Issues
-
-Completed issues live alongside active issues in their type directories,
-distinguished by `status: done` (or `cancelled`) in frontmatter:
-
-```bash
-# Find completed issues by scanning type dirs and filtering status: done
-ll-issues list --status done --json
-```
-
-Apply same scoring. If a completed issue has score >= {{config.issues.duplicate_detection.similar_threshold}}, it's a candidate for reopening.
+A match against a `done`/`cancelled` issue is a candidate for reopening rather than a fresh capture.
 
 #### Search History DB for Near-Duplicates
 
-After Jaccard scoring, query the session history for recently closed or deferred issues matching the new issue's title keywords:
+Independently of word-overlap scoring, query the session history for recently closed or deferred issues matching the new issue's title keywords. This FTS5 query answers a different question (was something like this recently closed/deferred in conversation history?) against a different corpus (`.ll/history.db`, not `.issues/`), so it stays a separate call:
 
 ```bash
+# NOTE: this stop-word regex is an FTS-query-keyword shim for ll-session --fts,
+# not the similarity stop-word list — that list is text_utils._COMMON_WORDS,
+# consumed via `ll-issues find-similar` above.
 KEYWORDS=$(echo "<title>" | tr '[:upper:]' '[:lower:]' | grep -oE '\b[a-z]{3,}\b' | grep -vE '^(the|and|for|are|was|but|not|all|can|had|its|our|out|who|did|how|get|has|let|use|via|were|with|from|they|that|this|have|will|been|into|also|just|more|some|when|what|then|than|them|your|does|both|like)$' | tr '\n' ' ')
 HIST_DUPES=$(ll-session search --fts "$KEYWORDS" --kind issue --limit 5 2>/dev/null || true)
 ```
@@ -300,14 +273,17 @@ ELSE:
 
 See [templates.md](templates.md) for the complete issue file template structure.
 
-5. **Append session log entry** to the newly created issue file:
+5. **Append session log entry** to the newly created issue file. Use the Bash tool:
 
-```markdown
-## Session Log
-- `/ll:capture-issue` - [ISO timestamp] - `[path to current session JSONL]`
+```bash
+ll-issues append-log <path-to-issue-file> /ll:capture-issue
 ```
 
-To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). Add the `## Session Log` section before the `---` / `## Status` footer.
+If `ll-issues` is not available, fall back to manually appending with **exactly** this format (backticks required), adding the `## Session Log` section before the `---` / `## Status` footer:
+
+```
+- `/ll:capture-issue` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
+```
 
    For FEAT or EPIC captures, append a decision entry to the log (silent no-op when the decisions log is absent; skip entirely for BUG type). The log is hybrid storage — a legacy `.ll/decisions.yaml` flat file and/or `.ll/decisions.d/*.json` fragments — so gate on either (a fresh, never-compacted install has only the fragment dir):
 

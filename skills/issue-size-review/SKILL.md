@@ -75,103 +75,33 @@ if [[ -n "$SPRINT_NAME" ]]; then AUTO_MODE=true; fi
 
 ## Workflow
 
-The skill follows a 6-phase workflow:
+The skill follows a 6-phase workflow. Phases 1-3 (discovery, scoring, frontmatter write-back)
+are handled by `ll-issues size` — a deterministic CLI, not hand-computed judgment (ENH-2945).
 
-### Phase 1: Discovery
+### Phases 1-3: Discovery, Scoring, Write-back (`ll-issues size`)
 
-**Sprint Mode** (`--sprint <name>`): When `SPRINT_NAME` is set, load issues from the sprint definition instead of scanning all active directories:
+Run the CLI instead of manually globbing/scoring/editing frontmatter:
 
 ```bash
-SPRINT_FILE=".sprints/${SPRINT_NAME}.yaml"
-if [ ! -f "$SPRINT_FILE" ]; then
-    echo "Error: Sprint '$SPRINT_NAME' not found at $SPRINT_FILE"
-    exit 1
-fi
-
-# Read the sprint YAML with the Read tool; parse the issues: list (flat list of bare IDs)
-# Resolve each ID to a file path using find:
-declare -a ISSUE_FILES
-for id in <sprint-issue-ids>; do
-    FILE=$(ll-issues path "${id}" 2>/dev/null)
-    if [ -n "$FILE" ]; then ISSUE_FILES+=("$FILE")
-    else echo "Warning: Sprint issue $id not found (skipping)"; fi
-done
-
-echo "Sprint: $SPRINT_NAME (${#ISSUE_FILES[@]} issues)"
+ll-issues size <id> --write --json          # single issue
+ll-issues size --all --write --json         # full backlog (bugs/features/enhancements)
+ll-issues size --sprint <name> --write --json  # scoped to a sprint definition
 ```
 
-**Default (full backlog)**: Scan all active issues:
+- Omit `--write` for `CHECK_MODE` (scoring only, no frontmatter mutation).
+- `--json` output is a list of `{id, score, label, signals}` objects. `label` is one of
+  `Small` (0-2) / `Medium` (3-4) / `Large` (5-7) / `Very Large` (8+), derived from the same
+  `SIZE_SIGNAL_WEIGHTS` table the CLI documents in `scripts/little_loops/cli/issues/size.py`
+  (file count, section complexity, multiple concerns, dependency mentions, word count; max 11).
+- `--write` stages the mutated `size:` frontmatter field on disk (no separate `git add` step
+  needed here — commit staging happens later, in Phase 6).
+- Issues scoring **≥5 points** (`Large`/`Very Large`) are decomposition candidates for Phase 4.
 
-1. Use Glob to find all `.md` files in:
-   - `{{config.issues.base_dir}}/bugs/`
-   - `{{config.issues.base_dir}}/features/`
-   - `{{config.issues.base_dir}}/enhancements/`
-2. Read each issue file to extract content
-3. Parse issue metadata (ID, type, priority, title)
-
-### Phase 2: Size Assessment
-
-Apply scoring heuristics to each issue:
-
-| Criterion | Points | How to Detect |
-|-----------|--------|---------------|
-| File count | +2 | Count file paths (patterns like `src/`, `.py`, `.ts`, `.md`) mentioned in issue |
-| Section complexity | +2 | "Proposed Solution" or "Implementation" sections >300 words |
-| Multiple concerns | +3 | Multiple `##` subsections in solution, or phrases like "additionally", "also need to" |
-| Dependency mentions | +2 | References to other issues (BUG-/FEAT-/ENH-/EPIC-) or "depends on", "blocked by" |
-| Word count | +2 | >800 words total in issue file |
-
-**Maximum score: 11 points**
-
-Issues scoring **≥5 points** are candidates for decomposition.
-
-### Phase 3: Frontmatter Write-back
-
-Skip this phase when `CHECK_MODE=true`.
-
-For each assessed issue, use the Edit tool to add or update `size: <label>` in the YAML frontmatter block. Apply the Size Thresholds table to derive the label from the score:
-
-- Score 0-2 → `Small`
-- Score 3-4 → `Medium`
-- Score 5-7 → `Large`
-- Score 8+ → `Very Large`
-
-Write-back applies to **all** assessed issues (not just decomposition candidates). Perform the write-back per-issue inside the assessment loop immediately after each score is computed.
-
-If the issue file has existing frontmatter (starts with `---`):
-- Add or update the `size` field within the frontmatter block using the Edit tool
-- Preserve all other existing fields
-
-Example — if frontmatter is:
-```yaml
----
-id: ENH-123
-priority: P2
----
-```
-
-Update to:
-```yaml
----
-id: ENH-123
-priority: P2
-size: Medium
----
-```
-
-If `size` already exists, replace its value with the new label.
-
-If the issue file has no frontmatter, add one:
-```yaml
----
-size: Medium
----
-```
-
-After writing back, stage the file:
-```bash
-git add "<issue-file-path>"
-```
+**Check Mode Behavior (`--check`)**: run `ll-issues size <id|--all|--sprint NAME> --json`
+without `--write`; for each result scoring >= 5, print `[ID] size: score N (oversized)`. After
+all issues scored, if any were oversized: print `N issues oversized`, then `exit 1`. If all
+pass: print `All issues pass size check`, then `exit 0`. This integrates with FSM
+`evaluate: type: exit_code` routing.
 
 ### Phase 4: Decomposition Proposal
 
@@ -245,7 +175,8 @@ If any field is absent (confidence-check was never run on the issue), skip the g
 
 #### Check Mode Behavior (--check)
 
-**When `CHECK_MODE` is true**: Run size scoring only (no decomposition). For each issue scoring >= 5 (Large or Very Large), print `[ID] size: score N (oversized)`. After all issues scored, if any were oversized: print `N issues oversized`, then `exit 1`. If all pass: print `All issues pass size check`, then `exit 0`. This integrates with FSM `evaluate: type: exit_code` routing.
+See "Phases 1-3" above — `ll-issues size` handles scoring and exit-code routing directly; no
+decomposition runs in this mode.
 
 #### Interactive Mode (default)
 

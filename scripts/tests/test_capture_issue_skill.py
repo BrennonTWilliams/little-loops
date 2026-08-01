@@ -33,3 +33,9 @@ class TestCaptureIssueNearDuplicateCheck:
         assert "2>/dev/null" in text or "proceed silently" in text, (
             "Phase 2 must document graceful degradation when history.db is absent"
         )
+
+    def test_find_similar_command_documented(self) -> None:
+        text = self._phase_text()
+        assert "ll-issues find-similar" in text, (
+            "Phase 2 word-overlap scoring must delegate to ll-issues find-similar (ENH-2941)"
+        )

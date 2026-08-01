@@ -269,9 +269,10 @@ ll-messages       Extract user messages from Claude Code logs
 ll-history        View issue statistics, analysis, and generate docs from history
 ll-deps           Cross-issue dependency analysis and validation
 ll-sync           Sync local issues with GitHub Issues
-ll-issues         Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, set-status, clusters, anchor-sweep, fingerprint, epic-progress, decisions (list, add, outcome, generate, sync, suggest-rules, promote, extract-from-completed))
+ll-issues         Issue management and visualization (next-id, list, show, path, sequence, impact-effort, refine-status, set-status, clusters, anchor-sweep, fingerprint, find-similar, epic-progress, decisions (list, add, outcome, generate, sync, suggest-rules, promote, extract-from-completed))
 ll-verify-docs    Verify documented counts match actual file counts
 ll-verify-skill-budget Check skill description token footprint against listing budget
+ll-verify-skill-prose Scan skills/commands markdown for prose reimplementations of algorithms in scripts/little_loops/
 ll-verify-skills  Check that no SKILL.md exceeds 500 lines
 ll-verify-triggers Validate skill description trigger accuracy against fixtures
 ll-verify-design-tokens Lint design-token profiles for half-flipped (incomplete dark) themes
@@ -292,7 +293,7 @@ ll-session        Query the unified SQLite session store (search/recent/backfill
 ll-ctx-stats      Show context-window analytics for the current project (per-tool byte vs. context savings; skill-health signals; waste view over token spend on no-artifact runs)
 ll-history-context Render a ## Historical Context block for an issue from .ll/history.db
 ll-config         Resolve and print a single dot-path config value (ll-config get <key>)
-ll-queue          Persisted work-item queue: add/list/status/remove/run commands (FEAT-2682, FEAT-2683)
+ll-queue          Persisted work-item queue: add/list/status/remove/run/requeue commands (FEAT-2682, FEAT-2683, FEAT-2930)
 
 ================================================================================
 Usage: /ll:<command> [arguments] [flags]

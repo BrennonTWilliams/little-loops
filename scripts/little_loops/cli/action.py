@@ -70,11 +70,12 @@ def _record_verdict(
 ) -> None:
     """Best-effort verdict persistence for the 9 skill-bridged verifiers (ENH-2504).
 
-    No skill currently emits a structured verdict dict at this call site, so
-    the verdict defaults to a coarse exit-code read (0 -> "pass", else
-    "fail"). A ``VERDICT_JSON: {...}`` tagged line (the existing
+    Absent a ``VERDICT_JSON: {...}`` tagged line, the verdict defaults to a
+    coarse exit-code read (0 -> "pass", else "fail"). ``confidence-check``
+    emits ``VERDICT_JSON`` (ENH-2949); the remaining 8 verifiers do not yet,
+    so they still degrade to the coarse read. The tag (the existing
     :func:`extract_tagged_json` convention) overrides the coarse fields when
-    present, letting precision improve as skills adopt the tag without a
+    present, letting precision improve as more skills adopt it without a
     further schema change. Never raises — the caller wraps this best-effort.
     """
     if skill not in _VERIFIER_SKILLS:
@@ -120,14 +121,15 @@ def _record_review(
 ) -> None:
     """Best-effort review persistence for the 7 skill-bridged audits/reviews (ENH-2512).
 
-    No skill currently emits a structured review dict at this call site, so
-    the verdict defaults to a coarse exit-code read (0 -> "pass", else
-    "fail"). A ``REVIEW_JSON: {...}`` tagged line (the same
-    :func:`extract_tagged_json` convention ``VERDICT_JSON`` uses) overrides
-    the coarse fields when present, letting precision — including the
-    "refused" verdict a pre-flight gate can't express via exit code alone —
-    improve as skills adopt the tag without a further schema change. Never
-    raises — the caller wraps this best-effort.
+    ``audit-loop-run`` and ``audit-architecture`` emit ``REVIEW_JSON: {...}``;
+    the other 5 reviewers do not yet, so their verdict still defaults to a
+    coarse exit-code read (0 -> "pass", else "fail") when the tag is absent.
+    The tag (the same :func:`extract_tagged_json` convention
+    ``VERDICT_JSON`` uses) overrides the coarse fields when present, letting
+    precision — including the "refused" verdict a pre-flight gate can't
+    express via exit code alone — improve as more skills adopt the tag
+    without a further schema change. Never raises — the caller wraps this
+    best-effort.
     """
     if skill not in _REVIEWER_SKILLS:
         return
@@ -190,25 +192,23 @@ def _read_skill_description(skill_md: Path) -> str:
 
 
 def _load_skills() -> list[dict[str, str | None]]:
-    """Return skill list with name, description, and args from skills/*/SKILL.md files."""
-    from little_loops.frontmatter import parse_skill_frontmatter
+    """Return skill list with name, description, and args from skills/*/SKILL.md files.
+
+    Thin projection over `cli/help.py::collect_entries` (the shared
+    command+skill collector, FEAT-2940) — filtered to skills and reshaped to
+    this function's narrower historical `name`/`description`/`args` dict
+    contract, which `ll-action list --output json` and `test_action.py`'s
+    `TestLoadSkills` depend on byte-for-byte.
+    """
+    from little_loops.cli.help import collect_entries
 
     plugin_root = _find_plugin_root()
-    skills_dir = plugin_root / "skills"
-    skills = []
-    for skill_md in sorted(skills_dir.glob("*/SKILL.md")):
-        name = skill_md.parent.name
-        try:
-            content = skill_md.read_text()
-        except OSError:
-            content = ""
-        fm = parse_skill_frontmatter(content) if content else {}
-        description = str(fm.get("description", "") or "").strip().strip('"').strip("'")
-        # args: takes precedence over argument-hint: (aliasing for 19 existing skills)
-        raw_args = fm.get("args") or fm.get("argument-hint")
-        args: str | None = str(raw_args).strip().strip('"').strip("'") if raw_args else None
-        skills.append({"name": name, "description": description, "args": args})
-    return skills
+    entries = collect_entries(plugin_root)
+    return [
+        {"name": e.name, "description": e.description, "args": e.argument_hint}
+        for e in entries
+        if e.kind == "skill"
+    ]
 
 
 def cmd_invoke(args: argparse.Namespace) -> int:

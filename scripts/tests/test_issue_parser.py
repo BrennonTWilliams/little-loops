@@ -3945,3 +3945,45 @@ class TestFormatGradedChecker:
         gaps = check_format_gaps(tmp_path / "does-not-exist.md")
 
         assert gaps.has_gaps is False
+
+
+class TestInferTestable:
+    """infer_testable() doc-only keyword inference (ENH-2946)."""
+
+    def test_doc_only_title_returns_true(self, tmp_path: Path) -> None:
+        from little_loops.issue_parser import IssueInfo, infer_testable
+
+        issue_file = tmp_path / "P3-BUG-9010-test-bug.md"
+        issue_file.write_text(
+            "---\nid: BUG-9010\nstatus: open\n---\n"
+            "# BUG-9010: Fix broken link in README documentation\n\n"
+            "## Summary\nA link is broken.\n"
+        )
+        info = IssueInfo(
+            path=issue_file,
+            issue_type="bugs",
+            priority="P3",
+            issue_id="BUG-9010",
+            title="Fix broken link in README documentation",
+        )
+
+        assert infer_testable(info) is True
+
+    def test_normal_code_issue_returns_false(self, tmp_path: Path) -> None:
+        from little_loops.issue_parser import IssueInfo, infer_testable
+
+        issue_file = tmp_path / "P3-BUG-9011-test-bug.md"
+        issue_file.write_text(
+            "---\nid: BUG-9011\nstatus: open\n---\n"
+            "# BUG-9011: Fix off-by-one error in the retry loop\n\n"
+            "## Summary\nThe retry loop miscounts.\n"
+        )
+        info = IssueInfo(
+            path=issue_file,
+            issue_type="bugs",
+            priority="P3",
+            issue_id="BUG-9011",
+            title="Fix off-by-one error in the retry loop",
+        )
+
+        assert infer_testable(info) is False

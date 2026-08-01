@@ -1,14 +1,16 @@
 ---
 id: ENH-2952
-title: "Consolidate the duplicated 15-line flag-parse block across 17 skill/command files"
+title: Consolidate the duplicated 15-line flag-parse block across 17 skill/command
+  files
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_by: skill-audit
 discovered_date: 2026-07-31
+completed_at: '2026-08-01T11:24:59Z'
 parent: EPIC-2938
 epic: EPIC-2938
-decision_needed: true
+decision_needed: false
 program_design_not_applicable: true
 relates_to:
 - ENH-2939
@@ -16,6 +18,12 @@ labels:
 - skills
 - cleanup
 - context-efficiency
+confidence_score: 98
+outcome_confidence: 92
+score_complexity: 23
+score_test_coverage: 20
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-2952: Consolidate the duplicated flag-parse block
@@ -67,11 +75,46 @@ the shell block with one call.
 
 ### Option C — Leave as-is, document the decision
 
+> **Selected:** Option C — Leave as-is, document the decision — measured token cost is
+> small and per-invocation (not cumulative), Option A yields ~0 net savings by its own
+> stated con, and Option B's savings don't justify building new CLI surface for a P3,
+> non-drift-prone item.
+
 Record that the duplication is intentional (stable, no divergence risk) and drop it from
 EPIC-2938's scope.
 
 - **Pro**: zero risk; the epic's real target is *algorithmic* drift, which this is not.
 - **Con**: leaves ~255 lines of boilerplate in the catalog.
+
+### Decision Rationale
+
+**Selected: Option C — Leave as-is, document the decision**
+
+A direct token measurement of the block (as it appears in `skills/decide-issue/SKILL.md`
+Phase 1) put it at 609 chars / ~150 tokens — paid once per invocation of whichever single
+file contains it, not summed across all 17 sites, since skills/commands are loaded
+independently by the host. Against that baseline:
+
+- **Option A** (companion-doc pointer) confirms its own documented con: following the
+  pointer still requires reading the full ~150-token companion file, for a net saving of
+  ~0 tokens plus a new load-order failure mode.
+- **Option B** (CLI-parsed flags) has no existing `ll-action parse-flags` (or equivalent)
+  subcommand to call — it would need genuinely new CLI surface built and tested, then all
+  17 sites updated to shell out and parse JSON, to save at most ~half the block
+  (~70-90 tokens) per invocation. That's a real engineering cost for a P3, explicitly
+  non-drift-prone, "lowest-value child in EPIC-2938" saving.
+- **Option C** has zero implementation risk and correctly scopes the duplication as
+  stable prose, not the algorithmic drift the epic targets.
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|:-:|:-:|:-:|:-:|:-:|
+| A — Shared companion doc | 2 | 2 | 1 | 1 | 6/12 |
+| B — CLI-parsed flags | 2 | 1 | 3 | 2 | 8/12 |
+| C — Leave as-is, document | 3 | 3 | 3 | 3 | 12/12 |
+
+Key evidence: measured block size ~150 tokens (609 chars, `skills/decide-issue/SKILL.md`
+Phase 1 block); no pre-existing `parse-flags`-style CLI entry point found in
+`scripts/little_loops/cli/action.py` (Option B would be net-new, not a swap-in call).
 
 ## Implementation Steps
 
@@ -99,12 +142,18 @@ EPIC-2938's scope.
 
 ## Acceptance Criteria
 
-- [ ] A token-cost measurement for at least Options A and B is recorded in the issue
-- [ ] The chosen option is stamped via `/ll:decide-issue` with rationale
+- [x] A token-cost measurement for at least Options A and B is recorded in the issue
+- [x] The chosen option is stamped via `/ll:decide-issue` with rationale
 - [ ] If A or B: the block appears at most once and `ll-verify-skills` stays green
-- [ ] If C: a decision fragment records why, and EPIC-2938's scope note is updated
+- [x] If C: a decision fragment records why, and EPIC-2938's scope note is updated
 
 ## Notes
 
 This is the one child where "delete the duplication" may be the wrong answer. Do not
 apply it unmeasured.
+
+
+## Session Log
+- `/ll:manage-issue` - 2026-08-01T11:24:44 - `768a3086-7997-4dc7-a142-4d0fc9944d80.jsonl`
+- `/ll:confidence-check` - 2026-08-01T11:23:16 - `03c58e8e-8efb-434f-b9f1-2aea223a2d44.jsonl`
+- `/ll:decide-issue` - 2026-08-01T11:22:10 - `89b58182-1f60-430a-ad13-9405e1640bd8.jsonl`

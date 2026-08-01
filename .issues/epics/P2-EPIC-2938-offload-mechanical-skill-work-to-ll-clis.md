@@ -57,7 +57,10 @@ Three concrete harms today:
 - **FEAT-2947** — `ll-issues create` + `scaffold-epic` (Wave 2, early)
 - **FEAT-2948** — `ll-loop scaffold-eval` / `scaffold-verify` (Wave 3)
 - **ENH-2949** — `ll-loop audit <run> --json` + VERDICT_JSON adoption (Wave 3)
-- **ENH-2952** — Flag-parse boilerplate consolidation — *measure before applying* (Wave 3)
+- **ENH-2952** — Flag-parse boilerplate consolidation — *measure before applying* — **resolved
+  Option C (leave as-is, documented)**: measured ~150 tokens/site, paid per-invocation not
+  cumulatively; Options A/B yielded ~0 or marginal net savings against their own build cost.
+  No CLI or markdown changes; dropped from the epic's remaining work (Wave 3)
 
 ## Dependency Graph
 
@@ -114,7 +117,7 @@ Every `/ll:` skill/command spends LLM turns only on judgment; all deterministic 
 
 ## Scope
 
-In scope: the 15 children listed above — CLI subcommand additions/extensions in `scripts/little_loops/cli/{issues,loop,help}.py`, the `ll-verify-skill-prose` gate, and the corresponding markdown slimming across ~18 skill/command files. Out of scope: rewriting skills whose bulk is genuine reasoning (refine-issue, go-no-go, manage-issue core), the FSM engine itself, any hosted CI, and the ~18 narrated-`--check` files no child touches.
+In scope: the 15 children listed above — CLI subcommand additions/extensions in `scripts/little_loops/cli/{issues,loop,help}.py`, the `ll-verify-skill-prose` gate, and the corresponding markdown slimming across ~18 skill/command files. Out of scope: rewriting skills whose bulk is genuine reasoning (refine-issue, go-no-go, manage-issue core), the FSM engine itself, any hosted CI, and the ~18 narrated-`--check` files no child touches. **ENH-2952 is also out of scope for further work**: its own measurement resolved it as Option C (leave the 17-site flag-parse duplication as documented prose, no CLI/markdown change) — recorded in `.ll/decisions.d/` and above under Children.
 
 ## Impact
 

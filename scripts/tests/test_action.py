@@ -507,6 +507,38 @@ class TestCmdInvokeRecordsReviewEvent:
             "info": 0,
         }
 
+    def test_verdict_json_tag_overrides_coarse_verdict(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """confidence-check's VERDICT_JSON trailer (ENH-2949) lands non-exit-code-derived fields."""
+        from little_loops.session_store import recent
+
+        db = tmp_path / "history.db"
+        monkeypatch.setattr("little_loops.cli.action.DEFAULT_DB_PATH", db)
+
+        def fake_run(command, timeout, stream_callback, **kwargs):
+            stream_callback(
+                'VERDICT_JSON: {"verdict": "pass", "confidence": 92, "target_id": "ENH-2949", '
+                '"target_kind": "issue", "severity_counts": {"p0": 0, "p1": 1, "p2": 0, "info": 0}, '
+                '"findings_count": 1}',
+                False,
+            )
+            return _make_completed(0)
+
+        args = _make_namespace(
+            skill="confidence-check", args=["ENH-2949"], timeout=300, output="stream-json"
+        )
+        with patch("little_loops.subprocess_utils.run_claude_command", side_effect=fake_run):
+            cmd_invoke(args)
+
+        rows = recent(db, kind="verdict")
+        assert len(rows) == 1
+        assert rows[0]["verdict"] == "pass"
+        assert rows[0]["confidence"] == 92
+        assert rows[0]["target_id"] == "ENH-2949"
+        assert rows[0]["target_kind"] == "issue"
+        assert rows[0]["findings_count"] == 1
+
     def test_best_effort_on_unopenable_db(
         self, tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -50,6 +50,7 @@ def main_issues() -> int:
             add_finalize_decomposition_parser,
             cmd_finalize_decomposition,
         )
+        from little_loops.cli.issues.find_similar import cmd_find_similar
         from little_loops.cli.issues.fingerprint import cmd_fingerprint
         from little_loops.cli.issues.format_check import (
             add_format_check_parser,
@@ -63,6 +64,7 @@ def main_issues() -> int:
         from little_loops.cli.issues.next_id import cmd_next_id
         from little_loops.cli.issues.next_issue import cmd_next_issue
         from little_loops.cli.issues.next_issues import cmd_next_issues
+        from little_loops.cli.issues.normalize import add_normalize_parser, cmd_normalize
         from little_loops.cli.issues.path_cmd import cmd_path
         from little_loops.cli.issues.refine_status import cmd_refine_status
         from little_loops.cli.issues.search import cmd_search
@@ -70,6 +72,7 @@ def main_issues() -> int:
         from little_loops.cli.issues.set_scores import cmd_set_scores
         from little_loops.cli.issues.set_status import cmd_set_status
         from little_loops.cli.issues.show import cmd_show
+        from little_loops.cli.issues.size import add_size_parser, cmd_size
         from little_loops.cli.issues.skip import cmd_skip
         from little_loops.cli_args import VALID_PRIORITIES, add_config_arg, add_skip_arg
         from little_loops.config import BRConfig
@@ -105,6 +108,8 @@ Sub-commands:
   anchor-sweep     Rewrite file:line references in active issue files to anchor form
   fingerprint      Extract structured fingerprint (id, files, key_terms) from an issue file
   format-check     Deterministic structural linter for issue formatting (missing/renamed/empty/boilerplate/malformed_id/prose_dep_drift/stale_prose_dep)
+  normalize        Detect/fix filename ID mechanics: missing/duplicate/malformed IDs, legacy dirs, type misclassifications
+  size             Deterministic size scoring (file/section/word-count signals) for issue-size-review
   decisions        Manage rules, decisions, and exceptions log (list/add/outcome/generate/sync)
 
 Examples:
@@ -153,6 +158,9 @@ Examples:
   %(prog)s set-scores BUG-1307 --confidence 95 --outcome 80 --score-complexity 22 --score-test-coverage 20 --score-ambiguity 25 --score-change-surface 15
   %(prog)s set-status ENH-1725 in_progress
   %(prog)s sst BUG-042 done
+  %(prog)s size ENH-2945
+  %(prog)s size --all --json
+  %(prog)s size --sprint my-sprint --write
 """,
         )
 
@@ -834,6 +842,41 @@ Examples:
         )
         add_config_arg(fp)
 
+        fs = subs.add_parser(
+            "find-similar",
+            aliases=["fs"],
+            help="Score title similarity between TEXT (or all pairs) and the issue corpus",
+        )
+        fs.set_defaults(command="find-similar")
+        fs.add_argument(
+            "text",
+            nargs="?",
+            default=None,
+            help="Text to score against issue titles (title-only comparison); "
+            "omit when using --batch",
+        )
+        fs.add_argument(
+            "--batch",
+            action="store_true",
+            help="Pairwise title-similarity scan over the corpus instead of single-text mode",
+        )
+        fs.add_argument(
+            "--against",
+            choices=["open", "all"],
+            default="open",
+            help="Corpus to compare against: open issues (default) or all statuses",
+        )
+        fs.add_argument(
+            "--threshold",
+            type=float,
+            default=None,
+            metavar="T",
+            help="Minimum score to include (default: config.issues.duplicate_detection."
+            "similar_threshold)",
+        )
+        fs.add_argument("--limit", "-n", type=int, metavar="N", help="Cap results at N")
+        add_config_arg(fs)
+
         sk = subs.add_parser(
             "skip",
             help="Deprioritize an issue by bumping its priority prefix",
@@ -856,6 +899,8 @@ Examples:
         add_epic_consistency_parser(subs)
         add_format_check_parser(subs)
         add_decisions_parser(subs)
+        add_normalize_parser(subs)
+        add_size_parser(subs)
 
         args = parser.parse_args()
 
@@ -918,6 +963,8 @@ Examples:
             return cmd_anchor_sweep(config, args)
         if args.command == "fingerprint":
             return cmd_fingerprint(config, args)
+        if args.command == "find-similar":
+            return cmd_find_similar(config, args)
         if args.command == "skip":
             return cmd_skip(config, args)
         if args.command == "deferred-triage":
@@ -928,6 +975,10 @@ Examples:
             return cmd_epic_consistency(config, args)
         if args.command == "format-check":
             return cmd_format_check(config, args)
+        if args.command == "normalize":
+            return cmd_normalize(config, args)
+        if args.command == "size":
+            return cmd_size(config, args)
         if args.command == "decisions":
             return cmd_decisions(config, args)
         if args.command == "finalize-decomposition":
