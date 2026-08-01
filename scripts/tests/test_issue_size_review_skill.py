@@ -26,38 +26,38 @@ class TestIssueSizeReviewSkillWriteBack:
         )
 
     def test_write_back_phase_exists(self) -> None:
-        """Phase 3: Frontmatter Write-back must exist in the skill."""
+        """Phases 1-3 (now `ll-issues size`) must exist in the skill (ENH-2945)."""
         content = SKILL_FILE.read_text()
-        assert "### Phase 3: Frontmatter Write-back" in content, (
-            "Phase 3: Frontmatter Write-back section must be present in SKILL.md"
+        assert "### Phases 1-3: Discovery, Scoring, Write-back" in content, (
+            "Phases 1-3 section must be present in SKILL.md, backed by `ll-issues size`"
         )
 
     def test_no_ask_user_question_in_phase_3(self) -> None:
-        """AskUserQuestion must not appear in Phase 3 write-back path."""
+        """AskUserQuestion must not appear in the Phases 1-3 write-back path."""
         content = SKILL_FILE.read_text()
-        phase_3_start = content.index("### Phase 3: Frontmatter Write-back")
+        phase_3_start = content.index("### Phases 1-3: Discovery, Scoring, Write-back")
         next_heading_idx = content.find("\n###", phase_3_start + 1)
         phase_3_end = next_heading_idx if next_heading_idx != -1 else len(content)
         phase_3_text = content[phase_3_start:phase_3_end]
         assert "AskUserQuestion" not in phase_3_text, (
-            "Phase 3 must not use AskUserQuestion — write-back should be unconditional"
+            "Phases 1-3 must not use AskUserQuestion — write-back should be unconditional"
         )
 
     def test_check_mode_skip_guard_in_phase_3(self) -> None:
-        """CHECK_MODE skip guard must be present in Phase 3."""
+        """CHECK_MODE skip guard must be present in Phases 1-3."""
         content = SKILL_FILE.read_text()
-        phase_3_start = content.index("### Phase 3: Frontmatter Write-back")
+        phase_3_start = content.index("### Phases 1-3: Discovery, Scoring, Write-back")
         phase_3_text = content[phase_3_start : phase_3_start + 3000]
         assert "CHECK_MODE" in phase_3_text, (
-            "Phase 3 must include a CHECK_MODE skip guard (no writes in check mode)"
+            "Phases 1-3 must include a CHECK_MODE skip guard (no writes in check mode)"
         )
 
     def test_size_key_in_phase_3(self) -> None:
-        """The 'size' frontmatter key must appear in Phase 3."""
+        """The 'size' frontmatter key must appear in Phases 1-3."""
         content = SKILL_FILE.read_text()
-        phase_3_start = content.index("### Phase 3: Frontmatter Write-back")
+        phase_3_start = content.index("### Phases 1-3: Discovery, Scoring, Write-back")
         phase_3_text = content[phase_3_start : phase_3_start + 3000]
-        assert "size" in phase_3_text, "Phase 3 must write 'size' as the frontmatter key"
+        assert "size" in phase_3_text, "Phases 1-3 must write 'size' as the frontmatter key"
 
     def test_six_phase_workflow_header(self) -> None:
         """Workflow header must reflect 6 phases after insertion."""
@@ -185,13 +185,13 @@ class TestIssueSizeReviewWiringTddGuard:
         )
 
     def test_wiring_tdd_rule_not_in_phase_3(self) -> None:
-        """The wiring-TDD rule must not bleed into Phase 3 (Frontmatter Write-back)."""
+        """The wiring-TDD rule must not bleed into Phases 1-3 (Discovery/Scoring/Write-back)."""
         content = SKILL_FILE.read_text()
-        phase3_start = content.index("### Phase 3: Frontmatter Write-back")
+        phase3_start = content.index("### Phases 1-3: Discovery, Scoring, Write-back")
         phase3_end = content.index("### Phase 4", phase3_start)
         phase3_text = content[phase3_start:phase3_end]
         assert "Never split wiring" not in phase3_text, (
-            "Wiring-TDD rule must not appear inside Phase 3"
+            "Wiring-TDD rule must not appear inside Phases 1-3"
         )
 
     def test_independently_shippable_exception_present(self) -> None:

@@ -1727,7 +1727,67 @@ ll-issues format-check --all --fix            # preview blocked_by backfills for
 ll-issues format-check --all --fix --apply    # write the previewed edges via `ll-issues link`
 ```
 
+---
+
+#### `ll-issues normalize`
+
+Deterministic filename/ID-mechanics linter and fixer (ENH-2944), extracted from `commands/normalize-issues.md`'s mechanical rename/ID bookkeeping. Scans all categories/statuses for `missing_id`/`malformed_id` filenames (fail `is_normalized()`), `duplicate_id` (the same numeric ID used by >1 file — the oldest by git history keeps it, others get reassigned the next globally unique number via `get_next_issue_number()`), `legacy_dir` (non-empty `completed/`/`deferred/` directories, base-level or nested), and `type_mismatch` (a keyword-signal heuristic ported from the command's Step 1c: `confidence = signals_for_top_type / (total_signals + 1)`, flagged at ≥0.7).
+
+`--auto` applies `missing_id`/`malformed_id`/`duplicate_id` findings via `git mv` (shared `git_mv_with_fallback()` helper in `issue_lifecycle.py`, also used by `ll-issues skip`) — it never overwrites an existing path and never allocates a colliding ID. `type_mismatch` findings are **never** auto-applied: reclassification is a semantic judgment left to the calling command's LLM-review step, not a deterministic rename.
+
+| Argument/Flag | Default | Description |
+|---------------|---------|-------------|
+| `--check` | `false` | Check-only: print one line per violation, exit 1 if any found, exit 0 if clean (FSM `evaluate: type: exit_code` gate; implies no writes) |
+| `--auto` | `false` | Apply ID-mechanics fixes via `git mv` |
+| `--json` | `false` | Print `{"findings": [...], "applied": [...]}` instead of text |
+
+**Examples:**
+```bash
+ll-issues normalize --check           # FSM gate: exit 0 clean / 1 violations found
+ll-issues normalize --auto --json     # apply ID-mechanics fixes, print JSON report
+```
+
 **FSM loop use**: The `ensure_formatted` gate in `rn-remediate.yaml` calls this as a shell action with `evaluate: {type: exit_code}`, routing to `/ll:format-issue` only when a gap is found — replacing the older missing-headers-only inline check.
+
+---
+
+#### `ll-issues size`
+
+Deterministic size scoring for `issue-size-review` (ENH-2945), replacing the skill's
+hand-computed Phase 1-3 scoring table. Computes five signals over an issue's parsed body —
+`file_count` (>=3 distinct file paths via `text_utils.extract_file_paths`, +2), `section_complexity`
+(a `Proposed Solution`/`Implementation Steps`/`Implementation` section >300 words, +2),
+`multiple_concerns` (>=2 `###` subsections in that section, or "additionally"/"also need to"
+phrasing, +3), `dependency_mentions` (a `BUG-`/`FEAT-`/`ENH-`/`EPIC-` reference other than the
+issue's own ID, or "depends on"/"blocked by" phrasing, +2), and `word_count` (>800 words total,
++2) — for a 0-11 total mapped to a label: `Small` (0-2) / `Medium` (3-4) / `Large` (5-7) /
+`Very Large` (8+). The weight table (`SIZE_SIGNAL_WEIGHTS`) lives in
+`scripts/little_loops/cli/issues/size.py` as the single source both the CLI and the skill's
+prose reference.
+
+Exactly one of a bare `ISSUE_ID`, `--all`, or `--sprint NAME` selects the scoring target.
+`--all` scores active bugs/features/enhancements (excludes EPICs, matching the skill's original
+Phase 1 backlog scan). `--write` stamps the `size:` frontmatter field via `update_frontmatter`;
+without it, scoring is read-only.
+
+| Argument/Flag | Default | Description |
+|---------------|---------|-------------|
+| `ISSUE_ID` | — | Score a single issue (mutually exclusive with `--all`/`--sprint`) |
+| `--all` | `false` | Score all active bugs/features/enhancements |
+| `--sprint NAME` | — | Score only the issues listed in `.sprints/NAME.yaml` |
+| `--write` | `false` | Stamp `size:` frontmatter with the computed label |
+| `--json` | `false` | Print `[{"id", "score", "label", "signals": {...}}, ...]` instead of text |
+
+**Examples:**
+```bash
+ll-issues size ENH-2945                    # score one issue, text output
+ll-issues size --all --json                # score the backlog, JSON report
+ll-issues size --sprint my-sprint --write  # score + stamp size: for a sprint's issues
+```
+
+**Scope note**: this CLI covers Phases 1-3 only (scoring + frontmatter write-back). Phase 6's
+child-issue creation mechanics (ID/filename templating) remain in the skill pending
+`ll-issues create` (FEAT-2947) — deliberately left unconverted rather than half-migrated.
 
 ---
 
