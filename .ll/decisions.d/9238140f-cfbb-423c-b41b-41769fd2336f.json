@@ -1,0 +1,11 @@
+{
+  "id": "30a38b89-3588-4133-82f5-aceeaa227209",
+  "type": "decision",
+  "timestamp": "2026-08-01T16:06:04Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "CLAUDE.md documented three nonexistent ll-issues subcommands/flags, introduced by commits for unrelated issues; add an ll-verify-* gate reusing _all_ll_entry_points().",
+  "rule": "Captured: Verify CLAUDE.md's documented CLI surface resolves to real commands",
+  "scope": "issue",
+  "issue": "ENH-2970"
+}

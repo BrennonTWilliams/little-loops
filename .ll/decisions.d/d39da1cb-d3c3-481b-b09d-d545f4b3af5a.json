@@ -1,0 +1,11 @@
+{
+  "id": "4817b596-e37f-46fa-b066-4f76f9ecb273",
+  "type": "decision",
+  "timestamp": "2026-08-01T16:06:04Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "2+-keyword doc-only rule scans the whole issue body and counts doc/docs/documentation as distinct signals; fires on 36/58 active issues, carrying no signal.",
+  "rule": "Captured: testable keyword inference fires on 62% of active issues",
+  "scope": "issue",
+  "issue": "ENH-2966"
+}

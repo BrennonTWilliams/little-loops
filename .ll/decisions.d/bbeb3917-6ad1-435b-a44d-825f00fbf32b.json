@@ -1,0 +1,11 @@
+{
+  "id": "dd831366-e9d7-4d59-8d15-a220a8151507",
+  "type": "decision",
+  "timestamp": "2026-08-01T16:21:34Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Three inline python3 -c blocks (L1095/L1594/L1758) re-derive the Program Design gate boolean; shape changes to FormatGaps make all three fail quiet to false.",
+  "rule": "Captured: autodev.yaml re-derives the DESIGN_FAIL predicate in three inline blocks",
+  "scope": "issue",
+  "issue": "ENH-2967"
+}

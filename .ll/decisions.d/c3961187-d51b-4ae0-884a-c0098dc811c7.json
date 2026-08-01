@@ -1,0 +1,11 @@
+{
+  "id": "d26ad819-8564-404b-a3be-0dea28dd74cc",
+  "type": "decision",
+  "timestamp": "2026-08-01T16:21:34Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Adapter tests cover the transform against synthetic fixtures in tmp_path, never the committed .kimi-code/.gemini trees; a skipped ll-adapt --apply leaves non-Claude hosts on stale skills silently.",
+  "rule": "Captured: No test asserts committed ll-adapt host mirrors are current",
+  "scope": "issue",
+  "issue": "ENH-2968"
+}

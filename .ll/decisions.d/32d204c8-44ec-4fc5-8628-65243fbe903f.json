@@ -1,0 +1,11 @@
+{
+  "id": "16111ad3-fdb1-409c-83d2-a9b4b9e1dadc",
+  "type": "decision",
+  "timestamp": "2026-08-01T16:21:35Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "_CLOSED_REASON_CODES is a literal frozenset of two values; invalid_ref appears in three docstrings but the CLI rejects it; no code exists for not-reproducible closures. DeferReason next door is already enum-derived.",
+  "rule": "Captured: Closure reason codes are a hardcoded set; invalid_ref documented but rejected",
+  "scope": "issue",
+  "issue": "ENH-2969"
+}

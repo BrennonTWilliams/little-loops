@@ -1,0 +1,12 @@
+{
+  "id": "27d7ca66-6f5e-4a5d-adcf-450447f5a765",
+  "type": "decision",
+  "timestamp": "2026-08-01T16:19:55Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Widening EXCLUDED_DIRECTORIES would make verify_work_was_done() reject legitimate closes for issues whose sole deliverable is a .ll/-scoped change (e.g. a decisions-log entry), since that gate short-circuits to False when filter_excluded_files() returns empty across all diff sources. The two questions (was real work done vs. is this dirty path noise for the completion commit) are unrelated and issue_lifecycle.py does not currently import the shared constant.",
+  "rule": "Noise-filter .ll/ exclusion: use a new adjacent .ll/-only set scoped to issue_lifecycle.py's completion-commit noise filter, not the shared EXCLUDED_DIRECTORIES constant",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: add .ll/ to the shared EXCLUDED_DIRECTORIES constant (rejected: entangles verify_work_was_done()'s unrelated gate, risking false blocks on legitimate .ll/-only closes)",
+  "issue": "BUG-2963"
+}

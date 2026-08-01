@@ -15,6 +15,13 @@ from typing import TYPE_CHECKING, Literal
 
 import yaml
 
+from little_loops.cli.doctor_trim import (
+    _DEFAULT_WINDOW_DAYS as _DEFAULT_TRIM_WINDOW_DAYS,
+)
+from little_loops.cli.doctor_trim import (
+    collect_trim_report,
+    render_trim_report,
+)
 from little_loops.cli.output import configure_output, print_json, use_color_enabled
 from little_loops.logger import Logger
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
@@ -933,6 +940,7 @@ def _print_report(
     capture: object = None,
     issues_cfg: object = None,
     full: bool = False,
+    trim: object = None,
 ) -> None:
     """Print a CapabilityReport in text or JSON format."""
     from little_loops.host_runner import CapabilityReport
@@ -957,6 +965,8 @@ def _print_report(
         }
         if full:
             data["full"] = _full_section_data()
+        if trim is not None:
+            data["trim"] = trim.as_dict()  # type: ignore[attr-defined]
         print_json(data)
         return
 
@@ -995,10 +1005,14 @@ def main_doctor(argv: list[str] | None = None) -> int:
 Examples:
   %(prog)s           # Print capability table
   %(prog)s --json    # Output as JSON
+  %(prog)s --trim    # Report context-residency verdicts (advisory)
 
 Exit codes:
   0 - All capabilities present
   1 - One or more capabilities unsupported
+
+--trim never affects the exit code: an unused skill is a cost signal,
+not a broken install.
 """,
         )
         parser.add_argument(
@@ -1012,6 +1026,21 @@ Exit codes:
             action="store_true",
             help="Also run the full ll-verify-* / ll-check-links checker family",
         )
+        parser.add_argument(
+            "--trim",
+            action="store_true",
+            help=(
+                "Report context-residency verdicts (trim/review/keep) for memory "
+                "sections and catalog entries; never fails the exit code"
+            ),
+        )
+        parser.add_argument(
+            "--trim-window-days",
+            type=int,
+            default=_DEFAULT_TRIM_WINDOW_DAYS,
+            metavar="D",
+            help=(f"Usage lookback for --trim verdicts (default: {_DEFAULT_TRIM_WINDOW_DAYS})"),
+        )
 
         args = parser.parse_args(argv)
         configure_output()
@@ -1023,6 +1052,12 @@ Exit codes:
         report = runner.describe_capabilities()
         version = _probe_version(runner)
 
+        trim_report = (
+            collect_trim_report(Path.cwd(), window_days=args.trim_window_days)
+            if args.trim
+            else None
+        )
+
         _print_report(
             report,
             version=version,
@@ -1030,6 +1065,7 @@ Exit codes:
             capture=cfg.analytics_capture,
             issues_cfg=cfg.issues,
             full=args.full,
+            trim=trim_report,
         )
 
         if not args.json:
@@ -1042,7 +1078,13 @@ Exit codes:
             _print_loop_validity_section()
             if args.full:
                 _print_full_section()
+            if trim_report is not None:
+                render_trim_report(trim_report)
 
+        # `--trim` is advisory and deliberately excluded from `results`: a
+        # never-invoked skill is a cost signal, not a broken install, and
+        # folding it into the exit code would fail every project that ships
+        # more of the catalog than it happens to use.
         results = _capability_check_results(report) + _run_registered_checks()
         if args.full:
             results += _run_full_checks()
