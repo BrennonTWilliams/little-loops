@@ -270,7 +270,14 @@ git worktree prune
 
 ### Timeout during issue processing
 
-**Symptom**: Issue processing stops after timeout_seconds
+**Symptom**: One issue's `automation.timeout_seconds` budget is exceeded. As of
+BUG-2976, this fails only that issue — `ll-auto`/`ll-sprint` record it (via
+`mark_failed`/`record_orchestration_run(status="failed")`, reason `timeout
+after Ns` or `idle timeout after Ns`) and continue to the next eligible issue.
+`.auto-manage-state.json` is preserved, so `ll-auto --resume` picks up where
+the run left off. (Before BUG-2976, an uncaught timeout aborted the entire
+run with `Fatal error: ...` and deleted the resume state — if you're seeing
+that behavior, you're on a version predating the fix.)
 
 **Cause**: Complex issues or slow API responses
 

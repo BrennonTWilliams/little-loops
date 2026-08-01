@@ -3417,6 +3417,115 @@ class TestAutoManagerRun:
         assert "BUG-006 blocked by: BUG-005" in manager._unreachable_reason("BUG-006")
         assert manager._unreachable_reason("BUG-007") == "BUG-007: already_done"
 
+    def test_timeout_on_one_issue_does_not_abort_remaining_issues(
+        self, full_project: Path
+    ) -> None:
+        """BUG-2976: a per-issue TimeoutExpired fails only that issue.
+
+        Regression guard for the pre-fix behavior where an uncaught
+        subprocess.TimeoutExpired from run_claude_command() unwound past
+        _process_issue() to run()'s top-level `except Exception`, logging
+        "Fatal error" and discarding every remaining issue in the backlog.
+        """
+        import subprocess
+
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        issues_dir = full_project / ".issues" / "bugs"
+        (issues_dir / "P1-BUG-002-second.md").write_text(
+            "# BUG-002: Second\n\n## Summary\nSecond issue"
+        )
+
+        config = BRConfig(full_project)
+
+        def side_effect(info: Any, *args: Any, **kwargs: Any) -> Any:
+            if info.issue_id == "BUG-001":
+                raise subprocess.TimeoutExpired(cmd="claude", timeout=60)
+            return MagicMock(
+                success=True,
+                duration=1.0,
+                issue_id=info.issue_id,
+                was_closed=False,
+                was_blocked=False,
+                plan_created=False,
+                failure_reason="",
+                corrections=[],
+            )
+
+        with patch(
+            "little_loops.issue_manager.process_issue_inplace", side_effect=side_effect
+        ):
+            with patch("little_loops.issue_manager.check_git_status", return_value=False):
+                manager = AutoManager(
+                    config,
+                    dry_run=False,
+                    db_path=config.project_root / ".ll" / "history.db",
+                )
+
+                exit_code = manager.run()
+
+        # BUG-002 was still attempted and completed after BUG-001 timed out.
+        assert manager.processed_count == 1
+        assert exit_code == 0
+        assert "BUG-001" in manager.state_manager.state.failed_issues
+        assert "timeout after 60s" in manager.state_manager.state.failed_issues["BUG-001"]
+
+    def test_run_preserves_state_file_after_fatal_exception(self, full_project: Path) -> None:
+        """BUG-2976: a fatal (non-timeout) exception must not delete resume state.
+
+        Regression guard for the inverted `finally` gate: the old code
+        deleted .auto-manage-state.json on the exception path and preserved
+        it only on Ctrl-C, backwards from what --resume needs.
+        """
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        config = BRConfig(full_project)
+
+        with patch(
+            "little_loops.issue_manager.process_issue_inplace",
+            side_effect=RuntimeError("boom"),
+        ):
+            with patch("little_loops.issue_manager.check_git_status", return_value=False):
+                manager = AutoManager(
+                    config,
+                    dry_run=False,
+                    db_path=config.project_root / ".ll" / "history.db",
+                )
+
+                exit_code = manager.run()
+
+        assert exit_code == 1
+        assert manager.state_manager.state_file.exists()
+
+    def test_run_cleans_up_state_file_on_normal_completion(self, full_project: Path) -> None:
+        """BUG-2976: normal completion still removes the resume state file."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        config = BRConfig(full_project)
+
+        with patch("little_loops.issue_manager.process_issue_inplace") as mock_process:
+            mock_process.return_value = MagicMock(
+                success=True,
+                duration=1.0,
+                issue_id="BUG-001",
+                was_closed=False,
+                corrections=[],
+            )
+            with patch("little_loops.issue_manager.check_git_status", return_value=False):
+                manager = AutoManager(
+                    config,
+                    dry_run=False,
+                    db_path=config.project_root / ".ll" / "history.db",
+                )
+
+                exit_code = manager.run()
+
+        assert exit_code == 0
+        assert not manager.state_manager.state_file.exists()
+
 
 class TestSignalHandler:
     """Tests for graceful shutdown signal handling (ENH-207)."""

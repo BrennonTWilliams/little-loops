@@ -359,7 +359,7 @@ Sequential automation settings (ll-auto):
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `timeout_seconds` | `3600` | Per-issue timeout |
+| `timeout_seconds` | `3600` | Per-issue timeout. A breach fails only that issue (`mark_failed` + `record_orchestration_run(status="failed")`) — `ll-auto`/`ll-sprint` continue to the next eligible issue rather than aborting the whole run (BUG-2976) |
 | `idle_timeout_seconds` | `0` | Seconds of idle inactivity before automation considers the session idle (0 to disable) |
 | `post_stream_close_grace_seconds` | `300` | Grace period after stdout/stderr streams close before force-killing the process group; must accommodate synchronous parallel Agent tool calls still in flight (BUG-2718) |
 | `state_file` | `.auto-manage-state.json` | State persistence |

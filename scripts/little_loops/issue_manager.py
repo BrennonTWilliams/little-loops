@@ -28,7 +28,11 @@ from little_loops.config import BRConfig
 from little_loops.context_window import context_window_for
 from little_loops.dependency_graph import DependencyGraph
 from little_loops.events import EventBus
-from little_loops.git_operations import check_git_status, verify_work_was_done
+from little_loops.git_operations import (
+    check_git_status,
+    snapshot_dirty_paths,
+    verify_work_was_done,
+)
 from little_loops.issue_lifecycle import (
     FailureType,
     classify_failure,
@@ -611,6 +615,14 @@ def process_issue_inplace(
 
     logger.header(f"Processing: {info.issue_id} - {info.title}")
 
+    # BUG-2963: pre-run dirty snapshot for the Phase-1 CLOSE branch below.
+    # Taken at the very top of the function, before any phase runs, so a
+    # Phase-1 close (ready-issue verdict CLOSE) sees the whole tree as
+    # pre-existing WIP — correct by construction, since a Phase-1 close has no
+    # deliverable. Phase 2 captures its own, later snapshot (`_pre_run_dirty`).
+    _repo_root = config.repo_path or Path.cwd()
+    _phase1_pre_run_dirty = snapshot_dirty_paths(_repo_root)
+
     issue_timing: dict[str, float] = {}
 
     # Track whether we used fallback path resolution for ready-issue.
@@ -793,6 +805,8 @@ def process_issue_inplace(
                         close_reason,
                         parsed.get("close_status"),
                         event_bus=event_bus,
+                        pre_run_dirty=_phase1_pre_run_dirty,
+                        repo_path=_repo_root,
                     ):
                         return IssueProcessingResult(
                             success=True,
@@ -925,6 +939,14 @@ def process_issue_inplace(
     _baseline_sha: str | None = (
         _baseline_sha_result.stdout.strip() if _baseline_sha_result.returncode == 0 else None
     )
+    # BUG-2963: the Phase-2 pre-run dirty snapshot, captured HERE — alongside
+    # `_baseline_sha` and before `run_with_continuation()` fires. Everything
+    # dirty at this instant is pre-existing WIP; anything dirty at close time
+    # that is not in this set is Phase 2's deliverable and gets committed with
+    # the issue file. Do NOT move this next to `_post_implement_snapshot`
+    # below: that is ENH-2958's END-of-Phase-2 tamper bracket, and a snapshot
+    # taken there already contains the whole deliverable.
+    _pre_run_dirty = snapshot_dirty_paths(_repo_root)
     with timed_phase(logger, "Phase 2 (implement)") as phase2_timing:
         if not dry_run:
             # Build manage-issue command
@@ -1115,7 +1137,14 @@ def process_issue_inplace(
                     logger.info(
                         "Implementation markers found in issue file - completing lifecycle..."
                     )
-                    verified = complete_issue_lifecycle(info, config, logger, event_bus=event_bus)
+                    verified = complete_issue_lifecycle(
+                        info,
+                        config,
+                        logger,
+                        event_bus=event_bus,
+                        pre_run_dirty=_pre_run_dirty,
+                        repo_path=_repo_root,
+                    )
                     if verified:
                         logger.success(f"Content marker completion succeeded for {info.issue_id}")
                     else:
@@ -1131,7 +1160,12 @@ def process_issue_inplace(
                     if work_done:
                         logger.info("Evidence of code changes found - completing lifecycle...")
                         verified = complete_issue_lifecycle(
-                            info, config, logger, event_bus=event_bus
+                            info,
+                            config,
+                            logger,
+                            event_bus=event_bus,
+                            pre_run_dirty=_pre_run_dirty,
+                            repo_path=_repo_root,
                         )
                         if verified:
                             logger.success(f"Fallback completion succeeded for {info.issue_id}")
@@ -1481,9 +1515,18 @@ class AutoManager:
             return 1
 
         finally:
-            if not self._shutdown_requested:
-                self.state_manager.cleanup()
             self.event_bus.close_transports()
+
+        # BUG-2976: cleanup only on normal loop completion. Both the interrupt
+        # path (returns above via _shutdown_requested loop exit but falls
+        # through here) and the exception path (returns early above, never
+        # reaching this line) must leave .auto-manage-state.json on disk so
+        # `--resume` can pick up where the run stopped; only a clean finish
+        # should discard it. The old `finally: if not self._shutdown_requested`
+        # gate had this inverted — it deleted state on the crash path and
+        # preserved it only on Ctrl-C.
+        if not self._shutdown_requested:
+            self.state_manager.cleanup()
 
         self._log_timing_summary(run_start_time)
         self.logger.success(f"Processed {self.processed_count} issue(s)")
@@ -1577,18 +1620,34 @@ class AutoManager:
         resolved_limit = context_window_for(
             self._detected_model[0] if self._detected_model else None
         )
-        result = process_issue_inplace(
-            info,
-            self.config,
-            self.logger,
-            self.dry_run,
-            on_model_detected=on_model,
-            on_usage_detailed=on_usage_detailed,
-            preview_full=self._preview_full,
-            event_bus=self.event_bus,
-            context_limit=resolved_limit,
-            skip_learning_gate=self.skip_learning_gate,
-        )
+        try:
+            result = process_issue_inplace(
+                info,
+                self.config,
+                self.logger,
+                self.dry_run,
+                on_model_detected=on_model,
+                on_usage_detailed=on_usage_detailed,
+                preview_full=self._preview_full,
+                event_bus=self.event_bus,
+                context_limit=resolved_limit,
+                skip_learning_gate=self.skip_learning_gate,
+            )
+        except subprocess.TimeoutExpired as exc:
+            # BUG-2976: a per-issue timeout budget breach must fail only this
+            # issue, not unwind to run()'s top-level `except Exception` and
+            # abort the whole backlog. Narrow catch (TimeoutExpired only, not
+            # a blanket Exception) so ll_auto_auth_check's auth-fast-fail
+            # detection (ENH-2353/BUG-2355) still propagates per-issue.
+            kind = "idle timeout" if exc.output == "idle_timeout" else "timeout"
+            reason = f"{kind} after {exc.timeout:.0f}s"
+            self.logger.error(f"{info.issue_id}: {reason}")
+            result = IssueProcessingResult(
+                success=False,
+                duration=exc.timeout or 0.0,
+                issue_id=info.issue_id,
+                failure_reason=reason,
+            )
 
         # Fallback: if no result event ever fired (e.g., the subprocess failed
         # before completion) but we did capture the requested alias, use that

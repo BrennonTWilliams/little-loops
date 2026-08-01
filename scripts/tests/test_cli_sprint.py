@@ -723,6 +723,51 @@ class TestIssueWallClockTimeout:
         alarm_calls = mock_signal.alarm.call_args_list
         assert call(0) in alarm_calls
 
+    def test_run_issue_with_wall_clock_timeout_catches_subprocess_timeout_expired(
+        self,
+    ) -> None:
+        """BUG-2976: an uncaught per-command TimeoutExpired must not abort the whole run.
+
+        automation.timeout_seconds fires inside process_issue_inplace() via
+        run_claude_command(), independently of the SIGALRM wall-clock guard
+        this helper installs. Before the fix, this exception type propagated
+        straight past the helper's `except IssueWallClockTimeout` and up
+        through the wave loop to run()'s top-level `except Exception`.
+        """
+        import subprocess
+        from unittest.mock import MagicMock, patch
+
+        from little_loops.cli.sprint.run import _run_issue_with_wall_clock_timeout
+        from little_loops.issue_parser import IssueInfo
+
+        mock_issue = MagicMock(spec=IssueInfo)
+        mock_issue.issue_id = "BUG-2976"
+        mock_config = MagicMock()
+        mock_logger = MagicMock()
+
+        def _raise_timeout_expired(*_args, **_kwargs) -> None:
+            raise subprocess.TimeoutExpired(cmd="claude", timeout=60)
+
+        with patch("little_loops.cli.sprint.run.signal") as mock_signal:
+            mock_signal.SIGALRM = 14
+            mock_signal.signal.return_value = None
+            with patch(
+                "little_loops.cli.sprint.run.process_issue_inplace",
+                side_effect=_raise_timeout_expired,
+            ):
+                result = _run_issue_with_wall_clock_timeout(
+                    issue=mock_issue,
+                    config=mock_config,
+                    logger=mock_logger,
+                    dry_run=False,
+                    max_seconds=2700,
+                )
+
+        assert result.success is False
+        assert result.issue_id == "BUG-2976"
+        assert "timeout after 60s" in result.failure_reason
+        mock_signal.alarm.assert_called_with(0)
+
 
 # ---------------------------------------------------------------------------
 # Feature-branch in-place warning (ENH-2176 Option B)

@@ -3,9 +3,10 @@ id: BUG-2976
 title: A per-issue timeout aborts the whole ll-auto run and deletes the resume state
 type: BUG
 priority: P1
-status: open
+status: done
 discovered_date: 2026-08-01
 discovered_by: human
+completed_at: '2026-08-01T19:15:53Z'
 relates_to:
 - BUG-2963
 - ENH-2977
@@ -14,6 +15,12 @@ labels:
 - ll-auto
 - resume
 testable: true
+confidence_score: 98
+outcome_confidence: 78
+score_complexity: 20
+score_test_coverage: 22
+score_ambiguity: 16
+score_change_surface: 20
 ---
 
 # BUG-2976: A per-issue timeout aborts the whole ll-auto run and deletes the resume state
@@ -137,6 +144,57 @@ timeout is one of the abnormal exits BUG-2963's safety net has to survive.
 specific to `ll-auto`. Whether `ll-parallel`'s worker path contains an
 equivalent of (a) has not been audited and is in scope to check, not assumed.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- Confirmed line-precise anchors in `scripts/little_loops/issue_manager.py`:
+  `AutoManager.run()` spans lines 1432–1498 (`try` at 1463, `except Exception`
+  at 1479, `finally` at 1483–1486, the `cleanup()` gate itself at line 1484).
+  `AutoManager._process_issue()` spans lines 1544–1643, with the unwrapped
+  `process_issue_inplace()` call at line 1580 and the `elif
+  result.failure_reason:` branch at line 1615. `process_issue_inplace()`
+  itself starts at line 573 with unwrapped `run_claude_command()` calls at
+  lines 640, 697, and 859 (three more sites than the "four sites" figure
+  above suggested — the other unwrapped calls at lines 285 and 463 belong to
+  `run_with_continuation()`, a sibling function `process_issue_inplace()`
+  delegates to).
+- `run_claude_command()` (`scripts/little_loops/subprocess_utils.py`): the
+  `Raises` contract is documented at lines 395–397; the wall-clock timeout
+  raise (`TimeoutExpired` with no `output` kwarg) is at line 474, and the
+  idle-timeout raise (`output="idle_timeout"`) is at line 485. No caller
+  anywhere in the codebase currently branches on `exc.output ==
+  "idle_timeout"` — Proposed Solution point 2 (distinguishing idle vs.
+  wall-clock in the recorded failure reason) is genuinely new plumbing, not
+  a partially-existing hookup.
+- `StateManager.cleanup()` (`scripts/little_loops/state.py:157–164`) does an
+  unconditional unlink guarded only by `self.state_file.exists()` — confirmed,
+  no further gating exists to lean on.
+- **`ll-parallel` audit (resolves the "not yet verified" note below):** it
+  does **not** share defect (a). `WorkerPool._process_issue()`
+  (`scripts/little_loops/parallel/worker_pool.py:319–708`) wraps the entire
+  per-issue worker body — including every `_run_claude_command()` call
+  (lines 400, 522, 964, 1114) — in a single `try` (line 364) /
+  `except Exception as e:` (line 695) that returns a failed
+  `WorkerResult(success=False, error=str(e))` rather than propagating, since
+  `TimeoutExpired` is an `Exception` subclass and is folded into that generic
+  catch. `WorkerPool._handle_completion()` (lines 283–317) additionally
+  wraps `future.result()` in its own `try/except Exception`, so an escaped
+  worker exception can't reach `ParallelIssueManager.run()`'s top-level
+  handler either. `orchestrator.py`'s own `finally` (`_cleanup()`,
+  lines 1826–1843) unconditionally calls `_save_state(force=True)` on every
+  path and only gates *worktree* deletion — never state-file deletion — on
+  `_shutdown_requested`, so it does not share defect (b) either. The single
+  uncontained `TimeoutExpired` site in `orchestrator.py` (line 1318) is
+  already locally caught and scoped to a `gh pr create` call, unrelated to
+  per-issue Claude-command timeouts.
+- `scripts/little_loops/loops/autodev.yaml`'s `implement_current` state
+  (lines 796–837) shells out to `ll-auto --only "$CURRENT"` at line 833 under
+  `set -o pipefail` (line 832), and its `on_error: check_learning_gate` route
+  (line 837) already reads back issue frontmatter/state rather than trusting
+  the exit code — confirms no YAML change is required, as the Integration Map
+  already stated.
+
 ## Proposed Solution
 
 1. **Contain the timeout at the issue boundary.** Wrap the
@@ -172,6 +230,18 @@ equivalent of (a) has not been audited and is in scope to check, not assumed.
 4. **Do not silently widen the budget.** Raising the default is not the fix and
    is deliberately out of scope; making the budget CLI-settable is split to
    ENH-2977.
+
+5. **Audit `ll-sprint`'s direct `process_issue_inplace()` call site.**
+   (_Wiring pass added by `/ll:wire-issue`._) `scripts/little_loops/cli/sprint/run.py`
+   calls `process_issue_inplace()` directly, bypassing `AutoManager`. Its
+   `_run_issue_with_wall_clock_timeout()` wrapper only catches its own
+   SIGALRM `IssueWallClockTimeout`, not `subprocess.TimeoutExpired` from
+   `run_claude_command()`'s per-command timeout — an unabsorbed
+   `TimeoutExpired` here still aborts the whole `ll-sprint` run (defect-(a)
+   shape), same as the pre-fix `ll-auto` path. `ll-sprint` does not share
+   defect (b) — its `finally` already saves state on any non-zero exit.
+   Confirm whether this site needs the same containment as fix #1, mirroring
+   how the `ll-parallel` audit was scoped in point 1 above.
 
 ## Program Design
 
@@ -216,10 +286,72 @@ State lifecycle: `AutoManager.run()`'s `finally` no longer calls
   uncontained-`TimeoutExpired` shape in the worker path; its `finally` calls
   `_cleanup()` and is not expected to have the state-deletion defect.
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/sprint/run.py` — a second, previously-unaudited
+  direct caller of `process_issue_inplace()` (lines 73, 802), bypassing
+  `AutoManager` entirely. Its own wrapper
+  `_run_issue_with_wall_clock_timeout()` (lines 49-95) catches its
+  SIGALRM-based `IssueWallClockTimeout` but does **not** catch
+  `subprocess.TimeoutExpired` raised by `run_claude_command()`'s own
+  per-command `automation.timeout_seconds` budget inside
+  `process_issue_inplace()`. If that per-command timeout fires before the
+  wall-clock alarm, `TimeoutExpired` propagates unabsorbed through the wave
+  loop to `run()`'s top-level `except Exception as e:` (line 904), aborting
+  the *entire* `ll-sprint` run — the same shape as defect (a), on a call site
+  the issue's existing `ll-parallel` audit did not cover. Unlike `ll-auto`,
+  `ll-sprint`'s `finally` (lines 909-913) already saves state on any non-zero
+  exit, so defect (b) does not reproduce here — only the containment gap.
+  In scope to check whether this call site needs the same
+  `except subprocess.TimeoutExpired` containment as fix #1; out of scope to
+  assume it does not.
+- `scripts/little_loops/loops/lib/common.yaml` (`ll_auto_auth_check`
+  fragment, ~line 304-322) — greps `ll-auto`'s teed stdout for an auth-failure
+  string surfaced via `run()`'s existing `Fatal error: {e}` handler
+  (ENH-2353/BUG-2355 fast-fail). This is a live constraint on fix #1's
+  narrow-vs-broad choice: catching `subprocess.TimeoutExpired` specifically
+  (the issue's own stated preference) leaves this fragment's auth-fast-fail
+  detection intact; a blanket `except Exception` at the `_process_issue()`
+  boundary would also swallow auth failures per-issue and regress the
+  multi-issue churn scenario BUG-2355 was filed to prevent. No file change
+  required here — flagged as a reason to prefer the narrow catch.
+
 ### Similar Patterns
 
 - `StateManager.cleanup()` in `scripts/little_loops/state.py` — the unlink
   itself is correct; only its call site is wrong.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Established per-issue failure vocabulary** (`scripts/little_loops/issue_manager.py:1615-1616`,
+  `:1628-1640`): a per-issue failure converts to
+  `IssueProcessingResult(success=False, failure_reason=...)`, which
+  `_process_issue()` routes to `state_manager.mark_failed()` +
+  `record_orchestration_run(status="failed", ...)` — the latter wrapped in
+  `with suppress(Exception):` so a downstream recording failure can't change
+  `_process_issue()`'s return value. This is the shape fix #1 needs to land
+  a caught `TimeoutExpired` into.
+- **Two competing conventions exist in this codebase for containing a caught
+  `subprocess.TimeoutExpired`** — a contested convention, reported as-is
+  rather than resolved:
+  - Narrow, single-call-site catch converting straight to a sentinel:
+    `scripts/little_loops/cli/action.py:246-250` and `:300-304`
+    (`except subprocess.TimeoutExpired: exit_code = 124`).
+  - Broad, whole-body catch around an entire per-issue worker, not
+    `TimeoutExpired`-specific: `scripts/little_loops/parallel/worker_pool.py:695-704`
+    (`except Exception as e: return WorkerResult(success=False, error=str(e))`).
+  The issue's own Proposed Solution #1 already names this fork ("prefer
+  catching at the `_process_issue()` boundary... if judged too wide, catch
+  `TimeoutExpired` specifically") and asks the implementer to record which was
+  chosen — this finding is evidence for that choice, not a resolution of it.
+- `scripts/little_loops/parallel/orchestrator.py:190-231`'s own
+  `try`/`except KeyboardInterrupt`/`except Exception`/`finally: self._cleanup()`
+  shape saves state unconditionally on every path rather than deleting it —
+  a different pattern from `issue_manager.py`'s delete-on-non-interrupt gate,
+  applied to a different lifecycle (see Root Cause research findings above).
 
 ### Tests
 
@@ -232,11 +364,79 @@ State lifecycle: `AutoManager.run()`'s `finally` no longer calls
 - `scripts/tests/test_state.py` (or equivalent) — confirm normal completion
   still removes the state file.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- No existing test in `test_issue_manager.py` currently exercises
+  `AutoManager.run()`'s top-level `except`/`finally` block directly — the
+  closest existing coverage operates one level down, against
+  `_process_issue()` itself:
+  - `scripts/tests/test_issue_manager.py:3990-4037`
+    (`test_records_mixed_issue_outcomes_with_one_batch_id`) — template for
+    "issue A succeeds, issue B fails, both individually recorded" via
+    `patch("little_loops.issue_manager.process_issue_inplace",
+    side_effect=outcomes)` with a list of `IssueProcessingResult` objects,
+    then asserting `manager._process_issue(...)` return values and inspecting
+    `record_orchestration_run` rows through `session_store.recent(db,
+    kind="orchestration_run")`. This is the closest existing template for the
+    new "issue B still attempted" test above — it needs extending one level up
+    to `run()` to also assert the state file survives.
+  - `scripts/tests/test_issue_manager.py:4039-4059`
+    (`test_orchestration_write_failure_does_not_change_auto_result`) —
+    template for asserting a downstream recording failure doesn't change
+    `_process_issue()`'s return value.
+  - `scripts/tests/test_action.py:278-290`
+    (`test_timeout_returns_exit_code_124`) — template for mocking
+    `little_loops.subprocess_utils.run_claude_command` with
+    `side_effect=subprocess.TimeoutExpired("claude", 1)`, useful for
+    constructing the timeout-raising mock itself regardless of which catch
+    boundary is chosen.
+  - `scripts/tests/test_state.py:263-269` (`test_cleanup`) and `:274-279`
+    (`test_cleanup_nonexistent_file`) — existing direct coverage of
+    `StateManager.cleanup()`'s unlink behavior; the "normal completion still
+    removes the state file" test above should sit alongside these or exercise
+    them indirectly through `AutoManager.run()`.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- Confirmed no existing test exercises `AutoManager.run()`'s top-level
+  `except`/`finally` block directly: all 8 `manager.run()` call sites in
+  `scripts/tests/test_issue_manager.py` patch `process_issue_inplace` with a
+  return value or outcome list, never a `side_effect` exception, and none
+  assert on state-file existence after `run()` returns. This means relocating
+  `state_manager.cleanup()` cannot break an existing assertion — the new
+  tests are on genuinely uncovered ground, not a behavior change to an
+  already-tested path.
+- `scripts/tests/test_orchestrator.py:2205-2215`
+  (`test_run_handles_exception`) — closer analog than the `_process_issue()`
+  templates already cited: patches an internal method with
+  `side_effect=RuntimeError(...)` and asserts the exit code from the
+  `except`/`finally` path. For BUG-2976 the equivalent patches
+  `little_loops.issue_manager.process_issue_inplace` with
+  `side_effect=subprocess.TimeoutExpired("claude", 60)` and calls
+  `manager.run()` directly.
+- `scripts/tests/test_orchestrator.py:2217-2233`
+  (`test_run_calls_cleanup`) and `:4104-4120`
+  (`test_cleanup_saves_state_force`) — template for asserting
+  `state_manager.cleanup()` call/no-call behavior once its call site moves
+  out of the blanket `finally`.
+- A grep for `"Fatal error"` across `scripts/tests/` and
+  `scripts/little_loops/loops/*.yaml` returns zero matches — no test or loop
+  fragment pins that exact log string, so leaving it unchanged for
+  non-timeout exceptions is safe.
+
 ### Documentation
 
 - `docs/reference/CONFIGURATION.md` — `automation.timeout_seconds`: state
   explicitly that it is per-issue and that a breach fails that issue only.
 - `CHANGELOG.md` — new entry.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/development/TROUBLESHOOTING.md` — "Timeout during issue processing"
+  section (line 271-286) states the symptom as "Issue processing stops after
+  timeout_seconds" and offers raising the timeout as the only remedy. Once
+  fixed, a timeout fails one issue and the run continues — this framing is
+  stale and should be updated alongside `CONFIGURATION.md`.
 
 ### Configuration
 
@@ -267,4 +467,17 @@ Discovered while reviewing a recovery plan for a timed-out
 claims about `AutomationConfig.timeout_seconds` and the unavailability of
 `--resume` were verified against the source before filing.
 
-Not yet verified: whether `ll-parallel`'s worker path shares defect (a).
+Verified by `/ll:refine-issue` codebase research (see Root Cause →
+Codebase Research Findings): `ll-parallel`'s worker path does **not** share
+defect (a) — `WorkerPool._process_issue()`'s blanket `except Exception`
+around the whole worker body already contains a `TimeoutExpired` per-worker,
+and `orchestrator.py`'s `finally` never deletes state. No `ll-parallel`
+change is in scope for this fix.
+
+
+## Session Log
+- `/ll:manage-issue` - 2026-08-01T19:15:27 - `1c29dbc0-90e3-4bb3-b564-2bfa3448f2c1.jsonl`
+- `/ll:ready-issue` - 2026-08-01T19:03:18 - `7b26ff2e-947c-4ef1-aa26-3fb95643ef68.jsonl`
+- `/ll:confidence-check` - 2026-08-01T19:01:45 - `78732efd-8d93-4b40-b705-7348a096ccb8.jsonl`
+- `/ll:wire-issue` - 2026-08-01T19:00:08 - `7745571d-8b0b-4040-ac24-bf0f6df8a76d.jsonl`
+- `/ll:refine-issue` - 2026-08-01T18:53:04 - `ce59aa97-ec07-45a7-b76a-5010c3584c86.jsonl`

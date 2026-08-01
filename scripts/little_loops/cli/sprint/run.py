@@ -90,6 +90,25 @@ def _run_issue_with_wall_clock_timeout(
             issue_id=issue.issue_id,
             failure_reason="WALL_CLOCK_TIMEOUT",
         )
+    except subprocess.TimeoutExpired as exc:
+        # BUG-2976: the SIGALRM wall-clock guard above only catches its own
+        # IssueWallClockTimeout; automation.timeout_seconds's own per-command
+        # TimeoutExpired from run_claude_command() (inside
+        # process_issue_inplace) is a separate, usually-shorter budget that
+        # can fire first and would otherwise propagate unabsorbed through the
+        # wave loop to run()'s top-level `except Exception`, aborting the
+        # entire ll-sprint run — same shape as the ll-auto defect this issue
+        # fixes.
+        elapsed = time.monotonic() - issue_start
+        kind = "idle timeout" if exc.output == "idle_timeout" else "timeout"
+        reason = f"{kind} after {exc.timeout:.0f}s"
+        logger.error(f"  {issue.issue_id}: {reason} — marking failed")
+        return IssueProcessingResult(
+            success=False,
+            duration=elapsed,
+            issue_id=issue.issue_id,
+            failure_reason=reason,
+        )
     finally:
         signal.alarm(0)
         signal.signal(signal.SIGALRM, prev_handler)
@@ -799,17 +818,35 @@ def _cmd_sprint_run(
                             continue
                         logger.info(f"  Retrying {issue.issue_id} in-place...")
                         retry_branch = _detect_current_branch()
-                        retry_result = process_issue_inplace(
-                            info=issue,
-                            config=config,
-                            logger=logger,
-                            dry_run=args.dry_run,
-                            sprint_context=SprintWorkerContext(
+                        retry_start = time.monotonic()
+                        try:
+                            retry_result = process_issue_inplace(
+                                info=issue,
+                                config=config,
+                                logger=logger,
+                                dry_run=args.dry_run,
+                                sprint_context=SprintWorkerContext(
+                                    issue_id=issue.issue_id,
+                                    branch=retry_branch,
+                                ),
+                                event_bus=event_bus,
+                            )
+                        except subprocess.TimeoutExpired as exc:
+                            # BUG-2976: this direct process_issue_inplace() call
+                            # (the sequential-retry path) has no SIGALRM wrapper
+                            # around it, so an uncaught per-command TimeoutExpired
+                            # would abort the whole ll-sprint run rather than
+                            # failing just this retry.
+                            elapsed = time.monotonic() - retry_start
+                            kind = "idle timeout" if exc.output == "idle_timeout" else "timeout"
+                            reason = f"{kind} after {exc.timeout:.0f}s"
+                            logger.error(f"  Retry {kind}: {issue.issue_id} ({reason})")
+                            retry_result = IssueProcessingResult(
+                                success=False,
+                                duration=elapsed,
                                 issue_id=issue.issue_id,
-                                branch=retry_branch,
-                            ),
-                            event_bus=event_bus,
-                        )
+                                failure_reason=reason,
+                            )
                         total_duration += retry_result.duration
                         if retry_result.success:
                             orchestration_status = "completed"
