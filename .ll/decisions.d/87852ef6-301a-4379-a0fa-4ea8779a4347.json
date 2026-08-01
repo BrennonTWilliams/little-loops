@@ -1,0 +1,11 @@
+{
+  "id": "90aee18e-cd79-4c68-8309-4249c12021ea",
+  "type": "decision",
+  "timestamp": "2026-08-01T21:04:55Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Plain Jaccard word-overlap clustering in link-epics --mode synthesize misses thematically-related issues that don't share vocabulary; validated 11 real orphans scored max 0.06 Jaccard, all under threshold. Design: keep Jaccard as a pre-filter, add batched (not per-pair) LLM clustering behind --deep, require cited evidence per cluster.",
+  "rule": "Captured: --deep flag: LLM-adjudicated clustering for link-epics synthesize mode",
+  "scope": "issue",
+  "issue": "ENH-2979"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "6177e7ec-70eb-4b05-be50-709543e456c9",
+  "type": "decision",
+  "timestamp": "2026-08-01T20:55:11Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses established grep idiom (2x precedent), localized to buggy state, no shared-skill changes, fixes ENH-2965 incident on next pass without a confidence-check re-run",
+  "rule": "Option A: standalone grep-based measurement-gate check inside recheck_after_size_review",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: extend confidence-check Phase 4.10 signal-phrase list + wire spike_needed into autodev routing",
+  "issue": "ENH-2978"
+}
