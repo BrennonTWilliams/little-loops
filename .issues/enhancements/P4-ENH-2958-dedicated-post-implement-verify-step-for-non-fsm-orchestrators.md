@@ -19,8 +19,6 @@ score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 19
 decision_needed: false
-blocked_by:
-- BUG-2962
 ---
 
 # ENH-2958: Dedicated post-implement verify step for non-FSM orchestrators
@@ -276,6 +274,19 @@ them:
   resolve to `None` through `resolve_variable()` (`L924-946`) even though it
   exists on the dataclass.
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue` (3rd pass):_
+- `scripts/little_loops/git_operations.py:14-19` — re-exports
+  `verify_work_was_done` from `work_verification.py` via a `# noqa: F401`
+  pass-through (`from little_loops.work_verification import (...
+  verify_work_was_done)`). A second, undocumented import path beyond
+  `work_verification` and `__init__.py:67,124` — `docs/reference/API.md`
+  documents only the canonical path. No source edit needed (the added
+  `pre_step_snapshot` param is optional/keyword-safe), but the test file
+  exercising this path (see Tests, below) should be included in the
+  regression sweep.
+
 ### Similar Patterns
 - `scripts/little_loops/fsm/executor.py:1407-1474` — the snapshot-on-entry /
   compare-on-exit bracket to model this on.
@@ -287,6 +298,25 @@ them:
   file during `implement`, then asserts the later `verify` state is
   unaffected. New non-FSM tests should mirror this shape. _Wiring pass added
   by `/ll:wire-issue`._
+- `scripts/little_loops/worktree_utils.py:364-426`
+  `verify_epic_branch_before_merge()` (called from
+  `parallel/orchestrator.py:1417-1445`) — _found by `/ll:refine-issue`,
+  2026-08-01._ The only other existing precedent in this codebase for
+  running `project.test_cmd` as a deterministic (non-agent) subprocess gate:
+  `(ok, message, returncode)` tuple return, a `verify_before_merge: bool`
+  short-circuit at the top (`if not verify_before_merge: return True, None,
+  None`), `LL_VERIFY_GATE="1"` injected into the subprocess environment, and
+  guaranteed teardown of scratch resources regardless of outcome. It runs at
+  merge time rather than per-issue, so it does not overlap with the tamper
+  bracket, but its subprocess-invocation and return-shape conventions are the
+  closest model for `run_post_implement_verify`'s step body.
+- `scripts/little_loops/issue_manager.py:85-108` `timed_phase()` — the
+  established per-phase timing/logging context manager every named phase in
+  `process_issue_inplace` already uses (`with timed_phase(logger, "Phase 2
+  (implement)") as phase2_timing: ...`, logs `"{phase_name} completed in
+  {duration}"` on exit). Phase 2.5 should wrap itself the same way:
+  `with timed_phase(logger, "Phase 2.5 (post-implement verify)") as
+  phase25_timing: ...` — _found by `/ll:refine-issue`, 2026-08-01._
 
 ### Configuration
 - **None.** Option D introduces no new config key. The step is deterministic
@@ -390,6 +420,81 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   same dataclass (e.g. `TamperGuardConfig.post_implement_verify_step: bool`)
   rather than a new top-level config object.
 
+_Re-verified by `/ll:refine-issue`, 2026-08-01 — two blocking/scoping claims
+above have since gone stale:_
+
+- **BUG-2962 is `done` (completed 2026-08-01T04:55:36Z) — the `blocked_by`
+  frontmatter edge has been removed.** Its fix landed in `fsm/executor.py`
+  (commit `9b5991dc`): a routing-shape-independent `_check_tamper_guard`
+  enforcement path that jumps to the FSM's declared failure terminal instead
+  of flipping the eval verdict, plus `ctx.context["_tamper_guard"]` now
+  accumulating findings via `setdefault(...).append(...)` instead of being
+  overwritten. This issue is unblocked as of that timestamp.
+- **BUG-2959 is also `done` (completed 2026-08-01T06:13:48Z) — the "do not
+  fix it here" framing above and in Scope Boundaries now describes
+  already-fixed code.** Current `worker_pool.py:601-607` passes
+  `baseline_sha=tamper_baseline_sha` (captured `L538`) into
+  `_verify_work_was_done`, which forwards it into `verify_work_was_done(...,
+  baseline_sha=baseline_sha, ...)` (`worker_pool.py:1221-1263`). No action
+  needed here — the prose is retained as historical context per the
+  Preservation Rule, but an implementer should not expect to find the
+  omission it describes.
+- **The FSM bracket line numbers cited throughout this issue
+  (`fsm/executor.py:1407-1474`) have shifted as a side effect of BUG-2962's
+  fix and should be re-verified at implementation time**, not trusted
+  verbatim. Current structure: snapshot-on-entry at `L1436-1459`; the
+  compare-and-route logic was extracted into a new shared helper,
+  `_check_tamper_guard(state, ctx, tamper_before, tamper_policy, repo_root)`
+  (`L1336-1369` region), called from both the routing-chain exit path
+  (`L1480-1488`) and the `on_yes`/`on_no`/`on_error` exit path
+  (`L1537-1541`) — a cleaner shape than the single inline block this issue's
+  Program Design describes, since both call sites now share one
+  policy-application function instead of duplicating it. `_check_tamper_guard`
+  is a better mirror target for `run_post_implement_verify` than the raw
+  L1407-1474 range.
+
+_Wiring pass added by `/ll:wire-issue` (3rd pass):_
+- **`work_verification.py:71-75`'s in-source docstring, not just
+  `API.md`, states the now-to-be-false claim.** `_run_non_fsm_tamper_guard`'s
+  own docstring reads: *"Unlike the FSM adapter (ENH-2934), this path never
+  captured a live pre-step snapshot ... so 'before' is reconstructed from git
+  history..."* — Implementation Step 4 (threading `pre_step_snapshot`) must
+  update this docstring at the source, independent of the `API.md` edit
+  already listed under Documentation; otherwise the code's own docstring
+  drifts from the behavior it documents even after the doc site is fixed.
+- **`filter_weakening_findings` must become conditionally branched, not
+  just `before`.** `work_verification.py:98-106` currently builds
+  `finding_filter = partial(filter_weakening_findings, repo_root=repo_root,
+  ref=ref)` unconditionally and passes it into every `run_tamper_guard` call.
+  That filter is BUG-2954's implement-window weakening heuristic. The new
+  live-snapshot bracket must be byte-level strict (mirroring the FSM
+  adapter's `_check_tamper_guard`, which applies no weakening filter) — the
+  Acceptance Criteria require a count-preserving edit to be caught
+  byte-for-byte in the new window. As currently scoped, Implementation Step 4
+  only threads `pre_step_snapshot` through as an alternate `before` value; it
+  does not also gate `finding_filter` on which branch produced `before`.
+  Without that additional branch, `filter_weakening_findings` would keep
+  applying to the new bracket's findings too and the byte-for-byte AC would
+  fail. This is a required code-shape addition, not just a param pass-through.
+- **`worker_pool.py`'s actual step order doesn't match the issue's
+  "between Step 5 and Step 7" line-anchor plan.** Real order in `_run_worker`:
+  Step 5 (implement) ends `L546` → Step 6 ("get changed files") `L567-568` →
+  Step 8 (leaked-to-main-repo detection) `L570-579` → Step 8b
+  (committed-leak recovery — cherry-picks commits into the worktree and
+  **recomputes `changed_files`** at `L596`) `L581-596` → Step 7
+  (`_verify_work_was_done` call) `L598-607`, which runs *after* Step 8b
+  despite the lower step number. If the new bracket (snapshot → subprocess
+  test run → compare) is inserted literally "between Step 5 and Step 7" per
+  the issue's cited line anchors, its comparison window closes *before*
+  Step 8b's leak-recovery cherry-picks run, so any test-file content pulled
+  into the worktree by Step 8b afterward falls outside the bracket entirely.
+  Neither the Integration Map's line anchors nor "Similar Patterns" (which
+  models on the FSM bracket, which has no analogous leak-recovery step
+  between snapshot and compare) address this ordering interaction. The
+  insertion point in `worker_pool.py` needs to be chosen (or Step 8b's
+  interaction with the bracket explicitly reasoned about) at implementation
+  time, not assumed from the step numbers.
+
 ### Tests
 - `scripts/tests/test_issue_manager.py` — existing Phase-boundary tests name
   the phase and issue ID directly in their docstrings rather than asserting
@@ -459,6 +564,57 @@ _Wiring pass added by `/ll:wire-issue` (2nd pass):_
   through the `ll-sprint` delegation path and should be scanned for
   breakage from the inserted step (mocked call counts/ordering), not just
   the `test_issue_manager.py`/`test_worker_pool.py` suites already listed.
+
+_Wiring pass added by `/ll:wire-issue` (3rd pass):_
+- `scripts/tests/test_subprocess_mocks.py::TestVerifyWorkWasDone`
+  (`L433-548`) — exercises `verify_work_was_done` via the
+  `little_loops.git_operations` re-export path (`from
+  little_loops.git_operations import verify_work_was_done`), not the
+  `work_verification` import path the issue's existing Tests list covers.
+  Confirmed genuine (not a duplicate implementation): `git_operations.py:15-18`
+  re-exports from `work_verification.py`. Its 7 test methods
+  (`test_with_code_changes_returns_true`, `test_only_issue_files_returns_false`,
+  `test_no_changes_returns_false`, `test_staged_code_changes_returns_true`,
+  `test_markdown_files_count_as_work`, `test_excludes_thoughts_directory`,
+  `test_exception_returns_false`) should be included in the signature-change
+  regression sweep alongside `test_work_verification.py`.
+- **Subprocess-mocking pattern to reuse**:
+  `scripts/tests/test_worktree_utils.py` (testing
+  `verify_epic_branch_before_merge`'s `subprocess.run` calls) uses
+  module-qualified patching — `patch("little_loops.worktree_utils.subprocess.run")`
+  (`L365`) — plus a `side_effect=fake_run` callable for multi-call sequencing
+  (`L719-722`) and explicit `FileNotFoundError` side-effect coverage for a
+  missing binary (`test_gh_not_found_does_not_raise`, `L732-734`). This is the
+  shape `run_post_implement_verify`'s own tests should follow, not a bare
+  `patch("subprocess.run")`.
+- **Wide-blast-radius test gap: unmocked `subprocess.run` across existing
+  fixtures, not just the single named-breaking test.** Per Program Design,
+  `run_post_implement_verify` calls `subprocess.run(config.project.test_cmd)`
+  unconditionally on every run (Option D, no config gate). `test_issue_manager.py`
+  has 33 `process_issue_inplace(` call sites but only 1 patches
+  `subprocess.run` directly. Every shared `mock_config` fixture
+  (e.g. `L23-31`, `L1934-1945`, `L2097-2108`, `L2203-2214`, `L2301-2312`,
+  `L2457-2468`, `L2603-2614`, `L3019-3029`, `L4118-4129`) builds
+  `MagicMock(spec=BRConfig)` without setting `.project`, so
+  `config.project.test_cmd` auto-resolves to a `MagicMock` instance —
+  `subprocess.run(config.project.test_cmd)` will raise once Phase 2.5 lands,
+  breaking every one of these currently-passing tests, including
+  `TestAutoManagerLearningGate::test_decide_issue_invoked_when_decision_needed`
+  (`L4161-4184`) and `test_decide_issue_skipped_when_decision_not_needed`
+  (`L4186-4209`), neither of which is named anywhere in the issue's existing
+  breaking-tests list. `test_worker_pool.py`'s equivalent `br_config` fixture
+  (`L80-83`) builds a **real** `BRConfig` from an empty config, so
+  `config.project.test_cmd` resolves to the schema default `"pytest"` — an
+  unguarded worker-pool test would spawn a genuine `pytest` subprocess.
+  Implementation needs a fixture-level (ideally autouse) `patch("subprocess.run")`
+  or an inert `config.project.test_cmd` stub threaded through the shared
+  `mock_config`/`br_config` fixtures in both files — a materially wider fix
+  than the single line (`test_issue_manager.py:2797`) the issue's Wiring
+  Phase currently names.
+- **Confirmed (sanity check)**: `test_config.py:2447-2466` and
+  `test_config_schema.py:359-371` have no other `tamper_guard`-adjacent
+  assertions beyond the `policy` key already covered — both are genuinely
+  unaffected by Option D's no-new-config-key shape.
 
 ## Program Design
 
@@ -574,6 +730,34 @@ the implementation:_
    diagram (`L411-450`) to show the new Phase 2.5 step between the existing
    `Phase 2: Implementation` (`L431`) and `Phase 3: Verification` (`L437`)
    notes.
+
+_Added by `/ll:wire-issue` (3rd pass):_
+
+10. Update `work_verification.py:71-75`'s in-source docstring on
+    `_run_non_fsm_tamper_guard` (not just `docs/reference/API.md`) — it makes
+    the same now-false "never captured a live pre-step snapshot" claim.
+11. Branch `finding_filter`/`filter_weakening_findings`
+    (`work_verification.py:98-106`) on whether `before` came from the new
+    live snapshot or the git-reconstructed fallback — the live-snapshot
+    bracket must stay byte-level strict (no weakening filter) to satisfy the
+    count-preserving-edit AC; threading `pre_step_snapshot` in as an
+    alternate `before` alone is not sufficient.
+12. Resolve the `worker_pool.py` insertion-point/ordering interaction with
+    Step 8b (`L581-596`, committed-leak recovery, which recomputes
+    `changed_files` and runs *after* the nominal "Step 7" position) before
+    placing the new bracket — a literal "between Step 5 and Step 7" insertion
+    closes the comparison window before Step 8b's leak-recovery cherry-picks
+    run.
+13. Thread `subprocess.run` mocking (or an inert `config.project.test_cmd`
+    stub) through the shared `mock_config` fixture in `test_issue_manager.py`
+    and the real-`BRConfig` `br_config` fixture in `test_worker_pool.py` —
+    the new unconditional subprocess call breaks far more existing tests than
+    the single named site (`test_issue_manager.py:2797`), since most
+    fixtures never set `.project` and would either raise on a `MagicMock`
+    `test_cmd` or spawn a genuine `pytest` subprocess.
+14. Include `test_subprocess_mocks.py::TestVerifyWorkWasDone` (the
+    `git_operations` re-export path) in the `verify_work_was_done`
+    signature-change regression sweep alongside `test_work_verification.py`.
 
 _Dropped by the Option D selection (no new config key):_ the original wiring
 steps adding a `TamperGuardConfig` field + `config-schema.json` `properties`
@@ -717,6 +901,9 @@ _Superseded — `/ll:confidence-check`, earlier 2026-07-31:_
   duration._
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-01T07:09:39 - `5c385d33-f128-49f6-856f-96945a2d4f98.jsonl`
+- `/ll:wire-issue` - 2026-08-01T07:08:10 - `b957ea0e-8caa-47a3-9bd7-782a17c6a284.jsonl`
+- `/ll:refine-issue` - 2026-08-01T07:01:03 - `6bc490c4-efe2-4cf1-99d1-af44f9ef7911.jsonl`
 - `/ll:confidence-check` - 2026-08-01T04:10:20 - `c4f8fb71-6904-4172-ab17-927fabb72f99.jsonl`
 - `/ll:confidence-check` - 2026-07-31T00:00:00Z - `01c8092d-4a0b-4561-9d74-6ed782c0fd00.jsonl`
 - `/ll:wire-issue` - 2026-08-01T02:17:07 - `59471451-3cbc-48fe-998a-1caf4de5dce5.jsonl`

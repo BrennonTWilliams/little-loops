@@ -3,7 +3,7 @@ id: ENH-2943
 title: 'll-loop rename and ll-loop cleanup: loop lifecycle mechanics out of markdown'
 type: ENH
 priority: P2
-status: done
+status: open
 discovered_by: skill-audit
 discovered_date: 2026-07-31
 parent: EPIC-2938

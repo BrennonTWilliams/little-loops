@@ -4,7 +4,7 @@ title: Consolidate the duplicated 15-line flag-parse block across 17 skill/comma
   files
 type: ENH
 priority: P3
-status: done
+status: open
 discovered_by: skill-audit
 discovered_date: 2026-07-31
 completed_at: '2026-08-01T11:24:59Z'

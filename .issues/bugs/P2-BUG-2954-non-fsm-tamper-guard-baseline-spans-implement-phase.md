@@ -14,12 +14,13 @@ relates_to:
 - BUG-2957
 - ENH-2958
 - BUG-2959
-confidence_score: 98
+confidence_score: 80
 outcome_confidence: 82
 score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+size: Very Large
 ---
 
 # BUG-2954: Non-FSM tamper guard baseline spans implement phase, false-positives on TDD-mode test edits
@@ -435,6 +436,104 @@ _Added by `/ll:refine-issue`:_
     `tmp_path` + `write_text(...)` fixture convention
     (`TestSnapshotTestPaths.test_hashes_existing_file_content`).
 
+### Implementation Status (found by `/ll:refine-issue`, 2026-08-01)
+
+_Added by `/ll:refine-issue`:_
+
+**The fix described in this issue's Implementation Steps 1-5 has already
+shipped.** Commit `dc63a048` ("fix(tamper-guard): scope pyproject.toml
+comparison to `[tool.pytest.ini_options]`", nominally BUG-2957's fix)
+explicitly carries BUG-2954's changes in its commit body:
+
+> "This commit also carries BUG-2954's non-FSM tamper-guard baseline fix
+> (`TestStrength`/`measure_test_strength`/`is_weakening`/
+> `filter_weakening_findings` in `test_tamper_guard.py`, plus its
+> `worker_pool.py`/`issue_manager.py`/`work_verification.py` wiring), which
+> was already implemented and uncommitted in the working tree and shares the
+> same functions this fix touches — the two are not independently
+> committable at this point. BUG-2954's issue file is left at its current
+> status; this commit only flips BUG-2957 to done."
+
+Verified directly against current source (all `BUG-2954`-tagged in
+docstrings/comments at the cited lines):
+
+- `scripts/little_loops/test_tamper_guard.py` — `TestStrength` (`L51`),
+  `measure_test_strength` (`L235`), `is_weakening` (`L278`),
+  `read_paths_at_ref` (`L112`), `filter_weakening_findings` (`L296`), and the
+  `finding_filter` parameter on `run_tamper_guard` (`L485`, applied `L513-514`)
+  all exist exactly as specified in Program Design → Signatures.
+- `scripts/little_loops/work_verification.py:79-106` —
+  `_run_non_fsm_tamper_guard` builds `finding_filter =
+  partial(filter_weakening_findings, repo_root=repo_root, ref=ref)` and
+  passes it into `run_tamper_guard`, per Implementation Step 3.
+  `verify_work_was_done`'s signature is unchanged, as designed.
+- `scripts/little_loops/parallel/worker_pool.py` — `_get_worktree_head_sha`
+  (`L1519`) captures the worktree HEAD before Step 5, `_process_issue`
+  passes it as `tamper_baseline_sha` (`L538`, forwarded `L606`), and
+  `_verify_work_was_done` accepts/forwards `baseline_sha` (`L1227`,
+  `L1260`), per Implementation Step 4.
+- `scripts/little_loops/issue_manager.py:1122-1139` — the rejection message
+  is split by cause (tamper-guard veto vs. genuinely no changes), per
+  Implementation Step 5.
+- All prescribed regression tests exist and pass:
+  `python -m pytest scripts/tests/test_test_tamper_guard.py
+  scripts/tests/test_work_verification.py scripts/tests/test_worker_pool.py
+  scripts/tests/test_issue_manager.py -q` → **390 passed**, including
+  `test_issue_manager.py:2854`
+  (`test_tamper_guard_trips_end_to_end_no_fsm_involved`) passing
+  **unmodified**, confirming Implementation Step 7's invariant holds.
+
+**One related uncommitted item found in the working tree** (not part of this
+issue's own Implementation Steps, but adjacent): `scripts/tests/test_worker_pool.py`
+has an uncommitted addition,
+`test_process_issue_forwards_worktree_head_sha_as_baseline` (asserts
+`_process_issue`'s Step 7 call site forwards `baseline_sha=tamper_baseline_sha`
+to `_verify_work_was_done`). This is the call-site wiring test BUG-2959's own
+wire-issue pass flagged as its "one genuine gap" — it targets BUG-2959's
+acceptance criterion, not one of this issue's own steps, and is out of this
+issue's scope to commit.
+
+**Recommendation**: the code changes and test coverage this issue calls for
+are complete and passing. This issue is very likely resolvable via
+`/ll:reconcile-issue BUG-2954` (rewrite Current Behavior/status against the
+shipped state) followed by closing as `done`, rather than further
+implementation work. Cross-check against BUG-2959 before closing either —
+per this issue's own earlier note, fixing one was expected to close the
+other as a side effect, and that appears to be exactly what happened via the
+shared `dc63a048` commit.
+
+### Codebase Research Findings (2026-08-01, gap-analysis pass)
+
+_Added by `/ll:refine-issue --gap-analysis`:_
+
+- **BUG-2959 is now confirmed `done`** (`ll-issues show BUG-2959 --json` →
+  `"status": "done"`, title "worker_pool drops baseline_sha from
+  verify_work_was_done, making the parallel-path tamper guard's reference
+  point non-deterministic"). This resolves the open cross-check this issue's
+  own prior research flagged ("check BUG-2959's status before starting Step
+  4... close whichever issue doesn't end up carrying the actual commit"): the
+  shared commit `dc63a048` closed BUG-2959, and this issue (BUG-2954) is the
+  one still open. No remaining ambiguity about which issue "carries" the fix.
+- **All previously-cited anchors re-verified against current `HEAD`, still
+  accurate** (minor line-number drift only, no structural change):
+  `test_tamper_guard.py` — `TestStrength` L51, `read_paths_at_ref` L112,
+  `measure_test_strength` L235, `is_weakening` L278, `filter_weakening_findings`
+  L296; `work_verification.py` — `_run_non_fsm_tamper_guard` L63,
+  `finding_filter` construction L105-106; `worker_pool.py` —
+  `tamper_baseline_sha` captured L538, forwarded L606, `_verify_work_was_done`
+  L1221, `_get_worktree_head_sha` L1519; `issue_manager.py` — split rejection
+  message L1123-1139.
+- **Full regression re-run confirms no drift**: `python -m pytest
+  scripts/tests/test_test_tamper_guard.py scripts/tests/test_work_verification.py
+  scripts/tests/test_worker_pool.py scripts/tests/test_issue_manager.py -q`
+  → **390 passed** (same count as the prior refine pass), including
+  `test_tamper_guard_trips_end_to_end_no_fsm_involved` unmodified.
+- No new knowledge gaps found. This issue is saturated: the fix has shipped,
+  is fully tested, and the one remaining cross-issue ambiguity (BUG-2959) is
+  now resolved. Proceeding straight to `/ll:reconcile-issue BUG-2954` →
+  close as `done` (per this issue's own Confidence Check Notes) rather than
+  further refinement is appropriate.
+
 ## Program Design
 
 ### Types
@@ -623,7 +722,37 @@ _The original gate remedy suggested populating Program Design against
 parameter no longer exists in the design — there is no signature change to
 `verify_work_was_done`._
 
+_Added by `/ll:confidence-check` on 2026-08-01_
+
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 82/100 → HIGH CONFIDENCE
+
+### Concerns
+- Criterion 1 (No Duplicate Implementations) scores 0/20: this issue's own
+  "Implementation Status" section (added by `/ll:refine-issue` on 2026-08-01)
+  and direct source verification confirm the fix already shipped in commit
+  `dc63a048` (an ancestor of `HEAD`) — `TestStrength`, `measure_test_strength`,
+  `is_weakening`, `read_paths_at_ref`, `filter_weakening_findings`, and the
+  `finding_filter` wiring through `work_verification.py`, `worker_pool.py`, and
+  `issue_manager.py` all exist exactly as specified in Program Design. Full
+  regression run confirms: `python -m pytest scripts/tests/test_test_tamper_guard.py
+  scripts/tests/test_work_verification.py scripts/tests/test_worker_pool.py
+  scripts/tests/test_issue_manager.py -q` → 390 passed, including
+  `test_tamper_guard_trips_end_to_end_no_fsm_involved` passing unmodified.
+- **Do not implement this issue.** The correct next action is
+  `/ll:reconcile-issue BUG-2954` (rewrite Current Behavior/Status against the
+  shipped state) followed by closing as `done`, cross-checked against
+  BUG-2959 first since fixing one was expected to close the other as a side
+  effect via the shared `dc63a048` commit.
+- One adjacent uncommitted item in the working tree
+  (`scripts/tests/test_worker_pool.py::test_process_issue_forwards_worktree_head_sha_as_baseline`)
+  targets BUG-2959's own acceptance criterion, not this issue's scope —
+  leave it for that issue's PR.
+
 ## Session Log
+- `/ll:refine-issue` - 2026-08-01T14:38:15 - `63c2bb7d-9925-4639-a806-ab6a522560d2.jsonl`
+- `/ll:confidence-check` - 2026-08-01T14:35:27 - `ee1d410d-0238-4924-a331-baf8cb15435b.jsonl`
+- `/ll:refine-issue` - 2026-08-01T14:31:07 - `1695eb2b-2a94-4357-aa59-f557b423fbb0.jsonl`
 - `/ll:ready-issue` - 2026-08-01T05:11:28 - `89aac650-126a-40ba-aa5b-740691da5de0.jsonl`
 - `/ll:confidence-check` - 2026-08-01T05:09:38 - `56dd8eba-fb22-4538-a2cd-28267172bda3.jsonl`
 - `/ll:refine-issue` - 2026-08-01T05:01:58 - `dbb7143c-aaa2-4903-aa2e-cc981ada388b.jsonl`
