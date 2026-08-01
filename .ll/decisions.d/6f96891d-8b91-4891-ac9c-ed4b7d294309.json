@@ -1,0 +1,12 @@
+{
+  "id": "bc48df71-be71-45ee-ac02-3445752f5067",
+  "type": "decision",
+  "timestamp": "2026-08-01T22:24:53Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses the existing finding_filter extension point and read_paths_at_ref/filter_weakening_findings primitives with a contained, low-risk change (8/12 scored). Option B (per-test-function matching) scored 6/12: it requires rewriting the TestStrength contract, is_weakening comparisons, and existing aggregate-count tests, and still doesn't close the assert-True-backfill false negative the issue's own Motivation section says needs a separate increment regardless of which option is chosen.",
+  "rule": "Option A \u2014 repo-wide rather than per-file strength delta",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: per-test-function matching instead of aggregate counts",
+  "issue": "ENH-2964"
+}
