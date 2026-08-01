@@ -277,7 +277,7 @@ Post-refinement wiring pass that completes an issue's **Integration Map** — th
 **Trigger keywords:** "wire issue", "missing integration points", "complete the wiring", "trace dependencies", "wiring pass"
 
 ### `/ll:reconcile-issue`
-Rewrite an issue's `## Implementation Steps`, `## Acceptance Criteria`, and `### Files to Modify` in place from its own accumulated research findings, without appending or bulldozing human prose. Over a long refine/spike/confidence-check cycle, `/ll:refine-issue` and `/ll:confidence-check` only **append** new "Codebase Research Findings" bullets — they never rewrite the issue's own directive sections to match, so a stale section keeps re-flagging the same Concern and the Readiness score plateaus. `reconcile-issue` closes that loop with a targeted, in-place rewrite of exactly those three sections; every other section (Summary, Motivation, Proposed Solution, Codebase Research Findings, Wiring Phase, Confidence Check Notes, Session Log, etc.) is left untouched.
+Rewrite an issue's `## Implementation Steps`, `## Acceptance Criteria`, and `### Files to Modify` in place from its own accumulated research findings, without appending or bulldozing human prose. Over a long refine/spike/confidence-check cycle, `/ll:refine-issue` and `/ll:confidence-check` only **append** new "Codebase Research Findings" bullets — they never rewrite the issue's own directive sections to match, so a stale section keeps re-flagging the same Concern and the Readiness score plateaus. `reconcile-issue` closes that loop with a targeted, in-place rewrite of those three unconditional sections, plus one conditional case (ENH-2937): a `## Scope Boundaries` claim whose stated justification is directly contradicted by a recorded finding in the same issue may be rewritten (factual correction) or turned into an explicit decision directive (`decision_needed: true`) — unrefuted Scope Boundaries prose, and every other section (Summary, Motivation, Proposed Solution, Codebase Research Findings, Wiring Phase, Confidence Check Notes, Session Log, etc.), is left untouched.
 
 **Arguments:**
 - `issue_id` (required): Issue ID to reconcile (e.g., `FEAT-2672`, `BUG-004`)
@@ -1026,7 +1026,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `refine-issue` | Refine issues with codebase-driven research |
 | `decide-issue`^ | Resolve competing implementation options via codebase evidence scoring |
 | `wire-issue`^ | Complete integration map — trace callers, config, docs, tests |
-| `reconcile-issue` | Rewrite stale Implementation Steps/AC/Files to Modify from an issue's own findings |
+| `reconcile-issue` | Rewrite stale Implementation Steps/AC/Files to Modify (plus contradicted Scope Boundaries claims) from an issue's own findings |
 | `tradeoff-review-issues` | Evaluate issues for utility vs complexity |
 | `issue-workflow`^ | Quick reference for issue management workflow |
 | `issue-size-review`^ | Evaluate issue size/complexity and propose decomposition |
