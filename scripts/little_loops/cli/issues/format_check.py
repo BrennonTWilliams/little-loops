@@ -60,7 +60,8 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
         "format-check",
         help="Deterministic structural linter for issue formatting "
         "(missing/renamed/empty/boilerplate/malformed_id/prose_dep_drift/"
-        "stale_prose_dep/program_design_nonspecific/deprecated_key/multi_frontmatter)",
+        "stale_prose_dep/program_design_nonspecific/deprecated_key/"
+        "multi_frontmatter/testable)",
     )
     p.set_defaults(command="format-check")
     p.add_argument(
@@ -142,6 +143,8 @@ def _print_gaps(gaps: FormatGaps) -> None:
         print(f"  deprecated_key: {entry}")
     for entry in gaps.multi_frontmatter:
         print(f"  multi_frontmatter: {entry}")
+    for entry in gaps.testable:
+        print(f"  testable: {entry} (doc-only signals; set an explicit `testable:` key)")
 
 
 def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
@@ -149,7 +152,11 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
 
     Gap classes: missing/renamed/empty/boilerplate/malformed_id/
     prose_dep_drift/stale_prose_dep/program_design_nonspecific/deprecated_key/
-    multi_frontmatter.
+    multi_frontmatter/testable.
+
+    Every class in :class:`FormatGaps` must have a matching loop in
+    :func:`_print_gaps`; a class counted by ``has_gaps`` but not rendered
+    exits 1 with an empty report (the `testable` regression, ENH-2946).
 
     Returns:
         0 when structurally compliant (all issues, in --all mode), 1 when gaps

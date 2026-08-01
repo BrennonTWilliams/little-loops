@@ -936,7 +936,9 @@ class TestFormatCheckDeprecationSuppression:
         )
 
         with caplog.at_level(logging.WARNING, logger="little_loops.issue_parser"):
-            result = _invoke(["ll-issues", "format-check", "--all", "--config", str(temp_project_dir)])
+            result = _invoke(
+                ["ll-issues", "format-check", "--all", "--config", str(temp_project_dir)]
+            )
         out, _ = capsys.readouterr()
 
         assert result == 1
@@ -948,3 +950,120 @@ class TestFormatCheckDeprecationSuppression:
             if record.args and "parent_issue" in record.message
         }
         assert {"P3-BUG-9705-test-bug.md", "P3-BUG-9706-test-bug.md"} <= warned_ids
+
+
+# ---------------------------------------------------------------------------
+# TestFormatCheckTestableRendering
+# ---------------------------------------------------------------------------
+
+
+_DOC_ONLY_BODY = "\n".join(
+    [
+        "---",
+        "id: BUG-9801",
+        "status: open",
+        "---",
+        "",
+        "# BUG-9801: Fix broken link in the docs guide",
+        "",
+        "## Summary",
+        "The documentation guide has a broken link and a typo in the readme.",
+        "",
+        "## Current Behavior",
+        "The docs link 404s.",
+        "",
+        "## Expected Behavior",
+        "The documentation link resolves.",
+        "",
+        "## Steps to Reproduce",
+        "1. Open the guide.",
+        "2. Click the broken link.",
+        "",
+        "## Impact",
+        "- **Priority**: P3 - Low",
+        "- **Effort**: Small",
+        "- **Risk**: Low",
+        "- **Breaking Change**: No",
+        "",
+        "## Status",
+        "open",
+    ]
+)
+
+
+class TestFormatCheckTestableRendering:
+    """The `testable` gap class renders in text mode, not just --format json.
+
+    Regression: `testable` was added to FormatGaps (field, has_gaps, to_dict)
+    without a matching loop in _print_gaps, so an issue whose only gap was
+    `testable` exited 1 with a header and no body — undiagnosable for a human
+    or a shell-out caller. Landed via a fallback commit for FEAT-2948; the
+    class belongs to ENH-2946.
+    """
+
+    def test_testable_gap_is_printed_in_text_mode(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        _write_issue(format_check_dir, "P3-BUG-9801-fix-docs-link.md", _DOC_ONLY_BODY)
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9801", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "testable:" in out
+        assert "P3-BUG-9801-fix-docs-link.md" in out
+
+    def test_text_output_reports_every_class_json_reports(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Text mode must name every gap class `--format json` reports.
+
+        Stated as json/text parity rather than "exit 1 prints something": the
+        weaker form passes vacuously whenever the fixture happens to trip a
+        second, rendered class, which is exactly how the regression survived.
+        """
+        _write_issue(format_check_dir, "P3-BUG-9802-fix-docs-link.md", _DOC_ONLY_BODY)
+        argv = ["ll-issues", "format-check", "BUG-9802", "--config", str(temp_project_dir)]
+
+        assert _invoke([*argv, "--format", "json"]) == 1
+        payload = json.loads(capsys.readouterr()[0])
+        reported = {name for name, entries in payload.items() if entries}
+        assert "testable" in reported, "fixture no longer trips the testable gap"
+
+        assert _invoke(argv) == 1
+        out, _ = capsys.readouterr()
+
+        unrendered = [name for name in reported if f"{name}:" not in out]
+        assert not unrendered, f"classes in JSON but absent from text report: {unrendered}"
+
+    def test_every_format_gaps_field_is_rendered(
+        self,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Every FormatGaps list field must have a loop in _print_gaps.
+
+        Structural guard so a future gap class cannot repeat the regression:
+        counted by has_gaps, absent from the text report.
+        """
+        import dataclasses
+
+        from little_loops.cli.issues.format_check import _print_gaps
+        from little_loops.issue_parser import FormatGaps
+
+        field_names = [f.name for f in dataclasses.fields(FormatGaps)]
+        gaps = FormatGaps(**{name: [f"sentinel-{name}"] for name in field_names})
+
+        assert gaps.has_gaps
+        _print_gaps(gaps)
+        out, _ = capsys.readouterr()
+
+        unrendered = [name for name in field_names if f"sentinel-{name}" not in out]
+        assert not unrendered, f"FormatGaps fields not rendered by _print_gaps: {unrendered}"
