@@ -1,0 +1,6 @@
+CLAIM6 clean_status_empty: '' 0
+CLAIM1_2 status_untracked: '?? untracked.txt\n'
+CLAIM7 diff_name_only: 'a.txt\n'
+CLAIM3 rev_parse_toplevel: '/private/var/folders/dg/j0h3vvbj20n6gd7077j8v5qr0000gn/T/tmp.eXu6lBLQ3v/repo\n'
+CLAIM4 rev_parse_inside: 'true\n' 0
+CLAIM5 worktree_list: 'worktree /private/var/folders/dg/j0h3vvbj20n6gd7077j8v5qr0000gn/T/tmp.eXu6lBLQ3v/repo\nHEAD f3e3d9521ff705f57cd1ec03e22d3e0e39c20b5a\nbranch refs/heads/main\n\n'

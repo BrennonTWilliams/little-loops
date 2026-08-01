@@ -7,8 +7,12 @@ for excluded directories, and .gitignore pattern suggestions.
 from __future__ import annotations
 
 import fnmatch
+import os
+import re
 import subprocess
+import tempfile
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
 from little_loops.logger import Logger
@@ -17,6 +21,27 @@ from little_loops.work_verification import (  # noqa: F401
     filter_excluded_files,
     verify_work_was_done,
 )
+
+# BUG-2963 Option B: `.ll/` is noise for dirty-tree-preservation decisions
+# (routinely dirty via `.ll/decisions.d/*.json` fragments, `.ll/
+# stray-quarantine-*/` dirs) but is kept OUT of the shared
+# `EXCLUDED_DIRECTORIES` above — that constant also gates
+# `verify_work_was_done()`'s "was any real work done" question, where a
+# `.ll/`-only change (e.g. a decisions-log entry) is legitimate work. See
+# the Decision Rationale in BUG-2963 for the full analysis.
+LL_NOISE_DIRECTORIES = (".ll/",)
+
+
+def filter_ll_noise(paths: list[str]) -> list[str]:
+    """Filter out ``.ll/``-rooted paths, layered on top of ``filter_excluded_files()``.
+
+    Shared by the completion-commit pre-flight check (``issue_lifecycle.py``)
+    and the worktree-teardown preservation backstop (``has_non_noise_dirty_paths``
+    below) — the two BUG-2963 call sites that need "is this dirty path noise"
+    without widening ``EXCLUDED_DIRECTORIES`` itself (Option B).
+    """
+    filtered = filter_excluded_files(paths)
+    return [p for p in filtered if not any(p.startswith(d) for d in LL_NOISE_DIRECTORIES)]
 
 # Common .gitignore patterns with metadata.
 # Format: (pattern, category, description, priority)
@@ -511,3 +536,267 @@ def add_patterns_to_gitignore(
         if logger:
             logger.error(f"Failed to update .gitignore: {e}")
         return False
+
+
+# =============================================================================
+# Porcelain parsing and dirty-tree preservation (BUG-2963)
+# =============================================================================
+
+
+def porcelain_paths(raw: str) -> list[str]:
+    """Extract file paths from ``git status --porcelain -z`` output.
+
+    Promoted from ``codequery/codegraph.py::_porcelain_paths`` (which only had
+    two in-module callers and zero unit tests) to a public home shared with
+    the completion-commit pre-flight check and the worktree-teardown
+    preservation backstop, both of which need issue-file exclusion to be
+    resolved-path equality rather than substring containment (BUG-2963).
+
+    Consumes NUL-delimited (``-z``) porcelain records rather than the
+    newline-delimited default, which sidesteps two problems with the
+    newline format: rename lines use an ``old -> new`` arrow that is
+    ambiguous if either path itself contains `` -> ``, and quoted paths are
+    only quote-*stripped* (not octal-unescaped), so non-ASCII filenames come
+    out as literal ``\\NNN``-style bytes. Under ``-z``, a rename/copy record
+    is two consecutive NUL-terminated fields (new path, then old path) with
+    no arrow and no quoting.
+
+    Args:
+        raw: stdout from ``git status --porcelain -z`` (NUL-terminated records).
+
+    Returns:
+        List of file paths (new path for renames/copies), in output order.
+    """
+    if not raw:
+        return []
+    records = raw.split("\x00")
+    paths: list[str] = []
+    i = 0
+    n = len(records)
+    while i < n:
+        record = records[i]
+        if not record:
+            i += 1
+            continue
+        # Format: "XY path" — 2-char status code + 1 space + path.
+        if len(record) < 4:
+            i += 1
+            continue
+        status_code = record[:2]
+        path = record[3:]
+        paths.append(path)
+        i += 1
+        # Renames/copies are followed by a second NUL-terminated field: the
+        # original path. Skip it — callers only want the current path.
+        if status_code[0] in ("R", "C"):
+            i += 1
+    return paths
+
+
+def abandoned_ref_name(identifier: str) -> str:
+    """Build a durable ``refs/ll/abandoned/<identifier>-<timestamp>`` ref name.
+
+    Args:
+        identifier: Human-readable discriminator (issue ID, or
+            ``worktree-<branch-or-dir-name>`` for the teardown backstop).
+    """
+    ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%f")
+    safe_id = re.sub(r"[^A-Za-z0-9._-]", "-", identifier)
+    return f"refs/ll/abandoned/{safe_id}-{ts}"
+
+
+def preserve_dirty_tree(
+    repo_path: Path,
+    ref_name: str,
+    logger: Logger | None = None,
+) -> str | None:
+    """Non-destructively snapshot a dirty working tree to a durable git ref.
+
+    Uses a throwaway index (``GIT_INDEX_FILE``) so the real index and working
+    tree are left byte-identical — this must NEVER be implemented with
+    ``git stash``, which *removes* changes from the working tree it exists to
+    preserve (BUG-2963 Proposed Solution #4 explicitly forbids stash here: in
+    the ``ll-auto`` case there is no worktree, so "the tree being preserved"
+    is the user's own working tree, and stash would also sweep away
+    pre-existing WIP that BUG-2421's guarantee exists to leave untouched)::
+
+        GIT_INDEX_FILE=<tmp> git add -A
+        GIT_INDEX_FILE=<tmp> git write-tree          -> <tree>
+        git commit-tree <tree> -p HEAD -m "..."      -> <sha>
+        git update-ref <ref_name> <sha>
+
+    Objects rooted under ``refs/`` are reachable, so ``git gc`` cannot reap
+    them, and a ref written from inside a worktree survives
+    ``git worktree remove --force`` because worktrees share the object
+    database and ref store with the main repo. Gitignored paths are honored
+    (``add -A`` respects ``.gitignore``) — nothing prunes this ref
+    automatically; recover via ``git log <ref_name>`` / ``git checkout``.
+
+    Args:
+        repo_path: Working tree to snapshot (main repo or a worktree).
+        ref_name: Full ref name to write, e.g. from :func:`abandoned_ref_name`.
+        logger: Optional logger for error/success reporting.
+
+    Returns:
+        The created commit SHA, or ``None`` if there was nothing to preserve
+        (clean tree) or an error occurred (logged at ``error`` level).
+    """
+    try:
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        if logger:
+            logger.error("preserve_dirty_tree: git status timed out")
+        return None
+    if status.returncode != 0 or not status.stdout.strip():
+        return None
+
+    try:
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        if logger:
+            logger.error("preserve_dirty_tree: git rev-parse HEAD timed out")
+        return None
+    if head.returncode != 0:
+        if logger:
+            logger.error(
+                f"preserve_dirty_tree: could not resolve HEAD, skipping preservation: "
+                f"{head.stderr.strip()}"
+            )
+        return None
+    head_sha = head.stdout.strip()
+
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_index = str(Path(tmpdir) / "ll-preserve-index")
+            env = dict(os.environ)
+            env["GIT_INDEX_FILE"] = tmp_index
+
+            add_result = subprocess.run(
+                ["git", "add", "-A"],
+                cwd=repo_path,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if add_result.returncode != 0:
+                if logger:
+                    logger.error(
+                        f"preserve_dirty_tree: throwaway-index `git add -A` failed: "
+                        f"{add_result.stderr.strip()}"
+                    )
+                return None
+
+            write_tree = subprocess.run(
+                ["git", "write-tree"],
+                cwd=repo_path,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if write_tree.returncode != 0:
+                if logger:
+                    logger.error(
+                        f"preserve_dirty_tree: `git write-tree` failed: "
+                        f"{write_tree.stderr.strip()}"
+                    )
+                return None
+            tree_sha = write_tree.stdout.strip()
+    except subprocess.TimeoutExpired:
+        if logger:
+            logger.error("preserve_dirty_tree: throwaway-index snapshot timed out")
+        return None
+
+    try:
+        commit_tree = subprocess.run(
+            [
+                "git",
+                "commit-tree",
+                tree_sha,
+                "-p",
+                head_sha,
+                "-m",
+                f"ll: abandoned work ({ref_name})",
+            ],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        if logger:
+            logger.error("preserve_dirty_tree: git commit-tree timed out")
+        return None
+    if commit_tree.returncode != 0:
+        if logger:
+            logger.error(
+                f"preserve_dirty_tree: `git commit-tree` failed: {commit_tree.stderr.strip()}"
+            )
+        return None
+    commit_sha = commit_tree.stdout.strip()
+
+    try:
+        update_ref = subprocess.run(
+            ["git", "update-ref", ref_name, commit_sha],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        if logger:
+            logger.error("preserve_dirty_tree: git update-ref timed out")
+        return None
+    if update_ref.returncode != 0:
+        if logger:
+            logger.error(
+                f"preserve_dirty_tree: `git update-ref` failed: {update_ref.stderr.strip()}"
+            )
+        return None
+
+    if logger:
+        logger.error(f"Preserved dirty tree to {ref_name} ({commit_sha[:12]})")
+    return commit_sha
+
+
+def has_non_noise_dirty_paths(repo_path: Path) -> tuple[bool, list[str]]:
+    """Check whether *repo_path* has dirty paths outside the noise filter.
+
+    Used by the worktree-teardown preservation backstop (BUG-2963 Proposed
+    Solution #8) to decide whether an imminent ``git worktree remove --force``
+    would destroy something worth preserving to a durable ref. Reuses the same
+    noise definition as the completion-commit pre-flight check
+    (``filter_ll_noise`` — ``EXCLUDED_DIRECTORIES`` plus the adjacent
+    ``.ll/``-only set).
+
+    Returns:
+        ``(has_non_noise_dirt, non_noise_paths)``
+    """
+    try:
+        status = subprocess.run(
+            ["git", "status", "--porcelain", "-z"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        return False, []
+    if status.returncode != 0 or not status.stdout:
+        return False, []
+    paths = porcelain_paths(status.stdout)
+    non_noise = filter_ll_noise(paths)
+    return (len(non_noise) > 0), non_noise

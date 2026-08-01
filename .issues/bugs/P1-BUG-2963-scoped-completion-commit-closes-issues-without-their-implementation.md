@@ -3,7 +3,7 @@ id: BUG-2963
 title: Scoped completion commit closes an issue while leaving its implementation uncommitted
 type: BUG
 priority: P1
-status: done
+status: open
 discovered_date: 2026-08-01
 discovered_by: human
 relates_to:
@@ -741,6 +741,23 @@ that score was recorded)
   rename-line and quoted-path handling. Several newly-specified tests
   (teardown-backstop, pre-commit-hook rejection, non-destructive
   preservation) have no existing scaffolding to extend.
+
+## Reopened (2026-08-01, /ll:commit)
+
+The `ll-auto` fallback commit above (`87d7fbb4...`) staged only the issue
+file and marked this `done` — the actual implementation
+(`git_operations.py`: `porcelain_paths`/`preserve_dirty_tree`/
+`filter_ll_noise`/`has_non_noise_dirty_paths`; `issue_lifecycle.py`:
+`CompletionResult`, `_completion_preflight`, `_abandon_and_stamp`, the
+`_commit_issue_completion` rework) sat uncommitted in the working tree and
+is only half-wired: `_commit_issue_completion`'s return type changed from
+`bool` to `CompletionResult` but none of the four call sites
+(`close_issue`/`complete_issue_lifecycle`/`defer_issue`/`undefer_issue`)
+were updated to use the new preflight/abandon path, and 5 existing tests in
+`test_issue_lifecycle.py` fail against the new return type. This is exactly
+the failure mode this issue describes, applied to itself. Reopening;
+remaining work: wire the four call sites, fix the 5 failing tests, and cover
+`porcelain_paths`/`preserve_dirty_tree` with the new unit tests noted above.
 
 ## Session Log
 - `ll-auto` - 2026-08-01T17:48:26 - `87d7fbb4-06a0-4c91-98b5-406c1b1787ea.jsonl`

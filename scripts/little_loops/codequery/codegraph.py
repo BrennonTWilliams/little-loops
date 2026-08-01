@@ -33,6 +33,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from little_loops.codequery.core import CodeRef, Freshness, ProviderStatus, Unsupported
+from little_loops.git_operations import porcelain_paths
 
 _NAME = "codegraph"
 _GIT_TIMEOUT = 10
@@ -101,24 +102,6 @@ def _short_symbol(symbol: str) -> str:
     """Return the trailing identifier of a dotted or ``Class::method`` symbol path."""
     tail = symbol.rsplit("::", 1)[-1]
     return tail.rsplit(".", 1)[-1]
-
-
-def _porcelain_paths(dirty_raw: str) -> list[str]:
-    """Extract file paths from ``git status --porcelain`` output.
-
-    Handles the ``XY path`` and rename ``XY old -> new`` formats (mirrors the
-    parsing convention in ``parallel/merge_coordinator.py``).
-    """
-    paths = []
-    for line in dirty_raw.splitlines():
-        if not line:
-            continue
-        path = line[3:].split(" -> ")[-1].strip()
-        if path.startswith('"') and path.endswith('"'):
-            path = path[1:-1]
-        if path:
-            paths.append(path)
-    return paths
 
 
 def _is_scan_relevant(path: str, focus_dirs: list[str], exclude_patterns: list[str]) -> bool:
@@ -271,7 +254,7 @@ class CodegraphProvider:
         root = _git_root()
         head_moved_raw = _git(root, "log", f"--since={indexed_at}", "--oneline")
         commit_count = len(head_moved_raw.splitlines()) if head_moved_raw else 0
-        dirty_raw = _git(root, "status", "--porcelain")
+        dirty_raw = _git(root, "status", "--porcelain", "-z")
 
         from little_loops.config import BRConfig
 
@@ -279,7 +262,7 @@ class CodegraphProvider:
         dirty_files = (
             sum(
                 1
-                for path in _porcelain_paths(dirty_raw)
+                for path in porcelain_paths(dirty_raw)
                 if _is_scan_relevant(path, scan.focus_dirs, scan.exclude_patterns)
             )
             if dirty_raw

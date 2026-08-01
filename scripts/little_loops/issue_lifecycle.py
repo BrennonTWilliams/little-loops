@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
@@ -20,6 +21,12 @@ from little_loops.config import BRConfig
 from little_loops.events import EventBus
 from little_loops.file_utils import atomic_write
 from little_loops.frontmatter import parse_frontmatter, update_frontmatter
+from little_loops.git_operations import (
+    abandoned_ref_name,
+    filter_ll_noise,
+    porcelain_paths,
+    preserve_dirty_tree,
+)
 from little_loops.issue_parser import IssueInfo, IssueParser, get_next_issue_number, slugify
 from little_loops.logger import Logger
 from little_loops.session_log import append_session_log_entry, get_current_session_id
@@ -79,6 +86,26 @@ class DeferReason(Enum):
     READINESS_STAGNATED = "readiness_stagnated"
     # ENH-2852/ENH-2870: program-design stage failed verification
     DESIGN_GATE_FAILED = "design_gate_failed"
+
+
+# =============================================================================
+# Completion Commit Result (BUG-2963)
+# =============================================================================
+
+
+class CompletionResult(Enum):
+    """Outcome of a scoped completion commit (``_commit_issue_completion``).
+
+    Plain ``Enum`` with string values, not ``StrEnum`` — a repo-wide grep
+    found zero ``StrEnum`` usages in ``scripts/little_loops/``.
+    """
+
+    COMMITTED = "committed"  # issue file + this run's dirty paths are in a commit
+    # deliverable not in a commit: no pre-run snapshot available, staging
+    # failure, or `git commit` failure (hook rejection, index lock, timeout).
+    # The working tree was preserved to a `refs/ll/abandoned/*` ref before
+    # the caller returns.
+    NOT_CLOSED = "not_closed"
 
 
 # =============================================================================
@@ -411,91 +438,287 @@ def _is_git_tracked(file_path: Path) -> bool:
     return bool(result.stdout.strip())
 
 
+def _filter_completion_noise(paths: list[str]) -> list[str]:
+    """Filter noise paths out of the completion-commit pre-flight candidate set.
+
+    Thin delegation to ``git_operations.filter_ll_noise`` (``.issues/``,
+    ``thoughts/``, etc. via ``work_verification.filter_excluded_files``, plus
+    the adjacent ``.ll/``-only set) — see BUG-2963 Decision Rationale for why
+    this is a separate set rather than a widened ``EXCLUDED_DIRECTORIES``.
+    """
+    return filter_ll_noise(paths)
+
+
+@dataclass
+class _PreflightResult:
+    """Result of the completion-commit pre-flight dirty-path check."""
+
+    ok: bool
+    run_window: frozenset[str]
+    dirty_count: int = 0
+
+
+def _completion_preflight(
+    info: IssueInfo,
+    logger: Logger,
+    *,
+    pre_run_dirty: frozenset[str] | None,
+    repo_path: Path,
+) -> _PreflightResult:
+    """Discriminate this run's deliverable from pre-existing WIP (BUG-2963).
+
+    Run BEFORE any content mutation (Resolution section / ``status: done`` /
+    ``completed_at`` / session log append) — the caller does not revert
+    anything on refusal here because nothing has been written yet.
+
+    Args:
+        info: Issue info (``info.path`` is excluded via resolved-path equality,
+            not substring containment — load-bearing per BUG-2963).
+        logger: Logger for output.
+        pre_run_dirty: Snapshot of ``git status --porcelain`` paths taken
+            before this run started, or ``None`` if the caller could not
+            snapshot (external API callers). ``None`` means any non-noise
+            dirty path forces a refusal — the two sets cannot be separated.
+        repo_path: Working tree to check.
+
+    Returns:
+        ``_PreflightResult`` — ``ok=False`` means the caller must not mutate
+        the issue file and must preserve + refuse; ``ok=True`` carries the
+        ``run_window`` path set to stage alongside the issue file.
+    """
+    try:
+        status = subprocess.run(
+            ["git", "status", "--porcelain", "-z"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        logger.error(f"{info.issue_id}: git status timed out during completion pre-flight")
+        return _PreflightResult(ok=False, run_window=frozenset())
+
+    if status.returncode != 0:
+        logger.error(
+            f"{info.issue_id}: git status failed during completion pre-flight: {status.stderr}"
+        )
+        return _PreflightResult(ok=False, run_window=frozenset())
+
+    all_paths = porcelain_paths(status.stdout)
+    issue_resolved = str(info.path.resolve())
+
+    def _is_issue_file(p: str) -> bool:
+        try:
+            return str((repo_path / p).resolve()) == issue_resolved
+        except OSError:
+            return False
+
+    current = frozenset(p for p in all_paths if not _is_issue_file(p))
+    run_window_raw = current if pre_run_dirty is None else (current - pre_run_dirty)
+    run_window = frozenset(_filter_completion_noise(sorted(run_window_raw)))
+
+    if pre_run_dirty is None and run_window:
+        logger.error(
+            f"{info.issue_id}: completion pre-flight refused — no pre-run snapshot "
+            "available to separate pre-existing WIP from this run's deliverable; "
+            f"non-noise dirty paths present: {sorted(run_window)}"
+        )
+        return _PreflightResult(ok=False, run_window=frozenset(), dirty_count=len(run_window))
+
+    return _PreflightResult(ok=True, run_window=run_window)
+
+
+def _abandon_and_stamp(
+    info: IssueInfo,
+    logger: Logger,
+    repo_path: Path,
+    original_path: Path,
+    dirty_count: int,
+    prior_raw: str | None = None,
+) -> None:
+    """Preserve the working tree to a durable ref and stamp frontmatter (BUG-2963).
+
+    Called on every ``NOT_CLOSED`` path. If *prior_raw* is given, the issue
+    file's pristine (pre-mutation) content is restored first — undoing the
+    Resolution section, ``status: done``, ``completed_at``, and any session
+    log line appended before the commit failed.
+
+    The frontmatter stamp (``uncommitted_paths`` / ``abandoned_ref``) is a
+    best-effort convenience for shared-tree (``ll-auto``) runs (Proposed
+    Solution #6) — it lives in an uncommitted file, so it evaporates in a
+    worktree about to be pruned. The durable signal is the ref itself.
+    """
+    ref = preserve_dirty_tree(repo_path, abandoned_ref_name(info.issue_id), logger)
+    if prior_raw is not None:
+        original_path.write_text(prior_raw, encoding="utf-8")
+    if not original_path.exists():
+        return
+    try:
+        content = original_path.read_text(encoding="utf-8")
+        updates: dict[str, Any] = {"uncommitted_paths": dirty_count}
+        if ref:
+            updates["abandoned_ref"] = ref
+        content = update_frontmatter(content, updates)
+        original_path.write_text(content, encoding="utf-8")
+    except Exception as e:
+        logger.warning(f"{info.issue_id}: failed to stamp not-closed frontmatter: {e}")
+
+
 def _commit_issue_completion(
     info: IssueInfo,
     commit_prefix: str,
     commit_body: str,
     logger: Logger,
-) -> bool:
-    """Stage all changes and create completion commit.
+    *,
+    stage_paths: list[str] | None = None,
+    repo_path: Path | None = None,
+) -> CompletionResult:
+    """Stage the issue file plus this run's deliverable and create a completion commit.
 
     Args:
         info: Issue information
         commit_prefix: Prefix for commit message (e.g., "close" or action verb)
         commit_body: Body text for commit message
         logger: Logger for output
+        stage_paths: Additional paths (relative or absolute) to stage
+            alongside the issue file — the run-window deliverable computed by
+            ``_completion_preflight``. ``None``/empty preserves the original
+            BUG-2421 issue-file-only behavior (used by ``defer_issue``/
+            ``undefer_issue``, which never call the pre-flight check).
+        repo_path: Working tree to operate in. Defaults to the process cwd.
 
     Returns:
-        True if commit succeeded or nothing to commit
+        ``CompletionResult.COMMITTED`` if the issue file (+ any stage_paths)
+        is now in a commit (including "nothing to commit — already
+        committed"). ``CompletionResult.NOT_CLOSED`` if staging or the commit
+        itself failed (including pre-commit hook rejection) — the caller is
+        responsible for preserving the working tree and rolling back any
+        content mutation; this function only unstages what it staged.
     """
-    # BUG-2421: stage ONLY the issue file, never `git add -A`. This is a
-    # safety-net path that fires on abnormal subloop exit (crash/timeout/context
-    # exhaustion), so the working tree may hold unrelated dirty/untracked files
-    # from other issues, sessions, or branches. `git add -A` would sweep all of
-    # them into this issue's completion commit, corrupting provenance (poisoned
+    # BUG-2421: never `git add -A`. This is a safety-net path that fires on
+    # abnormal subloop exit (crash/timeout/context exhaustion), so the working
+    # tree may hold unrelated dirty/untracked files from other issues,
+    # sessions, or branches. `git add -A` would sweep all of them into this
+    # issue's completion commit, corrupting provenance (poisoned
     # `git blame`/`bisect`, premature commit of unrelated WIP). Mirrors the
     # sibling parallel-path fix `_stage_and_commit_issue_scoped()`
     # (parallel/orchestrator.py, BUG-2424) and the `_maybe_auto_commit()` idiom
-    # (hooks/post_tool_use.py) — but still commits the issue file (per AC #5),
-    # only warning about the dirty paths it leaves behind rather than skipping.
+    # (hooks/post_tool_use.py). BUG-2963 extends the explicit stage list beyond
+    # just the issue file to include this run's own deliverable.
+    repo_root = repo_path or Path.cwd()
     issue_path = info.path
+    stage_targets = [str(issue_path)] + list(stage_paths or [])
+
     try:
         stage_result = subprocess.run(
-            ["git", "add", "--", str(issue_path)],
+            ["git", "add", "--", *stage_targets],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired:
+        logger.error(f"{info.issue_id}: git add timed out during completion commit")
+        return CompletionResult.NOT_CLOSED
+
+    if stage_result.returncode != 0:
+        logger.error(f"{info.issue_id}: git add failed during completion commit: "
+                      f"{stage_result.stderr}")
+        subprocess.run(
+            ["git", "reset", "--", *stage_targets],
+            cwd=repo_root,
             capture_output=True,
             text=True,
             timeout=30,
         )
-        if stage_result.returncode != 0:
-            logger.warning(f"git add failed: {stage_result.stderr}")
-    except subprocess.TimeoutExpired:
-        logger.warning("git add timed out")
+        return CompletionResult.NOT_CLOSED
 
     # Warn about any other dirty paths we are deliberately leaving uncommitted.
     try:
         status_result = subprocess.run(
             ["git", "status", "--porcelain"],
+            cwd=repo_root,
             capture_output=True,
             text=True,
             timeout=30,
         )
-        filename = issue_path.name
-        other = [ln for ln in status_result.stdout.splitlines() if filename not in ln]
+        issue_resolved = str(issue_path.resolve())
+        staged_resolved = {issue_resolved}
+        for p in stage_paths or []:
+            try:
+                staged_resolved.add(str((repo_root / p).resolve()))
+            except OSError:
+                pass
+
+        def _resolve_line(ln: str) -> str:
+            path = ln[3:].split(" -> ")[-1].strip().strip('"')
+            try:
+                return str((repo_root / path).resolve())
+            except OSError:
+                return path
+
+        other = [
+            ln
+            for ln in status_result.stdout.splitlines()
+            if _resolve_line(ln) not in staged_resolved
+        ]
         if other:
             logger.warning(
-                f"Scoped completion commit for {info.issue_id}: staging only the "
-                "issue file; leaving unrelated dirty paths uncommitted for "
-                f"deliberate follow-up: {[ln.strip() for ln in other]}"
+                f"Scoped completion commit for {info.issue_id}: staging issue file"
+                f" + {len(stage_paths or [])} run-window path(s); leaving unrelated "
+                f"dirty paths uncommitted for deliberate follow-up: "
+                f"{[ln.strip() for ln in other]}"
             )
     except subprocess.TimeoutExpired:
         logger.warning("git status timed out")
 
-    # Create commit
+    # Create commit. Never `--no-verify` (BUG-2963 Proposed Solution #10): a
+    # pre-commit hook rejection here is a legitimate reason to refuse the
+    # close, not something to bypass.
     commit_msg = f"{commit_prefix}({info.issue_type}): {commit_body}"
     try:
         commit_result = subprocess.run(
             ["git", "commit", "-m", commit_msg],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired:
+        logger.error(f"{info.issue_id}: git commit timed out during completion commit")
+        subprocess.run(
+            ["git", "reset", "--", *stage_targets],
+            cwd=repo_root,
             capture_output=True,
             text=True,
             timeout=30,
         )
-    except subprocess.TimeoutExpired:
-        logger.warning("git commit timed out")
-        return True
+        return CompletionResult.NOT_CLOSED
 
     if commit_result.returncode != 0:
         if "nothing to commit" in commit_result.stdout.lower():
             logger.info("No changes to commit (already committed)")
-        else:
-            logger.warning(f"git commit failed: {commit_result.stderr}")
-    else:
-        commit_hash_match = re.search(r"\[[\w-]+\s+([a-f0-9]+)\]", commit_result.stdout)
-        if commit_hash_match:
-            logger.success(f"Committed: {commit_hash_match.group(1)}")
-        else:
-            logger.success("Committed changes")
+            return CompletionResult.COMMITTED
+        logger.error(
+            f"{info.issue_id}: git commit failed during completion commit "
+            f"(possibly a pre-commit hook rejection): {commit_result.stderr}"
+        )
+        subprocess.run(
+            ["git", "reset", "--", *stage_targets],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        return CompletionResult.NOT_CLOSED
 
-    return True
+    commit_hash_match = re.search(r"\[[\w-]+\s+([a-f0-9]+)\]", commit_result.stdout)
+    if commit_hash_match:
+        logger.success(f"Committed: {commit_hash_match.group(1)}")
+    else:
+        logger.success("Committed changes")
+
+    return CompletionResult.COMMITTED
 
 
 def verify_issue_completed(info: IssueInfo, config: BRConfig, logger: Logger) -> bool:
