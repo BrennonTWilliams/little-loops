@@ -28,9 +28,10 @@ Steps / Acceptance Criteria / Files to Modify to match. When those directive
 sections contradict the findings, `/ll:confidence-check` re-flags the same
 Concern every pass and the Readiness score plateaus.
 
-Your job is a **targeted, in-place rewrite** of exactly three sections so they
-reflect the accumulated findings — **not** another appended finding, and **not**
-a wholesale rewrite.
+Your job is a **targeted, in-place rewrite** of three unconditional sections —
+plus, conditionally, a `## Scope Boundaries` claim the findings directly refute
+(ENH-2937) — so they reflect the accumulated findings. **Not** another appended
+finding, and **not** a wholesale rewrite.
 
 ## Configuration
 
