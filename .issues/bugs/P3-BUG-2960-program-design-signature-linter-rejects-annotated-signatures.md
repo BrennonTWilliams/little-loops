@@ -4,8 +4,9 @@ title: Program Design signature linter rejects trailing prose, comma-bearing ann
   and keyword-only markers
 type: BUG
 priority: P3
-status: open
-captured_at: "2026-08-01T04:12:30Z"
+status: done
+captured_at: '2026-08-01T04:12:30Z'
+completed_at: '2026-08-01T06:54:33Z'
 discovered_date: 2026-08-01
 discovered_by: capture-issue
 labels:
@@ -13,6 +14,12 @@ labels:
 - format-check
 - program-design
 - lint
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 22
+score_test_coverage: 25
+score_ambiguity: 24
+score_change_surface: 24
 ---
 
 # BUG-2960: Program Design signature linter rejects annotated/documented signatures
@@ -104,6 +111,21 @@ Fix 3 carries the only real regression risk — it is what keeps the gate honest
 - `scripts/tests/` — locate the existing `program_design` test module and add positive cases for all three shapes plus negative cases asserting prose is still rejected (sentence-with-parens, prose containing a colon, a bullet of plain English ending in a period)
 - Corpus regression check: run `ll-issues format-check` across `.issues/` before and after; the set of issues reporting `program_design_nonspecific` should only shrink
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_program_design_gate.py`, class `TestSignatureShape` — add new methods after `test_rejects_prose_that_merely_contains_parentheses` (lines 161–172), following the class's existing conventions (no `@pytest.mark.parametrize`, import inside method, `"\n".join([...])` for multi-line bodies): `test_split_top_level_respects_bracket_depth`, `test_split_top_level_empty_and_single`, `test_accepts_keyword_only_and_positional_only_markers`, `test_accepts_trailing_description_after_signature`, `test_accepts_comma_bearing_annotation_in_params`, `test_reproduction_lines_from_bug_2960` [Agent 3 finding]
+- Re-run unmodified as regression pins after the widening: `test_accepts_varied_real_signature_shapes` (lines 136–153, must still return `len(found) == 7`), `test_accepts_nested_generic_return_types` (lines 155–159), `TestGrading.test_prose_only_section_is_not_specific` (lines 189–195, uses the `_PROSE_SECTION` fixture — full sentences with colons/parens that must stay non-specific) [Agent 3 finding]
+- `scripts/tests/spike/program_design_specificity/test_program_design.py` — confirmed *actually collected* by `python -m pytest scripts/tests/` (no `norecursedirs`/`collect_ignore` excludes `spike/`; matching `-pytest-*.pyc` assertion-rewrite cache present), but it imports its own local `spike/program_design_specificity/program_design.py` copy via relative import, not `little_loops.issues.program_design` — so it cannot regress from this fix and needs no changes. The issue's own note to "ignore" it refers to relevance, not exclusion from the test run [Agent 3 finding]
+- No update needed in `scripts/tests/test_ll_issues_format_check.py` or `scripts/tests/test_autodev_loop.py` — both assert only on the `program_design_nonspecific` key's presence/wiring (e.g. `assert "program_design_nonspecific" in action`), not on which specific inputs populate it; their fixtures contain no signature-shaped substrings and are unaffected by the regex widening [Agent 2 finding, confirmed by Agent 3]
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- The canonical test module is `scripts/tests/test_program_design_gate.py`, class `TestSignatureShape` (line ~133) — the pinned negative fixture `test_rejects_prose_that_merely_contains_parentheses` (lines 161–172) is the exact regression to re-run first per Implementation Step 3, and `test_accepts_varied_real_signature_shapes` (lines 136–153) is the sibling positive-case test to extend. Ignore `scripts/tests/spike/program_design_specificity/test_program_design.py` — it's a superseded spike copy of the same test class, not the live suite.
+- Test-writing conventions in this module (for consistency): no `@pytest.mark.parametrize`, one plainly-named `test_...` method per shape with a short rationale docstring; imports (`from little_loops.issues.program_design import parse_signature_lines`) are done inside each test method, not at module top; multi-line bodies are built with `"\n".join([...])` bullet lists.
+- Confirmed no reusable depth-aware/bracket-balance comma splitter exists elsewhere in `scripts/little_loops/**` to import for `_split_top_level()` — the nearest precedent is the string/escape-aware brace-depth scan in `scripts/little_loops/output/parse.py:87-119` (tracks `in_string`/`escaped` so quoted braces don't perturb depth, single bracket kind only). `_split_top_level()` is genuinely new code, not a refactor-to-reuse; it should track `()[]{}` together plus quoted-string state, following that scan's string-awareness since parameter annotations contain quoted literals (`Literal["x", "y"]`).
+- Exact current line numbers confirmed by direct read of `scripts/little_loops/issues/program_design.py`: `_SUBSCRIPT`/`_TYPE` at lines 58–59, `_TAIL` at line 63, `_SIG_CALL` at lines 66–71, `_SIG_FIELD` at lines 74–76, `_PARAM` at lines 81–85, `_params_are_signature_like()` at lines 117–122, `parse_signature_lines()` at lines 168–186.
+
 ## Implementation Steps
 
 1. Add the depth-aware comma splitter and unit-test it in isolation.
@@ -149,4 +171,9 @@ One new private helper; the two public entry points keep their current signature
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-01T06:54:07 - `6201bfcb-a642-4fa9-90f4-f799a05797ec.jsonl`
+- `/ll:ready-issue` - 2026-08-01T06:46:18 - `72978efa-333a-49fd-a66c-935d119e23be.jsonl`
+- `/ll:confidence-check` - 2026-08-01T06:44:39 - `508988ab-ad5a-4a77-b3db-641b11464771.jsonl`
+- `/ll:wire-issue` - 2026-08-01T06:42:39 - `3007eb33-75db-4f3e-8a15-7b99beef78db.jsonl`
+- `/ll:refine-issue` - 2026-08-01T06:36:16 - `78c31198-5245-4b8f-8499-1d2db98b1459.jsonl`
 - `/ll:capture-issue` - 2026-08-01T04:14:35 - `955e48a5-4e30-44bc-914f-c2bd87008116.jsonl`

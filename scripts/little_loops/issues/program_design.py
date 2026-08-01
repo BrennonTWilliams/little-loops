@@ -60,7 +60,10 @@ _TYPE = r"[\w.]+(?:" + _SUBSCRIPT + r")?(?:\s*\|\s*[\w.]+(?:" + _SUBSCRIPT + r")
 
 # Leading bullet + optional backtick fence, trailing backtick + punctuation.
 _LEAD = r"^[ \t]*(?:[-*+][ \t]+)?`?"
-_TAIL = r"`?[ \t]*[.:;]?[ \t]*$"
+# Trailing backtick, optional punctuation, and an optional separator-delimited
+# description clause (` — does a thing`). The separator is mandatory for the
+# description branch so a bare sentence containing parens still fails to match.
+_TAIL = r"`?[ \t]*[.:;]?[ \t]*(?:(?:—|--|–|:)[ \t]*\S.*)?$"
 
 # Call-shaped: `def foo(a: int) -> Bar`, `Class.method(self, x)`, `foo() -> None`.
 _SIG_CALL = re.compile(
@@ -78,10 +81,11 @@ _SIG_FIELD = re.compile(
 # A parameter list is signature-like only if every entry is an identifier, optionally
 # annotated/defaulted — never an English clause. This is what keeps the gate honest:
 # without it, "It returns a verdict (specific or not) to the caller." parses as a call.
+# A bare `*` or `/` (keyword-only / positional-only markers) is also accepted.
 _PARAM = re.compile(
-    r"^[ \t]*(?:\*{0,2})[A-Za-z_]\w*"
+    r"^[ \t]*(?:[*/]|(?:\*{0,2})[A-Za-z_]\w*"
     r"(?:[ \t]*:[ \t]*" + _TYPE + r")?"
-    r"(?:[ \t]*=[ \t]*\S+)?[ \t]*$"
+    r"(?:[ \t]*=[ \t]*\S+)?)[ \t]*$"
 )
 
 _SUBSECTION = re.compile(r"^[ \t]*#{2,6}[ \t]*(?P<title>.+?)[ \t]*#*[ \t]*$")
@@ -114,12 +118,46 @@ class DesignVerdict:
     reasons: list[str] = field(default_factory=list)
 
 
+def _split_top_level(params: str) -> list[str]:
+    """Split *params* on commas at bracket/paren/brace depth 0.
+
+    Keeps a parameter annotation's own commas intact — `Literal["x", "y"]` and
+    `dict[str, int]` are each one entry, not two. Quoted-string contents never
+    perturb depth, mirroring the string-aware brace scan in
+    :mod:`little_loops.output.parse`.
+    """
+    parts: list[str] = []
+    depth = 0
+    quote: str | None = None
+    start = 0
+    for i, ch in enumerate(params):
+        if quote is not None:
+            if ch == quote:
+                quote = None
+            continue
+        if ch in "\"'":
+            quote = ch
+        elif ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            parts.append(params[start:i])
+            start = i + 1
+    tail = params[start:]
+    if tail or parts:
+        parts.append(tail)
+    if not params.strip():
+        return []
+    return [stripped for p in parts if (stripped := p.strip())]
+
+
 def _params_are_signature_like(params: str) -> bool:
-    """True when every comma-separated entry of *params* is an identifier, not prose."""
+    """True when every top-level entry of *params* is an identifier, not prose."""
     stripped = params.strip()
     if not stripped:
         return True
-    return all(_PARAM.match(part) for part in stripped.split(","))
+    return all(_PARAM.match(part) for part in _split_top_level(stripped))
 
 
 def _subsection_title(line: str) -> str | None:

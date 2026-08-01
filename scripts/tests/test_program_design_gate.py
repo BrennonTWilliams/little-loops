@@ -171,6 +171,50 @@ class TestSignatureShape:
 
         assert parse_signature_lines(body) == []
 
+    def test_split_top_level_respects_bracket_depth(self) -> None:
+        from little_loops.issues.program_design import _split_top_level
+
+        assert _split_top_level('a: Literal["x", "y"], b: dict[str, int]') == [
+            'a: Literal["x", "y"]',
+            "b: dict[str, int]",
+        ]
+
+    def test_split_top_level_empty_and_single(self) -> None:
+        from little_loops.issues.program_design import _split_top_level
+
+        assert _split_top_level("") == []
+        assert _split_top_level("a: int") == ["a: int"]
+
+    def test_accepts_keyword_only_and_positional_only_markers(self) -> None:
+        from little_loops.issues.program_design import parse_signature_lines
+
+        assert parse_signature_lines("- `foo(a: int, *, b: str) -> Bar`")
+        assert parse_signature_lines("- `foo(a: int, /, b: str) -> Bar`")
+
+    def test_accepts_trailing_description_after_signature(self) -> None:
+        from little_loops.issues.program_design import parse_signature_lines
+
+        assert parse_signature_lines("- `foo(a: int) -> Bar` — does a thing")
+        assert parse_signature_lines("- `foo(a: int) -> Bar` -- does a thing")
+        assert parse_signature_lines("- `foo(a: int) -> Bar`: does a thing")
+
+    def test_accepts_comma_bearing_annotation_in_params(self) -> None:
+        from little_loops.issues.program_design import parse_signature_lines
+
+        assert parse_signature_lines('- `foo(a: Literal["x", "y"]) -> Bar`')
+        assert parse_signature_lines("- `foo(a: dict[str, int]) -> Bar`")
+
+    def test_reproduction_lines_from_bug_2960(self) -> None:
+        from little_loops.issues.program_design import parse_signature_lines
+
+        for line in (
+            '- `foo(a: int) -> Bar`',
+            '- `foo(a: int) -> Bar` — does a thing',
+            '- `foo(a: Literal["x", "y"]) -> Bar`',
+            '- `foo(a: int, *, b: str) -> Bar`',
+        ):
+            assert parse_signature_lines(line), line
+
 
 # ------------------------------------------------------------------------- grading
 
