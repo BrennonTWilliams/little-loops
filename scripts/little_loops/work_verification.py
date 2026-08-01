@@ -74,12 +74,21 @@ def _run_non_fsm_tamper_guard(
     ``snapshot_test_paths_at_ref`` instead, using *baseline_sha* (or ``HEAD``
     when unset) as the reference point.
 
+    Because that window spans the whole implement phase -- including
+    legitimate TDD-mode test writes -- findings are narrowed via
+    ``filter_weakening_findings`` (BUG-2954) to edits that actually weaken the
+    test suite, not merely change its bytes. The FSM adapter passes no such
+    filter and stays byte-level strict.
+
     Returns True when the guard passes (nothing found, or an "allow"/"revert"
     policy resolved the findings); False only when a "fail" policy trips on
     an unresolved finding -- the caller should treat that as verification
     failure regardless of other evidence of work.
     """
+    from functools import partial
+
     from little_loops.test_tamper_guard import (
+        filter_weakening_findings,
         run_tamper_guard,
         snapshot_test_paths_at_ref,
         tamper_guard_candidate_paths,
@@ -88,11 +97,13 @@ def _run_non_fsm_tamper_guard(
 
     policy = _effective_tamper_guard_policy(config)
 
+    ref = baseline_sha or "HEAD"
     candidate_paths = tamper_guard_candidate_paths(repo_root, config=config)
-    before = snapshot_test_paths_at_ref(repo_root, baseline_sha or "HEAD", candidate_paths)
+    before = snapshot_test_paths_at_ref(repo_root, ref, candidate_paths)
     changed = tamper_guard_changed_files(repo_root)
 
-    report = run_tamper_guard(before, changed, config, policy, repo_root)
+    finding_filter = partial(filter_weakening_findings, repo_root=repo_root, ref=ref)
+    report = run_tamper_guard(before, changed, config, policy, repo_root, finding_filter)
     if not report.passed:
         logger.error(
             f"Tamper guard ({report.policy}) failed: "

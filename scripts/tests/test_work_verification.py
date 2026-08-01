@@ -620,3 +620,23 @@ class TestVerifyWorkWasDoneTamperGuard:
         result = verify_work_was_done(mock_logger, changed_files=["src.py"], config=config)
 
         assert result is True
+
+    def test_legitimate_additive_edit_to_existing_test_file_passes(
+        self, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """BUG-2954: adding test cases to an existing test file (the common
+        tdd_mode Phase 2 case) must not trip the guard -- only weakening does."""
+        from little_loops.config import BRConfig
+
+        repo = self._repo_with_committed_test(tmp_path)
+        (repo / "src.py").write_text("def add(a, b):\n    return a + b\n")
+        (repo / "tests" / "test_x.py").write_text(
+            "def test_x():\n    assert 1 == 1\n\n\ndef test_y():\n    assert 2 == 2\n"
+        )
+
+        config = BRConfig(repo)
+        result = verify_work_was_done(
+            mock_logger, changed_files=["src.py", "tests/test_x.py"], config=config
+        )
+
+        assert result is True

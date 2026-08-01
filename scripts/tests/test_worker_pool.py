@@ -1372,6 +1372,111 @@ class TestWorkerPoolHelpers:
 
         assert success is False
 
+    def test_verify_work_was_done_legitimate_additive_edit_passes(
+        self, worker_pool: WorkerPool, tmp_path: Path
+    ) -> None:
+        """BUG-2954/BUG-2959: adding test cases to an existing test file during
+        Phase 2, with the pre-implement worktree HEAD passed as baseline_sha,
+        must not trip the guard."""
+        from tests.helpers import copy_git_template
+
+        worktree = tmp_path / "worktree"
+        copy_git_template(worktree)
+        (worktree / "tests").mkdir()
+        (worktree / "tests" / "test_x.py").write_text("def test_x():\n    assert 1 == 1\n")
+        subprocess.run(["git", "add", "tests/test_x.py"], cwd=worktree, check=True)
+        subprocess.run(["git", "commit", "-m", "add test"], cwd=worktree, check=True)
+
+        pre_implement_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=worktree, capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+        (worktree / "src.py").write_text("def add(a, b):\n    return a + b\n")
+        (worktree / "tests" / "test_x.py").write_text(
+            "def test_x():\n    assert 1 == 1\n\n\ndef test_y():\n    assert 2 == 2\n"
+        )
+
+        success, error = worker_pool._verify_work_was_done(
+            ["src.py", "tests/test_x.py"],
+            "BUG-001",
+            worktree_path=worktree,
+            baseline_sha=pre_implement_sha,
+        )
+
+        assert success is True
+
+    def test_verify_work_was_done_worktree_committed_weakening_trips(
+        self, worker_pool: WorkerPool, tmp_path: Path
+    ) -> None:
+        """BUG-2954/BUG-2959: a weakening committed inside the worktree during
+        Phase 2 must trip the guard when the pre-implement HEAD is threaded
+        through as baseline_sha -- without it, "before" falls back to HEAD *at
+        verification time*, which already includes the weakened commit."""
+        from tests.helpers import copy_git_template
+
+        worktree = tmp_path / "worktree"
+        copy_git_template(worktree)
+        (worktree / "tests").mkdir()
+        (worktree / "tests" / "test_x.py").write_text("def test_x():\n    assert 1 == 1\n")
+        subprocess.run(["git", "add", "tests/test_x.py"], cwd=worktree, check=True)
+        subprocess.run(["git", "commit", "-m", "add test"], cwd=worktree, check=True)
+
+        pre_implement_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=worktree, capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+        (worktree / "src.py").write_text("def add(a, b):\n    return a + b\n")
+        (worktree / "tests" / "test_x.py").write_text("def test_x():\n    pass  # weakened\n")
+        subprocess.run(["git", "add", "-A"], cwd=worktree, check=True)
+        subprocess.run(["git", "commit", "-m", "weaken test"], cwd=worktree, check=True)
+
+        # Without baseline_sha, the guard's "before" is HEAD at verify time --
+        # which already includes the weakened commit -- so it is blind.
+        blind_success, _ = worker_pool._verify_work_was_done(
+            ["src.py", "tests/test_x.py"], "BUG-001", worktree_path=worktree
+        )
+        assert blind_success is True
+
+        # With the pre-implement HEAD threaded through, the guard sees the weakening.
+        success, error = worker_pool._verify_work_was_done(
+            ["src.py", "tests/test_x.py"],
+            "BUG-001",
+            worktree_path=worktree,
+            baseline_sha=pre_implement_sha,
+        )
+        assert success is False
+
+    def test_get_worktree_head_sha_returns_sha(
+        self, worker_pool: WorkerPool, tmp_path: Path
+    ) -> None:
+        """_get_worktree_head_sha() returns the worktree's HEAD SHA on success."""
+        from tests.helpers import copy_git_template
+
+        worktree = tmp_path / "worktree"
+        copy_git_template(worktree)
+        (worktree / "README.md").write_text("hi\n")
+        subprocess.run(["git", "add", "README.md"], cwd=worktree, check=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=worktree, check=True)
+
+        expected = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=worktree, capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+        result = worker_pool._get_worktree_head_sha(worktree)
+
+        assert result == expected
+
+    def test_get_worktree_head_sha_returns_empty_on_failure(
+        self, worker_pool: WorkerPool, tmp_path: Path
+    ) -> None:
+        """_get_worktree_head_sha() returns empty string when git fails."""
+        with patch.object(worker_pool._git_lock, "run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess([], 1, "", "error")
+
+            result = worker_pool._get_worktree_head_sha(tmp_path / "nonexistent")
+
+        assert result == ""
+
     def test_get_main_repo_baseline(
         self,
         worker_pool: WorkerPool,

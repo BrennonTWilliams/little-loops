@@ -10823,9 +10823,7 @@ class TestTamperGuardExecutorHook:
         assert result.final_state == "done"
         assert (repo / "tests" / "test_x.py").read_text() == original
 
-    def test_project_config_key_never_overrides_state_level_policy(
-        self, tmp_path: Path
-    ) -> None:
+    def test_project_config_key_never_overrides_state_level_policy(self, tmp_path: Path) -> None:
         """ENH-2935: the non-FSM project config key (tamper_guard.policy) is
         consumed only by work_verification.py's non-FSM hook -- it never
         overrides an explicit FSM state-level tamper_guard: key. Setting the
@@ -11022,3 +11020,34 @@ class TestTamperGuardExecutorHook:
         assert evidence[1]["state"] == "step2"
         assert evidence[1]["passed"] is True
         assert evidence[1]["findings"] == []
+
+    def test_pyproject_version_bump_does_not_trip_fsm_guard(self, tmp_path: Path) -> None:
+        """BUG-2957: an unrelated pyproject.toml edit (e.g. a version bump) in
+        a repo whose pytest config lives in [tool.pytest.ini_options] must not
+        trip the FSM adapter's guard -- mirrors the non-FSM
+        test_pyproject_version_bump_does_not_trip case in
+        test_test_tamper_guard.py, exercised through fsm/executor.py's
+        _check_tamper_guard path instead of run_tamper_guard directly."""
+        import subprocess
+
+        from tests.helpers import copy_git_template
+
+        copy_git_template(tmp_path)
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nversion = "1.0.0"\n\n[tool.pytest.ini_options]\ntestpaths = ["tests"]\n'
+        )
+        subprocess.run(["git", "add", "."], cwd=tmp_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "init"], cwd=tmp_path, check=True, capture_output=True
+        )
+
+        def mutate() -> None:
+            (tmp_path / "pyproject.toml").write_text(
+                '[project]\nversion = "1.0.1"\n\n[tool.pytest.ini_options]\ntestpaths = ["tests"]\n'
+            )
+
+        runner = self._TamperingActionRunner(mutate=mutate, exit_code=0)
+        executor = FSMExecutor(self._fsm("fail"), action_runner=runner, working_dir=tmp_path)
+        result = executor.run()
+
+        assert result.final_state == "done"

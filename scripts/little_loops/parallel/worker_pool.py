@@ -531,6 +531,11 @@ class WorkerPool:
             action = self.br_config.get_category_action(issue.issue_type)
 
             # Step 5: Run manage-issue implementation (with continuation support)
+            # Capture the worktree's pre-implement HEAD as the tamper guard's
+            # "before" reference (BUG-2954/BUG-2959) -- without this, the guard
+            # falls back to the worktree's HEAD *at verification time*, which is
+            # blind to any test-weakening the agent commits inside the worktree.
+            tamper_baseline_sha = self._get_worktree_head_sha(worktree_path)
             manage_cmd = self.parallel_config.get_manage_command(
                 issue.issue_type, action, issue.issue_id
             )
@@ -594,7 +599,11 @@ class WorkerPool:
             # Pass full filename for better doc-only keyword matching
             issue_filename = issue.path.stem if issue.path else ""
             work_verified, verification_error = self._verify_work_was_done(
-                changed_files, issue.issue_id, issue_filename, worktree_path
+                changed_files,
+                issue.issue_id,
+                issue_filename,
+                worktree_path,
+                baseline_sha=tamper_baseline_sha,
             )
 
             if manage_result.returncode != 0:
@@ -1215,6 +1224,7 @@ class WorkerPool:
         issue_id: str,
         issue_filename: str = "",
         worktree_path: Path | None = None,
+        baseline_sha: str | None = None,
     ) -> tuple[bool, str]:
         """Verify that actual implementation work was done.
 
@@ -1227,6 +1237,11 @@ class WorkerPool:
             issue_filename: Full issue filename (unused, kept for compatibility)
             worktree_path: Worktree the tamper guard (ENH-2933/ENH-2935) runs
                 against; defaults to cwd when omitted.
+            baseline_sha: Worktree HEAD captured before Phase 2 began (BUG-2954/
+                BUG-2959) -- the tamper guard's "before" reference. Without it,
+                the guard falls back to the worktree's HEAD at verification
+                time, which is blind to test-weakening the agent already
+                committed inside the worktree.
 
         Returns:
             Tuple of (success, error_message)
@@ -1240,7 +1255,11 @@ class WorkerPool:
 
         # Use shared verification function
         if verify_work_was_done(
-            self.logger, changed_files, config=self.br_config, repo_root=worktree_path
+            self.logger,
+            changed_files,
+            baseline_sha=baseline_sha,
+            config=self.br_config,
+            repo_root=worktree_path,
         ):
             return True, ""
 
@@ -1493,6 +1512,29 @@ class WorkerPool:
             cwd=self.repo_path,
             timeout=10,
         )
+        if result.returncode == 0:
+            return result.stdout.strip()
+        return ""
+
+    def _get_worktree_head_sha(self, worktree_path: Path) -> str:
+        """Get the current HEAD SHA of *worktree_path*, or "" if unavailable.
+
+        Used as the tamper guard's pre-implement ``baseline_sha`` reference
+        (BUG-2954/BUG-2959) -- distinct from ``_get_main_head_sha``, which
+        tracks the main repo's HEAD for committed-leak detection. Called
+        before the worktree is guaranteed to exist yet (e.g. worktree setup
+        failed upstream), so a missing directory is tolerated the same as any
+        other git failure -- the tamper guard falls back to its own default
+        ("HEAD" at verification time) when this returns "".
+        """
+        try:
+            result = self._git_lock.run(
+                ["rev-parse", "HEAD"],
+                cwd=worktree_path,
+                timeout=10,
+            )
+        except OSError:
+            return ""
         if result.returncode == 0:
             return result.stdout.strip()
         return ""

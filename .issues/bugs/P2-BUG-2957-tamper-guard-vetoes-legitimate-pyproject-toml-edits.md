@@ -3,8 +3,9 @@ id: BUG-2957
 title: Tamper guard vetoes any pyproject.toml edit in projects using [tool.pytest.ini_options]
 type: BUG
 priority: P2
-status: open
+status: done
 captured_at: '2026-08-01T01:25:49Z'
+completed_at: '2026-08-01T05:55:38Z'
 discovered_date: 2026-08-01
 discovered_by: capture-issue
 relates_to:
@@ -12,6 +13,14 @@ relates_to:
 - ENH-2933
 - ENH-2935
 - ENH-2854
+- BUG-2959
+- BUG-2962
+confidence_score: 98
+outcome_confidence: 80
+score_complexity: 17
+score_test_coverage: 21
+score_ambiguity: 22
+score_change_surface: 20
 ---
 
 # BUG-2957: Tamper guard vetoes any pyproject.toml edit in projects using [tool.pytest.ini_options]
@@ -99,6 +108,44 @@ This composes with BUG-2954's `finding_filter` rather than competing with it:
 BUG-2954 filters *test-file* findings by weakening; this narrows what
 produces a *config-file* finding in the first place.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Canonicalization recipe**: the codebase has no existing dotted-path TOML
+  table walker (only the chained `.get("tool", {}).get("pytest", {})` idiom
+  already used in `resolved_pytest_config_paths`) and no TOML/dict
+  canonicalizer to reuse verbatim, but it does have an established
+  deterministic-hashing idiom to follow for `hash_config_target`:
+  `json.dumps(payload, sort_keys=True, default=str)` then
+  `hashlib.sha256(blob.encode("utf-8")).hexdigest()`, used in
+  `scripts/little_loops/prompts/fragment_store.py:26-32` and
+  `scripts/little_loops/session_store/writers.py:1928-1934`
+  (`_hash_args`, which additionally wraps in `try/except (TypeError,
+  ValueError)` with a `repr(value)` fallback — relevant since a `tomllib`-
+  parsed table can contain non-JSON-native values like `datetime`/`date`).
+  This matches `test_tamper_guard.py`'s own `_sha256_bytes`/`_sha256_file`
+  hashing convention (`:59-69`).
+- **No `configparser` precedent**: `tox.ini`'s `[pytest]` and `setup.cfg`'s
+  `[tool:pytest]` are currently detected by plain substring check on file
+  text (`test_tamper_guard.py:314,318`), not real section parsing —
+  `configparser` is not used anywhere else in `scripts/little_loops/`. If a
+  future iteration extends section-scoping to those formats (out of scope
+  per this issue's "Single-purpose config files ... keep whole-file
+  comparison" decision), it would be a new stdlib usage with no in-repo
+  extraction helper to copy from.
+- **Test convention to extend**: `scripts/tests/test_test_tamper_guard.py`
+  already has a `TestResolvedPytestConfigPaths` class (`:130-157`) with one
+  `tmp_path`-based method per config-file-kind branch (e.g.
+  `test_pyproject_ini_options_detected`), and imports every public symbol
+  under test from `little_loops.test_tamper_guard` in one alphabetically
+  ordered `from ... import (...)` block (`:22-41`) — new symbols
+  (`ConfigTarget`, `hash_config_target`, `resolved_pytest_config_targets`)
+  slot in alphabetically there. None of these new test cases need the
+  git-repo fixture (`_init_repo`/`copy_git_template`) that
+  `TestSnapshotTestPathsAtRef` uses — plain `tmp_path` suffices unless a
+  case also exercises `run_tamper_guard`'s full snapshot-diff flow.
+
 ### Alternatives considered
 
 - *Drop config files from the candidate set entirely*: removes a real
@@ -128,8 +175,71 @@ produces a *config-file* finding in the first place.
   `addopts`/`testpaths` edit does trip; `pytest.ini` whole-file behavior
   unchanged; unparseable TOML falls back to whole-file.
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_executor.py` — `TestTamperGuardExecutorHook`
+  (~L10702) is the FSM-adapter-side integration suite for `run_tamper_guard`,
+  parallel to `TestRunTamperGuard` in `test_test_tamper_guard.py`, but has no
+  `pyproject.toml`/`[tool.pytest.ini_options]` case today. `fsm/executor.py`
+  is already listed above as a caller of the changed resolution path; per
+  this issue's own Root Cause note, a fix that only reaches
+  `work_verification.py`'s `finding_filter` "would leave that adapter's
+  `pyproject.toml` false positive completely unaddressed" — the same logic
+  means the FSM adapter's *test* coverage needs the same new case, not just
+  its production code path. [Agent 1/3 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_executor.py` — add a `TestTamperGuardExecutorHook`
+  case mirroring the new `pyproject.toml`-with-`[tool.pytest.ini_options]`
+  version-bump-does-not-trip scenario, confirming `fsm/executor.py::_check_tamper_guard`
+  benefits from section-scoped comparison the same way the non-FSM path does
+  [Agent 3 finding].
+
+_Confirmed no gap (checked, not added):_ `scripts/tests/test_work_verification.py`
+and `scripts/tests/test_worker_pool.py` were traced for any assertion on
+`resolved_pytest_config_paths`'s return shape, `tamper_guard_candidate_paths`
+output, or `TamperFinding.is_config` — both only exercise black-box
+policy/pass-fail behavior on test files, never config files, so the
+`ConfigTarget`-based return-shape change (kept as a `list[str]` compat
+wrapper per Program Design) needs no edits there [Agent 2/3 finding].
+
+_Confirmed no gap (checked, not added):_ no `docs/*.md`, `commands/*.md`, or
+`skills/*/SKILL.md` file documents `resolved_pytest_config_paths`'s return
+shape or `pyproject.toml` config-comparison scope in a way this change
+invalidates, and `config-schema.json`'s `tamper_guard.policy` entry is
+unaffected (no new config key) [Agent 2 finding].
+
 ### Configuration
 - N/A — no new config key; `tamper_guard.policy` semantics unchanged.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Breaking-change surface of the `list[ConfigTarget]` return shape**:
+  every downstream consumer of `resolved_pytest_config_paths` currently
+  assumes plain `list[str]` path union-compatible with other string sets —
+  `tamper_guard_candidate_paths`'s `set(filter_test_files(...)) |
+  set(config_paths)` (`:127-129`), `run_tamper_guard`'s
+  `set(before) | set(filter_test_files(...)) | set(config_paths)` and
+  `finding.path in config_path_set` (`:412-419`), and both
+  `snapshot_test_paths(paths: list[str], ...)` /
+  `snapshot_test_paths_at_ref(..., paths: list[str])` iterating `path` as a
+  dict key and `repo_root / path`. The Program Design section's plan to keep
+  `resolved_pytest_config_paths` as a thin compatibility wrapper (returning
+  `[t.path for t in targets]`) is confirmed as the right shape to avoid
+  touching these four call sites' string-set semantics; only the *hashing*
+  step (`snapshot_test_paths`/`snapshot_test_paths_at_ref`) needs to switch
+  from `_sha256_file`/`_sha256_bytes` to `hash_config_target` for paths that
+  have a non-`None` selector.
+- Two more open issues touch this same file/function family and should be
+  sequenced against this one: `BUG-2959` (worker pool drops baseline SHA
+  from tamper guard call) and `BUG-2962` (tamper-guard fail policy inert on
+  convergent routing) — both in `.issues/bugs/`, not yet linked via
+  `relates_to`.
 
 ## Program Design
 
@@ -173,7 +283,11 @@ source when `section is None` or extraction fails.
 3. Thread targets through `tamper_guard_candidate_paths`, both snapshot
    functions, and `run_tamper_guard`'s `after_paths` construction.
 4. Add the test cases listed under Integration Map → Tests.
-5. Run the full suite; confirm no regression in ENH-2933/2934/2935 coverage
+5. Add the FSM-adapter test case to `TestTamperGuardExecutorHook`
+   (`scripts/tests/test_fsm_executor.py`) so `fsm/executor.py`'s
+   `_check_tamper_guard` path gets the same `pyproject.toml` coverage as the
+   non-FSM path (added by `/ll:wire-issue`).
+6. Run the full suite; confirm no regression in ENH-2933/2934/2935 coverage
    and that `pytest.ini`-based behavior (this repo) is byte-for-byte
    unchanged.
 
@@ -212,11 +326,71 @@ source when `section is None` or extraction fails.
   project metadata, dependencies, and other tools' config, so the guard
   cannot distinguish a test-selection change from any other edit to the file.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- The anchors above have shifted on-disk because BUG-2954's fix (uncommitted,
+  same file) inserted ~110 new lines ahead of them. Current line numbers:
+  `resolved_pytest_config_paths` at `test_tamper_guard.py:297-321`,
+  `tamper_guard_candidate_paths` at `:109-129`, `compare_snapshots` at
+  `:150-169`, `run_tamper_guard` at `:386-422`. Re-check before starting
+  implementation in case BUG-2954 lands first and shifts them again.
+- Confirmed the fix cannot ride on BUG-2954's `finding_filter` mechanism:
+  in `run_tamper_guard` (`:386-422`), `finding_filter` runs *after* the
+  `is_config` tagging loop (`:417-419`), and the concrete filter passed by
+  `work_verification._run_non_fsm_tamper_guard`
+  (`filter_weakening_findings`, `:253-280`) unconditionally keeps every
+  `is_config` finding (`if finding.is_config or finding.kind == "deleted":
+  kept.append(finding)`) without inspecting its content. It never had a
+  chance to rescue a spurious `pyproject.toml` finding. This validates the
+  Proposed Solution's direction: the fix must narrow what produces a
+  config-file finding in `compare_snapshots`/`resolved_pytest_config_paths`/
+  `snapshot_test_paths` itself, not in a `finding_filter`.
+- Independently confirms the FSM adapter angle already noted under
+  Integration Map: `fsm.executor._check_tamper_guard` calls
+  `run_tamper_guard` with no `finding_filter` argument at all, so a
+  `finding_filter`-only fix would leave that adapter's `pyproject.toml`
+  false positive completely unaddressed.
+
+## Resolution
+
+Implemented per the Program Design: added `ConfigTarget` (`path`, `section`)
+and `resolved_pytest_config_targets(repo_root) -> list[ConfigTarget]` in
+`scripts/little_loops/test_tamper_guard.py`, with `resolved_pytest_config_paths`
+kept as a thin compatibility wrapper. Added `hash_config_target(source,
+target)`, which hashes the canonicalized `[tool.pytest.ini_options]` table
+(`json.dumps(..., sort_keys=True, default=str)` then sha256, matching the
+repo's existing deterministic-hashing idiom) when `section` is set, and falls
+back to whole-source hashing when `section` is `None` or the TOML is
+unparseable (fail-closed). `snapshot_test_paths` and `snapshot_test_paths_at_ref`
+now resolve section-scoped config targets internally and hash them via
+`hash_config_target` instead of whole-file sha256, while every other path
+(including single-purpose `pytest.ini`/`tox.ini`/`setup.cfg`) is unaffected.
+
+Verified against the issue's own reproduction: a bare `pyproject.toml` version
+bump with `[tool.pytest.ini_options]` present now produces zero findings and
+`passed: True`, while an edit inside `[tool.pytest.ini_options]` (e.g. adding
+`addopts`) still produces a finding and fails the guard. Added test coverage
+in `scripts/tests/test_test_tamper_guard.py` (`TestResolvedPytestConfigTargets`,
+`TestHashConfigTarget`, and new `TestRunTamperGuard` end-to-end cases for
+version-bump/section-edit/pytest.ini-unchanged/unparseable-TOML-fallback) and
+a matching FSM-adapter case in
+`scripts/tests/test_fsm_executor.py::TestTamperGuardExecutorHook` per Step 5.
+Full suite passes (17495 passed, 42 skipped; the one pre-existing
+`test_prose_dep_sweep_gate.py` failure is unrelated — reproduces identically
+on a clean stash, tracked separately).
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-01T05:55:00 - `a82b7e57-b74c-443b-a6e0-9664da5c0d57.jsonl`
+- `/ll:ready-issue` - 2026-08-01T05:42:48 - `1005a6ba-30e9-4585-9611-59070df89764.jsonl`
+- `/ll:confidence-check` - 2026-08-01T05:40:57 - `13ba386f-07e2-456c-8607-bff9b358abb7.jsonl`
+- `/ll:wire-issue` - 2026-08-01T05:39:09 - `04e69208-2d93-4eeb-840f-ab990bf2bf20.jsonl`
+- `/ll:refine-issue` - 2026-08-01T05:31:30 - `8fd33d39-a3ca-4768-a4cf-93afa8f7a799.jsonl`
 - `/ll:capture-issue` - 2026-08-01T01:25:49Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e6bb49e-330c-449c-8327-ffed663d51ae.jsonl`
 
 ---

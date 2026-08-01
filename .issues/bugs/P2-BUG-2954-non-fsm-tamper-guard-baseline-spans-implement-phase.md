@@ -13,7 +13,8 @@ relates_to:
 - ENH-2933
 - BUG-2957
 - ENH-2958
-confidence_score: 100
+- BUG-2959
+confidence_score: 98
 outcome_confidence: 82
 score_complexity: 14
 score_test_coverage: 25
@@ -364,6 +365,76 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
     parameter as long as `baseline_sha`'s original meaning is preserved for
     that path.
 
+### Codebase Research Findings (2026-08-01)
+
+_Added by `/ll:refine-issue`:_
+
+- **BUG-2959 duplicates this issue's own Implementation Step 4 / worker_pool.py
+  fix — now cross-linked in `relates_to`.** BUG-2959 ("worker_pool drops
+  baseline_sha from verify_work_was_done") describes the exact same defect
+  and the exact same remedy as this issue's Step 4 and Integration Map entry
+  for `scripts/little_loops/parallel/worker_pool.py`: capture the worktree's
+  pre-implement `HEAD`/commit and thread it into `_verify_work_was_done` →
+  `verify_work_was_done` as `baseline_sha`, which the call at
+  `worker_pool.py:1242-1244` currently omits entirely. BUG-2959 already listed
+  this issue in its own `relates_to` but the link wasn't reciprocated here.
+  **Implementer note**: fixing Step 4 in this issue's PR will very likely
+  close BUG-2959 as a side effect (or vice versa) — check BUG-2959's status
+  before starting Step 4 to avoid double implementation, and close whichever
+  issue doesn't end up carrying the actual commit.
+- **`fsm/executor.py`'s tamper-guard bracket has grown since this issue's
+  Program Design/Codebase Research Findings sections were last written** —
+  commit `9b5991dc` (BUG-2962, already landed on `main`) added a second
+  compare-on-exit call site for `next:`-chained routing. The bracket now
+  spans `_execute_state` (`L1408`) through a new `_check_tamper_guard` call
+  at `L1484-1488` (routing-chain path) and the original compare-on-exit call
+  now at `L1537-1541` (on_yes/on_no/on_error path), not `L1407-1474` as
+  previously cited. The shared logic was extracted into a `_check_tamper_guard`
+  helper (`L1336-1384+`). This drift is incidental to BUG-2954's own fix (the
+  FSM path stays byte-strict either way, `finding_filter` is never passed to
+  it) — noted only so a future citation of "the FSM bracket" points at the
+  right lines.
+- **In-repo precedents for the Program Design's proposed AST-parsing
+  functions** — `measure_test_strength` doesn't need to invent its `ast`
+  error-handling shape from scratch:
+  - `scripts/little_loops/codequery/fallback.py:_parse_ast()` is the closest
+    precedent: `ast.parse(source)` wrapped in `try/except SyntaxError: return
+    None`, with `OSError` on file-read handled as a separate, earlier
+    `try/except`. Its callers (`defines()`, `callees_of()`) treat `None` as
+    "skip this file" — the same conservative-fallback contract this issue's
+    Program Design already specifies for `measure_test_strength`.
+  - `scripts/little_loops/observability/audit.py:_ast_extract_event_types()`
+    and `_audit_python_file()` show the sibling shape for a source-string
+    (not path) entry point, with the explicit documented convention: "Errors
+    (file unreadable, `ast.parse` failure) are silently swallowed — a single
+    bad file must not abort the whole audit."
+  - No existing code detects `pytest.mark.skip`/`xfail` decorators anywhere
+    in the codebase (`decorator_list` inspection for `skip_markers` is a
+    pattern novel to this fix) — but `fallback.py`'s `defines()` already
+    walks `ast.FunctionDef` node attributes (`node.name`, `node.lineno`) in
+    the same access style `node.decorator_list` would use.
+  - `TamperFinding`/`TamperReport` in this same file (`test_tamper_guard.py`)
+    are the style precedent for the new `TestStrength` dataclass: flat
+    `int`/`str`/`Literal` fields, `field(default_factory=...)` only for
+    mutable-container fields, one-line docstring, module-level (not nested).
+  - `FindingFilter`'s `Callable[[...], ...] | None = None` typing matches the
+    house convention (`fsm/runners.py`'s `on_output_line`,
+    `worker_pool.py`'s `on_complete`/`on_usage`) — modern union syntax, not
+    `Optional[Callable[...]]`. No existing hook in the codebase *filters a
+    list* before a downstream enforcement step the way `finding_filter` will
+    (it's a novel shape here), but the typing/naming convention to match is
+    established.
+  - No test in the codebase currently exercises the unparseable-but-readable
+    (`SyntaxError`, as opposed to unreadable/`OSError`) branch of an
+    ast-parsing helper — `test_des_audit.py`'s
+    `test_unreadable_file_does_not_crash` only covers the `OSError` case (a
+    directory disguised as a `.py` file). The new
+    `measure_test_strength`/unparseable-source test in
+    `test_test_tamper_guard.py` will be the first in-repo test of that
+    specific fallback path; follow `test_test_tamper_guard.py`'s existing
+    `tmp_path` + `write_text(...)` fixture convention
+    (`TestSnapshotTestPaths.test_hashes_existing_file_content`).
+
 ## Program Design
 
 ### Types
@@ -553,6 +624,9 @@ parameter no longer exists in the design — there is no signature change to
 `verify_work_was_done`._
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-01T05:11:28 - `89aac650-126a-40ba-aa5b-740691da5de0.jsonl`
+- `/ll:confidence-check` - 2026-08-01T05:09:38 - `56dd8eba-fb22-4538-a2cd-28267172bda3.jsonl`
+- `/ll:refine-issue` - 2026-08-01T05:01:58 - `dbb7143c-aaa2-4903-aa2e-cc981ada388b.jsonl`
 - `/ll:confidence-check` - 2026-07-31T12:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ec700af2-9c25-4180-8af6-ec476533987d.jsonl`
 - `/ll:reconcile-issue` - 2026-07-31 - design review: rejected the
   snapshot-window remedy as structurally inert on the non-FSM path, adopted

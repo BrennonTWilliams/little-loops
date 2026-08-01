@@ -4,9 +4,12 @@ Tests cover:
 - snapshot_test_paths hashing (present/missing paths)
 - compare_snapshots finding-kind detection (modified/deleted/added)
 - resolved_pytest_config_paths priority order across config file kinds
+- resolved_pytest_config_targets / hash_config_target section-scoped
+  comparison for multi-purpose config files (BUG-2957)
 - apply_tamper_policy's revert/fail/allow matrix (tracked vs untracked)
 - run_tamper_guard end-to-end scenarios (commented-out assertion, skip
-  marker, deleted/added test file, untouched tests, config-only tamper)
+  marker, deleted/added test file, untouched tests, config-only tamper,
+  pyproject.toml section-scoped tamper)
 - the fsm/issue_manager/worker_pool/work_verification import boundary
 """
 
@@ -21,13 +24,21 @@ import pytest
 
 from little_loops.test_tamper_guard import (
     DEFAULT_TAMPER_POLICY,
+    ConfigTarget,
     TamperFinding,
     TamperPolicy,
     TamperReport,
     TamperSnapshot,
+    TestStrength,
     apply_tamper_policy,
     compare_snapshots,
+    filter_weakening_findings,
+    hash_config_target,
+    is_weakening,
+    measure_test_strength,
+    read_paths_at_ref,
     resolved_pytest_config_paths,
+    resolved_pytest_config_targets,
     run_tamper_guard,
     snapshot_test_paths,
     snapshot_test_paths_at_ref,
@@ -44,9 +55,7 @@ def _config_with_patterns(patterns: list[str]) -> SimpleNamespace:
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", *args], cwd=repo, capture_output=True, text=True, check=True
-    )
+    return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=True)
 
 
 def _init_repo(path: Path) -> Path:
@@ -150,6 +159,87 @@ class TestResolvedPytestConfigPaths:
 
     def test_no_config_files_returns_empty(self, tmp_path: Path) -> None:
         assert resolved_pytest_config_paths(tmp_path) == []
+
+
+class TestResolvedPytestConfigTargets:
+    """BUG-2957: section-aware successor to resolved_pytest_config_paths."""
+
+    def test_pytest_ini_has_no_section(self, tmp_path: Path) -> None:
+        (tmp_path / "pytest.ini").write_text("[pytest]\n")
+        targets = resolved_pytest_config_targets(tmp_path)
+        assert targets == [ConfigTarget(path="pytest.ini", section=None)]
+
+    def test_pyproject_ini_options_gets_section(self, tmp_path: Path) -> None:
+        (tmp_path / "pyproject.toml").write_text(
+            "[tool.pytest.ini_options]\ntestpaths = ['tests']\n"
+        )
+        targets = resolved_pytest_config_targets(tmp_path)
+        assert targets == [
+            ConfigTarget(path="pyproject.toml", section=("tool", "pytest", "ini_options"))
+        ]
+
+    def test_tox_ini_has_no_section(self, tmp_path: Path) -> None:
+        (tmp_path / "tox.ini").write_text("[pytest]\ntestpaths = tests\n")
+        targets = resolved_pytest_config_targets(tmp_path)
+        assert targets == [ConfigTarget(path="tox.ini", section=None)]
+
+    def test_setup_cfg_has_no_section(self, tmp_path: Path) -> None:
+        (tmp_path / "setup.cfg").write_text("[tool:pytest]\ntestpaths = tests\n")
+        assert resolved_pytest_config_targets(tmp_path) == [
+            ConfigTarget(path="setup.cfg", section=None)
+        ]
+
+    def test_no_config_files_returns_empty(self, tmp_path: Path) -> None:
+        assert resolved_pytest_config_targets(tmp_path) == []
+
+    def test_paths_wrapper_matches_targets(self, tmp_path: Path) -> None:
+        (tmp_path / "pyproject.toml").write_text(
+            "[tool.pytest.ini_options]\ntestpaths = ['tests']\n"
+        )
+        targets = resolved_pytest_config_targets(tmp_path)
+        assert resolved_pytest_config_paths(tmp_path) == [t.path for t in targets]
+
+
+class TestHashConfigTarget:
+    """BUG-2957: section-scoped hashing so unrelated pyproject.toml edits don't trip."""
+
+    def test_no_section_hashes_whole_source(self) -> None:
+        target = ConfigTarget(path="pytest.ini", section=None)
+        source = "[pytest]\ntestpaths = tests\n"
+        assert hash_config_target(source, target) == hash_config_target(source, target)
+        assert hash_config_target(source, target) != hash_config_target(source + "x", target)
+
+    def test_edit_outside_section_does_not_change_hash(self) -> None:
+        target = ConfigTarget(path="pyproject.toml", section=("tool", "pytest", "ini_options"))
+        before = (
+            '[project]\nversion = "1.0.0"\n\n[tool.pytest.ini_options]\ntestpaths = ["tests"]\n'
+        )
+        after = '[project]\nversion = "1.0.1"\n\n[tool.pytest.ini_options]\ntestpaths = ["tests"]\n'
+        assert hash_config_target(before, target) == hash_config_target(after, target)
+
+    def test_edit_inside_section_changes_hash(self) -> None:
+        target = ConfigTarget(path="pyproject.toml", section=("tool", "pytest", "ini_options"))
+        before = (
+            '[project]\nversion = "1.0.0"\n\n[tool.pytest.ini_options]\ntestpaths = ["tests"]\n'
+        )
+        after = (
+            '[project]\nversion = "1.0.0"\n\n'
+            '[tool.pytest.ini_options]\ntestpaths = ["tests"]\naddopts = "-p no:randomly"\n'
+        )
+        assert hash_config_target(before, target) != hash_config_target(after, target)
+
+    def test_unparseable_toml_falls_back_to_whole_source(self) -> None:
+        target = ConfigTarget(path="pyproject.toml", section=("tool", "pytest", "ini_options"))
+        before = "not valid toml [[["
+        after = "not valid toml [[[ either"
+        assert hash_config_target(before, target) != hash_config_target(after, target)
+        assert hash_config_target(before, target) == hash_config_target(before, target)
+
+    def test_missing_section_falls_back_to_whole_source(self) -> None:
+        target = ConfigTarget(path="pyproject.toml", section=("tool", "pytest", "ini_options"))
+        source = "[tool.ruff]\nline-length = 100\n"
+        assert hash_config_target(source, target) == hash_config_target(source, target)
+        assert hash_config_target(source, target) != hash_config_target(source + "x", target)
 
 
 class TestSnapshotTestPathsAtRef:
@@ -405,6 +495,81 @@ class TestRunTamperGuard:
         assert report.findings[0].is_config is True
         assert report.findings[0].path == "pytest.ini"
 
+    def test_pyproject_version_bump_does_not_trip(self, tmp_path: Path) -> None:
+        """BUG-2957: an unrelated edit to pyproject.toml must not veto completion."""
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "pyproject.toml").write_text(
+            '[project]\nversion = "1.0.0"\n\n[tool.pytest.ini_options]\ntestpaths = ["tests"]\n'
+        )
+        _git(repo, "add", "pyproject.toml")
+        _git(repo, "commit", "-m", "add pyproject config")
+
+        config = _config_with_patterns(["**/test_*.py"])
+        before = snapshot_test_paths(["pyproject.toml"], repo)
+        (repo / "pyproject.toml").write_text(
+            '[project]\nversion = "1.0.1"\n\n[tool.pytest.ini_options]\ntestpaths = ["tests"]\n'
+        )
+
+        report = run_tamper_guard(before, [], config, "fail", repo)
+        assert report.findings == []
+        assert report.passed is True
+
+    def test_pyproject_ini_options_edit_trips(self, tmp_path: Path) -> None:
+        """BUG-2957: an edit inside [tool.pytest.ini_options] must still be caught."""
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "pyproject.toml").write_text(
+            '[project]\nversion = "1.0.0"\n\n[tool.pytest.ini_options]\ntestpaths = ["tests"]\n'
+        )
+        _git(repo, "add", "pyproject.toml")
+        _git(repo, "commit", "-m", "add pyproject config")
+
+        config = _config_with_patterns(["**/test_*.py"])
+        before = snapshot_test_paths(["pyproject.toml"], repo)
+        (repo / "pyproject.toml").write_text(
+            '[project]\nversion = "1.0.0"\n\n'
+            '[tool.pytest.ini_options]\ntestpaths = ["tests"]\n'
+            'addopts = "-p no:randomly"\n'
+        )
+
+        report = run_tamper_guard(before, [], config, "fail", repo)
+        assert len(report.findings) == 1
+        assert report.findings[0].path == "pyproject.toml"
+        assert report.passed is False
+
+    def test_pytest_ini_whole_file_behavior_unchanged(self, tmp_path: Path) -> None:
+        """BUG-2957: pytest.ini (no section) keeps whole-file comparison."""
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "pytest.ini").write_text("[pytest]\ntestpaths = tests\n")
+        _git(repo, "add", "pytest.ini")
+        _git(repo, "commit", "-m", "add pytest config")
+
+        config = _config_with_patterns(["**/test_*.py"])
+        before = snapshot_test_paths(["pytest.ini"], repo)
+        (repo / "pytest.ini").write_text("[pytest]\ntestpaths = tests\n# a comment\n")
+
+        report = run_tamper_guard(before, [], config, "fail", repo)
+        assert len(report.findings) == 1
+        assert report.findings[0].is_config is True
+        assert report.findings[0].path == "pytest.ini"
+
+    def test_unparseable_pyproject_falls_back_to_whole_file(self, tmp_path: Path) -> None:
+        """BUG-2957: unparseable TOML fails closed rather than silently passing."""
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "pyproject.toml").write_text(
+            '[project]\nversion = "1.0.0"\n\n[tool.pytest.ini_options]\ntestpaths = ["tests"]\n'
+        )
+        _git(repo, "add", "pyproject.toml")
+        _git(repo, "commit", "-m", "add pyproject config")
+
+        config = _config_with_patterns(["**/test_*.py"])
+        before = snapshot_test_paths(["pyproject.toml"], repo)
+        (repo / "pyproject.toml").write_text("not valid toml [[[")
+
+        report = run_tamper_guard(before, [], config, "fail", repo)
+        assert len(report.findings) == 1
+        assert report.findings[0].path == "pyproject.toml"
+        assert report.passed is False
+
     @pytest.mark.parametrize("policy", ["revert", "fail", "allow"])
     def test_report_always_includes_findings_regardless_of_policy(
         self, tmp_path: Path, policy: TamperPolicy
@@ -421,6 +586,199 @@ class TestRunTamperGuard:
         report = run_tamper_guard(before, ["test_x.py"], config, policy, repo)
         assert len(report.findings) == 1
         assert report.policy == policy
+
+
+class TestMeasureTestStrength:
+    """BUG-2954: content-aware strength metric feeding the weakening classifier."""
+
+    def test_non_python_path_returns_none(self) -> None:
+        assert measure_test_strength("[pytest]\n", "pytest.ini") is None
+
+    def test_unparseable_source_returns_none(self) -> None:
+        assert measure_test_strength("def test_x(:\n    pass\n", "test_x.py") is None
+
+    def test_counts_asserts_test_functions_and_skip_markers(self) -> None:
+        source = (
+            "import pytest\n\n"
+            "def test_a():\n"
+            "    assert 1 == 1\n"
+            "    assert 2 == 2\n\n"
+            "@pytest.mark.skip\n"
+            "def test_b():\n"
+            "    pytest.skip('nope')\n\n"
+            "class T:\n"
+            "    def test_c(self):\n"
+            "        self.assertEqual(1, 1)\n"
+            "        with pytest.raises(ValueError):\n"
+            "            raise ValueError\n"
+        )
+        strength = measure_test_strength(source, "test_x.py")
+        assert strength is not None
+        assert strength.test_functions == 3
+        # 2 asserts + self.assertEqual + pytest.raises = 4
+        assert strength.assertions == 4
+        # @pytest.mark.skip decorator + pytest.skip(...) call = 2
+        assert strength.skip_markers == 2
+
+    def test_xfail_decorator_counts_as_skip_marker(self) -> None:
+        source = "import pytest\n\n@pytest.mark.xfail\ndef test_a():\n    assert True\n"
+        strength = measure_test_strength(source, "test_x.py")
+        assert strength is not None
+        assert strength.skip_markers == 1
+
+    def test_empty_source_has_zero_counts(self) -> None:
+        strength = measure_test_strength("", "test_x.py")
+        assert strength == TestStrength(assertions=0, test_functions=0, skip_markers=0)
+
+
+class TestIsWeakening:
+    """BUG-2954: is_weakening discriminates tampering from legitimate additive edits."""
+
+    def test_adding_a_test_case_is_not_weakening(self) -> None:
+        before = "def test_a():\n    assert True\n"
+        after = "def test_a():\n    assert True\n\ndef test_b():\n    assert True\n"
+        assert is_weakening(before, after, "test_x.py") is False
+
+    def test_removing_an_assertion_is_weakening(self) -> None:
+        before = "def test_a():\n    assert 1 == 1\n    assert 2 == 2\n"
+        after = "def test_a():\n    assert 1 == 1\n"
+        assert is_weakening(before, after, "test_x.py") is True
+
+    def test_deleting_a_test_function_is_weakening(self) -> None:
+        before = "def test_a():\n    assert True\n\ndef test_b():\n    assert True\n"
+        after = "def test_a():\n    assert True\n"
+        assert is_weakening(before, after, "test_x.py") is True
+
+    def test_adding_a_skip_marker_is_weakening(self) -> None:
+        before = "def test_a():\n    assert True\n"
+        after = "import pytest\n\n@pytest.mark.skip\ndef test_a():\n    assert True\n"
+        assert is_weakening(before, after, "test_x.py") is True
+
+    def test_unmeasurable_side_is_conservatively_weakening(self) -> None:
+        before = "def test_a():\n    assert True\n"
+        after = "def test_a((:\n    pass\n"
+        assert is_weakening(before, after, "test_x.py") is True
+
+
+class TestReadPathsAtRef:
+    def test_reads_text_content_at_ref(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "test_x.py").write_text("def test_x(): assert True\n")
+        _git(repo, "add", "test_x.py")
+        _git(repo, "commit", "-m", "add test")
+
+        texts = read_paths_at_ref(repo, "HEAD", ["test_x.py"])
+        assert texts["test_x.py"] == "def test_x(): assert True\n"
+
+    def test_path_absent_at_ref_maps_to_none(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "README.md").write_text("hi\n")
+        _git(repo, "add", "README.md")
+        _git(repo, "commit", "-m", "init")
+
+        texts = read_paths_at_ref(repo, "HEAD", ["test_new.py"])
+        assert texts["test_new.py"] is None
+
+
+class TestFilterWeakeningFindings:
+    """BUG-2954: the classifier applied by _run_non_fsm_tamper_guard via finding_filter."""
+
+    def test_additive_edit_to_existing_file_is_dropped(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "test_x.py").write_text("def test_a():\n    assert True\n")
+        _git(repo, "add", "test_x.py")
+        _git(repo, "commit", "-m", "add test")
+        (repo / "test_x.py").write_text(
+            "def test_a():\n    assert True\n\ndef test_b():\n    assert True\n"
+        )
+
+        finding = TamperFinding(path="test_x.py", kind="modified")
+        kept = filter_weakening_findings([finding], repo, "HEAD")
+        assert kept == []
+
+    def test_weakening_edit_is_kept(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "test_x.py").write_text("def test_a():\n    assert 1 == 1\n    assert 2 == 2\n")
+        _git(repo, "add", "test_x.py")
+        _git(repo, "commit", "-m", "add test")
+        (repo / "test_x.py").write_text("def test_a():\n    assert 1 == 1\n")
+
+        finding = TamperFinding(path="test_x.py", kind="modified")
+        kept = filter_weakening_findings([finding], repo, "HEAD")
+        assert kept == [finding]
+
+    def test_deleted_finding_always_kept(self, tmp_path: Path) -> None:
+        finding = TamperFinding(path="test_x.py", kind="deleted")
+        kept = filter_weakening_findings([finding], Path("/nonexistent"), "HEAD")
+        assert kept == [finding]
+
+    def test_added_finding_always_dropped(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        finding = TamperFinding(path="test_new.py", kind="added")
+        kept = filter_weakening_findings([finding], repo, "HEAD")
+        assert kept == []
+
+    def test_config_finding_always_kept(self, tmp_path: Path) -> None:
+        finding = TamperFinding(path="pytest.ini", kind="modified", is_config=True)
+        kept = filter_weakening_findings([finding], Path("/nonexistent"), "HEAD")
+        assert kept == [finding]
+
+
+class TestRunTamperGuardFindingFilter:
+    """BUG-2954: the optional finding_filter hook, and FSM-default preservation."""
+
+    def test_default_finding_filter_is_none_and_unaffected(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "test_x.py").write_text("def test_x(): assert True\n")
+        _git(repo, "add", "test_x.py")
+        _git(repo, "commit", "-m", "add test")
+
+        config = _config_with_patterns(["**/test_*.py"])
+        before = snapshot_test_paths(["test_x.py"], repo)
+        (repo / "test_x.py").write_text("def test_x(): assert True\n\ndef test_y(): assert True\n")
+
+        # No finding_filter passed -> byte-level strictness, same as the FSM adapter.
+        report = run_tamper_guard(before, ["test_x.py"], config, "fail", repo)
+        assert len(report.findings) == 1
+        assert report.passed is False
+
+    def test_finding_filter_drops_additive_edit(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "test_x.py").write_text("def test_x(): assert True\n")
+        _git(repo, "add", "test_x.py")
+        _git(repo, "commit", "-m", "add test")
+
+        config = _config_with_patterns(["**/test_*.py"])
+        before = snapshot_test_paths(["test_x.py"], repo)
+        (repo / "test_x.py").write_text("def test_x(): assert True\n\ndef test_y(): assert True\n")
+
+        from functools import partial
+
+        finding_filter = partial(filter_weakening_findings, repo_root=repo, ref="HEAD")
+        report = run_tamper_guard(
+            before, ["test_x.py"], config, "fail", repo, finding_filter=finding_filter
+        )
+        assert report.findings == []
+        assert report.passed is True
+
+    def test_finding_filter_keeps_weakening_edit(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "test_x.py").write_text("def test_x():\n    assert 1 == 1\n    assert 2 == 2\n")
+        _git(repo, "add", "test_x.py")
+        _git(repo, "commit", "-m", "add test")
+
+        config = _config_with_patterns(["**/test_*.py"])
+        before = snapshot_test_paths(["test_x.py"], repo)
+        (repo / "test_x.py").write_text("def test_x():\n    assert 1 == 1\n")
+
+        from functools import partial
+
+        finding_filter = partial(filter_weakening_findings, repo_root=repo, ref="HEAD")
+        report = run_tamper_guard(
+            before, ["test_x.py"], config, "fail", repo, finding_filter=finding_filter
+        )
+        assert len(report.findings) == 1
+        assert report.passed is False
 
 
 class TestNoDependencyOnAdapters:

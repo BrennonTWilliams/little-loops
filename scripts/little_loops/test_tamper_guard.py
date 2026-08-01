@@ -10,9 +10,12 @@ this module never calls into either adapter.
 
 from __future__ import annotations
 
+import ast
 import hashlib
+import json
 import subprocess
 import tomllib
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -44,6 +47,30 @@ class TamperReport:
     passed: bool = True
 
 
+@dataclass
+class TestStrength:
+    assertions: int
+    test_functions: int
+    skip_markers: int
+
+
+@dataclass
+class ConfigTarget:
+    """A pytest config file plus the sub-document that governs test selection.
+
+    ``section`` is a dotted TOML table path (e.g. ``("tool", "pytest",
+    "ini_options")``) for a multi-purpose config file like ``pyproject.toml``,
+    or None for a single-purpose file (``pytest.ini``) where the whole file
+    is already pytest-scoped and gets whole-file comparison.
+    """
+
+    path: str
+    section: tuple[str, ...] | None
+
+
+FindingFilter = Callable[[list[TamperFinding]], list[TamperFinding]]
+
+
 def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -60,9 +87,37 @@ def _sha256_file(path: Path) -> str | None:
 def snapshot_test_paths(paths: list[str], repo_root: Path) -> TamperSnapshot:
     """Hash the on-disk content of *paths* (relative to *repo_root*).
 
-    A path missing or unreadable at snapshot time maps to None.
+    A path missing or unreadable at snapshot time maps to None. A path that
+    is a section-scoped config target (``ConfigTarget.section`` set, e.g.
+    ``pyproject.toml``'s ``[tool.pytest.ini_options]``) is hashed by its
+    selected section only, so edits elsewhere in the file are invisible to
+    the guard; every other path is hashed whole-file as before.
     """
-    return {path: _sha256_file(repo_root / path) for path in paths}
+    section_targets = {
+        target.path: target
+        for target in resolved_pytest_config_targets(repo_root)
+        if target.section is not None
+    }
+    snapshot: TamperSnapshot = {}
+    for path in paths:
+        target = section_targets.get(path)
+        if target is not None:
+            text = _read_text_or_none(repo_root / path)
+            snapshot[path] = hash_config_target(text, target) if text is not None else None
+        else:
+            snapshot[path] = _sha256_file(repo_root / path)
+    return snapshot
+
+
+def read_paths_at_ref(repo_root: Path, ref: str, paths: list[str]) -> dict[str, str | None]:
+    """Read *paths* as they existed at git *ref*, returning source text (not hashes).
+
+    The text-returning sibling of ``snapshot_test_paths_at_ref`` -- factors out
+    the shared ``git show {ref}:{path}`` call so there is one implementation.
+    A path absent at *ref* maps to None, matching ``snapshot_test_paths_at_ref``'s
+    missing-file convention.
+    """
+    return {path: _git(repo_root, "show", f"{ref}:{path}") for path in paths}
 
 
 def snapshot_test_paths_at_ref(repo_root: Path, ref: str, paths: list[str]) -> TamperSnapshot:
@@ -74,12 +129,25 @@ def snapshot_test_paths_at_ref(repo_root: Path, ref: str, paths: list[str]) -> T
     happened, so there is no such live moment to snapshot from -- this
     reconstructs the equivalent "before" from the git object store instead. A
     path absent at *ref* (added since) maps to None, matching
-    ``snapshot_test_paths``'s missing-file convention.
+    ``snapshot_test_paths``'s missing-file convention. Section-scoped config
+    targets are hashed by their selected section only, matching
+    ``snapshot_test_paths``'s section-aware behavior.
     """
+    texts = read_paths_at_ref(repo_root, ref, paths)
+    section_targets = {
+        target.path: target
+        for target in resolved_pytest_config_targets(repo_root)
+        if target.section is not None
+    }
     snapshot: TamperSnapshot = {}
-    for path in paths:
-        proc = _git(repo_root, "show", f"{ref}:{path}")
-        snapshot[path] = _sha256_bytes(proc.encode()) if proc is not None else None
+    for path, text in texts.items():
+        if text is None:
+            snapshot[path] = None
+            continue
+        target = section_targets.get(path)
+        snapshot[path] = (
+            hash_config_target(text, target) if target is not None else _sha256_bytes(text.encode())
+        )
     return snapshot
 
 
@@ -101,9 +169,7 @@ def tamper_guard_candidate_paths(repo_root: Path, config: BRConfig | None = None
         return sorted(set(config_paths))
     all_paths = [line for line in ls_files_out.splitlines() if line]
     effective_config = config if config is not None else BRConfig(repo_root)
-    return sorted(
-        set(filter_test_files(all_paths, config=effective_config)) | set(config_paths)
-    )
+    return sorted(set(filter_test_files(all_paths, config=effective_config)) | set(config_paths))
 
 
 def tamper_guard_changed_files(repo_root: Path) -> list[str]:
@@ -146,6 +212,119 @@ def compare_snapshots(before: TamperSnapshot, after: TamperSnapshot) -> list[Tam
     return findings
 
 
+def _decorator_name(node: ast.expr) -> str:
+    """Return the dotted/attribute name of a decorator node, or "" if not resolvable."""
+    if isinstance(node, ast.Call):
+        return _decorator_name(node.func)
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    if isinstance(node, ast.Name):
+        return node.id
+    return ""
+
+
+def _call_name(node: ast.expr) -> str:
+    """Return the dotted call target's final attribute/name, or "" if not resolvable."""
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    if isinstance(node, ast.Name):
+        return node.id
+    return ""
+
+
+def measure_test_strength(source: str, path: str) -> TestStrength | None:
+    """Measure a Python test file's strength: assertion, test-function, and skip-marker counts.
+
+    Counts ``ast.Assert`` nodes plus ``self.assert*``/``pytest.raises`` calls as
+    assertions, ``FunctionDef``/``AsyncFunctionDef`` nodes named ``test*`` as test
+    functions, and ``skip``/``xfail`` decorators or ``pytest.skip(...)`` calls as
+    skip markers.
+
+    Returns None for a non-Python *path* or an unparseable *source* -- callers
+    must treat that conservatively (finding kept, per ``is_weakening``).
+    """
+    if not path.endswith(".py"):
+        return None
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return None
+
+    assertions = 0
+    test_functions = 0
+    skip_markers = 0
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assert):
+            assertions += 1
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.name.startswith("test"):
+                test_functions += 1
+            for decorator in node.decorator_list:
+                if _decorator_name(decorator) in ("skip", "xfail"):
+                    skip_markers += 1
+        elif isinstance(node, ast.Call):
+            name = _call_name(node.func)
+            if name.startswith("assert") or name == "raises":
+                assertions += 1
+            elif name == "skip":
+                skip_markers += 1
+
+    return TestStrength(
+        assertions=assertions, test_functions=test_functions, skip_markers=skip_markers
+    )
+
+
+def is_weakening(before_src: str, after_src: str, path: str) -> bool:
+    """True when *after_src* weakens *before_src* for the test file at *path*.
+
+    Weakening is: fewer assertions, fewer test functions, more skip/xfail
+    markers, or either side being unmeasurable (non-Python or unparseable --
+    conservative fallback per ``measure_test_strength``'s contract).
+    """
+    before = measure_test_strength(before_src, path)
+    after = measure_test_strength(after_src, path)
+    if before is None or after is None:
+        return True
+    return (
+        after.assertions < before.assertions
+        or after.test_functions < before.test_functions
+        or after.skip_markers > before.skip_markers
+    )
+
+
+def filter_weakening_findings(
+    findings: list[TamperFinding], repo_root: Path, ref: str
+) -> list[TamperFinding]:
+    """Keep only findings that represent an actual weakening of the test suite.
+
+    Keeps every ``deleted`` finding and every ``is_config`` finding
+    unconditionally (a deletion or a pytest-config edit is not measurable by
+    source strength), keeps each ``modified`` finding whose ``is_weakening``
+    is True, and drops ``added`` findings entirely -- a new test file cannot
+    weaken the suite.
+    """
+    modified_paths = [f.path for f in findings if f.kind == "modified" and not f.is_config]
+    before_texts = read_paths_at_ref(repo_root, ref, modified_paths)
+    after_texts = {path: _read_text(repo_root / path) for path in modified_paths}
+
+    kept: list[TamperFinding] = []
+    for finding in findings:
+        if finding.is_config or finding.kind == "deleted":
+            kept.append(finding)
+        elif finding.kind == "modified":
+            before_src = before_texts.get(finding.path)
+            after_src = after_texts.get(finding.path)
+            if (
+                before_src is None
+                or after_src is None
+                or is_weakening(before_src, after_src, finding.path)
+            ):
+                kept.append(finding)
+        # "added" findings are dropped.
+    return kept
+
+
 def _read_toml(path: Path) -> dict | None:
     try:
         return tomllib.loads(path.read_text())
@@ -160,31 +339,79 @@ def _read_text(path: Path) -> str:
         return ""
 
 
-def resolved_pytest_config_paths(repo_root: Path) -> list[str]:
-    """Return the pytest config file(s) pytest actually reads for this repo.
+def _read_text_or_none(path: Path) -> str | None:
+    try:
+        return path.read_text()
+    except OSError:
+        return None
+
+
+def resolved_pytest_config_targets(repo_root: Path) -> list[ConfigTarget]:
+    """Return the pytest config target(s) pytest actually reads for this repo.
 
     Priority order: ``pytest.ini`` > ``pyproject.toml``
     ``[tool.pytest.ini_options]`` > ``tox.ini`` ``[pytest]`` >
     ``setup.cfg`` ``[tool:pytest]`` -- matching pytest's own discovery order.
+    Only ``pyproject.toml`` -- a multi-purpose file -- gets a section
+    selector; the rest are already pytest-scoped end to end.
     """
     if (repo_root / "pytest.ini").is_file():
-        return ["pytest.ini"]
+        return [ConfigTarget(path="pytest.ini", section=None)]
 
     pyproject = repo_root / "pyproject.toml"
     if pyproject.is_file():
         data = _read_toml(pyproject)
         if data is not None and "ini_options" in data.get("tool", {}).get("pytest", {}):
-            return ["pyproject.toml"]
+            return [ConfigTarget(path="pyproject.toml", section=("tool", "pytest", "ini_options"))]
 
     tox_ini = repo_root / "tox.ini"
     if tox_ini.is_file() and "[pytest]" in _read_text(tox_ini):
-        return ["tox.ini"]
+        return [ConfigTarget(path="tox.ini", section=None)]
 
     setup_cfg = repo_root / "setup.cfg"
     if setup_cfg.is_file() and "[tool:pytest]" in _read_text(setup_cfg):
-        return ["setup.cfg"]
+        return [ConfigTarget(path="setup.cfg", section=None)]
 
     return []
+
+
+def resolved_pytest_config_paths(repo_root: Path) -> list[str]:
+    """Thin compatibility wrapper over ``resolved_pytest_config_targets``.
+
+    Returns just the paths, for callers that only need the candidate-path
+    set (not the section-scoping metadata) -- e.g. building the union of
+    test-file and config paths to snapshot.
+    """
+    return [target.path for target in resolved_pytest_config_targets(repo_root)]
+
+
+def hash_config_target(source: str, target: ConfigTarget) -> str:
+    """Hash the canonicalized selected section of *source*, or the whole source.
+
+    When ``target.section`` is None, or the section cannot be extracted
+    (unparseable TOML, or the section is absent), falls back to whole-source
+    hashing -- fail-closed, so an unparseable config still produces a
+    finding rather than silently passing.
+    """
+    if target.section is not None:
+        try:
+            data = tomllib.loads(source)
+        except tomllib.TOMLDecodeError:
+            data = None
+        if data is not None:
+            node: object = data
+            for key in target.section:
+                if not isinstance(node, dict) or key not in node:
+                    node = None
+                    break
+                node = node[key]
+            if node is not None:
+                try:
+                    blob = json.dumps(node, sort_keys=True, default=str)
+                except TypeError:
+                    blob = repr(node)
+                return _sha256_bytes(blob.encode("utf-8"))
+    return _sha256_bytes(source.encode("utf-8"))
 
 
 def _git(repo_root: Path, *args: str) -> str | None:
@@ -255,6 +482,7 @@ def run_tamper_guard(
     config: BRConfig,
     policy: TamperPolicy,
     repo_root: Path,
+    finding_filter: FindingFilter | None = None,
 ) -> TamperReport:
     """Compare a pre-step *before* snapshot against current on-disk state and
     act per *policy*.
@@ -266,6 +494,12 @@ def run_tamper_guard(
     of files touched by the step (e.g. from a post-step ``git diff``); it
     covers paths -- like a newly added test file -- that could not have been
     in *before*'s path set.
+
+    *finding_filter*, when given, runs after ``compare_snapshots`` and the
+    ``is_config`` tagging but before ``apply_tamper_policy`` -- e.g. narrowing
+    byte-level findings down to ones that represent an actual weakening of the
+    test suite (BUG-2954). Defaults to None so callers that never pass it
+    (the FSM adapter) keep full byte-level strictness, unaffected.
     """
     config_paths = resolved_pytest_config_paths(repo_root)
     after_paths = sorted(
@@ -276,4 +510,6 @@ def run_tamper_guard(
     config_path_set = set(config_paths)
     for finding in findings:
         finding.is_config = finding.path in config_path_set
+    if finding_filter is not None:
+        findings = finding_filter(findings)
     return apply_tamper_policy(policy, findings, repo_root)

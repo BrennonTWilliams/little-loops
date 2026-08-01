@@ -1119,16 +1119,30 @@ def process_issue_inplace(
                         else:
                             logger.warning(f"Fallback completion failed for {info.issue_id}")
                     else:
-                        # NO work was done - do NOT mark as completed
-                        logger.error(
-                            f"REFUSING to mark {info.issue_id} as completed: "
-                            "no code changes detected despite returncode 0"
+                        # BUG-2954: work_done is False for two distinct reasons -- no
+                        # changes exist at all, or changes exist but the tamper guard
+                        # vetoed them. Re-check changes alone (config=None skips the
+                        # guard) so the log names the real cause instead of always
+                        # reporting "no code changes detected".
+                        changes_exist = verify_work_was_done(
+                            logger, baseline_sha=_baseline_sha, config=None
                         )
-                        logger.error(
-                            "This likely indicates the command was not executed "
-                            "properly. Check command invocation and Claude CLI "
-                            "output."
-                        )
+                        if changes_exist:
+                            logger.error(
+                                f"REFUSING to mark {info.issue_id} as completed: "
+                                "tamper guard vetoed the changes (see 'Tamper guard' "
+                                "error above) despite returncode 0"
+                            )
+                        else:
+                            logger.error(
+                                f"REFUSING to mark {info.issue_id} as completed: "
+                                "no code changes detected despite returncode 0"
+                            )
+                            logger.error(
+                                "This likely indicates the command was not executed "
+                                "properly. Check command invocation and Claude CLI "
+                                "output."
+                            )
                         verified = False
         else:
             logger.info("Would verify issue moved to completed")
