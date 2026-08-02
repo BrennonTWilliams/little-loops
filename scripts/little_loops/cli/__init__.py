@@ -89,7 +89,6 @@ from little_loops.cli.sprint import (
 )
 from little_loops.cli.sync import main_sync
 from little_loops.cli.verify_cli_allowlist import main_verify_cli_allowlist
-from little_loops.cli.verify_cli_docs import main_verify_cli_docs
 from little_loops.cli.verify_decisions import main_verify_decisions
 from little_loops.cli.verify_des_audit import main_verify_des_audit
 from little_loops.cli.verify_design_tokens import main_verify_design_tokens
@@ -139,7 +138,6 @@ __all__ = [
     "main_sprint",
     "main_sync",
     "main_verify_cli_allowlist",
-    "main_verify_cli_docs",
     "main_verify_docs",
     "main_verify_design_tokens",
     "main_verify_decisions",

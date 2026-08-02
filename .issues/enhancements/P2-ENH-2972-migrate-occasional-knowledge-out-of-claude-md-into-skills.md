@@ -3,8 +3,9 @@ id: ENH-2972
 title: Migrate occasional-knowledge sections out of .claude/CLAUDE.md into skills
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-08-01T00:00:00Z'
+completed_at: '2026-08-02T16:14:04Z'
 discovered_date: 2026-08-01
 discovered_by: capture-issue
 relates_to:
@@ -287,6 +288,34 @@ precedent on each option:
 Not applicable — this is content relocation, not new behavior. No new module,
 no new data structure. The one design decision (Option A vs B) is resolved
 above.
+
+### Deviations
+
+- **2026-08-02, implementation**: the `ll-verify-cli-docs` disposition landed
+  as **option 3 (retire)**, not the recommended option 1 (repoint at
+  `docs/reference/CLI.md`). Rationale: `CLAUDE.md`'s bullet-per-tool format
+  (`` - `ll-x` - one-line desc ``) is what `parse_cli_section`/`_BULLET_RE`
+  were built to parse; `CLI.md`'s actual format is heterogeneous per tool
+  (markdown flag tables, `#### \`ll-loop run <loop>\`` subcommand headings,
+  multi-paragraph prose) with no single consistent shape to extract claims
+  from. A faithful repoint is a parser rewrite against that heterogeneity,
+  not a constant swap — larger than this issue's own estimate accounted for.
+  Retiring (deleting `verify_cli_docs.py`, its test file, and all
+  registrations: `pyproject.toml` entry point, `cli/__init__.py` import/export,
+  `writers.py` `_LL_PERMISSIONS`, `skills/configure/areas.md` preset) avoids
+  landing a half-faithful gate with unclear false-negative/false-positive
+  behavior. This was explicitly sanctioned as the fallback disposition ("(3)
+  is retained only as a fallback if repointing proves disproportionate to its
+  value") — a faithful repoint remains available as follow-up work if the
+  CLI-surface-drift gate is wanted back.
+- **2026-08-02, implementation**: `## Issue File Format`'s Supersession bullet
+  was trimmed further than Implementation Step 7 specified (which only called
+  for trimming the status-values bullet). The extra trim was needed to land
+  `## Loop Authoring` and `## Issue File Format` under the 250-token review
+  bar in practice — the estimates in Implementation Step 7 undercounted by
+  roughly 50-150 tokens per section once written out. No content was dropped,
+  only compressed (e.g. "the replacement relationship is a graph edge" →
+  implied by "declare `supersedes:`").
 
 ## Integration Map
 
@@ -583,6 +612,8 @@ _Added by `/ll:confidence-check` on 2026-08-01_
   rationale means the reason they failed is unknown and may still apply.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-02T16:13:50 - `7350086a-c582-4853-bc33-c455a6cf8d34.jsonl`
+- `/ll:ready-issue` - 2026-08-02T15:46:43 - `757e6b7e-c10a-4a24-9492-2b31e8e379e5.jsonl`
 - `/ll:confidence-check` - 2026-08-02T15:25:29 - `a1358346-8ae5-42ad-a887-83c483295720.jsonl`
 - pre-implementation review (round 2) - 2026-08-02 - `docs/reference/CLI.md`
   identified as the existing destination (flips the `ll-verify-cli-docs`

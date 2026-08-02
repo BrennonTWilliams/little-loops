@@ -422,7 +422,6 @@ Instead, update these files:
 | File | What to update |
 |------|---------------|
 | `docs/reference/CLI.md` | Full `### ll-<toolname>` section with flags and examples |
-| `.claude/CLAUDE.md` | One-line entry in the CLI Tools list |
 | `README.md` | Increment `"N CLI tools"` count only — no new section |
 | `scripts/pyproject.toml` `[project.scripts]` | Register the entry point |
 | `skills/configure/areas.md` | Add tool name to the "Authorize all ll- commands" preset |
