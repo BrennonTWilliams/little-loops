@@ -26,6 +26,7 @@ from little_loops.cli.verify_private_refs import (
     main_verify_private_refs,
     regressions,
     scan_file,
+    staged_added_lines,
     write_baseline,
 )
 
@@ -232,6 +233,70 @@ class TestCLI:
     def test_update_baseline_requires_all(self, tmp_path: Path) -> None:
         with pytest.raises(SystemExit):
             main_verify_private_refs(["-C", str(tmp_path), "--update-baseline", "x.md"])
+
+
+def _git_repo(tmp_path: Path) -> Path:
+    """Init a throwaway repo with one committed file carrying a private ref."""
+    subprocess.run(["git", "init", "-q", "."], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=tmp_path, check=True)
+    target = tmp_path / "f.md"
+    target.write_text(f"line1\nold {_HOME}/pre/x\nline3\n")
+    subprocess.run(["git", "add", "f.md"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-qm", "base"], cwd=tmp_path, check=True)
+    return target
+
+
+class TestAddedOnly:
+    """The pre-commit gate must judge added lines, not whole files.
+
+    Without this, editing any of the ~800 grandfathered files is rejected for
+    pre-existing content the author never touched — which punishes unrelated
+    work and trains people to bypass the gate.
+    """
+
+    def test_unrelated_edit_to_grandfathered_file_passes(self, tmp_path: Path) -> None:
+        target = _git_repo(tmp_path)
+        target.write_text(f"line1 EDITED\nold {_HOME}/pre/x\nline3\n")
+        subprocess.run(["git", "add", "f.md"], cwd=tmp_path, check=True)
+        assert main_verify_private_refs(["-C", str(tmp_path), "--added-only", "f.md"]) == 0
+
+    def test_newly_added_reference_is_still_caught(self, tmp_path: Path) -> None:
+        """The fix must not make the gate toothless."""
+        target = _git_repo(tmp_path)
+        target.write_text(f"line1\nold {_HOME}/pre/x\nline3\nnew {_HOME}/brand/new\n")
+        subprocess.run(["git", "add", "f.md"], cwd=tmp_path, check=True)
+        assert main_verify_private_refs(["-C", str(tmp_path), "--added-only", "f.md"]) == 1
+
+    def test_brand_new_file_is_fully_scanned(self, tmp_path: Path) -> None:
+        _git_repo(tmp_path)
+        (tmp_path / "g.md").write_text(f"ref {_HOME}/new/file\n")
+        subprocess.run(["git", "add", "g.md"], cwd=tmp_path, check=True)
+        assert main_verify_private_refs(["-C", str(tmp_path), "--added-only", "g.md"]) == 1
+
+    def test_without_flag_whole_file_is_judged(self, tmp_path: Path) -> None:
+        """Plain changed-files mode keeps its stricter contract (the hook uses it)."""
+        target = _git_repo(tmp_path)
+        target.write_text(f"line1 EDITED\nold {_HOME}/pre/x\nline3\n")
+        subprocess.run(["git", "add", "f.md"], cwd=tmp_path, check=True)
+        assert main_verify_private_refs(["-C", str(tmp_path), "f.md"]) == 1
+
+    def test_added_line_numbers_parsed_from_hunks(self, tmp_path: Path) -> None:
+        target = _git_repo(tmp_path)
+        target.write_text(f"line1\nold {_HOME}/pre/x\nline3\nadded4\n")
+        subprocess.run(["git", "add", "f.md"], cwd=tmp_path, check=True)
+        assert staged_added_lines(tmp_path, [Path("f.md")]) == {"f.md": {4}}
+
+    def test_no_git_fails_closed(self, tmp_path: Path) -> None:
+        """Not a repo → None, which callers must read as 'scan everything'."""
+        (tmp_path / "f.md").write_text(f"{_HOME}/x\n")
+        assert staged_added_lines(tmp_path, [Path("f.md")]) is None
+        # and the CLI still reports the finding rather than silently passing
+        assert main_verify_private_refs(["-C", str(tmp_path), "--added-only", "f.md"]) == 1
+
+    def test_added_only_rejected_with_all(self, tmp_path: Path) -> None:
+        with pytest.raises(SystemExit):
+            main_verify_private_refs(["-C", str(tmp_path), "--all", "--added-only"])
 
 
 class TestRepoGate:

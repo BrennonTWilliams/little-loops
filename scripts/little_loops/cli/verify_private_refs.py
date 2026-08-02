@@ -281,6 +281,60 @@ def scan_file(
     return findings
 
 
+_HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+
+
+def staged_added_lines(base_dir: Path, paths: list[Path]) -> dict[str, set[int]] | None:
+    """Map each path to the set of line numbers *added* in the staged diff.
+
+    Returns ``None`` when the diff cannot be computed (git missing, not a
+    repository, command failure). Callers must treat ``None`` as "scan
+    everything" — failing closed, since a gate that silently degrades to
+    scanning nothing is worse than one that over-reports.
+
+    A brand-new file has every line in its diff, so it is fully scanned.
+    """
+    if not paths:
+        return {}
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--cached", "-U0", "--", *[str(p) for p in paths]],
+            cwd=base_dir,
+            capture_output=True,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+
+    added: dict[str, set[int]] = {}
+    current: str | None = None
+    lineno = 0
+    for raw in result.stdout.decode("utf-8", errors="replace").splitlines():
+        if raw.startswith("+++ "):
+            target = raw[4:].strip()
+            # "+++ b/path" for a real file, "+++ /dev/null" for a deletion.
+            current = target[2:] if target.startswith(("b/", "a/")) else None
+            if target == "/dev/null":
+                current = None
+            continue
+        if raw.startswith("@@"):
+            match = _HUNK_RE.match(raw)
+            lineno = int(match.group(1)) if match else 0
+            continue
+        if current is None:
+            continue
+        if raw.startswith("+"):
+            added.setdefault(current, set()).add(lineno)
+            lineno += 1
+        elif raw.startswith("-") or raw.startswith("\\"):
+            continue
+        else:
+            lineno += 1
+    return added
+
+
 def _tracked_files(base_dir: Path) -> list[Path]:
     """List git-tracked files under *base_dir*, or [] when git is unavailable."""
     try:
@@ -309,9 +363,22 @@ def scan_all(base_dir: Path, rules: tuple[PrivateRefRule, ...]) -> list[PrivateR
 
 
 def scan_paths(
-    base_dir: Path, paths: list[Path], rules: tuple[PrivateRefRule, ...]
+    base_dir: Path,
+    paths: list[Path],
+    rules: tuple[PrivateRefRule, ...],
+    added_only: bool = False,
 ) -> list[PrivateRefFinding]:
-    """Scan an explicit file list (pre-commit / hook mode)."""
+    """Scan an explicit file list (pre-commit / hook mode).
+
+    With *added_only*, report findings only on lines the staged diff adds.
+    Without it, a single edit anywhere in one of the ~800 grandfathered files
+    would be rejected for pre-existing content the author never touched —
+    which punishes unrelated work and trains people to bypass the gate. Only
+    lines someone is actually introducing are the gate's business; the
+    existing corpus is the baseline's job (``--all``).
+    """
+    added = staged_added_lines(base_dir, paths) if added_only else None
+
     findings: list[PrivateRefFinding] = []
     for path in paths:
         abs_path = path if path.is_absolute() else base_dir / path
@@ -323,7 +390,13 @@ def scan_paths(
             rel = path
         if _is_excluded(rel):
             continue
-        findings.extend(scan_file(abs_path, rules, rel_path=rel))
+        file_findings = scan_file(abs_path, rules, rel_path=rel)
+        # `added is None` means the diff was unavailable — fail closed and keep
+        # every finding rather than silently passing the file.
+        if added_only and added is not None:
+            allowed = added.get(str(rel).replace("\\", "/"), set())
+            file_findings = [f for f in file_findings if f.line in allowed]
+        findings.extend(file_findings)
     return findings
 
 
@@ -459,6 +532,7 @@ def main_verify_private_refs(argv: list[str] | None = None) -> int:
             epilog=f"""\
 Examples:
   %(prog)s FILE...                     # Gate specific files (all rules, no baseline)
+  %(prog)s --added-only FILE...        # Only lines the staged diff adds (pre-commit)
   %(prog)s --all                       # Full scan vs. baseline (structural rules only)
   %(prog)s --all --update-baseline     # Re-record the grandfathered corpus
   %(prog)s --all --json                # Machine-readable output
@@ -492,6 +566,15 @@ Exit codes:
             help="Rewrite the baseline from the current full scan (requires --all).",
         )
         parser.add_argument(
+            "--added-only",
+            action="store_true",
+            help=(
+                "Report only lines added in the staged diff, so an edit to a "
+                "grandfathered file isn't rejected for pre-existing content. "
+                "Used by the pre-commit gate. Incompatible with --all."
+            ),
+        )
+        parser.add_argument(
             "-C",
             "--directory",
             type=Path,
@@ -504,6 +587,8 @@ Exit codes:
 
         if args.update_baseline and not args.all:
             parser.error("--update-baseline requires --all")
+        if args.added_only and args.all:
+            parser.error("--added-only applies to changed-files mode, not --all")
         if not args.all and not args.paths:
             parser.error("provide one or more paths, or use --all")
 
@@ -525,7 +610,7 @@ Exit codes:
         else:
             mode = "paths"
             rules = STRUCTURAL_RULES + load_local_rules(base_dir)
-            reported = scan_paths(base_dir, args.paths, rules)
+            reported = scan_paths(base_dir, args.paths, rules, added_only=args.added_only)
 
         if args.json:
             print_json(_findings_to_json(reported, mode))
