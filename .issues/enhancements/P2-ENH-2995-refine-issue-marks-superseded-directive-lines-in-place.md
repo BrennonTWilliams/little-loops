@@ -2,10 +2,19 @@
 id: ENH-2995
 status: open
 priority: P2
-captured_at: "2026-08-02T13:43:01Z"
+captured_at: '2026-08-02T13:43:01Z'
 discovered_date: 2026-08-02
 discovered_by: capture-issue
-relates_to: [ENH-2992, ENH-2993, ENH-2996]
+relates_to:
+- ENH-2992
+- ENH-2993
+- ENH-2996
+confidence_score: 88
+outcome_confidence: 75
+score_complexity: 20
+score_test_coverage: 15
+score_ambiguity: 20
+score_change_surface: 20
 ---
 
 # refine-issue marks superseded directive lines in place
@@ -132,27 +141,170 @@ which, given 19 reconciles against 1,703 refines, is nearly always.
   (lines 425-442)
 
 ### Dependent Files (Callers/Importers)
-- TBD — use grep to find references
+- None. This section and the stale-anchor marker it reuses are pure prose
+  instructions inside `commands/refine-issue.md`, executed by the LLM via the
+  `Edit` tool — no Python code in `scripts/little_loops/` emits, parses, or
+  depends on the `> ⚠ ...` marker string (grep for `⚠` and `"> ⚠"` across
+  `scripts/little_loops/` returns no matches). `_sweep_file()`
+  (`scripts/little_loops/issues/anchor_sweep.py`) only rewrites resolved
+  anchors in place and tracks a `skipped_refs` count — it has no code path
+  that emits the blockquote warning text; that text is written by the LLM
+  following the command's prose instruction.
 
 ### Similar Patterns
 - `commands/refine-issue.md:605-608` — gap-analysis mode's stale-anchor
-  warning is the exact marker shape and blockquote convention to reuse
-- `commands/reconcile-issue.md` § Contract — the authoritative
-  rewrite-eligible vs preserve-untouched section split; the carve-out's scope
-  list should not exceed reconcile's rewrite list
+  warning block; the single blockquote line itself is `refine-issue.md:607`
+  (605 is the numbered-list wrapper, 608 the closing fence) — the marker text
+  is the exact shape and blockquote convention to reuse
+- `commands/reconcile-issue.md:42-63` § Contract — the authoritative
+  rewrite-eligible vs preserve-untouched section split. Rewrite-eligible:
+  `## Implementation Steps`, `## Acceptance Criteria`, `### Files to Modify`
+  (unconditional), plus `## Scope Boundaries` (conditional, gated on a
+  recorded-finding contradiction). Preserve-untouched: `## Summary`,
+  `## Motivation`, `## Current Behavior`, `## Expected Behavior`,
+  `## Proposed Solution` and any `### Option …` / `### Decision Rationale`,
+  `### Codebase Research Findings`, `### Wiring Phase`, `### Similar
+  Patterns`, `### Constraints`, `## Confidence Check Notes`, `## Session
+  Log`, `## Status`. ENH-2995's proposed carve-out scope (`## Implementation
+  Steps`, `### Files to Modify`, `## Acceptance Criteria`) is a strict subset
+  of reconcile's unconditional three-item rewrite list — it deliberately
+  omits reconcile's conditional fourth item, `## Scope Boundaries`.
+- Idempotency convention used elsewhere for "don't re-add a marker that's
+  already present": a plain substring-containment check against file content,
+  not a regex or structural parse — e.g.
+  `scripts/little_loops/recursive_finalize.py:91-97`
+  `_append_decomposition_note()` (`if "Decomposed into" in content: return
+  content`, docstring: "Idempotent: a second call is a no-op once the marker
+  line exists"), `scripts/little_loops/issue_manager.py:537-560`
+  `check_content_markers()` (`return any(marker in content for marker in
+  markers)`), and the same shape at `session_log.py:230`,
+  `issue_lifecycle.py:410`, `parallel/orchestrator.py:1770-1771`,
+  `issue_discovery/search.py:472`. This is the convention to follow for the
+  Proposed Solution's own "Idempotent: skip if an identical marker is already
+  present under that line" constraint.
 
 ### Tests
-- TBD — identify test files to update
+- No existing test file asserts against `commands/refine-issue.md` prose
+  directly (it is a markdown instruction file executed by the LLM, not
+  Python). The nearest live test surface the new marker must stay compatible
+  with is regex-based list parsing in
+  `scripts/little_loops/issue_parser.py`: `_CRITERION_BULLET_PATTERN`
+  (line 39, `^(?:-\s*\[[xX ]\]\s+|[-*]\s+|\d+\.\s+)(.+)$`) and
+  `_OPTION_PATTERNS` (lines 579-586, includes
+  `^\d+\.\s+(?:\*\*Option|[A-Z][^.]*\bapproach\b)`) — both `re.MULTILINE`
+  and anchored on `^`. An indented `> ⚠ ...` continuation line placed under a
+  numbered `1. ...` Implementation Step does not itself start with `\d+\.`,
+  so it will not be misparsed as a new list item or a new decision option by
+  either pattern, provided the marker line stays indented and does not begin
+  with a digit-dot prefix.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- Correction to the claim above: `_CRITERION_BULLET_PATTERN` is only ever
+  applied by `IssueParser.extract_criteria()` against
+  `_CRITERIA_SECTION_NAMES` (`## Acceptance Criteria` / `## Expected
+  Behavior`) — it never scans `## Implementation Steps` today. The
+  "won't be misparsed" claim still holds structurally (the regex is
+  `^`-anchored either way, independent of which section calls it), but
+  `extract_criteria()` is not currently a live code path over Implementation
+  Steps specifically — don't cite it as the regression-test target for
+  Implementation Steps coverage without first confirming which parser
+  function (if any) walks that section. [Agent 3 finding]
+- No existing test constructs an issue fixture with a blockquote line
+  directly under a numbered `## Implementation Steps` item — this is
+  genuinely new test surface, not an update to existing coverage. The
+  closest structural-assertion template to copy is
+  `scripts/tests/test_refine_issue_command.py::TestGapAnalysisMode`
+  (lines 157-219), which slices a named section out of
+  `commands/refine-issue.md` via `content.index(...)`/`content.find(...)`
+  and asserts on substrings — no markdown AST, no regex compatibility
+  check. Add a new `TestSupersededDirectiveMarker` class there asserting
+  the Preservation Rule section documents the `> ⚠ Superseded — ...` marker
+  and its scope constraints (annotate-only, three directive sections,
+  same-pass-only, idempotent). [Agent 3 finding]
+- `test_refine_issue_command.py::TestGapAnalysisMode::test_additive_only_contract_documented`
+  and `::test_max_refine_count_exemption_documented` slice
+  `#### 5. Apply Additive Changes Only` (`commands/refine-issue.md:600-612`),
+  the same numbered-list region containing the existing stale-anchor
+  `> ⚠ ...` precedent (line 605-608) this issue's carve-out reuses. Not
+  expected to break, but re-verify their `content.index(...)`/`.find(...)`
+  slice boundaries still capture the intended text if the new carve-out
+  text is added inside or adjacent to that same section. [Agent 3 finding]
 
 ### Documentation
-- TBD — docs that need updates
+- None identified beyond `commands/refine-issue.md` itself; no other doc
+  under `docs/` references the Preservation Rule or the stale-anchor marker
+  convention.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/COMMANDS.md:280` — § `/ll:reconcile-issue` characterizes
+  `/ll:refine-issue` as strictly append-only for directive sections ("only
+  **append** new 'Codebase Research Findings' bullets — they never rewrite
+  the issue's own directive sections"). Once the annotation carve-out ships,
+  refine also writes an inline `> ⚠ Superseded — ...` marker directly beneath
+  a directive line itself, not just an appended bullet elsewhere — this line
+  should note the distinction (annotate-in-place vs. append-elsewhere)
+  without overstating it as a "rewrite" (it still isn't one). [Agent 2 finding]
+- `docs/reference/COMMANDS.md:290` — same file, the `**Distinct from**` line
+  parenthetically summarizes refine-issue as "(appends new research)"; same
+  staleness risk, smaller surface. [Agent 2 finding]
+
+### Registration / Manifest Files
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `.gemini/commands/refine-issue.toml` (§ `Preservation Rule`, line 428) —
+  a `ll-adapt`-generated verbatim mirror of `commands/refine-issue.md`'s body
+  (via `scripts/little_loops/adapters/gemini.py`); goes stale once the
+  Preservation Rule is amended until `ll-adapt --host gemini` is re-run. Not
+  hand-edited; no code change needed, but the regen step must not be skipped.
+  [Agent 2 finding]
+- `.kimi-code/skills/ll-refine-issue/SKILL.md` (§ `Preservation Rule`) — same
+  mirror relationship via `scripts/little_loops/adapters/kimi.py`; goes stale
+  until `ll-adapt --host kimi` is re-run. [Agent 2 finding]
 
 ### Configuration
 - N/A
 
 ## Implementation Steps
 
-TBD — requires codebase analysis
+1. `commands/refine-issue.md` § Preservation Rule (lines 444-460) states the
+   carve-out's scope constraint and the exact marker text/placement, matching
+   the register `commands/reconcile-issue.md:42-63` § Contract already uses
+   for its own rewrite-eligible/preserve-untouched split.
+2. The marker reuses the blockquote shape already at
+   `commands/refine-issue.md:607` (`> ⚠ Anchor ... no longer resolves ...`)
+   rather than inventing new syntax, and the idempotency check follows the
+   substring-containment convention already used at
+   `scripts/little_loops/recursive_finalize.py:91-97` and
+   `scripts/little_loops/issue_manager.py:537-560` (skip the append if the
+   exact marker text is already present under the target line).
+3. The marker placement does not collide with
+   `scripts/little_loops/issue_parser.py`'s `_CRITERION_BULLET_PATTERN`
+   (line 39) or `_OPTION_PATTERNS` (lines 579-586) — both anchor on
+   `^\d+\.`/`^[-*]`, which an indented, non-digit-prefixed blockquote line
+   does not match.
+4. Re-running `/ll:refine-issue` against `ENH-2500`
+   (`.issues/enhancements/P3-ENH-2500-per-run-dir-pending-file-and-scope-for-prompt-across-issues.md`)
+   places superseded markers on its refuted Implementation Steps (1, 3, 6, 7
+   per this issue's own measurement) and leaves every other section
+   byte-identical.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+5. Add a `TestSupersededDirectiveMarker` test class to
+   `scripts/tests/test_refine_issue_command.py`, following the
+   `TestGapAnalysisMode` slice-and-assert idiom, asserting the amended
+   Preservation Rule section documents the `> ⚠ Superseded — ...` marker and
+   its scope constraints.
+6. Update `docs/reference/COMMANDS.md:280` and `:290` (§ `/ll:reconcile-issue`)
+   to acknowledge that `/ll:refine-issue` can now annotate a directive line
+   in place with a superseded marker, not only append research bullets
+   elsewhere — without overstating it as a rewrite (reconcile still owns that).
+7. After merging, run `ll-adapt --host gemini` and `ll-adapt --host kimi` to
+   regenerate `.gemini/commands/refine-issue.toml` and
+   `.kimi-code/skills/ll-refine-issue/SKILL.md` so the mirrored Preservation
+   Rule text stays in sync.
 
 ## Impact
 
@@ -185,6 +337,8 @@ TBD — requires codebase analysis
 | `commands/reconcile-issue.md` | Defines the rewrite-eligible / preserve-untouched split this carve-out must respect |
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-02T15:30:11 - `d27699ab-a72d-4e7f-93a0-ed047b357fc4.jsonl`
+- `/ll:refine-issue` - 2026-08-02T15:19:00 - `2be150f8-0636-40af-ae61-86aa9b31676d.jsonl`
 - `/ll:capture-issue` - 2026-08-02T13:45:56 - `fac7dff4-61c1-4496-95b8-7bd1993d2971.jsonl`
 
 ## Status

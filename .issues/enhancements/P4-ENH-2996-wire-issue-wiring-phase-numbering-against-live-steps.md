@@ -2,10 +2,14 @@
 id: ENH-2996
 status: open
 priority: P4
-captured_at: "2026-08-02T13:43:01Z"
+captured_at: '2026-08-02T13:43:01Z'
 discovered_date: 2026-08-02
 discovered_by: capture-issue
-relates_to: [ENH-2995]
+relates_to:
+- ENH-2995
+decision_needed: false
+blocked_by:
+- ENH-2995
 ---
 
 # wire-issue's Wiring Phase numbers against live steps only
@@ -67,6 +71,11 @@ Two options, only one of which needs ENH-2995's superseded markers:
 letter-keyed (`W1`, `W2`, …), making no positional claim. Zero dependency on
 detecting live steps; shippable independently of ENH-2995.
 
+> **Selected:** Option A — matches the unnumbered `-` bullet convention already
+> used by 3 of 4 sibling Phase-8a subsections in `skills/wire-issue/SKILL.md`,
+> has zero downstream code/test/doc coupling to the current `N.` numbering,
+> and ships independently of the blocked ENH-2995 dependency.
+
 **Option B**: wire-issue skips superseded-marked steps when computing `N`.
 Requires ENH-2995's marker to exist and be parseable.
 
@@ -74,26 +83,112 @@ Option A is recommended — it removes the false claim rather than computing a
 truer one, and the Wiring Phase is a distinct set of touchpoints that does not
 genuinely need to interleave with the parent sequence.
 
+### Decision Rationale
+
+**Selected: Option A** (unnumbered/letter-keyed Wiring Phase entries).
+
+Two `ll:codebase-pattern-finder` agents independently evaluated each option
+against the codebase. Option A matches an existing, dominant convention with
+zero downstream coupling; Option B is currently blocked and would introduce
+new parsing logic that has no precedent.
+
+| Dimension | Option A | Option B |
+|---|---|---|
+| Consistency | 3 | 0 |
+| Simplicity | 3 | 0 |
+| Testability | 3 | 1 |
+| Risk | 3 | 0 |
+| **Total** | **12/12** | **1/12** |
+
+Key evidence:
+- 3 of 4 sibling Phase-8a subsections in `skills/wire-issue/SKILL.md`
+  (`### Dependent Files`, `### Documentation`, `### Tests`, `### Configuration`)
+  already use unnumbered `-` bullets with an italic attribution line — Phase
+  8b's numbered `N.`/`N+1.` format is the sole outlier.
+- No code, test, or doc anywhere in the repo parses or depends on the
+  Wiring Phase's `N.`-style numbering (`output-report.md`'s `[N]` is a
+  step-count placeholder, not a parsed sequence number).
+- Option B hard-depends on `ENH-2995` (still `status: open`) for a
+  superseded-step marker that does not yet exist anywhere in the codebase,
+  and would additionally require new step-filtering logic in wire-issue's
+  Phase 3 that has no precedent today.
+
 ## Integration Map
 
 ### Files to Modify
 - `skills/wire-issue/SKILL.md` — Phase 8b (lines 383-396)
 
 ### Dependent Files (Callers/Importers)
-- `skills/wire-issue/output-report.md` — if the report template references
-  step counts or numbering
-- TBD — use grep to find references
+- `skills/wire-issue/output-report.md:44` — `## IMPLEMENTATION STEPS CHANGES`
+  reports `[N] new steps added to Wiring Phase` as a *count* (from
+  `new_impl_steps`'s length), not a positional sequence number. No change
+  needed here regardless of which option is chosen.
+- No Python code parses `## Implementation Steps` numbering. The only
+  `\d+\.`-matching regex in the codebase
+  (`scripts/little_loops/issue_parser.py:39`,
+  `_CRITERION_BULLET_PATTERN`) is scoped to `extract_criteria()`
+  (line 1758) and only scans the Acceptance Criteria / Expected Behavior
+  sections, never Implementation Steps.
+  `scripts/little_loops/cli/issues/size.py:41` references the
+  `Implementation Steps` heading only to detect presence for size scoring,
+  not to parse numbering.
 
 ### Similar Patterns
 - `commands/refine-issue.md:425-442` — Implementation Steps enrichment rules
   and the "Constraints, Not Recipes" register guidance on when imperative
   sequencing is legitimate at all
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- Where `N` currently comes from: `skills/wire-issue/SKILL.md` Phase 3
+  (lines 100-121) reads the issue's `## Implementation Steps` section and
+  records only a raw count as `implementation_steps_count: N` inside the
+  `EXISTING_WIRING` structured summary (line 120) — a prose-level scan by
+  the executing agent, not a deterministic parser. Phase 8b (lines 383-396)
+  then continues straight off that count with no live/dead filtering
+  applied at any stage.
+- No refutation-detection mechanism exists yet anywhere in the wire-issue or
+  refine-issue pipeline. Refutation language ("Revised step 1: omit
+  entirely", "Step 6 target file is wrong") currently lands only as
+  freeform prose inside a `### Codebase Research Findings` subsection
+  following the list — never as an in-place marker on the original
+  directive line. `ENH-2995` (still `status: open`) is the issue that would
+  introduce such a marker (a `> ⚠ Superseded — see § ...` blockquote,
+  explicitly designed per its own Proposed Solution to leave `^\d+\.`
+  numbering and downstream parsers unaffected). Option B of this issue has
+  a hard dependency on ENH-2995 landing first; Option A has none.
+- Marker-convention precedent: every other additive block in this
+  template system — `skills/wire-issue/SKILL.md`'s own sibling Phase-8a
+  subsections (`### Dependent Files (Callers/Importers)` at lines 338-343,
+  `### Documentation` at 354-360, `### Tests` at 364-371, `### Configuration`
+  at 375-381) plus `commands/refine-issue.md`'s `### Codebase Research
+  Findings` (lines 454-460, and reused at line 604 for gap-analysis mode) —
+  uses a `###` heading with an italicized attribution line
+  (`_Wiring pass added by `/ll:wire-issue`:_` / `_Added by
+  `/ll:refine-issue` — based on codebase analysis:_`) and **plain
+  unnumbered `-` bullets**. The current Wiring Phase (`N.`/`N+1.`
+  numbering) is the only one of wire-issue's own Phase-8 sub-blocks that
+  departs from this convention.
+- No existing `W1`/`W2`-style lettered list convention exists in this
+  codebase's issue-template system to align Option A with; the only
+  `W1`/`W2` hits found are Mermaid diagram participant labels in
+  `docs/ARCHITECTURE.md` (unrelated). The nearest actual lettering
+  precedent (`8a`/`8b`/`8c` in `skills/wire-issue/SKILL.md`, `5a`/`5b` in
+  `commands/refine-issue.md`) letters phase headings in the skill's own
+  procedural instructions, not list items written into generated issue
+  content — a different surface.
+
 ### Tests
-- TBD — identify test files to update
+- No dedicated test file covers Phase 8b's numbering behavior specifically
+  (it is markdown-template prose interpreted by the executing agent, not
+  code); no test needs updating for either option.
 
 ### Documentation
-- TBD — docs that need updates
+- None found referencing Phase 8b's numbering scheme outside
+  `skills/wire-issue/SKILL.md` itself and `skills/wire-issue/output-report.md`
+  (confirmed not to need changes, see Dependent Files above).
 
 ### Configuration
 - N/A
@@ -101,6 +196,32 @@ genuinely need to interleave with the parent sequence.
 ## Implementation Steps
 
 TBD — requires codebase analysis
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- Whichever option is chosen, the change is confined to
+  `skills/wire-issue/SKILL.md` Phase 8b (lines 383-396) — no other file
+  needs to change for the numbering scheme itself (see Integration Map →
+  Dependent Files).
+- The Wiring Phase's sibling Phase-8a subsections already use a `###`
+  heading + italic attribution + plain unnumbered `-` bullets
+  (`skills/wire-issue/SKILL.md:338-381`); Option A brings Phase 8b in line
+  with that existing pattern rather than introducing a new one.
+- Nothing downstream parses `## Implementation Steps` numbering (no `\d+.`
+  regex scoped to that section anywhere in `scripts/little_loops/`), so
+  either option is safe to make without a companion code change.
+- If Option B is chosen, it is blocked on `ENH-2995` (still open) — that
+  issue is what would give wire-issue a parseable in-place marker for
+  refuted steps. `check_reconcile_needed`-style staleness detection has no
+  equivalent for Implementation Steps today.
+- Verification: after editing Phase 8b's template text, exercise
+  `/ll:wire-issue` against an issue whose `## Implementation Steps` has 9
+  entries (e.g. re-run against `ENH-2500`'s issue file, cited in this
+  issue's Current Behavior, or a synthetic fixture) and confirm the emitted
+  Wiring Phase entries carry no numeric claim about position in the parent
+  sequence.
 
 ## Impact
 
@@ -128,6 +249,8 @@ TBD — requires codebase analysis
 | `commands/refine-issue.md` | Source of the refuted-step condition |
 
 ## Session Log
+- `/ll:decide-issue` - 2026-08-02T15:26:29 - `0a208318-6b67-47ba-88f1-23b17a2f5884.jsonl`
+- `/ll:refine-issue` - 2026-08-02T15:21:01 - `1a6be5be-a3c2-4f65-a811-ac343eeaa258.jsonl`
 - `/ll:capture-issue` - 2026-08-02T13:45:57 - `fac7dff4-61c1-4496-95b8-7bd1993d2971.jsonl`
 
 ## Status

@@ -143,6 +143,9 @@ via the loop-level guard key it already carries — **no state is added to it**.
   extending `:1295-1384`; base resolution, core invocation, `ctx.context` record,
   run-dir bundle write, token-channel export.
 - `scripts/little_loops/fsm/validation.py` — lint rule mirroring ENH-2854's.
+- `scripts/little_loops/fsm/validation/_base.py` — add the new loop-level key
+  (and its `_ok` suppress flag) to `KNOWN_TOP_LEVEL_KEYS` (`:79-134`), or the
+  separate unknown-top-level-key check flags the new key itself.
 - `scripts/little_loops/loops/oracles/code-run-gate.yaml` — **no state added**;
   left unmodified. Listed only to make the non-change explicit.
 
@@ -173,6 +176,64 @@ via the loop-level guard key it already carries — **no state is added to it**.
   the bundle this host writes.
 - `ENH-2854` (peer) — supplies the guarded-window mechanism; ordering constraint
   documented above.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Missing file in the Integration Map**: `scripts/little_loops/fsm/validation/_base.py:79-134`
+  declares `KNOWN_TOP_LEVEL_KEYS`, the allow-list a loop-level key must join or a
+  separate "unknown top-level key" structural check flags the new key itself as
+  unrecognized (`"tamper_guard"`/`"tamper_guard_ok"` are already listed at
+  `:121-122`). There is no equivalent state-level key allowlist in this codebase
+  (a state-level key needs no such registration).
+- **The guarded-window bracket is two coordinated call sites, not one wrapper.**
+  In `_execute_state`, the entry snapshot is taken once
+  (`fsm/executor.py:1450-1458`, gated on `_tamper_policy is not None and
+  state.action and self._action_mode(state) != "contract"`), but the exit
+  compare (`_check_tamper_guard`) is invoked from *two* independent spots that
+  must both be extended: inside the `state.next:`-chained branch
+  (`executor.py:1481-1488`, before exit-code routing) and in the non-`next:`
+  path after `self._evaluate(...)` (`executor.py:1534-1541`). This split exists
+  because an earlier version only guarded one shape (BUG-2962); a state with a
+  bare `next:` and no `on_yes`/`on_no` (e.g. `resolve_commands`) only goes
+  through the first path.
+- **The absent-means-skip resolver is duplicated, not shared, across two
+  layers** — `_effective_tamper_guard_policy` in `fsm/executor.py:1295-1312`
+  (runtime resolution: `state.tamper_guard or self.fsm.tamper_guard`, any
+  unrecognized value silently returns `None`) and a second, independent
+  `_effective_tamper_guard` in `fsm/validation/evaluator_rules.py:371-375`
+  (lint-time resolution, same precedence, no shared helper function). A new
+  key following this template needs both resolvers written, each in its own
+  layer.
+- **Lint severity convention**: `_validate_tamper_guard`
+  (`fsm/validation/evaluator_rules.py:368-421`, registered at
+  `fsm/validation/structural_rules.py:49,1109`) emits
+  `ValidationSeverity.WARNING`, not `ERROR` — an unrecognized guard value is
+  caught but doesn't block load. It checks the loop-level default once and each
+  state's own override only (never a state's *inherited* value, which would
+  duplicate one bad loop-level default across every non-overriding state).
+- **`rn-implement`'s reachability to `code-run-gate` is transitive, not
+  direct.** `rn-implement.yaml` has no `run_code_gate` state and does not
+  reference `code-run-gate`/`run_code_gate` by name anywhere except one code
+  comment (`:993`). It delegates to `rn-remediate` via a `loop: rn-remediate`
+  sub-loop state (`~:755`), and `rn-remediate.yaml`'s own `run_code_gate` state
+  (`:529-546`) is what delegates to `oracles/code-run-gate.yaml` (`:543`). The
+  Motivation section's phrase "`rn-implement`'s `run_code_gate`" should be read
+  as this transitive path, not a state literally inside `rn-implement.yaml`.
+- **Existing test coverage to extend, beyond `test_tamper_guard.py`**:
+  `scripts/tests/test_fsm_executor.py`'s `TestTamperGuardExecutorHook` class
+  (`~:10702`) is the executor-integration test tier — it builds a real git repo
+  and a real `FSMExecutor.run()` (no mocked FSM layer), with dedicated,
+  individually-named tests for the absent-key skip
+  (`test_no_guard_when_key_absent`) and for `ctx.context` record-shape
+  accumulation (`test_evidence_accumulates_across_guarded_states`, asserting a
+  list of length 2 with per-entry `"state"`/`"findings"`/`"passed"` keys).
+  `scripts/tests/test_fsm_validation_evaluator_rules.py`'s
+  `TestTamperGuardValidation` class (`~:1242`) is the lint-rule test tier,
+  including `test_tamper_guard_recognized_as_top_level_key` — a YAML-round-trip
+  test asserting the key doesn't trip the `KNOWN_TOP_LEVEL_KEYS` check above. A
+  new key should get one test class per tier, mirroring this split.
 
 ## Program Design
 
@@ -225,6 +286,7 @@ database-free. The host records its verdict in `ctx.context` following ENH-2854'
 **Open** | Created: 2026-08-02 | Priority: P2
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-02T15:22:31 - `1a6be5be-a3c2-4f65-a811-ac343eeaa258.jsonl`
 - `/ll:issue-size-review` - 2026-08-02T13:48:44 - `14957793-c5a3-42c3-8c4e-e15ef7fbe208.jsonl`
 
 ## Related Key Documentation

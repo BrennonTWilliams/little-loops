@@ -86,6 +86,84 @@ without re-running it.
 
 ## Design Notes
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis (2026-08-02):_
+
+- **`cli/harness.py` line citations in this issue are stale.** Current
+  positions: `HarnessEvalOutcome` is a 3-field dataclass (`passed`, `verdict`,
+  `eval_result`) at `harness.py:295-300`; `_evaluate_and_report()` is
+  `harness.py:303-369`; its JSON-print branch is `harness.py:335-346`; `_report()`
+  (error/timeout-only path, no evaluation outcome flows through it) is
+  `harness.py:372-391`; the `--help` epilog is elsewhere in the file — re-locate
+  by name rather than by the line numbers cited above/in Integration Map at
+  implementation time.
+- **Non-FSM baseline resolution today is git-local, not DB-backed.** Neither
+  `issue_manager.py` (`_baseline_sha` at `:1022-1027`, a `git rev-parse HEAD`
+  captured before Phase 2) nor `worker_pool.py` (`tamper_baseline_sha` at
+  `:591`, `self._get_worktree_head_sha(worktree_path)` at `:1639`) currently
+  calls `history_reader.read_base_sha()`. `read_base_sha(issue_id, *, run_id=None,
+  db=DEFAULT_DB_PATH) -> str | None` exists at `history_reader.py:1816-1821` and
+  never raises, but no `base_dirty` reader exists yet alongside it — the
+  `orchestration_runs` table already has a `base_dirty` column (`history_reader.py:1738`
+  area), so a mirroring reader is straightforward but is new plumbing, not
+  something to reuse as-is.
+- **The established FSM-vs-non-FSM split for this check's sibling (tamper
+  guard) is: FSM hosts its own adapter directly; the two non-FSM orchestrators
+  share one.** `fsm/executor.py:1336`'s `_check_tamper_guard` calls
+  `test_tamper_guard.run_tamper_guard()` directly, bypassing
+  `work_verification.py` entirely, while `issue_manager.py` and
+  `worker_pool.py` both go through the single shared
+  `work_verification.verify_work_was_done()` entry point (never the private
+  `_run_non_fsm_tamper_guard()` helper at `work_verification.py:63` directly).
+  This confirms the shape ENH-2997 (FSM host) and this issue (shared non-FSM
+  adapter) already assume, and gives a concrete file (`work_verification.py:146-199`)
+  showing where the `config is not None` gate conditionally invokes the
+  adapter — the same conditional-gate shape a prepatch-check call would need.
+- **Lazy-import discipline applies to any new `prepatch_check` import.**
+  `_run_non_fsm_tamper_guard()` (`work_verification.py:96-104`) and
+  `worker_pool.py:604-610` both import `test_tamper_guard` symbols
+  function-locally, not at module top level, specifically to avoid a
+  `test_tamper_guard -> config.core -> parallel.types -> parallel ->
+  worker_pool` circular import (documented inline at `worker_pool.py:604-606`).
+  Whether the new `prepatch_check` import needs the same treatment depends on
+  its own dependency chain once ENH-2991 lands.
+- **`skills/verify-issue-loop/templates.md` no longer holds hand-written
+  templates.** Per FEAT-2948, the file is now a stub redirecting to
+  `ll-loop scaffold-verify` (`scripts/little_loops/cli/loop/scaffold_verify.py`)
+  — its own text states "there is nothing left here for an LLM to fill in or
+  chain by hand." The Proposed Change/Integration Map's plan to add "a
+  state-template example" to `templates.md` needs to target
+  `scaffold_verify.py` instead (or `SKILL.md` only) — the concrete precedent
+  for a deterministic-vs-`llm_structured` state pairing already exists in that
+  file's generated output: the adversarial mode's `count_probes` state uses
+  `EvaluateConfig(type="output_numeric", operator="ge", target=3)` chained
+  after three `llm_structured` probe states (`scaffold_verify.py:130-145`).
+  `skills/create-loop/loop-types.md:145-151` and `:777-808` are the codebase's
+  existing convention for documenting an evaluator-type mapping in prose, if
+  `SKILL.md`'s bullet follows that shape.
+- **No conditional-JSON-key precedent exists in `cli/harness.py` itself.**
+  Its JSON branch (`harness.py:335-346`) builds one fixed-key dict; the nearest
+  precedent for an *optional* key in a JSON payload is `fsm/executor.py`'s
+  `action_complete` event (`:1879-1917`), which does `if <condition>:
+  payload["<key>"] = <value>` per optional field with an inline comment noting
+  "additive field — existing consumers ... are unaffected" (ENH-2469 pattern).
+- **Off-switch shape for the new check is a contested convention, not settled
+  by precedent** (inherited from ENH-2991's own research): this codebase has
+  at least three incompatible existing shapes — a silent bare `bool` short-circuit
+  (`worktree_utils.py`'s `verify_before_merge` param, `:434-435`), an explicit
+  skip-reason string recorded in output (`run_learning_gate_for_issue`'s
+  `skip` param), and a `BRConfig`-layer `enabled: bool` dataclass field
+  (`config/automation.py:143-159`). Whichever shape the adapter's off-switch
+  takes (if any) is an implementation decision, not dictated by one
+  established pattern.
+- **Shared skip-flag precedent orders config-gate before override-flag.** The
+  learning-gate pattern this issue's Integration Map cites checks
+  `if not <config>.enabled: return` first, then the CLI override flag second,
+  in both `worker_pool.py:67-71` and `cli/sprint/run.py:215-220` — the same
+  ordering, if a comparable skip flag is added for this check, would be the
+  established convention to match.
+
 - **Consumers read, never re-derive.** `cli/harness.py` reading the oracle's
   artifact rather than hosting the check is the whole point of the layering — a
   second implementation would drift from the first and the two would disagree on
@@ -206,6 +284,7 @@ call `run_prepatch_check()` itself.
 **Open** | Created: 2026-08-02 | Priority: P2
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-02T15:27:49 - `4acf820d-02a8-4f47-a175-f1a0616e7195.jsonl`
 - `/ll:issue-size-review` - 2026-08-02T13:48:44 - `14957793-c5a3-42c3-8c4e-e15ef7fbe208.jsonl`
 
 ## Related Key Documentation

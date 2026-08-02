@@ -221,6 +221,17 @@ afterwards, including on failure paths.
   `scripts/tests/test_cli_loop_worktree.py` covers `ll-loop run --worktree` —
   both must keep passing, which the additive-signature constraint guarantees.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Line-number corrections** (verified against current code): `setup_worktree()` starts at `worktree_utils.py:157` (not 155); `verify_epic_branch_before_merge()` spans `worktree_utils.py:371-501` (not 364-494); the `src_dir` PYTHONPATH-injection code itself is at `worktree_utils.py:474-480` (the docstring describing it is at 406-423 — the earlier `~399-473` range covers the docstring, not the injection line).
+- `_test_functions(source: str) -> dict[str, ast.AST] | None` (`test_tamper_guard.py:311-321`) is a **private, unexported** helper (top-level `FunctionDef`/`AsyncFunctionDef` nodes named `test*`, keyed by name; returns `None` on `SyntaxError`). Consuming it means an internal import (`from little_loops.test_tamper_guard import _test_functions`), not a public API call — worth confirming that's acceptable or whether it should be promoted to a public name as part of this change.
+- `read_paths_at_ref(repo_root, ref, paths) -> dict[str, str | None]` (`test_tamper_guard.py:112-120`) already does exactly the "read file content at an arbitrary ref" operation this issue needs for reconstructing pre-patch test-file text (`git show {ref}:{path}` via the module's `_git()` helper, `test_tamper_guard.py:508-522`). A repo-wide grep for `git apply` returns zero hits — there is no existing content-materialization precedent to compare content-write against; `read_paths_at_ref` is the only established primitive in this space, and it already points toward content-write (it returns text to be written, not a diff to be applied).
+- `setup_worktree()`'s existing `copy_files` mechanism (`worktree_utils.py:245-262`) copies **whole files from the main repo** into the worktree (`shutil.copy2`) — it does not accept synthesized in-memory content. `setup_prepatch_worktree()`'s `test_files: dict[str, str]` content-write is a genuinely new capability, not a reuse of `copy_files` under a different name.
+- **No existing precedent for two design decisions this issue specifies**: (1) a "run once, retry on pass, reclassify pass-then-fail as flaky" loop — a repo-wide grep for `flaky`/`retry.*once`/`re-run.*once` returns only unrelated test-fixture/doc hits; (2) a subprocess pytest invocation targeting a *subset* of node IDs — both existing pytest-invocation patterns in the repo (`pytest_history_plugin.py`'s in-process `pytest11` plugin, and `code-run-gate.yaml`'s `run_test` state via `pytest --json-report`) run whatever `test_cmd` names, which is normally the full suite. Both are new logic with no in-repo template to follow, not oversights in this research pass.
+- **Off-switch convention disagreement in the codebase** — two shapes exist: `verify_epic_branch_before_merge()`'s `verify_before_merge: bool` param short-circuits to a silent `(True, None, None)` with no recorded reason (`worktree_utils.py:434-435`); `run_learning_gate_for_issue()`'s `skip: bool` param and `code-run-gate.yaml`'s `run_test`/`run_build` states instead short-circuit to an explicitly named skip state (`"skipped"` / `"SKIP test_cmd=null"` written to output). This issue's `skipped_reason: str | None` field matches the second, explicit-record convention, not the first. For the `BRConfig`-backed boolean itself, the dominant idiom is a plain `enabled: bool` dataclass field with a `from_dict(data.get("enabled", default))` reader (e.g. `ConfidenceGateConfig` in `config/automation.py:143-159`), distinct from the FSM-level "presence of a key marks it active" convention `StateConfig.tamper_guard` uses (`fsm/schema.py:690`) — the two are not interchangeable, and this issue's off-switch is a `BRConfig` concern, not an FSM one.
+
 ### Related Issues
 
 - `ENH-2997` (dependent) — hosts this core on the FSM executor's guarded window.
@@ -335,6 +346,7 @@ by the host (ENH-2997 / ENH-2998).
 **Open** | Created: 2026-08-02 | Priority: P2
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-02T15:16:50 - `2231e95c-29bd-4ab8-9d98-d3859068eb51.jsonl`
 - `/ll:issue-size-review` - 2026-08-02T13:48:43 - `14957793-c5a3-42c3-8c4e-e15ef7fbe208.jsonl`
 
 ## Related Key Documentation
