@@ -880,7 +880,19 @@ states:
     # draining (dequeue_next) so other issues still get a chance.
     fragment: ll_auto_auth_check
     on_yes: abort_env_not_ready
-    on_no: dequeue_next
+    on_no: clear_inflight_after_impl_failure
+    on_error: clear_inflight_after_impl_failure
+
+  clear_inflight_after_impl_failure:
+    # BUG-2981 D1: check_impl_auth is a fragment state (no action body of its
+    # own), so it cannot clear autodev-inflight itself. Both its non-auth legs
+    # (on_no — genuine implementation failure; on_error — fault reading the
+    # auth signal) route here so the sentinel is cleared before dequeue_next,
+    # matching every other issue-resolving state's BUG-1226 convention.
+    action_type: shell
+    action: |
+      rm -f ${context.run_dir}/autodev-inflight
+    next: dequeue_next
     on_error: dequeue_next
 
   abort_env_not_ready:
@@ -2029,7 +2041,14 @@ states:
       ABANDONED=0
       if [ -n "$INFLIGHT" ] && ! grep -qxF "$INFLIGHT" ${context.run_dir}/autodev-passed.txt 2>/dev/null; then
         ABANDONED=1
-        echo "$INFLIGHT  inflight_at_finalize" >> ${context.run_dir}/autodev-unverified.txt
+        # BUG-2981 D2: only skip the append if this ID is already recorded in
+        # the unverified bucket (bare or otherwise) — the guard previously
+        # asked "was this already passed?" when the correct question is "was
+        # this already recorded at all?" ABANDONED stays set either way; it is
+        # a verdict input independent of whether the line gets appended.
+        if ! grep -qE "^${INFLIGHT}([[:space:]]|$)" ${context.run_dir}/autodev-unverified.txt 2>/dev/null; then
+          echo "$INFLIGHT  inflight_at_finalize" >> ${context.run_dir}/autodev-unverified.txt
+        fi
       fi
       UNVERIFIED_IDS=$(cat ${context.run_dir}/autodev-unverified.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)

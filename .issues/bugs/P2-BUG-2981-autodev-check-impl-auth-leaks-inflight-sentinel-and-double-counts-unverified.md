@@ -16,6 +16,7 @@ labels:
 - fsm
 decision_needed: false
 testable: true
+program_design_not_applicable: true
 confidence_score: 100
 outcome_confidence: 97
 score_complexity: 22
@@ -328,6 +329,8 @@ _Added by `/ll:confidence-check` on 2026-08-01_
   YAML-only change with no Python signatures involved.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-02T01:29:19 - `c5642014-2f2b-49ef-9353-cb00c4bdb671.jsonl`
+- `/ll:ready-issue` - 2026-08-02T01:28:45 - `75e84ba3-257b-40bd-b406-6336dace072a.jsonl`
 - `/ll:confidence-check` - 2026-08-02T01:27:07 - `6c4807ec-5dc9-473c-8026-65d5738daba7.jsonl`
 - `/ll:refine-issue` - 2026-08-02T01:21:36 - `b10f0b3a-574a-4cd1-aefd-c6a613922849.jsonl`
 
