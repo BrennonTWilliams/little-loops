@@ -5023,10 +5023,12 @@ class TestAutodevLoop:
 
     def test_check_impl_auth_on_error_does_not_crash_loop(self, data: dict) -> None:
         """BUG-2594: a residual shell fault in the auth check must degrade to the
-        queue-drain path, not terminate the loop with 'No valid transition'."""
+        queue-drain path, not terminate the loop with 'No valid transition'. BUG-2981 D1:
+        that path now routes through clear_inflight_after_impl_failure before dequeue_next."""
         state = data["states"].get("check_impl_auth", {})
-        assert state.get("on_error") == "dequeue_next", (
-            f"check_impl_auth.on_error should be 'dequeue_next', got {state.get('on_error')!r}"
+        assert state.get("on_error") == "clear_inflight_after_impl_failure", (
+            f"check_impl_auth.on_error should be 'clear_inflight_after_impl_failure', "
+            f"got {state.get('on_error')!r}"
         )
 
     def test_mark_gate_blocked_advances_queue_without_failing(self, data: dict) -> None:
@@ -13283,9 +13285,43 @@ class TestAutodevAuthGuard:
         assert state.get("on_yes") == "abort_env_not_ready"
 
     def test_check_impl_auth_on_no_drains_queue(self, data: dict) -> None:
-        """check_impl_auth.on_no (no auth failure) must continue draining the queue."""
+        """check_impl_auth.on_no (no auth failure) must continue draining the queue via
+        clear_inflight_after_impl_failure, not dequeue_next directly (BUG-2981 D1)."""
         state = data["states"]["check_impl_auth"]
-        assert state.get("on_no") == "dequeue_next"
+        assert state.get("on_no") == "clear_inflight_after_impl_failure"
+
+    def test_check_impl_auth_on_error_drains_queue(self, data: dict) -> None:
+        """check_impl_auth.on_error (fault reading the auth signal) must also route through
+        clear_inflight_after_impl_failure, not dequeue_next directly (BUG-2981 D1)."""
+        state = data["states"]["check_impl_auth"]
+        assert state.get("on_error") == "clear_inflight_after_impl_failure"
+
+    def test_clear_inflight_after_impl_failure_clears_sentinel(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-2981 D1: clear_inflight_after_impl_failure must remove autodev-inflight
+        so a failed-but-not-abandoned issue doesn't strand a residual sentinel."""
+        state = data["states"]["clear_inflight_after_impl_failure"]
+        action = state.get("action", "")
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        (run_dir / "autodev-inflight").write_text("FEAT-0001")
+        script = action.replace("${context.run_dir}", str(run_dir))
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
+        )
+        assert result.returncode == 0, (
+            f"clear_inflight_after_impl_failure must exit 0, got {result.returncode}: "
+            f"{result.stderr}"
+        )
+        assert not (run_dir / "autodev-inflight").exists()
+
+    def test_clear_inflight_after_impl_failure_routes_to_dequeue_next(self, data: dict) -> None:
+        """BUG-2981 D1: clear_inflight_after_impl_failure must route onward to
+        dequeue_next on both next and on_error (a failed rm -f must not strand the queue)."""
+        state = data["states"]["clear_inflight_after_impl_failure"]
+        assert state.get("next") == "dequeue_next"
+        assert state.get("on_error") == "dequeue_next"
 
     def test_abort_env_not_ready_state_exists(self, data: dict) -> None:
         """abort_env_not_ready state must be defined in autodev."""
@@ -13297,6 +13333,104 @@ class TestAutodevAuthGuard:
         """abort_env_not_ready must echo a user-actionable diagnostic message."""
         action = data["states"]["abort_env_not_ready"].get("action", "")
         assert "echo" in action
+
+    def test_finalize_done_residual_sentinel_not_double_counted(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-2981 D2: an issue already recorded (bare) in autodev-unverified.txt that
+        also left a residual autodev-inflight sentinel must contribute only one line to
+        the unverified bucket, while ABANDONED still fires (it is a verdict input
+        independent of whether the duplicate line is appended)."""
+        run_dir = tmp_path
+        (run_dir / "autodev-staged.txt").write_text("FEAT-0001\n")
+        (run_dir / "autodev-inflight").write_text("FEAT-0001")
+        script_path = run_dir / "ll-issues"
+        script_path.write_text(
+            '#!/bin/sh\nif [ "$1" = "show" ]; then echo \'{"status": "Open"}\'; fi\n'
+        )
+        script_path.chmod(0o755)
+        env = dict(**{"PATH": f"{run_dir}:{os.environ['PATH']}"})
+        state = data["states"].get("finalize_done", {})
+        script = state.get("action", "").replace("${context.run_dir}", str(run_dir))
+        script = script.replace("$${", "${")
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True, env=env
+        )
+        unverified_lines = [
+            line
+            for line in (run_dir / "autodev-unverified.txt").read_text().splitlines()
+            if line.strip()
+        ]
+        matching = [line for line in unverified_lines if line.split()[0] == "FEAT-0001"]
+        assert len(matching) == 1, (
+            f"FEAT-0001 must contribute exactly one unverified line, got {matching!r}"
+        )
+        summary = json.loads((run_dir / "summary.json").read_text())
+        assert summary.get("abandoned"), (
+            f"abandoned must stay truthy even though the duplicate line was suppressed: "
+            f"{summary!r}"
+        )
+        unverified_line = [ln for ln in result.stdout.splitlines() if ln.startswith("Unverified")]
+        assert unverified_line and "(1)" in unverified_line[0], (
+            f"UNVERIFIED_COUNT must not double-count the residual sentinel; "
+            f"stdout: {result.stdout!r}"
+        )
+
+    def test_autodev_implement_current_failure_chain_clears_inflight(self, data: dict) -> None:
+        """Structural test (BUG-2981): walk every state reachable from implement_current
+        along failure/skip routes (on_no/on_error/next, stopping at dequeue_next,
+        finalize_done, and abort_env_not_ready) and assert each either clears
+        autodev-inflight in its own action or routes only to states that do. This is
+        what would have caught check_impl_auth's leak (and abort_env_not_ready's, which
+        is intentionally out of scope) before the next fragment-state hole ships."""
+        states = data["states"]
+        stop_states = {"dequeue_next", "finalize_done", "abort_env_not_ready"}
+        edge_keys = ("on_no", "on_error", "next")
+
+        def clears(name: str, visiting: frozenset[str]) -> bool:
+            if name in stop_states:
+                return True
+            if name not in states:
+                return False
+            if name in visiting:
+                # Cycle with no clearing action anywhere on it — not safe.
+                return False
+            state = states[name]
+            action = state.get("action", "") or ""
+            if "autodev-inflight" in action:
+                return True
+            edges = [states[name].get(k) for k in edge_keys if states[name].get(k)]
+            if not edges:
+                return False
+            return all(clears(edge, visiting | {name}) for edge in edges)
+
+        implement_current = states["implement_current"]
+        entry_points = [
+            implement_current.get(k)
+            for k in ("on_no", "on_error")
+            if implement_current.get(k)
+        ]
+        assert entry_points, "implement_current must define on_no/on_error failure routing"
+
+        # Enumerate every state on the failure/skip chain for a precise failure message.
+        to_visit = list(entry_points)
+        visited: set[str] = set()
+        while to_visit:
+            name = to_visit.pop()
+            if name in visited or name in stop_states or name not in states:
+                continue
+            visited.add(name)
+            for k in edge_keys:
+                target = states[name].get(k)
+                if target:
+                    to_visit.append(target)
+
+        for name in sorted(visited):
+            assert clears(name, frozenset()), (
+                f"State {name!r} on implement_current's failure chain neither clears "
+                f"autodev-inflight in its own action nor routes only to states that do "
+                f"(BUG-2981 D1 structural regression guard)"
+            )
 
 
 class TestRnImplementAuthFastFail:

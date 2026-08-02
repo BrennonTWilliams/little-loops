@@ -251,16 +251,16 @@ body are exactly what the walk must flag, since they cannot clear it themselves.
 
 ## Acceptance Criteria
 
-- [ ] `check_impl_auth`'s `on_no` and `on_error` reach `dequeue_next` only via a
+- [x] `check_impl_auth`'s `on_no` and `on_error` reach `dequeue_next` only via a
       state that clears `autodev-inflight`
-- [ ] A run whose last issue fails implementation for a non-auth reason
+- [x] A run whose last issue fails implementation for a non-auth reason
       finalizes with no residual sentinel and no `abandoned` signal
-- [ ] One issue contributes at most 1 to `UNVERIFIED_COUNT`, with the
+- [x] One issue contributes at most 1 to `UNVERIFIED_COUNT`, with the
       `inflight_at_finalize` reason still visible
-- [ ] `ABANDONED` is still set when a residual sentinel names an issue already
+- [x] `ABANDONED` is still set when a residual sentinel names an issue already
       in the unverified bucket
-- [ ] Structural test covers every state on `implement_current`'s failure chain
-- [ ] `ll-loop validate autodev` passes; `python -m pytest scripts/tests/test_builtin_loops.py` passes
+- [x] Structural test covers every state on `implement_current`'s failure chain
+- [x] `ll-loop validate autodev` passes; `python -m pytest scripts/tests/test_builtin_loops.py` passes
 
 ## Impact
 
@@ -330,6 +330,7 @@ _Added by `/ll:confidence-check` on 2026-08-01_
   YAML-only change with no Python signatures involved.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-02T01:41:54 - `c5642014-2f2b-49ef-9353-cb00c4bdb671.jsonl`
 - `ll-auto` - 2026-08-02T01:40:31 - `3be8c6e1-83a3-4b90-999a-69b699ccaa3f.jsonl`
 - `/ll:ready-issue` - 2026-08-02T01:36:08 - `cc298563-4e7f-4db7-b80c-054824dbf4c4.jsonl`
 - `/ll:confidence-check` - 2026-08-02T01:29:19 - `c5642014-2f2b-49ef-9353-cb00c4bdb671.jsonl`
