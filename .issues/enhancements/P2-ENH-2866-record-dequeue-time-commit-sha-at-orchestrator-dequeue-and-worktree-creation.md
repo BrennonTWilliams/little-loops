@@ -14,14 +14,15 @@ labels:
 - observability
 blocks:
 - ENH-2853
-confidence_score: 82
-outcome_confidence: 56
+confidence_score: 98
+outcome_confidence: 61
 reconcile_attempted: true
-score_complexity: 14
-score_test_coverage: 20
-score_ambiguity: 8
-score_change_surface: 14
+score_complexity: 12
+score_test_coverage: 22
+score_ambiguity: 18
+score_change_surface: 9
 size: Very Large
+decision_needed: false
 ---
 
 # ENH-2866: Record dequeue-time commit SHA at orchestrator dequeue and worktree creation
@@ -40,6 +41,13 @@ sequential in-place branch is covered separately via
 Stamp that SHA at the point work is dequeued, in a location downstream checks
 can read. Carved out of ENH-2853, where it was one of eight workstreams and the
 only one that is independently landable and independently useful.
+
+Two capture points cover all four orchestrators: `ll-parallel`'s per-issue
+worktree creation, and `process_issue_inplace()` (shared by `ll-auto` and
+`ll-sprint`'s sequential branch). `autodev.yaml` is covered transitively —
+its `implement_current` state shells out to `ll-auto --only "$CURRENT"`
+(`autodev.yaml:829`), so every issue autodev implements already produces a
+stamped `orchestration_runs` row (§ Scope Boundaries, decision 3).
 
 ## Motivation
 
@@ -61,9 +69,7 @@ instead of shipping a fallback and a TODO.
 ## Current Behavior
 
 No orchestrator records the commit SHA a work item started from.
-`autodev.yaml`'s `dequeue_next` (~L80-141) snapshots pre-refine readiness to
-`${context.run_dir}/autodev-pre-readiness.txt` but calls `git rev-parse`
-nowhere. `ll-parallel` delegates worktree lifecycle to
+`ll-parallel` delegates worktree lifecycle to
 `little_loops.parallel.worker_pool` / `orchestrator`, which call the shared
 `setup_worktree()` primitive; no SHA is captured at the point a per-issue
 worker's worktree is created. A downstream consumer asking "what tree did this
@@ -82,47 +88,84 @@ does not stamp keeps working unchanged.
 
 ## Proposed Change
 
-1. **`autodev.yaml` `dequeue_next`** — write `git rev-parse HEAD` to
-   `${context.run_dir}/autodev-dequeue-sha.txt`, alongside the existing
-   pre-refine readiness snapshot written by the same state (FEAT-2751). Same
-   run-dir handshake-file idiom, no new mechanism.
-2. **`ll-parallel`** — capture the SHA at per-issue worktree creation.
+1. **`autodev.yaml` — no stamp; covered transitively** (decision 3,
+   2026-08-01). A per-state stamp there is unimplementable as originally
+   drafted: `dequeue_next` fires once per issue (~20 states route back to it),
+   but `loop_runs` is one row per run (`run_id TEXT NOT NULL UNIQUE`,
+   `session_store/schema.py:554`) with no issue dimension, so a run-dir file
+   could only ever persist the last issue's SHA — and no *state* calls
+   `record_loop_run_summary` anyway; `FSMExecutor._finish()` does, generically
+   (`fsm/executor.py:3111-3126`). `implement_current` shells out to
+   `ll-auto --only` (`autodev.yaml:829`), so site 2 below stamps every
+   autodev-implemented issue, per-issue, at a strictly better moment. See
+   § Scope Boundaries, decision 3.
+2. **The stamp is WRITTEN at dequeue, not at end-of-run** (decision 4,
+   2026-08-01 — the correctness fix that makes this issue useful at all). All
+   three existing `record_orchestration_run(...)` call sites fire *after* the
+   issue finishes: `issue_manager.py:1691` (after `process_issue_inplace()`
+   returns), `orchestrator.py:1044` via `_on_worker_complete` (L1072/L1245),
+   and `cli/sprint/run.py:713`/`879` (after `issue_result` exists). ENH-2853's
+   pre-patch check runs *during* that same issue's verification step, so a
+   stamp persisted only at completion is never readable by its only consumer.
+   Each capture site therefore performs an **early upsert at dequeue** —
+   `record_orchestration_run(..., status="running", started_at=<now>,
+   base_sha=…, base_dirty=…)` — and the existing terminal call later upserts
+   the outcome onto the same `(run_id, issue_id)` row. This is what makes the
+   COALESCE-on-retry rule in Design Notes load-bearing rather than merely
+   defensive. See § Scope Boundaries, decision 4, for the two behavioral
+   consequences (`ended_at` semantics for an in-flight row, and permanent
+   `status='running'` rows for crashed runs).
+3. **`ll-parallel`** — capture the SHA at per-issue worktree creation.
    `worker_pool.py` already computes `baseline_head_sha =
-   self._get_main_head_sha()` immediately before `_setup_worktree(...)`
-   (`~L358-367`); carry that value (plus a new inline dirty-check) through a
+   self._get_main_head_sha()` (`L362`) immediately before `_setup_worktree(...)`
+   (`L367`); carry that value (plus a new inline dirty-check) through a
    new `base_sha`/`base_dirty` pair on `WorkerResult`
-   (`parallel/types.py:52-94`), threaded into every `WorkerResult(...)`
-   construction in the worker-start method (success and failure paths alike).
-   `orchestrator.py`'s `_record_orchestration_result()` (`~L1016-1036`)
+   (`parallel/types.py:51-94`), threaded into every `WorkerResult(...)`
+   construction **inside `_process_issue`** (success and failure paths alike).
+   `orchestrator.py`'s `_record_orchestration_result()` (`L1034-1055`)
    currently forwards only `branch=result.branch_name` to
    `record_orchestration_run(...)` — it must also forward
    `result.base_sha`/`result.base_dirty`, since that call is the actual
-   missing link to persistence, not just the capture site.
-3. **`ll-auto` + `ll-sprint` sequential path** — `issue_manager.py`'s own
+   missing link to persistence, not just the capture site. Per decision 4 the
+   `ll-parallel` early upsert cannot ride on `WorkerResult` (which only exists
+   once the worker finishes): it is issued from `_process_issue` directly,
+   right after `baseline_head_sha` is computed, using the pool's
+   `run_id`/`driver`.
+4. **`ll-auto` + `ll-sprint` sequential path** — `issue_manager.py`'s own
    sequential dequeue loop routes through neither `autodev.yaml` nor
    `ll-parallel`, and `cli/sprint/run.py`'s
    `_run_issue_with_wall_clock_timeout()` calls the same
    `process_issue_inplace()` directly. The existing `_baseline_sha` local
-   (`~L921-926`) is captured *after* Phase 1 (ready/verify) already ran and
+   (`L936-941`) is captured *after* Phase 1 (ready/verify) already ran and
    is not reusable; add a fresh `git rev-parse HEAD` (plus dirty-check)
-   inside `process_issue_inplace()` before Phase 1 starts (`~L633-635`),
+   inside `process_issue_inplace()` before Phase 1 starts (`L646-648`),
    expose it as `base_sha`/`base_dirty` fields on `IssueProcessingResult`,
-   and have each caller — `ll-auto`'s loop and `cli/sprint/run.py`'s two
-   `record_orchestration_run(driver="ll-sprint")` calls (~L694, ~L842) —
+   and have each caller — `ll-auto`'s `AutoProcessor._process_issue`
+   (`issue_manager.py:1691`) and `cli/sprint/run.py`'s two
+   `record_orchestration_run(driver="ll-sprint")` calls (`L713`, `L879`) —
    forward those fields via `record_orchestration_run(...)` (scope decision
-   2, 2026-07-31).
-4. **Reader helper** — one function that resolves a run's base SHA, returning the
-   stamp when present and `None` when not, so consumers implement the
-   merge-base fallback once and identically rather than each rolling their own
-   lookup.
-5. **Persist to `.ll/history.db`** where a run is already recorded, so the stamp
+   2, 2026-07-31). Per decision 4 the same two fields also feed the
+   dequeue-time early upsert issued from inside `process_issue_inplace()`,
+   which is what makes the stamp readable mid-run.
+5. **Reader helper** — one function that resolves a base SHA from
+   `orchestration_runs`, returning the stamp when present and `None` when not,
+   so consumers implement the merge-base fallback once and identically rather
+   than each rolling their own lookup. Single-table by construction (decision 3
+   removed the `loop_runs` path), so there is no
+   which-table-does-this-`run_id`-belong-to dispatch to guess at. **`run_id` is
+   optional** (decision 4): it is a process-local `uuid4().hex`
+   (`issue_manager.py:1282`, `orchestrator.py:123`) that is never exported to
+   env, run-dir, or subprocess, so ENH-2853 — which hosts the check in an FSM
+   oracle loop, a separate process — cannot supply it. When omitted the reader
+   resolves the most recent stamped row for the issue.
+6. **Persist to `.ll/history.db`** where a run is already recorded, so the stamp
    outlives the run directory. Concretely: additive nullable columns
-   (`base_sha TEXT`, `base_dirty INTEGER`) on the existing run rows —
-   `loop_runs` (`session_store/schema.py:553`) for the autodev/FSM path and
-   `orchestration_runs` (`session_store/schema.py:523`) for both
-   `ll-parallel` and `ll-auto` — via a new `_MIGRATIONS` entry in
-   `session_store/schema.py` (NULL = "unstamped", matching
-   the reader's `None` contract). No new table.
+   (`base_sha TEXT`, `base_dirty INTEGER`) on `orchestration_runs`
+   (`session_store/schema.py:523`) — the one table all three stamped drivers
+   (`ll-parallel`, `ll-auto`, `ll-sprint`) already write per-issue rows to —
+   via a new `_MIGRATIONS` entry in `session_store/schema.py` (NULL =
+   "unstamped", matching the reader's `None` contract). No new table, and no
+   `loop_runs` change.
 
 ## Design Notes
 
@@ -135,14 +178,74 @@ does not stamp keeps working unchanged.
 - **The stamp is advisory, never a hard dependency.** A consumer that finds no
   stamp falls back to merge-base and *says which base it used*. An orchestrator
   that hasn't been taught to stamp (or a hand-run loop) must keep working.
-- **Resolve the SHA before any mutation.** In `dequeue_next` this means before
-  refinement writes to the issue file — a stamp taken after the first commit of
-  the run describes the wrong tree.
+- **Resolve the SHA before any mutation.** In `process_issue_inplace()` this
+  means before Phase 1 writes to the issue file (`issue_manager.py:646-648`);
+  in `worker_pool.py` before `_setup_worktree()` (`L367`). A stamp taken after
+  the first commit of the work item describes the wrong tree.
+- **Persist it before any mutation too — capture time ≠ write time was the
+  original design's fatal flaw** (decision 4, 2026-08-01). Every existing
+  `record_orchestration_run(...)` call fires at end-of-issue. ENH-2853 reads
+  mid-issue. Resolving the SHA early but only persisting it late leaves the
+  reader returning `None` on every single run — the issue would land, pass its
+  own tests, and still leave ENH-2853's primary path dead. The early upsert is
+  therefore part of the contract, not an optimization: **an AC asserts the row
+  is readable while the issue is still in flight**, not merely after it
+  completes.
+- **`ended_at` on an in-flight row.** `record_orchestration_run` does
+  `effective_ended_at = ended_at or _now()` (`writers.py:1213`), so a naive
+  dequeue-time call stamps `ended_at` at dequeue. The terminal upsert
+  overwrites it, so a completed run is unaffected — but an abandoned run would
+  read as `ended_at == started_at`. The early-upsert path must leave `ended_at`
+  NULL for an in-flight row; adjust the `or _now()` default so it applies only
+  when a terminal status is being written, or pass an explicit sentinel.
+- **`ll-auto`'s write is gated on `if not self.dry_run`**
+  (`issue_manager.py:1680`). The dequeue-time early upsert inherits the same
+  guard — a dry run must not become the one mode that persists rows.
 - **Detached/dirty trees.** Record the SHA plus whether the tree was dirty at
   stamp time; a dirty base means a pre-patch reconstruction is approximate and
   the consumer should be able to say so rather than assert a clean comparison.
+- **"Dirty" excludes untracked files.** Use
+  `git status --porcelain --untracked-files=no`. ENH-2853's reconstruction is
+  checkout-based, so only *tracked* modifications make the base approximate; an
+  untracked scratch file does not. The cited `merge_coordinator.py:151-173`
+  shape is the subprocess idiom to copy, not its flag set — it counts untracked
+  (`??`) lines because it is answering a different question.
+- **Normalize a failed `git rev-parse` to `None`, never `""`.**
+  `worker_pool._get_main_head_sha()` returns the empty string on failure
+  (`worker_pool.py:1528`; see the existing
+  `test_get_main_head_sha_returns_empty_on_failure`). Threading that straight
+  through writes `''` rather than NULL, which silently breaks the
+  NULL-means-unstamped contract — the reader would hand consumers a falsy
+  string instead of `None` and the merge-base fallback would never engage. Every
+  capture site coerces falsy → `None` before it reaches `WorkerResult` /
+  `IssueProcessingResult`.
+- **The UPSERT must not clobber a stamp on retry.**
+  `record_orchestration_run` is an `ON CONFLICT(run_id, issue_id) DO UPDATE SET
+  … head_sha=excluded.head_sha` (`session_store/writers.py:1222-1227`), and its
+  own docstring states retries reuse `(run_id, issue_id)`. A later call passing
+  `base_sha=None` would null a previously stamped value. The new columns use
+  `base_sha=COALESCE(excluded.base_sha, base_sha)` (and the same for
+  `base_dirty`) in the DO UPDATE clause — deliberately unlike the existing
+  `head_sha`/`branch` pair, which are end-of-run values where last-write-wins is
+  correct. A dequeue-time stamp is write-once.
 - No LLM involvement — this is a `git rev-parse` and a file write.
 - **`ll-auto` is a third dequeue site and was missing from the stamp set** (placement review, 2026-07-30). This issue's Motivation names `ll-auto` as a case where a verification step spans multiple commits and merge-base is wrong — but the Proposed Change stamps only `autodev.yaml`'s `dequeue_next` and `ll-parallel`'s worker creation. `ll-auto` routes through neither: `cli/auto.py` → `issue_manager.py`'s `AutoProcessor` is its own sequential dequeue loop, not a wrapper over `autodev.yaml` (a grep of `issue_manager.py` for `autodev` returns only a comment at L905). As written, the one orchestrator the Motivation calls out would always take ENH-2853's merge-base fallback. Stamp `issue_manager.py`'s per-issue dequeue as a third site. Check first whether the `_baseline_sha` it already computes for `verify_work_was_done()` (~L1072, ~L1109) is the same value — if so this is a persistence change, not a new capture.
+- **`autodev.yaml`'s `dequeue_next` was a fourth stamp site — RESOLVED:
+  removed, covered transitively** (design review 2026-08-01). Three findings
+  killed it: (a) `dequeue_next` runs once per issue but `loop_runs` holds one
+  row per run with no issue dimension, so the run-dir file
+  `autodev-dequeue-sha.txt` is overwritten each iteration and only the last
+  issue's SHA could persist; (b) no loop *state* calls
+  `record_loop_run_summary` — `FSMExecutor._finish()` does, generically at
+  archival (`fsm/executor.py:3111-3126`), with no knowledge of loop-specific
+  run-dir filenames, so the drafted read-back had no implementer; (c)
+  `implement_current` invokes `ll-auto --only "$CURRENT"` (`autodev.yaml:829`),
+  which reaches `process_issue_inplace()` and writes a per-issue
+  `orchestration_runs` row anyway. The transitive stamp is also *more* correct
+  for ENH-2853: it is taken after refine/wire/size-review have committed their
+  issue-file churn and immediately before the implementation patch, which is
+  the base a pre-patch test check actually wants. See § Scope Boundaries,
+  decision 3.
 - **`ll-queue run` is a fourth dequeue site — RESOLVED: exempted** (placement review 2026-07-30; decided 2026-07-31). FEAT-2906's `ll-queue run` serially dequeues `pending` entries, which makes it an orchestrator by this issue's own definition — but it has no `session_store.writers` path and its `LOOP` entries are stamped by the loop they drive. See § Scope Boundaries, decision 1, and decision fragment `61df2043` in `.ll/decisions.d/`.
 
 ## Program Design
@@ -163,31 +266,48 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   silently drop on JSON round-trip (`WorkerResult` is serialized across the
   worker-subprocess boundary).
 
-- `worker_pool.py`'s worker-start block (`~L358-361`) already computes
-  `baseline_head_sha = self._get_main_head_sha()` before
-  `self._setup_worktree(...)` (`~L367`). Add a sibling dirty-check inline
+- `worker_pool.py`'s `_process_issue()` (`L319-709`) already computes
+  `baseline_head_sha = self._get_main_head_sha()` at `L362`, before
+  `self._setup_worktree(...)` (`L367`). Add a sibling dirty-check inline
   (no shared helper exists — see Design Notes), following the
-  `git status --porcelain` shape at `merge_coordinator.py:151-173`, producing
-  a local `baseline_dirty: bool`. Thread both values into every
-  `WorkerResult(...)` construction in this method (10+ return sites at
-  `~L296, 408, 423, 440, 456, 484, 505, 549, 602, 617` and others) — the
-  success path and every early-return failure path alike, since a failed
-  worker's base state is equally worth stamping.
+  `git status --porcelain --untracked-files=no` shape at
+  `merge_coordinator.py:151-173` (the subprocess idiom, not its flag set — see
+  Design Notes on why untracked is excluded), producing
+  a local `baseline_dirty: bool`. Coerce a falsy `baseline_head_sha` to `None`
+  here — `_get_main_head_sha()` returns `""` on failure, and `""` is not NULL.
+  Issue the decision-4 early upsert immediately after both locals exist, then
+  thread them into **every `WorkerResult(...)` construction inside this
+  method** — 12 sites at `L409, 424, 441, 457, 485, 506, 570, 628, 643, 665,
+  679, 696` — the success path and every early-return failure path alike,
+  since a failed worker's base state is equally worth stamping.
+
+  **Not the `WorkerResult(...)` at `L297`**: that construction lives in
+  `_handle_completion()` (`L283-316`), a different method with no
+  `baseline_head_sha` in scope — it is the fallback for a worker future that
+  raised. It stays unstamped (`base_sha=None`), which is correct: the early
+  upsert already recorded the stamp for that issue, and COALESCE keeps the
+  terminal upsert from nulling it. A prior draft of this section listed `~L296`
+  among the stampable sites; it is not one.
 
 - `_record_orchestration_result(result: WorkerResult, status: str, failure_reason: str | None) -> None`
-  (`scripts/little_loops/parallel/orchestrator.py:1016-1036`) — extend its
+  (`scripts/little_loops/parallel/orchestrator.py:1034-1055`) — extend its
   inner `record_orchestration_run(...)` call (currently forwards only
   `branch=result.branch_name`, no SHA at all) to also pass
   `result.base_sha` and `result.base_dirty`.
 
-- `record_orchestration_run(base_sha: str | None, base_dirty: bool | None) -> bool`
-  and `record_loop_run_summary(base_sha: str | None, base_dirty: bool | None) -> bool`
-  (`scripts/little_loops/session_store/writers.py:1181-1196`, `1262-1276`) —
-  add these two keyword-only params to both existing signatures; thread
-  through to the `INSERT ... ON CONFLICT DO UPDATE` (`record_orchestration_run`)
-  and `INSERT OR IGNORE` (`record_loop_run_summary`) column lists and
-  bound-parameter tuples, following the existing `head_sha`/`branch` pair
-  already in both.
+- `record_orchestration_run(..., base_sha: str | None = None, base_dirty: bool | None = None) -> bool`
+  (`scripts/little_loops/session_store/writers.py:1181-1208`) — add these two
+  keyword-only params after the existing `branch` (line 1195); thread through
+  to the `INSERT ... ON CONFLICT DO UPDATE` column list and bound-parameter
+  tuple (`writers.py:1219-1244`), following the existing `head_sha`/`branch`
+  pair. Also adjust the `effective_ended_at = ended_at or _now()` default at
+  `L1213` so an in-flight (`status="running"`) row leaves `ended_at` NULL —
+  see Design Notes. **The DO UPDATE clause differs from that pair**: use
+  `base_sha=COALESCE(excluded.base_sha, base_sha)` and
+  `base_dirty=COALESCE(excluded.base_dirty, base_dirty)` so a retry upsert
+  that passes no stamp cannot null a recorded one (see Design Notes).
+  `record_loop_run_summary` is **unchanged** — decision 3 removed the
+  `loop_runs` path.
 
 - Schema migration — new `_MIGRATIONS` entry appended after the
   `failure_terminal` entry (`schema.py:906-917`, current
@@ -195,89 +315,137 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
   - `orchestration_runs.base_sha: str`
   - `orchestration_runs.base_dirty: int`
-  - `loop_runs.base_sha: str`
-  - `loop_runs.base_dirty: int`
 
-  via `ALTER TABLE ... ADD COLUMN` statements, each nullable (NULL =
+  via `ALTER TABLE ... ADD COLUMN` statements, both nullable (NULL =
   unstamped — orchestrator predates this stamp or opted out; readers fall
   back to merge-base). Fix-forward only, matching the `failure_terminal`
-  precedent: existing rows are not backfilled.
+  precedent: existing rows are not backfilled. No `loop_runs` columns.
 
-- `read_base_sha(db_path: Path | str, run_id: str, issue_id: str | None) -> str | None`
-  (new — exact module TBD by implementer; candidate: `session_store/readers.py`
-  alongside other typed lookups) — modeled on the None-when-absent contract
-  of `read_adapter_gen_version()` (`init/writers.py:786-805`): never raises,
-  returns `None` on missing row, NULL column, or any query error.
+- `read_base_sha(db_path: Path | str, *, issue_id: str, run_id: str | None = None) -> str | None`
+  (new — `scripts/little_loops/session_store/queries.py`, alongside the other
+  typed lookups; note there is no `readers.py` in this package — the modules
+  are `db.py` / `queries.py` / `writers.py` / `lifecycle.py` post-ENH-2890) —
+  modeled on the None-when-absent contract of `read_adapter_gen_version()`
+  (`init/writers.py:786-805`): never raises, returns `None` on missing row,
+  NULL column, or any query error.
 
-  Looks up `orchestration_runs.base_sha` (keyed by `run_id`+`issue_id`) or
-  `loop_runs.base_sha` (keyed by `run_id`) depending on which table the
-  caller's `run_id` belongs to; returns `None` on missing row, NULL column,
-  or any query error — never raises, matching every existing reader in this
-  module family.
+  Single-table by construction: `SELECT base_sha FROM orchestration_runs`.
+  With `run_id` supplied, `WHERE run_id = ? AND issue_id = ?` — the
+  `UNIQUE(run_id, issue_id)` constraint (`schema.py:537`) makes that the row
+  identity. Deliberately **not** a dual-table dispatch: with `loop_runs` out of
+  scope there is no ambiguity about which table a caller's `run_id` belongs to,
+  which is what makes the "same reader for every orchestrator" AC true by
+  construction rather than by probing.
+
+  **`run_id` is optional, and that is load-bearing** (decision 4, 2026-08-01).
+  It is a process-local `uuid4().hex` (`issue_manager.py:1282`,
+  `orchestrator.py:123`) never written to env, run-dir, or any subprocess
+  argv. ENH-2853 hosts the pre-patch check in an FSM oracle loop — a separate
+  process — so it can never supply one; and under decision 3's transitive path,
+  `implement_current`'s `ll-auto --only` subprocess mints its *own* `run_id`,
+  so even plumbing autodev's through would not match the row. A
+  required-`run_id` reader is unreachable by its only consumer. When `run_id`
+  is omitted the reader resolves the most recent stamp for the issue:
+  `WHERE issue_id = ? AND base_sha IS NOT NULL ORDER BY id DESC LIMIT 1`.
+  The `base_sha IS NOT NULL` filter matters — without it an unstamped later row
+  would shadow a stamped earlier one and the reader would report `None` for an
+  issue that was in fact stamped.
 
 - `issue_manager.py` — new `git rev-parse HEAD` (and a dirty-check) call
   inserted inside `process_issue_inplace()` before `Phase 1: Verifying issue`
-  starts (`~L633-635`), separate from the existing `_baseline_sha` local
-  (`~L921-926`, computed *after* Phase 1 and used only for
+  starts (`L646-648`), separate from the existing `_baseline_sha` local
+  (`L936-941`, computed *after* Phase 1 and used only for
   `verify_work_was_done()` — not reusable for this stamp per the Codebase
-  Research Findings above). `IssueProcessingResult` (`issue_manager.py:557-569`)
+  Research Findings above). `IssueProcessingResult` (`issue_manager.py:562-574`)
   gains `base_sha: str | None = None` / `base_dirty: bool | None = None`
   fields carrying the stamp back to callers (scope decision 2, 2026-07-31):
-  `ll-auto`'s own loop and `cli/sprint/run.py`'s two
-  `record_orchestration_run(driver="ll-sprint")` calls (~L694, ~L842) both
-  forward them.
+  `ll-auto`'s `AutoProcessor._process_issue` (`L1691`) and
+  `cli/sprint/run.py`'s two `record_orchestration_run(driver="ll-sprint")`
+  calls (`L713`, `L879`) both forward them.
+
+  Per decision 4, `process_issue_inplace()` also issues the dequeue-time early
+  upsert itself, right after resolving the two values — it is the only place
+  that runs before Phase 1 for both `ll-auto` and `ll-sprint`-sequential. That
+  requires `run_id`/`driver` to reach `process_issue_inplace()`; today they
+  live on `AutoProcessor` (`self.run_id`, `L1282`) and as `cli/sprint/run.py`
+  locals. Add them as optional keyword params (`run_id: str | None = None`,
+  `driver: str | None = None`) — when either is absent the early upsert is
+  skipped and only the caller-side terminal forwarding applies, preserving
+  today's behavior for any other caller. Honor `dry_run` here as
+  `AutoProcessor` does at `L1680`.
 
 ### Call Path
 
-- **`ll-parallel`**: `worker_pool.py` worker-start block →
-  `_get_main_head_sha()` + new dirty check → `WorkerResult(base_sha=,
-  base_dirty=)` at every return site → `orchestrator.py`'s
-  `_on_worker_complete()` → `_record_orchestration_result()` →
-  `record_orchestration_run(base_sha=, base_dirty=)` → `orchestration_runs`
-  columns.
-- **`autodev.yaml`**: `dequeue_next`'s shell `action:` → `git rev-parse
-  HEAD` → `${context.run_dir}/autodev-dequeue-sha.txt` (run-dir handshake
-  file, same idiom as `autodev-pre-readiness.txt`) → read back by whichever
-  later state calls `record_loop_run_summary(base_sha=, base_dirty=)` at
-  run archival.
+- **`ll-parallel`**: `worker_pool._process_issue()` (`L362`) →
+  `_get_main_head_sha()` + new dirty check → **early
+  `record_orchestration_run(status="running", base_sha=, base_dirty=)`** (row
+  now exists and is readable mid-run) → `WorkerResult(base_sha=, base_dirty=)`
+  at every return site inside `_process_issue` → `orchestrator.py`'s
+  `_on_worker_complete()` → `_record_orchestration_result()` → terminal
+  `record_orchestration_run(base_sha=, base_dirty=)` COALESCE-upsert onto the
+  same row.
+- **`autodev.yaml`**: no capture of its own. `implement_current` →
+  `ll-auto --only "$CURRENT"` subprocess (`autodev.yaml:829`) → the `ll-auto`
+  path below → `orchestration_runs` row with `driver="ll-auto"`. Nothing to
+  build for this orchestrator.
 - **`ll-auto` / `ll-sprint` sequential**: `process_issue_inplace()`, before
-  `~L633` → `git rev-parse HEAD` + dirty check → new local (not
-  `_baseline_sha`) → `IssueProcessingResult(base_sha=, base_dirty=)` →
-  each caller forwards into its own
-  `record_orchestration_run(base_sha=, base_dirty=)` call (`ll-auto`'s
-  outcome recording; `cli/sprint/run.py` ~L694 and ~L842).
-- **Reader**: any consumer (ENH-2853) → `read_base_sha(db_path, run_id=,
-  issue_id=)` → `None` (fall back to merge-base, say so) or a SHA string.
+  `L646` → `git rev-parse HEAD` + dirty check → new local (not
+  `_baseline_sha`) → **early `record_orchestration_run(status="running",
+  base_sha=, base_dirty=)`** → `IssueProcessingResult(base_sha=, base_dirty=)`
+  → each caller forwards into its own terminal
+  `record_orchestration_run(base_sha=, base_dirty=)` call
+  (`issue_manager.py:1691`; `cli/sprint/run.py` `L713` and `L879`).
+- **Reader**: any consumer (ENH-2853, running in a separate oracle-loop
+  process) → `read_base_sha(db_path, issue_id=)` with no `run_id` → most-recent
+  stamped `orchestration_runs` row for that issue → `None` (fall back to
+  merge-base, say so) or a SHA string. In-process callers that do hold a
+  `run_id` may pass it for an exact-row lookup.
 
 ## Acceptance Criteria
 
-- [ ] `autodev.yaml`'s `dequeue_next` writes the dequeue-time SHA to the run
-      directory, resolved before any state mutates the tree or issue file.
-- [ ] `ll-parallel` records the same stamp at per-issue worktree creation, in the
+- [ ] `ll-parallel` records the stamp at per-issue worktree creation, in the
       worker's state rather than inside the shared `setup_worktree()` primitive.
 - [ ] `setup_worktree()` / `cleanup_worktree()` signatures remain backward
       compatible; the four existing direct call sites are unchanged or updated
       additively.
-- [ ] A single reader helper resolves a run's base SHA and returns `None` when
-      unstamped, so the merge-base fallback is implemented once.
-- [ ] Whether the tree was dirty at stamp time is recorded alongside the SHA.
+- [ ] A single reader helper resolves a base SHA and returns `None` when
+      unstamped, so the merge-base fallback is implemented once. It is callable
+      **without a `run_id`** — a test resolves a stamp given only `issue_id`,
+      proving an out-of-process consumer (ENH-2853's oracle loop) can reach it.
+      When several rows exist for one issue, the most recent *stamped* row
+      wins; a test covers an unstamped later row not shadowing a stamped
+      earlier one.
+- [ ] Whether the tree was dirty at stamp time is recorded alongside the SHA,
+      computed with `--untracked-files=no` so an untracked scratch file does not
+      mark the base dirty.
 - [ ] The stamp is persisted to `.ll/history.db` as additive nullable columns on
-      the existing run rows (`loop_runs` / `orchestration_runs`), not a new
-      table; NULL means unstamped.
+      the existing `orchestration_runs` rows, not a new table and not on
+      `loop_runs`; NULL means unstamped.
+- [ ] A failed `git rev-parse` is persisted as NULL, never as an empty string —
+      a test asserts the reader returns `None` (not `""`) when
+      `_get_main_head_sha()` fails.
+- [ ] A second `record_orchestration_run(...)` upsert for the same
+      `(run_id, issue_id)` that passes no `base_sha` leaves the previously
+      recorded stamp intact. A test covers this retry path.
 - [ ] An orchestrator or hand-run loop with no stamp continues to work
       unchanged.
-- [ ] Tests cover: the stamp written by `dequeue_next`, the stamp written at
-      `ll-parallel` worker creation, the reader returning `None` when unstamped,
-      and the dirty-tree flag.
+- [ ] Tests cover: the stamp written at `ll-parallel` worker creation, the
+      reader returning `None` when unstamped, and the dirty-tree flag.
 
 _Added 2026-07-30 (placement review) — see Design Notes:_
 
 - [ ] `ll-auto` records the stamp at its own per-issue dequeue in
       `issue_manager.py`, resolved before Phase 1 mutates the issue file. A test
-      covers it, and asserts an `ll-auto` run is not left taking the merge-base
-      fallback.
-- [ ] All three orchestrators write the stamp in a form the *same* reader helper
-      resolves — no per-orchestrator lookup logic.
+      covers it, asserting `orchestration_runs.base_sha` is non-NULL after an
+      `ll-auto` run.
+- [ ] All stamped drivers write into the same column on the same table, so the
+      *same* reader helper resolves every one — no per-orchestrator lookup
+      logic and no table dispatch.
+- [ ] An `autodev.yaml` run produces a stamped row per implemented issue via its
+      `ll-auto --only` subprocess, with no autodev-specific capture code. A test
+      asserts `autodev.yaml` writes no `autodev-dequeue-sha` run-dir artifact
+      (naming the removed design's specific artifact, rather than grepping for
+      `rev-parse`, which a legitimate future change would trip).
 - [ ] `ll-queue run` is either stamped or explicitly exempted in
       § Scope Boundaries with a stated reason. _(Resolved 2026-07-31:
       exempted — see § Scope Boundaries, decision 1.)_
@@ -290,6 +458,25 @@ _Added 2026-07-31 (scope decision 2) — see Scope Boundaries:_
       `record_orchestration_run(driver="ll-sprint")` calls. A test covers the
       sprint-sequential forwarding.
 
+_Added 2026-08-01 (decision 4, write-timing) — see Scope Boundaries:_
+
+- [ ] The stamp is **readable while the issue is still in flight**, not only
+      after it completes. For each stamped driver a test asserts that after the
+      dequeue-time write and before any terminal
+      `record_orchestration_run(...)`, `read_base_sha(db, issue_id=...)`
+      returns the SHA. This is the AC that keeps ENH-2853's primary path from
+      being dead code.
+- [ ] The terminal upsert for the same `(run_id, issue_id)` replaces `status`,
+      `duration_s`, `ended_at`, `head_sha`, and `branch` while preserving
+      `base_sha`/`base_dirty` — one row per issue, not two. A test asserts the
+      row count is 1 after both writes.
+- [ ] An in-flight row leaves `ended_at` NULL; only a terminal write populates
+      it. A test asserts an abandoned run does not read as
+      `ended_at == started_at`.
+- [ ] A `--dry-run` `ll-auto` invocation writes no `orchestration_runs` row at
+      dequeue, matching the existing `if not self.dry_run` guard on the
+      terminal write.
+
 ## Integration Map
 
 ### Files to Modify
@@ -297,8 +484,9 @@ _Added 2026-07-31 (scope decision 2) — see Scope Boundaries:_
 _`issue_manager.py` added 2026-07-30 (placement review) — see Design Notes,
 "`ll-auto` is a third dequeue site."_
 
-- `scripts/little_loops/loops/autodev.yaml` — `dequeue_next` (~L80-141); the
-  pre-readiness snapshot at ~L104-117 is the idiom to follow
+- ~~`scripts/little_loops/loops/autodev.yaml`~~ — **not modified** (decision 3,
+  2026-08-01); covered transitively via `implement_current`'s
+  `ll-auto --only` shell-out at ~L829
 - `scripts/little_loops/parallel/worker_pool.py` /
   `scripts/little_loops/parallel/orchestrator.py` — per-issue worktree creation
   call sites
@@ -348,9 +536,10 @@ _Wiring pass added by `/ll:wire-issue` (2026-07-30):_
   schema versions", ~L663-699) is a hand-maintained one-row-per-migration
   changelog; needs a new row for the `base_sha`/`base_dirty` migration,
   following the `v22`/`v23` prose pattern
-- `docs/reference/API.md` — `record_orchestration_run` (~L8493) and
-  `record_loop_run_summary` (~L8517) are hand-maintained signature blocks
-  listing every keyword argument; need `base_sha`/`base_dirty` params inserted
+- `docs/reference/API.md` — `record_orchestration_run` (~L8493) is a
+  hand-maintained signature block listing every keyword argument; needs the
+  `base_sha`/`base_dirty` params inserted. `record_loop_run_summary` (~L8517)
+  is untouched per decision 3
 
 ### Codebase Research Findings
 
@@ -445,10 +634,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   `git worktree add` argv shape
 
 ### Tests
-- `scripts/tests/test_autodev_loop.py` — follow
-  `TestDequeueNextPreReadinessSnapshot` (~L172-186), which does string-containment
-  assertions against the raw YAML `action:` block rather than live execution;
-  no existing test executes `dequeue_next` live
+- `scripts/tests/test_autodev_loop.py` — only for the negative guard AC (assert
+  `autodev.yaml` grows no SHA-stamping shell action); follow
+  `TestDequeueNextPreReadinessSnapshot` (~L172-186), which does
+  string-containment assertions against the raw YAML `action:` block rather
+  than live execution
 - `scripts/tests/test_worker_pool.py`, `scripts/tests/test_orchestrator.py` —
   the latter patches `setup_worktree` at ~7 sites (L1761-1888)
 - `scripts/tests/test_session_store_writers.py` / `test_session_store_schema.py` —
@@ -462,10 +652,16 @@ _Wiring pass added by `/ll:wire-issue` (2026-07-30):_
   additive-`ALTER TABLE ADD COLUMN` migration on an existing table, not a new
   table like `TestSchemaV35ReviewEvents`); use the shared `_bootstrap_schema_at`
   fixture (~L1134-1154) for the upgrade-from-prior-version case
-- `scripts/tests/test_session_store_schema.py` — `test_v13_to_v14_migration`
-  (~L1130) and `test_v34_db_upgrade_gains_review_events` (~L1880) hardcode
-  `SCHEMA_VERSION == 37` / `version == 37` and **will break** once the new
-  migration entry is appended — bump alongside it
+- `scripts/tests/test_session_store_schema.py` hardcodes `37` at roughly ten
+  sites — `L650`, `L664-665`, `L716-717`, `L795`, `L812-813`, `L1034-1035` and
+  others — all of which break once the new migration entry is appended.
+  `SCHEMA_VERSION` is also referenced from seven further test modules
+  (`test_session_store_writers.py`, `test_session_store_lifecycle.py`,
+  `test_assistant_messages.py`, `test_queue_store.py`,
+  `test_hook_session_start.py`, `test_enh_2511_mcp_telemetry.py`,
+  `test_enh_2497_agent_type.py`). **Grep the suite for `37` / `SCHEMA_VERSION`
+  and bump every site** — an earlier draft of this section named only two
+  tests, which materially under-counted the work
 - `scripts/tests/test_issue_manager.py` — model the new pre-Phase-1 rev-parse
   stamp test on `TestFallbackVerification.test_baseline_sha_passed_to_verify_work_was_done`
   (~L2797-2850)'s `subprocess.run` mock-dispatch pattern (patches
@@ -479,6 +675,20 @@ _Wiring pass added by `/ll:wire-issue` (2026-07-30):_
 - `scripts/tests/test_init_core.py` — `test_read_adapter_gen_version_*`
   (~L1249-1271, a 4-gate happy-path/missing/malformed/absent-field template) is
   the closest existing test shape for the new reader helper's tests
+
+_Added 2026-08-01 (decision 4, write-timing):_
+- `scripts/tests/test_session_store_writers.py` — the decision-4 ACs land
+  mostly here: dequeue-then-terminal upsert leaves one row with `base_sha`
+  intact; an in-flight row has NULL `ended_at`; `read_base_sha` resolves with
+  `run_id` omitted; an unstamped later row does not shadow a stamped earlier
+  one. All are pure writer/reader tests against a temp DB, no orchestrator
+  needed
+- `scripts/tests/test_issue_manager.py` — a dry-run assertion (no
+  `orchestration_runs` row written at dequeue) alongside the pre-Phase-1
+  rev-parse test
+- `scripts/tests/test_history_reader.py` — confirm
+  `aggregate_orchestration_runs` still behaves sanely once `status='running'`
+  rows can persist for crashed runs (decision 4's accepted consequence)
 
 ### Documentation
 
@@ -494,13 +704,14 @@ _Wiring pass added by `/ll:wire-issue` (2026-07-30):_
 
 ## Scope Boundaries
 
-**In scope:** capturing the SHA (plus dirty-tree flag) at `autodev.yaml`'s
-`dequeue_next`, `ll-parallel`'s per-issue worktree creation, and (added
-2026-07-30, placement review) `issue_manager.py`'s `ll-auto` dequeue — with the
-capture placed inside `process_issue_inplace()` so `ll-sprint`'s sequential
-in-place branch is covered by the same stamp (decision 2 below); one reader
-helper that returns `None` when unstamped; persistence onto the existing run
-record.
+**In scope:** capturing the SHA (plus dirty-tree flag) at exactly two points —
+`ll-parallel`'s per-issue worktree creation, and inside
+`process_issue_inplace()`, which covers both `ll-auto` and `ll-sprint`'s
+sequential in-place branch (decision 2 below) and, transitively via
+`ll-auto --only`, `autodev.yaml` (decision 3 below); one reader helper that
+returns `None` when unstamped; persistence onto the existing per-issue
+`orchestration_runs` record, **written at dequeue rather than at end-of-run**
+(decision 4 below) so the stamp is readable while the issue is in flight.
 
 **Resolved decisions (2026-07-31, manual; decision fragments
 `61df2043-0432-431a-ae96-d69797937335` and
@@ -532,13 +743,87 @@ record.
    worktree-mode delegation and is superseded by this decision for the
    sequential branch.
 
+**Resolved decision (2026-08-01, design review):**
+
+3. **`autodev.yaml`'s `dequeue_next` stamp is REMOVED from scope — autodev is
+   covered transitively.** The originally-drafted site 1 was unimplementable
+   as specified and redundant once implemented correctly:
+   - *No per-issue home.* `dequeue_next` fires once per issue (~20 states
+     route back to it), but `loop_runs` is one row per run
+     (`run_id TEXT NOT NULL UNIQUE`, `schema.py:554`) with no issue column.
+     `${context.run_dir}/autodev-dequeue-sha.txt` is overwritten every
+     iteration, so at most the last issue's SHA could persist — and ENH-2853
+     needs a per-issue base.
+   - *No writer.* No loop *state* calls `record_loop_run_summary`;
+     `FSMExecutor._finish()` does (`fsm/executor.py:3111-3126`), generically
+     at archival, with no knowledge of loop-specific run-dir filenames.
+     Wiring it would mean inventing a loop-agnostic run-dir filename
+     convention in the executor — new mechanism, for one loop.
+   - *Already covered, and better.* `implement_current` runs
+     `ll-auto --only "$CURRENT"` (`autodev.yaml:829`), reaching
+     `process_issue_inplace()` and writing a per-issue `orchestration_runs`
+     row. That stamp is taken *after* refine/wire/size-review commit their
+     issue-file churn and immediately before the implementation patch — the
+     base a pre-patch test check actually wants, not a several-commits-stale
+     dequeue-time tree.
+
+   Consequences: `loop_runs` gains no columns, `record_loop_run_summary` is
+   unchanged, and the reader collapses to a single `orchestration_runs`
+   lookup keyed by `(run_id, issue_id)` — which is what makes the
+   "same reader for every orchestrator" AC true by construction instead of by
+   run_id-shape probing. Rejected alternative: a generic
+   `${context.run_dir}/base-sha.txt` convention read by `_finish()` — still
+   one-row-per-run, so it does not solve (a), and adds executor surface for a
+   value no consumer can key by issue.
+
+**Resolved decision (2026-08-01, second design review):**
+
+4. **The stamp is written at dequeue, and the reader's `run_id` is optional.**
+   Two defects that would each have made the delivered feature unusable by its
+   only consumer:
+
+   - *Write timing.* All three `record_orchestration_run(...)` call sites are
+     post-completion — `issue_manager.py:1691`, `orchestrator.py:1044` (via
+     `_on_worker_complete`, `L1072`/`L1245`), `cli/sprint/run.py:713`/`879`.
+     ENH-2853's pre-patch check runs mid-issue, during the verification step of
+     the very issue being stamped, so no row exists at read time and every run
+     silently takes the merge-base fallback. Resolving the SHA early is not
+     enough; it must be *persisted* early. Each site now issues a dequeue-time
+     `status="running"` upsert, with the existing terminal call
+     COALESCE-upserting the outcome onto the same `(run_id, issue_id)` row.
+   - *Reader key.* `run_id` is a process-local `uuid4().hex`
+     (`issue_manager.py:1282`, `orchestrator.py:123`) never exported anywhere.
+     ENH-2853 runs in a separate FSM-oracle process and cannot supply one; and
+     the decision-3 transitive path makes it moot anyway, since
+     `ll-auto --only` mints its own `run_id`. `run_id` becomes optional, with
+     an `issue_id`-only most-recent-stamped-row lookup.
+
+   Two behavioral consequences, accepted:
+   - `record_orchestration_run`'s `effective_ended_at = ended_at or _now()`
+     (`writers.py:1213`) must not fire for an in-flight row, or an abandoned
+     run reads as `ended_at == started_at`.
+   - A crashed or interrupted run now leaves a permanent `status='running'`
+     row where today no row exists at all. `history_reader.aggregate_orchestration_runs`
+     computes `completed / COUNT(*)` (`history_reader.py:1782-1784`), so
+     reported success rates will drop slightly. This is judged an accuracy
+     improvement — a crashed run *is* a non-completion — but it is a visible
+     change to existing analytics, not a silent one, and should be called out
+     in the changelog entry.
+
+   Rejected alternative: exporting `run_id` into subprocess env
+   (`LL_RUN_ID`) so the reader could keep a required key. It does not solve the
+   autodev case (the `ll-auto --only` child mints its own), and it adds a new
+   cross-process contract for a lookup that `issue_id` alone answers
+   adequately given the stamp is advisory.
+
 **Out of scope:** the merge-base fallback logic itself and any use of the base
 state (ENH-2853 owns both); stamping `ll-loop run --worktree` or the epic-branch
 verify path — neither dequeues work items; `ll-queue run` (decision 1 above);
 a separate stamp for worktree-mode `ll-sprint` waves — those delegate to the
 same `ParallelOrchestrator` as `ll-parallel` (`cli/sprint/run.py:23`), so the
 `ll-parallel` stamp covers them (the sequential in-place branch is in scope
-per decision 2 above);
+per decision 2 above); any `autodev.yaml` change and any `loop_runs` /
+`record_loop_run_summary` change (decision 3 above);
 changing `setup_worktree()` /
 `cleanup_worktree()` semantics for their four existing callers.
 
@@ -661,12 +946,66 @@ unchanged at 82/56:_
   `session_store.writers` call at all) rather than one uniform mechanical
   substitution.
 
+## Confidence Check Notes
+
+_Re-run by `/ll:confidence-check` (2026-08-01) — post-decision-4 pass; readiness
+unchanged at 98, outcome confidence 61 (down from 67):_
+
+**Readiness Score**: 98/100 → GO
+**Outcome Confidence**: 61/100 → below the 65 outcome threshold
+
+### Outcome Risk Factors
+- Decision 4 adds a third write per stamped site — a dequeue-time
+  `status="running"` early upsert issued directly from `_process_issue`
+  (`ll-parallel`) / `process_issue_inplace()` (`ll-auto`/`ll-sprint`),
+  separate from the existing terminal upsert those sites already made. This
+  is on top of the already-Pattern-A per-site wiring the prior pass scored,
+  and pushes Complexity/Change-Surface lower than the 82/56-era estimate.
+- The early-upsert/terminal-upsert coordination is subtle:
+  `record_orchestration_run`'s `effective_ended_at = ended_at or _now()`
+  default (`writers.py:1213`) must be conditioned on a terminal status being
+  written, or an in-flight row gets `ended_at` stamped at dequeue time. A
+  wrong conditional here reads green on the happy path (the terminal upsert
+  overwrites it) and only surfaces on an abandoned/crashed run, exactly the
+  case decision 4 exists to make readable.
+- Accepted behavioral change: a crashed or interrupted run now leaves a
+  permanent `status='running'` row where today no row exists at all,
+  measurably lowering `aggregate_orchestration_runs`' reported success rate
+  (`history_reader.py:1782-1784`). The issue judges this an accuracy
+  improvement and flags it for the changelog, but it's a visible analytics
+  shift a reviewer should confirm is expected rather than a regression.
+
 ## Status
 
 **Open** | Created: 2026-07-27 | Priority: P2
 
 
 ## Session Log
+- flag correction (manual, no skill) - 2026-08-01 - cleared `decision_needed`
+  (set by this same `/ll:confidence-check` pass): `ll-issues set-flags` matched
+  "open decision"/"decision point" from a stale, already-resolved 2026-07-30
+  `## Confidence Check Notes` block still present earlier in the file, not a
+  live open decision — decision 4 and the `ll-queue`/`ll-sprint` scope
+  questions are all resolved with recorded rationale. Root cause looks like
+  `set-flags` scanning from the *first* `## Confidence Check Notes` header
+  through `## Status` on an issue with multiple stacked historical notes
+  sections, rather than just the most recent one; worth a bug report.
+- `/ll:confidence-check` - 2026-08-02T01:05:29 - `8b2aecad-5678-4f40-8b5b-a1be3ec862a6.jsonl`
+- design review (manual, no skill) - 2026-08-01 - decision 4: stamp is written
+  at dequeue (`status="running"` early upsert) rather than end-of-run, since all
+  three existing `record_orchestration_run` sites fire after the issue completes
+  and ENH-2853 reads mid-issue; `read_base_sha`'s `run_id` made optional
+  (process-local `uuid4().hex`, unreachable from ENH-2853's oracle-loop process);
+  corrected `worker_pool.py:297` as a non-stampable site, expanded the
+  `SCHEMA_VERSION` test-bump scope from 2 sites to ~10 plus 7 modules, narrowed
+  the autodev negative-guard AC, and refreshed drifted line refs
+- `/ll:confidence-check` - 2026-08-02T00:46:46 - `b0869093-304a-4a68-b09f-0b4e513fe075.jsonl`
+- design review (manual, no skill) - 2026-08-01 - decision 3: removed the
+  `autodev.yaml` `dequeue_next` stamp (no per-issue home on `loop_runs`, no
+  state-level writer, redundant with the `ll-auto --only` shell-out); collapsed
+  the reader to a single `orchestration_runs` lookup; added COALESCE-on-retry,
+  empty-SHA→NULL normalization, and `--untracked-files=no` dirty semantics to
+  Program Design + ACs
 - scope-decision resolution (manual, no skill) - 2026-07-31 - resolved both open decisions: `ll-queue run` exempted, `ll-sprint` sequential path in scope via `IssueProcessingResult.base_sha`/`.base_dirty`; cleared `decision_needed`; fragments `61df2043` / `4f66ef35` in `.ll/decisions.d/`
 - `/ll:confidence-check` - 2026-07-31T00:00:00 - `f11a8fcc-5588-45b0-a78b-50012a4879e9.jsonl`
 - `/ll:reconcile-issue` - 2026-07-31T03:03:58 - `2e6be344-18cc-4ac2-a67d-7bcec83bcb6a.jsonl`

@@ -24,6 +24,41 @@ Enrich issue files with codebase-driven research findings. Unlike `/ll:format-is
 
 The core workflow: read the issue, research the codebase, identify what an implementer needs to know that isn't in the issue, then fill those gaps with actual findings (file paths, function signatures, behavioral analysis).
 
+## Register: Constraints, Not Recipes
+
+Everything this command deposits is read later by an implementer — usually a
+headless automation session with no human present. What you write becomes the
+ceiling on what that session can produce, so the register matters as much as
+the content.
+
+**Deposit facts and constraints. Do not deposit a route.**
+
+| Write this | Not this | Why |
+|---|---|---|
+| "The new flag must round-trip through `parse_args()`; `test_parser.py::TestFlagParsing` covers the existing contract and must keep passing" | "1. Modify `parse_args()` to handle the new flag. 2. Add a test to `TestFlagParsing`." | An ordered recipe caps the implementation at the route *research time* imagined. A constraint says what must be true and leaves the route open. |
+| "This codebase registers subcommands through the `_add_*_parser` helper (`cli.py:412`)" | "Follow the pattern at `cli.py:412`" | A cited example becomes something to **copy**, including that file's accidents. Naming the *rule* the example demonstrates transfers the convention without the clone. |
+| "`emit_event()` has 14 callers, listed below; all assume the payload dict is never mutated" | "Update all 14 callers" | The invariant is the durable fact. Whether all 14 need touching is an implementation judgment. |
+
+This does **not** mean writing less, or writing vaguely. Integration Map,
+Root Cause, callers/dependents, and test coverage are exactly the constraints
+an implementer cannot cheaply rediscover — research them hard and state them
+precisely, with real paths and anchors. The shift is from *"do it this way"*
+to *"here is the ground truth, and here is what must still be true when you
+are done."*
+
+Two places this bites hardest:
+
+- **`## Implementation Steps`** — the section most prone to becoming a recipe.
+  Prefer phrasing each entry as an outcome plus its verification, not an edit
+  instruction. Keep concrete file references; drop the imperative sequencing
+  where the order is not actually forced.
+- **Pattern-finder output** — state the convention being upheld and cite the
+  file as *evidence for the convention*, never as a template to reproduce.
+
+Anything concrete deposited here will be treated as something to copy rather
+than something to learn from. Where you want judgment applied, describe the
+property you need rather than handing over an instance of it.
+
 ## Configuration
 
 This command uses project configuration from `.ll/ll-config.json`:
@@ -173,7 +208,7 @@ Return analysis with specific file path and anchor references (e.g., function na
 ```
 Use Task tool with subagent_type="ll:codebase-pattern-finder"
 
-Prompt: Find similar patterns and reusable code for this issue:
+Prompt: Identify the conventions this codebase holds for this kind of change:
 
 Issue: [ISSUE-ID] - [issue title]
 Type: [BUG|FEAT|ENH|EPIC]
@@ -181,11 +216,19 @@ Type: [BUG|FEAT|ENH|EPIC]
 Search for:
 - Similar fixes/features already in the codebase
 - Established conventions for this type of change
-- Test patterns to model after
+- How this codebase tests changes of this kind
 - Existing utility functions and shared modules that could be reused
 - Similar logic elsewhere that suggests consolidation
 
-Return examples with file path and anchor references (e.g., function names, class names).
+For each finding, report **the rule the examples share**, then cite the file
+path and anchor as evidence for that rule — e.g. "subcommands register through
+a `_add_*_parser` helper (`cli.py:412`, `cli.py:487`)", not "copy `cli.py:412`".
+Where two examples disagree, say so and report both — a contested convention is
+a decision the implementer needs to make knowingly, not a coin-flip you make
+for them.
+
+Do not recommend an implementation approach. Report what is true about the
+codebase; the route is the implementer's call.
 ```
 
 #### Wait for ALL agents' results synchronously in this same turn before proceeding.
@@ -255,8 +298,9 @@ For each **FILLABLE** gap, update the issue with research findings.
 - `path/to/caller.py:42` — calls `affected_function()` [from locator]
 - `path/to/importer.py:5` — imports `affected_module` [from locator]
 
-### Similar Patterns
-- `path/to/similar.py:100` — similar implementation to follow [from pattern-finder]
+### Conventions in Force
+- [Rule this codebase holds] — evidence: `path/to/similar.py:100` [from pattern-finder]
+  (state the rule; the file is cited as evidence for it, not as a template)
 
 ### Tests
 - `tests/test_affected.py` — existing test coverage [from locator]
@@ -334,14 +378,24 @@ Then update `decision_needed` in the issue's YAML frontmatter using the Edit too
 **Idempotency**: skip the write if `decision_needed` already has the same value (follow `skills/format-issue/SKILL.md` in section "2.5a. Testable Inference (doc-only detection)").
 **Dry-run guard**: skip the frontmatter write in `--dry-run` mode; report what would have been set in the DRY RUN PREVIEW block.
 
-**Implementation Steps** — make concrete with real file references:
+**Implementation Steps** — concrete references, outcome phrasing. Each entry
+names what must become true and how that is checked, not the edit to make (see
+§ Register: Constraints, Not Recipes):
+
 ```markdown
 ## Implementation Steps
 
-1. [Phase based on actual code structure — e.g., "Modify `parser.py:parse_args()` to handle new flag"]
-2. [Phase with real references — e.g., "Add test cases following pattern in `test_parser.py:TestFlagParsing`"]
-3. [Verification — e.g., "Run `python -m pytest scripts/tests/test_parser.py -v`"]
+1. [Outcome + where it lands — e.g., "The new flag parses and round-trips
+   through `parser.py:parse_args()`; that function owns every other flag today"]
+2. [Coverage constraint — e.g., "Flag parsing is covered by a test alongside
+   `test_parser.py:TestFlagParsing`, which holds the existing contract"]
+3. [Verification — e.g., "`python -m pytest scripts/tests/test_parser.py -v` passes"]
 ```
+
+Use imperative sequencing only where the order is genuinely forced (a migration
+that must precede a read, a schema change before its consumer). Where the order
+is incidental, phrasing it as a sequence invents a constraint that does not
+exist and forecloses better routes.
 
 #### Preservation Rule
 
@@ -456,11 +510,11 @@ For each section type, verify against current codebase state:
 
 **Integration Map checks:**
 - Referenced files: do they exist on disk? Missing = high-priority gap.
-- Stale anchor references: use `scripts/little_loops/issues/anchor_sweep.py:_sweep_file()` → `skipped_refs` to detect `file:N`-style anchors that no longer resolve.
+- Stale anchor references: a `file:N`-style anchor resolves when `scripts/little_loops/issues/anchors.py:resolve_anchor()` returns non-`None` **and** `N` is within the file's line count — `resolve_anchor()` clamps out-of-range line numbers to EOF, so a number past the end still returns an anchor. (`anchor_sweep.py:_sweep_file()` applies this same rule in bulk, but its `skipped_refs` is an aggregate counter with no per-reference detail — use `resolve_anchor()` when you need to know *which* reference went stale.)
 - Missing callers: are there known callers of modified code not listed?
 
 **Proposed Solution / Implementation Steps:**
-- Anchor references still valid? (`_sweep_file()` → `skipped_refs`)
+- Anchor references still valid? (same `resolve_anchor()` rule as above)
 - Do Implementation Steps reference all files in the Integration Map?
 
 **Acceptance Criteria:**
@@ -468,7 +522,7 @@ For each section type, verify against current codebase state:
 
 #### 3. Score Gaps by Impact
 
-Adopt the `"critical"/"high"/"medium"/"low"` priority model from `scripts/little_loops/issue_history/models.py:TestGap`:
+Adopt the `"critical"/"high"/"medium"/"low"` priority model from `scripts/little_loops/issue_history/models.py:Gap`:
 
 | Gap Type | Priority |
 |----------|----------|

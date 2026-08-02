@@ -493,11 +493,11 @@ For each section type, verify against current codebase state:
 
 **Integration Map checks:**
 - Referenced files: do they exist on disk? Missing = high-priority gap.
-- Stale anchor references: use `scripts/little_loops/issues/anchor_sweep.py:_sweep_file()` → `skipped_refs` to detect `file:N`-style anchors that no longer resolve.
+- Stale anchor references: a `file:N`-style anchor resolves when `scripts/little_loops/issues/anchors.py:resolve_anchor()` returns non-`None` **and** `N` is within the file's line count — `resolve_anchor()` clamps out-of-range line numbers to EOF, so a number past the end still returns an anchor. (`anchor_sweep.py:_sweep_file()` applies this same rule in bulk, but its `skipped_refs` is an aggregate counter with no per-reference detail — use `resolve_anchor()` when you need to know *which* reference went stale.)
 - Missing callers: are there known callers of modified code not listed?
 
 **Proposed Solution / Implementation Steps:**
-- Anchor references still valid? (`_sweep_file()` → `skipped_refs`)
+- Anchor references still valid? (same `resolve_anchor()` rule as above)
 - Do Implementation Steps reference all files in the Integration Map?
 
 **Acceptance Criteria:**
@@ -505,7 +505,7 @@ For each section type, verify against current codebase state:
 
 #### 3. Score Gaps by Impact
 
-Adopt the `"critical"/"high"/"medium"/"low"` priority model from `scripts/little_loops/issue_history/models.py:TestGap`:
+Adopt the `"critical"/"high"/"medium"/"low"` priority model from `scripts/little_loops/issue_history/models.py:Gap`:
 
 | Gap Type | Priority |
 |----------|----------|
