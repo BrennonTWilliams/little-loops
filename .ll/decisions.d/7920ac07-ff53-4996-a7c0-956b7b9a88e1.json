@@ -1,0 +1,12 @@
+{
+  "id": "28375454-143e-49ce-b286-a1edd6669067",
+  "type": "decision",
+  "timestamp": "2026-08-01T23:17:01Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Keys on the issue's actual enrichment state (varies), not issue type (doesn't predict enrichment). Scored 10/12 vs Option B's 8/12; reuses resolve_anchor() and precedented triage-predicate patterns (infer_testable, count_enumerable_options).",
+  "rule": "Option A \u2014 cheap pre-classification",
+  "scope": "issue",
+  "alternatives_rejected": "Option B \u2014 issue-type defaults (static per-type dict; systematically wrong per issue's own analysis since a sparse BUG needs pattern-finder and an enriched FEAT needs none)",
+  "issue": "ENH-2971"
+}

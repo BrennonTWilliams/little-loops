@@ -1,0 +1,12 @@
+{
+  "id": "79c4f55d-840f-4f51-a617-6b58f736fbea",
+  "type": "decision",
+  "timestamp": "2026-08-01T23:23:54Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Option A keys on actual issue enrichment state (10/12 vs Option B's 8/12); extraction is the only path to a real behavioral test of the triage predicate, and Confidence Check flagged the untested prose-only path as the dominant outcome risk",
+  "rule": "Option A \u2014 cheap pre-classification (gate refine-issue's 3-subagent spawn on per-axis anchor resolution); triage predicate extracted to scripts/little_loops/issues/ as a testable function rather than left as prose",
+  "scope": "issue",
+  "alternatives_rejected": "Option B \u2014 fixed per-type agent sets (BUG/FEAT/ENH); leaving the triage predicate as prose in commands/refine-issue.md",
+  "issue": "ENH-2971"
+}

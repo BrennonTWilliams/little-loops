@@ -1,0 +1,12 @@
+{
+  "id": "8bb5147f-6ed8-4918-8d37-15be576a9875",
+  "type": "decision",
+  "timestamp": "2026-08-02T01:15:38Z",
+  "category": "scope",
+  "labels": [],
+  "rationale": "dequeue_next fires once per issue but loop_runs is one row per run (run_id TEXT NOT NULL UNIQUE, schema.py:554) with no issue dimension, so a run-dir file could persist only the last issue's SHA. No loop state calls record_loop_run_summary \u2014 FSMExecutor._finish() does, generically at archival (fsm/executor.py:3111-3126), so the drafted read-back had no implementer. implement_current already runs 'll-auto --only $CURRENT' (autodev.yaml:829), reaching process_issue_inplace() and writing a per-issue orchestration_runs row \u2014 taken after refine/wire/size-review commit their issue-file churn and immediately before the implementation patch, which is a strictly better base for a pre-patch test check. Collapsing to one table is also what makes the single-reader AC true by construction.",
+  "rule": "autodev.yaml's dequeue_next stamp is removed from scope; autodev is covered transitively via implement_current's 'll-auto --only' shell-out. loop_runs gains no columns and record_loop_run_summary is unchanged.",
+  "scope": "issue",
+  "alternatives_rejected": "A generic ${context.run_dir}/base-sha.txt convention read by FSMExecutor._finish(): still one row per run, so it does not give a per-issue base, and it adds executor surface for a value no consumer can key by issue.",
+  "issue": "ENH-2866"
+}

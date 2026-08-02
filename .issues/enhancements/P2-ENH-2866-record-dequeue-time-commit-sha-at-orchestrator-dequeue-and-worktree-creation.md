@@ -198,6 +198,29 @@ does not stamp keeps working unchanged.
   read as `ended_at == started_at`. The early-upsert path must leave `ended_at`
   NULL for an in-flight row; adjust the `or _now()` default so it applies only
   when a terminal status is being written, or pass an explicit sentinel.
+- **`started_at` must survive the terminal upsert — it does not today**
+  (review 2026-08-01). The DO UPDATE clause sets
+  `started_at=excluded.started_at` (`writers.py:1226`) and **none of the three
+  terminal call sites pass `started_at`** (`issue_manager.py:1691`,
+  `orchestrator.py:1044`, `cli/sprint/run.py:713`/`879` — verified). So the
+  dequeue-time `started_at` written by the early upsert is nulled the instant
+  the issue completes. That is harmless today only because no row has ever had
+  a `started_at`; under decision 4 it silently discards the one timestamp the
+  early write earns for free. It is actively harmful for the abandoned-run case
+  decision 4 exists to serve: both `recent_orchestration_runs` (`history_reader.py:1747`)
+  and `aggregate_orchestration_runs` (`history_reader.py:1789`) window `since`
+  on `COALESCE(ended_at, started_at)`, so a row that takes any second upsert
+  without `started_at` has *both* timestamps NULL and drops out of every
+  windowed query. Give `started_at` the same
+  `started_at=COALESCE(excluded.started_at, started_at)` treatment as
+  `base_sha`/`base_dirty`. (Forwarding `started_at` from all three terminal
+  callers is the alternative, but it is three edits to preserve a value the
+  write-once COALESCE preserves in one.)
+- **The early upsert also creates a `search_index` FTS row** with the text
+  `"<driver> <run_id> <issue_id> running"` (`writers.py:1246-1252`). This is
+  benign — the terminal upsert deletes and recreates the row in the same
+  transaction — but it means a mid-run `ll-session search` can surface a
+  `running` orchestration row where none existed before. Expected, not a defect.
 - **`ll-auto`'s write is gated on `if not self.dry_run`**
   (`issue_manager.py:1680`). The dequeue-time early upsert inherits the same
   guard — a dry run must not become the one mode that persists rows.
@@ -306,6 +329,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   `base_sha=COALESCE(excluded.base_sha, base_sha)` and
   `base_dirty=COALESCE(excluded.base_dirty, base_dirty)` so a retry upsert
   that passes no stamp cannot null a recorded one (see Design Notes).
+  **`started_at` gets the same COALESCE** — `started_at=COALESCE(excluded.started_at,
+  started_at)` — because no terminal caller passes it and the current
+  last-write-wins clause would null the dequeue-time value (see Design Notes).
   `record_loop_run_summary` is **unchanged** — decision 3 removed the
   `loop_runs` path.
 
@@ -321,13 +347,25 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   back to merge-base). Fix-forward only, matching the `failure_terminal`
   precedent: existing rows are not backfilled. No `loop_runs` columns.
 
-- `read_base_sha(db_path: Path | str, *, issue_id: str, run_id: str | None = None) -> str | None`
-  (new — `scripts/little_loops/session_store/queries.py`, alongside the other
-  typed lookups; note there is no `readers.py` in this package — the modules
-  are `db.py` / `queries.py` / `writers.py` / `lifecycle.py` post-ENH-2890) —
-  modeled on the None-when-absent contract of `read_adapter_gen_version()`
-  (`init/writers.py:786-805`): never raises, returns `None` on missing row,
-  NULL column, or any query error.
+- `read_base_sha(issue_id: str, *, run_id: str | None = None, db: Path | str = DEFAULT_DB_PATH) -> str | None`
+  (new — `scripts/little_loops/history_reader.py`, alongside the existing
+  `recent_orchestration_runs` (`L1720`) and `aggregate_orchestration_runs`
+  (`L1763`)) — modeled on the None-when-absent contract of
+  `read_adapter_gen_version()` (`init/writers.py:786-805`): never raises,
+  returns `None` on missing row, NULL column, or any query error.
+
+  **Placement corrected 2026-08-01 (review).** A prior draft put this in
+  `scripts/little_loops/session_store/queries.py`. That module is search /
+  `recent()` / `export_history()` plumbing: it connects read-write via
+  `_pkg.connect` and lets `sqlite3.Error` escape, the opposite of this
+  function's never-raise contract. Every existing typed read of
+  `orchestration_runs` already lives in `history_reader.py`, which has the
+  `_connect_readonly` helper and the degrade-to-empty error handling this
+  reader needs. Putting it in `queries.py` would split one table's read
+  surface across two modules and force the reader to hand-roll what
+  `history_reader` already provides. Argument order follows that module's
+  convention (positional identity, keyword-only `db=`), not
+  `session_store.writers`'s `db_path`-first shape.
 
   Single-table by construction: `SELECT base_sha FROM orchestration_runs`.
   With `run_id` supplied, `WHERE run_id = ? AND issue_id = ?` — the
@@ -366,13 +404,17 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   Per decision 4, `process_issue_inplace()` also issues the dequeue-time early
   upsert itself, right after resolving the two values — it is the only place
   that runs before Phase 1 for both `ll-auto` and `ll-sprint`-sequential. That
-  requires `run_id`/`driver` to reach `process_issue_inplace()`; today they
-  live on `AutoProcessor` (`self.run_id`, `L1282`) and as `cli/sprint/run.py`
-  locals. Add them as optional keyword params (`run_id: str | None = None`,
-  `driver: str | None = None`) — when either is absent the early upsert is
-  skipped and only the caller-side terminal forwarding applies, preserving
-  today's behavior for any other caller. Honor `dry_run` here as
-  `AutoProcessor` does at `L1680`.
+  requires `run_id`/`driver` **and a database path** to reach
+  `process_issue_inplace()`. Its current signature (`issue_manager.py:577-590`)
+  has none of the three: `run_id` and the DB path live on `AutoProcessor`
+  (`self.run_id` / `self.db_path`, `L1281-1282`) and `history_db` is a
+  `cli/sprint/run.py` local. Add all three as optional keyword params
+  (`run_id: str | None = None`, `driver: str | None = None`,
+  `db_path: Path | str | None = None`) — **the early upsert is skipped unless
+  all three are present**, so any other caller keeps today's behavior and only
+  the caller-side terminal forwarding applies. A prior draft named only
+  `run_id`/`driver`, which would have left the write with no destination.
+  Honor `dry_run` here as `AutoProcessor` does at `L1680`.
 
 ### Call Path
 
@@ -477,6 +519,20 @@ _Added 2026-08-01 (decision 4, write-timing) — see Scope Boundaries:_
       dequeue, matching the existing `if not self.dry_run` guard on the
       terminal write.
 
+_Added 2026-08-01 (review) — see Design Notes, "`started_at` must survive":_
+
+- [ ] The terminal upsert preserves the dequeue-time `started_at`. A test
+      asserts that after an early upsert followed by a terminal
+      `record_orchestration_run(...)` that passes no `started_at` (as all three
+      existing call sites do), the row's `started_at` is still the dequeue
+      timestamp and is not NULL — so the row stays inside
+      `recent_orchestration_runs` / `aggregate_orchestration_runs`' `since`
+      windows, which key on `COALESCE(ended_at, started_at)`.
+- [ ] The reader helper lives in `history_reader.py` alongside the existing
+      `orchestration_runs` reads, not in `session_store/queries.py`, and never
+      raises — a test asserts it returns `None` rather than propagating a
+      `sqlite3.Error` against a missing or malformed DB.
+
 ## Integration Map
 
 ### Files to Modify
@@ -496,6 +552,9 @@ _`issue_manager.py` added 2026-07-30 (placement review) — see Design Notes,
   existing `_baseline_sha` (~L1072, ~L1109) already holds the right value
 - `scripts/little_loops/worktree_utils.py` — only if an additive parameter is
   the cleanest carrier; prefer stamping at the caller
+- `scripts/little_loops/history_reader.py` — the new `read_base_sha()` reader,
+  alongside the existing `recent_orchestration_runs` / `aggregate_orchestration_runs`
+  (placement corrected 2026-08-01; see Program Design)
 - `scripts/little_loops/session_store/schema.py` — the `_MIGRATIONS` entry adding
   the nullable stamp columns — and `scripts/little_loops/session_store/writers.py`
   — persist the stamp on the run record (note: `session_store.py` was split into
@@ -560,7 +619,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   it just isn't exposed or persisted yet.** `baseline_head_sha =
   self._get_main_head_sha()` runs at `worker_pool.py:359-361`, immediately
   before `self._setup_worktree(...)` at `worker_pool.py:367`.
-  `_get_main_head_sha()` (`worker_pool.py:1477-1490`) is a `git rev-parse
+  `_get_main_head_sha()` (`worker_pool.py:1528-1541` — an earlier draft of this
+  line cited `1477-1490`, which is stale) is a `git rev-parse
   HEAD`. Today this value is only used for leak detection
   (`_detect_committed_leaks()`, `worker_pool.py:1492+`) and logged into the
   `worktree_create` session-lifecycle event detail dict as `"parent_sha"`
@@ -690,6 +750,20 @@ _Added 2026-08-01 (decision 4, write-timing):_
   `aggregate_orchestration_runs` still behaves sanely once `status='running'`
   rows can persist for crashed runs (decision 4's accepted consequence)
 
+_Added 2026-08-01 (review):_
+- `scripts/tests/test_history_reader.py` also hosts the **reader helper's own
+  tests** (placement corrected — `read_base_sha` lives in `history_reader.py`,
+  not `session_store/queries.py`): the 4-gate happy-path / missing-row /
+  NULL-column / unreadable-DB shape modeled on
+  `test_read_adapter_gen_version_*` (`test_init_core.py:1249-1271`), plus the
+  `run_id`-omitted and unstamped-row-does-not-shadow cases
+- `scripts/tests/test_session_store_writers.py` — add the `started_at`
+  preservation case alongside the `base_sha` COALESCE one: early upsert with
+  `started_at`, terminal upsert without it, assert `started_at` is still
+  non-NULL. Without this the regression is invisible on the happy path, since
+  `ended_at` alone satisfies the `COALESCE(ended_at, started_at)` windows for a
+  *completed* run — it only surfaces on the abandoned run
+
 ### Documentation
 
 _Wiring pass added by `/ll:wire-issue` (2026-07-30):_
@@ -713,9 +787,13 @@ returns `None` when unstamped; persistence onto the existing per-issue
 `orchestration_runs` record, **written at dequeue rather than at end-of-run**
 (decision 4 below) so the stamp is readable while the issue is in flight.
 
-**Resolved decisions (2026-07-31, manual; decision fragments
-`61df2043-0432-431a-ae96-d69797937335` and
-`4f66ef35-2608-4099-ae4b-72c8233bfbd1` in `.ll/decisions.d/`):**
+**Resolved decisions (2026-07-31, manual). Decision fragments —
+`.ll/decisions.d/ab3358ac-830c-4e62-bf28-a112b624b5bd.json` (entry id
+`61df2043-…`) and `.ll/decisions.d/244d23c4-4464-4ef7-8f04-fdc85cedcea2.json`
+(entry id `4f66ef35-…`). Cite the *filename*: a fragment's filename is a
+distinct UUID from its `id` field, and three successive
+`/ll:confidence-check` passes wrongly reported "no decision fragment for
+ENH-2866 exists" after globbing `.ll/decisions.d/` by entry id.**
 
 1. **`ll-queue run` (FEAT-2906) is exempt — out of scope.** `cli/queue.py`
    never calls `session_store.writers`: no `orchestration_runs`/`loop_runs`
@@ -809,6 +887,22 @@ returns `None` when unstamped; persistence onto the existing per-issue
      improvement — a crashed run *is* a non-completion — but it is a visible
      change to existing analytics, not a silent one, and should be called out
      in the changelog entry.
+   - An in-flight or abandoned row is invisible to a windowed
+     `ll-session export --since`: `_EXPORT_TABLE_MAP` keys `orchestration_run`
+     on `ended_at` (`session_store/queries.py:101`) with no `started_at`
+     fallback, unlike `history_reader`'s `COALESCE(ended_at, started_at)`.
+     Accepted as-is — widening the export key is a separate change with its own
+     compatibility surface — but recorded here so it is a known property rather
+     than a later discovery. This is also *why* the `started_at` COALESCE in
+     Design Notes matters: `history_reader`'s windowed queries do fall back to
+     `started_at`, and that fallback only works if the terminal upsert has not
+     nulled it.
+
+   Both 2026-08-01 decisions are now recorded as fragments:
+   `.ll/decisions.d/20d75e61-7e0f-48c5-8db8-2fba7752ad82.json` (decision 3,
+   entry id `8bb5147f-…`) and
+   `.ll/decisions.d/9de33ea4-ebb4-409e-ac31-19c910236b2d.json` (decision 4,
+   entry id `59a24610-…`).
 
    Rejected alternative: exporting `run_id` into subprocess env
    (`LL_RUN_ID`) so the reader could keep a required key. It does not solve the
@@ -975,12 +1069,57 @@ unchanged at 98, outcome confidence 61 (down from 67):_
   improvement and flags it for the changelog, but it's a visible analytics
   shift a reviewer should confirm is expected rather than a regression.
 
+## Confidence Check Notes
+
+_Re-run by `/ll:confidence-check` (2026-08-01) — post decision-3/4-fragment
+verification pass; readiness unchanged at 98, outcome confidence unchanged at
+61:_
+
+**Readiness Score**: 98/100 → GO
+**Outcome Confidence**: 61/100 → below the 65 outcome threshold
+
+### Outcome Risk Factors
+- Verified all four decision fragments now exist on disk
+  (`.ll/decisions.d/20d75e61-…`, `7920ac07-…`, `9de33ea4-…`, `d67300a2-…`) and
+  every line reference cited in Program Design / Codebase Research Findings
+  (`writers.py:1181-1244`, `worker_pool.py:362`, `issue_manager.py:577/646-648`,
+  `types.py:94`, three `record_orchestration_run(...)` call sites) matches the
+  current tree exactly. Ambiguity is no longer capped by open decisions — all
+  are resolved — but Criterion C stays at 18/25 rather than higher because the
+  early-upsert/terminal-upsert coordination (the `ended_at` conditional, the
+  `started_at`/`base_sha` COALESCE pair) is subtle enough that a wrong
+  conditional reads green on the happy path and only surfaces on an
+  abandoned/crashed run — an inherent property of the design, not an
+  unresolved question.
+- Change surface remains Pattern A: five-plus files each need site-specific
+  wiring judgment (schema migration, writer COALESCE logic, `WorkerResult`
+  round-trip fields, `IssueProcessingResult` new params, reader placement in
+  `history_reader.py`) rather than one uniform mechanical substitution — this
+  caps Criterion D at 9/25 independent of how well each site is documented.
+- Complexity (12/25) reflects genuine breadth (6+ files) even though every
+  site names an existing analog to model from, which is why Test Coverage
+  scores much higher (22/25) than the other three outcome criteria.
+
 ## Status
 
 **Open** | Created: 2026-07-27 | Priority: P2
 
 
 ## Session Log
+- pre-implementation review (manual, no skill) - 2026-08-01 - three code-level
+  corrections: (a) `started_at` is clobbered by the terminal upsert
+  (`writers.py:1226` last-write-wins + no terminal caller passes it), which
+  under decision 4 nulls the dequeue timestamp and drops abandoned rows out of
+  `history_reader`'s `COALESCE(ended_at, started_at)` windows — needs the same
+  COALESCE as `base_sha`; (b) `process_issue_inplace()` needs a `db_path` param
+  too, not just `run_id`/`driver` (verified signature `L577-590` has none of
+  the three); (c) `read_base_sha` moved from `session_store/queries.py` to
+  `history_reader.py`, where the other `orchestration_runs` reads and the
+  `_connect_readonly`/never-raise contract already live. Also recorded
+  decisions 3 and 4 as decision fragments, fixed the fragment citations to use
+  filenames rather than entry ids, corrected the stale `_get_main_head_sha`
+  line ref, and documented the `search_index` and `export --since` consequences
+  of the early upsert
 - flag correction (manual, no skill) - 2026-08-01 - cleared `decision_needed`
   (set by this same `/ll:confidence-check` pass): `ll-issues set-flags` matched
   "open decision"/"decision point" from a stale, already-resolved 2026-07-30

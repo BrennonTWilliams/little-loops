@@ -1,0 +1,12 @@
+{
+  "id": "59a24610-cd21-44ab-9d8c-34728f56c079",
+  "type": "decision",
+  "timestamp": "2026-08-02T01:15:50Z",
+  "category": "design",
+  "labels": [],
+  "rationale": "All three record_orchestration_run call sites fire post-completion (issue_manager.py:1691, orchestrator.py:1044, cli/sprint/run.py:713 and 879), but ENH-2853's pre-patch check runs mid-issue during the verification step of the very issue being stamped \u2014 so a stamp persisted only at completion is never readable by its only consumer and every run would silently take the merge-base fallback. run_id is a process-local uuid4().hex (issue_manager.py:1282, orchestrator.py:123) never exported to env, run-dir, or argv; ENH-2853 runs in a separate FSM-oracle process and cannot supply one, and under the decision-3 transitive path the 'll-auto --only' child mints its own anyway. Accepted consequences: a crashed run leaves a permanent status='running' row, measurably lowering aggregate_orchestration_runs' reported success rate (history_reader.py:1782-1784) and falling outside ll-session export --since windows (queries.py:101 keys orchestration_run on ended_at).",
+  "rule": "The stamp is written at dequeue (a status='running' early upsert), not at end-of-run, and read_base_sha's run_id is optional (issue_id-only most-recent-stamped-row lookup).",
+  "scope": "issue",
+  "alternatives_rejected": "Exporting run_id into subprocess env as LL_RUN_ID to keep a required reader key: does not solve the autodev case (the 'll-auto --only' child mints its own run_id) and adds a cross-process contract for a lookup issue_id alone answers adequately, given the stamp is advisory.",
+  "issue": "ENH-2866"
+}
