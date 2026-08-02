@@ -37,8 +37,14 @@ the run *and* clears ``nudged``. All state I/O is best-effort — any failure
 degrades to a silent pass-through (``exit_code=0``) so the hook never raises
 and never spams.
 
-Returns ``LLHookResult(exit_code=2, feedback=…)`` only when the nudge fires, so
-the reminder reaches the model's context (``exit_code=0`` feedback is
+When the nudge fires, the reminder reaches the model's context via a
+host-conditional channel (ENH-2994): on Claude Code (``event.host ==
+"claude-code"``), ``exit_code=0`` with a ``hookSpecificOutput.additionalContext``
+JSON payload on stdout — Claude Code renders exit 2 from ``PostToolUse`` as a
+blocking-error banner, which is misleading for a purely advisory reminder that
+blocks nothing. Other hosts (Codex) translate exit codes rather than reading a
+Claude Code-specific stdout schema, so they keep the original
+``LLHookResult(exit_code=2, feedback=…)`` channel (``exit_code=0`` feedback is
 stderr-only and never seen by the model — see
 ``little_loops.hooks.types.LLHookResult``). All other tools, and edits that
 don't trip the threshold, pass through unchanged (exit 0).
@@ -188,6 +194,25 @@ def handle(event: LLHookEvent) -> LLHookResult:
                 "nudged": nudge or (same_session and bool(state.get("nudged"))),
             },
         )
-        return LLHookResult(exit_code=2, feedback=_NUDGE) if nudge else LLHookResult(exit_code=0)
+        if not nudge:
+            return LLHookResult(exit_code=0)
+        if event.host == "claude-code":
+            return LLHookResult(
+                exit_code=0,
+                # Retained for hook_events.stderr_preview telemetry only; exit-0
+                # stderr is verbose-mode only and never reaches the model, so this
+                # does not double-inject the nudge.
+                feedback=_NUDGE,
+                stdout=json.dumps(
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": "PostToolUse",
+                            "additionalContext": _NUDGE,
+                        }
+                    }
+                ),
+            )
+        # Other hosts translate exit codes; exit 2 stays their model-visible channel.
+        return LLHookResult(exit_code=2, feedback=_NUDGE)
     except Exception:  # pragma: no cover — defense in depth; never raise from a hook
         return LLHookResult(exit_code=0)

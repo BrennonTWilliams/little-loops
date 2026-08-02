@@ -2,9 +2,10 @@
 id: ENH-2994
 title: edit_batch_nudge surfaces as a blocking error; use PostToolUse additionalContext
 type: ENH
-status: open
+status: done
 priority: P3
 captured_at: '2026-08-02T13:44:06Z'
+completed_at: '2026-08-02T23:26:09Z'
 discovered_date: 2026-08-02
 discovered_by: capture-issue
 labels:
@@ -182,9 +183,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`, corrected by review:_
 - `scripts/tests/test_edit_batch_hook.py` — the tests that assert `exit_code == 2` on the
   firing path and need host-parameterization are **four**, not five:
-  `TestStatefulNudge::test_run_of_unbatched_edits_nudges_at_threshold` (line 105),
-  `test_counter_resets_after_firing` (line 113), `test_nudge_only_fires_once_per_session`
-  (line 157), `test_session_change_rearms_nudge` (line 202).
+  `TestStatefulNudge::test_run_of_unbatched_edits_nudges_at_threshold` (line 97),
+  `test_counter_resets_after_firing` (line 108), `test_nudge_only_fires_once_per_session`
+  (line 149), `test_session_change_rearms_nudge` (line 189).
   `_event()` (line 26-32) hardcodes `host="claude-code"` — needs a `host` kwarg.
   `test_nudge_only_fires_once_even_across_batched_resets` was listed here in error — it never
   asserts `exit_code == 2`; it asserts only exit-0 post-fire paths, so it needs the
@@ -331,6 +332,8 @@ the `LLHookResult` exit-2 users for the same framing problem is a separate issue
 | `hooks/adapters/codex/README.md` | Documents the stdout channel per intent; needs a new row |
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-02T23:25:37 - `63e38afb-cc71-4bc3-b231-2aac1a06f2e1.jsonl`
+- `/ll:ready-issue` - 2026-08-02T23:13:52 - `909b3cf8-7711-4f3d-928a-6ebedf62b836.jsonl`
 - `/ll:confidence-check` - 2026-08-02T23:00:40 - `d76746ac-4ba6-4c06-9cbe-c32a23962287.jsonl`
 - `/ll:confidence-check` - 2026-08-02T22:07:38 - `d288e8d9-e72d-4fc5-a110-cda8245ba0ef.jsonl`
 - `/ll:wire-issue` - 2026-08-02T17:09:15 - `d7f5411e-7a9d-4bf5-bae1-030f4a53dae3.jsonl`
@@ -341,4 +344,4 @@ the `LLHookResult` exit-2 users for the same framing problem is a separate issue
 
 ## Status
 
-**open** - Captured 2026-08-02
+**done** - Implemented 2026-08-02

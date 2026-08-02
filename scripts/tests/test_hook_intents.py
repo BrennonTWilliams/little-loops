@@ -9,6 +9,7 @@ introduced on these dataclasses.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 
@@ -378,12 +379,15 @@ class TestHooksMainModule:
         assert result.stderr == ""
 
     def test_dispatch_edit_batch_nudge_happy_path(self, tmp_path) -> None:
-        """``edit_batch_nudge`` exits 2 with a batching reminder once the unbatched run trips (FEAT-2470).
+        """``edit_batch_nudge`` nudges via Claude Code's additionalContext channel once the
+        unbatched run trips (FEAT-2470, ENH-2994).
 
         The handler is stateful: a single Edit no longer nudges. Seed the
         per-session counter one below the threshold with a stale ``last_ts`` so
-        this Edit reads as unbatched and reaches ``_NUDGE_THRESHOLD``; the CLI
-        dispatcher then writes the feedback to stderr and propagates exit 2.
+        this Edit reads as unbatched and reaches ``_NUDGE_THRESHOLD``. No
+        ``LL_HOOK_HOST`` is set, so the dispatcher defaults to ``claude-code``,
+        and the CLI exits 0 with a ``hookSpecificOutput.additionalContext`` JSON
+        payload on stdout (plus the feedback line on stderr for telemetry).
         """
         from little_loops.hooks.edit_batch_nudge import _NUDGE_THRESHOLD
 
@@ -403,8 +407,36 @@ class TestHooksMainModule:
             timeout=10,
             cwd=str(tmp_path),
         )
+        assert result.returncode == 0, f"returncode={result.returncode}; stderr={result.stderr!r}"
+        assert "batch" in result.stderr.lower()
+        payload = json.loads(result.stdout)
+        hso = payload["hookSpecificOutput"]
+        assert hso["hookEventName"] == "PostToolUse"
+        assert "batch" in hso["additionalContext"].lower()
+
+    def test_dispatch_edit_batch_nudge_happy_path_codex_host(self, tmp_path) -> None:
+        """Non-Claude-Code hosts keep the original exit-2/feedback channel (ENH-2994)."""
+        from little_loops.hooks.edit_batch_nudge import _NUDGE_THRESHOLD
+
+        state_file = tmp_path / ".ll" / "ll-edit-batch-state.json"
+        state_file.parent.mkdir(parents=True, exist_ok=True)
+        state_file.write_text(
+            json.dumps({"session_id": "s1", "run": _NUDGE_THRESHOLD - 1, "last_ts": 0.0})
+        )
+        result = subprocess.run(
+            [sys.executable, "-m", "little_loops.hooks", "edit_batch_nudge"],
+            input=json.dumps(
+                {"tool_name": "Edit", "session_id": "s1", "tool_input": {"file_path": "/tmp/x"}}
+            ),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(tmp_path),
+            env={**os.environ, "LL_HOOK_HOST": "codex"},
+        )
         assert result.returncode == 2, f"returncode={result.returncode}; stderr={result.stderr!r}"
         assert "batch" in result.stderr.lower()
+        assert result.stdout == ""
 
     def test_dispatch_edit_batch_nudge_single_edit_silent(self, tmp_path) -> None:
         """A lone Edit no longer nudges — the stateful run starts at 1 (FEAT-2470)."""

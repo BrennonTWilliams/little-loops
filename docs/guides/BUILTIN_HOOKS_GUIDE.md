@@ -63,7 +63,7 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **PostToolUse** | issue-completion-log | Appends a session log entry to issues marked `done` | — | on |
 | **PostToolUse** | check-duplicate-issue-id-post | Deletes a just-written duplicate issue file (TOCTOU guard) | exit 2 | on |
 | **PostToolUse** | issue-auto-commit | Auto-commits issue-file edits | — | off |
-| **PostToolUse** | edit-batch-nudge | Nudges batching once per session after a run of consecutive unbatched single edits | exit 2 | on |
+| **PostToolUse** | edit-batch-nudge | Nudges batching once per session after a run of consecutive unbatched single edits | exit 0 + `additionalContext` (Claude Code); exit 2 (other hosts) | on |
 | **PostToolUse** | session-capture | Appends structured event record (file/task/git/error) to `.ll/ll-session-events.jsonl` | — | off |
 | **Stop** | context-handoff-sentinel | Drops a sentinel if the session ended context-heavy | — | on |
 | **Stop** | session-cleanup | Removes locks, state, scratch, orphaned worktrees | — | on |
@@ -326,9 +326,14 @@ Never blocks.
 After an `Edit`, `Write`, or `MultiEdit` call, injects a short reminder to batch
 independent edits into a single turn (parallel `Edit`/`Write` calls, or
 `MultiEdit` for one file) rather than one edit per turn — fewer round-trips means
-less avoidable token cost re-reading the conversation prefix. Returns exit 2 so
-the reminder reaches the model's context (a Tier 0 token-cost quick-win from
-EPIC-2456).
+less avoidable token cost re-reading the conversation prefix (a Tier 0 token-cost
+quick-win from EPIC-2456). The channel is host-conditional (ENH-2994): on Claude
+Code it returns `exit_code=0` with a `hookSpecificOutput.additionalContext` JSON
+payload on stdout, so the reminder reaches the model's context without the
+"PostToolUse hook returned blocking error" banner that `exit 2` triggers there.
+Other hosts (Codex) keep the original `exit_code=2` + feedback channel, since
+they translate exit codes rather than reading this Claude Code-specific stdout
+schema.
 
 The nudge is **stateful** and **once-per-session**. Within a session, it fires
 only once a run of consecutive *unbatched* single edits reaches the threshold

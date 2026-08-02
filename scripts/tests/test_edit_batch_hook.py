@@ -12,6 +12,8 @@ via ``monkeypatch.chdir(tmp_path)`` and drive the clock via ``_now``.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from little_loops.hooks import edit_batch_nudge
@@ -23,9 +25,11 @@ from little_loops.hooks.edit_batch_nudge import (
 from little_loops.hooks.types import LLHookEvent
 
 
-def _event(payload: dict | None = None, *, cwd: str | None = None) -> LLHookEvent:
+def _event(
+    payload: dict | None = None, *, cwd: str | None = None, host: str = "claude-code"
+) -> LLHookEvent:
     return LLHookEvent(
-        host="claude-code",
+        host=host,
         intent="edit_batch_nudge",
         payload=payload or {},
         cwd=cwd,
@@ -68,16 +72,19 @@ class TestPassThrough:
         result = handle(_event({"tool_name": "Bash", "tool_input": {"command": "ls"}}))
         assert result.exit_code == 0
         assert result.feedback is None
+        assert result.stdout is None
 
     def test_empty_payload_passes_through(self, clock: _Clock) -> None:
         result = handle(_event())
         assert result.exit_code == 0
         assert result.feedback is None
+        assert result.stdout is None
 
     def test_read_tool_passes_through(self, clock: _Clock) -> None:
         result = handle(_event({"tool_name": "Read"}))
         assert result.exit_code == 0
         assert result.feedback is None
+        assert result.stdout is None
 
     def test_handler_does_not_mutate_payload(self, clock: _Clock) -> None:
         payload = {"tool_name": "Edit", "session_id": "s1"}
@@ -86,35 +93,49 @@ class TestPassThrough:
 
 
 class TestStatefulNudge:
-    def _edit(self, session: str = "s1"):
-        return handle(_event({"tool_name": "Edit", "session_id": session}))
+    def _edit(self, session: str = "s1", *, host: str = "claude-code"):
+        return handle(_event({"tool_name": "Edit", "session_id": session}, host=host))
 
     def test_single_edit_does_not_nudge(self, clock: _Clock) -> None:
         result = self._edit()
         assert result.exit_code == 0
         assert result.feedback is None
+        assert result.stdout is None
 
-    def test_run_of_unbatched_edits_nudges_at_threshold(self, clock: _Clock) -> None:
+    @pytest.mark.parametrize("host", ["claude-code", "codex"])
+    def test_run_of_unbatched_edits_nudges_at_threshold(self, clock: _Clock, host: str) -> None:
         gap = _BATCH_WINDOW_SECONDS + 1.0
         results = []
         for _ in range(_NUDGE_THRESHOLD):
-            results.append(self._edit())
+            results.append(self._edit(host=host))
             clock.advance(gap)
         # Only the threshold-th edit nudges.
-        assert all(r.exit_code == 0 for r in results[:-1])
-        assert results[-1].exit_code == 2
-        assert "batch" in (results[-1].feedback or "").lower()
+        assert all(r.exit_code == 0 and r.stdout is None for r in results[:-1])
+        fired = results[-1]
+        assert "batch" in (fired.feedback or "").lower()
+        if host == "claude-code":
+            assert fired.exit_code == 0
+            payload = json.loads(fired.stdout)
+            hso = payload["hookSpecificOutput"]
+            assert hso["hookEventName"] == "PostToolUse"
+            assert "batch" in hso["additionalContext"].lower()
+        else:
+            assert fired.exit_code == 2
+            assert fired.stdout is None
 
-    def test_counter_resets_after_firing(self, clock: _Clock) -> None:
+    @pytest.mark.parametrize("host", ["claude-code", "codex"])
+    def test_counter_resets_after_firing(self, clock: _Clock, host: str) -> None:
         gap = _BATCH_WINDOW_SECONDS + 1.0
         for _ in range(_NUDGE_THRESHOLD):
-            last = self._edit()
+            last = self._edit(host=host)
             clock.advance(gap)
-        assert last.exit_code == 2
+        assert last.exit_code == (0 if host == "claude-code" else 2)
         # The very next unbatched edit does not re-nudge — the once-per-session
         # ``nudged`` latch is now set, so every subsequent edit in this session
         # passes through silently regardless of how the run counter evolves.
-        assert self._edit().exit_code == 0
+        passthrough = self._edit(host=host)
+        assert passthrough.exit_code == 0
+        assert passthrough.stdout is None
 
     def test_batched_edits_never_nudge(self, clock: _Clock) -> None:
         # Fires within the batch window (sub-second) simulate parallel edits.
@@ -122,6 +143,7 @@ class TestStatefulNudge:
             result = self._edit()
             clock.advance(_BATCH_WINDOW_SECONDS / 4)
             assert result.exit_code == 0
+            assert result.stdout is None
 
     def test_multiedit_never_nudges_and_resets_run(self, clock: _Clock) -> None:
         gap = _BATCH_WINDOW_SECONDS + 1.0
@@ -132,9 +154,12 @@ class TestStatefulNudge:
         # A MultiEdit passes through and clears the run.
         me = handle(_event({"tool_name": "MultiEdit", "session_id": "s1"}))
         assert me.exit_code == 0
+        assert me.stdout is None
         clock.advance(gap)
         # Because the run was reset, the next edit does not immediately nudge.
-        assert self._edit().exit_code == 0
+        result = self._edit()
+        assert result.exit_code == 0
+        assert result.stdout is None
 
     def test_session_change_resets_run(self, clock: _Clock) -> None:
         gap = _BATCH_WINDOW_SECONDS + 1.0
@@ -145,22 +170,24 @@ class TestStatefulNudge:
         # though the raw count would otherwise reach the threshold.
         result = self._edit(session="s2")
         assert result.exit_code == 0
+        assert result.stdout is None
 
-    def test_nudge_only_fires_once_per_session(self, clock: _Clock) -> None:
+    @pytest.mark.parametrize("host", ["claude-code", "codex"])
+    def test_nudge_only_fires_once_per_session(self, clock: _Clock, host: str) -> None:
         """Once the nudge fires in a session, every subsequent unbatched edit passes through silently."""
         gap = _BATCH_WINDOW_SECONDS + 1.0
         # Reach the threshold once.
         results = []
         for _ in range(_NUDGE_THRESHOLD):
-            results.append(self._edit())
+            results.append(self._edit(host=host))
             clock.advance(gap)
-        assert results[-1].exit_code == 2
+        assert results[-1].exit_code == (0 if host == "claude-code" else 2)
         # Now drive many more unbatched edits through — none should re-nudge.
         post_fire = []
         for _ in range(_NUDGE_THRESHOLD * 4):
-            post_fire.append(self._edit())
+            post_fire.append(self._edit(host=host))
             clock.advance(gap)
-        assert all(r.exit_code == 0 for r in post_fire), (
+        assert all(r.exit_code == 0 and r.stdout is None for r in post_fire), (
             "once-per-session latch leaked: a later unbatched edit re-nudged"
         )
 
@@ -175,6 +202,7 @@ class TestStatefulNudge:
         me = handle(_event({"tool_name": "MultiEdit", "session_id": "s1"}))
         clock.advance(gap)
         assert me.exit_code == 0
+        assert me.stdout is None
         # ...then a fast pair of batched edits (within the batch window)...
         for _ in range(2):
             self._edit()
@@ -185,21 +213,23 @@ class TestStatefulNudge:
             result = self._edit()
             clock.advance(gap)
             assert result.exit_code == 0, "latch cleared by a later tool call"
+            assert result.stdout is None
 
-    def test_session_change_rearms_nudge(self, clock: _Clock) -> None:
+    @pytest.mark.parametrize("host", ["claude-code", "codex"])
+    def test_session_change_rearms_nudge(self, clock: _Clock, host: str) -> None:
         """Switching session_id clears the nudged latch and re-arms the hook for the new session."""
         gap = _BATCH_WINDOW_SECONDS + 1.0
         # Fire the nudge once in session s1.
         for _ in range(_NUDGE_THRESHOLD):
-            self._edit(session="s1")
+            self._edit(session="s1", host=host)
             clock.advance(gap)
         # New session — should be able to nudge again.
         results = []
         for _ in range(_NUDGE_THRESHOLD):
-            results.append(self._edit(session="s2"))
+            results.append(self._edit(session="s2", host=host))
             clock.advance(gap)
-        assert all(r.exit_code == 0 for r in results[:-1])
-        assert results[-1].exit_code == 2
+        assert all(r.exit_code == 0 and r.stdout is None for r in results[:-1])
+        assert results[-1].exit_code == (0 if host == "claude-code" else 2)
 
     def test_state_records_nudged_flag(self, clock: _Clock, tmp_path) -> None:
         """Persisted state includes ``nudged`` so a process restart inherits the latch."""
@@ -246,6 +276,7 @@ class TestNoStrayDirCreation:
         assert result is not None
         assert result.exit_code == 0
         assert result.feedback is None
+        assert result.stdout is None
         assert not (outside / ".ll").exists()
 
     def test_claude_project_dir_anchors_state_there(
@@ -263,6 +294,7 @@ class TestNoStrayDirCreation:
         monkeypatch.setattr(edit_batch_nudge, "_now", _Clock())
         result = handle(_event({"tool_name": "Edit", "session_id": "s1"}, cwd=str(subdir)))
         assert result.exit_code == 0
+        assert result.stdout is None
         assert (project_root / ".ll" / _STATE_FILENAME).is_file()
         assert not (subdir / ".ll").exists()
 
@@ -284,3 +316,4 @@ class TestRobustness:
         result = handle(_event({"tool_name": "Edit", "session_id": "s1"}))
         assert result.exit_code == 0
         assert result.feedback is None
+        assert result.stdout is None

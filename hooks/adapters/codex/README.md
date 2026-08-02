@@ -66,7 +66,7 @@ var, the dispatcher defaults to `host="claude-code"`.
 | Channel    | Direction        | Format                                                                          |
 | ---------- | ---------------- | ------------------------------------------------------------------------------- |
 | stdin      | adapter → python | Raw JSON dict — Codex's event payload (`hook_event_name`, `session_id`, `cwd`, `model`, `source`/`trigger`, `transcript_path`) |
-| stdout     | python → adapter | For `session_start`: merged config JSON (Codex injects as `additionalContext`); empty for `pre_compact` |
+| stdout     | python → adapter | For `session_start`: merged config JSON (Codex injects as `additionalContext`); empty for `pre_compact` and `edit_batch_nudge` (Codex stays on the exit-2/feedback channel; the `hookSpecificOutput.additionalContext` stdout schema is Claude Code-only, see ENH-2994) |
 | stderr     | python → adapter | Human-readable status/feedback lines (Codex shows these in the TUI status area) |
 | exit code  | python → adapter | `0` = pass, `2` = block + inject feedback, `1` = unknown intent (hard error)    |
 | cwd        | adapter inherits | Codex sets subprocess CWD to the session working directory (project root). Python handlers resolve `.codex/ll-config.json` (or `.ll/ll-config.json`) and write state files relative to it |
