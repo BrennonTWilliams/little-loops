@@ -70,7 +70,7 @@ Three states independently compute the identical `DESIGN_FAIL` shell block
 |---|---|---|
 | `recheck_scores` | ~1090 | no local deferral; routes on toward the size-review recheck |
 | `regate_after_atomic_remediation` | 1586 | → `check_atomic_design_remedy` (`:1669`) → `reconcile_current` (`:1688`); defers `design_gate_failed` at `:1654-1656` if reconcile already attempted |
-| `recheck_after_size_review` | 1758 | same shape; defers `design_gate_failed` at `:1837-1839` |
+| `recheck_after_size_review` | 1735 | same shape; defers `design_gate_failed` at `:1837-1839` |
 
 Both deferring states force reconcile as the remedy, explicitly bypassing the
 general spike-vs-reconcile heuristic used elsewhere for readiness remediation.
@@ -340,7 +340,7 @@ arms `autodev-atomic-design-remedy-pending` unless
 **`count_repair_cycle_refine_for_design`** → `rerun_confidence_after_reconcile`
 (`:1718`) → `recheck_after_size_review`
 
-Remedy routing, path 2 (recheck): `recheck_after_size_review` (`:1758`) →
+Remedy routing, path 2 (recheck): `recheck_after_size_review` (`:1735`) →
 emits `refine_design` (not `reconcile`) at `:1829`, guarded on
 `autodev-design-remedy-attempted-$ID` instead of `reconcile_attempted` →
 `check_pre_deferral_remedy` (`:1924`, `on_yes` now
