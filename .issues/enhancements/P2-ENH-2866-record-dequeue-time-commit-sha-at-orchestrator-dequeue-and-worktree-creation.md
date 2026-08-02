@@ -23,6 +23,7 @@ score_ambiguity: 18
 score_change_surface: 9
 size: Very Large
 decision_needed: false
+outcome_gate_waived: true
 ---
 
 # ENH-2866: Record dequeue-time commit SHA at orchestrator dequeue and worktree creation
@@ -46,7 +47,7 @@ Two capture points cover all four orchestrators: `ll-parallel`'s per-issue
 worktree creation, and `process_issue_inplace()` (shared by `ll-auto` and
 `ll-sprint`'s sequential branch). `autodev.yaml` is covered transitively —
 its `implement_current` state shells out to `ll-auto --only "$CURRENT"`
-(`autodev.yaml:829`), so every issue autodev implements already produces a
+(`autodev.yaml:833`), so every issue autodev implements already produces a
 stamped `orchestration_runs` row (§ Scope Boundaries, decision 3).
 
 ## Motivation
@@ -96,7 +97,7 @@ does not stamp keeps working unchanged.
    could only ever persist the last issue's SHA — and no *state* calls
    `record_loop_run_summary` anyway; `FSMExecutor._finish()` does, generically
    (`fsm/executor.py:3111-3126`). `implement_current` shells out to
-   `ll-auto --only` (`autodev.yaml:829`), so site 2 below stamps every
+   `ll-auto --only` (`autodev.yaml:833`), so site 2 below stamps every
    autodev-implemented issue, per-issue, at a strictly better moment. See
    § Scope Boundaries, decision 3.
 2. **The stamp is WRITTEN at dequeue, not at end-of-run** (decision 4,
@@ -200,15 +201,15 @@ does not stamp keeps working unchanged.
   when a terminal status is being written, or pass an explicit sentinel.
 - **`started_at` must survive the terminal upsert — it does not today**
   (review 2026-08-01). The DO UPDATE clause sets
-  `started_at=excluded.started_at` (`writers.py:1226`) and **none of the three
+  `started_at=excluded.started_at` (`writers.py:1227`) and **none of the three
   terminal call sites pass `started_at`** (`issue_manager.py:1691`,
   `orchestrator.py:1044`, `cli/sprint/run.py:713`/`879` — verified). So the
   dequeue-time `started_at` written by the early upsert is nulled the instant
   the issue completes. That is harmless today only because no row has ever had
   a `started_at`; under decision 4 it silently discards the one timestamp the
   early write earns for free. It is actively harmful for the abandoned-run case
-  decision 4 exists to serve: both `recent_orchestration_runs` (`history_reader.py:1747`)
-  and `aggregate_orchestration_runs` (`history_reader.py:1789`) window `since`
+  decision 4 exists to serve: both `recent_orchestration_runs` (`history_reader.py:1748`)
+  and `aggregate_orchestration_runs` (`history_reader.py:1788`) window `since`
   on `COALESCE(ended_at, started_at)`, so a row that takes any second upsert
   without `started_at` has *both* timestamps NULL and drops out of every
   windowed query. Give `started_at` the same
@@ -244,7 +245,7 @@ does not stamp keeps working unchanged.
   `IssueProcessingResult`.
 - **The UPSERT must not clobber a stamp on retry.**
   `record_orchestration_run` is an `ON CONFLICT(run_id, issue_id) DO UPDATE SET
-  … head_sha=excluded.head_sha` (`session_store/writers.py:1222-1227`), and its
+  … head_sha=excluded.head_sha` (`session_store/writers.py:1223-1228`), and its
   own docstring states retries reuse `(run_id, issue_id)`. A later call passing
   `base_sha=None` would null a previously stamped value. The new columns use
   `base_sha=COALESCE(excluded.base_sha, base_sha)` (and the same for
@@ -262,7 +263,7 @@ does not stamp keeps working unchanged.
   `record_loop_run_summary` — `FSMExecutor._finish()` does, generically at
   archival (`fsm/executor.py:3111-3126`), with no knowledge of loop-specific
   run-dir filenames, so the drafted read-back had no implementer; (c)
-  `implement_current` invokes `ll-auto --only "$CURRENT"` (`autodev.yaml:829`),
+  `implement_current` invokes `ll-auto --only "$CURRENT"` (`autodev.yaml:833`),
   which reaches `process_issue_inplace()` and writes a per-issue
   `orchestration_runs` row anyway. The transitive stamp is also *more* correct
   for ENH-2853: it is taken after refine/wire/size-review have committed their
@@ -351,7 +352,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   (new — `scripts/little_loops/history_reader.py`, alongside the existing
   `recent_orchestration_runs` (`L1720`) and `aggregate_orchestration_runs`
   (`L1763`)) — modeled on the None-when-absent contract of
-  `read_adapter_gen_version()` (`init/writers.py:786-805`): never raises,
+  `read_adapter_gen_version()` (`init/writers.py:790-809`): never raises,
   returns `None` on missing row, NULL column, or any query error.
 
   **Placement corrected 2026-08-01 (review).** A prior draft put this in
@@ -394,7 +395,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   starts (`L646-648`), separate from the existing `_baseline_sha` local
   (`L936-941`, computed *after* Phase 1 and used only for
   `verify_work_was_done()` — not reusable for this stamp per the Codebase
-  Research Findings above). `IssueProcessingResult` (`issue_manager.py:562-574`)
+  Research Findings above). `IssueProcessingResult` (`issue_manager.py:563-574`)
   gains `base_sha: str | None = None` / `base_dirty: bool | None = None`
   fields carrying the stamp back to callers (scope decision 2, 2026-07-31):
   `ll-auto`'s `AutoProcessor._process_issue` (`L1691`) and
@@ -427,7 +428,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   `record_orchestration_run(base_sha=, base_dirty=)` COALESCE-upsert onto the
   same row.
 - **`autodev.yaml`**: no capture of its own. `implement_current` →
-  `ll-auto --only "$CURRENT"` subprocess (`autodev.yaml:829`) → the `ll-auto`
+  `ll-auto --only "$CURRENT"` subprocess (`autodev.yaml:833`) → the `ll-auto`
   path below → `orchestration_runs` row with `driver="ll-auto"`. Nothing to
   build for this orchestrator.
 - **`ll-auto` / `ll-sprint` sequential**: `process_issue_inplace()`, before
@@ -606,23 +607,23 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - **`issue_manager.py`'s `_baseline_sha` is NOT the value ENH-2866 needs — this
   is a new capture point, not a persistence change.** `_baseline_sha` is
-  computed at `issue_manager.py:921-926`, inside the Phase 2 block, via
+  computed at `issue_manager.py:936-941`, inside the Phase 2 block, via
   `git rev-parse HEAD`. `process_issue_inplace()`'s Phase 1 (ready/verify,
-  which can mutate the issue file) starts at `issue_manager.py:633-635` — i.e.
+  which can mutate the issue file) starts at `issue_manager.py:646-648` — i.e.
   `_baseline_sha` is captured *after* Phase 1 already ran, not before it as
   this issue's Design Notes hoped. It is also purely a transient local,
   passed only into `verify_work_was_done(baseline_sha=_baseline_sha)`
-  (`issue_manager.py:1072`, `1109`) — never persisted. A true dequeue-time
+  (`issue_manager.py:1107`, `1156`) — never persisted. A true dequeue-time
   stamp for `ll-auto` needs a fresh `git rev-parse HEAD` call placed before
-  `issue_manager.py:633`, separately persisted.
+  `issue_manager.py:646`, separately persisted.
 - **`worker_pool.py` already captures the right value at the right point —
   it just isn't exposed or persisted yet.** `baseline_head_sha =
-  self._get_main_head_sha()` runs at `worker_pool.py:359-361`, immediately
+  self._get_main_head_sha()` runs at `worker_pool.py:361-362`, immediately
   before `self._setup_worktree(...)` at `worker_pool.py:367`.
   `_get_main_head_sha()` (`worker_pool.py:1528-1541` — an earlier draft of this
   line cited `1477-1490`, which is stale) is a `git rev-parse
   HEAD`. Today this value is only used for leak detection
-  (`_detect_committed_leaks()`, `worker_pool.py:1492+`) and logged into the
+  (`_detect_committed_leaks()`, `worker_pool.py:1566+`) and logged into the
   `worktree_create` session-lifecycle event detail dict as `"parent_sha"`
   (`worker_pool.py:377-388`) — not written to `orchestration_runs`. The
   stamp for this site is closer to "wire an existing value through" than
@@ -660,7 +661,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   `base_dirty` capture will need its own inline check too, following that
   same shape (no new git-utility module to build first).
 - **Reader-with-None-when-absent contract to model on**:
-  `scripts/little_loops/init/writers.py:786-805`
+  `scripts/little_loops/init/writers.py:790-809`
   (`read_adapter_gen_version()`) — three sequential degrade-to-`None` gates
   (file absent / parse error / wrong type), no exception ever escapes, and
   a docstring `Returns:` section spelling out every `None`-triggering
@@ -685,10 +686,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ### Similar Patterns
 - `autodev.yaml`'s `autodev-pre-readiness.txt` snapshot (FEAT-2751) — run-dir
   handshake-file convention this stamp copies
-- `scripts/little_loops/session_store/writers.py:_backfill_commit_events()` (~L781) —
+- `scripts/little_loops/session_store/writers.py:_backfill_commit_events()` (~L813) —
   established `git log` subprocess-invocation shape (timeout, `cwd=repo_root`,
   `capture_output=True, text=True`)
-- `scripts/tests/test_worker_pool.py:TestSetupWorktreeAndCleanup` (~L634, e.g.
+- `scripts/tests/test_worker_pool.py:TestWorkerPoolWorktreeManagement` (~L633, e.g.
   `test_setup_worktree_passes_base_branch_in_feature_mode` ~L963) — closest
   analog for a worker-creation-point test; currently asserts only on
   `git worktree add` argv shape
@@ -728,8 +729,8 @@ _Wiring pass added by `/ll:wire-issue` (2026-07-30):_
   `little_loops.issue_manager.subprocess.run`, matches
   `cmd == ["git", "rev-parse", "HEAD"]`)
 - `scripts/tests/test_worker_pool.py` —
-  `TestSetupWorktreeAndCleanup.test_get_main_head_sha_returns_sha` /
-  `_returns_empty_on_failure` (~L1638-1671) is the existing mock pattern
+  `TestWorkerPoolHelpers.test_get_main_head_sha_returns_sha` /
+  `_returns_empty_on_failure` (~L1898-1935) is the existing mock pattern
   (`patch.object(worker_pool._git_lock, "run", ...)`) to extend for asserting
   the stamp reaches `WorkerResult`
 - `scripts/tests/test_init_core.py` — `test_read_adapter_gen_version_*`
@@ -812,7 +813,7 @@ ENH-2866 exists" after globbing `.ll/decisions.d/` by entry id.**
    the pre-Phase-1 `git rev-parse HEAD` + dirty check is captured *inside*
    `process_issue_inplace()` and exposed as new `base_sha: str | None = None`
    / `base_dirty: bool | None = None` fields on `IssueProcessingResult`
-   (`issue_manager.py:557-569`). `ll-auto`'s own loop and
+   (`issue_manager.py:563-574`). `ll-auto`'s own loop and
    `cli/sprint/run.py`'s two `record_orchestration_run(driver="ll-sprint")`
    calls (~L694, ~L842 — which today pass no SHA) each forward those fields.
    One capture point, two forwarding sites. Worktree-mode sprint waves remain
@@ -838,7 +839,7 @@ ENH-2866 exists" after globbing `.ll/decisions.d/` by entry id.**
      Wiring it would mean inventing a loop-agnostic run-dir filename
      convention in the executor — new mechanism, for one loop.
    - *Already covered, and better.* `implement_current` runs
-     `ll-auto --only "$CURRENT"` (`autodev.yaml:829`), reaching
+     `ll-auto --only "$CURRENT"` (`autodev.yaml:833`), reaching
      `process_issue_inplace()` and writing a per-issue `orchestration_runs`
      row. That stamp is taken *after* refine/wire/size-review commit their
      issue-file churn and immediately before the implementation patch — the
@@ -882,7 +883,7 @@ ENH-2866 exists" after globbing `.ll/decisions.d/` by entry id.**
      run reads as `ended_at == started_at`.
    - A crashed or interrupted run now leaves a permanent `status='running'`
      row where today no row exists at all. `history_reader.aggregate_orchestration_runs`
-     computes `completed / COUNT(*)` (`history_reader.py:1782-1784`), so
+     computes `completed / COUNT(*)` (`history_reader.py:1783`/`1807`), so
      reported success rates will drop slightly. This is judged an accuracy
      improvement — a crashed run *is* a non-completion — but it is a visible
      change to existing analytics, not a silent one, and should be called out
@@ -969,7 +970,7 @@ _Added by `/ll:confidence-check` (2026-07-30):_
 
 Test coverage is strong: every site names an existing test file and a close
 analog test pattern to model (`TestDequeueNextPreReadinessSnapshot`,
-`TestSetupWorktreeAndCleanup`, `TestSchemaV15SkillCompletionColumns`,
+`TestWorkerPoolWorktreeManagement`, `TestSchemaV15SkillCompletionColumns`,
 `TestFallbackVerification.test_baseline_sha_passed_to_verify_work_was_done`),
 so Criterion B scored high despite the ambiguity/complexity risk factors above.
 
@@ -1065,7 +1066,7 @@ unchanged at 98, outcome confidence 61 (down from 67):_
 - Accepted behavioral change: a crashed or interrupted run now leaves a
   permanent `status='running'` row where today no row exists at all,
   measurably lowering `aggregate_orchestration_runs`' reported success rate
-  (`history_reader.py:1782-1784`). The issue judges this an accuracy
+  (`history_reader.py:1783`/`1807`). The issue judges this an accuracy
   improvement and flags it for the changelog, but it's a visible analytics
   shift a reviewer should confirm is expected rather than a regression.
 
@@ -1106,6 +1107,26 @@ verification pass; readiness unchanged at 98, outcome confidence unchanged at
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-02T01:30:05 - `6c4807ec-5dc9-473c-8026-65d5738daba7.jsonl`
+- outcome-gate waiver (manual, no skill) - 2026-08-01 - stamped
+  `outcome_gate_waived: true` at 98/61. A `/ll:confidence-check` re-run after
+  the pre-implementation review below returned *identical* subscores
+  (12/22/18/9), including no movement on ambiguity despite decisions 3 and 4
+  gaining real fragments — so the 61 is pinned by `score_complexity` and
+  `score_change_surface`, the two size dimensions, and no further specification
+  will move it. Splitting is the only thing that would, and it was rejected on
+  substance: the natural boundary (schema+writer+reader / capture sites) would
+  unblock ENH-2853 against a reader that always returns `None` — the exact
+  dead-primary-path failure this issue was carved out of ENH-2853 to prevent —
+  and it puts the SCHEMA_VERSION churn and the subtle early/terminal upsert
+  coordination in the same half, buying no risk isolation. Wide is not the same
+  as uncertain; the only genuinely open item is decision 4's deliberate,
+  documented, reversible analytics shift. **Implementation order:** land
+  `writers.py` and its tests first (the `started_at`/`base_sha` COALESCE and
+  `ended_at` conditioning fail green on the happy path, and have no
+  orchestrator dependency) before touching any capture site. Not an autodev
+  candidate even with the gate waived — 12 `WorkerResult` construction sites
+  and Pattern-A per-site judgment; drive it manually or via `/ll:manage-issue`
 - flag correction (manual, no skill) - 2026-08-01 - cleared `decision_needed`
   again (set by this same `/ll:confidence-check` pass): recurrence of the
   already-diagnosed `set-flags` false positive below — it matched "open
@@ -1117,7 +1138,7 @@ verification pass; readiness unchanged at 98, outcome confidence unchanged at
 - `/ll:confidence-check` - 2026-08-02T01:22:51 - `b10f0b3a-574a-4cd1-aefd-c6a613922849.jsonl`
 - pre-implementation review (manual, no skill) - 2026-08-01 - three code-level
   corrections: (a) `started_at` is clobbered by the terminal upsert
-  (`writers.py:1226` last-write-wins + no terminal caller passes it), which
+  (`writers.py:1227` last-write-wins + no terminal caller passes it), which
   under decision 4 nulls the dequeue timestamp and drops abandoned rows out of
   `history_reader`'s `COALESCE(ended_at, started_at)` windows — needs the same
   COALESCE as `base_sha`; (b) `process_issue_inplace()` needs a `db_path` param
