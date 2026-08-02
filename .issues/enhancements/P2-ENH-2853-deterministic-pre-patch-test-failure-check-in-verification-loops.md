@@ -11,7 +11,6 @@ labels:
 - rework
 - verification
 blocked_by:
-- ENH-2973
 - ENH-2866
 learning_tests_required:
 - pytest
@@ -279,6 +278,7 @@ _Added 2026-07-30 (placement review) — see Design Notes, "Gate placement":_
 **Open** | Created: 2026-07-27 | Priority: P2
 
 ## Session Log
+- blocked_by reconciliation (manual, no skill) - 2026-08-01 - removed ENH-2973 from `blocked_by` (status: done, completed 2026-07-28); ENH-2866 remains blocking (open, undergoing refinement)
 - gate-placement review (manual, no skill) - 2026-07-30 - rewrote `### Files to Modify / Create`, the Program Design call path, added Design Notes "Gate placement" / "Evidence-bundle transport" / "Oracle skip convention", 6 ACs, 1 Scope Boundary, 1 Impact note
 - `/ll:format-issue` - 2026-07-27T20:01:08 - `74d428f0-7103-4a58-9168-ff504878fb04.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-27T19:42:08 - `e2303183-4e52-4649-af90-4b53254bbda4.jsonl`

@@ -1106,6 +1106,7 @@ verification pass; readiness unchanged at 98, outcome confidence unchanged at
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-02T01:22:51 - `b10f0b3a-574a-4cd1-aefd-c6a613922849.jsonl`
 - pre-implementation review (manual, no skill) - 2026-08-01 - three code-level
   corrections: (a) `started_at` is clobbered by the terminal upsert
   (`writers.py:1226` last-write-wins + no terminal caller passes it), which
