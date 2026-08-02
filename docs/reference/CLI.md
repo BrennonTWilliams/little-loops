@@ -1441,6 +1441,29 @@ ll-issues sk ENH-123 -p P3 --reason "blocked on upstream change"
 
 ---
 
+#### `ll-issues prioritize`
+
+Priority-rename mechanics (ENH-2953), extracted from `commands/prioritize-issues.md`'s glob discovery, `git mv` blocks, and report tables — only the P0-P5 judgment step stays in the command. Discovery is scoped to active issues only (`find_issues`'s default `status_filter=None` skips `done`/`cancelled`/`deferred`); the "is it prioritized" test is a narrow `^P[0-5]-` filename match built from `config.issues.priorities`, not `is_normalized()` (which also fails on ID/slug defects that are `ll-issues normalize`'s job, not this command's).
+
+`--apply -` reads a `{"ISSUE_ID": "P[X]", ...}` JSON map from stdin (or a file path instead of `-`) and performs the renames via the shared `git_mv_with_fallback()` helper — prepending a prefix on an unprioritized file, replacing the existing `P[X]-` on an already-prioritized one. An entry already at its target priority is a reported no-op, not an error; an unresolvable issue ID is skipped silently.
+
+| Argument/Flag | Default | Description |
+|---------------|---------|-------------|
+| `--all` | `false` | List every active issue with its `current_priority` (`null` if unprioritized), not just unprioritized ones — the re-prioritize mode's input |
+| `--check` | `false` | Check-only: exit 1 if any active issue is unprioritized, 0 if clean (FSM `evaluate: type: exit_code` gate). Ignores `--all` — re-prioritization is never a gate failure |
+| `--apply FILE` | — | Path to a `{issue_id: priority}` JSON map, or `-` for stdin; performs the renames |
+| `--json` / `-j` | `false` | Print `{"findings": [...], "applied": [...]}` instead of text |
+
+**Examples:**
+```bash
+ll-issues prioritize --json                            # list unprioritized issues
+ll-issues prioritize --all --json                       # list every active issue + current_priority
+ll-issues prioritize --check                            # FSM gate: exit 0 clean / 1 unprioritized found
+echo '{"ENH-2953": "P2"}' | ll-issues prioritize --apply - --json
+```
+
+---
+
 #### `ll-issues finalize-decomposition <parent> [children...]` / `ll-issues fd`
 
 Close a decomposed parent issue and re-link its children to the parent's EPIC. Sets the parent's status to `done` in place at its existing type-based path (ENH-1418 convention) and updates the EPIC's child references.

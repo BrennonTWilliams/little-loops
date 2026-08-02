@@ -69,6 +69,10 @@ def main_issues() -> int:
             cmd_normalize,
         )
         from little_loops.cli.issues.path_cmd import cmd_path
+        from little_loops.cli.issues.prioritize import (
+            add_prioritize_parser,
+            cmd_prioritize,
+        )
         from little_loops.cli.issues.refine_status import cmd_refine_status
         from little_loops.cli.issues.search import cmd_search
         from little_loops.cli.issues.sequence import cmd_sequence
@@ -116,6 +120,7 @@ Sub-commands:
   size             Deterministic size scoring (file/section/word-count signals) for issue-size-review
   decisions        Manage rules, decisions, and exceptions log (list/add/outcome/generate/sync)
   normalize        Detect/fix filename & ID mechanics (missing_id/malformed_filename/duplicate_id/legacy_dir/type_mismatch)
+  prioritize       Priority-rename mechanics: discover unprioritized/prioritized issues, apply a priority map from stdin JSON
 
 Examples:
   %(prog)s next-id
@@ -168,6 +173,10 @@ Examples:
   %(prog)s size ENH-2945
   %(prog)s size --all --json
   %(prog)s size --sprint my-sprint --write
+  %(prog)s prioritize --json
+  %(prog)s prioritize --all --json
+  %(prog)s prioritize --check
+  %(prog)s prioritize --apply -
 """,
         )
 
@@ -909,6 +918,7 @@ Examples:
         add_size_parser(subs)
         add_normalize_parser(subs)
         add_set_flags_parser(subs)
+        add_prioritize_parser(subs)
 
         args = parser.parse_args()
 
@@ -991,6 +1001,8 @@ Examples:
             return cmd_decisions(config, args)
         if args.command == "normalize":
             return cmd_normalize(config, args)
+        if args.command == "prioritize":
+            return cmd_prioritize(config, args)
         if args.command == "finalize-decomposition":
             return cmd_finalize_decomposition(config, args)
         if args.command == "sections":

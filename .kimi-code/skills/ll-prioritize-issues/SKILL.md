@@ -3,8 +3,7 @@ name: ll-prioritize-issues
 description: Analyze issues and prepend priority levels (P0-P5) to filenames
 allowed-tools:
   - Read
-  - Glob
-  - Bash(git:*)
+  - Bash(ll-issues:*)
 arguments:
   - name: flags
     description: "Optional flags: --auto (non-interactive), --check (check-only for FSM evaluators)"
@@ -13,14 +12,9 @@ arguments:
 
 # Prioritize Issues
 
-You are tasked with analyzing issue files and assigning priority prefixes to their filenames.
-
-## Configuration
-
-This command uses project configuration from `.ll/ll-config.json`:
-- **Issues base directory**: `{{config.issues.base_dir}}`
-- **Issue categories**: `{{config.issues.categories}}`
-- **Valid priorities**: `{{config.issues.priorities}}`
+You are tasked with assigning priority prefixes to issue filenames. Discovery,
+rename mechanics, and the `--check` gate are handled by `ll-issues prioritize`
+(ENH-2953) — this command owns only the judgment step.
 
 ## Priority Levels
 
@@ -33,202 +27,34 @@ This command uses project configuration from `.ll/ll-config.json`:
 | P4 | Backlog | Future consideration, low urgency |
 | P5 | Wishlist | Ideas, long-term vision items |
 
+Judge on: user/business impact (including `business_value`/`goal_alignment`/
+`persona_impact` frontmatter when present), technical debt/blocking risk, and
+effort (quick win vs. major undertaking).
+
 ## Process
 
-### 0. Parse Flags
-
-```bash
-FLAGS="${flags:-}"
-AUTO_MODE=false
-CHECK_MODE=false
-if [[ -n "${LL_NON_INTERACTIVE:-}" ]] || [[ -n "${DANGEROUSLY_SKIP_PERMISSIONS:-}" ]]; then AUTO_MODE=true; fi
-if [[ "$FLAGS" == *"--auto"* ]]; then AUTO_MODE=true; fi
-if [[ "$FLAGS" == *"--check"* ]]; then CHECK_MODE=true; AUTO_MODE=true; fi
-```
-
-### 0.5. Check Mode Behavior (--check)
-
-**When `CHECK_MODE` is true**: Scan for unprioritized issues (files without `P[0-5]-` prefix). For each unprioritized issue, print `[ID] priority: missing P[0-5] prefix`. After scanning, if any unprioritized: print `N issues not prioritized`, then `exit 1`. If all prioritized: print `All issues prioritized`, then `exit 0`. This integrates with FSM `evaluate: type: exit_code` routing (0=success, 1=failure, 2+=error).
-
-### 1. Find Unprioritized Issues
-
-```bash
-# Find all issue files without priority prefix (type dirs only, status-filtered)
-for dir in {{config.issues.base_dir}}/bugs/ {{config.issues.base_dir}}/features/ {{config.issues.base_dir}}/enhancements/ {{config.issues.base_dir}}/epics/; do
-    if [ -d "$dir" ]; then
-        echo "Checking $dir..."
-        ls "$dir"*.md 2>/dev/null | while read file; do
-            basename=$(basename "$file")
-            if [[ ! "$basename" =~ ^P[0-5]- ]]; then
-                echo "  Unprioritized: $basename"
-            fi
-        done
-    fi
-done
-```
-
-### 1.5. Gate: All Issues Already Prioritized?
-
-If **unprioritized issues were found**: skip this section entirely and go to Step 2.
-
-If **all issues already have `P[0-5]-` prefixes**: you MUST follow the steps below. Do NOT output a summary table. Do NOT ask the user a question as plain text. Do NOT skip ahead to Step 2.
-
-a. If `AUTO_MODE` is true, skip directly to Step 2-RE.
-
-b. **MANDATORY tool call** — you MUST call the `AskUserQuestion` tool right now with one question, header "Re-prioritize", two options: "Re-evaluate all" (re-assess priorities for all active issues and update where changed) and "View current" (show current priority distribution and exit). The question text: "All active issues are already prioritized. Would you like to re-evaluate priorities based on current context?"
-
-c. Handle the user's response:
-   - **"Re-evaluate all"**: Continue to Step 2-RE.
-   - **"View current"**: Output a priority distribution table by category, then **stop**.
-
-d. Do NOT fall through to Step 2 after this. The re-prioritize path ends at Step 4-RE.
-
-### 2-RE. Re-evaluate All Active Issues
-
-For each active issue file (in `bugs/`, `features/`, `enhancements/`, `epics/`):
-
-1. **Read the file content** to understand:
-   - Summary/description
-   - Impact and severity
-   - Effort required
-   - Dependencies
-
-2. **Re-assess priority** using the same criteria as initial prioritization (see Step 2 below), considering:
-   - Has the project context changed since the original priority was assigned?
-   - Are there new issues that shift relative importance?
-   - Has the issue's scope or understanding evolved?
-
-3. **Compare** the re-assessed priority against the current `P[0-5]-` prefix:
-   - If priority is **unchanged** → skip (no rename needed)
-   - If priority **changed** → record the change for renaming
-
-### 3-RE. Rename Changed Priority Files
-
-For each issue where priority changed:
-
-```bash
-# Rename file with updated priority prefix (replace existing P[X]- with P[Y]-)
-git mv "{{config.issues.base_dir}}/[category]/P[old]-[rest-of-name].md" \
-       "{{config.issues.base_dir}}/[category]/P[new]-[rest-of-name].md"
-```
-
-Commit with: `git commit -m "chore(issues): re-prioritize issues"`
-
-### 4-RE. Output Re-prioritize Report
-
-```markdown
-# Priority Re-evaluation Report
-
-## Summary
-- Issues re-evaluated: X
-- Priorities changed: Y
-- Priorities unchanged: Z
-
-## Changes
-
-| Category | Issue | Old Priority | New Priority | Reason |
-|----------|-------|--------------|--------------|--------|
-| bugs | BUG-001-description | P3 | P2 | Increased user impact since initial assessment |
-| enhancements | ENH-042-description | P2 | P3 | Lower relative priority after new P1 issues |
-
-## Unchanged
-- [N] issues retained their current priority
-
-## Next Steps
-1. Review priority changes for accuracy
-2. Run `/ll:manage-issue` to process highest priority
-```
-
-After outputting the report, **stop here** (do not continue to Step 2).
-
----
-
-### 2. Analyze Each Issue
-
-For each unprioritized issue:
-
-1. **Read the file content** to understand:
-   - Summary/description
-   - Impact and severity
-   - Effort required
-   - Dependencies
-
-2. **Assess priority** based on:
-   - **User impact**: How many users affected?
-   - **Business impact**: Revenue, reputation, compliance?
-   - **Product fields** (if present in frontmatter):
-     - `business_value`: high/medium/low from frontmatter
-     - `goal_alignment`: Strategic priority connection
-     - `persona_impact`: Which users are affected
-   - **Technical debt**: Blocking other work?
-   - **Effort**: Quick win vs. major undertaking?
-
-3. **Assign priority** using the criteria above
-
-### 3. Rename Files
-
-```bash
-# Rename file with priority prefix
-git mv "{{config.issues.base_dir}}/[category]/[old-name].md" \
-       "{{config.issues.base_dir}}/[category]/P[X]-[old-name].md"
-```
-
-### 4. Output Report
-
-```markdown
-# Priority Assignment Report
-
-## Summary
-- Issues analyzed: X
-- P0 (Critical): N
-- P1 (High): N
-- P2 (Medium): N
-- P3 (Low): N
-- P4 (Backlog): N
-- P5 (Wishlist): N
-
-## Assignments
-
-### Bugs
-| Original Name | Priority | Reason |
-|---------------|----------|--------|
-| issue-name.md | P1 | Major functionality affected |
-
-### Features
-| Original Name | Priority | Reason |
-|---------------|----------|--------|
-| feature-name.md | P3 | Nice-to-have improvement |
-
-### Enhancements
-| Original Name | Priority | Reason |
-|---------------|----------|--------|
-| enhancement-name.md | P2 | Improves user experience |
-
-## Next Steps
-1. Review assignments for accuracy
-2. Run `/ll:manage-issue` to process highest priority
-```
-
----
+1. Parse `${flags}` for `--auto`/`--check` (also auto-mode when
+   `LL_NON_INTERACTIVE`/`DANGEROUSLY_SKIP_PERMISSIONS` is set).
+2. `--check`: run `ll-issues prioritize --check` and exit with its exit code —
+   no narration, this is the FSM-usable gate.
+3. Run `ll-issues prioritize --json` to list unprioritized issues.
+   - **If non-empty**: `Read` each issue, judge its priority per the table
+     above, then pipe the resulting `{"ID": "P[X]", ...}` map to
+     `ll-issues prioritize --apply -`. Report the applied renames.
+   - **If empty** (all active issues already prioritized): unless
+     `AUTO_MODE`, call `AskUserQuestion` — header "Re-prioritize", options
+     "Re-evaluate all" (re-assess every active issue) / "View current" (show
+     `ll-issues prioritize --all --json` grouped by priority, then stop). In
+     `AUTO_MODE`, or on "Re-evaluate all": run
+     `ll-issues prioritize --all --json`, re-judge each issue, build a map of
+     only the entries whose priority changed, and pipe it to
+     `ll-issues prioritize --apply -`. Report old → new priority per change,
+     and how many were unchanged.
 
 ## Examples
 
 ```bash
-# Prioritize all unprioritized issues
 /ll:prioritize-issues
-
-# Check-only mode for FSM loop evaluators (exit 0 if all prioritized, exit 1 if any missing)
 /ll:prioritize-issues --check
-
-# Then manage the highest priority
-/ll:manage-issue bug fix
+/ll:prioritize-issues --auto
 ```
-
----
-
-## Important Notes
-
-- Always use `git mv` to rename files (preserves history)
-- Commit the renames: `git commit -m "chore(issues): prioritize issues"`
-- When all issues are already prioritized, the command offers to re-evaluate priorities
-- Scan only type directories (`bugs/`, `features/`, `enhancements/`, `epics/`) — no `completed/` or `deferred/` dirs exist post-ENH-1418

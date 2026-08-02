@@ -1004,7 +1004,7 @@ Common run flags: `--dry-run` (plan only), `-n <N>` (override `max_steps`), `--q
 
 ## Pattern: Using `--check` with Exit Code Evaluators
 
-Issue prep skills (`format-issue`, `verify-issues`, `ready-issue`, `confidence-check`, `issue-size-review`, `map-dependencies`, `normalize-issues`, `prioritize-issues`) support a `--check` flag that runs analysis without side effects and exits non-zero when work remains. This makes them deterministic FSM evaluators — but since `/ll:` commands default to LLM-judged evaluation, each `--check` state must explicitly set `evaluate: type: exit_code`:
+Issue prep skills (`format-issue`, `verify-issues`, `ready-issue`, `confidence-check`, `issue-size-review`, `map-dependencies`, `normalize-issues`, `prioritize-issues`) support a `--check` flag that runs analysis without side effects and exits non-zero when work remains. This makes them deterministic FSM evaluators — but since `/ll:` commands default to LLM-judged evaluation, each `--check` state must explicitly set `evaluate: type: exit_code`. `normalize-issues` and `prioritize-issues` also expose the same check as a native `ll-issues normalize --check` / `ll-issues prioritize --check` CLI call (ENH-2944/ENH-2953) — prefer that `action_type: cli` form in new loops, since it skips slash-command overhead entirely and needs no `evaluate:` override at all:
 
 ```yaml
 name: prep-sprint

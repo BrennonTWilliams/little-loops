@@ -1,11 +1,12 @@
 ---
 id: ENH-2953
-title: "ll-issues prioritize --apply: priority-rename mechanics out of prioritize-issues.md"
+title: 'll-issues prioritize --apply: priority-rename mechanics out of prioritize-issues.md'
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_by: skill-audit
 discovered_date: 2026-07-31
+completed_at: '2026-08-02T04:40:35Z'
 parent: EPIC-2938
 epic: EPIC-2938
 testable: true
@@ -15,6 +16,12 @@ labels:
 - cli
 - issues
 - normalization
+confidence_score: 95
+outcome_confidence: 90
+score_complexity: 20
+score_test_coverage: 25
+score_ambiguity: 22
+score_change_surface: 23
 ---
 
 # ENH-2953: `ll-issues prioritize --apply`
@@ -101,6 +108,68 @@ _Verified 2026-08-01 against the working tree._
   (0 clean / 1 violations), scan-vs-apply split, and `add_*_parser(subs)`
   self-registration.
 
+### Codebase Research Findings — refine-issue pass (2026-08-01)
+
+_Added by `/ll:refine-issue` — corrections and additions verified against the
+working tree:_
+
+- **CORRECTION — `git_mv_with_fallback()` already exists; there is nothing left
+  to extract.** ENH-2944 (status: `done`) already created it at
+  `issue_lifecycle.py:1289`, and its docstring explicitly names this issue as an
+  intended caller: `"Shared by :func:`skip_issue` and \`\`ll-issues normalize\`\`
+  (ENH-2944/ENH-2953)."` `cli/issues/normalize.py:apply_normalize()` (line 432)
+  already imports and calls it (`normalize.py:444,465`). The "whichever issue
+  lands first extracts it" framing above (and in Implementation Steps item 2) is
+  stale — this issue only needs to **import** `git_mv_with_fallback`, not build
+  it.
+- **CORRECTION — `skip_issue()` line numbers.** It is at `issue_lifecycle.py:1340`,
+  not `966-990`. Lines `966-990` fall inside `close_issue()` (starts at line
+  890), a different function with its own rename-adjacent logic — do not model
+  against that range.
+- **CORRECTION — `format_check.py` is not the `--check`-flag model.**
+  `format_check.py` has no dedicated `--check` flag; its exit code is folded
+  into `--format json`'s return value (`format_check.py:316`) with no LLM
+  narration either way, so the *no-narration* rule still holds, but there's no
+  literal `--check` argparse flag to copy. `cli/issues/normalize.py` is the
+  closer model for an explicit `--check` boolean flag
+  (`add_normalize_parser()`, `normalize.py:521-526`) whose presence alone
+  toggles gate semantics (`cmd_normalize()`, lines `562-589`: `if check_mode:
+  return 1 if gate_failed else 0`).
+- **No existing precedent for JSON-from-stdin parsing in a `cli/issues/*.py`
+  module.** `set_flags.py`'s `--from-notes -` (`cmd_set_flags()`, lines
+  `369-380`) is the only `sys.stdin`-reading code in `cli/issues/`, and it
+  reads plain text (`sys.stdin.read()`), not JSON. `json.load(sys.stdin)`
+  precedent exists only inside FSM loop YAML `shell:` blocks (e.g.
+  `loops/autodev.yaml:115`), not in a Python CLI module — `--apply -` combines
+  the `-` sentinel idiom with JSON parsing in a way nothing else in `cli/issues/`
+  currently does.
+- **Dataclass/serialization convention to follow for `PrioritizeEntry`/
+  `RenameResult`**: plain `@dataclass` (not frozen), a `to_dict()` instance
+  method (not `dataclasses.asdict`) stringifying `Path` fields explicitly, and
+  output via the shared `little_loops.cli.output.print_json()` helper — not raw
+  `print(json.dumps(...))`. Modeled on `NormalizeFinding.to_dict()`
+  (`normalize.py:107`) and `FlagResult.to_dict()` (`set_flags.py:105-120`).
+- **Two co-existing subcommand-registration conventions** exist in
+  `cli/issues/__init__.py`: an `add_*_parser(subs)`-function style (used by
+  `format-check`, `normalize`, `decisions`, `size`, `set-flags`) and an inline
+  style built directly in `main_issues()` (used by `set-scores`, `skip`, lines
+  `887-901` for `skip`). Given this issue's Program Design section already
+  specifies `cmd_prioritize(config, args)` as a standalone function, follow the
+  `add_*_parser()`-function style (matching `normalize`/`format-check`), not
+  the inline `set-scores`/`skip` style.
+- **`_VERIFIER_SKILLS`** (AC 7's `ll-action invoke prioritize-issues` check) is
+  a `frozenset` at `cli/action.py:30`, already including `"prioritize-issues"`.
+- **`scripts/tests/test_ll_issues_skip.py` does not exist** — there is no
+  existing dedicated test file for `skip.py`'s rename behavior to model
+  against beyond the `normalize`/`format_check` fixture patterns already cited.
+  The fixture-tree idiom to follow (both suites use it): a `temp_project_dir`-
+  scoped fixture pre-creating `bugs/`/`features/`/`enhancements/`/`epics/`
+  under `.issues/`, a `_write`/`_write_issue` helper writing filename+body
+  strings directly (no issue-creation API), invocation via
+  `patch.object(sys, "argv", argv)` + `main_issues()` (not a subprocess), and
+  renamed-file assertions via `Path.glob()` against the target directory
+  (`test_ll_issues_normalize.py:110`).
+
 ## Implementation Steps
 
 1. `prioritize` discovery (`--json`, `--all`) + `--check` exit code.
@@ -111,6 +180,21 @@ _Verified 2026-08-01 against the working tree._
    glob discovery, `git mv` blocks, both report tables, and the narrated `--check` exits.
 4. Docs + mirrors (see Integration Map).
 5. Tests (see Acceptance Criteria).
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the
+implementation:_
+
+6. `scan_prioritize()`/`apply_priorities()` read `config.issues.priorities` (via
+   `BRConfig`) instead of hardcoding `P[0-5]`, matching the current
+   `{{config.issues.priorities}}` template token in `commands/prioritize-issues.md`.
+7. Regenerate `.gemini/commands/prioritize-issues.toml` via `ll-adapt --apply`
+   alongside the `.kimi-code` mirror — it is a second git-tracked full-body duplicate
+   not covered by `ll-verify-skill-prose` or `test_adapt_golden_corpus.py`.
+8. New `git log --follow` continuity test (AC 4) needs a real git-repo fixture
+   (`git init`/`git add`/`git commit` in `tmp_path`) — no existing test in the repo
+   covers rename-history continuity for `git_mv_with_fallback()` to model against.
 
 ## Program Design
 
@@ -163,6 +247,63 @@ _Verified 2026-08-01 against the working tree._
   coordinating with ENH-2944's own decrement.
 - **ENH-2944**: shares `git_mv_with_fallback()`. Not a hard dependency — whichever lands
   first extracts the helper under that exact name.
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `.gemini/commands/prioritize-issues.toml` — a **second** git-tracked mirror not named
+  in the "Host mirror" bullet above. It is a byte-for-byte duplicate of the current
+  233-line `commands/prioritize-issues.md` body (same `--check` narration, `git mv`
+  blocks, report tables), emitted by `GeminiEmitter` in
+  `scripts/little_loops/adapters/gemini.py`. Unlike `.gemini/skills/` (untracked,
+  correctly ignored above), `.gemini/commands/` is **not** in `.gitignore` — it must be
+  regenerated via `ll-adapt --apply` alongside the `.kimi-code` mirror. Not covered by
+  `ll-verify-skill-prose`'s `BASELINE_COUNT` (that gate only globs `skills/*/SKILL.md` +
+  `commands/*.md`) or by `test_adapt_golden_corpus.py` (its Gemini/Codex cases run
+  against synthetic fixtures in `command_cases.json`, which have no `prioritize` entry)
+  — so this file needs manual regeneration but no test-suite change.
+- `scripts/little_loops/loops/issue-discovery-triage.yaml` (`prioritize` state,
+  L39-44) — the only FSM loop caller of `prioritize-issues`. It invokes `--auto` via
+  `action_type: prompt` with no `evaluate:` block and an unconditional `next:`, so it
+  is unaffected by removing the narrated `--check` exit-code text. No change required;
+  listed for completeness, not as a touchpoint.
+- `_record_verdict()` (`scripts/little_loops/cli/action.py:68-116`) — confirms AC 7 is
+  low-risk: `commands/prioritize-issues.md` emits no `VERDICT_JSON` tag today, so
+  `ll-action invoke prioritize-issues` already degrades to the coarse
+  `exit_code == 0 → pass` rule. Removing the narrated report tables/exit text does not
+  touch this path. No code change needed in `action.py`.
+
+### Configuration
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/config-schema.json:127-129` (`issues.priorities`) — the current
+  `commands/prioritize-issues.md` templates the valid-priority list via
+  `{{config.issues.priorities}}` (line 22) rather than hardcoding `P[0-5]`.
+  `scan_prioritize()`/`apply_priorities()` must read `config.issues.priorities` (via
+  `BRConfig`) to preserve that behavior — a read-only dependency, not a schema change,
+  but missing from the Program Design section above.
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- AC 4's `git log --follow` continuity check has **zero existing test coverage
+  anywhere in the repo** — `git_mv_with_fallback()` is only exercised indirectly (via
+  `skip_issue()` in `test_issue_lifecycle.py` and `--auto` in
+  `test_ll_issues_normalize.py`), and neither asserts on rename-history continuity.
+  This needs a genuinely new test with a real git-repo fixture (`git init` + `git add`
+  + `git commit` in `tmp_path`), since `--follow` is meaningless without actual commit
+  history to walk — there is no existing test to copy for this specific assertion.
+- `--json`/`--apply` output envelope: `test_ll_issues_normalize.py`'s
+  `TestJsonOutput.test_json_shape` (`assert set(data) == {"findings", "applied"}`) is
+  the sibling convention `prioritize`'s `--json` output should match, matching the
+  `{findings: [...]}` / `applied: [...]` shape implied by `scan_prioritize()`/
+  `apply_priorities()` in Program Design but not yet spelled out as a literal envelope.
+- Idempotency test model: `test_ll_issues_format_check.py::TestFormatCheckFix::test_fix_apply_is_idempotent`
+  (snapshot content after first apply, re-apply, assert byte-identical + clean exit) is
+  the closer template than the issue's cited `TestFormatCheckFix` class reference alone
+  — note the post-rename wrinkle: unlike format-check (stable path across runs),
+  prioritize's idempotency test must re-glob for the renamed path before the second
+  `.read_text()` comparison, since the file path itself changes on the first apply.
 
 ## Scope Boundaries
 
@@ -217,4 +358,9 @@ delta").
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-02T04:40:35 - `ff4bd2ff-759f-495b-ac87-7d656baf9f74.jsonl`
+- `/ll:ready-issue` - 2026-08-02T04:20:09 - `3a9faa41-1510-47ad-9f40-51a9e8c896a6.jsonl`
+- `/ll:confidence-check` - 2026-08-02T04:18:13 - `9ce2895b-bc39-430e-a14f-d0d1c4f93fe5.jsonl`
+- `/ll:wire-issue` - 2026-08-02T04:16:05 - `c01ac7d1-aa5c-4397-92ed-055a0fdc6d55.jsonl`
+- `/ll:refine-issue` - 2026-08-02T04:08:21 - `3d8b066a-21a6-42a4-862b-cb329564d710.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-01T17:53:29 - `92537019-48b2-41a8-b0c0-d76fae16dd95.jsonl`
