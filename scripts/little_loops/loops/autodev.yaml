@@ -119,6 +119,15 @@ states:
       " > ${context.run_dir}/autodev-pre-readiness.txt) || true
       printf '0' > ${context.run_dir}/autodev-repair-cycle-count.txt
       rm -f ${context.run_dir}/autodev-pre-spike-readiness.txt
+      # ENH-2992: the contradiction-reconcile budget is per-issue-per-run (cap
+      # 2), so reset it alongside the repair-cycle counter — leaving it would
+      # make one queue-head issue's fires exhaust every later issue's budget.
+      # Clear the armed handshake too, so a fire that never reached
+      # count_repair_cycle_reconcile cannot leak into the next issue. The
+      # per-issue autodev-contradiction-reconcile-<ID> stamp is filename-scoped
+      # and self-isolates, so it is deliberately NOT cleared here.
+      printf '0' > ${context.run_dir}/autodev-contradiction-reconcile-count.txt
+      rm -f ${context.run_dir}/autodev-contradiction-reconcile-armed
       # BUG-2803: clear the pre-deferral remedy handshake files so a prior
       # issue's armed-but-unconsumed remedy (or fired marker) never leaks
       # into this issue's deferral decision.
@@ -1434,8 +1443,33 @@ states:
     # backfill the empty dequeue-time snapshot with the current score so the
     # post-remedy revisit can apply the readiness_stagnated discriminator
     # (FEAT-2751) instead of falling back to low_readiness.
+    # ENH-2992: third predicate term — `contradiction`. Both terms above are
+    # readiness-shaped, so a directive section contradicted by the issue's own
+    # findings only ever reached reconcile when it happened to also stall the
+    # score (measured: 1,703 issues refined, 19 reconciled). The signal is
+    # ENH-2995's `⚠ Superseded` marker, read through the public
+    # `superseded_marker_count` key on `ll-issues format-check --format json`
+    # (issue_parser.superseded_marker_count) — deterministic Python, no LLM in
+    # the routing chain (MR-1). Deliberately NOT gated by reconcile_attempted:
+    # that flag is permanent frontmatter no state ever clears, so gating on it
+    # would make a second reconcile structurally impossible — the exact defect
+    # this widening exists to fix. Bounded instead by (1) structure —
+    # /ll:reconcile-issue clears the marker on every directive line it
+    # evaluates, including on its no-op branch, so a consumed marker cannot
+    # re-arm the gate; and (2) count — a reconcile-scoped per-issue fire
+    # counter capped at 2, reset at dequeue_next. The shared
+    # autodev-repair-cycle-count.txt / CYCLE_COUNT >= 2 ceiling does NOT bound
+    # this branch: it is conditioned on CUR <= PRE (a contradiction fire that
+    # raises the score is never capped by it), it is a deferral-reason branch
+    # rather than a gate, and it is shared across all six repair classes.
+    # The format-check payload is captured into a shell variable and passed
+    # through the environment rather than parsed by a second `python3 -c` —
+    # single-inline-script shape, matching the GATE_MARKER precedent in
+    # recheck_after_size_review.
     action: |
-      ll-issues show ${captured.input.output} --json | python3 -c "
+      ID="${captured.input.output}"
+      FMT_JSON=$(ll-issues format-check "$ID" --format json 2>/dev/null || echo '{}')
+      ll-issues show "$ID" --json | LL_ISSUE_ID="$ID" LL_FORMAT_CHECK_JSON="$FMT_JSON" python3 -c "
       import json, os, sys
       d = json.load(sys.stdin)
       cur = str(d.get('confidence') or '')
@@ -1450,10 +1484,26 @@ states:
       plateau = (pre != '' and pre == cur and not attempted)
       fresh_below = (pre == '' and cur != ''
                      and int(cur) < ${context.readiness_threshold} and not attempted)
+      try:
+          fmt = json.loads(os.environ.get('LL_FORMAT_CHECK_JSON') or '{}') or {}
+          markers = int(fmt.get('superseded_marker_count') or 0)
+      except Exception:
+          markers = 0
+      fires = 0
+      count_file = '${context.run_dir}/autodev-contradiction-reconcile-count.txt'
+      if os.path.exists(count_file):
+          try:
+              with open(count_file) as fh:
+                  fires = int(fh.read().strip() or 0)
+          except (OSError, ValueError):
+              fires = 0
+      contradiction = (markers > 0 and fires < 2)
       if fresh_below:
           with open(fallback_snap, 'w') as fh:
               fh.write(cur)
-      sys.exit(0 if (plateau or fresh_below) else 1)"
+      if contradiction and not (plateau or fresh_below):
+          open('${context.run_dir}/autodev-contradiction-reconcile-armed', 'w').close()
+      sys.exit(0 if (plateau or fresh_below or contradiction) else 1)"
     fragment: shell_exit
     on_yes: reconcile_current
     on_no: check_size_review_ran_this_pass
@@ -1749,11 +1799,36 @@ states:
   count_repair_cycle_reconcile:
     # FEAT-2751: reconcile_current is one of the six repair-class states
     # counted toward the stagnation backstop threshold (see
-    # count_repair_cycle_refine).
+    # count_repair_cycle_refine). That shared increment is left untouched —
+    # the stagnation backstop still needs it.
+    # ENH-2992: additionally maintain the reconcile-scoped contradiction
+    # budget, via a consume-once handshake with check_reconcile_needed. That
+    # gate touches autodev-contradiction-reconcile-armed only when it fired on
+    # a contradiction ALONE (neither plateau nor fresh_below), so a
+    # readiness-driven reconcile arriving here never burns the contradiction
+    # budget and never claims the pre-deferral exemption below. Consuming the
+    # marker here rather than incrementing inside the predicate keeps the
+    # count tied to actual reconcile passes — the predicate can be re-entered
+    # without a reconcile ever running. The per-issue
+    # autodev-contradiction-reconcile-$ID stamp records that THIS issue's
+    # reconcile_attempted frontmatter flag is contradiction-sourced, which
+    # recheck_after_size_review's pre-deferral dispatcher reads so a healthy
+    # issue does not silently lose its spike remedy (see there). It is
+    # filename-scoped per issue and so, like autodev-design-remedy-attempted-$ID,
+    # is intentionally NOT cleared at dequeue_next.
     action: |
+      ID="${captured.input.output}"
       N=$(cat ${context.run_dir}/autodev-repair-cycle-count.txt 2>/dev/null || echo 0)
       N=$((N + 1))
       printf '%s' "$N" > ${context.run_dir}/autodev-repair-cycle-count.txt
+      ARMED=${context.run_dir}/autodev-contradiction-reconcile-armed
+      if [ -f "$ARMED" ]; then
+        rm -f "$ARMED"
+        C=$(cat ${context.run_dir}/autodev-contradiction-reconcile-count.txt 2>/dev/null || echo 0)
+        C=$((C + 1))
+        printf '%s' "$C" > ${context.run_dir}/autodev-contradiction-reconcile-count.txt
+        touch ${context.run_dir}/autodev-contradiction-reconcile-$ID
+      fi
     action_type: shell
     next: rerun_confidence_after_reconcile
     on_error: rerun_confidence_after_reconcile
@@ -1929,6 +2004,19 @@ states:
         # route straight to spike regardless of which subscore is weakest.
         # The ambiguity-subscore comparison remains the fallback when no such
         # gate marker is present.
+        # ENH-2992: `reconcile_attempted` was a sound proxy for "this issue
+        # already spent its readiness remedy" only while reconcile fired
+        # exclusively on a readiness plateau. Now that it also fires on a
+        # contradiction — a condition with no relationship to readiness — a
+        # perfectly healthy issue can carry the stamp, and this dispatcher
+        # would then refuse BOTH remedies for it, silently removing its access
+        # to `spike` forever. count_repair_cycle_reconcile stamps
+        # autodev-contradiction-reconcile-$ID when (and only when) this issue's
+        # reconcile fire was contradiction-only; on that stamp the flag is not
+        # evidence of a spent readiness remedy, so dispatch `spike` — the
+        # remedy that would otherwise be lost — provided spike itself has not
+        # already run. Plateau/readiness-driven reconciles are unaffected:
+        # without the stamp the predicate is byte-identical to before.
         FIRED=${context.run_dir}/autodev-pre-deferral-remedy-fired
         if [ ! -f "$FIRED" ]; then
           ISSUE_FILE=$(ll-issues path "$ID" 2>/dev/null || echo "")
@@ -1936,10 +2024,19 @@ states:
           if [ -n "$ISSUE_FILE" ] && grep -qiE 'do not start otherwise|measurement \(gate\)|pre-implementation measurement' "$ISSUE_FILE" 2>/dev/null; then
             GATE_MARKER="true"
           fi
-          REMEDY=$(GATE_MARKER="$GATE_MARKER" ll-issues show "$ID" --json 2>/dev/null | python3 -c "
+          CONTRA_ONLY="false"
+          if [ -f ${context.run_dir}/autodev-contradiction-reconcile-$ID ]; then
+            CONTRA_ONLY="true"
+          fi
+          REMEDY=$(GATE_MARKER="$GATE_MARKER" CONTRA_ONLY="$CONTRA_ONLY" ll-issues show "$ID" --json 2>/dev/null | python3 -c "
       import json, os, sys
       d = json.load(sys.stdin)
-      if d.get('spike_attempted') == 'true' or d.get('reconcile_attempted') == 'true':
+      if d.get('spike_attempted') == 'true':
+          print('')
+      elif (d.get('reconcile_attempted') == 'true'
+            and os.environ.get('CONTRA_ONLY') == 'true'):
+          print('spike')
+      elif d.get('reconcile_attempted') == 'true':
           print('')
       elif os.environ.get('GATE_MARKER') == 'true':
           print('spike')

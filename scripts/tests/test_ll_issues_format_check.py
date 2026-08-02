@@ -337,6 +337,9 @@ class TestFormatCheckJsonOutput:
             "testable": [],
             "stale_file_ref": [],
             "unmarked_superseded_directive": [],
+            # ENH-2992: marker presence rides the same payload; not a gap, so
+            # it does not affect the exit code above.
+            "superseded_marker_count": 0,
         }
 
     def test_gapped_issue_json_output(
@@ -815,6 +818,75 @@ class TestUnmarkedSupersededDirective:
 
         assert result == 1
         assert payload["unmarked_superseded_directive"] == ["P3-BUG-9604-test-bug.md"]
+
+
+class TestSupersededMarkerCountKey(TestUnmarkedSupersededDirective):
+    """ENH-2992: the single-issue ``--format json`` payload also carries
+    ``superseded_marker_count`` — marker *presence*, the inverse of the
+    ``unmarked_superseded_directive`` gap class above. ``autodev.yaml``'s
+    ``check_reconcile_needed`` reads this key as its contradiction predicate.
+
+    Inherits the fixture helpers from the gap-class suite; only the JSON key
+    under test differs.
+    """
+
+    def _json_for(self, temp_project_dir: Path, bug_id: str, capsys: Any) -> dict[str, Any]:
+        result = _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                bug_id,
+                "--format",
+                "json",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        payload = json.loads(capsys.readouterr()[0])
+        assert isinstance(payload, dict)
+        return {"exit": result, **payload}
+
+    def test_marker_count_zero_when_unmarked(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        steps_block = (
+            "## Implementation Steps\n\n"
+            "1. Add `pending_file` to the loop's `context:` block\n\n"
+            "### Codebase Research Findings\n\n"
+            "_Added by `/ll:refine-issue`:_\n\n"
+            "- Step 1 is wrong — context template resolution omits this field.\n"
+        )
+        self._write_bug_with_steps(format_check_dir, "BUG-9605", steps_block)
+
+        payload = self._json_for(temp_project_dir, "BUG-9605", capsys)
+
+        assert payload["superseded_marker_count"] == 0
+
+    def test_marker_count_counts_marked_directive_line(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        steps_block = (
+            "## Implementation Steps\n\n"
+            "1. Add `pending_file` to the loop's `context:` block\n"
+            "   > ⚠ Superseded — omit entirely; see § Codebase Research Findings\n\n"
+            "### Codebase Research Findings\n\n"
+            "_Added by `/ll:refine-issue`:_\n\n"
+            "- Step 1 is wrong — context template resolution omits this field.\n"
+        )
+        self._write_bug_with_steps(format_check_dir, "BUG-9606", steps_block)
+
+        payload = self._json_for(temp_project_dir, "BUG-9606", capsys)
+
+        assert payload["superseded_marker_count"] == 1
+        # Marker presence is not itself a gap — a marked issue is still
+        # structurally compliant and must exit 0.
+        assert payload["exit"] == 0
 
 
 # ---------------------------------------------------------------------------

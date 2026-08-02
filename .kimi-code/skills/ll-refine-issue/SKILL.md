@@ -767,6 +767,15 @@ keys:
   unstamped/grandfathered projects: `format-check` already returns an empty
   `program_design_nonspecific` there via `program_design_gate_active()`
   semantics, so no separate skip condition is needed here.
+- **`superseded_marker_count` > 0** (ENH-2992): this issue carries at least one
+  `⚠ Superseded` marker in a directive section — either one this pass just
+  wrote (§ 5a's carve-out) or one an earlier pass left standing. Refine
+  **annotates** but never rewrites, so the contradiction stays open until
+  `/ll:reconcile-issue` rewrites the section. Do not attempt the rewrite here.
+  Surface it: report the count in Step 8's output and name
+  `/ll:reconcile-issue [ISSUE-ID]` in the Next Steps block. This is the human
+  path into a remedy that was previously reachable only via `autodev.yaml`'s
+  plateau gate (measured at capture: 1,703 issues refined, 19 reconciled).
 - Skip this gate if `DRY_RUN` is true.
 
 ### 7.5. Extract Learning Targets (ENH-2209)
@@ -849,6 +858,7 @@ ISSUE REFINED: [ISSUE-ID]
 ## PROSE/PROGRAM DESIGN GATE [Step 6.7]
 - prose_dep_drift: [clear | fixed | — ]
 - stale_prose_dep: [clear | fixed | — ]
+- superseded_marker_count: [N — run `/ll:reconcile-issue [ID]` | 0]
 - program_design_nonspecific: [clear | revised once, now clear | STILL FAILING after one revision — operator action needed | not applicable (unarmed/grandfathered)]
 
 ## FILE STATUS
@@ -856,6 +866,7 @@ ISSUE REFINED: [ISSUE-ID]
 - decision_needed: [true | false | not set | skipped (--dry-run)] [Auto mode only]
 
 ## NEXT STEPS
+- If this pass deposited findings that refute an existing directive line (`superseded_marker_count` > 0 in Step 6.7): run `/ll:reconcile-issue [ID]` to rewrite the contradicted section. Refine only annotates the contradiction; reconcile is the only command that resolves it (ENH-2992)
 - If `decision_needed: true` was set (2+ options deposited): run `/ll:decide-issue [ID]` to select the best option before wiring
 - Run `/ll:wire-issue [ID]` to add integration wiring (callers, entry points, test hooks)
 - Run `/ll:ready-issue [ID]` to validate the enriched issue
@@ -895,10 +906,18 @@ ISSUE REFINED: [ISSUE-ID]
 
 ```
 /ll:capture-issue → /ll:format-issue → /ll:refine-issue → /ll:decide-issue → /ll:wire-issue → /ll:ready-issue → /ll:manage-issue
+                                             │
+                                             └─ (conditional) /ll:reconcile-issue — when this pass
+                                                refuted an existing directive line
 ```
 
 - **Before**: `/ll:format-issue` — ensures structural template compliance
 - **After**: `/ll:verify-issues` or `/ll:ready-issue` — validates accuracy and completeness
+- **Conditional branch**: `/ll:reconcile-issue` (ENH-2992) — refine only *annotates* a
+  refuted directive line with a `⚠ Superseded` marker; reconcile is what rewrites the
+  section. Shown on this canonical diagram only: the two *Typical Workflows* diagrams
+  below enumerate the happy path a developer types, and a conditional remedy edge
+  there would be noise.
 
 ### Typical Workflows
 

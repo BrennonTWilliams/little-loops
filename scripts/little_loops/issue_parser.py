@@ -577,6 +577,35 @@ _SUPERSEDED_DIRECTIVE_SECTIONS = ("Implementation Steps", "Files to Modify", "Ac
 _SUPERSEDED_MARKER_PREFIX = "⚠ Superseded"
 
 
+def superseded_marker_count(issue_path: Path) -> int:
+    """Count ``⚠ Superseded`` markers inside *issue_path*'s directive sections.
+
+    ENH-2992: the public marker-*presence* surface. :func:`check_format_gaps`
+    reports only the inverse (``unmarked_superseded_directive`` — correction
+    language present, marker missing), which is a refine-did-not-mark defect.
+    ``autodev.yaml``'s ``check_reconcile_needed`` needs the opposite signal:
+    a marker standing in a directive section means this issue's own findings
+    refute a directive line, which is exactly the condition
+    ``/ll:reconcile-issue`` exists to clear.
+
+    Scans only the three sections reconcile rewrites
+    (:data:`_SUPERSEDED_DIRECTIVE_SECTIONS`), reusing
+    :func:`_heading_bodies` and :data:`_SUPERSEDED_MARKER_PREFIX` verbatim so
+    the presence query and the gap class can never disagree about what counts
+    as a marker. Returns 0 for an unreadable or missing file — the FSM
+    predicate that reads this must never fail the loop on a vanished issue.
+    """
+    try:
+        content = issue_path.read_text()
+    except OSError:
+        return 0
+    return sum(
+        body.count(_SUPERSEDED_MARKER_PREFIX)
+        for name in _SUPERSEDED_DIRECTIVE_SECTIONS
+        for body in _heading_bodies(content, name)
+    )
+
+
 def _heading_bodies(content: str, heading: str) -> list[str]:
     """Return body text for every ``##``/``###`` occurrence of *heading*.
 

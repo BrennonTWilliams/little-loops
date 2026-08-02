@@ -53,6 +53,28 @@ finding elsewhere in the same issue (see step 4a). This is a narrow carve-out,
 not a general addition to the rewrite list above — unrefuted scope prose stays
 under "Preserve untouched" below.
 
+**Always clear the `⚠ Superseded` markers you evaluated (ENH-2992):** a
+`> ⚠ Superseded — …` line under a directive line is `/ll:refine-issue`'s
+annotation (ENH-2995) meaning "this pass's findings refute the line above".
+Once you have adjudicated that line against the findings — whether by
+rewriting it or by confirming it still holds — the annotation is consumed and
+stale, so delete it. This applies to **every** directive line you evaluate, not
+only the ones you rewrite, and it applies on the no-op branch too (step 4),
+where clearing markers is then the pass's only edit.
+
+This is a narrow, precedented extension of the rewrite scope, not a new
+capability: `commands/refine-issue.md`'s **"Bounded marker-removal right"**
+already makes a marker the one exception to that skill's "never remove
+existing content" rule. Match it rule-for-rule — containment test on the
+`⚠ Superseded` prefix, **only marker lines are ever deletable** (the refuted
+line and every other line stay untouchable), silent deletion, no tombstone, no
+`## CORRECTIONS_MADE` entry. Do not invent a second, differently-shaped marker
+lifecycle.
+
+`autodev.yaml`'s `check_reconcile_needed` routes on marker *presence*, so a
+marker that survives a completed reconcile pass re-fires the gate on every
+subsequent pass.
+
 **Preserve untouched — never edit, reorder, or delete:**
 - `## Summary`, `## Motivation`, `## Current Behavior`, `## Expected Behavior`
 - `## Proposed Solution` and any `### Option …` / `### Decision Rationale`
@@ -141,6 +163,15 @@ If **no** section is stale and no Scope Boundaries claim is contradicted
 `RECONCILED` with an empty `## CORRECTIONS_MADE` (`None`) and stop after the
 session-log append. Do not manufacture edits.
 
+**Except (ENH-2992): still clear the markers.** Before stopping, use the Edit
+tool to delete every `> ⚠ Superseded — …` line under a directive line in the
+three sections above — you have just adjudicated those lines against the
+findings and confirmed they still hold, which consumes the annotation. On this
+branch marker removal is the pass's only edit; `## CORRECTIONS_MADE` still
+reports `None` (a cleared marker is never a correction). Skipping this leaves
+`autodev.yaml`'s `check_reconcile_needed` re-firing on the same marker every
+pass.
+
 ### 5. Rewrite the stale sections in place
 
 Using the Edit tool, rewrite only the stale directive sections so they reflect
@@ -152,6 +183,13 @@ the findings. Rules:
 - Preserve any bullets that are still accurate.
 - Cite the driving finding inline where it clarifies (e.g. a short parenthetical),
   but keep the section directive and terse — this is not a findings dump.
+- **Clear the `⚠ Superseded` markers (ENH-2992).** When rewriting a marked
+  line, extend the Edit's `old_string` span to include the trailing
+  `> ⚠ Superseded — …` line so the marker goes with the text it annotated —
+  the removal is a byproduct of a rewrite you are already performing. For a
+  marked line you *preserved* under the rule above, delete its marker line on
+  its own. Either way the deletion is silent: no tombstone, no
+  `## CORRECTIONS_MADE` entry, and only the marker line is ever removed.
 
 **Scope Boundaries branch (step 4a contradictions):**
 - **2a. Factual mismatch**: rewrite the contradicted claim in place, replacing
@@ -185,7 +223,8 @@ If `ll-issues` is unavailable, append manually with exactly this format
 ### 7. Check Mode Behavior (--check)
 
 When `CHECK_MODE` is true: run steps 3-4a only (no frontmatter write, no
-rewrite, no session log). Then:
+rewrite, no session log, **and no marker clearing** — check mode never writes,
+so the ENH-2992 clearing rule does not apply here). Then:
 - If ≥1 section is stale, OR ≥1 Scope Boundaries claim is contradicted (step
   4a) — a reconcilable plateau exists: print `[ID] reconcile: NEEDED` and
   `exit 0`.
@@ -263,7 +302,11 @@ $ARGUMENTS
 ## Integration
 
 - Called by `autodev.yaml`'s `reconcile_current` state when
-  `check_reconcile_needed` detects a post-spike Readiness plateau (ENH-2689).
+  `check_reconcile_needed` detects a post-spike Readiness plateau (ENH-2689) —
+  or, since ENH-2992, a **contradiction**: a `⚠ Superseded` marker standing in
+  one of the three directive sections, regardless of what the readiness score
+  did. That branch is bounded by this command clearing the markers it evaluated
+  (see the Contract) plus a reconcile-scoped per-issue cap of 2.
 - User-invocable directly to unstick an issue whose directive sections have
   drifted from its accumulated research.
 - Distinct from `/ll:refine-issue` (appends research), `/ll:ready-issue`

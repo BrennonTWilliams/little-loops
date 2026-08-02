@@ -901,6 +901,35 @@ function does not parse frontmatter itself.
 
 **Returns:** Set of normalized issue IDs, e.g. `{"FEAT-109"}`.
 
+#### superseded_marker_count
+
+```python
+def superseded_marker_count(issue_path: Path) -> int
+```
+
+Count `⚠ Superseded` markers (ENH-2995's in-place annotation convention)
+present inside the three directive sections `/ll:reconcile-issue` rewrites:
+`## Implementation Steps`, `### Files to Modify`, `## Acceptance Criteria`.
+
+The public marker-*presence* surface (ENH-2992), and the inverse of
+`check_format_gaps`'s `unmarked_superseded_directive` gap class — that one
+reports correction language with no marker (a refine-did-not-mark defect),
+while this reports a standing contradiction awaiting reconcile. Reuses the
+same private `_SUPERSEDED_MARKER_PREFIX` / `_SUPERSEDED_DIRECTIVE_SECTIONS` /
+`_heading_bodies()` primitives so the two can never disagree about what counts
+as a marker (the `count_open_questions_in_sections()` private-helper/
+public-wrapper pairing).
+
+Surfaced as the `superseded_marker_count` key on `ll-issues format-check
+<ID> --format json`, which `autodev.yaml`'s `check_reconcile_needed` reads as
+its contradiction predicate. Returns `0` for a missing or unreadable file —
+the FSM predicate must never fail the loop on a vanished issue.
+
+**Parameters:**
+- `issue_path` - Path to the issue markdown file
+
+**Returns:** Marker count across the three directive sections (0 when none).
+
 #### locate_enumerable_options
 
 ```python

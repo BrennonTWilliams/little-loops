@@ -1838,6 +1838,16 @@ carries a `⚠ Superseded` marker. Report-only keyword-inference heuristic
 (like `testable`) — it flags that a correction and a marker are both
 absent/present, not that the correction actually refutes a specific line.
 
+The single-issue `--format json` payload additionally carries
+`superseded_marker_count` (ENH-2992): an **integer** count of `⚠ Superseded`
+markers actually present in those same three directive sections — the inverse
+of `unmarked_superseded_directive` above, which reports the
+refine-did-not-mark defect. Backed by the public helper
+`issue_parser.superseded_marker_count()`. Marker presence is not a structural
+gap, so it never affects `has_gaps` or the exit code; `autodev.yaml`'s
+`check_reconcile_needed` reads this key as its contradiction predicate. Not
+emitted on the `--all` payload, which maps `issue_id → gaps`.
+
 | Argument/Flag | Default | Description |
 |---------------|---------|-------------|
 | `issue_id` | _(required unless `--all`/`--next`)_ | Issue ID (e.g., `2426`, `ENH-2426`, `P3-ENH-2426`) |
@@ -1851,7 +1861,7 @@ absent/present, not that the correction actually refutes a specific line.
 ```bash
 ll-issues format-check ENH-2426               # text report, exit 0/1
                                                # stderr: "(N other issue(s) have deprecated frontmatter keys — run `ll-issues format-check` to list)" when applicable
-ll-issues format-check ENH-2426 --format json # {"missing": [...], "renamed": [...], "empty": [...], "boilerplate": [...], "malformed_id": [...], "prose_dep_drift": [...], "stale_prose_dep": [...], "program_design_nonspecific": [...], "deprecated_key": [...], "multi_frontmatter": [...], "testable": [...], "stale_file_ref": [...], "unmarked_superseded_directive": [...]}
+ll-issues format-check ENH-2426 --format json # {"missing": [...], "renamed": [...], "empty": [...], "boilerplate": [...], "malformed_id": [...], "prose_dep_drift": [...], "stale_prose_dep": [...], "program_design_nonspecific": [...], "deprecated_key": [...], "multi_frontmatter": [...], "testable": [...], "stale_file_ref": [...], "unmarked_superseded_directive": [...], "superseded_marker_count": 0}
 ll-issues format-check --all --fix            # preview blocked_by backfills for every drifting issue (dry-run)
 ll-issues format-check --all --fix --apply    # write the previewed edges via `ll-issues link`
 ll-issues format-check --next                 # target the highest-priority active issue

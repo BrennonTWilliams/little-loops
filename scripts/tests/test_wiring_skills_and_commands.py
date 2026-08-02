@@ -24,6 +24,10 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("skills/manage-issue/SKILL.md", "**Status enum**:", "ENH-1550"),
     ("commands/ready-issue.md", "**Status enum**:", "ENH-1550"),
     ("commands/refine-issue.md", "**Status enum**:", "ENH-1550"),
+    # ENH-2992: refine must surface the human path into /ll:reconcile-issue —
+    # the pipeline diagram, the Step 6.7 gate, and the NEXT STEPS block.
+    ("commands/refine-issue.md", "/ll:reconcile-issue", "ENH-2992"),
+    ("commands/refine-issue.md", "superseded_marker_count", "ENH-2992"),
     ("commands/create-sprint.md", "ll-issues list --json", "BUG-1649"),
     ("skills/create-loop/reference.md", "circuit_breaker_enabled", "circuit-breaker"),
     ("skills/create-loop/reference.md", "circuit_breaker_path", "circuit-breaker"),

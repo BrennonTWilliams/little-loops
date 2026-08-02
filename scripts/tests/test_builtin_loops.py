@@ -5620,7 +5620,41 @@ class TestAutodevLoop:
         action = data["states"].get("check_reconcile_needed", {}).get("action", "")
         assert "fresh_below" in action
         assert "${context.readiness_threshold}" in action
+        # ENH-2992 OR'd a third `contradiction` term onto this expression; the
+        # BUG-2803 pair must still be present and still be OR'd together.
         assert "plateau or fresh_below" in action
+
+    def test_check_reconcile_needed_fires_on_contradiction(self, data: dict) -> None:
+        """ENH-2992: the gate also fires on a standing `⚠ Superseded` marker in
+        a directive section, read from `ll-issues format-check --format json`'s
+        public `superseded_marker_count` key — deterministic Python, no LLM in
+        the routing chain (MR-1). The term is deliberately NOT gated by
+        `reconcile_attempted`, and is bounded by a reconcile-scoped counter."""
+        action = data["states"].get("check_reconcile_needed", {}).get("action", "")
+        assert "ll-issues format-check" in action
+        assert "superseded_marker_count" in action
+        assert "plateau or fresh_below or contradiction" in action
+        assert "autodev-contradiction-reconcile-count.txt" in action
+        assert "autodev-contradiction-reconcile-armed" in action
+
+    def test_count_repair_cycle_reconcile_maintains_contradiction_budget(self, data: dict) -> None:
+        """ENH-2992: the shared FEAT-2751 increment is untouched (the stagnation
+        backstop still needs it) and a reconcile-scoped counter plus per-issue
+        stamp ride alongside it, consumed from the predicate's armed marker."""
+        action = data["states"].get("count_repair_cycle_reconcile", {}).get("action", "")
+        assert "autodev-repair-cycle-count.txt" in action, "shared counter must stay"
+        assert "autodev-contradiction-reconcile-armed" in action
+        assert "autodev-contradiction-reconcile-count.txt" in action
+        assert "autodev-contradiction-reconcile-$ID" in action
+
+    def test_dequeue_next_resets_contradiction_budget(self, data: dict) -> None:
+        """ENH-2992: the cap of 2 is per-issue-per-run. Without a reset here the
+        queue-head issue's fires would exhaust every later issue's budget. The
+        per-issue `-$ID` stamp is filename-scoped and deliberately NOT reset."""
+        action = data["states"].get("dequeue_next", {}).get("action", "")
+        assert "autodev-contradiction-reconcile-count.txt" in action
+        assert "rm -f ${context.run_dir}/autodev-contradiction-reconcile-armed" in action
+        assert "rm -f ${context.run_dir}/autodev-contradiction-reconcile-$ID" not in action
 
     def test_recheck_after_size_review_clears_autodev_inflight(self, data: dict) -> None:
         """recheck_after_size_review must clear autodev-inflight on the skip path."""

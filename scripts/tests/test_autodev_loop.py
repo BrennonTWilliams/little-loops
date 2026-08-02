@@ -48,12 +48,19 @@ def _run_reconcile_predicate(
     *,
     confidence: str,
     reconcile_attempted: bool,
+    marker_count: int = 0,
+    issue_id: str = "BUG-9999",
 ) -> int:
     """Run the real check_reconcile_needed predicate against synthetic input.
 
     Substitutes ${context.run_dir} the way the FSM interpolator would, and
     feeds the `ll-issues show --json` payload directly via stdin (bypassing
     the actual CLI call, which the FSM pipes in at runtime).
+
+    ENH-2992: the contradiction term reads the `ll-issues format-check
+    --format json` payload the shell action captures into
+    LL_FORMAT_CHECK_JSON, so ``marker_count`` is injected the same way the FSM
+    would — via the environment, not a second stdin stream.
     """
     action = _load_autodev_yaml()["states"]["check_reconcile_needed"]["action"]
     script = (
@@ -76,6 +83,11 @@ def _run_reconcile_predicate(
         capture_output=True,
         text=True,
         check=False,
+        env={
+            **os.environ,
+            "LL_ISSUE_ID": issue_id,
+            "LL_FORMAT_CHECK_JSON": json.dumps({"superseded_marker_count": marker_count}),
+        },
     )
     return result.returncode
 
@@ -294,6 +306,142 @@ class TestCheckReconcileNeededFreshBelowThreshold:
         assert exit_code == 1
 
 
+class TestCheckReconcileNeededContradiction:
+    """ENH-2992: reconcile also fires on a *detected contradiction* — a
+    ``⚠ Superseded`` marker standing in a directive section (ENH-2995) — not
+    only on a readiness plateau. The contradiction term is deliberately NOT
+    gated by ``reconcile_attempted`` (that flag is permanent frontmatter, so
+    gating on it would make a second reconcile structurally impossible); it is
+    bounded structurally by reconcile clearing the marker it acted on, and
+    numerically by a reconcile-scoped per-issue fire counter capped at 2.
+    """
+
+    ARMED = "autodev-contradiction-reconcile-armed"
+    COUNT = "autodev-contradiction-reconcile-count.txt"
+
+    def test_fires_on_contradiction_when_score_moved(self, tmp_path: Path) -> None:
+        """AC1: the score changed against the pre-repair snapshot, so `plateau`
+        is false by construction — a fire here can only come from the
+        contradiction branch."""
+        (tmp_path / "autodev-pre-readiness.txt").write_text("70")
+
+        exit_code = _run_reconcile_predicate(
+            tmp_path, confidence="90", reconcile_attempted=False, marker_count=1
+        )
+
+        assert exit_code == 0, "a standing marker must fire the gate independently of plateau"
+
+    def test_contradiction_not_gated_by_reconcile_attempted(self, tmp_path: Path) -> None:
+        """AC5 depends on this: `reconcile_attempted` is permanent frontmatter,
+        never cleared by any state, so gating the contradiction term on it
+        would make a second reconcile impossible for any issue, ever."""
+        (tmp_path / "autodev-pre-readiness.txt").write_text("70")
+
+        exit_code = _run_reconcile_predicate(
+            tmp_path, confidence="90", reconcile_attempted=True, marker_count=1
+        )
+
+        assert exit_code == 0
+
+    def test_no_fire_when_markers_cleared(self, tmp_path: Path) -> None:
+        """AC4 (predicate half): once `/ll:reconcile-issue` has cleared the
+        marker on the line it evaluated, the next pass sees marker_count 0 and
+        the gate does not re-fire. The skill-side half — clearing on the no-op
+        path too — is pinned in test_reconcile_issue_command.py."""
+        (tmp_path / "autodev-pre-readiness.txt").write_text("70")
+
+        exit_code = _run_reconcile_predicate(
+            tmp_path, confidence="90", reconcile_attempted=True, marker_count=0
+        )
+
+        assert exit_code == 1
+
+    def test_no_fire_without_marker_or_plateau(self, tmp_path: Path) -> None:
+        """AC6: issues off the new branch behave exactly as before."""
+        (tmp_path / "autodev-pre-readiness.txt").write_text("70")
+
+        exit_code = _run_reconcile_predicate(
+            tmp_path, confidence="90", reconcile_attempted=False, marker_count=0
+        )
+
+        assert exit_code == 1
+
+    def test_contradiction_capped_after_two_fires(self, tmp_path: Path) -> None:
+        """AC5: a second distinct contradiction is eligible; a third is capped
+        by the reconcile-scoped counter — NOT by the shared
+        autodev-repair-cycle-count.txt ceiling, which is readiness-conditioned
+        and shared across six repair classes."""
+        (tmp_path / "autodev-pre-readiness.txt").write_text("70")
+
+        for fires, expected in ((0, 0), (1, 0), (2, 1), (3, 1)):
+            (tmp_path / self.COUNT).write_text(str(fires))
+
+            exit_code = _run_reconcile_predicate(
+                tmp_path, confidence="90", reconcile_attempted=False, marker_count=1
+            )
+
+            assert exit_code == expected, f"{fires} prior contradiction fires"
+
+    def test_arms_handshake_marker_on_contradiction_only_fire(self, tmp_path: Path) -> None:
+        """count_repair_cycle_reconcile consumes this marker to increment the
+        reconcile-scoped counter and stamp the per-issue exemption file."""
+        (tmp_path / "autodev-pre-readiness.txt").write_text("70")
+
+        _run_reconcile_predicate(
+            tmp_path, confidence="90", reconcile_attempted=False, marker_count=1
+        )
+
+        assert (tmp_path / self.ARMED).exists()
+
+    def test_does_not_arm_handshake_on_plateau_fire(self, tmp_path: Path) -> None:
+        """A plateau-driven reconcile must not burn the contradiction budget,
+        nor claim the pre-deferral-dispatcher exemption (AC5a) — that carve-out
+        exists only for stamps a contradiction-only fire caused."""
+        (tmp_path / "autodev-pre-readiness.txt").write_text("85")
+
+        exit_code = _run_reconcile_predicate(
+            tmp_path, confidence="85", reconcile_attempted=False, marker_count=1
+        )
+
+        assert exit_code == 0
+        assert not (tmp_path / self.ARMED).exists()
+
+    def test_malformed_counter_does_not_break_the_gate(self, tmp_path: Path) -> None:
+        """A truncated/garbage counter file must not crash the predicate — the
+        FSM would route on_error and skip the whole branch."""
+        (tmp_path / "autodev-pre-readiness.txt").write_text("70")
+        (tmp_path / self.COUNT).write_text("not-a-number")
+
+        exit_code = _run_reconcile_predicate(
+            tmp_path, confidence="90", reconcile_attempted=False, marker_count=1
+        )
+
+        assert exit_code == 0
+
+    def test_missing_format_check_payload_is_inert(self, tmp_path: Path) -> None:
+        """`ll-issues format-check` failing (unreadable issue, older CLI) must
+        leave the gate exactly as it was pre-ENH-2992, not fire it."""
+        (tmp_path / "autodev-pre-readiness.txt").write_text("70")
+        action = _load_autodev_yaml()["states"]["check_reconcile_needed"]["action"]
+        script = (
+            _extract_python_script(action)
+            .replace("${context.run_dir}", str(tmp_path))
+            .replace("${context.readiness_threshold}", "85")
+        )
+        env = {k: v for k, v in os.environ.items() if k != "LL_FORMAT_CHECK_JSON"}
+
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            input=json.dumps({"confidence": "90", "reconcile_attempted": "false"}),
+            capture_output=True,
+            text=True,
+            check=False,
+            env={**env, "LL_ISSUE_ID": "BUG-9999"},
+        )
+
+        assert result.returncode == 1, result.stderr
+
+
 class TestRepairCycleCounterStates:
     """FEAT-2751: dedicated count_repair_cycle_* states increment the shared
     repair-cycle counter file, matching the recursive-refine counter idiom."""
@@ -488,6 +636,7 @@ def _run_pre_deferral_remedy_selector(
     gate_marker: str,
     spike_attempted: bool = False,
     reconcile_attempted: bool = False,
+    contradiction_sourced: bool = False,
     score_ambiguity: int = 0,
     score_complexity: int = 0,
     score_test_coverage: int = 0,
@@ -495,10 +644,16 @@ def _run_pre_deferral_remedy_selector(
 ) -> str:
     """Run the real BUG-2803/ENH-2978 REMEDY selector python one-liner against
     synthetic input, mirroring _run_reconcile_predicate's subprocess-execution
-    approach for check_reconcile_needed."""
+    approach for check_reconcile_needed.
+
+    ENH-2992: `contradiction_sourced` stands in for the per-issue
+    `autodev-contradiction-reconcile-<ID>` stamp the shell branch probes before
+    invoking this script, passed through CONTRA_ONLY like GATE_MARKER.
+    """
     action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
     marker = (
-        'REMEDY=$(GATE_MARKER="$GATE_MARKER" ll-issues show "$ID" --json 2>/dev/null | python3 -c "'
+        'REMEDY=$(GATE_MARKER="$GATE_MARKER" CONTRA_ONLY="$CONTRA_ONLY" '
+        'll-issues show "$ID" --json 2>/dev/null | python3 -c "'
     )
     idx = action.index(marker)
     tail = action[idx + len(marker) :]
@@ -519,7 +674,11 @@ def _run_pre_deferral_remedy_selector(
         capture_output=True,
         text=True,
         check=False,
-        env={**os.environ, "GATE_MARKER": gate_marker},
+        env={
+            **os.environ,
+            "GATE_MARKER": gate_marker,
+            "CONTRA_ONLY": "true" if contradiction_sourced else "false",
+        },
     )
     return result.stdout.strip()
 
@@ -631,6 +790,73 @@ class TestRecheckAfterSizeReviewDecisionUnresolvedBranch:
         branch = decision_section[: decision_section.index('echo "$ID  decision_unresolved"')]
         assert "ll-issues show" in branch
         assert "decision_needed" in branch
+
+
+class TestPreDeferralRemedyContradictionExemption:
+    """ENH-2992 (AC5a): a contradiction-only reconcile must not consume the
+    pre-deferral remedy budget.
+
+    `/ll:reconcile-issue` stamps `reconcile_attempted: true` unconditionally.
+    Before this change that stamp only ever landed on an issue that had already
+    plateaued below threshold, so treating it as "readiness remedy spent" was
+    coherent. Once reconcile also fires on contradiction — a condition with no
+    relationship to readiness — a healthy issue gets stamped and would
+    thereafter be refused BOTH remedies, silently losing `spike`.
+    """
+
+    def test_contradiction_sourced_stamp_still_dispatches_spike(self) -> None:
+        remedy = _run_pre_deferral_remedy_selector(
+            gate_marker="false",
+            reconcile_attempted=True,
+            contradiction_sourced=True,
+            score_ambiguity=20,
+            score_complexity=20,
+            score_test_coverage=20,
+            score_change_surface=20,
+        )
+
+        assert remedy == "spike", "a contradiction-only reconcile must not cost the spike remedy"
+
+    def test_plateau_sourced_stamp_still_suppresses_both(self) -> None:
+        """Unchanged for readiness-driven reconciles: no per-issue stamp file,
+        so the selector behaves byte-identically to pre-ENH-2992."""
+        remedy = _run_pre_deferral_remedy_selector(
+            gate_marker="false",
+            reconcile_attempted=True,
+            contradiction_sourced=False,
+            score_ambiguity=20,
+            score_complexity=20,
+            score_test_coverage=20,
+            score_change_surface=20,
+        )
+
+        assert remedy == ""
+
+    def test_spike_attempted_still_suppresses_even_when_contradiction_sourced(self) -> None:
+        """The exemption exists to preserve access to `spike`; once spike has
+        run there is nothing left to preserve."""
+        remedy = _run_pre_deferral_remedy_selector(
+            gate_marker="false",
+            spike_attempted=True,
+            reconcile_attempted=True,
+            contradiction_sourced=True,
+            score_ambiguity=20,
+            score_complexity=20,
+            score_test_coverage=20,
+            score_change_surface=20,
+        )
+
+        assert remedy == ""
+
+    def test_shell_branch_probes_the_per_issue_stamp(self) -> None:
+        """The CONTRA_ONLY value the selector reads must come from the per-issue
+        stamp file count_repair_cycle_reconcile writes, not from frontmatter."""
+        action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
+        assert 'CONTRA_ONLY="true"' in action
+        assert "autodev-contradiction-reconcile-$ID" in action
+        assert action.index("autodev-contradiction-reconcile-$ID") < action.index(
+            'CONTRA_ONLY="$CONTRA_ONLY"'
+        ), "the stamp must be probed before the selector reads CONTRA_ONLY"
 
 
 class TestRegateAfterAtomicRemediationDesignGateBranch:

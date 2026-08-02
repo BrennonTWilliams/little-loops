@@ -156,6 +156,67 @@ class TestReconcileScopeBoundariesEligibility:
         )
 
 
+class TestReconcileMarkerClearing:
+    """ENH-2992: reconcile clears the ENH-2995 `⚠ Superseded` marker on every
+    directive line it *evaluated* — not only lines it rewrote.
+
+    This is the structural half of the contradiction gate's loop bound. Marker
+    presence is what `autodev.yaml`'s `check_reconcile_needed` now routes on, so
+    a marker that survives a completed reconcile pass re-fires the gate forever.
+    The two paths that leave a marked line unedited — the explicit no-op branch
+    (verdict RECONCILED with empty CORRECTIONS_MADE) and Step 5's "preserve
+    still-accurate bullets" rule — are therefore both in scope.
+    """
+
+    def _contract_text(self) -> str:
+        content = COMMAND_FILE.read_text()
+        start = content.index("## Contract (read this first")
+        end = content.index("\n## Process", start)
+        return content[start:end]
+
+    def test_contract_names_the_marker_clearing_addition(self) -> None:
+        text = self._contract_text()
+        assert "⚠ Superseded" in text, (
+            "the Contract must name the marker convention it now clears "
+            "(reconcile had zero awareness of ENH-2995's markers)"
+        )
+        assert "evaluate" in text.lower(), (
+            "the Contract must scope clearing to every line reconcile evaluated, "
+            "not only lines it rewrote"
+        )
+
+    def test_rewrite_step_clears_the_marker(self) -> None:
+        content = COMMAND_FILE.read_text()
+        start = content.index("### 5. Rewrite the stale sections in place")
+        end = content.index("### 6. Append Session Log", start)
+        assert "⚠ Superseded" in content[start:end], (
+            "Step 5's in-place Edit must extend its span to remove the marker "
+            "on the line being rewritten"
+        )
+
+    def test_no_op_branch_still_clears_markers(self) -> None:
+        """The no-op branch makes no edits at all today; a marker would survive
+        it and re-fire the gate on the next pass (AC4)."""
+        content = COMMAND_FILE.read_text()
+        start = content.index("If **no** section is stale")
+        end = content.index("### 5. Rewrite the stale sections", start)
+        branch = content[start:end]
+        assert "⚠ Superseded" in branch, (
+            "the no-op branch must clear markers even though it rewrites nothing"
+        )
+
+    def test_reuses_refine_bounded_marker_removal_rule(self) -> None:
+        """One marker lifecycle, not two: reconcile's clearing rule must point
+        at refine's existing bounded marker-removal right rather than inventing
+        a differently-shaped rule."""
+        content = COMMAND_FILE.read_text()
+        assert "marker-removal right" in content or "refine-issue.md" in content, (
+            "reconcile's clearing rule must cite refine's precedent so the two "
+            "rules stay composable"
+        )
+        assert "only marker lines" in content.lower() or "only the marker line" in content.lower()
+
+
 class TestReconcileCheckModeCoverage:
     """--check mode (step 7) must report a contradicted Scope Boundaries claim
     as a stale section, not just the three unconditional sections."""

@@ -177,6 +177,7 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
         check_format_gaps,
         find_highest_priority_issue,
         find_issues,
+        superseded_marker_count,
     )
     from little_loops.issue_progress import _ALL_STATUSES
     from little_loops.issue_template import resolve_templates_dir
@@ -314,7 +315,18 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
         )
 
     if fmt == "json":
-        print_json(gaps.to_dict())
+        # ENH-2992: the single-issue payload also carries marker *presence* —
+        # the inverse of the unmarked_superseded_directive gap class — so
+        # autodev.yaml's check_reconcile_needed can read its contradiction
+        # predicate from the same call it already makes. Deliberately not a
+        # FormatGaps field: a standing marker is not a structural gap, so it
+        # must not feed has_gaps (and hence the exit code) or widen
+        # to_dict()'s dict[str, list[str]] contract. The --all payload is
+        # unchanged; it maps issue_id → gaps and no consumer queries markers
+        # in bulk.
+        payload: dict[str, object] = dict(gaps.to_dict())
+        payload["superseded_marker_count"] = superseded_marker_count(path)
+        print_json(payload)
         return 1 if gaps.has_gaps else 0
 
     if not gaps.has_gaps:

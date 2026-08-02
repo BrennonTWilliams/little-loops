@@ -4096,3 +4096,90 @@ class TestSectionBodyLastMatchWins:
         body, start = result
         assert body.strip() == "second"
         assert content[start:].strip() == "second"
+
+
+class TestSupersededMarkerCount:
+    """ENH-2992: public marker-presence surface over the ENH-2995 convention.
+
+    ``superseded_marker_count`` is the query ``check_format_gaps`` never
+    exposed — it reports ``⚠ Superseded`` markers that ARE present in the three
+    directive sections, the inverse of the ``unmarked_superseded_directive``
+    gap class. ``autodev.yaml``'s ``check_reconcile_needed`` reads it (via
+    ``ll-issues format-check --format json``) as its contradiction predicate.
+    """
+
+    MARKER = "   > ⚠ Superseded — omit entirely; see § Codebase Research Findings"
+
+    def _write(self, tmp_path: Path, body: str) -> Path:
+        path = tmp_path / "P2-BUG-9701-marker-count.md"
+        path.write_text(body)
+        return path
+
+    def test_zero_when_no_markers(self, tmp_path: Path) -> None:
+        from little_loops.issue_parser import superseded_marker_count
+
+        path = self._write(
+            tmp_path,
+            "# BUG-9701\n\n## Implementation Steps\n\n1. Do the thing\n\n## Status\n\n- open\n",
+        )
+
+        assert superseded_marker_count(path) == 0
+
+    def test_counts_marker_in_implementation_steps(self, tmp_path: Path) -> None:
+        from little_loops.issue_parser import superseded_marker_count
+
+        path = self._write(
+            tmp_path,
+            "# BUG-9701\n\n## Implementation Steps\n\n"
+            f"1. Do the thing\n{self.MARKER}\n\n## Status\n\n- open\n",
+        )
+
+        assert superseded_marker_count(path) == 1
+
+    def test_counts_across_all_three_directive_sections(self, tmp_path: Path) -> None:
+        from little_loops.issue_parser import superseded_marker_count
+
+        path = self._write(
+            tmp_path,
+            "# BUG-9701\n\n"
+            f"## Implementation Steps\n\n1. Step one\n{self.MARKER}\n\n"
+            f"## Integration Map\n\n### Files to Modify\n\n- `a.py`\n{self.MARKER}\n\n"
+            f"## Acceptance Criteria\n\n- [ ] It works\n{self.MARKER}\n\n"
+            "## Status\n\n- open\n",
+        )
+
+        assert superseded_marker_count(path) == 3
+
+    def test_ignores_markers_outside_directive_sections(self, tmp_path: Path) -> None:
+        """A marker in `## Proposed Solution` (preserved prose) is not a
+        reconcile-eligible contradiction — only the three directive sections
+        `/ll:reconcile-issue` rewrites are scanned."""
+        from little_loops.issue_parser import superseded_marker_count
+
+        path = self._write(
+            tmp_path,
+            "# BUG-9701\n\n"
+            f"## Proposed Solution\n\nDo it this way.\n{self.MARKER}\n\n"
+            "## Implementation Steps\n\n1. Step one\n\n"
+            "## Status\n\n- open\n",
+        )
+
+        assert superseded_marker_count(path) == 0
+
+    def test_counts_multiple_markers_in_one_section(self, tmp_path: Path) -> None:
+        from little_loops.issue_parser import superseded_marker_count
+
+        path = self._write(
+            tmp_path,
+            "# BUG-9701\n\n## Implementation Steps\n\n"
+            f"1. Step one\n{self.MARKER}\n2. Step two\n{self.MARKER}\n\n"
+            "## Status\n\n- open\n",
+        )
+
+        assert superseded_marker_count(path) == 2
+
+    def test_missing_file_returns_zero(self, tmp_path: Path) -> None:
+        """The FSM predicate must never crash the loop on a vanished issue file."""
+        from little_loops.issue_parser import superseded_marker_count
+
+        assert superseded_marker_count(tmp_path / "does-not-exist.md") == 0
