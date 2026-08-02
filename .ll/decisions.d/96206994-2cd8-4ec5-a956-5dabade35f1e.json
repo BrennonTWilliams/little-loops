@@ -1,0 +1,12 @@
+{
+  "id": "c7af7e28-cc6b-430c-a15d-96b3434e02c6",
+  "type": "decision",
+  "timestamp": "2026-08-02T15:26:23Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches existing sibling Phase-8a unnumbered-bullet convention in skills/wire-issue/SKILL.md; zero downstream coupling to current N. numbering; ships independently of blocked ENH-2995 dependency.",
+  "rule": "Option A: Wiring Phase entries become unnumbered/letter-keyed",
+  "scope": "issue",
+  "alternatives_rejected": "Option B (skip superseded-marked steps when computing N) \u2014 hard-blocked on unimplemented ENH-2995 marker and requires new Phase 3 parsing logic with no precedent",
+  "issue": "ENH-2996"
+}
