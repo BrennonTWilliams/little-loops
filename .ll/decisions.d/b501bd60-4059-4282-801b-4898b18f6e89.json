@@ -1,0 +1,11 @@
+{
+  "id": "483f1dd7-654a-4f71-b07c-83ab5730c39b",
+  "type": "decision",
+  "timestamp": "2026-08-02T13:46:26Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Preservation Rule forbids marking refuted directive lines; 24% (316/1295) of refined issues contain correction language contradicting their own Implementation Steps.",
+  "rule": "Captured: refine-issue marks superseded directive lines in place",
+  "scope": "issue",
+  "issue": "ENH-2991"
+}

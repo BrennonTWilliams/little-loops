@@ -3,15 +3,14 @@ id: ENH-2853
 title: Deterministic pre-patch test-failure check in verification loops
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: 2026-07-27
 epic: EPIC-2856
 parent: EPIC-2856
 labels:
 - rework
 - verification
-blocked_by:
-- ENH-2866
+testable: true
 learning_tests_required:
 - pytest
 confidence_score: 82
@@ -20,6 +19,7 @@ score_complexity: 14
 score_test_coverage: 16
 score_ambiguity: 14
 score_change_surface: 16
+size: Very Large
 ---
 
 # ENH-2853: Deterministic pre-patch test-failure check in verification loops
@@ -81,13 +81,30 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Define the base state explicitly.** Under `ll-auto`/`ll-sprint` a verification step may span multiple commits. "Pre-patch" means the tree at the SHA recorded when the issue was dequeued (fall back to merge-base with the base branch when no dequeue SHA is recorded) — not simply `HEAD~1`.
 - **The dequeue-SHA stamp is ENH-2866, not this issue** (split at epic review, 2026-07-27). Nothing records a dequeue SHA today, so this issue's primary base-state path would be dead code without it; ENH-2866 adds the stamp at `autodev.yaml`'s `dequeue_next` and `ll-parallel`'s worktree creation, plus a reader helper that returns `None` when unstamped. This issue *consumes* that helper and implements the merge-base fallback behind it. Until a given orchestrator stamps, its runs take the fallback — which is why the evidence bundle must name the base actually used.
 - **Test-file identification is ENH-2973, not this issue** (split at epic review, 2026-07-27). Both this check and ENH-2854's tamper guard need to classify paths as test files; the `project.test_patterns` config key, its template defaults (including the load-bearing `conftest.py` entry), and the shared `test_file_patterns.py` module land once in ENH-2973 and are consumed here. This removes the former circular `blocked_by` between this issue and ENH-2854 — neither depends on the other now; both depend on ENH-2973.
-- **Gate placement: the check must be hosted by a reusable oracle loop, not by `ll-harness`** (placement review, 2026-07-30). The prior Integration Map installed the check in `cli/harness.py:_evaluate_and_report()` and in `/ll:verify-issue-loop`'s generator. Both are off every production verification path:
+- **Gate placement, superseded (2026-08-02): host the check on the executor's guarded-window mechanism, not on an oracle state.** The 2026-07-30 placement review below correctly ruled out `cli/harness.py` and `/ll:verify-issue-loop` as owners, and its reachability reasoning still stands. But its *positive* prescription — an additive state in `oracles/code-run-gate.yaml` reached via the token channel, following the learning-test gate's three-layer shape — predates ENH-2854 landing on 2026-07-31. That sibling solved the identical reachability problem for the identical class of gate a different way, and it is now this repo's established precedent:
+  - ENH-2854 shipped `tamper_guard` as a **first-class FSM key**, settable loop-level and state-level (`fsm/schema.py:690` and `:1311`), enforced by the executor as snapshot-on-entry / compare-on-exit (`fsm/executor.py:1295-1384`), with findings accumulated across guarded states in `ctx.context["_tamper_guard"]`, a dedicated validation lint rule, **and** a non-FSM adapter (`work_verification.py`) called from `issue_manager.py` and `parallel/worker_pool.py`.
+  - `code-run-gate.yaml:50` already declares `tamper_guard: fail` at loop level — the sibling mechanism is already active in the very file the 07-30 review proposed adding a state to.
+  - **Decisive on the merits, not just on consistency:** this check's input is *the diff of the verification step*. A state sitting alongside `run_test` has no natural access to that; the executor's entry/exit bracket computes exactly it. Hosting on the guarded-window mechanism also inherits ENH-2854's non-FSM path, which gives `ll-auto` / `ll-parallel` coverage without the separate follow-up issue § Scope Boundaries previously deferred.
+  - **Reuse, do not re-derive**: `test_tamper_guard.snapshot_test_paths_at_ref()` / `read_paths_at_ref(repo_root, ref, paths)` read file contents at an arbitrary git ref, and `_test_functions()` (`:311`) / `measure_test_strength()` (`:235`) / `filter_weakening_findings()` (`:333`) already do AST test-function extraction and before/after per-test comparison. See the two Design Notes below that consume them.
+  - The Layer-1 core (`prepatch_check.py`, no FSM or CLI imports) is unchanged by this correction and remains the deliverable both hosts call.
+
+- **Gate placement, original review (2026-07-30) — ruling-out half retained, prescription superseded above.** The prior Integration Map installed the check in `cli/harness.py:_evaluate_and_report()` and in `/ll:verify-issue-loop`'s generator. Both are off every production verification path:
   - **No orchestrator invokes `ll-harness`.** A repo-wide grep for `ll-harness` across `scripts/little_loops/` returns only its own CLI (`cli/harness.py`), the shared `runner_spec.py` abstraction, telemetry readers (`history_reader.py:2797+`), and a permission string in `init/writers.py:70`. Nothing in `ll-auto`, `ll-parallel`, `ll-sprint`, or any `loops/*.yaml` calls it — it is a hand-run one-shot tool.
   - **`/ll:verify-issue-loop` is a generator.** A check emitted there exists only inside per-issue loop YAML someone chose to generate, never in a standing path.
   - The actual chokepoint for "did these tests prove anything" is `oracles/code-run-gate.yaml`'s `run_test` state, delegated to by `rn-refine.yaml:483`, `rn-remediate.yaml:543`, and `rn-implement`'s `run_code_gate` (`loops/README.md:64`). Hosting the check there is what makes it reachable from every green-suite transition in the `rn-*` family.
   - **Follow the learning-test gate's three-layer shape**, which is this repo's established pattern for a gate that must reach both FSM and CLI callers: gate logic in a reusable internal loop (`ready-to-implement-gate.yaml`), a thin Python adapter that shells out to it (`learning_tests/gate.py:run_learning_gate_for_issue()`), and orchestrator hooks that all call the adapter behind one shared skip flag (`cli_args.py:214` → `issue_manager.py:880`, `worker_pool.py:64`, `cli/sprint/run.py:222`). `cli/harness.py` and `/ll:verify-issue-loop` become *consumers* of the oracle, not owners of the check.
 - **Evidence-bundle transport follows the host** (placement review, 2026-07-30). With the check hosted by an oracle rather than `ll-harness`, `PrePatchEvidence` can no longer ride a harness-local `HarnessEvalOutcome`. It must reach the parent through the oracle's existing parent↔sub-loop token channel (the `subloop_outcome_<ID>.txt` idiom `code-run-gate` already uses) with the full bundle written under `${context.run_dir}/` per MR-3, and/or persisted to `.ll/history.db`. The harness path then reads the same artifact rather than producing its own.
-- **Oracle skip convention** (placement review, 2026-07-30). If the check lands as an additive state inside `code-run-gate.yaml` rather than a sibling oracle, its enable/disable knob must follow that oracle's established null-command short-circuit: an unset parameter routes to a SKIP pass-through, not a failure. This is the same mechanism as the config off-switch already required by Design Notes ("Price the check"), expressed in the oracle's idiom.
+- **Skip convention** (placement review, 2026-07-30; generalized 2026-08-02). The enable/disable knob must short-circuit to a SKIP pass-through when unset, never to a failure. Under the superseding executor-hosted placement this is the `tamper_guard` key's own convention — absent key (no state override, no loop default) means "not guarded," exactly as `fsm/executor.py:1305` resolves it. Under the previously-prescribed oracle placement it would have been `code-run-gate`'s null-command short-circuit. Either way it is the same mechanism as the config off-switch already required by Design Notes ("Price the check").
+
+- **A dirty base invalidates the comparison, and nothing reads the dirty flag yet** (added 2026-08-02). ENH-2866 stamps **two** values, not one: `base_sha` *and* `base_dirty` — whether the tree had tracked modifications (`git status --porcelain --untracked-files=no`) at dequeue. Its commit message states the flag exists precisely for this consumer ("a base-state consumer reconstructs by checkout, so an untracked scratch file does not make the base approximate"). When `base_dirty` is true, a worktree forked from `base_sha` is **not** the pre-patch tree — it is missing the uncommitted work the change was actually built on. A candidate test can then fail there for reasons unrelated to the change, and a fake test is accepted as evidence: a false negative in exactly the direction this check exists to prevent. Required: (1) `history_reader.read_base_sha()` returns only the SHA (`history_reader.py:1816-1821`), so an additive `base_dirty` reader alongside it is in scope here; (2) `PrePatchEvidence` carries `base_dirty: bool | None`; (3) when the base was dirty, hard flags are downgraded to soft and the bundle says why — the check still reports, it just stops asserting.
+
+- **Base resolution is the caller's job; the core stays DB-free** (added 2026-08-02). The reader is `history_reader.read_base_sha(issue_id, *, run_id=None, db=DEFAULT_DB_PATH)` — keyed by **issue_id**, reading `.ll/history.db`, never raising, returning `None` when unstamped. It deliberately does *not* implement the merge-base fallback (its docstring assigns that to the consumer), so this issue does own the fallback. Pin the split: the host resolves `(base_sha, base_dirty)` and passes them in; `run_prepatch_check()` takes them as arguments and performs no database access. `run_id` is a process-local uuid4 never exported to env, run-dir, or argv, so an out-of-process consumer must omit it and take the most-recent-stamped-row path. Note `code-run-gate.yaml` already declares `issue_id` as a required parameter, so the identifier is available on that path if the placement decision is ever revisited.
+
+- **Prefer content-write over `git apply` for the partial patch** (added 2026-08-02, supersedes the "no partial-diff helper exists" framing in § Codebase Research). Still literally true that the repo has no `git apply` helper — but the partial-diff apply is avoidable entirely. `test_tamper_guard.read_paths_at_ref(repo_root, ref, paths)` (`:112`) and `snapshot_test_paths_at_ref()` (`:123`) already read file contents at an arbitrary ref without a worktree. The simpler construction: fork the worktree at `base_ref`, then write the *post-patch* test-file contents directly into it. No `git apply`, therefore no 3-way-merge conflict failure mode, no reject-hunk handling, and no new patch-parsing logic — which removes this issue's single largest new-logic risk. Pin content-write vs. `git apply` during implementation; content-write is the recommended default.
+
+- **Hunk→nodeid mapping and the added-vs-modified split now have existing machinery** (added 2026-08-02, supersedes the "pin the approach" instruction in the mapping note above). `test_tamper_guard._test_functions(source) -> dict[str, ast.AST]` (`:311`) already extracts enclosing test definitions from source — the primitive for mapping hunk line ranges to test functions. `measure_test_strength()` (`:235`) and `filter_weakening_findings()` (`:333`) already perform before/after per-test AST comparison, which is exactly the discriminator the added-vs-modified verdict split needs (added test → must fail pre-patch, hard; modified test → soft by default). Consume these rather than re-deriving an AST layer or a `--collect-only` diff. The touched-files fallback for genuinely ambiguous hunks still applies.
+
+- **The check must not trip the guard whose window it runs inside** (added 2026-08-02). `tamper_guard_changed_files()` (`test_tamper_guard.py:175-190`) unions `git diff --name-only HEAD` with `git ls-files --others --exclude-standard` at the repo root. `setup_worktree()` takes a caller-supplied `worktree_path`; if the pre-patch worktree lands under the repo root, this check's own scratch state can surface as untracked files and register as a tamper finding — a self-inflicted gate failure, and under `tamper_guard: fail` (which `code-run-gate.yaml:50` sets) that jumps the run straight to the failure terminal. Confirm during implementation that the pre-patch worktree path is outside the guarded scope, and cover it with a test rather than an assumption.
 
 ### Codebase Research Findings
 
@@ -104,7 +121,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Per-test pass/fail/error classification — two existing patterns to choose between, neither currently wired to a pre/post-patch comparison**:
   - `scripts/little_loops/loops/oracles/code-run-gate.yaml`'s `run_test` state (lines 201-249) shells out to `test_cmd`, parses a `--json-report`-produced `pytest.json`'s `summary` dict (`total`/`passed`/`failed`), with a fallback to binary pass/fail when JSON reporting isn't configured. The `.ll/learning-tests/pytest-json-report.md` learning-test proof documents this exact contract (`summary.passed + failed + skipped == total`).
   - `scripts/little_loops/pytest_history_plugin.py`'s `LLHistoryPlugin` (line 81) classifies pass/fail/error natively via the `pytest_runtest_logreport` hook, distinguishing `call`-phase failures (real test failures) from `setup`/`teardown`-phase failures (errors) — directly matches this issue's "error-vs-fail" distinction requirement in Design Notes. Registered via the `pytest11` entry point in `scripts/pyproject.toml`.
-- **`project.test_patterns` is introduced by ENH-2973** (blocking), modeled on the existing `scan.focus_dirs` list-of-globs shape and resolved via `resolve_variable()` in `scripts/little_loops/config/core.py:886`. This issue only *consumes* the shared `scripts/little_loops/test_file_patterns.py` module; it neither defines the config key, its schema entry, nor its per-template defaults.
+- **Superseding note (2026-08-02) — two claims above are now stale.** (1) "No partial-diff/`git apply` helper exists anywhere in the codebase today" remains true of `git apply`, but `test_tamper_guard.read_paths_at_ref()` (`:112`) / `snapshot_test_paths_at_ref()` (`:123`) now read file contents at an arbitrary ref, making the partial-diff apply avoidable entirely — see Design Notes, "Prefer content-write over `git apply`". (2) "No existing code implements this check" is still true of the check itself, but ENH-2854 (landed 2026-07-31) shipped the hosting mechanism, the AST test-function machinery, and the non-FSM adapter shape this issue should consume — see § Similar Patterns.
+- **`project.test_patterns` is introduced by ENH-2973** (blocking, since completed 2026-07-28), modeled on the existing `scan.focus_dirs` list-of-globs shape and resolved via `resolve_variable()` in `scripts/little_loops/config/core.py:886`. This issue only *consumes* the shared `scripts/little_loops/test_file_patterns.py` module; it neither defines the config key, its schema entry, nor its per-template defaults.
 - **Evidence-bundle dataclass convention**: `scripts/little_loops/issue_history/models.py`'s `Gap`/`GapAnalysis` classes (lines 259-302) and `scripts/little_loops/cli/verify_design_tokens.py`'s `ThemeViolation`/`ProfileResult` (lines 49-60) both follow the same shape — plain-field `@dataclass` + `to_dict()` method, list fields capped to a top-N for serialization — which is the convention a new per-test evidence-bundle dataclass for this issue should follow. Note: the command doc's reference to a `TestGap` class in `issue_history/models.py` does not match current code; the actual class is named `Gap`.
 
 ## Integration Map
@@ -113,12 +131,17 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 _Rewritten 2026-07-30 (placement review) — the check is hosted by a reusable oracle loop; `ll-harness` and `/ll:verify-issue-loop` are demoted from owners to consumers. See Design Notes, "Gate placement"._
 
-**Layer 1 — gate core (no FSM or CLI knowledge):**
-- `scripts/little_loops/prepatch_check.py` (new) — `run_prepatch_check()`, `collect_candidate_nodeids()`, and the `PrePatchTestOutcome` / `PrePatchEvidence` dataclasses per § Program Design. Consumes ENH-2973's `test_file_patterns` module for identification and ENH-2866's reader helper for the base SHA.
-- `scripts/little_loops/worktree_utils.py` — new additive sibling `setup_prepatch_worktree()` wrapping `setup_worktree()` (line 155): fork from the dequeue-time SHA / merge-base via the existing `base_branch` param, then `git apply` only the test-file portion of the diff (new logic — no partial-diff helper exists in the repo today). `setup_worktree()` / `cleanup_worktree()` signatures unchanged.
+_Layer 2 rewritten again 2026-08-02 — the oracle-state host is superseded by the executor's guarded-window mechanism that ENH-2854 shipped on 2026-07-31. See Design Notes, "Gate placement, superseded"._
 
-**Layer 2 — oracle host (the reachability fix):**
-- `scripts/little_loops/loops/oracles/code-run-gate.yaml` — add the pre-patch check as an additive state alongside `run_test` (L201-249), gated by a new optional parameter that short-circuits to SKIP when unset (matching the oracle's existing null-command convention). Alternatively land it as a sibling `oracles/prepatch-test-gate.yaml` invoked from the same point; pin the choice during implementation. Either way the verdict and the evidence-bundle path travel the existing parent↔sub-loop token channel.
+**Layer 1 — gate core (no FSM or CLI knowledge):**
+- `scripts/little_loops/prepatch_check.py` (new) — `run_prepatch_check()`, `collect_candidate_nodeids()`, and the `PrePatchTestOutcome` / `PrePatchEvidence` dataclasses per § Program Design. Consumes ENH-2973's `test_file_patterns` module for identification, and `test_tamper_guard`'s ref-reading (`read_paths_at_ref`) and AST (`_test_functions`, `filter_weakening_findings`) primitives per Design Notes. Performs **no** database access — the base state arrives as arguments.
+- `scripts/little_loops/worktree_utils.py` — new additive sibling `setup_prepatch_worktree()` wrapping `setup_worktree()` (line 155): fork from the dequeue-time SHA / merge-base via the existing `base_branch` param, then materialize the post-patch test-file contents into the fork (content-write, not `git apply` — see Design Notes). `setup_worktree()` / `cleanup_worktree()` signatures unchanged. The worktree path must sit outside the tamper guard's repo-root scan scope.
+- `scripts/little_loops/history_reader.py` — additive `base_dirty` reader alongside `read_base_sha()` (`:1816`), which returns the SHA only. Required by the dirty-base policy in Design Notes.
+
+**Layer 2 — executor host (the reachability fix):**
+- `scripts/little_loops/fsm/executor.py` / `fsm/schema.py` — host the check on the same guarded-window mechanism as ENH-2854's `tamper_guard` (`executor.py:1295-1384`; schema keys at `schema.py:690` loop-level and `:1311` state-level), which already brackets a state's entry and exit and therefore already holds the step diff this check consumes. Absent key = not guarded = SKIP, per the skip convention. Follow ENH-2854's shape for the record it leaves in `ctx.context`.
+- `scripts/little_loops/work_verification.py` — the non-FSM adapter, mirroring how ENH-2854 reaches `issue_manager.py` and `parallel/worker_pool.py`. This is what gives `ll-auto` / `ll-parallel` coverage without a follow-up issue.
+- `scripts/little_loops/loops/oracles/code-run-gate.yaml` — **no state added.** It already declares `tamper_guard: fail` at loop level (`:50`); it inherits this check the same way. Left unmodified.
 
 **Layer 3 — consumers (read the oracle's result; do not re-implement the check):**
 - `scripts/little_loops/cli/harness.py` — surface the pre-patch evidence alongside the existing `HarnessEvalOutcome` (line 242) / `_evaluate_and_report()` (line 251) path by reading the oracle's artifact, not by hosting the check.
@@ -131,6 +154,7 @@ _Split out at epic review (2026-07-27) — no longer this issue's scope, consume
 - `project.test_patterns` config key, template defaults, and `scripts/little_loops/test_file_patterns.py` → **ENH-2973**
 
 ### Similar Patterns to Follow
+- `scripts/little_loops/test_tamper_guard.py` + `fsm/executor.py:1295-1384` + `work_verification.py` (ENH-2854, landed 2026-07-31) — **the primary template**: the same class of gate, hosted on the executor's guarded window with a parallel non-FSM adapter. Reuse directly: `read_paths_at_ref()` (`:112`) / `snapshot_test_paths_at_ref()` (`:123`) for reading file contents at a ref without a worktree; `_test_functions()` (`:311`), `measure_test_strength()` (`:235`), `filter_weakening_findings()` (`:333`) for hunk→test-function attribution and the added-vs-modified split.
 - `verify_epic_branch_before_merge()` (`worktree_utils.py:364-494`) — create → run-in-isolation → teardown-in-`finally` shape, plus its `src_dir` PYTHONPATH-injection fix (lines 399-409, 467-473) for editable-install import isolation. See precedent bugs `BUG-2629`, `BUG-2640`, `BUG-2649`.
 - `scripts/little_loops/pytest_history_plugin.py`'s `LLHistoryPlugin` (line 81) — per-test pass/fail/error classification via `pytest_runtest_logreport`, distinguishing `call`-phase failures from `setup`/`teardown`-phase errors.
 - `scripts/little_loops/loops/oracles/code-run-gate.yaml`'s `run_test` state (lines 201-249) — alternative pass/fail parsing via `pytest.json`'s `summary` dict; see `.ll/learning-tests/pytest-json-report.md` for the proven contract.
@@ -179,7 +203,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Not this issue**: `ENH-2854`'s tamper-guard `revert` policy — a peer that shares the ENH-2973 module but has no dependency edge in either direction; the only interaction is ordering (its revert must run after this check reads the step's diff), which is a constraint documented on ENH-2854, not a blocking edge here.
 - **Not this issue**: replacing or removing the existing LLM-judged semantic criteria in verification loops — this check is additive alongside them, never a substitute.
 - **Not this issue**: running the full test suite pre-patch — only the identified candidate test node IDs are run (see Design Notes, "Price the check").
-- **Not this issue** (added 2026-07-30, placement review): hooking the check into `ll-auto` / `ll-parallel` / `ll-sprint` as a standalone CLI-level pre-flight. Those orchestrators reach it transitively through the `rn-*` loops that delegate to the oracle. If a direct non-FSM entry point is later wanted, it is an additive Python adapter over the same `prepatch_check.py` core (the `learning_tests/gate.py` shape), not a second implementation — and a separate issue.
+- ~~**Not this issue** (added 2026-07-30, placement review): hooking the check into `ll-auto` / `ll-parallel` / `ll-sprint` as a standalone CLI-level pre-flight.~~ **Reversed 2026-08-02**: the executor-hosted placement inherits ENH-2854's non-FSM adapter shape (`work_verification.py` → `issue_manager.py` / `parallel/worker_pool.py`), so the non-FSM path is now *in* scope as a thin adapter over the same `prepatch_check.py` core rather than a deferred follow-up issue. It was only ever deferred because the oracle-state host couldn't reach those callers.
 
 ## Impact
 
@@ -198,48 +222,62 @@ Deviations against it, per ENH-2871).
 ### Types
 
 - `PrePatchTestOutcome` — one candidate test's result: `nodeid: str`, `file: str`, `added: bool`, `pre_patch: str`, `category: str`, `error_kind: str | None`
-- `PrePatchEvidence` — the per-step evidence bundle: `base_ref: str`, `base_source: str`, `outcomes: list[PrePatchTestOutcome]`, `skipped_reason: str | None`, `to_dict() -> dict`
+- `PrePatchEvidence` — the per-step evidence bundle: `base_ref: str`, `base_source: str`, `base_dirty: bool | None`, `outcomes: list[PrePatchTestOutcome]`, `skipped_reason: str | None`, `to_dict() -> dict`
 
 Both are new plain-field `@dataclass`es with `to_dict()` in a new module
 `scripts/little_loops/prepatch_check.py`, following the `Gap`/`GapAnalysis`
 convention. `category` is one of `pass | fail | error | timeout | flaky`;
 `error_kind` distinguishes a collection/import error naming a post-patch module
 from any other infrastructure error. `base_source` is `dequeue-stamp` or
-`merge-base`, so the bundle names the base actually used. `skipped_reason` is set
-when the config off-switch disables the check, so the skip is explicit.
+`merge-base`, so the bundle names the base actually used. `base_dirty` (added
+2026-08-02) carries ENH-2866's companion flag — `True` means the stamped tree had
+tracked modifications at dequeue, so the fork is not faithfully the pre-patch
+tree and hard flags are downgraded to soft; `None` means unknown (merge-base
+fallback, or an unstamped run). `skipped_reason` is set when the config
+off-switch disables the check, so the skip is explicit.
 
 ### Signatures
 
-- `run_prepatch_check(step_diff: str, base_sha: str | None, timeout_s: int) -> PrePatchEvidence`
+- `run_prepatch_check(step_diff: str, base_sha: str | None, base_dirty: bool | None, timeout_s: int) -> PrePatchEvidence`
 - `collect_candidate_nodeids(step_diff: str, repo_root: Path) -> list[str]`
-- `setup_prepatch_worktree(base_ref: str, test_patch: str, src_dir: str | None) -> Path`
+- `setup_prepatch_worktree(base_ref: str, test_files: dict[str, str], src_dir: str | None) -> Path`
 - `is_test_file(path: str, config: BRConfig | None) -> bool`
+- `read_base_sha(issue_id: str, *, run_id: str | None, db: Path | str) -> str | None` (existing, ENH-2866)
 
 The first two are new in `prepatch_check.py`. `setup_prepatch_worktree()` is a new
 additive sibling in `worktree_utils.py` wrapping `setup_worktree()` (fork from
-`base_ref` via the existing `base_branch` parameter) plus the new partial-diff
-`git apply` of the test-file portion; `setup_worktree()` /
-`cleanup_worktree()` signatures are unchanged. `is_test_file()` /
-`filter_test_files()` are ENH-2973's existing shared module, consumed for
-candidate identification and never re-implemented here.
+`base_ref` via the existing `base_branch` parameter), then materializing the
+post-patch test-file contents into the fork — `test_files` maps repo-relative
+path to content, not a patch string, per the content-write decision in Design
+Notes; `setup_worktree()` / `cleanup_worktree()` signatures are unchanged.
+`is_test_file()` / `filter_test_files()` are ENH-2973's existing shared module,
+consumed for candidate identification and never re-implemented here.
+`read_base_sha()` is ENH-2866's existing never-raising reader in
+`history_reader.py:1816`; it is called by the **host**, not by
+`run_prepatch_check()`, which takes the resolved base as arguments and touches no
+database. An additive `base_dirty` reader alongside it is in this issue's scope.
 
 ### Call Path
 
-_Call path updated 2026-07-30 (placement review): the entry point is the oracle
-state, not `_evaluate_and_report()`._
+_Call path updated 2026-08-02: two hosts, one core — mirroring ENH-2854's
+executor + `work_verification.py` split. Supersedes the 2026-07-30 oracle-state
+entry point._
 
-`oracles/` pre-patch state -> `run_prepatch_check` -> `collect_candidate_nodeids` -> `filter_test_files`
+FSM host: executor guarded-window exit hook -> `read_base_sha` -> `run_prepatch_check` -> `collect_candidate_nodeids` -> `filter_test_files`
+
+Non-FSM host: `work_verification.verify_work_was_done` -> `read_base_sha` -> `run_prepatch_check` -> (same chain)
 
 `run_prepatch_check` -> `setup_prepatch_worktree` -> `setup_worktree` -> `cleanup_worktree`
 
-The oracle state emits its verdict on the parent↔sub-loop token channel and
-writes the `PrePatchEvidence` bundle under `${context.run_dir}/`.
-`_evaluate_and_report()` in `cli/harness.py` reads that bundle and surfaces it
-alongside the existing `HarnessEvalOutcome` — it does not call
-`run_prepatch_check()` itself. The worktree create → run-in-isolation →
-teardown-in-finally shape and the src_dir PYTHONPATH-injection fix are taken
-from `verify_epic_branch_before_merge`, and per-test pass/fail/error
-classification mirrors `LLHistoryPlugin`.
+Each host resolves `(base_sha, base_dirty)` and passes them in; the core is
+database-free. The FSM host records its verdict in `ctx.context` following
+ENH-2854's `_tamper_guard` record shape and writes the full `PrePatchEvidence`
+bundle under `${context.run_dir}/` (MR-3). `_evaluate_and_report()` in
+`cli/harness.py` reads that bundle and surfaces it alongside the existing
+`HarnessEvalOutcome` — it does not call `run_prepatch_check()` itself. The
+worktree create → run-in-isolation → teardown-in-finally shape and the src_dir
+PYTHONPATH-injection fix are taken from `verify_epic_branch_before_merge`, and
+per-test pass/fail/error classification mirrors `LLHistoryPlugin`.
 
 ## Acceptance Criteria
 
@@ -263,21 +301,53 @@ classification mirrors `LLHistoryPlugin`.
 - [ ] The check makes no LLM calls.
 - [ ] Tests cover: a fake test that passes pre-patch, a genuine test that fails pre-patch, a test that errors pre-patch, and the zero-test case.
 
-_Added 2026-07-30 (placement review) — see Design Notes, "Gate placement":_
+_Placement ACs, rewritten 2026-08-02 — the 2026-07-30 oracle-state variants are
+superseded. See Design Notes, "Gate placement, superseded":_
 
-- [ ] The check is hosted by a reusable oracle loop (an additive state in `oracles/code-run-gate.yaml` or a sibling `oracles/prepatch-test-gate.yaml`), reachable via sub-loop delegation — not implemented inside `cli/harness.py`.
-- [ ] The check is reachable from the `rn-*` family's green-suite transitions; a test asserts the delegating loop (`rn-implement` / `rn-remediate` / `rn-refine`) routes through the pre-patch state.
-- [ ] The gate core lives in `prepatch_check.py` with no FSM or CLI imports, so the oracle and any Python caller invoke the same implementation.
-- [ ] `cli/harness.py` surfaces the pre-patch evidence by reading the oracle's artifact; it does not call `run_prepatch_check()` directly, and a test asserts the check is not re-implemented there.
-- [ ] The evidence bundle reaches the parent via the parent↔sub-loop token channel with the full bundle written under `${context.run_dir}/` (MR-3), rather than only inside a harness-local dataclass.
-- [ ] When the check's enabling parameter is unset, the oracle state short-circuits to a SKIP pass-through (matching `code-run-gate`'s null-command convention) rather than failing the gate.
+- [ ] The check is hosted on the executor's guarded-window mechanism (the shape ENH-2854 established at `fsm/executor.py:1295-1384`), not as a state inside `oracles/code-run-gate.yaml` and not inside `cli/harness.py`. `code-run-gate.yaml` is left unmodified.
+- [ ] The check is reachable from the `rn-*` family's green-suite transitions; a test asserts a guarded loop (`rn-implement` / `rn-remediate` / `rn-refine`, transitively via `code-run-gate`) actually runs the check.
+- [ ] A non-FSM adapter in `work_verification.py` reaches the same core from `ll-auto` / `ll-parallel`, mirroring ENH-2854's `issue_manager.py` / `worker_pool.py` wiring.
+- [ ] The gate core lives in `prepatch_check.py` with no FSM, CLI, or database imports, so both hosts invoke the same implementation and the base state arrives as arguments.
+- [ ] `cli/harness.py` surfaces the pre-patch evidence by reading the persisted bundle; it does not call `run_prepatch_check()` directly, and a test asserts the check is not re-implemented there.
+- [ ] The FSM host records its verdict in `ctx.context` following ENH-2854's `_tamper_guard` record shape, with the full bundle written under `${context.run_dir}/` (MR-3) rather than only inside a harness-local dataclass.
+- [ ] When the check's key is absent (no state override, no loop default), the guarded window short-circuits to SKIP rather than failing the gate.
 
+_Added 2026-08-02 — base-state fidelity and self-interference:_
+
+- [ ] The base state's `base_dirty` flag is read (via an additive reader alongside `read_base_sha()`) and recorded in the evidence bundle; when the base was dirty, hard flags are downgraded to soft with the reason stated, and a test covers the downgrade.
+- [ ] The host resolves the base via `history_reader.read_base_sha(issue_id)` and passes it in; a test asserts `run_prepatch_check()` performs no database access.
+- [ ] The pre-patch worktree is created outside the tamper guard's repo-root scan scope; a test asserts running this check inside a `tamper_guard`-guarded window produces no tamper finding attributable to the check itself.
+- [ ] The pre-patch tree is constructed by writing post-patch test-file contents into the fork rather than by `git apply` of a partial diff (or, if `git apply` is chosen instead, reject-hunk failures are handled explicitly and recorded as a distinct skip reason).
+- [ ] Hunk→test-function attribution and the added-vs-modified split consume `test_tamper_guard`'s existing AST helpers rather than a new AST layer or a `--collect-only` diff.
+
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-08-02
+- **Reason**: Issue too large for single session (size review score 9/11, 31 acceptance criteria, three declared layers, two hosts)
+
+### Decomposed Into
+- ENH-2991: Pre-patch check core — candidate identification, tree reconstruction, and verdict
+- ENH-2997: Host the pre-patch check on the executor's guarded window
+- ENH-2998: Non-FSM adapter and pre-patch evidence consumers
+
+The split follows this issue's own Integration Map layers. ENH-2997 is blocked by
+ENH-2991; ENH-2998 is blocked by both. All Proposed Change steps and Acceptance
+Criteria are carried into the children — no scope was dropped. The superseding
+2026-08-02 placement decision (executor guarded window, not an oracle state) is
+preserved in ENH-2997's Motivation section along with the ruling-out half of the
+2026-07-30 review.
 
 ## Status
 
-**Open** | Created: 2026-07-27 | Priority: P2
+**Decomposed** | Created: 2026-07-27 | Priority: P2
 
 ## Session Log
+- `/ll:issue-size-review` - 2026-08-02T13:48:44 - `14957793-c5a3-42c3-8c4e-e15ef7fbe208.jsonl`
+- pre-implementation review (manual, no skill) - 2026-08-02 - cleared `blocked_by` (ENH-2866 completed 2026-08-02; both blockers now done). Superseded the 2026-07-30 oracle-state placement with the executor guarded-window host that ENH-2854 established on 2026-07-31, rewriting Design Notes "Gate placement", Integration Map Layer 2, the Program Design call path, and 7 placement ACs. Added Design Notes and ACs for: `base_dirty` fidelity (ENH-2866 stamps it; no reader exists yet), host-side base resolution via `read_base_sha(issue_id)` with a DB-free core, content-write instead of `git apply`, reuse of `test_tamper_guard`'s AST helpers for hunk→nodeid attribution, and the check's potential to trip the tamper guard whose window it runs inside. Reversed the Scope Boundary that deferred the non-FSM `ll-auto`/`ll-parallel` path. **Size review not yet re-run** — still outstanding per § Impact.
 - blocked_by reconciliation (manual, no skill) - 2026-08-01 - removed ENH-2973 from `blocked_by` (status: done, completed 2026-07-28); ENH-2866 remains blocking (open, undergoing refinement)
 - gate-placement review (manual, no skill) - 2026-07-30 - rewrote `### Files to Modify / Create`, the Program Design call path, added Design Notes "Gate placement" / "Evidence-bundle transport" / "Oracle skip convention", 6 ACs, 1 Scope Boundary, 1 Impact note
 - `/ll:format-issue` - 2026-07-27T20:01:08 - `74d428f0-7103-4a58-9168-ff504878fb04.jsonl`
