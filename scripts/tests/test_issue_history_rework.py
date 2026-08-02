@@ -39,7 +39,7 @@ def _issue(issue_id: str, *, supersedes: list[str] | None = None) -> IssueInfo:
 
 def _close(db: Path, issue_id: str, ts: str) -> None:
     record_issue_event(db, issue_id, "done", completed_at=ts)
-    # record_issue_event's dedup key is (issue_id, transition); ts is
+    # record_issue_event's dedup key is (issue_num, transition); ts is
     # stamped by the writer itself at call time, not from completed_at, so
     # patch it in directly for deterministic period bucketing in tests.
     _stamp_ts(db, issue_id, "done", ts)

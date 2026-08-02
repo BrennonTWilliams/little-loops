@@ -681,6 +681,53 @@ class TestRecordIssueSnapshot:
             conn.close()
         assert count == 1, "INSERT OR IGNORE must deduplicate on (issue_id, transition)"
 
+    def test_record_issue_snapshot_retype_stays_silent(self, tmp_path: Path, caplog) -> None:
+        """Identical-id re-insert (retype/repeat) is a true idempotent no-op: no warning."""
+        import logging
+
+        from little_loops.session_store import record_issue_snapshot
+
+        db = tmp_path / "history.db"
+        issue_file = self._make_issue_file(tmp_path, "ENH-2151", "Store snapshots", "done")
+
+        with caplog.at_level(logging.WARNING, logger="little_loops.session_store.writers"):
+            record_issue_snapshot(db, "ENH-2151", "done", str(issue_file))
+            record_issue_snapshot(db, "ENH-2151", "done", str(issue_file))
+
+        assert "dedup collision" not in caplog.text
+
+    def test_record_issue_snapshot_number_reuse_warns(self, tmp_path: Path, caplog) -> None:
+        """BUG-3006: two distinct issues reusing a bare number collide silently unless warned."""
+        import logging
+
+        from little_loops.session_store import record_issue_snapshot
+
+        db = tmp_path / "history.db"
+        first_file = self._make_issue_file(tmp_path, "BUG-9001", "First", "done")
+        second_file = tmp_path / "P2-EPIC-9001-second.md"
+        second_file.write_text(
+            "---\nid: EPIC-9001\ntype: EPIC\npriority: P2\nstatus: done\n"
+            "title: Second\n---\n\n# Second\n\nBody text.",
+            encoding="utf-8",
+        )
+
+        with caplog.at_level(logging.WARNING, logger="little_loops.session_store.writers"):
+            record_issue_snapshot(db, "BUG-9001", "done", str(first_file))
+            record_issue_snapshot(db, "EPIC-9001", "done", str(second_file))
+
+        assert "dedup collision" in caplog.text
+        assert "BUG-9001" in caplog.text
+        assert "EPIC-9001" in caplog.text
+
+        conn = connect(db)
+        try:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM issue_snapshots WHERE issue_num=9001 AND transition='done'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert count == 1, "the second issue's row is still discarded — only the warning is new"
+
     def test_record_issue_snapshot_missing_file_is_noop(self, tmp_path: Path) -> None:
         from little_loops.session_store import record_issue_snapshot
 
@@ -755,6 +802,43 @@ class TestRecordIssueEvent:
         finally:
             conn.close()
         assert count == 1, "INSERT OR IGNORE must deduplicate on (issue_id, transition)"
+
+    def test_record_issue_event_retype_stays_silent(self, tmp_path: Path, caplog) -> None:
+        """Identical-id re-insert (retype/repeat) is a true idempotent no-op: no warning."""
+        import logging
+
+        from little_loops.session_store import record_issue_event
+
+        db = tmp_path / "history.db"
+        with caplog.at_level(logging.WARNING, logger="little_loops.session_store.writers"):
+            record_issue_event(db, "ENH-9002", "done")
+            record_issue_event(db, "ENH-9002", "done")
+
+        assert "dedup collision" not in caplog.text
+
+    def test_record_issue_event_number_reuse_warns(self, tmp_path: Path, caplog) -> None:
+        """BUG-3006: reported repro — EPIC-9001's done transition is discarded after BUG-9001's."""
+        import logging
+
+        from little_loops.session_store import record_issue_event
+
+        db = tmp_path / "history.db"
+        with caplog.at_level(logging.WARNING, logger="little_loops.session_store.writers"):
+            record_issue_event(db, "BUG-9001", "done")
+            record_issue_event(db, "EPIC-9001", "done")
+
+        assert "dedup collision" in caplog.text
+        assert "BUG-9001" in caplog.text
+        assert "EPIC-9001" in caplog.text
+
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT issue_id FROM issue_events WHERE issue_num=9001 AND transition='done'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row["issue_id"] == "BUG-9001", "EPIC-9001's completion was silently discarded"
 
 
 class TestSkillEventContext:

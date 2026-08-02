@@ -2011,7 +2011,7 @@ ll-issues ss FEAT-518 --confidence 88 --outcome 72 --score-complexity 22 --score
 
 Transition an issue to a new status value. Validates the target status against the canonical enum, updates the `status:` frontmatter field in-place, and prints the before→after transition to stdout.
 
-**Side effect**: also writes a content snapshot to `issue_snapshots` and, since BUG-2770, a matching row to `issue_events` in `.ll/history.db` (best-effort, direct `record_issue_event()` call — not an EventBus emit), so `ll-session recent --issue` and `issue_effort()` resolve sessions for issues closed via this command.
+**Side effect**: also writes a content snapshot to `issue_snapshots` and, since BUG-2770, a matching row to `issue_events` in `.ll/history.db` (best-effort, direct `record_issue_event()` call — not an EventBus emit), so `ll-session recent --issue` and `issue_effort()` resolve sessions for issues closed via this command. As of BUG-3006 the write is wrapped in a narrowed `except (sqlite3.Error, ImportError, OSError)` that logs a warning instead of the previous blanket `except Exception: pass`, so a genuine DB failure is no longer silent; a suppressed `(issue_num, transition)` dedup collision against a *different* issue id also logs a warning (see `ll-history audit-issue-collisions` below).
 
 | Argument | Description |
 |----------|-------------|
@@ -2479,10 +2479,28 @@ formula), and `commit_attribution_coverage` (share of the window's commits carry
 `insufficient_history: true` instead of a computed ratio. Issues with no matching
 `orchestration_runs` row fall into the `unattributed` orchestrator bucket rather than being
 dropped. Reopen rate counts issues that ever reopened (or were cancelled-and-superseded via a
-`supersedes:` edge), not reopen events — `issue_events` dedups per `(issue_id, transition)`, so a
+`supersedes:` edge), not reopen events — `issue_events` dedups per `(issue_num, transition)`, so a
 second done→open→done cycle collapses into the first. Revert rate is computed from commit-message
 lineage (`This reverts commit <sha>`) only; diff-inverse detection is out of scope. Orchestrator
 attribution is correlational, not causal.
+
+#### `ll-history audit-issue-collisions`
+
+Read-only report (BUG-3006) of every `issue_num` held by more than one `issue_id` in
+`issue_events`/`issue_snapshots` — a symptom of the dedup index's type-blind
+`(issue_num, transition)` key (v36, ENH-2771). Groups each table independently by
+`issue_num` where `COUNT(DISTINCT issue_id) > 1`, and classifies each group as a
+`retype` (one issue changed type prefix mid-life; expected and harmless) or a
+`number_reuse` collision (two distinct issues sharing a bare number; a completion
+transition was silently discarded) by checking whether the lone on-disk survivor's
+current `status:` frontmatter matches one of its own recorded transitions in that
+table — a mismatch means its true current-status write was the one dropped by the
+collision. Performs no writes; add `--json` for structured output.
+
+```bash
+ll-history audit-issue-collisions        # Text report
+ll-history audit-issue-collisions --json # JSON output
+```
 
 #### `ll-history sessions <ISSUE_ID>`
 

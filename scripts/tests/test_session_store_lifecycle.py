@@ -2251,6 +2251,30 @@ class TestBackfillSnapshots:
         assert row is not None
         assert "Body content here" in (row[0] or "")
 
+    def test_backfill_stays_quiet_on_collision_by_default(self, tmp_path: Path, caplog) -> None:
+        """BUG-3006: backfill legitimately replays retypes; default is no collision warning."""
+        import logging
+
+        issues = tmp_path / ".issues" / "bugs"
+        issues.mkdir(parents=True, exist_ok=True)
+        (issues / "P2-BUG-9001-first.md").write_text(
+            "---\nid: BUG-9001\ntype: BUG\npriority: P2\nstatus: done\n"
+            "title: First\n---\n\n# First\n",
+            encoding="utf-8",
+        )
+        epics = tmp_path / ".issues" / "epics"
+        epics.mkdir(parents=True, exist_ok=True)
+        (epics / "P2-EPIC-9001-second.md").write_text(
+            "---\nid: EPIC-9001\ntype: EPIC\npriority: P2\nstatus: done\n"
+            "title: Second\n---\n\n# Second\n",
+            encoding="utf-8",
+        )
+        db = tmp_path / "history.db"
+        with caplog.at_level(logging.WARNING, logger="little_loops.session_store.writers"):
+            backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / "no")
+
+        assert "dedup collision" not in caplog.text
+
     def test_bare_int_id_canonicalized_in_snapshots(self, tmp_path: Path) -> None:
         """BUG-2769: id: 2756 (bare int) is canonicalized to BUG-2756 in issue_snapshots."""
         issues = tmp_path / ".issues" / "bugs"

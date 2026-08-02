@@ -3,8 +3,9 @@ id: BUG-3006
 title: Cross-type issue-number reuse silently drops issue_events completion rows
 type: BUG
 priority: P1
-status: open
+status: done
 discovered_date: 2026-08-02
+completed_at: '2026-08-02T23:09:11Z'
 labels:
 - observability
 - history-db
@@ -84,6 +85,25 @@ Both real collisions (1978 in `issue_events`; 2576/2689/2705 in `issue_snapshots
 ## Program Design
 
 _Based on codebase analysis:_
+
+### Deviations
+
+- **2026-08-02** — The Step 2 audit CLI's classification signal turned out to differ
+  from what this section originally implied. "Which of the colliding ids has an
+  on-disk file" was tried first and rejected during implementation: the confirmed
+  BUG-1978/EPIC-1978 collision and the confirmed 2576/2689/2705 retypes both leave
+  **exactly one** on-disk survivor, so a simple on-disk-count check cannot tell
+  retype from number-reuse — they're indistinguishable on that signal alone (unit
+  tests written against the literal plan text failed on both fixtures with this
+  approach). The implemented signal instead compares the on-disk survivor's current
+  `status:` frontmatter against its own recorded transitions in that table: a
+  retype's survivor was written under its current type the whole time its current
+  status was recorded, so the two agree; a number-reuse victim's most recent
+  transition (e.g. `EPIC-1978`'s `done`) was the one silently discarded by the
+  collision, so its on-disk status is absent from its own recorded transitions.
+  `ll-history audit-issue-collisions` on this repo confirms the expected
+  classification for all four known cases (see Verification). `CollisionEntry`
+  gained an `on_disk_status` field beyond what § Signatures specifies, to carry this.
 
 ### Types
 
@@ -239,6 +259,26 @@ From the repo root:
 8. `docs/ARCHITECTURE.md:680` documents the v36 `issue_num` migration, the `(issue_num, transition)` dedup index, and its type-blindness.
 9. Full `python -m pytest scripts/tests/` passes.
 
+## Impact
+
+- **Data integrity**: a completion transition can be permanently and silently
+  discarded whenever a numeric id is reused across a different type prefix.
+  `EPIC-1978` is the confirmed live instance in this repo's own `.ll/history.db`.
+- **Analytics gap**: `issue_events` is the root table for `issue_sessions` and
+  `issue_effort()`; a dropped `done` row removes the issue from effort/duration
+  analytics and from any `ll-logs`/history query joining on the completion
+  transition, with zero error signal to notice it happened.
+- **Masked failures**: `set_status.py`'s blanket `except Exception: pass` means
+  even a genuine DB write failure at this call site currently produces no
+  stderr line and exit code 0.
+- P1 because the failure mode is silent and permanent (no retry, no log, no
+  exit-code signal), even though the write path itself is narrow (issue
+  completion transitions only) and Option C requires no schema change.
+
+## Status
+
+**Open** | Created: 2026-08-02 | Priority: P1
+
 ## Notes
 
 **`EPIC-1978`'s lost `done` row is not repaired by this fix.** Option C makes future losses visible; it does not backfill the one already taken. Repairing it means inserting a row that the unique index forbids without either a synthetic key or deleting `BUG-1978`'s row — both of which risk the retype case. Track separately if the analytics gap matters.
@@ -250,6 +290,8 @@ From the repo root:
 Identified by an observability audit. The original revision of this issue was written against a "phantom `BUG-025` row" premise that verification against `.ll/history.db` refuted — no such row exists; `issue_num=25` holds a correct `ENH-025 done` row matching its on-disk file. This revision re-anchors on the `1978` collision, which is real and reproducible.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-02T23:08:52 - `d33b540d-8b96-4540-9f2b-d60447bf5b2a.jsonl`
+- `/ll:ready-issue` - 2026-08-02T22:36:46 - `16f792a7-36fa-4ba8-b9d3-5872d8971f3f.jsonl`
 - `/ll:confidence-check` - 2026-08-02T22:27:15 - `d6fe08ee-2c9a-4d85-87c7-ff92a712a1ff.jsonl`
 - `/ll:confidence-check` - 2026-08-02T22:07:26 - `e7f2cc20-1ed8-4981-b8bd-33be36b2d365.jsonl`
 - `/ll:wire-issue` - 2026-08-02T22:00:37 - `8df826b4-7a59-474c-9d12-c9d43cdd3d7b.jsonl`

@@ -42,7 +42,7 @@ _TS_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 _STANDARD_NOTES = (
     "Orchestrator attribution is correlational, not causal.",
     "Reopen rate counts issues that ever reopened, not reopen events "
-    "(issue_events dedups per (issue_id, transition), so a second "
+    "(issue_events dedups per (issue_num, transition), so a second "
     "done->open->done cycle collapses into the first).",
     "Revert rate is computed from commit message lineage "
     "('This reverts commit <sha>') only; diff-inverse detection is deferred "

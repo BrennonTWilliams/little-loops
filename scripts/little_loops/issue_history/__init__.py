@@ -63,6 +63,12 @@ Public exports:
 """
 
 from little_loops.issue_history.analysis import calculate_analysis
+from little_loops.issue_history.collisions import (
+    CollisionEntry,
+    CollisionGroup,
+    audit_issue_collisions,
+    format_collision_audit_text,
+)
 from little_loops.issue_history.coupling import analyze_coupling
 from little_loops.issue_history.debt import (
     analyze_agent_effectiveness,
@@ -182,6 +188,10 @@ __all__ = [
     "ReworkSignal",
     "ReworkWindow",
     "ReworkAnalysis",
+    "CollisionEntry",
+    "CollisionGroup",
+    "audit_issue_collisions",
+    "format_collision_audit_text",
     # Parsing and scanning
     "parse_completed_issue",
     "scan_completed_issues",

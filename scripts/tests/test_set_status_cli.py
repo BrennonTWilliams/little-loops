@@ -1240,3 +1240,77 @@ class TestSetStatusRecordsIssueEvent:
 
         assert snapshot_row is not None
         assert bare_snapshot_row is None
+
+
+class TestSetStatusHistoryDbErrorHandling:
+    """BUG-3006: narrowed except in set_status.py logs DB errors instead of swallowing all."""
+
+    def test_sqlite_error_is_caught_and_logged(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        tmp_path: Path,
+        caplog,
+    ) -> None:
+        import logging
+        import sqlite3
+
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        issue_file = issues_dir / "bugs" / "P0-BUG-002-db-error.md"
+        issue_file.write_text(
+            "---\nid: BUG-002\ntype: BUG\npriority: P0\nstatus: open\n---\n"
+            "# BUG-002: DB error path\n"
+        )
+
+        with (
+            patch(
+                "little_loops.session_store.record_issue_event",
+                side_effect=sqlite3.OperationalError("locked"),
+            ),
+            patch.object(
+                sys,
+                "argv",
+                ["ll-issues", "set-status", "BUG-002", "done", "--config", str(temp_project_dir)],
+            ),
+            caplog.at_level(logging.WARNING),
+        ):
+            from little_loops.cli import main_issues
+
+            assert main_issues() == 0, "a caught DB error must not fail the CLI exit code"
+
+        assert "failed to record issue_events" in caplog.text
+
+    def test_unrelated_exception_propagates(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        tmp_path: Path,
+    ) -> None:
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        issue_file = issues_dir / "bugs" / "P0-BUG-003-unrelated-error.md"
+        issue_file.write_text(
+            "---\nid: BUG-003\ntype: BUG\npriority: P0\nstatus: open\n---\n"
+            "# BUG-003: unrelated error path\n"
+        )
+
+        with (
+            patch(
+                "little_loops.session_store.record_issue_event",
+                side_effect=ValueError("not a DB failure"),
+            ),
+            patch.object(
+                sys,
+                "argv",
+                ["ll-issues", "set-status", "BUG-003", "done", "--config", str(temp_project_dir)],
+            ),
+            pytest.raises(ValueError, match="not a DB failure"),
+        ):
+            from little_loops.cli import main_issues
+
+            main_issues()

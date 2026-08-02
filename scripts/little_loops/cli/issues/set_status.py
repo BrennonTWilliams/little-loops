@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import logging
+import sqlite3
 import sys
 from typing import TYPE_CHECKING
 
 from little_loops.issue_lifecycle import DeferReason
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -152,8 +156,13 @@ def cmd_set_status(config: BRConfig, args: argparse.Namespace) -> int:
             captured_at=fm.get("captured_at"),
             completed_at=fm.get("completed_at"),
         )
-    except Exception:
-        pass
+    except (sqlite3.Error, ImportError, OSError):
+        logger.warning(
+            "%s: failed to record issue_events/issue_snapshots row for status %s",
+            args.issue_id,
+            args.status,
+            exc_info=True,
+        )
 
     # Cascade to children
     if getattr(args, "cascade", False):

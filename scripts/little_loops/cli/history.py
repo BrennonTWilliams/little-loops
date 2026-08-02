@@ -56,6 +56,7 @@ Examples:
   %(prog)s export "sprint CLI" --output docs/arch/sprint.md
   %(prog)s rework               # Reopen/follow-up/touch-back/revert rates
   %(prog)s rework --format json # Rework analysis as JSON
+  %(prog)s audit-issue-collisions  # (issue_num, transition) dedup collisions
 """,
         )
 
@@ -236,6 +237,13 @@ Examples:
         )
         add_json_arg(sessions_parser)
 
+        # audit-issue-collisions subcommand (BUG-3006)
+        collisions_parser = subparsers.add_parser(
+            "audit-issue-collisions",
+            help="Report (issue_num, transition) dedup collisions in issue_events/issue_snapshots",
+        )
+        add_json_arg(collisions_parser)
+
         # root subcommand (ENH-1955)
         root_parser = subparsers.add_parser(
             "root",
@@ -360,6 +368,34 @@ Examples:
                 print(format_rework_markdown(rework_analysis))
             else:
                 print(format_rework_text(rework_analysis))
+
+            return 0
+
+        if args.command == "audit-issue-collisions":
+            from little_loops.issue_history.collisions import (
+                audit_issue_collisions,
+                format_collision_audit_text,
+            )
+
+            db_path = resolve_history_db(project_root / DEFAULT_DB_PATH)
+            groups = audit_issue_collisions(db_path, issues_dir)
+
+            if args.json:
+                from dataclasses import asdict
+
+                print_json(
+                    [
+                        {
+                            "table": g.table,
+                            "issue_num": g.issue_num,
+                            "classification": g.classification,
+                            "entries": [asdict(e) for e in g.entries],
+                        }
+                        for g in groups
+                    ]
+                )
+            else:
+                print(format_collision_audit_text(groups))
 
             return 0
 

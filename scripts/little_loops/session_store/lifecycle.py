@@ -984,8 +984,12 @@ def backfill_snapshots(
 ) -> int:
     """Hydrate ``issue_snapshots`` from all ``.md`` files under *issues_dir*.
 
-    Idempotent via ``INSERT OR IGNORE`` on the ``(issue_id, transition)`` dedup
-    index.  Also indexes each snapshot in ``search_index`` with ``kind="snapshot"``.
+    Idempotent via ``INSERT OR IGNORE`` on the ``(issue_num, transition)`` dedup
+    index — type-blind by design, so a suppressed insert whose stored row
+    belongs to a different issue id can indicate a genuine number-reuse
+    collision (BUG-3006) rather than an idempotent retype no-op; this backfill
+    path stays quiet by default. Also indexes each snapshot in ``search_index``
+    with ``kind="snapshot"``.
     Returns the number of rows inserted (0 when *issues_dir* is absent or empty).
     """
     issues_dir = issues_dir if issues_dir is not None else Path(".issues")

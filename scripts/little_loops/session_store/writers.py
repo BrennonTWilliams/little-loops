@@ -290,6 +290,56 @@ def record_skill_event(
         conn.close()
 
 
+def _warn_on_dedup_collision(
+    conn: sqlite3.Connection,
+    table: str,
+    issue_num: int | None,
+    issue_id: str,
+    transition: str,
+    inserted: bool,
+) -> None:
+    """Log when an ``INSERT OR IGNORE`` was suppressed by a *different* issue's row.
+
+    ``idx_issue_events_dedup`` / ``idx_issue_snapshots_dedup`` are unique on
+    ``(issue_num, transition)`` — type-blind by design (ENH-2771), so that a
+    retyped issue (ENH-1234 -> FEAT-1234) doesn't split its history across two
+    rows. That type-blindness has a side effect: when two *different* issues
+    reuse the same bare number under different type prefixes, the second
+    issue's transition silently no-ops against the first issue's row (BUG-3006).
+
+    Called after every ``INSERT OR IGNORE`` on *table* with *inserted* derived
+    from ``cursor.rowcount == 1``. When the insert was suppressed
+    (``inserted`` is ``False``) and *issue_num* is not ``None``, reads back the
+    stored ``issue_id`` for ``(issue_num, transition)``; if it differs from
+    *issue_id*, warns naming both ids. An identical stored id means the
+    suppression was a genuine idempotent no-op (retype or repeated call) and
+    stays silent.
+
+    *table* is an internal literal (``"issue_events"`` / ``"issue_snapshots"``),
+    never caller-supplied — interpolated into the ``SELECT``, never
+    parameterized.
+    """
+    if inserted or issue_num is None:
+        return
+    row = conn.execute(
+        f"SELECT issue_id FROM {table} WHERE issue_num = ? AND transition = ?",  # noqa: S608
+        (issue_num, transition),
+    ).fetchone()
+    stored_id = row[0] if row is not None else None
+    if stored_id is not None and stored_id != issue_id:
+        logger.warning(
+            "%s dedup collision: %s %s discarded — (issue_num=%d, transition=%r) "
+            "already held by %s. If these are distinct issues, the newer "
+            "transition is lost; if this is a retype, it is expected.",
+            table,
+            issue_id,
+            transition,
+            issue_num,
+            transition,
+            stored_id,
+        )
+
+
 def record_issue_snapshot(
     db_path: Path | str,
     issue_id: str,
@@ -300,7 +350,10 @@ def record_issue_snapshot(
 
     Reads the issue file at *file_path*, extracts frontmatter metadata and
     markdown body, then inserts into ``issue_snapshots`` using ``INSERT OR IGNORE``
-    so repeated calls for the same ``(issue_id, transition)`` are idempotent.
+    so repeated calls for the same ``(issue_num, transition)`` are idempotent
+    (type-blind — see ``_warn_on_dedup_collision``). A suppressed insert whose
+    stored row belongs to a *different* issue id emits a collision warning
+    (BUG-3006) instead of discarding silently.
     Also calls ``_index()`` with ``kind="snapshot"`` so FTS5 searches surface it.
 
     Silently returns if *file_path* does not exist or cannot be read.
@@ -327,11 +380,14 @@ def record_issue_snapshot(
     conn = _pkg.connect(db_path)
     ts = _now()
     try:
-        conn.execute(
+        cursor = conn.execute(
             "INSERT OR IGNORE INTO issue_snapshots"
             "(ts, issue_id, issue_num, transition, title, priority, issue_type, body, frontmatter)"
             " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (ts, issue_id, issue_num, transition, str(title), priority, issue_type, body, fm_json),
+        )
+        _warn_on_dedup_collision(
+            conn, "issue_snapshots", issue_num, issue_id, transition, cursor.rowcount == 1
         )
         _index(
             conn,
@@ -369,14 +425,17 @@ def record_issue_event(
     events only.
 
     Idempotent via the ``idx_issue_events_dedup`` unique index on
-    ``(issue_id, transition)`` — repeated calls for the same pair are
-    no-ops after the first.
+    ``(issue_num, transition)`` — type-blind by design, so repeated calls for
+    the same pair are no-ops after the first. A suppressed insert whose
+    stored row belongs to a *different* issue id emits a collision warning
+    (BUG-3006) instead of discarding silently — see
+    ``_warn_on_dedup_collision``.
     """
     issue_num = normalize_issue_id(issue_id)
     conn = _pkg.connect(db_path)
     ts = _now()
     try:
-        conn.execute(
+        cursor = conn.execute(
             "INSERT OR IGNORE INTO issue_events("
             "ts, issue_id, issue_num, transition, discovered_by, "
             "issue_type, priority, captured_at, completed_at, session_id"
@@ -393,6 +452,9 @@ def record_issue_event(
                 completed_at,
                 session_id,
             ),
+        )
+        _warn_on_dedup_collision(
+            conn, "issue_events", issue_num, issue_id, transition, cursor.rowcount == 1
         )
         _index(
             conn,
@@ -1911,7 +1973,7 @@ class SQLiteTransport:
                     # the host JSONL camelCase spelling are accepted.
                     session_id = event.get("session_id") or event.get("sessionId")
                     issue_num = normalize_issue_id(issue_id) if issue_id else None
-                    conn.execute(
+                    _cursor = conn.execute(
                         "INSERT OR IGNORE INTO issue_events("
                         "ts, issue_id, issue_num, transition, discovered_by, "
                         "issue_type, priority, captured_at, completed_at, session_id"
@@ -1929,6 +1991,15 @@ class SQLiteTransport:
                             str(session_id) if session_id else None,
                         ),
                     )
+                    if issue_id:
+                        _warn_on_dedup_collision(
+                            conn,
+                            "issue_events",
+                            issue_num,
+                            str(issue_id),
+                            transition,
+                            _cursor.rowcount == 1,
+                        )
                     _index(
                         conn,
                         content=f"{issue_id or ''} {event.get('issue_type', '')}".strip(),
@@ -2077,12 +2148,19 @@ def _derive_type_priority(filename: str, fm: dict[str, Any]) -> tuple[str | None
     return issue_type, priority
 
 
-def _backfill_snapshots(conn: sqlite3.Connection, issues_dir: Path) -> int:
+def _backfill_snapshots(
+    conn: sqlite3.Connection, issues_dir: Path, *, warn_on_collision: bool = False
+) -> int:
     """Seed ``issue_snapshots`` and ``search_index`` from issue files under *issues_dir*.
 
     Follows the ``_backfill_issues()`` pattern: iterates ``*.md`` files, reads
     frontmatter + body, inserts with ``INSERT OR IGNORE`` for idempotency.
     Uses the issue's current ``status`` as the ``transition`` value.
+
+    Collision warnings (BUG-3006) are suppressed by default
+    (``warn_on_collision=False``): a backfill legitimately replays already-
+    recorded history and would otherwise warn on every retyped issue. Pass
+    ``warn_on_collision=True`` to surface genuine number-reuse collisions.
     """
     from little_loops.frontmatter import parse_frontmatter, strip_frontmatter
 
@@ -2104,7 +2182,7 @@ def _backfill_snapshots(conn: sqlite3.Connection, issues_dir: Path) -> int:
         body = strip_frontmatter(content)
         fm_json = json.dumps({k: str(v) for k, v in fm.items() if v is not None}, sort_keys=True)
         issue_num = normalize_issue_id(str(issue_id))
-        conn.execute(
+        cursor = conn.execute(
             "INSERT OR IGNORE INTO issue_snapshots"
             "(ts, issue_id, issue_num, transition, title, priority, issue_type, body, frontmatter)"
             " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -2120,6 +2198,10 @@ def _backfill_snapshots(conn: sqlite3.Connection, issues_dir: Path) -> int:
                 fm_json,
             ),
         )
+        if warn_on_collision:
+            _warn_on_dedup_collision(
+                conn, "issue_snapshots", issue_num, str(issue_id), transition, cursor.rowcount == 1
+            )
         _index(
             conn,
             content=f"{issue_id} {title} {body or ''}".strip(),
@@ -2132,7 +2214,9 @@ def _backfill_snapshots(conn: sqlite3.Connection, issues_dir: Path) -> int:
     return count
 
 
-def _backfill_issues_and_snapshots(conn: sqlite3.Connection, issues_dir: Path) -> tuple[int, int]:
+def _backfill_issues_and_snapshots(
+    conn: sqlite3.Connection, issues_dir: Path, *, warn_on_collision: bool = False
+) -> tuple[int, int]:
     """Seed ``issue_events`` and ``issue_snapshots`` in a single read/parse pass.
 
     Combines :func:`_backfill_issues` and :func:`_backfill_snapshots` into one
@@ -2145,6 +2229,11 @@ def _backfill_issues_and_snapshots(conn: sqlite3.Connection, issues_dir: Path) -
     per-file event ``ts`` derivation vs. the single shared snapshot ``ts``,
     and the ``_derive_type_priority()`` normalization used only for events.
     Returns ``(issues_count, snapshots_count)``.
+
+    Collision warnings (BUG-3006) are suppressed by default
+    (``warn_on_collision=False``): a backfill legitimately replays already-
+    recorded history and would otherwise warn on every retyped issue. Pass
+    ``warn_on_collision=True`` to surface genuine number-reuse collisions.
     """
     from little_loops.frontmatter import parse_frontmatter, strip_frontmatter
 
@@ -2172,7 +2261,7 @@ def _backfill_issues_and_snapshots(conn: sqlite3.Connection, issues_dir: Path) -
         completed_date: str | None = None
         if isinstance(completed_at, str) and completed_at:
             completed_date = completed_at[:10]
-        conn.execute(
+        _events_cursor = conn.execute(
             "INSERT OR IGNORE INTO issue_events("
             "ts, issue_id, issue_num, transition, discovered_by, "
             "issue_type, priority, completed_date, captured_at, completed_at"
@@ -2190,6 +2279,15 @@ def _backfill_issues_and_snapshots(conn: sqlite3.Connection, issues_dir: Path) -
                 str(completed_at) if completed_at else None,
             ),
         )
+        if warn_on_collision:
+            _warn_on_dedup_collision(
+                conn,
+                "issue_events",
+                issue_num,
+                str(issue_id),
+                status,
+                _events_cursor.rowcount == 1,
+            )
         _index(
             conn,
             content=f"{issue_id} {status} {issue_type or ''}",
@@ -2207,7 +2305,7 @@ def _backfill_issues_and_snapshots(conn: sqlite3.Connection, issues_dir: Path) -
         snapshot_issue_type = fm.get("type")
         body = strip_frontmatter(content)
         fm_json = json.dumps({k: str(v) for k, v in fm.items() if v is not None}, sort_keys=True)
-        conn.execute(
+        _snapshots_cursor = conn.execute(
             "INSERT OR IGNORE INTO issue_snapshots"
             "(ts, issue_id, issue_num, transition, title, priority, issue_type, body, frontmatter)"
             " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -2223,6 +2321,15 @@ def _backfill_issues_and_snapshots(conn: sqlite3.Connection, issues_dir: Path) -
                 fm_json,
             ),
         )
+        if warn_on_collision:
+            _warn_on_dedup_collision(
+                conn,
+                "issue_snapshots",
+                issue_num,
+                str(issue_id),
+                transition,
+                _snapshots_cursor.rowcount == 1,
+            )
         _index(
             conn,
             content=f"{issue_id} {title} {body or ''}".strip(),

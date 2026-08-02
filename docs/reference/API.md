@@ -8499,11 +8499,11 @@ class FragmentStore:
 
 ## little_loops.session_store
 
-Unified SQLite session store for `.ll/history.db`. Current schema version: **34**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`. The DB path resolves through a single precedence chain (ENH-2623): the `LL_HISTORY_DB` env var, then the `history.db_path` config key, then the default `.ll/history.db` — applied to default-shaped paths only; a deliberate explicit path is honored verbatim.
+Unified SQLite session store for `.ll/history.db`. Current schema version: **38**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`. The DB path resolves through a single precedence chain (ENH-2623): the `LL_HISTORY_DB` env var, then the `history.db_path` config key, then the default `.ll/history.db` — applied to default-shaped paths only; a deliberate explicit path is honored verbatim.
 
 ```python
 from little_loops.session_store import (
-    SCHEMA_VERSION,        # 30
+    SCHEMA_VERSION,        # 38
     VALID_KINDS,           # tuple of valid recent()/search --kind values — single source (ENH-2581)
     ensure_db,             # create/migrate the DB
     connect,               # open a write-capable connection
@@ -8516,7 +8516,7 @@ from little_loops.session_store import (
     record_loop_run_summary, # write a loop_runs row (ENH-2463)
     update_loop_run_diagnostics, # link a diagnostics artifact to its loop_runs row (ENH-2463)
     record_learning_test_event, # UPSERT one learning_test_events row (ENH-2466)
-    record_issue_event,    # write an issue_events row; direct-call sibling of record_issue_snapshot, used by `ll-issues set-status` (BUG-2770)
+    record_issue_event,    # write an issue_events row; direct-call sibling of record_issue_snapshot, used by `ll-issues set-status` (BUG-2770); logs a warning instead of silently discarding on a cross-issue `(issue_num, transition)` dedup collision (BUG-3006)
     record_session_lifecycle_event, # write a session_lifecycle_events row (ENH-2495)
     record_subagent_run_start, # write a running subagent_runs row from SubagentStart (ENH-2505)
     record_subagent_run_stop, # UPDATE ended_at/status/agent_transcript_path from SubagentStop (ENH-2505)
