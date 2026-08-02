@@ -92,7 +92,10 @@ class TestRunReadyIssueWithRetry:
         """The retry must carry an explicit directive, not re-roll the same prompt."""
         run = _Runner(_completed(NON_COMPLIANT_REPLY), _completed(READY_OUTPUT))
 
-        with patch("little_loops.skill_expander.expand_skill", return_value="# Ready Issue\nbody"):
+        # expand_skill now appends the directive itself (ENH-2988); the mock
+        # return value must include it since the mock bypasses the real call.
+        expanded = "# Ready Issue\nbody" + IMPERATIVE_TAIL.format(target="ENH-2971")
+        with patch("little_loops.skill_expander.expand_skill", return_value=expanded):
             run_ready_issue_with_retry(
                 target="ENH-2971",
                 initial_command="/ll:ready-issue ENH-2971",
@@ -233,7 +236,10 @@ class TestBuildRetryCommand:
     """The retry prompt is always the hardened expanded form when available."""
 
     def test_expanded_body_gets_the_imperative_tail(self, config: BRConfig) -> None:
-        with patch("little_loops.skill_expander.expand_skill", return_value="# Ready Issue\nbody"):
+        # expand_skill now appends the directive itself (ENH-2988); the mock
+        # return value must include it since the mock bypasses the real call.
+        expanded = "# Ready Issue\nbody" + IMPERATIVE_TAIL.format(target="ENH-2971")
+        with patch("little_loops.skill_expander.expand_skill", return_value=expanded):
             cmd = build_retry_command("ENH-2971", config)
 
         assert cmd.startswith("# Ready Issue")
@@ -305,6 +311,10 @@ class TestIssueManagerWiring:
             commands.append(command)
             return outputs[min(len(commands) - 1, len(outputs) - 1)]
 
+        # expand_skill now appends the directive itself (ENH-2988); the mock
+        # return value must include it since the mock bypasses the real call.
+        expanded = "# Ready Issue\nbody" + IMPERATIVE_TAIL.format(target="ENH-2971")
+
         with (
             patch("little_loops.issue_manager.run_claude_command", side_effect=fake_run),
             patch("little_loops.issue_manager.run_with_continuation") as mock_impl,
@@ -312,7 +322,7 @@ class TestIssueManagerWiring:
             patch("little_loops.issue_manager.check_git_status", return_value=([], [])),
             # A MagicMock config makes the real expander bail to None; stub it so
             # the assertion below tests the hardened retry prompt, not the fallback.
-            patch("little_loops.skill_expander.expand_skill", return_value="# Ready Issue\nbody"),
+            patch("little_loops.skill_expander.expand_skill", return_value=expanded),
         ):
             mock_impl.return_value = MagicMock(
                 returncode=0, stdout="## RESULT\n- Status: COMPLETED", stderr=""

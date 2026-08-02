@@ -8,6 +8,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from little_loops.skill_expander import (
+    IMPERATIVE_TAIL,
+    _append_execution_directive,
     _find_plugin_root,
     _resolve_content_path,
     _substitute_arguments,
@@ -159,6 +161,25 @@ class TestSubstituteArguments:
     def test_empty_args(self) -> None:
         result = _substitute_arguments("Args: $ARGUMENTS", [])
         assert result == "Args: "
+
+
+# ---------------------------------------------------------------------------
+# _append_execution_directive
+# ---------------------------------------------------------------------------
+
+
+class TestAppendExecutionDirective:
+    def test_appends_directive_when_args_present(self) -> None:
+        result = _append_execution_directive("# Skill body", "test-skill", ["BUG-001"])
+        assert result == "# Skill body" + IMPERATIVE_TAIL.format(target="BUG-001")
+
+    def test_joins_multiple_args_into_target(self) -> None:
+        result = _append_execution_directive("body", "manage-issue", ["bug", "fix", "BUG-001"])
+        assert "Now execute the instructions above for: bug fix BUG-001" in result
+
+    def test_no_op_when_args_empty(self) -> None:
+        result = _append_execution_directive("# Skill body", "test-skill", [])
+        assert result == "# Skill body"
 
 
 # ---------------------------------------------------------------------------

@@ -36,36 +36,48 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 # imports BRConfig itself, so it is imported inside build_retry_command for the
 # same reason.
 
-__all__ = ["IMPERATIVE_TAIL", "build_retry_command", "run_ready_issue_with_retry"]
+__all__ = [
+    "IMPERATIVE_TAIL",  # noqa: F822 -- resolved lazily via module __getattr__ below
+    "build_retry_command",
+    "run_ready_issue_with_retry",
+]
 
-#: Appended to the expanded skill body on a retry. ``{target}`` is the issue ID
-#: or path that ``$ARGUMENTS`` was substituted with.
-IMPERATIVE_TAIL = (
-    "\n\n---\n\n"
-    "Now execute the instructions above for: {target}\n"
-    "This is a request to act, not reference material. "
-    "You MUST end your response with a `## VERDICT` section."
-)
+
+def __getattr__(name: str) -> str:
+    """Lazily re-export :data:`little_loops.skill_expander.IMPERATIVE_TAIL`.
+
+    Deferred (PEP 562) rather than a module-level import: ``skill_expander``
+    imports ``little_loops.config`` at module scope, and ``config.core``
+    imports ``parallel.types`` -> ``parallel/__init__`` -> ``worker_pool`` ->
+    this module -- the same import cycle documented above for ``BRConfig``/
+    ``expand_skill``. A top-level import here would resolve before
+    ``run_ready_issue_with_retry`` is defined, breaking that cycle's
+    ``from little_loops.ready_issue import run_ready_issue_with_retry``.
+    """
+    if name == "IMPERATIVE_TAIL":
+        from little_loops.skill_expander import IMPERATIVE_TAIL
+
+        return IMPERATIVE_TAIL
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def build_retry_command(target: str, config: BRConfig) -> str:
     """Build the differentiated retry prompt for *target*.
 
-    Always the pre-expanded form plus :data:`IMPERATIVE_TAIL`, regardless of
-    what the first attempt used, so an ll-parallel worker that opened with the
-    slash form still gets the hardened prompt on retry.
+    ``expand_skill`` now appends the execution directive itself whenever args
+    are non-empty, so this is a passthrough to the pre-expanded form,
+    regardless of what the first attempt used -- an ll-parallel worker that
+    opened with the slash form still gets the hardened prompt on retry.
 
     Falls back to a plain ``/ll:ready-issue <target>`` re-roll when
-    ``expand_skill`` is unavailable (its documented ``None`` return). The tail
-    is deliberately *not* appended in that case: trailing prose on a slash
-    command would be swallowed as ``$ARGUMENTS``.
+    ``expand_skill`` is unavailable (its documented ``None`` return).
     """
     from little_loops.skill_expander import expand_skill
 
     body = expand_skill("ready-issue", [target], config)
     if body is None:
         return f"/ll:ready-issue {target}"
-    return body + IMPERATIVE_TAIL.format(target=target)
+    return body
 
 
 def run_ready_issue_with_retry(

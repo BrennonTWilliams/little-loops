@@ -10102,7 +10102,7 @@ Pre-expands skill and command Markdown files into self-contained prompt strings 
 def expand_skill(name: str, args: list[str], config: BRConfig) -> str | None
 ```
 
-Reads the Markdown source for *name*, strips frontmatter, substitutes `{{config.xxx}}` placeholders, converts relative `(file.md)` link targets to absolute paths, and replaces the `$ARGUMENTS` token with the joined *args*.
+Reads the Markdown source for *name*, strips frontmatter, substitutes `{{config.xxx}}` placeholders, converts relative `(file.md)` link targets to absolute paths, replaces the `$ARGUMENTS` token with the joined *args*, and — when *args* is non-empty — appends an imperative execution directive (`IMPERATIVE_TAIL`, canonically defined here and re-exported by `little_loops.ready_issue`) stating explicitly that the expanded body is a request to act, not reference material. Without this, a long expanded skill body reads as documentation and a model can decline to act on it (see `little_loops.ready_issue` for the observed failure this was extracted from).
 
 **Parameters**
 
@@ -10173,9 +10173,9 @@ Configured by `automation.ready_issue_unknown_retries` (default `1`) in `.ll/ll-
 def build_retry_command(target: str, config: BRConfig) -> str
 ```
 
-Builds the *differentiated* retry prompt: the pre-expanded skill body plus `IMPERATIVE_TAIL`, which states explicitly that the content is a request to act rather than reference material. Always the expanded form regardless of what the first attempt used, so an ll-parallel worker that opened with the slash form still gets the hardened prompt.
+Builds the *differentiated* retry prompt. `expand_skill` now appends the `IMPERATIVE_TAIL` directive itself whenever args are non-empty, so this is a passthrough to the pre-expanded form — always the expanded form regardless of what the first attempt used, so an ll-parallel worker that opened with the slash form still gets the hardened prompt.
 
-Falls back to a plain `/ll:ready-issue <target>` re-roll when `expand_skill` returns `None`. The tail is deliberately **not** appended in that case — trailing prose on a slash command would be swallowed as `$ARGUMENTS`.
+Falls back to a plain `/ll:ready-issue <target>` re-roll when `expand_skill` returns `None`.
 
 ## little_loops.init.install_check
 

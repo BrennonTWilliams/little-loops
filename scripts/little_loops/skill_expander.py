@@ -96,6 +96,33 @@ def _substitute_arguments(content: str, args: list[str]) -> str:
     return content.replace("$ARGUMENTS", joined)
 
 
+#: Appended to an expanded skill body when args are non-empty. ``{target}`` is
+#: the joined *args* string. Canonical home for this text — ``ready_issue``
+#: re-exports it for backward compatibility rather than defining its own copy.
+IMPERATIVE_TAIL = (
+    "\n\n---\n\n"
+    "Now execute the instructions above for: {target}\n"
+    "This is a request to act, not reference material. "
+    "You MUST end your response with a `## VERDICT` section."
+)
+
+
+def _append_execution_directive(body: str, name: str, args: list[str]) -> str:
+    """Append an imperative execution directive when *args* is non-empty.
+
+    Without this, a pre-expanded skill body reads as documentation of a
+    command rather than a request to run it — a model can, and demonstrably
+    does, decline to act on it (see ``little_loops.ready_issue`` for the
+    observed failure this was extracted from). *name* is accepted for a
+    future per-skill directive but is currently unused — the directive is
+    uniform across callers.
+    """
+    if not args:
+        return body
+    target = " ".join(args)
+    return body + IMPERATIVE_TAIL.format(target=target)
+
+
 def expand_skill(name: str, args: list[str], config: BRConfig) -> str | None:
     """Pre-expand a skill or command into a self-contained prompt string.
 
@@ -131,6 +158,7 @@ def expand_skill(name: str, args: list[str], config: BRConfig) -> str | None:
         body = _substitute_config(body, config)
         body = _substitute_relative_refs(body, content_path.parent)
         body = _substitute_arguments(body, args)
+        body = _append_execution_directive(body, name, args)
         return body
     except Exception:  # noqa: BLE001
         return None

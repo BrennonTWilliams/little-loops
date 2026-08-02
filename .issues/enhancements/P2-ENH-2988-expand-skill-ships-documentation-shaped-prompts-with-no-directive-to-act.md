@@ -3,8 +3,9 @@ id: ENH-2988
 title: expand_skill ships documentation-shaped prompts with no directive to act
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-08-02T00:00:00Z'
+completed_at: '2026-08-02T13:18:10Z'
 discovered_date: 2026-08-02
 discovered_by: capture-issue
 relates_to:
@@ -237,12 +238,29 @@ Removes a whole class of silent automation failure — a non-compliant model tur
 discarding a long, expensive run — rather than containing it one caller at a
 time. Cheap: a few lines in one function.
 
+## Resolution
+
+Implemented as designed: `expand_skill` (`scripts/little_loops/skill_expander.py`)
+now appends `IMPERATIVE_TAIL` via a new `_append_execution_directive` helper
+whenever `args` is non-empty, immediately after the existing
+`_substitute_arguments` step. `little_loops.ready_issue.IMPERATIVE_TAIL`
+becomes a lazy re-export via module `__getattr__` (PEP 562) rather than a
+top-level import — a plain `from little_loops.skill_expander import
+IMPERATIVE_TAIL` at module scope would reintroduce the documented
+`config.core → parallel.types → parallel/__init__ → worker_pool → ready_issue`
+import cycle. `build_retry_command` is now a passthrough to `expand_skill`
+(it no longer concatenates its own tail). Updated the three tests that mock
+`expand_skill` directly (`test_ready_issue_retry.py`) to include the directive
+in their mocked return values, added `TestAppendExecutionDirective` to
+`test_skill_expander.py`, and updated `docs/reference/API.md`.
+
 ## Status
 
-open
+done
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-02T13:17:14 - `939b4726-0972-426e-9c74-5baa82e41aaf.jsonl`
 - `/ll:confidence-check` - 2026-08-02T05:03:59 - `14443915-f99b-4803-a617-1a2c459ff606.jsonl`
 - `/ll:wire-issue` - 2026-08-02T05:00:22 - `fe6a935b-97e2-4705-b250-8a27aff90aeb.jsonl`
 - `/ll:refine-issue` - 2026-08-02T04:52:58 - `fe6a935b-97e2-4705-b250-8a27aff90aeb.jsonl`
