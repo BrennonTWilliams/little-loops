@@ -58,8 +58,18 @@ The nudge reaches the model's context via `hookSpecificOutput.additionalContext`
 {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": "<_NUDGE>"}}
 ```
 
-Non-Claude-Code hosts (Codex, OpenCode, Kimi) continue to receive the existing exit-2 form,
-since `additionalContext` is a Claude Code schema and their adapters translate exit codes.
+Codex — the *only* other host that wires this intent — continues to receive the existing
+exit-2 form, since `additionalContext` is a Claude Code schema and its adapter translates
+exit codes. (OpenCode and Kimi do **not** wire `edit_batch_nudge` at all:
+`hooks/adapters/opencode/index.ts` has no `edit_batch` entry, and
+`scripts/little_loops/hooks/adapters/kimi/` wires only the generic `post_tool_use` shim. No
+adapter work is needed for either.)
+
+`feedback=_NUDGE` is retained on the Claude Code branch alongside the JSON stdout. Exit-0
+stderr is verbose-mode only and never reaches the model (`docs/claude-code/hooks-reference.md`
+§ "Exit code output", the **Exit 0** paragraph), so this causes no double injection and no
+banner — but it keeps the fire visible in `hook_events.stderr_preview` telemetry (see
+Motivation).
 
 ## Motivation
 
@@ -74,6 +84,18 @@ So the total cost is one misleading red banner per session. Low severity, but:
   (`scripts/little_loops/hooks/types.py`) and already written by `main_hooks()` before the
   stderr/exit-code translation, and is already used by the `session_start` intent.
 
+**Telemetry side effect (bonus fix).** `main_hooks()` records every fire into `hook_events`
+with `exit_code = result.exit_code` (`scripts/little_loops/hooks/__init__.py:217-219`), and
+`history_reader.py:2800` computes each hook's failure rate as `exit_code != 0`. So today
+*every* nudge fire is counted as a hook **failure** in `history.db`. Moving to exit 0 removes
+that pollution. Two consequences to keep in mind:
+
+- Historical `hook_events` rows for `edit_batch_nudge` are not comparable across the change
+  (pre-change fires read as `exit_code=2` failures; post-change fires read as `exit_code=0`).
+- Because exit code alone no longer distinguishes a fire from a no-op, `feedback` must stay
+  set on the Claude Code branch so `completion.stderr_preview` still records the fire — this
+  is the only remaining telemetry signal that the nudge went out.
+
 ## Proposed Solution
 
 Branch on host inside `edit_batch_nudge.handle`'s nudge-firing return:
@@ -83,6 +105,10 @@ if nudge:
     if event.host == "claude-code":
         return LLHookResult(
             exit_code=0,
+            # Retained for hook_events.stderr_preview telemetry only; exit-0
+            # stderr is verbose-mode only and never reaches the model, so this
+            # does not double-inject the nudge.
+            feedback=_NUDGE,
             stdout=json.dumps(
                 {
                     "hookSpecificOutput": {
@@ -124,10 +150,20 @@ exists because the banner's framing is wrong, not because the frequency is high.
   confirm it still receives exit 2 (only when `LL_HOOK_HOST=codex` is set)
 
 ### Similar Patterns
-- `scripts/little_loops/hooks/session_start.py` — existing `LLHookResult.stdout` producer
-- `scripts/little_loops/hooks/user_prompt_submit.py` — already documents `additionalContext`
-- `hooks/scripts/scratch-pad-redirect.sh` — emits `hookSpecificOutput` with `additionalContext`
-  for `PreToolUse` (shell-side precedent for the JSON shape)
+
+**No Python handler in this repo emits a `hookSpecificOutput` payload today — this is the
+first one.** Plan accordingly: there is no existing serializer helper to reuse, and an inline
+`json.dumps` in `edit_batch_nudge.handle` is the intended shape (extracting a shared helper is
+out of scope — see Scope Boundaries, which defers migrating other intents). The precedents
+below are partial:
+
+- `scripts/little_loops/hooks/session_start.py` — existing `LLHookResult.stdout` producer, but
+  it writes merged config JSON, not a `hookSpecificOutput` envelope
+- `scripts/little_loops/hooks/user_prompt_submit.py` — mentions `additionalContext` in its
+  module docstring (line 12) only; it does **not** emit one. Not a code precedent.
+- `hooks/scripts/scratch-pad-redirect.sh:123` and `hooks/scripts/check-duplicate-issue-id.sh:123`
+  — the only real `hookSpecificOutput` producers, both shell-side and `PreToolUse`. Same field
+  structure, different event and language.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_hook_session_start.py:70` — `handle(LLHookEvent(host="codex", intent="session_start", payload={}))`
@@ -143,14 +179,36 @@ _Wiring pass added by `/ll:wire-issue`:_
   must become host-parameterized: exit 0 + parseable `stdout` JSON for `claude-code`,
   exit 2 + `feedback` for a non-Claude host.
 
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_edit_batch_hook.py` — exact tests that assert `exit_code == 2` on the
-  firing path and need host-parameterization: `TestStatefulNudge::test_run_of_unbatched_edits_nudges_at_threshold`,
-  `test_counter_resets_after_firing`, `test_nudge_only_fires_once_per_session`,
-  `test_nudge_only_fires_once_even_across_batched_resets`, `test_session_change_rearms_nudge`.
-  `_event()` (line 26-32) hardcodes `host="claude-code"` — needs a `host` kwarg. Note
-  `test_state_records_nudged_flag` does NOT need changes (asserts persisted state, not
-  `result.exit_code`). [Agent 3 finding]
+_Wiring pass added by `/ll:wire-issue`, corrected by review:_
+- `scripts/tests/test_edit_batch_hook.py` — the tests that assert `exit_code == 2` on the
+  firing path and need host-parameterization are **four**, not five:
+  `TestStatefulNudge::test_run_of_unbatched_edits_nudges_at_threshold` (line 105),
+  `test_counter_resets_after_firing` (line 113), `test_nudge_only_fires_once_per_session`
+  (line 157), `test_session_change_rearms_nudge` (line 202).
+  `_event()` (line 26-32) hardcodes `host="claude-code"` — needs a `host` kwarg.
+  `test_nudge_only_fires_once_even_across_batched_resets` was listed here in error — it never
+  asserts `exit_code == 2`; it asserts only exit-0 post-fire paths, so it needs the
+  negative-assertion treatment below instead. `test_state_records_nudged_flag` needs no change
+  (asserts persisted state, not `result.exit_code`).
+
+**CRITICAL — negative assertions go silent without this.** Today `exit_code == 0` *means*
+"did not nudge", so every pass-through assertion is load-bearing. After this change a
+claude-code fire *also* returns exit 0, so each of these keeps passing even if the nudge
+wrongly fires — silently gutting the regression coverage for the threshold, the batch window,
+and the once-per-session latch. Every "did not nudge" assertion must gain
+`assert result.stdout is None` alongside its `exit_code == 0`:
+
+`scripts/tests/test_edit_batch_hook.py` lines 69, 74, 79, 94, 104, 117, 124, 134, 137, 147,
+163, 177, 187, 201, 247, 265, 285 — covering `test_non_edit_tool_passes_through`,
+`test_empty_payload_passes_through`, `test_read_tool_passes_through`,
+`test_single_edit_does_not_nudge`, `test_batched_edits_never_nudge`,
+`test_multiedit_never_nudges_and_resets_run`, `test_session_change_resets_run`, the post-fire
+loops in `test_nudge_only_fires_once_per_session` and
+`test_nudge_only_fires_once_even_across_batched_resets`, the non-firing prefixes of
+`test_run_of_unbatched_edits_nudges_at_threshold` / `test_counter_resets_after_firing` /
+`test_session_change_rearms_nudge`, and the no-op/write-failure tests
+(`test_no_project_and_no_claude_project_dir_is_noop`,
+`test_claude_project_dir_anchors_state_there`, `test_state_write_failure_passes_through`).
 - `scripts/tests/test_hook_intents.py::TestDispatchEditBatchNudge::test_dispatch_edit_batch_nudge_happy_path`
   (line ~380-407) — a **second, previously-unlisted breakage site**: a subprocess-level CLI
   dispatch test (`python -m little_loops.hooks edit_batch_nudge`) that sets no `LL_HOOK_HOST`
@@ -202,6 +260,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 ## Implementation Steps
 
 1. Add the host-branched return to `edit_batch_nudge.handle`; import `json` (already imported).
+   Keep `feedback=_NUDGE` set on the Claude Code branch (telemetry; see Motivation).
 2. Update the module docstring's exit-2 rationale paragraph and the Claude Code adapter's
    header comment to describe both channels.
 3. Parameterize the existing nudge-fires test over `host` (`claude-code` -> exit 0 + JSON stdout;
@@ -215,8 +274,14 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-6. Host-parameterize the five `TestStatefulNudge` tests in `scripts/tests/test_edit_batch_hook.py`
-   listed above (add a `host` kwarg to `_event()`); `test_state_records_nudged_flag` needs no change.
+6. Host-parameterize the four firing-path `TestStatefulNudge` tests in
+   `scripts/tests/test_edit_batch_hook.py` listed above (add a `host` kwarg to `_event()`);
+   `test_state_records_nudged_flag` needs no change.
+6a. **Strengthen every negative assertion** in `scripts/tests/test_edit_batch_hook.py` with
+   `assert result.stdout is None` next to its `exit_code == 0` (full line list in Tests above).
+   Without this the change silently removes the coverage that the nudge does *not* fire.
+   Sanity check: temporarily force `handle` to always nudge and confirm the pass-through tests
+   fail; they pass today under that mutation only because exit 0 is no longer discriminating.
 7. Update `scripts/tests/test_hook_intents.py::TestDispatchEditBatchNudge::test_dispatch_edit_batch_nudge_happy_path`
    — the subprocess-dispatch companion test that also hard-codes exit-code-2 semantics.
 8. Update `docs/guides/BUILTIN_HOOKS_GUIDE.md`'s hooks summary table row and "Edit-batch nudge"
@@ -266,6 +331,7 @@ the `LLHookResult` exit-2 users for the same framing problem is a separate issue
 | `hooks/adapters/codex/README.md` | Documents the stdout channel per intent; needs a new row |
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-02T23:00:40 - `d76746ac-4ba6-4c06-9cbe-c32a23962287.jsonl`
 - `/ll:confidence-check` - 2026-08-02T22:07:38 - `d288e8d9-e72d-4fc5-a110-cda8245ba0ef.jsonl`
 - `/ll:wire-issue` - 2026-08-02T17:09:15 - `d7f5411e-7a9d-4bf5-bae1-030f4a53dae3.jsonl`
 - `/ll:refine-issue` - 2026-08-02T16:53:50 - `971b00cc-0a51-43c1-8fd9-6f984aead353.jsonl`
