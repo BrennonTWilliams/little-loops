@@ -87,6 +87,7 @@ _LL_PERMISSIONS: tuple[str, ...] = (
     "Bash(ll-sprint:*)",
     "Bash(ll-sync:*)",
     "Bash(ll-verify-cli-allowlist:*)",
+    "Bash(ll-verify-cli-docs:*)",
     "Bash(ll-verify-decisions:*)",
     "Bash(ll-verify-des-audit:*)",
     "Bash(ll-verify-design-tokens:*)",

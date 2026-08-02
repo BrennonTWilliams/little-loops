@@ -3,8 +3,9 @@ id: ENH-2970
 title: Verify CLAUDE.md's documented CLI surface resolves to real commands
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-08-01T16:02:14Z'
+completed_at: '2026-08-02T03:15:28Z'
 discovered_date: 2026-08-01
 discovered_by: capture-issue
 relates_to:
@@ -16,6 +17,12 @@ labels:
 - cli
 - docs
 - gates
+confidence_score: 99
+outcome_confidence: 78
+score_complexity: 18
+score_test_coverage: 20
+score_ambiguity: 18
+score_change_surface: 22
 ---
 
 # ENH-2970: Verify CLAUDE.md's documented CLI surface resolves to real commands
@@ -183,6 +190,32 @@ the CLI and the pytest gate consume the same result without re-running the
 check. The pytest gate calls the entry point in-process and asserts 0, matching
 how the other `ll-verify-*` gates are wired into the suite.
 
+### Deviations
+
+- 2026-08-02: `probe_tool` became variadic (`probe_tool(tool: str, *subpath: str)`)
+  rather than `probe_tool(tool: str)`. Reality: some documented flags belong to
+  a subcommand two levels deep (e.g. `--force` on `ll-loop queue remove`), and
+  CLAUDE.md's prose doesn't reliably say which subcommand a flag belongs to.
+  Flag verification walks the whole subcommand tree (bounded to 3 levels) via
+  `_combined_help_text`, which needs a probe per tree node, not just per tool.
+- 2026-08-02: `DocClaim` gained a `group: int | None` field beyond the
+  designed `tool`/`subcommand`/`flag`/`line`. Reality: CLAUDE.md sometimes
+  glosses a tool in plain English (e.g. `ll-code`'s "(callers, callees,
+  imports, impact)") before its real, checkable subcommand list. `group`
+  lets `verify_claims` treat same-group candidates as a unit and only hold a
+  group accountable when at least one of its candidates actually resolves —
+  otherwise the whole group is prose, not documentation drift.
+- 2026-08-02: `ClaimDrift` flattens `tool`/`detail`/`line` directly rather than
+  nesting the full `claim: DocClaim`. Reality: `find_undocumented_entry_points`
+  produces drift for entry points with no corresponding `DocClaim` at all, so a
+  nested `claim` field would need to be optional; a flat `tool`/`detail` pair
+  covers both directions without an `Optional` field only one direction uses.
+- 2026-08-02: `_extract_choices` (new, not in the design) supplements the
+  `{a,b,c}` brace-list regex with a parse of argparse's "positional
+  arguments:" block. Reality: `ll-queue` sets an explicit `metavar="COMMAND"`,
+  so its subparser choices never appear in a brace list — only as
+  4-space-indented lines under "positional arguments:".
+
 ## Implementation Steps
 
 1. Write the CLAUDE.md CLI-section parser (tools, subcommands, flags) with a
@@ -238,6 +271,8 @@ be deliberate).
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-02T03:15:08 - `71d5a080-0670-495c-9da0-f7ead9ff8d75.jsonl`
+- `/ll:confidence-check` - 2026-08-02T03:04:15 - `810a7223-23a8-480d-9477-d9c477f856c1.jsonl`
 - `/ll:ready-issue` - 2026-08-02T02:45:59 - `3f249c91-800b-4cc1-b707-d5e908f8ee51.jsonl`
 - `/ll:capture-issue` - 2026-08-01T16:04:25 - `f9ef973a-acd3-40a7-a313-5e7a001f9a16.jsonl`
 
