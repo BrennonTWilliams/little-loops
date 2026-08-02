@@ -92,10 +92,20 @@ _EXCLUDED_DIRS = frozenset(
 # This module states the rules; its test file needs literal fixtures. Both would
 # otherwise self-report. Excluded by path rather than by suppression marker so
 # fixtures stay readable.
+#
+# ``.ll/ll-continue-prompt.md`` and ``.ll/private-refs.local.txt`` are machine-local
+# scratch/handoff content, gitignored by ``ll-init`` (see ``_GITIGNORE_ENTRIES`` in
+# ``init/writers.py``) — same category as the ``postmortems``/``.loops`` directory
+# exclusions above. Under ``--all`` (which enumerates via ``git ls-files``), this
+# exclusion is a no-op for a properly-ignored file; its only effect there is that a
+# consumer who has tracked the file anyway gets a leak hidden — acceptable only
+# because the gitignore entry makes tracking it the exception, not the norm.
 _EXCLUDED_FILES = frozenset(
     {
         "scripts/little_loops/cli/verify_private_refs.py",
         "scripts/tests/test_verify_private_refs.py",
+        ".ll/ll-continue-prompt.md",
+        ".ll/private-refs.local.txt",
     }
 )
 

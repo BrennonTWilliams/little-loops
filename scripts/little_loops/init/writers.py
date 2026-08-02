@@ -29,6 +29,13 @@ from little_loops.init.core import strip_none_leaves
 # Glob forms (``.ll/history.db*``) rather than one entry per suffix: they cover the
 # sqlite ``-shm``/``-wal`` siblings and keep each entry a non-substring of every other,
 # which ``test_partial_entries_only_appends_missing`` relies on.
+#
+# ``.ll/ll-continue-prompt.md`` and ``.ll/private-refs.local.txt`` are gitignored
+# *because* ``ll-verify-private-refs`` exempts them from the private-codebase-reference
+# gate (``_EXCLUDED_FILES`` in ``cli/verify_private_refs.py``) — both are expected to
+# hold machine-local content (absolute paths, private project names). The ignore rule
+# and the gate exclusion are a matched pair: exempting a file from the gate without
+# also ignoring it would let a genuine leak reach a commit.
 _GITIGNORE_COMMENT = "# little-loops state files"
 _GITIGNORE_ENTRIES: tuple[str, ...] = (
     ".auto-manage-state.json",
@@ -39,6 +46,8 @@ _GITIGNORE_ENTRIES: tuple[str, ...] = (
     ".ll/history.db*",
     ".ll/queue.db*",
     ".ll/*.lock",
+    ".ll/ll-continue-prompt.md",
+    ".ll/private-refs.local.txt",
     # Nested .ll/ strays — ignore at any depth, keep the repo-root .ll/ tracked.
     "**/.ll/",
     "!/.ll/",

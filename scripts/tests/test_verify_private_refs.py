@@ -26,6 +26,7 @@ from little_loops.cli.verify_private_refs import (
     main_verify_private_refs,
     regressions,
     scan_file,
+    scan_paths,
     staged_added_lines,
     write_baseline,
 )
@@ -77,6 +78,17 @@ class TestStructuralRules:
         f = tmp_path / "blob.bin"
         f.write_bytes(b"\x00\x01" + _HOME.encode() + b"/x")
         assert scan_file(f, STRUCTURAL_RULES) == []
+
+    @pytest.mark.parametrize(
+        "rel",
+        [".ll/ll-continue-prompt.md", ".ll/private-refs.local.txt"],
+    )
+    def test_machine_local_scratch_files_excluded(self, tmp_path: Path, rel: str) -> None:
+        """These are gitignored by ll-init and expected to hold absolute paths."""
+        f = tmp_path / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(f"See {_HOME}/Projects/secret-app/main.py for the call site.\n")
+        assert scan_paths(tmp_path, [Path(rel)], STRUCTURAL_RULES) == []
 
 
 class TestSuppression:

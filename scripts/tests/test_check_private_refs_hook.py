@@ -21,6 +21,7 @@ this file does not itself trip ``ll-verify-private-refs --all``.
 
 from __future__ import annotations
 
+import ast
 import json
 import shutil
 import subprocess
@@ -167,8 +168,49 @@ def test_excluded_dir_still_allowed(validator: str | None) -> None:
     assert result.returncode == 0, result.stderr
 
 
+@pytest.mark.parametrize(
+    "rel", [".ll/ll-continue-prompt.md", ".ll/private-refs.local.txt"]
+)
+def test_excluded_scratch_file_still_allowed(validator: str | None, rel: str) -> None:
+    """Machine-local scratch/handoff content — never blocked, never hinted."""
+    if validator is None:
+        pytest.skip(f"{CLI} not installed")
+    result = _invoke_hook(_write_payload(rel, _PRIVATE_CONTENT), cwd=REPO_ROOT)
+    assert result.returncode == 0, result.stderr
+
+
 def test_non_write_tool_ignored(validator: str | None) -> None:
     if validator is None:
         pytest.skip(f"{CLI} not installed")
     result = _invoke_hook({"tool_name": "Bash", "tool_input": {"command": "ls"}}, cwd=REPO_ROOT)
     assert result.returncode == 0, result.stderr
+
+
+# ---------------------------------------------------------------------------
+# Shell/Python exclusion-list drift
+# ---------------------------------------------------------------------------
+
+
+def _parse_shell_exclusion_tuple(marker: str) -> set[str]:
+    """Extract the string literals of a ``... in (...)`` tuple following *marker*."""
+    text = HOOK_SCRIPT.read_text(encoding="utf-8")
+    idx = text.index(marker)
+    start = idx + len(marker) - 1  # marker ends with the tuple's opening "("
+    end = text.index(")", start)
+    tuple_src = text[start : end + 1]
+    return set(ast.literal_eval(tuple_src))
+
+
+def test_shell_excluded_dirs_subset_of_python() -> None:
+    """The hook's fast-path dir list must never skip something Python would scan."""
+    from little_loops.cli.verify_private_refs import _EXCLUDED_DIRS
+
+    shell_dirs = _parse_shell_exclusion_tuple("if first in (")
+    assert shell_dirs <= set(_EXCLUDED_DIRS)
+
+
+def test_shell_excluded_files_subset_of_python() -> None:
+    from little_loops.cli.verify_private_refs import _EXCLUDED_FILES
+
+    shell_files = _parse_shell_exclusion_tuple("if rel.replace('\\\\', '/') in (")
+    assert shell_files <= set(_EXCLUDED_FILES)

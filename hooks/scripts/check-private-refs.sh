@@ -104,6 +104,10 @@ if first in ('postmortems', '.loops', 'thoughts', 'logs', '.git'):
     print(f'skip:excluded-dir ({first})')
     sys.exit(0)
 
+if rel.replace('\\', '/') in ('.ll/ll-continue-prompt.md', '.ll/private-refs.local.txt'):
+    print(f'skip:excluded-file ({rel})')
+    sys.exit(0)
+
 # Binary-ish targets are not worth staging.
 if os.path.splitext(rel)[1].lower() in ('.png', '.jpg', '.jpeg', '.gif', '.pdf',
                                         '.zip', '.db', '.sqlite', '.pyc'):
