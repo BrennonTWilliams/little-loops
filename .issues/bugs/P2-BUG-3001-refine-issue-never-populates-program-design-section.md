@@ -97,6 +97,14 @@ docs fix), refine should say so in its output report and point at the
 `program_design_not_applicable: true` opt-out rather than padding the section
 with prose that will fail the specificity check anyway.
 
+**Constraint — refine must never set the opt-out itself.** In auto mode refine
+may *recommend* `program_design_not_applicable: true` in its Step 8 report, but
+must not write it to frontmatter. Setting it is a human decision: the flag is a
+hard off-switch in `program_design_gate_active` (`:415`), so a command that can
+set it can self-clear any gate it finds inconvenient, which destroys the gate's
+value. Same rule applies to a still-failing section after the revision attempt
+below — report it, do not opt out of it.
+
 ## Root Cause
 
 `commands/refine-issue.md` was written before the Program Design gate landed
@@ -112,7 +120,9 @@ siblings) — `creation_variants.full.include_common` — does
 **not** list `Program Design`, even though the section is `required: true` in
 `common_sections`. So `/ll:capture-issue` does not emit even a stub, and no
 downstream refinement command fills one in — the section's only reliable
-authors today are humans and `/ll:format-issue`.
+authors today are humans and `/ll:format-issue`. (Changing that template list
+was considered and deliberately left out of scope — see Proposed Solution
+§ Explicitly out of scope. It is context for how the gap arose, not a fix.)
 
 ## Proposed Solution
 
@@ -143,16 +153,53 @@ Two changes to `commands/refine-issue.md`, both additive:
 
 2. **Extend Step 6.5 to inspect `program_design_nonspecific`.** Same
    `format-check --format json` call, one more key. On non-empty, refine
-   revises the section it just wrote and re-runs the check; if it still fails,
-   it reports the gap explicitly in Step 8's output report under a new line so
-   the operator knows the gate is still armed. Gate the whole check on
-   `program_design_gate_active()` semantics so it stays inert in unstamped
-   projects (the CLI already returns empty there — see BUG-2956 for the
-   `program_design_not_applicable` opt-out handling in `format-check`).
+   revises the section it just wrote **once** and re-runs the check; if it
+   still fails after that single revision, it reports the gap explicitly in
+   Step 8's output report under a new line so the operator knows the gate is
+   still armed. The one-attempt cap is deliberate — it matches the existing
+   `prose_dep_drift` precedent in the same step (fix once, confirm once) and
+   keeps a prose contract from specifying an unbounded revise/re-check loop.
+   Gate the whole check on `program_design_gate_active()` semantics so it stays
+   inert in unstamped projects (the CLI already returns empty there — see
+   BUG-2956 for the `program_design_not_applicable` opt-out handling in
+   `format-check`).
 
-Optionally (smaller, separable): add `Program Design` to
-`creation_variants.full.include_common` in the three section templates so
-captured issues carry a stub for refine to fill.
+3. **Order the gate check after the Session Log append — mandatory, not
+   cosmetic.** Step 6.5 currently sits at `:644` and Step 7 ("Append Session
+   Log") at `:659`. `program_design_gate_active` derives arming from the most
+   recent `/ll:refine-issue` Session Log entry
+   (`issues/program_design.py:391-406`), so at Step 6.5 time a *grandfathered*
+   issue — precisely the population this bug targets — still reads as
+   grandfathered, `format-check` returns an empty
+   `program_design_nonspecific`, refine declares success, and only then does
+   Step 7 append the entry that arms the gate. Confidence-check then hard-STOPs
+   on an issue refine just reported clean. Verified against this repo's
+   `2026-07-30` stamp:
+
+   ```
+   pre-refine (grandfathered):  program_design_gate_active -> False
+   post-refine (log appended):  program_design_gate_active -> True
+   ```
+
+   Without this reordering, change 2 is a guaranteed false pass on exactly the
+   issues it exists to catch. Either move the Session Log append ahead of the
+   gate check, or have Step 6.5 write its own Session Log entry before shelling
+   out to `format-check`. The former is the smaller edit; whichever is chosen,
+   the resulting step order must be explicit in the command prose so a later
+   editor does not silently restore the broken order.
+
+### Explicitly out of scope
+
+Adding `Program Design` to `creation_variants.full.include_common` in the three
+section templates (considered and dropped). It does not change gate status for
+captured issues: `issue_design_timestamp` falls back to `discovered_date`,
+which for a newly captured issue is always ≥ the cutover date, so the gate is
+already armed with or without a stub. The stub only changes the reported key
+from `missing` to `program_design_nonspecific`. Against that: three template
+edits plus a new test, and refine's existing `#### Preservation Rule` already
+handles the no-stub case (a section it must create rather than append to). If
+it is ever wanted, it is a separate ENH — this issue's diff stays prose +
+tests.
 
 ## Program Design
 
@@ -166,14 +213,15 @@ consumes already exists and is unchanged:
   `dict[str, list[str]]` including the `program_design_nonspecific` key
   (`scripts/little_loops/cli/issues/format_check.py`)
 - `program_design_gate_active(issue_path: Path, content: str) -> bool`
-  (`scripts/little_loops/issues/program_design.py:414`) — the authority on
-  whether the gate applies; refine's new check must not contradict it
-
-For the optional template change:
-
-- `creation_variants.full.include_common: list[str]` in
-  `scripts/little_loops/templates/feat-sections.json` (and the `bug`/`enh`
-  siblings) — append `"Program Design"`
+  (`scripts/little_loops/issues/program_design.py:415`) — the authority on
+  whether the gate applies; refine's new check must not contradict it. Note
+  its `content` parameter: the verdict is computed from the issue text *as
+  passed*, which is why the Session Log ordering in Proposed Solution step 3
+  changes the answer.
+- `issue_design_timestamp(content: str) -> date | None`
+  (`scripts/little_loops/issues/program_design.py:391`) — the Session-Log-derived
+  arming timestamp; `_REFINE_ENTRY` (`:110`) is the regex whose presence in
+  `content` flips the gate on
 
 ### Call Path
 
@@ -184,9 +232,11 @@ resolution chain already produces the verdict the new check must read:
 `program_design_gate_active` → `grade_issue_section` → `grade_program_design`
 
 On the refine side (prose, not Python): Step 5a
-(`commands/refine-issue.md:323`) writes `## Program Design` → Step 6.5
-(`:644`) invokes the chain above and reads
-`FormatGaps.program_design_nonspecific` → Step 8 output report (`:707`).
+(`commands/refine-issue.md:323`) writes `## Program Design` → Session Log entry
+appended (today Step 7, `:659` — must precede the check per Proposed Solution
+step 3, since it is what arms the gate) → Step 6.5 (`:644`) invokes the chain
+above and reads `FormatGaps.program_design_nonspecific` → at most one revision
+of the section → Step 8 output report (`:707`).
 
 Downstream consumer that must go green as a result:
 `skills/confidence-check/SKILL.md` Phase 1.6 (`:132`) → `:303` hard override
@@ -196,11 +246,8 @@ Downstream consumer that must go green as a result:
 ### Files to Modify
 - `commands/refine-issue.md` — Step 4 gap tables (`:286-314`), Step 5a
   enrichment rules (`:323-460`), Step 6.5 format-check gate (`:644-658`),
-  Step 8 output report (`:707-755`)
-- `scripts/little_loops/templates/feat-sections.json`,
-  `scripts/little_loops/templates/bug-sections.json`,
-  `scripts/little_loops/templates/enh-sections.json` — optional,
-  `creation_variants.full.include_common`
+  Step 7 Session Log append (`:659` — reordered relative to 6.5), Step 8
+  output report (`:707-755`)
 
 ### Dependent Files (Callers/Consumers)
 - `skills/confidence-check/SKILL.md:132, :303` — the gate that should stop
@@ -235,10 +282,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Tests
 - `scripts/tests/test_program_design_gate.py` — existing coverage for the
-  gate itself; extend only if the optional template change lands
+  gate itself; no change required (this fix adds no Python behavior)
 - Prose-side changes to `commands/refine-issue.md` are not directly unit
-  testable; if the template change lands, assert `Program Design` is present
-  in the `full` variant for all three types
+  testable except structurally — see the section-slice pattern below
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_refine_issue_command.py` — new test file, not new
@@ -253,14 +299,13 @@ _Wiring pass added by `/ll:wire-issue`:_
   `"#### Enrichment Rules"`) is present, and a second class scoping the
   Step 6.5 slice to assert `"program_design_nonspecific"` is read there
   [Agent 3 finding]
-- `scripts/tests/test_ll_issues_sections.py::TestLabelsNotRequired` — if the
-  optional template change lands, add a positive-assertion sibling to
-  `test_labels_not_in_full_variant_include_common` (`:259-272`), inverted:
-  iterate `["feat", "bug", "enh"]` (no `epic` — out of this issue's scope),
-  load each `*-sections.json`, assert
-  `"Program Design" in data["creation_variants"]["full"]["include_common"]`.
-  This is the only existing precedent in the repo for asserting
-  `include_common` membership [Agent 3 finding]
+- `scripts/tests/test_refine_issue_command.py` — also assert the **step
+  ordering** from Proposed Solution step 3, since that is the one part of this
+  fix that is silently reversible by a later editor: find the offsets of the
+  Session Log append heading and the Step 6.5 gate heading in the command file
+  and assert the append precedes the gate. A plain `.index()` comparison on the
+  two heading strings is sufficient and matches the file-as-text style already
+  used in this test module
 
 ### Documentation
 - `.claude/CLAUDE.md` § Issue File Format — no change expected; the Program
@@ -299,6 +344,13 @@ _Wiring pass added by `/ll:wire-issue`:_
    `ll-issues format-check <ID> --format json` returns an empty
    `program_design_nonspecific` and `/ll:confidence-check` no longer emits the
    hard override.
+   **The test issue must be grandfathered** — `discovered_date` earlier than
+   the project's cutover stamp and no prior `/ll:refine-issue` Session Log
+   entry. An already-armed issue exercises the easy path and would pass even
+   with the Step 6.5/Step 7 ordering bug intact, so it proves nothing. Confirm
+   the choice up front with
+   `python -c "from pathlib import Path; from little_loops.issues.program_design import program_design_gate_active as g; p=Path('<issue>'); print(g(p, p.read_text()))"`
+   — it must print `False` *before* the run and `True` after.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -308,10 +360,10 @@ the implementation:_
 4. Add `scripts/tests/test_refine_issue_command.py` coverage for the new Step
    5a enrichment rule and Step 6.5 gate extension, following the existing
    section-slice assertion pattern in that file.
-5. If the optional template change lands, add a positive-assertion test to
-   `scripts/tests/test_ll_issues_sections.py::TestLabelsNotRequired` (or a
-   sibling class) asserting `"Program Design"` is present in
-   `creation_variants.full.include_common` for `feat`/`bug`/`enh`.
+5. Add a step-ordering assertion to the same test file: the Session Log append
+   heading must appear before the Step 6.5 gate heading in
+   `commands/refine-issue.md`. This is the regression guard for Proposed
+   Solution step 3.
 6. When verifying the fix empirically (Step 3 above), also spot-check that
    `scripts/little_loops/loops/rn-remediate.yaml`'s `ensure_formatted` state
    and `skills/manage-issue/SKILL.md`'s Deviations-logging step behave as
