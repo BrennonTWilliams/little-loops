@@ -11,3 +11,9 @@ repos:
         entry: ll-verify-decisions
         files: ^\.ll/decisions(\.yaml|\.d/.*\.json)$
         pass_filenames: false
+      - id: ll-verify-private-refs
+        name: Check for private-codebase references
+        language: system
+        entry: ll-verify-private-refs
+        pass_filenames: true
+        exclude: ^(postmortems/|\.loops/|thoughts/|\.ll/private-refs-baseline\.json$)

@@ -3465,6 +3465,51 @@ ll-verify-kinds    # Check the current tree's session_store._MIGRATIONS
 
 ---
 
+### ll-verify-private-refs
+
+Scan for private-codebase references in files this public repo publishes. Loop runs, audits, and issue refinement execute against private codebases, and their prose quotes absolute machine paths and sibling project directories. `gitleaks` (already in `.pre-commit-config.yaml`) does not cover this — the leak is paths and project names, not credentials.
+
+**Rule families.** *Structural* rules are built in and name-free, matching the shape of a machine-local path rather than any particular project, so the checker itself is safe to track publicly:
+
+| Rule | Matches |
+|------|---------|
+| `abs_user_path` | `/Users/<name>/…`, `/home/<name>/…`, `C:\Users\<name>\…` |
+| `host_session_path` | `~/.claude/projects/<slug>/…` (the slug is a mangled absolute path) |
+
+*Name* rules are opt-in, one regex per line in `.ll/private-refs.local.txt`, which is **gitignored**: a tracked list of private project names would publish exactly what the check exists to withhold. Structural rules still apply on a fresh clone with no local file.
+
+**Modes.**
+
+- **changed-files** (`ll-verify-private-refs FILE...`) — all rules, no baseline. The forward-only gate used by pre-commit (staged files) and the Claude Code PreToolUse hook (candidate content, before the write lands). Any match blocks.
+- **full-scan** (`--all`) — structural rules only, compared against the tracked baseline `.ll/private-refs-baseline.json`. Exits 1 only on counts *beyond* baseline, so the existing corpus is grandfathered and anything new is blocked. Structural rules are deterministic across machines, which is what makes the baseline portable; local name rules are not, so they are excluded from this mode.
+
+Report excerpts are redacted — a finding names the file and line but never reproduces the matched path, since the output goes to CI logs and hook stderr.
+
+**Flags:**
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--all` | | Scan every git-tracked file against the baseline |
+| `--update-baseline` | | Rewrite the baseline from the current full scan (requires `--all`) |
+| `--directory` | `-C` | Project root to scan (default: cwd) |
+| `--json` | | Output as JSON |
+
+**Suppression:** `ll-private-ok: <reason>` on the matching line or the line above (`<!-- … -->`, `# …`, and `// …` forms all work).
+
+**Exit codes:** `0` = clean (or nothing beyond baseline under `--all`); `1` = one or more unsuppressed findings.
+
+**Examples:**
+```bash
+ll-verify-private-refs .issues/bugs/BUG-1.md   # Gate specific files
+ll-verify-private-refs --all                   # Full scan vs. baseline
+ll-verify-private-refs --all --update-baseline # Re-record the grandfathered corpus
+ll-verify-private-refs --all --json            # Machine-readable output
+```
+
+**Gates:** pre-commit (`.pre-commit-config.yaml`), pytest CI (`scripts/tests/test_verify_private_refs.py::TestRepoGate`), and Claude Code PreToolUse (`hooks/scripts/check-private-refs.sh`) — the same three-layer model as `ll-verify-decisions`.
+
+---
+
 ### ll-verify-des-audit
 
 Walk the source tree and verify every event-emit site maps to a registered DES variant — the F5 adoption gate (ENH-2475). The audit reads every emit-call string literal in `scripts/little_loops/`, then checks each against the canonical `DES_VARIANTS` registry (defined in `little_loops.observability.schema`). Exit 0 means every currently-emitted event type has a registered variant; exit 1 means a new event was emitted without being registered — block F5's `gen_ai.usage.*` adoption until the variant is added.

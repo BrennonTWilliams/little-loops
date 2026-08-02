@@ -77,6 +77,17 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/check-private-refs.sh",
+            "timeout": 5,
+            "statusMessage": "Checking for private-codebase references..."
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/adapters/claude-code/pre-tool-use.sh",
             "timeout": 5,
             "statusMessage": "Checking learning-test coverage..."

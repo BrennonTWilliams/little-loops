@@ -93,6 +93,7 @@ _LL_PERMISSIONS: tuple[str, ...] = (
     "Bash(ll-verify-docs:*)",
     "Bash(ll-verify-host-map:*)",
     "Bash(ll-verify-kinds:*)",
+    "Bash(ll-verify-private-refs:*)",
     "Bash(ll-verify-package-data:*)",
     "Bash(ll-verify-skill-budget:*)",
     "Bash(ll-verify-skill-prose:*)",

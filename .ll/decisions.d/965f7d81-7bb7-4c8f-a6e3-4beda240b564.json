@@ -1,0 +1,15 @@
+{
+  "id": "a90f7fd8-6e9a-4c93-9c4e-4b6ac8e901c4",
+  "type": "decision",
+  "timestamp": "2026-08-02T00:36:47Z",
+  "category": "privacy",
+  "labels": [
+    "privacy",
+    "public-repo",
+    "postmortems"
+  ],
+  "rationale": "Assessed 2026-08-01. The already-pushed material is machine paths and private project code names with no credentials, no customer data, and no quoted product content \u2014 it is loop forensics about little-loops' own FSM machinery. Two facts killed the rewrite: (1) the same project names are independently public in 27 tracked .issues/ files across 52 commits, so scrubbing 7 postmortems closes nothing; (2) the repo has 2 forks, and GitHub's fork network retains the old blobs by SHA after a force-push, so the rewrite would not remove the content while invalidating 5754 commits for every clone. Prevention beats an incomplete cure.",
+  "rule": "Loop-run postmortems and private-codebase references are handled forward-only: quarantine in gitignored postmortems/, gate new occurrences with ll-verify-private-refs, and do NOT rewrite public git history.",
+  "scope": "issue",
+  "alternatives_rejected": "git filter-repo on the 7 postmortem paths + force-push (incomplete: names remain in .issues/, and forks retain blobs); full scrub of postmortems + 27 issue files + GitHub Support fork-network purge (rejected as disproportionate to names-only exposure)"
+}

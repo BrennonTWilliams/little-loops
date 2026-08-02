@@ -119,6 +119,16 @@ docs/research/
 *.gif
 thoughts/
 
+# Loop-run postmortems. Source-repo-only convention (never carried into
+# consuming projects). Ignored because run forensics quote traces, paths, and
+# issue content from private/sensitive codebases these loops are run against.
+postmortems/
+
+# Opt-in private-project name patterns for ll-verify-private-refs. Untracked
+# on purpose: a tracked list of private project names would publish exactly
+# what the check exists to withhold.
+.ll/private-refs.local.txt
+
 # Pre-commit / secret-scan local artifacts
 .secrets.baseline
 
