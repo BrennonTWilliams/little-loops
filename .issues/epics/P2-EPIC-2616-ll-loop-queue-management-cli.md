@@ -100,6 +100,14 @@ pure CLI/stdlib (no new dependencies).
 (never SIGKILL a process that isn't actually the tracked waiter — verify PID
 identity, not just liveness, before terminating).
 
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` — the `ll-loop` CLI Tools bullet is where the new
+  `queue list`/`queue remove` subcommands must be documented; the Integration
+  Map already calls this out as a Documentation deliverable.
+- `docs/reference/API.md` — documents `fsm/persistence` and related loop
+  execution modules the queue-entry read/prune helper builds on.
+
 ## Labels
 
 `fsm`, `cli`, `loops`

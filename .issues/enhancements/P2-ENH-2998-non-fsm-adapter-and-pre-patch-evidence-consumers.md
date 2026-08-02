@@ -207,3 +207,8 @@ call `run_prepatch_check()` itself.
 
 ## Session Log
 - `/ll:issue-size-review` - 2026-08-02T13:48:44 - `14957793-c5a3-42c3-8c4e-e15ef7fbe208.jsonl`
+
+## Related Key Documentation
+
+- `docs/reference/API.md` — documents `work_verification`, `cli/harness.py`'s module surface, and `worktree_utils`; this issue's non-FSM adapter and harness evidence-surfacing are additive changes to exactly those documented modules (and the issue itself calls out a needed API.md cross-reference update).
+- `.claude/CLAUDE.md` — `ll-harness` is listed in the § CLI Tools catalog; this issue extends what it reports without changing its invocation surface.

@@ -82,3 +82,7 @@ loaded automatically on session start.
 2026-06-18 (UNSTARTED): `templates/GEMINI.md.j2` does not exist. No `--gemini` branch in `scripts/little_loops/init/`. FEAT-2179 confirmed `GEMINI.md` is Gemini's exact analog of `CLAUDE.md`. Unstarted.
 
 **Open** | Created: 2026-06-15 | Priority: P4
+
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` — `ll-init` is documented in the CLAUDE.md CLI catalog, and `GEMINI.md` is being generated as this file's own Gemini-host analog (same project-instructions role).

@@ -24,3 +24,7 @@ Group of 3 related issues improving the `ll-issues clusters` subcommand output q
 - **ENH-2335** — ll-issues clusters: add legend + filter/summary header, adopt shared palette, unify edge notation
 - **ENH-2336** — ll-issues clusters: add scoping flags (--cluster/--limit/--compact) and richer per-cluster headers
 - **FEAT-2337** — ll-issues clusters: replace linear box-stack with a graph-aware layout
+
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` — lists `ll-issues` (including `clusters`-adjacent subcommands) in the CLI Tools catalog that documents this surface's flags.

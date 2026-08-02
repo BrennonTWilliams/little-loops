@@ -99,6 +99,11 @@ the core chain.
 - **Risk**: Low-Medium — additive detection with existing-config
   pre-population still winning on re-runs.
 
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` — documents the `ll-init` CLI (`--yes`/`--dry-run`/`--plan`/`apply`/`--hosts`) and the `init/introspect.py` provenance behavior this epic builds out.
+- `docs/reference/API.md` — covers `init.install_check` and the module surface the `--plan`/`apply` seam this epic's agentic flow is built on.
+
 ## Status
 
 **Open** | Created: 2026-07-19 | Priority: P3

@@ -69,6 +69,11 @@ re-exports.
 - **Risk**: Medium
 - **Breaking Change**: No
 
+## Related Key Documentation
+
+- `docs/reference/API.md` — documents `history_reader` and `fsm/executor` module-by-module; splitting either file requires updating those entries to match the new package/module layout.
+- `docs/ARCHITECTURE.md` — describes the FSM loop engine and Sequential Mode (`ll-auto`) internals that `fsm/executor.py` and `history_reader.py` implement; a structural split of either is exactly the kind of architecture change this doc covers.
+
 ---
 
 ## Status

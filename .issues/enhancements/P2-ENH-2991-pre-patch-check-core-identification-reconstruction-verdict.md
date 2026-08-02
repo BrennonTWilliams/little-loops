@@ -336,3 +336,7 @@ by the host (ENH-2997 / ENH-2998).
 
 ## Session Log
 - `/ll:issue-size-review` - 2026-08-02T13:48:43 - `14957793-c5a3-42c3-8c4e-e15ef7fbe208.jsonl`
+
+## Related Key Documentation
+
+- `docs/reference/API.md` — documents `history_reader` (`read_base_sha()`, consumed here) and `work_verification`; this issue's new `prepatch_check.py` module and `worktree_utils.setup_prepatch_worktree()` addition sit directly alongside those documented modules.

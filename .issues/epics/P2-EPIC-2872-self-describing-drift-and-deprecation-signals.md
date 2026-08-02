@@ -46,3 +46,8 @@ Independent of each other; either can ship first.
 
 - `ll-verify-docs`, `ll-check-links`, `ll-doctor`
 - Issue-frontmatter and loop-YAML schema definitions (`issue_parser.py`)
+
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` — documents the `ll-doctor`/`ll-verify-docs`/`ll-check-links` CLI surface and the issue frontmatter/status-value conventions this epic's deprecation-reason mandate extends.
+- `docs/reference/API.md` — covers `issue_parser` (home of `parent_issue`, the deprecated-alias example cited in the Summary) module-by-module.

@@ -223,5 +223,13 @@ the timeout was a `.ll/ll-config.json` edit precisely because no CLI override
 exists.
 
 
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` — the `ll-auto` bullet in the CLI Tools catalog is the
+  place this new `--timeout` flag needs to be reflected once added.
+- `docs/reference/API.md` — documents the `cli/*` entry points (including
+  `ll-auto`) whose argument wiring (`cli_args.py`, `cli/auto.py`) this issue
+  modifies.
+
 ## Session Log
 - `/ll:refine-issue` - 2026-08-01T20:18:53 - `52bc5a67-0032-4383-ae03-a6de98447a01.jsonl`

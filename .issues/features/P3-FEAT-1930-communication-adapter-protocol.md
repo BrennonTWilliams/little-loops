@@ -294,6 +294,12 @@ class TerminalAdapterExtension(CommunicationAdapterExtension):
 
 open
 
+## Related Key Documentation
+
+- `docs/ARCHITECTURE.md` — this protocol is a new abstraction layer inside the FSM loop engine (`human_approval` state, `executor.py` adapter resolution), which the architecture doc covers at the FSM-executor-design level.
+- `docs/reference/API.md` — directly extends the documented `fsm/*` (executor) and `extension.py` module surfaces with a new `CommunicationAdapter` protocol and `CommunicationAdapterExtension`.
+- `CONTRIBUTING.md` — adding a new extension-registered protocol (`CommunicationAdapterExtension`, `provided_adapters()`) is exactly the extension-authoring pattern (`LLExtension` protocol convention) this doc documents.
+
 ## Session Log
 - backlog-grooming - 2026-07-03T00:00:00Z - Downgraded P2 -> P3 with parent EPIC-1929 (stalled since early June; epic downgraded rather than left distorting the P2 band).
 - `/ll:audit-issue-conflicts` - 2026-06-25T21:24:01 - `91915c5b-d793-486c-a140-be4dd3d8ca1f.jsonl`

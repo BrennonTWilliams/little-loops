@@ -98,3 +98,8 @@ Reuse `issue_parser.get_next_issue_number` + `slugify`, `frontmatter.py`, `ll-is
 ## Notes
 
 Split `scaffold-epic` out if atomic-staging/rollback semantics get involved; `create` alone is independently shippable and valuable.
+
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` — adds `ll-issues create`/`scaffold-epic` to the documented `ll-issues` CLI catalog and directly touches the issue file format (frontmatter, template body, `parent`/`## Children` wiring) rules this doc defines.
+- `docs/reference/API.md` — new `create_issue`/`scaffold_epic` functions belong alongside the documented `cli/*` entry points and `issue_parser`/`frontmatter` module reference.

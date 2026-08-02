@@ -199,5 +199,13 @@ confidence-per-effort items in the set.
 **Open** | Created: 2026-07-27 | Priority: P2
 
 
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` — the Testing & CI Policy section is the operative
+  contract this epic's deterministic pre-patch/tamper-detection children
+  (ENH-2853, ENH-2854) must satisfy without introducing hosted CI.
+- `CONTRIBUTING.md` — documents the test-running and mutation-testing
+  workflow this epic's verification-integrity children extend.
+
 ## Session Log
 - `/ll:audit-issue-conflicts` - 2026-07-27T19:42:09 - `e2303183-4e52-4649-af90-4b53254bbda4.jsonl`

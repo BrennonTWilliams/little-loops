@@ -97,6 +97,10 @@ A maintainer with dozens of orphan issues runs `ll-issues link-epics --mode assi
 
 assign and synthesize are independently shippable — split into two issues if the union-find + synthesis half exceeds ~a day.
 
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` — this issue adds a new `ll-issues link-epics` subcommand to the CLI tool catalog and rewrites `skills/link-epics/SKILL.md` to delegate to it, the same skills-lean-on-CLI pattern CLAUDE.md documents for other `ll-issues` subcommands.
+- `docs/reference/API.md` — the new CLI mode functions (`propose_assignments`, `synthesize_clusters`, `apply_assignment`) belong in the `cli/*` entry-point and `issue_parser`/`frontmatter` module reference this doc maintains.
 
 ## Session Log
 - `/ll:audit-issue-conflicts` - 2026-08-01T00:26:02 - `6fbac205-468a-44ce-b7fb-4626b0ac42e4.jsonl`

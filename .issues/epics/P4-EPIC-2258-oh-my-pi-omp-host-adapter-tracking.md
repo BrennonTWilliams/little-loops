@@ -97,6 +97,11 @@ EPIC-2257:
   EPIC-2257's direct-child completion %. The `relates_to: [EPIC-2257, EPIC-2178]`
   back-link is retained. Do not re-add `parent:` here.
 
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` — § Host CLI Abstraction documents `resolve_host()`/`LL_HOST_CLI`, the exact seam `OmpRunner` (FEAT-1850) must plug into rather than adding a new `"claude"`-style literal.
+- `docs/reference/API.md` — documents the `host_runner` module this epic's `OmpRunner` and adapter children extend.
+
 ## Status
 
 **Open** | Created: 2026-06-24 | Priority: P4

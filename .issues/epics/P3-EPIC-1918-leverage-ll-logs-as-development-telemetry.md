@@ -136,6 +136,10 @@ from the corpus instead of leaving it as a passive archive.
   consumes an ll-logs telemetry subcommand as a real input.~~ **met (ENH-2103)**
 - ~~A meta-loop can cite ll-logs-derived external evidence for an improvement.~~ **met (ENH-2104)**
 
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` — documents the full `ll-logs` CLI subcommand surface (`discover`/`extract`/`sequences`/`stats`/`tail`/`dead-skills`/`scan-failures`/`diff`/`eval-export`/`loop-fleet`) this epic's children extend.
+
 ## Labels
 
 epic, captured, ll-logs, telemetry, observability

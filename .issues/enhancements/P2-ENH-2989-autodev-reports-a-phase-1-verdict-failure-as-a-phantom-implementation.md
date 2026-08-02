@@ -211,3 +211,8 @@ open
 ## Session Log
 - `/ll:wire-issue` - 2026-08-02T13:54:24 - `8b8edef1-c39e-4866-83db-7f4d2ee1561d.jsonl`
 - `/ll:refine-issue` - 2026-08-02T13:43:45 - `55aa09f8-706d-4a53-9c33-dad9b40b2fa3.jsonl`
+
+## Related Key Documentation
+
+- `docs/ARCHITECTURE.md` — documents Sequential Mode (`ll-auto`) internals; this issue's fix distinguishes a Phase 1 rejection from a Phase 2 implementation failure inside that exact flow.
+- `docs/reference/API.md` — covers the `fsm/*` executor/evaluator modules and `Loops` reference this issue's new `autodev.yaml` discriminator state and `issue_manager.py` marker convention extend.

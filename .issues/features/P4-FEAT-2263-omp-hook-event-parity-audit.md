@@ -169,6 +169,11 @@ _Added by `/ll:refine-issue` — concrete steps grounded in actual file referenc
 
 **Open** | Created: 2026-06-24 | Priority: P4
 
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` — `hooks/adapters/` (the location FEAT-2261 will create for this audit's findings) is documented in CLAUDE.md's Key Directories as the per-host translation layer.
+- `docs/reference/API.md` — the audit maps omp events against the documented `hooks` module's `LLHookEvent` intent set (`_dispatch_table()`, the canonical 7 ll intents).
+
 
 ## Session Log
 - `/ll:refine-issue` - 2026-06-26T23:06:47 - `66288c91-3410-40d5-8af7-af4d0cb1a3f8.jsonl`

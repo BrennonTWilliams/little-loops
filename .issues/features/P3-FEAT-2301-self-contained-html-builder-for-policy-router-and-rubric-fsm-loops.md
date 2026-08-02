@@ -470,6 +470,10 @@ original `ll-artifact` self-contained-HTML substrate).
   walkthrough gate rather than after release.
 - **Breaking Change**: No
 
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` — the node conformance gate this issue extends (`test_policy_builder_node_gate.py`) is documented in CLAUDE.md's Testing & CI Policy as the canonical example of wrapping a non-Python gate inside `python -m pytest scripts/tests/`.
+
 ## Labels
 
 `feature`, `loops`, `policy-router`, `design-tokens`, `html`, `tooling`, `ux`

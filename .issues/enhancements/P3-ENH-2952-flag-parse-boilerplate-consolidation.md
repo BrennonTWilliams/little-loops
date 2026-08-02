@@ -157,3 +157,7 @@ apply it unmeasured.
 - `/ll:manage-issue` - 2026-08-01T11:24:44 - `768a3086-7997-4dc7-a142-4d0fc9944d80.jsonl`
 - `/ll:confidence-check` - 2026-08-01T11:23:16 - `03c58e8e-8efb-434f-b9f1-2aea223a2d44.jsonl`
 - `/ll:decide-issue` - 2026-08-01T11:22:10 - `89b58182-1f60-430a-ad13-9405e1640bd8.jsonl`
+
+## Related Key Documentation
+
+- `CONTRIBUTING.md` — covers the conventions for skill/command files (the ENH-494 companion-file pattern, the 500-line skill limit) this issue's Option A/B/C decision directly weighs against.

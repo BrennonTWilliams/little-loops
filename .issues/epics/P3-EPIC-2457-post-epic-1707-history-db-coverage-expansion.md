@@ -316,6 +316,11 @@ _Audit 2026-07-08:_ 28 children in `relates_to` (was 25; added ENH-2580, ENH-258
 
 **Open** | Created: 2026-07-02 | Priority: P3
 
+## Related Key Documentation
+
+- `docs/reference/API.md` — module reference for `session_store` and `history_reader`, the two modules every child's schema migration and read API addition touches.
+- `.claude/CLAUDE.md` — documents the `ll-session` CLI (`search --fts`, `recent --kind`, `backfill`, `rebuild`, `compact`) that surfaces each new event kind this epic's children add.
+
 ## Session Log
 - fourth-pass expansion - 2026-07-08 - Added 3 children (ENH-2580, ENH-2581, ENH-2582) following the raw-events architecture discussion. ENH-2581 is the structural prerequisite; design doc at `thoughts/history-db-raw-events-architecture.md` (mirrors the relationship between `thoughts/history-db-expand-wiring.md` and this epic).
 - audit - 2026-07-06 - Reconciled child counts (9 → 25) in closure criterion, Children note, Success Metrics, and Impact; marked done children in Sequencing; added 2026-07-06 verification-notes entry (4 done / 21 open, schema v18 verified in code).

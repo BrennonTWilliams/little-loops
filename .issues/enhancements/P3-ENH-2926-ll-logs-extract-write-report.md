@@ -133,6 +133,10 @@ reporting, not gating.
       an unreadable-file skip.
 - [ ] `python -m pytest scripts/tests/` exits 0.
 
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` — `ll-logs` and its `extract` subcommand are documented in the § CLI Tools catalog; this issue changes `extract`'s reported output shape (text summary + `-j/--json`), which that catalog entry should continue to match.
+
 ---
 
 ## Status

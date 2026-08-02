@@ -182,6 +182,10 @@ short one-liners and REPL-ish calls), which is broader than intended.
 - `/ll:format-issue` - 2026-06-30T21:33:41 - `df65d7ca-2f4e-4eb3-8e1b-7c78f7a751a8.jsonl`
 - `/ll:capture-issue` - 2026-06-30T21:29:50Z - conversation mode (scratch-pad hook discussion)
 
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` — the § Automation: Scratch Pad section is the exact documented contract (`python -m pytest` / `python -m mypy` auto-redirect) this bug reports as broken.
+
 ---
 
 ## Resolution

@@ -70,6 +70,11 @@ moving to `fsm/` per ENH-2773 — run inspection, output formatting), leaving
 - **Risk**: Low
 - **Breaking Change**: No
 
+## Related Key Documentation
+
+- `docs/reference/API.md` — catalogs `cli/*` entry points module-by-module; splitting `_helpers.py` into named modules changes what that catalog should list.
+- `docs/ARCHITECTURE.md` — covers module placement/decomposition questions directly; this issue is exactly that kind of "where should this code live" call.
+
 ---
 
 ## Status

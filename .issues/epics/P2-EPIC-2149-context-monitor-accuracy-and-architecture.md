@@ -88,3 +88,8 @@ transcript format (we see real values, not placeholder ~9s).
   fixes — not as a side-effect of ENH-2148, which remains `deferred`).
 - No regression in handoff trigger behavior on short sessions or non-Claude-Code
   hosts.
+
+## Related Key Documentation
+
+- `docs/reference/API.md` — documents the `context_window` module the
+  accuracy fixes and Status-hook migration modify.

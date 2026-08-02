@@ -268,7 +268,10 @@ _Added by `/ll:confidence-check` on 2026-07-25_
 
 `open` — discovered by `/ll:scan-codebase`.
 
-## Session Log
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` — `ll-adapt`/`ll-adapt-agents-for-codex` are documented in the CLAUDE.md CLI catalog; this issue implements the omp counterpart of that same emitter path.
+- `docs/reference/API.md` — implements the `adapters` module's `OmpEmitter`, documented alongside `CodexEmitter`/`GeminiEmitter` in the module-summary and `Built-in emitters` table this issue must also update.
 - `/ll:confidence-check` - 2026-07-25T08:15:00 - `47fe161b-4234-42ac-a6c0-f8c1be3f6f0f.jsonl`
 - `/ll:wire-issue` - 2026-07-25T08:00:50 - `b80aba0a-8c41-4406-bf61-9e60bb3dfe4a.jsonl`
 - `/ll:refine-issue` - 2026-07-25T07:56:22 - `09a15f4f-e0dc-48eb-bfc2-cbe00a641199.jsonl`

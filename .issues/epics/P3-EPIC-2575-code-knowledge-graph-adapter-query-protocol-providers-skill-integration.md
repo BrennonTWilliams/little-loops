@@ -63,3 +63,9 @@ The main risk is staleness, not integration: loops mutate the codebase continuou
 1. **FEAT-2576** first — protocol + fallback provider + CLI. Shipping the fallback as the first provider proves the abstraction with a real implementation and makes every later consumer degradation-safe by construction.
 2. **ENH-2577** second — the codegraph provider slots in behind the already-stable protocol; staleness policy lands with the first provider that can actually go stale.
 3. **ENH-2578** last — wire-issue integration plus measurement. Further skill rollouts are justified by measured token/turn deltas, not assumption; if the delta is a wash, the epic closes with the fallback-only protocol as a no-regression refactor.
+
+## Related Key Documentation
+
+- `docs/reference/API.md` — already documents the `adapters` and `codequery` modules this epic's `CodeQueryProvider` protocol and registry are built into.
+- `docs/ARCHITECTURE.md` — the `HostEmitter` protocol + lazy registry in `adapters/core.py` this epic explicitly models its provider registry after.
+- `.claude/CLAUDE.md` — catalogs the `ll-code` CLI (`status`/`callers-of`/`callees-of`/`importers-of`/`defines`/`references`/`impact-of`) this epic introduces.

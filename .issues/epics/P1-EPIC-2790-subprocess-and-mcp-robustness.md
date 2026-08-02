@@ -29,3 +29,9 @@ without a follow-up `wait()`).
 - **BUG-2777** — `_run_cmd` per-command timeout not enforced while subprocess holds stdout open
 - **BUG-2778** — `_send_jsonrpc` deadline does not bound blocking `readline()`; unresponsive MCP server hangs `call_mcp_tool` indefinitely
 - **BUG-2779** — `call_mcp_tool` cleanup issues `kill()` without a follow-up `wait()`, leaving a zombie process
+
+## Related Key Documentation
+
+- `docs/reference/API.md` — documents the transport/subprocess-invocation
+  layer (`_run_cmd`, `_send_jsonrpc`, `call_mcp_tool`) these three children
+  fix the lifecycle correctness of.

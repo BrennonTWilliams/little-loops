@@ -51,3 +51,8 @@ The exact event set is established by FEAT-2263 (hook-event parity audit).
 ## Status
 
 **Open** | Created: 2026-06-24 | Priority: P4
+
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` — `hooks/adapters/` is documented in CLAUDE.md's Key Directories as the host translation layer (one subdir per host), the exact location and pattern this issue adds an `omp/` entry to.
+- `docs/reference/API.md` — the new adapter wires oh-my-pi events into the documented `hooks` module's `LLHookEvent`/dispatch surface.

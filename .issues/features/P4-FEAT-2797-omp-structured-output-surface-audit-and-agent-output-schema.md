@@ -142,3 +142,8 @@ discovery after writing the emitter means rewriting it.
 ## Status
 
 **Open** | Created: 2026-07-25 | Priority: P4
+
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` — the Host CLI Abstraction section governs `host_runner.py`/`OmpRunner.capabilities`, which this issue changes to explicitly declare `structured_output=False`.
+- `docs/reference/API.md` — directly touches the documented `host_runner` module (`OmpRunner.capabilities`) and the adapters' `emit_agent` surface.

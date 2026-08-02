@@ -109,6 +109,9 @@ If the on-demand runbook proves valuable, promote it to a scheduled capture
 meta-loop following `diagnose → propose → apply → measure-externally`. Captured here so the
 path is recorded, not built.
 
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` — the runbook's harvest phase chains `ll-logs`/`ll-loop` CLI tools documented in the CLAUDE.md catalog, and the "measure-externally" re-measurement contract directly invokes the meta-loop rules (diagnosis-first, non-LLM evaluator) this doc defines.
 
 ## Session Log
 - backlog-grooming - 2026-07-03T00:00:00Z - Parented to EPIC-1918 (was unparented; assigned per /ll:create-epics-from-unparented sweep).

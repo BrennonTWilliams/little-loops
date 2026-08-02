@@ -136,3 +136,9 @@ In scope: the 15 children listed above — CLI subcommand additions/extensions i
 - [ ] Each converted file shrinks materially — every child records its before/after line count in its commit; `ll-verify-skills` stays green
 - [ ] `python -m pytest scripts/tests/` covers every new subcommand
 - [ ] No new `_find_plugin_root` copy and no second frontmatter-enumeration path was introduced (the epic must not create the drift it deletes)
+
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` — the `ll-issues`/`ll-loop` CLI catalog this epic extends with new subcommands, and the "Prefer Skills over Agents" development preference the conversions embody.
+- `CONTRIBUTING.md` — governs the markdown slimming of skills/commands and the 500-line skill-file limit the children must stay under while shrinking prose.
+- `docs/reference/API.md` — module reference for `cli/issues/*`, `cli/loop/*`, and `text_utils` that each child extends or consolidates into.

@@ -176,6 +176,11 @@ If oversized, `rename` is the natural standalone split.
 - `/ll:wire-issue` - 2026-08-01T08:35:58 - `11996918-b058-44c8-a694-d7c9f378a4de.jsonl`
 - `/ll:refine-issue` - 2026-08-01T08:30:40 - `7b75a4c6-fc3c-498e-b17f-c02db74dce82.jsonl`
 
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` — `ll-loop` is listed in the § CLI Tools catalog with its subcommand set; adding `rename`/`cleanup` extends that documented surface.
+- `docs/reference/API.md` — documents the `fsm/persistence`, `fsm/validation`, and `cli/*` modules this issue's `rename_loop()`/`cleanup()` implementation reuses directly (`StatePersistence.archive_run()`, `_reconcile_stale_runs()`, `resolve_loop_path()`).
+
 
 ---
 

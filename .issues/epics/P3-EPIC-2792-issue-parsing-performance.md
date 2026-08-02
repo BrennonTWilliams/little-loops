@@ -29,3 +29,7 @@ every issue file's frontmatter twice).
 - **ENH-2780** — `find_issues(skip_blocked=True)` re-parses the entire issue directory to build the dependency graph
 - **ENH-2781** — `next-issue`/`next-issues` invoke `find_issues` 2-4 times per command; parse once and share
 - **ENH-2782** — `session_store.backfill()` reads and parses every issue file's frontmatter twice
+
+## Related Key Documentation
+
+- `docs/reference/API.md` — documents `issue_parser` and `session_store`, the two modules whose redundant-parsing paths this epic's children fix.

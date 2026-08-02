@@ -159,6 +159,11 @@ portfolio work is in the tracked per-host epics below.
   per-host epics" prose section, not `parent:`. `epic-progress` now reports 6/6
   (100%) on the directly-owned generic children.
 
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` — the § Host CLI Abstraction section (`resolve_host()`, `LL_HOST_CLI`) is the exact shared infrastructure this coordination epic's generic-adapter decision (ARCHITECTURE-049) governs.
+- `docs/reference/API.md` — documents `host_runner` module internals that every per-host runner (Codex/Gemini/omp) plugs into.
+
 ## Status
 
 **Open** | Created: 2026-06-24 | Priority: P4

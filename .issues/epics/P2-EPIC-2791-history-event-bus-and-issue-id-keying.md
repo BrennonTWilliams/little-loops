@@ -32,3 +32,12 @@ event bus).
 - **BUG-2770** — set-status writes a snapshot but no issue_event, silently breaking session lookup
 - **ENH-2771** — Key history tables on the stable numeric issue id, not the mutable TYPE-NNN string
 - **ENH-2783** — Parallel/sprint issue-close events are not live-written to the history event bus
+
+## Related Key Documentation
+
+- `docs/reference/API.md` — documents `issue_parser`, `session_store`, and
+  `events`, the modules whose id-keying and event-emission correctness this
+  EPIC's children fix.
+- `.claude/CLAUDE.md` — documents the issue-file id/status conventions
+  (`ll-issues`, status values) that malformed-id ingest (BUG-2769) and
+  `set-status` event emission (BUG-2770) must stay consistent with.

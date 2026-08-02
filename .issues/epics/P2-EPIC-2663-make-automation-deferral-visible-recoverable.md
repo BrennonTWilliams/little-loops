@@ -109,6 +109,15 @@ irreversible in practice. Two root problems:
 ## Session Log
 - `/ll:capture-issue` - 2026-07-18T02:50:02Z
 
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` — the Issue File Format section already documents the
+  `deferred` status and its `deferred_by`/`deferred_reason` discriminator
+  fields this EPIC's children extend and make cross-run visible.
+- `docs/reference/API.md` — documents `issue_parser` (default status
+  filtering) and `sprint` (`_ACTIVE_STATUSES`), both named in the
+  Integration Map as files this EPIC modifies.
+
 ---
 
 ## Status

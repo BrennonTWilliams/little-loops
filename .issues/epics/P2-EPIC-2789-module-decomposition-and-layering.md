@@ -35,3 +35,10 @@ cli/loop/_helpers.py grab-bag into named modules).
 - **ENH-2774** — Split fsm/validation.py by rule family
 - **ENH-2775** — Split history_reader.py and fsm/executor.py along concern boundaries
 - **ENH-2776** — Dissolve cli/loop/_helpers.py grab-bag into named modules
+
+## Related Key Documentation
+
+- `docs/ARCHITECTURE.md` — this EPIC is exactly the module-placement and
+  fsm/cli layering-boundary question the architecture doc describes.
+- `docs/reference/API.md` — documents `session_store`, `fsm/validation`,
+  `fsm/executor`, and `history_reader`, the specific modules being split.
