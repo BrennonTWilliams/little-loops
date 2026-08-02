@@ -5,6 +5,7 @@ title: ll-auto never checks the confidence gate, so it spends a full ready-issue
 type: BUG
 priority: P2
 captured_at: '2026-08-02T18:59:27Z'
+completed_at: '2026-08-02T21:18:57Z'
 discovered_date: 2026-08-02
 discovered_by: capture-issue
 labels:
@@ -14,7 +15,7 @@ labels:
 - autodev-parity
 relates_to:
 - BUG-3002
-status: open
+status: done
 testable: true
 confidence_score: 100
 outcome_confidence: 79
@@ -1015,6 +1016,8 @@ defects, one new constant, one scoped-out refactor, nine test ACs) — re-run
 enforced on this issue itself.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-02T21:18:11 - `d5820802-7cf9-4ad0-bdea-8c14e2282441.jsonl`
+- `/ll:ready-issue` - 2026-08-02T20:44:41 - `a8bb94f2-a430-4d7b-a6ed-68db16f58c14.jsonl`
 - `/ll:confidence-check` - 2026-08-02T20:40:27 - `3a335d2c-6a4c-4144-a579-513545967cf2.jsonl`
 - `/ll:confidence-check` - 2026-08-02T20:22:09 - `2a315922-1352-4ff5-a67d-ada57eca27ce.jsonl`
 - `/ll:confidence-check` - 2026-08-02T20:06:29 - `4124e8ee-9f3a-4499-b26f-15aa9a2bb6f8.jsonl`

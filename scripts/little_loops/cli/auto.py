@@ -11,6 +11,7 @@ from uuid import uuid4
 from little_loops.cli.output import configure_output
 from little_loops.cli_args import (
     add_common_auto_args,
+    add_force_implement_arg,
     add_skip_learning_gate_arg,
     parse_issue_ids,
     parse_issue_ids_ordered,
@@ -53,6 +54,7 @@ Examples:
         # Add common arguments from shared module
         add_common_auto_args(parser)
         add_skip_learning_gate_arg(parser)
+        add_force_implement_arg(parser)
 
         # Add tool-specific arguments
         parser.add_argument(
@@ -109,6 +111,7 @@ Examples:
             verbose=args.verbose or not args.quiet,
             preview_full=args.verbose,
             skip_learning_gate=args.skip_learning_gate,
+            force_implement=args.force_implement,
             run_id=uuid4().hex,
         )
 

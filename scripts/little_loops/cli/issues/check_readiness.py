@@ -5,10 +5,95 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
+
+
+@dataclass
+class ReadinessStatus:
+    """An issue's confidence/outcome scores against configured thresholds.
+
+    Deliberately has no combined ``passed`` property: `cmd_check_readiness`
+    requires both `meets_readiness` and `meets_outcome` and ignores `enabled`,
+    while the `ll-auto` pre-Phase-1 gate (BUG-3004) consults `enabled` and
+    `meets_readiness` only, mirroring `manage-issue` Phase 2.5 exactly. Folding
+    these into one verdict would make one caller wrong.
+    """
+
+    confidence: int
+    outcome: int
+    readiness_threshold: int
+    outcome_threshold: int
+    enabled: bool
+
+    @property
+    def meets_readiness(self) -> bool:
+        """Mirrors manage-issue Phase 2.5 — readiness only."""
+        return self.confidence >= self.readiness_threshold
+
+    @property
+    def meets_outcome(self) -> bool:
+        return self.outcome >= self.outcome_threshold
+
+
+def readiness_status(
+    config: BRConfig,
+    issue_id: str,
+    *,
+    default_readiness: int = 85,
+    default_outcome: int = 65,
+) -> ReadinessStatus | None:
+    """Resolve an issue's readiness status, or None if the issue can't be found.
+
+    Threshold resolution stays the absence-sensitive raw-JSON read this
+    replaces (moved verbatim, not re-sourced from `config.commands.confidence_gate`):
+    `default_readiness`/`default_outcome` win only when the `commands.confidence_gate`
+    keys are absent from `ll-config.json`. `ConfidenceGateConfig` always populates
+    non-None defaults, so it cannot express "absent" and would break the
+    `--readiness`/`--outcome` CLI fallback the `autodev.yaml` call sites depend on.
+
+    Args:
+        config: Project configuration
+        issue_id: Issue ID or path to resolve
+        default_readiness: Fallback readiness threshold when unset in config
+        default_outcome: Fallback outcome threshold when unset in config
+
+    Returns:
+        ReadinessStatus, or None if the issue could not be resolved.
+    """
+    from little_loops.cli.issues.show import _resolve_issue_id
+    from little_loops.frontmatter import parse_frontmatter
+
+    config_path = config.project_root / ".ll" / "ll-config.json"
+    enabled = False
+    try:
+        raw = json.loads(config_path.read_text())
+        cg = raw.get("commands", {}).get("confidence_gate", {})
+        readiness = cg.get("readiness_threshold", default_readiness)
+        outcome = cg.get("outcome_threshold", default_outcome)
+        enabled = bool(cg.get("enabled", False))
+    except Exception:
+        readiness = default_readiness
+        outcome = default_outcome
+
+    path = _resolve_issue_id(config, issue_id)
+    if path is None:
+        return None
+
+    fm = parse_frontmatter(path.read_text(), coerce_types=True)
+    confidence = int(fm.get("confidence_score") or 0)
+    outcome_val = int(fm.get("outcome_confidence") or 0)
+
+    return ReadinessStatus(
+        confidence=confidence,
+        outcome=outcome_val,
+        readiness_threshold=readiness,
+        outcome_threshold=outcome,
+        enabled=enabled,
+    )
 
 
 def cmd_check_readiness(config: BRConfig, args: argparse.Namespace) -> int:
@@ -17,6 +102,8 @@ def cmd_check_readiness(config: BRConfig, args: argparse.Namespace) -> int:
     Reads thresholds from ll-config.json (commands.confidence_gate), falling
     back to the values supplied via --readiness / --outcome CLI args so callers
     can pass loop-context defaults without special-casing the config file.
+    Requires both thresholds and ignores `enabled` — unchanged behavior,
+    reimplemented over `readiness_status()`.
 
     Args:
         config: Project configuration
@@ -25,29 +112,14 @@ def cmd_check_readiness(config: BRConfig, args: argparse.Namespace) -> int:
     Returns:
         0 if both thresholds are met, 1 otherwise
     """
-    from little_loops.cli.issues.show import _resolve_issue_id
-    from little_loops.frontmatter import parse_frontmatter
-
-    default_readiness: int = args.readiness
-    default_outcome: int = args.outcome
-
-    config_path = config.project_root / ".ll" / "ll-config.json"
-    try:
-        raw = json.loads(config_path.read_text())
-        cg = raw.get("commands", {}).get("confidence_gate", {})
-        readiness = cg.get("readiness_threshold", default_readiness)
-        outcome = cg.get("outcome_threshold", default_outcome)
-    except Exception:
-        readiness = default_readiness
-        outcome = default_outcome
-
-    path = _resolve_issue_id(config, args.issue_id)
-    if path is None:
+    status = readiness_status(
+        config,
+        args.issue_id,
+        default_readiness=args.readiness,
+        default_outcome=args.outcome,
+    )
+    if status is None:
         print(f"Error: Issue '{args.issue_id}' not found.", file=sys.stderr)
         return 1
 
-    fm = parse_frontmatter(path.read_text(), coerce_types=True)
-    confidence = int(fm.get("confidence_score") or 0)
-    outcome_val = int(fm.get("outcome_confidence") or 0)
-
-    return 0 if (confidence >= readiness and outcome_val >= outcome) else 1
+    return 0 if (status.meets_readiness and status.meets_outcome) else 1

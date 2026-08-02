@@ -220,6 +220,18 @@ def add_skip_learning_gate_arg(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_force_implement_arg(parser: argparse.ArgumentParser) -> None:
+    """Add --force-implement argument to bypass the pre-Phase-1 confidence gate."""
+    parser.add_argument(
+        "--force-implement",
+        action="store_true",
+        help=(
+            "Bypass the confidence gate (BUG-3004): skip the pre-Phase-1 readiness "
+            "check and append --force-implement to the manage-issue invocation"
+        ),
+    )
+
+
 def add_max_issues_arg(parser: argparse.ArgumentParser) -> None:
     """Add --max-issues/-m argument for limiting issues processed."""
     parser.add_argument(

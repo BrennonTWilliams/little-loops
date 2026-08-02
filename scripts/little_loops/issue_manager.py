@@ -629,6 +629,7 @@ def process_issue_inplace(
     sprint_context: SprintWorkerContext | None = None,
     context_limit: int | None = None,
     skip_learning_gate: bool = False,
+    force_implement: bool = False,
     run_id: str | None = None,
     driver: str | None = None,
     db_path: Path | str | None = None,
@@ -651,6 +652,9 @@ def process_issue_inplace(
         on_usage_detailed: Optional callback invoked with a TokenUsage dataclass
             (including the resolved model ID) from each stream-json result event.
             Passed through to all run_claude_command calls (BUG-2757).
+        force_implement: Bypasses the pre-Phase-1 confidence gate (BUG-3004) and
+            is threaded through to the Phase 2 `/ll:manage-issue` invocation so
+            its own Phase 2.5 gate is bypassed consistently.
         run_id: Orchestration run this issue belongs to (ENH-2866).
         driver: Producer identity for the stamp (``ll-auto`` / ``ll-sprint``).
         db_path: History database the stamp is written to.
@@ -716,6 +720,38 @@ def process_issue_inplace(
             pass  # never block execution on state write failures
         if _external_on_usage is not None:
             _external_on_usage(input_tokens, output_tokens)
+
+    # BUG-3004: pre-Phase-1 confidence gate. `ll-auto` used to spend a full
+    # `/ll:ready-issue` pass on issues `manage-issue` Phase 2.5 would
+    # immediately halt on. Hoisted here (rather than at the Phase 2 site
+    # below) so both the gate and Phase 2's action resolution share one call.
+    # Suppressed under `dry_run` (mirrors the decision/learning gates below)
+    # and for `verify`/`plan` actions, since `manage-issue` Phase 2.5 itself
+    # skips the confidence gate for those actions (SKILL.md).
+    action = config.get_category_action(info.issue_type)
+    if not force_implement and not dry_run and action not in ("verify", "plan"):
+        from little_loops.cli.issues.check_readiness import readiness_status
+
+        status = readiness_status(config, info.issue_id)
+        if status is not None and status.enabled and not status.meets_readiness:
+            logger.warning(
+                f"{info.issue_id}: below readiness threshold "
+                f"(confidence {status.confidence} < {status.readiness_threshold})"
+            )
+            # Stable, greppable marker for FSM loops that implement via
+            # `ll-auto --only` — mirrors LEARNING_GATE_BLOCKED
+            # (issue_manager.py:991-997). Without it, a gate refusal is
+            # indistinguishable from a genuine implementation failure.
+            print(f"CONFIDENCE_GATE_BLOCKED {info.issue_id}", flush=True)
+            return _stamped_result(
+                success=False,
+                duration=time.time() - issue_start_time,
+                issue_id=info.issue_id,
+                failure_reason=(
+                    f"below_readiness_threshold "
+                    f"({status.confidence} < {status.readiness_threshold})"
+                ),
+            )
 
     # Phase 1: Ready/verify the issue
     logger.info(f"Phase 1: Verifying issue {info.issue_id}...")
@@ -1017,7 +1053,7 @@ def process_issue_inplace(
                 )
 
     # Phase 2: Implement the issue (with automatic continuation on context handoff)
-    action = config.get_category_action(info.issue_type)
+    # `action` was already resolved by the pre-Phase-1 confidence gate above.
     logger.info(f"Phase 2: Implementing {info.issue_id}...")
     _baseline_sha_result = subprocess.run(
         ["git", "rev-parse", "HEAD"], capture_output=True, text=True
@@ -1048,10 +1084,11 @@ def process_issue_inplace(
             # Pre-expand the skill so the subprocess needs no ToolSearch.
             # Pass the short slash command as resume_command so continuation
             # rounds stay compact (not hundreds of lines).
-            _slash_cmd = f"/ll:manage-issue {type_name} {action} {issue_arg}"
-            _initial_cmd = (
-                expand_skill("manage-issue", [type_name, action, issue_arg], config) or _slash_cmd
-            )
+            _manage_args = [type_name, action, issue_arg]
+            if force_implement:
+                _manage_args.append("--force-implement")
+            _slash_cmd = "/ll:manage-issue " + " ".join(_manage_args)
+            _initial_cmd = expand_skill("manage-issue", _manage_args, config) or _slash_cmd
             result = run_with_continuation(
                 _initial_cmd,
                 logger,
@@ -1330,6 +1367,7 @@ class AutoManager:
         preview_full: bool = False,
         db_path: Path | None = None,
         skip_learning_gate: bool = False,
+        force_implement: bool = False,
         run_id: str | None = None,
     ) -> None:
         """Initialize the auto manager.
@@ -1350,6 +1388,8 @@ class AutoManager:
             preview_full: If True, show full command content without truncation (--verbose flag).
             db_path: Optional history database override.
             skip_learning_gate: Whether to bypass per-issue learning-test checks.
+            force_implement: Whether to bypass the pre-Phase-1 confidence gate
+                (BUG-3004) and force `/ll:manage-issue --force-implement`.
             run_id: Opaque ID shared by every issue in this top-level invocation.
         """
         self.config = config
@@ -1364,6 +1404,7 @@ class AutoManager:
         self.label_filter = label_filter
         self._preview_full = preview_full
         self.skip_learning_gate = skip_learning_gate
+        self.force_implement = force_implement
         self.db_path = db_path or DEFAULT_DB_PATH
         self.run_id = run_id or uuid4().hex
 
@@ -1718,6 +1759,7 @@ class AutoManager:
                 event_bus=self.event_bus,
                 context_limit=resolved_limit,
                 skip_learning_gate=self.skip_learning_gate,
+                force_implement=self.force_implement,
                 # ENH-2866: identity for the dequeue-time base-state write,
                 # landed on the same (run_id, issue_id) as the terminal write below.
                 run_id=self.run_id,

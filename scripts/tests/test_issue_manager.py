@@ -460,6 +460,7 @@ READY
 
         # Create mock config
         mock_config = MagicMock(spec=BRConfig)
+        mock_config.project_root = temp_project_dir
         mock_config.repo_path = temp_project_dir
         mock_config.automation = MagicMock()
         mock_config.automation.timeout_seconds = 60
@@ -4798,3 +4799,229 @@ class TestDequeueTimeBaseStateStamp:
 
         assert result.base_sha == "carried"
         assert result.base_dirty is False
+
+
+class TestConfidenceGatePreCheck:
+    """BUG-3004: process_issue_inplace() gates before Phase 1 rather than
+    letting manage-issue's own Phase 2.5 halt after a wasted ready-issue pass."""
+
+    @pytest.fixture
+    def mock_config(self, temp_project_dir: Path) -> BRConfig:
+        config = MagicMock(spec=BRConfig)
+        config.project_root = temp_project_dir
+        config.repo_path = temp_project_dir
+        config.automation = MagicMock()
+        config.automation.timeout_seconds = 60
+        config.automation.stream_output = False
+        config.automation.idle_timeout_seconds = 0
+        config.automation.max_continuations = 3
+        config.automation.ready_issue_unknown_retries = 1
+        config.get_category_action.return_value = "fix"
+        config.get_state_file.return_value = temp_project_dir / ".auto-state.json"
+        return config
+
+    @pytest.fixture
+    def sample_issue(self, temp_project_dir: Path) -> IssueInfo:
+        issues_dir = temp_project_dir / ".issues" / "bugs"
+        issues_dir.mkdir(parents=True)
+        issue_file = issues_dir / "P1-BUG-001-test-bug.md"
+        issue_file.write_text("# BUG-001: Test Bug\n\n## Summary\nTest")
+        return IssueInfo(
+            path=issue_file,
+            issue_type="bugs",
+            priority="P1",
+            issue_id="BUG-001",
+            title="Test Bug",
+        )
+
+    def _status(self, **kwargs: Any):  # type: ignore[no-untyped-def]
+        from little_loops.cli.issues.check_readiness import ReadinessStatus
+
+        defaults: dict[str, Any] = {
+            "confidence": 50,
+            "outcome": 50,
+            "readiness_threshold": 85,
+            "outcome_threshold": 65,
+            "enabled": True,
+        }
+        defaults.update(kwargs)
+        return ReadinessStatus(**defaults)
+
+    def test_gate_disabled_runs_phase_1(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        """With enabled=False, a sub-threshold score must not block Phase 1
+        (protects every pre-existing fixture that has no confidence_score)."""
+        from little_loops.issue_manager import process_issue_inplace
+
+        status = self._status(confidence=0, enabled=False)
+        with (
+            patch(
+                "little_loops.cli.issues.check_readiness.readiness_status",
+                return_value=status,
+            ),
+            patch(
+                "little_loops.issue_manager.run_claude_command",
+                return_value=MagicMock(returncode=1, stdout="", stderr=""),
+            ) as mock_ready,
+        ):
+            process_issue_inplace(sample_issue, mock_config, MagicMock())
+
+        mock_ready.assert_called()
+
+    def test_sub_threshold_score_skips_before_phase_1(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        from little_loops.issue_manager import process_issue_inplace
+
+        status = self._status(confidence=80, readiness_threshold=85)
+        with (
+            patch(
+                "little_loops.cli.issues.check_readiness.readiness_status",
+                return_value=status,
+            ),
+            patch("little_loops.issue_manager.run_claude_command") as mock_ready,
+        ):
+            result = process_issue_inplace(sample_issue, mock_config, MagicMock())
+
+        mock_ready.assert_not_called()
+        assert result.success is False
+        assert result.failure_reason == "below_readiness_threshold (80 < 85)"
+
+    def test_sub_threshold_prints_confidence_gate_blocked_marker(
+        self,
+        mock_config: BRConfig,
+        sample_issue: IssueInfo,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        from little_loops.issue_manager import process_issue_inplace
+
+        status = self._status(confidence=80, readiness_threshold=85)
+        with (
+            patch(
+                "little_loops.cli.issues.check_readiness.readiness_status",
+                return_value=status,
+            ),
+            patch("little_loops.issue_manager.run_claude_command"),
+        ):
+            process_issue_inplace(sample_issue, mock_config, MagicMock())
+
+        out = capsys.readouterr().out
+        assert "CONFIDENCE_GATE_BLOCKED BUG-001" in out
+        assert "LEARNING_GATE_BLOCKED" not in out
+        assert "IMPLEMENT_FAILED" not in out
+
+    def test_readiness_outcome_parity_matches_manage_issue(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        """Gate Parity: readiness only. confidence 90 >= 85 must NOT gate even
+        though outcome 60 < 65 — matching manage-issue Phase 2.5, which never
+        reads outcome_confidence. (cmd_check_readiness on the same scores would
+        still exit 1 — see test_check_readiness.py.)"""
+        from little_loops.issue_manager import process_issue_inplace
+
+        status = self._status(confidence=90, outcome=60, readiness_threshold=85, outcome_threshold=65)
+        with (
+            patch(
+                "little_loops.cli.issues.check_readiness.readiness_status",
+                return_value=status,
+            ),
+            patch(
+                "little_loops.issue_manager.run_claude_command",
+                return_value=MagicMock(returncode=1, stdout="", stderr=""),
+            ) as mock_ready,
+        ):
+            process_issue_inplace(sample_issue, mock_config, MagicMock())
+
+        mock_ready.assert_called()
+
+    def test_verify_action_does_not_gate(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        """Second Gate Parity hole: manage-issue skips Phase 2.5 for verify/plan
+        actions, so the pre-gate must not fire for them either."""
+        from little_loops.issue_manager import process_issue_inplace
+
+        mock_config.get_category_action.return_value = "verify"
+        status = self._status(confidence=0, readiness_threshold=85)
+        with (
+            patch(
+                "little_loops.cli.issues.check_readiness.readiness_status",
+                return_value=status,
+            ),
+            patch(
+                "little_loops.issue_manager.run_claude_command",
+                return_value=MagicMock(returncode=1, stdout="", stderr=""),
+            ) as mock_ready,
+        ):
+            process_issue_inplace(sample_issue, mock_config, MagicMock())
+
+        mock_ready.assert_called()
+
+    def test_plan_action_does_not_gate(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        from little_loops.issue_manager import process_issue_inplace
+
+        mock_config.get_category_action.return_value = "plan"
+        status = self._status(confidence=0, readiness_threshold=85)
+        with (
+            patch(
+                "little_loops.cli.issues.check_readiness.readiness_status",
+                return_value=status,
+            ),
+            patch(
+                "little_loops.issue_manager.run_claude_command",
+                return_value=MagicMock(returncode=1, stdout="", stderr=""),
+            ) as mock_ready,
+        ):
+            process_issue_inplace(sample_issue, mock_config, MagicMock())
+
+        mock_ready.assert_called()
+
+    def test_dry_run_does_not_gate_or_print_marker(
+        self,
+        mock_config: BRConfig,
+        sample_issue: IssueInfo,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        from little_loops.issue_manager import process_issue_inplace
+
+        status = self._status(confidence=0, readiness_threshold=85)
+        with patch(
+            "little_loops.cli.issues.check_readiness.readiness_status",
+            return_value=status,
+        ):
+            result = process_issue_inplace(sample_issue, mock_config, MagicMock(), dry_run=True)
+
+        out = capsys.readouterr().out
+        assert "CONFIDENCE_GATE_BLOCKED" not in out
+        assert result.success is not False or result.failure_reason == ""
+
+    def test_force_implement_bypasses_pre_gate_and_appends_flag(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        """Mirrors test_skip_learning_gate_bypasses_gate_and_runs_implement's shape."""
+        from little_loops.issue_manager import process_issue_inplace
+
+        status = self._status(confidence=0, readiness_threshold=85)
+        fail_ready = MagicMock(returncode=1, stdout="", stderr="")
+        impl_result = MagicMock(returncode=0, stdout="", stderr="")
+
+        with (
+            patch(
+                "little_loops.cli.issues.check_readiness.readiness_status",
+                return_value=status,
+            ),
+            patch("little_loops.issue_manager.run_claude_command", return_value=fail_ready),
+            patch(
+                "little_loops.issue_manager.run_with_continuation", return_value=impl_result
+            ) as mock_impl,
+            patch("little_loops.issue_manager.verify_issue_completed", return_value=True),
+            patch("little_loops.issue_manager.check_git_status", return_value=False),
+        ):
+            process_issue_inplace(sample_issue, mock_config, MagicMock(), force_implement=True)
+
+        mock_impl.assert_called_once()
+        called_cmd = mock_impl.call_args[0][0]
+        assert "--force-implement" in called_cmd

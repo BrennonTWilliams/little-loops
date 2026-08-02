@@ -344,6 +344,9 @@ Process all backlog issues sequentially in priority order. On startup, `ll-auto`
 | `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 | `--context-limit` | | Override context window token estimate |
 | `--skip-learning-gate` | | Bypass the per-issue learning-test pre-flight gate (for emergency runs when `learning_tests.enabled` is true) |
+| `--force-implement` | | Bypass the pre-Phase-1 confidence gate (BUG-3004) and append `--force-implement` to the `/ll:manage-issue` invocation |
+
+**Pre-Phase-1 confidence gate (BUG-3004):** when `commands.confidence_gate.enabled` is `true`, `ll-auto` checks each issue's `confidence_score` against `readiness_threshold` *before* running `/ll:ready-issue` — the same comparison `manage-issue` Phase 2.5 makes, mirrored so a sub-threshold issue never burns a full ready-issue pass just to halt at Phase 2. A sub-threshold issue is skipped and reported via the `failed` channel with reason `below_readiness_threshold (N < M)`, plus a `CONFIDENCE_GATE_BLOCKED <id>` stdout marker FSM loops can route on. The gate is suppressed under `--dry-run` and for categories configured with `action: verify` or `action: plan` (manage-issue itself skips Phase 2.5 for those actions). This inherits into `ll-sprint`'s two `process_issue_inplace()` call sites as well, with no bypass flag of its own today. **Accepted behavior change:** a sub-threshold issue no longer reaches `/ll:ready-issue`'s CLOSE path, so stale/invalid sub-threshold issues need `/ll:confidence-check` or `--force-implement` to unstick rather than auto-closing.
 
 **Examples:**
 ```bash
