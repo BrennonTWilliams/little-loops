@@ -1,0 +1,11 @@
+{
+  "id": "b70190df-b01b-4876-b238-3d657cd829a2",
+  "type": "decision",
+  "timestamp": "2026-08-02T13:46:26Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "reconcile-issue is starved: 1703 issues refined vs 19 reconciled; the autodev gate fires only on a readiness plateau, one-shot per issue.",
+  "rule": "Captured: Route reconcile-issue on contradiction not only plateau",
+  "scope": "issue",
+  "issue": "ENH-2992"
+}
