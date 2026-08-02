@@ -20,12 +20,12 @@ depends_on:
 - BUG-3001
 - BUG-3003
 decision_needed: false
-confidence_score: 80
-outcome_confidence: 75
-score_complexity: 14
+confidence_score: 98
+outcome_confidence: 82
+score_complexity: 16
 score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 18
+score_ambiguity: 22
+score_change_surface: 19
 ---
 
 # BUG-3002: autodev routes design_gate_failed to reconcile-issue, whose contract excludes the Program Design section
@@ -648,6 +648,8 @@ _Added by `/ll:refine-issue` — based on codebase re-check:_
 - `commands/refine-issue.md` line citations above (`:372-374` for Step 5a) are now stale — the file changed again after this issue's most recent refine pass. The Program Design template in Step 5a currently lives at lines 376-388, not 372-374 (`:372-374` is now the Root Cause template example). The Step 6.7 citations (`:737`, `:753`, `:829`, `:859`) are still substantively accurate (Step 6.7's heading is now at `:741`, a one-line drift). Neither shift changes this issue's scope or conclusions — reference `commands/refine-issue.md`'s current content directly during implementation rather than these line numbers. [locator finding]
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-02T18:51:33 - `b1ebc156-6c0d-4467-8083-0cca9e6e9a52.jsonl`
+- `/ll:ready-issue` - 2026-08-02T18:46:27 - `7cac88e2-2b28-447a-81f8-098fcff1cd67.jsonl`
 - `/ll:ready-issue` - 2026-08-02T18:29:25 - `a4a2ec47-afaf-4693-a4bc-7ad2a1747435.jsonl`
 - `/ll:refine-issue` - 2026-08-02T18:26:12 - `d69ad2ba-fe5b-4482-9f62-1ac8277e1ec0.jsonl`
 - `/ll:refine-issue` - 2026-08-02T16:57:00 - `68d927d9-c11c-4d1e-89b3-a56472ca2633.jsonl`
