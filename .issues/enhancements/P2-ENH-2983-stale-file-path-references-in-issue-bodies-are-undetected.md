@@ -14,6 +14,12 @@ labels:
 - format-check
 - data-quality
 testable: true
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 16
+score_test_coverage: 22
+score_ambiguity: 22
+score_change_surface: 22
 ---
 
 # ENH-2983: Stale file path references in issue bodies are undetected
@@ -105,6 +111,150 @@ Then `format-check` gains a `stale_file_ref` gap class listing the `stale`
 references per issue. Reporting only — auto-fix is out of scope (a moved file
 cannot be re-pointed safely without knowing intent).
 
+## Integration Map
+
+_Added by `/ll:refine-issue` — based on codebase research:_
+
+### Files to Modify
+
+- `scripts/little_loops/text_utils.py` — home of `extract_file_paths()`, the
+  existing extractor this issue's classifier consumes.
+- `scripts/little_loops/issue_parser.py` — `FormatGaps` dataclass and
+  `check_format_gaps()`, where the new `stale_file_ref` field and detection
+  block land.
+- `scripts/little_loops/cli/issues/format_check.py` — `cmd_format_check()`
+  and `_print_gaps()`, where the new gap class is wired into CLI output and
+  the `--format json` path.
+
+### Dependent Files (Callers/Importers)
+
+- `scripts/little_loops/issues/anchor_sweep.py` (`_sweep_file()`) and
+  `scripts/little_loops/issues/anchors.py` (`resolve_anchor()`) — the
+  adjacent `file:NNN` resolution path this issue's classifier does not
+  replace or share code with (see Proposed Solution → Codebase Research
+  Findings).
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/issues/format_check.py` (`cmd_format_check()`) —
+  if `check_format_gaps()` grows a `ref_index`/`RefIndex` parameter (mirroring
+  the existing `issue_statuses` parameter, per Conventions in Force), **all
+  four** of `cmd_format_check()`'s call sites need the new argument threaded
+  through, not just one: lines 236-240, 247-251, 274-278, 285-289 (single-ID
+  path, `--all` path, and the post-`--fix` re-checks). `build_ref_index()`
+  itself must be called exactly once per invocation here, ahead of any of
+  these four call sites — this is also the "at most once" AC's natural home.
+- `scripts/little_loops/dependency_mapper/analysis.py` (`find_file_overlaps()`,
+  line ~297) and `scripts/little_loops/issue_history/parsing.py`
+  (`_extract_paths_from_issue()`, line 484) both call the same
+  `extract_file_paths()` this issue's classifier consumes, for unrelated
+  purposes (issue-overlap detection, path listing) — confirmed via codebase
+  trace they do **not** independently reimplement stale-path classification
+  and need no change for this issue. Recorded here only to close out the
+  issue's own "each hand-rolling `extract_file_paths()` + `Path.exists()`"
+  claim: no third private copy of that anti-pattern was found anywhere under
+  `scripts/little_loops/`.
+
+### Conventions in Force
+
+- Adding a `format-check` gap class touches exactly four places, in this
+  order, for every existing class (`prose_dep_drift`/`stale_prose_dep`,
+  `multi_frontmatter`, `deprecated_key`, `program_design_nonspecific`,
+  `testable`): (1) a `list[str]` field on `FormatGaps`
+  (`issue_parser.py:232-249`); (2) the same field added to both `has_gaps`
+  (`issue_parser.py:252-266`) and `to_dict()` (`issue_parser.py:268-282`);
+  (3) detection logic inline in `check_format_gaps()`
+  (`issue_parser.py:308-500`); (4) a matching `for entry in gaps.<field>`
+  loop in `_print_gaps()` (`format_check.py:131-153`) plus the class name
+  added to the `--help` string (`format_check.py:61-64`). Skipping step 4 is
+  a live, named regression — `cmd_format_check()`'s own docstring
+  (`format_check.py:163-165`) calls out that a class counted by `has_gaps`
+  but not rendered exits 1 with an empty report (the `testable` regression,
+  ENH-2946). This is the strongest evidence the "3. Add the `stale_file_ref`
+  gap class" implementation step must hit all four, not just the `FormatGaps`
+  field.
+- `prose_dep_drift`/`stale_prose_dep` (`issue_parser.py:462-487`) is the
+  closest existing analog to this issue's `stale`/`resolved`/etc. split: both
+  need a corpus- or repo-wide index built once and threaded into
+  `check_format_gaps()` as a parameter (mirroring `issue_statuses: dict[str,
+  str] | None`), and both distinguish two+ outcomes from one raw extraction
+  pass rather than a single boolean.
+- `check_format_gaps()` fails open throughout — unreadable file, undetermined
+  type, unloadable template all return an empty `FormatGaps()` early, and the
+  prose-dependency block is skipped entirely when its index argument is
+  `None`. A new `stale_file_ref` check should follow the same
+  never-block-format-check-without-an-index convention rather than raising.
+
+### Tests
+
+- `scripts/tests/test_text_utils.py` — existing coverage for
+  `extract_file_paths()`.
+- `scripts/tests/test_ll_issues_format_check.py` — one dedicated
+  `class Test<GapName>` per gap class (e.g. the `prose_dep_drift`/
+  `stale_prose_dep` class at line 437), using a shared `_write_issue()` /
+  `_invoke()` helper pair (lines 64, 70-75) and asserting both printed text
+  and `--format json` dict shape (lines 331-332, 465) — the fixture pattern
+  for the new `stale_file_ref` tests.
+- `scripts/tests/test_issues_anchors.py` — `TestResolveAnchorFallback`
+  (lines 110-126) is the closest existing precedent for the ordering
+  assertion this issue's AC demands (bare `SKILL.md` must not
+  suffix-match): one grouped test class per outcome family, each writing a
+  real fixture via `tmp_path`.
+- Subprocess call-count assertion idiom for the "index built at most once"
+  AC: `mock_run.call_count == N` against a patched `subprocess.run` —
+  established at `test_sync.py:883/1415/1631/1655`,
+  `test_work_verification.py:326/397/496/507`,
+  `test_session_store_lifecycle.py:1180/1194/1207/1237`.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_text_utils.py` — verified this file has **no existing
+  tests for `extract_file_paths()` at all** (only `TestExtractWords`,
+  `TestCalculateWordOverlap`, `TestScoreBM25`). The extractor's actual
+  coverage lives in `scripts/tests/test_dependency_mapper.py`
+  (`class TestExtractFilePaths`, lines ~70-130), which imports it via the
+  `little_loops.dependency_mapper` re-export — confirmed same underlying
+  function (`text_utils.py:54` is the only definition). This issue's
+  `classify_file_ref()`/`build_ref_index()`/`classify_issue_refs()` tests
+  have no existing class to extend in `test_text_utils.py` — they will be a
+  wholly new test class there, not an addition to an existing one.
+  `test_dependency_mapper.py` itself needs no new coverage for this issue.
+- `scripts/tests/test_ll_issues_format_check.py:1047-1069`
+  (`test_every_format_gaps_field_is_rendered`) is a reflection-based test
+  that introspects `dataclasses.fields(FormatGaps)` and asserts every field
+  renders in `_print_gaps()` output — it will **automatically cover** the
+  new `stale_file_ref` field once added (no test edit needed), and is the
+  regression guard the `testable`-class incident (ENH-2946) should have had.
+- No existing test in `scripts/tests/` mocks a `git ls-files` subprocess call
+  beyond the three files already cited above — `test_codequery_fallback.py`
+  (which also shells to git) uses real `tmp_path` git repos instead of a
+  mocked `subprocess.run`, so it is not a fourth precedent. The "index built
+  at most once" AC test has no direct existing analog to copy verbatim;
+  budget time to establish the pattern, not just port it.
+
+### Documentation
+
+- `docs/reference/API.md` and `docs/reference/CLI.md` reference the
+  `format-check` gap-class list and `text_utils`/`FormatGaps` module surface;
+  both need the `stale_file_ref` class added alongside the existing eleven.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- The gap-class enumeration is duplicated in **two more places** the issue
+  didn't name, both needing `stale_file_ref` appended:
+  - `scripts/little_loops/cli/issues/__init__.py:115` — the top-level
+    `ll-issues --help` banner's `format-check` line, a third copy of the
+    string independent of `format_check.py`'s own `--help` (touch-point 4).
+  - `.claude/CLAUDE.md:256` (the `ll-issues` bullet under `## CLI Tools`) — a
+    fourth copy of the same enumeration.
+- `docs/reference/API.md` `#### check_format_gaps` (~lines 848-877) and
+  `docs/reference/CLI.md` `#### ll-issues format-check` (~lines 1747-1775)
+  are **already stale independent of this issue**: API.md says "reports nine
+  gap classes" and CLI.md says "seven," and both enumerations already omit
+  `multi_frontmatter` (API.md also omits `testable`) even though both classes
+  already ship in code. Adding `stale_file_ref` correctly here means
+  reconciling the pre-existing missing bullets in the same edit, not just
+  appending one line to an already-accurate list — otherwise the doc drift
+  this issue exists to detect would be re-introduced into the docs
+  describing the very tool that detects it.
+
 ## Program Design
 
 The classifier is a pure function of (reference string, repo state, line
@@ -137,6 +287,39 @@ symbol for *rewriting*; this classifies bare paths for *reporting*. Different
 input form, different output, no shared logic worth extracting. They stay
 separate.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `extract_file_paths()` (`scripts/little_loops/text_utils.py`) returns a bare
+  deduplicated `set[str]` — no line number, no surrounding context, and set
+  ordering is discarded. A caller needing the source line (as `planned_new`
+  classification does) cannot get it from this function as it stands; the
+  nearest existing precedent for "extract with a resolvable line number" is
+  `_locate_options_in_text()`/`LocatedOption` (`issue_parser.py:625-659`,
+  `565-603`), which walks each match back to its containing line via
+  `body.rfind("\n", 0, m.start()) + 1` and converts to an absolute 1-indexed
+  line with `content.count("\n", 0, abs_start) + 1`.
+- `anchor_sweep.py`'s `_sweep_file()`/`resolve_anchor()` (`issues/anchor_sweep.py`,
+  `issues/anchors.py`) has no fallback resolution at all — it does a direct
+  `Path(file_path).read_text(...)` against the literal captured string, with
+  no repo-root resolution and no basename/git-index lookup. A moved file and a
+  line number with no matching anchor pattern both collapse to the same
+  `skipped_refs += 1` outcome; they are not distinguished. This is concrete
+  confirmation of "why not reuse anchor_sweep" above — it has no resolution
+  fallback to donate, not just a different input form.
+- No `basename -> tracked paths` index exists anywhere in this codebase today.
+  Three independent call sites each shell out to `git ls-files` with no
+  caching and no shared helper: `_tracked_files()`
+  (`cli/verify_private_refs.py:338-352`, `-z`-split, manual decode),
+  `_tracked_py_files()` (`codequery/fallback.py:38-47`, glob-filtered,
+  `text=True`), and a single-file existence check in `issue_lifecycle.py:431`.
+  All three share the same convention worth following: `capture_output=True`,
+  explicit `returncode` check (not exception-based), fail-*empty* on error
+  (never raise). None builds a basename-keyed dict — `build_ref_index()` is a
+  genuinely new primitive, not a wrapper over an existing one, though the
+  `git ls-files` invocation shape can be copied directly from either site.
+
 ### Signatures
 
 ```python
@@ -167,6 +350,24 @@ def classify_issue_refs(content: str, index: RefIndex) -> dict[str, RefStatus]:
 - `/ll:refine-issue` triage (ENH-2971) → `classify_issue_refs()` — the second
   consumer, replacing its own extract-and-filter pass
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `@dataclass(frozen=True)` is the established shape for a "built once,
+  passed around" result/config object in this codebase (`tool_catalog.py:28`
+  `ToolDefinition`, `runner_spec.py:78` `ActionSpec`, `host_runner.py:119`
+  `HostCapabilities`, `issues/program_design.py:115` `DesignVerdict`,
+  `codequery/core.py:47` `CodeRef`). `RefIndex` as specified matches this
+  convention. No existing frozen dataclass wraps a `dict[str, list[str]]`
+  git-derived index specifically — this is a new instance of the pattern,
+  not a repeat of one.
+- `Literal[...]`-returning classifiers already exist in this codebase with
+  the same shape as `RefStatus` (`TamperPolicy` in
+  `test_tamper_guard.py:26`, `Provenance` in `init/introspect.py:24`,
+  `SubagentSupport` in `adapters/capabilities.py:41`) — no naming or typing
+  precedent conflict.
+
 ## Implementation Steps
 
 1. Add the classifier alongside `extract_file_paths()` (`text_utils.py`) or in
@@ -177,6 +378,46 @@ def classify_issue_refs(content: str, index: RefIndex) -> dict[str, RefStatus]:
 4. Refactor `/ll:refine-issue`'s triage predicate (ENH-2971) to consume the
    classifier instead of its own filter, if ENH-2971 has landed by then.
 5. Tests per Acceptance Criteria.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Thread the `RefIndex` built by `build_ref_index()` through all four
+   `check_format_gaps(...)` call sites in `cmd_format_check()`
+   (`format_check.py:236-240, 247-251, 274-278, 285-289`), building it exactly
+   once per invocation ahead of the first call — this is where the "index
+   built at most once" AC is actually enforced.
+7. Add the `stale_file_ref` line to the `format-check` gap-class enumeration
+   in the two additional copies found beyond `format_check.py`'s own
+   `--help`: `scripts/little_loops/cli/issues/__init__.py:115` (top-level
+   `ll-issues --help` banner) and `.claude/CLAUDE.md:256` (`ll-issues`
+   bullet).
+8. Update `docs/reference/API.md` (`#### check_format_gaps`) and
+   `docs/reference/CLI.md` (`#### ll-issues format-check`) — both are
+   already stale independent of this issue (undercounting the gap-class
+   total and omitting `multi_frontmatter`/`testable`); reconcile the
+   pre-existing omissions in the same edit that adds `stale_file_ref`.
+9. Add a `stale_file_ref:` paragraph to `check_format_gaps()`'s own
+   "Gap classes:" docstring block (`issue_parser.py:321-355`) — a distinct
+   sub-touch inside step 3 above, separate from the field/detection-logic
+   edits.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- Step 3's "add the gap class" touches four places, not one — see Integration
+  Map → Conventions in Force for the full four-touch-point list
+  (`FormatGaps` field, `has_gaps`/`to_dict()`, `check_format_gaps()`
+  detection block, `_print_gaps()` loop + `--help` string). The `testable`
+  regression (ENH-2946, cited in `format_check.py:163-165`) is a class that
+  was counted by `has_gaps` but never rendered — verifying `_print_gaps()`
+  output, not just `to_dict()`, is what would have caught it.
+- Step 5's test fixtures have direct existing precedent: see Integration Map
+  → Tests for the exact files and grouped-class pattern
+  (`test_ll_issues_format_check.py`, `test_issues_anchors.py`) and the
+  `mock_run.call_count` idiom for the "index built once" AC.
 
 ## Acceptance Criteria
 
@@ -221,6 +462,9 @@ def classify_issue_refs(content: str, index: RefIndex) -> dict[str, RefStatus]:
 _No documents linked._
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-02T02:48:20 - `e3e414c6-4f76-426a-bbfa-a5e6aa4966f4.jsonl`
+- `/ll:wire-issue` - 2026-08-02T02:46:33 - `3f249c91-800b-4cc1-b707-d5e908f8ee51.jsonl`
+- `/ll:refine-issue` - 2026-08-02T02:38:08 - `70aac82a-9945-426e-b13e-546fa705b440.jsonl`
 - `/ll:capture-issue` - 2026-08-02T01:11:44 - `9e1e4008-8bb1-4bf8-bf7a-3910e48d40f2.jsonl`
 
 ---

@@ -238,6 +238,7 @@ be deliberate).
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-02T02:45:59 - `3f249c91-800b-4cc1-b707-d5e908f8ee51.jsonl`
 - `/ll:capture-issue` - 2026-08-01T16:04:25 - `f9ef973a-acd3-40a7-a313-5e7a001f9a16.jsonl`
 
 ---
