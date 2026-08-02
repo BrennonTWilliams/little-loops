@@ -336,6 +336,7 @@ class TestFormatCheckJsonOutput:
             "multi_frontmatter": [],
             "testable": [],
             "stale_file_ref": [],
+            "unmarked_superseded_directive": [],
         }
 
     def test_gapped_issue_json_output(
@@ -560,9 +561,7 @@ class TestStaleFileRef:
             "See `scripts/little_loops/session_store.py` for details.",
         )
 
-        with patch(
-            "little_loops.text_utils.subprocess.run", return_value=_EMPTY_GIT_LS_FILES
-        ):
+        with patch("little_loops.text_utils.subprocess.run", return_value=_EMPTY_GIT_LS_FILES):
             result = _invoke(
                 ["ll-issues", "format-check", "--all", "--config", str(temp_project_dir)]
             )
@@ -583,9 +582,7 @@ class TestStaleFileRef:
             "See `SKILL.md` and skills/*/SKILL.md for details.",
         )
 
-        with patch(
-            "little_loops.text_utils.subprocess.run", return_value=_EMPTY_GIT_LS_FILES
-        ):
+        with patch("little_loops.text_utils.subprocess.run", return_value=_EMPTY_GIT_LS_FILES):
             result = _invoke(
                 ["ll-issues", "format-check", "--all", "--config", str(temp_project_dir)]
             )
@@ -606,9 +603,7 @@ class TestStaleFileRef:
             "See `scripts/little_loops/session_store.py` for details.",
         )
 
-        with patch(
-            "little_loops.text_utils.subprocess.run", return_value=_EMPTY_GIT_LS_FILES
-        ):
+        with patch("little_loops.text_utils.subprocess.run", return_value=_EMPTY_GIT_LS_FILES):
             result = _invoke(
                 [
                     "ll-issues",
@@ -662,9 +657,7 @@ class TestStaleFileRef:
         with patch(
             "little_loops.text_utils.subprocess.run", return_value=_EMPTY_GIT_LS_FILES
         ) as mock_run:
-            _invoke(
-                ["ll-issues", "format-check", "BUG-9404", "--config", str(temp_project_dir)]
-            )
+            _invoke(["ll-issues", "format-check", "BUG-9404", "--config", str(temp_project_dir)])
 
         assert mock_run.call_count == 1
 
@@ -701,6 +694,127 @@ class TestStaleFileRef:
             )
 
         assert mock_run.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# TestUnmarkedSupersededDirective (ENH-2995)
+# ---------------------------------------------------------------------------
+
+
+class TestUnmarkedSupersededDirective:
+    """``unmarked_superseded_directive`` gap class (ENH-2995).
+
+    Flags an issue whose ``### Codebase Research Findings`` block contains a
+    closed-list correction phrase while none of the three directive sections
+    (``## Implementation Steps``, ``### Files to Modify``,
+    ``## Acceptance Criteria``) carries a ``⚠ Superseded`` marker.
+    """
+
+    def _write_bug_with_steps(self, format_check_dir: Path, bug_id: str, steps_block: str) -> Path:
+        filename = f"P3-{bug_id}-test-bug.md"
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", f"id: {bug_id}") + "\n\n" + steps_block
+        return _write_issue(format_check_dir, filename, body)
+
+    def test_all_reports_correction_without_marker(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        steps_block = (
+            "## Implementation Steps\n\n"
+            "1. Add `pending_file` to the loop's `context:` block\n\n"
+            "### Codebase Research Findings\n\n"
+            "_Added by `/ll:refine-issue`:_\n\n"
+            "- Step 1 is wrong — context template resolution omits this field.\n"
+        )
+        self._write_bug_with_steps(format_check_dir, "BUG-9601", steps_block)
+
+        result = _invoke(["ll-issues", "format-check", "--all", "--config", str(temp_project_dir)])
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "unmarked_superseded_directive: P3-BUG-9601-test-bug.md" in out
+
+    def test_marked_line_is_not_flagged(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        steps_block = (
+            "## Implementation Steps\n\n"
+            "1. Add `pending_file` to the loop's `context:` block\n"
+            "   > ⚠ Superseded — omit entirely; see § Codebase Research Findings"
+            " under Implementation Steps\n\n"
+            "### Codebase Research Findings\n\n"
+            "_Added by `/ll:refine-issue`:_\n\n"
+            "- Step 1 is wrong — context template resolution omits this field.\n"
+        )
+        self._write_bug_with_steps(format_check_dir, "BUG-9602", steps_block)
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9602", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 0
+        assert "unmarked_superseded_directive" not in out
+
+    def test_correction_in_preserved_section_not_flagged(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Correction phrasing outside a `### Codebase Research Findings` block —
+        e.g. plain prose in `## Summary` — must not trigger the gap class. Only
+        the findings block itself is scanned."""
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", "id: BUG-9603").replace(
+            "## Summary\nA real problem happens under specific conditions.",
+            "## Summary\nA real problem happens under specific conditions. "
+            "This claim is wrong per the current codebase.",
+        )
+        _write_issue(format_check_dir, "P3-BUG-9603-test-bug.md", body)
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9603", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 0
+        assert "unmarked_superseded_directive" not in out
+
+    def test_single_id_json_reports_unmarked_superseded_directive(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        steps_block = (
+            "## Implementation Steps\n\n"
+            "1. Add `pending_file` to the loop's `context:` block\n\n"
+            "### Codebase Research Findings\n\n"
+            "_Added by `/ll:refine-issue`:_\n\n"
+            "- Step 1 is wrong — context template resolution omits this field.\n"
+        )
+        self._write_bug_with_steps(format_check_dir, "BUG-9604", steps_block)
+
+        result = _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9604",
+                "--format",
+                "json",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        payload = json.loads(capsys.readouterr()[0])
+
+        assert result == 1
+        assert payload["unmarked_superseded_directive"] == ["P3-BUG-9604-test-bug.md"]
 
 
 # ---------------------------------------------------------------------------

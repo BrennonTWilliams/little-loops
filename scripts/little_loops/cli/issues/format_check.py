@@ -61,7 +61,7 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
         help="Deterministic structural linter for issue formatting "
         "(missing/renamed/empty/boilerplate/malformed_id/prose_dep_drift/"
         "stale_prose_dep/program_design_nonspecific/deprecated_key/"
-        "multi_frontmatter/testable/stale_file_ref)",
+        "multi_frontmatter/testable/stale_file_ref/unmarked_superseded_directive)",
     )
     p.set_defaults(command="format-check")
     p.add_argument(
@@ -153,6 +153,8 @@ def _print_gaps(gaps: FormatGaps) -> None:
         print(f"  testable: {entry} (doc-only signals; set an explicit `testable:` key)")
     for entry in gaps.stale_file_ref:
         print(f"  stale_file_ref: {entry}")
+    for entry in gaps.unmarked_superseded_directive:
+        print(f"  unmarked_superseded_directive: {entry}")
 
 
 def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
@@ -160,7 +162,7 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
 
     Gap classes: missing/renamed/empty/boilerplate/malformed_id/
     prose_dep_drift/stale_prose_dep/program_design_nonspecific/deprecated_key/
-    multi_frontmatter/testable/stale_file_ref.
+    multi_frontmatter/testable/stale_file_ref/unmarked_superseded_directive.
 
     Every class in :class:`FormatGaps` must have a matching loop in
     :func:`_print_gaps`; a class counted by ``has_gaps`` but not rendered

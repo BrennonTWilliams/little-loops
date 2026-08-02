@@ -1,8 +1,9 @@
 ---
 id: ENH-2995
-status: open
+status: done
 priority: P2
 captured_at: '2026-08-02T13:43:01Z'
+completed_at: '2026-08-02T16:34:16Z'
 discovered_date: 2026-08-02
 discovered_by: capture-issue
 relates_to:
@@ -541,6 +542,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
   `program_design_nonspecific: []` — the gate passes.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-02T16:33:51 - `084006c1-2962-4f95-9700-c50b7f5bb421.jsonl`
 - `/ll:confidence-check` - 2026-08-02T15:55:04 - `de072167-1f81-49e9-8805-57d11b7bea51.jsonl`
 - `/ll:confidence-check` - 2026-08-02T15:35:10 - `54b8b61c-90df-41f1-af64-799342e6500a.jsonl`
 - `/ll:wire-issue` - 2026-08-02T15:30:11 - `d27699ab-a72d-4e7f-93a0-ed047b357fc4.jsonl`

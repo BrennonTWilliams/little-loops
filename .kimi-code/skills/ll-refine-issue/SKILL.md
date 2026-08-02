@@ -460,6 +460,52 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - [Finding 2 with file path and anchor reference]
 ```
 
+**Superseded-line annotation carve-out** (ENH-2995): a narrow exception to
+"Do NOT replace" — when this pass's own `### Codebase Research Findings`
+refute a specific directive line, **annotate** that line in place. This does
+not violate the Preservation Rule: the original line is never edited,
+reordered, or deleted — a marker is inserted as a new line immediately below
+it.
+
+- **Scope**: only `## Implementation Steps`, `### Files to Modify`, and
+  `## Acceptance Criteria`. Never `## Summary`, `## Motivation`,
+  `## Proposed Solution`, or any `### Option …` / `### Decision Rationale`
+  prose.
+- **Same pass only**: fires only when the refutation comes from THIS pass's
+  own research findings, never from re-reading a prior pass's appended
+  `### Codebase Research Findings` block.
+- **Refutation test**: a finding refutes a line when it names or quotes the
+  line and asserts it is wrong. Correction-phrase guidance (non-exhaustive —
+  a finding that plainly refutes the line in other words still qualifies):
+  `is wrong` · `does not exist` · `will not work` · `must be dropped` ·
+  `target file is wrong` · `is stale` · `omit entirely`.
+- **Marker text and placement**: insert as a new line immediately below the
+  refuted line, indented to that line's own content column (3 spaces under a
+  `1. ` step, 2 under a `- ` bullet) — never at column 0, which would both
+  terminate the enclosing CommonMark list and collide with
+  `_CRITERION_BULLET_PATTERN`/`_OPTION_PATTERNS` (`issue_parser.py`), which
+  key on `^\d+\.`/`^[-*]`:
+
+  ```markdown
+  1. Add `pending_file: "${context.run_dir}/pending.txt"` to the loop's `context:` block
+     > ⚠ Superseded — omit entirely; see § Codebase Research Findings under Implementation Steps
+  ```
+
+  The reason clause (≤10 words) is required — without it, multiple refuted
+  lines in one section get byte-identical markers and a reader must
+  re-derive the findings-to-line mapping by hand. This reuses the existing
+  stale-anchor blockquote shape (§ 5c Gap-Analysis Mode, "Stale anchor
+  repair") rather than inventing new marker syntax.
+- **Idempotent**: skip the insertion if the line immediately below already
+  contains the substring `⚠ Superseded` — containment on that stable prefix,
+  not exact-text equality, since the reason clause varies between passes.
+- **Bounded marker-removal right**: a marker is the one exception to "Do NOT
+  remove any existing content under any circumstance". If this pass's
+  findings no longer refute a line whose next line carries a `⚠ Superseded`
+  marker, delete that marker line — silently, no tombstone. Only lines
+  matching the marker convention are ever deletable; the refuted line and
+  every other line stay untouchable.
+
 ### 5b. Interactive Refinement (Skip in Auto Mode)
 
 **Skip this entire section if `AUTO_MODE` is true.**

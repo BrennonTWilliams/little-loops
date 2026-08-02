@@ -17,6 +17,12 @@ status: open
 depends_on:
 - BUG-3001
 decision_needed: false
+confidence_score: 80
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # BUG-3002: autodev routes design_gate_failed to reconcile-issue, whose contract excludes the Program Design section
@@ -413,7 +419,18 @@ logic across two commands.
 **Open** | Created: 2026-08-02 | Priority: P2
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-02_
+
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 75/100 → MODERATE
+
+### Concerns
+- `depends_on: BUG-3001` is a hard blocker for the selected Option A path, and BUG-3001 is currently `status: Open` (not yet implemented). Retargeting the remedy to `refine_for_design` before `/ll:refine-issue` actually populates `## Program Design` would just swap one non-working remedy for another. Do not begin Option A implementation until BUG-3001 lands; if BUG-3001 stalls, reconsider Option B as an interim unblock.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-02T16:24:56 - `79f2cbf6-efe9-4c5a-8ea6-c127c1fa8674.jsonl`
 - `/ll:wire-issue` - 2026-08-02T16:13:51 - `7350086a-c582-4853-bc33-c455a6cf8d34.jsonl`
 - `/ll:decide-issue` - 2026-08-02T15:59:14 - `7350086a-c582-4853-bc33-c455a6cf8d34.jsonl`
 - `/ll:refine-issue` - 2026-08-02T15:53:38 - `6f876dea-3115-4d85-82a1-939918043ab9.jsonl`

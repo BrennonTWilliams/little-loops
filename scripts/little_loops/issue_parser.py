@@ -253,6 +253,7 @@ class FormatGaps:
     multi_frontmatter: list[str] = field(default_factory=list)
     testable: list[str] = field(default_factory=list)
     stale_file_ref: list[str] = field(default_factory=list)
+    unmarked_superseded_directive: list[str] = field(default_factory=list)
 
     @property
     def has_gaps(self) -> bool:
@@ -270,6 +271,7 @@ class FormatGaps:
             or self.multi_frontmatter
             or self.testable
             or self.stale_file_ref
+            or self.unmarked_superseded_directive
         )
 
     def to_dict(self) -> dict[str, list[str]]:
@@ -287,6 +289,7 @@ class FormatGaps:
             "multi_frontmatter": self.multi_frontmatter,
             "testable": self.testable,
             "stale_file_ref": self.stale_file_ref,
+            "unmarked_superseded_directive": self.unmarked_superseded_directive,
         }
 
 
@@ -371,6 +374,19 @@ def check_format_gaps(
             Only reported when *ref_index* is given. When absent, this check
             fails open (no gaps reported), matching this module's existing
             convention.
+        unmarked_superseded_directive: an issue's ``### Codebase Research
+            Findings`` block contains a correction phrase from the closed
+            list below (ENH-2995) while none of the three directive sections
+            (``## Implementation Steps``, ``### Files to Modify``,
+            ``## Acceptance Criteria``) carries a ``⚠ Superseded`` marker.
+            Correction phrases: ``is wrong``, ``does not exist``,
+            ``will not work``, ``must be dropped``, ``target file is wrong``,
+            ``is stale``, ``omit entirely`` — the closed set /ll:refine-issue's
+            Preservation Rule carve-out uses as non-exhaustive LLM guidance;
+            here it is a closed detection list. Report-only, keyword-inference
+            heuristic (like ``testable``) — not proof the correction actually
+            refutes the specific line, only that the block and the marker are
+            both absent or present.
 
     Args:
         issue_path: Path to the issue markdown file.
@@ -527,7 +543,57 @@ def check_format_gaps(
             if status == "stale":
                 gaps.stale_file_ref.append(ref)
 
+    findings_bodies = _heading_bodies(content, "Codebase Research Findings")
+    has_correction = any(
+        phrase in body.lower()
+        for body in findings_bodies
+        for phrase in _SUPERSEDED_CORRECTION_PHRASES
+    )
+    if has_correction:
+        directive_bodies = [
+            body
+            for name in _SUPERSEDED_DIRECTIVE_SECTIONS
+            for body in _heading_bodies(content, name)
+        ]
+        if not any(_SUPERSEDED_MARKER_PREFIX in body for body in directive_bodies):
+            gaps.unmarked_superseded_directive.append(issue_path.name)
+
     return gaps
+
+
+# ENH-2995: closed detection list for the unmarked_superseded_directive gap
+# class — mirrors the non-exhaustive LLM guidance in
+# commands/refine-issue.md's Preservation Rule carve-out verbatim.
+_SUPERSEDED_CORRECTION_PHRASES = (
+    "is wrong",
+    "does not exist",
+    "will not work",
+    "must be dropped",
+    "target file is wrong",
+    "is stale",
+    "omit entirely",
+)
+_SUPERSEDED_DIRECTIVE_SECTIONS = ("Implementation Steps", "Files to Modify", "Acceptance Criteria")
+_SUPERSEDED_MARKER_PREFIX = "⚠ Superseded"
+
+
+def _heading_bodies(content: str, heading: str) -> list[str]:
+    """Return body text for every ``##``/``###`` occurrence of *heading*.
+
+    Each body stops at the next heading of equal-or-higher level. Supports
+    both levels since ``### Files to Modify`` is an H3 (nested under
+    ``## Integration Map``) while ``## Implementation Steps`` and
+    ``## Acceptance Criteria`` are H2 — unlike :func:`_section_body`, which
+    only matches ``##``.
+    """
+    bodies: list[str] = []
+    for match in re.finditer(rf"^(#{{2,3}})\s+{re.escape(heading)}\s*$", content, re.MULTILINE):
+        level = len(match.group(1))
+        start = match.end()
+        next_match = re.search(rf"^#{{1,{level}}}\s", content[start:], re.MULTILINE)
+        end = start + next_match.start() if next_match else len(content)
+        bodies.append(content[start:end])
+    return bodies
 
 
 # Ported verbatim from skills/format-issue/SKILL.md's Testable Inference section

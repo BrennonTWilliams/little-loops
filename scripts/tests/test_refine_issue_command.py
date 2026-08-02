@@ -219,6 +219,59 @@ class TestGapAnalysisMode:
         )
 
 
+class TestSupersededDirectiveMarker:
+    """Preservation Rule must document the `> ⚠ Superseded — ...` annotation
+    carve-out (ENH-2995): annotate-only, three directive sections, same-pass
+    refutation, idempotent, and the bounded marker-removal right.
+    """
+
+    def _preservation_rule_text(self) -> str:
+        content = COMMAND_FILE.read_text()
+        start = content.index("#### Preservation Rule")
+        end = content.index("### 5b. Interactive Refinement")
+        return content[start:end]
+
+    def test_superseded_marker_documented(self) -> None:
+        text = self._preservation_rule_text()
+        assert "⚠ Superseded" in text, (
+            "Preservation Rule must document the `> ⚠ Superseded — ...` marker text"
+        )
+
+    def test_scope_limited_to_three_directive_sections(self) -> None:
+        text = self._preservation_rule_text()
+        for section in ("Implementation Steps", "Files to Modify", "Acceptance Criteria"):
+            assert section in text, (
+                f"Preservation Rule must scope the carve-out to include `{section}`"
+            )
+
+    def test_annotate_only_never_edit_documented(self) -> None:
+        text = self._preservation_rule_text()
+        assert "annotate" in text.lower(), (
+            "Preservation Rule must state the carve-out is annotation-only, never "
+            "editing the refuted line's own text"
+        )
+
+    def test_same_pass_only_documented(self) -> None:
+        text = self._preservation_rule_text()
+        assert "same pass" in text.lower() or "this pass" in text.lower(), (
+            "Preservation Rule must restrict the carve-out to findings from the "
+            "current refine pass, not prior appended blocks"
+        )
+
+    def test_idempotency_via_substring_containment_documented(self) -> None:
+        text = self._preservation_rule_text()
+        assert "idempotent" in text.lower(), (
+            "Preservation Rule must document idempotency for the superseded marker"
+        )
+
+    def test_marker_removal_right_documented(self) -> None:
+        text = self._preservation_rule_text()
+        assert "remove" in text.lower() or "delet" in text.lower(), (
+            "Preservation Rule must document the bounded marker-removal right "
+            "(a marker is the one deletable line when its refutation no longer holds)"
+        )
+
+
 class TestRefineIssueHistoryContextInjection:
     """commands/refine-issue.md must document Step 2.5 historical context query (ENH-1847)."""
 
