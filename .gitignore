@@ -112,6 +112,7 @@ changelog-data.json
 .ll/workflow-analysis/
 .ll/user-messages-*.jsonl
 .ll/export*.jsonl
+.ll/stray-quarantine-*/
 .claude/ll-continue-prompt.md
 .claude/loop-suggestions/
 loop-catalog.*
