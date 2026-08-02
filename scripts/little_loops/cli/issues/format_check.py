@@ -77,6 +77,12 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
         help="Sweep every active issue (bugs/features/enhancements/epics) instead of one",
     )
     p.add_argument(
+        "--next",
+        action="store_true",
+        help="Target the highest-priority active issue, no type filter (ENH-2946); "
+        "mutually exclusive with issue_id/--all",
+    )
+    p.add_argument(
         "--format",
         "-f",
         choices=["text", "json"],
@@ -163,22 +169,38 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
         were found (any issue, in --all mode) or the issue is not found.
     """
     from little_loops.cli.output import print_json
-    from little_loops.issue_parser import check_format_gaps, find_issues
+    from little_loops.issue_parser import (
+        check_format_gaps,
+        find_highest_priority_issue,
+        find_issues,
+    )
     from little_loops.issue_progress import _ALL_STATUSES
     from little_loops.issue_template import resolve_templates_dir
 
     issue_id: str | None = getattr(args, "issue_id", None)
     check_all: bool = getattr(args, "all", False)
+    next_flag: bool = getattr(args, "next", False)
     fmt = getattr(args, "format", "text") or "text"
     fix: bool = getattr(args, "fix", False)
     apply_fix: bool = getattr(args, "apply", False)
 
-    if not issue_id and not check_all:
-        print("Error: provide an issue ID or --all", file=sys.stderr)
+    target_count = sum([bool(issue_id), check_all, next_flag])
+    if target_count == 0:
+        print("Error: provide an issue ID, --all, or --next", file=sys.stderr)
+        return 1
+    if target_count > 1:
+        print("Error: issue ID, --all, and --next are mutually exclusive", file=sys.stderr)
         return 1
 
     path = None
-    if not check_all:
+    if next_flag:
+        next_issue = find_highest_priority_issue(config)
+        if next_issue is None:
+            print("No active issues found.", file=sys.stderr)
+            return 1
+        path = next_issue.path
+        issue_id = next_issue.issue_id
+    elif not check_all:
         from little_loops.cli.issues.show import _resolve_issue_id
 
         assert issue_id is not None

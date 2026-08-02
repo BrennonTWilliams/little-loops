@@ -84,146 +84,113 @@ class TestConfidenceCheckSkillWriteBack:
         )
 
 
-class TestDecisionNeededFlagWriteBack:
-    """Phase 4.6 must document setting decision_needed: true when signal phrases found (BUG-1278)."""
+class TestFlagWriteBackDelegatesToSetFlags:
+    """Phase 4.6 must delegate flag write-back to `ll-issues set-flags`, not
+    inline phrase-list prose — the phrase lists live in FLAG_RULES instead
+    (ENH-2946). Replaces the old per-phase content.index() scans, which broke
+    outright once Phases 4.6/4.7/4.9/4.10 were removed from SKILL.md."""
 
     def _phase_text(self) -> str:
         content = SKILL_FILE.read_text()
-        start = content.index("### Phase 4.6: Decision-Needed Flag")
+        start = content.index("### Phase 4.6: Flag Write-Back")
         next_heading = content.find("\n###", start + 1)
         end = next_heading if next_heading != -1 else len(content)
         return content[start:end]
 
     def test_phase_4_6_heading_exists(self) -> None:
         content = SKILL_FILE.read_text()
-        assert "Phase 4.6: Decision-Needed Flag" in content, (
-            "SKILL.md must contain a 'Phase 4.6: Decision-Needed Flag' section"
+        assert "Phase 4.6: Flag Write-Back" in content, (
+            "SKILL.md must contain a 'Phase 4.6: Flag Write-Back' section"
         )
 
-    def test_decision_needed_true_in_phase_4_6(self) -> None:
-        assert "decision_needed: true" in self._phase_text(), (
-            "Phase 4.6 must document setting decision_needed: true in frontmatter"
+    def test_delegates_to_set_flags_cli(self) -> None:
+        assert "ll-issues set-flags" in self._phase_text(), (
+            "Phase 4.6 must delegate to `ll-issues set-flags`"
         )
 
-    def test_signal_phrases_documented(self) -> None:
-        text = self._phase_text()
-        assert (
-            "open decision" in text
-            or "unresolved decision" in text
-            or "either/or" in text
-            or "resolve before starting" in text
-            or "open question" in text
-        ), "Phase 4.6 must document the signal phrases that trigger the flag"
+    def test_no_phrase_lists_remain(self) -> None:
+        """None of the four ported phase headings, nor their phrase lists, remain."""
+        content = SKILL_FILE.read_text()
+        for retired_heading in (
+            "Phase 4.6: Decision-Needed Flag",
+            "Phase 4.7: Missing-Artifacts Flag",
+            "Phase 4.9: Implementation-Order Risk Flag",
+            "Phase 4.10: Spike-Needed Flag",
+        ):
+            assert retired_heading not in content, (
+                f"'{retired_heading}' must be removed — set-flags is the single source "
+                "of truth for these rules now"
+            )
+        for retired_phrase in ("open decision", "not yet created", "implement tests first"):
+            assert retired_phrase not in content, (
+                f"signal phrase '{retired_phrase}' must not be duplicated in SKILL.md prose"
+            )
 
-    def test_idempotency_guard_present(self) -> None:
-        text = self._phase_text()
-        assert "Idempotency" in text or "idempotent" in text.lower(), (
-            "Phase 4.6 must document the idempotency guard (skip if already true)"
-        )
-
-    def test_check_mode_guard_in_phase_4_6(self) -> None:
+    def test_check_mode_guard_present(self) -> None:
         assert "CHECK_MODE" in self._phase_text(), (
             "Phase 4.6 must include the CHECK_MODE skip guard (no writes in check mode)"
         )
 
-    def test_no_ask_user_question_in_phase_4_6(self) -> None:
+    def test_no_ask_user_question(self) -> None:
         assert "AskUserQuestion" not in self._phase_text(), (
             "Phase 4.6 must not use AskUserQuestion — flag write-back is unconditional"
         )
 
-
-class TestMissingArtifactsFlagWriteBack:
-    """Phase 4.7 must document setting missing_artifacts: true when artifact signal phrases found (ENH-1291)."""
-
-    def _phase_text(self) -> str:
-        content = SKILL_FILE.read_text()
-        start = content.index("### Phase 4.7: Missing-Artifacts Flag")
-        next_heading = content.find("\n###", start + 1)
-        end = next_heading if next_heading != -1 else len(content)
-        return content[start:end]
-
-    def test_phase_4_7_heading_exists(self) -> None:
-        content = SKILL_FILE.read_text()
-        assert "Phase 4.7: Missing-Artifacts Flag" in content, (
-            "SKILL.md must contain a 'Phase 4.7: Missing-Artifacts Flag' section"
+    def test_set_only_semantics_documented(self) -> None:
+        text = self._phase_text().lower()
+        assert "set-only" in text or "never clear" in text, (
+            "Phase 4.6 must document set-flags' set-only semantics (never clears a flag)"
         )
 
-    def test_missing_artifacts_true_in_phase_4_7(self) -> None:
-        assert "missing_artifacts: true" in self._phase_text(), (
-            "Phase 4.7 must document setting missing_artifacts: true in frontmatter"
-        )
-
-    def test_signal_phrases_documented(self) -> None:
-        text = self._phase_text()
-        assert "not yet created" in text or "does not exist" in text, (
-            "Phase 4.7 must document the signal phrases that trigger the flag"
-        )
-
-    def test_idempotency_guard_present(self) -> None:
-        text = self._phase_text()
-        assert "Idempotency" in text or "idempotent" in text.lower(), (
-            "Phase 4.7 must document the idempotency guard (skip if already true)"
-        )
-
-    def test_check_mode_guard_in_phase_4_7(self) -> None:
-        assert "CHECK_MODE" in self._phase_text(), (
-            "Phase 4.7 must include the CHECK_MODE skip guard (no writes in check mode)"
-        )
-
-    def test_no_ask_user_question_in_phase_4_7(self) -> None:
-        assert "AskUserQuestion" not in self._phase_text(), (
-            "Phase 4.7 must not use AskUserQuestion — flag write-back is unconditional"
-        )
-
-    def test_co_deliverable_suppression_documented(self) -> None:
-        text = self._phase_text()
-        assert "Files to Create" in text or "co-deliverable" in text.lower(), (
-            "Phase 4.7 must document the co-deliverable suppression check before setting the flag"
+    def test_external_api_note_retained(self) -> None:
+        """External-API suppression is intentionally NOT ported to set_flags.py
+        (see its module docstring) — the skill retains this judgment call."""
+        assert "explore-api" in self._phase_text(), (
+            "Phase 4.6 must retain the external-API note pointing at /ll:explore-api, "
+            "since set-flags does not attempt this judgment"
         )
 
 
-class TestImplementationOrderRiskFlagWriteBack:
-    """Phase 4.9 must document setting implementation_order_risk: true when ordering advice found (ENH-1492)."""
+class TestFlagRulesMatchProseSpec:
+    """FLAG_RULES (scripts/little_loops/cli/issues/set_flags.py) must reproduce
+    the phrase-list rules this SKILL.md used to document inline."""
 
-    def _phase_text(self) -> str:
-        content = SKILL_FILE.read_text()
-        start = content.index("### Phase 4.9: Implementation-Order Risk Flag")
-        next_heading = content.find("\n###", start + 1)
-        end = next_heading if next_heading != -1 else len(content)
-        return content[start:end]
+    def test_all_four_flags_present(self) -> None:
+        from little_loops.cli.issues.set_flags import FLAG_RULES
 
-    def test_phase_4_9_heading_exists(self) -> None:
-        content = SKILL_FILE.read_text()
-        assert "Phase 4.9: Implementation-Order Risk Flag" in content, (
-            "SKILL.md must contain a 'Phase 4.9: Implementation-Order Risk Flag' section"
-        )
+        assert {rule.flag for rule in FLAG_RULES} == {
+            "decision_needed",
+            "missing_artifacts",
+            "implementation_order_risk",
+            "spike_needed",
+        }
 
-    def test_implementation_order_risk_true_in_phase_4_9(self) -> None:
-        assert "implementation_order_risk: true" in self._phase_text(), (
-            "Phase 4.9 must document setting implementation_order_risk: true in frontmatter"
-        )
+    def test_decision_needed_phrases(self) -> None:
+        from little_loops.cli.issues.set_flags import FLAG_RULES
 
-    def test_signal_phrases_documented(self) -> None:
-        text = self._phase_text()
-        assert "co-deliverable" in text or "implement tests first" in text, (
-            "Phase 4.9 must document the signal phrases that trigger the flag"
-        )
+        rule = next(r for r in FLAG_RULES if r.flag == "decision_needed")
+        assert "open decision" in rule.phrases
+        assert "either/or" in rule.phrases
 
-    def test_idempotency_guard_present(self) -> None:
-        text = self._phase_text()
-        assert "Idempotency" in text or "idempotent" in text.lower(), (
-            "Phase 4.9 must document the idempotency guard (skip if already true)"
-        )
+    def test_missing_artifacts_has_co_deliverable_suppressor(self) -> None:
+        from little_loops.cli.issues.set_flags import FLAG_RULES
 
-    def test_check_mode_guard_in_phase_4_9(self) -> None:
-        assert "CHECK_MODE" in self._phase_text(), (
-            "Phase 4.9 must include the CHECK_MODE skip guard (no writes in check mode)"
-        )
+        rule = next(r for r in FLAG_RULES if r.flag == "missing_artifacts")
+        assert "does not exist" in rule.phrases
+        assert rule.suppressor is not None
 
-    def test_no_ask_user_question_in_phase_4_9(self) -> None:
-        assert "AskUserQuestion" not in self._phase_text(), (
-            "Phase 4.9 must not use AskUserQuestion — flag write-back is unconditional"
-        )
+    def test_implementation_order_risk_fires_on_missing_artifacts_suppression(self) -> None:
+        from little_loops.cli.issues.set_flags import FLAG_RULES
+
+        rule = next(r for r in FLAG_RULES if r.flag == "implementation_order_risk")
+        assert rule.fires_on_suppression_of == "missing_artifacts"
+
+    def test_spike_needed_has_numeric_gate(self) -> None:
+        from little_loops.cli.issues.set_flags import FLAG_RULES
+
+        rule = next(r for r in FLAG_RULES if r.flag == "spike_needed")
+        assert "unprecedented" in rule.phrases
+        assert rule.numeric_gate is not None
 
 
 class TestPhase45OutcomeThreshold:
@@ -253,7 +220,7 @@ class TestPhase45OutcomeThreshold:
     def test_phase_4_6_guard_uses_outcome_threshold(self) -> None:
         """Phase 4.6 guard must reference outcome_threshold, not hardcoded 60."""
         content = SKILL_FILE.read_text()
-        start = content.index("### Phase 4.6: Decision-Needed Flag")
+        start = content.index("### Phase 4.6: Flag Write-Back")
         next_heading = content.find("\n###", start + 1)
         end = next_heading if next_heading != -1 else len(content)
         phase_4_6_text = content[start:end]
@@ -336,66 +303,27 @@ class TestCriterionABreadthDepthSplit:
 
 
 class TestSpikeNeededFlagWriteBack:
-    """Phase 4.10 must document setting spike_needed: true when unproven-mechanism signal phrases found (ENH-2569)."""
+    """spike_needed's rules now live in FLAG_RULES (set_flags.py), not SKILL.md
+    prose (ENH-2946) — the skip-if-already-flagged guard is enforced in code."""
 
-    def _phase_text(self) -> str:
-        content = SKILL_FILE.read_text()
-        start = content.index("### Phase 4.10: Spike-Needed Flag")
-        next_heading = content.find("\n###", start + 1)
-        end = next_heading if next_heading != -1 else len(content)
-        return content[start:end]
+    def test_spike_needed_true_in_flag_rules_phrases(self) -> None:
+        from little_loops.cli.issues.set_flags import FLAG_RULES
 
-    def test_phase_4_10_heading_exists(self) -> None:
-        content = SKILL_FILE.read_text()
-        assert "Phase 4.10: Spike-Needed Flag" in content, (
-            "SKILL.md must contain a 'Phase 4.10: Spike-Needed Flag' section"
+        rule = next(r for r in FLAG_RULES if r.flag == "spike_needed")
+        assert "no precedent" in rule.phrases or "no existing test exercises" in rule.phrases
+
+    def test_spike_attempted_guard_enforced(self, tmp_path: Path) -> None:
+        from little_loops.cli.issues.set_flags import _spike_not_already_flagged
+        from little_loops.issue_parser import IssueInfo
+
+        issue_file = tmp_path / "P3-BUG-9020-test.md"
+        issue_file.write_text(
+            "---\nid: BUG-9020\nspike_attempted: true\n---\n# BUG-9020: Test\n\n## Summary\nx.\n"
         )
-
-    def test_spike_needed_true_in_phase_4_10(self) -> None:
-        assert "spike_needed: true" in self._phase_text(), (
-            "Phase 4.10 must document setting spike_needed: true in frontmatter"
+        info = IssueInfo(
+            path=issue_file, issue_type="bugs", priority="P3", issue_id="BUG-9020", title="Test"
         )
-
-    def test_signal_phrases_documented(self) -> None:
-        text = self._phase_text()
-        assert "no precedent" in text or "no existing test exercises" in text, (
-            "Phase 4.10 must document the signal phrases that trigger the flag"
-        )
-
-    def test_idempotency_guard_present(self) -> None:
-        text = self._phase_text()
-        assert "Idempotency" in text or "idempotent" in text.lower(), (
-            "Phase 4.10 must document the idempotency guard (skip if already true)"
-        )
-
-    def test_check_mode_guard_in_phase_4_10(self) -> None:
-        assert "CHECK_MODE" in self._phase_text(), (
-            "Phase 4.10 must include the CHECK_MODE skip guard (no writes in check mode)"
-        )
-
-    def test_no_ask_user_question_in_phase_4_10(self) -> None:
-        assert "AskUserQuestion" not in self._phase_text(), (
-            "Phase 4.10 must not use AskUserQuestion — flag write-back is unconditional"
-        )
-
-    def test_external_api_suppression_documented(self) -> None:
-        text = self._phase_text()
-        assert "explore-api" in text and (
-            "third-party" in text.lower() or "external" in text.lower()
-        ), "Phase 4.10 must document the external-API suppression rule (advise /ll:explore-api)"
-
-    def test_score_condition_documented(self) -> None:
-        text = self._phase_text()
-        assert "score_test_coverage" in text and "Depth" in text, (
-            "Phase 4.10 must document the score condition "
-            "(score_test_coverage <= 10 OR Criterion A Depth Moderate/Deep)"
-        )
-
-    def test_spike_attempted_guard_present(self) -> None:
-        text = self._phase_text()
-        assert "spike_attempted" in text or "spike_completed" in text, (
-            "Phase 4.10 must skip issues already carrying spike_attempted/spike_completed"
-        )
+        assert _spike_not_already_flagged(info) is False
 
 
 class TestPhase48Retired:

@@ -1678,6 +1678,10 @@ ll-issues cf FEAT-518 implementation_ready # Exit 0 if implementation_ready: tru
 
 **FSM loop use**: Use as a shell action with `evaluate: {type: exit_code}` to branch on a single frontmatter boolean without an LLM call.
 
+Read-side counterpart to `ll-issues set-flags` (ENH-2946), which writes
+`decision_needed`/`missing_artifacts`/`implementation_order_risk`/`spike_needed`
+from confidence-check findings — this command is the gate that reads them back.
+
 ---
 
 #### `ll-issues check-decidable`
@@ -1746,10 +1750,16 @@ Deterministic (no-LLM) structural linter for issue formatting (ENH-2426). Grades
 
 A single-ID run still parses the whole corpus internally (needed to classify `prose_dep_drift` vs `stale_prose_dep` against every other issue's status), but suppresses *other* issues' `deprecated frontmatter key` warnings rather than printing one line per offending file — the targeted issue's own warnings (if any) still surface normally. When other issues were suppressed, a one-line stderr tally follows the verdict: `(N other issue(s) have deprecated frontmatter keys — run \`ll-issues format-check\` to list)`. The full `--all` sweep is unaffected — it still reports every file's deprecated keys (ENH-2961).
 
+Also reports `testable` (ENH-2946): a doc-only keyword inference (`infer_testable`'s
+signal-keyword tuple, 2+ distinct matches) advising that the issue looks
+documentation-only — advisory only, never auto-written; a caller uses it to decide
+whether to add `testable: false`.
+
 | Argument/Flag | Default | Description |
 |---------------|---------|-------------|
-| `issue_id` | _(required unless `--all`)_ | Issue ID (e.g., `2426`, `ENH-2426`, `P3-ENH-2426`) |
+| `issue_id` | _(required unless `--all`/`--next`)_ | Issue ID (e.g., `2426`, `ENH-2426`, `P3-ENH-2426`) |
 | `--all` / `-a` | `false` | Sweep every active issue instead of one (FEAT-2850) |
+| `--next` | `false` | Target the highest-priority active issue, no type filter (same selection as `find_highest_priority_issue`); mutually exclusive with `issue_id`/`--all`; exits 1 with "No active issues found." on an empty backlog (ENH-2946) |
 | `--format {text,json}` | `text` | Output format |
 | `--fix` | `false` | Preview backfilling `blocked_by` from `prose_dep_drift` gaps via `ll-issues link`'s idempotent, cycle-safe write path (dry-run; FEAT-2851) |
 | `--apply` | `false` | With `--fix`, write the proposed edges instead of previewing them |
@@ -1758,9 +1768,40 @@ A single-ID run still parses the whole corpus internally (needed to classify `pr
 ```bash
 ll-issues format-check ENH-2426               # text report, exit 0/1
                                                # stderr: "(N other issue(s) have deprecated frontmatter keys — run `ll-issues format-check` to list)" when applicable
-ll-issues format-check ENH-2426 --format json # {"missing": [...], "renamed": [...], "empty": [...], "boilerplate": [...], "malformed_id": [...], "prose_dep_drift": [...], "stale_prose_dep": [...], "program_design_nonspecific": [...], "deprecated_key": [...]}
+ll-issues format-check ENH-2426 --format json # {"missing": [...], "renamed": [...], "empty": [...], "boilerplate": [...], "malformed_id": [...], "prose_dep_drift": [...], "stale_prose_dep": [...], "program_design_nonspecific": [...], "deprecated_key": [...], "testable": [...]}
 ll-issues format-check --all --fix            # preview blocked_by backfills for every drifting issue (dry-run)
 ll-issues format-check --all --fix --apply    # write the previewed edges via `ll-issues link`
+ll-issues format-check --next                 # target the highest-priority active issue
+```
+
+---
+
+#### `ll-issues set-flags`
+
+Writes `decision_needed` / `missing_artifacts` / `implementation_order_risk` /
+`spike_needed` frontmatter flags from confidence-check findings (ENH-2946). Ports the
+phrase-list + numeric-gate rules that used to live as prose in
+`skills/confidence-check/SKILL.md` Phases 4.6/4.7/4.9/4.10 into data (`FLAG_RULES`,
+`scripts/little_loops/cli/issues/set_flags.py`) — the CLI is now the single source of
+truth; `check-flag` (already shipped) is its read-side counterpart. Rules evaluate in
+declared order: `missing_artifacts`' co-deliverable suppression (a file named in the
+findings that also appears under the issue's own `### Files to Create`) blocks that
+write and makes `implementation_order_risk` fire instead, even without its own phrase
+match. **Set-only**: never writes `false` — a flag already `true` is left alone when a
+re-run's notes no longer match; clearing a flag stays owned by `/ll:decide-issue`.
+
+| Argument/Flag | Default | Description |
+|---------------|---------|-------------|
+| `issue_id` | _(required)_ | Issue ID (e.g., `1307`, `BUG-1307`, `P0-BUG-1307`) |
+| `--from-notes FILE` | _(issue's own notes)_ | Findings text to scan, or `-` for stdin; omit to read the issue's own `## Confidence Check Notes` section |
+| `--dry-run` | `false` | Report what would be set without writing |
+| `--json` / `-j` | `false` | Output as a JSON object: `{"id", "set_flags", "matched_phrases", "suppressed"}` — `suppressed` distinguishes "matched but suppressed" from "no phrase matched" |
+
+**Examples:**
+```bash
+ll-issues set-flags BUG-1307                        # read the issue's own Confidence Check Notes
+ll-issues set-flags BUG-1307 --from-notes - --json   # pipe findings on stdin, machine-readable output
+ll-issues set-flags BUG-1307 --dry-run               # preview without writing
 ```
 
 ---

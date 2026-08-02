@@ -93,22 +93,9 @@ fi
 
 **When `ALL_MODE` is false (single issue mode):**
 
-```bash
-if [[ -z "$ISSUE_ID" ]]; then
-    # No issue_id provided — select highest-priority active issue
-    for P in P0 P1 P2 P3 P4 P5; do
-        for dir in {{config.issues.base_dir}}/bugs/ {{config.issues.base_dir}}/features/ {{config.issues.base_dir}}/enhancements/ {{config.issues.base_dir}}/epics/; do
-            FOUND=$(ls "$dir"/$P-*.md 2>/dev/null | sort | head -1)
-            if [ -n "$FOUND" ]; then FILE="$FOUND"; break 2; fi
-        done
-    done
-    if [ -z "$FILE" ]; then
-        echo "No active issues found."
-        exit 0
-    fi
-    echo "Selected highest-priority issue: $(basename "$FILE")"
-fi
+If `ISSUE_ID` is provided:
 
+```bash
 FILE=$(ll-issues path "${ISSUE_ID}" 2>/dev/null)
 
 if [ -z "$FILE" ]; then
@@ -116,6 +103,23 @@ if [ -z "$FILE" ]; then
     exit 1
 fi
 ```
+
+If `ISSUE_ID` is omitted, select the highest-priority active issue (no type
+filter — same selection `find_highest_priority_issue` uses) via
+`ll-issues format-check --next` (ENH-2946), rather than re-implementing the
+priority scan here:
+
+```bash
+ll-issues format-check --next
+```
+
+Read the selected issue's ID from that command's own output ("Needs
+formatting — structural gaps for ID:" / "Formatted: ID is structurally
+compliant"). If it exits 1 with "No active issues found.", stop — there is
+nothing to format. Otherwise resolve `FILE=$(ll-issues path "${ID}")` and
+continue with the rest of this process; the gap report the command just
+printed already covers Steps 2.5 onward for that issue, so treat it as the
+first pass of that analysis rather than re-running it from scratch.
 
 **When `ALL_MODE` is true (batch processing):**
 
@@ -169,16 +173,24 @@ done
 
 ### 2.5a. Testable Inference (doc-only detection)
 
-After the batch loop, for each processed issue that does **not** already have a `testable` field in its frontmatter:
+`ll-issues format-check` already runs this inference (`infer_testable` /
+`check_format_gaps`, ENH-2946) — do not re-scan for keywords here. For each
+processed issue that does **not** already have a `testable` field, check its
+gap report:
 
-1. Scan the combined issue title + description text (case-insensitive) for doc-only signal keywords:
-   - **Signal keywords**: "doc", "docs", "documentation", "broken link", "broken anchor", "readme", "changelog", "spelling", "typo", "guide", "fix link"
-2. Count the number of distinct keyword matches
-3. If 2+ keywords match:
-   - Add `testable: false` to the frontmatter
-   - Include in the gap report output: `Frontmatter — testable: false added (inferred: documentation-only issue)`
-4. If < 2 keywords match: take no action (absence means testable)
-5. If `testable` field is already present (any value): skip this check entirely — never overwrite
+```bash
+ll-issues format-check "${ISSUE_ID}"
+```
+
+If the report includes a `testable: ID (doc-only signals; set an explicit
+\`testable:\` key)` line, the issue looks documentation-only (2+ distinct
+signal-keyword matches against title + body). Use the Edit tool to add
+`testable: false` to its frontmatter, and include in the gap report output:
+`Frontmatter — testable: false added (inferred: documentation-only issue)`.
+If the `testable` gap is absent from the report, take no action — absence
+means testable. If `testable` is already present in frontmatter (any value),
+`check_format_gaps` never reports the gap in the first place, so this step is
+naturally a no-op for it.
 
 ### 2.5. Template v2.0 Section Alignment
 
@@ -387,17 +399,21 @@ See [templates.md](templates.md) for complete output format templates:
 
 ### Check Mode Behavior (--check)
 
-When `CHECK_MODE` is true, run as an FSM loop evaluator:
+When `CHECK_MODE` is true, this is a structural check, not the content-quality
+analysis in §3.5/§4.0 — delegate directly to `ll-issues format-check`'s own
+deterministic exit codes rather than narrating a parallel check loop here
+(EPIC convention, ENH-2946):
 
-1. Run full template compliance analysis (sections 2-3.5) without writing changes
-2. For each issue analyzed:
-   - If structural gaps found: print `[ID] format: N gaps found`
-   - If no gaps: skip (passes gate)
-3. After all issues analyzed:
-   - If any had gaps: print `N issues not format-compliant`, then `exit 1`
-   - If all compliant: print `All issues format-compliant`, then `exit 0`
+```bash
+ll-issues format-check --all
+```
 
-This integrates with FSM `evaluate: type: exit_code` routing (0=success, 1=failure, 2+=error).
+(or `ll-issues format-check "${ISSUE_ID}"` for a single issue). Its exit code
+*is* the gate result: `0` when every issue analyzed is structurally
+compliant, `1` when any has gaps — already integrates with FSM
+`evaluate: type: exit_code` routing (0=success, 1=failure, 2+=error). Pass
+its own text output straight through rather than re-deriving a
+`[ID] format: N gaps found` / `N issues not format-compliant` summary.
 
 ## Examples
 

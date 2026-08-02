@@ -701,8 +701,8 @@ class IssueInfo:
     size: str | None = None               # Issue size from /ll:issue-size-review (Small, Medium, Large, Very Large)
     testable: bool | None = None           # False = skip TDD phase; None = treat as testable
     decision_needed: bool | None = None    # Set to true by /ll:refine-issue (2+ options) or /ll:confidence-check (unresolved decision); cleared by /ll:decide-issue
-    missing_artifacts: bool | None = None  # Set to true by /ll:confidence-check (Phase 4.7) when absent pre-condition files detected; suppressed for co-deliverable files in Files to Create
-    implementation_order_risk: bool | None = None  # Set to true by /ll:confidence-check (Phase 4.9) when ordering advice detected (e.g., "implement tests first"); not a wiring gap
+    missing_artifacts: bool | None = None  # Set to true by `ll-issues set-flags` (FLAG_RULES) when absent pre-condition files detected; suppressed for co-deliverable files in Files to Create
+    implementation_order_risk: bool | None = None  # Set to true by `ll-issues set-flags` (FLAG_RULES) when ordering advice detected (e.g., "implement tests first"), or when missing_artifacts' co-deliverable suppression fired; not a wiring gap
     learning_tests_required: list[str] | None = None  # Declared assumptions about external systems; /ll:ready-issue and /ll:confidence-check (Phase 1.5) each check via ll-learning-tests check
     session_commands: list[str] = []       # Distinct /ll:* commands in ## Session Log
     session_command_counts: dict[str, int] = {}  # Per-command occurrence counts

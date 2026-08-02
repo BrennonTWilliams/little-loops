@@ -72,6 +72,7 @@ def main_issues() -> int:
         from little_loops.cli.issues.refine_status import cmd_refine_status
         from little_loops.cli.issues.search import cmd_search
         from little_loops.cli.issues.sequence import cmd_sequence
+        from little_loops.cli.issues.set_flags import add_set_flags_parser, cmd_set_flags
         from little_loops.cli.issues.set_scores import cmd_set_scores
         from little_loops.cli.issues.set_status import cmd_set_status
         from little_loops.cli.issues.show import cmd_show
@@ -105,6 +106,7 @@ Sub-commands:
   check-decidable  Exit 0 if an issue has >=1 enumerable option to decide between
   locate-options   Print count/pattern/heading/spans of enumerable options in an issue
   set-scores       Write confidence and dimension scores to issue frontmatter
+  set-flags        Write decision_needed/missing_artifacts/implementation_order_risk/spike_needed flags from confidence-check findings
   set-status       Transition an issue to a new status value
   link             Write or remove a dependency edge in issue frontmatter
   skip             Deprioritize an issue by bumping its priority prefix
@@ -159,6 +161,8 @@ Examples:
   %(prog)s fp .issues/bugs/P2-BUG-042-example.md
   %(prog)s set-scores BUG-1307 --confidence 95 --outcome 80
   %(prog)s set-scores BUG-1307 --confidence 95 --outcome 80 --score-complexity 22 --score-test-coverage 20 --score-ambiguity 25 --score-change-surface 15
+  %(prog)s set-flags BUG-1307
+  %(prog)s set-flags BUG-1307 --from-notes - --dry-run --json
   %(prog)s set-status ENH-1725 in_progress
   %(prog)s sst BUG-042 done
   %(prog)s size ENH-2945
@@ -904,6 +908,7 @@ Examples:
         add_decisions_parser(subs)
         add_size_parser(subs)
         add_normalize_parser(subs)
+        add_set_flags_parser(subs)
 
         args = parser.parse_args()
 
@@ -958,6 +963,8 @@ Examples:
             return cmd_check_readiness(config, args)
         if args.command == "set-scores":
             return cmd_set_scores(config, args)
+        if args.command == "set-flags":
+            return cmd_set_flags(config, args)
         if args.command == "set-status":
             return cmd_set_status(config, args)
         if args.command == "link":

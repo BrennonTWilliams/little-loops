@@ -1067,3 +1067,72 @@ class TestFormatCheckTestableRendering:
 
         unrendered = [name for name in field_names if f"sentinel-{name}" not in out]
         assert not unrendered, f"FormatGaps fields not rendered by _print_gaps: {unrendered}"
+
+
+# ---------------------------------------------------------------------------
+# TestFormatCheckNext (ENH-2946)
+# ---------------------------------------------------------------------------
+
+
+class TestFormatCheckNext:
+    """``format-check --next`` targets the highest-priority active issue."""
+
+    def test_next_targets_highest_priority_issue(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        _write_issue(format_check_dir, "P3-BUG-9101-test-bug.md", _CLEAN_BUG_BODY)
+        higher_priority_body = _CLEAN_BUG_BODY.replace("BUG-9101", "BUG-9102").replace(
+            "P3 - Low", "P0 - Critical"
+        )
+        _write_issue(format_check_dir, "P0-BUG-9102-test-bug.md", higher_priority_body)
+
+        result = _invoke(["ll-issues", "format-check", "--next", "--config", str(temp_project_dir)])
+        out, _ = capsys.readouterr()
+
+        assert result == 0
+        assert "BUG-9102" in out
+
+    def test_next_mutually_exclusive_with_issue_id(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        _write_issue(format_check_dir, "P3-BUG-9101-test-bug.md", _CLEAN_BUG_BODY)
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9101", "--next", "--config", str(temp_project_dir)]
+        )
+        _, err = capsys.readouterr()
+
+        assert result == 1
+        assert "mutually exclusive" in err
+
+    def test_next_mutually_exclusive_with_all(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        result = _invoke(
+            ["ll-issues", "format-check", "--next", "--all", "--config", str(temp_project_dir)]
+        )
+        _, err = capsys.readouterr()
+
+        assert result == 1
+        assert "mutually exclusive" in err
+
+    def test_next_on_empty_backlog_exits_1_with_message(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        result = _invoke(["ll-issues", "format-check", "--next", "--config", str(temp_project_dir)])
+        _, err = capsys.readouterr()
+
+        assert result == 1
+        assert "No active issues found" in err

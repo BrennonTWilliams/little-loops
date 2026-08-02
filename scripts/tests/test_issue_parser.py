@@ -3987,3 +3987,63 @@ class TestInferTestable:
         )
 
         assert infer_testable(info) is False
+
+
+class TestCheckFormatGapsTestablePopulation:
+    """check_format_gaps()'s own `testable` gap population (ENH-2946).
+
+    Distinct code path from TestInferTestable above: check_format_gaps
+    re-derives its own scan_text and threshold check inline rather than
+    calling infer_testable() (issue_parser.py:489-498 vs :528-540) — the two
+    call sites share only the keyword tuple and threshold constant.
+    """
+
+    def test_doc_only_issue_reports_testable_gap(self, tmp_path: Path) -> None:
+        from little_loops.issue_parser import check_format_gaps
+
+        bugs_dir = tmp_path / "bugs"
+        bugs_dir.mkdir()
+        issue_file = bugs_dir / "P3-BUG-9012-test-bug.md"
+        issue_file.write_text(
+            "---\nid: BUG-9012\nstatus: open\n---\n"
+            "# BUG-9012: Fix broken link in README documentation\n\n"
+            "## Summary\nA changelog typo needs fixing.\n"
+        )
+
+        gaps = check_format_gaps(issue_file)
+
+        assert issue_file.name in gaps.testable
+        assert gaps.has_gaps is True
+
+    def test_code_issue_reports_no_testable_gap(self, tmp_path: Path) -> None:
+        from little_loops.issue_parser import check_format_gaps
+
+        bugs_dir = tmp_path / "bugs"
+        bugs_dir.mkdir()
+        issue_file = bugs_dir / "P3-BUG-9013-test-bug.md"
+        issue_file.write_text(
+            "---\nid: BUG-9013\nstatus: open\n---\n"
+            "# BUG-9013: Fix off-by-one error in the retry loop\n\n"
+            "## Summary\nThe retry loop miscounts.\n"
+        )
+
+        gaps = check_format_gaps(issue_file)
+
+        assert gaps.testable == []
+
+    def test_explicit_testable_field_skips_inference(self, tmp_path: Path) -> None:
+        """An explicit `testable:` key (any value) is never overwritten by inference."""
+        from little_loops.issue_parser import check_format_gaps
+
+        bugs_dir = tmp_path / "bugs"
+        bugs_dir.mkdir()
+        issue_file = bugs_dir / "P3-BUG-9014-test-bug.md"
+        issue_file.write_text(
+            "---\nid: BUG-9014\nstatus: open\ntestable: true\n---\n"
+            "# BUG-9014: Fix broken link in README documentation\n\n"
+            "## Summary\nA changelog typo needs fixing.\n"
+        )
+
+        gaps = check_format_gaps(issue_file)
+
+        assert gaps.testable == []

@@ -26,8 +26,9 @@ states:
     on_yes: check_spike_needed
     on_no: run_impl
 
-  # spike_needed is written by /ll:confidence-check Phase 4.10 when a zero-precedent
-  # internal mechanism drags outcome confidence down. Absent → no spike to gate on.
+  # spike_needed is written by `ll-issues set-flags` (FLAG_RULES, ENH-2946) when a
+  # zero-precedent internal mechanism drags outcome confidence down. Absent → no
+  # spike to gate on.
   check_spike_needed:
     fragment: shell_exit
     action: ll-issues check-flag ${context.issue_id} spike_needed

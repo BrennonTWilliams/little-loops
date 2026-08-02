@@ -362,108 +362,21 @@ If `ll-issues` is not available, fall back to manually appending with **exactly*
 - `/ll:confidence-check` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
 ```
 
-### Phase 4.6: Decision-Needed Flag
+### Phase 4.6: Flag Write-Back
 
 **Skip this phase if**: `CHECK_MODE` is true (no writes in check mode).
 
-After Phase 4.5 writes Outcome Risk Factors, scan the generated risk-factor content for signal phrases that indicate an unresolved decision requiring resolution before implementation. This phase only has effect when Phase 4.5 produced Outcome Risk Factors (i.e., `HAS_FINDINGS` is true and `outcome_confidence < config.commands.confidence_gate.outcome_threshold`); if Phase 4.5 was skipped, no signal phrases will be present.
+Phase 4.5 already wrote Outcome Risk Factors findings to the issue's `## Confidence Check Notes` section (or determined there were none to write). Delegate turning those findings into `decision_needed` / `missing_artifacts` / `implementation_order_risk` / `spike_needed` frontmatter flags to the CLI — the phrase-list + numeric-gate rules (`FLAG_RULES`, `scripts/little_loops/cli/issues/set_flags.py`) are the single source of truth, not this skill (ENH-2946):
 
-**Signal phrases** (any match triggers the flag):
-- "open decision"
-- "unresolved decision"
-- "resolve before implementing"
-- "decision point"
-- "either/or"
-- "either...or"
-- "either…or"
-- "resolve before starting"
-- "open question"
-- "Option A/B"
-- "Option A or"
-
-If any signal phrase is found in the Outcome Risk Factors content written by Phase 4.5:
-
-1. Use the Edit tool to update `decision_needed: true` in the issue frontmatter `---` block (same inline `---` block replacement pattern as Phase 4)
-2. **Idempotency**: skip the write if `decision_needed` is already `true`
-3. Log to terminal output: `✓ decision_needed set to true — unresolved decision detected in Outcome Risk Factors`
-
-If no signal phrase is found, leave `decision_needed` unchanged.
-
-### Phase 4.7: Missing-Artifacts Flag
-
-**Skip this phase if**: `CHECK_MODE` is true (no writes in check mode).
-
-After Phase 4.5 writes Outcome Risk Factors, scan the generated risk-factor content for signal phrases that indicate an absent file, unwired component, or missing artifact causing low outcome confidence. This phase only has effect when Phase 4.5 produced Outcome Risk Factors (i.e., `HAS_FINDINGS` is true and `outcome_confidence < config.commands.confidence_gate.outcome_threshold`); if Phase 4.5 was skipped, no signal phrases will be present.
-
-**Signal phrases** (any match triggers the flag):
-- "not yet created"
-- "does not exist"
-- "needs wiring"
-- "missing artifact"
-- "absent"
-- "unwired component"
-
-If any signal phrase is found in the Outcome Risk Factors content written by Phase 4.5:
-
-**Co-Deliverable Suppression**: Before setting the flag, read the issue body for a `### Files to Create` subsection under `## Integration Map`. If the file name mentioned in the risk factor appears in that section, the absent file is a co-deliverable of this issue (it will be created as part of delivering the feature) — do NOT set `missing_artifacts: true`. Instead, proceed to Phase 4.9 to capture the implementation-order concern.
-
-If the absent file is NOT listed in `### Files to Create` (i.e., it is a genuine pre-condition that must exist before implementation can start):
-
-1. Use the Edit tool to update `missing_artifacts: true` in the issue frontmatter `---` block (same inline `---` block replacement pattern as Phase 4)
-2. **Idempotency**: skip the write if `missing_artifacts` is already `true`
-3. Log to terminal output: `✓ missing_artifacts set to true — absent file or unwired component detected in Outcome Risk Factors`
-
-If no signal phrase is found, leave `missing_artifacts` unchanged.
-
-### Phase 4.9: Implementation-Order Risk Flag
-
-**Skip this phase if**: `CHECK_MODE` is true (no writes in check mode).
-
-After Phase 4.5 writes Outcome Risk Factors, scan the generated risk-factor content for signal phrases that indicate implementation ordering advice — a recommendation to create tests or scripts before running the main feature — rather than a true pre-condition wiring gap. This phase also fires when Phase 4.7's co-deliverable suppression blocked a `missing_artifacts` write. (Only fires when Phase 4.5 produced Outcome Risk Factors; otherwise no signal phrases are present.)
-
-**Signal phrases** (any match triggers the flag):
-- "implement tests first"
-- "write tests before"
-- "test-first"
-- "co-deliverable"
-- "tests are co-deliverables"
-- "implement first so"
-
-If any signal phrase is found in the Outcome Risk Factors content written by Phase 4.5:
-
-1. Use the Edit tool to update `implementation_order_risk: true` in the issue frontmatter `---` block (same inline `---` block replacement pattern as Phase 4)
-2. **Idempotency**: skip the write if `implementation_order_risk` is already `true`
-3. Log to terminal output: `✓ implementation_order_risk set to true — implementation ordering advice detected in Outcome Risk Factors`
-
-If no signal phrase is found, leave `implementation_order_risk` unchanged.
-
-### Phase 4.10: Spike-Needed Flag
-
-**Skip this phase if**: `CHECK_MODE` is true (no writes in check mode); or the issue frontmatter already carries `spike_attempted: true` or `spike_completed: true` (a spike is already underway or done — never re-flag).
-
-After Phase 4.5 writes Outcome Risk Factors, scan the generated risk-factor content for signal phrases that indicate an unproven **internal** mechanism — the failure mode whose correct remedy is a code spike (FEAT-2567), not decide/wire/decompose. This phase only has effect when Phase 4.5 produced Outcome Risk Factors (i.e., `HAS_FINDINGS` is true and `outcome_confidence < config.commands.confidence_gate.outcome_threshold`); if Phase 4.5 was skipped, no signal phrases will be present.
-
-**Signal phrases** (any match triggers the candidate check): "no precedent", "zero precedent", "unprecedented", "no existing test exercises", "untested mechanism", "novel mechanism", "unproven approach", "no test coverage of the".
-
-**Score condition** — to avoid flagging rhetorical uses of the phrases, a matched candidate must ALSO satisfy at least one of:
-- `score_test_coverage` (Criterion B) is <= 10 — read directly from the issue frontmatter (persisted by Phase 4 via `--score-test-coverage`), OR
-- Criterion A **Depth** was judged **Moderate** or **Deep** in the Phase 2b assessment. Depth is NOT persisted (only the combined `score_complexity` total is written) — re-derive it from the Phase 2b Criterion A assessment text produced earlier in this same run.
-
-If no signal phrase matches, or the score condition is not satisfied, leave `spike_needed` unchanged (never write `false` — absence is the negative).
-
-**External-API suppression**: if the matched risk-factor sentence names a third-party package, SDK, or external API surface, this is `/ll:explore-api` + `learning_tests_required` territory, NOT a code spike. Apply the same exclusion heuristic as `/ll:refine-issue` Step 7.5 learning-target extraction (mirrored from `learning_tests/extractor.py:_EXTRACTION_PROMPT`): exclude project-internal code, Python builtins, and contract-stable stdlib (`os`, `sys`, `pathlib`, `json`, `re`, `datetime`); an external name outside those exclusions triggers suppression. When suppression applies, do NOT set `spike_needed`; instead emit the advisory line:
-
-```
-ℹ spike_needed suppressed — risk factor names an external API surface; consider /ll:explore-api (learning_tests_required)
+```bash
+ll-issues set-flags [ISSUE-ID]
 ```
 
-and leave `learning_tests_required` handling to the existing machinery. This prevents double-remediation of the same risk.
+With no `--from-notes`, this reads the issue's own `## Confidence Check Notes` section (the one Phase 4.5 just wrote) and stamps whichever flags matched. It only has effect when that section shows outcome-risk factors (`outcome_confidence` below `config.commands.confidence_gate.outcome_threshold`) — if Phase 4.5 wrote nothing, no phrase can match. It is **set-only**: an existing `true` flag is never cleared by a re-run whose notes no longer match; clearing stays owned by `/ll:decide-issue`.
 
-If a signal phrase matches, the score condition is satisfied, and external-API suppression does NOT apply:
+Do **not** re-scan for signal phrases yourself, and do **not** use the Edit tool to write these flags — the CLI is the single source of truth (same precedent as Phase 4's `set-scores` write-back above). Log the CLI's own output to the terminal.
 
-1. Use the Edit tool to update `spike_needed: true` in the issue frontmatter `---` block (same inline `---` block replacement pattern as Phase 4.6/4.7 — **not** a `set-flag` CLI verb, which does not exist)
-2. **Idempotency**: skip the write if `spike_needed` is already `true`
-3. Log to terminal output: `✓ spike_needed set to true — unproven internal mechanism detected in Outcome Risk Factors`
+**External-API note**: `set-flags` does not attempt to distinguish an unproven *internal* mechanism from a third-party package/SDK/external API surface (its module docstring documents this as an intentional non-port — that judgment call stays here). If `spike_needed` comes back `true` but the matched risk factor actually names an external API surface, treat it as `/ll:explore-api` + `learning_tests_required` territory instead: apply the same exclusion heuristic as `/ll:refine-issue` Step 7.5 learning-target extraction (mirrored from `learning_tests/extractor.py:_EXTRACTION_PROMPT` — project-internal code, Python builtins, and contract-stable stdlib are excluded; anything else outside those exclusions is external) and route via `/ll:decide-issue` to clear the flag rather than spiking.
 
 ### Auto Mode Behavior
 

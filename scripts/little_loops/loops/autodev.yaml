@@ -1151,7 +1151,8 @@ states:
 
   check_spike_needed:
     # ENH-2640: an outcome-confidence failure caused by a zero-precedent internal
-    # mechanism (spike_needed:true, set by /ll:confidence-check Phase 4.10) fits
+    # mechanism (spike_needed:true, set by `ll-issues set-flags` — FLAG_RULES,
+    # ENH-2946) fits
     # none of the decide/wire/size-review remedies and would thrash into
     # autodev-skipped.txt. Route it to run_spike to prove the mechanism first.
     # Predicate is a two-field condition (spike_needed AND NOT spike_attempted)
