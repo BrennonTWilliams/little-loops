@@ -22,8 +22,6 @@ completed_at: '2026-07-28T06:00:57Z'
 
 # ENH-2874: Generate degraded-mode agent fallbacks for hosts without subagent support, with mandatory disclosure
 
-Origin: ll-product #ENH-057
-
 Parent EPIC: EPIC-2257 (multi-host generalization — portfolio coordination), which already
 owns shared per-host infrastructure including skill/command adapters.
 

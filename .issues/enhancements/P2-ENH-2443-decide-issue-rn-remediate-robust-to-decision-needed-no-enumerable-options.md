@@ -44,7 +44,7 @@ The flag persists. `rn-remediate`'s `decide` action then routes:
 
 `rn-implement` (`:840-847`) maps `MANUAL_REVIEW_NEEDED` → `mark_blocked` → `blocked: 1` in summary. The operator sees a blocked issue with no actionable diagnostic.
 
-Concrete reproduction (MC-vault, 2026-07-02): `ll-loop run rn-implement FEAT-398` exited with `Loop completed: done (18 iterations, 8m 40s)` and `summary.json: {"blocked":1,"implemented":0}`. FEAT-398's `## Proposed Solution` had `### Files to Add / ### Files to Modify / ### Implementation Outline / ### Design Decisions to Make` (an empty stub subsection) but no enumerable alternatives. The flag persisted and the convergence gate escalated.
+Concrete reproduction (a downstream project, 2026-07-02): `ll-loop run rn-implement FEAT-398` exited with `Loop completed: done (18 iterations, 8m 40s)` and `summary.json: {"blocked":1,"implemented":0}`. FEAT-398's `## Proposed Solution` had `### Files to Add / ### Files to Modify / ### Implementation Outline / ### Design Decisions to Make` (an empty stub subsection) but no enumerable alternatives. The flag persisted and the convergence gate escalated.
 
 `ENH-2426`'s `ll-issues format-check <ID>` (deterministic structural linter for missing/renamed/empty/boilerplate sections) correctly reports FEAT-398 as compliant — the failure is semantic, not structural. The current gate is not the right one to catch it.
 
@@ -225,7 +225,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_decide_issue_skill.py` — new `TestDepositAttemptedFlag` class (mirrors `TestFlagParsing`): assert `--deposit-attempted` runtime flag is documented in Phase 1.
 - `scripts/tests/test_decide_issue_skill.py` — new `TestPhase2_5Detection` class: assert Phase 2.5 enumeration of `### Option [A-Z0-9]`, numbered `1./2.` alternatives, and declarative recommendation blocks is documented.
 - `scripts/tests/test_decide_issue_skill.py` — new `TestSingleOptionRegression` class: regression guard for the existing Phase 3 single-option auto-clear at `skills/decide-issue/SKILL.md:139`.
-- `scripts/tests/test_decide_issue_skill.py` — new `TestFEAT398Snapshot` class: golden-file test using new fixture `scripts/tests/fixtures/FEAT-398-decide-empty-proposed.md` (snapshotted from MC-vault). Assert `--validate-only` exits 1 + emits `OPTIONS_MISSING`.
+- `scripts/tests/test_decide_issue_skill.py` — new `TestFEAT398Snapshot` class: golden-file test using new fixture `scripts/tests/fixtures/FEAT-398-decide-empty-proposed.md` (snapshotted from a downstream project). Assert `--validate-only` exits 1 + emits `OPTIONS_MISSING`.
 - `scripts/tests/test_decide_issue_skill.py` — new `TestOptionsMissingExitCodes` class: subprocess-level test of `--validate-only` exit codes (0/0/1 for 2+/1/0 options), mirroring `_run_gate` in `scripts/tests/test_rn_remediate.py:1483-1499`.
 - `scripts/tests/test_rn_remediate.py` — new `TestCheckDecisionDecidableState` class: assert the new `check_decision_decidable` state exists, uses `shell_exit` fragment, and the action string contains `--validate-only`.
 - `scripts/tests/test_rn_remediate.py` — new `TestDepositOptionsState` class: assert `deposit_options` uses `with_rate_limit_handling` fragment and action is `/ll:refine-issue ${context.issue_id} --auto` (no `--full-rewrite`).
@@ -243,7 +243,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_builtin_loops.py:8885-9022` — `TestLearningGateConsistency` covers the `LEARNING_GATE_BLOCKED` cross-loop token pattern. If `OPTIONS_MISSING` is promoted to a shared fragment, mirror this class.
 
 **Test fixture**:
-- `scripts/tests/fixtures/FEAT-398-decide-empty-proposed.md` (new) — snapshot of FEAT-398's `## Proposed Solution` section from `/Users/brennon/AIProjects/MC-vault/.loops/runs/rn-implement-20260702T101635/`. The existing `scripts/tests/fixtures/issues/` directory has 21 issue files; place the new fixture alongside.
+- `scripts/tests/fixtures/FEAT-398-decide-empty-proposed.md` (new) — snapshot of FEAT-398's `## Proposed Solution` section from a downstream project's `.loops/runs/rn-implement-20260702T101635/`. The existing `scripts/tests/fixtures/issues/` directory has 21 issue files; place the new fixture alongside.
 
 ### Documentation
 
@@ -310,7 +310,7 @@ _Added by `/ll:refine-issue --auto` (Phase 3 / 2026-07-02) — based on codebase
 
 **Filename / path corrections**:
 - The Implementation Steps § "Test coverage" paragraph cites `scripts/tests/test_decide_issue.py` — the actual module is `scripts/tests/test_decide_issue_skill.py`. Implementer should reference the latter.
-- `FEAT-398` test fixture: not present in this repo. The Status section notes it's sourced from `/Users/brennon/AIProjects/MC-vault/.loops/runs/rn-implement-20260702T101635/`. For a self-contained unit test, snapshot FEAT-398's `## Proposed Solution` section into `scripts/tests/fixtures/FEAT-398-decide-empty-proposed.md` (or similar) and reference from `test_decide_issue_skill.py`.
+- `FEAT-398` test fixture: not present in this repo. The Status section notes it's sourced from a downstream project's `.loops/runs/rn-implement-20260702T101635/`. For a self-contained unit test, snapshot FEAT-398's `## Proposed Solution` section into `scripts/tests/fixtures/FEAT-398-decide-empty-proposed.md` (or similar) and reference from `test_decide_issue_skill.py`.
 - `docs/guides/DECISION_AUTOMATION.md` (parenthetical "(if exists)") — does not exist. Closest analogs: `docs/guides/DECISIONS_LOG_GUIDE.md` (decisions log mechanics) and `docs/reference/API.md` skill reference table (where `--validate-only` row should land). Update both rather than creating a new doc.
 - `docs/reference/CLI.md` — separate from API.md, also documents `decision_needed` field and `format-check` subcommand. Add the new `--validate-only` row here too.
 
@@ -328,7 +328,7 @@ _Added by `/ll:refine-issue --auto` (Phase 3 / 2026-07-02) — based on codebase
 3. Phase 2 (FSM): insert `check_decision_decidable` in `rn-remediate.yaml`. Gate on `decide_options_deposited_${ISSUE_ID}.txt` not present. Wire to `deposit_options` (new action) → `record_options_deposited` (new marker state) → loop. Add state-flow tests.
 4. Phase 3 (verification): run `python -m pytest scripts/tests/` to confirm `test_decide_issue`, `test_rn_remediate`, and the FSM validate suite pass. Run `ll-loop validate rn-remediate` (MR-1 etc. — the new state has a paired evaluator in `check_decision_decidable`, so MR-1 is satisfied).
 5. Phase 4 (docs update): add `--validate-only` row to API reference, document `OPTIONS_MISSING` token, add short ARCHITECTURE note. Run `ll-verify-docs` to confirm link integrity.
-6. Phase 5 (live verification, optional): run `ll-loop run rn-remediate FEAT-398 --max-iterations 5` against `MC-vault` (or a snapshot fixture); confirm the run now exits with `IMPLEMENTED` or `CONVERGED_STALLED` (and a useful diagnostic) instead of opaque `MANUAL_REVIEW_NEEDED`.
+6. Phase 5 (live verification, optional): run `ll-loop run rn-remediate FEAT-398 --max-iterations 5` against a downstream project (or a snapshot fixture); confirm the run now exits with `IMPLEMENTED` or `CONVERGED_STALLED` (and a useful diagnostic) instead of opaque `MANUAL_REVIEW_NEEDED`.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -340,7 +340,7 @@ _These touchpoints were identified by wiring analysis (3 parallel agents: caller
 10. **Phase 4 expanded — RECURSIVE_LOOPS_GUIDE update**: **`docs/guides/RECURSIVE_LOOPS_GUIDE.md:209`** outcome-token table — the `MANUAL_REVIEW_NEEDED` row may need a footnote about the `OPTIONS_MISSING` detour path (verify at implementation).
 11. **Phase 3 expanded — additional test class updates**: in addition to the test classes listed in Implementation Steps §"Test coverage", **update `scripts/tests/test_rn_remediate.py:174-184`** — the `_yes` route assertion must change from `decide` to `check_decision_decidable` (the existing `_no` route to `diagnose` is preserved). Without this update, `test_check_decision_needed_routes_yes_to_decide` will fail.
 12. **Phase 3 expanded — MR-1 update**: **add `"check_decision_decidable": "exit_code"` to the `mr1_states` set in `scripts/tests/test_rn_remediate.py:1002-1029`** (`test_mr1_non_llm_evaluators_present`).
-13. **Phase 0 expanded — fixture creation**: **snapshot FEAT-398's `## Proposed Solution` section to `scripts/tests/fixtures/FEAT-398-decide-empty-proposed.md`** (sourced from MC-vault; existing `scripts/tests/fixtures/issues/` directory has 21 fixtures). Reference from new `TestFEAT398Snapshot` class in `scripts/tests/test_decide_issue_skill.py`.
+13. **Phase 0 expanded — fixture creation**: **snapshot FEAT-398's `## Proposed Solution` section to `scripts/tests/fixtures/FEAT-398-decide-empty-proposed.md`** (sourced from a downstream project; existing `scripts/tests/fixtures/issues/` directory has 21 fixtures). Reference from new `TestFEAT398Snapshot` class in `scripts/tests/test_decide_issue_skill.py`.
 14. **Design verification (must confirm at implementation)**: confirm whether the new `MANUAL_REVIEW_RECOMMENDED` token (Phase 2.5) is a superstring-misroute risk for `rn-implement.yaml:844` (`pattern: "MANUAL_REVIEW_NEEDED"`). Either (a) reuse `MANUAL_REVIEW_NEEDED` and rely on stderr diagnostic to distinguish, or (b) route the new token via a longer-prefix pattern first. Document the decision in Implementation Steps Phase 0.
     - **Resolved 2026-07-02**: chose option (b) — emit `MANUAL_REVIEW_RECOMMENDED` from `/ll:decide-issue` Phase 2.5 and order `rn-implement.yaml:844`'s `pattern:` list longest-prefix-first so `MANUAL_REVIEW_RECOMMENDED` matches before the `MANUAL_REVIEW_NEEDED` substring fallback. Recorded as architecture decision `ARCHITECTURE-090` in `.ll/decisions.yaml`. Rationale: distinct stdout token preserves the diagnostic-distinction purpose of ENH-2443 (rejected option (a) — stderr-distinguishing defeats the issue's purpose); longest-prefix ordering eliminates the superstring-misroute risk at the FSM pattern matcher.
 15. **CHANGELOG note (deferred to release prep)**: per the project's release-prep convention, add a CHANGELOG entry under the next release's `## [X.Y.Z] - DATE` section (NOT `[Unreleased]` per the user's feedback memory).
@@ -372,8 +372,8 @@ _These touchpoints were identified by wiring analysis (3 parallel agents: caller
 
 ## Status
 
-- **open** — captured 2026-07-02 from `/ll:capture-issue` (MC-vault `rn-implement FEAT-398` failure analysis).
-- **Discovered by**: investigation of `rn-implement` run dir `/Users/brennon/AIProjects/MC-vault/.loops/runs/rn-implement-20260702T101635/` (summary.json + subloop_outcome_FEAT-398.txt + post_scores_FEAT-398.json showed decision_needed=true persisted across all passes; `/ll:decide-issue` had no clear winner).
+- **open** — captured 2026-07-02 from `/ll:capture-issue` (a downstream project's `rn-implement FEAT-398` failure analysis).
+- **Discovered by**: investigation of `rn-implement` run dir `<downstream-project>/.loops/runs/rn-implement-20260702T101635/` (summary.json + subloop_outcome_FEAT-398.txt + post_scores_FEAT-398.json showed decision_needed=true persisted across all passes; `/ll:decide-issue` had no clear winner).
 
 ## Confidence Check Notes
 

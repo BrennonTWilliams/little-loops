@@ -22,8 +22,6 @@ score_change_surface: 15
 
 # ENH-2876: Deprecate schema fields with a mandatory prose reason, not just a deprecated flag
 
-Origin: ll-product #ENH-060
-
 Parent EPIC: routed alongside this issue — "Self-describing drift and deprecation signals".
 
 ## Summary

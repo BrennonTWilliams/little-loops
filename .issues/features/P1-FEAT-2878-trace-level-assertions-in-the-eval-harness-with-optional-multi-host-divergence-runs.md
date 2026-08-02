@@ -27,8 +27,6 @@ completed_at: '2026-07-28T12:43:53Z'
 
 # FEAT-2878: Trace-level assertions in the eval harness, with optional multi-host divergence runs
 
-Origin: ll-product #FEAT-058
-
 Parent EPIC: EPIC-2856 (rework reduction — design upstream, verify honestly). This issue advances that epic's core premise — make a "verified" signal impossible to fake — by checking a claim against the actual tool-call trace rather than against free-form output the agent authored itself. Sibling to its deterministic pre-patch test-failure check and test-file tamper guard.
 
 ## Summary

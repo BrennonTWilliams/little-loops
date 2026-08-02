@@ -43,7 +43,7 @@ No `.lock` file is created, no conflict is detected, and no PID file lock metada
 
 ## Motivation
 
-The primary use case is demo/recording workflows where an outer FSM loop (e.g., `video-pipeline` in ll-marketing) types `ll-loop run -b <slug> '<input>'` commands into a terminal emulator via VHS tape files. Even with `-b`, every inner loop fails immediately due to scope conflict.
+The primary use case is demo/recording workflows where an outer FSM loop (e.g., a `video-pipeline` loop in a consuming project) types `ll-loop run -b <slug> '<input>'` commands into a terminal emulator via VHS tape files. Even with `-b`, every inner loop fails immediately due to scope conflict.
 
 Current workarounds are all inadequate:
 

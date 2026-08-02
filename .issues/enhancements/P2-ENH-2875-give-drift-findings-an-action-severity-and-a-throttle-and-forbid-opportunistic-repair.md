@@ -23,8 +23,6 @@ completed_at: '2026-07-28T07:57:30Z'
 
 # ENH-2875: Give drift findings an action-severity and a throttle, and forbid opportunistic repair
 
-Origin: ll-product #ENH-059
-
 Parent EPIC: routed alongside this issue — "Self-describing drift and deprecation signals".
 
 ## Summary

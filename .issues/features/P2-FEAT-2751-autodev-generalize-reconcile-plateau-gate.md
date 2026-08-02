@@ -23,7 +23,7 @@ score_change_surface: 20
 
 ## Summary
 
-Finding from the `2026-07-23T16:08 autodev FEAT-021` run on `sketch-storyboards`
+Finding from the `2026-07-23T16:08 autodev FEAT-021` run on a downstream project
 (run_dir `.loops/runs/autodev-20260723T160811/`, 28m 3s, 25 iterations, single-issue
 input). (The companion guard-2 regex finding from the same run was split out to
 BUG-2752 — a standalone, low-risk fix that doesn't need to wait on this design.)

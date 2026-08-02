@@ -29,8 +29,8 @@ fails.
 
 This surfaces most often under git **worktrees**, whose paths contain
 `.worktrees/` — exactly how `ll-parallel` / `ll-sprint` waves / subloop epics
-lay out isolated checkouts. An autodev FSM subloop running in
-`ll-labs/cards/.worktrees/…` reported:
+lay out isolated checkouts. An autodev FSM subloop running in a consuming project's
+`.worktrees/…` reported:
 
 > The ll-issues append-log failed to resolve a session JSONL
 
@@ -76,7 +76,7 @@ encoded_path = path_str.replace("/", "-")   # only handles "/"
 ```
 
 Concrete divergence for a worktree cwd
-`/Users/brennon/AIProjects/ai-workspaces/ll-labs/cards/.worktrees/20260715-125040-subloop-epic-epic-495-…`:
+`<consuming-project>/.worktrees/20260715-125040-subloop-epic-epic-495-…`:
 
 | source | encoded folder |
 |---|---|

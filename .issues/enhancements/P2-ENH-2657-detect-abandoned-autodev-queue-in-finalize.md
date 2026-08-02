@@ -46,7 +46,7 @@ and — like `phantom` (BUG-2636) — keep an abandoned-queue run off the green
 
 ## Motivation
 
-- **Observed silent work loss.** In the `ll-marketing` run
+- **Observed silent work loss.** In a downstream project's run
   `sprint-refine-and-implement-20260715T182217` (EPIC-058): 27 issues dispatched,
   3 passed / 1 shipped, 11 parked, and **18 left undrained in
   `autodev-queue.txt`** when the 8h timeout fired (481m39s ≈ 480m = `timeout:
@@ -257,7 +257,7 @@ no new consumer-side infrastructure either.
 ## Sources
 
 - Run artifacts:
-  `<ll-marketing>/.loops/runs/sprint-refine-and-implement-20260715T182217/`
+  `<downstream-project>/.loops/runs/sprint-refine-and-implement-20260715T182217/`
   (`autodev-queue.txt` = 18 undrained; `autodev-passed.txt`,
   `autodev-skipped.txt`, `auto-refine-and-implement-dispatched.txt`).
 - `scripts/little_loops/loops/auto-refine-and-implement.yaml:676-937` (finalize
@@ -325,7 +325,7 @@ Tests: `test_finalize_abandoned_queue_counts_and_diverts_terminal`,
 - `/ll:decide-issue` - 2026-07-16T13:45:09 - `2bcf269c-0ef8-46e0-8318-65e28e8e6867.jsonl`
 - `/ll:refine-issue` - 2026-07-16T13:41:52 - `e8d423c5-f164-4257-9937-91797e1531ab.jsonl`
 
-- 2026-07-16: Captured from forensic analysis of `ll-marketing` run
+- 2026-07-16: Captured from forensic analysis of a downstream project's run
   `sprint-refine-and-implement-20260715T182217`. Confirmed 18 issues left in
   `autodev-queue.txt` at the 8h timeout, invisible to summary.json, run routed
   to green `done`.

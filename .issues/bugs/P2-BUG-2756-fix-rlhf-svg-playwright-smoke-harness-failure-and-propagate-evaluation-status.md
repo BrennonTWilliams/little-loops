@@ -22,10 +22,6 @@ score_change_surface: 25
 
 # BUG-2756: Fix rlhf SVG Playwright smoke harness failure and propagate evaluation status
 
-Origin: ll-product #BUG-025
-
-# BUG-025: Fix rlhf-svg-evaluate Playwright smoke harness failure and propagate evaluation status
-
 ## Summary
 
 The `rlhf-svg-evaluate` sub-loop's Playwright smoke test fails with
@@ -385,8 +381,8 @@ python -m pytest scripts/tests/test_rlhf_svg_evaluate_smoke.py -v   # new
 
 ## Source Doc
 
-Inlined summary of `docs/plans/pixi-js-2-loops-plan.md` (the hub's
-listed source doc, included for round-trip traceability):
+Inlined summary of `docs/plans/pixi-js-2-loops-plan.md`, included for
+round-trip traceability:
 
 - The pixi plan documents the **Multi-frame Playwright capture**
   pattern that `rlhf-svg-evaluate` also uses (4 staggered screenshots

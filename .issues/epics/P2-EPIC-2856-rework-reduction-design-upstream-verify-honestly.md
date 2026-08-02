@@ -29,8 +29,6 @@ labels:
 
 # EPIC-2856: Rework reduction — design upstream, verify honestly
 
-Origin: ll-product #EPIC-055
-
 ## Summary
 
 little-loops' batch instruments (`ll-auto`, `ll-parallel`, `ll-sprint`) optimize

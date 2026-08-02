@@ -18,8 +18,6 @@ relates_to:
 
 # EPIC-2872: Self-describing drift and deprecation signals
 
-Origin: ll-product #EPIC-072
-
 ## Summary
 
 Two failure modes in little-loops' own metadata share a shape: a signal is emitted without encoding what should be done about it, so a human or an agent has to re-derive the action every time — and usually gets it wrong in the cheap direction.

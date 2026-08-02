@@ -38,7 +38,7 @@ From the 71-issue run, the captured "failures" broke down as:
 
 | Category | ~Count | Example | Why it's noise |
 |---|---|---|---|
-| Wrong project (`ll-labs` etc.) | ~44 | `ll-labs` tsx/vega/video-pipeline build errors | Separate repo at `/Users/brennon/AIProjects/ai-workspaces/ll-labs`; not an ll CLI |
+| Wrong project | ~44 | tsx/vega/video-pipeline build errors from another repo | Separate repo on the machine; not an ll CLI |
 | Shell-sandbox env | ~7 | `(eval): command not found: grep/head/awk/python3`, `read-only variable: status` | The CLI never ran; Claude's eval sandbox lacked PATH |
 | User error / correct behavior | ~5 | `Issue 'FEAT-035' not found`, `<tool_use_error>Cancelled`, JS `NameError: 'true'` | Expected output or user-initiated cancel |
 | OOM / kill | ~4 | Exit 137 on `video-pipeline` loop | SIGKILL, not a defect |
@@ -48,14 +48,14 @@ From the 71-issue run, the captured "failures" broke down as:
 
 1. **`--all` scans the whole machine.** `_cmd_scan_failures` with no `--project`
    calls `discover_all_projects(logger)` (`scripts/little_loops/cli/logs.py:913`),
-   iterating session logs for Agrobot, blender, craft-cards, headstorm, ll-labs,
-   etc. The "Decoded path does not exist" spam at the top of the run is this walk.
+   iterating session logs for every other project on the machine.
+   The "Decoded path does not exist" spam at the top of the run is this walk.
    Failures from other repos get filed as little-loops bugs.
 
 2. **The CLI matcher accepts any `ll-` token.**
-   `_LL_BASH_RE = re.compile(r"\b(ll-[\w-]+)")` (`logs.py:207`) matches `ll-labs`,
-   `ll-marketing`, `ll-auto-website`, `ll-labs-loop-viz` — directory/project names,
-   not ll CLIs. There is no allowlist against the real CLI set (the `ll-*` tools
+   `_LL_BASH_RE = re.compile(r"\b(ll-[\w-]+)")` (`logs.py:207`) matches any
+   `ll-`-prefixed directory/project name from other repos on the machine,
+   not just real ll CLIs. There is no allowlist against the real CLI set (the `ll-*` tools
    enumerated in `.claude/CLAUDE.md` / the `[project.scripts]` entry points).
 
 3. **Only `TRANSIENT` is filtered.** `classify_failure`
@@ -91,7 +91,7 @@ The `--capture` mode of `scan-failures` is currently unusable: a single invocati
 
 2. **Allowlist real CLIs.** Replace the open `ll-[\w-]+` match with membership in
    the known CLI set (derive from `[project.scripts]` in `scripts/pyproject.toml`
-   so it stays in sync). Tokens like `ll-labs` then never match.
+   so it stays in sync). Other projects' `ll-`-prefixed tokens then never match.
 
 3. **Extend `classify_failure` (or add a pre-capture filter)** to mark as
    non-capturable:
@@ -107,7 +107,7 @@ The `--capture` mode of `scan-failures` is currently unusable: a single invocati
 ## Implementation Steps
 
 1. **Project scoping**: Update `_cmd_scan_failures` to default to the current project; block `--capture` with `--all` unless `--capture-foreign` is explicit; tag each cluster with its `cwd_path` and skip capture for foreign projects
-2. **CLI allowlist**: Replace `_LL_BASH_RE` open regex with an allowlist derived from `[project.scripts]` in `scripts/pyproject.toml` so `ll-labs`, `ll-marketing`, etc. never match
+2. **CLI allowlist**: Replace `_LL_BASH_RE` open regex with an allowlist derived from `[project.scripts]` in `scripts/pyproject.toml` so other projects' `ll-`-prefixed names never match
 3. **Failure classification**: Extend `classify_failure` (or add a pre-capture filter) to reject exit 127 sandbox errors, exit 137 SIGKILL, user cancellations (`<tool_use_error>Cancelled`), and tracebacks with `<string>`/`<stdin>` as the top user frame
 4. **Content-free cluster suppression**: Drop clusters whose only signal is a bare `Exit code N` with no error body; collapse roll-up clusters for the same tool
 5. **Unit tests**: Add at least one test per new filter category using representative fixture lines from the 71-issue run
@@ -128,7 +128,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ## Acceptance Criteria
 
 - [ ] `scan-failures --capture` with no `--project` captures only current-project failures (or errors out directing the user to `--project`).
-- [ ] `ll-labs`, `ll-marketing`, `ll-auto-website` and other non-CLI tokens are never captured (allowlist-driven).
+- [ ] Other projects' `ll-`-prefixed directory/project names and other non-CLI tokens are never captured (allowlist-driven).
 - [ ] Sandbox `command not found`, `read-only variable`, exit 137, cancelled calls, and `<string>`/`<stdin>` tracebacks are filtered before capture.
 - [ ] Re-running the original command (`--all --window-days 3`) over the same logs yields ≤ a handful of clusters, all pointing at real ll CLIs with a real error body.
 - [ ] Unit tests cover each new filter with a representative fixture line from this run.
@@ -142,7 +142,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ## Scope Boundaries
 
 - **In scope**: `scan-failures --capture` default project scoping; `_LL_BASH_RE` allowlist replacement; `classify_failure` extension; content-free cluster suppression; unit tests for new filters
-- **Out of scope**: changes to analysis mode (`--all` without `--capture`); fixing or touching `ll-labs` or other foreign repos; refactoring the broader scan-failures clustering algorithm
+- **Out of scope**: changes to analysis mode (`--all` without `--capture`); fixing or touching other foreign repos; refactoring the broader scan-failures clustering algorithm
 
 ## Impact
 
@@ -182,7 +182,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ## Steps to Reproduce
 
 1. From little-loops root: `ll-logs scan-failures --capture --all --window-days 3`
-2. Observe dozens of P1 BUG files created for `ll-labs` and other non-little-loops sources, plus sandbox `command not found` and exit-137 failures.
+2. Observe dozens of P1 BUG files created for other non-little-loops sources, plus sandbox `command not found` and exit-137 failures.
 
 ## References
 
@@ -196,7 +196,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 All four root causes addressed:
 1. **Project scoping**: `_FailureCluster.cwd_path` added; `--all --capture` filters to `Path.cwd()` by default; `--capture-foreign` allows cross-project capture
-2. **CLI allowlist**: `_load_cli_allowlist()` reads `[project.scripts]` from `scripts/pyproject.toml`; allowlist check gates `_LL_BASH_RE` matches so `ll-labs`, `ll-marketing` etc. never produce clusters
+2. **CLI allowlist**: `_load_cli_allowlist()` reads `[project.scripts]` from `scripts/pyproject.toml`; allowlist check gates `_LL_BASH_RE` matches so other projects' `ll-`-prefixed names never produce clusters
 3. **Failure classification**: Extended `classify_failure` with sandbox `command not found`/`read-only variable`, `\bkilled\b` (exit 137/OOM), `<tool_use_error>` cancellations, and `file "<string>"`/`file "<stdin>"` inline-snippet tracebacks
 4. **Content-free suppression**: `_is_content_free_error()` drops bare `Exit code N` clusters
 

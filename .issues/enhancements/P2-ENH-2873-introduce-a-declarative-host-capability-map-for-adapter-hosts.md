@@ -24,8 +24,6 @@ score_change_surface: 23
 
 # ENH-2873: Introduce a declarative host-capability map for adapter hosts
 
-Origin: ll-product #ENH-056
-
 Parent EPIC: EPIC-2257 (multi-host generalization — portfolio coordination), which already
 owns shared per-host infrastructure including skill/command adapters.
 

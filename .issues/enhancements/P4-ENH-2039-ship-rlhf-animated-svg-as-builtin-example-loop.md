@@ -19,7 +19,7 @@ score_change_surface: 20
 ## Summary
 
 Promoted a polished RLHF-style generate→score→refine loop from a local sandbox
-(`ll-labs/loop-sandbox/.loops/rlhf-animated-svg.yaml`) into the shipped built-in loop
+(`loop-sandbox/.loops/rlhf-animated-svg.yaml`) into the shipped built-in loop
 catalog at `scripts/little_loops/loops/`. The loop generates a zero-dependency animated
 SVG HTML artifact from a natural-language description, smoke-tests it in headless
 Playwright, scores multi-frame screenshots (1000/3000/5000/7000ms) against a

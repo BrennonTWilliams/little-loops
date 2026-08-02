@@ -37,8 +37,7 @@ Add a `loop-fleet` subcommand to `ll-logs` that aggregates cross-project loop-ru
 ## Current Behavior
 
 This repo ships 87 built-in loops (`scripts/little_loops/loops/*.yaml`). They are *run* in
-other projects on this machine (`forescout-harness-training`, `auto-sdlc-framework`,
-`MC-vault`, `sketch-storyboards`, …). Each run leaves two traces:
+several other projects on this machine. Each run leaves two traces:
 
 1. **Session JSONL** in `~/.claude/projects/` — visible cross-project via `ll-logs`.
 2. **`.loops/runs/<loop>-<ts>/events.jsonl`** — the authoritative FSM run record (terminal

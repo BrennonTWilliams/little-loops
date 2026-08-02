@@ -54,7 +54,7 @@ EDITABLE_INSTALL=$(pip show little-loops 2>/dev/null | grep -E "^Editable projec
 ## Steps to Reproduce
 
 1. Install little-loops in editable mode from `~/AIProjects/brenentech/little-loops`
-2. Open a different project (e.g. `~/AIProjects/ai-workspaces/ll-labs/loop-viz`)
+2. Open a different (consuming) project
 3. Run `/ll:update`
 4. Observe: `ERROR: file:///path/to/loop-viz/scripts does not appear to be a Python project`
 

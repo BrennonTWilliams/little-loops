@@ -15,8 +15,6 @@ relates_to:
 
 # ENH-2677: Consistent user-configurability across history.db issues
 
-Origin: ll-product #ENH-011
-
 ## Summary
 
 EPIC-1707 ("history.db as Agent Context Layer") is built across many issues touching history.db read/consume behavior. Today those issues use inconsistent config namespaces and some hardcode thresholds instead of exposing them via config. This issue standardizes on one convention: `history.*` config keys for the read/consume side, with a "config-or-default, never-raise" contract (the pattern already used by `AnalyticsCaptureConfig`/`analytics_capture` in `scripts/little_loops/config/core.py` and `config/features.py`).
@@ -164,7 +162,7 @@ Decided by `/ll:decide-issue` on 2026-07-18.
 
 ## Execution Target
 
-This issue was promoted from `ll-product` (planning/design hub) into `little-loops` for execution via `ll-auto`/`ll-parallel`.
+This issue was promoted into `little-loops` for execution via `ll-auto`/`ll-parallel`.
 
 ## Status
 

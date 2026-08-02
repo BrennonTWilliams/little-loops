@@ -4,10 +4,19 @@ title: edit_batch_nudge surfaces as a blocking error; use PostToolUse additional
 type: ENH
 status: open
 priority: P3
-captured_at: "2026-08-02T13:44:06Z"
+captured_at: '2026-08-02T13:44:06Z'
 discovered_date: 2026-08-02
 discovered_by: capture-issue
-labels: [hooks, ux, host-portability]
+labels:
+- hooks
+- ux
+- host-portability
+confidence_score: 100
+outcome_confidence: 97
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 22
 ---
 
 # edit_batch_nudge surfaces as a blocking error; use PostToolUse additionalContext
@@ -257,6 +266,7 @@ the `LLHookResult` exit-2 users for the same framing problem is a separate issue
 | `hooks/adapters/codex/README.md` | Documents the stdout channel per intent; needs a new row |
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-02T22:07:38 - `d288e8d9-e72d-4fc5-a110-cda8245ba0ef.jsonl`
 - `/ll:wire-issue` - 2026-08-02T17:09:15 - `d7f5411e-7a9d-4bf5-bae1-030f4a53dae3.jsonl`
 - `/ll:refine-issue` - 2026-08-02T16:53:50 - `971b00cc-0a51-43c1-8fd9-6f984aead353.jsonl`
 - `/ll:capture-issue` - 2026-08-02T13:45:10 - `fac7dff4-61c1-4496-95b8-7bd1993d2971.jsonl`

@@ -29,8 +29,6 @@ spike_completed: true
 
 # ENH-2852: Add a program-design stage to issue refinement naming types, signatures, and call path
 
-Origin: ll-product #ENH-050
-
 > **Split (2026-07-27)**: this issue now covers the **core gate only** — section schema,
 > `check_format_gaps()` specificity grading, `ll-issues format-check` surfacing, the
 > `/ll:confidence-check` hard override, grandfathering, and tests. It ships **fail-open**

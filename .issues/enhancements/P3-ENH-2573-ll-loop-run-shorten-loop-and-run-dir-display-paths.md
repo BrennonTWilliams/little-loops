@@ -24,7 +24,7 @@ directory layout:
 
 ```
 loop: /Users/brennon/AIProjects/brenentech/little-loops/scripts/little_loops/loops/general-task.yaml
-run_dir: /Users/brennon/AIProjects/ai-workspaces/ll-labs/cards/.loops/runs/general-task-20260709T182714/
+run_dir: <other-project>/.loops/runs/general-task-20260709T182714/
 ```
 
 The header now shows the bare filename for a built-in FSM loop, a cwd-relative

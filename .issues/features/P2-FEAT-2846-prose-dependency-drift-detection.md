@@ -42,7 +42,7 @@ structured frontmatter fields. It never parses issue bodies — correctly; the
 graph algorithm is not the defect. The failure is upstream: nothing ensures a
 prose dependency claim is mirrored into `blocked_by:`.
 
-Observed in the `sketch-storyboards` project: `ll-issues sequence` placed
+Observed in a downstream project: `ll-issues sequence` placed
 FEAT-110 first with rationale `[P2, no blockers]`. FEAT-110's body says
 "Depends on FEAT-109 (recovery + crash matrix)"; FEAT-109 is `status: open`.
 FEAT-110 has no `blocked_by`, `blocks`, or `depends_on` key at all, so its
@@ -283,7 +283,7 @@ a time.
 
 ## Context
 
-Traced from a `sketch-storyboards` `ll-issues sequence` run that reported a
+Traced from a downstream project's `ll-issues sequence` run that reported a
 blocked issue as `[P2, no blockers]`; the same drift was then confirmed in this
 repo's own backlog.
 

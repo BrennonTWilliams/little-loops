@@ -19,8 +19,6 @@ completed_at: '2026-07-28T02:23:15Z'
 
 # ENH-2877: Audit which ll skills are close enough in scope to merge into fewer skills
 
-Origin: ll-product #ENH-061
-
 No parent EPIC — deliberately standalone. See the rejection note below for why this is not part of a larger consolidation effort.
 
 ## Summary
@@ -58,7 +56,7 @@ A **read-only audit**, producing a list of merge candidates with the argument fo
 The `/ll:*` surface exposes 69 distinct invocable names (40 non-bridge skills +
 29 commands). Whether any of them overlap enough in scope to be one skill with a
 mode flag has never been assessed, so the question resurfaces whenever an
-external source proposes consolidation — as it did via ll-product #ENH-061.
+external source proposes consolidation.
 
 ## Expected Behavior
 

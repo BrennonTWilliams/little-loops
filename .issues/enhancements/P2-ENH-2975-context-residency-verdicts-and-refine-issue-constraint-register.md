@@ -263,7 +263,7 @@ for genuinely forced orderings only.
 ## Related Key Documentation
 
 - `.claude/CLAUDE.md` — `ll-doctor` entry documents `--trim`
-- Source: `docs/research/inputs/2026-08-01-claude-code-creators-greatest-tip-for-using-ai-agents.md` (ll-product repo)
+- Source: `docs/research/inputs/2026-08-01-claude-code-creators-greatest-tip-for-using-ai-agents.md`
 
 ## Session Log
 - `hook:posttooluse-status-done` - 2026-08-01T17:32:32 - `bdc3763a-d563-49bc-9770-c94f54d36615.jsonl`

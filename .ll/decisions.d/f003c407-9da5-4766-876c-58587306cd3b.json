@@ -1,0 +1,12 @@
+{
+  "id": "26448aa5-4ee8-4335-b6c6-6426e20406a0",
+  "type": "decision",
+  "timestamp": "2026-08-02T20:58:32Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses existing Step 5 rewrite mechanism with no new state file; BUG-3002's rejected 'widen the contract' precedent was a different category of change (new-content authorship), not marker deletion on an already-rewritten line; Option B's scalar/count diff cannot distinguish a persisting unresolved marker from a new distinct one per AC5, and the existing FEAT-2751 repair-cycle cap already substantially bounds unbounded refiring.",
+  "rule": "Option A: reconcile clears the \u26a0 Superseded marker on the line it rewrites (Step 5 Edit-based rewrite), rather than a fingerprint-snapshot diff under ${context.run_dir}",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: marker-fingerprint snapshot diffed pass-over-pass under ${context.run_dir}, mirroring autodev-pre-readiness.txt",
+  "issue": "ENH-2992"
+}

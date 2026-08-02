@@ -76,8 +76,8 @@ on every invocation. Validator output for the shipped loop is clean.
 - In scope: adding `pruning_profile:` blocks to the five flagged states in
   `scripts/little_loops/loops/autodev.yaml`.
 - Out of scope: fixing the MR-12 Check-3 validator gap (config-level
-  `request_path: sdk` invisibility) and the unrelated `ll-marketing` design-tokens
-  warning — both noted under Follow-up.
+  `request_path: sdk` invisibility) and an unrelated design-tokens
+  warning in a downstream project — both noted under Follow-up.
 
 ## Resolution
 
@@ -102,8 +102,8 @@ Possible enhancement: thread the orchestration config default into
 MR-12 Check-3 false positives.
 
 Also noted during investigation (unrelated to this repo): a design-tokens warning
-pointing at `ll-marketing`'s missing `default` token profile — cosmetic, degrades
-gracefully; fix belongs in that project.
+in a downstream project pointing at its missing `default` token profile —
+cosmetic, degrades gracefully; fix belongs in that project.
 
 
 ## Session Log

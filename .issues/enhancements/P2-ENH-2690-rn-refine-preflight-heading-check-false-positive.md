@@ -70,7 +70,7 @@ source), because the false positive can't distinguish "lost content" from
 ## Evidence
 
 Audit of run `2026-07-19T161520-rn-refine` (`.loops/.history/2026-07-19T161520-rn-refine/`,
-processing `project-tooling-setup.md` in the `ll-product` repo):
+processing `project-tooling-setup.md`):
 
 - `preflight_check` output: `INVARIANT_FAIL: MISSING_SECTIONS:Constraints & conventions (confirmed with user),Tool 1 — \`promote\` (flagship),Tool 2 — \`docs-sync\`,Tool 3 — \`promotion-status\``
 - Root cause: `## Constraints & conventions (confirmed with user)` became

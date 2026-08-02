@@ -96,7 +96,7 @@ sets them, falling back to the loop literal only when unset. An explicit
 
 ## Real-World Repro
 
-`ll-loop run autodev FEAT-069` in `/Users/brennon/AIProjects/animation/sketch-storyboards`
+`ll-loop run autodev FEAT-069` in a downstream project
 (2026-07-24, run `autodev-20260724T135044`). The issue took the BUG-2734
 ready-but-atomic path: `run_size_review` scored it Very Large but declined to
 decompose, `check_readiness_for_atomic_remediation` passed, and

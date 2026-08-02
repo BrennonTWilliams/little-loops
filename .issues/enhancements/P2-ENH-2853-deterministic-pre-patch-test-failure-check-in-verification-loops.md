@@ -24,8 +24,6 @@ size: Very Large
 
 # ENH-2853: Deterministic pre-patch test-failure check in verification loops
 
-Origin: ll-product #ENH-051
-
 ## Summary
 
 A test that passes on the pre-change tree proves nothing about the change. Add a deterministic check that runs newly added or modified tests against the **pre-patch** code and requires them to fail there before a verification loop may treat them as evidence.

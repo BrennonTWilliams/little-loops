@@ -46,8 +46,8 @@ else:
 
 `no blockers` is an unqualified positive claim derived from the absence of a
 frontmatter key. It reads identically whether the issue genuinely has no
-prerequisites or whether an edge was simply never recorded. In the
-`sketch-storyboards` case that produced:
+prerequisites or whether an edge was simply never recorded. In a downstream
+project's case that produced:
 
 ```
 [P2, no blockers] FEAT-110: Smoke tests, .gitignore, plan tree sync, ...
@@ -264,7 +264,7 @@ touched; if the annotation proves useful there, that is a follow-up.
 
 ## Context
 
-Traced from a `sketch-storyboards` `ll-issues sequence` run that reported a
+Traced from a downstream project's `ll-issues sequence` run that reported a
 blocked issue as `[P2, no blockers]`.
 
 ## Session Log

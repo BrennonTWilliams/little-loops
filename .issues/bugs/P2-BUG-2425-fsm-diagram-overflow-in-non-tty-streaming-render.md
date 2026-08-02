@@ -43,8 +43,8 @@ diagrams. Two compounding defects cause this:
    `_build_fallback_ladder` degradation only runs in the pinned/TTY path, so
    background runs render the full diagram at whatever width the layout computes.
 
-Observed while running `rn-implement` in a separate project (`MC-vault`,
-little-loops v1.136.0 editable, `show_diagrams: "clean"`).
+Observed while running `rn-implement` in a separate project
+(little-loops v1.136.0 editable, `show_diagrams: "clean"`).
 
 ## Current Behavior
 
@@ -242,7 +242,7 @@ pre-existing repo condition unmodified by this change).
 - `/ll:manage-issue` - 2026-07-01T18:36:44Z - `9f1c67b2-4389-4a41-9eca-2017def791ef.jsonl` - implemented Parts 1-3 + regression tests
 - `/ll:ready-issue` - 2026-07-01T17:50:51 - `851b115b-1ef5-42c4-9280-6c673030fd28.jsonl`
 - `/ll:format-issue` - 2026-07-01T17:43:29 - `f8600cad-5561-4445-afec-1f6ac182a6e0.jsonl`
-- `/ll:capture-issue` - 2026-07-01T17:32:46Z - investigation of rn-implement diagram overflow in MC-vault
+- `/ll:capture-issue` - 2026-07-01T17:32:46Z - investigation of rn-implement diagram overflow in a separate project
 
 ## Status
 

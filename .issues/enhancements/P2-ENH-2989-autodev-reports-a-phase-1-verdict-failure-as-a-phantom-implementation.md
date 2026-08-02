@@ -57,19 +57,24 @@ during validation.
 ## Expected Behavior
 
 A run that never reached Phase 2 is reported as its own outcome — distinct from
-`phantom` — rather than recorded as a failed implementation.
+`phantom` — rather than recorded as a failed implementation. This covers the
+**whole** never-started population, not just the NOT-READY branch that prompted
+the report: every `process_issue_inplace` early return that precedes Phase 2's
+`run_with_continuation` call, plus the pre-Phase-1 confidence gate. See
+_Resolved design decisions_ #5 for the enumeration and the reason tokens.
 
 Crucially, the issue must **stop being counted as `phantom` at all**, not merely
 gain a second classification alongside it (see the staged-ledger hazard under
 _Resolved design decisions_ #4).
 
-Retry behaviour splits on the Phase 1 verdict, because the two populations have
+Retry behaviour splits on the reason token, because the populations have
 opposite retry semantics:
 
-- `UNKNOWN` — a non-compliant model turn that failed to parse. **Transient**;
+- `unknown` — a non-compliant model turn that failed to parse. **Transient**;
   re-queued for one further attempt, then classified terminally.
-- `NOT_READY` / `NEEDS_REVIEW` — a real readiness judgment. **Deterministic**;
-  never re-queued, since a second identical pass produces the same verdict.
+- Everything else (`not_ready`, `blocked`, `close_failed`, `path_mismatch`,
+  `confidence_gate`) — a real judgment or a structural fault. **Deterministic**;
+  never re-queued, since a second identical pass produces the same outcome.
 
 The distinction should be legible in both the run summary and `summary.json`.
 
@@ -99,15 +104,19 @@ check_impl_reached:
 ```
 
 ```python
-# scripts/little_loops/issue_manager.py:927-941 — the NOT-READY early return.
-# The fact is already in IssueProcessingResult.failure_reason; what is missing is
-# the greppable stdout marker every other autodev discriminator has.
-print(f"PHASE1_NOT_STARTED {info.issue_id} {parsed['verdict']}", flush=True)
+# scripts/little_loops/issue_manager.py — emitted at EVERY Phase-1 early return
+# (see decision #5 for the enumeration). The fact is already in
+# IssueProcessingResult.failure_reason; what is missing is the greppable stdout
+# marker every other autodev discriminator has.
+print(f"PHASE1_NOT_STARTED {info.issue_id} {reason}", flush=True)
 ```
 
-The marker carries the verdict as a third token so `mark_not_started` can split
-transient (`UNKNOWN`) from deterministic (`NOT_READY` / `NEEDS_REVIEW`) without a
-second probe.
+The marker carries a normalized reason token as a third field so
+`mark_not_started` can split transient (`unknown`) from deterministic
+(everything else) without a second probe. The token is a fixed vocabulary, not
+the raw verdict string — `UNKNOWN` maps to `unknown`, but `NOT_READY` and
+`NEEDS_REVIEW` both map to `not_ready`, and the non-verdict branches contribute
+`blocked` / `close_failed` / `path_mismatch` / `confidence_gate`.
 
 ### Call Path
 
@@ -119,10 +128,16 @@ second probe.
 the two existing probes' shape exactly.
 
 The signal originates in `process_issue_inplace`
-(`scripts/little_loops/issue_manager.py:719-930`), whose Phase 1 branches all
-return a `_stamped_result(success=False, ...)` before Phase 2's
+(`scripts/little_loops/issue_manager.py`, roughly `:700-1050`), whose Phase 1
+branches all return a `_stamped_result(success=False, ...)` before Phase 2's
 `run_with_continuation` is ever called — that early-return set is precisely the
 "never reached implementation" population.
+
+> **Line anchors below are symbol-anchored, not line-anchored.** The original
+> refine pass recorded `issue_manager.py` offsets that have since drifted by
+> ~36 lines (the NOT-READY branch is now `:963-977`, not `927-941`;
+> `LEARNING_GATE_BLOCKED` is `:1028`; `IMPLEMENT_FAILED` is `:1046`). Locate
+> each site by its `failure_reason` string rather than by line number.
 
 `finalize_done` is where the summary key is written; it currently emits
 `verdict` / `closed` / `not_closed` / `skipped` / `gate_blocked` /
@@ -138,9 +153,9 @@ codebase-research finding below: `check_learning_gate` and `check_impl_auth`, th
 only two analogues, are both `output_contains` fragments greppping
 `${context.run_dir}/ll_auto_last.txt` for a literal marker emitted by a
 `print(..., flush=True)` in `issue_manager.py`. `AutoManager.run()`
-(`issue_manager.py:1552-1627`) returns `1` uniformly, so an exit code would
-require carving out a new code space for one caller. Marker:
-`PHASE1_NOT_STARTED {issue_id} {verdict}`.
+(`issue_manager.py`, `AutoManager.run()`) returns `1` uniformly, so an exit code
+would require carving out a new code space for one caller. Marker:
+`PHASE1_NOT_STARTED {issue_id} {reason}`.
 
 **2. Summary key → `not_started`,** a standalone one-reason-per-file ledger
 (`${context.run_dir}/autodev-not-started.txt`), matching
@@ -150,26 +165,48 @@ Deterministic verdicts do **not** get their own key — they append to the exist
 shared ledger as `autodev-skipped.txt  not_ready`, reusing the trailing-reason
 shape (`:207`, `:348`, `:419`) rather than widening the summary schema.
 
-**3. Re-queue → bounded, and only for `UNKNOWN`.** Unconditional re-queue is
-unsafe: `dequeue_next` (`:82-120`) pops the head back into the **full** refine →
-wire → confidence → implement pipeline, so a deterministic Phase 1 rejection
-re-queues, re-refines and fails identically, forever, at one full LLM refinement
-cycle per attempt. Two consequences for implementation:
+**3. Re-queue → bounded, only for `unknown`, and prepended to the queue head.**
+Unconditional re-queue is unsafe: `dequeue_next` pops the head back into the
+**full** refine → wire → confidence → implement pipeline, so a deterministic
+Phase 1 rejection re-queues, re-refines and fails identically, forever, at one
+full LLM refinement cycle per attempt. Three consequences for implementation:
 
-- Only `UNKNOWN` is re-queued (transient parse failure). `NOT_READY` /
-  `NEEDS_REVIEW` are terminal on first sight.
+- Only `unknown` is re-queued (transient parse failure). Every other reason
+  token is terminal on first sight.
 - **The existing `autodev-repair-cycle-count.txt` counter cannot be reused as
-  the bound** — `dequeue_next` resets it to `0` (`:120`), so a re-queued issue
-  clears its own counter on the way back in. The bound needs a per-issue tally
-  that survives dequeue: a run-dir file of `ID count` lines (e.g.
+  the bound** — `dequeue_next` resets it to `0`, so a re-queued issue clears its
+  own counter on the way back in. The bound needs a per-issue tally that
+  survives dequeue: a run-dir file of `ID count` lines (e.g.
   `autodev-not-started-attempts.txt`), read-modify-written by `mark_not_started`.
   Default bound: **1 re-queue**; on exhaustion the issue falls through to the
   same terminal classification as a deterministic verdict.
+- **Prepend to the head, not append to the tail** (decided; do not re-litigate).
+  Tail-append was considered and rejected on three grounds. (a) *Dependent
+  issues lose their turn.* `check_blockers_at_dequeue` (ENH-2909, `:238-348`)
+  already prevents a cascade of failed implementations — a dependent issue is
+  ledgered `blocked_by_unmet` and skipped, not failed — but with tail-append the
+  order becomes A fails → B dequeued → B skipped as blocked → A retried → A
+  succeeds, with B already gone from the queue and skipped for the rest of the
+  run. Prepending retries A while B is still queued, so B sees the resolved
+  blocker. (b) *Wall-clock spacing buys nothing.*
+  `run_ready_issue_with_retry` has already exhausted its in-process `UNKNOWN`
+  retries before this branch is reached; the autodev-level re-queue is a coarser
+  retry that runs a fresh refine → wire → confidence cycle first, mutating the
+  issue file. The intervening work is the variance source, not elapsed time —
+  and spacing via other queue items is arbitrary anyway (seconds in a 2-issue
+  queue, an hour in a 20-issue one). (c) *Tail-append can silently drop the
+  retry.* `autodev-not-started-attempts.txt` is run-dir scoped, so the bound is
+  per-run; if the loop hits `max_iterations` or a context handoff before the
+  queue drains back to A, the retry never happens and A ends the run sitting
+  mid-queue with the inflight sentinel already overwritten — neither retried nor
+  cleanly ledgered. Starvation is not a counter-risk: the bound of 1 caps a
+  single issue at one extra cycle.
 
-**4. The fix must remove the ID from `autodev-staged.txt`.** This is the step
-that actually fixes the reported bug, and it is easy to miss. `check_passed`
-writes the ID into `autodev-staged.txt` *before* implementation is attempted
-(`:496`, `:1126`, `:1636`, `:1800`); `finalize_done` (`:1978-1990`) then walks
+**4. The fix must remove the ID from `autodev-staged.txt` — every occurrence.**
+This is the step that actually fixes the reported bug, and it is easy to miss.
+Staging happens *before* implementation is attempted, at **five** sites
+(`autodev.yaml:496`, `:670`, `:1126`, `:1637`, `:1849` — note `:670`, which the
+original capture missed); `finalize_done` (`~:2054-2072`) then walks
 `STAGED_IDS` and appends every non-`done` one to `autodev-unverified.txt`, which
 is what produces `phantom`. Adding a `not_started` ledger **alone leaves the
 `phantom` verdict intact** and double-counts the issue in two ledgers.
@@ -179,15 +216,67 @@ is what produces `phantom`. Adding a `not_started` ledger **alone leaves the
 subtraction next to the state that knows why, and leaves `finalize_done`'s
 counting logic untouched.
 
-Note that `little_loops.ready_issue`'s retry-on-`UNKNOWN` makes this case rarer,
-but does not eliminate it: a retry that also whiffs, or any other Phase 1
-terminal verdict, still lands here.
+Removal must strip **all** matching lines (`grep -vxF "$ID"` rewriting the whole
+file), not delete a single line: multiple staging sites can fire for one issue,
+and a re-queued issue re-stages on its second pass. `finalize_done`'s `sort -u`
+(`~:2059-2060`) dedups for *counting* only — it does not help here, because
+removal is a different operation from counting.
+
+**5. The marker covers every Phase-1 early return, with a reason token.**
+Instrumenting only the NOT-READY branch would leave the rest of the same
+population still misreported as `phantom`, contradicting Expected Behavior.
+Every site below returns `_stamped_result(success=False, ...)` before Phase 2's
+`run_with_continuation`; each emits `PHASE1_NOT_STARTED {issue_id} {reason}`
+immediately before its return. Locate them by `failure_reason` string — the
+line numbers drift.
+
+| `failure_reason` | Reason token | Retry |
+|---|---|---|
+| `below_readiness_threshold (...)` (pre-Phase-1 confidence gate) | `confidence_gate` | terminal |
+| `Fallback failed after path mismatch` | `path_mismatch` | terminal |
+| `Path mismatch persisted after fallback` | `path_mismatch` | terminal |
+| `Invalid reference: ...` | `close_failed` | terminal |
+| `CLOSE without validated file path` | `close_failed` | terminal |
+| `CLOSE failed: ...` | `close_failed` | terminal |
+| `BLOCKED: {concerns}` | `blocked` | terminal |
+| `NOT READY: {verdict} - N concern(s)`, verdict `UNKNOWN` | `unknown` | **re-queue once** |
+| `NOT READY: {verdict} - N concern(s)`, verdict `NOT_READY` / `NEEDS_REVIEW` | `not_ready` | terminal |
+
+The learning-gate branches (`LEARNING_GATE_BLOCKED`, `IMPLEMENT_FAILED`) are
+**excluded** — they occur after Phase 2 has been reached or already have their
+own routing, and `check_learning_gate` must keep winning for them. This is why
+`check_impl_reached` is inserted *ahead* of `check_learning_gate` but must not
+match those markers.
+
+The `confidence_gate` row deserves a note: `CONFIDENCE_GATE_BLOCKED`
+(`issue_manager.py:745`, added by commit `2f056733`) is a *pre*-Phase-1 refusal
+that today has **no** `autodev.yaml` consumer, so it takes the identical route to
+`phantom`. In autodev it is narrow — `check_passed` runs `ll-issues
+check-readiness --readiness ${context.readiness_threshold}`, seeded from the same
+`commands.confidence_gate.readiness_threshold` the `ll-auto` gate reads, so the
+two normally agree — but it is reachable when a run overrides the threshold via
+`--context readiness_threshold=NN`, or when the score changes between
+`check_passed` and `implement_current`. Folding it in costs one alternation in
+the new fragment's grep; leaving it out would strand a third consumer-less
+marker. Emit `PHASE1_NOT_STARTED {issue_id} confidence_gate` alongside the
+existing `CONFIDENCE_GATE_BLOCKED` print rather than replacing it — other
+consumers may rely on the original marker.
+
+Note that `little_loops.ready_issue`'s retry-on-`UNKNOWN` makes the `unknown`
+case rarer, but does not eliminate it: a retry that also whiffs, or any other
+Phase 1 terminal verdict, still lands here.
 
 ### Adjacent gap (noted, out of scope)
 
-`IMPLEMENT_FAILED` (`issue_manager.py:1010`) is printed but consumed by **no**
+`IMPLEMENT_FAILED` (`issue_manager.py:1046`) is printed but consumed by **no**
 `autodev.yaml` fragment — the same class of defect as this issue, on a different
-branch. Not fixed here; captured so the marker/consumer audit is not lost.
+branch. With `CONFIDENCE_GATE_BLOCKED` (`:745`) this makes **two** orphaned
+markers, which promotes "audit every `issue_manager.py` marker for a consumer"
+from a footnote to real work. This issue scopes in `CONFIDENCE_GATE_BLOCKED`
+(decision #5) because it shares the phantom misattribution; `IMPLEMENT_FAILED`
+stays out. Follow-up worth capturing separately: a test asserting every
+`print(f"..._BLOCKED/_FAILED {id}")` marker in `issue_manager.py` has at least
+one `loops/**/*.yaml` grep consumer, which closes the class permanently.
 
 ### Codebase Research Findings
 
@@ -200,19 +289,25 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `clear_inflight_after_impl_failure` (lines 886-896): removes the `autodev-inflight` sentinel, `next: dequeue_next` — it does not append the ID to any reason-coded ledger, so the ID's only ledger entry remains the earlier `autodev-staged.txt` write from `check_passed`.
 - `finalize_done` (lines 1967-2122): promotes `autodev-staged.txt` IDs into `autodev-passed.txt` only if `ll-issues show --json` reports `status` in `done|completed|cancelled` (1978-1990); otherwise appends to `autodev-unverified.txt` (1988). Verdict logic (2090-2103): `PASSED_COUNT>0 && UNVERIFIED_COUNT==0 && ABANDONED==0 → success`; `PASSED_COUNT>0 → partial`; `UNVERIFIED_COUNT>0 || ABANDONED>0 → phantom`; else `no-op`. A single-issue run that fails at Phase 1 has `PASSED_COUNT=0, UNVERIFIED_COUNT=1` → `phantom`.
 
-**All Phase 1 early-return branches** in `process_issue_inplace()` (`scripts/little_loops/issue_manager.py:619-1017`), each setting `IssueProcessingResult.success=False` before Phase 2's `run_with_continuation()` (line 1055):
+**All Phase 1 early-return branches** in `process_issue_inplace()`
+(`scripts/little_loops/issue_manager.py`), each setting
+`IssueProcessingResult.success=False` before Phase 2's `run_with_continuation()`.
+Line anchors below were re-verified against the tree as of 2026-08-02 (the
+original refine pass's numbers had drifted ~36 lines); prefer the
+`failure_reason` string as the locator.
 
-| Location | Condition | `failure_reason` | Stdout marker |
+| Anchor | Condition | `failure_reason` | Stdout marker |
 |---|---|---|---|
-| 806-813 | fallback ready-issue retry failed | "Fallback failed after path mismatch" | none |
-| 819-832 | fallback retry still mismatched | "Path mismatch persisted after fallback" | none |
-| 858-870 | `CLOSE` + `invalid_ref` | "Invalid reference: ..." | none |
-| 872-885 | `CLOSE`, no validated path | "CLOSE without validated file path" | none |
-| 904-911 | `CLOSE`, `close_issue()` failed | "CLOSE failed: ..." | none |
-| 913-925 | `BLOCKED` verdict | "BLOCKED: {concerns}" | none |
-| 927-941 | `is_ready=False` (covers `NOT_READY`, `NEEDS_REVIEW`, and `UNKNOWN`) | "NOT READY: {verdict} - {N} concern(s)" | **none** — this is the ENH-2989 case |
-| 993-999 | learning gate `"blocked"` | "Learning gate blocked: ..." | `LEARNING_GATE_BLOCKED {issue_id}` (line 992) |
-| 1011-1017 | learning gate `"impl_failed"` | "Learning gate: implementation failed" | `IMPLEMENT_FAILED {issue_id}` (line 1010) — not checked by any `autodev.yaml` fragment today |
+| ~736-754 | pre-Phase-1 readiness gate (commit `2f056733`) | "below_readiness_threshold (...)" | `CONFIDENCE_GATE_BLOCKED {issue_id}` (`:745`) — **not checked by any `autodev.yaml` fragment today**; scoped in by decision #5 |
+| ~845-850 | fallback ready-issue retry failed | "Fallback failed after path mismatch" | none |
+| ~862-870 | fallback retry still mismatched | "Path mismatch persisted after fallback" | none |
+| ~899-906 | `CLOSE` + `invalid_ref` | "Invalid reference: ..." | none |
+| ~914-921 | `CLOSE`, no validated path | "CLOSE without validated file path" | none |
+| ~940-947 | `CLOSE`, `close_issue()` failed | "CLOSE failed: ..." | none |
+| ~947-961 | `BLOCKED` verdict (`was_blocked=True`, `:956`) | "BLOCKED: {concerns}" | none |
+| ~963-977 | `is_ready=False` (covers `NOT_READY`, `NEEDS_REVIEW`, and `UNKNOWN`) | "NOT READY: {verdict} - {N} concern(s)" | **none** — this is the originally-reported ENH-2989 case |
+| ~1029-1035 | learning gate `"blocked"` | "Learning gate blocked: ..." | `LEARNING_GATE_BLOCKED {issue_id}` (`:1028`) — out of scope, keeps its own routing |
+| ~1047-1053 | learning gate `"impl_failed"` | "Learning gate: implementation failed" | `IMPLEMENT_FAILED {issue_id}` (`:1046`) — not checked by any `autodev.yaml` fragment today; out of scope |
 
 `output_parsing.py:parse_ready_issue_output()` seeds `verdict = "UNKNOWN"` (line 272) as the default, never overwritten if no strategy finds a recognizable token; `VALID_VERDICTS` (line 24) does not include `"UNKNOWN"`. `is_ready = verdict in ("READY", "CORRECTED")` (line 417), so `UNKNOWN` always routes into the same NOT-READY branch as a genuine `NOT_READY` verdict. `ready_issue.py:run_ready_issue_with_retry()` (lines 83-126) retries only while `verdict == "UNKNOWN"`, up to `config.automation.ready_issue_unknown_retries`; exhausting retries still lands here.
 
@@ -254,20 +349,21 @@ _Wiring pass added by `/ll:wire-issue`:_
 - New: end-to-end `finalize_done` subprocess test for the new summary.json key, modeled on `test_finalize_done_reports_phantom_when_staged_but_not_closed` (`:4902-4933`) and the count-surfacing pattern `test_finalize_gate_blocked_count_surfaces` (`:3253-3260`) [Agent 3 finding]
 - New: companion "defaults to zero when no ledger entries" test modeled on `test_finalize_decision_unresolved_zero_when_no_ledger_entries` (`:3292-3300`) [Agent 3 finding]
 - New: **staged-ledger removal test** — the AC-1 regression guard. Synthetic `run_dir` with the ID in both `autodev-staged.txt` and `autodev-not-started.txt`; assert `finalize_done` emits a non-`phantom` verdict and `not_closed: 0`. Without this, the fix can ship while the reported bug persists.
-- New: **re-queue bound tests** for `mark_not_started`, end-to-end subprocess shape against a synthetic `run_dir`: (a) `UNKNOWN` with attempts `0` prepends the ID to `autodev-queue.txt` and writes attempts `1`; (b) `UNKNOWN` with attempts `1` does **not** re-queue and appends `"$ID  not_ready"` to `autodev-skipped.txt`; (c) `NOT_READY` never re-queues regardless of attempt count.
+- New: **duplicate-staging removal test** — `autodev-staged.txt` seeded with the same ID on two lines (reachable via the five staging sites and via a re-queued second pass); assert `mark_not_started` leaves **zero** occurrences. Guards the `grep -vxF` whole-file rewrite against a single-line-delete implementation.
+- New: **re-queue bound tests** for `mark_not_started`, end-to-end subprocess shape against a synthetic `run_dir`: (a) reason `unknown` with attempts `0` puts the ID at the **head** (`head -1`) of `autodev-queue.txt` ahead of any pre-existing entries, and writes attempts `1`; (b) `unknown` with attempts `1` does **not** re-queue and appends `"$ID  unknown"` to `autodev-skipped.txt`; (c) each terminal reason token (`not_ready`, `blocked`, `close_failed`, `path_mismatch`, `confidence_gate`) never re-queues regardless of attempt count.
 - New: fragment-content assertion for `ll_auto_not_started_check` in `loops/lib/common.yaml` — greps `ll_auto_last.txt`, not a `capture:` interpolation (BUG-2594 guard, mirroring the existing `ll_auto_learning_gate_check` assertion).
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation, in addition to the `autodev.yaml`/`issue_manager.py` changes already scoped above:_
 
-1. Add the `PHASE1_NOT_STARTED {issue_id} {verdict}` stdout marker in `issue_manager.py`'s NOT-READY branch (lines 927-941), following the `LEARNING_GATE_BLOCKED`/`IMPLEMENT_FAILED` convention.
-2. Add the `ll_auto_not_started_check` fragment to `loops/lib/common.yaml`, modelled on `ll_auto_learning_gate_check` (`:327-351`) — grep `${context.run_dir}/ll_auto_last.txt`, never the FSM `capture:` value (BUG-2594).
+1. Add the `PHASE1_NOT_STARTED {issue_id} {reason}` stdout marker at **every** Phase-1 early return enumerated in decision #5 (including the pre-Phase-1 confidence gate at `:745`, where it is emitted *alongside* the existing `CONFIDENCE_GATE_BLOCKED` print, not in place of it), following the `LEARNING_GATE_BLOCKED`/`IMPLEMENT_FAILED` convention.
+2. Add the `ll_auto_not_started_check` fragment to `loops/lib/common.yaml`, modelled on `ll_auto_learning_gate_check` (`:327-351`) — grep `${context.run_dir}/ll_auto_last.txt` for `PHASE1_NOT_STARTED`, never the FSM `capture:` value (BUG-2594). It must **not** match `LEARNING_GATE_BLOCKED` or `IMPLEMENT_FAILED`, which keep their existing routing.
 3. Insert `check_impl_reached` ahead of `check_learning_gate` in `autodev.yaml`; repoint `implement_current.on_no`/`on_error` at it. Ordering matters for the same reason `check_learning_gate` precedes `check_impl_auth` (`common.yaml:338-341`).
-4. Add `mark_not_started`, modelled on `mark_gate_blocked` (`:855-875`). It must: (a) append to `autodev-not-started.txt`; (b) **remove the ID from `autodev-staged.txt`** (decision #4 — without this the `phantom` verdict survives); (c) `rm -f autodev-inflight` per the BUG-1226 convention; (d) on `UNKNOWN` with attempts remaining, prepend the ID back onto `autodev-queue.txt` and bump `autodev-not-started-attempts.txt`; (e) otherwise append `"$ID  not_ready"` to `autodev-skipped.txt`. `next: dequeue_next`, `on_error: dequeue_next`.
+4. Add `mark_not_started`, modelled on `mark_gate_blocked` (`:852-875`). It must: (a) append to `autodev-not-started.txt`; (b) **remove every occurrence of the ID from `autodev-staged.txt`** via `grep -vxF` whole-file rewrite (decision #4 — without this the `phantom` verdict survives); (c) `rm -f autodev-inflight` per the BUG-1226 convention; (d) parse the reason token from the marker line, and on `unknown` with attempts remaining, **prepend** the ID onto the head of `autodev-queue.txt` and bump `autodev-not-started-attempts.txt` (decision #3 — head, not tail); (e) otherwise append `"$ID  <reason>"` to `autodev-skipped.txt`. `next: dequeue_next`, `on_error: dequeue_next`.
 5. Zero-initialise `autodev-not-started.txt` and `autodev-not-started-attempts.txt` in `init` alongside the sibling ledgers (`autodev.yaml:63-68`).
 6. Surface `not_started` in `finalize_done`'s `printf`-emitted `summary.json` object (`:2105-2107`), counted from the new ledger like `GATE_BLOCKED_IDS` (`:2015`).
-7. Update `test_issue_manager.py:2431` and the two `test_builtin_loops.py` routing-assertion tests (4985/4993, 13261) to match the new chain; add the new marker/state/finalize tests listed above.
+7. Update `test_issue_manager.py:2431` and the two `test_builtin_loops.py` routing-assertion tests (4985/4993, 13261) to match the new chain; add the new marker/state/finalize tests listed above, including one marker-emission test per reason token in decision #5's table.
 8. Update `docs/guides/LOOPS_REFERENCE.md` and `docs/guides/RECURSIVE_LOOPS_GUIDE.md` to document the new state and marker.
 9. Verify `test_autodev_implement_current_failure_chain_clears_inflight` and `test_finalize_done_residual_sentinel_not_double_counted` still pass under the new routing.
 
@@ -279,7 +375,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Out of scope**: fixing the Phase 1 failures themselves (that is
   `little_loops.ready_issue`'s retry and ENH-2988); the `phantom` verdict's
   meaning for runs that genuinely did implement; other loops' summary schemas;
-  wiring a consumer for the orphaned `IMPLEMENT_FAILED` marker.
+  wiring a consumer for the orphaned `IMPLEMENT_FAILED` marker; the
+  marker/consumer audit test proposed under _Adjacent gap_.
+- **Out of scope but carries the same bug**:
+  `auto-refine-and-implement.yaml`'s `finalize` state independently
+  reimplements the staged → unverified → `phantom` logic, so a Phase 1
+  rejection misreports there too. Not fixed here — capture separately rather
+  than widening this issue.
 
 ## Acceptance Criteria
 
@@ -290,15 +392,20 @@ _These touchpoints were identified by wiring analysis and must be included in th
    the AC that fails if decision #4's staged-ledger removal is skipped.)
 2. `summary.json` carries a `not_started` count, defaulting to `0` when the
    ledger is empty or absent.
-3. `issue_manager.py`'s NOT-READY branch prints
-   `PHASE1_NOT_STARTED {issue_id} {verdict}` to stdout, and prints neither
-   `LEARNING_GATE_BLOCKED` nor `IMPLEMENT_FAILED` (not-my-marker negative
-   assertion, per `test_impl_failed_gate_prints_implement_failed_marker`).
+3. Every Phase-1 early return in decision #5's table prints
+   `PHASE1_NOT_STARTED {issue_id} {reason}` to stdout with the reason token that
+   table assigns, and prints neither `LEARNING_GATE_BLOCKED` nor
+   `IMPLEMENT_FAILED` (not-my-marker negative assertion, per
+   `test_impl_failed_gate_prints_implement_failed_marker`). The confidence-gate
+   site additionally still prints `CONFIDENCE_GATE_BLOCKED`. Conversely, the two
+   learning-gate branches do **not** print `PHASE1_NOT_STARTED`, and
+   `check_learning_gate` still wins for them.
 4. `implement_current.on_no` and `.on_error` both target `check_impl_reached`,
    which falls through to `check_learning_gate` on `on_no` and `on_error`.
-5. An `UNKNOWN` verdict re-queues the ID at most once; a second `UNKNOWN` on the
-   same ID in the same run is terminal. A `NOT_READY` or `NEEDS_REVIEW` verdict
-   is never re-queued.
+5. An `unknown` reason re-queues the ID **to the head of
+   `autodev-queue.txt`** at most once, so the retried issue is the next one
+   dequeued; a second `unknown` on the same ID in the same run is terminal.
+   Every other reason token is never re-queued.
 6. `mark_not_started` clears the `autodev-inflight` sentinel on every path,
    satisfying the structural walk in
    `test_autodev_implement_current_failure_chain_clears_inflight` without that

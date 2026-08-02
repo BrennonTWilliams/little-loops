@@ -30,7 +30,7 @@ then hands the EPIC to `refine-to-ready-issue`, which has no issue-type guard an
 runs `/ll:refine-issue EPIC-482 --auto --gap-analysis` — refining an umbrella
 container as though it were a leaf.
 
-Observed in project `ai-workspaces/ll-labs/cards`, run
+Observed in a consuming project, run
 `auto-refine-and-implement-20260714T104607`:
 
 ```

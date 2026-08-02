@@ -32,7 +32,7 @@ score_change_surface: 35
 
 ## Motivation
 
-- **Video quality**: Raw escape code fragments (`0[32;42m`, `-8m-`) are visible in ll-marketing CLI recordings (`deep-research/00-invoke.mp4`, `deep-research-cli-tools.cast.mp4`) in place of the intended colored FSM diagram boxes
+- **Video quality**: Raw escape code fragments (`0[32;42m`, `-8m-`) are visible in CLI recordings (`deep-research/00-invoke.mp4`, `deep-research-cli-tools.cast.mp4`) in place of the intended colored FSM diagram boxes
 - **Recording reliability**: VHS and asciinema recordings of `ll-loop run --show-diagrams clean` are unreliable due to ANSI code density overwhelming PTY frame buffers
 - **Cross-cutting**: Affects every FSM diagram rendered with `highlight_state` set — all loop showcase videos
 
@@ -126,8 +126,8 @@ The batched interior fill uses a single cell per row (`grid[ri][col + 1] = fill_
 
 ## Related
 
-- **BUG-042** (ll-marketing): Fleet-wide font rerecord after font swap — this ANSI density issue compounds with font rendering problems in older recordings
-- **deep-research** slug (ll-marketing): Canonical reference slug, primary victim of the `32;42` artifacts
+- **BUG-042** (downstream): Fleet-wide font rerecord after font swap — this ANSI density issue compounds with font rendering problems in older recordings
+- **deep-research** slug: Canonical reference slug, primary victim of the `32;42` artifacts
 - **`_make_box()`** in `_render_neighborhood_diagram()`: Already uses batched approach, served as the reference pattern for this fix
 
 

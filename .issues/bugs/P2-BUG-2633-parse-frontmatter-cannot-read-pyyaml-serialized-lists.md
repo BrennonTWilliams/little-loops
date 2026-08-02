@@ -253,7 +253,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 ## Related Context
 
 - Surfaced from plan `~/.claude/plans/investigate-the-warnings-in-curried-peacock.md`
-  (a peer session in the ll-marketing repo, where the immediate unblock was to
+  (a peer session in a consuming project, where the immediate unblock was to
   normalize the three offending issue files' `relates_to` to bare IDs — a
   band-aid; the durable fix is here in this repo).
 - **ENH-484 / ENH-241** track consolidating duplicated frontmatter parsing; this

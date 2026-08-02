@@ -23,7 +23,7 @@ the codebase.
 
 ## Evidence
 
-Captured 2026-07-25, `10:50:47` from `ll-marketing/.issues/`:
+Captured 2026-07-25, `10:50:47` from another project's `.issues/`:
 
 ```
 Issue ENH-068 blocked by unknown issue ENH-067
@@ -40,7 +40,7 @@ Issue ENH-066 has depends_on unknown issue ENH-063
 Issue ENH-151 has depends_on unknown issue ENH-150
 ```
 
-Each referenced ID exists on disk under `ll-marketing/.issues/enhancements/`
+Each referenced ID exists on disk under that project's `.issues/enhancements/`
 (or `features/`) with `status: done` — the file was not moved to
 `completed/`, matching the project convention `gather_all_issue_ids` documents
 ("Done and deferred issues remain in type dirs with status frontmatter, so
@@ -156,9 +156,9 @@ tests cover the negative case but not the positive one.
 - Severity: low (cosmetic — does not break the sequence output, just pollutes
   the log).
 - Scope: any repo with a non-trivial backlog of `done` issues that are still
-  referenced by `blocked_by` / `depends_on`. Confirmed in `ll-marketing`;
-  the same pattern will fire in `ll-product` and `brenentech/little-loops`
-  itself once any tracked issue references a completed predecessor.
+  referenced by `blocked_by` / `depends_on`. Confirmed in another project;
+  the same pattern will fire in `brenentech/little-loops` itself once any
+  tracked issue references a completed predecessor.
 - The dependency graph itself is correct: `get_blocking_issues()` /
   `get_pending_prerequisites()` already treat a `completed` blocker as
   resolved (`from_issues` line 99), and `get_execution_waves` similarly
@@ -173,7 +173,7 @@ the dep graph already handles correctly.
 
 ## Side Observation (unrelated)
 
-While reading the frontmatter, ENH-043 in `ll-marketing/.issues/enhancements/`
+While reading the frontmatter, ENH-043 in that project's `.issues/enhancements/`
 lacks an `id:` field — only `priority`, `parent`, `size`, `status`, etc.
 The filename-derived ID still resolves, but a stricter schema check might
 trip. Not a blocker for this bug.

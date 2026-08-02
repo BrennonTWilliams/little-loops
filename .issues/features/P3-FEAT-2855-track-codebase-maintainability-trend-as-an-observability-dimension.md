@@ -18,8 +18,6 @@ deferred_date: '2026-07-30T02:32:21Z'
 
 # FEAT-2855: Track codebase maintainability trend as an observability dimension
 
-Origin: ll-product #FEAT-053
-
 ## Summary
 
 Existing agent-quality observability measures agent *outcome* quality — success rate, retries, corrections, cost, regressions with model attribution. Nothing measures whether the repo itself is getting harder to change under sustained agent activity.

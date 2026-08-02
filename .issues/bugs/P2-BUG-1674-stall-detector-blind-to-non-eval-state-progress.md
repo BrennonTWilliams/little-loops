@@ -25,7 +25,7 @@ score_change_surface: 25
 
 ## Steps to Reproduce
 
-Downstream report: `ll-marketing/.issues/bugs/P2-BUG-004-general-task-stalled-on-check-done.md`.
+Downstream report from a consuming project: `general-task stalled on check_done`.
 
 1. Use an FSM loop with a `check↔work` ping-pong where the work state uses `next:` (no `evaluate:`) — e.g. `general-task.yaml`'s `continue_work` state.
 2. Run the loop against a task with many DoD criteria (~15+ unchecked).

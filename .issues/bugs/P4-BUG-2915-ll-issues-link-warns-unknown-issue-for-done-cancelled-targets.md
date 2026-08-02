@@ -24,7 +24,7 @@ targets a completed or cancelled issue. The targets are real, existing
 issues — just excluded from the non-terminal issue set the cycle-check
 builds its graph from — so the warning is indistinguishable from a genuine
 typo'd/nonexistent ID. Reported from a consuming project
-(`sketch-storyboards`, local-editable against this checkout), but the defect
+(local-editable against this checkout), but the defect
 is in `little-loops` itself.
 
 ## Steps to Reproduce
@@ -88,7 +88,7 @@ warning is logged for it. Verified the test fails against the pre-fix code
 
 - **Correctness/UX**: eliminates false-positive warning noise on every
   `ll-issues link` call in any project with a non-trivial completed/cancelled
-  issue history — the exact symptom reported from `sketch-storyboards`.
+  issue history — the exact symptom reported from a downstream project.
 - **No behavior change** for genuinely unknown/typo'd IDs — those still warn
   as before, since `all_known_ids` only suppresses the case where the target
   exists on disk.

@@ -25,7 +25,7 @@ Split out of FEAT-2751 (the regex-fix half only; the stagnation-detector half
 stays in FEAT-2751). `check_guard2_verdict`'s regex
 `skipped: score (8|9|10|11) ` (`scripts/little_loops/loops/autodev.yaml:1132`)
 did not match the real `/ll:issue-size-review --auto` output captured for
-`FEAT-021` during the `2026-07-23T16:08 autodev` run on `sketch-storyboards`
+`FEAT-021` during the `2026-07-23T16:08 autodev` run on a downstream project
 (run_dir `.loops/runs/autodev-20260723T160811/`). The state's own comment
 block documents the real observed wording — `"skipped: score 11 (Very
 Large) — strictly sequential, ..."` — but the pattern requires an exact

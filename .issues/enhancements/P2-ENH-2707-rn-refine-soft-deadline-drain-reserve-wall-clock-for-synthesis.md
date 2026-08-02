@@ -23,7 +23,7 @@ score_change_surface: 22
 
 ## Summary
 
-A 6-hour `rn-refine` run (`2026-07-20T052123-rn-refine`, sketch-storyboards project) was killed by the loop-level `timeout: 21600` at iteration 123/300 with 18/26 nodes finalized and 7 nodes still queued. Because `build_synth` is reachable only via a `QUEUE_EMPTY` token from `dequeue_next`, the synthesis/write-back phase never ran and the run produced **zero final deliverable** despite ~6 hours of honest, persisted node work (audit: `rn-refine-audit-2026-07-20.md`, verdict `partial`).
+A 6-hour `rn-refine` run (`2026-07-20T052123-rn-refine`, a downstream project) was killed by the loop-level `timeout: 21600` at iteration 123/300 with 18/26 nodes finalized and 7 nodes still queued. Because `build_synth` is reachable only via a `QUEUE_EMPTY` token from `dequeue_next`, the synthesis/write-back phase never ran and the run produced **zero final deliverable** despite ~6 hours of honest, persisted node work (audit: `rn-refine-audit-2026-07-20.md`, verdict `partial`).
 
 Make the refinement walk time-aware: `dequeue_next` should check elapsed wall-clock against a reserved synthesis budget (`synth_reserve` context knob) and, when the soft deadline is reached, stop dequeuing and drain into `build_synth` over whatever nodes are finalized. This fixes two audit findings with one change: the `max_nodes`-vs-`timeout` budget mismatch (rec 2) and the all-or-nothing synthesis cliff (rec 3).
 
