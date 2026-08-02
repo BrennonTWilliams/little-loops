@@ -315,6 +315,12 @@
           "description": "Maximum number of continuation prompts before automation stops.",
           "default": 3,
           "minimum": 1
+        },
+        "ready_issue_unknown_retries": {
+          "type": "integer",
+          "description": "Retries when ready-issue returns no parseable verdict (UNKNOWN). Distinct from a real NOT_READY — UNKNOWN means the model did not answer at all, a probabilistic misread that would otherwise discard the whole run. 0 disables.",
+          "default": 1,
+          "minimum": 0
         }
       },
       "additionalProperties": false

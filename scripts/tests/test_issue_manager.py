@@ -465,6 +465,7 @@ READY
         mock_config.automation.timeout_seconds = 60
         mock_config.automation.stream_output = False
         mock_config.automation.max_continuations = 3
+        mock_config.automation.ready_issue_unknown_retries = 1
         mock_config.get_category_action.return_value = "fix"
         mock_config.get_state_file.return_value = temp_project_dir / ".auto-state.json"
 
@@ -1945,6 +1946,7 @@ class TestReadyIssueErrorHandling:
         config.automation.timeout_seconds = 60
         config.automation.stream_output = False
         config.automation.max_continuations = 3
+        config.automation.ready_issue_unknown_retries = 1
         config.get_category_action.return_value = "fix"
         config.get_state_file.return_value = temp_project_dir / ".auto-state.json"
         return config
@@ -2108,6 +2110,7 @@ class TestCorrectionsAndConcerns:
         config.automation.timeout_seconds = 60
         config.automation.stream_output = False
         config.automation.max_continuations = 3
+        config.automation.ready_issue_unknown_retries = 1
         config.get_category_action.return_value = "fix"
         config.get_state_file.return_value = temp_project_dir / ".auto-state.json"
         return config
@@ -2214,6 +2217,7 @@ class TestClassifyFailureIntegration:
         config.automation.timeout_seconds = 60
         config.automation.stream_output = False
         config.automation.max_continuations = 3
+        config.automation.ready_issue_unknown_retries = 1
         config.get_category_action.return_value = "fix"
         config.get_state_file.return_value = temp_project_dir / ".auto-state.json"
         return config
@@ -2312,6 +2316,7 @@ class TestCloseVerdictHandling:
         config.automation.timeout_seconds = 60
         config.automation.stream_output = False
         config.automation.max_continuations = 3
+        config.automation.ready_issue_unknown_retries = 1
         config.get_category_action.return_value = "fix"
         config.get_state_file.return_value = temp_project_dir / ".auto-state.json"
         return config
@@ -2468,6 +2473,7 @@ class TestFailureClassification:
         config.automation.timeout_seconds = 60
         config.automation.stream_output = False
         config.automation.max_continuations = 3
+        config.automation.ready_issue_unknown_retries = 1
         config.get_category_action.return_value = "fix"
         config.get_state_file.return_value = temp_project_dir / ".auto-state.json"
         return config
@@ -2614,6 +2620,7 @@ class TestFallbackVerification:
         config.automation.timeout_seconds = 60
         config.automation.stream_output = False
         config.automation.max_continuations = 3
+        config.automation.ready_issue_unknown_retries = 1
         config.get_category_action.return_value = "fix"
         config.get_state_file.return_value = temp_project_dir / ".auto-state.json"
         return config
@@ -3030,6 +3037,7 @@ class TestEarlyCompletionGuard:
         config.automation.timeout_seconds = 60
         config.automation.stream_output = False
         config.automation.max_continuations = 3
+        config.automation.ready_issue_unknown_retries = 1
         config.get_category_action.return_value = "fix"
         config.get_state_file.return_value = temp_project_dir / ".auto-state.json"
         return config
@@ -4238,6 +4246,7 @@ class TestDecisionNeededGate:
         config.automation.stream_output = False
         config.automation.idle_timeout_seconds = 0
         config.automation.max_continuations = 3
+        config.automation.ready_issue_unknown_retries = 1
         config.get_category_action.return_value = "fix"
         config.get_state_file.return_value = temp_project_dir / ".auto-state.json"
         return config
@@ -4339,6 +4348,7 @@ class TestAutoManagerLearningGate:
         config.automation.stream_output = False
         config.automation.idle_timeout_seconds = 0
         config.automation.max_continuations = 3
+        config.automation.ready_issue_unknown_retries = 1
         config.learning_tests = MagicMock()
         config.learning_tests.enabled = True
         config.get_category_action.return_value = "fix"
@@ -4355,6 +4365,7 @@ class TestAutoManagerLearningGate:
         config.automation.stream_output = False
         config.automation.idle_timeout_seconds = 0
         config.automation.max_continuations = 3
+        config.automation.ready_issue_unknown_retries = 1
         config.learning_tests = MagicMock()
         config.learning_tests.enabled = False
         config.get_category_action.return_value = "fix"
@@ -4598,6 +4609,7 @@ class TestDequeueTimeBaseStateStamp:
         config.automation.timeout_seconds = 60
         config.automation.stream_output = False
         config.automation.max_continuations = 3
+        config.automation.ready_issue_unknown_retries = 1
         config.get_category_action.return_value = "fix"
         config.get_state_file.return_value = temp_project_dir / ".auto-state.json"
         return config

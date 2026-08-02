@@ -46,6 +46,7 @@ from little_loops.learning_tests.extractor import resolve_learning_targets
 from little_loops.learning_tests.gate import run_learning_gate_for_issue
 from little_loops.logger import Logger, format_duration
 from little_loops.output_parsing import parse_ready_issue_output
+from little_loops.ready_issue import run_ready_issue_with_retry
 from little_loops.session_store import (
     DEFAULT_DB_PATH,
     SQLiteTransport,
@@ -722,21 +723,33 @@ def process_issue_inplace(
         if not dry_run:
             _ready_slash = f"/ll:ready-issue {info.issue_id}"
             _ready_cmd = expand_skill("ready-issue", [info.issue_id], config) or _ready_slash
-            result = run_claude_command(
-                _ready_cmd,
-                logger,
-                timeout=config.automation.timeout_seconds,
-                stream_output=config.automation.stream_output,
-                idle_timeout=config.automation.idle_timeout_seconds,
-                on_model_detected=on_model_detected,
-                on_usage_detailed=on_usage_detailed,
-                preview_full=preview_full,
+
+            def _run_ready(command: str) -> subprocess.CompletedProcess[str]:
+                return run_claude_command(
+                    command,
+                    logger,
+                    timeout=config.automation.timeout_seconds,
+                    stream_output=config.automation.stream_output,
+                    idle_timeout=config.automation.idle_timeout_seconds,
+                    on_model_detected=on_model_detected,
+                    on_usage_detailed=on_usage_detailed,
+                    preview_full=preview_full,
+                )
+
+            # An UNKNOWN verdict means the model returned nothing verdict-shaped
+            # — a non-compliant turn, not a rejection. Retry it rather than
+            # discarding the whole run (see little_loops.ready_issue).
+            parsed, result = run_ready_issue_with_retry(
+                target=info.issue_id,
+                initial_command=_ready_cmd,
+                run=_run_ready,
+                config=config,
+                retries=config.automation.ready_issue_unknown_retries,
+                log=logger.warning,
             )
             if result.returncode != 0:
                 logger.warning("ready-issue command failed to execute, continuing anyway...")
             else:
-                # Parse the verdict from the output
-                parsed = parse_ready_issue_output(result.stdout)
                 logger.info(f"ready-issue verdict: {parsed['verdict']}")
 
                 # Validate that ready-issue analyzed the expected file

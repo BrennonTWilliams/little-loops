@@ -2398,6 +2398,59 @@ Closed - Already Fixed"""
         assert result.success is False
         assert "NOT_READY" in (result.error or "")
 
+    def test_process_issue_retries_unknown_verdict(
+        self,
+        worker_pool: WorkerPool,
+        mock_issue: MagicMock,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """An UNKNOWN verdict is a non-compliant turn, not a rejection — retry it.
+
+        Mirrors the autodev failure in .loops/runs/autodev-20260801T214427/, where
+        ready-issue replied with prose, exited 0, and killed the run.
+        """
+        non_compliant = "I don't see an actual request in your message — just system context."
+        outputs = [
+            subprocess.CompletedProcess([], 0, non_compliant, ""),
+            subprocess.CompletedProcess([], 0, "## VERDICT: **NOT_READY**", ""),
+        ]
+        calls: list[str] = []
+
+        def mock_run_command(command: str, *args: object, **kwargs: object) -> object:
+            calls.append(command)
+            return outputs[min(len(calls) - 1, len(outputs) - 1)]
+
+        with patch.object(worker_pool, "_setup_worktree"):
+            with patch.object(worker_pool, "_get_main_repo_baseline", return_value=set()):
+                with patch.object(worker_pool, "_run_claude_command", side_effect=mock_run_command):
+                    result = worker_pool._process_issue(mock_issue)
+
+        # Retried once; the second turn's real verdict is what gets reported.
+        assert len(calls) == 2
+        assert calls[1] != calls[0]
+        assert result.success is False
+        assert "NOT_READY" in (result.error or "")
+
+    def test_process_issue_does_not_retry_a_real_verdict(
+        self,
+        worker_pool: WorkerPool,
+        mock_issue: MagicMock,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """A parseable verdict must never burn a second model call."""
+        calls: list[str] = []
+
+        def mock_run_command(command: str, *args: object, **kwargs: object) -> object:
+            calls.append(command)
+            return subprocess.CompletedProcess([], 0, "## VERDICT: **NOT_READY**", "")
+
+        with patch.object(worker_pool, "_setup_worktree"):
+            with patch.object(worker_pool, "_get_main_repo_baseline", return_value=set()):
+                with patch.object(worker_pool, "_run_claude_command", side_effect=mock_run_command):
+                    worker_pool._process_issue(mock_issue)
+
+        assert len(calls) == 1
+
     def test_process_issue_success_flow(
         self,
         worker_pool: WorkerPool,

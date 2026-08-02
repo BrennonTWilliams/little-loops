@@ -25,6 +25,10 @@ class AutomationConfig:
     max_workers: int = 2
     stream_output: bool = True
     max_continuations: int = 3  # Max session restarts on context handoff
+    # Retries when ready-issue returns no parseable verdict (UNKNOWN). Distinct
+    # from a real NOT_READY: UNKNOWN means the model did not answer at all, a
+    # probabilistic misread that discards the whole run. 0 disables.
+    ready_issue_unknown_retries: int = 1
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> AutomationConfig:
@@ -38,6 +42,7 @@ class AutomationConfig:
             max_workers=data.get("max_workers", 2),
             stream_output=data.get("stream_output", True),
             max_continuations=data.get("max_continuations", 3),
+            ready_issue_unknown_retries=data.get("ready_issue_unknown_retries", 1),
         )
 
 

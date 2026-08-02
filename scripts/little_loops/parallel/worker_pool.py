@@ -22,9 +22,9 @@ from typing import TYPE_CHECKING, Any, cast
 
 from little_loops.context_window import context_window_for
 from little_loops.host_runner import resolve_host
-from little_loops.output_parsing import parse_ready_issue_output
 from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.types import ParallelConfig, WorkerResult, WorkerStage
+from little_loops.ready_issue import run_ready_issue_with_retry
 from little_loops.session_store import (
     record_orchestration_run,
     record_session_lifecycle_event,
@@ -431,10 +431,29 @@ class WorkerPool:
 
             # Step 2: Run ready-issue validation
             ready_cmd = self.parallel_config.get_ready_command(issue.issue_id)
-            ready_result = self._run_claude_command(
-                ready_cmd,
-                worktree_path,
-                issue_id=issue.issue_id,
+
+            def _run_ready(command: str) -> subprocess.CompletedProcess[str]:
+                # Never spawn a retry into a shutdown. Returning non-zero stops
+                # run_ready_issue_with_retry; the INTERRUPTED check below then
+                # reports the real outcome.
+                if issue.issue_id in self._terminated_during_shutdown:
+                    return subprocess.CompletedProcess(command, 1, "", "shutdown in progress")
+                return self._run_claude_command(
+                    command,
+                    worktree_path,
+                    issue_id=issue.issue_id,
+                )
+
+            # An UNKNOWN verdict means the model returned nothing verdict-shaped
+            # — a non-compliant turn, not a rejection. Retry it rather than
+            # failing the worker (see little_loops.ready_issue).
+            ready_parsed, ready_result = run_ready_issue_with_retry(
+                target=issue.issue_id,
+                initial_command=ready_cmd,
+                run=_run_ready,
+                config=self.br_config,
+                retries=self.br_config.automation.ready_issue_unknown_retries,
+                log=self.logger.warning,
             )
 
             # Check if worker was terminated during shutdown (ENH-036)
@@ -467,8 +486,7 @@ class WorkerPool:
                     stderr=ready_result.stderr,
                 )
 
-            # Step 3: Parse ready-issue output and check verdict
-            ready_parsed = parse_ready_issue_output(ready_result.stdout)
+            # Step 3: Check the verdict (already parsed, post-retry, above)
 
             # Handle CLOSE verdict - issue should not be implemented
             if ready_parsed.get("should_close"):
