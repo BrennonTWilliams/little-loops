@@ -186,9 +186,13 @@ fi
 
 A `covered` verdict already accounts for staleness — an axis whose referenced files changed after this issue's most recent `/ll:refine-issue` Session Log entry comes back `covered: false` with an `evidence` string naming the stale path. So a covered axis means "resolving *and* current", not merely "mentioned".
 
+On a project where the Program Design gate is active for this issue (BUG-3003), `$TRIAGE` also folds in a Program Design gate override: when the `## Program Design` section is missing, empty, boilerplate, or graded non-specific, `analyzer` comes back `covered: false` regardless of what Root Cause/Current Behavior evidence — with `evidence` naming the gate as the reason. This exists so a repeatedly-deferred, already-refined issue re-spawns Agent 2 and re-reaches Step 5a instead of silently no-opping on the section Step 6.7's gate is about to fail again.
+
 #### 3.1 Zero unmet axes — the no-op refine
 
 If **every** axis is `covered`, spawn nothing and **skip Steps 4, 5a, and 5b entirely**. There are no research findings, and Step 4/5a's instructions ("using the research findings from Step 3", "fill gaps with research findings") would otherwise read as an invitation to write enrichment from nothing — a fabrication risk strictly worse than the wasted agent calls this triage removes.
+
+On a project where the Program Design gate is active, this branch cannot be reached while the section is missing or non-specific — Step 3.0's override forces `analyzer` unmet. The no-op path stays entirely normal on unstamped and grandfathered projects, where the gate is inactive and the override never fires.
 
 Proceed directly to Step 5c (if `--gap-analysis`), then Steps 6, 6.5, and 6.7. Still append the Session Log entry (Step 6.5), and report the no-op explicitly, naming what satisfied each axis:
 

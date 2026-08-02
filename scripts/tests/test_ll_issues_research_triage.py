@@ -120,6 +120,29 @@ class TestResearchTriageText:
         assert out.count("unmet") == 3
 
 
+class TestResearchTriageProgramDesignGate:
+    """BUG-3003: a failing Program Design gate is visible in the `--json` surface."""
+
+    def test_gate_active_missing_section_uncovers_analyzer(
+        self, triage_project: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        (triage_project / ".ll" / "program-design-cutover.json").write_text(
+            json.dumps({"sha": "0" * 40, "date": "2026-01-01"}), encoding="utf-8"
+        )
+        body = (
+            "---\nid: ENH-1\ntype: ENH\nstatus: open\ndiscovered_date: 2026-07-01\n---\n\n"
+            "# ENH-1: Sample\n\n## Root Cause\n\n`helper()` in `pkg/mod.py` is wrong.\n"
+        )
+        _write(triage_project, body)
+
+        code = _invoke(["ll-issues", "research-triage", "ENH-1", "--json"])
+        payload = json.loads(capsys.readouterr().out)
+
+        assert code == 0
+        assert payload["analyzer"]["covered"] is False
+        assert "Program Design gate" in payload["analyzer"]["evidence"]
+
+
 class TestResearchTriageErrors:
     """Only an unresolvable issue ID is an error."""
 

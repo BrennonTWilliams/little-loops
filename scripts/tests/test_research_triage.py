@@ -326,6 +326,127 @@ class TestStalenessCheck:
 
 
 # ---------------------------------------------------------------------------
+# TestProgramDesignGateOverride
+# ---------------------------------------------------------------------------
+
+
+def _stamp_cutover(root: Path, date_str: str = "2026-01-01") -> None:
+    import json
+
+    ll_dir = root / ".ll"
+    ll_dir.mkdir(exist_ok=True)
+    (ll_dir / "program-design-cutover.json").write_text(
+        json.dumps({"sha": "0" * 40, "date": date_str}), encoding="utf-8"
+    )
+
+
+_ANALYZER_ROOT_CAUSE = "## Root Cause\n\n`helper()` in `pkg/mod.py` returns the wrong value.\n"
+
+_FRONTMATTER = "---\nid: ENH-1\ndiscovered_date: 2026-07-01\n---\n\n"
+
+_SPECIFIC_DESIGN = (
+    "## Program Design\n\n### Signatures\n\n- `helper() -> int`\n\n"
+    "### Call Path\n\n`helper` -> `helper`\n"
+)
+
+_SPECIFIC_DESIGN_FENCED = (
+    "## Program Design\n\n```\n### Signatures\n\n- `helper() -> int`\n\n"
+    "### Call Path\n\n`helper` -> `helper`\n```\n"
+)
+
+
+class TestProgramDesignGateOverride:
+    """BUG-3003: a failing Program Design gate forces the analyzer axis unmet."""
+
+    def _gate_active_issue(self, tmp_path: Path, design_section: str) -> tuple[Path, Path]:
+        root = _make_repo(tmp_path, {"pkg/mod.py": SOURCE})
+        _stamp_cutover(root)
+        issue = _write_issue(
+            root,
+            _FRONTMATTER + "# ENH-1\n\n" + _ANALYZER_ROOT_CAUSE + "\n" + design_section,
+            name="P3-ENH-1-x.md",
+        )
+        return root, issue
+
+    def test_gate_active_missing_section_uncovers_analyzer(self, tmp_path: Path) -> None:
+        root, issue = self._gate_active_issue(tmp_path, "")
+
+        from little_loops.issues.program_design import program_design_gate_active
+
+        content = issue.read_text(encoding="utf-8")
+        assert program_design_gate_active(issue, content) is True
+
+        analyzer = _by_axis(triage_research_axes(issue, root))["analyzer"]
+        assert analyzer.covered is False
+        assert analyzer.evidence
+
+    def test_gate_active_empty_section_uncovers_analyzer(self, tmp_path: Path) -> None:
+        root, issue = self._gate_active_issue(tmp_path, "## Program Design\n\n")
+
+        analyzer = _by_axis(triage_research_axes(issue, root))["analyzer"]
+        assert analyzer.covered is False
+        assert analyzer.evidence
+
+    def test_gate_active_boilerplate_section_uncovers_analyzer(self, tmp_path: Path) -> None:
+        template = (
+            "## Program Design\n\n### Types\n\n- `[FieldName]: [type]`\n\n"
+            "### Signatures\n\n- `[function_name]([param]: [type]) -> [ReturnType]`\n\n"
+            "### Call Path\n\n`[existing_caller]` -> `[new_function]` -> `[existing_callee]`\n"
+        )
+        root, issue = self._gate_active_issue(tmp_path, template)
+
+        analyzer = _by_axis(triage_research_axes(issue, root))["analyzer"]
+        assert analyzer.covered is False
+        assert analyzer.evidence
+
+    def test_gate_active_specific_section_leaves_analyzer_covered(self, tmp_path: Path) -> None:
+        root, issue = self._gate_active_issue(tmp_path, _SPECIFIC_DESIGN)
+
+        analyzer = _by_axis(triage_research_axes(issue, root))["analyzer"]
+        assert analyzer.covered is True
+
+    def test_gate_active_specific_fenced_section_leaves_analyzer_covered(
+        self, tmp_path: Path
+    ) -> None:
+        """Regression: a fence-stripping extractor would false-positive here."""
+        root, issue = self._gate_active_issue(tmp_path, _SPECIFIC_DESIGN_FENCED)
+
+        analyzer = _by_axis(triage_research_axes(issue, root))["analyzer"]
+        assert analyzer.covered is True
+
+    def test_not_applicable_frontmatter_skips_override(self, tmp_path: Path) -> None:
+        root = _make_repo(tmp_path, {"pkg/mod.py": SOURCE})
+        _stamp_cutover(root)
+        issue = _write_issue(
+            root,
+            "---\nid: ENH-1\ndiscovered_date: 2026-07-01\n"
+            "program_design_not_applicable: true\n---\n\n"
+            "# ENH-1\n\n" + _ANALYZER_ROOT_CAUSE,
+            name="P3-ENH-1-x.md",
+        )
+
+        analyzer = _by_axis(triage_research_axes(issue, root))["analyzer"]
+        assert analyzer.covered is True
+
+    def test_gate_inactive_no_regression(self, tmp_path: Path) -> None:
+        """No cutover stamp — legacy issues with no Program Design see no change."""
+        root = _make_repo(tmp_path, {"pkg/mod.py": SOURCE})
+        issue = _write_issue(
+            root,
+            _FRONTMATTER + "# ENH-1\n\n" + _ANALYZER_ROOT_CAUSE,
+            name="P3-ENH-1-x.md",
+        )
+
+        from little_loops.issues.program_design import program_design_gate_active
+
+        content = issue.read_text(encoding="utf-8")
+        assert program_design_gate_active(issue, content) is False
+
+        analyzer = _by_axis(triage_research_axes(issue, root))["analyzer"]
+        assert analyzer.covered is True
+
+
+# ---------------------------------------------------------------------------
 # TestCorpusBaseline
 # ---------------------------------------------------------------------------
 

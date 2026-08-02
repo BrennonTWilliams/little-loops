@@ -25,6 +25,13 @@ Two independent checks decide an axis:
    working tree, so a git-only check would miss uncommitted edits.
 
 Coverage is the cheap pre-reject; staleness carries the real discrimination.
+
+A third check overrides `analyzer` specifically: when a project's Program Design gate
+(:mod:`~little_loops.issues.program_design`, ENH-2852) is active for this issue and its
+``## Program Design`` section is missing, empty, boilerplate, or graded non-specific, the
+axis is forced uncovered regardless of Root Cause/Current Behavior evidence (BUG-3003).
+Without this, an already-refined issue with a resolving Root Cause triages `analyzer:
+covered` and `/ll:refine-issue` skips the analyzer agent that would write the section.
 """
 
 from __future__ import annotations
@@ -295,9 +302,73 @@ def triage_research_axes(
     if change_times is None:
         change_times = ChangeTimeIndex(by_path={}, floor=None)
 
-    return tuple(
+    coverages = tuple(
         _triage_axis(content, axis, root, index, change_times, refined_at) for axis in AXES
     )
+
+    unmet_reason = _program_design_unmet(issue_path, content)
+    if not unmet_reason:
+        return coverages
+    return tuple(
+        AxisCoverage(axis="analyzer", covered=False, evidence=unmet_reason)
+        if c.axis == "analyzer"
+        else c
+        for c in coverages
+    )
+
+
+def _program_design_unmet(issue_path: Path, content: str) -> str:
+    """Evidence string when the Program Design gate is active and unmet, else ``""``.
+
+    The override this feeds (BUG-3003) fires on the *union* of ``missing ∪ empty ∪
+    boilerplate ∪ program_design_nonspecific`` for the ``## Program Design`` section —
+    deliberately wider than ``format-check``'s ``program_design_nonspecific`` alone,
+    since a missing/empty/boilerplate section never reaches that grading call
+    (:func:`~little_loops.issue_parser.check_format_gaps`). Modeled on
+    :func:`~little_loops.issue_parser._gate_program_design`.
+    """
+    from little_loops.issue_parser import _ISSUE_TYPE_RE, _normalize_whitespace, _section_body
+    from little_loops.issue_template import load_issue_sections
+    from little_loops.issues.program_design import (
+        SECTION_TITLE,
+        grade_issue_section,
+        program_design_gate_active,
+    )
+
+    if not program_design_gate_active(issue_path, content):
+        return ""
+
+    # Non-fence-stripping extraction: Program Design's graded material (signature
+    # lines, call-path anchors) routinely lives inside a fenced block per Step 5a's
+    # own template. `_section_text`'s fence-stripping would read a correctly-designed
+    # fenced section as empty and re-spawn the analyzer agent forever.
+    body = _section_body(content, SECTION_TITLE)
+    if body is None:
+        return "Program Design gate: section missing"
+
+    stripped = body.strip()
+    if not stripped:
+        return "Program Design gate: section empty"
+
+    type_match = _ISSUE_TYPE_RE.search(issue_path.name)
+    if type_match:
+        try:
+            sections_data = load_issue_sections(type_match.group(1))
+        except Exception:
+            sections_data = {}
+        template = (
+            sections_data.get("common_sections", {})
+            .get(SECTION_TITLE, {})
+            .get("creation_template", "")
+        )
+        if template and _normalize_whitespace(stripped) == _normalize_whitespace(template):
+            return "Program Design gate: section boilerplate"
+
+    verdict = grade_issue_section(issue_path, body)
+    if verdict.is_specific:
+        return ""
+    reason = "; ".join(verdict.reasons) if verdict.reasons else "section is not specific"
+    return f"Program Design gate: {reason}"
 
 
 def _triage_axis(

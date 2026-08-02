@@ -352,6 +352,22 @@ class TestResearchTriageWiring:
             "distinguish it from a silent failure"
         )
 
+    def test_program_design_gate_override_documented(self) -> None:
+        """BUG-3003: a failing Program Design gate forces the analyzer axis unmet."""
+        text = self._step_3_text()
+        assert "Program Design gate" in text, (
+            "Step 3.0 must document that a failing Program Design gate forces the "
+            "analyzer axis unmet"
+        )
+        step_3_0, step_3_1 = text.split("#### 3.1", 1)
+        assert "Program Design gate" in step_3_0, (
+            "the gate-override sentence belongs in Step 3.0, where the triage output is documented"
+        )
+        assert "cannot be reached while the section is missing or non-specific" in step_3_1, (
+            "Step 3.1's no-op branch needs a carve-out: on a gate-active project this "
+            "branch cannot be reached while Program Design is missing/non-specific"
+        )
+
     def test_step_4_guards_against_absent_findings(self) -> None:
         content = COMMAND_FILE.read_text()
         start = content.index("### 4. Identify Knowledge Gaps")
@@ -442,7 +458,9 @@ class TestProgramDesignGateExtension:
         assert "report the still-failing gap" in text, (
             "a still-failing Program Design gap must be reported explicitly in Step 8's output"
         )
-        assert "do not touch" in text.lower() or "not touch `program_design_not_applicable`" in text, (
+        assert (
+            "do not touch" in text.lower() or "not touch `program_design_not_applicable`" in text
+        ), (
             "Step 6.7 must state that refine does not set program_design_not_applicable "
             "even when the gate still fails after the one revision attempt"
         )
