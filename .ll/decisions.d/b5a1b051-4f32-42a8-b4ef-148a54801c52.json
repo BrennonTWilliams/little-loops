@@ -1,0 +1,12 @@
+{
+  "id": "06bcfe5c-afca-4880-a427-9cd0fee11325",
+  "type": "decision",
+  "timestamp": "2026-08-02T15:59:13Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches the existing run_spike/reconcile_current dispatch template exactly (reuse score 3/3 vs 1/3); Option B would require reconcile-issue to author signature/call-path content its own contract explicitly excludes as refine's job.",
+  "rule": "Option A: Retarget design_gate_failed remedy from reconcile_current to a new refine_for_design state (contingent on BUG-3001)",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: widen reconcile-issue.md's contract to include Program Design as a fourth rewritable section",
+  "issue": "BUG-3002"
+}
