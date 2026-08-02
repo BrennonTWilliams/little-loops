@@ -203,12 +203,16 @@ def _section_body_with_offset(content: str, heading: str) -> tuple[str, int] | N
     ``absolute_start_offset`` is *body*'s start position within *content*, used by
     span-reporting callers (e.g. :func:`locate_enumerable_options`, ENH-2950) to
     translate body-relative match positions into document line numbers. Returns
-    None when the heading is absent.
+    None when the heading is absent. When the heading appears more than once
+    (e.g. ``## Confidence Check Notes`` appended fresh by every confidence-check
+    run), the last occurrence wins — the same "last one wins" contract used by
+    :func:`~little_loops.session_log.parse_session_log`.
     """
     pattern = rf"^##\s+{re.escape(heading)}\s*$"
-    match = re.search(pattern, content, re.MULTILINE)
-    if match is None:
+    matches = list(re.finditer(pattern, content, re.MULTILINE))
+    if not matches:
         return None
+    match = matches[-1]
     start = match.end()
     next_match = re.search(r"^##\s", content[start:], re.MULTILINE)
     end = start + next_match.start() if next_match else len(content)

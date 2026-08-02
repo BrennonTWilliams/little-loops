@@ -4047,3 +4047,52 @@ class TestCheckFormatGapsTestablePopulation:
         gaps = check_format_gaps(issue_file)
 
         assert gaps.testable == []
+
+
+class TestSectionBodyLastMatchWins:
+    """Regression tests for BUG-2985: stacked repeat headings must resolve to the
+    last occurrence, not the first."""
+
+    def test_returns_last_occurrence_of_stacked_heading(self) -> None:
+        """Two stacked `## Confidence Check Notes` sections resolve to the second."""
+        from little_loops.issue_parser import _section_body
+
+        content = (
+            "# BUG-0001: Example\n\n"
+            "## Confidence Check Notes\n\nStale notes: open decision here.\n\n"
+            "## Confidence Check Notes\n\nCurrent notes: no open decisions.\n\n"
+            "## Status\n\n**Open**\n"
+        )
+
+        body = _section_body(content, "Confidence Check Notes")
+
+        assert body is not None
+        assert "Current notes" in body
+        assert "Stale notes" not in body
+
+    def test_single_occurrence_unaffected(self) -> None:
+        """A heading that appears once behaves exactly as before (no-op change)."""
+        from little_loops.issue_parser import _section_body
+
+        content = "# BUG-0001: Example\n\n## Summary\n\nOnly one section.\n\n## Status\n\n**Open**\n"
+
+        body = _section_body(content, "Summary")
+
+        assert body is not None
+        assert "Only one section" in body
+
+    def test_with_offset_returns_start_of_last_match(self) -> None:
+        """`_section_body_with_offset`'s reported start offset points at the last body."""
+        from little_loops.issue_parser import _section_body_with_offset
+
+        content = (
+            "## Confidence Check Notes\n\nfirst\n\n"
+            "## Confidence Check Notes\n\nsecond\n"
+        )
+
+        result = _section_body_with_offset(content, "Confidence Check Notes")
+
+        assert result is not None
+        body, start = result
+        assert body.strip() == "second"
+        assert content[start:].strip() == "second"

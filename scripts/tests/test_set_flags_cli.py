@@ -231,6 +231,30 @@ class TestApplyFlagsFromNotes:
 
         assert via_default.set_flags == via_piped.set_flags
 
+    def test_stacked_confidence_check_notes_uses_most_recent_section(
+        self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
+    ) -> None:
+        """Regression for BUG-2985: with two stacked `## Confidence Check Notes`
+        sections, only the oldest containing decision-flag phrasing, `set-flags`
+        (no `--from-notes`) must not fire the flag from the stale section."""
+        from little_loops.cli.issues.set_flags import apply_flags_from_notes
+        from little_loops.config import BRConfig
+
+        (temp_project_dir / ".ll" / "ll-config.json").write_text(json.dumps(sample_config))
+        issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        _write_issue(issue_file, outcome_confidence=50)
+        issue_file.write_text(
+            issue_file.read_text()
+            + "\n## Confidence Check Notes\n\nThere is an open decision about approach.\n"
+            + "\n## Confidence Check Notes\n\nEverything here is fully resolved.\n"
+        )
+
+        config = BRConfig(temp_project_dir)
+        result = apply_flags_from_notes(config, "BUG-001", None, dry_run=False)
+
+        assert result.set_flags["decision_needed"] is False
+        assert "decision_needed: true" not in issue_file.read_text()
+
     def test_dry_run_does_not_write(
         self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
     ) -> None:
