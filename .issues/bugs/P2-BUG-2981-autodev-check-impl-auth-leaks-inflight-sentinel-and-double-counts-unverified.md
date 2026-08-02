@@ -1,6 +1,7 @@
 ---
 id: BUG-2981
-title: autodev check_impl_auth leaks the inflight sentinel, and finalize_done double-counts the same issue as unverified
+title: autodev check_impl_auth leaks the inflight sentinel, and finalize_done double-counts
+  the same issue as unverified
 type: BUG
 priority: P2
 status: open
@@ -15,6 +16,12 @@ labels:
 - fsm
 decision_needed: false
 testable: true
+confidence_score: 100
+outcome_confidence: 97
+score_complexity: 22
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-2981: `autodev` `check_impl_auth` leaks `autodev-inflight`, and `finalize_done` double-counts the same issue as unverified
@@ -171,6 +178,41 @@ bucket that *also* left a sentinel is still an abandonment. Only the duplicate
 - `scripts/little_loops/loops/autodev.yaml:99` — `dequeue_next`'s sentinel
   write (unchanged; the reason the leak is normally invisible)
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- The sentinel-clearing convention this issue extends has a named origin:
+  every sibling state's `rm -f .../autodev-inflight` line carries a "BUG-1226"
+  comment ("`done` should not surface a stale in-flight warning for an issue
+  that resolved cleanly"). Beyond the four sibling call sites the issue
+  already cites (`:349`, `:420`, `:439`, `:862`), the same pattern also
+  appears at `skip_already_resolved` (`:196-213`), `record_decision_unresolved`
+  (`:690-712`), and a decompose-parent state (`:950-967`) — every
+  issue-resolving state in the file follows it; `check_impl_auth` and
+  `abort_env_not_ready` are confirmed the only two that omit it.
+- `check_impl_auth`/`abort_env_not_ready` routing is already covered by an
+  existing static test class, `TestAutodevAuthGuard`
+  (`scripts/tests/test_builtin_loops.py:13242-13299`) — it asserts route
+  targets and the diagnostic `echo`, but nothing about `autodev-inflight`.
+  The new D1 test can live alongside it rather than in a new class.
+- For the structural "walk every state reachable from `implement_current`"
+  test called for below: no test in `test_builtin_loops.py` currently does a
+  branching BFS/DFS over the FSM's reachable-state graph (the closest
+  precedents are a single-path chain-walk with a cycle guard —
+  `test_dequeue_next_routes_to_check_decision_at_dequeue`,
+  `:4236-4263` — and a flat iteration over all declared states —
+  `test_no_failure_edge_routes_to_a_success_terminal`, `:57-96`). A real BFS
+  primitive already exists in production code —
+  `_find_reachable_states()` in `scripts/little_loops/fsm/validation/_base.py:207`
+  (used by `ll-loop validate`'s own reachability rules) — reusable instead of
+  hand-rolling a new walk.
+- Line numbers in this issue were checked against current HEAD and are
+  accurate to within 1-4 lines (comment growth only, e.g. `check_impl_auth`'s
+  body is `:877-884` not `:877-885`, the `finalize_done` residual guard is
+  `:2023-2033` not `:2029-2032`); no state names or routing structure have
+  drifted.
+
 ## Implementation Steps
 
 1. Add `clear_inflight_after_impl_failure` and repoint `check_impl_auth`'s
@@ -265,6 +307,29 @@ Found by `/ll:audit-loop-run` on an `autodev` run that reported an
 unconditional "re-queue to retry" remedy text being wrong for a deterministic
 `ready-issue` NOT_READY — is filed separately as an ENH, since it changes
 summary output that other tooling reads.
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-01_
+
+**Readiness Score**: 100/100 → PROCEED (overridden by hard gap below)
+**Outcome Confidence**: 97/100 → HIGH CONFIDENCE
+
+### Gaps to Address
+- Program Design gate (`ll-issues format-check`) flags the `## Program Design`
+  section as non-specific: no signature-shaped line and no repo-resolvable
+  `Call Path` anchor for `check_impl_auth, on_no, on_error,
+  clear_inflight_after_impl_failure, dequeue_next`. This is a heuristic
+  false-negative on a YAML-routing change (there is no function signature to
+  cite), but the gate is armed for this project and the issue has no
+  `program_design_not_applicable: true` flag. Resolve by either restating the
+  routing change in a signature-shaped form the linter recognizes, or by
+  setting `program_design_not_applicable: true` in frontmatter since this is a
+  YAML-only change with no Python signatures involved.
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-02T01:27:07 - `6c4807ec-5dc9-473c-8026-65d5738daba7.jsonl`
+- `/ll:refine-issue` - 2026-08-02T01:21:36 - `b10f0b3a-574a-4cd1-aefd-c6a613922849.jsonl`
 
 ---
 
