@@ -2046,7 +2046,7 @@ states:
         # asked "was this already passed?" when the correct question is "was
         # this already recorded at all?" ABANDONED stays set either way; it is
         # a verdict input independent of whether the line gets appended.
-        if ! grep -qE "^${INFLIGHT}([[:space:]]|$)" ${context.run_dir}/autodev-unverified.txt 2>/dev/null; then
+        if ! grep -qE "^$INFLIGHT([[:space:]]|$)" ${context.run_dir}/autodev-unverified.txt 2>/dev/null; then
           echo "$INFLIGHT  inflight_at_finalize" >> ${context.run_dir}/autodev-unverified.txt
         fi
       fi
