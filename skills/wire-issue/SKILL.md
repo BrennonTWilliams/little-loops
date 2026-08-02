@@ -117,7 +117,6 @@ EXISTING_WIRING:
   known_tests: [list]
   known_docs: [list]
   key_symbols: [function/class/module names extracted from issue text]
-  implementation_steps_count: N
 ```
 
 **Key symbol extraction rules:**
@@ -382,17 +381,20 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### 8b: Implementation Steps Updates
 
-If `new_impl_steps` is non-empty, append a wiring-specific phase to the existing `## Implementation Steps` section:
+If `new_impl_steps` is non-empty, append a wiring-specific phase to the existing `## Implementation Steps` section.
+Use plain `-` bullets for these entries. Do **not** continue the parent
+list's numbering — the Wiring Phase is a distinct set of touchpoints and
+makes no claim about position in the parent sequence.
 
 ```markdown
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-N. Update `path/to/caller.py` — adjust calls to `changed_function()` with new signature
-N+1. Update `tests/test_affected.py` — adapt existing tests to new behavior
-N+2. Register in `plugin.json` — add entry for new skill/command
-N+3. Update `docs/relevant.md` — reflect changed behavior in documentation
+- Update `path/to/caller.py` — adjust calls to `changed_function()` with new signature
+- Update `tests/test_affected.py` — adapt existing tests to new behavior
+- Register in `plugin.json` — add entry for new skill/command
+- Update `docs/relevant.md` — reflect changed behavior in documentation
 ```
 
 ### 8c: Preservation Rule

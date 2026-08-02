@@ -2,7 +2,7 @@
 id: ENH-2989
 title: autodev reports a Phase 1 verdict failure as a phantom implementation
 type: ENH
-priority: P3
+priority: P2
 status: open
 captured_at: '2026-08-02T00:00:00Z'
 discovered_date: 2026-08-02
@@ -157,13 +157,35 @@ only two analogues, are both `output_contains` fragments greppping
 would require carving out a new code space for one caller. Marker:
 `PHASE1_NOT_STARTED {issue_id} {reason}`.
 
-**2. Summary key → `not_started`,** a standalone one-reason-per-file ledger
-(`${context.run_dir}/autodev-not-started.txt`), matching
+**2. Summary key → `not_started`,** a standalone ledger
+(`${context.run_dir}/autodev-not-started.txt`), sitting alongside
 `autodev-gate-blocked.txt` / `autodev-decision-unresolved.txt`. It must be
 zero-initialised in `init` alongside the others (`autodev.yaml:63-68`).
 Deterministic verdicts do **not** get their own key — they append to the existing
 shared ledger as `autodev-skipped.txt  notstarted_not_ready`, reusing the
 trailing-reason shape rather than widening the summary schema.
+
+**Line shape → `ID  reason`, not a bare ID** (corrected; an earlier draft of this
+decision specified the bare-ID shape of `autodev-gate-blocked.txt`). Wiring step
+6b requires the `Not-started (N):` summary line to carry each ID's reason token,
+which a bare-ID ledger cannot supply. Use the two-field shape and format it in
+`finalize_done` with the existing `ALREADY_RESOLVED_IDS` idiom (`~:2192`):
+
+```sh
+NOT_STARTED_IDS=$(cat ${context.run_dir}/autodev-not-started.txt 2>/dev/null \
+  | awk '{print $1" ("$2")"}' | grep -v '^[[:space:]]*$' | sort -u || true)
+```
+
+Counting is unaffected (`grep -c '[^[:space:]]'` over the same list, as every
+sibling bucket does).
+
+**2b. Write the ledger only on the terminal path.** The `unknown` re-queue
+(decision #3) must **not** append to `autodev-not-started.txt` on its first pass —
+only bump the attempts counter. Otherwise an issue that fails Phase 1, retries,
+and closes reports `"closed": 1, "not_started": 1` in the same `summary.json`,
+which is the identical double-ledger hazard as decisions #2a and #4, one file
+over. The ledger entry is written when the ID is classified terminally: a
+deterministic reason on first sight, or `unknown` with attempts exhausted.
 
 **2a. The `autodev-skipped.txt` write needs a matching `grep -v` exclusion, or
 the ID is double-counted.** `finalize_done`'s `SKIPPED_IDS` (`~:2183-2186`) is a
@@ -297,7 +319,15 @@ run rejected at Phase 1 has `PASSED_COUNT=0`, `UNVERIFIED_COUNT=0`,
 `VERDICT=no-op`. That satisfies AC-1's "≠ phantom" literally, but `no-op` means
 "nothing happened" — and refine, wire and confidence-check all ran before a real
 rejection occurred. It also flips the run from `phantom → exit 1 → failed` to
-`exit 0 → done`, which changes what a parent `auto-refine-and-implement` sees.
+`exit 0 → done`.
+
+**That exit-code flip is a non-event for the parent — verified, do not
+re-litigate.** `auto-refine-and-implement.yaml`'s `delegate` declares
+`on_success: recheck_set` and `on_failure: recheck_set` (`:280-281`) — the *same*
+target. Only `on_error` diverges (`record_error`), and that path is a sub-loop
+crash, unreachable from a clean `finalize_done` exit. So autodev's terminal
+routing is invisible to the parent, and the verdict choice below can be made on
+its own merits.
 
 Decided: **add a `not_started` verdict branch** ahead of the `no-op` fallback —
 `PASSED_COUNT=0 && UNVERIFIED_COUNT=0 && ABANDONED=0 && NOT_STARTED_COUNT>0 →
@@ -312,9 +342,26 @@ it is not rediscovered.** That loop invokes autodev via `loop: autodev`
 (`:274`) sharing the same `run_dir`. Two consequences of this issue's changes:
 
 - Its `finalize` reads `autodev-passed.txt` / `autodev-skipped.txt` /
-  `autodev-gate-blocked.txt` — **never `autodev-staged.txt`**. So decision #4's
-  staged mutation cannot corrupt the parent's counts. This is what makes the
-  Scope Boundaries call safe.
+  `autodev-gate-blocked.txt` — **never `autodev-staged.txt` or
+  `autodev-unverified.txt`**. `NOT_CLOSED` is `autodev-passed.txt` minus the
+  closed-now union (`:821-828`) and `SKIP` is a raw line count of
+  `autodev-skipped.txt` (`:832`). So decision #4's staged mutation cannot
+  corrupt the parent's counts. This is what makes the Scope Boundaries call safe.
+- **The parent's current behaviour on this case is `no-op`, not `phantom`** —
+  a Phase-1-rejected ID reaches neither `autodev-passed.txt` nor
+  `autodev-skipped.txt` today, so the parent sees `CLOSED=0, SKIP=0,
+  NOT_CLOSED=0, ERR=0, ABANDONED=0` and falls through its own ladder
+  (`:937-953`) to `no-op` with no trace of the issue at all. After this issue's
+  changes the terminal ID lands in `autodev-skipped.txt`, so the parent reports
+  `no-op` with `SKIP=1` **and** a `notstarted_<reason>` key in
+  `skipped_breakdown` — strictly more legible than today at zero cost here. See
+  the corrected Scope Boundaries bullet.
+- Its `skipped_breakdown` builder (`:854-866`) splits each ledger line on
+  whitespace and tallies field 2 as a free-form reason key — it is **not** a
+  fixed vocabulary. The new `notstarted_*` tokens therefore surface in the
+  parent's `summary.json` with no code change. What they do need is a glossary
+  entry in `skills/audit-loop-run/SKILL.md` (see Documentation), or the audit
+  surface reads a key it cannot interpret.
 - Its residual fold-back (`:324-330`) reads `$RUN_DIR/autodev-queue.txt` and
   re-surfaces anything left there when autodev hits `timeout`/`max_steps`. A
   head-prepended `unknown` retry (decision #3) sitting unconsumed at that moment
@@ -393,6 +440,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/guides/LOOPS_REFERENCE.md` — the "Diagram omissions" paragraph for `autodev` (~line 1045) and the Auth fast-fail (ENH-2353) Notes paragraph (~line 1047) both hard-code the current `implement_current → check_learning_gate → check_impl_auth` chain verbatim; need the new discriminator state added to the documented routing [Agent 2 finding]
 - `docs/guides/RECURSIVE_LOOPS_GUIDE.md` — the Outcome-token handoff marker table (lines 245-259) and surrounding convention prose (261-312) catalogue every `issue_manager.py`-originated stdout marker (`LEARNING_GATE_BLOCKED`, `IMPLEMENT_FAILED`, etc.); needs a new row/entry for the Phase-1-not-reached marker for consistency with how every other marker is documented [Agent 2 finding]
+- `skills/audit-loop-run/SKILL.md` (~line 271) — the ENH-2404 `skipped_breakdown` reason glossary, which annotates each reason key with how a reviewer should read it (`decomposed` healthy, `low_readiness`/`refine_failed` quality signal, `refine_failed_infra` re-runnable, `oversized_atomic` needs a human risk call). The `notstarted_*` family reaches this surface automatically — `auto-refine-and-implement.yaml`'s builder (`:854-866`) tallies free-form reason tokens, not a fixed vocabulary — so without a glossary entry the audit skill reads an uninterpretable key. Add the family classified as **never-attempted, not a quality signal**, the same bucket as the `already_*` (ENH-2868) and `blocked_by_unmet` (ENH-2909) pre-flight skips: the issue was rejected during validation and no implementation was attempted, so it neither indicts refinement quality nor counts as a transient worth blind re-running (except `notstarted_unknown`, which is the transient one)
 
 ### Tests
 
@@ -409,6 +457,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 - New: **staged-ledger removal test** — the AC-1 regression guard. Synthetic `run_dir` with the ID in both `autodev-staged.txt` and `autodev-not-started.txt`; assert `finalize_done` emits a non-`phantom` verdict and `not_closed: 0`. Without this, the fix can ship while the reported bug persists.
 - New: **duplicate-staging removal test** — `autodev-staged.txt` seeded with the same ID on two lines (reachable via the five staging sites and via a re-queued second pass); assert `mark_not_started` leaves **zero** occurrences. Guards the `grep -vxF` whole-file rewrite against a single-line-delete implementation.
 - New: **re-queue bound tests** for `mark_not_started`, end-to-end subprocess shape against a synthetic `run_dir`: (a) reason `unknown` with attempts `0` puts the ID at the **head** (`head -1`) of `autodev-queue.txt` ahead of any pre-existing entries, and writes attempts `1`; (b) `unknown` with attempts `1` does **not** re-queue and appends `"$ID  unknown"` to `autodev-skipped.txt`; (c) each terminal reason token (`not_ready`, `blocked`, `close_failed`, `path_mismatch`, `confidence_gate`) never re-queues regardless of attempt count.
+- New: **re-queue-leaves-no-residue test** (AC-5b) — extends the (a) re-queue-bound case above: after `mark_not_started` runs with reason `unknown` and attempts `0`, assert `autodev-not-started.txt` and `autodev-skipped.txt` are both still empty, and that the ID *is* gone from `autodev-staged.txt` and the inflight sentinel *is* cleared. Guards decision #2b's split between the re-queue and terminal paths.
+- New: **resume-safety tests** (AC-5c) — synthetic `run_dir` with **no** `autodev-not-started-attempts.txt`: (a) `mark_not_started` with reason `unknown` still re-queues to the head and writes attempts `1`; (b) `finalize_done` with no `autodev-not-started.txt` emits `not_started: 0` and exits `0`. Models the resumed-run path where `init` never ran (`implement_current`'s BUG-1870 comment), and mirrors `test_finalize_decision_unresolved_zero_when_no_ledger_entries`.
+- New: **summary-line reason-formatting test** (AC-2b) — `autodev-not-started.txt` seeded with two `ID  reason` lines; assert the `Not-started (2):` line renders `FEAT-1 (not_ready)`-style entries, per the `Already-resolved` awk idiom. Guards decision #2's two-field ledger shape against a bare-ID regression, which would silently drop the reason from the operator's view.
+- New: **no-double-count test** (AC-2a) — synthetic `run_dir` with the ID in `autodev-not-started.txt` and `"$ID  notstarted_not_ready"` in `autodev-skipped.txt`; assert `summary.json` reports `not_started: 1` and `skipped: 0`. Guards the `SKIPPED_IDS` carve-out, modelled on the existing `already_`/`blocked_by_unmet` exclusion tests.
+- New: **verdict test** (AC-1) — same synthetic `run_dir`, empty `autodev-passed.txt`/`autodev-unverified.txt`; assert `verdict == "not_started"` and the state exits `0`. Companion: with no not-started IDs and nothing else, verdict is still `no-op`.
+- New: **unparsable-reason test** (AC-5a) — `ll_auto_last.txt` containing `PHASE1_NOT_STARTED FEAT-1` with no third field; assert no re-queue and a `notstarted_unparsed` ledger line.
 - New: fragment-content assertion for `ll_auto_not_started_check` in `loops/lib/common.yaml` — greps `ll_auto_last.txt`, not a `capture:` interpolation (BUG-2594 guard, mirroring the existing `ll_auto_learning_gate_check` assertion).
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -416,9 +470,23 @@ _Wiring pass added by `/ll:wire-issue`:_
 _These touchpoints were identified by wiring analysis and must be included in the implementation, in addition to the `autodev.yaml`/`issue_manager.py` changes already scoped above:_
 
 1. Add the `PHASE1_NOT_STARTED {issue_id} {reason}` stdout marker at **every** Phase-1 early return enumerated in decision #5 (including the pre-Phase-1 confidence gate at `:745`, where it is emitted *alongside* the existing `CONFIDENCE_GATE_BLOCKED` print, not in place of it), following the `LEARNING_GATE_BLOCKED`/`IMPLEMENT_FAILED` convention.
+
+   **Accepted: the marker also appears in `ll-sprint` / `ll-parallel` output.**
+   `process_issue_inplace` is shared — `cli/sprint/run.py` has two call sites
+   (see Integration Map) — so an unconditional `print` surfaces there with no
+   consumer. This is exactly the `LEARNING_GATE_BLOCKED` / `IMPLEMENT_FAILED`
+   precedent (both already print from those same call sites, and
+   `IMPLEMENT_FAILED` has no `autodev.yaml` consumer at all). Do **not** gate
+   the print on caller identity to suppress it: a conditional marker is harder
+   to test and breaks the "Python emits, any FSM may consume" convention. Noted
+   here so a reviewer does not flag it as leakage.
 2. Add the `ll_auto_not_started_check` fragment to `loops/lib/common.yaml`, modelled on `ll_auto_learning_gate_check` (`:327-351`) — grep `${context.run_dir}/ll_auto_last.txt` for `PHASE1_NOT_STARTED`, never the FSM `capture:` value (BUG-2594). It must **not** match `LEARNING_GATE_BLOCKED` or `IMPLEMENT_FAILED`, which keep their existing routing.
 3. Insert `check_impl_reached` ahead of `check_learning_gate` in `autodev.yaml`; repoint `implement_current.on_no`/`on_error` at it. Ordering matters for the same reason `check_learning_gate` precedes `check_impl_auth` (`common.yaml:338-341`).
-4. Add `mark_not_started`, modelled on `mark_gate_blocked` (`:852-875`). It must: (a) append to `autodev-not-started.txt`; (b) **remove every occurrence of the ID from `autodev-staged.txt`** via `grep -vxF` whole-file rewrite (decision #4 — without this the `phantom` verdict survives); (c) `rm -f autodev-inflight` per the BUG-1226 convention; (d) parse the reason token from the marker line, and on `unknown` with attempts remaining, **prepend** the ID onto the head of `autodev-queue.txt` and bump `autodev-not-started-attempts.txt` (decision #3 — head, not tail); (e) otherwise append `"$ID  notstarted_<reason>"` to `autodev-skipped.txt` (decision #2's prefixed ledger form). `next: dequeue_next`, `on_error: dequeue_next`.
+4. Add `mark_not_started`, modelled on `mark_gate_blocked` (`:852-875`). It must: (a) **remove every occurrence of the ID from `autodev-staged.txt`** via `grep -vxF` whole-file rewrite (decision #4 — without this the `phantom` verdict survives); (b) `rm -f autodev-inflight` per the BUG-1226 convention; (c) parse the reason token from the marker line, and on `unknown` with attempts remaining, **prepend** the ID onto the head of `autodev-queue.txt` and bump `autodev-not-started-attempts.txt` (decision #3 — head, not tail), writing **nothing** to `autodev-not-started.txt` or `autodev-skipped.txt` on this path (decision #2b); (d) on every terminal path — a deterministic reason on first sight, or `unknown` with attempts exhausted — append `"$ID  <reason>"` to `autodev-not-started.txt` (decision #2's two-field shape) *and* `"$ID  notstarted_<reason>"` to `autodev-skipped.txt` (decision #2's prefixed ledger form). `next: dequeue_next`, `on_error: dequeue_next`.
+
+   Steps (a) and (b) run on **both** paths — a re-queued issue must still leave
+   the staged ledger and clear the sentinel, since it re-stages on its second
+   pass and `dequeue_next` rewrites the sentinel.
 
    **Reason parse, and its fallback.** `ll_auto_last.txt` is overwritten per issue (see Research Findings), so the parse is a plain grep with no ID-scoping needed beyond the marker's own second field:
 
@@ -429,12 +497,23 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
    An empty or unrecognized `$REASON` must be treated as **terminal**, never as `unknown`. Defaulting a parse miss to `unknown` would re-queue on exactly the signal-loss condition this issue exists to stop misreporting. Record the unparsed case as `notstarted_unparsed` in `autodev-skipped.txt` so it stays visible rather than being silently folded into `not_ready`.
 5. Zero-initialise `autodev-not-started.txt` and `autodev-not-started-attempts.txt` in `init` alongside the sibling ledgers (`autodev.yaml:63-68`).
+
+   **`init` is bypassed on resume — neither file may exist.** `implement_current`'s
+   own BUG-1870 comment states it ("On resume, init is bypassed so
+   autodev-inflight may hold an issue…"), and autodev runs `on_handoff: spawn`,
+   so a resumed run is the normal case, not an edge case. Both readers must
+   degrade rather than fault: `mark_not_started`'s attempts read defaults to `0`
+   on a missing/empty file (`cat ... 2>/dev/null || echo 0`, plus a non-numeric
+   guard), and `finalize_done`'s `NOT_STARTED_COUNT` defaults to `0` on an absent
+   ledger exactly as `GATE_BLOCKED_COUNT` does. A missing attempts file must not
+   be read as "attempts exhausted" (which would silently disable the retry) nor
+   crash the state.
 6. Surface `not_started` in `finalize_done`'s `printf`-emitted `summary.json` object (`~:2284`), counted from the new ledger like `GATE_BLOCKED_IDS`.
 6a. Add the `grep -v '[[:space:]]notstarted_'` carve-out to `SKIPPED_IDS` (`~:2183-2186`), alongside the existing `refine_failed_infra` / `already_` / `blocked_by_unmet` exclusions — without it the ID is counted in both `not_started` and `skipped` (decision #2a).
-6b. Add the operator-facing summary line, guarded on `-gt 0` and shaped like the `Gate-blocked` / `Decision-unresolved` lines (`~:2257-2262`): `printf 'Not-started  (%d): %s  (never reached implementation — Phase 1 rejected; see reason)\n'`. The list must carry each ID's reason token, so the operator sees *why* without opening the ledger. Expected Behavior requires the distinction be legible in the run summary as well as `summary.json`; this is that half.
+6b. Add the operator-facing summary line, guarded on `-gt 0` and shaped like the `Gate-blocked` / `Decision-unresolved` lines (`~:2257-2262`): `printf 'Not-started  (%d): %s  (never reached implementation — Phase 1 rejected)\n'`. The list carries each ID's reason token via decision #2's `awk '{print $1" ("$2")"}'` formatting — i.e. `FEAT-1 (not_ready), FEAT-2 (unknown)` — so the operator sees *why* without opening the ledger. This is the `Already-resolved` line's exact idiom (`~:2253`). Expected Behavior requires the distinction be legible in the run summary as well as `summary.json`; this is that half.
 6c. Add the `not_started` verdict branch ahead of the `no-op` fallback in the verdict ladder (`~:2272-2281`), per decision #6, exiting `0`.
 7. Update `test_issue_manager.py:2431` and the two `test_builtin_loops.py` routing-assertion tests (4985/4993, 13261) to match the new chain; add the new marker/state/finalize tests listed above, including one marker-emission test per reason token in decision #5's table.
-8. Update `docs/guides/LOOPS_REFERENCE.md` and `docs/guides/RECURSIVE_LOOPS_GUIDE.md` to document the new state and marker.
+8. Update `docs/guides/LOOPS_REFERENCE.md` and `docs/guides/RECURSIVE_LOOPS_GUIDE.md` to document the new state and marker, and `skills/audit-loop-run/SKILL.md` (~:271) to add the `notstarted_*` family to the `skipped_breakdown` reason glossary (see Documentation for the classification). The skill entry is not optional documentation polish: the family reaches the parent's `summary.json` automatically, so omitting it ships a key the audit surface cannot interpret.
 9. Verify `test_autodev_implement_current_failure_chain_clears_inflight` and `test_finalize_done_residual_sentinel_not_double_counted` still pass under the new routing.
 
 ## Scope Boundaries
@@ -447,21 +526,38 @@ _These touchpoints were identified by wiring analysis and must be included in th
   meaning for runs that genuinely did implement; other loops' summary schemas;
   wiring a consumer for the orphaned `IMPLEMENT_FAILED` marker; the
   marker/consumer audit test proposed under _Adjacent gap_.
-- **Out of scope but carries the same bug**:
-  `auto-refine-and-implement.yaml`'s `finalize` state independently
-  reimplements the staged → unverified → `phantom` logic, so a Phase 1
-  rejection misreports there too. Not fixed here — capture separately rather
-  than widening this issue.
+- **Out of scope, and it does _not_ carry the same bug** (corrected — an
+  earlier draft claimed `auto-refine-and-implement.yaml`'s `finalize`
+  "independently reimplements the staged → unverified → `phantom` logic"; it
+  does not, and that reading contradicts decision #7). That `finalize` never
+  reads `autodev-staged.txt` or `autodev-unverified.txt`: `NOT_CLOSED` derives
+  from `autodev-passed.txt` minus closed (`:821-828`) and `SKIP` is a raw count
+  of `autodev-skipped.txt` (`:832`). A Phase-1 rejection there produces `no-op`
+  with every bucket at zero — the issue vanishes silently rather than being
+  called `phantom`. This issue's changes improve that for free (`SKIP=1` plus a
+  `notstarted_*` breakdown key) without touching the parent. Any follow-up
+  capture should therefore target the parent's **`no-op`-with-parked-work**
+  verdict — the same complaint decision #6 fixes on the child — not a phantom
+  misattribution that does not exist there.
 
 ## Acceptance Criteria
 
 1. **The phantom misattribution is gone, not merely annotated.** For a
    single-issue run whose only failure is a Phase 1 rejection, `summary.json`
-   reports `"verdict"` ≠ `"phantom"` and `"not_closed": 0` — the ID appears in
-   `autodev-not-started.txt` and **not** in `autodev-unverified.txt`. (This is
-   the AC that fails if decision #4's staged-ledger removal is skipped.)
+   reports `"verdict": "not_started"` and `"not_closed": 0` — the ID appears in
+   `autodev-not-started.txt` and **not** in `autodev-unverified.txt`, and
+   `finalize_done` exits `0`. (This is the AC that fails if decision #4's
+   staged-ledger removal is skipped.) `no-op` remains reserved for a run with
+   no not-started IDs either; a mixed run with `PASSED_COUNT>0` still resolves
+   `success`/`partial` unchanged.
 2. `summary.json` carries a `not_started` count, defaulting to `0` when the
    ledger is empty or absent.
+2a. **No double-count.** A terminal not-started ID is counted in `not_started`
+   and **not** in `skipped`: `summary.json` reports `"not_started": 1,
+   "skipped": 0`, and the ID does not appear in the `Skipped (N):` summary line.
+2b. **The run summary is legible, not just `summary.json`.** A run with at
+   least one not-started ID prints a `Not-started (N): ...` line carrying each
+   ID's reason token, and prints no `Unverified` line for that ID.
 3. Every Phase-1 early return in decision #5's table prints
    `PHASE1_NOT_STARTED {issue_id} {reason}` to stdout with the reason token that
    table assigns, and prints neither `LEARNING_GATE_BLOCKED` nor
@@ -476,6 +572,19 @@ _These touchpoints were identified by wiring analysis and must be included in th
    `autodev-queue.txt`** at most once, so the retried issue is the next one
    dequeued; a second `unknown` on the same ID in the same run is terminal.
    Every other reason token is never re-queued.
+5a. An **unparsable** reason token (marker present, third field missing or
+   unrecognized) is terminal — never re-queued — and is ledgered
+   `notstarted_unparsed`.
+5b. **A re-queue leaves no ledger residue.** An `unknown` re-queue writes
+   nothing to `autodev-not-started.txt` or `autodev-skipped.txt` on that pass,
+   so an issue that fails Phase 1, retries and closes reports
+   `"closed": 1, "not_started": 0, "skipped": 0` — not a closed issue
+   simultaneously counted as never started (decision #2b).
+5c. **Resume-safe.** With `autodev-not-started-attempts.txt` absent (the normal
+   state on a resumed run, where `init` is bypassed), an `unknown` reason still
+   re-queues once — a missing counter reads as `0` attempts, never as
+   exhausted — and `finalize_done` reports `not_started: 0` rather than
+   faulting when the ledger is absent.
 6. `mark_not_started` clears the `autodev-inflight` sentinel on every path,
    satisfying the structural walk in
    `test_autodev_implement_current_failure_chain_clears_inflight` without that
@@ -495,6 +604,7 @@ open
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-02T23:38:39 - `f620305f-3db4-4ec5-8092-9b42da3ac16e.jsonl`
 - `/ll:confidence-check` - 2026-08-02T16:42:49 - `6cac52a1-bb84-4f01-9a95-1cb4926b4e41.jsonl`
 - `/ll:wire-issue` - 2026-08-02T13:54:24 - `8b8edef1-c39e-4866-83db-7f4d2ee1561d.jsonl`
 - `/ll:refine-issue` - 2026-08-02T13:43:45 - `55aa09f8-706d-4a53-9c33-dad9b40b2fa3.jsonl`

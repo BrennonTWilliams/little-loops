@@ -42,7 +42,7 @@ WIRE ISSUE: {{ISSUE_ID}}
 - `tests/test_new.py` — new test file needed
 
 ## IMPLEMENTATION STEPS CHANGES
-- [N] new steps added to Wiring Phase
+- [N] wiring touchpoints added
 
 ## FILE STATUS
 - [Modified | Not modified (--dry-run | nothing to add)]
