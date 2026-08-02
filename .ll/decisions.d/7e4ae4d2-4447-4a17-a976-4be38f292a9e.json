@@ -1,0 +1,11 @@
+{
+  "id": "601a92c9-d28a-4f95-b74c-1b03b4e8b526",
+  "type": "decision",
+  "timestamp": "2026-08-02T13:46:26Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Wiring Phase continues parent step numbering including steps refuted by a prior refine pass.",
+  "rule": "Captured: wire-issue Wiring Phase numbers against live steps only",
+  "scope": "issue",
+  "issue": "ENH-2994"
+}

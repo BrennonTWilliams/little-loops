@@ -1,0 +1,11 @@
+{
+  "id": "3606e74b-844a-41ac-bf81-695fda2b5d3f",
+  "type": "decision",
+  "timestamp": "2026-08-02T13:46:26Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Blocks accumulate per pass (up to 12 in one file); 5+ pass issues median 263 lines vs 123 unrefined.",
+  "rule": "Captured: Fold repeated Codebase Research Findings blocks per section",
+  "scope": "issue",
+  "issue": "ENH-2993"
+}

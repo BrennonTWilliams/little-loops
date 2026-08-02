@@ -1,0 +1,11 @@
+{
+  "id": "3242d890-0997-46bc-abc5-614156707991",
+  "type": "decision",
+  "timestamp": "2026-08-02T13:47:36Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Wiring Phase continues parent step numbering including steps refuted by a prior refine pass. Supersedes the ENH-2994 entry added minutes earlier (ID collision with a concurrent capture).",
+  "rule": "Captured: wire-issue Wiring Phase numbers against live steps only",
+  "scope": "issue",
+  "issue": "ENH-2996"
+}
