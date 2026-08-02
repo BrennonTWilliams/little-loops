@@ -8,6 +8,7 @@ discovered_by: capture-issue
 relates_to:
 - ENH-2995
 - ENH-2993
+- BUG-3001
 confidence_score: 90
 outcome_confidence: 45
 score_complexity: 10
@@ -15,6 +16,9 @@ score_test_coverage: 25
 score_ambiguity: 10
 score_change_surface: 0
 missing_artifacts: true
+testable: true
+blocked_by:
+- BUG-3002
 ---
 
 # Route reconcile-issue on contradiction, not only on readiness plateau
@@ -99,11 +103,11 @@ Two changes, independent:
 
 **A. Widen the automated gate.** In `check_reconcile_needed`
 (`autodev.yaml:1406-1458`), add a contradiction predicate OR'd with the
-existing plateau predicate. `commands/reconcile-issue.md` already supports
-`--check`, which "report[s] the plateau verdict without writing, for FSM
-evaluators" — extend or reuse that as the detection call so the predicate is
-computed in Python rather than judged by an LLM (MR-1: this state needs a
-non-LLM evaluator in its routing chain).
+existing plateau predicate.
+
+> ⚠ Superseded — the `--check`/heuristic detection question below was open when
+> this issue was captured. **ENH-2995 landed 2026-08-02 (`56893def`)** and
+> settles it; see "Detection: decided" immediately after.
 
 Detection candidates, cheapest first:
 - A Python check over the issue's directive sections vs its
@@ -116,24 +120,114 @@ Detection candidates, cheapest first:
   reconcile-eligible. Prefer this if available; it removes the heuristic
   entirely.
 
-**B. Surface the human path.** In `commands/refine-issue.md`:
-- Add reconcile to the pipeline diagram (line 791) at its real position —
-  after refine, conditional.
-- Add a Next Steps entry (lines 753-758): when this pass deposited findings
-  that refute an existing directive section, run `/ll:reconcile-issue [ID]`.
+#### Detection: decided
 
-Change B is independently shippable and near-zero-risk.
+ENH-2995 shipped both halves of the signal:
+
+- the `> ⚠ Superseded — …` in-place marker convention written by
+  `/ll:refine-issue` into `## Implementation Steps` / `### Files to Modify` /
+  `## Acceptance Criteria`;
+- a deterministic `unmarked_superseded_directive` gap class in
+  `ll-issues format-check --format json`
+  (`scripts/little_loops/issue_parser.py:543-560`).
+
+The predicate is therefore **inline Python over
+`ll-issues format-check ${ID} --format json`**, which matches
+`check_reconcile_needed`'s existing inline-Python-over-`ll-issues show --json`
+idiom (`autodev.yaml:1436-1458`), satisfies MR-1 with zero LLM judgment, and
+leaves `--check`'s zero-caller contract untouched. Neither option in the
+wiring note's "(a) wire `--check` / (b) second inline check" framing is taken:
+this is a third, smaller option that did not exist when that note was written.
+
+**One gap remains.** `format-check` reports only the *unmarked* case
+(correction language present, no marker) — that is a refine-did-not-mark
+defect, the inverse of what this gate wants. The reconcile-eligible signal is
+marker **presence**, which has no query surface today:
+`_SUPERSEDED_MARKER_PREFIX`, `_SUPERSEDED_DIRECTIVE_SECTIONS` and
+`_heading_bodies` are all private to `issue_parser.py`. Implementation must add
+one — a public helper (e.g. `superseded_marker_count(path) -> int`) or an
+additional `format-check` field. **Reuse BUG-3002's verdict-surface cleanup if
+it lands first**: that issue proposes collapsing its three duplicated
+`DESIGN_FAIL` `python3 -c` heredocs into "a shared fragment or an `ll-issues`
+subcommand returning the verdict directly" — the same primitive. Two
+independently-invented verdict paths is the failure mode to avoid; BUG-3002
+marks that cleanup separable, which is how it gets missed.
+
+#### Open design point: marker lifecycle across reconcile
+
+`commands/reconcile-issue.md` has **zero** awareness of ENH-2995's markers
+(`grep -n "Superseded" commands/reconcile-issue.md` → no hits). If
+marker-presence is the predicate and reconcile rewrites a directive line
+without removing that line's marker, `check_reconcile_needed` fires again on
+every subsequent pass — the unbounded loop this issue's own Scope Boundaries
+forbid, and the precise mechanism Expected Behavior #2 depends on.
+
+Two candidate resolutions, both unspecified today:
+
+1. **Reconcile clears the marker it acted on.** Note this is a change to
+   reconcile's Contract section, which Scope Boundaries currently says is
+   untouched — see the amended boundary below. It is also worth arguing rather
+   than assuming: BUG-3002 scored "widen reconcile's contract" 5/12 and
+   rejected it. The counter-argument here is that removing a marker on a line
+   reconcile is already rewriting falls inside its existing rewrite scope and
+   requires no re-research (the thing `reconcile-issue.md:67-68` disclaims) —
+   but that argument has to be made explicitly, not inherited.
+2. **Marker-fingerprint snapshot** diffed pass-over-pass under
+   `${context.run_dir}`, mirroring the existing `autodev-pre-readiness.txt`
+   pattern. Leaves reconcile's contract alone; costs a new artifact and a
+   comparison step.
+
+Resolve this before implementing the predicate — it determines whether the
+bounded-cap requirement is satisfied structurally or only by the counter.
+
+**B. Surface the human path.** In `commands/refine-issue.md`:
+- Add reconcile to the pipeline diagram at its real position — after refine,
+  conditional. Note there are **three** pipeline diagrams in that file, not
+  one; decide explicitly which get the conditional branch.
+- Add a Next Steps entry: when this pass deposited findings that refute an
+  existing directive section, run `/ll:reconcile-issue [ID]`.
+- Regenerate the host mirrors — `.gemini/commands/refine-issue.toml` and
+  `.kimi-code/skills/ll-refine-issue/SKILL.md` are committed in-tree and were
+  updated alongside `commands/refine-issue.md` in ENH-2995's commit
+  (`56893def`). Any edit to the command file must carry them.
+
+> ⚠ Superseded — "Change B is independently shippable and near-zero-risk" was
+> true at capture. **BUG-3001 now restructures the same region of
+> `commands/refine-issue.md`**: its change 2 has refine calling
+> `ll-issues format-check --format json` at Step 6.5 and reporting gaps in
+> Step 8's output, and its change 3 reorders Step 6.5 against the Session Log
+> append. Change B should ride that mechanism — one more key in the JSON refine
+> will already have in hand — rather than land first as standalone prose in a
+> region BUG-3001 is rewriting. Sequence B after BUG-3001; it stays low-risk,
+> it is no longer independent.
+
+**Sequencing.** BUG-3001 → BUG-3002 → this issue. See
+[Related Key Documentation](#related-key-documentation) for why each edge
+exists.
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/autodev.yaml` — `check_reconcile_needed` state
-  (lines 1406-1458): add the contradiction predicate; revisit the
-  `reconcile_attempted` one-shot arming (line 1418)
-- `commands/refine-issue.md` — pipeline diagram (line 791) and `## NEXT STEPS`
-  output block (lines 753-758)
-- `commands/reconcile-issue.md` — if `--check` is extended to report a
-  contradiction verdict alongside the plateau verdict
+
+> ⚠ Superseded — every line number in this issue predates `56893def`
+> (ENH-2995), which shifted `commands/refine-issue.md` by ~46 lines, and
+> BUG-3001/BUG-3002 will move both `refine-issue.md` and `autodev.yaml` again.
+> **Line numbers here are deliberately left uncorrected** — resolve every
+> anchor by symbol/heading at implementation time, not by line. Known drift as
+> of 2026-08-02: pipeline diagram 791 → 837 (plus 847, 852); `## NEXT STEPS`
+> 753-758 → 799-805; `test_builtin_loops.py` 5613 → 5621.
+
+- `scripts/little_loops/loops/autodev.yaml` — `check_reconcile_needed` state:
+  add the contradiction predicate; revisit the `reconcile_attempted` one-shot
+  arming
+- `scripts/little_loops/issue_parser.py` — public marker-presence surface (see
+  "Detection: decided"); or the shared verdict subcommand if BUG-3002's cleanup
+  lands first
+- `commands/refine-issue.md` — pipeline diagrams and `## NEXT STEPS` output
+  block, plus the `.gemini` / `.kimi-code` mirrors
+- `commands/reconcile-issue.md` — only under resolution 1 of the marker
+  lifecycle question (clearing markers on rewrite). Not needed under
+  resolution 2.
 
 ### Dependent Files (Callers/Importers)
 - TBD — use grep to find references
@@ -150,12 +244,29 @@ _Wiring pass added by `/ll:wire-issue`:_
   or (b) adding the contradiction predicate as a second inline-Python check
   alongside the existing one, leaving `--check`'s still-consumer-less contract
   untouched. Resolve this explicitly before implementation.
+
+  > ⚠ Superseded — resolved. Neither (a) nor (b): the predicate reads
+  > `ll-issues format-check ${ID} --format json` inline, an option that did not
+  > exist when this note was written (ENH-2995, `56893def`). `--check` stays
+  > consumer-less and untouched. See "Detection: decided" in Proposed Solution.
+  > This closes the Architecture Compliance 15/20 and the ambiguity risk factor
+  > recorded in Confidence Check Notes.
 - `scripts/tests/test_autodev_loop.py` — `_run_reconcile_predicate()` helper
   (subprocess-execs the state's action) backs a `TestCheckReconcileNeeded*`
   suite; also `check_atomic_design_remedy`/selector tests (~439-455) that
   hardcode `reconcile_attempted` as a boolean gate in a **sibling** state, and
   `test_dispatcher_routes_pending_remedy_to_reconcile_current` (~657) — another
   routing edge into `reconcile_current` sharing the same one-shot guard.
+
+  > ⚠ Superseded — **BUG-3002 deletes both of these consumers.** Its selected
+  > Option A retargets the `design_gate_failed` remedy from `reconcile_current`
+  > to a new `refine_for_design` state, "leaving `reconcile_current` untouched
+  > for the plateau case it was built for." Land BUG-3002 first and this
+  > issue's blast radius shrinks by two named consumers; land them
+  > concurrently and they collide on the same routing edges and test pins.
+  > Re-measure the surviving pin list against `main` before implementing —
+  > the "11+ existing tests" figure in Confidence Check Notes is a pre-BUG-3002
+  > count.
 - `scripts/tests/test_builtin_loops.py` (`TestAutodevLoop`, ~4127-6411) —
   structural assertions on `check_reconcile_needed`'s action/routing:
   `test_reconcile_states_exist` (5824), `test_check_reconcile_needed_fires_for_fresh_below_threshold`
@@ -244,12 +355,27 @@ _These touchpoints were identified by wiring analysis and must be included in th
    inline-Python check in `check_reconcile_needed` (matches today's
    zero-caller reality, lowest structural risk) or a genuinely-wired
    slash-command evaluator call to `/ll:reconcile-issue --check`.
+
+   > ⚠ Superseded — resolved (inline `ll-issues format-check --format json`).
+   > Replace this step with: **resolve the marker-lifecycle question** (see
+   > "Open design point" in Proposed Solution) — reconcile clears the marker it
+   > acted on, or a marker-fingerprint snapshot under `${context.run_dir}`.
+   > That choice determines whether step 2's cap is structural or counter-only,
+   > and whether `commands/reconcile-issue.md` is in the diff at all.
+
+1a. Add the marker-presence query surface — a public helper in
+   `issue_parser.py`, or the shared verdict subcommand if BUG-3002's
+   `DESIGN_FAIL` cleanup lands first. `format-check` today reports only the
+   inverse (`unmarked_superseded_directive`).
 2. Update `scripts/little_loops/loops/autodev.yaml`'s `check_reconcile_needed`
-   state (~1406-1458) with the OR'd contradiction predicate, and revisit the
-   `reconcile_attempted` one-shot arming (~1418) using the FEAT-2751
+   state with the OR'd contradiction predicate, and revisit the
+   `reconcile_attempted` one-shot arming using the FEAT-2751
    `count_repair_cycle_reconcile` counter pattern for a bounded second-fire cap.
-3. Update `commands/refine-issue.md` — pipeline diagram (~line 791) and
-   `## NEXT STEPS` block (~lines 753-758) to name `/ll:reconcile-issue`.
+3. Update `commands/refine-issue.md` — pipeline diagrams (three of them) and
+   the `## NEXT STEPS` block to name `/ll:reconcile-issue`, folded onto
+   BUG-3001's Step 6.5 `format-check --format json` call rather than added as
+   separate prose. Regenerate `.gemini/commands/refine-issue.toml` and
+   `.kimi-code/skills/ll-refine-issue/SKILL.md`.
 4. Update `scripts/tests/test_builtin_loops.py::TestAutodevLoop` and
    `scripts/tests/test_autodev_loop.py` per the Tests subsection above —
    `test_check_reconcile_needed_fires_for_fresh_below_threshold` (~5613) will
@@ -268,11 +394,49 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Affects ~316 existing issues and every future refine pass.
 - Change B alone makes reconcile discoverable to humans at zero risk.
 
+## Acceptance Criteria
+
+1. `check_reconcile_needed` routes to `reconcile_current` when the issue's
+   directive sections carry a `⚠ Superseded` marker, with the readiness score
+   unchanged from the prior pass (i.e. no plateau) — proving the contradiction
+   branch fires independently of the plateau branch.
+2. The predicate is evaluated in Python with no LLM in the routing chain;
+   `ll-loop validate autodev` reports MR-1 clean.
+3. Marker presence is read through a public, tested surface — not by
+   re-implementing `_SUPERSEDED_MARKER_PREFIX` matching inline, and not by
+   prose in a skill (`ll-verify-skill-prose` flags the latter).
+4. A directive line whose marker reconcile has already acted on does not
+   re-trigger the gate on the next pass. Test: two consecutive passes over the
+   same issue with one marker → exactly one `reconcile_current` entry.
+5. A *second, distinct* contradiction discovered on a later pass is eligible
+   for a second reconcile, bounded by the FEAT-2751
+   `count_repair_cycle_reconcile` cap. Test: pass 1 marker A → reconcile;
+   pass 2 marker B → reconcile; pass 3+ → capped, no further entries.
+6. Issues with no marker and no plateau reach `check_size_review_ran_this_pass`
+   exactly as they do today — no behavior change off the new branch.
+7. `commands/refine-issue.md` names `/ll:reconcile-issue` in its `## NEXT STEPS`
+   block and pipeline diagram(s), locked by a `DOC_STRINGS_PRESENT` tuple in
+   `scripts/tests/test_wiring_skills_and_commands.py`; the `.gemini` and
+   `.kimi-code` mirrors carry the same text.
+8. `python -m pytest scripts/tests/` exits 0, with each test named in the
+   Dependent Files subsection verified individually rather than only in bulk.
+
 ## Success Metrics
 
-- Reconcile invocation rate rises from 1% of refined issues to approximately
-  the contradiction rate (~24%), without a corresponding rise in autodev
-  cycle count per issue.
+- Reconcile invocation rate rises from 1% of refined issues toward the rate at
+  which markers are actually written.
+
+  > ⚠ Superseded — the "~24% contradiction rate" figure was measured
+  > pre-ENH-2995 using correction-phrase heuristics over
+  > `### Codebase Research Findings`. Post-ENH-2995 the denominator is
+  > *marker* count, which only accrues on issues refined after `56893def` —
+  > the ~316-issue backlog carries the condition but not the marker. State the
+  > target against markers written, and measure over issues refined after the
+  > ENH-2995 cutover only.
+
+- No rise in autodev cycle count per issue. Measurement mechanism must be
+  named before this is a metric — candidate: `count_repair_cycle_reconcile`
+  values in run artifacts, compared across a fixed issue set before/after.
 - `ll-loop validate autodev` stays clean — in particular MR-1 (the new
   predicate must have a non-LLM evaluator in its routing chain).
 
@@ -280,7 +444,16 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - Does **not** change what reconcile rewrites — its Contract section
   (rewrite-eligible vs preserve-untouched) is unchanged.
-- Does **not** amend the Preservation Rule; that is ENH-2995.
+
+  > ⚠ Superseded — conditionally. Under resolution 1 of the marker-lifecycle
+  > question, reconcile must *clear* the marker on a line it rewrites, which is
+  > a Contract change. The boundary holds only under resolution 2
+  > (fingerprint snapshot). Restate this boundary once that choice is made;
+  > note BUG-3002 scored "widen reconcile's contract" 5/12 and rejected it, so
+  > resolution 1 needs an explicit argument that marker-clearing is inside
+  > reconcile's existing rewrite scope rather than new re-research.
+
+- Does **not** amend the Preservation Rule; that is ENH-2995 (landed).
 - Does **not** make reconcile unbounded — a per-issue cap remains.
 
 ## Related Key Documentation
@@ -289,7 +462,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 |----------|-----------|
 | `commands/reconcile-issue.md` | Defines the remedy and its `--check` mode |
 | `scripts/little_loops/loops/autodev.yaml` | Contains the gate being widened |
+| `scripts/little_loops/issue_parser.py` | ENH-2995 marker convention + `unmarked_superseded_directive` gap class; where the marker-presence surface goes |
 | `.claude/CLAUDE.md` § Loop Authoring | MR-1 constrains the new predicate's evaluator |
+| ENH-2995 (done, `56893def`) | Supplies the detection signal this issue routes on |
+| BUG-3001 (open) | Restructures the `refine-issue.md` region Change B edits; land first |
+| BUG-3002 (open, blocks this) | Retargets `design_gate_failed` off `reconcile_current`, deleting two of this issue's named test consumers; land first |
 
 ## Confidence Check Notes
 

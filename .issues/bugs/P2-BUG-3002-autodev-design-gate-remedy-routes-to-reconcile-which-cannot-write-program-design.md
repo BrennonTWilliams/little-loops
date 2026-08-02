@@ -13,9 +13,12 @@ labels:
 - program-design-gate
 relates_to:
 - BUG-3001
+- BUG-3003
 status: open
+testable: true
 depends_on:
 - BUG-3001
+- BUG-3003
 decision_needed: false
 confidence_score: 80
 outcome_confidence: 75
@@ -208,11 +211,37 @@ violation in kind, not just size.
 
 ## Program Design
 
+Option A requires no Python signature change — the fix is FSM routing plus one
+new `autodev.yaml` state. Three constraints drive the shape, each established
+by tracing the current graph rather than by the original ENH-2870 comments:
+
+**(a) There are two remedy routes, not one.** Only
+`regate_after_atomic_remediation` reaches the remedy via
+`check_atomic_design_remedy`. `recheck_after_size_review` writes the literal
+token `reconcile` into `autodev-pre-deferral-remedy.txt` (`:1829`) and routes
+`on_no → check_pre_deferral_remedy` (`:1924`) → `dispatch_pre_deferral_remedy`
+(`:1941`), whose `on_no: reconcile_current` is the catch-all. Retargeting only
+`check_atomic_design_remedy.on_yes` leaves the more common path unfixed.
+
+**(b) The one-shot guard is reconcile-specific.** Both branches arm only when
+frontmatter `reconcile_attempted != true` (`:1646-1649`, `:1824-1828`) — a flag
+`/ll:reconcile-issue` writes and `/ll:refine-issue` does not. Retargeting
+without a replacement guard makes the `design_gate_failed` deferral at `:1654`
+unreachable on the regate path (it always re-arms), and lets an issue burn two
+refine invocations across the two routes before deferring.
+
+**(c) The remedy must be additive.** `--full-rewrite` escapes the triage that
+blocks enrichment (BUG-3003) but consumes `max_refine_count`
+(`refine-issue.md:684`) and rewrites sections wholesale — a rewrite cycle on a
+repeatedly-deferred issue. The correct call is `--auto --gap-analysis`,
+matching `run_refine`'s existing precedent (`autodev.yaml:767`); Step 5a is
+gated on `AUTO_MODE`, not on gap-analysis, so it runs and writes the section
+under its Preservation Rule (`refine-issue.md:470`) once BUG-3003 makes the
+analyzer axis unmet.
+
 ### Signatures
 
-Option A requires no Python signature change — the fix is FSM routing plus a
-new `autodev.yaml` state. Existing surfaces the three `DESIGN_FAIL` blocks
-consume, unchanged:
+Existing Python surfaces the three `DESIGN_FAIL` blocks consume, unchanged:
 
 - `cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int`
   (`scripts/little_loops/cli/issues/format_check.py:158`) — emits the JSON the
@@ -224,16 +253,38 @@ consume, unchanged:
   (`scripts/little_loops/cli/issues/set_status.py:20`) — writes the
   `design_gate_failed` deferral
 
-New FSM state (option A), named per `autodev.yaml` convention — YAML, not
-Python, so it has no signature:
+New FSM states (YAML, so no Python signature):
 
 - `refine_for_design:` — `action_type: slash_command`,
-  `action: "/ll:refine-issue ${captured.input.output}"`, modeled structurally
-  on `reconcile_current` (`:1688-1703`) including `fragment:
-  with_rate_limit_handling` and a `count_repair_cycle_*` successor
+  `action: "/ll:refine-issue ${captured.input.output} --auto --gap-analysis"`,
+  `fragment: with_rate_limit_handling`, a `pruning_profile` (MR-12 WARNs
+  without one), `next`/`on_error: count_repair_cycle_refine_for_design`,
+  `on_rate_limit_exhausted: done`. Structurally modeled on `reconcile_current`
+  (`:1688-1703`); flag set modeled on `run_refine` (`:761-779`).
+- `count_repair_cycle_refine_for_design:` — increments the shared
+  `autodev-repair-cycle-count.txt`, `next: rerun_confidence_after_reconcile`
+  (that state is remedy-agnostic: it re-runs `/ll:confidence-check` and falls
+  into `recheck_after_size_review`; reuse it rather than adding a sixth
+  near-identical rerun state, and update its ENH-2689 comment accordingly).
+- `dispatch_design_remedy:` — a chained gate between
+  `dispatch_pre_deferral_remedy` and `reconcile_current`, required because
+  `dispatch_pre_deferral_remedy` is a two-way `shell_exit` (exit 0 = spike,
+  exit 1 = reconcile fallback) with no room for a third target. It reads the
+  consumed remedy token and exits 0 for `refine_design`, 1 otherwise.
 
-Optional consolidation (separable) — collapse the three duplicated `python3 -c`
-blocks behind one Python entry point:
+New handshake file (issue-scoped, run-dir):
+`autodev-design-remedy-attempted-$ID` — the `reconcile_attempted` replacement
+from constraint (b). Written by `count_repair_cycle_refine_for_design`, read by
+both design branches' arming guards, cleared at `dequeue_next` alongside the
+other per-issue markers (`:~1945` block that already `rm -f`s
+`autodev-atomic-design-remedy-pending` and `autodev-pre-deferral-remedy-fired`).
+A run-dir marker rather than a frontmatter flag: refine has no
+`refine_attempted` field, inventing one would need a writer in
+`commands/refine-issue.md`, and the design-gate remedy is a per-run routing
+concern, not durable issue state.
+
+Optional consolidation (separable, still recommended) — collapse the three
+duplicated `python3 -c` blocks behind one Python entry point:
 
 - `cmd_check_design_gate(config: BRConfig, args: argparse.Namespace) -> int` —
   new `ll-issues` subcommand delegating to the existing
@@ -245,21 +296,38 @@ Verdict resolution (existing, unchanged, invoked by each `DESIGN_FAIL` block):
 `cmd_format_check` → `check_format_gaps` → `_gate_program_design` →
 `program_design_gate_active` → `grade_program_design`
 
-Remedy routing (the change): `recheck_after_size_review` (`autodev.yaml:1758`)
-/ `regate_after_atomic_remediation` (`:1586`) → `check_atomic_design_remedy`
-(`:1669`) → **`refine_for_design`** (new; today `reconcile_current` `:1688`) →
-`count_repair_cycle_reconcile`-style counter → back into the recheck loop → on
-repeat failure `cmd_set_status` with `--reason design_gate_failed` (`:1654`,
-`:1837`)
+Remedy routing, path 1 (regate): `regate_after_atomic_remediation` (`:1586`) →
+arms `autodev-atomic-design-remedy-pending` unless
+`autodev-design-remedy-attempted-$ID` exists → `check_atomic_design_remedy`
+(`:1669`) → **`refine_for_design`** (new; today `reconcile_current`) →
+**`count_repair_cycle_refine_for_design`** → `rerun_confidence_after_reconcile`
+(`:1718`) → `recheck_after_size_review`
+
+Remedy routing, path 2 (recheck): `recheck_after_size_review` (`:1758`) →
+emits `refine_design` (not `reconcile`) at `:1829`, guarded on
+`autodev-design-remedy-attempted-$ID` instead of `reconcile_attempted` →
+`check_pre_deferral_remedy` (`:1924`) → `dispatch_pre_deferral_remedy`
+(`:1941`, `on_no` now **`dispatch_design_remedy`**) → **`refine_for_design`**
+(exit 0) or `reconcile_current` (exit 1, the plateau case, unchanged)
+
+Terminal: on a repeat failure with the attempt marker present, both branches
+fall through to `cmd_set_status --reason design_gate_failed` (`:1654`, `:1837`)
+exactly as today.
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/autodev.yaml` — `check_atomic_design_remedy`
-  (`:1669-1687`) routing target; new remedy state; optionally the three
-  `DESIGN_FAIL` blocks at `:1090`, `:1616`, `:1780`
-- `commands/reconcile-issue.md` — only under option B (contract block `:42-77`,
-  Step 5 `:144-171`, output `:205`, frontmatter `description`)
+- `scripts/little_loops/loops/autodev.yaml` — new states `refine_for_design`,
+  `count_repair_cycle_refine_for_design`, `dispatch_design_remedy`;
+  `check_atomic_design_remedy.on_yes` (`:1677`);
+  `dispatch_pre_deferral_remedy.on_no`/`on_error` (`:1962-1964`); both arming
+  guards (`:1646-1649`, `:1824-1828`) and the remedy token at `:1829`;
+  `dequeue_next`'s marker-clearing block; the stale comments at `:1598-1603`
+  and `:1946-1951`; optionally the three `DESIGN_FAIL` blocks at `:1107`,
+  `:1607`, `:1771`
+- ⚠ Superseded — `commands/reconcile-issue.md` (contract block `:42-77`,
+  Step 5 `:144-171`, output `:205`, frontmatter `description`): option B only,
+  and option A was selected. Not a file this issue modifies.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/loops/autodev.yaml` — five other `count_repair_cycle_*`
@@ -272,7 +340,12 @@ _Wiring pass added by `/ll:wire-issue`:_
   "six" [Agent 2 finding]
 
 ### Dependent Files (Callers/Importers)
-- `commands/refine-issue.md` — option A depends on BUG-3001 landing first
+- `commands/refine-issue.md` — BUG-3001 landed the Step 5a enrichment rule, but
+  it is unreachable behind Step 3.0's triage for already-refined issues
+  (BUG-3003). This issue's remedy is inert until BUG-3003 lands.
+- `scripts/little_loops/issues/research_triage.py` — BUG-3003's fix site; the
+  reason `--auto --gap-analysis` is sufficient here and `--full-rewrite` is not
+  needed
 - `scripts/little_loops/cli/issues/deferred_triage.py` — consumes the
   `design_gate_failed` reason code (priority 6/8); no change expected, but its
   advisory text may need to stop implying reconcile is the fix
@@ -328,6 +401,35 @@ _Wiring pass added by `/ll:wire-issue`:_
   the design-gate-pending case — no existing test exercises this full hop
   chain [Agent 3 finding]
 
+_Second review pass (missed by the wiring pass — `test_autodev_loop.py` was not
+inspected):_
+- `scripts/tests/test_autodev_loop.py:439-447`
+  `test_design_branch_hardcodes_reconcile_remedy` — asserts
+  `"else 'reconcile'" in branch`; **will fail** once the token becomes
+  `refine_design`. Retarget and rename.
+- `scripts/tests/test_autodev_loop.py:449-459`
+  `test_design_branch_reconcile_attempted_falls_through_to_design_gate_failed`
+  — asserts the exact string
+  `"'' if d.get('reconcile_attempted') == 'true' else 'reconcile'"`; **will
+  fail** once the guard becomes the marker file. Rewrite around
+  `autodev-design-remedy-attempted-$ID`.
+- `scripts/tests/test_autodev_loop.py:461-468`
+  `test_design_branch_reuses_existing_remedy_handshake_files` — asserts the
+  branch reuses `autodev-pre-deferral-remedy-fired` /
+  `autodev-pre-deferral-remedy.txt`; still true, but extend it to cover the
+  new marker rather than leaving "no new remedy infrastructure" as its stated
+  contract.
+- Class docstrings at `test_autodev_loop.py:422-427` and `:632-637` describe
+  the reconcile-based routing and go stale.
+- **New test needed**: `dispatch_design_remedy` structural + routing
+  assertions (exit 0 → `refine_for_design`, exit 1 → `reconcile_current`), and
+  a negative test that a `spike`/plateau token still reaches
+  `reconcile_current` unchanged.
+- **New test needed**: one-shot-across-both-routes — with
+  `autodev-design-remedy-attempted-$ID` present, neither
+  `regate_after_atomic_remediation` nor `recheck_after_size_review` arms a
+  second remedy, and both reach the `design_gate_failed` deferral.
+
 ### Documentation
 - `.claude/CLAUDE.md` § Issue File Format — the deferral-reason-code paragraph
   mentions `design_gate_failed` handling only indirectly; check for wording
@@ -340,7 +442,7 @@ _Wiring pass added by `/ll:wire-issue`:_
   deterministic `## Program Design` gate failed even after **the one-shot
   reconcile remedy**)..." — becomes factually wrong once the remedy is
   `/ll:refine-issue` via `refine_for_design` [Agent 2 finding]
-- `docs/reference/DEFERRAL_CODES.md` (new, untracked) — the
+- `docs/reference/DEFERRAL_CODES.md` — the
   `readiness_stagnated` row (`:24`) enumerates repair-class attempts as
   "refine/wire/size-review/spike/reconcile" (five); if `refine_for_design`
   joins the shared repair-cycle counter this becomes an incomplete
@@ -348,49 +450,86 @@ _Wiring pass added by `/ll:wire-issue`:_
   itself — a pre-existing gap worth closing in the same pass [Agent 2
   finding]
 
+_Second review pass:_
+- `scripts/little_loops/loops/autodev.yaml` inline comments at `:1598-1603`
+  (regate's "routes once through the shared reconcile remedy") and
+  `:1946-1951` (dispatcher's "the frontmatter attempted-flags … make a second
+  arming impossible") both become factually wrong and are load-bearing for the
+  next reader of this graph.
+
 ### Configuration
 - N/A
 
 ## Implementation Steps
 
-1. A Program-Design-only failure reaches a remedy that can write the section —
-   whichever of options A/B is chosen — so the post-remedy re-check has a real
-   chance of passing rather than a guaranteed repeat failure.
-2. `design_gate_failed` deferrals still occur, but only after a
-   section-capable remedy has been attempted; `deferred-triage` output stays
-   meaningful.
-3. `ll-loop validate autodev` passes and `python -m pytest
-   scripts/tests/test_builtin_loops.py` is green, with an end-to-end check on
-   a real gate-failing issue confirming `## Program Design` is non-identical
-   before/after the remedy pass.
+_Land BUG-3003 first — without it `refine_for_design` calls a refine that
+skips Step 5a for exactly this population, reproducing the bug in a new state._
 
-### Wiring Phase (added by `/ll:wire-issue`)
-
-_These touchpoints were identified by wiring analysis and must be included in
-the implementation:_
-
-4. Add `pruning_profile` to the new `refine_for_design` state — MR-12
+1. Add the `refine_for_design` state to `autodev.yaml`, modeled on
+   `reconcile_current` (`:1688-1703`): `action_type: slash_command`, action
+   `"/ll:refine-issue ${captured.input.output} --auto --gap-analysis"`,
+   `fragment: with_rate_limit_handling`, `on_rate_limit_exhausted: done`, and
+   a `pruning_profile` — MR-12
    (`scripts/little_loops/fsm/validation/evaluator_rules.py:254`) WARNs on any
-   `action_type: slash_command` state without one; `reconcile_current` and
-   `run_spike` both carry one as precedent.
-5. Update `scripts/tests/test_autodev_decision_gate.py:657-659` — retarget the
-   `check_atomic_design_remedy.on_yes` assertion from `"reconcile_current"` to
-   `"refine_for_design"` and rename the test.
-6. Add a structural test for `refine_for_design` (action string, `fragment`,
-   `next`/`on_error`/`on_rate_limit_exhausted`) mirroring
-   `test_reconcile_current_invokes_skill`.
-7. Add an end-to-end mini-FSM routing test mirroring
-   `TestReconcilePlateauRouting` (`test_autodev_decision_gate.py:587-663`)
-   that drives `check_atomic_design_remedy` → `refine_for_design` and asserts
-   `reconcile_current` is not visited for the design-gate-pending case.
-8. If `refine_for_design` joins the shared `autodev-repair-cycle-count.txt`
-   counter, update the five "five repair-class states" inline comments in
-   `autodev.yaml` (`:446`, `:751`, `:1215-1216`, `:1276`, `:1707-1709`) and the
+   `slash_command` state without one.
+2. Add `count_repair_cycle_refine_for_design`, incrementing the shared
+   `autodev-repair-cycle-count.txt` and additionally writing the
+   `autodev-design-remedy-attempted-$ID` marker. Route
+   `next`/`on_error: rerun_confidence_after_reconcile` and update that state's
+   ENH-2689 comment to say it now serves both design and plateau remedies.
+3. Clear `autodev-design-remedy-attempted-$ID` at `dequeue_next`, in the same
+   block that already clears `autodev-atomic-design-remedy-pending` and
+   `autodev-pre-deferral-remedy-fired`.
+4. Retarget `check_atomic_design_remedy.on_yes` (`:1677`) from
+   `reconcile_current` to `refine_for_design`, and swap
+   `regate_after_atomic_remediation`'s arming guard (`:1646-1649`) from the
+   `reconcile_attempted` frontmatter read to the new marker file — without
+   this the `design_gate_failed` deferral at `:1654` becomes unreachable.
+5. Fix the second route: in `recheck_after_size_review`, change the emitted
+   remedy token at `:1829` from `reconcile` to `refine_design` and swap its
+   `reconcile_attempted` guard (`:1824-1828`) to the marker file.
+6. Add `dispatch_design_remedy` as a chained gate and repoint
+   `dispatch_pre_deferral_remedy.on_no`/`on_error` (`:1962-1964`) at it —
+   `dispatch_pre_deferral_remedy` is a two-way `shell_exit` (exit 0 = spike,
+   exit 1 = reconcile) with no room for a third target. The new gate exits 0
+   for `refine_design` → `refine_for_design`, 1 otherwise →
+   `reconcile_current` (the plateau case, unchanged).
+7. Update the now-false inline comments: `regate_after_atomic_remediation`
+   (`:1598-1603`, "routes once through the shared reconcile remedy") and
+   `dispatch_pre_deferral_remedy` (`:1946-1951`, "the frontmatter
+   attempted-flags … make a second arming impossible").
+8. Update the tests listed under Integration Map → Tests, including the two
+   in `test_autodev_loop.py` that hard-assert the reconcile selector string
+   and will fail outright.
+9. Since `refine_for_design` joins the shared repair-cycle counter, update the
+   "one of the five repair-class states" inline comments in `autodev.yaml`
+   (`:446`, `:751`, `:1215-1216`, `:1276`, `:1707-1709`) and the
    `readiness_stagnated` enumeration in `docs/reference/DEFERRAL_CODES.md:24`
-   to reflect six states.
-9. Update the stale "one-shot reconcile remedy" phrasing in
-   `docs/reference/API.md` (`#deferred-triage`, ~`:4038-4043`) to describe the
-   refine-based remedy.
+   to six, and add the missing `design_gate_failed` row to that file.
+10. Update the stale "one-shot reconcile remedy" phrasing in
+    `docs/reference/API.md` (`#deferred-triage`, ~`:4038-4043`) to describe the
+    refine-based remedy.
+
+## Acceptance Criteria
+
+- [ ] A Program-Design-only failure reaching **either** deferring state
+      (`regate_after_atomic_remediation` or `recheck_after_size_review`) is
+      routed to `refine_for_design`, not `reconcile_current`.
+- [ ] The remedy fires **at most once per issue per run** across both routes —
+      an issue that takes the regate route does not get a second refine pass
+      via the recheck route.
+- [ ] `design_gate_failed` deferral remains reachable on both routes once the
+      attempt marker is present; `deferred-triage` output stays meaningful.
+- [ ] The plateau path is untouched: `check_reconcile_needed` →
+      `dispatch_pre_deferral_remedy` → `reconcile_current` still routes to
+      reconcile for a non-design remedy token.
+- [ ] The remedy consumes no `max_refine_count` budget and removes no existing
+      issue content (additive `--auto --gap-analysis` pass).
+- [ ] `ll-loop validate autodev` passes with no new MR-* warnings, and
+      `python -m pytest scripts/tests/` exits 0.
+- [ ] End-to-end on a real gate-failing issue: `git diff` shows
+      `## Program Design` non-identical before/after the remedy pass, and the
+      post-remedy `format-check` clears `program_design_nonspecific`.
 
 ## Impact
 
@@ -402,9 +541,18 @@ potentially large — the gate applies to every non-grandfathered issue, and
 BUG-3001 means running `/ll:refine-issue` actively *enlarges* the class by
 un-grandfathering previously-exempt issues.
 
-Ordering matters: option A is the cleaner fix but depends on BUG-3001 landing
-first. Option B unblocks independently at the cost of duplicating enrichment
-logic across two commands.
+Ordering: option A's first prerequisite (BUG-3001) has landed, but a second
+surfaced on review — BUG-3003, the triage blind spot that makes refine's
+Program Design enrichment unreachable for already-refined issues. Land
+BUG-3003, then this. Option B remains an alternative at the cost of duplicating
+enrichment logic across two commands, and would still need BUG-3003 or
+`--full-rewrite`-equivalent research to source the section from.
+
+Scope note from the same review: the fix is roughly twice the size originally
+estimated. The remedy has two routes (`check_atomic_design_remedy` and the
+`pre-deferral-remedy.txt` dispatcher), the one-shot guard is reconcile-specific
+and needs a replacement marker, and the dispatcher needs a chained gate to hold
+a third remedy target.
 
 ## Related Key Documentation
 
@@ -427,9 +575,18 @@ _Added by `/ll:confidence-check` on 2026-08-02_
 **Outcome Confidence**: 75/100 → MODERATE
 
 ### Concerns
-- `depends_on: BUG-3001` is a hard blocker for the selected Option A path, and BUG-3001 is currently `status: Open` (not yet implemented). Retargeting the remedy to `refine_for_design` before `/ll:refine-issue` actually populates `## Program Design` would just swap one non-working remedy for another. Do not begin Option A implementation until BUG-3001 lands; if BUG-3001 stalls, reconsider Option B as an interim unblock.
+- `depends_on: BUG-3001` was a hard blocker for the selected Option A path; BUG-3001 has since landed (`status: done`, completed 2026-08-02) — see Codebase Research Findings below. This concern is resolved.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase re-check:_
+
+- **BUG-3001 has landed** (`status: Completed`, `Completed at: 2026-08-02` per `ll-issues show BUG-3001`) — the concern above ("do not begin Option A until BUG-3001 lands") is resolved. `commands/refine-issue.md` now populates `## Program Design` at Step 5a (`:372-374`) and gates it at Step 6.7 (`:737` "Prose Dependency & Program Design Gate (FEAT-2849, BUG-3001)", `:753`, `:829`, `:859`). Option A's prerequisite is satisfied; the `refine_for_design` remedy state would call a `/ll:refine-issue` that can actually write the section it targets.
+- `docs/reference/DEFERRAL_CODES.md` is now tracked in git (commit `d980fb82`, 2026-08-02) — the earlier "(new, untracked)" note under Integration Map → Documentation is stale. The file still has no row for `design_gate_failed` itself, so that part of the gap stands.
+- `.claude/CLAUDE.md` § Issue File Format was trimmed in the same commit (`d980fb82`, "migrate CLI Tools/Loop Authoring/Issue File Format out of CLAUDE.md") — the deferral-reason-code paragraph this issue's Documentation section referenced no longer lives in CLAUDE.md at all; it now points to `docs/reference/DEFERRAL_CODES.md`. The stale-remedy-wording risk flagged there has moved entirely to `DEFERRAL_CODES.md` and `docs/reference/API.md` (`#deferred-triage`), both already tracked in this issue's Integration Map.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-02T16:57:00 - `68d927d9-c11c-4d1e-89b3-a56472ca2633.jsonl`
 - `/ll:confidence-check` - 2026-08-02T16:24:56 - `79f2cbf6-efe9-4c5a-8ea6-c127c1fa8674.jsonl`
 - `/ll:wire-issue` - 2026-08-02T16:13:51 - `7350086a-c582-4853-bc33-c455a6cf8d34.jsonl`
 - `/ll:decide-issue` - 2026-08-02T15:59:14 - `7350086a-c582-4853-bc33-c455a6cf8d34.jsonl`

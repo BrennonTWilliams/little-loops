@@ -120,16 +120,54 @@ exists because the banner's framing is wrong, not because the frequency is high.
 - `hooks/scripts/scratch-pad-redirect.sh` — emits `hookSpecificOutput` with `additionalContext`
   for `PreToolUse` (shell-side precedent for the JSON shape)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_hook_session_start.py:70` — `handle(LLHookEvent(host="codex", intent="session_start", payload={}))`
+  is the closest precedent for constructing an inline non-default `host` in a test. [Agent 3 finding]
+- `scripts/tests/test_hooks_integration.py::test_bash_rewritten` (line ~2498-2522) —
+  `json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]` is the closest
+  precedent for asserting on the JSON shape this issue's fix must produce (shell-side, PreToolUse,
+  but same field structure). [Agent 3 finding]
+
 ### Tests
 - The existing `edit_batch_nudge` test module (find via
   `rg -l edit_batch_nudge scripts/tests/`) — assertions on `exit_code == 2` for the fire case
   must become host-parameterized: exit 0 + parseable `stdout` JSON for `claude-code`,
   exit 2 + `feedback` for a non-Claude host.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_edit_batch_hook.py` — exact tests that assert `exit_code == 2` on the
+  firing path and need host-parameterization: `TestStatefulNudge::test_run_of_unbatched_edits_nudges_at_threshold`,
+  `test_counter_resets_after_firing`, `test_nudge_only_fires_once_per_session`,
+  `test_nudge_only_fires_once_even_across_batched_resets`, `test_session_change_rearms_nudge`.
+  `_event()` (line 26-32) hardcodes `host="claude-code"` — needs a `host` kwarg. Note
+  `test_state_records_nudged_flag` does NOT need changes (asserts persisted state, not
+  `result.exit_code`). [Agent 3 finding]
+- `scripts/tests/test_hook_intents.py::TestDispatchEditBatchNudge::test_dispatch_edit_batch_nudge_happy_path`
+  (line ~380-407) — a **second, previously-unlisted breakage site**: a subprocess-level CLI
+  dispatch test (`python -m little_loops.hooks edit_batch_nudge`) that sets no `LL_HOOK_HOST`
+  (defaults to `claude-code`) and asserts `returncode == 2` / `"batch" in result.stderr.lower()`.
+  Will break identically to the `handle()`-level tests once the claude-code branch routes
+  through stdout/exit 0. [Agent 3 finding]
+- No existing Python test constructs/asserts a `hookSpecificOutput.additionalContext` JSON
+  shape from a `handle()` return — model new assertions after
+  `test_hooks_integration.py::test_bash_rewritten` (line ~2498-2522, `json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]`
+  pattern) combined with the `host=` construction style at `test_hook_session_start.py:70`
+  (`LLHookEvent(host="codex", ...)`). [Agent 3 finding]
+
 ### Documentation
 - `hooks/adapters/codex/README.md` — the stdout channel table lists `session_start` as the only
   stdout producer; add `edit_batch_nudge` (Claude Code only)
 - `docs/reference/API.md` — if it documents the handler's return contract
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/BUILTIN_HOOKS_GUIDE.md` — the hooks summary table row for `edit-batch-nudge`
+  states the mechanism as unconditionally `exit 2`, and the "Edit-batch nudge" prose section
+  says "Returns exit 2 so the reminder reaches the model's context." Both need updating to
+  describe the host-conditional behavior. [Agent 2 finding]
+- `CHANGELOG.md` (historical Tier-0 quick-wins entry) also states the mechanism as "exit 2" —
+  informational only per this repo's changelog convention (no `[Unreleased]` section, don't
+  amend old entries); no edit required, noted so the discrepancy isn't mistaken for a bug
+  later. [Agent 2 finding]
 
 ### Configuration
 - N/A
@@ -163,6 +201,17 @@ exists because the banner's framing is wrong, not because the frequency is high.
 4. Update `hooks/adapters/codex/README.md`'s stdout-channel table.
 5. Verify manually: trigger 3 unbatched single edits in a fresh Claude Code session and confirm
    the nudge lands with no blocking-error banner.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+6. Host-parameterize the five `TestStatefulNudge` tests in `scripts/tests/test_edit_batch_hook.py`
+   listed above (add a `host` kwarg to `_event()`); `test_state_records_nudged_flag` needs no change.
+7. Update `scripts/tests/test_hook_intents.py::TestDispatchEditBatchNudge::test_dispatch_edit_batch_nudge_happy_path`
+   — the subprocess-dispatch companion test that also hard-codes exit-code-2 semantics.
+8. Update `docs/guides/BUILTIN_HOOKS_GUIDE.md`'s hooks summary table row and "Edit-batch nudge"
+   prose section to describe the host-conditional behavior instead of unconditional `exit 2`.
 
 ## Impact
 
@@ -208,6 +257,8 @@ the `LLHookResult` exit-2 users for the same framing problem is a separate issue
 | `hooks/adapters/codex/README.md` | Documents the stdout channel per intent; needs a new row |
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-02T17:09:15 - `d7f5411e-7a9d-4bf5-bae1-030f4a53dae3.jsonl`
+- `/ll:refine-issue` - 2026-08-02T16:53:50 - `971b00cc-0a51-43c1-8fd9-6f984aead353.jsonl`
 - `/ll:capture-issue` - 2026-08-02T13:45:10 - `fac7dff4-61c1-4496-95b8-7bd1993d2971.jsonl`
 
 ---
