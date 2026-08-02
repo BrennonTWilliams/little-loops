@@ -2,7 +2,19 @@
 
 from __future__ import annotations
 
-from little_loops.text_utils import calculate_word_overlap, extract_words, score_bm25
+import subprocess
+from pathlib import Path
+from unittest.mock import patch
+
+from little_loops.text_utils import (
+    RefIndex,
+    build_ref_index,
+    calculate_word_overlap,
+    classify_file_ref,
+    classify_issue_refs,
+    extract_words,
+    score_bm25,
+)
 
 
 class TestExtractWords:
@@ -131,3 +143,148 @@ class TestScoreBM25:
         score_short = score_bm25({"python"}, {"python"}, **corpus)
         score_long = score_bm25({"python"}, {"python", "aaa", "bbb", "ccc", "ddd", "eee"}, **corpus)
         assert score_short > score_long
+
+
+# =============================================================================
+# File Reference Classification (ENH-2983)
+# =============================================================================
+
+
+class TestClassifyFileRef:
+    """Tests for classify_file_ref() against a pre-built RefIndex."""
+
+    def test_resolved_for_unrooted_partial_path(self) -> None:
+        """A partial path uniquely suffix-matching a tracked file resolves."""
+        index = RefIndex(
+            by_basename={"executor.py": ["scripts/little_loops/fsm/executor.py"]}
+        )
+        assert classify_file_ref("fsm/executor.py", index) == "resolved"
+
+    def test_unresolvable_form_bare_basename(self) -> None:
+        """A bare basename with no `/` is a prose mention, not a location."""
+        index = RefIndex(by_basename={"config-schema.json": ["scripts/config-schema.json"]})
+        assert classify_file_ref("config-schema.json", index) == "unresolvable_form"
+
+    def test_unresolvable_form_glob(self) -> None:
+        """A glob pattern is unresolvable_form."""
+        index = RefIndex(by_basename={})
+        assert classify_file_ref("skills/*/SKILL.md", index) == "unresolvable_form"
+
+    def test_unresolvable_form_placeholder(self) -> None:
+        """A path containing a <placeholder> segment is unresolvable_form."""
+        index = RefIndex(by_basename={})
+        assert (
+            classify_file_ref("~/.codex/skills/<name>/SKILL.md", index)
+            == "unresolvable_form"
+        )
+
+    def test_stale_for_qualified_path_no_suffix_match(self) -> None:
+        """A /-qualified path with no suffix match is genuine drift: stale."""
+        index = RefIndex(by_basename={})
+        assert (
+            classify_file_ref("scripts/little_loops/session_store.py", index) == "stale"
+        )
+
+    def test_planned_new_from_line_context(self) -> None:
+        """A path on a line marked (new) is planned_new, even if unresolved."""
+        index = RefIndex(by_basename={})
+        line = "- `scripts/little_loops/new_thing.py` (new)"
+        assert (
+            classify_file_ref("scripts/little_loops/new_thing.py", index, line=line)
+            == "planned_new"
+        )
+
+    def test_ambiguous_suffix_match_does_not_resolve(self) -> None:
+        """Two tracked files ending in /utils.py must not silently resolve."""
+        index = RefIndex(
+            by_basename={
+                "utils.py": [
+                    "scripts/little_loops/pkg1/dir/utils.py",
+                    "scripts/little_loops/pkg2/dir/utils.py",
+                ]
+            }
+        )
+        result = classify_file_ref("dir/utils.py", index)
+        assert result != "resolved"
+
+    def test_bare_skill_md_is_not_suffix_matched(self) -> None:
+        """Ordering guard: a bare SKILL.md must not suffix-match tracked SKILL.md files."""
+        index = RefIndex(
+            by_basename={
+                "SKILL.md": [
+                    "skills/commit/SKILL.md",
+                    "skills/init/SKILL.md",
+                    "skills/configure/SKILL.md",
+                ]
+            }
+        )
+        assert classify_file_ref("SKILL.md", index) == "unresolvable_form"
+
+    def test_direct_exact_match_resolves(self) -> None:
+        """A reference that is itself an exact tracked path resolves."""
+        index = RefIndex(
+            by_basename={"executor.py": ["scripts/little_loops/fsm/executor.py"]}
+        )
+        assert (
+            classify_file_ref("scripts/little_loops/fsm/executor.py", index) == "resolved"
+        )
+
+
+class TestClassifyIssueRefs:
+    """Tests for classify_issue_refs() over a whole issue body."""
+
+    def test_classifies_every_extracted_reference(self) -> None:
+        index = RefIndex(
+            by_basename={"executor.py": ["scripts/little_loops/fsm/executor.py"]}
+        )
+        content = (
+            "See fsm/executor.py for the runner and "
+            "scripts/little_loops/session_store.py for storage."
+        )
+        result = classify_issue_refs(content, index)
+        assert result["fsm/executor.py"] == "resolved"
+        assert result["scripts/little_loops/session_store.py"] == "stale"
+
+    def test_empty_content_returns_empty_dict(self) -> None:
+        index = RefIndex(by_basename={})
+        assert classify_issue_refs("", index) == {}
+
+    def test_planned_new_detected_from_containing_line(self) -> None:
+        index = RefIndex(by_basename={})
+        content = "### Files to Modify\n- `scripts/little_loops/new_thing.py` (new)\n"
+        result = classify_issue_refs(content, index)
+        assert result["scripts/little_loops/new_thing.py"] == "planned_new"
+
+
+class TestBuildRefIndex:
+    """Tests for build_ref_index() over a real git repo."""
+
+    def test_indexes_tracked_files_by_basename(self, tmp_path: Path) -> None:
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True
+        )
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
+        (tmp_path / "pkg").mkdir()
+        (tmp_path / "pkg" / "utils.py").write_text("# stub\n")
+        subprocess.run(["git", "add", "pkg/utils.py"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
+
+        index = build_ref_index(tmp_path)
+
+        assert index.by_basename.get("utils.py") == ["pkg/utils.py"]
+
+    def test_calls_git_ls_files_exactly_once(self, tmp_path: Path) -> None:
+        completed = subprocess.CompletedProcess(
+            args=["git", "ls-files", "-z"], returncode=0, stdout=b"a/b.py\0", stderr=b""
+        )
+        with patch("little_loops.text_utils.subprocess.run", return_value=completed) as mock_run:
+            build_ref_index(tmp_path)
+        assert mock_run.call_count == 1
+
+    def test_git_unavailable_returns_empty_index(self, tmp_path: Path) -> None:
+        with patch(
+            "little_loops.text_utils.subprocess.run", side_effect=OSError("no git")
+        ):
+            index = build_ref_index(tmp_path)
+        assert index.by_basename == {}

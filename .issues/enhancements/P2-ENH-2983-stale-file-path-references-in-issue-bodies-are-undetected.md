@@ -3,8 +3,9 @@ id: ENH-2983
 title: Stale file path references in issue bodies are undetected
 type: ENH
 priority: P2
-status: open
+status: done
 captured_at: '2026-08-01T00:00:00Z'
+completed_at: '2026-08-02T03:10:07Z'
 discovered_date: 2026-08-01
 discovered_by: capture-issue
 relates_to:
@@ -421,25 +422,25 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] `classify_file_ref()` returns `resolved` for an unrooted partial path
+- [x] `classify_file_ref()` returns `resolved` for an unrooted partial path
       that uniquely suffix-matches a tracked file (`fsm/executor.py`).
-- [ ] Returns `unresolvable_form` for a bare basename, a glob, and a
+- [x] Returns `unresolvable_form` for a bare basename, a glob, and a
       `<placeholder>`-containing path.
-- [ ] Returns `stale` for a `/`-qualified path with no suffix match
+- [x] Returns `stale` for a `/`-qualified path with no suffix match
       (`scripts/little_loops/session_store.py`).
-- [ ] Returns `planned_new` for a path on a line marked `(new)`.
-- [ ] An ambiguous suffix match (two tracked files ending in `/utils.py`) does
+- [x] Returns `planned_new` for a path on a line marked `(new)`.
+- [x] An ambiguous suffix match (two tracked files ending in `/utils.py`) does
       not silently resolve — asserted explicitly.
-- [ ] Check ordering is enforced: a bare `SKILL.md` returns
+- [x] Check ordering is enforced: a bare `SKILL.md` returns
       `unresolvable_form` and is **not** suffix-matched to one of the many
       tracked `SKILL.md` files. This is the ordering bug the design guards
       against, and it is invisible unless tested directly.
-- [ ] The suffix index is built at most once per `format-check` run, asserted
+- [x] The suffix index is built at most once per `format-check` run, asserted
       by subprocess-call count, not wall-clock.
-- [ ] `ll-issues format-check --all` reports `stale_file_ref` for a fixture
+- [x] `ll-issues format-check --all` reports `stale_file_ref` for a fixture
       issue citing a moved path, and does not report it for one citing only
       basenames and globs.
-- [ ] `python -m pytest scripts/tests/` passes.
+- [x] `python -m pytest scripts/tests/` passes.
 
 ## Impact
 
@@ -462,6 +463,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 _No documents linked._
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-02T03:09:09 - `3393826b-429e-4a99-966c-c4eff91a4a81.jsonl`
 - `/ll:confidence-check` - 2026-08-02T02:48:20 - `e3e414c6-4f76-426a-bbfa-a5e6aa4966f4.jsonl`
 - `/ll:wire-issue` - 2026-08-02T02:46:33 - `3f249c91-800b-4cc1-b707-d5e908f8ee51.jsonl`
 - `/ll:refine-issue` - 2026-08-02T02:38:08 - `70aac82a-9945-426e-b13e-546fa705b440.jsonl`

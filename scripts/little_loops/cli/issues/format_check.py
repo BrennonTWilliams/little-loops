@@ -61,7 +61,7 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
         help="Deterministic structural linter for issue formatting "
         "(missing/renamed/empty/boilerplate/malformed_id/prose_dep_drift/"
         "stale_prose_dep/program_design_nonspecific/deprecated_key/"
-        "multi_frontmatter/testable)",
+        "multi_frontmatter/testable/stale_file_ref)",
     )
     p.set_defaults(command="format-check")
     p.add_argument(
@@ -151,6 +151,8 @@ def _print_gaps(gaps: FormatGaps) -> None:
         print(f"  multi_frontmatter: {entry}")
     for entry in gaps.testable:
         print(f"  testable: {entry} (doc-only signals; set an explicit `testable:` key)")
+    for entry in gaps.stale_file_ref:
+        print(f"  stale_file_ref: {entry}")
 
 
 def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
@@ -158,7 +160,7 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
 
     Gap classes: missing/renamed/empty/boilerplate/malformed_id/
     prose_dep_drift/stale_prose_dep/program_design_nonspecific/deprecated_key/
-    multi_frontmatter/testable.
+    multi_frontmatter/testable/stale_file_ref.
 
     Every class in :class:`FormatGaps` must have a matching loop in
     :func:`_print_gaps`; a class counted by ``has_gaps`` but not rendered
@@ -176,6 +178,7 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
     )
     from little_loops.issue_progress import _ALL_STATUSES
     from little_loops.issue_template import resolve_templates_dir
+    from little_loops.text_utils import build_ref_index
 
     issue_id: str | None = getattr(args, "issue_id", None)
     check_all: bool = getattr(args, "all", False)
@@ -223,6 +226,10 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
             all_issues = find_issues(config, status_filter=set(_ALL_STATUSES))
     issue_statuses = {info.issue_id: info.status for info in all_issues}
     templates_dir = resolve_templates_dir(config)
+    # Built exactly once per invocation, ahead of every check_format_gaps()
+    # call site below (single-ID, --all, and the post-`--fix` re-checks) —
+    # this is where the "index built at most once" AC (ENH-2983) is enforced.
+    ref_index = build_ref_index(config.project_root)
 
     if check_all:
         # Sweep only active issues (default status_filter excludes
@@ -237,6 +244,7 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
                     info.path,
                     templates_dir=templates_dir,
                     issue_statuses=issue_statuses,
+                    ref_index=ref_index,
                 )
             except OSError as exc:
                 print(f"Warning: skipping {info.path}: {exc}", file=sys.stderr)
@@ -248,6 +256,7 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
                         info.path,
                         templates_dir=templates_dir,
                         issue_statuses=issue_statuses,
+                        ref_index=ref_index,
                     )
             if gaps.has_gaps:
                 results[info.issue_id] = gaps
@@ -275,6 +284,7 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
         path,
         templates_dir=templates_dir,
         issue_statuses=issue_statuses,
+        ref_index=ref_index,
     )
 
     if fix and gaps.prose_dep_drift:
@@ -286,6 +296,7 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
                 path,
                 templates_dir=templates_dir,
                 issue_statuses=issue_statuses,
+                ref_index=ref_index,
             )
 
     if suppressed:

@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import math
 import re
+import subprocess
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 # File path patterns for extraction from issue content
 _BACKTICK_PATH = re.compile(r"`([^`\s]+\.[a-z]{2,4})`")
@@ -88,6 +91,152 @@ def extract_file_paths(content: str) -> set[str]:
             if ext in SOURCE_EXTENSIONS and ("/" in path or ext):
                 paths.add(path)
     return paths
+
+
+# =============================================================================
+# File Reference Classification (ENH-2983)
+# =============================================================================
+
+RefStatus = Literal["resolved", "stale", "unresolvable_form", "planned_new"]
+
+# Characters that mark a reference as a glob pattern rather than a literal
+# path (e.g. `skills/*/SKILL.md`) — always unresolvable_form.
+_GLOB_CHARS = frozenset("*?[]")
+
+# A line-context marker for a not-yet-created file, e.g.
+# "- `scripts/new_thing.py` (new)". Case-insensitive.
+_PLANNED_NEW_RE = re.compile(r"\(new\)", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class RefIndex:
+    """Tracked-file index for file-reference resolution (ENH-2983).
+
+    Built once per invocation via :func:`build_ref_index` and threaded
+    through every :func:`classify_file_ref` call rather than shelling out
+    to ``git ls-files`` per reference.
+    """
+
+    by_basename: dict[str, list[str]]  # basename -> tracked repo-relative paths
+
+
+def build_ref_index(root: Path) -> RefIndex:
+    """Index tracked files by basename via a single ``git ls-files`` call.
+
+    Follows the fail-*empty*-never-raise convention shared by the other
+    ``git ls-files`` call sites in this codebase (e.g.
+    ``cli/verify_private_refs.py``'s ``_tracked_files()``,
+    ``codequery/fallback.py``'s ``_tracked_py_files()``): an unavailable git
+    binary or a non-zero exit yields an empty index rather than raising, so
+    a caller like ``check_format_gaps()`` can keep its own fail-open
+    contract intact.
+
+    Args:
+        root: Repository root to run ``git ls-files`` from.
+
+    Returns:
+        A :class:`RefIndex` mapping each tracked file's basename to the
+        list of repo-relative paths sharing that basename.
+    """
+    by_basename: dict[str, list[str]] = {}
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-z"],
+            cwd=root,
+            capture_output=True,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return RefIndex(by_basename=by_basename)
+    if result.returncode != 0:
+        return RefIndex(by_basename=by_basename)
+
+    names = result.stdout.decode("utf-8", errors="replace").split("\0")
+    for name in names:
+        if not name:
+            continue
+        basename = name.rsplit("/", 1)[-1]
+        by_basename.setdefault(basename, []).append(name)
+    return RefIndex(by_basename=by_basename)
+
+
+def classify_file_ref(ref: str, index: RefIndex, *, line: str = "") -> RefStatus:
+    """Classify one path reference extracted from issue prose.
+
+    Resolution order (not commutative — see ENH-2983 Program Design):
+
+    1. Form checks first — a glob (``skills/*/SKILL.md``), a
+       ``<placeholder>``-bearing path, or a bare basename with no ``/`` all
+       return ``unresolvable_form`` immediately. This must run before any
+       suffix matching, or a bare basename like ``SKILL.md`` would
+       spuriously suffix-match dozens of unrelated tracked files.
+    2. ``planned_new`` from line context (``(new)`` marker) — a planned file
+       legitimately fails both existence and suffix match, so it must be
+       distinguished before either lookup.
+    3. An exact tracked-path match (``ref`` itself is a tracked repo-relative
+       path) resolves.
+    4. A *unique* suffix match against the basename-keyed index resolves —
+       an unrooted partial path like ``fsm/executor.py`` cited without its
+       ``scripts/little_loops/`` prefix. Zero or more-than-one matches do
+       **not** resolve (ambiguous matches must not silently resolve).
+    5. Otherwise ``stale`` — a ``/``-qualified path with no match, the
+       genuine-drift signal this classifier exists to surface.
+
+    Args:
+        ref: The path reference as extracted from issue prose.
+        index: A :class:`RefIndex` built once per invocation.
+        line: The source line the reference was found on, used only for
+            ``planned_new`` detection.
+
+    Returns:
+        One of ``"resolved"``, ``"stale"``, ``"unresolvable_form"``, or
+        ``"planned_new"``.
+    """
+    if any(ch in ref for ch in _GLOB_CHARS):
+        return "unresolvable_form"
+    if "<" in ref or ">" in ref:
+        return "unresolvable_form"
+    if "/" not in ref:
+        return "unresolvable_form"
+
+    if line and _PLANNED_NEW_RE.search(line):
+        return "planned_new"
+
+    basename = ref.rsplit("/", 1)[-1]
+    candidates = index.by_basename.get(basename, [])
+    if ref in candidates:
+        return "resolved"
+
+    suffix = "/" + ref
+    matches = [p for p in candidates if p.endswith(suffix)]
+    if len(matches) == 1:
+        return "resolved"
+    return "stale"
+
+
+def classify_issue_refs(content: str, index: RefIndex) -> dict[str, RefStatus]:
+    """Classify every file path reference extracted from one issue body.
+
+    Pairs each reference returned by :func:`extract_file_paths` with the
+    first source line it appears on (needed for ``planned_new`` detection)
+    before classifying it with :func:`classify_file_ref`.
+
+    Args:
+        content: Full issue file content (frontmatter + body).
+        index: A :class:`RefIndex` built once per invocation.
+
+    Returns:
+        A mapping of reference string to its :data:`RefStatus`.
+    """
+    refs = extract_file_paths(content)
+    if not refs:
+        return {}
+    lines = content.splitlines()
+    result: dict[str, RefStatus] = {}
+    for ref in refs:
+        line_text = next((ln for ln in lines if ref in ln), "")
+        result[ref] = classify_file_ref(ref, index, line=line_text)
+    return result
 
 
 # =============================================================================

@@ -21,6 +21,7 @@ from little_loops.frontmatter import (
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
+    from little_loops.text_utils import RefIndex
 
 
 logger = logging.getLogger(__name__)
@@ -247,6 +248,7 @@ class FormatGaps:
     deprecated_key: list[str] = field(default_factory=list)
     multi_frontmatter: list[str] = field(default_factory=list)
     testable: list[str] = field(default_factory=list)
+    stale_file_ref: list[str] = field(default_factory=list)
 
     @property
     def has_gaps(self) -> bool:
@@ -263,6 +265,7 @@ class FormatGaps:
             or self.deprecated_key
             or self.multi_frontmatter
             or self.testable
+            or self.stale_file_ref
         )
 
     def to_dict(self) -> dict[str, list[str]]:
@@ -279,6 +282,7 @@ class FormatGaps:
             "deprecated_key": self.deprecated_key,
             "multi_frontmatter": self.multi_frontmatter,
             "testable": self.testable,
+            "stale_file_ref": self.stale_file_ref,
         }
 
 
@@ -309,6 +313,7 @@ def check_format_gaps(
     issue_path: Path,
     templates_dir: Path | None = None,
     issue_statuses: dict[str, str] | None = None,
+    ref_index: RefIndex | None = None,
 ) -> FormatGaps:
     """Grade an issue's structural format gaps against its type template.
 
@@ -353,6 +358,15 @@ def check_format_gaps(
             scoring path, followed by the canonical ``id:``-bearing block. Read
             paths merge both blocks so no data is lost, but the shape is
             malformed and should be folded into a single block.
+        stale_file_ref: a file path reference extracted from the body
+            (ENH-2983, :func:`little_loops.text_utils.classify_issue_refs`)
+            classifies as ``stale`` — a ``/``-qualified path with no exact or
+            unique-suffix match against tracked files, i.e. genuine drift
+            (the file moved or was deleted since the issue was written).
+            Reporting only; the remedy needs human intent, so no auto-fix.
+            Only reported when *ref_index* is given. When absent, this check
+            fails open (no gaps reported), matching this module's existing
+            convention.
 
     Args:
         issue_path: Path to the issue markdown file.
@@ -362,6 +376,11 @@ def check_format_gaps(
             ``stale_prose_dep`` (done/cancelled target). When absent, prose
             dependency checking fails open (no gaps reported for that class),
             matching this module's existing convention.
+        ref_index: Optional :class:`little_loops.text_utils.RefIndex` built
+            once per invocation (e.g. by ``ll-issues format-check``) via
+            :func:`little_loops.text_utils.build_ref_index`, used to resolve
+            file path references cited in the body. When absent, no
+            ``stale_file_ref`` gaps are reported.
 
     Returns:
         A FormatGaps instance. Fails open (empty FormatGaps, no gaps) when the
@@ -496,6 +515,13 @@ def check_format_gaps(
         scan_text = f"{title}\n{_strip_fm(content)}"
         if _count_testable_keyword_matches(scan_text) >= _TESTABLE_KEYWORD_THRESHOLD:
             gaps.testable.append(issue_path.name)
+
+    if ref_index is not None:
+        from little_loops.text_utils import classify_issue_refs
+
+        for ref, status in sorted(classify_issue_refs(content, ref_index).items()):
+            if status == "stale":
+                gaps.stale_file_ref.append(ref)
 
     return gaps
 

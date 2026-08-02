@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -334,6 +335,7 @@ class TestFormatCheckJsonOutput:
             "deprecated_key": [],
             "multi_frontmatter": [],
             "testable": [],
+            "stale_file_ref": [],
         }
 
     def test_gapped_issue_json_output(
@@ -518,6 +520,187 @@ class TestFormatCheckProseDeps:
         )
 
         assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# TestStaleFileRef (ENH-2983)
+# ---------------------------------------------------------------------------
+
+_EMPTY_GIT_LS_FILES = subprocess.CompletedProcess(
+    args=["git", "ls-files", "-z"], returncode=0, stdout=b"", stderr=b""
+)
+
+
+class TestStaleFileRef:
+    """stale_file_ref gap class (ENH-2983).
+
+    ``temp_project_dir`` is a bare tmp dir with no ``.git`` ancestor, so
+    ``build_ref_index()``'s real ``git ls-files`` call would fail open to an
+    empty index anyway — these tests patch ``subprocess.run`` directly for
+    determinism (and to make the "built at most once" assertion meaningful).
+    """
+
+    def _write_bug_with_ref(self, format_check_dir: Path, bug_id: str, ref_line: str) -> Path:
+        filename = f"P3-{bug_id}-test-bug.md"
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", f"id: {bug_id}").replace(
+            "## Current Behavior\nIt breaks in a specific way.",
+            f"## Current Behavior\n{ref_line}",
+        )
+        return _write_issue(format_check_dir, filename, body)
+
+    def test_all_reports_stale_file_ref_for_moved_path(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._write_bug_with_ref(
+            format_check_dir,
+            "BUG-9401",
+            "See `scripts/little_loops/session_store.py` for details.",
+        )
+
+        with patch(
+            "little_loops.text_utils.subprocess.run", return_value=_EMPTY_GIT_LS_FILES
+        ):
+            result = _invoke(
+                ["ll-issues", "format-check", "--all", "--config", str(temp_project_dir)]
+            )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "stale_file_ref: scripts/little_loops/session_store.py" in out
+
+    def test_all_does_not_report_for_basenames_and_globs_only(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._write_bug_with_ref(
+            format_check_dir,
+            "BUG-9402",
+            "See `SKILL.md` and skills/*/SKILL.md for details.",
+        )
+
+        with patch(
+            "little_loops.text_utils.subprocess.run", return_value=_EMPTY_GIT_LS_FILES
+        ):
+            result = _invoke(
+                ["ll-issues", "format-check", "--all", "--config", str(temp_project_dir)]
+            )
+        out, _ = capsys.readouterr()
+
+        assert result == 0
+        assert "stale_file_ref" not in out
+
+    def test_single_id_json_reports_stale_file_ref(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._write_bug_with_ref(
+            format_check_dir,
+            "BUG-9403",
+            "See `scripts/little_loops/session_store.py` for details.",
+        )
+
+        with patch(
+            "little_loops.text_utils.subprocess.run", return_value=_EMPTY_GIT_LS_FILES
+        ):
+            result = _invoke(
+                [
+                    "ll-issues",
+                    "format-check",
+                    "BUG-9403",
+                    "--format",
+                    "json",
+                    "--config",
+                    str(temp_project_dir),
+                ]
+            )
+        payload = json.loads(capsys.readouterr()[0])
+
+        assert result == 1
+        assert payload["stale_file_ref"] == ["scripts/little_loops/session_store.py"]
+
+    def test_ref_index_built_once_per_all_invocation(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+    ) -> None:
+        self._write_bug_with_ref(
+            format_check_dir,
+            "BUG-9501",
+            "See `scripts/little_loops/session_store.py` for details.",
+        )
+        self._write_bug_with_ref(
+            format_check_dir,
+            "BUG-9502",
+            "See `scripts/little_loops/other_gone.py` for details.",
+        )
+
+        with patch(
+            "little_loops.text_utils.subprocess.run", return_value=_EMPTY_GIT_LS_FILES
+        ) as mock_run:
+            _invoke(["ll-issues", "format-check", "--all", "--config", str(temp_project_dir)])
+
+        assert mock_run.call_count == 1
+
+    def test_ref_index_built_once_per_single_id_invocation(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+    ) -> None:
+        self._write_bug_with_ref(
+            format_check_dir,
+            "BUG-9404",
+            "See `scripts/little_loops/session_store.py` for details.",
+        )
+
+        with patch(
+            "little_loops.text_utils.subprocess.run", return_value=_EMPTY_GIT_LS_FILES
+        ) as mock_run:
+            _invoke(
+                ["ll-issues", "format-check", "BUG-9404", "--config", str(temp_project_dir)]
+            )
+
+        assert mock_run.call_count == 1
+
+    def test_ref_index_built_once_with_fix_apply_recheck(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+    ) -> None:
+        """The --fix/--apply path re-runs check_format_gaps(); the index must not."""
+        _write_feature(
+            format_check_dir,
+            "P2-FEAT-9503-blocker.md",
+            "---\nid: FEAT-9503\nstatus: open\n---\n\n# FEAT-9503: Blocker\n",
+        )
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", "id: BUG-9405").replace(
+            "## Summary\nA real problem happens under specific conditions.",
+            "## Summary\nDepends on FEAT-9503 for the underlying fix.",
+        )
+        _write_issue(format_check_dir, "P3-BUG-9405-test-bug.md", body)
+
+        with patch(
+            "little_loops.text_utils.subprocess.run", return_value=_EMPTY_GIT_LS_FILES
+        ) as mock_run:
+            _invoke(
+                [
+                    "ll-issues",
+                    "format-check",
+                    "BUG-9405",
+                    "--fix",
+                    "--apply",
+                    "--config",
+                    str(temp_project_dir),
+                ]
+            )
+
+        assert mock_run.call_count == 1
 
 
 # ---------------------------------------------------------------------------

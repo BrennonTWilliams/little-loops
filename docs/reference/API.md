@@ -852,12 +852,13 @@ def check_format_gaps(
     issue_path: Path,
     templates_dir: Path | None = None,
     issue_statuses: dict[str, str] | None = None,
+    ref_index: RefIndex | None = None,
 ) -> FormatGaps
 ```
 
 Grade an issue's structural format gaps against its type template (ENH-2426). Deterministic (no LLM) — backs the `ll-issues format-check` subcommand and the `ensure_formatted` gate in `rn-remediate.yaml`. Unlike `is_formatted()`, this always runs the structural analysis; it does not honor the `/ll:format-issue` session-log shortcut, since every issue reaching the gate has already run that command.
 
-Reports nine gap classes on the returned `FormatGaps` dataclass (`missing`, `renamed`, `empty`, `boilerplate`, `malformed_id`, `prose_dep_drift`, `stale_prose_dep`, `program_design_nonspecific`, `deprecated_key` — each a `list[str]`, plus a derived `has_gaps` property and a `to_dict()` for JSON output):
+Reports twelve gap classes on the returned `FormatGaps` dataclass (`missing`, `renamed`, `empty`, `boilerplate`, `malformed_id`, `prose_dep_drift`, `stale_prose_dep`, `program_design_nonspecific`, `deprecated_key`, `multi_frontmatter`, `testable`, `stale_file_ref` — each a `list[str]`, plus a derived `has_gaps` property and a `to_dict()` for JSON output):
 - **missing** — a required section header is absent from the body.
 - **renamed** — a present section header is `deprecated: true` in the template with an extractable canonical replacement in its `deprecation_reason` (e.g. `"Proposed Fix" -> "Proposed Solution"`).
 - **empty** — a required section header is present but its body is whitespace-only.
@@ -867,11 +868,15 @@ Reports nine gap classes on the returned `FormatGaps` dataclass (`missing`, `ren
 - **stale_prose_dep** (FEAT-2849) — the body's prose dependency claim names a `done`/`cancelled` issue — the remedy is deleting the stale text, not adding an edge.
 - **program_design_nonspecific** (ENH-2852) — the `## Program Design` section is present and non-boilerplate but not *specific*: it carries no signature-shaped line (`name(params) -> ret`, `field: type`), or names no `Call Path` anchor that resolves against the repo. Graded by `little_loops.issues.program_design.grade_program_design()`. **Opt-in per project and grandfathered**: the whole Program Design check — including the `missing`/`empty` entries for that section — is skipped unless the project has armed the gate by writing `.ll/program-design-cutover.json` (`{"sha": "<40-char SHA>", "date": "YYYY-MM-DD"}`), and is skipped per-issue when the issue's design timestamp (latest `/ll:refine-issue` Session Log entry, else `discovered_date`) is *strictly earlier* than the stamped date, or when frontmatter carries `program_design_not_applicable: true`. Only call-path anchors must resolve; new identifiers need only be signature-*shaped*, and a new identifier that happens to resolve never changes the verdict.
 - **deprecated_key** (ENH-2876) — frontmatter carries a retired key (e.g. hand-authored `superseded_by`) or a coerced status synonym (e.g. `status: completed`), each paired with a mandatory prose reason from `little_loops.frontmatter.DEPRECATED_FRONTMATTER_KEYS`/`DEPRECATED_STATUS_VALUES`.
+- **multi_frontmatter** (BUG-2955) — the issue carries more than one YAML frontmatter block in its header region (`little_loops.frontmatter.has_multiple_frontmatter_blocks()`), e.g. an outer `score_*` block prepended by the confidence-check scoring path followed by the canonical `id:`-bearing block.
+- **testable** — the body trips 2+ doc-only keyword signals (`doc`, `readme`, `changelog`, `typo`, etc.) while frontmatter has no explicit `testable:` key — an advisory that the issue is documentation-only.
+- **stale_file_ref** (ENH-2983) — a file path reference extracted from the body (`little_loops.text_utils.classify_issue_refs()`) classifies as `stale`: a `/`-qualified path with no exact or unique-suffix match against tracked files, i.e. genuine drift. Reporting only — a moved file can't be safely re-pointed without knowing intent. Only reported when `ref_index` is given.
 
 **Parameters:**
 - `issue_path` - Path to the issue markdown file
 - `templates_dir` - Optional override for the templates directory
 - `issue_statuses` - Optional `issue_id -> status` mapping used to distinguish `prose_dep_drift` from `stale_prose_dep`. When `None` (default), both prose-dependency gap classes fail open (report no gaps) — matching this module's existing convention.
+- `ref_index` - Optional `little_loops.text_utils.RefIndex` (built once per invocation via `build_ref_index()`) used to resolve file path references cited in the body. When `None` (default), no `stale_file_ref` gaps are reported.
 
 **Returns:** A `FormatGaps` instance. Fails open (no gaps reported) when the file is unreadable, its type cannot be determined, or its template cannot be loaded — mirroring `is_formatted()`'s fail-open behavior.
 
@@ -6968,6 +6973,9 @@ Text extraction utilities for issue content. Provides shared functions for extra
 | Function | Purpose |
 |----------|---------|
 | `extract_file_paths` | Extract file paths from issue content |
+| `build_ref_index` | Index tracked files by basename via a single `git ls-files` call (ENH-2983) |
+| `classify_file_ref` | Classify one extracted file path reference: `resolved`/`stale`/`unresolvable_form`/`planned_new` (ENH-2983) |
+| `classify_issue_refs` | Classify every file path reference extracted from one issue body (ENH-2983) |
 | `extract_words` | Tokenize text into a set of significant words (3+ chars, stop words removed) |
 | `calculate_word_overlap` | Jaccard similarity between two word sets |
 | `score_bm25` | BM25 relevance score for a document against a query |
@@ -7011,6 +7019,60 @@ paths = extract_file_paths(content)
 print(paths)
 # {'scripts/little_loops/config.py', 'docs/reference/API.md', 'scripts/little_loops/state.py'}
 ```
+
+### RefStatus / RefIndex
+
+```python
+RefStatus = Literal["resolved", "stale", "unresolvable_form", "planned_new"]
+
+@dataclass(frozen=True)
+class RefIndex:
+    by_basename: dict[str, list[str]]  # basename -> tracked repo-relative paths
+```
+
+`RefIndex` is the tracked-file index used by `classify_file_ref()`/`classify_issue_refs()` (ENH-2983). Built once per invocation and threaded through, never rebuilt per reference.
+
+### build_ref_index
+
+```python
+def build_ref_index(root: Path) -> RefIndex
+```
+
+Index tracked files by basename via a single `git ls-files -z` call. Fails open (empty index, never raises) when git is unavailable or exits non-zero, matching the convention of the other `git ls-files` call sites in this codebase (`cli/verify_private_refs.py`, `codequery/fallback.py`).
+
+**Parameters:**
+- `root` - Repository root to run `git ls-files` from.
+
+**Returns:** A `RefIndex` mapping each tracked file's basename to the list of repo-relative paths sharing that basename.
+
+### classify_file_ref
+
+```python
+def classify_file_ref(ref: str, index: RefIndex, *, line: str = "") -> RefStatus
+```
+
+Classify one path reference extracted from issue prose. Resolution order (not commutative): form checks first (glob, `<placeholder>`, bare basename with no `/` — all `unresolvable_form`, checked before any suffix matching so a bare basename like `SKILL.md` cannot spuriously suffix-match dozens of tracked files); then `planned_new` from line context (a `(new)` marker); then an exact tracked-path match; then a *unique* suffix match against the basename-keyed index (`resolved`); otherwise `stale`. An ambiguous suffix match (2+ tracked files sharing the referenced suffix) does not resolve.
+
+**Parameters:**
+- `ref` - The path reference as extracted from issue prose.
+- `index` - A `RefIndex` built once per invocation.
+- `line` - The source line the reference was found on, used only for `planned_new` detection.
+
+**Returns:** One of `"resolved"`, `"stale"`, `"unresolvable_form"`, or `"planned_new"`.
+
+### classify_issue_refs
+
+```python
+def classify_issue_refs(content: str, index: RefIndex) -> dict[str, RefStatus]
+```
+
+Classify every file path reference extracted from one issue body — pairs each reference from `extract_file_paths()` with the first source line it appears on, then classifies it with `classify_file_ref()`.
+
+**Parameters:**
+- `content` - Full issue file content (frontmatter + body).
+- `index` - A `RefIndex` built once per invocation.
+
+**Returns:** A mapping of reference string to its `RefStatus`.
 
 ### extract_words
 

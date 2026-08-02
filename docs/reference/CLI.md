@@ -1746,7 +1746,7 @@ ll-issues check-open-questions ENH-2446   # Exit 0 — no unresolved decision su
 
 #### `ll-issues format-check`
 
-Deterministic (no-LLM) structural linter for issue formatting (ENH-2426). Grades an issue against its type template and reports gaps in seven classes: `missing` (a required section header absent entirely), `renamed` (a present section header is deprecated with an extractable canonical replacement, e.g. `Proposed Fix` → `Proposed Solution`), `empty` (a required header present with a whitespace-only body), `boilerplate` (a required section's body still equals its `creation_template`), `malformed_id` (frontmatter `id` present but not matching the filename-derived `TYPE-NNN`, BUG-2769), `prose_dep_drift` (FEAT-2849: the body claims a dependency in prose — "Depends on ID", "Blocked by ID", "Requires ID", or a `## Blocked By` section — on an active issue absent from `blocked_by`/`depends_on`), `stale_prose_dep` (FEAT-2849: the body's prose dependency claim names a `done`/`cancelled` issue — the remedy is deleting the stale text, not adding an edge), and `deprecated_key` (ENH-2876: frontmatter carries a retired key like hand-authored `superseded_by` or a coerced status synonym like `status: completed`, each reported with its mandatory prose reason). Fails open — an unresolved template or unreadable issue file reports no gaps (exit 0) rather than blocking.
+Deterministic (no-LLM) structural linter for issue formatting (ENH-2426). Grades an issue against its type template and reports gaps in twelve classes: `missing` (a required section header absent entirely), `renamed` (a present section header is deprecated with an extractable canonical replacement, e.g. `Proposed Fix` → `Proposed Solution`), `empty` (a required header present with a whitespace-only body), `boilerplate` (a required section's body still equals its `creation_template`), `malformed_id` (frontmatter `id` present but not matching the filename-derived `TYPE-NNN`, BUG-2769), `prose_dep_drift` (FEAT-2849: the body claims a dependency in prose — "Depends on ID", "Blocked by ID", "Requires ID", or a `## Blocked By` section — on an active issue absent from `blocked_by`/`depends_on`), `stale_prose_dep` (FEAT-2849: the body's prose dependency claim names a `done`/`cancelled` issue — the remedy is deleting the stale text, not adding an edge), `program_design_nonspecific` (ENH-2852: the `## Program Design` section is present and non-boilerplate but lacks a signature-shaped line or a resolving `Call Path` anchor; opt-in per project via `.ll/program-design-cutover.json`), `deprecated_key` (ENH-2876: frontmatter carries a retired key like hand-authored `superseded_by` or a coerced status synonym like `status: completed`, each reported with its mandatory prose reason), and `multi_frontmatter` (BUG-2955: the issue carries more than one YAML frontmatter block in its header region). Fails open — an unresolved template or unreadable issue file reports no gaps (exit 0) rather than blocking.
 
 A single-ID run still parses the whole corpus internally (needed to classify `prose_dep_drift` vs `stale_prose_dep` against every other issue's status), but suppresses *other* issues' `deprecated frontmatter key` warnings rather than printing one line per offending file — the targeted issue's own warnings (if any) still surface normally. When other issues were suppressed, a one-line stderr tally follows the verdict: `(N other issue(s) have deprecated frontmatter keys — run \`ll-issues format-check\` to list)`. The full `--all` sweep is unaffected — it still reports every file's deprecated keys (ENH-2961).
 
@@ -1754,6 +1754,16 @@ Also reports `testable` (ENH-2946): a doc-only keyword inference (`infer_testabl
 signal-keyword tuple, 2+ distinct matches) advising that the issue looks
 documentation-only — advisory only, never auto-written; a caller uses it to decide
 whether to add `testable: false`.
+
+Also reports `stale_file_ref` (ENH-2983): a file path reference extracted from
+the body classifies as `stale` — a `/`-qualified path with no exact or unique
+suffix match against tracked files (`little_loops.text_utils.classify_file_ref()`
+against a `RefIndex` built once per invocation from `git ls-files`), i.e. the
+file moved or was deleted since the issue was written. A bare basename, glob,
+or `<placeholder>`-bearing path is `unresolvable_form` and never reported here;
+a path on a line marked `(new)` is `planned_new` and also never reported.
+Reporting only — a moved file can't be safely re-pointed without knowing
+intent.
 
 | Argument/Flag | Default | Description |
 |---------------|---------|-------------|
@@ -1768,7 +1778,7 @@ whether to add `testable: false`.
 ```bash
 ll-issues format-check ENH-2426               # text report, exit 0/1
                                                # stderr: "(N other issue(s) have deprecated frontmatter keys — run `ll-issues format-check` to list)" when applicable
-ll-issues format-check ENH-2426 --format json # {"missing": [...], "renamed": [...], "empty": [...], "boilerplate": [...], "malformed_id": [...], "prose_dep_drift": [...], "stale_prose_dep": [...], "program_design_nonspecific": [...], "deprecated_key": [...], "testable": [...]}
+ll-issues format-check ENH-2426 --format json # {"missing": [...], "renamed": [...], "empty": [...], "boilerplate": [...], "malformed_id": [...], "prose_dep_drift": [...], "stale_prose_dep": [...], "program_design_nonspecific": [...], "deprecated_key": [...], "multi_frontmatter": [...], "testable": [...], "stale_file_ref": [...]}
 ll-issues format-check --all --fix            # preview blocked_by backfills for every drifting issue (dry-run)
 ll-issues format-check --all --fix --apply    # write the previewed edges via `ll-issues link`
 ll-issues format-check --next                 # target the highest-priority active issue
