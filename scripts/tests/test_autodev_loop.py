@@ -494,8 +494,7 @@ def _run_pre_deferral_remedy_selector(
     approach for check_reconcile_needed."""
     action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
     marker = (
-        'REMEDY=$(GATE_MARKER="$GATE_MARKER" ll-issues show "$ID" --json 2>/dev/null'
-        ' | python3 -c "'
+        'REMEDY=$(GATE_MARKER="$GATE_MARKER" ll-issues show "$ID" --json 2>/dev/null | python3 -c "'
     )
     idx = action.index(marker)
     tail = action[idx + len(marker) :]
@@ -595,7 +594,7 @@ class TestRecheckAfterSizeReviewDecisionUnresolvedBranch:
     def test_decision_branch_present(self) -> None:
         action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
         assert "DECISION_NEEDED" in action
-        assert '--reason decision_unresolved' in action
+        assert "--reason decision_unresolved" in action
         assert 'echo "$ID  decision_unresolved"' in action
 
     def test_decision_branch_ordered_after_design_gate_before_stagnation(self) -> None:
@@ -671,3 +670,28 @@ class TestRegateAfterAtomicRemediationDesignGateBranch:
         pending_idx = action.index("autodev-atomic-design-remedy-pending")
         oversized_idx = action.index('echo "$ID  oversized_atomic"')
         assert pending_idx < oversized_idx
+
+
+class TestAutodevHasNoOwnBaseShaStamp:
+    """ENH-2866 decision 3: autodev is stamped transitively, not per-state.
+
+    ``dequeue_next`` fires once per issue but ``loop_runs`` is one row per run
+    with no issue dimension, so a run-dir SHA file could only ever hold the last
+    issue's value — and ``implement_current``'s ``ll-auto --only`` shell-out
+    already produces a per-issue ``orchestration_runs`` row at a strictly better
+    moment (after refine/wire churn is committed, immediately pre-patch).
+    """
+
+    def test_no_dequeue_sha_run_dir_artifact(self) -> None:
+        """The removed design's specific artifact must not appear anywhere."""
+        raw = AUTODEV_LOOP_PATH.read_text()
+        assert "autodev-dequeue-sha" not in raw, (
+            "autodev must not capture its own base SHA — the ll-auto --only "
+            "shell-out in implement_current stamps each issue transitively"
+        )
+
+    def test_implement_current_still_shells_out_to_ll_auto(self) -> None:
+        """The transitive stamp depends on this shell-out; guard it explicitly."""
+        action = _load_autodev_yaml()["states"]["implement_current"].get("action", "")
+        assert "ll-auto" in action
+        assert "--only" in action

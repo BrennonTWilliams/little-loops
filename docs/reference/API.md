@@ -8680,11 +8680,34 @@ def record_orchestration_run(
     ended_at: str | None = None,
     head_sha: str | None = None,
     branch: str | None = None,
+    base_sha: str | None = None,
+    base_dirty: bool | None = None,
     config: dict | None = None,
 ) -> bool
 ```
 
 UPSERT one `orchestration_runs` row per `(run_id, issue_id)` and replace its matching FTS row (ENH-2492). A top-level `ll-auto`, `ll-parallel`, or `ll-sprint` invocation reuses one opaque UUID for all of its issues and retries; the final retry therefore replaces the initial failure rather than adding a duplicate. Producers guard calls with `contextlib.suppress(Exception)` so history failures never alter orchestration behavior.
+
+`base_sha`/`base_dirty` are the dequeue-time base-state stamp (ENH-2866): the commit SHA the work item started from, and whether the tree had *tracked* modifications (`git status --porcelain --untracked-files=no`) at that moment. Orchestrators call this function **twice** per issue — once at dequeue with `status="running"` plus the stamp, so the base state is readable while the issue is still in flight, and once at end-of-issue with the outcome. Three columns are therefore write-once rather than last-write-wins: `base_sha`, `base_dirty`, and `started_at` are `COALESCE`d in the `DO UPDATE` clause, so a terminal upsert that passes none of them cannot null the dequeue-time values. An in-flight row leaves `ended_at` NULL (the `_now()` default applies only to a terminal status), so an abandoned run does not read as `ended_at == started_at`. A falsy `base_sha` is normalized to NULL — NULL means unstamped, never `""`.
+
+Consequence: a crashed or interrupted run now leaves a permanent `status='running'` row where previously no row existed, which slightly lowers `aggregate_orchestration_runs`' reported success rate. This is intentional — a crashed run *is* a non-completion.
+
+### read_base_sha
+
+```python
+def read_base_sha(
+    issue_id: str,
+    *,
+    run_id: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> str | None
+```
+
+Resolve the dequeue-time base commit SHA stamped for `issue_id` (ENH-2866). The single reader every consumer uses, so the merge-base fallback is implemented once rather than per-orchestrator; all stamped drivers (`ll-parallel`, `ll-auto`, `ll-sprint`) write the same column on the same table, so there is no table dispatch.
+
+`run_id` is optional and that is load-bearing: it is a process-local `uuid4().hex` never exported to env, run-dir, or subprocess argv, so an out-of-process consumer cannot supply one. When omitted, the most recent *stamped* row for the issue wins (`WHERE issue_id = ? AND base_sha IS NOT NULL ORDER BY id DESC LIMIT 1`) — the NOT NULL filter keeps a later unstamped row from shadowing an earlier stamped one.
+
+Never raises. Returns `None` when the database is missing or unreadable, no matching row exists, or `base_sha` is NULL; the stamp is advisory, and a consumer that gets `None` should fall back to merge-base and say which base it used.
 
 ### record_loop_run_summary / update_loop_run_diagnostics
 

@@ -28,6 +28,7 @@ import pytest
 from little_loops.config import BRConfig
 from little_loops.fsm.schema import DEFAULT_LLM_MODEL
 from little_loops.issue_parser import IssueInfo
+from little_loops.parallel import worker_pool as worker_pool_module
 from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.types import ParallelConfig, WorkerResult, WorkerStage
 from little_loops.parallel.worker_pool import WorkerPool
@@ -3936,3 +3937,125 @@ class TestResolveBranchTargets:
         assert second_calls == first_calls, (
             "second _resolve_branch_targets should be cached, no new git calls"
         )
+
+
+class TestWorkerPoolBaseStateStamp:
+    """ENH-2866: dequeue-time base-SHA stamp captured at per-issue worktree creation."""
+
+    def test_is_main_repo_dirty_excludes_untracked(
+        self, worker_pool: WorkerPool, mock_git_lock: MagicMock
+    ) -> None:
+        """An untracked scratch file must not mark the base dirty."""
+        captured: list[list[str]] = []
+
+        def mock_git_run(
+            args: list[str], cwd: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            captured.append(args)
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
+            assert worker_pool._is_main_repo_dirty() is False
+
+        assert captured == [["status", "--porcelain", "--untracked-files=no"]], (
+            "the dirty check must pass --untracked-files=no; an untracked file "
+            "does not make a checkout-based reconstruction approximate"
+        )
+
+    def test_is_main_repo_dirty_true_on_tracked_modification(self, worker_pool: WorkerPool) -> None:
+        def mock_git_run(
+            args: list[str], cwd: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(args, 0, " M scripts/foo.py\n", "")
+
+        with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
+            assert worker_pool._is_main_repo_dirty() is True
+
+    def test_is_main_repo_dirty_none_when_git_fails(self, worker_pool: WorkerPool) -> None:
+        """An unknown dirty state is unstamped, not guessed clean."""
+
+        def mock_git_run(
+            args: list[str], cwd: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(args, 128, "", "not a git repository")
+
+        with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
+            assert worker_pool._is_main_repo_dirty() is None
+
+    def test_dequeue_stamp_skipped_without_run_identity(
+        self, worker_pool: WorkerPool, tmp_path: Path
+    ) -> None:
+        """A pool with no run_id/driver writes no row — hand-run callers are unaffected."""
+        recorded: list[dict[str, Any]] = []
+        with patch.object(
+            worker_pool_module,
+            "record_orchestration_run",
+            side_effect=lambda *a, **kw: recorded.append(kw),
+        ):
+            worker_pool._record_dequeue_stamp("BUG-1", "abc123", False)
+        assert recorded == []
+
+    def test_dequeue_stamp_written_as_running_row(self, tmp_path: Path) -> None:
+        """With an identity, the stamp is persisted before the worker starts."""
+        from little_loops.history_reader import read_base_sha
+        from little_loops.parallel.types import ParallelConfig
+
+        db = tmp_path / "history.db"
+        pool = WorkerPool(
+            parallel_config=ParallelConfig(),
+            br_config=MagicMock(),
+            logger=MagicMock(),
+            repo_path=tmp_path,
+            git_lock=MagicMock(),
+            run_id="run-abc",
+            driver="ll-parallel",
+        )
+        with patch.object(worker_pool_module, "resolve_history_db", return_value=db):
+            pool._record_dequeue_stamp("BUG-2866", "cafebabe", True)
+
+        # Readable immediately — before any terminal write for this issue.
+        assert read_base_sha("BUG-2866", db=db) == "cafebabe"
+        assert read_base_sha("BUG-2866", run_id="run-abc", db=db) == "cafebabe"
+
+    def test_dequeue_stamp_normalizes_failed_rev_parse_to_null(self, tmp_path: Path) -> None:
+        """_get_main_head_sha()'s "" must persist as NULL, not an empty string."""
+        from little_loops.history_reader import read_base_sha
+        from little_loops.parallel.types import ParallelConfig
+
+        db = tmp_path / "history.db"
+        pool = WorkerPool(
+            parallel_config=ParallelConfig(),
+            br_config=MagicMock(),
+            logger=MagicMock(),
+            repo_path=tmp_path,
+            git_lock=MagicMock(),
+            run_id="run-fail",
+            driver="ll-parallel",
+        )
+        with patch.object(worker_pool_module, "resolve_history_db", return_value=db):
+            # "" or None is what _process_issue coerces before calling this.
+            pool._record_dequeue_stamp("BUG-3", "" or None, None)
+
+        result = read_base_sha("BUG-3", db=db)
+        assert result is None
+        assert result != ""
+
+    def test_stamp_failure_never_takes_the_worker_down(self, tmp_path: Path) -> None:
+        """The stamp is advisory: a writer blowing up must not fail the issue."""
+        from little_loops.parallel.types import ParallelConfig
+
+        pool = WorkerPool(
+            parallel_config=ParallelConfig(),
+            br_config=MagicMock(),
+            logger=MagicMock(),
+            repo_path=tmp_path,
+            git_lock=MagicMock(),
+            run_id="run-boom",
+            driver="ll-parallel",
+        )
+        with patch.object(
+            worker_pool_module,
+            "record_orchestration_run",
+            side_effect=RuntimeError("db exploded"),
+        ):
+            pool._record_dequeue_stamp("BUG-4", "abc", False)  # must not raise

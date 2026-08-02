@@ -18,7 +18,7 @@ from little_loops.session_store.db import DEFAULT_DB_PATH, _resolve_db_path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 37
+SCHEMA_VERSION = 38
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -914,6 +914,23 @@ _MIGRATIONS: list[str] = [
     ALTER TABLE loop_runs ADD COLUMN failure_terminal INTEGER;
     CREATE INDEX IF NOT EXISTS idx_loop_runs_failure_terminal
         ON loop_runs(failure_terminal);
+    """,
+    # (ENH-2866): dequeue-time base-state stamp on the per-issue orchestration
+    # row. base_sha is the commit SHA the work item started from, resolved and
+    # persisted before anything mutates the tree or the issue file, so a
+    # consumer can read it while the issue is still in flight. base_dirty is 1
+    # when the tree had *tracked* modifications at stamp time (untracked files
+    # are excluded — a checkout-based reconstruction is unaffected by them),
+    # 0 when clean. NULL on either column means "unstamped": the orchestrator
+    # predates this stamp, opted out, or its `git rev-parse` failed — readers
+    # (history_reader.read_base_sha) return None and consumers fall back to
+    # merge-base. Deliberately not on loop_runs: that table is one row per run
+    # with no issue dimension, and autodev is covered transitively through its
+    # `ll-auto --only` shell-out. Fix-forward only: existing rows are not
+    # backfilled.
+    """
+    ALTER TABLE orchestration_runs ADD COLUMN base_sha TEXT;
+    ALTER TABLE orchestration_runs ADD COLUMN base_dirty INTEGER;
     """,
 ]
 

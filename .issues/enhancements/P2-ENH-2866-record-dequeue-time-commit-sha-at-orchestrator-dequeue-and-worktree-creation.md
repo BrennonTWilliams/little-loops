@@ -3,7 +3,7 @@ id: ENH-2866
 title: Record dequeue-time commit SHA at orchestrator dequeue and worktree creation
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_by: epic-review
 discovered_date: 2026-07-27
 epic: EPIC-2856
@@ -24,6 +24,7 @@ score_change_surface: 9
 size: Very Large
 decision_needed: false
 outcome_gate_waived: true
+completed_at: '2026-08-02T02:15:37Z'
 ---
 
 # ENH-2866: Record dequeue-time commit SHA at orchestrator dequeue and worktree creation
@@ -1101,12 +1102,78 @@ verification pass; readiness unchanged at 98, outcome confidence unchanged at
   site names an existing analog to model from, which is why Test Coverage
   scores much higher (22/25) than the other three outcome criteria.
 
+## Resolution
+
+_Implemented 2026-08-01 via `/ll:manage-issue`._
+
+Landed in the order the pre-implementation review prescribed: writer/schema/reader
+first (their COALESCE and `ended_at` conditioning fail green on the happy path and
+have no orchestrator dependency), then the two capture sites.
+
+**Schema (v38)** — `session_store/schema.py`: `SCHEMA_VERSION` 37 → 38 plus a
+`_MIGRATIONS` entry adding nullable `orchestration_runs.base_sha TEXT` /
+`base_dirty INTEGER`. Fix-forward, no backfill, no `loop_runs` change.
+
+**Writer** — `record_orchestration_run(..., base_sha=, base_dirty=)`. Three columns
+became write-once via `COALESCE(excluded.X, X)` in the DO UPDATE clause:
+`base_sha`, `base_dirty`, and `started_at` (the last because no terminal caller
+passes it, and last-write-wins would have nulled the dequeue timestamp and dropped
+abandoned rows out of `history_reader`'s `COALESCE(ended_at, started_at)` windows).
+An in-flight (`status="running"`) row leaves `ended_at` NULL and defaults its own
+`started_at` — that default lives in the writer rather than in each capture site,
+so no caller duplicates timestamp formatting. A falsy `base_sha` normalizes to NULL.
+
+**Reader** — `history_reader.read_base_sha(issue_id, *, run_id=None, db=...)`,
+never-raising, placed alongside the other `orchestration_runs` reads.
+`OrchestrationRun` and `recent_orchestration_runs` also gained the two columns so
+the dirty flag is readable.
+
+**`ll-parallel`** — `WorkerResult` gained `base_sha`/`base_dirty` (plus both
+hand-listed dict mappings); `WorkerPool.__init__` gained `run_id`/`driver`, which
+`ParallelOrchestrator` now passes. `_process_issue` coerces `_get_main_head_sha()`'s
+`""` to `None`, adds a `_is_main_repo_dirty()` check, issues the dequeue-time
+upsert, and threads both values into all 12 in-method returns via a local
+`_stamped_result` closure — the `_handle_completion` fallback at `worker_pool.py:307`
+stays unstamped by design. `_record_orchestration_result()` forwards both.
+
+**`ll-auto` / `ll-sprint` sequential** — `IssueProcessingResult` gained the two
+fields; `process_issue_inplace()` gained `run_id`/`driver`/`db_path` (early upsert
+skipped unless all three are present, and under `dry_run`), captures via a new
+module-level `_resolve_base_state()` before Phase 1, and carries the stamp onto all
+14 returns. `AutoProcessor._process_issue` and both
+`cli/sprint/run.py` terminal calls forward it.
+
+**`autodev.yaml`** — unchanged, per decision 3; a negative-guard test asserts no
+`autodev-dequeue-sha` artifact and that `implement_current` still shells out to
+`ll-auto --only`, which is what makes the transitive stamp hold.
+
+Verification: `python -m pytest scripts/tests/` → 17783 passed, 42 skipped.
+`ruff check scripts/` clean. `python -m mypy scripts/little_loops/` reports only
+two pre-existing errors in `cli/issues/normalize.py`, a file this change does not
+touch.
+
+**Analytics note for the changelog:** a crashed or interrupted run now leaves a
+permanent `status='running'` row where previously no row existed, so
+`aggregate_orchestration_runs`' reported success rate drops slightly. This is the
+accepted, deliberate consequence of decision 4 — a crashed run *is* a
+non-completion — not a regression.
+
+Two implementation notes worth carrying forward:
+
+- The `replace_all` edit used to stamp the 12 `WorkerResult` / 14
+  `IssueProcessingResult` return sites also rewrote each stamping closure's own
+  body into a self-call. Caught by tests in both files, but the pattern
+  (define-closure-then-bulk-rewrite-constructor) needs the closure body excluded.
+- `ruff format scripts/` reformats ~30 files unrelated to any given change; run it
+  only against the files a change touches, or revert the rest before committing.
+
 ## Status
 
-**Open** | Created: 2026-07-27 | Priority: P2
+**Done** | Created: 2026-07-27 | Completed: 2026-08-01 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-02T02:15:23 - `747c15d9-755c-4079-bcf7-8e0b958348f7.jsonl`
 - `/ll:ready-issue` - 2026-08-02T01:30:05 - `6c4807ec-5dc9-473c-8026-65d5738daba7.jsonl`
 - outcome-gate waiver (manual, no skill) - 2026-08-01 - stamped
   `outcome_gate_waived: true` at 98/61. A `/ll:confidence-check` re-run after

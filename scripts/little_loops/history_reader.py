@@ -232,6 +232,8 @@ class OrchestrationRun:
     ended_at: str | None
     head_sha: str | None
     branch: str | None
+    base_sha: str | None = None
+    base_dirty: int | None = None
 
 
 @dataclass
@@ -1733,7 +1735,7 @@ def recent_orchestration_runs(
     try:
         sql = (
             "SELECT run_id, driver, issue_id, status, failure_reason, duration_s, "
-            "wave, pr_url, started_at, ended_at, head_sha, branch "
+            "wave, pr_url, started_at, ended_at, head_sha, branch, base_sha, base_dirty "
             "FROM orchestration_runs "
         )
         clauses: list[str] = []
@@ -1809,6 +1811,62 @@ def aggregate_orchestration_runs(
             }
         )
     return result
+
+
+def read_base_sha(
+    issue_id: str,
+    *,
+    run_id: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> str | None:
+    """Resolve the dequeue-time base commit SHA stamped for *issue_id* (ENH-2866).
+
+    The stamp is the tree state an orchestrator took the work item from, written
+    before anything mutated the tree or the issue file. It is advisory: a
+    consumer that gets ``None`` back falls back to merge-base and should say
+    which base it used.
+
+    ``run_id`` identifies an exact ``orchestration_runs`` row via its
+    ``UNIQUE(run_id, issue_id)`` key, but it is *optional* — it is a
+    process-local ``uuid4().hex`` that is never exported to env, run-dir, or
+    subprocess argv, so an out-of-process consumer cannot supply one. When it is
+    omitted the most recent *stamped* row for the issue wins; the
+    ``base_sha IS NOT NULL`` filter matters, or a later unstamped row would
+    shadow an earlier stamped one.
+
+    Returns:
+        The stamped SHA, or ``None`` when the database is missing or
+        unreadable, no matching row exists, or the row's ``base_sha`` is NULL
+        (the orchestrator predates the stamp, opted out, or its ``git
+        rev-parse`` failed). Never raises.
+    """
+    if not issue_id:
+        return None
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return None
+    try:
+        if run_id is not None:
+            row = conn.execute(
+                "SELECT base_sha FROM orchestration_runs WHERE run_id = ? AND issue_id = ?",
+                (run_id, issue_id),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT base_sha FROM orchestration_runs "
+                "WHERE issue_id = ? AND base_sha IS NOT NULL "
+                "ORDER BY id DESC LIMIT 1",
+                (issue_id,),
+            ).fetchone()
+    except sqlite3.Error:
+        logger.warning("history_reader: read_base_sha query failed", exc_info=True)
+        return None
+    finally:
+        conn.close()
+    if row is None:
+        return None
+    return row["base_sha"] or None
 
 
 _LOOP_RUN_COLUMNS = (

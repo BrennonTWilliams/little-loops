@@ -72,6 +72,11 @@ class WorkerResult:
         epic_branch: EPIC integration branch this worker forked from / merges
             into (FEAT-2452); None for standalone issues or when
             epic_branches is disabled (use base_branch)
+        base_sha: Main-repo HEAD SHA at the moment this issue's worktree was
+            created (ENH-2866); None when the stamp was unavailable (a failed
+            `git rev-parse`) or the result predates the capture point
+        base_dirty: Whether the main repo had *tracked* modifications at stamp
+            time (ENH-2866); None when unstamped
     """
 
     issue_id: str
@@ -92,6 +97,8 @@ class WorkerResult:
     was_blocked: bool = False
     interrupted: bool = False
     epic_branch: str | None = None
+    base_sha: str | None = None
+    base_dirty: bool | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -114,6 +121,8 @@ class WorkerResult:
             "was_blocked": self.was_blocked,
             "interrupted": self.interrupted,
             "epic_branch": self.epic_branch,
+            "base_sha": self.base_sha,
+            "base_dirty": self.base_dirty,
         }
 
     @classmethod
@@ -138,6 +147,8 @@ class WorkerResult:
             was_blocked=data.get("was_blocked", False),
             interrupted=data.get("interrupted", False),
             epic_branch=data.get("epic_branch"),
+            base_sha=data.get("base_sha"),
+            base_dirty=data.get("base_dirty"),
         )
 
 

@@ -54,6 +54,8 @@ def _run_issue_with_wall_clock_timeout(
     max_seconds: int,
     sprint_context: SprintWorkerContext | None = None,
     event_bus: EventBus | None = None,
+    run_id: str | None = None,
+    db_path: Path | str | None = None,
 ) -> IssueProcessingResult:
     """Wrap process_issue_inplace with a SIGALRM-based wall-clock timeout.
 
@@ -77,6 +79,11 @@ def _run_issue_with_wall_clock_timeout(
             dry_run=dry_run,
             sprint_context=sprint_context,
             event_bus=event_bus,
+            # ENH-2866: the sequential in-place branch is its own capture site;
+            # worktree-mode waves are covered by ll-parallel's stamp instead.
+            run_id=run_id,
+            driver="ll-sprint",
+            db_path=db_path,
         )
     except IssueWallClockTimeout:
         elapsed = time.monotonic() - issue_start
@@ -685,6 +692,8 @@ def _cmd_sprint_run(
                             branch=_current_branch,
                         ),
                         event_bus=single_issue_event_bus,
+                        run_id=run_id,
+                        db_path=history_db,
                     )
                     total_duration += issue_result.duration
                     if issue_result.success:
@@ -720,6 +729,8 @@ def _cmd_sprint_run(
                             duration_s=issue_result.duration,
                             wave=f"Wave {wave_num}/{total_waves}",
                             branch=_current_branch,
+                            base_sha=issue_result.base_sha,
+                            base_dirty=issue_result.base_dirty,
                         )
                 single_issue_event_bus.close_transports()
                 if wave_failed:
@@ -830,6 +841,9 @@ def _cmd_sprint_run(
                                     branch=retry_branch,
                                 ),
                                 event_bus=event_bus,
+                                run_id=run_id,
+                                driver="ll-sprint",
+                                db_path=history_db,
                             )
                         except subprocess.TimeoutExpired as exc:
                             # BUG-2976: this direct process_issue_inplace() call
@@ -886,6 +900,8 @@ def _cmd_sprint_run(
                                 duration_s=retry_result.duration,
                                 wave=f"Wave {wave_num}/{total_waves}",
                                 branch=retry_branch,
+                                base_sha=retry_result.base_sha,
+                                base_dirty=retry_result.base_dirty,
                             )
                     if retried_ok > 0:
                         logger.info(

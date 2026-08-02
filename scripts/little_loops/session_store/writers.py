@@ -441,7 +441,9 @@ def cli_event_context(
         from little_loops.config.features import AnalyticsCaptureConfig, feature_enabled_for
 
         capture = AnalyticsCaptureConfig.from_dict(config.get("analytics", {}).get("capture", {}))
-        gate_open = feature_enabled_for({"cli_commands": capture.cli_commands}, "cli_commands", binary)
+        gate_open = feature_enabled_for(
+            {"cli_commands": capture.cli_commands}, "cli_commands", binary
+        )
     if gate_open:
         try:
             conn = _pkg.connect(effective_path)
@@ -1178,6 +1180,11 @@ def record_review_event(
         conn.close()
 
 
+# ENH-2866: the status an orchestrator writes at dequeue, before the issue has
+# an outcome. Rows in this state are deliberately left with a NULL ``ended_at``.
+_ORCHESTRATION_IN_FLIGHT_STATUS = "running"
+
+
 def record_orchestration_run(
     db_path: Path | str,
     *,
@@ -1193,6 +1200,8 @@ def record_orchestration_run(
     ended_at: str | None = None,
     head_sha: str | None = None,
     branch: str | None = None,
+    base_sha: str | None = None,
+    base_dirty: bool | None = None,
     config: dict | None = None,
 ) -> bool:
     """UPSERT one per-issue orchestration outcome and refresh its FTS row.
@@ -1203,6 +1212,17 @@ def record_orchestration_run(
     deleted and recreated in the same transaction so stale failure text cannot
     remain searchable after a successful retry.
 
+    ENH-2866: orchestrators call this twice per issue. The first call is issued
+    at dequeue with ``status="running"`` and the ``base_sha``/``base_dirty``
+    stamp, so the base state is readable *while the issue is in flight*; the
+    second is the existing end-of-issue call carrying the outcome. Three columns
+    are therefore write-once rather than last-write-wins: ``base_sha``,
+    ``base_dirty``, and ``started_at`` are ``COALESCE``d so a terminal upsert
+    that passes none of them (as all three real call sites do) cannot null the
+    dequeue-time values. An in-flight row also leaves ``ended_at`` NULL — the
+    ``_now()`` default applies only to a terminal status — so an abandoned run
+    does not read as ``ended_at == started_at``.
+
     The ``config`` parameter is a forward-compatibility stub for a future
     ``analytics.capture.orchestration_runs`` gate; it is accepted but unused.
     Returns ``False`` only when the required identity fields are empty.
@@ -1210,21 +1230,36 @@ def record_orchestration_run(
     if not run_id or not driver or not issue_id or not status:
         return False
 
-    effective_ended_at = ended_at or _now()
-    index_ts = effective_ended_at or started_at or _now()
+    # A failed `git rev-parse` yields "" (worker_pool._get_main_head_sha); store
+    # NULL so the reader's None-means-unstamped contract holds.
+    effective_base_sha = base_sha or None
+    effective_base_dirty = None if base_dirty is None else int(base_dirty)
+    in_flight = status == _ORCHESTRATION_IN_FLIGHT_STATUS
+    effective_ended_at = ended_at if in_flight else (ended_at or _now())
+    # An in-flight row is the only write that knows when work actually began,
+    # so it defaults its own started_at rather than making each capture site
+    # format a timestamp. Paired with the COALESCE below, that value survives
+    # the terminal upsert and keeps the row inside history_reader's
+    # COALESCE(ended_at, started_at) windows even if the run is abandoned.
+    effective_started_at = started_at or (_now() if in_flight else None)
+    index_ts = effective_ended_at or effective_started_at or _now()
     index_ref = f"{run_id}:{issue_id}"
     conn = _pkg.connect(db_path)
     try:
         cursor = conn.execute(
             "INSERT INTO orchestration_runs("
             "run_id, driver, issue_id, status, failure_reason, duration_s, wave, pr_url, "
-            "started_at, ended_at, head_sha, branch"
-            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "started_at, ended_at, head_sha, branch, base_sha, base_dirty"
+            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(run_id, issue_id) DO UPDATE SET "
             "driver=excluded.driver, status=excluded.status, "
             "failure_reason=excluded.failure_reason, duration_s=excluded.duration_s, "
             "wave=excluded.wave, pr_url=excluded.pr_url, "
-            "started_at=excluded.started_at, ended_at=excluded.ended_at, "
+            # write-once (ENH-2866): the terminal upsert passes none of these
+            "started_at=COALESCE(excluded.started_at, started_at), "
+            "base_sha=COALESCE(excluded.base_sha, base_sha), "
+            "base_dirty=COALESCE(excluded.base_dirty, base_dirty), "
+            "ended_at=excluded.ended_at, "
             "head_sha=excluded.head_sha, branch=excluded.branch",
             (
                 run_id,
@@ -1235,10 +1270,12 @@ def record_orchestration_run(
                 duration_s,
                 wave,
                 pr_url,
-                started_at,
+                effective_started_at,
                 effective_ended_at,
                 head_sha,
                 branch,
+                effective_base_sha,
+                effective_base_dirty,
             ),
         )
         conn.execute(

@@ -301,6 +301,28 @@ class TestWorkerResult:
         assert isinstance(result.worktree_path, Path)
         assert result.worktree_path == Path("/converted/path")
 
+    def test_base_state_stamp_survives_json_round_trip(self) -> None:
+        """ENH-2866: to_dict/from_dict hand-list fields — the stamp must be in both.
+
+        WorkerResult crosses the worker-subprocess boundary as JSON; a field
+        missing from either mapping silently drops the stamp.
+        """
+        original = WorkerResult(
+            issue_id="ENH-2866",
+            success=True,
+            branch_name="b",
+            worktree_path=Path("/tmp/wt"),
+            base_sha="deadbeef",
+            base_dirty=True,
+        )
+        data = original.to_dict()
+        assert data["base_sha"] == "deadbeef"
+        assert data["base_dirty"] is True
+
+        restored = WorkerResult.from_dict(data)
+        assert restored.base_sha == "deadbeef"
+        assert restored.base_dirty is True
+
     def test_from_dict_defaults_for_missing_optional_fields(self) -> None:
         """from_dict provides defaults for missing optional fields."""
         data = {

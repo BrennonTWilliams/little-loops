@@ -2915,9 +2915,7 @@ class TestFallbackVerification:
                             "little_loops.issue_manager.check_content_markers",
                             return_value=False,
                         ):
-                            result = process_issue_inplace(
-                                sample_issue, real_config, mock_logger
-                            )
+                            result = process_issue_inplace(sample_issue, real_config, mock_logger)
 
         assert not result.success
         mock_logger.error.assert_called()
@@ -3422,9 +3420,7 @@ class TestAutoManagerRun:
         assert "BUG-006 blocked by: BUG-005" in manager._unreachable_reason("BUG-006")
         assert manager._unreachable_reason("BUG-007") == "BUG-007: already_done"
 
-    def test_timeout_on_one_issue_does_not_abort_remaining_issues(
-        self, full_project: Path
-    ) -> None:
+    def test_timeout_on_one_issue_does_not_abort_remaining_issues(self, full_project: Path) -> None:
         """BUG-2976: a per-issue TimeoutExpired fails only that issue.
 
         Regression guard for the pre-fix behavior where an uncaught
@@ -3458,9 +3454,7 @@ class TestAutoManagerRun:
                 corrections=[],
             )
 
-        with patch(
-            "little_loops.issue_manager.process_issue_inplace", side_effect=side_effect
-        ):
+        with patch("little_loops.issue_manager.process_issue_inplace", side_effect=side_effect):
             with patch("little_loops.issue_manager.check_git_status", return_value=False):
                 manager = AutoManager(
                     config,
@@ -4028,6 +4022,7 @@ class TestAutoManagerModelDetection:
             sprint_context: Any = None,
             context_limit: Any = None,
             skip_learning_gate: bool = False,
+            **kwargs: Any,
         ) -> IssueProcessingResult:
             # Simulate the real subprocess_utils flow: the init event fires
             # on_model_detected with the requested alias, then the result event
@@ -4087,6 +4082,7 @@ class TestAutoManagerModelDetection:
             sprint_context: Any = None,
             context_limit: Any = None,
             skip_learning_gate: bool = False,
+            **kwargs: Any,
         ) -> IssueProcessingResult:
             if on_model_detected:
                 on_model_detected("sonnet")
@@ -4202,6 +4198,7 @@ class TestAutoManagerModelDetection:
             sprint_context: Any = None,
             context_limit: Any = None,
             skip_learning_gate: bool = False,
+            **kwargs: Any,
         ) -> IssueProcessingResult:
             if on_model_detected:
                 on_model_detected("sonnet")  # unresolved alias — sizes to 200K default
@@ -4587,3 +4584,205 @@ class TestAutoManagerLearningGate:
 
         # Gate must NOT have been called (learning_tests disabled)
         mock_gate.assert_not_called()
+
+
+class TestDequeueTimeBaseStateStamp:
+    """ENH-2866: ll-auto's own dequeue site stamps before Phase 1 mutates anything."""
+
+    @pytest.fixture
+    def mock_config(self, temp_project_dir: Path) -> BRConfig:
+        config = MagicMock(spec=BRConfig)
+        config.project_root = temp_project_dir
+        config.repo_path = temp_project_dir
+        config.automation = MagicMock()
+        config.automation.timeout_seconds = 60
+        config.automation.stream_output = False
+        config.automation.max_continuations = 3
+        config.get_category_action.return_value = "fix"
+        config.get_state_file.return_value = temp_project_dir / ".auto-state.json"
+        return config
+
+    @pytest.fixture
+    def sample_issue(self, temp_project_dir: Path) -> IssueInfo:
+        issues_dir = temp_project_dir / ".issues" / "bugs"
+        issues_dir.mkdir(parents=True)
+        issue_file = issues_dir / "P1-BUG-001-test.md"
+        issue_file.write_text("# BUG-001: Test\n\n## Summary\nTest")
+        return IssueInfo(
+            path=issue_file,
+            issue_type="bugs",
+            priority="P1",
+            issue_id="BUG-001",
+            title="Test",
+        )
+
+    def test_resolve_base_state_uses_untracked_files_no(self, tmp_path: Path) -> None:
+        import subprocess as _subprocess
+
+        from little_loops.issue_manager import _resolve_base_state
+
+        seen: list[list[str]] = []
+
+        def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            seen.append(cmd)
+            if cmd[:2] == ["git", "rev-parse"]:
+                return _subprocess.CompletedProcess(args=cmd, returncode=0, stdout="abc123\n")
+            return _subprocess.CompletedProcess(args=cmd, returncode=0, stdout="")
+
+        with patch("little_loops.issue_manager.subprocess.run", side_effect=fake_run):
+            sha, dirty = _resolve_base_state(tmp_path)
+
+        assert sha == "abc123"
+        assert dirty is False
+        assert ["git", "status", "--porcelain", "--untracked-files=no"] in seen, (
+            "an untracked scratch file must not mark the base dirty"
+        )
+
+    def test_resolve_base_state_reports_tracked_dirty(self, tmp_path: Path) -> None:
+        import subprocess as _subprocess
+
+        from little_loops.issue_manager import _resolve_base_state
+
+        def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            if cmd[:2] == ["git", "rev-parse"]:
+                return _subprocess.CompletedProcess(args=cmd, returncode=0, stdout="abc\n")
+            return _subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout=" M scripts/foo.py\n"
+            )
+
+        with patch("little_loops.issue_manager.subprocess.run", side_effect=fake_run):
+            sha, dirty = _resolve_base_state(tmp_path)
+
+        assert sha == "abc"
+        assert dirty is True
+
+    def test_resolve_base_state_none_when_git_fails(self, tmp_path: Path) -> None:
+        import subprocess as _subprocess
+
+        from little_loops.issue_manager import _resolve_base_state
+
+        def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            return _subprocess.CompletedProcess(args=cmd, returncode=128, stdout="", stderr="no")
+
+        with patch("little_loops.issue_manager.subprocess.run", side_effect=fake_run):
+            sha, dirty = _resolve_base_state(tmp_path)
+
+        assert sha is None
+        assert dirty is None
+
+    def test_stamp_is_readable_while_the_issue_is_still_in_flight(
+        self, mock_config: BRConfig, sample_issue: IssueInfo, tmp_path: Path
+    ) -> None:
+        """The AC that keeps a pre-patch base-state consumer's path from being dead code.
+
+        The row must exist and resolve *during* processing — asserted from
+        inside the Phase-1 command, before any terminal write.
+        """
+        import subprocess as _subprocess
+
+        from little_loops.history_reader import read_base_sha
+        from little_loops.issue_manager import process_issue_inplace
+
+        db = tmp_path / "history.db"
+        mid_flight: list[str | None] = []
+
+        def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            if cmd[:2] == ["git", "rev-parse"]:
+                return _subprocess.CompletedProcess(args=cmd, returncode=0, stdout="basesha1\n")
+            return _subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        def fake_claude(*args, **kwargs):  # type: ignore[no-untyped-def]
+            # Phase 1 has begun; the dequeue-time row must already be readable.
+            mid_flight.append(read_base_sha(sample_issue.issue_id, db=db))
+            raise RuntimeError("stop the run here — the stamp is what's under test")
+
+        with (
+            patch("little_loops.issue_manager.subprocess.run", side_effect=fake_run),
+            patch("little_loops.issue_manager.run_claude_command", side_effect=fake_claude),
+            pytest.raises(RuntimeError),
+        ):
+            process_issue_inplace(
+                sample_issue,
+                mock_config,
+                MagicMock(),
+                run_id="run-inflight",
+                driver="ll-auto",
+                db_path=db,
+            )
+
+        assert mid_flight == ["basesha1"]
+
+    def test_dry_run_writes_no_orchestration_row_at_dequeue(
+        self, mock_config: BRConfig, sample_issue: IssueInfo, tmp_path: Path
+    ) -> None:
+        """A dry run must not become the one mode that persists rows."""
+        import subprocess as _subprocess
+
+        from little_loops.history_reader import read_base_sha
+        from little_loops.issue_manager import process_issue_inplace
+        from little_loops.session_store import ensure_db
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+
+        def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            return _subprocess.CompletedProcess(args=cmd, returncode=0, stdout="abc\n")
+
+        with patch("little_loops.issue_manager.subprocess.run", side_effect=fake_run):
+            process_issue_inplace(
+                sample_issue,
+                mock_config,
+                MagicMock(),
+                dry_run=True,
+                run_id="run-dry",
+                driver="ll-auto",
+                db_path=db,
+            )
+
+        assert read_base_sha(sample_issue.issue_id, db=db) is None
+
+    def test_no_row_written_without_full_identity(
+        self, mock_config: BRConfig, sample_issue: IssueInfo, tmp_path: Path
+    ) -> None:
+        """An orchestrator that passes no identity keeps today's behavior exactly."""
+        import subprocess as _subprocess
+
+        from little_loops.issue_manager import process_issue_inplace
+
+        recorded: list[dict[str, Any]] = []
+
+        def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            return _subprocess.CompletedProcess(args=cmd, returncode=0, stdout="abc\n")
+
+        with (
+            patch("little_loops.issue_manager.subprocess.run", side_effect=fake_run),
+            patch(
+                "little_loops.issue_manager.record_orchestration_run",
+                side_effect=lambda *a, **kw: recorded.append(kw),
+            ),
+            patch("little_loops.issue_manager.run_claude_command", side_effect=RuntimeError("x")),
+            pytest.raises(RuntimeError),
+        ):
+            # run_id/driver/db_path all omitted.
+            process_issue_inplace(sample_issue, mock_config, MagicMock())
+
+        assert recorded == []
+
+    def test_result_carries_the_stamp_back_to_callers(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        """IssueProcessingResult is how ll-sprint's sequential path forwards the stamp."""
+        import subprocess as _subprocess
+
+        from little_loops.issue_manager import process_issue_inplace
+
+        def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            if cmd[:2] == ["git", "rev-parse"]:
+                return _subprocess.CompletedProcess(args=cmd, returncode=0, stdout="carried\n")
+            return _subprocess.CompletedProcess(args=cmd, returncode=0, stdout="")
+
+        with patch("little_loops.issue_manager.subprocess.run", side_effect=fake_run):
+            result = process_issue_inplace(sample_issue, mock_config, MagicMock(), dry_run=True)
+
+        assert result.base_sha == "carried"
+        assert result.base_dirty is False

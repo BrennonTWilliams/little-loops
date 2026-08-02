@@ -131,7 +131,15 @@ class ParallelOrchestrator:
         # Initialize components with shared git lock
         self.queue = IssuePriorityQueue()
         self.worker_pool = WorkerPool(
-            parallel_config, br_config, self.logger, self.repo_path, self._git_lock
+            parallel_config,
+            br_config,
+            self.logger,
+            self.repo_path,
+            self._git_lock,
+            # ENH-2866: lets the pool write each issue's dequeue-time base-state
+            # row onto the same (run_id, issue_id) the terminal write below uses.
+            run_id=self.run_id,
+            driver=self.driver,
         )
         self.merge_coordinator = MergeCoordinator(
             parallel_config, self.logger, self.repo_path, self._git_lock
@@ -1052,6 +1060,11 @@ class ParallelOrchestrator:
                 wave=self.wave_label,
                 pr_url=branch_state.get("pr_url"),
                 branch=result.branch_name or None,
+                # ENH-2866: re-sent so a worker whose dequeue-time write was
+                # skipped still lands its stamp; COALESCE makes the usual case
+                # (row already stamped) a no-op rather than a rewrite.
+                base_sha=result.base_sha,
+                base_dirty=result.base_dirty,
             )
 
     def _on_worker_complete(self, result: WorkerResult) -> None:

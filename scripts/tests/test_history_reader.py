@@ -2902,3 +2902,93 @@ class TestContextPressureReaders:
         from little_loops.history_reader import pressure_summary
 
         assert pressure_summary("a", db=tmp_path / "no" / "history.db") is None
+
+
+class TestReadBaseSha:
+    """ENH-2866: the single dequeue-time base-SHA reader, None when unstamped."""
+
+    @staticmethod
+    def _stamp(db: Path, **kwargs) -> None:
+        from little_loops.session_store import record_orchestration_run
+
+        base = {"driver": "ll-auto", "status": "running"}
+        record_orchestration_run(db, **{**base, **kwargs})
+
+    def test_resolves_stamp_with_run_id(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import read_base_sha
+
+        db = tmp_path / "history.db"
+        self._stamp(db, run_id="r1", issue_id="ENH-2866", base_sha="abc123")
+        assert read_base_sha("ENH-2866", run_id="r1", db=db) == "abc123"
+
+    def test_resolves_stamp_without_run_id(self, tmp_path: Path) -> None:
+        """ENH-2853's oracle loop runs out-of-process and has no run_id to supply."""
+        from little_loops.history_reader import read_base_sha
+
+        db = tmp_path / "history.db"
+        self._stamp(db, run_id="r1", issue_id="ENH-2866", base_sha="abc123")
+        assert read_base_sha("ENH-2866", db=db) == "abc123"
+
+    def test_most_recent_stamped_row_wins(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import read_base_sha
+
+        db = tmp_path / "history.db"
+        self._stamp(db, run_id="r1", issue_id="ENH-2866", base_sha="older")
+        self._stamp(db, run_id="r2", issue_id="ENH-2866", base_sha="newer")
+        assert read_base_sha("ENH-2866", db=db) == "newer"
+
+    def test_unstamped_later_row_does_not_shadow_stamped_earlier_row(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import read_base_sha
+
+        db = tmp_path / "history.db"
+        self._stamp(db, run_id="r1", issue_id="ENH-2866", base_sha="stamped")
+        self._stamp(db, run_id="r2", issue_id="ENH-2866", status="completed")
+        assert read_base_sha("ENH-2866", db=db) == "stamped"
+
+    def test_returns_none_when_row_is_unstamped(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import read_base_sha
+
+        db = tmp_path / "history.db"
+        self._stamp(db, run_id="r1", issue_id="ENH-2866", status="completed")
+        assert read_base_sha("ENH-2866", db=db) is None
+        assert read_base_sha("ENH-2866", run_id="r1", db=db) is None
+
+    def test_returns_none_when_no_row_exists(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import read_base_sha
+        from little_loops.session_store import ensure_db
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        assert read_base_sha("ENH-9999", db=db) is None
+
+    def test_returns_none_for_missing_db(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import read_base_sha
+
+        assert read_base_sha("ENH-2866", db=tmp_path / "no" / "history.db") is None
+
+    def test_never_raises_on_malformed_db(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import read_base_sha
+
+        db = tmp_path / "history.db"
+        db.write_text("this is not a sqlite database")
+        assert read_base_sha("ENH-2866", db=db) is None
+
+    def test_failed_rev_parse_reads_back_as_none_not_empty_string(self, tmp_path: Path) -> None:
+        """A capture site that coerces "" -> None keeps NULL-means-unstamped honest."""
+        from little_loops.history_reader import read_base_sha
+
+        db = tmp_path / "history.db"
+        self._stamp(db, run_id="r1", issue_id="ENH-2866", base_sha="")
+        result = read_base_sha("ENH-2866", db=db)
+        assert result is None
+        assert result != ""
+
+    def test_dirty_flag_is_readable_alongside_the_sha(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import recent_orchestration_runs
+
+        db = tmp_path / "history.db"
+        self._stamp(db, run_id="r1", issue_id="ENH-2866", base_sha="abc", base_dirty=True)
+        rows = recent_orchestration_runs(issue_id="ENH-2866", db=db)
+        assert len(rows) == 1
+        assert rows[0].base_sha == "abc"
+        assert rows[0].base_dirty == 1

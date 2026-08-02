@@ -17,7 +17,7 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import FrameType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -572,6 +572,47 @@ class IssueProcessingResult:
     corrections: list[str] = field(default_factory=list)
     plan_created: bool = False
     plan_path: str = ""
+    # ENH-2866: the tree this issue was taken from, resolved before Phase 1
+    # mutates anything. None when git could not be consulted.
+    base_sha: str | None = None
+    base_dirty: bool | None = None
+
+
+def _resolve_base_state(repo_path: Path) -> tuple[str | None, bool | None]:
+    """Resolve the current commit SHA and tracked-dirty flag of *repo_path* (ENH-2866).
+
+    ``--untracked-files=no`` is deliberate: a base-state consumer reconstructs
+    the tree by checkout, so only tracked modifications make that
+    reconstruction approximate.
+
+    Returns:
+        ``(base_sha, base_dirty)``, either element being None when git could not
+        answer — NULL then means unstamped all the way through to the reader,
+        rather than a guessed-clean or empty-string stamp.
+    """
+    base_sha: str | None = None
+    base_dirty: bool | None = None
+    with suppress(Exception):
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            base_sha = result.stdout.strip() or None
+    with suppress(Exception):
+        result = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            base_dirty = bool(result.stdout.strip())
+    return base_sha, base_dirty
 
 
 def process_issue_inplace(
@@ -587,6 +628,9 @@ def process_issue_inplace(
     sprint_context: SprintWorkerContext | None = None,
     context_limit: int | None = None,
     skip_learning_gate: bool = False,
+    run_id: str | None = None,
+    driver: str | None = None,
+    db_path: Path | str | None = None,
 ) -> IssueProcessingResult:
     """Process a single issue through the 3-phase workflow in the current working tree.
 
@@ -606,6 +650,14 @@ def process_issue_inplace(
         on_usage_detailed: Optional callback invoked with a TokenUsage dataclass
             (including the resolved model ID) from each stream-json result event.
             Passed through to all run_claude_command calls (BUG-2757).
+        run_id: Orchestration run this issue belongs to (ENH-2866).
+        driver: Producer identity for the stamp (``ll-auto`` / ``ll-sprint``).
+        db_path: History database the stamp is written to.
+
+    ``run_id``, ``driver`` and ``db_path`` are the dequeue-time base-SHA stamp's
+    three requirements; the early ``orchestration_runs`` write is skipped unless
+    all three are supplied (and skipped under ``dry_run``), so a caller that
+    passes none keeps today's behavior exactly.
 
     Returns:
         IssueProcessingResult with outcome details
@@ -614,6 +666,27 @@ def process_issue_inplace(
     corrections: list[str] = []
 
     logger.header(f"Processing: {info.issue_id} - {info.title}")
+
+    # ENH-2866: resolve and persist this issue's base state before anything —
+    # Phase 1 included — mutates the tree or the issue file. Persisting it here
+    # rather than at completion is what makes it readable mid-issue, which is
+    # the only moment a pre-patch base-state consumer can use it.
+    base_sha, base_dirty = _resolve_base_state(config.repo_path or Path.cwd())
+    if not dry_run and run_id and driver and db_path:
+        with suppress(Exception):
+            record_orchestration_run(
+                db_path,
+                run_id=run_id,
+                driver=driver,
+                issue_id=info.issue_id,
+                status="running",
+                base_sha=base_sha,
+                base_dirty=base_dirty,
+            )
+
+    def _stamped_result(**kwargs: Any) -> IssueProcessingResult:
+        """Build an IssueProcessingResult carrying this issue's base-state stamp."""
+        return IssueProcessingResult(base_sha=base_sha, base_dirty=base_dirty, **kwargs)
 
     # BUG-2963: pre-run dirty snapshot for the Phase-1 CLOSE branch below.
     # Taken at the very top of the function, before any phase runs, so a
@@ -719,7 +792,7 @@ def process_issue_inplace(
 
                             if retry_result.returncode != 0:
                                 logger.error(f"Fallback ready-issue failed for {info.issue_id}")
-                                return IssueProcessingResult(
+                                return _stamped_result(
                                     success=False,
                                     duration=time.time() - issue_start_time,
                                     issue_id=info.issue_id,
@@ -738,7 +811,7 @@ def process_issue_inplace(
                                         f"got '{retry_validated_path}', "
                                         f"expected '{info.path}'"
                                     )
-                                    return IssueProcessingResult(
+                                    return _stamped_result(
                                         success=False,
                                         duration=time.time() - issue_start_time,
                                         issue_id=info.issue_id,
@@ -775,7 +848,7 @@ def process_issue_inplace(
                             f"Skipping {info.issue_id}: invalid reference - "
                             "no matching issue file exists"
                         )
-                        return IssueProcessingResult(
+                        return _stamped_result(
                             success=False,
                             duration=time.time() - issue_start_time,
                             issue_id=info.issue_id,
@@ -790,7 +863,7 @@ def process_issue_inplace(
                             f"Skipping close for {info.issue_id}: "
                             "ready-issue did not return validated file path"
                         )
-                        return IssueProcessingResult(
+                        return _stamped_result(
                             success=False,
                             duration=time.time() - issue_start_time,
                             issue_id=info.issue_id,
@@ -808,7 +881,7 @@ def process_issue_inplace(
                         pre_run_dirty=_phase1_pre_run_dirty,
                         repo_path=_repo_root,
                     ):
-                        return IssueProcessingResult(
+                        return _stamped_result(
                             success=True,
                             duration=time.time() - issue_start_time,
                             issue_id=info.issue_id,
@@ -816,7 +889,7 @@ def process_issue_inplace(
                             corrections=corrections,
                         )
                     else:
-                        return IssueProcessingResult(
+                        return _stamped_result(
                             success=False,
                             duration=time.time() - issue_start_time,
                             issue_id=info.issue_id,
@@ -829,7 +902,7 @@ def process_issue_inplace(
                     logger.warning(
                         f"Issue {info.issue_id} blocked — open dependency detected by ready-issue"
                     )
-                    return IssueProcessingResult(
+                    return _stamped_result(
                         success=False,
                         was_blocked=True,
                         duration=time.time() - issue_start_time,
@@ -844,7 +917,7 @@ def process_issue_inplace(
                         f"Issue {info.issue_id} is NOT READY for implementation "
                         f"(verdict: {parsed['verdict']})"
                     )
-                    return IssueProcessingResult(
+                    return _stamped_result(
                         success=False,
                         duration=time.time() - issue_start_time,
                         issue_id=info.issue_id,
@@ -904,7 +977,7 @@ def process_issue_inplace(
                 # ENV_NOT_READY auth-signature pattern, ENH-2353). Loops capture
                 # `ll-auto --only ... 2>&1` and route on this token.
                 print(f"LEARNING_GATE_BLOCKED {info.issue_id}", flush=True)
-                return IssueProcessingResult(
+                return _stamped_result(
                     success=False,
                     duration=time.time() - issue_start_time,
                     issue_id=info.issue_id,
@@ -922,7 +995,7 @@ def process_issue_inplace(
                     f"Learning gate impl-failed for {info.issue_id}: implementation failed"
                 )
                 print(f"IMPLEMENT_FAILED {info.issue_id}", flush=True)
-                return IssueProcessingResult(
+                return _stamped_result(
                     success=False,
                     duration=time.time() - issue_start_time,
                     issue_id=info.issue_id,
@@ -1046,7 +1119,7 @@ def process_issue_inplace(
                 logger.info("Error output (first 500 chars):")
                 logger.info(error_output[:500])
 
-                return IssueProcessingResult(
+                return _stamped_result(
                     success=False,
                     duration=time.time() - issue_start_time,
                     issue_id=info.issue_id,
@@ -1071,7 +1144,7 @@ def process_issue_inplace(
             else:
                 logger.info("Would create new bug issue for this failure")
 
-            return IssueProcessingResult(
+            return _stamped_result(
                 success=False,
                 duration=time.time() - issue_start_time,
                 issue_id=info.issue_id,
@@ -1112,7 +1185,7 @@ def process_issue_inplace(
                             f"Plan created at {plan_path}, awaiting approval - "
                             "issue will remain incomplete until plan is approved and implemented"
                         )
-                        return IssueProcessingResult(
+                        return _stamped_result(
                             success=False,
                             duration=time.time() - issue_start_time,
                             issue_id=info.issue_id,
@@ -1213,7 +1286,7 @@ def process_issue_inplace(
         logger.warning(f"Issue {info.issue_id} was attempted but verification failed")
         logger.info("This issue will be skipped on future runs (check logs above for details)")
 
-    return IssueProcessingResult(
+    return _stamped_result(
         success=verified,
         duration=total_issue_time,
         issue_id=info.issue_id,
@@ -1632,6 +1705,11 @@ class AutoManager:
                 event_bus=self.event_bus,
                 context_limit=resolved_limit,
                 skip_learning_gate=self.skip_learning_gate,
+                # ENH-2866: identity for the dequeue-time base-state write,
+                # landed on the same (run_id, issue_id) as the terminal write below.
+                run_id=self.run_id,
+                driver="ll-auto",
+                db_path=self.db_path,
             )
         except subprocess.TimeoutExpired as exc:
             # BUG-2976: a per-issue timeout budget breach must fail only this
@@ -1696,6 +1774,8 @@ class AutoManager:
                     status=orchestration_status,
                     failure_reason=orchestration_reason,
                     duration_s=result.duration,
+                    base_sha=result.base_sha,
+                    base_dirty=result.base_dirty,
                 )
 
         return result.success

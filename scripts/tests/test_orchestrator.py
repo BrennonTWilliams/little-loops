@@ -377,6 +377,61 @@ class TestOrchestrationRunRecording:
         assert mock_record.call_args.kwargs["failure_reason"] == "worker stopped"
         orchestrator.queue.mark_failed.assert_not_called()
 
+    def test_terminal_write_forwards_base_state_stamp(
+        self, orchestrator: ParallelOrchestrator
+    ) -> None:
+        """ENH-2866: the terminal upsert carries the worker's base-state stamp.
+
+        Without this the ll-parallel stamp is captured but never persisted —
+        _record_orchestration_result() is the actual write path.
+        """
+        from little_loops.parallel import orchestrator as orchestrator_module
+
+        orchestrator.run_id = "batch-stamped"
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="feature/BUG-001",
+            worktree_path=Path(".worktrees/BUG-001"),
+            duration=3.0,
+            base_sha="deadbeef",
+            base_dirty=True,
+        )
+        orchestrator.merge_coordinator.merged_ids = ["BUG-001"]
+
+        with patch.object(orchestrator_module, "record_orchestration_run") as mock_record:
+            orchestrator._on_worker_complete(result)
+
+        kwargs = mock_record.call_args.kwargs
+        assert kwargs["base_sha"] == "deadbeef"
+        assert kwargs["base_dirty"] is True
+
+    def test_worker_pool_receives_run_identity_for_the_dequeue_stamp(
+        self,
+        default_parallel_config: ParallelConfig,
+        br_config: BRConfig,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """The pool needs run_id/driver to land its early row on the same key."""
+        from little_loops.parallel import orchestrator as orchestrator_module
+
+        with (
+            patch.object(orchestrator_module, "WorkerPool") as mock_pool,
+            patch.object(orchestrator_module, "MergeCoordinator"),
+            patch.object(orchestrator_module, "IssuePriorityQueue"),
+        ):
+            orch = ParallelOrchestrator(
+                parallel_config=default_parallel_config,
+                br_config=br_config,
+                repo_path=temp_repo_with_config,
+                run_id="run-identity",
+                driver="ll-parallel",
+            )
+
+        kwargs = mock_pool.call_args.kwargs
+        assert kwargs["run_id"] == "run-identity" == orch.run_id
+        assert kwargs["driver"] == "ll-parallel" == orch.driver
+
 
 class TestSignalHandlers:
     """Tests for signal handler setup and restore."""

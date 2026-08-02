@@ -2805,3 +2805,69 @@ class TestSprintListJsonShortForm:
         mock_list.assert_called_once()
         list_args = mock_list.call_args[0][0]
         assert getattr(list_args, "json", False) is True
+
+
+class TestSprintSequentialBaseStateStamp:
+    """ENH-2866 decision 2: ll-sprint's sequential in-place branch is its own capture site.
+
+    Worktree-mode waves delegate to the same ParallelOrchestrator as ll-parallel
+    and are covered by that stamp; ``_run_issue_with_wall_clock_timeout`` ->
+    ``process_issue_inplace`` is a distinct path that would otherwise go
+    unstamped.
+    """
+
+    def test_wall_clock_wrapper_forwards_stamp_identity(self, tmp_path: Path) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from little_loops.cli.sprint.run import _run_issue_with_wall_clock_timeout
+        from little_loops.issue_manager import IssueProcessingResult
+
+        captured: dict[str, Any] = {}
+
+        def fake_inplace(**kwargs: Any) -> IssueProcessingResult:
+            captured.update(kwargs)
+            return IssueProcessingResult(success=True, duration=1.0, issue_id="BUG-1")
+
+        issue = MagicMock()
+        issue.issue_id = "BUG-1"
+
+        with patch("little_loops.cli.sprint.run.process_issue_inplace", side_effect=fake_inplace):
+            _run_issue_with_wall_clock_timeout(
+                issue=issue,
+                config=MagicMock(),
+                logger=MagicMock(),
+                dry_run=False,
+                max_seconds=60,
+                run_id="sprint-run-1",
+                db_path=tmp_path / "history.db",
+            )
+
+        assert captured["run_id"] == "sprint-run-1"
+        assert captured["driver"] == "ll-sprint"
+        assert captured["db_path"] == tmp_path / "history.db"
+
+    def test_both_terminal_writes_forward_the_stamp(self) -> None:
+        """Every record_orchestration_run(driver="ll-sprint") must carry the stamp.
+
+        Structural check: the stamp is captured inside process_issue_inplace and
+        returned on IssueProcessingResult, but it only reaches the database if
+        each terminal call site forwards it.
+        """
+        import ast
+        import inspect
+
+        from little_loops.cli.sprint import run as sprint_run
+
+        tree = ast.parse(inspect.getsource(sprint_run))
+        calls = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "record_orchestration_run"
+        ]
+        assert len(calls) == 2, f"expected 2 terminal write sites, found {len(calls)}"
+        for call in calls:
+            names = {kw.arg for kw in call.keywords}
+            assert "base_sha" in names, f"line {call.lineno} does not forward base_sha"
+            assert "base_dirty" in names, f"line {call.lineno} does not forward base_dirty"

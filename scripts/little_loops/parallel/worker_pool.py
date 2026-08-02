@@ -25,7 +25,11 @@ from little_loops.host_runner import resolve_host
 from little_loops.output_parsing import parse_ready_issue_output
 from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.types import ParallelConfig, WorkerResult, WorkerStage
-from little_loops.session_store import record_session_lifecycle_event, resolve_history_db
+from little_loops.session_store import (
+    record_orchestration_run,
+    record_session_lifecycle_event,
+    resolve_history_db,
+)
 from little_loops.subprocess_utils import (
     assemble_guillotine_prompt,
     detect_context_handoff,
@@ -145,6 +149,8 @@ class WorkerPool:
         logger: Logger,
         repo_path: Path | None = None,
         git_lock: GitLock | None = None,
+        run_id: str | None = None,
+        driver: str | None = None,
     ) -> None:
         """Initialize the worker pool.
 
@@ -154,7 +160,15 @@ class WorkerPool:
             logger: Logger for worker output
             repo_path: Path to the git repository (default: current directory)
             git_lock: Shared lock for git operations (created if not provided)
+            run_id: Orchestration run this pool belongs to (ENH-2866); together
+                with ``driver`` it enables the dequeue-time base-SHA stamp.
+                Omitted by a caller that does not record orchestration runs, in
+                which case no early row is written.
+            driver: Producer identity for the stamp (``ll-parallel`` /
+                ``ll-sprint``); see ``run_id``.
         """
+        self.run_id = run_id
+        self.driver = driver
         self.parallel_config = parallel_config
         self.br_config = br_config
         self.logger = logger
@@ -361,6 +375,26 @@ class WorkerPool:
         # Capture main HEAD SHA before worker starts to detect committed leaks
         baseline_head_sha = self._get_main_head_sha()
 
+        # ENH-2866: the same value is this issue's dequeue-time base state.
+        # Normalize the "" _get_main_head_sha() returns on failure to None so
+        # NULL-means-unstamped holds all the way to the reader.
+        base_sha = baseline_head_sha or None
+        base_dirty = self._is_main_repo_dirty()
+        # Persist the stamp *now*, not at worker completion: a consumer asking
+        # "what tree did this change start from?" reads it while the issue is
+        # still in flight. The terminal upsert from
+        # ParallelOrchestrator._record_orchestration_result() lands the outcome
+        # on the same (run_id, issue_id) row and COALESCEs the stamp through.
+        self._record_dequeue_stamp(issue.issue_id, base_sha, base_dirty)
+
+        def _stamped_result(**kwargs: Any) -> WorkerResult:
+            """Build a WorkerResult carrying this worker's base-state stamp.
+
+            Every return path inside this method uses it — a failed worker's
+            base state is as worth recording as a successful one.
+            """
+            return WorkerResult(base_sha=base_sha, base_dirty=base_dirty, **kwargs)
+
         try:
             # Step 1: Create worktree with new branch. Fork from the EPIC
             # integration branch when set (FEAT-2452); otherwise keep today's
@@ -406,7 +440,7 @@ class WorkerPool:
             # Check if worker was terminated during shutdown (ENH-036)
             if issue.issue_id in self._terminated_during_shutdown:
                 self.set_worker_stage(issue.issue_id, WorkerStage.INTERRUPTED)
-                return WorkerResult(
+                return _stamped_result(
                     epic_branch=epic_branch,
                     issue_id=issue.issue_id,
                     success=False,
@@ -421,7 +455,7 @@ class WorkerPool:
 
             if ready_result.returncode != 0:
                 err_detail = ready_result.stderr or (ready_result.stdout or "")[:500]
-                return WorkerResult(
+                return _stamped_result(
                     epic_branch=epic_branch,
                     issue_id=issue.issue_id,
                     success=False,
@@ -438,7 +472,7 @@ class WorkerPool:
 
             # Handle CLOSE verdict - issue should not be implemented
             if ready_parsed.get("should_close"):
-                return WorkerResult(
+                return _stamped_result(
                     epic_branch=epic_branch,
                     issue_id=issue.issue_id,
                     success=True,  # Closure is a valid outcome
@@ -454,7 +488,7 @@ class WorkerPool:
 
             # Handle BLOCKED verdict - issue has open dependencies
             if ready_parsed.get("is_blocked"):
-                return WorkerResult(
+                return _stamped_result(
                     epic_branch=epic_branch,
                     issue_id=issue.issue_id,
                     success=False,
@@ -482,7 +516,7 @@ class WorkerPool:
                     )
                 else:
                     concern_msg = "Issue not ready"
-                return WorkerResult(
+                return _stamped_result(
                     epic_branch=epic_branch,
                     issue_id=issue.issue_id,
                     success=False,
@@ -503,7 +537,7 @@ class WorkerPool:
             if not _run_per_worktree_proof_first_gate(
                 issue, worktree_path, self.br_config, self.parallel_config, self.logger
             ):
-                return WorkerResult(
+                return _stamped_result(
                     epic_branch=epic_branch,
                     issue_id=issue.issue_id,
                     success=False,
@@ -567,7 +601,7 @@ class WorkerPool:
             # Check if worker was terminated during shutdown (ENH-036)
             if issue.issue_id in self._terminated_during_shutdown:
                 self.set_worker_stage(issue.issue_id, WorkerStage.INTERRUPTED)
-                return WorkerResult(
+                return _stamped_result(
                     epic_branch=epic_branch,
                     issue_id=issue.issue_id,
                     success=False,
@@ -625,7 +659,7 @@ class WorkerPool:
 
             if manage_result.returncode != 0:
                 err_detail = manage_result.stderr or (manage_result.stdout or "")[:500]
-                return WorkerResult(
+                return _stamped_result(
                     epic_branch=epic_branch,
                     issue_id=issue.issue_id,
                     success=False,
@@ -640,7 +674,7 @@ class WorkerPool:
                 )
 
             if not work_verified:
-                return WorkerResult(
+                return _stamped_result(
                     epic_branch=epic_branch,
                     issue_id=issue.issue_id,
                     success=False,
@@ -662,7 +696,7 @@ class WorkerPool:
             self.set_worker_stage(issue.issue_id, WorkerStage.MERGING)
 
             if not base_updated:
-                return WorkerResult(
+                return _stamped_result(
                     epic_branch=epic_branch,
                     issue_id=issue.issue_id,
                     success=False,
@@ -676,7 +710,7 @@ class WorkerPool:
                     stderr=manage_result.stderr,
                 )
 
-            return WorkerResult(
+            return _stamped_result(
                 epic_branch=epic_branch,
                 issue_id=issue.issue_id,
                 success=True,
@@ -693,7 +727,7 @@ class WorkerPool:
             )
 
         except Exception as e:
-            return WorkerResult(
+            return _stamped_result(
                 epic_branch=epic_branch,
                 issue_id=issue.issue_id,
                 success=False,
@@ -1539,6 +1573,50 @@ class WorkerPool:
         if result.returncode == 0:
             return result.stdout.strip()
         return ""
+
+    def _is_main_repo_dirty(self) -> bool | None:
+        """Whether the main repo has *tracked* modifications right now (ENH-2866).
+
+        ``--untracked-files=no`` is deliberate: a base-state consumer
+        reconstructs the tree by checkout, so only tracked modifications make
+        that reconstruction approximate — an untracked scratch file does not.
+
+        Returns:
+            True/False, or None when git could not be consulted (the stamp is
+            advisory, so an unknown dirty state is recorded as unstamped rather
+            than guessed as clean).
+        """
+        result = self._git_lock.run(
+            ["status", "--porcelain", "--untracked-files=no"],
+            cwd=self.repo_path,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return None
+        return bool(result.stdout.strip())
+
+    def _record_dequeue_stamp(
+        self, issue_id: str, base_sha: str | None, base_dirty: bool | None
+    ) -> None:
+        """Write the dequeue-time base-state row for *issue_id* (ENH-2866).
+
+        A ``status="running"`` upsert issued before the worktree exists, so the
+        stamp is readable while the issue is in flight. Skipped when this pool
+        has no orchestration identity. Never propagates a failure: the stamp is
+        advisory and must not take a worker down.
+        """
+        if not self.run_id or not self.driver:
+            return
+        with suppress(Exception):
+            record_orchestration_run(
+                resolve_history_db(),
+                run_id=self.run_id,
+                driver=self.driver,
+                issue_id=issue_id,
+                status="running",
+                base_sha=base_sha,
+                base_dirty=base_dirty,
+            )
 
     def _get_worktree_head_sha(self, worktree_path: Path) -> str:
         """Get the current HEAD SHA of *worktree_path*, or "" if unavailable.

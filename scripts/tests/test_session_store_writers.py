@@ -448,8 +448,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 37
-        assert int(row[0]) == 37
+        assert SCHEMA_VERSION == 38
+        assert int(row[0]) == 38
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1047,7 +1047,7 @@ class TestOrchestrationRuns:
         return recorder
 
     def test_v21_db_upgrades_gains_orchestration_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 37
+        assert SCHEMA_VERSION == 38
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 21)
         ensure_db(db)
@@ -1173,6 +1173,162 @@ class TestOrchestrationRuns:
         assert fts_rows == 1
 
 
+class TestOrchestrationRunBaseStamp:
+    """ENH-2866: dequeue-time base-SHA stamp written by an early ``running`` upsert."""
+
+    @staticmethod
+    def _recorder():
+        from little_loops import session_store
+
+        recorder = getattr(session_store, "record_orchestration_run", None)
+        assert callable(recorder), "record_orchestration_run must be public"
+        return recorder
+
+    @staticmethod
+    def _row(db: Path, run_id: str, issue_id: str) -> sqlite3.Row:
+        conn = connect(db)
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute(
+                "SELECT * FROM orchestration_runs WHERE run_id = ? AND issue_id = ?",
+                (run_id, issue_id),
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+        return row
+
+    def test_early_upsert_persists_stamp_and_leaves_ended_at_null(self, tmp_path: Path) -> None:
+        """An in-flight row records the stamp without claiming an end time."""
+        record_orchestration_run = self._recorder()
+        db = tmp_path / "history.db"
+        record_orchestration_run(
+            db,
+            run_id="run-1",
+            driver="ll-auto",
+            issue_id="ENH-2866",
+            status="running",
+            started_at="2026-08-01T10:00:00Z",
+            base_sha="deadbeef",
+            base_dirty=False,
+        )
+        row = self._row(db, "run-1", "ENH-2866")
+        assert row["base_sha"] == "deadbeef"
+        assert row["base_dirty"] == 0
+        assert row["started_at"] == "2026-08-01T10:00:00Z"
+        assert row["ended_at"] is None
+
+    def test_terminal_upsert_preserves_stamp_and_started_at_in_one_row(
+        self, tmp_path: Path
+    ) -> None:
+        """The terminal write replaces the outcome but keeps the dequeue-time values."""
+        record_orchestration_run = self._recorder()
+        db = tmp_path / "history.db"
+        record_orchestration_run(
+            db,
+            run_id="run-2",
+            driver="ll-auto",
+            issue_id="ENH-2866",
+            status="running",
+            started_at="2026-08-01T10:00:00Z",
+            base_sha="cafe1234",
+            base_dirty=True,
+        )
+        # The terminal call mirrors the three real call sites: no started_at,
+        # no base_sha, no ended_at.
+        record_orchestration_run(
+            db,
+            run_id="run-2",
+            driver="ll-auto",
+            issue_id="ENH-2866",
+            status="completed",
+            duration_s=9.5,
+            head_sha="ffff0000",
+            branch="main",
+        )
+        row = self._row(db, "run-2", "ENH-2866")
+        assert row["status"] == "completed"
+        assert row["duration_s"] == 9.5
+        assert row["head_sha"] == "ffff0000"
+        assert row["branch"] == "main"
+        assert row["base_sha"] == "cafe1234", "COALESCE must keep the dequeue-time stamp"
+        assert row["base_dirty"] == 1
+        assert row["started_at"] == "2026-08-01T10:00:00Z", (
+            "the terminal upsert must not null the dequeue timestamp — "
+            "history_reader windows key on COALESCE(ended_at, started_at)"
+        )
+        assert row["ended_at"] is not None
+
+        conn = connect(db)
+        try:
+            count = conn.execute("SELECT COUNT(*) FROM orchestration_runs").fetchone()[0]
+        finally:
+            conn.close()
+        assert count == 1, "early + terminal writes must produce one row, not two"
+
+    def test_abandoned_in_flight_row_stays_in_windowed_queries(self, tmp_path: Path) -> None:
+        """A crashed run keeps started_at, so it is not lost to COALESCE windows."""
+        from little_loops.history_reader import recent_orchestration_runs
+
+        record_orchestration_run = self._recorder()
+        db = tmp_path / "history.db"
+        record_orchestration_run(
+            db,
+            run_id="run-crash",
+            driver="ll-parallel",
+            issue_id="BUG-99",
+            status="running",
+            started_at="2026-08-01T10:00:00Z",
+            base_sha="abc",
+        )
+        row = self._row(db, "run-crash", "BUG-99")
+        assert row["ended_at"] is None
+        assert row["ended_at"] != row["started_at"]
+
+        found = recent_orchestration_runs(issue_id="BUG-99", since="2026-07-01T00:00:00Z", db=db)
+        assert [r.status for r in found] == ["running"]
+
+    def test_retry_without_stamp_does_not_clobber_recorded_stamp(self, tmp_path: Path) -> None:
+        """A later upsert passing base_sha=None leaves the recorded stamp intact."""
+        record_orchestration_run = self._recorder()
+        db = tmp_path / "history.db"
+        common = {"run_id": "run-3", "driver": "ll-sprint", "issue_id": "BUG-1"}
+        record_orchestration_run(db, **common, status="running", base_sha="1234abc", base_dirty=0)
+        record_orchestration_run(db, **common, status="failed", failure_reason="boom")
+        record_orchestration_run(db, **common, status="completed")
+        row = self._row(db, "run-3", "BUG-1")
+        assert row["base_sha"] == "1234abc"
+        assert row["base_dirty"] == 0
+        assert row["status"] == "completed"
+
+    def test_empty_base_sha_is_stored_as_null(self, tmp_path: Path) -> None:
+        """A failed ``git rev-parse`` ("" from _get_main_head_sha) must not become ''."""
+        record_orchestration_run = self._recorder()
+        db = tmp_path / "history.db"
+        record_orchestration_run(
+            db,
+            run_id="run-4",
+            driver="ll-parallel",
+            issue_id="BUG-2",
+            status="running",
+            base_sha="",
+        )
+        row = self._row(db, "run-4", "BUG-2")
+        assert row["base_sha"] is None
+
+    def test_unstamped_write_leaves_columns_null(self, tmp_path: Path) -> None:
+        """An orchestrator that never stamps keeps working; NULL means unstamped."""
+        record_orchestration_run = self._recorder()
+        db = tmp_path / "history.db"
+        record_orchestration_run(
+            db, run_id="run-5", driver="ll-auto", issue_id="BUG-3", status="completed"
+        )
+        row = self._row(db, "run-5", "BUG-3")
+        assert row["base_sha"] is None
+        assert row["base_dirty"] is None
+        assert row["ended_at"] is not None, "a terminal write still defaults ended_at"
+
+
 class TestLoopRuns:
     """loop_runs summary rows (ENH-2463)."""
 
@@ -1193,7 +1349,7 @@ class TestLoopRuns:
         return updater
 
     def test_v22_db_upgrades_gains_loop_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 37
+        assert SCHEMA_VERSION == 38
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 22)
         ensure_db(db)
@@ -1391,7 +1547,7 @@ class TestRecordLearningTestEvent:
         assert recent(db, kind="learning_test") == []
 
     def test_v25_db_upgrades_gains_learning_test_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 37
+        assert SCHEMA_VERSION == 38
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 25)
         ensure_db(db)
