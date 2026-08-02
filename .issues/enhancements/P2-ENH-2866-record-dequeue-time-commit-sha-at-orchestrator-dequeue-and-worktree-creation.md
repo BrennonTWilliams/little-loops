@@ -1106,6 +1106,14 @@ verification pass; readiness unchanged at 98, outcome confidence unchanged at
 
 
 ## Session Log
+- flag correction (manual, no skill) - 2026-08-01 - cleared `decision_needed`
+  again (set by this same `/ll:confidence-check` pass): recurrence of the
+  already-diagnosed `set-flags` false positive below — it matched "open
+  decision"/"decision point" from stale, already-resolved historical
+  `## Confidence Check Notes` blocks earlier in the file rather than the
+  current one. Verified all four decision fragments
+  (`20d75e61`/`7920ac07`/`9de33ea4`/`d67300a2`) exist and every cited
+  line/signature in Program Design still matches the tree exactly.
 - `/ll:confidence-check` - 2026-08-02T01:22:51 - `b10f0b3a-574a-4cd1-aefd-c6a613922849.jsonl`
 - pre-implementation review (manual, no skill) - 2026-08-01 - three code-level
   corrections: (a) `started_at` is clobbered by the terminal upsert
