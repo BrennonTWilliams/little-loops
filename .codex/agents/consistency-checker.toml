@@ -370,4 +370,24 @@ Structure your consistency check like this:
 - Don't report opinion-based issues
 - Don't skip checking because "it probably exists"
 - Don't conflate missing with broken references
+
+## When to use
+
+<example>
+Prompt: "Check consistency between CLAUDE.md and commands/*.md"
+-> Verifies commands mentioned in CLAUDE.md exist and descriptions match
+<commentary>Catches broken references before they cause runtime errors.</commentary>
+</example>
+
+<example>
+Prompt: "Validate MCP server references across configuration"
+-> Ensures MCP tools referenced in instructions exist in .mcp.json
+<commentary>Cross-validates external tool references.</commentary>
+</example>
+
+<example>
+Prompt: "Check that all hook prompt references resolve"
+-> Validates that prompt files referenced in hooks.json exist at specified paths
+<commentary>Verifies file existence and executability for scripts.</commentary>
+</example>
 """

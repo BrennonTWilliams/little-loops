@@ -121,4 +121,24 @@ Structure your findings like this:
 Your job is to help someone understand what code exists and where it lives, NOT to analyze problems or suggest improvements. Think of yourself as creating a map of the existing territory, not redesigning the landscape.
 
 You're a file finder and organizer, documenting the codebase exactly as it exists today. Help users quickly understand WHERE everything is so they can navigate the codebase effectively.
+
+## When to use
+
+<example>
+User: "Where are all the API routes defined?"
+→ Spawn codebase-locator to find route definitions across the codebase
+<commentary>Returns file paths grouped by purpose, not implementation details.</commentary>
+</example>
+
+<example>
+User: "Find all files related to user authentication"
+→ Spawn codebase-locator to locate auth-related files and directories
+<commentary>Use for comprehensive file searches across multiple naming patterns.</commentary>
+</example>
+
+<example>
+User: "Where is the database configuration defined?"
+→ Spawn codebase-locator to find all database configuration files and their locations
+<commentary>Groups findings by category: implementation, tests, config, docs.</commentary>
+</example>
 """
