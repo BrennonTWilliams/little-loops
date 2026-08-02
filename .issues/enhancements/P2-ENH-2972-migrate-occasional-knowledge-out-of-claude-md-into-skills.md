@@ -17,6 +17,13 @@ labels:
 - skills
 blocked_by:
 - ENH-2970
+decision_needed: false
+confidence_score: 90
+outcome_confidence: 66
+score_complexity: 18
+score_test_coverage: 8
+score_ambiguity: 15
+score_change_surface: 25
 ---
 
 # ENH-2972: Migrate occasional-knowledge sections out of `.claude/CLAUDE.md` into skills
@@ -98,6 +105,8 @@ Three migrations, independently landable.
 **Option A — skill-per-domain (recommended).** Each migrated section becomes
 (or joins) a skill whose description is a one-line trigger:
 
+> **Selected:** Option A — reuses the existing docs/guides pointer pattern; Option B has no precedent for a reference-only skill in this codebase.
+
 - `## CLI Tools` → drop entirely, replaced by a `CLAUDE.md` line stating that
   `ll-*` entry points are declared in `scripts/pyproject.toml` and documented
   by `--help`, and that `--help` is authoritative over any prose list. This
@@ -116,6 +125,78 @@ loads loop rules when it wanted issue-status detail.
 
 **Recommended**: Option A — the consumers are genuinely different, and
 Option B's single trigger reintroduces over-fetching at the skill layer.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Blocking gap for the Loop Authoring migration**: `HARNESS_OPTIMIZATION_GUIDE.md`
+  does not yet cover three rows that exist only in `.claude/CLAUDE.md`'s MR table
+  today — `haiku-gen`, `capture-reachability`, and `session-mode-eval` have no
+  counterpart anywhere in the guide (confirmed via zero-match grep for each
+  term). Deleting or reducing the `CLAUDE.md` copy before these three rows are
+  added to the guide would be a content loss, not a relocation — this is
+  exactly what Implementation Step 2 already anticipates checking ("verified
+  by diffing rule IDs, not assumed"), but the check as currently scoped would
+  fail. The guide's own `## See Also` section (`docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:498`)
+  also still says "the normative MR-1…MR-11 rules", stale against its own
+  table which already runs through MR-14 plus unnumbered rows.
+- **"Skill" is not the established destination pattern — a `docs/guides/*.md`
+  file already is.** No `SKILL.md` in this codebase is purely reference/lookup
+  content; every companion-file precedent (ENH-494, `scripts/tests/test_enh494_skill_companions.py`)
+  is intra-skill (a companion file split out of an existing *operational*
+  skill, e.g. `skills/confidence-check/rubric.md`), not a standalone
+  reference-only skill. The pattern `.claude/CLAUDE.md` already uses for
+  exactly this kind of migration is a doc guide, not a skill: `## Loop
+  Authoring` already points at `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`
+  (`.claude/CLAUDE.md:165-169`, phrased "the source of truth this table
+  summarizes") and `## Automation: Scratch Pad`-adjacent content points at
+  `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` (`.claude/CLAUDE.md:204`). Two
+  pointer-phrasing variants coexist in `CLAUDE.md` today, both current: a
+  full-sentence "source of truth" framing (lines 165-169, 204) and a bare
+  bullet/parenthetical with no justification prose (`## Important Files`
+  block, lines 217-220; line 227). This is relevant to the Option A vs B
+  choice above — it doesn't resolve it, since Option A's "skill" framing and
+  the observed "guide" convention aren't the same destination type, but
+  whichever is chosen should follow one of these two existing phrasings
+  rather than inventing a third.
+
+### Decision Rationale
+
+_Added by `/ll:decide-issue`:_
+
+**Selected: Option A — skill-per-domain**, with the caveat that its concrete
+destinations should follow the codebase's actual established pattern
+(`docs/guides/*.md` pointers) rather than its own "skill" framing where the
+two diverge — the `## Loop Authoring` migration already does this correctly
+(pointing at `HARNESS_OPTIMIZATION_GUIDE.md`, which exists today).
+
+Two independent `ll:codebase-pattern-finder` agents searched the repo for
+precedent on each option:
+
+| Dimension | Option A | Option B |
+|---|---:|---:|
+| Consistency | 2 | 0 |
+| Simplicity | 2 | 1 |
+| Testability | 2 | 1 |
+| Risk | 2 | 1 |
+| **Total** | **8/12** | **3/12** |
+
+**Key evidence:**
+- Option A's `docs/guides` pointer half is a direct rerun of the existing
+  Loop Authoring precedent (`.claude/CLAUDE.md` already points at
+  `HARNESS_OPTIMIZATION_GUIDE.md` and `AUTOMATIC_HARNESSING_GUIDE.md` this
+  way) — reuse_score 2.
+- Option A's "companion file next to `autodev.yaml`" piece for deferral
+  discriminators has no precedent (`scripts/little_loops/loops/` has no
+  sibling `.md` docs today) — the one weak spot in an otherwise
+  well-precedented option.
+- Option B has no precedent anywhere: no `SKILL.md` in this repo is
+  purely reference/lookup content with no operational steps, and every
+  skill `description:` observed is a single-intent trigger — a single
+  "reference" skill spanning three unrelated topics would either over-fire
+  or force the model to guess, reintroducing the over-fetching the issue
+  exists to eliminate — reuse_score 0.
 
 ## Program Design
 
@@ -150,6 +231,48 @@ above.
 - No behavioral test applies directly. The measurable gate is
   `ll-doctor --trim` reporting the target sections below the review bar.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Current section locations in `.claude/CLAUDE.md`**: `## Loop Authoring`
+  lines 151-204 (contains the MR-1..MR-14 table), `## Issue File Format`
+  lines 206-213, `## CLI Tools` starting line 222.
+- **The 250-token review bar is a real, programmatic constant**, not just
+  issue prose: `_SECTION_REVIEW_TOKENS = 250` in
+  `scripts/little_loops/cli/doctor_trim.py`. For a memory-file H2 section,
+  `_memory_components()` verdicts `"review"` when `tokens >= 250`, else
+  `"keep"` — there is no separate `"trim"` verdict for `CLAUDE.md` sections
+  (unlike catalog/skill entries, which can get `"trim"` on zero invocations).
+  So Implementation Step 5's target state is the tool reporting `verdict ==
+  "keep"` for the migrated sections, not a distinct "passed" state.
+  Additionally, memory sections get no usage signal at all — `invocations`
+  is always `None` for them, since `_usage_counts()` only reads
+  `skill_events` from `.ll/history.db`, which has no per-`CLAUDE.md`-section
+  granularity.
+- **No automated drift gate exists for `## Loop Authoring` or
+  `## Issue File Format` today** — only `## CLI Tools` has one
+  (`scripts/little_loops/cli/verify_cli_docs.py`, gated by
+  `scripts/tests/test_verify_cli_docs.py::TestRunOnRealClaudeMd::test_no_error_severity_drift`,
+  which runs directly against the real `.claude/CLAUDE.md`). After migrating
+  the other two sections to pointer lines, nothing will catch future drift
+  between the pointer and its target beyond a manual `ll-doctor --trim` rerun
+  — a risk this issue's own `## Impact` section already names ("the failure
+  mode is deleting something the model genuinely needed... and not
+  noticing").
+- **Deferral-discriminator codes are already documented, but only inline at
+  each emission site, with no centralized glossary**: `blocked_by_unmet` and
+  `remediation_stalled` in `scripts/little_loops/loops/rn-implement.yaml`
+  (~lines 1348-1357, adjacent `REASON=`/`REASON_CODE=` strings);
+  `gate_blocked` (~line 853), `decision_unresolved` (~line 690),
+  `oversized_atomic` (~lines 1572-1661), and `readiness_stagnated` (~lines
+  1755-1916) in `scripts/little_loops/loops/autodev.yaml`, each preceded by a
+  multi-line comment block. `.claude/CLAUDE.md`'s `## Issue File Format`
+  deferral paragraph is currently the only place all five codes are
+  enumerated together with a one-line meaning each — moving that summary out
+  means either building the companion glossary the Proposed Solution already
+  suggests, or accepting there is no single cross-code index left anywhere.
+
 ## Implementation Steps
 
 1. `ll-doctor --trim` output records the pre-change per-section baseline.
@@ -169,6 +292,16 @@ above.
   ENH-2970. This issue moves the section; ENH-2970 decides what is true.
   If ENH-2970's resolution is to delete the prose list, these two converge
   and should be sequenced with ENH-2970 first.
+
+  > **Update (`/ll:refine-issue`, additive)**: ENH-2970 is now `status: done`.
+  > Its resolution was to add a verifier (`ll-verify-cli-docs`, backed by
+  > `scripts/little_loops/cli/verify_cli_docs.py`, gated by
+  > `scripts/tests/test_verify_cli_docs.py::TestRunOnRealClaudeMd::test_no_error_severity_drift`)
+  > that checks the `## CLI Tools` prose against real `--help` output — not a
+  > deletion of the prose list. The convergence condition above therefore does
+  > not apply: this issue's `blocked_by: ENH-2970` edge is satisfied, and the
+  > CLI Tools migration can proceed on its own schedule, same as Loop
+  > Authoring and Issue File Format.
 - **Out of scope**: the user-level `~/.claude/CLAUDE.md`.
 
 ## Impact
@@ -184,7 +317,30 @@ above.
 
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-01_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 67/100 → MODERATE
+
+### Concerns
+- ~~`blocked_by: ENH-2970` is still `status: open` — the CLI Tools migration's
+  final shape depended on ENH-2970's resolution per this issue's own Scope
+  Boundaries.~~ **Resolved** (`/ll:refine-issue`, 2026-08-01): ENH-2970 is now
+  `status: done`, resolved via a verifier rather than deletion — see the Scope
+  Boundaries update note. The `blocked_by` edge is satisfied for all three
+  migrations, which can now proceed independently.
+- The deferral-discriminator destination is undecided at the file level — the
+  Proposed Solution says "the loop's own documentation or a companion file
+  next to `autodev.yaml`" without picking one.
+- No automated test asserts the token-reduction outcome; verification is a
+  manual re-run of `ll-doctor --trim` against the review bar.
+
 ## Session Log
+- `/ll:decide-issue` - 2026-08-02T04:55:31 - `eed617dd-9d98-46a5-a9cc-9c89ee0c8db9.jsonl`
+- `/ll:refine-issue` - 2026-08-02T04:52:10 - `476fce3f-841f-433c-abf2-0393d9faea2d.jsonl`
+- `/ll:confidence-check` - 2026-08-02T02:53:00 - `47f63775-3826-4312-a632-2c36b5b799e8.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-01T17:54:54 - `0f6b2c2e-0cc5-4e86-8aeb-792632143f0e.jsonl`
 - `/ll:capture-issue` - 2026-08-01
 

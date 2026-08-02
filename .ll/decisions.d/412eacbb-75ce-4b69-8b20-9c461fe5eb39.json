@@ -1,0 +1,12 @@
+{
+  "id": "7d1d0ea5-802c-4412-9c42-f452ba03f81a",
+  "type": "decision",
+  "timestamp": "2026-08-02T04:55:22Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Codebase-pattern-finder evidence: Option A reuses the established CLAUDE.md-to-docs/guides pointer pattern (Loop Authoring already points at HARNESS_OPTIMIZATION_GUIDE.md); Option B (single reference skill) has no precedent \u2014 no SKILL.md in this repo is purely reference-only, and skill descriptions are single-intent triggers, so a 3-topic skill would over-fire or under-fire. Score 8/12 vs 3/12.",
+  "rule": "Option A \u2014 skill-per-domain, using existing docs/guides pointer pattern where it already exists",
+  "scope": "issue",
+  "alternatives_rejected": "Option B \u2014 single reference skill holding all three migrated sections",
+  "issue": "ENH-2972"
+}
