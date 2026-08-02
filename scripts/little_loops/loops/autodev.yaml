@@ -443,7 +443,7 @@ states:
     on_error: dequeue_next
 
   count_repair_cycle_refine:
-    # FEAT-2751: refine_current is one of the five repair-class states whose
+    # FEAT-2751: refine_current is one of the six repair-class states whose
     # success returns to the score-checking chain. Increment the per-issue
     # repair-cycle counter (reset at dequeue_next) so
     # recheck_after_size_review's stagnation backstop can distinguish "never
@@ -748,7 +748,7 @@ states:
     on_rate_limit_exhausted: done
 
   count_repair_cycle_wire:
-    # FEAT-2751: run_wire is one of the five repair-class states counted
+    # FEAT-2751: run_wire is one of the six repair-class states counted
     # toward the stagnation backstop threshold (see count_repair_cycle_refine).
     action: |
       N=$(cat ${context.run_dir}/autodev-repair-cycle-count.txt 2>/dev/null || echo 0)
@@ -1212,7 +1212,7 @@ states:
     on_rate_limit_exhausted: done
 
   count_repair_cycle_spike:
-    # FEAT-2751: run_spike is one of the five repair-class states counted
+    # FEAT-2751: run_spike is one of the six repair-class states counted
     # toward the stagnation backstop threshold (see count_repair_cycle_refine).
     action: |
       N=$(cat ${context.run_dir}/autodev-repair-cycle-count.txt 2>/dev/null || echo 0)
@@ -1273,7 +1273,7 @@ states:
     on_rate_limit_exhausted: dequeue_next
 
   count_repair_cycle_size_review:
-    # FEAT-2751: run_size_review is one of the five repair-class states
+    # FEAT-2751: run_size_review is one of the six repair-class states
     # counted toward the stagnation backstop threshold (see
     # count_repair_cycle_refine). Other paths into enqueue_or_skip
     # (rerun_confidence_after_wire, check_broke_down.on_no) are confidence
@@ -1597,10 +1597,11 @@ states:
     # (see recheck_after_size_review for the parser/marker recipe). This state
     # has no pre-deferral remedy machinery of its own (BUG-2734: it fires at
     # most once per issue per run), so a design-caused FAIL is not deferred
-    # directly here — it routes once through the shared reconcile remedy via
-    # check_atomic_design_remedy/reconcile_current, and only defers
-    # design_gate_failed (never oversized_atomic) if reconcile was already
-    # attempted.
+    # directly here — it routes once through the dedicated design remedy via
+    # check_atomic_design_remedy/refine_for_design (BUG-3002: retargeted from
+    # reconcile_current, whose contract excludes ## Program Design), and only
+    # defers design_gate_failed (never oversized_atomic) if that remedy was
+    # already attempted.
     action: |
       ID="${captured.input.output}"
       DESIGN_JSON=$(ll-issues format-check "$ID" --format json 2>/dev/null || echo '{}')
@@ -1644,10 +1645,7 @@ states:
           exit 1
         fi
         if [ -f ${context.run_dir}/autodev-design-gate-failed-$ID ]; then
-          RECONCILED=$(ll-issues show "$ID" --json 2>/dev/null \
-            | python3 -c "import json,sys; print(json.load(sys.stdin).get('reconcile_attempted') == 'true')" \
-            2>/dev/null || echo "False")
-          if [ "$RECONCILED" != "True" ]; then
+          if [ ! -f ${context.run_dir}/autodev-design-remedy-attempted-$ID ]; then
             touch ${context.run_dir}/autodev-atomic-design-remedy-pending
             exit 1
           fi
@@ -1669,11 +1667,14 @@ states:
   check_atomic_design_remedy:
     # ENH-2870: dispatcher gate mirroring BUG-2803's check_pre_deferral_remedy
     # shape. regate_after_atomic_remediation's FAIL branch exits 1 both when
-    # it deferred (skip → advance the queue) and when it armed the shared
-    # reconcile remedy instead. Disambiguate via the pending-remedy marker:
-    # present → route to reconcile_current; absent → the issue was
+    # it deferred (skip → advance the queue) and when it armed the dedicated
+    # design remedy instead. Disambiguate via the pending-remedy marker:
+    # present → route to refine_for_design; absent → the issue was
     # deferred/skipped, advance to the next queued issue (the pre-ENH-2870
     # on_no behaviour).
+    # BUG-3002: retargeted from reconcile_current — /ll:reconcile-issue's
+    # contract excludes ## Program Design, so it could never fix the failure
+    # that triggered this remedy. /ll:refine-issue (BUG-3001) can.
     action: |
       if [ -f ${context.run_dir}/autodev-atomic-design-remedy-pending ]; then
         rm -f ${context.run_dir}/autodev-atomic-design-remedy-pending
@@ -1681,9 +1682,51 @@ states:
       fi
       exit 1
     fragment: shell_exit
-    on_yes: reconcile_current
+    on_yes: refine_for_design
     on_no: dequeue_next
     on_error: dequeue_next
+
+  refine_for_design:
+    # BUG-3002: dedicated remedy for a Program-Design-only gate failure,
+    # modeled on reconcile_current but calling /ll:refine-issue instead —
+    # /ll:reconcile-issue's contract (commands/reconcile-issue.md:44-47)
+    # excludes ## Program Design, so it can never fix the failure that
+    # triggers this route. --auto --gap-analysis is additive (never removes
+    # content, does not consume max_refine_count) and, per BUG-3001, writes
+    # ## Program Design at Step 5a when the analyzer axis is unmet (BUG-3003
+    # makes that axis unmet reachable for already-refined issues). Rate-limit
+    # handling and pruning profile mirror run_refine (:772-775).
+    fragment: with_rate_limit_handling
+    action: "/ll:refine-issue ${captured.input.output} --auto --gap-analysis"
+    action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: refine-issue-repair
+      suppress_claude_md: true
+    next: count_repair_cycle_refine_for_design
+    on_error: count_repair_cycle_refine_for_design
+    on_rate_limit_exhausted: done
+
+  count_repair_cycle_refine_for_design:
+    # BUG-3002: refine_for_design is one of the six repair-class states
+    # counted toward the stagnation backstop threshold (see
+    # count_repair_cycle_refine). Also writes the design-remedy-attempted
+    # marker — the reconcile_attempted-frontmatter replacement described at
+    # check_atomic_design_remedy / recheck_after_size_review — so both design
+    # routes see the same one-shot state and an issue cannot burn one refine
+    # pass per route. Per-issue-scoped by filename like
+    # autodev-design-gate-failed-$ID, so it is intentionally NOT cleared at
+    # dequeue_next (clearing it there would let one issue take two refine
+    # passes within a single run).
+    action: |
+      ID="${captured.input.output}"
+      N=$(cat ${context.run_dir}/autodev-repair-cycle-count.txt 2>/dev/null || echo 0)
+      N=$((N + 1))
+      printf '%s' "$N" > ${context.run_dir}/autodev-repair-cycle-count.txt
+      touch ${context.run_dir}/autodev-design-remedy-attempted-$ID
+    action_type: shell
+    next: rerun_confidence_after_reconcile
+    on_error: rerun_confidence_after_reconcile
 
   reconcile_current:
     # ENH-2689: targeted, in-place rewrite of the issue's Implementation Steps /
@@ -1704,7 +1747,7 @@ states:
     on_rate_limit_exhausted: done
 
   count_repair_cycle_reconcile:
-    # FEAT-2751: reconcile_current is one of the five repair-class states
+    # FEAT-2751: reconcile_current is one of the six repair-class states
     # counted toward the stagnation backstop threshold (see
     # count_repair_cycle_refine).
     action: |
@@ -1721,6 +1764,11 @@ states:
     # chance to cross the readiness threshold, then fall through to
     # recheck_after_size_review (the existing implement-or-defer gate). Mirrors
     # rerun_confidence_after_spike's rate-limit shape.
+    # BUG-3002: also the successor for refine_for_design (the Program Design
+    # remedy) — this state is remedy-agnostic, it just reruns confidence-check
+    # and falls into recheck_after_size_review, so it serves both the plateau
+    # (reconcile) and design-gate (refine) repair paths without a second
+    # near-identical state.
     fragment: with_rate_limit_handling
     action: "/ll:confidence-check ${captured.input.output}"
     action_type: slash_command
@@ -1760,10 +1808,11 @@ states:
     # resolved_by_subloop but BEFORE readiness_stagnated — a design-gate FAIL
     # can arrive with passing scores, so it must not be swallowed by the
     # CYCLE_COUNT>=2 stagnation branch below. The remedy is hardcoded to
-    # `reconcile` (bypassing the BUG-2803 weakest-subscore spike/reconcile
-    # heuristic) and reuses the existing one-shot remedy handshake
-    # (autodev-pre-deferral-remedy-fired / autodev-pre-deferral-remedy.txt);
-    # a `reconcile_attempted == 'true'` fall-through defers as
+    # `refine_design` (bypassing the BUG-2803 weakest-subscore spike/reconcile
+    # heuristic — BUG-3002: retargeted from `reconcile`, whose contract
+    # excludes ## Program Design) and reuses the existing one-shot remedy
+    # handshake (autodev-pre-deferral-remedy-fired / autodev-pre-deferral-remedy.txt);
+    # an `autodev-design-remedy-attempted-$ID` fall-through defers as
     # design_gate_failed, never low_readiness.
     action: |
       ID="${captured.input.output}"
@@ -1820,17 +1869,18 @@ states:
         if [ -f ${context.run_dir}/autodev-design-gate-failed-$ID ]; then
           FIRED=${context.run_dir}/autodev-pre-deferral-remedy-fired
           if [ ! -f "$FIRED" ]; then
-            REMEDY=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
-      import json, sys
-      d = json.load(sys.stdin)
-      print('' if d.get('reconcile_attempted') == 'true' else 'reconcile')" 2>/dev/null || echo "")
+            if [ -f ${context.run_dir}/autodev-design-remedy-attempted-$ID ]; then
+              REMEDY=""
+            else
+              REMEDY="refine_design"
+            fi
             if [ -n "$REMEDY" ]; then
               touch "$FIRED"
               printf '%s' "$REMEDY" > ${context.run_dir}/autodev-pre-deferral-remedy.txt
               if [ -z "$PRE_READINESS" ]; then
                 printf '%s' "$CUR_CONFIDENCE" > ${context.run_dir}/autodev-pre-readiness.txt
               fi
-              echo "[PRE-DEFER] $ID program-design gate failed; routing to reconcile"
+              echo "[PRE-DEFER] $ID program-design gate failed; routing to refine"
               exit 1
             fi
           fi
@@ -1928,15 +1978,43 @@ states:
     # remedy handshake file: present → dispatch the armed remedy; absent → the
     # issue was deferred/skipped, advance to the next queued issue (the
     # pre-BUG-2803 on_no behaviour).
+    # BUG-3002: on_yes now routes through dispatch_design_remedy first, since
+    # the design remedy needs its own target (refine_for_design) that
+    # dispatch_pre_deferral_remedy's spike/reconcile-only routing cannot
+    # express.
     action: |
       if [ -s ${context.run_dir}/autodev-pre-deferral-remedy.txt ]; then
         exit 0
       fi
       exit 1
     fragment: shell_exit
-    on_yes: dispatch_pre_deferral_remedy
+    on_yes: dispatch_design_remedy
     on_no: dequeue_next
     on_error: dequeue_next
+
+  dispatch_design_remedy:
+    # BUG-3002: gate chained BEFORE dispatch_pre_deferral_remedy so the
+    # refine_design token can be routed to refine_for_design — a target
+    # dispatch_pre_deferral_remedy's on_no (reconcile_current) does not cover.
+    # Reads the remedy token, clearing it only on the refine_design match (so
+    # a later revisit of check_pre_deferral_remedy — e.g. the design_gate_failed
+    # deferral itself exits 1 through the same on_no edge — does not replay
+    # the same remedy dispatch). Any other token (spike, reconcile, empty) is
+    # left untouched for dispatch_pre_deferral_remedy to consume itself; that
+    # state `rm -f`s it after reading, so this gate MUST run first or it would
+    # always observe an empty token and silently fall back to
+    # reconcile_current, reproducing this bug.
+    action: |
+      REMEDY=$(cat ${context.run_dir}/autodev-pre-deferral-remedy.txt 2>/dev/null || echo "")
+      if [ "$REMEDY" = "refine_design" ]; then
+        rm -f ${context.run_dir}/autodev-pre-deferral-remedy.txt
+        exit 0
+      fi
+      exit 1
+    fragment: shell_exit
+    on_yes: refine_for_design
+    on_no: dispatch_pre_deferral_remedy
+    on_error: dispatch_pre_deferral_remedy
 
   dispatch_pre_deferral_remedy:
     # BUG-2803: consume the armed remedy and route to it. On the spike branch,
@@ -1948,6 +2026,9 @@ states:
     # the frontmatter attempted-flags (and the fired marker as backstop) make
     # a second arming impossible — repeat failures defer as
     # readiness_stagnated via the FEAT-2751 backstop.
+    # BUG-3002: the refine_design token is intercepted upstream by
+    # dispatch_design_remedy and never reaches here; this state's own routing
+    # (spike / reconcile_current) is unmodified.
     action: |
       REMEDY=$(cat ${context.run_dir}/autodev-pre-deferral-remedy.txt 2>/dev/null || echo "")
       rm -f ${context.run_dir}/autodev-pre-deferral-remedy.txt

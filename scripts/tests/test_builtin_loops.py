@@ -5142,9 +5142,9 @@ class TestAutodevLoop:
 
         regate_state = data["states"].get("regate_after_atomic_remediation", {})
         assert regate_state.get("on_yes") == "decide_current"
-        # ENH-2870: on_no now routes through the design-remedy dispatcher
-        # (check_atomic_design_remedy), which itself falls through to
-        # dequeue_next when no reconcile remedy was armed.
+        # ENH-2870/BUG-3002: on_no now routes through the design-remedy
+        # dispatcher (check_atomic_design_remedy), which itself falls through
+        # to dequeue_next when no design remedy was armed.
         assert regate_state.get("on_no") == "check_atomic_design_remedy"
         dispatcher_state = data["states"].get("check_atomic_design_remedy", {})
         assert dispatcher_state.get("on_no") == "dequeue_next"
@@ -5543,11 +5543,13 @@ class TestAutodevLoop:
 
     def test_pre_deferral_remedy_gate_routing(self, data: dict) -> None:
         """BUG-2803: check_pre_deferral_remedy dispatches an armed remedy and
-        otherwise preserves the pre-fix advance-the-queue behaviour."""
+        otherwise preserves the pre-fix advance-the-queue behaviour.
+        BUG-3002: on_yes now routes through dispatch_design_remedy first so
+        the refine_design token can reach refine_for_design."""
         gate = data["states"].get("check_pre_deferral_remedy", {})
         assert gate.get("fragment") == "shell_exit"
         assert "autodev-pre-deferral-remedy.txt" in gate.get("action", "")
-        assert gate.get("on_yes") == "dispatch_pre_deferral_remedy"
+        assert gate.get("on_yes") == "dispatch_design_remedy"
         assert gate.get("on_no") == "dequeue_next"
         assert gate.get("on_error") == "dequeue_next"
 

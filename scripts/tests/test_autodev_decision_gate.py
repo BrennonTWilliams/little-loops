@@ -663,6 +663,130 @@ class TestReconcilePlateauRouting:
         assert "reconcile_current" not in visited, f"visited={visited!r}"
 
 
+class TestDesignGateRefineRemedy:
+    """BUG-3002: a Program-Design-only gate failure must route to a dedicated
+    refine_for_design remedy — /ll:reconcile-issue's contract explicitly
+    excludes ## Program Design, so the pre-fix reconcile_current remedy could
+    never touch the section whose failure triggered it."""
+
+    @pytest.fixture
+    def data(self) -> dict[str, Any]:
+        return _load_autodev_yaml()
+
+    def test_refine_for_design_states_exist(self, data: dict[str, Any]) -> None:
+        states = data.get("states", {})
+        for name in (
+            "refine_for_design",
+            "count_repair_cycle_refine_for_design",
+            "dispatch_design_remedy",
+        ):
+            assert name in states, f"{name} missing from autodev.yaml (BUG-3002)"
+
+    def test_refine_for_design_invokes_skill(self, data: dict[str, Any]) -> None:
+        """Structural mirror of test_reconcile_current_invokes_skill."""
+        state = data["states"]["refine_for_design"]
+        action = state.get("action", "")
+        assert "/ll:refine-issue" in action
+        assert "--auto" in action and "--gap-analysis" in action
+        assert state.get("action_type") == "slash_command"
+        assert state.get("fragment") == "with_rate_limit_handling"
+        assert state.get("next") == "count_repair_cycle_refine_for_design"
+        assert state.get("on_error") == "count_repair_cycle_refine_for_design"
+        assert state.get("on_rate_limit_exhausted") == "done"
+        counter_state = data["states"]["count_repair_cycle_refine_for_design"]
+        assert counter_state.get("next") == "rerun_confidence_after_reconcile"
+        assert counter_state.get("on_error") == "rerun_confidence_after_reconcile"
+
+    def test_counter_state_writes_design_remedy_attempted_marker(
+        self, data: dict[str, Any]
+    ) -> None:
+        action = data["states"]["count_repair_cycle_refine_for_design"]["action"]
+        assert "autodev-repair-cycle-count.txt" in action
+        assert "autodev-design-remedy-attempted-$ID" in action
+
+    def test_marker_not_cleared_at_dequeue_next(self, data: dict[str, Any]) -> None:
+        """Per-issue-scoped by filename, like autodev-design-gate-failed-$ID —
+        clearing it per dequeue would let one issue take two refine passes."""
+        action = data["states"]["dequeue_next"]["action"]
+        assert "autodev-design-remedy-attempted" not in action
+
+    def test_dispatch_design_remedy_routes_refine_design_token(
+        self, data: dict[str, Any]
+    ) -> None:
+        state = data["states"]["dispatch_design_remedy"]
+        assert "refine_design" in state.get("action", "")
+        assert state.get("on_yes") == "refine_for_design"
+        assert state.get("on_no") == "dispatch_pre_deferral_remedy"
+        assert state.get("on_error") == "dispatch_pre_deferral_remedy"
+
+    def test_check_pre_deferral_remedy_routes_through_design_gate_first(
+        self, data: dict[str, Any]
+    ) -> None:
+        """dispatch_design_remedy must be chained BEFORE
+        dispatch_pre_deferral_remedy — that state rm -f's the remedy token
+        before routing, so a gate placed downstream would always observe an
+        empty token and silently fall back to reconcile_current."""
+        assert data["states"]["check_pre_deferral_remedy"].get("on_yes") == "dispatch_design_remedy"
+
+    def test_dispatch_pre_deferral_remedy_plateau_routing_unmodified(
+        self, data: dict[str, Any]
+    ) -> None:
+        """The plateau path (spike/reconcile tokens) must still resolve via
+        dispatch_pre_deferral_remedy exactly as before BUG-3002."""
+        state = data["states"]["dispatch_pre_deferral_remedy"]
+        assert state.get("on_yes") == "run_spike"
+        assert state.get("on_no") == "reconcile_current"
+        assert state.get("on_error") == "reconcile_current"
+
+
+class TestAtomicDesignRemedyRouting:
+    """BUG-3002: FSMExecutor-driven mini-FSM mirroring TestReconcilePlateauRouting's
+    shape — drives check_atomic_design_remedy → refine_for_design →
+    count_repair_cycle_refine_for_design and asserts refine_for_design fires
+    (never reconcile_current) for the design-gate-pending case."""
+
+    @pytest.fixture
+    def design_remedy_fsm(self) -> Any:
+        return _loop(
+            name="autodev-design-remedy-mini",
+            initial="check_atomic_design_remedy",
+            states={
+                "check_atomic_design_remedy": _state(
+                    action="pending-marker",
+                    action_type="shell",
+                    fragment_name="shell_exit",
+                    on_yes="refine_for_design",
+                    on_no="dequeue_next",
+                    on_error="dequeue_next",
+                ),
+                "refine_for_design": _state(
+                    action="true", action_type="shell", next="count_repair_cycle_refine_for_design"
+                ),
+                "count_repair_cycle_refine_for_design": _state(
+                    action="true", action_type="shell", next="done"
+                ),
+                "reconcile_current": _state(action="true", action_type="shell", next="done"),
+                "dequeue_next": _state(action="true", action_type="shell", next="done"),
+                "done": _state(terminal=True),
+            },
+        )
+
+    def test_design_remedy_pending_routes_to_refine_for_design(
+        self, design_remedy_fsm: Any
+    ) -> None:
+        runner = _StubRunner(results=[("pending-marker", {"exit_code": 0})])
+        _result, visited = _run_decision_chain(design_remedy_fsm, runner)
+        assert "refine_for_design" in visited, f"visited={visited!r}"
+        assert "count_repair_cycle_refine_for_design" in visited, f"visited={visited!r}"
+        assert "reconcile_current" not in visited, f"visited={visited!r}"
+
+    def test_no_pending_remedy_falls_through_to_dequeue(self, design_remedy_fsm: Any) -> None:
+        runner = _StubRunner(results=[("pending-marker", {"exit_code": 1})])
+        _result, visited = _run_decision_chain(design_remedy_fsm, runner)
+        assert "dequeue_next" in visited, f"visited={visited!r}"
+        assert "refine_for_design" not in visited, f"visited={visited!r}"
+
+
 class TestGuard2VerdictBypass:
     """BUG-2744: FSMExecutor-driven assertions that check_size_review_ran_this_pass
     bypasses check_guard2_verdict when run_size_review did not execute for the

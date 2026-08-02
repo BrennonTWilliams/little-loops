@@ -298,7 +298,7 @@ class TestRepairCycleCounterStates:
     """FEAT-2751: dedicated count_repair_cycle_* states increment the shared
     repair-cycle counter file, matching the recursive-refine counter idiom."""
 
-    def test_all_five_counter_states_exist(self) -> None:
+    def test_all_six_counter_states_exist(self) -> None:
         states = _load_autodev_yaml()["states"]
         for name in (
             "count_repair_cycle_refine",
@@ -306,8 +306,9 @@ class TestRepairCycleCounterStates:
             "count_repair_cycle_size_review",
             "count_repair_cycle_spike",
             "count_repair_cycle_reconcile",
+            "count_repair_cycle_refine_for_design",
         ):
-            assert name in states, f"{name} missing from autodev.yaml (FEAT-2751)"
+            assert name in states, f"{name} missing from autodev.yaml (FEAT-2751/BUG-3002)"
             assert "autodev-repair-cycle-count.txt" in states[name]["action"]
 
     def test_counter_increments_monotonically(self, tmp_path: Path) -> None:
@@ -421,10 +422,10 @@ class TestDesignGateStep0Detection:
 
 
 class TestRecheckAfterSizeReviewDesignGateBranch:
-    """ENH-2870: a design-caused FAIL routes through the reconcile remedy
-    before any deferral, ordered ahead of the readiness_stagnated backstop,
-    and defers as design_gate_failed (never low_readiness) once reconcile has
-    already been attempted."""
+    """ENH-2870/BUG-3002: a design-caused FAIL routes through the dedicated
+    refine_design remedy before any deferral, ordered ahead of the
+    readiness_stagnated backstop, and defers as design_gate_failed (never
+    low_readiness) once that remedy has already been attempted."""
 
     def test_design_branch_precedes_readiness_stagnated_branch(self) -> None:
         """A design-gate FAIL must not be swallowed by the CYCLE_COUNT >= 2
@@ -436,36 +437,39 @@ class TestRecheckAfterSizeReviewDesignGateBranch:
         stagnated_idx = action.index('echo "$ID  readiness_stagnated"')
         assert resolved_idx < design_idx < stagnated_idx
 
-    def test_design_branch_hardcodes_reconcile_remedy(self) -> None:
+    def test_design_branch_hardcodes_refine_design_remedy(self) -> None:
         """The design-gate branch bypasses the weakest-subscore spike/reconcile
-        heuristic entirely — it always selects reconcile."""
+        heuristic entirely — it always selects refine_design (BUG-3002:
+        retargeted from reconcile, whose contract excludes Program Design)."""
         action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
         design_section = action[action.index("autodev-design-gate-failed-$ID") :]
         pre_deferral_idx = design_section.index("design_gate_failed")
         branch = design_section[:pre_deferral_idx]
-        assert "else 'reconcile'" in branch
+        assert 'REMEDY="refine_design"' in branch
         assert "score_ambiguity" not in branch
 
-    def test_design_branch_reconcile_attempted_falls_through_to_design_gate_failed(
+    def test_design_branch_attempted_marker_falls_through_to_design_gate_failed(
         self,
     ) -> None:
-        """The selector's `reconcile_attempted == 'true'` empty fall-through
-        must land on design_gate_failed, never low_readiness."""
+        """The `autodev-design-remedy-attempted-$ID` marker's empty
+        fall-through must land on design_gate_failed, never low_readiness."""
         action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
-        assert "'' if d.get('reconcile_attempted') == 'true' else 'reconcile'" in action
+        assert "autodev-design-remedy-attempted-$ID" in action
         design_idx = action.index("autodev-design-gate-failed-$ID")
         design_defer_idx = action.index('echo "$ID  design_gate_failed"')
         low_readiness_idx = action.index('echo "$ID  low_readiness"')
         assert design_idx < design_defer_idx < low_readiness_idx
 
     def test_design_branch_reuses_existing_remedy_handshake_files(self) -> None:
-        """No new remedy infrastructure — reuse BUG-2803's fired marker and
-        pre-deferral-remedy.txt handshake files."""
+        """Reuse BUG-2803's fired marker and pre-deferral-remedy.txt handshake
+        files; also gains the BUG-3002 design-remedy-attempted marker as the
+        cross-route one-shot guard replacing the reconcile_attempted read."""
         action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
         design_section = action[action.index("autodev-design-gate-failed-$ID") :]
         branch = design_section[: design_section.index('echo "$ID  design_gate_failed"')]
         assert "autodev-pre-deferral-remedy-fired" in branch
         assert "autodev-pre-deferral-remedy.txt" in branch
+        assert "autodev-design-remedy-attempted-$ID" in branch
 
     def test_pre_fix_bypass_closed_high_score_with_design_gap(self) -> None:
         """High confidence score alone must not reach decide_current when the
@@ -630,10 +634,10 @@ class TestRecheckAfterSizeReviewDecisionUnresolvedBranch:
 
 
 class TestRegateAfterAtomicRemediationDesignGateBranch:
-    """ENH-2870: a design-caused FAIL at regate_after_atomic_remediation must
-    never be labelled oversized_atomic — it routes to the shared reconcile
-    remedy (via check_atomic_design_remedy) if reachable, else defers
-    design_gate_failed."""
+    """ENH-2870/BUG-3002: a design-caused FAIL at regate_after_atomic_remediation
+    must never be labelled oversized_atomic — it routes to the dedicated
+    refine_for_design remedy (via check_atomic_design_remedy) if reachable,
+    else defers design_gate_failed."""
 
     def test_design_marker_check_precedes_oversized_atomic_write(self) -> None:
         action = _load_autodev_yaml()["states"]["regate_after_atomic_remediation"]["action"]
@@ -654,11 +658,21 @@ class TestRegateAfterAtomicRemediationDesignGateBranch:
         state = _load_autodev_yaml()["states"]["regate_after_atomic_remediation"]
         assert state.get("on_no") == "check_atomic_design_remedy"
 
-    def test_dispatcher_routes_pending_remedy_to_reconcile_current(self) -> None:
+    def test_dispatcher_routes_pending_remedy_to_refine_for_design(self) -> None:
         dispatcher = _load_autodev_yaml()["states"]["check_atomic_design_remedy"]
-        assert dispatcher.get("on_yes") == "reconcile_current"
+        assert dispatcher.get("on_yes") == "refine_for_design"
         assert dispatcher.get("on_no") == "dequeue_next"
         assert "autodev-atomic-design-remedy-pending" in dispatcher["action"]
+
+    def test_regate_guard_uses_design_remedy_attempted_marker(self) -> None:
+        """BUG-3002: the one-shot arming guard reads the
+        autodev-design-remedy-attempted-$ID marker file, not the
+        reconcile_attempted frontmatter flag (which /ll:refine-issue never
+        writes, so the old guard would leave this branch unreachable)."""
+        action = _load_autodev_yaml()["states"]["regate_after_atomic_remediation"]["action"]
+        design_section = action[action.index("autodev-design-gate-failed-$ID") :]
+        assert "autodev-design-remedy-attempted-$ID" in design_section
+        assert "reconcile_attempted" not in design_section
 
     def test_pre_fix_bypass_closed_oversized_atomic_never_masks_design_fail(self) -> None:
         """Regression guard for the pre-fix bug: a design-caused FAIL with a

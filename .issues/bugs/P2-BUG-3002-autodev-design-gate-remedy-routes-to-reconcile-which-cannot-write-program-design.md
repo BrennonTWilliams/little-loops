@@ -5,6 +5,7 @@ title: autodev routes design_gate_failed to reconcile-issue, whose contract excl
 type: BUG
 priority: P2
 captured_at: '2026-08-02T15:46:46Z'
+completed_at: '2026-08-02T19:28:04Z'
 discovered_date: 2026-08-02
 discovered_by: capture-issue
 labels:
@@ -14,7 +15,7 @@ labels:
 relates_to:
 - BUG-3001
 - BUG-3003
-status: open
+status: done
 testable: true
 depends_on:
 - BUG-3001
@@ -210,6 +211,21 @@ violation in kind, not just size.
   Integration Map already names this issue's states as downstream scope.
 
 ## Program Design
+
+### Deviations
+
+_2026-08-02, `/ll:manage-issue`:_ `dispatch_design_remedy` clears
+`autodev-pre-deferral-remedy.txt` on the `refine_design` match (exit-0 branch),
+rather than reading it non-destructively as originally specified. Tracing the
+full loop back through `check_pre_deferral_remedy` showed the non-destructive
+read as designed would replay the remedy dispatch indefinitely: once
+`recheck_after_size_review` eventually defers as `design_gate_failed`, that
+branch also `exit 1`s through the same `on_no: check_pre_deferral_remedy` edge,
+which would see the un-cleared token still present and re-fire
+`refine_for_design` on every subsequent pass. Clearing the token only on the
+match preserves non-destructive behavior for every other token (spike,
+reconcile, empty), which still falls through unchanged to
+`dispatch_pre_deferral_remedy` for it to consume itself.
 
 Option A requires no Python signature change — the fix is FSM routing plus one
 new `autodev.yaml` state. Three constraints drive the shape, each established
@@ -648,6 +664,7 @@ _Added by `/ll:refine-issue` — based on codebase re-check:_
 - `commands/refine-issue.md` line citations above (`:372-374` for Step 5a) are now stale — the file changed again after this issue's most recent refine pass. The Program Design template in Step 5a currently lives at lines 376-388, not 372-374 (`:372-374` is now the Root Cause template example). The Step 6.7 citations (`:737`, `:753`, `:829`, `:859`) are still substantively accurate (Step 6.7's heading is now at `:741`, a one-line drift). Neither shift changes this issue's scope or conclusions — reference `commands/refine-issue.md`'s current content directly during implementation rather than these line numbers. [locator finding]
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-02T19:27:41 - `c2ddc2b8-a949-46f6-8466-7e925f3a2db0.jsonl`
 - `/ll:confidence-check` - 2026-08-02T18:51:33 - `b1ebc156-6c0d-4467-8083-0cca9e6e9a52.jsonl`
 - `/ll:ready-issue` - 2026-08-02T18:46:27 - `7cac88e2-2b28-447a-81f8-098fcff1cd67.jsonl`
 - `/ll:ready-issue` - 2026-08-02T18:29:25 - `a4a2ec47-afaf-4693-a4bc-7ad2a1747435.jsonl`
