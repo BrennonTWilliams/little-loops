@@ -10,6 +10,12 @@ relates_to:
 decision_needed: false
 blocked_by:
 - ENH-2995
+confidence_score: 86
+outcome_confidence: 81
+score_complexity: 23
+score_test_coverage: 10
+score_ambiguity: 25
+score_change_surface: 23
 ---
 
 # wire-issue's Wiring Phase numbers against live steps only
@@ -118,6 +124,16 @@ Key evidence:
 ### Files to Modify
 - `skills/wire-issue/SKILL.md` — Phase 8b (lines 383-396)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `.gemini/skills/wire-issue/SKILL.md` — byte-identical mirror of Phase 8b
+  (its own lines 387-395), produced by `GeminiEmitter.emit_skill()`
+  (`scripts/little_loops/adapters/gemini.py`), which only rewrites
+  frontmatter and copies the body verbatim. Will silently keep the old
+  `N.`/`N+1.` numbering after this edit unless `ll-adapt --host gemini
+  --apply` is re-run.
+- `.kimi-code/skills/wire-issue/SKILL.md` — same situation (its own lines
+  391-394), regenerated via `ll-adapt --host kimi --apply`.
+
 ### Dependent Files (Callers/Importers)
 - `skills/wire-issue/output-report.md:44` — `## IMPLEMENTATION STEPS CHANGES`
   reports `[N] new steps added to Wiring Phase` as a *count* (from
@@ -132,6 +148,13 @@ Key evidence:
   `scripts/little_loops/cli/issues/size.py:41` references the
   `Implementation Steps` heading only to detect presence for size scoring,
   not to parse numbering.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `commands/reconcile-issue.md:60-61,66-67,111,126` — describes reading
+  "every bullet under `### Wiring Phase`" as a source-of-truth section.
+  Format-agnostic prose (reads "bullets," not "numbered items") — no
+  functional change needed, but it is a genuine consumer of the section's
+  rendered shape.
 
 ### Similar Patterns
 - `commands/refine-issue.md:425-442` — Implementation Steps enrichment rules
@@ -197,6 +220,21 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 TBD — requires codebase analysis
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Edit `skills/wire-issue/SKILL.md` Phase 8b per the selected option (Option A).
+- Re-run `ll-adapt --host gemini --apply` and `ll-adapt --host kimi --apply`
+  so `.gemini/skills/wire-issue/SKILL.md` and
+  `.kimi-code/skills/wire-issue/SKILL.md` pick up the same template change
+  (both are byte-for-byte mirrors, regenerated from source, not
+  hand-edited).
+- No test changes required — confirmed no test parses or asserts on
+  Phase 8b's numbering or bullet format (`test_wiring_skills_and_commands.py`,
+  `test_enh494_skill_companions.py`, and others checked; none couple to
+  this section's list-marker style).
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
@@ -248,7 +286,29 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 | `skills/wire-issue/SKILL.md` | Contains Phase 8b, the section being changed |
 | `commands/refine-issue.md` | Source of the refuted-step condition |
 
+## Confidence Check Notes
+
+**Readiness**: 86/100 — **Outcome Confidence**: 81/100 — **Recommendation**: STOP — ADDRESS GAPS (hard override)
+
+### Gaps to Address
+- Program Design gate (ENH-2852): `## Program Design` section is missing and the
+  project's gate is armed (`.ll/program-design-cutover.json`, 2026-07-30 —
+  this issue's `captured_at` of 2026-08-02 postdates the cutover, so it is not
+  grandfathered). Remedy: add a `## Program Design` section with the concrete
+  before/after text of Phase 8b (signature-shaped diff) and a `Call Path`
+  anchor into `skills/wire-issue/SKILL.md`, or set
+  `program_design_not_applicable: true` in frontmatter if this is judged
+  genuinely trivial template-text editing.
+- `blocked_by: [ENH-2995]` is unmet — ENH-2995 is still `status: open`. The
+  issue's own Decision Rationale states the selected Option A has "zero
+  dependency on ENH-2995" and "ships independently of the blocked ENH-2995
+  dependency," which contradicts the frontmatter `blocked_by` edge. If Option A
+  is truly independent, `blocked_by: [ENH-2995]` should be removed (or
+  narrowed to only gate Option B, which this issue does not select).
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-02T15:45:51 - `20ea844a-65cc-4307-b288-00dcc23e4621.jsonl`
+- `/ll:wire-issue` - 2026-08-02T15:40:19 - `54b8b61c-90df-41f1-af64-799342e6500a.jsonl`
 - `/ll:decide-issue` - 2026-08-02T15:26:29 - `0a208318-6b67-47ba-88f1-23b17a2f5884.jsonl`
 - `/ll:refine-issue` - 2026-08-02T15:21:01 - `1a6be5be-a3c2-4f65-a811-ac343eeaa258.jsonl`
 - `/ll:capture-issue` - 2026-08-02T13:45:57 - `fac7dff4-61c1-4496-95b8-7bd1993d2971.jsonl`

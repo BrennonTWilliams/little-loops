@@ -9,8 +9,9 @@ relates_to:
 - ENH-2992
 - ENH-2993
 - ENH-2996
-confidence_score: 88
-outcome_confidence: 75
+testable: true
+confidence_score: 92
+outcome_confidence: 78
 score_complexity: 20
 score_test_coverage: 15
 score_ambiguity: 20
@@ -75,14 +76,16 @@ annotates that line in place:
 ## Implementation Steps
 
 1. Add `pending_file: "${context.run_dir}/pending.txt"` to the loop's `context:` block
-   > ⚠ Superseded — see § Codebase Research Findings under Implementation Steps
+   > ⚠ Superseded — omit entirely; see § Codebase Research Findings under Implementation Steps
 
 2. Add `scope: ["${context.run_dir}"]` to the loop's top-level keys
 ```
 
-Reading top-down, the refutation is visible at the point of the claim. The
-original text survives verbatim; the finding remains the authority; no content
-is deleted.
+Reading top-down, the refutation is visible at the point of the claim, **and
+carries the reason** — a bare pointer back to the findings block would leave the
+reader doing the same findings-to-step mapping by hand that this issue exists to
+eliminate. The original text survives verbatim; the finding remains the
+authority; no content is deleted.
 
 ## Motivation
 
@@ -123,29 +126,158 @@ The carve-out generalizes that one case. Constraints that keep it narrow:
   `commands/reconcile-issue.md` already enforces.
 - Fires only when the refutation comes from **this pass's own research
   findings**, not from re-reading prior appended blocks.
-- The marker is a blockquote line immediately following the refuted line, so
-  list numbering and any downstream parser that keys on `^\d+\.` are unaffected.
-- Idempotent: skip if an identical marker is already present under that line.
+- The marker is a blockquote line immediately following the refuted line,
+  **indented to that line's own content column** (3 spaces under a `1. ` step,
+  2 under a `- ` bullet), so list numbering and any downstream parser that keys
+  on `^\d+\.`/`^[-*]` are unaffected. At column 0 the blockquote would both
+  terminate the list in CommonMark and forfeit that parser-safety property.
+- Idempotent: skip if a marker is already present under that line, detected by
+  substring-containment of the stable prefix `⚠ Superseded` (not exact-line
+  equality — the reason clause is expected to vary between passes).
+- **Removable by a later pass**: a marker is the one exception to
+  "never remove existing content" — see the removal rule below.
+
+**Marker removal (un-marking)**: the Preservation Rule's "Do NOT remove any
+existing content under any circumstance" would otherwise make every marker
+permanent — a step that becomes valid again (the codebase moved, or the original
+finding was itself wrong) would keep a false ⚠ forever, with no actor able to
+clear it. The carve-out therefore grants exactly one deletion right: **a refine
+pass may delete a line matching the `⚠ Superseded` marker convention when this
+pass's own findings no longer refute the line above it.** Only lines matching
+that convention are ever deletable; the refuted line and all other content stay
+untouchable. Removal is silent (no tombstone) — the marker is derived state, not
+a record.
 
 **Interaction with `/ll:reconcile-issue`**: this is complementary, not
 competing. Reconcile *rewrites* directive sections wholesale on a plateau;
 this marks them at write time so the contradiction is legible in the interim —
 which, given 19 reconciles against 1,703 refines, is nearly always.
 
+## Program Design
+
+Two halves, and they are different kinds of change:
+
+1. **The carve-out itself** is a prose-instruction change
+   (`commands/refine-issue.md`, executed by the LLM via `Edit`), not Python.
+   The "signature" below is not code to be written — it is the decision
+   procedure the amended Preservation Rule text must encode precisely enough
+   for a headless implementer to follow without guessing.
+2. **The `unmarked_superseded_directive` gap class** (Implementation Step 5)
+   *is* ordinary Python, in `issue_parser.py` + `cli/issues/format_check.py`,
+   following the `stale_file_ref` class's existing shape. It is what makes
+   half 1 falsifiable.
+
+### Signatures
+
+- `annotate_superseded_directive(section: str, line: str, next_line: str, findings: list[str]) -> str | None | REMOVE`
+  — returns the marker text to insert below `line`, `None` for a no-op, or the
+  sentinel `REMOVE` meaning "delete the existing marker on `next_line`".
+
+Behavior:
+1. `section` must be one of `## Implementation Steps`, `### Files to Modify`,
+   `## Acceptance Criteria` — never `## Summary`, `## Motivation`,
+   `## Proposed Solution`, `### Option …`, `### Decision Rationale`.
+2. `findings` must be this pass's OWN `### Codebase Research Findings`
+   entries — never findings re-read from a prior pass's appended block.
+3. **Refutation test.** An entry in `findings` refutes `line` when it
+   names or quotes `line` *and* asserts it is wrong. The correction phrases
+   below are the detection list — the same list that produced this issue's
+   316/1,295 corpus measurement, and the list the format-check gap class
+   (Implementation Step 5) must reuse verbatim:
+
+   `is wrong` · `does not exist` · `will not work` · `must be dropped` ·
+   `target file is wrong` · `is stale` · `omit entirely`
+
+   The list is **non-exhaustive guidance for LLM judgment**, not a closed
+   grammar: a finding that plainly refutes the line in other words still
+   qualifies. It is closed only for the deterministic format-check class,
+   which must not invent phrases beyond it.
+   If no entry refutes `line`, go to step 7.
+4. Else `marker_text = "> ⚠ Superseded — {reason}; see § Codebase Research
+   Findings under {section}"`, where `{reason}` is a ≤10-word clause lifted
+   from the refuting finding (e.g. `omit entirely`, `target file does not
+   exist`). The reason is required: without it, N refuted lines in one section
+   all receive byte-identical markers and the reader must re-derive the
+   findings-to-line mapping by hand.
+5. Idempotency: if `next_line` contains the substring `⚠ Superseded`, return
+   `None` — containment on that stable prefix, **not** equality against
+   `marker_text`, since `{reason}` varies between passes. This follows the
+   convention in Call Path (`if "Decomposed into" in content`,
+   `any(marker in content ...)`); an exact-equality check would silently
+   double-mark whenever the reason clause was worded differently.
+6. Else: return `marker_text`, to be inserted as a new line immediately below
+   `line`, **indented to `line`'s own content column** — 3 spaces under a
+   `1. ` step, 2 under a `- ` bullet — and never prefixed with a digit-dot or
+   `-`/`*` (must not match the bullet/option anchors below). Column-0
+   placement is wrong twice over: it terminates the enclosing list in
+   CommonMark, and it voids the `^`-anchored parser-collision argument in
+   § Tests.
+7. Un-marking: if `line` is not refuted by this pass's `findings` **and**
+   `next_line` contains `⚠ Superseded`, return `REMOVE`. This is the sole
+   deletion right the carve-out grants, and it applies only to lines matching
+   the marker convention.
+
+Invariant: `line` itself is never edited, reordered, or deleted. No section
+outside the three listed is ever touched. The only deletable line in the file
+is a `⚠ Superseded` marker under a no-longer-refuted directive line.
+
+### Call Path
+
+- `commands/refine-issue.md` § Preservation Rule (lines 444-460) — the carve-out
+  is stated here as a bounded exception to "Do NOT overwrite non-empty
+  sections".
+- `commands/refine-issue.md:605-608` — the existing gap-analysis stale-anchor
+  blockquote (`> ⚠ Anchor ... no longer resolves ...`) whose shape this
+  carve-out reuses rather than inventing new marker syntax.
+- `_append_decomposition_note` (`scripts/little_loops/recursive_finalize.py:91`)
+  and `check_content_markers` (`scripts/little_loops/issue_manager.py:537`) —
+  the idempotency convention step 5 above follows (plain substring-containment
+  check, not a regex or structural parse).
+- `_CRITERION_BULLET_PATTERN` and `_OPTION_PATTERNS`
+  (`scripts/little_loops/issue_parser.py`) — the anchors the inserted marker
+  line must not collide with (step 6).
+- `scripts/little_loops/issue_parser.py:255` (gaps dataclass field), `:528`
+  (detection branch) and `scripts/little_loops/cli/issues/format_check.py:154`
+  (print branch) — the `stale_file_ref` gap class, the shape the new
+  `unmarked_superseded_directive` class copies. Its detection input is
+  § Program Design step 3's correction-phrase list, used as a closed set here
+  even though it is open-ended guidance for the LLM.
+
 ## Integration Map
 
 ### Files to Modify
 - `commands/refine-issue.md` — § Preservation Rule (lines 444-460): add the
-  annotation carve-out with its scope constraints; § 5a enrichment rules
+  annotation carve-out with its scope constraints, the marker-removal right,
+  and the indentation/idempotency rules; § 5a enrichment rules
   (lines 323-443) reference it where Implementation Steps are discussed
   (lines 425-442)
+- `scripts/little_loops/issue_parser.py` — the `unmarked_superseded_directive`
+  gap class (Implementation Step 5): a field on the gaps dataclass alongside
+  `stale_file_ref` (line 255), its `__bool__`/`to_dict` entries (lines 272,
+  289), its docstring entry (line 365), and the detection branch modelled on
+  line 528
+- `scripts/little_loops/cli/issues/format_check.py` — print branch (cf.
+  `stale_file_ref` at lines 154-155) plus the gap-class list in the `--help`
+  text (lines 62-64) and module docstring (line 161)
+- `scripts/little_loops/cli/issues/__init__.py:124` — the same gap-class list
+  in the subcommand summary line
+- `.claude/CLAUDE.md` — § Issue File Format / CLI Tools `ll-issues` bullet
+  enumerates the format-check gap classes; add the new one
 
 ### Dependent Files (Callers/Importers)
-- None. This section and the stale-anchor marker it reuses are pure prose
-  instructions inside `commands/refine-issue.md`, executed by the LLM via the
-  `Edit` tool — no Python code in `scripts/little_loops/` emits, parses, or
-  depends on the `> ⚠ ...` marker string (grep for `⚠` and `"> ⚠"` across
-  `scripts/little_loops/` returns no matches). `_sweep_file()`
+- **Before this issue**: none. The Preservation Rule and the stale-anchor
+  marker it reuses are pure prose instructions inside
+  `commands/refine-issue.md`, executed by the LLM via the `Edit` tool — no
+  Python code in `scripts/little_loops/` emits, parses, or depends on the
+  `> ⚠ ...` marker string (grep for `⚠` and `"> ⚠"` across
+  `scripts/little_loops/` returns only unrelated CLI output formatting).
+- **After this issue**: the `unmarked_superseded_directive` gap class becomes
+  the first and only Python consumer of the marker string, making
+  `issue_parser.py`'s detection branch a dependent of the exact marker text.
+  Keep the two in sync: the stable prefix the gap class greps for is
+  `⚠ Superseded`, matching § Program Design step 5's idempotency check, so a
+  reworded reason clause never breaks either one.
+- `_sweep_file()`
   (`scripts/little_loops/issues/anchor_sweep.py`) only rewrites resolved
   anchors in place and tracks a `skipped_refs` count — it has no code path
   that emits the blockquote warning text; that text is written by the LLM
@@ -186,17 +318,33 @@ which, given 19 reconciles against 1,703 refines, is nearly always.
 ### Tests
 - No existing test file asserts against `commands/refine-issue.md` prose
   directly (it is a markdown instruction file executed by the LLM, not
-  Python). The nearest live test surface the new marker must stay compatible
-  with is regex-based list parsing in
-  `scripts/little_loops/issue_parser.py`: `_CRITERION_BULLET_PATTERN`
-  (line 39, `^(?:-\s*\[[xX ]\]\s+|[-*]\s+|\d+\.\s+)(.+)$`) and
-  `_OPTION_PATTERNS` (lines 579-586, includes
-  `^\d+\.\s+(?:\*\*Option|[A-Z][^.]*\bapproach\b)`) — both `re.MULTILINE`
-  and anchored on `^`. An indented `> ⚠ ...` continuation line placed under a
-  numbered `1. ...` Implementation Step does not itself start with `\d+\.`,
-  so it will not be misparsed as a new list item or a new decision option by
-  either pattern, provided the marker line stays indented and does not begin
-  with a digit-dot prefix.
+  Python).
+- **The live parser risk is in `## Acceptance Criteria`, not Implementation
+  Steps.** `_CRITERION_BULLET_PATTERN` (`issue_parser.py:39`,
+  `^(?:-\s*\[[xX ]\]\s+|[-*]\s+|\d+\.\s+)(.+)$`) is reached only from
+  `IssueParser.extract_criteria()` at `issue_parser.py:1782`, which walks
+  `_CRITERIA_SECTION_NAMES` (`## Acceptance Criteria` / `## Expected
+  Behavior`). That is the one section in the carve-out's scope with a live
+  consumer, so it is the regression-test target: assert that a marker inserted
+  under a criterion bullet is not returned as an extra criterion. It is not —
+  the pattern is `^`-anchored under `re.MULTILINE` and an indented `> ⚠ …`
+  line matches none of its three alternatives — but that is the assertion to
+  write down.
+- `## Implementation Steps` has **no parser at all** in
+  `scripts/little_loops/` (`_OPTION_PATTERNS`, `issue_parser.py:579-586`,
+  scans decision-option prose, not this section). The `^`-anchoring argument
+  holds there for the same structural reason, but there is no live code path
+  to regression-test; do not cite `extract_criteria()` as covering it.
+- `cli/issues/size.py` *does* read the section — `_SOLUTION_HEADINGS`
+  (line 41) includes `Implementation Steps` — but by word count, not
+  structure. See § Impact.
+- The `unmarked_superseded_directive` gap class (Implementation Step 5) needs
+  ordinary unit coverage next to the other gap classes' tests: a fixture with
+  correction language and no marker → flagged; the same fixture with a marker
+  → clean; correction language in a *preserved* section (`## Summary`) → not
+  flagged. This is the only genuinely behavioural test in the issue — the
+  `TestSupersededDirectiveMarker` prose assertions cannot fail if refine never
+  emits a marker.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - Correction to the claim above: `_CRITERION_BULLET_PATTERN` is only ever
@@ -287,21 +435,35 @@ _Wiring pass added by `/ll:wire-issue`:_
    places superseded markers on its refuted Implementation Steps (1, 3, 6, 7
    per this issue's own measurement) and leaves every other section
    byte-identical.
+5. **Deterministic enforcement gate.** Add an
+   `unmarked_superseded_directive` gap class to `ll-issues format-check`
+   (`scripts/little_loops/cli/issues/format_check.py`, joining the existing
+   `missing`/`renamed`/`empty`/`boilerplate`/`testable`/`stale_file_ref`
+   classes): flag an issue whose `### Codebase Research Findings` block
+   contains a correction phrase from § Program Design step 3's closed list
+   while no `⚠ Superseded` marker appears in `## Implementation Steps`,
+   `### Files to Modify`, or `## Acceptance Criteria`. This is the same corpus
+   scan that produced the 316/1,295 measurement in § Current Behavior, run as
+   a check instead of a one-off. Without it the enhancement is unfalsifiable:
+   step 6's test asserts only that the prose documents the marker and cannot
+   fail if the behavior never fires. Precedent for a keyword-inference class
+   is `testable` (doc-only). Report-only like the other classes — do not wire
+   it into a blocking gate in this issue.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-5. Add a `TestSupersededDirectiveMarker` test class to
+6. Add a `TestSupersededDirectiveMarker` test class to
    `scripts/tests/test_refine_issue_command.py`, following the
    `TestGapAnalysisMode` slice-and-assert idiom, asserting the amended
    Preservation Rule section documents the `> ⚠ Superseded — ...` marker and
    its scope constraints.
-6. Update `docs/reference/COMMANDS.md:280` and `:290` (§ `/ll:reconcile-issue`)
+7. Update `docs/reference/COMMANDS.md:280` and `:290` (§ `/ll:reconcile-issue`)
    to acknowledge that `/ll:refine-issue` can now annotate a directive line
    in place with a superseded marker, not only append research bullets
    elsewhere — without overstating it as a rewrite (reconcile still owns that).
-7. After merging, run `ll-adapt --host gemini` and `ll-adapt --host kimi` to
+8. After merging, run `ll-adapt --host gemini` and `ll-adapt --host kimi` to
    regenerate `.gemini/commands/refine-issue.toml` and
    `.kimi-code/skills/ll-refine-issue/SKILL.md` so the mirrored Preservation
    Rule text stays in sync.
@@ -310,9 +472,18 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - Refined issues stop shipping self-contradicting instructions to headless
   implementers.
-- Zero content loss — the rule stays append/annotate-only.
+- Zero content loss — the rule stays annotate-only, with the single scoped
+  exception of deleting a `⚠ Superseded` marker this convention itself wrote.
 - Reduces the blast radius of reconcile-issue's starvation (ENH-2992) without
   depending on it.
+- **Minor size-score inflation.** Markers add words to `## Implementation
+  Steps`, which `cli/issues/size.py` reads via `_SOLUTION_HEADINGS` (line 41)
+  for `_section_complexity_signal` (`_SECTION_WORD_THRESHOLD = 300`) and for
+  the whole-body `_WORD_COUNT_THRESHOLD = 800` signal. Four markers is roughly
+  50 words, so the direction is wrong (annotating *dead* steps nudges an issue
+  toward Very Large, feeding autodev's `issue-size-review --auto`
+  decomposition gate) while the magnitude is negligible. Accepted, not
+  mitigated — flagged so it is not rediscovered as a defect.
 
 ## Success Metrics
 
@@ -321,13 +492,30 @@ _These touchpoints were identified by wiring analysis and must be included in th
   against `ENH-2500` and checking steps 1/3/6/7).
 - No marker appears on any preserved section (`## Summary`, `## Motivation`,
   `## Proposed Solution`, `### Option …`).
+- **Machine-checkable**: `ll-issues format-check --all --format json` reports
+  a non-empty `unmarked_superseded_directive` list for the corpus today
+  (expected on the order of the 316 issues measured in § Current Behavior),
+  and reports an empty list for any issue refined after this change ships.
+  This is the metric that can actually fail; the two above rely on LLM
+  judgment.
+- Re-running refine against an already-marked issue is a no-op on markers
+  whose refutation still holds (idempotency, § Program Design step 5), and
+  clears markers whose refutation no longer holds (step 7).
 
 ## Scope Boundaries
 
 - Does **not** rewrite, reorder, or delete any directive text — that remains
-  `/ll:reconcile-issue`'s job.
-- Does **not** change when reconcile is invoked (ENH-2992).
+  `/ll:reconcile-issue`'s job. The one deletion in scope is a `⚠ Superseded`
+  marker this convention itself wrote (§ Proposed Solution, marker removal).
+- Does **not** change when reconcile is invoked (ENH-2992). Reconcile
+  overwrites the marked sections wholesale, so markers simply vanish on a
+  reconcile pass; treating a marker as an input signal to reconcile's rewrite
+  is a separate follow-up, not this issue.
 - Does **not** touch `/ll:wire-issue`'s append behavior (ENH-2996).
+- The `unmarked_superseded_directive` gap class is **report-only**. Wiring it
+  into a blocking gate (pre-commit, `ll-doctor --full`, or autodev's readiness
+  path) is deliberately out of scope until the class has corpus telemetry —
+  the same WARN-now/ERROR-later stance MR-14 takes.
 
 ## Related Key Documentation
 
@@ -336,7 +524,25 @@ _These touchpoints were identified by wiring analysis and must be included in th
 | `commands/refine-issue.md` | Contains the Preservation Rule being amended |
 | `commands/reconcile-issue.md` | Defines the rewrite-eligible / preserve-untouched split this carve-out must respect |
 
+## Confidence Check Notes
+
+**Readiness**: 88/100 — **Outcome Confidence**: 75/100
+
+**Recommendation**: PROCEED
+
+### Resolved
+- The initial `/ll:confidence-check` pass hit a Program Design hard override
+  (`## Program Design` was missing; the project's gate is armed via
+  `.ll/program-design-cutover.json`, stamped 2026-07-30). A `## Program
+  Design` section was added with a `### Signatures` entry (the
+  `annotate_superseded_directive` decision procedure) and a `### Call Path`
+  naming repo-resolvable anchors (`_append_decomposition_note`,
+  `check_content_markers`). `ll-issues format-check` now reports
+  `program_design_nonspecific: []` — the gate passes.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-02T15:55:04 - `de072167-1f81-49e9-8805-57d11b7bea51.jsonl`
+- `/ll:confidence-check` - 2026-08-02T15:35:10 - `54b8b61c-90df-41f1-af64-799342e6500a.jsonl`
 - `/ll:wire-issue` - 2026-08-02T15:30:11 - `d27699ab-a72d-4e7f-93a0-ed047b357fc4.jsonl`
 - `/ll:refine-issue` - 2026-08-02T15:19:00 - `2be150f8-0636-40af-ae61-86aa9b31676d.jsonl`
 - `/ll:capture-issue` - 2026-08-02T13:45:56 - `fac7dff4-61c1-4496-95b8-7bd1993d2971.jsonl`
