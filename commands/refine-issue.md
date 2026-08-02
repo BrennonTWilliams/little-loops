@@ -190,7 +190,7 @@ A `covered` verdict already accounts for staleness — an axis whose referenced 
 
 If **every** axis is `covered`, spawn nothing and **skip Steps 4, 5a, and 5b entirely**. There are no research findings, and Step 4/5a's instructions ("using the research findings from Step 3", "fill gaps with research findings") would otherwise read as an invitation to write enrichment from nothing — a fabrication risk strictly worse than the wasted agent calls this triage removes.
 
-Proceed directly to Step 5c (if `--gap-analysis`), then Steps 6, 6.5, and 7. Still append the Session Log entry, and report the no-op explicitly, naming what satisfied each axis:
+Proceed directly to Step 5c (if `--gap-analysis`), then Steps 6, 6.5, and 6.7. Still append the Session Log entry (Step 6.5), and report the no-op explicitly, naming what satisfied each axis:
 
 ```
 No research needed — all three axes already covered:
@@ -293,6 +293,7 @@ A section can be "present" per the template but still lack the codebase-specific
 | Reproduction context | What conditions trigger the bug based on code analysis | codebase-analyzer |
 | Test coverage | Which tests exist for affected code, what's untested | codebase-locator |
 | Related fixes | Similar bugs fixed before — patterns to follow | codebase-pattern-finder |
+| Types/signatures/call path | The concrete types, function signatures, and call chain the fix will touch | codebase-analyzer |
 
 **For FEATs:**
 | Knowledge Gap | What's Missing | Research Source |
@@ -302,6 +303,7 @@ A section can be "present" per the template but still lack the codebase-specific
 | API conventions | How existing public interfaces are structured | codebase-pattern-finder |
 | Test patterns | How similar features are tested | codebase-pattern-finder |
 | Reusable code | Existing utilities/modules to leverage | codebase-pattern-finder |
+| Types/signatures/call path | The concrete types, function signatures, and call chain the feature will touch | codebase-analyzer |
 
 **For ENHs:**
 | Knowledge Gap | What's Missing | Research Source |
@@ -311,6 +313,7 @@ A section can be "present" per the template but still lack the codebase-specific
 | Consistency considerations | How nearby/similar code is structured | codebase-pattern-finder |
 | Callers/dependents | What code uses the component being enhanced | codebase-locator |
 | Existing abstractions | Shared code that already partially solves this | codebase-pattern-finder |
+| Types/signatures/call path | The concrete types, function signatures, and call chain the enhancement will touch | codebase-analyzer |
 
 #### Gap Detection
 
@@ -365,6 +368,29 @@ For each **FILLABLE** gap, update the issue with research findings.
 - **Anchor**: `in function problematic_func()`
 - **Cause**: [Behavioral analysis from codebase-analyzer — what the code does wrong and why]
 ```
+
+**Program Design** — populate with analyzer findings (types, signatures, call path):
+```markdown
+## Program Design
+
+### Types
+- `FieldName: type` — [from analyzer, only if the change introduces/modifies a data shape]
+
+### Signatures
+- `function_name(param: type) -> ReturnType` — [existing or new signature the change touches, from analyzer]
+
+### Call Path
+`existing_caller` -> `new_or_modified_function` -> `existing_callee` [from analyzer/locator]
+```
+Fill this from `codebase-analyzer`'s anchor-level findings (function/class names,
+existing signatures) — the same material Integration Map draws from, filed here
+as concrete identifiers rather than prose bullets. If research genuinely cannot
+produce a design (a one-line config change, a docs fix), do not pad the section
+with prose that will fail the specificity check — instead, in Step 8's output
+report, recommend `program_design_not_applicable: true` as a note for the
+operator. **Never set this frontmatter field directly** — it is a human decision
+(`program_design_gate_active`, `scripts/little_loops/issues/program_design.py:415`),
+and a command that can opt itself out of a gate destroys the gate's value.
 
 **Proposed Solution** — enrich with pattern-finder findings:
 - If a Proposed Solution section exists but is vague, add a subsection with concrete implementation guidance based on similar patterns found
@@ -687,25 +713,16 @@ Run /ll:ready-issue [ISSUE-ID] to validate.
 4. Add new sections in appropriate locations following v2.0 template ordering
 5. Ensure all added file paths and references are from actual research (no placeholders in auto mode)
 
-### 6.5. Prose Dependency Gate (FEAT-2849)
+### 6.5. Append Session Log
 
-After updating the issue file, run `ll-issues format-check [ISSUE-ID] --format json`
-and inspect the `prose_dep_drift`/`stale_prose_dep` keys:
-
-- **`prose_dep_drift` non-empty**: the body claims a dependency in prose
-  ("Depends on ID", "Blocked by ID", "Requires ID", or a `## Blocked By`
-  section) on an active issue not reflected in `blocked_by`/`depends_on`
-  frontmatter. Add the missing edge via `ll-issues link [ISSUE-ID] blocked_by
-  [BLOCKER-ID]` (do not silently drop the prose) and re-run `format-check` to
-  confirm the drift clears.
-- **`stale_prose_dep` non-empty**: the body names a `done`/`cancelled` issue
-  as a blocker. Edit the prose to remove/update the stale reference — this is
-  a text fix, not a frontmatter edge to add.
-- Skip this gate if `DRY_RUN` is true.
-
-### 7. Append Session Log
-
-After updating the issue, use the Bash tool to append a session log entry:
+After updating the issue, use the Bash tool to append a session log entry —
+**before** the Prose/Program Design Gate below, since
+`program_design_gate_active()` (`scripts/little_loops/issues/program_design.py:415`)
+derives arming from the most recent `/ll:refine-issue` Session Log entry
+(`issue_design_timestamp()`, `:391-406`). Checking the gate before this append
+would read a grandfathered issue as still grandfathered and declare success
+without ever having written a design — the exact bug this ordering exists to
+prevent. Do not move this append back below the gate check.
 
 ```bash
 ll-issues append-log <path-to-issue-file> /ll:refine-issue
@@ -716,6 +733,36 @@ If `ll-issues` is not available, fall back to manually appending with **exactly*
 ```
 - `/ll:refine-issue` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
 ```
+
+### 6.7. Prose Dependency & Program Design Gate (FEAT-2849, BUG-3001)
+
+After appending the session log (Step 6.5 above — order matters, see that
+step's note), run `ll-issues format-check [ISSUE-ID] --format json` and
+inspect the `prose_dep_drift`/`stale_prose_dep`/`program_design_nonspecific`
+keys:
+
+- **`prose_dep_drift` non-empty**: the body claims a dependency in prose
+  ("Depends on ID", "Blocked by ID", "Requires ID", or a `## Blocked By`
+  section) on an active issue not reflected in `blocked_by`/`depends_on`
+  frontmatter. Add the missing edge via `ll-issues link [ISSUE-ID] blocked_by
+  [BLOCKER-ID]` (do not silently drop the prose) and re-run `format-check` to
+  confirm the drift clears.
+- **`stale_prose_dep` non-empty**: the body names a `done`/`cancelled` issue
+  as a blocker. Edit the prose to remove/update the stale reference — this is
+  a text fix, not a frontmatter edge to add.
+- **`program_design_nonspecific` non-empty**: the `## Program Design` section
+  (written in Step 5a above) failed the specificity check. Revise that
+  section **once** using the same analyzer findings — add or sharpen concrete
+  types/signatures/call-path identifiers — and re-run `format-check` to
+  confirm it clears. This is a single attempt, not a retry loop (matches the
+  `prose_dep_drift` precedent above: fix once, confirm once). If it still
+  fails after that one revision, do not touch `program_design_not_applicable`
+  — report the still-failing gap explicitly in Step 8's output so the
+  operator knows the gate is still armed. This check is naturally inert on
+  unstamped/grandfathered projects: `format-check` already returns an empty
+  `program_design_nonspecific` there via `program_design_gate_active()`
+  semantics, so no separate skip condition is needed here.
+- Skip this gate if `DRY_RUN` is true.
 
 ### 7.5. Extract Learning Targets (ENH-2209)
 
@@ -779,6 +826,7 @@ ISSUE REFINED: [ISSUE-ID]
 ## SECTIONS ENRICHED
 - **Integration Map**: Populated with [N] file paths and [N] callers
 - **Root Cause**: Added file path and anchor reference and behavioral analysis [BUG only]
+- **Program Design**: Added [N] type(s)/signature(s) and a call path from analyzer findings — or: not applicable, recommend `program_design_not_applicable: true` [see Program Design Gate row below if still failing]
 - **Implementation Steps**: Made concrete with [N] specific file references
 - **[Other section]**: [What was added]
 
@@ -790,7 +838,13 @@ ISSUE REFINED: [ISSUE-ID]
 [Show exact enrichments that would be applied without applying them]
 - Would add to Integration Map: [N] file paths
 - Would update Root Cause with: [file path and anchor reference]
+- Would populate Program Design with: [N] signatures and a call path
 - Would enrich Implementation Steps with: [N] concrete references
+
+## PROSE/PROGRAM DESIGN GATE [Step 6.7]
+- prose_dep_drift: [clear | fixed | — ]
+- stale_prose_dep: [clear | fixed | — ]
+- program_design_nonspecific: [clear | revised once, now clear | STILL FAILING after one revision — operator action needed | not applicable (unarmed/grandfathered)]
 
 ## FILE STATUS
 - [Modified | Not modified (--dry-run)]
@@ -802,6 +856,7 @@ ISSUE REFINED: [ISSUE-ID]
 - Run `/ll:ready-issue [ID]` to validate the enriched issue
 - Run `/ll:manage-issue` to implement
 - If `/ll:ready-issue` continues to score NOT_READY after 2+ refinement passes, run `/ll:issue-size-review [ID]` — a persistent readiness gap often means the issue is too large or poorly scoped, not just under-researched
+- If `program_design_nonspecific` is still failing after the single revision attempt: hand-write `## Program Design` or set `program_design_not_applicable: true` yourself — refine will not set this flag for you (it is a human decision, see Step 5a)
 
 ================================================================================
 ```

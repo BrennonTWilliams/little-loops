@@ -14,6 +14,12 @@ labels:
 - resilience
 - loops
 testable: true
+confidence_score: 98
+outcome_confidence: 86
+score_complexity: 20
+score_test_coverage: 24
+score_ambiguity: 20
+score_change_surface: 22
 ---
 
 # ENH-2989: autodev reports a Phase 1 verdict failure as a phantom implementation
@@ -209,6 +215,7 @@ open
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-02T16:42:49 - `6cac52a1-bb84-4f01-9a95-1cb4926b4e41.jsonl`
 - `/ll:wire-issue` - 2026-08-02T13:54:24 - `8b8edef1-c39e-4866-83db-7f4d2ee1561d.jsonl`
 - `/ll:refine-issue` - 2026-08-02T13:43:45 - `55aa09f8-706d-4a53-9c33-dad9b40b2fa3.jsonl`
 

@@ -360,3 +360,117 @@ class TestResearchTriageWiring:
             "Step 4 must skip when Step 3.1 applied — with no research findings there is "
             "nothing to identify gaps against"
         )
+
+
+class TestProgramDesignGapTaxonomy:
+    """Step 4's gap tables must name types/signatures/call path (BUG-3001)."""
+
+    def _step_4_text(self) -> str:
+        content = COMMAND_FILE.read_text()
+        start = content.index("### 4. Identify Knowledge Gaps")
+        end = content.index("### 5a.")
+        return content[start:end]
+
+    def test_all_three_gap_tables_name_types_signatures_call_path(self) -> None:
+        text = self._step_4_text()
+        assert text.count("Types/signatures/call path") == 3, (
+            "each of the BUG/FEAT/ENH gap tables must carry a "
+            "'Types/signatures/call path' row sourced from codebase-analyzer, "
+            "or Program Design is never marked FILLABLE"
+        )
+
+
+class TestProgramDesignEnrichmentRule:
+    """Step 5a must write `## Program Design` from analyzer findings (BUG-3001)."""
+
+    def _step_5a_text(self) -> str:
+        content = COMMAND_FILE.read_text()
+        start = content.index("### 5a. Fill Gaps with Research Findings")
+        end = content.index("### 5b. Interactive Refinement")
+        return content[start:end]
+
+    def test_program_design_enrichment_block_present(self) -> None:
+        text = self._step_5a_text()
+        assert "## Program Design" in text, (
+            "Step 5a must document an enrichment rule that writes ## Program Design"
+        )
+        assert "### Types" in text and "### Signatures" in text and "### Call Path" in text, (
+            "the Program Design enrichment rule must emit the template's three subheadings"
+        )
+
+    def test_not_applicable_recommendation_documented(self) -> None:
+        text = self._step_5a_text()
+        assert "program_design_not_applicable" in text, (
+            "Step 5a must document recommending program_design_not_applicable "
+            "when research cannot produce a design"
+        )
+
+    def test_refine_never_sets_the_opt_out_flag_itself(self) -> None:
+        text = self._step_5a_text()
+        lowered = text.lower()
+        assert "never set this frontmatter field directly" in lowered or (
+            "must not write it" in lowered
+        ), (
+            "Step 5a must explicitly state that refine recommends but never sets "
+            "program_design_not_applicable — that is a human decision"
+        )
+
+
+class TestProgramDesignGateExtension:
+    """Step 6.7 must read program_design_nonspecific (BUG-3001)."""
+
+    def _gate_text(self) -> str:
+        content = COMMAND_FILE.read_text()
+        start = content.index("### 6.7. Prose Dependency & Program Design Gate")
+        end = content.index("### 7.5. Extract Learning Targets")
+        return content[start:end]
+
+    def test_program_design_nonspecific_key_read(self) -> None:
+        assert "program_design_nonspecific" in self._gate_text(), (
+            "Step 6.7 must inspect the program_design_nonspecific key from "
+            "`ll-issues format-check --format json`, alongside prose_dep_drift/stale_prose_dep"
+        )
+
+    def test_single_revision_attempt_documented(self) -> None:
+        text = self._gate_text().lower()
+        assert "once" in text, (
+            "Step 6.7 must document a single revision attempt, not an unbounded retry loop"
+        )
+
+    def test_still_failing_gap_reported_not_opted_out(self) -> None:
+        text = self._gate_text()
+        assert "report the still-failing gap" in text, (
+            "a still-failing Program Design gap must be reported explicitly in Step 8's output"
+        )
+        assert "do not touch" in text.lower() or "not touch `program_design_not_applicable`" in text, (
+            "Step 6.7 must state that refine does not set program_design_not_applicable "
+            "even when the gate still fails after the one revision attempt"
+        )
+
+
+class TestSessionLogPrecedesProgramDesignGate:
+    """Session Log append must precede the gate check that reads it (BUG-3001).
+
+    program_design_gate_active() derives arming from the most recent
+    `/ll:refine-issue` Session Log entry — checking the gate first would read a
+    grandfathered issue as still grandfathered and declare success without
+    ever writing a design.
+    """
+
+    def test_session_log_heading_precedes_gate_heading(self) -> None:
+        content = COMMAND_FILE.read_text()
+        session_log_idx = content.index("### 6.5. Append Session Log")
+        gate_idx = content.index("### 6.7. Prose Dependency & Program Design Gate")
+        assert session_log_idx < gate_idx, (
+            "the Session Log append step must appear before the Prose/Program "
+            "Design Gate step in commands/refine-issue.md"
+        )
+
+    def test_gate_step_references_ordering_rationale(self) -> None:
+        content = COMMAND_FILE.read_text()
+        start = content.index("### 6.5. Append Session Log")
+        end = content.index("### 6.7. Prose Dependency & Program Design Gate")
+        text = content[start:end]
+        assert "program_design_gate_active" in text, (
+            "Step 6.5 must explain why the Session Log append precedes the gate check"
+        )

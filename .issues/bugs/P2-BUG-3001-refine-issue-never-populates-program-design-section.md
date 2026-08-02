@@ -5,13 +5,14 @@ title: 'refine-issue never populates ## Program Design despite being the prescri
 type: BUG
 priority: P2
 captured_at: '2026-08-02T15:46:46Z'
+completed_at: '2026-08-02T16:47:39Z'
 discovered_date: 2026-08-02
 discovered_by: capture-issue
 labels:
 - refine-issue
 - program-design-gate
 - confidence-check
-status: open
+status: done
 confidence_score: 96
 outcome_confidence: 84
 score_complexity: 21
@@ -400,6 +401,8 @@ the fix is inert in projects with no cutover stamp.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-02T16:47:11 - `6cac52a1-bb84-4f01-9a95-1cb4926b4e41.jsonl`
+- `/ll:ready-issue` - 2026-08-02T16:39:22 - `d025e8b4-e8a4-4f4e-8628-87afac4fb0d8.jsonl`
 - `/ll:confidence-check` - 2026-08-02T16:06:10 - `7350086a-c582-4853-bc33-c455a6cf8d34.jsonl`
 - `/ll:wire-issue` - 2026-08-02T16:01:40 - `2e08df07-a323-43c7-be95-67426e4a306f.jsonl`
 - `/ll:refine-issue` - 2026-08-02T15:53:25 - `db0d0569-e597-40a8-acbc-c57cea59645a.jsonl`
