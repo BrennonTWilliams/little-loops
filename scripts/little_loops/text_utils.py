@@ -11,6 +11,7 @@ import math
 import re
 import subprocess
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 from typing import Literal
 
@@ -115,7 +116,34 @@ _GLOB_CHARS = frozenset("*?[]")
 
 # A line-context marker for a not-yet-created file, e.g.
 # "- `scripts/new_thing.py` (new)". Case-insensitive.
-_PLANNED_NEW_RE = re.compile(r"\(new\)", re.IGNORECASE)
+#
+# Corpus survey of `.issues/` when this was widened: `(new)` 323, `**new**` 67,
+# `(new file)` 34, `(to be created)` 2 — the original `(new)`-only pattern
+# missed 28% of planned-new declarations and reported them as drift.
+#
+# `(does not exist)` (24 uses) is deliberately NOT matched: that phrase marks a
+# file the author *confirmed absent*, which is a true `stale` finding, not a
+# planned one. Adding it here would suppress real drift.
+_PLANNED_NEW_RE = re.compile(r"\((?:new|new file|to be created)\)|\*\*new\*\*", re.IGNORECASE)
+
+
+@cache
+def _mirror_prefixes() -> tuple[str, ...]:
+    """Path prefixes of generated host-adapter mirrors of tracked source.
+
+    ``.codex/``, ``.gemini/``, and ``.kimi-code/`` hold ``ll-adapt``-generated
+    copies of ``skills/`` and ``agents/``. They are tracked, so they inflate the
+    basename index and make an unrooted ref like ``confidence-check/SKILL.md``
+    match three paths instead of one — see :func:`resolve_ref_path`.
+
+    Derived from the host-capability registry rather than hardcoded so a newly
+    registered adapter host is covered without a second edit here. Imported
+    lazily and cached: ``text_utils`` is a leaf utility and importing
+    ``little_loops.adapters`` eagerly would pull the emitter chain in with it.
+    """
+    from little_loops.adapters.capabilities import HOST_CAPABILITIES
+
+    return tuple(entry.config_dir + "/" for entry in HOST_CAPABILITIES.values() if entry.config_dir)
 
 
 @dataclass(frozen=True)
@@ -176,10 +204,15 @@ def classify_file_ref(ref: str, index: RefIndex, *, line: str = "") -> RefStatus
     Resolution order (not commutative — see ENH-2983 Program Design):
 
     1. Form checks first — a glob (``skills/*/SKILL.md``), a
-       ``<placeholder>``-bearing path, or a bare basename with no ``/`` all
-       return ``unresolvable_form`` immediately. This must run before any
+       ``<placeholder>``-bearing path, an outside-repo path (``~/…`` or a
+       leading ``/``), or a bare basename with no ``/`` all return
+       ``unresolvable_form`` immediately. This must run before any
        suffix matching, or a bare basename like ``SKILL.md`` would
-       spuriously suffix-match dozens of unrelated tracked files.
+       spuriously suffix-match dozens of unrelated tracked files. The
+       outside-repo check matters for the *verdict*, not just efficiency: a
+       ``~/.claude/CLAUDE.md`` is not repo-relative and can never resolve
+       against a ``git ls-files`` index, so calling it ``stale`` would assert
+       drift that cannot be true.
     2. ``planned_new`` from line context (``(new)`` marker) — a planned file
        legitimately fails both existence and suffix match, so it must be
        distinguished before either lookup.
@@ -188,7 +221,9 @@ def classify_file_ref(ref: str, index: RefIndex, *, line: str = "") -> RefStatus
     4. A *unique* suffix match against the basename-keyed index resolves —
        an unrooted partial path like ``fsm/executor.py`` cited without its
        ``scripts/little_loops/`` prefix. Zero or more-than-one matches do
-       **not** resolve (ambiguous matches must not silently resolve).
+       **not** resolve (ambiguous matches must not silently resolve), except
+       that generated host-adapter mirrors are tie-broken away first — see
+       :func:`resolve_ref_path`.
     5. Otherwise ``stale`` — a ``/``-qualified path with no match, the
        genuine-drift signal this classifier exists to surface.
 
@@ -205,6 +240,8 @@ def classify_file_ref(ref: str, index: RefIndex, *, line: str = "") -> RefStatus
     if any(ch in ref for ch in _GLOB_CHARS):
         return "unresolvable_form"
     if "<" in ref or ">" in ref:
+        return "unresolvable_form"
+    if ref.startswith(("~", "/")):
         return "unresolvable_form"
     if "/" not in ref:
         return "unresolvable_form"
@@ -223,6 +260,14 @@ def resolve_ref_path(ref: str, index: RefIndex) -> str | None:
     staleness check has to stat the file) cannot drift from the classifier.
     Assumes the form checks have already passed; call it via
     :func:`classify_file_ref` unless you have run them yourself.
+
+    Ambiguity is resolved against generated host-adapter mirrors before it is
+    given up on: ``confidence-check/SKILL.md`` suffix-matches ``skills/…`` plus
+    one copy per adapter host, and reporting a plainly-present file as drift is
+    worse than picking the source of truth the mirrors were generated from. The
+    tie-break runs *after* the exact-match step above, so a deliberate ref to a
+    mirror (``.codex/agents/loop-specialist.toml``) still resolves to itself.
+    Genuine same-name ambiguity between two non-mirror paths still declines.
     """
     basename = ref.rsplit("/", 1)[-1]
     candidates = index.by_basename.get(basename, [])
@@ -231,15 +276,26 @@ def resolve_ref_path(ref: str, index: RefIndex) -> str | None:
 
     suffix = "/" + ref
     matches = [p for p in candidates if p.endswith(suffix)]
-    return matches[0] if len(matches) == 1 else None
+    if len(matches) == 1:
+        return matches[0]
+
+    non_mirror = [p for p in matches if not p.startswith(_mirror_prefixes())]
+    return non_mirror[0] if len(non_mirror) == 1 else None
 
 
 def classify_issue_refs(content: str, index: RefIndex) -> dict[str, RefStatus]:
     """Classify every file path reference extracted from one issue body.
 
-    Pairs each reference returned by :func:`extract_file_paths` with the
-    first source line it appears on (needed for ``planned_new`` detection)
-    before classifying it with :func:`classify_file_ref`.
+    Pairs each reference returned by :func:`extract_file_paths` with a source
+    line it appears on (needed for ``planned_new`` detection) before
+    classifying it with :func:`classify_file_ref`.
+
+    Line selection prefers a *marked* mention over the first one. A planned
+    file is routinely discussed in prose ("→ ``docs/reference/FOO.md``, because
+    …") well before its marked ``### Files to Modify`` entry, and keying on the
+    first mention alone classified it as drift while the declaration sat a
+    hundred lines below. The declaration is a property of the issue, not of
+    whichever paragraph happens to mention the path first.
 
     Args:
         content: Full issue file content (frontmatter + body).
@@ -254,7 +310,11 @@ def classify_issue_refs(content: str, index: RefIndex) -> dict[str, RefStatus]:
     lines = content.splitlines()
     result: dict[str, RefStatus] = {}
     for ref in refs:
-        line_text = next((ln for ln in lines if ref in ln), "")
+        mentions = [ln for ln in lines if ref in ln]
+        line_text = next(
+            (ln for ln in mentions if _PLANNED_NEW_RE.search(ln)),
+            mentions[0] if mentions else "",
+        )
         result[ref] = classify_file_ref(ref, index, line=line_text)
     return result
 

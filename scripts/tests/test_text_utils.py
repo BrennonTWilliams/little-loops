@@ -6,13 +6,17 @@ import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from little_loops.text_utils import (
     RefIndex,
+    _mirror_prefixes,
     build_ref_index,
     calculate_word_overlap,
     classify_file_ref,
     classify_issue_refs,
     extract_words,
+    resolve_ref_path,
     score_bm25,
 )
 
@@ -155,9 +159,7 @@ class TestClassifyFileRef:
 
     def test_resolved_for_unrooted_partial_path(self) -> None:
         """A partial path uniquely suffix-matching a tracked file resolves."""
-        index = RefIndex(
-            by_basename={"executor.py": ["scripts/little_loops/fsm/executor.py"]}
-        )
+        index = RefIndex(by_basename={"executor.py": ["scripts/little_loops/fsm/executor.py"]})
         assert classify_file_ref("fsm/executor.py", index) == "resolved"
 
     def test_unresolvable_form_bare_basename(self) -> None:
@@ -173,17 +175,12 @@ class TestClassifyFileRef:
     def test_unresolvable_form_placeholder(self) -> None:
         """A path containing a <placeholder> segment is unresolvable_form."""
         index = RefIndex(by_basename={})
-        assert (
-            classify_file_ref("~/.codex/skills/<name>/SKILL.md", index)
-            == "unresolvable_form"
-        )
+        assert classify_file_ref("~/.codex/skills/<name>/SKILL.md", index) == "unresolvable_form"
 
     def test_stale_for_qualified_path_no_suffix_match(self) -> None:
         """A /-qualified path with no suffix match is genuine drift: stale."""
         index = RefIndex(by_basename={})
-        assert (
-            classify_file_ref("scripts/little_loops/session_store.py", index) == "stale"
-        )
+        assert classify_file_ref("scripts/little_loops/session_store.py", index) == "stale"
 
     def test_planned_new_from_line_context(self) -> None:
         """A path on a line marked (new) is planned_new, even if unresolved."""
@@ -222,21 +219,114 @@ class TestClassifyFileRef:
 
     def test_direct_exact_match_resolves(self) -> None:
         """A reference that is itself an exact tracked path resolves."""
+        index = RefIndex(by_basename={"executor.py": ["scripts/little_loops/fsm/executor.py"]})
+        assert classify_file_ref("scripts/little_loops/fsm/executor.py", index) == "resolved"
+
+    @pytest.mark.parametrize(
+        "ref",
+        [
+            "~/.claude/CLAUDE.md",
+            "~/.codex/config.toml",
+            "/opt/elsewhere/thing.py",
+        ],
+    )
+    def test_outside_repo_path_is_unresolvable_form(self, ref: str) -> None:
+        """A `~/`- or `/`-rooted path can never resolve against a repo index.
+
+        Reporting it `stale` would assert drift that cannot be true — the path
+        was never a repo-relative reference to begin with.
+        """
+        index = RefIndex(by_basename={})
+        assert classify_file_ref(ref, index) == "unresolvable_form"
+
+    @pytest.mark.parametrize(
+        "marker",
+        ["(new)", "(New)", "**new**", "(new file)", "(to be created)"],
+    )
+    def test_planned_new_marker_variants(self, marker: str) -> None:
+        """All corpus-observed planned-new markers, not just `(new)`."""
+        index = RefIndex(by_basename={})
+        line = f"- `docs/reference/DEFERRAL_CODES.md` — {marker}; the destination"
+        assert (
+            classify_file_ref("docs/reference/DEFERRAL_CODES.md", index, line=line) == "planned_new"
+        )
+
+    def test_does_not_exist_marker_stays_stale(self) -> None:
+        """`(does not exist)` marks a *confirmed absent* file: a true stale finding.
+
+        Guard for a deliberate exclusion from `_PLANNED_NEW_RE` — matching it
+        would suppress exactly the drift the classifier exists to surface.
+        """
+        index = RefIndex(by_basename={})
+        line = "- `scripts/little_loops/gone.py` (does not exist as of 2026-08-02)"
+        assert classify_file_ref("scripts/little_loops/gone.py", index, line=line) == "stale"
+
+
+class TestMirrorTieBreak:
+    """Generated host-adapter mirrors must not make a present file look stale."""
+
+    def _index(self) -> RefIndex:
+        return RefIndex(
+            by_basename={
+                "SKILL.md": [
+                    "skills/confidence-check/SKILL.md",
+                    ".gemini/skills/confidence-check/SKILL.md",
+                    ".kimi-code/skills/confidence-check/SKILL.md",
+                ]
+            }
+        )
+
+    def test_source_wins_over_generated_mirrors(self) -> None:
+        assert classify_file_ref("confidence-check/SKILL.md", self._index()) == "resolved"
+
+    def test_resolves_to_the_source_path_not_a_mirror(self) -> None:
+        assert (
+            resolve_ref_path("confidence-check/SKILL.md", self._index())
+            == "skills/confidence-check/SKILL.md"
+        )
+
+    def test_exact_mirror_reference_still_resolves_to_itself(self) -> None:
+        """A deliberate ref to a mirror is legitimate — the exact-match step runs first."""
         index = RefIndex(
-            by_basename={"executor.py": ["scripts/little_loops/fsm/executor.py"]}
+            by_basename={
+                "loop-specialist.toml": [".codex/agents/loop-specialist.toml"],
+            }
         )
         assert (
-            classify_file_ref("scripts/little_loops/fsm/executor.py", index) == "resolved"
+            resolve_ref_path(".codex/agents/loop-specialist.toml", index)
+            == ".codex/agents/loop-specialist.toml"
         )
+
+    def test_genuine_non_mirror_ambiguity_still_declines(self) -> None:
+        """The tie-break must not turn real ambiguity into a silent pick."""
+        index = RefIndex(
+            by_basename={
+                "anchor_sweep.py": [
+                    "scripts/little_loops/cli/issues/anchor_sweep.py",
+                    "scripts/little_loops/issues/anchor_sweep.py",
+                ]
+            }
+        )
+        assert resolve_ref_path("issues/anchor_sweep.py", index) is None
+        assert classify_file_ref("issues/anchor_sweep.py", index) != "resolved"
+
+    def test_mirror_prefixes_derive_from_host_registry(self) -> None:
+        """Prefixes come from HOST_CAPABILITIES so a new adapter host needs no edit here."""
+        from little_loops.adapters.capabilities import HOST_CAPABILITIES
+
+        expected = {
+            entry.config_dir + "/" for entry in HOST_CAPABILITIES.values() if entry.config_dir
+        }
+        assert set(_mirror_prefixes()) == expected
+        # `.claude/` is source, not a generated mirror — it must never be excluded.
+        assert ".claude/" not in _mirror_prefixes()
 
 
 class TestClassifyIssueRefs:
     """Tests for classify_issue_refs() over a whole issue body."""
 
     def test_classifies_every_extracted_reference(self) -> None:
-        index = RefIndex(
-            by_basename={"executor.py": ["scripts/little_loops/fsm/executor.py"]}
-        )
+        index = RefIndex(by_basename={"executor.py": ["scripts/little_loops/fsm/executor.py"]})
         content = (
             "See fsm/executor.py for the runner and "
             "scripts/little_loops/session_store.py for storage."
@@ -254,6 +344,34 @@ class TestClassifyIssueRefs:
         content = "### Files to Modify\n- `scripts/little_loops/new_thing.py` (new)\n"
         result = classify_issue_refs(content, index)
         assert result["scripts/little_loops/new_thing.py"] == "planned_new"
+
+    def test_marked_mention_wins_over_earlier_unmarked_one(self) -> None:
+        """A planned file discussed in prose before its Files-to-Modify entry.
+
+        Keying on the first mention alone reported the declaration below as
+        drift — the marker is a property of the issue, not of the paragraph
+        that happens to name the path first.
+        """
+        index = RefIndex(by_basename={})
+        content = (
+            "## Proposed Solution\n"
+            "- Codes move into `docs/reference/DEFERRAL_CODES.md`, next to the\n"
+            "  other lookup tables.\n\n"
+            "### Files to Modify\n"
+            "- `docs/reference/DEFERRAL_CODES.md` — **new**; the destination\n"
+        )
+        result = classify_issue_refs(content, index)
+        assert result["docs/reference/DEFERRAL_CODES.md"] == "planned_new"
+
+    def test_unmarked_ref_mentioned_many_times_stays_stale(self) -> None:
+        """Preferring a marked line must not invent a marker that isn't there."""
+        index = RefIndex(by_basename={})
+        content = (
+            "See `scripts/little_loops/gone.py` for context.\n"
+            "`scripts/little_loops/gone.py` handles the parse.\n"
+        )
+        result = classify_issue_refs(content, index)
+        assert result["scripts/little_loops/gone.py"] == "stale"
 
 
 class TestBuildRefIndex:
@@ -283,8 +401,6 @@ class TestBuildRefIndex:
         assert mock_run.call_count == 1
 
     def test_git_unavailable_returns_empty_index(self, tmp_path: Path) -> None:
-        with patch(
-            "little_loops.text_utils.subprocess.run", side_effect=OSError("no git")
-        ):
+        with patch("little_loops.text_utils.subprocess.run", side_effect=OSError("no git")):
             index = build_ref_index(tmp_path)
         assert index.by_basename == {}
