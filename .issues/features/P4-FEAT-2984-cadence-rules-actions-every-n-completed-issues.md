@@ -2,8 +2,8 @@
 id: FEAT-2984
 title: 'cadence.rules: configurable actions triggered every N completed issues'
 type: FEAT
-priority: P2
-status: open
+priority: P4
+status: deferred
 discovered_by: design-conversation
 discovered_date: 2026-08-01
 labels:
@@ -12,6 +12,8 @@ labels:
 - automation
 - issues
 testable: true
+deferred_by: human
+deferred_date: '2026-08-02T01:44:38Z'
 ---
 
 # FEAT-2984: `cadence.rules` — configurable actions on every N completed issues
@@ -235,8 +237,9 @@ nothing ran unattended inside an orchestrator's context window.
 
 ## Impact
 
-- **Priority**: P2 — closes a real recurring-maintenance gap; all four substrates already
-  exist, so the net-new surface is a predicate plus a ledger
+- **Priority**: P4 — still wanted, but not a current priority; closes a real
+  recurring-maintenance gap and all four substrates already exist, so the net-new surface is
+  a predicate plus a ledger
 - **Effort**: Medium — small core, but step 5 (orchestrator scope locks) touches `ll-auto`/`ll-parallel`
 - **Risk**: Medium — the failure mode is unattended token spend or a cadence action colliding
   with a live orchestrator; mitigated by `notify`-by-default dispatch, scope locks, and the
@@ -244,7 +247,7 @@ nothing ran unattended inside an orchestrator's context window.
 
 ## Status
 
-**Open** | Created: 2026-08-01 | Priority: P2
+**Deferred** | Created: 2026-08-01 | Priority: P4
 
 ## Acceptance Criteria
 

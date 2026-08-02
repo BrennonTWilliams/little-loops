@@ -1,9 +1,9 @@
 ---
-id: 2986
+id: BUG-2986
 title: autodev loop does not clear `autodev-inflight` sentinel on NOT_READY path
 type: BUG
 priority: P2
-status: open
+status: cancelled
 discovered_date: 2026-08-01
 labels:
 - little-loops
@@ -12,6 +12,7 @@ labels:
 - sentinel
 - finalize
 - bug104-followup
+closed_reason: superseded
 ---
 
 # BUG-2986: autodev loop does not clear `autodev-inflight` sentinel on NOT_READY path
@@ -117,6 +118,37 @@ already use, just applied to the implementation-failure path.
   siblings that already implement the `rm -f autodev-inflight` idiom.
 - `scripts/little_loops/loops/autodev.yaml:883` — the `check_impl_auth.on_no` → `dequeue_next` edge that needs to route through `clear_inflight_and_drain` first.
 
+## Resolution
+
+**Cancelled — superseded by [[BUG-2981]]** (2026-08-01).
+
+Both issues were filed from the same 2026-08-01 `inflight_at_finalize` autodev
+run. BUG-2981 landed the identical fix first (commits `50f2c4dc`, `213f4a9c`,
+`3f18a521`):
+
+- `autodev.yaml:886-896` — `clear_inflight_after_impl_failure` state (the
+  `clear_inflight_and_drain` sketched above, renamed) does
+  `rm -f ${context.run_dir}/autodev-inflight` and routes to `dequeue_next`.
+- `autodev.yaml:883-884` — both `check_impl_auth.on_no` *and* `on_error` route
+  through it. The sketch above left `on_error: dequeue_next`, so the landed
+  edge coverage is strictly wider.
+- Tests: `scripts/tests/test_builtin_loops.py:5027`, `13289-13322` (routing
+  assertions plus a subprocess execution of the state's shell body asserting
+  the sentinel is removed).
+
+BUG-2981 also fixed a coupled defect this issue did not identify: `finalize_done`'s
+dedup guard asked "was this ID already *passed*?" when the correct question is
+"was it already *recorded*?", double-counting one issue as two unverified
+(`autodev.yaml:2043-2050`).
+
+The NOT_READY framing above (ll-auto exits 0, nothing closes) is a different
+edge from BUG-2981's failure path, and it is also clean: on the last queue
+entry the sentinel does survive to `finalize_done`, but the staged-ID promotion
+loop (`autodev.yaml:1978-1990`) has already written the bare ID into
+`autodev-unverified.txt`, and the D2 guard's
+`grep -qE "^$INFLIGHT([[:space:]]|$)"` suppresses the `inflight_at_finalize`
+append. No residual leak.
+
 ## Status
 
-**Open** | Created: 2026-08-02
+**Cancelled** | Created: 2026-08-01 | Cancelled: 2026-08-01

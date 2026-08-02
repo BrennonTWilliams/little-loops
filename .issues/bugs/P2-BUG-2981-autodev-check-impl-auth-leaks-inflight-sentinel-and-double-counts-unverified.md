@@ -10,6 +10,8 @@ discovered_by: audit-loop-run
 relates_to:
 - BUG-2908
 - ENH-2353
+supersedes:
+- BUG-2986
 labels:
 - autodev
 - loops
