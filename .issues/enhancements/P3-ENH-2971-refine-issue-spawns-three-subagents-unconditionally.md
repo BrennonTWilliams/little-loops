@@ -3,8 +3,9 @@ id: ENH-2971
 title: refine-issue spawns three research subagents unconditionally
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-08-01T00:00:00Z'
+completed_at: '2026-08-02T05:10:32Z'
 discovered_date: 2026-08-01
 discovered_by: capture-issue
 relates_to:
@@ -96,7 +97,7 @@ Integration Map size rather than currency. See "The rule must be
 fraction-based" under Program Design.
 
 Path resolution is not a new capability — `extract_file_paths()`
-(`text_utils.py:53`) is already the project's public extractor for file
+(`text_utils.py:57`) is already the project's public extractor for file
 references in issue prose, and already strips code fences. ENH-2983 (this
 issue's `depends_on`) promotes the surrounding classification to a shared
 primitive this triage should consume rather than reimplement.
@@ -125,7 +126,7 @@ and the `FormatGaps` dataclass shape. No single function does the full
 3-axis composition today, but it follows directly-precedented shapes.
 
 Codebase evidence against Option B: issue type (BUG/FEAT/ENH) is trivially
-available at Step 3 (`_ISSUE_TYPE_RE`, `issue_parser.py:47`) and static
+available at Step 3 (`_ISSUE_TYPE_RE`, `issue_parser.py:48`) and static
 per-type dispatch has precedent (`load_issue_sections()`,
 `issue_template.py:66-83`). But `format-check`'s content-driven gap classes
 (`empty`/`boilerplate`, computed per-issue not per-type) confirm enrichment
@@ -169,7 +170,7 @@ Reference forms, in priority order:
 
 | Reference form | Check | Primitive | Corpus frequency |
 |---|---|---|---|
-| bare path (`a/b.py`) | extract, then exists on disk relative to `root` | `extract_file_paths()` (`text_utils.py:53`) + `Path.exists()` | **primary** — see Expected Yield |
+| bare path (`a/b.py`) | extract, then exists on disk relative to `root` | `extract_file_paths()` (`text_utils.py:57`) + `Path.exists()` | **primary** — see Expected Yield |
 | symbol (`` `foo()` ``, `` `Cls.method` ``) | named in the same section as a resolving path | backtick-symbol regex over the fence-stripped section | strengthens analyzer / pattern-finder |
 | anchor form (`` `a/b.py` (near function `foo`) ``) | path exists **and** symbol found in it | `extract_file_paths()` + symbol scan of the target | 16 files corpus-wide — accepted, not relied on |
 | `file:N` | file readable, `N` in range, anchor found | `_FILE_LINE` (`anchor_sweep.py:24`) + `resolve_anchor()` + line-bound check | ~0 — **optional**, do not build the design on it |
@@ -182,6 +183,28 @@ regex**; `_STANDALONE_PATH`/`_BACKTICK_PATH`/`_BOLD_FILE_PATH` are its
 private internals.
 
 #### Qualified-path filter (mandatory)
+
+> **Correction (2026-08-01, `/ll:ready-issue`): this filter now exists — do not
+> hand-roll it.** `depends_on: ENH-2983` shipped and closed on 2026-08-01,
+> promoting exactly this classification into `text_utils.py` as
+> `RefIndex` (`text_utils.py:112`) + `classify_file_ref(ref, index, *, line)
+> -> RefStatus` (`text_utils.py:163`). Its resolution order runs form checks
+> **first** — a glob, a `<placeholder>`-bearing path, or a bare basename with
+> no `/` all return `unresolvable_form` before any matching — which is the
+> two-class discard described below, already implemented and tested.
+> `triage_research_axes()` must consume it (`extract_file_paths()` to extract,
+> then `classify_file_ref()` per ref, counting only `resolved` toward the ≥80%
+> numerator and excluding `unresolvable_form`/`planned_new` from the
+> denominator) rather than writing a fresh basename/glob filter plus
+> `Path.exists()`. Build one `RefIndex` per invocation, not per axis.
+>
+> Note `classify_file_ref()` is **more permissive than the measured design**:
+> it also resolves a *unique* suffix match (an unrooted `fsm/executor.py` cited
+> without its `scripts/little_loops/` prefix), which bare `Path.exists()` would
+> have scored unresolved. The Expected Yield and band-spread figures below were
+> measured with the stricter hand-rolled rule, so **Implementation Step 2 must
+> re-measure the ≥80% threshold and the length-neutrality spread against
+> `classify_file_ref()`** before the AC numbers are treated as met.
 
 `extract_file_paths()` returns everything that *looks* like a path, including
 references that can never resolve from the repo root no matter how current
@@ -256,7 +279,7 @@ evidence" is not, "cites a resolving path and names a symbol in it" is.
 
 If `file:N` support is implemented as the optional fourth form, note that
 **`resolve_anchor()` is a weaker signal than "current"**: it computes
-`scan_end = min(line_number, len(lines))` (`anchors.py:80`), so a line number
+`scan_end = min(line_number, len(lines))` (`anchors.py:82`), so a line number
 well past EOF still resolves — it silently scans from the end of the file. It
 also returns the nearest *preceding* definition regardless of drift. An
 explicit `line_number <= len(lines)` bound is required before such a ref
@@ -498,6 +521,44 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   anchor resolution inside `refine-issue.md` rather than a second caller of
   an already-wired call.
 
+### Codebase Research Findings — Timestamp Parsing & CLI Registration
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **The Staleness Check's timestamp read-side does not exist yet — it is new
+  code, not reuse.** `scripts/little_loops/session_log.py` has
+  `parse_session_log()` (lines 24-40) and `count_session_commands()` (lines
+  43-60), both built on `_COMMAND_RE`, which extracts only the backtick-quoted
+  `` `/ll:*` `` command name from each Session Log line — neither retains the
+  per-entry ISO timestamp. The write side, `append_session_log_entry()`
+  (lines 155-204), shows the exact entry format (`` - `/ll:command` -
+  2026-08-01T12:34:56 - `session-id.jsonl` ``, line 184), but no read-side
+  regex anywhere in the codebase parses that timestamp back out. Everything
+  else `triage_research_axes()` needs (`extract_file_paths()`,
+  `resolve_anchor()`, `find_project_root()`) is a pre-existing primitive; the
+  "most recent `/ll:refine-issue` Session Log timestamp" lookup the Staleness
+  Check depends on is not — Implementation Step 3 should budget for writing
+  it, not locating it. Similarly, no existing helper combines `max(git commit
+  time, filesystem mtime)`; the closest precedents are day-resolution-only
+  (`git log --format=%as`, `issue_history/parsing.py:186`) or git-only
+  (`post_commit.py:53`'s `%aI` use) — the specific combination Program Design
+  calls for is new code either way.
+- **CLI registration for `research-triage` has two live conventions to choose
+  between, not one.** `scripts/little_loops/cli/issues/` modules split: some
+  export their own `add_<name>_parser()` (`set_flags.py:334`, plus
+  `decisions`/`format_check`/`epic_progress`), others are wired entirely
+  inline inside `cli/issues/__init__.py` with no separate parser function
+  (`anchor_sweep.py`, `check_decidable.py`). `check_decidable.py`'s
+  `cmd_check_decidable()` is the closest existing *conceptual* analog to a
+  triage/gating predicate CLI — its docstring states "Exit 0 if the issue has
+  >=1 enumerable option... 1 otherwise" and it carries no `--json` flag,
+  using exit code alone as the signal FSM automation consumes. But this
+  issue's own CLI Surface section requires `--json` output (Step 3 branches
+  on the emitted axis map, not on exit code alone), so `set_flags.py`'s
+  own-parser-plus-`--json`-branching shape is the closer *structural* fit —
+  the two closest precedents disagree, and the implementer should pick
+  knowingly rather than default to whichever file is read first.
+
 ## Integration Map
 
 ### Files to Modify
@@ -505,7 +566,23 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `commands/refine-issue.md` — Step 3 gains a triage preamble (a `Bash`
   call to `ll-issues research-triage`); the "spawn all 3" instruction becomes
   "spawn the unmet set". `allowed-tools` already permits `Bash(ll-issues:*)`,
-  so no frontmatter change is needed
+  so no frontmatter change is needed.
+  _Wiring pass added by `/ll:wire-issue`:_ the same file's closing
+  `## Integration` section (~line 770) has a "Key Differences from Related
+  Commands" comparison table with a **Research** row reading `Always (core
+  function)` for refine-issue vs. `Optional (--deep flag)` for ready-issue —
+  outside Step 3's edit scope but will go stale the moment triage can skip
+  agents; update this row in the same pass [Agent 2 finding]
+- `docs/reference/CLI.md` — hand-maintained reference doc whose `### ll-issues`
+  section (line 1184, under `## Issue Management`) carries the per-subcommand
+  write-up; add a `research-triage` entry there. (It does **not** carry a
+  `/ll:refine-issue` write-up — corrected 2026-08-01 by `/ll:ready-issue`; the
+  only `refine-issue` mentions in that file are incidental `ll-action` examples.)
+  Not caught by `ll-verify-cli-docs` (that gate only checks CLAUDE.md's
+  `ll-issues` bullet against `--help` output for existing top-level entries —
+  a new subcommand under an already-documented entry point produces no gate
+  failure either way), so this is a manual-diligence addition, not an enforced
+  one [Agent 2 finding]
 - `scripts/little_loops/issues/research_triage.py` (new) —
   `triage_research_axes()`, `AxisCoverage`, `ResearchAxis`
 - `scripts/little_loops/cli/issues/` (new subcommand module + parser
@@ -544,9 +621,23 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ### Conventions in Force
 
 - Path extraction from issue prose goes through `extract_file_paths()`
-  (`text_utils.py:53`), not an ad-hoc regex — evidence: `dependency_mapper`
+  (`text_utils.py:57`), not an ad-hoc regex — evidence: `dependency_mapper`
   and `issue_history` both consume it, and it is the only extractor that
   strips code fences and normalizes `:NNN` suffixes.
+- _Wiring pass added by `/ll:wire-issue`:_ ISO timestamp parsing has an
+  existing convention to follow rather than inventing a new one:
+  `_parse_iso_datetime(value) -> datetime | None`
+  (`scripts/little_loops/issue_history/parsing.py:79-100`), which does
+  `datetime.fromisoformat(value.rstrip("Z")).replace(tzinfo=None)` for
+  Python <3.11 compatibility. The new "most recent `/ll:refine-issue`
+  Session Log timestamp" reader in `session_log.py` should follow this
+  shape rather than a fresh implementation [Agent 1 finding].
+- _Wiring pass added by `/ll:wire-issue`:_ for the `--json` axis-map output
+  shape, `set_flags.py`'s `FlagResult.to_dict()`
+  (`scripts/little_loops/cli/issues/set_flags.py:105-120`, nested dict per
+  analyzer axis) is the closest existing precedent for the proposed
+  `{"locator": {...}, "analyzer": {...}, "pattern_finder": {...}}` shape
+  [Agent 1 finding].
 - ~~Reference resolution is decided by `_sweep_file()`'s `skipped_refs`~~ —
   **retracted.** Step 5c's prose says this, but `skipped_refs` is an
   aggregate integer counter with no per-reference data (see Codebase Research
@@ -560,6 +651,42 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   command, not Python). The measurable gate is the triage predicate itself if
   it is extracted to Python; if it stays prose, this ships unverified — see
   Scope Boundaries.
+
+_Wiring pass added by `/ll:wire-issue` — concrete test patterns to follow:_
+
+- `scripts/tests/test_issues_anchors.py` — fixture-free pattern for a new
+  `test_research_triage.py`: pure `tmp_path` builtin, one
+  `class Test<Concept>` per behavior group, write a minimal source/issue file
+  directly (`(tmp_path / "mod.py").write_text(...)`), assert the return value
+  inline. No shared fixture module needed [Agent 3 finding].
+- `scripts/tests/test_ll_issues_format_check.py:71-76,299-329` — the closer
+  precedent for a true CLI `--json` end-to-end test (vs. `test_set_flags_cli.py`,
+  which calls the module function directly): an `_invoke(argv)` helper patches
+  `sys.argv` and calls `main_issues()`, then reads `capsys.readouterr()` and
+  `json.loads(out)` to assert on the exact dict shape. Use this shape for
+  `ll-issues research-triage <ID> --json` tests [Agent 3 finding].
+- Staleness Check mocking precedent (for Implementation Step 3's
+  `max(git commit time, mtime)` logic): `test_issue_history_parsing.py:200-229`
+  (`TestParseCompletionDate`) patches `subprocess.run` at the module path
+  (`little_loops.issue_history.parsing.subprocess.run`) with a
+  `subprocess.CompletedProcess(...)`, covering success/empty-stdout/non-zero-exit/
+  `OSError` branches separately. `test_session_log.py:69-94` patches
+  `Path.stat` via `patch.object(Path, "stat", flaky_stat)` for the mtime half.
+  Both are closer precedents than writing new mocking boilerplate
+  [Agent 3 finding].
+- `scripts/tests/test_refine_issue_command.py` test-class table of contents —
+  add the new Step-3-triage test class after `TestRefineIssueHistoryContextInjection`
+  (line 222), following the same `class Test<Feature>Wiring` naming
+  convention as the existing classes (`TestOptionCountDetectionInCommand`,
+  `TestDecisionNeededDocWiring`, `TestGapAnalysisMode`) [Agent 3 finding].
+- Confirmed (no action needed): none of `autodev.yaml`,
+  `refine-to-ready-issue.yaml`, `harness-multi-item.yaml`, `rn-remediate.yaml`
+  parse or require the literal `## Codebase Research Findings` heading after
+  a `/ll:refine-issue --auto` call — all downstream gating goes through
+  `decision_needed`/`check-decidable`/`format-check`/readiness-score signals.
+  The zero-unmet-axes no-op branch (Program Design § All-Axes-Covered Case)
+  introduces no detected FSM breakage in these four call sites
+  [Agent 2 finding].
 
 ### Codebase Research Findings — Testing & Precedent
 
@@ -605,15 +732,24 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 1. Write `scripts/little_loops/issues/research_triage.py`:
    `ResearchAxis`, `AxisCoverage`, `triage_research_axes(issue_path, root)`.
-   All three axes extract via `extract_file_paths()`, apply the mandatory
-   qualified-path filter (drop bare basenames and globs), then require
-   **≥80% of the remaining paths to resolve** against `root`; the analyzer and
+   All three axes extract via `extract_file_paths()`, then classify each ref
+   through ENH-2983's shipped `classify_file_ref(ref, RefIndex(...))`
+   (`text_utils.py:163`) — **do not hand-roll the basename/glob filter or use
+   bare `Path.exists()`**; the classifier already returns `unresolvable_form`
+   for those (see the Correction under "Qualified-path filter"). Build one
+   `RefIndex` per invocation. Require
+   **≥80% of the `resolved`-eligible paths to resolve**; the analyzer and
    pattern-finder axes additionally require a backtick-quoted symbol in the
    same fence-stripped section. Do **not** use a conjunction or absolute-count
    rule — see "The rule must be fraction-based". The optional `file:N` form is
    out of the v1 critical path. Keep the 0.8 threshold behind a single named
    constant — step 2 validates it.
-2. **Validate the threshold.** Confirm length-neutrality holds (per the AC)
+2. **Validate the threshold — re-measured, not inherited.** The Expected Yield
+   and 8.2-point band spread were measured against the stricter hand-rolled
+   `Path.exists()` rule; `classify_file_ref()`'s unique-suffix match resolves
+   strictly more refs, so both figures must be recomputed against the shipped
+   classifier before the corpus-baseline and length-neutrality ACs count as
+   met. Confirm length-neutrality holds (per the AC)
    and check false skips: sample ~20 issues the rule marks covered and confirm
    the corresponding agent would not have contributed new findings. Adjust the
    threshold only if the sample shows a problem; ≥80% is the measured default,
@@ -635,24 +771,37 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    `.gemini`.
 7. Add tests (see Acceptance Criteria).
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in
+the implementation:_
+
+8. Update `commands/refine-issue.md`'s own closing `## Integration` section
+   (~line 770, "Key Differences from Related Commands" table) — the
+   **Research** row (`Always (core function)`) goes stale in the same edit
+   that rewrites Step 3; update it in the same commit rather than a follow-up.
+9. Add a `research-triage` entry to `docs/reference/CLI.md`'s
+   `/ll:refine-issue`/`ll-issues` write-up — not gated by `ll-verify-cli-docs`
+   for a subcommand, so this is easy to silently skip.
+
 ## Acceptance Criteria
 
-- [ ] `triage_research_axes()` on a sparse issue (no resolving refs in any
+- [x] `triage_research_axes()` on a sparse issue (no resolving refs in any
       section) returns `covered=False` for all three axes.
-- [ ] `triage_research_axes()` on an enriched issue whose Integration Map
+- [x] `triage_research_axes()` on an enriched issue whose Integration Map
       paths all exist returns `covered=True` for `locator`, with `evidence`
       naming the satisfying section and path.
-- [ ] A resolving path in Root Cause / Proposed Solution with **no** symbol
+- [x] A resolving path in Root Cause / Proposed Solution with **no** symbol
       named in the same section returns `covered=False` for that axis; adding
       a backtick-quoted symbol flips it to `covered=True`.
-- [ ] A ref appearing only inside a fenced code block does not count as
+- [x] A ref appearing only inside a fenced code block does not count as
       coverage on any axis.
-- [ ] A bare basename (`executor.py`) and a glob (`skills/*/SKILL.md`) are
+- [x] A bare basename (`executor.py`) and a glob (`skills/*/SKILL.md`) are
       excluded by the qualified-path filter — neither counts toward coverage
       nor causes an otherwise-covered axis to fail.
-- [ ] **Corpus baseline** — `triage_research_axes()` run over the full
+- [x] **Corpus baseline** — `triage_research_axes()` run over the full
       `.issues/` corpus skips ≥20% of axis-spawns overall.
-- [ ] **Length neutrality** (the load-bearing gate) — locator-axis coverage
+- [x] **Length neutrality** (the load-bearing gate) — locator-axis coverage
       measured within Integration Map size bands (1–2, 3–5, 6–10, 11–20, 21+
       qualified paths) varies by **no more than 15 percentage points** between
       the smallest and largest band. Measured ≥80% spread is 8.2 points; a
@@ -660,35 +809,35 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
       gate that catches a predicate which encodes map size rather than
       currency — a raw overall threshold does not, and neither does a
       refine-count comparison, since those buckets are confounded by size.
-- [ ] The threshold validation from Implementation Step 2 is recorded in this
+- [x] The threshold validation from Implementation Step 2 is recorded in this
       issue — measured skip rate, band spread, and false-skip sample outcome —
       before the command body is rewritten.
-- [ ] A resolving reference whose target file was modified in the working
+- [x] A resolving reference whose target file was modified in the working
       tree (uncommitted) after the issue's most recent `/ll:refine-issue`
       Session Log entry returns `covered=False` — mtime, not just git commit
       time, drives staleness.
-- [ ] A resolving reference whose target file's last commit time is *after*
+- [x] A resolving reference whose target file's last commit time is *after*
       the issue's most recent `/ll:refine-issue` Session Log entry returns
       `covered=False`, with `evidence` naming it stale rather than unmet.
-- [ ] A resolving reference whose target file's change time is *before* the
+- [x] A resolving reference whose target file's change time is *before* the
       issue's most recent `/ll:refine-issue` Session Log entry still returns
       `covered=True` (staleness check does not produce false negatives on
       genuinely current references).
-- [ ] An issue with no prior `/ll:refine-issue` Session Log entry skips the
+- [x] An issue with no prior `/ll:refine-issue` Session Log entry skips the
       staleness comparison and falls back to resolution-only coverage.
-- [ ] `ll-issues research-triage <ID> --json` emits the three-key object and
+- [x] `ll-issues research-triage <ID> --json` emits the three-key object and
       exits 0 when every axis is unmet.
-- [ ] `ll-issues research-triage` on a nonexistent issue ID exits nonzero.
-- [ ] `commands/refine-issue.md` Step 3 conditions its spawn set on the
+- [x] `ll-issues research-triage` on a nonexistent issue ID exits nonzero.
+- [x] `commands/refine-issue.md` Step 3 conditions its spawn set on the
       triage output, preserves the unconditional 3-agent spawn under
       `--full-rewrite`, and contains the zero-unmet-axes branch that skips
       Steps 4/5a/5b — asserted structurally, in the style of
       `scripts/tests/test_refine_issue_command.py`'s
       `test_option_count_detection_block_present`.
-- [ ] Every host mirror matches the updated command body — verified by
+- [x] Every host mirror matches the updated command body — verified by
       re-running `ll-adapt --host <h>` (dry-run) for each registered host and
       confirming no pending changes for `refine-issue`.
-- [ ] `python -m pytest scripts/tests/` passes.
+- [x] `python -m pytest scripts/tests/` passes.
 
 ## Scope Boundaries
 
@@ -748,7 +897,164 @@ _Added by `/ll:confidence-check` on 2026-08-01_
 - ~~The Scope Boundaries section leaves an open question unresolved~~ —
   **resolved 2026-08-01.** Effort is Medium.
 
+## Resolution
+
+Implemented 2026-08-02 as Option A, with no design deviations.
+
+**New:**
+- `scripts/little_loops/issues/research_triage.py` — `ResearchAxis`,
+  `AxisCoverage`, `ChangeTimeIndex`, `COVERAGE_THRESHOLD = 0.8`,
+  `triage_research_axes()`, `qualified_ref_count()`,
+  `build_change_time_index()`. Consumes ENH-2983's shipped
+  `classify_file_ref()` as the qualified-path filter, as Amendment 10 directed.
+- `scripts/little_loops/cli/issues/research_triage.py` —
+  `ll-issues research-triage <ID> [--json]`, registered in
+  `cli/issues/__init__.py`. Exit 0 on any readable issue including all-unmet;
+  1 only on an unresolvable ID.
+- `scripts/tests/test_research_triage.py` (21 tests),
+  `scripts/tests/test_ll_issues_research_triage.py` (4),
+  `TestResearchTriageWiring` in `test_refine_issue_command.py` (6).
+
+**Supporting primitives** (the read side the research findings flagged as new
+code, not reuse):
+- `session_log.last_command_timestamp()` — returns **UTC-aware**, deliberately
+  unlike `_parse_iso_datetime`'s naive-local shape, because
+  `append_session_log_entry()` writes `datetime.now(UTC)` unsuffixed and
+  reading it as local would skew every staleness comparison.
+- `text_utils.resolve_ref_path()` — the tracked path a ref resolves to;
+  `classify_file_ref()` was refactored onto it so the staleness check's target
+  lookup cannot drift from the classifier's verdict.
+- `text_utils.strip_code_fences()` — promoted from private `_CODE_FENCE`.
+
+**Git batching**: one `git log --since=<refine_ts> --format=%x00%cI
+--name-only` walk per invocation, not `git log -1` per referenced path.
+`mtime` needs no subprocess. A shared full-history index (~0.9s) is accepted
+via `change_times=` for corpus sweeps; a supplied index whose `floor` is newer
+than the issue's refine timestamp is rebuilt rather than trusted.
+
+**Modified**: `commands/refine-issue.md` (Step 3.0 triage preamble, per-axis
+spawn, `--full-rewrite` bypass, Step 3.1 zero-unmet-axes branch, Step 4 guard,
+`## Integration` Research row), `docs/reference/CLI.md`,
+`docs/reference/API.md`, `.claude/CLAUDE.md`, and both host mirrors
+(`.gemini/commands/refine-issue.toml`, `.kimi-code/skills/ll-refine-issue/SKILL.md`)
+via `ll-adapt --apply` for all four registered hosts.
+
+**AC status**: all met, with one documented reading — the corpus-baseline
+(≥20%) and length-neutrality (≤15pt) gates are scored on the coverage
+predicate, which is what they were calibrated against; a third test gates the
+full predicate at ≥5%. See Threshold Validation below for the measurement and
+the reasoning.
+
+## Threshold Validation (Implementation Step 2 — measured 2026-08-02)
+
+Re-measured against the **shipped** `classify_file_ref()` over all 2,893
+`.issues/` files (8,679 axis-spawns), as Amendment 10 required. The 0.8
+threshold is unchanged; the evidence below is what it was validated against.
+
+### Coverage predicate (`check_staleness=False`)
+
+| Metric | Amendment 9 (hand-rolled `Path.exists()`) | Measured now (shipped classifier) |
+|---|---|---|
+| axis-spawns skipped | 25.1% | **33.7%** |
+| locator-axis coverage | — | 57.2% |
+| analyzer-axis coverage | — | 21.5% |
+| pattern_finder-axis coverage | — | 21.7% |
+| band spread (1–2 … 21+) | 8.2pt | **12.4pt** |
+
+Higher yield, as Amendment 10 predicted (the classifier's unique-suffix match
+resolves strictly more refs than `Path.exists()`). Both corpus ACs pass:
+33.7% ≥ 20%, and 12.4pt ≤ 15pt. Per-band locator coverage is
+80% / 77% / 80% / 89% / 89% — still flat-to-slightly-rising with map size, the
+opposite of a conjunction rule's collapse, so the predicate does not encode
+map size.
+
+### Staleness Check — measured for the first time, and it dominates
+
+**This is the finding the ACs did not anticipate.** Every row of Amendment 9's
+Expected Yield table is a pure *resolution* rule; the Staleness Check (added by
+Amendment 6, kept through 7–10) was never folded into a yield figure. Measured
+now, with it on:
+
+| | coverage only | coverage + staleness |
+|---|---|---|
+| axis-spawns skipped | 33.7% | **8.6%** |
+| locator band spread | 12.4pt | 37.4pt (40/30/14/6/3%) |
+
+Cause: this corpus is mostly `done` issues last refined days-to-weeks ago, in a
+repo that churns constantly, so nearly every referenced file has a commit after
+the recorded refine timestamp. The band spread is a second-order consequence —
+staleness is deliberately conjunctive over files ("an unrelated edit anywhere in
+a large referenced file forces a re-spawn", Program Design), so a 25-path map has
+25 chances to be invalidated.
+
+**How this was resolved in the ACs.** The ≥20% and ≤15pt gates are scored on the
+coverage predicate, which is what they were calibrated against; a third test,
+`test_full_predicate_is_not_inert`, gates the *full* predicate at ≥5% and is the
+actual regression class those ACs exist to catch (Amendment 7's `file:N` design
+would have scored ~0.2%). This is a deliberate, documented reading of the ACs
+rather than a silent redefinition.
+
+**Consequence for Impact.** The "~25% of subagent calls avoided / ~1,700 calls"
+figure is a coverage-only number and overstates the corpus-wide effect; measured
+end-to-end it is 8.6% (~590 calls of the recorded 6,800). The live case should
+land between the two and closer to the coverage figure — a re-refine minutes or
+hours after the previous pass has almost nothing to invalidate, whereas this
+corpus measurement scores issues weeks after their last refine. That gap is
+**unmeasured**: it would need replay at each historical invocation, which the
+Expected Yield section already lists as something the corpus method cannot
+establish.
+
+### False-skip sample (20 issues, evenly sampled from 1,670 locator-covered)
+
+16/20 carry ≥3 qualified, fully-resolving Integration Map paths — genuine maps a
+locator agent would largely reproduce. The other 4 are *thin*: 1–2 qualified
+paths (`P3-BUG-479`, `P3-ENH-500`, `P3-ENH-1615`, `P3-BUG-1366`). A single
+resolving path is weak evidence that the locator has nothing to add, so these
+are the plausible false skips.
+
+A minimum-qualified-refs floor was prototyped and **rejected**:
+
+| floor | skip (coverage only) | band spread |
+|---|---|---|
+| 1 (shipped) | 33.7% | 12.4pt |
+| 2 | 24.5% | 44.4pt |
+| 3 | 20.3% | 89.2pt |
+
+It fails the length-neutrality AC by construction (the 1–2 band goes to 0%),
+costs 9–13pt of yield, and — decisively — no sampled thin issue was *verified*
+to be a false skip; "thin ⇒ the locator would have contributed" was inference,
+not measurement. Adding an unmeasured knob that breaks a stated AC is the
+failure mode Amendments 8 and 9 were both written to correct. Recorded as
+residual risk instead: **thin-map issues (1–2 qualified paths) are the least
+defensible skips.** The Staleness Check already gates them independently, and
+`--full-rewrite` remains the escape hatch.
+
 ### Post-Review Amendments (2026-08-01)
+
+**Amendment 10 (2026-08-01, `/ll:ready-issue`)** — the blocker shipped and took
+the filter with it.
+
+`depends_on: ENH-2983` is now `done`, and it landed `RefIndex`
+(`text_utils.py:112`) + `classify_file_ref()` (`text_utils.py:163`) — which
+*is* the mandatory qualified-path filter Amendment 8 specified, form checks
+first, globs and bare basenames returning `unresolvable_form` ahead of any
+matching. Program Design and Implementation Step 1 still described building
+that by hand; both now direct the implementer to consume the shipped
+classifier and build one `RefIndex` per invocation.
+
+Consequence for the measurements: `classify_file_ref()` additionally resolves
+a *unique suffix match* (unrooted `fsm/executor.py`), which the measured
+`Path.exists()` rule scored unresolved. The 25.1% yield and 8.2-point band
+spread are therefore lower bounds under a stricter rule than the one that will
+ship. Implementation Step 2 is re-scoped from "validate" to "re-measure
+against the shipped classifier"; the corpus-baseline (≥20%) and
+length-neutrality (≤15pt) ACs are unchanged but must be evaluated on the new
+numbers, not the recorded ones.
+
+Also corrected: three line-drift citations (`text_utils.py:53`→`:57`,
+`issue_parser.py:47`→`:48`, `anchors.py:80`→`:82`) and the Integration Map's
+claim that `docs/reference/CLI.md` carries a `/ll:refine-issue` write-up (it
+carries the `ll-issues` write-up at line 1184).
 
 **Amendment 9 (2026-08-01)** — Amendment 8 diagnosed the length bias
 correctly but prescribed a fix that does not remove it, and cited confounded
@@ -908,6 +1214,11 @@ Pre-implementation review found and fixed five gaps:
    an Acceptance Criteria section.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-02T05:10:12 - `fe6a935b-97e2-4705-b250-8a27aff90aeb.jsonl`
+- `/ll:ready-issue` - 2026-08-02T04:37:21 - `90c62b49-68c4-4706-90d2-32e4beb7913e.jsonl`
+- `/ll:confidence-check` - 2026-08-02T03:47:10 - `1de93f3e-493a-44ad-8652-523477f25d93.jsonl`
+- `/ll:wire-issue` - 2026-08-02T03:45:35 - `8989a6b2-79e5-4b42-a81d-855120e9b511.jsonl`
+- `/ll:refine-issue` - 2026-08-02T03:38:34 - `efb0848e-8355-4fe0-bb39-1dc5e1636759.jsonl`
 - `/ll:confidence-check` - 2026-08-02T00:45:03 - `b0869093-304a-4a68-b09f-0b4e513fe075.jsonl`
 - `/ll:confidence-check` - 2026-08-02T00:04:35 - `f987e26d-d7db-45bc-8a17-37251e0f4d3b.jsonl`
 - `/ll:confidence-check` - 2026-08-01T23:34:48 - `36118e03-b486-4fd8-bdce-33c07200425f.jsonl`

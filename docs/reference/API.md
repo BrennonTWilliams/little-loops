@@ -65,6 +65,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.sprint` | Sprint planning and execution |
 | `little_loops.issue_template` | Issue template assembly for sync pull (v2.0-compliant markdown from per-type section files) |
 | `little_loops.output_parsing` | Claude CLI output parsing utilities used by `issue_manager` and `parallel` |
+| `little_loops.ready_issue` | Runs `/ll:ready-issue` with a retry on an `UNKNOWN` (non-compliant, unparseable) verdict |
 | `little_loops.output.parse` | Stop-sequence / prefill JSON output helpers (`extract_between_tags`, `parse_prefilled_json`) that bound LLM output-token cost |
 | `little_loops.output_cleaner` | Anti-event + duplicate-window pre-filter (`filter_output`) that trims tool/log noise before it enters context |
 | `little_loops.ab_writer` | A/B baseline results aggregation and `ab.json` writer (FEAT-1790). Provides `ABResults` dataclass + summary calculation + JSON schema generation. |
@@ -73,7 +74,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.design_tokens` | Multi-layer token loader (primitives → semantic → typography → spacing → theme) with profile-aware resolution (ENH-1768). Renders `{token.reference}` aliases for prompts and CSS. |
 | `little_loops.extensions` | Reference extension implementations — `ReferenceInterceptorExtension` copy-paste starting point for custom interceptors / event handlers. |
 | `little_loops.issue_progress` | EPIC progress aggregation: child-issue status rollup (`IssueProgress`), oldest-open detection, and `epic-progress` CLI support. |
-| `little_loops.issues` | Issue utility subpackage — anchor generation and sweep utilities used by `ll-issues anchor-sweep`. |
+| `little_loops.issues` | Issue utility subpackage — anchor generation and sweep utilities used by `ll-issues anchor-sweep`, plus `research_triage` (ENH-2971), the coverage/staleness predicate behind `ll-issues research-triage`. |
 | `little_loops.observability` | DES variant registry and audit-tree walker for cross-checking every emit site against registered event shapes (ENH-2475, F5 adoption gate). |
 | `little_loops.output` | Output-parsing subpackage — stop-sequence / prefill JSON helpers (`extract_between_tags`, `parse_prefilled_json`) for bounding LLM output-token cost (FEAT-2470). |
 | `little_loops.pricing` | Model pricing constants (USD per million tokens) for token cost estimation across the model registry. `INTRO_PRICING` overrides `MODEL_PRICING` for a model while a time-bounded introductory rate is active (e.g. Sonnet 5's $2/$10 rate through 2026-08-31 inclusive, ENH-2835); `estimate_cost_usd()` checks `date.today()` against each entry's `expires` date and falls back to standard `MODEL_PRICING` once it lapses. |
@@ -6881,6 +6882,7 @@ Session log linking for issue files. Links Claude Code JSONL session files to is
 from little_loops.session_log import (
     parse_session_log,
     count_session_commands,
+    last_command_timestamp,
     get_current_session_jsonl,
     append_session_log_entry,
 )
@@ -6911,6 +6913,22 @@ Count occurrences of each `/ll:*` command in the `## Session Log` section. Unlik
 - `content` - Full text of an issue markdown file
 
 **Returns:** Mapping of command name to occurrence count (e.g. `{"/ll:refine-issue": 3}`)
+
+### last_command_timestamp
+
+```python
+def last_command_timestamp(content: str, command: str) -> datetime | None
+```
+
+Return the most recent `## Session Log` timestamp for `command` — the read side of `append_session_log_entry()` (ENH-2971). Accepts both the full `- `/ll:refine-issue` - 2026-08-01T12:34:56 - `session.jsonl`` form and the older date-only form (read as midnight).
+
+Returns a **UTC-aware** datetime, deliberately unlike `issue_history.parsing._parse_iso_datetime()`'s naive-local convention: `append_session_log_entry()` writes `datetime.now(UTC)` without a `Z` suffix, so reading those stamps as local time would skew every comparison by the local UTC offset.
+
+**Parameters:**
+- `content` - Full text of an issue markdown file
+- `command` - Command name to match, e.g. `"/ll:refine-issue"`
+
+**Returns:** The newest matching timestamp, or `None` when the command has no dated entry (or no Session Log section exists)
 
 ### get_current_session_jsonl
 
@@ -6973,8 +6991,10 @@ Text extraction utilities for issue content. Provides shared functions for extra
 | Function | Purpose |
 |----------|---------|
 | `extract_file_paths` | Extract file paths from issue content |
+| `strip_code_fences` | Remove fenced code blocks — the public form of the fence handling `extract_file_paths` applies, so callers scanning the same text for something else use identical semantics (ENH-2971) |
 | `build_ref_index` | Index tracked files by basename via a single `git ls-files` call (ENH-2983) |
 | `classify_file_ref` | Classify one extracted file path reference: `resolved`/`stale`/`unresolvable_form`/`planned_new` (ENH-2983) |
+| `resolve_ref_path` | Return the tracked repo-relative path a reference resolves to, or `None` — steps 3-4 of `classify_file_ref`'s resolution order, for callers needing the *target* rather than the verdict (ENH-2971) |
 | `classify_issue_refs` | Classify every file path reference extracted from one issue body (ENH-2983) |
 | `extract_words` | Tokenize text into a set of significant words (3+ chars, stop words removed) |
 | `calculate_word_overlap` | Jaccard similarity between two word sets |
@@ -10109,6 +10129,53 @@ prompt = expand_skill("ready-issue", ["FEAT-123"], config)
 if prompt is None:
     prompt = "/ll:ready-issue FEAT-123"  # fallback
 ```
+
+## little_loops.ready_issue
+
+Runs `/ll:ready-issue` with containment for non-compliant model turns. Shared by `issue_manager.process_issue_inplace` (ll-auto) and `parallel.worker_pool` (ll-parallel / ll-sprint).
+
+`parse_ready_issue_output` returns `UNKNOWN` only after five progressively looser extraction strategies fail, so `UNKNOWN` means the model did not answer the question at all — a distinct failure from a real `NOT_READY`. Collapsing the two used to discard whole runs: one observed autodev run lost 14m17s of successful refine/wire/confidence work because a single ready-issue turn replied with prose, exited 0, and parsed to `UNKNOWN`.
+
+### run_ready_issue_with_retry
+
+```python
+def run_ready_issue_with_retry(
+    *,
+    target: str,
+    initial_command: str,
+    run: Callable[[str], subprocess.CompletedProcess[str]],
+    config: BRConfig,
+    retries: int = 1,
+    log: Callable[[str], None] | None = None,
+) -> tuple[dict[str, Any], subprocess.CompletedProcess[str]]
+```
+
+**Parameters**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `target` | `str` | Issue ID or path — what `$ARGUMENTS` resolves to |
+| `initial_command` | `str` | First-attempt command, already built by the caller |
+| `run` | `Callable` | Executes a command, returns a `CompletedProcess` |
+| `config` | `BRConfig` | Used to build the retry prompt |
+| `retries` | `int` | Attempts allowed after an `UNKNOWN` verdict; `0` disables |
+| `log` | `Callable \| None` | Optional sink for retry notices |
+
+**Returns**: `(parsed, result)` from the final attempt, so downstream handling (path validation, corrections, CLOSE/BLOCKED/NOT_READY) runs unchanged against whichever attempt won.
+
+**Retry contract**: retries only when `returncode == 0` **and** the verdict is `UNKNOWN`. A non-zero return code is never retried — that is a different failure mode both callers already handle. A genuine `NOT_READY` is never retried.
+
+Configured by `automation.ready_issue_unknown_retries` (default `1`) in `.ll/ll-config.json`.
+
+### build_retry_command
+
+```python
+def build_retry_command(target: str, config: BRConfig) -> str
+```
+
+Builds the *differentiated* retry prompt: the pre-expanded skill body plus `IMPERATIVE_TAIL`, which states explicitly that the content is a request to act rather than reference material. Always the expanded form regardless of what the first attempt used, so an ll-parallel worker that opened with the slash form still gets the hardened prompt.
+
+Falls back to a plain `/ll:ready-issue <target>` re-roll when `expand_skill` returns `None`. The tail is deliberately **not** appended in that case — trailing prose on a slash command would be swallowed as `$ARGUMENTS`.
 
 ## little_loops.init.install_check
 

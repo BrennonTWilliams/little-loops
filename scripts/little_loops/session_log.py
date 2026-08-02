@@ -19,6 +19,11 @@ _SESSION_LOG_SECTION_RE = re.compile(
 )
 # Regex to extract backtick-quoted /ll:* command names from session log entries
 _COMMAND_RE = re.compile(r"`(/[\w:-]+)`")
+# Same, but capturing the entry's ISO timestamp (ENH-2971). The time portion is
+# optional: the oldest entries carry a bare date.
+_TIMESTAMPED_ENTRY_RE = re.compile(
+    r"`(/[\w:-]+)`\s*-\s*(\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)?)"
+)
 
 
 def parse_session_log(content: str) -> list[str]:
@@ -58,6 +63,43 @@ def count_session_commands(content: str) -> dict[str, int]:
     for cmd in _COMMAND_RE.findall(matches[-1].group(1)):
         counts[cmd] = counts.get(cmd, 0) + 1
     return counts
+
+
+def last_command_timestamp(content: str, command: str) -> datetime | None:
+    """Return the most recent ``## Session Log`` timestamp for *command*.
+
+    The read side of :func:`append_session_log_entry`. Entries look like
+    ``- `/ll:refine-issue` - 2026-08-01T12:34:56 - `session.jsonl` ``; the
+    older date-only form (``- `/ll:capture-issue` - 2026-08-01``) is also
+    accepted and read as midnight.
+
+    Returns a **UTC-aware** datetime, deliberately unlike
+    ``issue_history.parsing._parse_iso_datetime``'s naive-local convention:
+    :func:`append_session_log_entry` writes ``datetime.now(UTC)`` without a
+    ``Z`` suffix, so reading those stamps as local time would skew every
+    comparison by the local UTC offset.
+
+    Args:
+        content: Full text of an issue markdown file.
+        command: Command name to match, e.g. ``"/ll:refine-issue"``.
+
+    Returns:
+        The newest matching timestamp, or None when the command has no dated
+        entry (or no Session Log section exists).
+    """
+    matches = list(_SESSION_LOG_SECTION_RE.finditer(content))
+    if not matches:
+        return None
+    stamps: list[datetime] = []
+    for entry in _TIMESTAMPED_ENTRY_RE.finditer(matches[-1].group(1)):
+        if entry.group(1) != command:
+            continue
+        try:
+            parsed = datetime.fromisoformat(entry.group(2).rstrip("Z"))
+        except ValueError:
+            continue
+        stamps.append(parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed)
+    return max(stamps) if stamps else None
 
 
 def get_current_session_jsonl(cwd: Path | None = None) -> Path | None:

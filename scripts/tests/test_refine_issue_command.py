@@ -250,3 +250,60 @@ class TestRefineIssueHistoryContextInjection:
         assert "missing" in text.lower() or "absent" in text.lower() or "DB" in text, (
             "Step 2.5 must mention graceful degradation when DB is missing or no matches"
         )
+
+
+class TestResearchTriageWiring:
+    """Step 3 must condition its spawn set on `ll-issues research-triage` (ENH-2971)."""
+
+    def _step_3_text(self) -> str:
+        content = COMMAND_FILE.read_text()
+        start = content.index("### 3. Research Codebase")
+        end = content.index("### 4. Identify Knowledge Gaps")
+        return content[start:end]
+
+    def test_triage_cli_invoked(self) -> None:
+        assert "ll-issues research-triage" in self._step_3_text(), (
+            "Step 3 must call `ll-issues research-triage` before spawning research agents"
+        )
+
+    def test_spawn_set_is_conditioned_on_triage(self) -> None:
+        text = self._step_3_text()
+        assert "covered" in text, "Step 3 must branch on the triage output's `covered` field"
+        assert "Spawn exactly one Task per axis whose `covered` is `false`" in text, (
+            "Step 3 must instruct spawning one agent per uncovered axis, not all three"
+        )
+        assert "Spawn all 3 agents in a SINGLE message" not in text, (
+            "the unconditional 3-agent spawn instruction must be gone from Step 3"
+        )
+
+    def test_full_rewrite_preserves_unconditional_spawn(self) -> None:
+        text = self._step_3_text()
+        assert "FULL_REWRITE" in text, (
+            "Step 3 must exempt --full-rewrite from triage (a full rewrite does not "
+            "trust existing content)"
+        )
+
+    def test_cli_failure_falls_back_to_all_three(self) -> None:
+        text = self._step_3_text().lower()
+        assert "fail open" in text or "fail-open" in text, (
+            "Step 3 must fail open to all three agents when the triage CLI fails"
+        )
+
+    def test_zero_unmet_axes_branch_present(self) -> None:
+        text = self._step_3_text()
+        assert "#### 3.1" in text, "Step 3 must contain the zero-unmet-axes branch as 3.1"
+        for step in ("4", "5a", "5b"):
+            assert step in text, f"the 3.1 branch must name Step {step} as skipped"
+        assert "Session Log" in text, (
+            "a no-op refine must still append its Session Log entry, or callers cannot "
+            "distinguish it from a silent failure"
+        )
+
+    def test_step_4_guards_against_absent_findings(self) -> None:
+        content = COMMAND_FILE.read_text()
+        start = content.index("### 4. Identify Knowledge Gaps")
+        end = content.index("### 5a.")
+        assert "3.1" in content[start:end], (
+            "Step 4 must skip when Step 3.1 applied — with no research findings there is "
+            "nothing to identify gaps against"
+        )

@@ -54,6 +54,16 @@ SOURCE_EXTENSIONS = frozenset(
 )
 
 
+def strip_code_fences(content: str) -> str:
+    """Remove fenced code blocks from *content*.
+
+    The public form of the fence handling :func:`extract_file_paths` applies,
+    so callers that scan the same text for something else (e.g. ENH-2971's
+    symbol check) use identical fence semantics rather than a second regex.
+    """
+    return _CODE_FENCE.sub("", content)
+
+
 def extract_file_paths(content: str) -> set[str]:
     """Extract file paths from issue content.
 
@@ -77,7 +87,7 @@ def extract_file_paths(content: str) -> set[str]:
         return set()
 
     # Strip code fences to avoid matching example paths
-    stripped = _CODE_FENCE.sub("", content)
+    stripped = strip_code_fences(content)
 
     paths: set[str] = set()
     for pattern in (_BOLD_FILE_PATH, _BACKTICK_PATH, _STANDALONE_PATH):
@@ -202,16 +212,26 @@ def classify_file_ref(ref: str, index: RefIndex, *, line: str = "") -> RefStatus
     if line and _PLANNED_NEW_RE.search(line):
         return "planned_new"
 
+    return "resolved" if resolve_ref_path(ref, index) is not None else "stale"
+
+
+def resolve_ref_path(ref: str, index: RefIndex) -> str | None:
+    """Return the tracked repo-relative path *ref* resolves to, else ``None``.
+
+    Steps 3-4 of :func:`classify_file_ref`'s resolution order, factored out so
+    callers that need the *target* rather than the verdict (ENH-2971's
+    staleness check has to stat the file) cannot drift from the classifier.
+    Assumes the form checks have already passed; call it via
+    :func:`classify_file_ref` unless you have run them yourself.
+    """
     basename = ref.rsplit("/", 1)[-1]
     candidates = index.by_basename.get(basename, [])
     if ref in candidates:
-        return "resolved"
+        return ref
 
     suffix = "/" + ref
     matches = [p for p in candidates if p.endswith(suffix)]
-    if len(matches) == 1:
-        return "resolved"
-    return "stale"
+    return matches[0] if len(matches) == 1 else None
 
 
 def classify_issue_refs(content: str, index: RefIndex) -> dict[str, RefStatus]:

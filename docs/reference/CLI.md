@@ -1632,6 +1632,41 @@ ll-issues asw --dry-run
 
 ---
 
+#### `ll-issues research-triage`
+
+Report which of `/ll:refine-issue`'s three research axes an issue already covers, so Step 3 can spawn only the subagents whose findings are actually missing (ENH-2971). Pure function of the issue file plus disk state — no model call.
+
+| Argument | Description |
+|----------|-------------|
+| `issue_id` | Issue ID to triage (e.g. `ENH-2971`) |
+
+| Flag | Description |
+|------|-------------|
+| `--json` / `-j` | Emit `{"locator": {...}, "analyzer": {...}, "pattern_finder": {...}}`, each value `{"covered": bool, "evidence": str}` |
+| `--config` | Path to project root |
+
+**Axes and what satisfies them:**
+
+| Axis | Sections read | Also requires |
+|------|---------------|---------------|
+| `locator` | `## Integration Map` | — (the locator's output *is* a set of file locations) |
+| `analyzer` | `## Root Cause`, `## Current Behavior` | a backtick-quoted symbol in the same section |
+| `pattern_finder` | `## Proposed Solution` | a backtick-quoted symbol in the same section |
+
+**Behavior:**
+- Path references are extracted with `extract_file_paths()` (code fences stripped) and classified with `classify_file_ref()` — globs, `<placeholder>` paths and bare basenames come back `unresolvable_form` and are excluded from both sides of the fraction.
+- An axis is **covered** when **≥80%** of its qualified references resolve. The rule is fraction-based on purpose: per-path staleness is ~15% at every Integration Map size, so an "all must resolve" rule would compound to `0.85^k` and measure map *size* rather than currency.
+- **Staleness**: every resolved path's `max(git commit time, filesystem mtime)` is compared against the issue's most recent `` `/ll:refine-issue` `` `## Session Log` timestamp. A target that moved after that pass makes the axis uncovered, with `evidence` naming the stale path. Both clocks are needed — a git-only check misses uncommitted working-tree edits. An issue with no prior refine entry skips the comparison.
+- **Exit 0 whenever the issue is readable, including when every axis is unmet** — a nonzero exit there would be indistinguishable from a missing issue. Only an unresolvable issue ID exits 1.
+
+**Examples:**
+```bash
+ll-issues research-triage ENH-2971
+ll-issues research-triage ENH-2971 --json
+```
+
+---
+
 #### `ll-issues fingerprint` / `ll-issues fp`
 
 Extract a structured fingerprint from an issue file for cross-theme conflict detection. Returns JSON with the issue id, `files_to_modify` (file paths from the Integration Map), and `key_terms` (significant words after stop-word filtering). Used by `/ll:audit-issue-conflicts --cross-theme` Phase 2b to identify cross-batch overlap pairs without an LLM call.

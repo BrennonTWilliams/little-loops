@@ -156,9 +156,52 @@ If `$HIST` is non-empty, include the output as a `## Historical Context` section
 
 ### 3. Research Codebase
 
-Spawn parallel sub-agents to gather comprehensive context about the issue's subject matter.
+Spawn parallel sub-agents to gather comprehensive context about the issue's subject matter — but only the ones the issue does not already answer.
 
-**IMPORTANT**: Spawn all 3 agents in a SINGLE message with multiple Task tool calls, and wait for their results in this same turn before proceeding.
+#### 3.0 Triage the research axes first (ENH-2971)
+
+Each agent below covers one research axis. An issue that already cites resolving, current references for an axis does not need that axis re-derived — and on a re-refine, re-deriving it is the dominant cost. Ask before spawning:
+
+```bash
+if [ "$FULL_REWRITE" = true ]; then
+    TRIAGE=""   # a full rewrite does not trust what is already in the file
+else
+    TRIAGE=$(ll-issues research-triage "${ISSUE_ID}" --json 2>/dev/null || true)
+fi
+```
+
+- **`--full-rewrite`**: skip triage entirely and spawn all 3. Triage applies on **every other path**, including plain `--auto` — that is the dominant call site, and gating on `--gap-analysis` alone would exempt most invocations.
+- **Empty or unparseable `$TRIAGE`** (CLI missing, failed, any reason): spawn all 3. Fail open — the cost of failing open is today's behavior, the cost of failing closed is a silently under-researched issue.
+
+`$TRIAGE` is a three-key object; each value has `covered` (bool) and `evidence` (string):
+
+```json
+{
+  "locator":        {"covered": true,  "evidence": "Integration Map → commands/refine-issue.md"},
+  "analyzer":       {"covered": false, "evidence": ""},
+  "pattern_finder": {"covered": false, "evidence": ""}
+}
+```
+
+**Spawn exactly one Task per axis whose `covered` is `false`** — Agent 1 for `locator`, Agent 2 for `analyzer`, Agent 3 for `pattern_finder`. Spawn them in a SINGLE message with multiple Task tool calls, and wait for their results in this same turn before proceeding. Do not spawn an agent for a covered axis, and do not substitute your own judgment for the triage verdict: it is computed from resolving file references and their change times, which you cannot check as cheaply or as reliably by reading.
+
+A `covered` verdict already accounts for staleness — an axis whose referenced files changed after this issue's most recent `/ll:refine-issue` Session Log entry comes back `covered: false` with an `evidence` string naming the stale path. So a covered axis means "resolving *and* current", not merely "mentioned".
+
+#### 3.1 Zero unmet axes — the no-op refine
+
+If **every** axis is `covered`, spawn nothing and **skip Steps 4, 5a, and 5b entirely**. There are no research findings, and Step 4/5a's instructions ("using the research findings from Step 3", "fill gaps with research findings") would otherwise read as an invitation to write enrichment from nothing — a fabrication risk strictly worse than the wasted agent calls this triage removes.
+
+Proceed directly to Step 5c (if `--gap-analysis`), then Steps 6, 6.5, and 7. Still append the Session Log entry, and report the no-op explicitly, naming what satisfied each axis:
+
+```
+No research needed — all three axes already covered:
+  locator        — [evidence]
+  analyzer       — [evidence]
+  pattern_finder — [evidence]
+Issue left unchanged.
+```
+
+A refine that correctly does nothing must still be observable as having run, or a caller cannot distinguish "already enriched" from "refine failed silently".
 
 #### Agent 1: codebase-locator
 
@@ -231,9 +274,11 @@ Do not recommend an implementation approach. Report what is true about the
 codebase; the route is the implementer's call.
 ```
 
-#### Wait for ALL agents' results synchronously in this same turn before proceeding.
+#### Wait for ALL spawned agents' results synchronously in this same turn before proceeding.
 
 ### 4. Identify Knowledge Gaps
+
+**Skip this step if Step 3.1 applied** (zero unmet axes, no agents spawned) — with no research findings there is nothing to identify gaps against, and inventing them is the failure mode 3.1 exists to prevent.
 
 Using the research findings from Step 3, identify what information is **missing from the issue** that an implementer would need. This is **knowledge gap analysis**, not structural gap analysis.
 
@@ -768,5 +813,5 @@ ISSUE REFINED: [ISSUE-ID]
 |--------|-------------|-------------|-------------|
 | **Purpose** | Template alignment | Codebase research & enrichment | Validation & gatekeeping |
 | **Gap type** | Structural (missing sections) | Knowledge (missing implementation context) | Accuracy (claims vs reality) |
-| **Research** | None (text inference) | Always (core function) | Optional (--deep flag) |
+| **Research** | None (text inference) | Core function, per-axis gated (skips axes the issue already covers; always all 3 under `--full-rewrite`) | Optional (--deep flag) |
 | **Output** | Boilerplate/inferred text | Concrete file paths, signatures, analysis | Verdict + corrections |

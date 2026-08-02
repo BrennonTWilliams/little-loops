@@ -74,6 +74,10 @@ def main_issues() -> int:
             cmd_prioritize,
         )
         from little_loops.cli.issues.refine_status import cmd_refine_status
+        from little_loops.cli.issues.research_triage import (
+            add_research_triage_parser,
+            cmd_research_triage,
+        )
         from little_loops.cli.issues.search import cmd_search
         from little_loops.cli.issues.sequence import cmd_sequence
         from little_loops.cli.issues.set_flags import add_set_flags_parser, cmd_set_flags
@@ -115,6 +119,7 @@ Sub-commands:
   link             Write or remove a dependency edge in issue frontmatter
   skip             Deprioritize an issue by bumping its priority prefix
   anchor-sweep     Rewrite file:line references in active issue files to anchor form
+  research-triage  Report which of refine-issue's three research axes an issue already covers
   fingerprint      Extract structured fingerprint (id, files, key_terms) from an issue file
   format-check     Deterministic structural linter for issue formatting (missing/renamed/empty/boilerplate/malformed_id/prose_dep_drift/stale_prose_dep/program_design_nonspecific/deprecated_key/multi_frontmatter/testable/stale_file_ref)
   size             Deterministic size scoring (file/section/word-count signals) for issue-size-review
@@ -177,6 +182,7 @@ Examples:
   %(prog)s prioritize --all --json
   %(prog)s prioritize --check
   %(prog)s prioritize --apply -
+  %(prog)s research-triage ENH-2971 --json
 """,
         )
 
@@ -919,6 +925,7 @@ Examples:
         add_normalize_parser(subs)
         add_set_flags_parser(subs)
         add_prioritize_parser(subs)
+        add_research_triage_parser(subs)
 
         args = parser.parse_args()
 
@@ -1003,6 +1010,8 @@ Examples:
             return cmd_normalize(config, args)
         if args.command == "prioritize":
             return cmd_prioritize(config, args)
+        if args.command == "research-triage":
+            return cmd_research_triage(config, args)
         if args.command == "finalize-decomposition":
             return cmd_finalize_decomposition(config, args)
         if args.command == "sections":
