@@ -223,16 +223,37 @@ token `reconcile` into `autodev-pre-deferral-remedy.txt` (`:1829`) and routes
 (`:1941`), whose `on_no: reconcile_current` is the catch-all. Retargeting only
 `check_atomic_design_remedy.on_yes` leaves the more common path unfixed.
 
-**(b) The one-shot guard is reconcile-specific.** Both branches arm only when
-frontmatter `reconcile_attempted != true` (`:1646-1649`, `:1824-1828`) — a flag
-`/ll:reconcile-issue` writes and `/ll:refine-issue` does not. Retargeting
-without a replacement guard makes the `design_gate_failed` deferral at `:1654`
-unreachable on the regate path (it always re-arms), and lets an issue burn two
-refine invocations across the two routes before deferring.
+**(b) The one-shot guard is reconcile-specific — but only the regate route
+depends on it.** Both branches arm only when frontmatter
+`reconcile_attempted != true` (`:1646-1649`, `:1824-1828`) — a flag
+`/ll:reconcile-issue` writes and `/ll:refine-issue` does not. The consequence
+is asymmetric, and an earlier draft of this issue overstated it:
+
+- **Regate route** — `regate_after_atomic_remediation` has no run-dir fired
+  marker of its own, so `reconcile_attempted` is the *only* thing stopping it
+  from re-arming. Retargeting without a replacement guard makes the
+  `design_gate_failed` deferral at `:1654` unreachable there.
+- **Recheck route** — already bounded by the run-dir marker
+  `autodev-pre-deferral-remedy-fired` (`:1821`, cleared at `dequeue_next`),
+  independent of any frontmatter flag. On a second visit the marker exists, so
+  the branch falls straight through to the `design_gate_failed` deferral at
+  `:1837` even with no guard swap at all.
+
+A replacement marker is therefore still warranted, but for two narrower
+reasons: arming the regate route's one-shot, and deduplicating *across* the two
+routes so an issue cannot burn one refine pass per route.
+
+Note also that the design branch (`:1821`) and the general readiness branch
+(`:1881`) share the single `autodev-pre-deferral-remedy-fired` file, so a fired
+design remedy already suppresses the readiness remedy for that issue. This is
+pre-existing behavior and needs no change, but the new marker sits alongside it
+and should not be confused with it.
 
 **(c) The remedy must be additive.** `--full-rewrite` escapes the triage that
 blocks enrichment (BUG-3003) but consumes `max_refine_count`
-(`refine-issue.md:684`) and rewrites sections wholesale — a rewrite cycle on a
+(`refine-issue.md:688` — "Gap-analysis runs (`--gap-analysis`) do NOT count
+against `max_refine_count` … Only full-rewrite passes … consume the refinement
+budget") and rewrites sections wholesale — a rewrite cycle on a
 repeatedly-deferred issue. The correct call is `--auto --gap-analysis`,
 matching `run_refine`'s existing precedent (`autodev.yaml:767`); Step 5a is
 gated on `AUTO_MODE`, not on gap-analysis, so it runs and writes the section
@@ -257,27 +278,43 @@ New FSM states (YAML, so no Python signature):
 
 - `refine_for_design:` — `action_type: slash_command`,
   `action: "/ll:refine-issue ${captured.input.output} --auto --gap-analysis"`,
-  `fragment: with_rate_limit_handling`, a `pruning_profile` (MR-12 WARNs
-  without one), `next`/`on_error: count_repair_cycle_refine_for_design`,
-  `on_rate_limit_exhausted: done`. Structurally modeled on `reconcile_current`
-  (`:1688-1703`); flag set modeled on `run_refine` (`:761-779`).
+  `fragment: with_rate_limit_handling`, `next`/`on_error:
+  count_repair_cycle_refine_for_design`, `on_rate_limit_exhausted: done`, and a
+  `pruning_profile` (MR-12 WARNs without one) copied verbatim from `run_refine`
+  (`:772-775`): `enabled: true`, `name: refine-issue-repair`,
+  `suppress_claude_md: true` — same skill, same repair context, so the same
+  profile applies. Structurally modeled on `reconcile_current` (`:1688-1703`);
+  flag set modeled on `run_refine` (`:761-779`).
 - `count_repair_cycle_refine_for_design:` — increments the shared
   `autodev-repair-cycle-count.txt`, `next: rerun_confidence_after_reconcile`
   (that state is remedy-agnostic: it re-runs `/ll:confidence-check` and falls
   into `recheck_after_size_review`; reuse it rather than adding a sixth
   near-identical rerun state, and update its ENH-2689 comment accordingly).
-- `dispatch_design_remedy:` — a chained gate between
-  `dispatch_pre_deferral_remedy` and `reconcile_current`, required because
-  `dispatch_pre_deferral_remedy` is a two-way `shell_exit` (exit 0 = spike,
-  exit 1 = reconcile fallback) with no room for a third target. It reads the
-  consumed remedy token and exits 0 for `refine_design`, 1 otherwise.
+- `dispatch_design_remedy:` — a gate chained **before**
+  `dispatch_pre_deferral_remedy`, reached from `check_pre_deferral_remedy.on_yes`
+  (`:1937`). It reads `autodev-pre-deferral-remedy.txt` **non-destructively** and
+  exits 0 for `refine_design` → `refine_for_design`, 1 otherwise →
+  `dispatch_pre_deferral_remedy` (which then consumes the token and dispatches
+  spike/reconcile exactly as today).
+
+  ⚠ It must be chained *before*, not after. `dispatch_pre_deferral_remedy`
+  `rm -f`s the token file at `:1953` immediately after reading it, so a gate
+  placed downstream would always read empty and fall to `reconcile_current` —
+  silently reproducing this bug in a new state. Chaining before also leaves
+  `dispatch_pre_deferral_remedy` byte-identical, which is what makes the
+  plateau-path no-regression criterion trivially true.
 
 New handshake file (issue-scoped, run-dir):
 `autodev-design-remedy-attempted-$ID` — the `reconcile_attempted` replacement
 from constraint (b). Written by `count_repair_cycle_refine_for_design`, read by
-both design branches' arming guards, cleared at `dequeue_next` alongside the
-other per-issue markers (`:~1945` block that already `rm -f`s
-`autodev-atomic-design-remedy-pending` and `autodev-pre-deferral-remedy-fired`).
+both design branches' arming guards. **Not cleared at `dequeue_next`**: it is
+per-issue-scoped by filename, exactly like the existing
+`autodev-design-gate-failed-$ID` marker, whose `dequeue_next` comment
+(`:127-130`) states the pattern outright — "the design-gate-failed-<ID> marker
+is already per-issue-scoped by filename, so it self-isolates without cleanup."
+Clearing it per dequeue would also let an issue dequeued twice in one run take
+two refine passes, contradicting the once-per-issue-per-run criterion.
+
 A run-dir marker rather than a frontmatter flag: refine has no
 `refine_attempted` field, inventing one would need a writer in
 `commands/refine-issue.md`, and the design-gate remedy is a per-run routing
@@ -306,9 +343,13 @@ arms `autodev-atomic-design-remedy-pending` unless
 Remedy routing, path 2 (recheck): `recheck_after_size_review` (`:1758`) →
 emits `refine_design` (not `reconcile`) at `:1829`, guarded on
 `autodev-design-remedy-attempted-$ID` instead of `reconcile_attempted` →
-`check_pre_deferral_remedy` (`:1924`) → `dispatch_pre_deferral_remedy`
-(`:1941`, `on_no` now **`dispatch_design_remedy`**) → **`refine_for_design`**
-(exit 0) or `reconcile_current` (exit 1, the plateau case, unchanged)
+`check_pre_deferral_remedy` (`:1924`, `on_yes` now
+**`dispatch_design_remedy`**) → **`refine_for_design`** (exit 0) or
+`dispatch_pre_deferral_remedy` (exit 1, `:1941`, unchanged) → `run_spike` /
+`reconcile_current` as today
+
+Third entry into `reconcile_current` — `check_reconcile_needed.on_yes`
+(`:1458`) — is not on either design route and is untouched by this change.
 
 Terminal: on a repeat failure with the attempt marker present, both branches
 fall through to `cmd_set_status --reason design_gate_failed` (`:1654`, `:1837`)
@@ -319,12 +360,15 @@ exactly as today.
 ### Files to Modify
 - `scripts/little_loops/loops/autodev.yaml` — new states `refine_for_design`,
   `count_repair_cycle_refine_for_design`, `dispatch_design_remedy`;
-  `check_atomic_design_remedy.on_yes` (`:1677`);
-  `dispatch_pre_deferral_remedy.on_no`/`on_error` (`:1962-1964`); both arming
-  guards (`:1646-1649`, `:1824-1828`) and the remedy token at `:1829`;
-  `dequeue_next`'s marker-clearing block; the stale comments at `:1598-1603`
-  and `:1946-1951`; optionally the three `DESIGN_FAIL` blocks at `:1107`,
-  `:1607`, `:1771`
+  `check_atomic_design_remedy.on_yes` (`:1684`);
+  `check_pre_deferral_remedy.on_yes` (`:1937`, repointed at the new gate —
+  `dispatch_pre_deferral_remedy` itself, `:1941-1965`, is left unchanged);
+  both arming guards (`:1646-1649`, `:1824-1828`) and the remedy token at
+  `:1829`; the stale comments at `:1598-1603` and `:1946-1951`; optionally the
+  three `DESIGN_FAIL` blocks at `:1107`, `:1607`, `:1771`.
+  No change to `dequeue_next`'s marker-clearing block (`:121-131`) — see the
+  handshake-file note in Program Design for why the new marker is not cleared
+  there
 - ⚠ Superseded — `commands/reconcile-issue.md` (contract block `:42-77`,
   Step 5 `:144-171`, output `:205`, frontmatter `description`): option B only,
   and option A was selected. Not a file this issue modifies.
@@ -340,12 +384,17 @@ _Wiring pass added by `/ll:wire-issue`:_
   "six" [Agent 2 finding]
 
 ### Dependent Files (Callers/Importers)
-- `commands/refine-issue.md` — BUG-3001 landed the Step 5a enrichment rule, but
-  it is unreachable behind Step 3.0's triage for already-refined issues
-  (BUG-3003). This issue's remedy is inert until BUG-3003 lands.
-- `scripts/little_loops/issues/research_triage.py` — BUG-3003's fix site; the
-  reason `--auto --gap-analysis` is sufficient here and `--full-rewrite` is not
-  needed
+- `commands/refine-issue.md` — BUG-3001 landed the Step 5a enrichment rule and
+  BUG-3003 (commit `12373303`, 2026-08-02) made it reachable for already-refined
+  issues: `:189` now documents the Step 3.0 Program Design gate override that
+  forces the `analyzer` axis `covered: false`. Both prerequisites are satisfied;
+  no change needed here.
+- `scripts/little_loops/issues/research_triage.py` — BUG-3003's fix site, landed
+  (`_program_design_unmet` at `:320`, wired at `:309`); this is why
+  `--auto --gap-analysis` is sufficient here and `--full-rewrite` is not needed.
+  ⚠ BUG-3003 was committed via an automated *fallback* commit ("command exited
+  before completion") — the override is verifiably present in both files above,
+  but spot-check it end-to-end before relying on it
 - `scripts/little_loops/cli/issues/deferred_triage.py` — consumes the
   `design_gate_failed` reason code (priority 6/8); no change expected, but its
   advisory text may need to stop implying reconcile is the fix
@@ -462,14 +511,14 @@ _Second review pass:_
 
 ## Implementation Steps
 
-_Land BUG-3003 first — without it `refine_for_design` calls a refine that
-skips Step 5a for exactly this population, reproducing the bug in a new state._
+_Both prerequisites (BUG-3001, BUG-3003) landed 2026-08-02; this is unblocked._
 
 1. Add the `refine_for_design` state to `autodev.yaml`, modeled on
    `reconcile_current` (`:1688-1703`): `action_type: slash_command`, action
    `"/ll:refine-issue ${captured.input.output} --auto --gap-analysis"`,
    `fragment: with_rate_limit_handling`, `on_rate_limit_exhausted: done`, and
-   a `pruning_profile` — MR-12
+   the `pruning_profile` copied from `run_refine` (`:772-775`:
+   `name: refine-issue-repair`, `suppress_claude_md: true`) — MR-12
    (`scripts/little_loops/fsm/validation/evaluator_rules.py:254`) WARNs on any
    `slash_command` state without one.
 2. Add `count_repair_cycle_refine_for_design`, incrementing the shared
@@ -477,23 +526,31 @@ skips Step 5a for exactly this population, reproducing the bug in a new state._
    `autodev-design-remedy-attempted-$ID` marker. Route
    `next`/`on_error: rerun_confidence_after_reconcile` and update that state's
    ENH-2689 comment to say it now serves both design and plateau remedies.
-3. Clear `autodev-design-remedy-attempted-$ID` at `dequeue_next`, in the same
-   block that already clears `autodev-atomic-design-remedy-pending` and
-   `autodev-pre-deferral-remedy-fired`.
-4. Retarget `check_atomic_design_remedy.on_yes` (`:1677`) from
+3. Do **not** clear `autodev-design-remedy-attempted-$ID` at `dequeue_next` —
+   it is per-issue-scoped by filename and self-isolates, matching the existing
+   `autodev-design-gate-failed-$ID` precedent documented at `:127-130`. Clearing
+   it per dequeue would let one issue take two refine passes in a single run.
+4. Retarget `check_atomic_design_remedy.on_yes` (`:1684`) from
    `reconcile_current` to `refine_for_design`, and swap
    `regate_after_atomic_remediation`'s arming guard (`:1646-1649`) from the
    `reconcile_attempted` frontmatter read to the new marker file — without
-   this the `design_gate_failed` deferral at `:1654` becomes unreachable.
+   this the `design_gate_failed` deferral at `:1654` becomes unreachable on
+   this route (it has no run-dir fired marker of its own).
 5. Fix the second route: in `recheck_after_size_review`, change the emitted
    remedy token at `:1829` from `reconcile` to `refine_design` and swap its
-   `reconcile_attempted` guard (`:1824-1828`) to the marker file.
-6. Add `dispatch_design_remedy` as a chained gate and repoint
-   `dispatch_pre_deferral_remedy.on_no`/`on_error` (`:1962-1964`) at it —
-   `dispatch_pre_deferral_remedy` is a two-way `shell_exit` (exit 0 = spike,
-   exit 1 = reconcile) with no room for a third target. The new gate exits 0
-   for `refine_design` → `refine_for_design`, 1 otherwise →
-   `reconcile_current` (the plateau case, unchanged).
+   `reconcile_attempted` guard (`:1824-1828`) to the marker file. Note this
+   route's deferral stays reachable either way — `autodev-pre-deferral-remedy-fired`
+   (`:1821`) already bounds it — so the swap here buys cross-route dedup, not
+   reachability.
+6. Add `dispatch_design_remedy` and repoint `check_pre_deferral_remedy.on_yes`
+   (`:1937`) at it, so the new gate runs **before**
+   `dispatch_pre_deferral_remedy` rather than after. It reads
+   `autodev-pre-deferral-remedy.txt` without deleting it, exits 0 for
+   `refine_design` → `refine_for_design`, and exits 1 otherwise →
+   `dispatch_pre_deferral_remedy`, which is left entirely unchanged.
+   ⚠ Do not chain it downstream: `dispatch_pre_deferral_remedy` `rm -f`s the
+   token at `:1953` before routing, so a gate placed after it would always read
+   an empty token and fall through to `reconcile_current`.
 7. Update the now-false inline comments: `regate_after_atomic_remediation`
    (`:1598-1603`, "routes once through the shared reconcile remedy") and
    `dispatch_pre_deferral_remedy` (`:1946-1951`, "the frontmatter
@@ -520,9 +577,11 @@ skips Step 5a for exactly this population, reproducing the bug in a new state._
       via the recheck route.
 - [ ] `design_gate_failed` deferral remains reachable on both routes once the
       attempt marker is present; `deferred-triage` output stays meaningful.
-- [ ] The plateau path is untouched: `check_reconcile_needed` →
-      `dispatch_pre_deferral_remedy` → `reconcile_current` still routes to
-      reconcile for a non-design remedy token.
+- [ ] The plateau path is untouched: `dispatch_pre_deferral_remedy` still
+      routes a non-design remedy token to `run_spike` / `reconcile_current`,
+      and its state definition (`:1941-1965`) is unmodified. The third,
+      unrelated entry into `reconcile_current` — `check_reconcile_needed.on_yes`
+      (`:1458`) — is likewise unchanged.
 - [ ] The remedy consumes no `max_refine_count` budget and removes no existing
       issue content (additive `--auto --gap-analysis` pass).
 - [ ] `ll-loop validate autodev` passes with no new MR-* warnings, and
@@ -541,12 +600,11 @@ potentially large — the gate applies to every non-grandfathered issue, and
 BUG-3001 means running `/ll:refine-issue` actively *enlarges* the class by
 un-grandfathering previously-exempt issues.
 
-Ordering: option A's first prerequisite (BUG-3001) has landed, but a second
-surfaced on review — BUG-3003, the triage blind spot that makes refine's
-Program Design enrichment unreachable for already-refined issues. Land
-BUG-3003, then this. Option B remains an alternative at the cost of duplicating
-enrichment logic across two commands, and would still need BUG-3003 or
-`--full-rewrite`-equivalent research to source the section from.
+Ordering: both of option A's prerequisites have landed as of 2026-08-02 —
+BUG-3001 (refine writes `## Program Design` at Step 5a) and BUG-3003 (the
+triage blind spot that made that enrichment unreachable for already-refined
+issues). This issue is unblocked. Option B remains an alternative at the cost
+of duplicating enrichment logic across two commands.
 
 Scope note from the same review: the fix is roughly twice the size originally
 estimated. The remedy has two routes (`check_atomic_design_remedy` and the
@@ -576,6 +634,9 @@ _Added by `/ll:confidence-check` on 2026-08-02_
 
 ### Concerns
 - `depends_on: BUG-3001` was a hard blocker for the selected Option A path; BUG-3001 has since landed (`status: done`, completed 2026-08-02) — see Codebase Research Findings below. This concern is resolved.
+- `depends_on: BUG-3003` (the triage blind spot making refine's Program Design enrichment unreachable for already-refined issues) also landed 2026-08-02, commit `12373303`. Both dependencies now resolve; this issue is unblocked. Caveat: that commit was an automated fallback ("command exited before completion"), so verify the Step 3.0 override end-to-end before relying on `refine_for_design` to actually write the section.
+
+_Review pass 2026-08-02 (pre-implementation) corrected three Program Design defects: the `dispatch_design_remedy` gate must chain **before** `dispatch_pre_deferral_remedy` (which deletes the remedy token at `:1953`); constraint (b)'s unreachability claim holds only for the regate route, not the recheck route; and the new attempt marker must **not** be cleared at `dequeue_next`. Assorted line references were also refreshed against the current `autodev.yaml`._
 
 ### Codebase Research Findings
 
@@ -584,8 +645,11 @@ _Added by `/ll:refine-issue` — based on codebase re-check:_
 - **BUG-3001 has landed** (`status: Completed`, `Completed at: 2026-08-02` per `ll-issues show BUG-3001`) — the concern above ("do not begin Option A until BUG-3001 lands") is resolved. `commands/refine-issue.md` now populates `## Program Design` at Step 5a (`:372-374`) and gates it at Step 6.7 (`:737` "Prose Dependency & Program Design Gate (FEAT-2849, BUG-3001)", `:753`, `:829`, `:859`). Option A's prerequisite is satisfied; the `refine_for_design` remedy state would call a `/ll:refine-issue` that can actually write the section it targets.
 - `docs/reference/DEFERRAL_CODES.md` is now tracked in git (commit `d980fb82`, 2026-08-02) — the earlier "(new, untracked)" note under Integration Map → Documentation is stale. The file still has no row for `design_gate_failed` itself, so that part of the gap stands.
 - `.claude/CLAUDE.md` § Issue File Format was trimmed in the same commit (`d980fb82`, "migrate CLI Tools/Loop Authoring/Issue File Format out of CLAUDE.md") — the deferral-reason-code paragraph this issue's Documentation section referenced no longer lives in CLAUDE.md at all; it now points to `docs/reference/DEFERRAL_CODES.md`. The stale-remedy-wording risk flagged there has moved entirely to `DEFERRAL_CODES.md` and `docs/reference/API.md` (`#deferred-triage`), both already tracked in this issue's Integration Map.
+- `commands/refine-issue.md` line citations above (`:372-374` for Step 5a) are now stale — the file changed again after this issue's most recent refine pass. The Program Design template in Step 5a currently lives at lines 376-388, not 372-374 (`:372-374` is now the Root Cause template example). The Step 6.7 citations (`:737`, `:753`, `:829`, `:859`) are still substantively accurate (Step 6.7's heading is now at `:741`, a one-line drift). Neither shift changes this issue's scope or conclusions — reference `commands/refine-issue.md`'s current content directly during implementation rather than these line numbers. [locator finding]
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-02T18:29:25 - `a4a2ec47-afaf-4693-a4bc-7ad2a1747435.jsonl`
+- `/ll:refine-issue` - 2026-08-02T18:26:12 - `d69ad2ba-fe5b-4482-9f62-1ac8277e1ec0.jsonl`
 - `/ll:refine-issue` - 2026-08-02T16:57:00 - `68d927d9-c11c-4d1e-89b3-a56472ca2633.jsonl`
 - `/ll:confidence-check` - 2026-08-02T16:24:56 - `79f2cbf6-efe9-4c5a-8ea6-c127c1fa8674.jsonl`
 - `/ll:wire-issue` - 2026-08-02T16:13:51 - `7350086a-c582-4853-bc33-c455a6cf8d34.jsonl`
