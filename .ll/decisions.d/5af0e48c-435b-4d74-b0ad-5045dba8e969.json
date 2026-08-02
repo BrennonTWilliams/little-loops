@@ -1,0 +1,12 @@
+{
+  "id": "703bfa7d-0586-48bf-adc0-0b688790480e",
+  "type": "decision",
+  "timestamp": "2026-08-02T19:55:22Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "process_issue_inplace() already implements precondition-check/early-return with failure_reason twice (learning gate, blocked-issue check); Option A is a third instance of that established pattern. Option B's reactive re-check-and-conditionally-proceed logic and one-shot local-boolean bound have no precedent in this file and cost a full extra LLM pass per sub-threshold issue.",
+  "rule": "Option A: Skip-only remedy for the ll-auto confidence gate",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: Remediate via synchronous /ll:confidence-check + re-check, mirroring autodev.yaml's FSM marker-file-bounded remediate-then-recheck shape",
+  "issue": "BUG-3004"
+}
