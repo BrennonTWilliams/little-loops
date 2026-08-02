@@ -121,7 +121,7 @@ genuine refinement-skips, so the `finalize` verdict counter is accurate.
 - **Breaking Change**: No.
 
 ## Session Log
-- `audit-loop-run` - 2026-06-28 - `.loops/audits/2026-06-28-sprint-refine-and-implement-audit.md`
+- `audit-loop-run` - 2026-06-28 - `postmortems/2026-06-28-sprint-refine-and-implement-audit.md`
 
 ---
 

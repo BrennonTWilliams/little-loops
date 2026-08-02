@@ -101,7 +101,7 @@ Keeps `${context.parent}` referenced in the init action (existing structural tes
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/loops/goal-cluster.yaml:76` — shells out to `ll-issues list --parent`; **wants** transitive (currently silently misses grandchildren)
-- `scripts/little_loops/loops/rn-build.yaml:435` — shells out to `ll-issues list --parent`; **wants** transitive (per `rn-build-failure-findings.md:117-128` — file is at the project root, not under `thoughts/`)
+- `scripts/little_loops/loops/rn-build.yaml:435` — shells out to `ll-issues list --parent`; **wants** transitive (per `postmortems/rn-build-failure-findings.md:117-128`)
 
 ### Other out-of-scope direct-only `parent ==` callers (verified, do not touch)
 

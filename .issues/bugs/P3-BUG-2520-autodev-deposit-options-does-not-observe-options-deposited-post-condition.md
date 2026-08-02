@@ -454,7 +454,7 @@ this file for the corrected analysis.
 - `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` § "Decision gates"
   — link this issue as a follow-on to BUG-2513, documenting the
   defense-in-depth shape.
-- `autodev-bug2501-kill-analysis.md` (repo root) — link this issue
+- `postmortems/autodev-bug2501-kill-analysis.md` — link this issue
   as the Mode C write-up is formalized into a tracked defect.
 
 ### Configuration

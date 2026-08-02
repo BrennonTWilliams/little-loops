@@ -180,7 +180,7 @@ _Added by `/ll:confidence-check` on 2026-06-29_
 - `/ll:ready-issue` - 2026-06-29T03:25:37 - `acd5c0fa-39aa-4ee0-99de-c8a44a244abd.jsonl`
 - `/ll:refine-issue` - 2026-06-29T03:19:40 - `9535fd39-804f-46ad-b629-9ae36fea7ac3.jsonl`
 - `/ll:format-issue` - 2026-06-29T03:07:01 - `df10c8d3-ad0a-4b25-b8d2-a795c445864c.jsonl`
-- `audit-loop-run` - 2026-06-28 - `.loops/audits/2026-06-28-sprint-refine-and-implement-audit.md`
+- `audit-loop-run` - 2026-06-28 - `postmortems/2026-06-28-sprint-refine-and-implement-audit.md`
 - `/ll:confidence-check` - 2026-06-29T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 - `/ll:confidence-check` - 2026-06-28T00:00:00Z - `93bd3ae3-6342-4184-a59f-60566f44aaac.jsonl`
 

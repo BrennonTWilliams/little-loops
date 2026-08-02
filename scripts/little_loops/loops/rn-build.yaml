@@ -575,7 +575,7 @@ states:
     # named `done` (success ends at `present_result`), so per _execute_sub_loop a child
     # terminal != "done" always routes the parent's on_no — for both success AND a hard
     # crash. check_build_outcome distinguishes them from CONTENT (cluster-state.json),
-    # which goal-cluster writes into the shared run_dir. See rn-build-failure-findings.md.
+    # which goal-cluster writes into the shared run_dir.
     on_yes: check_build_outcome
     on_no: check_build_outcome
     on_error: check_build_outcome

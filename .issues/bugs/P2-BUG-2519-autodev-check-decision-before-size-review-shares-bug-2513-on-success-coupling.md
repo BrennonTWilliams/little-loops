@@ -444,7 +444,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` § "Decision gates" — link
   the closed BUG-2513 and this issue as a follow-on; document the
   post-BUG-2513 routing-graph rationale.
-- `autodev-bug2501-kill-analysis.md` (repo root) — link this issue as
+- `postmortems/autodev-bug2501-kill-analysis.md` — link this issue as
   the fix lands.
 
 ### Documentation (added by `/ll:wire-issue`)
