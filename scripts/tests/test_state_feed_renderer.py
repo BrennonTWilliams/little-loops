@@ -675,14 +675,14 @@ class TestRenderArtifactHeaderLines:
         assert "run_dir:" in run_dir_line
         assert "model: " in run_dir_line and "claude-opus-4-8" in run_dir_line
 
-    def test_effort_appended_bracketed_upper_to_model_value(self) -> None:
-        """ENH-2869: effort is appended to model as ' [UPPER]' — no separate label."""
+    def test_effort_appended_as_code_to_model_value(self) -> None:
+        """ENH-2869: effort is appended to model as ' <CODE>' — no separate label."""
         from little_loops.cli.loop._helpers import _render_artifact_header_lines
 
         fsm = _make_test_fsm()
         lines = _render_artifact_header_lines(fsm, None, "claude-opus-4-8", None, 200, effort="low")
         model_line = next(ln for ln in lines if "model:" in ln)
-        assert "claude-opus-4-8 [LOW]" in model_line
+        assert "claude-opus-4-8 L" in model_line
         assert "effort:" not in model_line
 
     def test_no_effort_suffix_when_effort_is_none(self) -> None:
@@ -696,7 +696,7 @@ class TestRenderArtifactHeaderLines:
         assert "[" not in model_line
 
     def test_effort_suffix_on_run_dir_packed_model_line(self) -> None:
-        """The bracketed effort suffix also applies when model is packed onto run_dir:."""
+        """The effort-code suffix also applies when model is packed onto run_dir:."""
         from little_loops.cli.loop._helpers import _render_artifact_header_lines
 
         fsm = FSMLoop(
@@ -710,7 +710,7 @@ class TestRenderArtifactHeaderLines:
             fsm, None, "claude-opus-4-8", None, 200, effort="xhigh"
         )
         run_dir_line = next(ln for ln in lines if "run_dir:" in ln)
-        assert "claude-opus-4-8 [XHIGH]" in run_dir_line
+        assert "claude-opus-4-8 XH" in run_dir_line
 
     def test_both_pairs_truncated_independently_when_neither_fits_alone(self) -> None:
         """Very narrow width still truncates each row independently, same as before."""

@@ -1297,6 +1297,14 @@ def _resolve_input_value(fsm: FSMLoop, show_input: bool) -> str | None:
     return value
 
 
+_EFFORT_CODES = {"low": "L", "medium": "M", "high": "H", "xhigh": "XH", "max": "MX"}
+
+
+def _effort_code(effort: str) -> str:
+    """Abbreviate a reasoning-effort level to its 1-2 letter display code."""
+    return _EFFORT_CODES.get(effort.lower(), effort.upper())
+
+
 def _render_artifact_header_lines(
     fsm: FSMLoop,
     loop_path: Path | None,
@@ -1313,9 +1321,10 @@ def _render_artifact_header_lines(
     ``run_dir`` context value is present) — ``input`` never separates from
     ``loop`` and ``model`` never separates from ``run_dir``. When ``effort``
     is set (ENH-2869), it's appended directly onto the ``model:`` value —
-    no separate label, one space after the model name, bracketed and
-    upper-cased (``model: <model> [<EFFORT>]``); when ``effort`` is ``None``
-    the ``model:`` value is unchanged. Adjacent rows are then greedily merged
+    no separate label, one space after the model name, abbreviated to a
+    1-2 letter code (``model: <model> <CODE>``, e.g. ``L``/``M``/``H``/
+    ``XH``/``MX`` for low/medium/high/xhigh/max); when ``effort`` is
+    ``None`` the ``model:`` value is unchanged. Adjacent rows are then greedily merged
     onto a single line, front to back, as long as the combined row still fits
     within ``cols`` display columns — so all rows collapse to one line when
     there's room, and only the row(s) that don't fit spill onto subsequent
@@ -1325,7 +1334,7 @@ def _render_artifact_header_lines(
     """
     from little_loops.cli.loop.layout import _display_width, _truncate_to_width_ansi
 
-    model_display = model if model is None or effort is None else f"{model} [{effort.upper()}]"
+    model_display = model if model is None or effort is None else f"{model} {_effort_code(effort)}"
 
     artifact_pairs = _artifact_lines(fsm, loop_path)
     run_dir_present = any(key == "run_dir" for key, _ in artifact_pairs)
@@ -1737,7 +1746,7 @@ def run_foreground(
             for key, value in _artifact_lines(fsm, loop_path):
                 print(f"  {key}: {colorize(value, '2')}")
             if model is not None:
-                model_line = model if effort is None else f"{model} [{effort.upper()}]"
+                model_line = model if effort is None else f"{model} {_effort_code(effort)}"
                 print(f"  model: {colorize(model_line, '2')}")
             print()
 
