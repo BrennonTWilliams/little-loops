@@ -1,8 +1,9 @@
 ---
 id: ENH-2993
-status: open
+status: done
 priority: P3
 captured_at: '2026-08-02T13:43:01Z'
+completed_at: '2026-08-03T01:17:15Z'
 discovered_date: 2026-08-02
 discovered_by: capture-issue
 relates_to:
@@ -543,6 +544,27 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   Call Path proposes, is therefore a first-time introduction of CLI-mediation
   for this write path, not a swap between two existing mechanisms.
 
+### Deviations
+
+_2026-08-02 — implementation departed from the design above in one place:_
+
+- **Empty stdin exits 1, not 0.** § CLI Input Channel pins "Exit 1 only on
+  unresolvable issue ID". Implemented as: unresolvable ID **or empty stdin**
+  exits 1. Rationale: the likeliest way this command is mis-invoked is a
+  botched heredoc, and the "only" clause was written to keep the *create* paths
+  (missing findings block, missing H2) off the error branch — which they are.
+  Exiting 0 on an empty payload would render a corrupted invocation as a
+  successful fold in the caller's transcript, defeating the same adoption
+  signal § Adoption risk exists to protect. Exit 2 stays reserved for
+  "section absent under `--no-create`" as specified.
+- **`ensure_section()` is a separate exported function**, not folded into
+  `fold_research_findings()`. § Signatures pins `fold_research_findings()` as a
+  pure `str` transform; deriving v2.0 template order requires reading the
+  per-type sections JSON via config, so H2 creation lives in its own pure-`str`
+  helper (`ensure_section(content, heading, order)`) that the CLI calls first
+  with the order it resolved. Behavior matches the spec exactly; only the
+  seam moved.
+
 ## Implementation Steps
 
 1. `find_subsections()` and `fold_research_findings()` exist in
@@ -786,7 +808,40 @@ collapse being deferred as a nicety.
 | `commands/refine-issue.md` | Contains the append instruction being changed |
 | `commands/reconcile-issue.md` | Downstream consumer of these blocks |
 
+## Resolution
+
+**Implemented 2026-08-02.**
+
+- `scripts/little_loops/issues/fold_research_findings.py` (new) —
+  `find_subsections()` (all H3 spans inside a named H2 slice, end-boundary at
+  the next heading of level ≤ 3), `fold_research_findings()` (0 / 1 / N>1
+  cases, relocation-only), `ensure_section()`, `dated_marker()`.
+- `scripts/little_loops/cli/issues/fold_findings.py` (new) — `ll-issues
+  fold-findings`, stdin-verbatim, `--section` / `--dry-run` / `--no-create`,
+  exit table 0/1/2. Registered in `cli/issues/__init__.py` (import, parser,
+  dispatch, usage banner).
+- `duplicate_findings_block` gap added to `FormatGaps` and
+  `check_format_gaps()` via `_duplicate_findings_blocks()` — per-H2, `###`-only,
+  deliberately *not* built on `_heading_bodies()` (both traps in Step 13
+  avoided). Surfaced in `cli/issues/format_check.py` and the usage banner.
+- All four prose write sites updated to route through the CLI:
+  `commands/refine-issue.md` § Scope boundary (`##` → `###`), § 5a option-block
+  placement, § Preservation Rule (new § Writing Findings Blocks), § 5c
+  Gap-Analysis; plus the new `duplicate_findings_block` branch pair in § 6.7.
+  Mirrored verbatim into `.kimi-code/skills/ll-refine-issue/SKILL.md`.
+- Docs: `docs/reference/CLI.md` (new subcommand entry + gap class + JSON
+  payload example), `docs/reference/API.md` (subpackage note).
+- Tests: `scripts/tests/test_fold_research_findings.py` (35),
+  `scripts/tests/test_ll_issues_fold_findings.py` (11 CLI round-trips),
+  `TestDuplicateFindingsBlock` in `test_ll_issues_format_check.py` (3),
+  `TestStackedFindingsBlocks` in `test_issue_parser.py` (3). Full suite:
+  18,067 passed, 42 skipped.
+- Validated end-to-end against real corpus data (`ENH-2500`, dry-run).
+
+See § Program Design → Deviations for the two departures from the pinned design.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-08-03T01:17:07 - `0fce812c-d523-4ea4-b4dd-42b9b206b67c.jsonl`
 - `/ll:ready-issue` - 2026-08-03T00:40:02 - `0d47f54d-0d51-4508-89b2-eddb78936892.jsonl`
 - `/ll:confidence-check` - 2026-08-03T00:32:36 - `ee2cf08a-9d4e-4629-b2ec-7211d56b5a4e.jsonl`
 - `/ll:confidence-check` - 2026-08-02T23:53:12 - `42a54472-d0ba-4ed3-ba41-1bd83e5ba46c.jsonl`

@@ -1671,6 +1671,48 @@ ll-issues research-triage ENH-2971 --json
 
 ---
 
+#### `ll-issues fold-findings`
+
+Merge a markdown batch from **stdin** into the single `### Codebase Research Findings` block under a named H2, folding any blocks that have stacked up from earlier passes (ENH-2993). This is the only supported route for `/ll:refine-issue` to write a findings block — hand-writing the heading re-creates the sibling-block accumulation the command exists to prevent.
+
+| Argument | Description |
+|----------|-------------|
+| `issue_id` | Issue ID to write into (e.g. `ENH-2993`) |
+
+| Flag | Description |
+|------|-------------|
+| `--section` | **Required.** Parent H2 heading text, without the leading `## `. Matched case-insensitively, whitespace-stripped |
+| `--dry-run` | Print the resulting block to stdout and write nothing |
+| `--no-create` | Exit 2 instead of creating `--section` when it is absent |
+| `--config` | Path to project root |
+
+**Behavior:**
+- **stdin is a verbatim markdown block, never parsed into bullets.** It is inserted byte-for-byte apart from trailing-newline normalization, so multi-line bullets with continuation indents and `**Option A**` / `**Option B**` blocks at column 0 (which carry no `- ` bullets at all, and which `count_enumerable_options()` must still find) both survive intact. Content goes on stdin rather than argv because the payload carries backticks, `$`, `!`, em-dashes and newlines.
+- The `###` heading and the dated `_Added by `/ll:refine-issue` — YYYY-MM-DD — based on codebase analysis:_` provenance line are both supplied by the command. One heading per H2; one provenance line per merged batch, since pass boundaries are load-bearing for ENH-2995's superseded carve-out and ENH-2992's contradiction detection.
+- **Fold-on-touch**: 0 existing blocks → create one at the end of the H2 slice (after any nested H3s, before the next `##`). 1 → append beneath it. N>1 → collapse all N into the *first* block's position, in document order, then append the new batch.
+- **Relocation only** — nothing is deleted, summarized or deduped. Every bullet and every earlier provenance line survives. Consequently folding identical bullets twice yields them twice, by design; the invariants are the heading count (1 per H2) and provenance-line conservation (M in, M+1 out).
+- No corpus sweep: an H2 the command never writes to keeps its stack. The `duplicate_findings_block` gap in `ll-issues format-check` keeps the remaining backlog visible.
+- Findings are always addressed by their nearest **H2** ancestor, even when the bullets logically belong to an H3 beneath it (`### Files to Modify` under `## Integration Map`).
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| `0` | Folded — including when the findings block or the parent H2 had to be created. A missing `--section` is created in v2.0 template order, because `/ll:refine-issue` legitimately populates sections that do not yet exist |
+| `1` | Issue ID does not resolve, or stdin carried no payload |
+| `2` | `--section` names an absent H2 and `--no-create` was passed |
+
+**Examples:**
+```bash
+ll-issues fold-findings ENH-2993 --section "Program Design" <<'EOF'
+- `find_subsections()` returns all matches, not one — see `scripts/little_loops/issues/fold_research_findings.py`
+EOF
+
+ll-issues fold-findings ENH-2993 --section "Integration Map" --dry-run < findings.md
+```
+
+---
+
 #### `ll-issues fingerprint` / `ll-issues fp`
 
 Extract a structured fingerprint from an issue file for cross-theme conflict detection. Returns JSON with the issue id, `files_to_modify` (file paths from the Integration Map), and `key_terms` (significant words after stop-word filtering). Used by `/ll:audit-issue-conflicts --cross-theme` Phase 2b to identify cross-batch overlap pairs without an LLM call.
@@ -1838,6 +1880,14 @@ carries a `⚠ Superseded` marker. Report-only keyword-inference heuristic
 (like `testable`) — it flags that a correction and a marker are both
 absent/present, not that the correction actually refutes a specific line.
 
+Also reports `duplicate_findings_block` (ENH-2993): one entry per H2 —
+formatted `"<H2 heading> (N)"` — carrying more than one
+`### Codebase Research Findings` block. Evaluated **per H2**, not
+document-wide: an issue with one block under each of several H2s is compliant.
+`ll-issues fold-findings` clears the entry for any H2 it writes to; there is no
+corpus sweep, so entries for untouched sections are expected and are reported
+rather than fixed (`/ll:refine-issue` § 6.7 spells out the two branches).
+
 The single-issue `--format json` payload additionally carries
 `superseded_marker_count` (ENH-2992): an **integer** count of `⚠ Superseded`
 markers actually present in those same three directive sections — the inverse
@@ -1861,7 +1911,7 @@ emitted on the `--all` payload, which maps `issue_id → gaps`.
 ```bash
 ll-issues format-check ENH-2426               # text report, exit 0/1
                                                # stderr: "(N other issue(s) have deprecated frontmatter keys — run `ll-issues format-check` to list)" when applicable
-ll-issues format-check ENH-2426 --format json # {"missing": [...], "renamed": [...], "empty": [...], "boilerplate": [...], "malformed_id": [...], "prose_dep_drift": [...], "stale_prose_dep": [...], "program_design_nonspecific": [...], "deprecated_key": [...], "multi_frontmatter": [...], "testable": [...], "stale_file_ref": [...], "unmarked_superseded_directive": [...], "superseded_marker_count": 0}
+ll-issues format-check ENH-2426 --format json # {"missing": [...], "renamed": [...], "empty": [...], "boilerplate": [...], "malformed_id": [...], "prose_dep_drift": [...], "stale_prose_dep": [...], "program_design_nonspecific": [...], "deprecated_key": [...], "multi_frontmatter": [...], "testable": [...], "stale_file_ref": [...], "unmarked_superseded_directive": [...], "duplicate_findings_block": [...], "superseded_marker_count": 0}
 ll-issues format-check --all --fix            # preview blocked_by backfills for every drifting issue (dry-run)
 ll-issues format-check --all --fix --apply    # write the previewed edges via `ll-issues link`
 ll-issues format-check --next                 # target the highest-priority active issue

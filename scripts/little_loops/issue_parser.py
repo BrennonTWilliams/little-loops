@@ -254,6 +254,7 @@ class FormatGaps:
     testable: list[str] = field(default_factory=list)
     stale_file_ref: list[str] = field(default_factory=list)
     unmarked_superseded_directive: list[str] = field(default_factory=list)
+    duplicate_findings_block: list[str] = field(default_factory=list)
 
     @property
     def has_gaps(self) -> bool:
@@ -272,6 +273,7 @@ class FormatGaps:
             or self.testable
             or self.stale_file_ref
             or self.unmarked_superseded_directive
+            or self.duplicate_findings_block
         )
 
     def to_dict(self) -> dict[str, list[str]]:
@@ -290,6 +292,7 @@ class FormatGaps:
             "testable": self.testable,
             "stale_file_ref": self.stale_file_ref,
             "unmarked_superseded_directive": self.unmarked_superseded_directive,
+            "duplicate_findings_block": self.duplicate_findings_block,
         }
 
 
@@ -558,7 +561,37 @@ def check_format_gaps(
         if not any(_SUPERSEDED_MARKER_PREFIX in body for body in directive_bodies):
             gaps.unmarked_superseded_directive.append(issue_path.name)
 
+    gaps.duplicate_findings_block.extend(_duplicate_findings_blocks(content))
+
     return gaps
+
+
+# ENH-2993: `### Codebase Research Findings` accumulates one block per
+# /ll:refine-issue pass; `ll-issues fold-findings` folds them to one per H2.
+_FINDINGS_SUB_HEADING = "Codebase Research Findings"
+_FINDINGS_H3_RE = re.compile(rf"^###\s+{re.escape(_FINDINGS_SUB_HEADING)}\s*$", re.MULTILINE)
+
+
+def _duplicate_findings_blocks(content: str) -> list[str]:
+    """Return ``"<H2> (N)"`` for each H2 carrying more than one findings block.
+
+    Deliberately **not** built on :func:`_heading_bodies`, despite that being
+    the existing reader of this heading. ``_heading_bodies`` is document-wide
+    and returns bodies with no parent-section information, so ``len(bodies) > 1``
+    cannot express "per H2": a fully compliant document with one findings block
+    under each of three H2s would return 3 and be flagged. It also matches
+    ``##`` as well as ``###``, so a stray ``## Codebase Research Findings``
+    would register as a duplicate of a legitimate nested one.
+
+    Slicing with :func:`_iter_h2_sections` and counting only ``###`` matches
+    *within each slice* avoids both traps.
+    """
+    duplicates: list[str] = []
+    for heading, start, end in _iter_h2_sections(content):
+        count = len(_FINDINGS_H3_RE.findall(content[start:end]))
+        if count > 1:
+            duplicates.append(f"{heading} ({count})")
+    return duplicates
 
 
 # ENH-2995: closed detection list for the unmarked_superseded_directive gap

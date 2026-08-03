@@ -52,6 +52,10 @@ def main_issues() -> int:
         )
         from little_loops.cli.issues.find_similar import cmd_find_similar
         from little_loops.cli.issues.fingerprint import cmd_fingerprint
+        from little_loops.cli.issues.fold_findings import (
+            add_fold_findings_parser,
+            cmd_fold_findings,
+        )
         from little_loops.cli.issues.format_check import (
             add_format_check_parser,
             cmd_format_check,
@@ -120,8 +124,9 @@ Sub-commands:
   skip             Deprioritize an issue by bumping its priority prefix
   anchor-sweep     Rewrite file:line references in active issue files to anchor form
   research-triage  Report which of refine-issue's three research axes an issue already covers
+  fold-findings    Merge stdin markdown into the single Codebase Research Findings block under a section
   fingerprint      Extract structured fingerprint (id, files, key_terms) from an issue file
-  format-check     Deterministic structural linter for issue formatting (missing/renamed/empty/boilerplate/malformed_id/prose_dep_drift/stale_prose_dep/program_design_nonspecific/deprecated_key/multi_frontmatter/testable/stale_file_ref/unmarked_superseded_directive)
+  format-check     Deterministic structural linter for issue formatting (missing/renamed/empty/boilerplate/malformed_id/prose_dep_drift/stale_prose_dep/program_design_nonspecific/deprecated_key/multi_frontmatter/testable/stale_file_ref/unmarked_superseded_directive/duplicate_findings_block)
   size             Deterministic size scoring (file/section/word-count signals) for issue-size-review
   decisions        Manage rules, decisions, and exceptions log (list/add/outcome/generate/sync)
   normalize        Detect/fix filename & ID mechanics (missing_id/malformed_filename/duplicate_id/legacy_dir/type_mismatch)
@@ -926,6 +931,7 @@ Examples:
         add_set_flags_parser(subs)
         add_prioritize_parser(subs)
         add_research_triage_parser(subs)
+        add_fold_findings_parser(subs)
 
         args = parser.parse_args()
 
@@ -1012,6 +1018,8 @@ Examples:
             return cmd_prioritize(config, args)
         if args.command == "research-triage":
             return cmd_research_triage(config, args)
+        if args.command == "fold-findings":
+            return cmd_fold_findings(config, args)
         if args.command == "finalize-decomposition":
             return cmd_finalize_decomposition(config, args)
         if args.command == "sections":

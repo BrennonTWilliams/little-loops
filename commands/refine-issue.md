@@ -331,7 +331,7 @@ For each knowledge gap category relevant to the issue type:
 
 **Skip this section if**: `AUTO_MODE` is false (interactive mode uses Step 5b instead)
 
-**Scope boundary**: Only use `Edit` to modify files under `.issues/`. If research reveals a missing implementation (code, tests, config), document it in the issue — write it as a gap finding under `## Codebase Research Findings`. Do NOT implement code, even when the gap is small and the implementation is obvious. The `Edit` tool is restricted to `.issues/**` by the command's allowed-tools; attempting to edit code files will fail.
+**Scope boundary**: Only use `Edit` to modify files under `.issues/`. If research reveals a missing implementation (code, tests, config), document it in the issue — write it as a gap finding under `### Codebase Research Findings` (via `ll-issues fold-findings`, see § Writing Findings Blocks below). Do NOT implement code, even when the gap is small and the implementation is obvious. The `Edit` tool is restricted to `.issues/**` by the command's allowed-tools; attempting to edit code files will fail.
 
 For each **FILLABLE** gap, update the issue with research findings.
 
@@ -415,12 +415,14 @@ below can recognize them:
 **Recommended**: Option [X] — [existing rationale, preserved verbatim]
 ```
 
-Place this block **inside `## Proposed Solution`** (append a `### Codebase
-Research Findings` subsection there — any depth is fine, but it must live
-under that exact H2, since that is the only section
-`count_enumerable_options()`/`count_unresolved_options()` scan along with
-the `_OPTION_FALLBACK_SECTIONS` fallbacks), additive, not a rewrite of
-existing text — this is true regardless of where the original prose that
+Place this block **inside `## Proposed Solution`** by piping it to
+`ll-issues fold-findings [ISSUE-ID] --section "Proposed Solution"` (see
+§ Writing Findings Blocks below — the heading and provenance line are never
+hand-written). It must live under that exact H2, since that is the only
+section `count_enumerable_options()`/`count_unresolved_options()` scan along
+with the `_OPTION_FALLBACK_SECTIONS` fallbacks. The option block has no
+leading `- ` bullets; pipe it verbatim, the command inserts it byte-for-byte.
+Additive, not a rewrite of existing text — this is true regardless of where the original prose that
 prompted the decision point lived (e.g. `## Open Questions`). If the
 original prose sits outside `## Proposed Solution`, leave a one-line
 cross-reference at its original location (e.g. "See Option A/B decision
@@ -478,16 +480,40 @@ exist and forecloses better routes.
 When a section already has meaningful content:
 - **Append** research findings as a subsection or additional bullets, clearly marked
 - **Do NOT replace** existing human-written or previously-refined content
-- Use a marker to distinguish researched content:
+- Write the findings via `ll-issues fold-findings` (§ Writing Findings Blocks below)
 
-```markdown
-### Codebase Research Findings
+#### Writing Findings Blocks (ENH-2993)
 
-_Added by `/ll:refine-issue` — based on codebase analysis:_
+**`ll-issues fold-findings` is the only route.** Never hand-`Edit` a
+`### Codebase Research Findings` heading or an `_Added by …_` provenance line —
+the command supplies both. Hand-writing them re-creates the sibling-block
+accumulation this route exists to prevent, and § 6.7's
+`duplicate_findings_block` key will fail the pass that did it.
 
+Content goes on **stdin**, never in argv — the payload carries backticks, `$`,
+`!`, em-dashes and newlines, and argv quoting is the likeliest way to corrupt
+it:
+
+```bash
+ll-issues fold-findings [ISSUE-ID] --section "Integration Map" <<'EOF'
 - [Finding 1 with file path and anchor reference]
 - [Finding 2 with file path and anchor reference]
+EOF
 ```
+
+- `--section` names the parent **H2** by exact heading text (no `## ` prefix),
+  matched case-insensitively. Findings are always addressed by their nearest H2
+  ancestor, even when the bullets logically belong to an H3 beneath it.
+- The command folds: if a findings block already exists under that H2 it
+  appends beneath it, and if several have stacked up from earlier passes it
+  collapses them into one first. Nothing is deleted, summarized, or deduped —
+  every bullet and every earlier provenance line survives, in order.
+- An absent `--section` is **created** in v2.0 template order and is a normal
+  success, not an error. Exit 1 = unresolvable issue ID or empty stdin;
+  exit 2 = section absent and `--no-create` was passed.
+- **If `DRY_RUN` is true, pass `--dry-run`.** This write no longer inherits
+  Step 6's "skip file modifications" guarantee from the `Edit(.issues/**)` tool
+  restriction — the flag is what preserves it.
 
 **Superseded-line annotation carve-out** (ENH-2995): a narrow exception to
 "Do NOT replace" — when this pass's own `### Codebase Research Findings`
@@ -677,7 +703,7 @@ If `AUTO_MODE` is true, proceed directly to application without prompting. Other
 
 For each approved gap, use the Edit tool with append-only changes:
 
-1. **Append** missing information to the relevant section using the `### Codebase Research Findings` subsection marker (same as Step 5a)
+1. **Append** missing information to the relevant section by piping it to `ll-issues fold-findings [ISSUE-ID] --section "<H2>"` (same as Step 5a — see § Writing Findings Blocks; never hand-write the heading or provenance line). Folding is relocation only, so this mode's additive-only guarantee is unchanged.
 2. **Stale anchor repair**: when `_sweep_file()` returns a stale reference, append a warning note under the section containing it:
    ```
    > ⚠ Anchor `old_function:N` no longer resolves — verify against current codebase.
@@ -775,6 +801,18 @@ keys:
   `/ll:reconcile-issue [ISSUE-ID]` in the Next Steps block. This is the human
   path into a remedy that was previously reachable only via `autodev.yaml`'s
   plateau gate (measured at capture: 1,703 issues refined, 19 reconciled).
+- **`duplicate_findings_block` non-empty** (ENH-2993): one or more H2s carry
+  more than one `### Codebase Research Findings` block. Each entry is
+  `"<H2 heading> (N)"`. Two branches, and they are not interchangeable:
+  - **The entry names an H2 this pass wrote to** — the heading was hand-written
+    instead of going through `ll-issues fold-findings`. Re-issue that write
+    through the command (§ Writing Findings Blocks) and re-run `format-check`
+    to confirm it clears. This is the adoption failure the key exists to catch.
+  - **The entry names an H2 this pass did not touch** — a pre-existing stack
+    from earlier passes. It is not this pass's to fix and there is no corpus
+    sweep. Like `superseded_marker_count`, **report the count in Step 8's
+    output and do not edit**; it folds as a side effect of a future pass that
+    writes to that section.
 - Skip this gate if `DRY_RUN` is true.
 
 ### 7.5. Extract Learning Targets (ENH-2209)

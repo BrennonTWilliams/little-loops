@@ -4183,3 +4183,56 @@ class TestSupersededMarkerCount:
         from little_loops.issue_parser import superseded_marker_count
 
         assert superseded_marker_count(tmp_path / "does-not-exist.md") == 0
+
+
+class TestStackedFindingsBlocks:
+    """Baseline for ENH-2993's fold: what the read side sees before/after.
+
+    No pre-existing fixture constructs multiple stacked ``### Codebase Research
+    Findings`` blocks under one H2, so the accumulation this issue is about was
+    untested. `_heading_bodies()` is document-wide and carries no parent-section
+    information — which is exactly why `duplicate_findings_block` cannot be
+    built on it.
+    """
+
+    BODY = (
+        "# ENH-1\n\n"
+        "## Integration Map\n\n"
+        "### Codebase Research Findings\n\n- one\n\n"
+        "### Codebase Research Findings\n\n- two\n\n"
+        "### Codebase Research Findings\n\n- three\n\n"
+        "## Program Design\n\n"
+        "### Codebase Research Findings\n\n- four\n"
+    )
+
+    def test_heading_bodies_returns_every_occurrence_document_wide(self) -> None:
+        from little_loops.issue_parser import _heading_bodies
+
+        bodies = _heading_bodies(self.BODY, "Codebase Research Findings")
+        assert len(bodies) == 4
+        assert [b.strip() for b in bodies] == ["- one", "- two", "- three", "- four"]
+
+    def test_duplicate_detector_is_scoped_per_h2(self) -> None:
+        from little_loops.issue_parser import _duplicate_findings_blocks
+
+        # Document-wide count is 4, but only one H2 actually stacks.
+        assert _duplicate_findings_blocks(self.BODY) == ["Integration Map (3)"]
+
+    def test_fold_clears_the_gap_for_the_touched_h2_only(self) -> None:
+        from little_loops.issue_parser import _duplicate_findings_blocks
+        from little_loops.issues.fold_research_findings import fold_research_findings
+
+        stacked = self.BODY.replace(
+            "## Program Design\n\n### Codebase Research Findings\n\n- four\n",
+            "## Program Design\n\n"
+            "### Codebase Research Findings\n\n- four\n\n"
+            "### Codebase Research Findings\n\n- five\n",
+        )
+        assert sorted(_duplicate_findings_blocks(stacked)) == [
+            "Integration Map (3)",
+            "Program Design (2)",
+        ]
+
+        folded = fold_research_findings(stacked, "Integration Map", "- new")
+        # No-sweep boundary: the untouched H2 keeps its stack.
+        assert _duplicate_findings_blocks(folded) == ["Program Design (2)"]

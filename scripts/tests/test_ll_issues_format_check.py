@@ -337,6 +337,8 @@ class TestFormatCheckJsonOutput:
             "testable": [],
             "stale_file_ref": [],
             "unmarked_superseded_directive": [],
+            # ENH-2993: one entry per H2 stacking >1 findings block.
+            "duplicate_findings_block": [],
             # ENH-2992: marker presence rides the same payload; not a gap, so
             # it does not affect the exit code above.
             "superseded_marker_count": 0,
@@ -1505,3 +1507,74 @@ class TestFormatCheckNext:
 
         assert result == 1
         assert "No active issues found" in err
+
+
+class TestDuplicateFindingsBlock:
+    """``duplicate_findings_block`` gap class (ENH-2993).
+
+    Reports one entry per H2 carrying more than one ``### Codebase Research
+    Findings`` block. Evaluated **per H2**, not document-wide: an issue with one
+    block under each of several H2s is compliant, and flagging it would train
+    the model to skim past § 6.7's other keys.
+    """
+
+    def _write_with_sections(self, format_check_dir: Path, bug_id: str, block: str) -> Path:
+        filename = f"P3-{bug_id}-test-bug.md"
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", f"id: {bug_id}") + "\n\n" + block
+        return _write_issue(format_check_dir, filename, body)
+
+    def test_stacked_blocks_under_one_h2_are_flagged(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        block = (
+            "## Integration Map\n\n"
+            "### Codebase Research Findings\n\n- one\n\n"
+            "### Codebase Research Findings\n\n- two\n"
+        )
+        self._write_with_sections(format_check_dir, "BUG-9701", block)
+
+        result = _invoke(["ll-issues", "format-check", "--all", "--config", str(temp_project_dir)])
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "duplicate_findings_block: Integration Map (2)" in out
+
+    def test_one_block_per_h2_is_compliant(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        block = (
+            "## Integration Map\n\n### Codebase Research Findings\n\n- one\n\n"
+            "## Program Design\n\n### Codebase Research Findings\n\n- two\n"
+        )
+        self._write_with_sections(format_check_dir, "BUG-9702", block)
+
+        result = _invoke(["ll-issues", "format-check", "--all", "--config", str(temp_project_dir)])
+        out, _ = capsys.readouterr()
+
+        assert "duplicate_findings_block" not in out
+        assert result == 0
+
+    def test_h2_level_variant_is_not_counted_as_a_duplicate(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """``_heading_bodies()`` matches ``##`` too; this detector must not."""
+        block = (
+            "## Codebase Research Findings\n\n- stray H2 variant\n\n"
+            "## Integration Map\n\n### Codebase Research Findings\n\n- one\n"
+        )
+        self._write_with_sections(format_check_dir, "BUG-9703", block)
+
+        result = _invoke(["ll-issues", "format-check", "--all", "--config", str(temp_project_dir)])
+        out, _ = capsys.readouterr()
+
+        assert "duplicate_findings_block" not in out
+        assert result == 0
