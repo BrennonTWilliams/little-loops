@@ -8,7 +8,7 @@ import sqlite3
 import sys
 from typing import TYPE_CHECKING
 
-from little_loops.issue_lifecycle import DeferReason
+from little_loops.issue_lifecycle import ClosureReason, DeferReason
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,8 @@ if TYPE_CHECKING:
 # ENH-2870: derived from DeferReason so the two can't drift out of lockstep
 # (previously a hardcoded literal set duplicating the enum).
 _DEFERRAL_REASON_CODES = frozenset(r.value for r in DeferReason)
-_CLOSED_REASON_CODES = frozenset({"already_fixed", "superseded"})
+# ENH-2969: derived from ClosureReason, same rationale as _DEFERRAL_REASON_CODES.
+_CLOSED_REASON_CODES = frozenset(r.value for r in ClosureReason)
 
 
 def cmd_set_status(config: BRConfig, args: argparse.Namespace) -> int:

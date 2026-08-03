@@ -465,6 +465,46 @@ class TestIssuesCLISetStatus:
         fm = parse_frontmatter(issue_file.read_text())
         assert fm.get("closed_reason") == "already_fixed"
 
+    @pytest.mark.parametrize("reason_code", ["not_reproducible", "invalid_ref"])
+    def test_set_status_cancelled_stamps_new_closure_reason_codes(
+        self,
+        reason_code: str,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+    ) -> None:
+        """ENH-2969: not_reproducible and invalid_ref are accepted closure
+        codes, previously rejected by the argparse choices= gate despite
+        invalid_ref being documented."""
+        from little_loops.frontmatter import parse_frontmatter
+
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        issue_file.write_text("---\nid: BUG-001\nstatus: open\n---\n# BUG-001: Crash\n")
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "set-status",
+                "BUG-001",
+                "cancelled",
+                "--reason",
+                reason_code,
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            assert main_issues() == 0
+
+        fm = parse_frontmatter(issue_file.read_text())
+        assert fm.get("closed_reason") == reason_code
+
     def test_set_status_cancelled_superseded_stamps_closed_reason(
         self,
         temp_project_dir: Path,

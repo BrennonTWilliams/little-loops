@@ -1991,3 +1991,26 @@ class TestDeferReasonEnum:
 
         assert _DEFERRAL_REASON_CODES == frozenset(r.value for r in DeferReason)
         assert "design_gate_failed" in _DEFERRAL_REASON_CODES
+
+
+class TestClosureReasonEnum:
+    """ENH-2969: ClosureReason mirrors DeferReason's enum-derivation shape."""
+
+    def test_members_have_expected_values(self) -> None:
+        from little_loops.issue_lifecycle import ClosureReason
+
+        assert ClosureReason.ALREADY_FIXED.value == "already_fixed"
+        assert ClosureReason.SUPERSEDED.value == "superseded"
+        assert ClosureReason.NOT_REPRODUCIBLE.value == "not_reproducible"
+        assert ClosureReason.INVALID_REF.value == "invalid_ref"
+
+    def test_is_derived_into_set_status_reason_codes(self) -> None:
+        """set_status.py derives its accepted closure-code set from the enum
+        rather than duplicating it as a literal, so a new member is picked up
+        automatically."""
+        from little_loops.cli.issues.set_status import _CLOSED_REASON_CODES
+        from little_loops.issue_lifecycle import ClosureReason
+
+        assert _CLOSED_REASON_CODES == frozenset(r.value for r in ClosureReason)
+        assert "not_reproducible" in _CLOSED_REASON_CODES
+        assert "invalid_ref" in _CLOSED_REASON_CODES

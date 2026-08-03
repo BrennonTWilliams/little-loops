@@ -88,6 +88,26 @@ class DeferReason(Enum):
     DESIGN_GATE_FAILED = "design_gate_failed"
 
 
+class ClosureReason(Enum):
+    """Machine-readable reason code for a ``done``/``cancelled`` closure.
+
+    Written into the existing ``closed_reason`` frontmatter key. Mirrors
+    ``DeferReason`` (ENH-2969): a plain ``Enum`` with string-valued members so
+    ``_CLOSED_REASON_CODES`` can derive from it instead of duplicating a
+    literal set that can drift.
+    """
+
+    ALREADY_FIXED = "already_fixed"  # Was a real defect, since fixed
+    SUPERSEDED = "superseded"  # Replaced by another issue (see supersedes:)
+    # ENH-2969: distinct from already_fixed — the described defect never
+    # existed / could not be reproduced, so nothing was "fixed".
+    NOT_REPRODUCIBLE = "not_reproducible"
+    # ENH-2969: issue references a symbol/file/line that no longer exists.
+    # Already handled by issue_manager.process_issue_inplace(), which special
+    # cased this string before the CLI accepted it as a valid choice.
+    INVALID_REF = "invalid_ref"
+
+
 # =============================================================================
 # Completion Commit Result (BUG-2963)
 # =============================================================================

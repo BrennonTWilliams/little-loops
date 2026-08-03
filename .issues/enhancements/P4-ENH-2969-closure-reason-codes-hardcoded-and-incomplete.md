@@ -3,7 +3,7 @@ id: ENH-2969
 title: Closure reason codes are a hardcoded set; invalid_ref is documented but rejected
 type: ENH
 priority: P4
-status: open
+status: done
 captured_at: '2026-08-01T16:02:14Z'
 discovered_date: 2026-08-01
 discovered_by: capture-issue
@@ -15,6 +15,13 @@ testable: true
 labels:
 - issues
 - cli
+confidence_score: 95
+outcome_confidence: 67
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 18
+completed_at: '2026-08-03T19:18:28Z'
 ---
 
 # ENH-2969: Closure reason codes are a hardcoded set; `invalid_ref` is documented but rejected
@@ -149,6 +156,37 @@ enum-derived) → `updates["closed_reason"]` → frontmatter write
 
 Unchanged except for where the valid set comes from.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-03 — based on codebase analysis:_
+
+- `DeferReason(Enum)` actually starts at `issue_lifecycle.py:65` (through
+  `L88`) — `L58` (cited above and in Implementation Steps step 1) is the
+  preceding `DeferBy(Enum)` (`L58-62`), a different two-member enum. Place
+  `ClosureReason` beside `DeferReason` at its real anchor, `L65`, not `L58`.
+- A sibling `CompletionResult` enum in the same file documents in its own
+  docstring why these enums use plain `Enum` with string-valued members
+  rather than `StrEnum` — "a repo-wide grep found zero `StrEnum` usages in
+  `scripts/little_loops/`." `ClosureReason` should follow the same plain-`Enum`
+  convention for consistency, not introduce the first `StrEnum` usage.
+- `cmd_set_status`'s `updates["closed_reason"] = reason` writes are inside a
+  nested `_status_updates()` (starts `L49`), at `L76` (status `done`) and
+  `L80` (status `cancelled`) — not `L72`/`L76` as stated above.
+- A second, independent validation block exists at `set_status.py:104-121`,
+  inside `cmd_set_status` itself: it checks `reason in _DEFERRAL_REASON_CODES`
+  against `args.status not in ("deferred",)` and `reason in
+  _CLOSED_REASON_CODES` against `args.status not in ("done", "cancelled")`,
+  erroring and exiting 1 on mismatch. This runs after the argparse `choices=`
+  gate and is a second consumer of `_CLOSED_REASON_CODES` the Call Path above
+  did not name — deriving it from `ClosureReason` automatically keeps this
+  check in lockstep too, but an implementer tracing the call path needs both
+  consumers, not just the argparse one.
+- Repo-wide grep confirms `frozenset(r.value for r in EnumName)` is used in
+  exactly two places today: `set_status.py:20` (the `_DEFERRAL_REASON_CODES`
+  definition) and `test_issue_lifecycle.py:1992` (the test assertion
+  reproducing the same expression). It is a single precedent being extended
+  to a second case here, not an established codebase-wide idiom.
+
 ## Integration Map
 
 ### Files to Modify
@@ -211,6 +249,78 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   round-trips each literal through `main_issues()` end-to-end (argv →
   frontmatter write). Step 6 should add both forms for `ClosureReason`.
 
+_Added by `/ll:refine-issue` — 2026-08-03 — based on codebase analysis:_
+
+- `docs/reference/CLI.md` — the `--reason` flag documentation has moved to
+  `~L2101` (examples at `L2111-2112`); the `L1886` anchor recorded above is
+  now stale.
+- `scripts/little_loops/cli/issues/__init__.py` — the `--reason` argparse
+  `choices=` assembly (`choices=sorted(_DEFERRAL_REASON_CODES |
+  _CLOSED_REASON_CODES)`) is now at `L832-845` (union at `L837`), preceded by
+  a comment already asserting both constants are enum-derived — currently
+  inaccurate for `_CLOSED_REASON_CODES`. The `~L803` anchor recorded in
+  Program Design → Signatures is now stale.
+- `scripts/little_loops/issue_manager.py` — the `invalid_ref` special-case
+  conditional (`if close_reason == "invalid_ref":`) is now at `L931`, inside
+  `process_issue_inplace()` (starts `L642`); the `close_reason` value is read
+  at `L926-928`. The `:908` anchor in this issue's own Verification Notes is
+  now stale — line numbers here have drifted twice since capture.
+
+_Added by `/ll:refine-issue` — 2026-08-03 — based on codebase analysis:_
+
+- The parametrized round-trip test this issue models step 6's tests after
+  (`test_set_status_deferred_stamps_autodev_reason_codes`,
+  `test_set_status_cli.py:336-390`) hardcodes its reason codes as a literal
+  `@pytest.mark.parametrize` list — it does not derive them from
+  `DeferReason`. Only the separate `TestDeferReasonEnum` class
+  (`test_issue_lifecycle.py:1977-1993`) does the derived-equality check. A
+  `ClosureReason` equivalent of the parametrized test will need its own
+  literal list of closure codes maintained alongside the enum, same as the
+  deferral precedent — not something the enum derivation makes automatic.
+- A second sibling pattern disagrees with the enum-derivation approach:
+  `VALID_PRIORITIES` (`cli_args.py:391`) is a `frozenset[str]` of CLI choices
+  with no backing enum at all — there is no repo convention that every
+  `choices=`-backing frozenset must be enum-derived, only that this specific
+  one (`_DEFERRAL_REASON_CODES`) already made that choice under ENH-2870.
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `commands/ready-issue.md` — the Closure Conditions table (`~L296-309`) and
+  the `## CLOSE_REASON` output template (`~L391-398`) instruct the
+  `/ll:ready-issue` model to emit `Reason:
+  already_fixed|invalid_ref|stale|too_vague|duplicate|wont_do` — a wider
+  vocabulary than the planned `ClosureReason` enum (which omits `stale`,
+  `too_vague`, `duplicate`, `wont_do`), and it never mentions `superseded` or
+  `not_reproducible` at all. This is static prompt text, not code that reads
+  `ClosureReason`/`_CLOSED_REASON_CODES` — widening the enum in Python will
+  not keep this table in sync automatically. [Agent 2 finding]
+- `.gemini/commands/ready-issue.toml` (`~L286-292`, `~L377`) — verbatim
+  mirror of the same table and `Reason:` line. [Agent 2 finding]
+- `.kimi-code/skills/ll-ready-issue/SKILL.md` (`~L303-309`, `~L394`) —
+  verbatim mirror of the same table and `Reason:` line, a third copy.
+  [Agent 2 finding]
+- `docs/reference/API.md` — `close_issue()` param doc (`L2685`),
+  `parse_ready_issue_output()` return-dict doc (`L3373-3374`), and the
+  CLOSE-handling comparison table row (`L3428`, documents the
+  `issue_manager.py` `invalid_ref` special-case) all give `close_reason`
+  examples that should stay in sync with the new enum members.
+  [Agent 2 finding]
+- `docs/reference/EVENT-SCHEMA.md` — the `issue.closed` event field table
+  (`~L826-847`) lists example `close_reason` values including `duplicate`
+  and `unknown`, which are outside the planned enum; confirms the wider
+  vocabulary above already leaks into a third surface. [Agent 2 finding]
+
+_No action needed (confirmed opaque/unconstrained, listed for completeness):_
+- `docs/reference/schemas/issue_closed.json` and
+  `scripts/little_loops/generate_schemas.py:501-503` — `close_reason` is
+  already a plain `"type": "string"` with no `enum` constraint; no schema
+  change required for the enum widening. [Agent 2 finding]
+- `scripts/little_loops/cli/issues/show.py:231,368-370,427` — reads
+  `closed_reason` from frontmatter and displays it opaquely with no set
+  validation; will surface new enum values without any change needed.
+  [Agent 2 finding]
+
 ### Similar Patterns
 - `DeferReason` (`issue_lifecycle.py:58`) and its ENH-2870 migration — the
   exact change this issue repeats, including the explanatory comment about
@@ -231,6 +341,25 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 6. Tests: per-member round-trip through `set-status`, and a test asserting
    every `ClosureReason` member is accepted by the CLI — the drift guard the
    enum derivation is for.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Reconcile the wider closure-reason vocabulary hardcoded in
+  `commands/ready-issue.md`'s Closure Conditions table and `## CLOSE_REASON`
+  template (`stale`, `too_vague`, `duplicate`, `wont_do` — none in the
+  planned `ClosureReason` enum; `superseded`/`not_reproducible` absent from
+  its table) against the new enum. Decide: widen `ClosureReason` to match, or
+  treat `/ll:ready-issue`'s prompt vocabulary as a distinct, only
+  partially-overlapping superset understood not to round-trip through
+  `--reason` today. Either decision needs to be explicit, not left implicit.
+- If reconciled, update the two verbatim mirrors of that table:
+  `.gemini/commands/ready-issue.toml` and
+  `.kimi-code/skills/ll-ready-issue/SKILL.md`.
+- Update `docs/reference/API.md` (`L2685`, `L3373-3374`, `L3428`) and
+  `docs/reference/EVENT-SCHEMA.md` (`~L826-847`) closure-reason examples to
+  reflect the final enum membership.
 
 ## Scope Boundaries
 
@@ -276,6 +405,11 @@ citations have drifted: `_CLOSED_REASON_CODES` is now at
 `:908` (was cited `:773`).
 
 ## Session Log
+- `ll-auto` - 2026-08-03T19:18:28 - `16ff1256-0c08-4583-9e86-ff5dd7213d83.jsonl`
+- `/ll:ready-issue` - 2026-08-03T19:10:47 - `b3d1c6b5-1365-4814-857b-9e9e12e1cbe2.jsonl`
+- `/ll:confidence-check` - 2026-08-03T19:09:05 - `6e0d6193-586c-4055-a583-e7830c8701a8.jsonl`
+- `/ll:wire-issue` - 2026-08-03T19:06:38 - `cf52f1b5-069a-44a6-af25-83df7b26af35.jsonl`
+- `/ll:refine-issue` - 2026-08-03T19:00:12 - `242c41d1-1c8c-4a92-a4b7-02660b097acc.jsonl`
 - `/ll:verify-issues` - 2026-08-03T04:54:47 - `d03f8e53-9873-4f8d-8cfd-bbc50704a66b.jsonl`
 - `/ll:refine-issue` - 2026-08-01T20:23:46 - `1f45db6d-28e7-4a99-8a50-d33fd51d2130.jsonl`
 - `/ll:capture-issue` - 2026-08-01T16:20:52 - `15f4582a-2df6-4315-9f84-3f5730f550e5.jsonl`
@@ -285,3 +419,23 @@ citations have drifted: `_CLOSED_REASON_CODES` is now at
 ## Status
 
 **Open** | Created: 2026-08-01 | Priority: P4
+
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-08-03
+- **Status**: Completed (automated fallback)
+- **Implementation**: Command exited early but issue was addressed
+
+
+### Files Changed
+- See git history for details
+
+### Verification Results
+- Automated verification passed
+
+### Commits
+- See git log for details
