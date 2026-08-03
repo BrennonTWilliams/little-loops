@@ -108,8 +108,9 @@ def build_config(
             - ``decisions_enabled`` (bool, default False): include decisions section.
             - ``scratch_pad_enabled`` (bool, default False): include scratch_pad section.
             - ``session_capture_enabled`` (bool, default False): include session_capture.
-            - ``prompt_optimization_enabled`` (bool): when False, write
-              prompt_optimization.enabled=false (opt-out of a default-on feature).
+            - ``prompt_optimization_enabled`` (bool, default False): when True,
+              write prompt_optimization.enabled=true (opt-in to a default-off
+              feature).
             - ``loop_clear_default`` (bool): write loops.run_defaults.clear.
             - ``loop_show_diagrams_default`` (str | None): write loops.run_defaults.show_diagrams.
 
@@ -188,12 +189,12 @@ def build_config(
     if choices.get("session_capture_enabled"):
         config["session_capture"] = {"enabled": True}
 
-    # --- prompt_optimization (default-on; only write when opting out) ---
+    # --- prompt_optimization (default-off; only write when opting in) ---
     prompt_optimization_enabled = choices.get(
         "prompt_optimization_enabled", schema_default("prompt_optimization.enabled")
     )
-    if prompt_optimization_enabled is False:
-        config["prompt_optimization"] = {"enabled": False}
+    if prompt_optimization_enabled is True:
+        config["prompt_optimization"] = {"enabled": True}
 
     # --- history.session_digest (always written) ---
     session_digest_enabled = bool(

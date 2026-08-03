@@ -710,21 +710,21 @@ class TestBuildConfig:
         config = build_config(match)
         assert "prompt_optimization" not in config
 
-    def test_prompt_optimization_omitted_when_explicitly_enabled(
-        self, fake_templates: Path, tmp_project: Path
-    ) -> None:
-        (tmp_project / "pyproject.toml").touch()
-        match = detect_project_type(tmp_project, fake_templates)
-        config = build_config(match, {"prompt_optimization_enabled": True})
-        assert "prompt_optimization" not in config
-
-    def test_prompt_optimization_disabled_writes_enabled_false(
+    def test_prompt_optimization_omitted_when_explicitly_disabled(
         self, fake_templates: Path, tmp_project: Path
     ) -> None:
         (tmp_project / "pyproject.toml").touch()
         match = detect_project_type(tmp_project, fake_templates)
         config = build_config(match, {"prompt_optimization_enabled": False})
-        assert config["prompt_optimization"] == {"enabled": False}
+        assert "prompt_optimization" not in config
+
+    def test_prompt_optimization_enabled_writes_enabled_true(
+        self, fake_templates: Path, tmp_project: Path
+    ) -> None:
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match, {"prompt_optimization_enabled": True})
+        assert config["prompt_optimization"] == {"enabled": True}
 
     def test_build_config_emits_no_null_leaves(
         self, fake_templates: Path, tmp_project: Path
@@ -1976,7 +1976,7 @@ class TestMainInit:
         assert data["session_capture"] == {"enabled": True}
         assert "prompt_optimization" not in data
 
-    def test_yes_disable_prompt_optimization_writes_disabled(self, tmp_project: Path) -> None:
+    def test_yes_enable_prompt_optimization_writes_enabled(self, tmp_project: Path) -> None:
         from little_loops.init.cli import main_init
 
         with (
@@ -1987,11 +1987,11 @@ class TestMainInit:
             ),
         ):
             code = main_init(
-                ["--yes", "--disable", "prompt_optimization", "--root", str(tmp_project)]
+                ["--yes", "--enable", "prompt_optimization", "--root", str(tmp_project)]
             )
         assert code == 0
         data = json.loads((tmp_project / ".ll" / "ll-config.json").read_text())
-        assert data["prompt_optimization"] == {"enabled": False}
+        assert data["prompt_optimization"] == {"enabled": True}
 
     def test_unknown_feature_flag_exits_2(
         self, tmp_project: Path, capsys: pytest.CaptureFixture

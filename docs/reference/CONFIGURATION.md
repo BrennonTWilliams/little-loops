@@ -110,7 +110,7 @@ For interactive editing, use `/ll:configure`.
   },
 
   "prompt_optimization": {
-    "enabled": true,
+    "enabled": false,
     "mode": "quick",
     "confirm": true,
     "bypass_prefix": "*",
@@ -478,9 +478,11 @@ Codebase scanning configuration:
 
 Automatic prompt optimization settings (`/ll:toggle-autoprompt`). When enabled, each user message is evaluated for clarity before being sent to Claude — ambiguous or under-specified prompts are rewritten to be more actionable.
 
+Opt-in: `enabled` defaults to `false`, and `ll-init` omits the section unless you ask for it (`--enable prompt_optimization`, or the TUI prompt). Turn it on later with `/ll:toggle-autoprompt enabled`.
+
 | Key | Default | Description |
 |-----|---------|-------------|
-| `enabled` | `true` | Enable automatic prompt optimization |
+| `enabled` | `false` | Enable automatic prompt optimization |
 | `mode` | `"quick"` | Optimization mode (`"quick"` or `"thorough"`) |
 | `confirm` | `true` | Show diff and ask for confirmation before applying |
 | `bypass_prefix` | `*` | Prefix character to skip optimization for that message |

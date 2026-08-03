@@ -870,24 +870,24 @@ class TestNewFeatureToggles:
         assert "session_capture" not in config
 
     @patch("little_loops.init.tui.questionary")
-    def test_prompt_optimization_opt_out_writes_disabled(
-        self, mock_q: MagicMock, tmp_path: Path
-    ) -> None:
-        with patch("sys.stdin") as mock_stdin:
-            mock_stdin.isatty.return_value = True
-            _wire_q(mock_q, features=["analytics"], prompt_optimization=False)
-            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
-
-        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
-        assert config["prompt_optimization"] == {"enabled": False}
-
-    @patch("little_loops.init.tui.questionary")
-    def test_prompt_optimization_default_on_omits_key(
+    def test_prompt_optimization_opt_in_writes_enabled(
         self, mock_q: MagicMock, tmp_path: Path
     ) -> None:
         with patch("sys.stdin") as mock_stdin:
             mock_stdin.isatty.return_value = True
             _wire_q(mock_q, features=["analytics"], prompt_optimization=True)
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert config["prompt_optimization"] == {"enabled": True}
+
+    @patch("little_loops.init.tui.questionary")
+    def test_prompt_optimization_default_off_omits_key(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["analytics"], prompt_optimization=False)
             run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
 
         config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())

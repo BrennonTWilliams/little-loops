@@ -48,7 +48,7 @@ When run on a project that already has a `.ll/ll-config.json`, the interactive w
 | `--plan` | | Emit a JSON plan `{detected, proposed_config, requested_upgrade, host_options, warnings, provenance, ambiguities}` without writing anything. `provenance` is a list of `{field, value, provenance, evidence}` for each manifest-introspected `project.*`/`scan.focus_dirs` field (`declared`/`inferred`/`default`); `ambiguities` lists any field where multiple equally-valid candidates were found and the template default was kept (FEAT-2703). `requested_upgrade` echoes whether `--upgrade` was also passed — plan mode never executes it (no writes happen in plan mode), it's surfaced purely so the flag isn't silently dropped (BUG-2755). On a re-init (existing `.ll/ll-config.json`), a `declared`-provenance value that diverges from the stored config prints a `Warning: config has ... but ... declares ...` line to stderr — the existing value is always kept; stdout stays pure JSON (ENH-2704) |
 | `--hosts HOST [HOST ...]` | | Host harnesses to install adapters for (`claude-code`, `codex`, `opencode`, `pi`). Defaults to auto-detected hosts. Unknown values produce a warning and are skipped. |
 | `--enable FEATURE` | | Enable a feature in the headless config (repeatable). Requires `--yes`/`--dry-run`/`--plan`. Valid: `decisions`, `scratch_pad`, `session_capture`, `product`, `analytics`, `context_monitor`, `learning_tests`, `session_digest`, `prompt_optimization`. |
-| `--disable FEATURE` | | Disable a feature in the headless config (repeatable). Same valid names as `--enable`. Use `--disable prompt_optimization` to opt out of the default-on prompt optimizer. |
+| `--disable FEATURE` | | Disable a feature in the headless config (repeatable). Same valid names as `--enable`. Use `--enable prompt_optimization` to opt in to the default-off prompt optimizer. |
 | `--upgrade` | | Act on version drift automatically, then run a **host-parameterized surface refresh** for every active host: upgrade the pip package, force-regenerate adapter files (e.g. `.codex/hooks.json`, re-stamping the embedded gen-version), and scope-aware-update the claude-code plugin (auto for project-scoped installs, advise-only for user-scoped). Without this flag, headless mode only warns — including a hint when a generated adapter's gen-version stamp diverges from the installed package. Passing `--upgrade` alone (no `--yes`/`--dry-run`/`--plan`) implies `--yes` and runs headlessly, rather than silently dropping the flag and launching the interactive wizard (BUG-2755). |
 | `--root ROOT` | `-C` | Project root directory (default: current directory) |
 
@@ -84,7 +84,7 @@ ll-init --yes --upgrade            # Upgrade stale package/plugin automatically
 ll-init --plan                     # Emit JSON plan without writing
 ll-init --hosts claude-code codex  # Install adapters for specific hosts
 ll-init --yes --enable decisions --enable session_capture  # Opt in to extra features
-ll-init --yes --disable prompt_optimization                # Opt out of prompt optimizer
+ll-init --yes --enable prompt_optimization                 # Opt in to prompt optimizer
 ll-init apply --config plan.json   # Apply writes from a --plan output
 ```
 

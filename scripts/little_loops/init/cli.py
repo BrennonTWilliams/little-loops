@@ -480,7 +480,7 @@ def _run_yes(
                 .get("session_digest", {})
                 .get("enabled", True),
                 "prompt_optimization_enabled": existing_config.get("prompt_optimization", {}).get(
-                    "enabled", True
+                    "enabled", False
                 ),
             }
         )
@@ -739,7 +739,7 @@ Examples:
   %(prog)s --plan                     # Emit JSON plan without writing
   %(prog)s apply --config plan.json   # Apply writes from a --plan output
   %(prog)s --yes --enable decisions --enable session_capture
-  %(prog)s --yes --disable prompt_optimization
+  %(prog)s --yes --enable prompt_optimization
 
 Feature flags (headless --yes / --plan only):
   --enable / --disable accept: product, analytics, context_monitor,

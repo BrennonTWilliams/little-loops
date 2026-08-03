@@ -145,7 +145,7 @@ Edit: /ll:configure context
 ```
 Prompt Optimization Configuration
 ---------------------------------
-  enabled:           {{config.prompt_optimization.enabled}}            (default: true)
+  enabled:           {{config.prompt_optimization.enabled}}            (default: false)
   mode:              {{config.prompt_optimization.mode}}               (default: quick)
   confirm:           {{config.prompt_optimization.confirm}}            (default: true)
   bypass_prefix:     {{config.prompt_optimization.bypass_prefix}}      (default: *)

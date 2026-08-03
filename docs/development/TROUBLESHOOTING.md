@@ -1124,9 +1124,13 @@ registered as a second `hooks.json` command.
 
 **Symptom**: Prompts not being optimized despite enabled setting
 
-**Cause**: Bypass patterns matching or template file missing
+**Cause**: Feature not enabled (it is opt-in), bypass patterns matching, or template file missing
 
 **Solution**:
+0. Confirm the feature is on — `prompt_optimization.enabled` defaults to `false`
+   and `ll-init` omits the section unless you opt in. Enable with
+   `/ll:toggle-autoprompt enabled` or by adding `{"prompt_optimization": {"enabled": true}}`
+   to `.ll/ll-config.json`.
 1. Check prompt doesn't start with bypass prefix (default: `*`):
    ```json
    {

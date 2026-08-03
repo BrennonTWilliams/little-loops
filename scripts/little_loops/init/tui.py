@@ -444,8 +444,8 @@ def run_tui(
     if session_digest_enabled is None:
         return 130
 
-    # Prompt optimization opt-out (default-on feature; always asked)
-    _ex_prompt_opt = existing_config.get("prompt_optimization", {}).get("enabled", True)
+    # Prompt optimization opt-in (default-off feature; always asked)
+    _ex_prompt_opt = existing_config.get("prompt_optimization", {}).get("enabled", False)
     prompt_optimization_enabled: bool | None = questionary.confirm(
         "Enable automatic prompt optimization?", default=_ex_prompt_opt
     ).ask()
@@ -648,7 +648,7 @@ def _build_final_config(
     design_token_profile: str = "default",
     documents_categories: dict[str, Any] | None = None,
     session_digest_enabled: bool = True,
-    prompt_optimization_enabled: bool = True,
+    prompt_optimization_enabled: bool = False,
     loop_clear_default: bool = True,
     loop_show_diagrams_default: str | None = "clean",
 ) -> dict[str, Any]:
@@ -810,9 +810,9 @@ def _render_summary(
     if config.get("session_capture", {}).get("enabled"):
         table.add_row("Session capture", "enabled")
 
-    # Prompt optimization (default-on; only written when opted out)
-    if config.get("prompt_optimization", {}).get("enabled") is False:
-        table.add_row("Prompt optim.", "off")
+    # Prompt optimization (default-off; only written when opted in)
+    if config.get("prompt_optimization", {}).get("enabled") is True:
+        table.add_row("Prompt optim.", "on")
 
     # Loop run defaults
     rd = config.get("loops", {}).get("run_defaults", {})

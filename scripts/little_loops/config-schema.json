@@ -702,7 +702,7 @@
         "enabled": {
           "type": "boolean",
           "description": "Enable automatic prompt optimization",
-          "default": true
+          "default": false
         },
         "mode": {
           "type": "string",

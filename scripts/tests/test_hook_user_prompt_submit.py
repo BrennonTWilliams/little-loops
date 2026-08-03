@@ -406,17 +406,31 @@ class TestPromptOptimizationRender:
         ll_dir.mkdir(parents=True, exist_ok=True)
         (ll_dir / "ll-config.json").write_text(json.dumps({}), encoding="utf-8")
 
-    def test_absent_block_defaults_on(
+    def test_absent_block_defaults_off(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """BUG-2321: absent prompt_optimization block must default to enabled=True."""
+        """prompt_optimization is opt-in: an absent block must default to enabled=False."""
         self._write_empty_config(tmp_path)
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
 
         result = handle(_event({"prompt": "implement authentication flow"}))
         assert result.exit_code == 0
-        assert result.stdout, "absent block must be treated as enabled; template should render"
+        assert not result.stdout, "absent block must be treated as disabled; nothing should render"
+
+    def test_explicit_enabled_renders_template(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(parents=True, exist_ok=True)
+        config = {"prompt_optimization": {"enabled": True}}
+        (ll_dir / "ll-config.json").write_text(json.dumps(config), encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+
+        result = handle(_event({"prompt": "implement authentication flow"}))
+        assert result.exit_code == 0
+        assert result.stdout, "explicit enable must render the template"
         assert "implement authentication flow" in result.stdout
 
     def test_explicit_disabled_suppresses_injection(

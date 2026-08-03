@@ -144,7 +144,8 @@ def handle(event: LLHookEvent) -> LLHookResult:
     raw_opt = config.get("prompt_optimization", {})
     prompt_opt: dict[str, Any] = raw_opt if isinstance(raw_opt, dict) else {}
 
-    if not prompt_opt.get("enabled", True):
+    # Opt-in feature: absent config means off (schema default is false).
+    if not prompt_opt.get("enabled", False):
         _capture_prompt_opt(offered=False, bypass_reason="disabled")
         return LLHookResult(exit_code=0)
 
