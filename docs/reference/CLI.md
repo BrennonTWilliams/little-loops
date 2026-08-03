@@ -64,16 +64,17 @@ Richer features (`parallel`, `sync`, `documents`, `design_tokens`, `confidence_g
 
 **Interactive TUI screens** (omitted when `--yes` is passed):
 
-The detected project type is shown as a banner line (not a questionary prompt) before Screen 1 starts.
+The detected project type is shown as a banner line (not a questionary prompt) before Screen 2 starts.
 
 | Screen | Prompt | Notes |
 |--------|--------|-------|
-| 1 / 6  | Project Basics | Project name, src dir, test/lint/format/type-check commands. Pre-filled from existing config when present, otherwise from project-type detection; command fields offer curated-menu select with "Custom…" fallthrough |
-| 2 / 6  | Scan | `focus_dirs` text entry; confirm/override exclude patterns |
-| 3 / 6  | Features | Opt-in checkboxes including `github_sync`, `confidence_gate`, `tdd`, `decisions` (rules log), `scratch_pad` (automation context masking), `session_capture` (PreCompact handoff); profile picker for `design_tokens`; worktree copy-files toggle; session-digest confirm; prompt-optimization opt-out confirm (default on); **loop defaults**: "Enable --clear by default?" (default Yes) and "Default diagram mode for ll-loop run?" (default `clean`) |
-| 4 / 6  | Hosts | Defaults to detected hosts |
-| 5 / 6  | Settings target | Third "Skip" option skips `merge_settings` entirely |
-| 6 / 6  | CLAUDE.md update | Offers to create `.claude/CLAUDE.md` (or append to an existing one) with ll CLI command stubs; skipped if a `## little-loops` section is already present (ENH-2043, ENH-2092) |
+| 1 / 7  | Plugin Install | Shown only when install/upgrade is needed: missing package, outdated package/plugin, or stale Codex adapter. Reports what it checks and prompts `questionary.confirm("Proceed with wizard? (install/upgrade separately after)")` (default Yes); declining aborts with no changes. Skipped entirely when the install is already current |
+| 2 / 7  | Project Basics | Project name, src dir, test/lint/format/type-check commands. Pre-filled from existing config when present, otherwise from project-type detection; command fields offer curated-menu select with "Custom…" fallthrough |
+| 3 / 7  | Scan | `focus_dirs` text entry; confirm/override exclude patterns |
+| 4 / 7  | Features | Opt-in checkboxes including `github_sync`, `confidence_gate`, `tdd`, `decisions` (rules log), `scratch_pad` (automation context masking), `session_capture` (PreCompact handoff); profile picker for `design_tokens`; worktree copy-files toggle; session-digest confirm; prompt-optimization opt-out confirm (default on); **loop defaults**: "Enable --clear by default?" (default Yes) and "Default diagram mode for ll-loop run?" (default `clean`) |
+| 5 / 7  | Hosts | Defaults to detected hosts |
+| 6 / 7  | Settings target | Third "Skip" option skips `merge_settings` entirely |
+| 7 / 7  | CLAUDE.md update | Offers to create `.claude/CLAUDE.md` (or append to an existing one) with ll CLI command stubs; skipped if a `## little-loops` section is already present (ENH-2043, ENH-2092) |
 
 **Examples:**
 ```bash

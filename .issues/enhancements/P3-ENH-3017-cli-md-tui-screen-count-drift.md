@@ -3,10 +3,11 @@ id: ENH-3017
 title: CLI.md describes the ll-init wizard as 6 screens; code has 7 (missing Plugin
   Install screen)
 type: ENH
-status: open
+status: done
 priority: P3
 discovered_date: 2026-08-02
 discovered_by: multi-agent-audit
+completed_at: '2026-08-03T16:49:00Z'
 parent: EPIC-3008
 depends_on:
 - ENH-3016
@@ -96,17 +97,29 @@ lead-in banner sentence per correction #2 above.
 
 ## Acceptance Criteria
 
-- [ ] The `CLI.md` table has 7 rows numbered `1 / 7` … `7 / 7`, matching the
+- [x] The `CLI.md` table has 7 rows numbered `1 / 7` … `7 / 7`, matching the
       `console.rule` labels at `tui.py:207,267,318,347,485,499,523` exactly.
-- [ ] The Plugin Install row is first and describes both what it checks and what
+- [x] The Plugin Install row is first and describes both what it checks and what
       it prompts.
-- [ ] The lead-in banner sentence names the correct screen it precedes, verified
+- [x] The lead-in banner sentence names the correct screen it precedes, verified
       against `init/tui.py`.
-- [ ] No change to `init/tui.py`.
+- [x] No change to `init/tui.py`.
+
+## Resolution
+
+Inserted a `1 / 7 | Plugin Install` row at the top of the `CLI.md` wizard-screen
+table and renumbered the remaining rows `2 / 7` … `7 / 7` to match
+`tui.py:207,267,318,347,485,499,523`. The new row notes it's conditional (only
+shown when install/upgrade is needed) and documents the
+`questionary.confirm("Proceed with wizard? ...")` prompt. Corrected the lead-in
+sentence: the project-type banner (`tui.py:260-262`) prints after the
+conditional Plugin Install block and immediately before the `2 / 7 Project
+Basics` rule, so it now reads "before Screen 2 starts" instead of "before
+Screen 1 starts." No changes to `init/tui.py`.
 
 ## Status
 
-**Open** | Created: 2026-08-02 | Priority: P3
+**Done** | Created: 2026-08-02 | Priority: P3
 
 ## Impact
 
@@ -118,4 +131,5 @@ lead-in banner sentence per correction #2 above.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-03T16:48:39 - `ebb78be3-195c-4134-ad17-a99b7493e411.jsonl`
 - `/ll:confidence-check` - 2026-08-03T15:07:46 - `7932f7a9-44bc-4afe-a0b6-100d091d368a.jsonl`
