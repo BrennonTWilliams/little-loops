@@ -55,6 +55,7 @@ from little_loops.session_store import (
 from little_loops.skill_expander import expand_skill
 from little_loops.state import ProcessingState, StateManager, _iso_now
 from little_loops.subprocess_utils import (
+    ResultSeenCallback,
     TokenUsage,
     assemble_guillotine_prompt,
     detect_context_handoff,
@@ -125,6 +126,7 @@ def run_claude_command(
     on_usage_detailed: Callable[[TokenUsage], None] | None = None,
     preview_full: bool = False,
     resume_session: bool = False,
+    on_result_seen: ResultSeenCallback | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke Claude CLI command with real-time output streaming.
 
@@ -143,6 +145,8 @@ def run_claude_command(
         preview_full: If True, display the full command without truncation (for --verbose).
         resume_session: If True, passes --continue to the Claude CLI to continue the
             most recent conversation (used for Option E explicit-handoff path).
+        on_result_seen: Optional callback invoked once, right before return, with
+            whether a stream-json "result" event was observed (BUG-2731/BUG-3026).
 
     Returns:
         CompletedProcess with stdout/stderr captured
@@ -182,6 +186,7 @@ def run_claude_command(
         on_usage=on_usage,
         on_usage_detailed=on_usage_detailed,
         resume_session=resume_session,
+        on_result_seen=on_result_seen,
     )
 
 
@@ -231,6 +236,7 @@ def run_with_continuation(
     issue_path: Path | None = None,
     run_dir: str | None = None,
     sprint_context: SprintWorkerContext | None = None,
+    on_result_seen: ResultSeenCallback | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a Claude command with automatic continuation on context handoff.
 
@@ -258,6 +264,10 @@ def run_with_continuation(
             ``--resume`` to ``initial_command``.
         on_usage: Optional external usage callback; wrapped internally for tracking.
         context_limit: Context window size in tokens (default 200K).
+        on_result_seen: Optional callback invoked once, after the final round, with
+            whether the last stream-json "result" event was observed (BUG-3026) —
+            lets callers distinguish a clean turn completion from a truncated one
+            when the issue's lifecycle wasn't finalized despite returncode 0.
 
     Returns:
         Final CompletedProcess result
@@ -274,6 +284,11 @@ def run_with_continuation(
     _last_input: list[int] = [0]
     _last_output: list[int] = [0]
     _external_on_usage = on_usage
+    # Track whether the most recent round's stream-json "result" event was
+    # observed (BUG-3026): lets callers tell a clean-but-truncated turn (the
+    # agent's own Phase 5 never ran before the subprocess exited) apart from a
+    # genuinely incomplete one.
+    _last_result_seen: list[bool] = [False]
     # Flag set when Option J fires; consumed in the NEXT iteration so Option E
     # knows to consume the sentinel without attempting --continue.
     _just_ran_fresh_session = False
@@ -283,6 +298,9 @@ def run_with_continuation(
         _last_output[0] = output_tokens
         if _external_on_usage is not None:
             _external_on_usage(input_tokens, output_tokens)
+
+    def _tracking_result_seen(result_seen: bool) -> None:
+        _last_result_seen[0] = result_seen
 
     while continuation_count <= max_continuations:
         this_is_fresh = _just_ran_fresh_session
@@ -295,6 +313,7 @@ def run_with_continuation(
             idle_timeout=idle_timeout,
             on_usage=_tracking_usage,
             preview_full=preview_full,
+            on_result_seen=_tracking_result_seen,
         )
 
         all_stdout.append(result.stdout)
@@ -474,6 +493,7 @@ def run_with_continuation(
                 on_usage=_tracking_usage,
                 preview_full=preview_full,
                 resume_session=True,
+                on_result_seen=_tracking_result_seen,
             )
             all_stdout.append(result.stdout)
             all_stderr.append(result.stderr)
@@ -494,6 +514,9 @@ def run_with_continuation(
 
         # No handoff signal, no prior-session sentinel, no overflow — done
         break
+
+    if on_result_seen is not None:
+        on_result_seen(_last_result_seen[0])
 
     return subprocess.CompletedProcess(
         args=result.args,
@@ -1124,6 +1147,11 @@ def process_issue_inplace(
                 _manage_args.append("--force-implement")
             _slash_cmd = "/ll:manage-issue " + " ".join(_manage_args)
             _initial_cmd = expand_skill("manage-issue", _manage_args, config) or _slash_cmd
+            # BUG-3026: captured so the Phase 3 fallback (below) can tag its log
+            # line with whether the subprocess's turn ended cleanly (result_seen)
+            # despite the lifecycle not being finalized — distinguishing a
+            # truncated-but-clean exit from a genuinely incomplete run.
+            _phase2_result_seen: list[bool] = [False]
             result = run_with_continuation(
                 _initial_cmd,
                 logger,
@@ -1138,6 +1166,7 @@ def process_issue_inplace(
                 issue_path=info.path,
                 sprint_context=sprint_context,
                 context_limit=context_window_for(None, override=context_limit),
+                on_result_seen=lambda seen: _phase2_result_seen.__setitem__(0, seen),
             )
         else:
             logger.info(f"Would run: /ll:manage-issue {info.issue_type} {action} {info.issue_id}")
@@ -1285,9 +1314,25 @@ def process_issue_inplace(
                         "completed-but-unfinalized work, not awaiting approval (BUG-2409)"
                     )
 
+                # BUG-3026: tag the fallback with *why* the primary path likely
+                # didn't finish. result_seen=True means the subprocess's turn
+                # ended cleanly on a stream-json "result" event (returncode 0
+                # is not itself evidence of that — see subprocess_utils.py) —
+                # consistent with the agent's own Phase 5 (finalize lifecycle)
+                # never having run, e.g. because it was still waiting on a
+                # backgrounded task when its turn ended. result_seen=False
+                # means no result event was observed at all, a different and
+                # more surprising failure mode worth distinguishing in logs.
+                _fallback_reason = (
+                    "turn ended cleanly (result event observed) without finalizing "
+                    "the issue lifecycle - possibly still waiting on a backgrounded "
+                    "task when the turn ended"
+                    if _phase2_result_seen[0]
+                    else "no stream-json result event observed before the subprocess exited"
+                )
                 logger.info(
                     "Command returned success but issue not moved - "
-                    "checking for evidence of work..."
+                    f"checking for evidence of work... ({_fallback_reason})"
                 )
 
                 # Check issue file content for implementation markers
@@ -1304,7 +1349,10 @@ def process_issue_inplace(
                         repo_path=_repo_root,
                     )
                     if verified:
-                        logger.success(f"Content marker completion succeeded for {info.issue_id}")
+                        logger.success(
+                            f"Content marker completion succeeded for {info.issue_id} "
+                            f"({_fallback_reason})"
+                        )
                     else:
                         logger.warning(f"Content marker completion failed for {info.issue_id}")
                 else:
@@ -1326,7 +1374,10 @@ def process_issue_inplace(
                             repo_path=_repo_root,
                         )
                         if verified:
-                            logger.success(f"Fallback completion succeeded for {info.issue_id}")
+                            logger.success(
+                                f"Fallback completion succeeded for {info.issue_id} "
+                                f"({_fallback_reason})"
+                            )
                         else:
                             logger.warning(f"Fallback completion failed for {info.issue_id}")
                     else:

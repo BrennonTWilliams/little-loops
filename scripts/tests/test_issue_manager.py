@@ -1302,6 +1302,34 @@ class TestRunWithContinuation:
         assert result.returncode == 0
         assert "Normal output" in result.stdout
 
+    def test_forwards_on_result_seen(self, temp_project_dir: Path) -> None:
+        """BUG-3026: on_result_seen fires with the last round's result_seen value."""
+        from little_loops.issue_manager import run_with_continuation
+
+        mock_logger = MagicMock()
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "Normal output"
+        mock_result.stderr = ""
+
+        def fake_run_claude_command(*args: object, **kwargs: object) -> MagicMock:
+            on_result_seen = kwargs.get("on_result_seen")
+            if callable(on_result_seen):
+                on_result_seen(True)
+            return mock_result
+
+        seen: list[bool] = []
+        with patch(
+            "little_loops.issue_manager.run_claude_command", side_effect=fake_run_claude_command
+        ):
+            with patch("little_loops.issue_manager.detect_context_handoff", return_value=False):
+                run_with_continuation(
+                    "test command", mock_logger, on_result_seen=seen.append
+                )
+
+        assert seen == [True]
+
     def test_exits_cleanly_when_handoff_detected(self, temp_project_dir: Path) -> None:
         """When CONTEXT_HANDOFF detected, exits cleanly without spawning continuation."""
         from little_loops.issue_manager import run_with_continuation
@@ -2801,6 +2829,60 @@ class TestFallbackVerification:
                                     )
 
         assert result.success
+
+    def test_fallback_log_tags_result_seen_reason(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        """BUG-3026: fallback success log tags whether the turn ended on a
+        clean result event, distinguishing a truncated-but-clean exit from a
+        genuinely missing result event."""
+        from little_loops.issue_manager import process_issue_inplace
+
+        mock_logger = MagicMock()
+
+        ready_result = MagicMock()
+        ready_result.returncode = 0
+        ready_result.stdout = f"## VERDICT\nREADY\n\n## VALIDATED_FILE\n{sample_issue.path}"
+
+        impl_result = MagicMock()
+        impl_result.returncode = 0
+        impl_result.stdout = "Implementation successful"
+        impl_result.stderr = ""
+
+        def fake_run_with_continuation(*args: object, **kwargs: object) -> MagicMock:
+            on_result_seen = kwargs.get("on_result_seen")
+            if callable(on_result_seen):
+                on_result_seen(True)
+            return impl_result
+
+        with patch("little_loops.issue_manager.run_claude_command", return_value=ready_result):
+            with patch(
+                "little_loops.issue_manager.run_with_continuation",
+                side_effect=fake_run_with_continuation,
+            ):
+                with patch("little_loops.issue_manager.verify_issue_completed", return_value=False):
+                    with patch(
+                        "little_loops.issue_manager.detect_plan_creation", return_value=None
+                    ):
+                        with patch(
+                            "little_loops.issue_manager.check_content_markers",
+                            return_value=False,
+                        ):
+                            with patch(
+                                "little_loops.issue_manager.verify_work_was_done",
+                                return_value=True,
+                            ):
+                                with patch(
+                                    "little_loops.issue_manager.complete_issue_lifecycle",
+                                    return_value=True,
+                                ):
+                                    result = process_issue_inplace(
+                                        sample_issue, mock_config, mock_logger
+                                    )
+
+        assert result.success
+        success_messages = [str(c.args[0]) for c in mock_logger.success.call_args_list]
+        assert any("result event observed" in msg for msg in success_messages)
 
     def test_refuses_completion_when_no_work_detected(
         self, mock_config: BRConfig, sample_issue: IssueInfo
