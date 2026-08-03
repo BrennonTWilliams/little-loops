@@ -1,6 +1,7 @@
 ---
 id: ENH-3017
-title: CLI.md describes the ll-init wizard as 6 screens; code has 7 (missing Plugin Install screen)
+title: CLI.md describes the ll-init wizard as 6 screens; code has 7 (missing Plugin
+  Install screen)
 type: ENH
 status: open
 priority: P3
@@ -14,6 +15,13 @@ testable: false
 labels:
 - docs
 - ll-init
+milestone: epic-3008
+confidence_score: 95
+outcome_confidence: 85
+score_complexity: 25
+score_test_coverage: 10
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3017: `CLI.md` describes the `ll-init` wizard as 6 screens; code has 7 (missing "Plugin Install" screen)
@@ -107,3 +115,7 @@ lead-in banner sentence per correction #2 above.
 - **Effort**: Small.
 - **Risk**: None.
 - **Breaking Change**: No.
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-03T15:07:46 - `7932f7a9-44bc-4afe-a0b6-100d091d368a.jsonl`

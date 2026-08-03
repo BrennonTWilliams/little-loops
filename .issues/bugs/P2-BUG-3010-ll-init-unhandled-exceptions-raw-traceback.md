@@ -12,6 +12,13 @@ labels:
 - ll-init
 - ux
 - error-handling
+milestone: epic-3008
+confidence_score: 100
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3010: `ll-init` has no top-level exception handling; errors surface as raw tracebacks
@@ -132,3 +139,7 @@ install is caught, and must extend past the `apply` subcommand dispatch
   `scripts/tests/test_init_core.py` (`TestMainInit`).
 - **Risk**: Low.
 - **Breaking Change**: No.
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-03T14:56:07 - `8315e9f9-979b-46c8-8d38-ae829695a554.jsonl`

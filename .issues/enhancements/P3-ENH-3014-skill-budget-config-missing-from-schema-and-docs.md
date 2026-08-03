@@ -15,6 +15,13 @@ testable: true
 labels:
 - config-schema
 - docs
+milestone: epic-3008
+confidence_score: 86
+outcome_confidence: 97
+score_complexity: 22
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3014: `skill_budget.threshold_tokens` missing from `config-schema.json` and `CONFIGURATION.md`
@@ -153,6 +160,17 @@ leave the read path as-is and just fix the schema/docs gap.
       `_DEFAULT_BUDGET_TOKENS` when the key is unset (`cli/docs.py:171-177`).
 - [ ] `python -m pytest scripts/tests/` exits 0.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-03_
+
+**Readiness Score**: 86/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 97/100 → HIGH CONFIDENCE
+
+### Concerns
+- Both declared dependencies (`ENH-3013`, `BUG-3012`) are still `open` — neither has landed. The stated sequencing ("Land ENH-3013 first") and the AC "BUG-3012's schema-driven parity guard stays green" cannot be fully verified until BUG-3012 actually lands its parity test; implementing ENH-3014 first means that guard doesn't exist yet to check against.
+- The "raw passthrough, no typed dataclass" resolution mirrors BUG-3012's Shape constraint 4, which is documented in this issue's prose but has no landed precedent in `config/core.py` yet (all current `to_dict()` sections are typed, aside from one single-field raw `.get()` in `analytics.enabled`) — verify that guidance still holds once BUG-3012 actually merges.
+
 ## Status
 
 **Open** | Created: 2026-08-02 | Priority: P3
@@ -164,3 +182,7 @@ leave the read path as-is and just fix the schema/docs gap.
 - **Effort**: Small.
 - **Risk**: Low.
 - **Breaking Change**: No.
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-03T15:02:32 - `a04a91fd-da40-48d9-b914-d105c7c9dba6.jsonl`

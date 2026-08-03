@@ -14,6 +14,13 @@ testable: false
 labels:
 - docs
 - config-schema
+milestone: epic-3008
+confidence_score: 100
+outcome_confidence: 90
+score_complexity: 25
+score_test_coverage: 15
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3015: `CONFIGURATION.md` has no documentation section for the top-level `cache` block

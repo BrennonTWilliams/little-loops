@@ -11,6 +11,13 @@ testable: true
 labels:
 - ll-init
 - ux
+milestone: epic-3008
+confidence_score: 98
+outcome_confidence: 90
+score_complexity: 22
+score_test_coverage: 22
+score_ambiguity: 24
+score_change_surface: 22
 ---
 
 # ENH-3011: `ll-init` has no git-repo check before writing/updating `.gitignore`
@@ -108,3 +115,7 @@ the TUI's warning panel (`tui.py`, near the Screen-1 warnings).
 - **Effort**: Small.
 - **Risk**: Low — purely additive warning text.
 - **Breaking Change**: No.
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-03T14:59:38 - `56e67865-39df-4be1-b2d4-fb83a5dec084.jsonl`

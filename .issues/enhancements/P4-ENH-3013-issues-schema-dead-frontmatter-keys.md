@@ -12,6 +12,13 @@ testable: false
 labels:
 - config-schema
 - cleanup
+milestone: epic-3008
+confidence_score: 100
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3013: `config-schema.json`'s `issues` object declares dead per-issue-frontmatter keys
@@ -117,3 +124,7 @@ raw `config["issues"][...]` access. Per-issue frontmatter field documentation
 - **Risk**: Low — removing unused schema properties; verify no doc reference
   first.
 - **Breaking Change**: No (these keys were never functional).
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-03T15:12:04 - `f3a42b69-5771-4044-981f-51802a887d99.jsonl`

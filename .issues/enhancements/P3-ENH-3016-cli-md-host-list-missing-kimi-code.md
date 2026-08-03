@@ -1,6 +1,7 @@
 ---
 id: ENH-3016
-title: CLI.md / GETTING_STARTED.md host list omits kimi-code and doesn't flag unimplemented adapters
+title: CLI.md / GETTING_STARTED.md host list omits kimi-code and doesn't flag unimplemented
+  adapters
 type: ENH
 status: open
 priority: P3
@@ -13,6 +14,13 @@ labels:
 - docs
 - ll-init
 - host-compat
+milestone: epic-3008
+confidence_score: 100
+outcome_confidence: 57
+score_complexity: 22
+score_test_coverage: 0
+score_ambiguity: 25
+score_change_surface: 10
 ---
 
 # ENH-3016: `CLI.md`/`GETTING_STARTED.md` host list omits `kimi-code` and doesn't flag unimplemented adapters
@@ -83,6 +91,17 @@ not run them as concurrent epic branches.
 - [ ] The status wording is consistent with `docs/reference/HOST_COMPATIBILITY.md`;
       that file is not restructured.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-03_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 57/100 → LOW
+
+### Outcome Risk Factors
+- No automated test or doc-consistency check asserts the host-list content in `CLI.md`/`GETTING_STARTED.md`, so a future edit could silently drift again (0/25 test coverage).
+- No verification grep or wiring test is specified for the 3 enumerated edit sites; completeness after the edit relies on manual review only (10/25 change surface).
+
 ## Status
 
 **Open** | Created: 2026-08-02 | Priority: P3
@@ -95,3 +114,7 @@ not run them as concurrent epic branches.
 - **Effort**: Small.
 - **Risk**: None.
 - **Breaking Change**: No.
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-03T15:05:03 - `f961ffa8-5753-4a74-bb32-471b9981ee98.jsonl`

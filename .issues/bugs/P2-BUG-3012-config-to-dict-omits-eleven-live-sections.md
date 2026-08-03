@@ -1,6 +1,7 @@
 ---
 id: BUG-3012
-title: BRConfig.to_dict() omits 11 live config sections, breaking ll-config get and {{config.*}} expansion
+title: BRConfig.to_dict() omits 11 live config sections, breaking ll-config get and
+  {{config.*}} expansion
 type: BUG
 status: open
 priority: P2
@@ -12,6 +13,13 @@ labels:
 - config
 - cli
 - skills
+milestone: epic-3008
+confidence_score: 100
+outcome_confidence: 97
+score_complexity: 22
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3012: `BRConfig.to_dict()` omits 11 live config sections, breaking `ll-config get` and `{{config.*}}` expansion
@@ -311,4 +319,5 @@ here, but do not "simplify" ENH-3021 back to a `to_dict()`-only check.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-03T14:57:36 - `1dc7def3-a259-4a68-91b0-e2316edb4c01.jsonl`
 - `/ll:verify-issues` - 2026-08-03T04:16:46 - `2184690f-4a99-44a3-bf23-ddded9adf45a.jsonl`

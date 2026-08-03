@@ -13,6 +13,13 @@ labels:
 - docs
 - skills
 - ll-init
+milestone: epic-3008
+confidence_score: 100
+outcome_confidence: 95
+score_complexity: 25
+score_test_coverage: 20
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3018: `skills/init/SKILL.md` cites stale `cli.py` line numbers for `_run_plan`/`_run_apply`
@@ -84,3 +91,7 @@ citations and convert those the same way.
 - **Effort**: Trivial.
 - **Risk**: None.
 - **Breaking Change**: No.
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-03T15:14:32 - `0458f341-5d0d-4bc1-8a93-3bb282c63063.jsonl`

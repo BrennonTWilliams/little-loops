@@ -14,6 +14,13 @@ labels:
 - config
 - cli
 - ux
+milestone: epic-3008
+confidence_score: 96
+outcome_confidence: 91
+score_complexity: 21
+score_test_coverage: 22
+score_ambiguity: 24
+score_change_surface: 24
 ---
 
 # ENH-3021: `ll-config get` cannot distinguish an unknown config path from an unset one
@@ -215,3 +222,7 @@ inconvenient, it can be dropped without breaking this issue's ACs.
 - **Risk**: Low — stdout and exit code are unchanged by construction; only
   stderr gains output.
 - **Breaking Change**: No.
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-03T15:10:03 - `d8659c88-4c05-448f-aed7-88d399d39874.jsonl`
