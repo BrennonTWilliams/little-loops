@@ -98,7 +98,7 @@ ll-init
 | `--disable FEATURE` | Disable a feature (same valid names as `--enable`) | Turning off a feature that was auto-enabled |
 | `--upgrade` | Act on version drift automatically, then refresh every active host's integration surface: upgrade the pip package, force-regenerate adapter files (e.g. `.codex/hooks.json`), and scope-aware-update the claude-code plugin. Default headless mode is warn-only. Passing it alone (no `--yes`/`--dry-run`/`--plan`) implies `--yes` and runs headlessly | CI pipelines or automation where you want hands-free upgrades |
 | `--root / -C` | Set the project root directory (default: current directory) | Running `ll-init` from a different working directory |
-| `--hosts HOST…` | Wire adapters for additional host CLIs: `claude-code`, `codex`, `opencode`, `pi` | Only needed if you use little-loops with multiple AI coding tools |
+| `--hosts HOST…` | Wire adapters for additional host CLIs: `claude-code`, `codex`, `kimi-code` (fully wired); `opencode`, `pi` (recognized, adapter not yet available) | Only needed if you use little-loops with multiple AI coding tools |
 
 **Ambiguous or monorepo layouts:** rather than piping `--plan` into `apply --config`
 by hand, run `/ll:init` inside Claude Code — it drives this same seam but reads your

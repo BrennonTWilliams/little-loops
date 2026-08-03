@@ -3,9 +3,10 @@ id: ENH-3016
 title: CLI.md / GETTING_STARTED.md host list omits kimi-code and doesn't flag unimplemented
   adapters
 type: ENH
-status: open
+status: done
 priority: P3
 discovered_date: 2026-08-02
+completed_at: '2026-08-03T16:02:54Z'
 discovered_by: multi-agent-audit
 parent: EPIC-3008
 program_design_not_applicable: true
@@ -83,12 +84,12 @@ not run them as concurrent epic branches.
 
 ## Acceptance Criteria
 
-- [ ] `kimi-code` appears in the host list at `docs/reference/CLI.md:37`, in the
+- [x] `kimi-code` appears in the host list at `docs/reference/CLI.md:37`, in the
       `--hosts` flag row (`:49`), and in `docs/guides/GETTING_STARTED.md:101`.
-- [ ] `opencode` and `pi` are marked as recognized-but-adapter-not-yet-available
+- [x] `opencode` and `pi` are marked as recognized-but-adapter-not-yet-available
       in all three places, matching the runtime messages at `init/cli.py:135,137`.
-- [ ] `gemini` and `omp` are **not** added (they are not in `_KNOWN_HOSTS`).
-- [ ] The status wording is consistent with `docs/reference/HOST_COMPATIBILITY.md`;
+- [x] `gemini` and `omp` are **not** added (they are not in `_KNOWN_HOSTS`).
+- [x] The status wording is consistent with `docs/reference/HOST_COMPATIBILITY.md`;
       that file is not restructured.
 
 ## Confidence Check Notes
@@ -117,4 +118,5 @@ _Added by `/ll:confidence-check` on 2026-08-03_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-03T16:02:07 - `4828f953-079f-4edd-a2ef-4a906f5279d3.jsonl`
 - `/ll:confidence-check` - 2026-08-03T15:05:03 - `f961ffa8-5753-4a74-bb32-471b9981ee98.jsonl`
