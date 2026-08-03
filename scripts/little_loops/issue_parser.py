@@ -299,6 +299,23 @@ class FormatGaps:
         }
 
 
+def design_gate_failed(gaps: FormatGaps) -> bool:
+    """True when the Program Design gate failed for the issue *gaps* describe (ENH-2967).
+
+    Single owner of the three-way OR that `autodev.yaml` previously re-derived
+    independently in three inline ``python3 -c`` blocks (plus prose/shellout
+    restatements in ``ready-issue.md`` and ``confidence-check/SKILL.md``):
+    a non-specific ``## Program Design`` section, or the section missing/empty
+    entirely. Inert (returns False) on projects that haven't armed the gate,
+    since ``check_format_gaps`` never populates these three fields in that case.
+    """
+    return (
+        bool(gaps.program_design_nonspecific)
+        or "Program Design" in gaps.missing
+        or "Program Design" in gaps.empty
+    )
+
+
 @dataclass
 class QuestionGaps:
     """Coverage-aware unresolved-decision gaps for an issue (ENH-2446).

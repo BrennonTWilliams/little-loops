@@ -3947,6 +3947,60 @@ class TestFormatGradedChecker:
         assert gaps.has_gaps is False
 
 
+class TestDesignGateFailed:
+    """design_gate_failed() (ENH-2967) — single owner of the three-way OR the
+    autodev.yaml blocks re-derived independently: program_design_nonspecific,
+    'Program Design' in missing, 'Program Design' in empty.
+    """
+
+    def test_no_gaps_returns_false(self) -> None:
+        from little_loops.issue_parser import FormatGaps, design_gate_failed
+
+        gaps = FormatGaps()
+
+        assert design_gate_failed(gaps) is False
+
+    def test_program_design_nonspecific_returns_true(self) -> None:
+        from little_loops.issue_parser import FormatGaps, design_gate_failed
+
+        gaps = FormatGaps(program_design_nonspecific=["Program Design is boilerplate"])
+
+        assert design_gate_failed(gaps) is True
+
+    def test_program_design_in_missing_returns_true(self) -> None:
+        from little_loops.issue_parser import FormatGaps, design_gate_failed
+
+        gaps = FormatGaps(missing=["Program Design"])
+
+        assert design_gate_failed(gaps) is True
+
+    def test_program_design_in_empty_returns_true(self) -> None:
+        from little_loops.issue_parser import FormatGaps, design_gate_failed
+
+        gaps = FormatGaps(empty=["Program Design"])
+
+        assert design_gate_failed(gaps) is True
+
+    def test_other_missing_sections_do_not_trigger(self) -> None:
+        """A missing section other than 'Program Design' must not false-positive."""
+        from little_loops.issue_parser import FormatGaps, design_gate_failed
+
+        gaps = FormatGaps(missing=["Expected Behavior"], empty=["Impact"])
+
+        assert design_gate_failed(gaps) is False
+
+    def test_combination_of_all_three_returns_true(self) -> None:
+        from little_loops.issue_parser import FormatGaps, design_gate_failed
+
+        gaps = FormatGaps(
+            program_design_nonspecific=["x"],
+            missing=["Program Design"],
+            empty=["Program Design"],
+        )
+
+        assert design_gate_failed(gaps) is True
+
+
 class TestInferTestable:
     """infer_testable() doc-only keyword inference (ENH-2946)."""
 
@@ -4074,7 +4128,9 @@ class TestSectionBodyLastMatchWins:
         """A heading that appears once behaves exactly as before (no-op change)."""
         from little_loops.issue_parser import _section_body
 
-        content = "# BUG-0001: Example\n\n## Summary\n\nOnly one section.\n\n## Status\n\n**Open**\n"
+        content = (
+            "# BUG-0001: Example\n\n## Summary\n\nOnly one section.\n\n## Status\n\n**Open**\n"
+        )
 
         body = _section_body(content, "Summary")
 
@@ -4085,10 +4141,7 @@ class TestSectionBodyLastMatchWins:
         """`_section_body_with_offset`'s reported start offset points at the last body."""
         from little_loops.issue_parser import _section_body_with_offset
 
-        content = (
-            "## Confidence Check Notes\n\nfirst\n\n"
-            "## Confidence Check Notes\n\nsecond\n"
-        )
+        content = "## Confidence Check Notes\n\nfirst\n\n## Confidence Check Notes\n\nsecond\n"
 
         result = _section_body_with_offset(content, "Confidence Check Notes")
 

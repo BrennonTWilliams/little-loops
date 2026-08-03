@@ -521,14 +521,16 @@ class TestRecheckAfterSizeReviewStagnationBackstop:
 
 
 class TestDesignGateStep0Detection:
-    """ENH-2870: all three gate states hard-AND the Program Design verdict."""
+    """ENH-2870/ENH-2967: all three gate states hard-AND the Program Design verdict,
+    now via the single `ll-issues check-design` exit-code owner instead of each state
+    re-deriving the OR from raw `format-check --format json` output."""
 
-    def test_recheck_scores_shells_out_to_format_check(self) -> None:
+    def test_recheck_scores_calls_check_design(self) -> None:
         action = _load_autodev_yaml()["states"]["recheck_scores"]["action"]
-        assert "ll-issues format-check" in action
-        assert "--format json" in action
-        assert "program_design_nonspecific" in action
+        assert "ll-issues check-design" in action
         assert "autodev-design-gate-failed-$ID" in action
+        assert "format-check" not in action
+        assert "program_design_nonspecific" not in action
 
     def test_recheck_scores_composes_design_fail_with_check_readiness_exit_code(self) -> None:
         """recheck_scores has no local GATE variable — it routes on
@@ -536,37 +538,33 @@ class TestDesignGateStep0Detection:
         design AND must be composed via a chained `&&`, not a GATE overwrite."""
         action = _load_autodev_yaml()["states"]["recheck_scores"]["action"]
         assert "ll-issues check-readiness" in action
-        assert '[ "$DESIGN_FAIL" != "true" ]' in action
+        assert "&& ll-issues check-design" in action
 
-    def test_regate_after_atomic_remediation_shells_out_to_format_check(self) -> None:
+    def test_regate_after_atomic_remediation_calls_check_design(self) -> None:
         action = _load_autodev_yaml()["states"]["regate_after_atomic_remediation"]["action"]
-        assert "ll-issues format-check" in action
-        assert "--format json" in action
-        assert "program_design_nonspecific" in action
+        assert "ll-issues check-design" in action
+        assert "format-check" not in action
+        assert "program_design_nonspecific" not in action
         assert 'GATE="FAIL"' in action
 
-    def test_recheck_after_size_review_shells_out_to_format_check(self) -> None:
+    def test_recheck_after_size_review_calls_check_design(self) -> None:
         action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
-        assert "ll-issues format-check" in action
-        assert "--format json" in action
-        assert "program_design_nonspecific" in action
+        assert "ll-issues check-design" in action
+        assert "format-check" not in action
+        assert "program_design_nonspecific" not in action
         assert 'GATE="FAIL"' in action
 
-    def test_parses_flat_single_id_shape_not_all_mapping(self) -> None:
-        """The parser must read the flat single-ID JSON shape (missing/empty/
-        program_design_nonspecific keys directly on the root dict), never
-        index by issue ID the way --all's {issue_id: gaps} mapping would."""
+    def test_no_inline_design_fail_python_parsing_remains(self) -> None:
+        """The fail-quiet `except Exception: d = {}` / `|| echo "false"` inline-JSON
+        scaffolding this issue targets must be gone from all three states."""
         for state_name in (
             "recheck_scores",
             "regate_after_atomic_remediation",
             "recheck_after_size_review",
         ):
             action = _load_autodev_yaml()["states"][state_name]["action"]
-            assert "d.get('program_design_nonspecific')" in action
-            assert "d.get('missing')" in action
-            assert "d.get('empty')" in action
-            assert "d[ID]" not in action
-            assert 'd["$ID"]' not in action
+            assert "DESIGN_JSON" not in action
+            assert "d.get('program_design_nonspecific')" not in action
 
 
 class TestRecheckAfterSizeReviewDesignGateBranch:
@@ -935,3 +933,117 @@ class TestAutodevHasNoOwnBaseShaStamp:
         action = _load_autodev_yaml()["states"]["implement_current"].get("action", "")
         assert "ll-auto" in action
         assert "--only" in action
+
+
+def _bug_body(*, program_design: str | None, confidence: int, outcome: int) -> str:
+    """A structurally complete BUG issue body with configurable scores and an
+    optional Program Design section (ENH-2967 loop-level fixture)."""
+    sections = [
+        "---",
+        "id: BUG-9700",
+        "status: open",
+        "discovered_date: 2026-07-20",
+        f"confidence_score: {confidence}",
+        f"outcome_confidence: {outcome}",
+        "---",
+        "",
+        "# BUG-9700: Something broke",
+        "",
+        "## Summary",
+        "The widget explodes when the input is empty.",
+        "",
+        "## Steps to Reproduce",
+        "1. Open the widget\n2. Submit an empty form",
+        "",
+        "## Current Behavior",
+        "It explodes.",
+        "",
+        "## Expected Behavior",
+        "It should not break.",
+        "",
+        "## Actual Behavior",
+        "It breaks loudly.",
+        "",
+        "## Impact",
+        "- **Priority**: P3 - Minor annoyance for a rare input.",
+        "",
+        "## Status",
+        "**Open** | Created: 2026-07-20 | Priority: P3",
+    ]
+    if program_design is not None:
+        sections.insert(-3, "## Program Design")
+        sections.insert(-3, program_design.strip())
+        sections.insert(-3, "")
+    return "\n".join(sections) + "\n"
+
+
+def _run_recheck_scores(project_root: Path, issue_id: str) -> None:
+    """Run the real `recheck_scores` shell action end-to-end (real `ll-issues`
+    subprocess calls, no python-fragment extraction), the way the FSM would
+    substitute ${captured.input.output}/${context.run_dir}/thresholds."""
+    action = _load_autodev_yaml()["states"]["recheck_scores"]["action"]
+    script = (
+        action.replace('ID="${captured.input.output}"', f'ID="{issue_id}"')
+        .replace("${context.run_dir}", str(project_root))
+        .replace("${context.readiness_threshold}", "85")
+        .replace("${context.outcome_threshold}", "65")
+    )
+    subprocess.run(["bash", "-c", script], cwd=str(project_root), check=False)
+
+
+class TestRecheckScoresDesignGateEndToEnd:
+    """ENH-2967: `recheck_scores` still blocks a design-less issue after the
+    inline DESIGN_FAIL python blocks were replaced by `ll-issues check-design` —
+    the loop-level coverage the issue's Implementation Step 5 calls out as
+    missing (nothing previously exercised the real shell action against a
+    real `ll-issues` subprocess call)."""
+
+    def _make_project(self, tmp_path: Path, *, program_design: str | None) -> Path:
+        issues_dir = tmp_path / ".issues" / "bugs"
+        issues_dir.mkdir(parents=True)
+        issue_file = issues_dir / "P3-BUG-9700-test-bug.md"
+        issue_file.write_text(
+            _bug_body(program_design=program_design, confidence=95, outcome=90),
+            encoding="utf-8",
+        )
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "program-design-cutover.json").write_text(
+            json.dumps({"sha": "0" * 40, "date": "2026-07-01"}), encoding="utf-8"
+        )
+        return issue_file
+
+    def test_design_less_issue_is_not_staged(self, tmp_path: Path) -> None:
+        """High readiness/outcome scores alone must not stage an issue missing
+        `## Program Design` once the gate is armed."""
+        self._make_project(tmp_path, program_design=None)
+
+        _run_recheck_scores(tmp_path, "BUG-9700")
+
+        assert (tmp_path / "autodev-design-gate-failed-BUG-9700").exists()
+        staged = tmp_path / "autodev-staged.txt"
+        assert not staged.exists() or "BUG-9700" not in staged.read_text()
+
+    def test_issue_with_program_design_is_staged(self, tmp_path: Path) -> None:
+        """The same high scores WITH a present, non-boilerplate Program Design
+        section must stage normally — the gate change must not over-block."""
+        valid_section = (
+            "### Types\n\n- `sha: str`\n\n"
+            "### Signatures\n\n- `design_gate_failed(gaps: FormatGaps) -> bool`\n\n"
+            "### Call Path\n\n`design_gate_failed` -> `check_format_gaps`\n"
+        )
+        self._make_project(tmp_path, program_design=valid_section)
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "config", "user.email", "t@t.t"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "config", "user.name", "t"], cwd=tmp_path, check=True)
+        (tmp_path / "mod.py").write_text(
+            "def design_gate_failed(gaps):\n    return False\n", encoding="utf-8"
+        )
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "x"], cwd=tmp_path, check=True)
+
+        _run_recheck_scores(tmp_path, "BUG-9700")
+
+        assert not (tmp_path / "autodev-design-gate-failed-BUG-9700").exists()
+        staged = tmp_path / "autodev-staged.txt"
+        assert staged.exists() and "BUG-9700" in staged.read_text()

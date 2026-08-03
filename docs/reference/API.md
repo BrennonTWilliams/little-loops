@@ -4045,6 +4045,7 @@ Entry point for `ll-issues` command. Issue management and visualization utilitie
 | `check-flag` | Exit 0 if a named boolean frontmatter field equals `true`; takes `issue_id` and `field` positional args |
 | `check-decidable` | Exit 0 if an issue has >=1 enumerable option to decide between (deterministic companion to `/ll:decide-issue --validate-only`, ENH-2443) |
 | `check-readiness` | Exit 0 if `confidence_score` and `outcome_confidence` meet thresholds; reads from `ll-config.json` or `--readiness`/`--outcome` flags |
+| `check-design` | Exit 0 if the Program Design gate passes for an issue; single owner of `design_gate_failed()` (ENH-2967) |
 | `epic-consistency` | Detect and reconcile EPIC body/parent drift (`--all`, `--fix`, `--format text\|json`); exits non-zero when drift found in report-only mode |
 | `deferred-triage` | List `deferred_by: automation` issues awaiting human triage, with reason + age (alias: `dt`) |
 

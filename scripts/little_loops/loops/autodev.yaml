@@ -1192,26 +1192,13 @@ states:
     # recheck_after_size_review, which owns the design_gate_failed deferral.
     action: |
       ID="${captured.input.output}"
-      DESIGN_JSON=$(ll-issues format-check "$ID" --format json 2>/dev/null || echo '{}')
-      DESIGN_FAIL=$(printf '%s' "$DESIGN_JSON" | python3 -c "
-      import json, sys
-      try:
-          d = json.load(sys.stdin)
-      except Exception:
-          d = {}
-      nonspecific = d.get('program_design_nonspecific') or []
-      missing = d.get('missing') or []
-      empty = d.get('empty') or []
-      fail = bool(nonspecific) or ('Program Design' in missing) or ('Program Design' in empty)
-      print('true' if fail else 'false')
-      " 2>/dev/null || echo "false")
-      if [ "$DESIGN_FAIL" = "true" ]; then
+      if ! ll-issues check-design "$ID"; then
         touch ${context.run_dir}/autodev-design-gate-failed-$ID
       fi
       ll-issues check-readiness "$ID" \
         --readiness ${context.readiness_threshold} \
         --outcome ${context.outcome_threshold} \
-        && [ "$DESIGN_FAIL" != "true" ] \
+        && ll-issues check-design "$ID" \
         && echo "$ID" >> ${context.run_dir}/autodev-staged.txt
     fragment: shell_exit
     on_yes: decide_current
@@ -1734,20 +1721,10 @@ states:
     # already attempted.
     action: |
       ID="${captured.input.output}"
-      DESIGN_JSON=$(ll-issues format-check "$ID" --format json 2>/dev/null || echo '{}')
-      DESIGN_FAIL=$(printf '%s' "$DESIGN_JSON" | python3 -c "
-      import json, sys
-      try:
-          d = json.load(sys.stdin)
-      except Exception:
-          d = {}
-      nonspecific = d.get('program_design_nonspecific') or []
-      missing = d.get('missing') or []
-      empty = d.get('empty') or []
-      fail = bool(nonspecific) or ('Program Design' in missing) or ('Program Design' in empty)
-      print('true' if fail else 'false')
-      " 2>/dev/null || echo "false")
-      if [ "$DESIGN_FAIL" = "true" ]; then
+      if ll-issues check-design "$ID"; then
+        DESIGN_FAIL="false"
+      else
+        DESIGN_FAIL="true"
         touch ${context.run_dir}/autodev-design-gate-failed-$ID
       fi
       GATE=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
@@ -1971,20 +1948,10 @@ states:
     # design_gate_failed, never low_readiness.
     action: |
       ID="${captured.input.output}"
-      DESIGN_JSON=$(ll-issues format-check "$ID" --format json 2>/dev/null || echo '{}')
-      DESIGN_FAIL=$(printf '%s' "$DESIGN_JSON" | python3 -c "
-      import json, sys
-      try:
-          d = json.load(sys.stdin)
-      except Exception:
-          d = {}
-      nonspecific = d.get('program_design_nonspecific') or []
-      missing = d.get('missing') or []
-      empty = d.get('empty') or []
-      fail = bool(nonspecific) or ('Program Design' in missing) or ('Program Design' in empty)
-      print('true' if fail else 'false')
-      " 2>/dev/null || echo "false")
-      if [ "$DESIGN_FAIL" = "true" ]; then
+      if ll-issues check-design "$ID"; then
+        DESIGN_FAIL="false"
+      else
+        DESIGN_FAIL="true"
         touch ${context.run_dir}/autodev-design-gate-failed-$ID
       fi
       GATE=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "

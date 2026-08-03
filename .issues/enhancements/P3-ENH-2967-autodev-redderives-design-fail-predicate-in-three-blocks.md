@@ -3,8 +3,9 @@ id: ENH-2967
 title: autodev.yaml re-derives the DESIGN_FAIL predicate in three inline blocks
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-08-01T16:02:14Z'
+completed_at: '2026-08-03T18:54:51Z'
 discovered_date: 2026-08-01
 discovered_by: capture-issue
 relates_to:
@@ -12,11 +13,17 @@ relates_to:
 - ENH-2870
 - BUG-2956
 testable: true
-decision_needed: true
+decision_needed: false
 labels:
 - loops
 - issues
 - autodev
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-2967: `autodev.yaml` re-derives the `DESIGN_FAIL` predicate in three inline blocks
@@ -31,7 +38,7 @@ consume it instead of reimplementing it three times.
 
 ## Current Behavior
 
-`scripts/little_loops/loops/autodev.yaml` at `L1095`, `L1594`, and `L1758`
+`scripts/little_loops/loops/autodev.yaml` at `L1195`, `L1737`, and `L1974`
 each contain a near-identical block:
 
 ```bash
@@ -110,7 +117,11 @@ carried forward here rather than dying with it.
 
 Add a first-class verdict to the CLI so the predicate has one owner.
 
-**Option A (preferred): a dedicated exit-code check.** Extend the existing
+**Option A (preferred): a dedicated exit-code check.**
+
+> **Selected:** Option A — matches the codebase's established `check-readiness`/`check-decidable` CLI pattern exactly (thin `cmd_check_<name>`, three-point `__init__.py` wiring, ready test template) and removes the fail-quiet JSON-parsing scaffolding at its root; Option B only shrinks the OR-computation while leaving that scaffolding intact, and its `FormatGaps.to_dict()` placement contradicts the explicit ENH-2992 design decision against widening that contract.
+
+Extend the existing
 `ll-issues check-*` family (`check-flag`, `check-readiness`,
 `check-decidable`, `check-open-questions`) with `check-design <id>` — exit 0
 when the gate passes, 1 when it fails. The loop blocks become:
@@ -134,6 +145,46 @@ the part that fails silently.
 Whichever is chosen, the predicate itself must live next to the gap
 computation in `issue_parser.py` / `issues/program_design.py`, not in the CLI
 layer, so `is_formatted()` and any future consumer share it.
+
+### Decision Rationale
+
+_Added by `/ll:decide-issue`:_
+
+**Selected: Option A (dedicated `check-design` exit-code subcommand).**
+
+Codebase evidence for both options was gathered via parallel
+`codebase-pattern-finder` agents before scoring:
+
+| Dimension | Option A | Option B |
+|---|---|---|
+| Consistency | 3 | 0 |
+| Simplicity | 2 | 1 |
+| Testability | 3 | 1 |
+| Risk | 2 | 1 |
+| **Total** | **10/12** | **3/12** |
+
+**Option A evidence**: `cmd_check_readiness` (`check_readiness.py:99-125`) and
+`cmd_check_decidable` (`check_decidable.py:19-52`) are thin `cmd_check_<name>(config,
+args) -> int` functions with no new abstractions — the same shape Option A adopts. The
+three/four-point wiring pattern (`__init__.py` import, subparser, dispatch) is real and
+consistently applied across `check-flag`/`check-decidable`/`check-open-questions`/
+`check-readiness`. `test_ll_issues_check_decidable.py` is a direct, working template for
+`test_ll_issues_check_design.py`. No downstream consumer of the `DESIGN_FAIL` boolean
+needs anything beyond the exit code — the reason-string consumers
+(`ready-issue.md`, `confidence-check/SKILL.md`) already read the raw gap-class list
+fields directly and never touch a boolean, so Option A's exit-code-only shape loses
+nothing they need.
+
+**Option B evidence against**: `format_check.py:323-336` (ENH-2992) contains an explicit,
+recent design decision *against* widening `FormatGaps.to_dict()`'s `dict[str, list[str]]`
+contract with a derived boolean — Option B as proposed directly contradicts that
+rationale. More importantly, Option B doesn't address the mechanism the issue itself
+identifies as the real problem: all three `autodev.yaml` blocks would still shell out to
+`python3 -c "..."` wrapped in `try/except Exception: d = {}` and `2>/dev/null || echo
+"false"` — that fail-quiet scaffolding exists because the blocks parse JSON in bash at
+all, not because they compute a three-way OR, so it survives unchanged under Option B.
+`test_every_format_gaps_field_is_rendered` (`test_ll_issues_format_check.py:1555-1577`)
+would also need a carve-out since it assumes every `FormatGaps` field is a `list[str]`.
 
 ## Program Design
 
@@ -206,8 +257,8 @@ closer model since Option A explicitly adopts that command's idiom.
 - `scripts/little_loops/cli/issues/` — the `check-design` subcommand
   (Option A), registered in `cli/issues/__init__.py` alongside the other
   `check-*` entries.
-- `scripts/little_loops/loops/autodev.yaml` — the three blocks at `L1095`,
-  `L1594`, `L1758`.
+- `scripts/little_loops/loops/autodev.yaml` — the three blocks at `L1195`,
+  `L1737`, `L1974`.
 
 ### Dependent Files
 - `scripts/little_loops/loops/rn-remediate.yaml` — `ensure_formatted` gate is
@@ -328,7 +379,7 @@ closer model since Option A explicitly adopts that command's idiom.
 - **Effort**: Small — one function, one subcommand, three YAML edits.
 - **Risk**: Low-Medium — the risk is in the YAML edits, not the Python.
   Each of the three blocks sits in different surrounding control flow
-  (`L1095` chains into `autodev-staged.txt`; the other two branch twice on
+  (`L1195` chains into `autodev-staged.txt`; the other two branch twice on
   `DESIGN_FAIL`), so a mechanical find-replace would be wrong.
 - **Breaking Change**: No.
 
@@ -346,7 +397,43 @@ citations have drifted with the file's growth: the blocks are now at
 `autodev.yaml:1195`, `:1737`, `:1974` (originally cited `L1095`, `L1594`,
 `L1758`).
 
+## Resolution
+
+Implemented Option A exactly as decided:
+
+- Added `design_gate_failed(gaps: FormatGaps) -> bool` beside `FormatGaps` in
+  `issue_parser.py` — single owner of the three-way OR.
+- Added `ll-issues check-design <id>` (`cli/issues/check_design.py`), wired at
+  the three `check-readiness`-mirrored points in `cli/issues/__init__.py`
+  (import, subparser, dispatch), plus help text.
+- Replaced all three `autodev.yaml` inline `python3 -c "..."` `DESIGN_FAIL`
+  blocks (`recheck_scores`, `regate_after_atomic_remediation`,
+  `recheck_after_size_review`) with `ll-issues check-design "$ID"` calls,
+  preserving each state's distinct surrounding control flow (compound
+  `&&`-chain vs. explicit `GATE` override) as flagged in the Program Design.
+- Pointed `commands/ready-issue.md` and `skills/confidence-check/SKILL.md`
+  Phase 1.6/Phase 3 at the new predicate (`PD_FAIL` via `check-design`),
+  keeping the raw `format-check` shellout only where the reason string
+  (`PD_GAP`) is still needed for display.
+- Tests: `TestDesignGateFailed` (unit, `test_issue_parser.py`),
+  `test_ll_issues_check_design.py` (subprocess CLI contract, mirrors
+  `test_ll_issues_check_decidable.py`), updated
+  `TestDesignGateStep0Detection` (static YAML assertions now assert the
+  consolidated form and the *absence* of the old inline-JSON scaffolding),
+  and a new `TestRecheckScoresDesignGateEndToEnd` (real subprocess
+  `ll-issues` calls against a real project tree — the loop-level coverage
+  Implementation Step 5 called out as missing).
+
+Full suite: `python -m pytest scripts/tests/` — 18138 passed, 42 skipped, 4
+pre-existing failures unrelated to this change (`test_logo.py`,
+`test_des_audit.py` — logo asset content / design-tokens audit tree, no
+relation to `FormatGaps`/`check-design`/`autodev.yaml`).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-08-03T18:54:45 - `db8fe1b2-96e0-465a-9850-cf44c91814b2.jsonl`
+- `/ll:ready-issue` - 2026-08-03T18:31:57 - `ad926e93-54c3-4b1d-b4d2-67d13f7853e7.jsonl`
+- `/ll:confidence-check` - 2026-08-03T18:29:53 - `a23e1705-9059-4fbe-b846-9d41d7d516e0.jsonl`
+- `/ll:decide-issue` - 2026-08-03T18:28:16 - `e741de04-992f-48cc-9f92-560488af7cc3.jsonl`
 - `/ll:verify-issues` - 2026-08-03T04:54:47 - `d03f8e53-9873-4f8d-8cfd-bbc50704a66b.jsonl`
 - `/ll:refine-issue` - 2026-08-01T20:03:56 - `610a6707-96a5-4407-9a1a-bc051890c79f.jsonl`
 - `/ll:capture-issue` - 2026-08-01T16:20:51 - `15f4582a-2df6-4315-9f84-3f5730f550e5.jsonl`

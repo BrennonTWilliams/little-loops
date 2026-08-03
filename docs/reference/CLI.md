@@ -1807,6 +1807,24 @@ ll-issues check-decidable ENH-277    # Exit 0 — 2+ options found
 
 ---
 
+#### `ll-issues check-design`
+
+Exit 0 if the Program Design gate passes for an issue (ENH-2967). Single owner of the `design_gate_failed()` predicate (`issue_parser.py`, beside `FormatGaps`) — a `bool(program_design_nonspecific) or "Program Design" in missing or "Program Design" in empty` OR that `autodev.yaml` previously re-derived independently in three inline `python3 -c "..."` blocks, each with its own fail-quiet `except Exception` / `|| echo "false"` scaffolding. Fails open (exit 0) on projects that haven't armed the Program Design specificity gate (no `.ll/program-design-cutover.json` stamp), mirroring `check_format_gaps()`'s existing fail-open behavior.
+
+| Argument | Description |
+|----------|-------------|
+| `issue_id` | Issue ID (e.g., `518`, `FEAT-518`, `P3-FEAT-518`) |
+
+**Examples:**
+```bash
+ll-issues check-design BUG-2967   # Exit 0 — gate passes or is inert
+ll-issues check-design BUG-9999   # Exit 1 — issue not found
+```
+
+**FSM loop use**: `autodev.yaml`'s `recheck_scores`, `regate_after_atomic_remediation`, and `recheck_after_size_review` states each call `ll-issues check-design "$ID"` in place of the old inline JSON-parsing block, chaining its exit code into the surrounding readiness/outcome gate exactly like the `check-readiness` idiom.
+
+---
+
 #### `ll-issues locate-options`
 
 Print count/pattern/heading/spans of enumerable options in an issue (ENH-2950). Data frontend over the same `issue_parser.locate_enumerable_options()` precedence chain `check-decidable` gates on — where `check-decidable` only reports an exit code, this exposes the full result so a consumer (notably `/ll:decide-issue` Phase 3/3b) can read option spans instead of re-implementing the same pattern precedence in prose.

@@ -22,6 +22,7 @@ def main_issues() -> int:
         from little_loops.cli.issues.anchor_sweep import cmd_anchor_sweep
         from little_loops.cli.issues.append_log import cmd_append_log
         from little_loops.cli.issues.check_decidable import cmd_check_decidable
+        from little_loops.cli.issues.check_design import cmd_check_design
         from little_loops.cli.issues.check_flag import cmd_check_flag
         from little_loops.cli.issues.check_open_questions import (
             add_check_open_questions_parser,
@@ -116,6 +117,7 @@ Sub-commands:
   check-readiness  Exit 0 if an issue meets readiness and outcome thresholds
   check-flag       Exit 0 if a boolean frontmatter field equals 'true'
   check-decidable  Exit 0 if an issue has >=1 enumerable option to decide between
+  check-design     Exit 0 if the Program Design gate passes for an issue
   locate-options   Print count/pattern/heading/spans of enumerable options in an issue
   set-scores       Write confidence and dimension scores to issue frontmatter
   set-flags        Write decision_needed/missing_artifacts/implementation_order_risk/spike_needed flags from confidence-check findings
@@ -697,6 +699,14 @@ Examples:
         cdec.add_argument("issue_id", help="Issue ID (e.g., 518, FEAT-518, P3-FEAT-518)")
         add_config_arg(cdec)
 
+        cdes = subs.add_parser(
+            "check-design",
+            help="Exit 0 if the Program Design gate passes for an issue (ENH-2967)",
+        )
+        cdes.set_defaults(command="check-design")
+        cdes.add_argument("issue_id", help="Issue ID (e.g., 518, FEAT-518, P3-FEAT-518)")
+        add_config_arg(cdes)
+
         loc = subs.add_parser(
             "locate-options",
             help="Print count/pattern/heading/spans of enumerable options in an issue (ENH-2950)",
@@ -978,6 +988,8 @@ Examples:
             return cmd_check_flag(config, args)
         if args.command == "check-decidable":
             return cmd_check_decidable(config, args)
+        if args.command == "check-design":
+            return cmd_check_design(config, args)
         if args.command == "locate-options":
             return cmd_locate_options(config, args)
         if args.command == "check-open-questions":
