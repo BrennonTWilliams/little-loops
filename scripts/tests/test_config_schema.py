@@ -749,12 +749,15 @@ class TestConfigSchema:
         assert sqlite_block.get("additionalProperties") is False
         assert sqlite_block["properties"]["path"]["default"] == ".ll/history.db"
 
-    def test_issues_relationship_fields_in_schema(self) -> None:
-        """Relationship fields must be declared inside issues.properties.
+    def test_issues_relationship_fields_not_in_schema(self) -> None:
+        """Per-issue-frontmatter fields must NOT be declared in global issues config.
 
-        The issues block has additionalProperties: false, so any config that
-        sets parent/blocked_by/depends_on/relates_to/duplicate_of will be
-        rejected unless they are declared here.
+        status/parent/blocked_by/depends_on/relates_to/duplicate_of/labels/milestone
+        are per-issue-file frontmatter fields (documented in .claude/CLAUDE.md's
+        "Issue File Format" section), not project-wide settings a user sets once
+        in ll-config.json. IssuesConfig.from_dict() never reads them, and nothing
+        else reads them as global config either (ENH-3013). They were previously
+        declared here by mistake; this test guards against reintroducing them.
         """
         data = json.loads(_load_schema_text())
         issues = data["properties"]["issues"]
@@ -764,22 +767,22 @@ class TestConfigSchema:
         )
         issue_props = issues["properties"]
 
-        # Single-value string fields
-        for field in ("parent", "duplicate_of"):
-            assert field in issue_props, (
-                f"issues.{field} is not declared; configs using it will be "
-                "rejected by additionalProperties: false"
+        dead_keys = (
+            "status",
+            "parent",
+            "blocked_by",
+            "depends_on",
+            "relates_to",
+            "duplicate_of",
+            "labels",
+            "milestone",
+        )
+        for field in dead_keys:
+            assert field not in issue_props, (
+                f"issues.{field} is a per-issue-frontmatter field, not global "
+                "config — it should not be declared in the issues schema object "
+                "(ENH-3013)"
             )
-            assert issue_props[field]["type"] == "string"
-
-        # Array-of-strings fields
-        for field in ("blocked_by", "depends_on", "relates_to"):
-            assert field in issue_props, (
-                f"issues.{field} is not declared; configs using it will be "
-                "rejected by additionalProperties: false"
-            )
-            assert issue_props[field]["type"] == "array"
-            assert issue_props[field]["items"] == {"type": "string"}
 
     def test_orchestration_host_cli_in_schema(self) -> None:
         """orchestration.host_cli must be declared as a string enum in config-schema.json.

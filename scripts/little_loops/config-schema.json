@@ -108,12 +108,6 @@
             "epics": {"prefix": "EPIC", "dir": "epics", "action": "coordinate"}
           }
         },
-        "status": {
-          "type": "string",
-          "description": "Valid status values for issue frontmatter: open | in_progress | blocked | deferred | done | cancelled",
-          "enum": ["open", "in_progress", "blocked", "deferred", "done", "cancelled"],
-          "default": "open"
-        },
         "completed_dir": {
           "type": "string",
           "description": "[DEPRECATED: use IssueInfo.status instead] Directory for completed issues",
@@ -207,46 +201,6 @@
             }
           },
           "additionalProperties": false
-        },
-        "parent": {
-          "type": "string",
-          "description": "Parent issue ID (e.g., EPIC-123 or ENH-100)"
-        },
-        "blocked_by": {
-          "type": "array",
-          "description": "List of issue IDs that block this issue",
-          "items": {
-            "type": "string"
-          }
-        },
-        "depends_on": {
-          "type": "array",
-          "description": "List of issue IDs this issue depends on (soft prerequisite)",
-          "items": {
-            "type": "string"
-          }
-        },
-        "relates_to": {
-          "type": "array",
-          "description": "List of issue IDs related to this issue",
-          "items": {
-            "type": "string"
-          }
-        },
-        "duplicate_of": {
-          "type": "string",
-          "description": "Issue ID that this issue duplicates"
-        },
-        "labels": {
-          "type": "array",
-          "description": "Cross-cutting classification labels (e.g., fsm, cli, quick-win)",
-          "items": {
-            "type": "string"
-          }
-        },
-        "milestone": {
-          "type": "string",
-          "description": "Sprint or milestone name this issue is assigned to (e.g., sprint-2026-q2)"
         },
         "auto_commit": {
           "type": "boolean",

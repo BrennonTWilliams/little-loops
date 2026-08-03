@@ -2,10 +2,11 @@
 id: ENH-3013
 title: config-schema.json issues object declares dead per-issue-frontmatter keys
 type: ENH
-status: open
+status: done
 priority: P4
 discovered_date: 2026-08-02
 discovered_by: multi-agent-audit
+completed_at: '2026-08-03T16:11:13Z'
 parent: EPIC-3008
 program_design_not_applicable: true
 testable: false
@@ -103,14 +104,39 @@ raw `config["issues"][...]` access. Per-issue frontmatter field documentation
 
 ## Acceptance Criteria
 
-- [ ] The 8 dead keys (`status`, `parent`, `blocked_by`, `depends_on`,
+- [x] The 8 dead keys (`status`, `parent`, `blocked_by`, `depends_on`,
       `relates_to`, `duplicate_of`, `labels`, `milestone`) are gone from the
       `issues` object in `config-schema.json`.
-- [ ] `deploy_templates` is **retained** and `test_issues_deploy_templates_in_schema`
+- [x] `deploy_templates` is **retained** and `test_issues_deploy_templates_in_schema`
       still passes.
-- [ ] The remaining 12 properties are each traceable to a real read (typed or raw).
-- [ ] `.claude/CLAUDE.md`'s "Issue File Format" section is unchanged.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] The remaining 12 properties are each traceable to a real read (typed or raw).
+- [x] `.claude/CLAUDE.md`'s "Issue File Format" section is unchanged.
+- [x] `python -m pytest scripts/tests/` exits 0.
+
+## Resolution
+
+Removed the 8 dead per-issue-frontmatter keys from the `issues` object in
+`config-schema.json` (`status`, `parent`, `blocked_by`, `depends_on`,
+`relates_to`, `duplicate_of`, `labels`, `milestone`); `deploy_templates` and
+the other 11 live properties (read by `IssuesConfig.from_dict()` or raw
+`config["issues"][...]` access) were untouched. Ran all three liveness
+sweeps from the Suggested Fix Direction before deleting — none of the 8 keys
+appear in `from_dict()`, raw `config.get("issues"...)` reads, or
+`docs/`/`.claude/` references.
+
+`test_issues_relationship_fields_in_schema` in `test_config_schema.py`
+previously asserted the 5 relationship fields (`parent`, `blocked_by`,
+`depends_on`, `relates_to`, `duplicate_of`) *must* be declared in the global
+schema — the same misconception this issue diagnoses. Replaced it with
+`test_issues_relationship_fields_not_in_schema`, which asserts all 8 dead
+keys are absent, guarding against reintroduction.
+
+`.claude/CLAUDE.md`'s "Issue File Format" section was not touched — it
+already correctly documents these as per-issue frontmatter fields.
+`python -m pytest scripts/tests/` passes (18108 passed, 42 skipped); the 4
+pre-existing failures (logo banner / des_audit tests) reproduce identically
+on `main` before this change and are unrelated (tracked separately, see
+BUG-3025).
 
 ## Status
 
@@ -127,4 +153,6 @@ raw `config["issues"][...]` access. Per-issue frontmatter field documentation
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-03T16:10:24 - `ea1b9933-6bd9-44ca-ac7b-fac431046df6.jsonl`
+- `/ll:ready-issue` - 2026-08-03T16:04:27 - `cd9ea094-179b-423d-80b3-5a799c9d23ad.jsonl`
 - `/ll:confidence-check` - 2026-08-03T15:12:04 - `f3a42b69-5771-4044-981f-51802a887d99.jsonl`
