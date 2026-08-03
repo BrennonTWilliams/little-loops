@@ -10466,6 +10466,246 @@ class TestRequestPathDispatchWiring:
         assert result.terminated_by != "error"
 
 
+class TestCacheDeferredToolsDispatchWiring:
+    """BUG-3009: cache/deferred_tools config threaded into live dispatch kwargs."""
+
+    def _sdk_fsm(self) -> FSMLoop:
+        return FSMLoop(
+            name="test",
+            initial="ask",
+            states={
+                "ask": StateConfig(
+                    action="Say hi",
+                    action_type="prompt",
+                    on_yes="done",
+                    on_no="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+    def test_sdk_path_passes_config_values(
+        self, temp_project_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(
+            json.dumps(
+                {
+                    "cache": {"require_repeat": False},
+                    "deferred_tools": {"threshold": 7, "search_tool_variant": "regex"},
+                }
+            )
+        )
+        fsm = self._sdk_fsm()
+        mock_runner = MockActionRunner()
+        sdk_result = ActionResult(output="hi", stderr="", exit_code=0, duration_ms=5)
+
+        with (
+            patch(
+                "little_loops.host_runner.dispatch_anthropic_request",
+                return_value=sdk_result,
+            ) as mock_dispatch,
+            patch(
+                "little_loops.fsm.executor.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="yes", details={}),
+            ),
+        ):
+            executor = FSMExecutor(
+                fsm,
+                action_runner=mock_runner,
+                orchestration_config=OrchestrationConfig(request_path="sdk"),
+                working_dir=temp_project_dir,
+            )
+            executor.run()
+
+        assert mock_dispatch.call_args.kwargs["require_repeat"] is False
+        assert mock_dispatch.call_args.kwargs["defer_loading_threshold"] == 7
+        assert mock_dispatch.call_args.kwargs["search_tool_variant"] == "regex"
+
+    def test_batch_path_passes_config_values(
+        self, temp_project_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(
+            json.dumps(
+                {
+                    "cache": {"require_repeat": False},
+                    "deferred_tools": {"threshold": 3, "search_tool_variant": "regex"},
+                }
+            )
+        )
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        fsm = self._sdk_fsm()
+        fsm.context["run_dir"] = str(run_dir)
+        mock_runner = MockActionRunner()
+        batch_result = ActionResult(output="hi from batch", stderr="", exit_code=0, duration_ms=5)
+
+        with (
+            patch(
+                "little_loops.host_runner.dispatch_batch_request",
+                return_value="msgbatch_123",
+            ) as mock_submit,
+            patch(
+                "little_loops.host_runner.poll_batch_result",
+                return_value=batch_result,
+            ),
+            patch(
+                "little_loops.fsm.executor.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="yes", details={}),
+            ),
+        ):
+            executor = FSMExecutor(
+                fsm,
+                action_runner=mock_runner,
+                orchestration_config=OrchestrationConfig(request_path="batch"),
+                working_dir=temp_project_dir,
+            )
+            executor.run()
+
+        assert mock_submit.call_args.kwargs["require_repeat"] is False
+        assert mock_submit.call_args.kwargs["defer_loading_threshold"] == 3
+        assert mock_submit.call_args.kwargs["search_tool_variant"] == "regex"
+
+    def test_no_config_matches_hardcoded_defaults(
+        self, temp_project_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With no cache/deferred_tools config, kwargs equal prior hardcoded defaults."""
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        fsm = self._sdk_fsm()
+        mock_runner = MockActionRunner()
+        sdk_result = ActionResult(output="hi", stderr="", exit_code=0, duration_ms=5)
+
+        with (
+            patch(
+                "little_loops.host_runner.dispatch_anthropic_request",
+                return_value=sdk_result,
+            ) as mock_dispatch,
+            patch(
+                "little_loops.fsm.executor.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="yes", details={}),
+            ),
+        ):
+            executor = FSMExecutor(
+                fsm,
+                action_runner=mock_runner,
+                orchestration_config=OrchestrationConfig(request_path="sdk"),
+                working_dir=temp_project_dir,
+            )
+            executor.run()
+
+        assert mock_dispatch.call_args.kwargs["require_repeat"] is True
+        assert mock_dispatch.call_args.kwargs["defer_loading_threshold"] is None
+        assert mock_dispatch.call_args.kwargs["search_tool_variant"] == "bm25"
+
+    def test_config_root_resolves_from_working_dir_not_cwd(
+        self, temp_project_dir: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Config root is self.working_dir, verified with a distinct real cwd."""
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps({"cache": {"require_repeat": False}}))
+
+        other_cwd = tmp_path / "elsewhere"
+        other_cwd.mkdir()
+        monkeypatch.chdir(other_cwd)
+
+        fsm = self._sdk_fsm()
+        mock_runner = MockActionRunner()
+        sdk_result = ActionResult(output="hi", stderr="", exit_code=0, duration_ms=5)
+
+        with (
+            patch(
+                "little_loops.host_runner.dispatch_anthropic_request",
+                return_value=sdk_result,
+            ) as mock_dispatch,
+            patch(
+                "little_loops.fsm.executor.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="yes", details={}),
+            ),
+        ):
+            executor = FSMExecutor(
+                fsm,
+                action_runner=mock_runner,
+                orchestration_config=OrchestrationConfig(request_path="sdk"),
+                working_dir=temp_project_dir,
+            )
+            executor.run()
+
+        assert mock_dispatch.call_args.kwargs["require_repeat"] is False
+
+    def test_no_extra_br_config_constructions_across_dispatches(
+        self, temp_project_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Memoized BRConfig: N dispatches add zero extra constructions after the first."""
+        from little_loops.config import BRConfig
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        fsm = FSMLoop(
+            name="test",
+            initial="ask1",
+            states={
+                "ask1": StateConfig(
+                    action="Say hi",
+                    action_type="prompt",
+                    on_yes="ask2",
+                    on_no="ask2",
+                ),
+                "ask2": StateConfig(
+                    action="Say hi again",
+                    action_type="prompt",
+                    on_yes="done",
+                    on_no="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        sdk_result = ActionResult(output="hi", stderr="", exit_code=0, duration_ms=5)
+
+        original_init = BRConfig.__init__
+        call_count = 0
+
+        def counting_init(self: BRConfig, *args: Any, **kwargs: Any) -> None:
+            nonlocal call_count
+            call_count += 1
+            original_init(self, *args, **kwargs)
+
+        with (
+            patch(
+                "little_loops.host_runner.dispatch_anthropic_request",
+                return_value=sdk_result,
+            ),
+            patch(
+                "little_loops.fsm.executor.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="yes", details={}),
+            ),
+            patch.object(BRConfig, "__init__", counting_init),
+        ):
+            executor = FSMExecutor(
+                fsm,
+                action_runner=mock_runner,
+                orchestration_config=OrchestrationConfig(request_path="sdk"),
+                working_dir=temp_project_dir,
+            )
+            executor.run()
+
+        # Two dispatches (ask1, ask2) plus one continuity-summary compaction
+        # attempt per state must all share the single memoized BRConfig.
+        assert call_count == 1
+
+
 class TestSessionModeContinuity:
     """FEAT-2711: session_mode: continue injects a compact-summary into the
     next chained state's prompt; default (fresh) behavior is unchanged."""

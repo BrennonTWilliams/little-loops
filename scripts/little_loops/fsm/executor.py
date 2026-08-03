@@ -77,7 +77,7 @@ from little_loops.subprocess_utils import (
 )
 
 if TYPE_CHECKING:
-    from little_loops.config import CompressionConfig, OrchestrationConfig
+    from little_loops.config import BRConfig, CompressionConfig, OrchestrationConfig
 
 # Maximum number of per-state rate-limit retries before emitting rate_limit_exhausted.
 _DEFAULT_RATE_LIMIT_RETRIES: int = 3
@@ -394,6 +394,12 @@ class FSMExecutor:
         # Set by _execute_state when the detector fires with on_repeated_failure="abort";
         # checked by run() to terminate via _finish("stall_detected", ...).
         self._pending_stall_abort: Stall | None = None
+
+        # Memoized BRConfig for cache/deferred_tools dispatch kwargs (BUG-3009).
+        # Resolved lazily from self.working_dir on first use and reused for the
+        # life of the executor so live dispatches don't re-parse ll-config.json
+        # on every action.
+        self._br_config: BRConfig | None = None
 
         # Recurrent-window counter (ENH-2245). Tracks total occurrences of each
         # (state, exit_code, verdict) triple across the run (non-consecutive).
@@ -1996,6 +2002,19 @@ class FSMExecutor:
 
         return result
 
+    def _get_br_config(self) -> BRConfig:
+        """Return the memoized ``BRConfig`` for this executor (BUG-3009).
+
+        Resolved once from ``self.working_dir or Path.cwd()`` and reused for
+        the executor's lifetime so repeated reads (dispatch kwargs, continuity
+        compaction) don't re-parse ``ll-config.json`` per call.
+        """
+        if self._br_config is None:
+            from little_loops.config import BRConfig
+
+            self._br_config = BRConfig(self.working_dir or Path.cwd())
+        return self._br_config
+
     def _compact_continuity_summary(self, session_id: str) -> str | None:
         """Synchronously backfill+compact a just-finished continuity-chain session.
 
@@ -2005,9 +2024,7 @@ class FSMExecutor:
         injected summary, same as ``session_mode: fresh``.
         """
         try:
-            from little_loops.config import BRConfig
-
-            raw_config = BRConfig(self.working_dir or Path.cwd())._raw_config
+            raw_config = self._get_br_config()._raw_config
             compacted = summarize_completed_state(
                 session_id,
                 working_dir=self.working_dir,
@@ -2470,6 +2487,7 @@ class FSMExecutor:
         model = self._resolve_action_model(state)
         fragment_store = FragmentStore()
         request_path = self._resolve_request_path(state)
+        br_config = self._get_br_config()
 
         if request_path == "sdk":
             return host_runner.dispatch_anthropic_request(
@@ -2478,6 +2496,9 @@ class FSMExecutor:
                 tools=None,
                 model=model,
                 fragment_store=fragment_store,
+                require_repeat=br_config.cache.require_repeat,
+                defer_loading_threshold=br_config.deferred_tools.threshold,
+                search_tool_variant=br_config.deferred_tools.search_tool_variant,
             )
 
         # request_path == "batch"
@@ -2503,6 +2524,9 @@ class FSMExecutor:
                     tools=None,
                     model=model,
                     fragment_store=fragment_store,
+                    require_repeat=br_config.cache.require_repeat,
+                    defer_loading_threshold=br_config.deferred_tools.threshold,
+                    search_tool_variant=br_config.deferred_tools.search_tool_variant,
                 )
             except Exception as exc:  # anthropic.APIError and friends
                 return ActionResult(
