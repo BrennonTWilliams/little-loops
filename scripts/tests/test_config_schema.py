@@ -6,6 +6,8 @@ import importlib.resources
 import json
 from pathlib import Path
 
+from little_loops.config import BRConfig
+
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 # Resolve via importlib.resources so tests work in both editable installs and
@@ -1016,3 +1018,52 @@ class TestConfigSchema:
         )
         assert delay.get("default") is None, "loops.run_defaults.delay must default to null"
         assert delay.get("minimum") == 0, "loops.run_defaults.delay must have minimum: 0"
+
+
+class TestToDictSchemaParity:
+    """Guards BUG-3012: every schema top-level section must be reachable via to_dict().
+
+    Derived from config-schema.json's top-level properties, not from BRConfig's
+    properties — 8 of the 11 sections this bug fixed have no BRConfig property at
+    all, so a property-based guard would miss them entirely (and would have gone
+    green for the whole lifetime of the context_monitor omission).
+    """
+
+    # Non-config meta keys: JSON-Schema meta pointer and the install-provenance
+    # stamp written by `ll-init` — neither is user-tunable config, so to_dict()
+    # (which serves ll-config get / {{config.*}} expansion of *settings*) is not
+    # expected to emit them.
+    _EXCLUDED_META_KEYS = {"$schema", "install_source"}
+
+    def test_to_dict_emits_every_schema_section(self, temp_project_dir: Path) -> None:
+        """Every schema top-level section (bar meta keys) must appear in to_dict().
+
+        The fix for a newly added schema section is to add a to_dict() entry —
+        NOT to grow _EXCLUDED_META_KEYS. That set holds only non-config meta
+        keys; diluting it with real sections is how this guard stops meaning
+        anything (see EPIC-3008 / ENH-3014 for a concrete case already handled
+        this way).
+        """
+        schema = json.loads(_load_schema_text())
+        schema_keys = set(schema["properties"].keys())
+        expected = schema_keys - self._EXCLUDED_META_KEYS
+
+        config = BRConfig(temp_project_dir)
+        emitted = set(config.to_dict().keys())
+
+        missing = expected - emitted
+        assert not missing, (
+            f"to_dict() is missing schema sections {sorted(missing)} — add an "
+            f"entry in BRConfig.to_dict() (config/core.py), do not exclude them"
+        )
+
+    def test_to_dict_emits_no_key_absent_from_schema(self, temp_project_dir: Path) -> None:
+        """to_dict() must not emit a key that isn't declared in config-schema.json."""
+        schema = json.loads(_load_schema_text())
+        schema_keys = set(schema["properties"].keys())
+
+        config = BRConfig(temp_project_dir)
+        emitted = set(config.to_dict().keys())
+
+        extra = emitted - schema_keys
+        assert not extra, f"to_dict() emits keys absent from config-schema.json: {sorted(extra)}"

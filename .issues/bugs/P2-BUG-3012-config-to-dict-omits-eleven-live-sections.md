@@ -3,7 +3,7 @@ id: BUG-3012
 title: BRConfig.to_dict() omits 11 live config sections, breaking ll-config get and
   {{config.*}} expansion
 type: BUG
-status: open
+status: done
 priority: P2
 discovered_date: 2026-08-02
 discovered_by: multi-agent-audit
@@ -20,6 +20,7 @@ score_complexity: 22
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+completed_at: '2026-08-03T15:44:19Z'
 ---
 
 # BUG-3012: `BRConfig.to_dict()` omits 11 live config sections, breaking `ll-config get` and `{{config.*}}` expansion
@@ -319,5 +320,27 @@ here, but do not "simplify" ENH-3021 back to a `to_dict()`-only check.
 
 
 ## Session Log
+- `ll-auto` - 2026-08-03T15:44:19 - `7939e26d-6a15-469e-8ea1-eadcf1af1588.jsonl`
+- `/ll:ready-issue` - 2026-08-03T15:36:39 - `bc0fb2f7-2d62-483e-9dd1-9b579059436f.jsonl`
 - `/ll:confidence-check` - 2026-08-03T14:57:36 - `1dc7def3-a259-4a68-91b0-e2316edb4c01.jsonl`
 - `/ll:verify-issues` - 2026-08-03T04:16:46 - `2184690f-4a99-44a3-bf23-ddded9adf45a.jsonl`
+
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-08-03
+- **Status**: Completed (automated fallback)
+- **Implementation**: Command exited early but issue was addressed
+
+
+### Files Changed
+- See git history for details
+
+### Verification Results
+- Automated verification passed
+
+### Commits
+- See git log for details

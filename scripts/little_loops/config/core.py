@@ -773,6 +773,44 @@ class BRConfig:
                 "threshold": self._deferred_tools.threshold,
                 "search_tool_variant": self._deferred_tools.search_tool_variant,
             },
+            # --- typed sections with no to_dict() of their own (BUG-3012) ---
+            "refine_status": {
+                "columns": self._refine_status.columns,
+                "elide_order": self._refine_status.elide_order,
+            },
+            "extensions": self.extensions,
+            "orchestration": {
+                "host_cli": self._orchestration.host_cli,
+                "request_path": self._orchestration.request_path,
+                "composer": {
+                    "adaptive": {
+                        "enabled": self._orchestration.composer.adaptive.enabled,
+                        "max_replans": self._orchestration.composer.adaptive.max_replans,
+                        "reassess_min_confidence": (
+                            self._orchestration.composer.adaptive.reassess_min_confidence
+                        ),
+                    },
+                },
+                "cluster": {
+                    "max_batch_size": self._orchestration.cluster.max_batch_size,
+                    "enable_dedup": self._orchestration.cluster.enable_dedup,
+                    "propagate_context": self._orchestration.cluster.propagate_context,
+                },
+            },
+            # --- never-modelled sections: raw passthrough, no BRConfig dataclass (BUG-3012) ---
+            **{
+                key: self._raw_config.get(key, {})
+                for key in (
+                    "context_monitor",
+                    "scratch_pad",
+                    "session_capture",
+                    "prompt_optimization",
+                    "documents",
+                    "product",
+                    "continuation",
+                    "hooks",
+                )
+            },
             "design_tokens": {
                 "enabled": self._design_tokens.enabled,
                 "path": self._design_tokens.path,

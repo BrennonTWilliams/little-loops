@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -113,6 +114,25 @@ class TestSubstituteConfig:
         config = _make_config()
         result = _substitute_config("plain text", config)
         assert result == "plain text"
+
+    def test_orchestration_host_cli_resolves_with_real_config(self, tmp_path: Path) -> None:
+        """{{config.orchestration.host_cli}} must resolve, not blank out (BUG-3012).
+
+        Uses a real BRConfig (not the mock helper) because the bug was in
+        BRConfig.to_dict()/resolve_variable() itself, not in _substitute_config.
+        """
+        from little_loops.config import BRConfig
+
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "ll-config.json").write_text(
+            json.dumps({"orchestration": {"host_cli": "codex"}})
+        )
+        config = BRConfig(tmp_path)
+
+        result = _substitute_config("Host: {{config.orchestration.host_cli}}", config)
+
+        assert result == "Host: codex"
 
 
 # ---------------------------------------------------------------------------

@@ -965,6 +965,130 @@ class TestBRConfig:
         result = config.resolve_variable("issues.priorities")
         assert result == "P0 P1 P2 P3"
 
+    def test_to_dict_refine_status(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """to_dict emits refine_status even though RefineStatusConfig has no to_dict() (BUG-3012)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        assert result["refine_status"] == {"columns": [], "elide_order": []}
+        assert config.resolve_variable("refine_status.columns") == ""
+        assert config.resolve_variable("refine_status.elide_order") == ""
+
+    def test_to_dict_refine_status_configured(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """A configured refine_status section resolves through ll-config get (BUG-3012)."""
+        sample_config["refine_status"] = {
+            "columns": ["id", "title"],
+            "elide_order": ["title"],
+        }
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+
+        assert config.resolve_variable("refine_status.columns") == "id title"
+        assert config.resolve_variable("refine_status.elide_order") == "title"
+
+    def test_to_dict_extensions(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
+        """extensions is a list, not a dict — resolve_variable can join it but not descend (BUG-3012)."""
+        sample_config["extensions"] = ["ext-a", "ext-b"]
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        assert result["extensions"] == ["ext-a", "ext-b"]
+        assert config.resolve_variable("extensions") == "ext-a ext-b"
+
+    def test_to_dict_orchestration(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """to_dict emits orchestration incl. nested composer/cluster dataclasses (BUG-3012)."""
+        sample_config["orchestration"] = {
+            "host_cli": "codex",
+            "request_path": "sdk",
+            "cluster": {"max_batch_size": 9, "enable_dedup": False, "propagate_context": False},
+        }
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        assert result["orchestration"]["host_cli"] == "codex"
+        assert result["orchestration"]["request_path"] == "sdk"
+        assert result["orchestration"]["cluster"]["max_batch_size"] == 9
+        assert "composer" in result["orchestration"]
+
+        assert config.resolve_variable("orchestration.host_cli") == "codex"
+        assert config.resolve_variable("orchestration.request_path") == "sdk"
+        assert config.resolve_variable("orchestration.cluster.max_batch_size") == "9"
+
+    def test_to_dict_orchestration_defaults_when_unset(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """orchestration appears with dataclass defaults even when absent from config (BUG-3012)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        assert result["orchestration"]["host_cli"] is None
+        assert result["orchestration"]["request_path"] == "cli"
+        assert result["orchestration"]["cluster"]["max_batch_size"] == 5
+
+    def test_to_dict_never_modelled_sections_raw_passthrough(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """The 8 never-modelled sections resolve via raw passthrough (BUG-3012)."""
+        sample_config["context_monitor"] = {"enabled": True, "auto_handoff_threshold": 50}
+        sample_config["scratch_pad"] = {"enabled": True}
+        sample_config["prompt_optimization"] = {"enabled": False}
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        assert result["context_monitor"] == {"enabled": True, "auto_handoff_threshold": 50}
+        assert result["scratch_pad"] == {"enabled": True}
+        assert result["prompt_optimization"] == {"enabled": False}
+
+        assert config.resolve_variable("context_monitor.enabled") == "True"
+        assert config.resolve_variable("scratch_pad.enabled") == "True"
+        assert config.resolve_variable("prompt_optimization.enabled") == "False"
+
+    def test_to_dict_never_modelled_sections_empty_when_absent(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Never-modelled sections emit {} (not schema defaults) when absent (BUG-3012, shape constraint 4)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        for key in (
+            "context_monitor",
+            "scratch_pad",
+            "session_capture",
+            "prompt_optimization",
+            "documents",
+            "product",
+            "continuation",
+            "hooks",
+        ):
+            assert result[key] == {}, f"{key} should default to {{}} when absent from config"
+        assert config.resolve_variable("documents.enabled") is None
+
     def test_create_parallel_config(
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
