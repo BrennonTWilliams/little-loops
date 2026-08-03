@@ -178,9 +178,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   first-match, returns `""` if absent), `_section_body_with_offset()`
   (`scripts/little_loops/issue_parser.py:200-219`, last-match, returns
   `(body, offset)` or `None`), and `_iter_h2_sections()`
-  (`scripts/little_loops/issue_parser.py:758-773`, all H2 spans). None matches
+  (`scripts/little_loops/issue_parser.py:787-802`, all H2 spans). None matches
   `###` — the one exception, `_heading_bodies()`
-  (`scripts/little_loops/issue_parser.py:580-596`), already matches both `##`
+  (`scripts/little_loops/issue_parser.py:609-625`), already matches both `##`
   and `###` via `rf"^(#{{2,3}})\s+{{heading}}\s*$"` and returns **all**
   occurrence bodies as a list — i.e. it already surfaces the "N repeated
   blocks" symptom, read-only, consumed by
@@ -209,9 +209,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   (same heading, merged bullets) does not change what reconcile sees — it
   simply reads one block with more bullets instead of N blocks with fewer.
   Separately, `_OPTION_FALLBACK_SECTIONS = ("Codebase Research Findings",
-  "Implementation Status")` (`scripts/little_loops/issue_parser.py:654`) is
+  "Implementation Status")` (`scripts/little_loops/issue_parser.py:683`) is
   scanned by `count_enumerable_options()`/`count_unresolved_options()`
-  (`issue_parser.py:941`, `:1036`) for `**Option A/B**` decision blocks —
+  (`issue_parser.py:970`, `:1065`) for `**Option A/B**` decision blocks —
   folding does not change this either, since a merged block is a strict
   superset of scannable content.
 - `skills/wire-issue/SKILL.md` §§ 8a/8c (lines 325-404) confirm the same
@@ -255,7 +255,17 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   - § 6.7 Prose Dependency & Program Design Gate (line 741) — add
     `duplicate_findings_block` to the inspected `format-check` keys (see
     § Adoption risk)
-- `scripts/little_loops/issue_parser.py` — add the `duplicate_findings_block`
+- `.kimi-code/skills/ll-refine-issue/SKILL.md` — a **fourth** write site
+  (line 485 carries the identical `_Added by \`/ll:refine-issue\` — based on
+  codebase analysis:_` template). This is a maintained host mirror, not dead
+  weight: commit `cf1c8e52` (ENH-2996) updated `skills/wire-issue/`,
+  `.gemini/skills/wire-issue/` and `.kimi-code/skills/wire-issue/` in one
+  commit. No test enforces parity, so a stale mirror fails silently — and
+  failing silently on one host is exactly the inert-adoption shape
+  § Adoption risk exists to prevent, just scoped to Kimi. Note the fan-out is
+  asymmetric: there is **no** `.gemini/skills/*refine*` mirror, so this is one
+  extra file, not two. The `ll-issues` CLI is host-agnostic (pip package), so
+  the mirrored prose can call the same subcommand verbatim.
   gap to `check_format_gaps()` (gap dataclass ~256-292, detection ~546-559).
   **The detector cannot reuse the existing `_heading_bodies()` call** — see
   Implementation Step 13.
@@ -275,11 +285,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 - TBD — use grep to find other readers of the marker string
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/issue_parser.py` — home of `_heading_bodies()` (580-596, 2 call sites at 546/556 inside `check_format_gaps()`), `_section_body_with_offset()` (200-228, H2-only, last-match-wins), `_iter_h2_sections()` (758-773, H2-only); `find_subsections()` extends the two-level regex already used by `_heading_bodies()`
+- `scripts/little_loops/issue_parser.py` — home of `_heading_bodies()` (609-625, 2 call sites at 546/556 inside `check_format_gaps()`), `_section_body_with_offset()` (200-228, H2-only, last-match-wins), `_iter_h2_sections()` (787-802, H2-only); `find_subsections()` extends the two-level regex already used by `_heading_bodies()`
 - `scripts/little_loops/session_log.py` — `append_session_log_entry()` (197-226) is the closest "find last header via `rfind`, insert in place" precedent the new fold insert should model
 - `scripts/little_loops/cli/issues/__init__.py` — Shape-B subcommand wiring for the new `fold-findings` subcommand: import block (~77-80), `add_fold_findings_parser(subs)` call (~928), `if args.command == "fold-findings"` dispatch branch (~1013-1014) — same 3-point pattern used by `add_research_triage_parser`
 - `skills/decide-issue/SKILL.md` — reads `### Codebase Research Findings` blocks for Phase 3 option extraction; must still parse correctly after folding
-- `scripts/little_loops/loops/autodev.yaml:1734` — `reconcile_current` state comment references `Codebase Research Findings`
+- `scripts/little_loops/loops/autodev.yaml:1864` — `reconcile_current` state comment references `Codebase Research Findings`
 
 ### Similar Patterns
 - `scripts/little_loops/issue_history/doc_synthesis.py:_extract_section()` —
@@ -354,9 +364,9 @@ _Wiring pass added by `/ll:wire-issue`:_
   the same call (`len(spans) > 1` **within one H2 slice**).
 
   Extends the two-level regex already used by
-  `_heading_bodies()` (`scripts/little_loops/issue_parser.py:580-596`,
+  `_heading_bodies()` (`scripts/little_loops/issue_parser.py:609-625`,
   `rf"^(#{{2,3}})\s+{{heading}}\s*$"`) with an H2-scoping pass borrowed from
-  `_iter_h2_sections()` (`scripts/little_loops/issue_parser.py:758-773`).
+  `_iter_h2_sections()` (`scripts/little_loops/issue_parser.py:787-802`).
 
   **End boundary**: `end_offset` is the start of the next heading of level
   **≤ 3** (`##` or `###`), or EOF. This is not academic — a findings block is
@@ -369,13 +379,40 @@ _Wiring pass added by `/ll:wire-issue`:_
   `### Files to Modify` under `## Integration Map`). One block per H2 is the
   invariant; H3-parented markers are `/ll:wire-issue`'s shape and are out of
   scope (see § Decisions).
-- `fold_research_findings(content: str, parent_heading: str, new_bullets: list[str], marker: str = "_Added by `/ll:refine-issue` — based on codebase analysis:_") -> str`
+- `fold_research_findings(content: str, parent_heading: str, new_content: str, sub_heading: str = "Codebase Research Findings", marker: str = "_Added by `/ll:refine-issue` — based on codebase analysis:_") -> str`
   — three cases, on the spans `find_subsections()` returns for
   `parent_heading`:
 
-  - **0 spans** — create the heading + dated marker + bullets block, same as
-    the current refine-issue.md prose template.
-  - **1 span** — append `new_bullets` beneath it under a fresh dated
+  **`new_content` is an opaque markdown block, not a parsed bullet list.**
+  A `new_bullets: list[str]` signature cannot carry the § 5a payload:
+  `commands/refine-issue.md:409-416` writes `**Option A**: …` /
+  `**Option B**: …` / `**Recommended**: …` blocks at column 0, which are not
+  `- ` bullets, and it is precisely that text
+  `count_enumerable_options()`/`count_unresolved_options()` must still find
+  afterward. Any bullet-parsing step therefore either drops the option labels
+  or glues them onto a neighbouring bullet, breaking the one consumer this
+  site exists to serve. The transform appends the block verbatim (trailing
+  newlines normalized, nothing else touched), which also makes the
+  multi-line-continuation hazard structurally impossible rather than a rule
+  the implementer must remember. "Zero bullets lost" stays measurable by
+  counting `^- ` lines before/after — the function simply never needs that
+  count itself.
+
+  `sub_heading` is parameterized (not hard-coded) so `/ll:wire-issue` becomes
+  a later *caller* rather than a rewrite (§ Decisions); this issue's callers
+  all pass the default.
+
+  - **0 spans** — create the heading + dated marker + content block, same as
+    the current refine-issue.md prose template. **Position: at the end of the
+    `parent_heading` H2 slice**, after any nested H3 subsections, immediately
+    before the next `##` (or EOF). This must be pinned, not left to the
+    implementer: for an H2 like `## Integration Map` that owns
+    `### Files to Modify` … `### Configuration`, "end of slice", "after the
+    last H3" and "before the first H3" produce three different files, and
+    non-deterministic placement across passes would defeat the one-block-per-H2
+    invariant this issue is about. End-of-slice also matches
+    `append_session_log_entry()`'s insert-relative-to-a-known-anchor shape.
+  - **1 span** — append `new_content` beneath it under a fresh dated
     provenance line (same insert-after-header shape as
     `append_session_log_entry()`,
     `scripts/little_loops/session_log.py:197-226`).
@@ -407,7 +444,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### CLI Input Channel
 
-**Bullets arrive on stdin, never in argv.** The bullet text is LLM-authored
+**Content arrives on stdin, never in argv.** The findings text is LLM-authored
 markdown containing backticks, `$`, `!`, em-dashes and newlines; routing it
 through an argv-quoted `Bash(ll-issues:*)` invocation is the single most likely
 way for this change to ship broken. `ll-issues prioritize` already establishes
@@ -427,15 +464,17 @@ EOF
   `cmd_research_triage()`.
 - `--section` names the parent H2 by exact heading text (without the `## `),
   matched case-insensitively with surrounding whitespace stripped.
-- stdin is a **verbatim markdown block**, not one bullet per line. Bullets are
-  delimited by lines beginning `- ` at column 0; every following line that is
-  blank or indented belongs to the preceding bullet. This is not pedantic —
-  essentially every findings bullet in the corpus wraps across multiple lines
-  with a 2-space continuation indent (including every bullet in this issue), so
-  a line-per-bullet reader would shred them. Trailing newlines are normalized;
-  the blank line between the provenance marker and the first bullet is supplied
-  by the command. The command supplies the dated provenance line itself
-  (see § Decisions) so the caller never hand-writes the marker.
+- stdin is a **verbatim markdown block** and is never parsed into bullets. It
+  is inserted byte-for-byte apart from trailing-newline normalization; the
+  blank line between the provenance marker and the block is supplied by the
+  command, which also supplies the dated provenance line itself (see
+  § Decisions) so the caller never hand-writes the marker. Two payload shapes
+  must both survive and neither is a flat bullet list: findings bullets wrap
+  across multiple lines with a 2-space continuation indent (every bullet in
+  this issue does), and the § 5a site (`commands/refine-issue.md:409-416`)
+  sends `**Option A**` / `**Option B**` / `**Recommended**` blocks at column 0
+  with no leading `- ` at all. Verbatim passthrough is what makes both work;
+  see § Signatures for why `new_bullets: list[str]` cannot.
 - Exit 1 only on unresolvable issue ID. Creating a missing findings block is
   the ordinary success path, not an error.
 
@@ -481,7 +520,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   single top-level heading text. It is not itself heading-level-aware or
   parent-scoped. `find_subsections()` cannot reuse it as-is — it needs
   `_heading_bodies()`'s regex approach instead
-  (`scripts/little_loops/issue_parser.py:580-596`,
+  (`scripts/little_loops/issue_parser.py:609-625`,
   `rf"^(#{{2,3}})\s+{{heading}}\s*$"` plus an end-boundary scan to the next
   equal-or-higher-level heading), because it must locate an H3 *nested inside*
   a variable H2 parent, not a single fixed H2 anywhere in the file.
@@ -538,6 +577,13 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    longer inherits from the `Edit(.issues/**)` tool restriction.
    § Scope boundary (line 334) is corrected from `##` to `###` in the same
    pass.
+   The same three prose changes are mirrored into
+   `.kimi-code/skills/ll-refine-issue/SKILL.md` (its template lives at line
+   487), per the mirror-maintenance precedent in commit `cf1c8e52`, which
+   updated the plugin skill and both host mirrors together. No `.gemini`
+   refine mirror exists, so this is one additional file, not two. If the
+   mirror is deliberately skipped, say so in § Scope Boundaries rather than
+   leaving it silently stale — nothing tests parity.
 4. After a second `/ll:refine-issue --auto` pass against the same H2 in a
    scratch issue file, `content.count("### Codebase Research Findings")`
    under that H2 is 1, and the bullet count equals the sum of both passes'
@@ -592,11 +638,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
     `scripts/tests/test_ll_issues_format_check.py::TestUnmarkedSupersededDirective`.
 
     **The detector cannot reuse that `_heading_bodies()` call.**
-    `_heading_bodies()` (`issue_parser.py:580-596`) is document-wide and
+    `_heading_bodies()` (`issue_parser.py:609-625`) is document-wide and
     returns bodies with **no parent-section information**, so `len(bodies) > 1`
     cannot express "per H2": a compliant document with one findings block under
     each of three H2s returns 3 and would be flagged. The detector must slice
-    with `_iter_h2_sections()` (`issue_parser.py:758-773`) and count matching
+    with `_iter_h2_sections()` (`issue_parser.py:787-802`) and count matching
     H3s **within each slice**, flagging only slices with count > 1. Two further
     traps: `_heading_bodies()`'s regex `rf"^(#{{2,3}})\s+{{heading}}\s*$"`
     matches `##` *and* `###`, so the line-334 `## Codebase Research Findings`
@@ -638,11 +684,17 @@ _These touchpoints were identified by wiring analysis and must be included in th
     `duplicate_findings_block` is empty for that H2 afterward, and still
     non-empty for a second, untouched H2 in the same file (the no-sweep
     boundary).
-16. Verify bullets survive the stdin round-trip verbatim: a fold whose bullets
-    contain backticks, `$`, `!` and an em-dash produces byte-identical text in
-    the file, **and a bullet whose text wraps across three lines with a 2-space
-    continuation indent arrives as one bullet, not three** (guards the § CLI
-    Input Channel decision).
+16. Verify the stdin payload survives byte-for-byte, on both shapes the callers
+    actually send:
+    - a bullet list containing backticks, `$`, `!` and an em-dash, including a
+      bullet whose text wraps across three lines with a 2-space continuation
+      indent, lands byte-identical (no re-wrapping, no bullet splitting);
+    - an `**Option A**` / `**Option B**` / `**Recommended**` block at column 0
+      — the § 5a payload, which contains **no** `- ` bullets — lands
+      byte-identical under `--section "Proposed Solution"`, and
+      `count_enumerable_options()` returns 2 against the resulting file.
+      This is the regression test for the verbatim-passthrough decision
+      (§ Signatures); a bullet-parsing implementation fails exactly here.
 17. Verify `--dry-run` writes nothing: fold into a scratch issue with
     `--dry-run`, assert the block is printed to stdout and the file's bytes are
     unchanged. Then verify `/ll:refine-issue --dry-run` end-to-end leaves the
@@ -735,6 +787,8 @@ collapse being deferred as a nicety.
 | `commands/reconcile-issue.md` | Downstream consumer of these blocks |
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-03T00:40:02 - `0d47f54d-0d51-4508-89b2-eddb78936892.jsonl`
+- `/ll:confidence-check` - 2026-08-03T00:32:36 - `ee2cf08a-9d4e-4629-b2ec-7211d56b5a4e.jsonl`
 - `/ll:confidence-check` - 2026-08-02T23:53:12 - `42a54472-d0ba-4ed3-ba41-1bd83e5ba46c.jsonl`
 - `/ll:confidence-check` - 2026-08-02T21:57:18 - `122b9e35-a883-466b-b221-9c07cbc675a2.jsonl`
 - `/ll:confidence-check` - 2026-08-02T21:29:09 - `a19bb83d-629a-488d-832c-2afbb30f5117.jsonl`
