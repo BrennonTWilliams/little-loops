@@ -137,8 +137,8 @@ installed, and the Verify pass/fail per command (or `SKIP` if unconfigured).
 
 ## Related
 
-- `scripts/little_loops/init/cli.py:525-593` (`_run_plan`) and `:597-678`
-  (`_run_apply`) — the CLI seam this skill wraps; not modified by this skill.
+- `scripts/little_loops/init/cli.py`'s `_run_plan` / `_run_apply` functions —
+  the CLI seam this skill wraps; not modified by this skill.
 - `skills/manage-issue/SKILL.md` Phase 4 — the Verify/smoke-check pattern this
   skill's step 6 mirrors.
 - `skills/spike/SKILL.md` — the plan-artifact + bounded-verify +

@@ -2,10 +2,11 @@
 id: ENH-3018
 title: skills/init/SKILL.md cites stale cli.py line numbers for _run_plan/_run_apply
 type: ENH
-status: open
+status: done
 priority: P4
 discovered_date: 2026-08-02
 discovered_by: multi-agent-audit
+completed_at: '2026-08-03T16:30:59Z'
 parent: EPIC-3008
 program_design_not_applicable: true
 testable: false
@@ -94,4 +95,5 @@ citations and convert those the same way.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-03T16:30:36 - `633bb3a5-d648-46fc-82be-af8c952dc888.jsonl`
 - `/ll:confidence-check` - 2026-08-03T15:14:32 - `0458f341-5d0d-4bc1-8a93-3bb282c63063.jsonl`
