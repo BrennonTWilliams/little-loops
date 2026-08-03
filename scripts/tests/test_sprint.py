@@ -1,6 +1,7 @@
 """Tests for sprint module."""
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -2507,6 +2508,66 @@ class TestSprintManagerLoadOrResolve:
         assert ids.index("FEAT-2619") < ids.index("ENH-2620")
         # ENH-2620 must be last despite lexically sorting before the FEAT ids.
         assert ids[-1] == "ENH-2620"
+
+    def test_load_or_resolve_epic_depends_on_done_issue_no_warning(
+        self, tmp_path: Path, epic_project: BRConfig, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """depends_on pointing at a *done* issue must not warn as 'unknown'.
+
+        Regression: resolve_epic passed the ACTIVE-only id set as
+        ``all_known_ids``, so a child depending on an already-completed issue
+        logged a spurious "has depends_on unknown issue" warning at sprint
+        start. The done blocker still must not appear in the resolved sprint,
+        and wave ordering among the active children must be unaffected.
+        """
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "epics" / "P1-EPIC-3008-config-audit.md").write_text(
+            "---\nid: EPIC-3008\nstatus: open\n---\n# EPIC-3008: Config Audit\n"
+        )
+        # Completed blocker — stays in bugs/ with status: done in frontmatter.
+        (issues_dir / "bugs" / "P2-BUG-3009-thread-cache-config.md").write_text(
+            "---\nid: BUG-3009\nparent: EPIC-3008\nstatus: done\n---\n# BUG-3009: Thread config\n"
+        )
+        (issues_dir / "enhancements" / "P4-ENH-3015-configuration-docs.md").write_text(
+            "---\nid: ENH-3015\nparent: EPIC-3008\ndepends_on:\n  - BUG-3009\n---\n"
+            "# ENH-3015: Configuration docs\n"
+        )
+        (issues_dir / "enhancements" / "P3-ENH-3011-active-sibling.md").write_text(
+            "---\nid: ENH-3011\nparent: EPIC-3008\n---\n# ENH-3011: Active sibling\n"
+        )
+
+        manager = SprintManager(sprints_dir=tmp_path / ".sprints", config=epic_project)
+        with caplog.at_level(logging.WARNING, logger="little_loops.dependency_graph"):
+            result = manager.load_or_resolve("EPIC-3008")
+
+        assert result is not None
+        # The done blocker is excluded; only the active children are scheduled.
+        assert set(result.issues) == {"ENH-3011", "ENH-3015"}
+        assert "BUG-3009" not in result.issues
+        assert not [r for r in caplog.records if "unknown issue" in r.getMessage()], (
+            f"spurious dangling-ref warning(s): {[r.getMessage() for r in caplog.records]}"
+        )
+
+    def test_load_or_resolve_epic_depends_on_dangling_issue_still_warns(
+        self, tmp_path: Path, epic_project: BRConfig, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A depends_on ref with no file on disk must still warn (guards the fix)."""
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "epics" / "P1-EPIC-3108-dangling.md").write_text(
+            "---\nid: EPIC-3108\nstatus: open\n---\n# EPIC-3108: Dangling\n"
+        )
+        (issues_dir / "enhancements" / "P4-ENH-3115-typo-ref.md").write_text(
+            "---\nid: ENH-3115\nparent: EPIC-3108\ndepends_on:\n  - BUG-9999\n---\n"
+            "# ENH-3115: Typo ref\n"
+        )
+
+        manager = SprintManager(sprints_dir=tmp_path / ".sprints", config=epic_project)
+        with caplog.at_level(logging.WARNING, logger="little_loops.dependency_graph"):
+            result = manager.load_or_resolve("EPIC-3108")
+
+        assert result is not None
+        assert result.issues == ["ENH-3115"]
+        assert any("BUG-9999" in r.getMessage() for r in caplog.records)
 
     def test_load_or_resolve_epic_id_union_dedup(
         self, tmp_path: Path, epic_project: BRConfig

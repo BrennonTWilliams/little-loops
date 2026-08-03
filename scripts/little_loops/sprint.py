@@ -364,7 +364,21 @@ class SprintManager:
 
         from little_loops.dependency_graph import DependencyGraph
 
-        dep_graph = DependencyGraph.from_issues(child_infos, all_known_ids=active_ids_set)
+        # all_known_ids must span EVERY issue on disk, not just the active set:
+        # its only job is to distinguish "ref points at a real issue outside this
+        # graph" (silent) from "ref is dangling" (warn). Passing active_ids_set
+        # here made every depends_on/blocked_by/blocks ref to a done, cancelled,
+        # or deferred issue log a spurious "unknown issue" warning.
+        all_known_ids: set[str] | None = None
+        try:
+            from little_loops.dependency_mapper import gather_all_issue_ids
+
+            issues_dir = self.config.project_root / self.config.issues.base_dir
+            all_known_ids = gather_all_issue_ids(issues_dir, config=self.config)
+        except Exception:  # pragma: no cover - defensive, mirrors issue_parser
+            all_known_ids = active_ids_set
+
+        dep_graph = DependencyGraph.from_issues(child_infos, all_known_ids=all_known_ids)
         try:
             waves = dep_graph.get_execution_waves()
             ordered_ids = [issue.issue_id for wave in waves for issue in wave]
