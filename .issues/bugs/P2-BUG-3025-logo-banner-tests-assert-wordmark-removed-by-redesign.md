@@ -1,6 +1,7 @@
 ---
 id: BUG-3025
-title: Logo banner tests assert a wordmark the redesign removed - one fails, two pass vacuously
+title: Logo banner tests assert a wordmark the redesign removed - one fails, two pass
+  vacuously
 type: BUG
 status: open
 priority: P2
@@ -12,6 +13,12 @@ labels:
 - logo
 - init
 - vacuous-assertion
+confidence_score: 100
+outcome_confidence: 92
+score_complexity: 24
+score_test_coverage: 25
+score_ambiguity: 20
+score_change_surface: 23
 ---
 
 # BUG-3025: Logo banner tests assert a wordmark the redesign removed — one fails, two pass vacuously
@@ -101,6 +108,14 @@ Any wordmark restyling — letter-spacing, a tagline edit, a font swap — silen
 invalidates them, and because two of the three are negative assertions, the
 decay is invisible.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-03 — based on codebase analysis:_
+
+- **Confirmed via codebase-analyzer**: `get_logo(variant="full")` (`scripts/little_loops/logo.py:11`) returns `Path(__file__).parent / "assets" / "ll-cli-logo.txt"` read verbatim via `read_text()` (no exception handling beyond an `exists()` guard). `print_logo()` (`logo.py:27`) uses `if logo := get_logo(variant):` — a falsy (`None` or empty-string) result is a **silent no-op** (documented in its own docstring), which matters for the regression-guard test proposed in Suggested Fix Direction: an accidentally-emptied asset would make `print_logo()` silently stop printing rather than error, and a marker derived from `get_logo("full")` in that case would be an empty string that trivially "matches" nothing — worth asserting non-empty explicitly, as already proposed.
+- The asset's actual line structure (`scripts/little_loops/assets/ll-cli-logo.txt`): line 1 is empty, lines 2-18 are box-drawing/ornament glyphs (`˚`, `∘`, `╭`, `╮`, `╫`, `●`, `╌`, etc.) with no plain-text words, line 20 is the letter-spaced wordmark `l i t t l e   l o o p s`, line 21 is the small-caps tagline replacement `ɢʀᴏᴡ ꜱᴏᴍᴇᴛʜɪɴɢ ʙᴇᴀᴜᴛɪꜰᴜʟ`.
+- Marker candidate check: `get_logo("full").strip().splitlines()[0]` resolves to the box-drawing ornament line (`˚   ∘   ˚`, from source line 2 after `.strip()` removes the leading empty line and indentation) — not the wordmark text. This line is part of the ornamental shape rather than the wordmark that has already changed once (tagline → letter-spaced wordmark) in `d8b3a17d`, so it is structurally more stable than asserting against wordmark prose, though still asset-content-derived rather than a hand-picked stable glyph.
+
 ## Suggested Fix Direction
 
 Pick a banner marker that is stable under art redesign. Options, in preference
@@ -116,20 +131,44 @@ order:
    marker = (get_logo("full") or "").strip().splitlines()[0]
    assert marker in out
    ```
-2. **Add a regression guard** so the vacuous-assertion failure mode cannot recur:
-   a test asserting the chosen marker is non-empty and present in
-   `get_logo("full")`. Without this, fix option 1 is still silently breakable if
-   the asset is ever emptied.
+2. **Add a regression guard** so the vacuous-assertion failure mode cannot recur.
+   Note the vacuity is **directional**, which determines where the guard is
+   needed: if the asset is ever emptied, `marker` becomes `""`, and
+   - `assert marker in out` (line 359, positive) passes **vacuously** —
+     `"" in out` is always `True`;
+   - `assert marker not in out` (lines 371, 385, negative) **fails loudly** —
+     `"" not in out` is always `False`.
 
-Whichever marker is chosen, apply it to **all three** assertions (359, 371, 385)
-— fixing only the red one leaves the two vacuous negatives in place, which is
-the larger half of this bug.
+   So the non-empty guard protects the *positive* assertion only. Put it at unit
+   level in `scripts/tests/test_logo.py` (cheap, no `ll-init` run):
+   ```python
+   def test_full_logo_marker_is_non_empty() -> None:
+       marker = (get_logo("full") or "").strip().splitlines()[0]
+       assert marker, "logo asset empty — banner assertions would pass vacuously"
+   ```
+3. **Add a detector-sanity test** so "these assertions are live" stays true
+   rather than being verified once by hand. Capture `print_logo()` directly and
+   assert the marker *is* found — this proves the same marker the negative
+   assertions use can actually detect a banner:
+   ```python
+   def test_logo_marker_detects_a_printed_banner(capsys) -> None:
+       print_logo()
+       assert _LOGO_MARKER in capsys.readouterr().out
+   ```
+   This belongs in the integration file next to the assertions it protects.
+
+Whichever marker is chosen, define it **once** as a module-level constant in
+`test_init_e2e.py` and apply it to **all three** assertions (359, 371, 385) —
+fixing only the red one leaves the two vacuous negatives in place, which is the
+larger half of this bug.
 
 ## Integration Map
 
 ### Files to Modify
 - `scripts/tests/integration/test_init_e2e.py` — class `TestInitLogoBanner`,
-  assertions at lines 359, 371, 385.
+  assertions at lines 359, 371, 385; plus a shared marker constant and the
+  detector-sanity test.
+- `scripts/tests/test_logo.py` — add the non-empty marker guard.
 
 ### Dependent Files (Callers/Importers)
 - None. Test-only change; no production behavior is at fault. The logo asset and
@@ -138,9 +177,18 @@ the larger half of this bug.
 
 ### Tests
 - `scripts/tests/test_logo.py` — existing logo unit tests; checked and contains
-  **no** `"little loops"` substring assertions, so it is unaffected. Worth
-  confirming whether the marker guard from fix option 2 belongs here rather than
-  in the integration file.
+  **no** `"little loops"` substring assertions, so it is unaffected. **Decided:**
+  the non-empty marker guard (fix option 2) goes here — it is a property of the
+  asset, needs no `ll-init` run, and stays cheap. The detector-sanity test (fix
+  option 3) goes in `test_init_e2e.py`, beside the assertions it protects.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-03 — based on codebase analysis:_
+
+- `scripts/tests/test_ll_loop_execution.py:352` (`test_quiet_mode_suppresses_logo`) — a fourth `assert "little loops" not in captured.out`, outside this issue's stated scope of `test_init_e2e.py`. **It is _not_ the same defect, and the marker fix must not be applied to it.** `ll-loop` has no logo code path at all: `print_logo` is called only from `init/cli.py:310` and `init/tui.py:150`, and commit `88db2cd0` ("refactor(cli): remove logo printing from CLI commands") removed it from the loop CLI. The test guards a feature that no longer exists, so it passes unconditionally for a different reason — and would keep passing unconditionally under a marker-based rewrite, since nothing is printed with or without `--quiet`. Correct disposition is to **delete it** (or repoint it at whatever `--quiet` actually suppresses today), tracked as a separate follow-up, not folded into this fix.
+- Two established stdout-capture idioms coexist in `test_init_e2e.py`, applied by destination: `capsys.readouterr()` for the two `TestInitLogoBanner` assertions at lines 359/371 (direct-print paths), and `io.StringIO()` + `contextlib.redirect_stdout` for the `--plan` case at line 385 (`TestInitHeadlessIntrospection` uses the same idiom at lines 271-284, 311-337), since `--plan` output must stay parseable as pure JSON via `json.loads(...)`. No shared helper wraps either idiom — both are used inline. A fix should preserve this existing dual convention rather than introducing a new capture helper.
+- No file in `scripts/tests/` currently derives a stdout-assertion marker from `get_logo(...)` output (the technique this issue proposes is novel to this codebase, not an existing convention being followed). The closest existing pattern (`scripts/tests/test_logo.py:30`, `scripts/tests/test_wheel_smoke.py:88-100`) only checks non-None/non-empty on `get_logo()`, not a specific derived marker.
 
 ## Program Design
 
@@ -171,12 +219,20 @@ precisely the invariant the line-385 assertion must be restored to enforce.
 ## Acceptance Criteria
 
 - [ ] `test_yes_run_prints_logo_banner_on_tty` passes against the current asset.
-- [ ] The two negative assertions fail if the banner is made unconditional —
-      verify by temporarily removing the `isatty()` guard, per Steps to
-      Reproduce step 3. This is the criterion that distinguishes a real fix from
-      re-silencing.
+- [ ] A **detector-sanity test** asserts the chosen marker is found in captured
+      `print_logo()` output. This is the automated form of "the negative
+      assertions can actually fail", and is the criterion that distinguishes a
+      real fix from re-silencing. (One-time manual confirmation via Steps to
+      Reproduce step 3 is fine as a sanity check, but must not be the only
+      evidence — a manual check is exactly the decay mode this bug is about.)
+- [ ] A unit-level guard in `scripts/tests/test_logo.py` asserts the marker is
+      non-empty, covering the one direction where an emptied asset would make an
+      assertion pass vacuously (the positive test).
 - [ ] The chosen marker is derived from or pinned against `get_logo("full")`, so
-      a future art redesign cannot silently invalidate the assertions.
+      a future art redesign cannot silently invalidate the assertions, and is
+      defined once as a single constant shared by all three assertions.
+- [ ] `test_ll_loop_execution.py:352` is left untouched by this fix; its separate
+      disposition is filed as a follow-up (see Integration Map).
 - [ ] `python -m pytest scripts/tests/integration/test_init_e2e.py` exits 0.
 - [ ] `python -m pytest scripts/tests/` exits 0.
 
@@ -205,3 +261,9 @@ Note that BUG-3009's Resolution section attributes four then-current failures to
 "an uncommitted `ll-cli-logo.txt` change." That asset is now committed and clean
 (`git status` on `scripts/little_loops/assets/` is empty); the residue is this
 single test-side drift, not an uncommitted working-tree change.
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-03T22:06:28 - `0625a809-cbc4-471f-aa6c-852d08e8ee2e.jsonl`
+- `/ll:wire-issue` - 2026-08-03T22:04:24 - `0a2cd27e-890b-4a2c-8139-d2e883aa3480.jsonl`
+- `/ll:refine-issue` - 2026-08-03T21:57:57 - `f61be32c-6886-4f60-a42c-ae9e57f0ca2c.jsonl`
