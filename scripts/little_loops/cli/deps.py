@@ -382,7 +382,12 @@ Examples:
             _dm_config = _BRConfig(issues_dir.resolve().parent)
         except Exception:
             _dm_config = None
-        all_known_ids = gather_all_issue_ids(issues_dir, config=_dm_config)
+        all_known_ids: set[str] | None = None
+        try:
+            all_known_ids = gather_all_issue_ids(issues_dir, config=_dm_config)
+        except Exception:  # pragma: no cover - defensive, mirrors sprint.py
+            logger.debug("Dependency mapping unavailable — falling back to active ID set")
+            all_known_ids = {i.issue_id for i in issues}
 
         # Load dependency mapping config
         dep_config = _dm_config.dependency_mapping if _dm_config else None

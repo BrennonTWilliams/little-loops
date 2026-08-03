@@ -498,8 +498,13 @@ def _cmd_sprint_run(
     # Gather all issue IDs on disk to avoid false "nonexistent" warnings
     from little_loops.dependency_mapper import gather_all_issue_ids
 
-    issues_dir = config.project_root / config.issues.base_dir
-    all_known_ids = gather_all_issue_ids(issues_dir, config=config)
+    all_known_ids: set[str] | None = None
+    try:
+        issues_dir = config.project_root / config.issues.base_dir
+        all_known_ids = gather_all_issue_ids(issues_dir, config=config)
+    except Exception:  # pragma: no cover - defensive, mirrors sprint.py
+        logger.debug("Dependency mapping unavailable — falling back to active ID set")
+        all_known_ids = {i.issue_id for i in issue_infos}
 
     # Dependency analysis (ENH-301)
     if not getattr(args, "skip_analysis", False):

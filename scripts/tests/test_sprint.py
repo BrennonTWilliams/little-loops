@@ -830,6 +830,38 @@ issues:
         assert state_data["sprint_name"] == "test-sprint"
         assert "last_checkpoint" in state_data
 
+    def test_gather_all_issue_ids_exception_degrades_instead_of_crashing(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """A gather_all_issue_ids() exception falls back to the active-issue
+        ID set instead of crashing the command (BUG-3029)."""
+        import argparse
+        from unittest.mock import patch
+
+        import little_loops.cli.sprint.run as sprint_run
+
+        sprints_dir, config, manager = self._setup_test_project(tmp_path)
+
+        args = argparse.Namespace(
+            sprint="test",
+            dry_run=True,
+            resume=False,
+            skip=None,
+            max_workers=1,
+            quiet=False,
+        )
+
+        monkeypatch.chdir(tmp_path)
+        sprint_run._sprint_shutdown_requested = False
+
+        with patch(
+            "little_loops.dependency_mapper.gather_all_issue_ids",
+            side_effect=RuntimeError("boom"),
+        ):
+            result = sprint_run._cmd_sprint_run(args, manager, config)
+
+        assert result == 0
+
 
 class TestSprintDependencyAnalysis:
     """Tests for dependency analysis integration in sprint commands (ENH-301)."""
@@ -1876,6 +1908,36 @@ class TestSprintEdit:
         assert "BUG-999" not in sprint.issues
         assert "BUG-001" in sprint.issues
 
+    def test_revalidate_gather_all_issue_ids_exception_degrades_instead_of_crashing(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """--revalidate falls back to the active-issue ID set instead of
+        crashing when gather_all_issue_ids() raises (BUG-3029)."""
+        import argparse
+        from unittest.mock import patch
+
+        from little_loops.cli import sprint as cli
+
+        sprints_dir, _, manager = self._setup_edit_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(
+            sprint="test-sprint",
+            add=None,
+            remove=None,
+            prune=False,
+            revalidate=True,
+            config=None,
+        )
+
+        with patch(
+            "little_loops.dependency_mapper.gather_all_issue_ids",
+            side_effect=RuntimeError("boom"),
+        ):
+            result = cli._cmd_sprint_edit(args, manager)
+
+        assert result == 0
+
 
 class TestSprintAnalyze:
     """Tests for _cmd_sprint_analyze (FEAT-433)."""
@@ -2061,6 +2123,29 @@ class TestSprintAnalyze:
         data = json.loads(captured.out)
         assert data["has_conflicts"] is False
         assert len(data["conflicts"]) == 0
+
+    def test_gather_all_issue_ids_exception_degrades_instead_of_crashing(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """Analyze falls back to the active-issue ID set instead of crashing
+        when gather_all_issue_ids() raises (BUG-3029)."""
+        import argparse
+        from unittest.mock import patch
+
+        from little_loops.cli import sprint as cli
+
+        _, _, manager = self._setup_analyze_project(tmp_path, overlapping=False)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(sprint="test-sprint", format="text", config=None)
+
+        with patch(
+            "little_loops.dependency_mapper.gather_all_issue_ids",
+            side_effect=RuntimeError("boom"),
+        ):
+            result = cli._cmd_sprint_analyze(args, manager)
+
+        assert result == 0
 
 
 class TestSprintOnlyFlag:

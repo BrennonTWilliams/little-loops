@@ -127,6 +127,28 @@ class TestDepsAnalyzeFormat:
         captured = capsys.readouterr()
         assert "Dependency Graph" in captured.out
 
+    def test_analyze_gather_all_issue_ids_exception_degrades_instead_of_crashing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Analyze falls back to the active-issue ID set instead of crashing
+        when gather_all_issue_ids() raises (BUG-3029)."""
+        issues_dir = _setup_project(tmp_path)
+        _write_issue(issues_dir / "features", "FEAT-001", title="Alpha")
+        with (
+            patch.object(
+                sys, "argv", ["ll-deps", "-d", str(issues_dir), "analyze", "--format", "json"]
+            ),
+            patch(
+                "little_loops.dependency_mapper.gather_all_issue_ids",
+                side_effect=RuntimeError("boom"),
+            ),
+        ):
+            result = main()
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert "issue_count" in data
+
 
 # ---------------------------------------------------------------------------
 # validate subcommand — format routing and text output

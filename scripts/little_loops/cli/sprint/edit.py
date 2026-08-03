@@ -108,10 +108,17 @@ def _cmd_sprint_edit(args: argparse.Namespace, manager: SprintManager) -> int:
             )
 
             _config = manager.config
-            _issues_dir = (
-                _config.project_root / _config.issues.base_dir if _config else Path(".issues")
-            )
-            _all_known_ids = gather_all_issue_ids(_issues_dir, config=_config)
+            _all_known_ids: set[str] | None = None
+            try:
+                _issues_dir = (
+                    _config.project_root / _config.issues.base_dir
+                    if _config
+                    else Path(".issues")
+                )
+                _all_known_ids = gather_all_issue_ids(_issues_dir, config=_config)
+            except Exception:  # pragma: no cover - defensive, mirrors sprint.py
+                logger.debug("Dependency mapping unavailable — falling back to active ID set")
+                _all_known_ids = {i.issue_id for i in issue_infos}
             issue_contents = _build_issue_contents(issue_infos)
             dep_report = analyze_dependencies(
                 issue_infos, issue_contents, all_known_ids=_all_known_ids

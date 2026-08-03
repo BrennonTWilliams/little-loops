@@ -439,6 +439,32 @@ class TestCmdSprintShow:
         assert "waves" in data
         assert "has_cycles" in data
 
+    def test_gather_all_issue_ids_exception_degrades_instead_of_crashing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Show falls back to the active-issue ID set instead of crashing
+        when gather_all_issue_ids() raises (BUG-3029)."""
+        from unittest.mock import patch
+
+        manager, sprint_name = self._setup_show_project(tmp_path)
+
+        args = argparse.Namespace(
+            sprint=sprint_name,
+            json=True,
+            skip_analysis=False,
+        )
+
+        with patch(
+            "little_loops.dependency_mapper.gather_all_issue_ids",
+            side_effect=RuntimeError("boom"),
+        ):
+            result = _cmd_sprint_show(args, manager)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = _json.loads(captured.out)
+        assert data["name"] == "test-sprint"
+
     def test_show_json_depends_on_wave_ordering(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
