@@ -4,7 +4,7 @@ title: autodev finalize_done prints "re-queue to retry" for deterministic NOT_RE
   failures that retrying cannot fix
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: '2026-08-01'
 discovered_by: audit-loop-run
 relates_to:
@@ -253,8 +253,26 @@ Found by `/ll:audit-loop-run` on an `autodev` run alongside BUG-2981 (inflight
 sentinel leak + unverified double-count). Split from it because this one changes
 summary output that other tooling reads, while BUG-2981 is a mechanical YAML fix.
 
+## Resolution
+
+_Added by `/ll:verify-issues`:_ Superseded by ENH-2989 (done,
+completed_at 2026-08-03), which solved the underlying problem via a
+different route than this issue proposed. `check_impl_reached`
+(`autodev.yaml:850-861`) now intercepts every Phase-1 rejection —
+including `NOT_READY` — via a `PHASE1_NOT_STARTED` marker *before*
+`check_learning_gate`/`check_impl_auth` run, diverting it into a new
+"Not-started" bucket (`autodev.yaml:2355-2356`, `mark_not_started` at
+`:863-925`) with its own reason-scoped ledger (`autodev-not-started.txt`,
+including a `not_ready` reason). A deterministic `NOT_READY` issue can no
+longer reach the "Unverified" bucket/printf this issue targeted at all —
+the scenario described here is now structurally impossible. BUG-2981,
+which this issue said should land first, is also already `done`.
+
+## Session Log
+- `/ll:verify-issues` - 2026-08-03T04:54:48 - `d03f8e53-9873-4f8d-8cfd-bbc50704a66b.jsonl`
+
 ---
 
 ## Status
 
-**Open** | Created: 2026-08-01 | Priority: P3
+**Done** | Created: 2026-08-01 | Priority: P3
