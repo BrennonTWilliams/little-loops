@@ -1,0 +1,46 @@
++ echo '=== CLAIM 1: --version ==='
+=== CLAIM 1: --version ===
++ claude --version
+2.1.219 (Claude Code)
++ echo '=== CLAIM 2/3: --output-format json ==='
+=== CLAIM 2/3: --output-format json ===
++ claude --dangerously-skip-permissions --output-format json -p 'Reply with exactly the word: pong'
++ echo 'exit: 0'
+exit: 0
++ cat /tmp/ll_probe_json.txt
+{"is_error":false,"duration_api_ms":1190,"num_turns":1,"stop_reason":"end_turn","session_id":"1bb87bb5-0aff-457d-b14e-e70af923a58a","total_cost_usd":0.0209766,"usage":{"input_tokens":10,"cache_creation_input_tokens":9499,"cache_read_input_tokens":17536,"output_tokens":43,"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":9499,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[{"input_tokens":10,"output_tokens":43,"cache_read_input_tokens":17536,"cache_creation_input_tokens":9499,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":9499},"type":"message"}],"speed":"standard"},"modelUsage":{"claude-haiku-4-5-20251001":{"inputTokens":10,"outputTokens":43,"cacheReadInputTokens":17536,"cacheCreationInputTokens":9499,"webSearchRequests":0,"costUSD":0.0209766,"contextWindow":200000,"maxOutputTokens":32000,"canonicalModel":"claude-haiku-4-5","provider":"firstParty"}},"permission_denials":[],"terminal_reason":"completed","fast_mode_state":"off","fast_mode_disabled_reason":"sdk_opt_in_required","subtype":"success","api_error_status":null,"result":"pong","ttft_ms":1326,"ttft_stream_ms":989,"time_to_request_ms":152,"type":"result","duration_ms":1366,"uuid":"4049536b-230e-493d-9309-b5763fb345f7"}
++ echo '--- line count ---'
+--- line count ---
++ wc -l
+       1
++ echo '--- is it valid single JSON object? ---'
+--- is it valid single JSON object? ---
++ python3 -c $'\nimport json\nwith open(\'/tmp/ll_probe_json.txt\') as f:\n    text = f.read()\nobj = json.loads(text)\nprint(\'parsed as single JSON object:\', isinstance(obj, dict))\nprint(\'keys:\', sorted(obj.keys()))\nprint(\'has result key:\', \'result\' in obj)\nif \'result\' in obj:\n    print(\'result value:\', repr(obj[\'result\']))\n'
+parsed as single JSON object: True
+keys: ['api_error_status', 'duration_api_ms', 'duration_ms', 'fast_mode_disabled_reason', 'fast_mode_state', 'is_error', 'modelUsage', 'num_turns', 'permission_denials', 'result', 'session_id', 'stop_reason', 'subtype', 'terminal_reason', 'time_to_request_ms', 'total_cost_usd', 'ttft_ms', 'ttft_stream_ms', 'type', 'usage', 'uuid']
+has result key: True
+result value: 'pong'
++ echo '=== CLAIM 4/5: --output-format stream-json --verbose ==='
+=== CLAIM 4/5: --output-format stream-json --verbose ===
++ claude --dangerously-skip-permissions --verbose --output-format stream-json -p 'Reply with exactly the word: pong'
++ echo 'exit: 0'
+exit: 0
++ wc -l
+      15
++ python3 -c $'\nimport json\nlines = [l for l in open(\'/tmp/ll_probe_stream.txt\') if l.strip()]\nprint(\'total nonblank lines:\', len(lines))\nparsed = []\nfor l in lines:\n    try:\n        parsed.append(json.loads(l))\n    except Exception as e:\n        print(\'UNPARSEABLE LINE:\', l[:200])\nprint(\'parsed as JSONL (one obj per line):\', len(parsed), \'/\', len(lines))\ntypes = [p.get(\'type\') for p in parsed if isinstance(p, dict)]\nprint(\'type values seen:\', types)\nall_have_type = all(isinstance(p, dict) and \'type\' in p for p in parsed)\nprint(\'all lines are dicts with type key:\', all_have_type)\n'
+total nonblank lines: 15
+parsed as JSONL (one obj per line): 15 / 15
+type values seen: ['system', 'system', 'system', 'system', 'system', 'system', 'system', 'system', 'system', 'system', 'system', 'assistant', 'assistant', 'rate_limit_event', 'result']
+all lines are dicts with type key: True
++ echo '=== CLAIM 7: --json-schema with --output-format json ==='
+=== CLAIM 7: --json-schema with --output-format json ===
++ SCHEMA='{"type":"object","properties":{"answer":{"type":"string","enum":["yes","no"]}},"required":["answer"]}'
++ claude --dangerously-skip-permissions --output-format json --json-schema '{"type":"object","properties":{"answer":{"type":"string","enum":["yes","no"]}},"required":["answer"]}' -p 'Is the sky blue on a clear day? Answer yes or no.'
++ echo 'exit: 0'
+exit: 0
++ cat /tmp/ll_probe_schema.txt
+{"is_error":false,"duration_api_ms":10523,"num_turns":3,"stop_reason":"tool_use","session_id":"539a7ee1-7dab-4f60-8207-49eb4b0cf439","total_cost_usd":0.0622972,"usage":{"input_tokens":20,"cache_creation_input_tokens":27777,"cache_read_input_tokens":27132,"output_tokens":802,"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":27777,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[{"input_tokens":10,"output_tokens":194,"cache_read_input_tokens":27132,"cache_creation_input_tokens":645,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":645},"type":"message"}],"speed":"standard"},"modelUsage":{"claude-haiku-4-5-20251001":{"inputTokens":20,"outputTokens":802,"cacheReadInputTokens":27132,"cacheCreationInputTokens":27777,"webSearchRequests":0,"costUSD":0.0622972,"contextWindow":200000,"maxOutputTokens":32000,"canonicalModel":"claude-haiku-4-5","provider":"firstParty"}},"permission_denials":[],"terminal_reason":"completed","fast_mode_state":"off","fast_mode_disabled_reason":"sdk_opt_in_required","subtype":"success","api_error_status":null,"result":"{\"answer\":\"yes\"}","structured_output":{"answer":"yes"},"ttft_ms":7835,"ttft_stream_ms":1257,"time_to_request_ms":159,"type":"result","duration_ms":10846,"uuid":"68080622-6b0c-478e-8af8-09ada6abb2c5"}
++ python3 -c $'\nimport json\nwith open(\'/tmp/ll_probe_schema.txt\') as f:\n    text = f.read()\ntry:\n    obj = json.loads(text)\n    print(\'parsed:\', obj.keys() if isinstance(obj, dict) else type(obj))\n    result = obj.get(\'result\')\n    print(\'result field:\', repr(result))\n    if result:\n        try:\n            inner = json.loads(result) if isinstance(result, str) else result\n            print(\'result parses as schema-shaped JSON:\', inner)\n        except Exception as e:\n            print(\'result is not JSON:\', e)\nexcept Exception as e:\n    print(\'failed to parse output as JSON:\', e)\n'
+parsed: dict_keys(['is_error', 'duration_api_ms', 'num_turns', 'stop_reason', 'session_id', 'total_cost_usd', 'usage', 'modelUsage', 'permission_denials', 'terminal_reason', 'fast_mode_state', 'fast_mode_disabled_reason', 'subtype', 'api_error_status', 'result', 'structured_output', 'ttft_ms', 'ttft_stream_ms', 'time_to_request_ms', 'type', 'duration_ms', 'uuid'])
+result field: '{"answer":"yes"}'
+result parses as schema-shaped JSON: {'answer': 'yes'}

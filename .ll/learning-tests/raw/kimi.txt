@@ -1,0 +1,25 @@
+# Learning test proof: kimi (Kimi Code CLI, binary v0.30.0)
+# Ran live against the installed `kimi` binary at ~/.kimi-code/bin/kimi
+
+## Claim 1-4, 6: no-tool run
+$ kimi -p "Reply with exactly the word OK and nothing else." --output-format stream-json
+{"role":"assistant","content":"UserPromptSubmit hook\n\n[little-loops] No config found. Run ll-init to set up little-loops for this project.\n\n[little-loops] No config found. Run ll-init to set up little-loops for this project."}
+{"role":"assistant","content":"OK"}
+{"role":"meta","type":"session.resume_hint","session_id":"session_b4f4462c-ad72-46e0-9c6a-e08ac3190e9a","command":"kimi -r session_b4f4462c-ad72-46e0-9c6a-e08ac3190e9a","content":"To resume this session: kimi -r session_b4f4462c-ad72-46e0-9c6a-e08ac3190e9a"}
+EXIT: 0
+
+## Claim 5-6: tool-call run
+$ kimi -p "Run the shell command 'pwd' using your Bash tool and report the output." --output-format stream-json
+{"role":"assistant","content":"UserPromptSubmit hook\n\n[little-loops] No config found. Run ll-init to set up little-loops for this project.\n\n[little-loops] No config found. Run ll-init to set up little-loops for this project."}
+/private/tmp/kimi-explore
+{"role":"assistant","tool_calls":[{"type":"function","id":"Bash_0","function":{"name":"Bash","arguments":"{\"command\":\"pwd\"}"}}]}
+{"role":"tool","tool_call_id":"Bash_0","content":"/private/tmp/kimi-explore\n"}
+{"role":"assistant","content":"The `pwd` command output:\n\n```\n/private/tmp/kimi-explore\n```\n\nThat's the current working directory, matching the session's project root."}
+{"role":"meta","type":"session.resume_hint","session_id":"session_744280ba-f3eb-43a6-8c20-619c7abe10c9","command":"kimi -r session_744280ba-f3eb-43a6-8c20-619c7abe10c9","content":"To resume this session: kimi -r session_744280ba-f3eb-43a6-8c20-619c7abe10c9"}
+EXIT: 0
+NOTE: unexpected plain-text "/private/tmp/kimi-explore" line interleaved in stdout before the JSONL tool_calls event -- not part of any claim tested here, flagged as an anomaly for future investigation (possible stray tool-progress leak to stdout, contradicts spike's stderr-only claim).
+
+## Claim 7: --yolo rejected under -p
+$ kimi -p "test" --yolo
+error: Cannot combine --prompt with --yolo.
+EXIT: 1
