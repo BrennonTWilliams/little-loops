@@ -22,7 +22,7 @@ score_test_coverage: 25
 score_ambiguity: 0
 score_change_surface: 10
 size: Large
-closed_reason: already_fixed
+closed_reason: not_reproducible
 ---
 
 # BUG-2956: `format-check` reports `Program Design` missing despite the `program_design_not_applicable` opt-out

@@ -1,0 +1,12 @@
+{
+  "id": "1ece727e-7b65-42c1-841d-f68bb56dece5",
+  "type": "decision",
+  "timestamp": "2026-08-03T18:28:11Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches established check-readiness/check-decidable CLI pattern (thin cmd_check_<name>, three-point wiring, existing test template) and removes the fail-quiet JSON-parsing scaffolding at its root; scored 10/12 vs Option B's 3/12. Option B leaves the try/except JSON parsing intact and contradicts ENH-2992's explicit decision against widening FormatGaps.to_dict()'s contract.",
+  "rule": "Option A: dedicated ll-issues check-design exit-code subcommand",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: derived design_gate_failed bool field on FormatGaps.to_dict()",
+  "issue": "ENH-2967"
+}

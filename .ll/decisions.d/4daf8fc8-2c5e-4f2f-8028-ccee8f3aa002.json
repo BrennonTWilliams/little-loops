@@ -1,0 +1,12 @@
+{
+  "id": "9c13c023-9fb5-4fe9-b31b-0294ff08817f",
+  "type": "decision",
+  "timestamp": "2026-08-03T17:30:15Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Option A's cited precedent (Kimi steer mode) is an external CLI capability, not reusable ll code, and depends on an unconfirmed upstream capability. Option B reuses the existing ResultSeenCallback plumbing already proven in the FSM path. Caveat: as scoped Option B only covers the returncode==143 case; extending classify_failure to also flag returncode==0+result_seen+background-task-pending is required follow-up to fully close the bug.",
+  "rule": "Option B: wire on_result_seen/INFRA_RETRY into run_with_continuation()",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: extend ClaudeCodeRunner with a Kimi-style steer mode",
+  "issue": "BUG-3026"
+}
