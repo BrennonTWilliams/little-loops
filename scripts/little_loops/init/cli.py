@@ -213,6 +213,20 @@ def _warn_adapter_staleness(hosts: list[str], project_root: Path) -> None:
         )
 
 
+def _is_git_repo(project_root: Path) -> bool:
+    """Return whether a ``.git`` ancestor exists on the walk up from *project_root*.
+
+    Mirrors :func:`little_loops.paths.find_project_root`'s ``.git`` semantics: checked
+    with ``.exists()``, not ``.is_dir()``, since worktrees and submodules use a ``.git``
+    *file* rather than a directory. Does not require an existing ``.ll/`` (unlike
+    ``find_project_root``, which answers a different question).
+    """
+    for candidate in (project_root, *project_root.parents):
+        if (candidate / ".git").exists():
+            return True
+    return False
+
+
 def _warn_config_drift(existing_config: dict[str, Any], introspection: Any) -> None:
     """Warn when a freshly-introspected declared value diverges from stored config.
 
@@ -550,6 +564,13 @@ def _run_yes(
             if w.install_hint:
                 msg += f"\n  Install/fix: {w.install_hint}"
             print(msg, file=sys.stderr)
+        if not _is_git_repo(project_root):
+            print(
+                "Note: this directory isn't a git repository; git-dependent features "
+                "(auto-commit, worktree-based parallel epics) won't work until you run "
+                "git init.",
+                file=sys.stderr,
+            )
 
     if not dry_run:
         print(f"\n✓ little-loops initialized in {project_root}")

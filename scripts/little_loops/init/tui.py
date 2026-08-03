@@ -857,7 +857,7 @@ def _apply_config(
 ) -> None:
     """Write all ll-init artifacts to disk."""
     from little_loops import __version__
-    from little_loops.init.cli import _dispatch_host_adapters
+    from little_loops.init.cli import _dispatch_host_adapters, _is_git_repo
     from little_loops.init.validate import validate_deps
     from little_loops.init.writers import (
         AGENTS_MD_HOSTS,
@@ -923,6 +923,13 @@ def _apply_config(
         console.print(f"[yellow]Warning: {w.message}[/yellow]")
         if w.install_hint:
             console.print(f"  Install/fix: {w.install_hint}")
+
+    if not _is_git_repo(project_root):
+        console.print(
+            "[yellow]Note: this directory isn't a git repository; git-dependent "
+            "features (auto-commit, worktree-based parallel epics) won't work "
+            "until you run git init.[/yellow]"
+        )
 
     console.print(f"\n[bold green]✓ little-loops initialized in {project_root}[/bold green]")
     console.print(f"  Config: [cyan]{config_path}[/cyan]")

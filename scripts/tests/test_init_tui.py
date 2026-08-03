@@ -1081,6 +1081,33 @@ class TestSettingsSkip:
         assert (tmp_path / ".ll" / "ll-config.json").exists()
 
 
+class TestNoGitRepoNotice:
+    """ENH-3011: TUI warning panel surfaces the same no-git-repo notice."""
+
+    @patch("little_loops.init.tui.questionary")
+    def test_no_git_repo_prints_notice(
+        self, mock_q: MagicMock, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["analytics"])
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        assert "isn't a git repository" in capsys.readouterr().out
+
+    @patch("little_loops.init.tui.questionary")
+    def test_git_repo_prints_no_notice(
+        self, mock_q: MagicMock, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        (tmp_path / ".git").mkdir()
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["analytics"])
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        assert "isn't a git repository" not in capsys.readouterr().out
+
+
 # ---------------------------------------------------------------------------
 # _build_final_config unit tests — new parity params
 # ---------------------------------------------------------------------------

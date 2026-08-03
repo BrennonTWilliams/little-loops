@@ -2,7 +2,7 @@
 id: ENH-3011
 title: ll-init has no git-repo check before writing/updating .gitignore
 type: ENH
-status: open
+status: done
 priority: P3
 discovered_date: 2026-08-02
 discovered_by: multi-agent-audit
@@ -18,6 +18,7 @@ score_complexity: 22
 score_test_coverage: 22
 score_ambiguity: 24
 score_change_surface: 22
+completed_at: '2026-08-03T15:54:01Z'
 ---
 
 # ENH-3011: `ll-init` has no git-repo check before writing/updating `.gitignore`
@@ -118,4 +119,26 @@ the TUI's warning panel (`tui.py`, near the Screen-1 warnings).
 
 
 ## Session Log
+- `ll-auto` - 2026-08-03T15:54:01 - `dc49ec8a-5fac-47ac-afcf-07e8de449861.jsonl`
+- `/ll:ready-issue` - 2026-08-03T15:45:13 - `448ec3d0-3044-491d-aade-c54be6819969.jsonl`
 - `/ll:confidence-check` - 2026-08-03T14:59:38 - `56e67865-39df-4be1-b2d4-fb83a5dec084.jsonl`
+
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-08-03
+- **Status**: Completed (automated fallback)
+- **Implementation**: Command exited early but issue was addressed
+
+
+### Files Changed
+- See git history for details
+
+### Verification Results
+- Automated verification passed
+
+### Commits
+- See git log for details

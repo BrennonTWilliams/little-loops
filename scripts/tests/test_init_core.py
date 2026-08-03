@@ -1718,6 +1718,39 @@ class TestValidateDeps:
 
 
 # ===========================================================================
+# TestIsGitRepo (ENH-3011)
+# ===========================================================================
+
+
+class TestIsGitRepo:
+    def test_no_git_anywhere_on_walk(self, tmp_path: Path) -> None:
+        from little_loops.init.cli import _is_git_repo
+
+        assert _is_git_repo(tmp_path) is False
+
+    def test_git_dir_present(self, tmp_path: Path) -> None:
+        from little_loops.init.cli import _is_git_repo
+
+        (tmp_path / ".git").mkdir()
+        assert _is_git_repo(tmp_path) is True
+
+    def test_git_file_worktree_present(self, tmp_path: Path) -> None:
+        """A `.git` *file* (worktree/submodule) must count via `.exists()`, not `.is_dir()`."""
+        from little_loops.init.cli import _is_git_repo
+
+        (tmp_path / ".git").write_text("gitdir: /elsewhere/.git/worktrees/foo\n")
+        assert _is_git_repo(tmp_path) is True
+
+    def test_git_dir_found_on_ancestor(self, tmp_path: Path) -> None:
+        from little_loops.init.cli import _is_git_repo
+
+        (tmp_path / ".git").mkdir()
+        nested = tmp_path / "sub" / "dir"
+        nested.mkdir(parents=True)
+        assert _is_git_repo(nested) is True
+
+
+# ===========================================================================
 # TestMainInit (CLI smoke tests)
 # ===========================================================================
 
@@ -2595,6 +2628,66 @@ class TestMainInit:
         live_mkdir_names = {p.name for p in live_issue_dir.iterdir() if p.is_dir()}
 
         assert dry_mkdir_names == live_mkdir_names
+
+    def test_no_git_repo_prints_notice(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """ENH-3011: a non-git directory gets a single non-blocking notice, exit 0."""
+        from little_loops.init.cli import main_init
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=(None, None, None),
+            ),
+        ):
+            code = main_init(["--yes", "--root", str(tmp_project)])
+        assert code == 0
+        err = capsys.readouterr().err
+        assert err.count("isn't a git repository") == 1
+        assert (tmp_project / ".gitignore").exists()
+
+    def test_git_repo_prints_no_notice(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """ENH-3011: a git repo (real .git/ dir) gets no notice."""
+        from little_loops.init.cli import main_init
+
+        (tmp_project / ".git").mkdir()
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=(None, None, None),
+            ),
+        ):
+            code = main_init(["--yes", "--root", str(tmp_project)])
+        assert code == 0
+        err = capsys.readouterr().err
+        assert "isn't a git repository" not in err
+        assert (tmp_project / ".gitignore").exists()
+
+    def test_git_worktree_file_counts_as_repo(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """ENH-3011: a `.git` *file* (worktree/submodule) must not false-negative."""
+        from little_loops.init.cli import main_init
+
+        (tmp_project / ".git").write_text("gitdir: /elsewhere/.git/worktrees/foo\n")
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=(None, None, None),
+            ),
+        ):
+            code = main_init(["--yes", "--root", str(tmp_project)])
+        assert code == 0
+        err = capsys.readouterr().err
+        assert "isn't a git repository" not in err
 
     def test_missing_templates_dir_exits_1_with_clean_error(
         self, tmp_project: Path, capsys: pytest.CaptureFixture
