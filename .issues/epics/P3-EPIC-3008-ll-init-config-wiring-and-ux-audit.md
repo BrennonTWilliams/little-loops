@@ -20,14 +20,16 @@ labels:
 ## Goal
 
 Close the config-schema/`ll-init`/docs drift surfaced by the 2026-08-02
-audit: make `cache`/`deferred_tools` config actually take effect, stop
+audit: make `cache`/`deferred_tools` config actually take effect, make the
+11 config sections `to_dict()` drops reachable again through `ll-config get`
+and `{{config.*}}` expansion, stop
 `ll-init` from surfacing raw tracebacks on expected failures, and bring
 `docs/reference/CLI.md`, `docs/guides/GETTING_STARTED.md`, and
 `docs/reference/CONFIGURATION.md` back in sync with actual code behavior.
 
 ## Scope
 
-In scope: the 10 children listed below (config wiring bugs, `ll-init`
+In scope: the 11 children listed below (config wiring bugs, `ll-init`
 error-handling/UX gaps, and doc/schema drift). Out of scope: adding real
 JSON-Schema validation at config-load time (a larger design decision, noted
 as context below but not an actionable child) and expanding what `ll-init`
@@ -77,17 +79,18 @@ noted here for awareness, not as an actionable gap.
 - **BUG-3009** — `cache`/`deferred_tools` config parsed but never threaded into `host_runner` dispatch calls (functionally inert)
 - **BUG-3010** — `ll-init` has no top-level exception handling; unexpected errors surface as raw tracebacks despite a documented 0/1/2 exit-code contract
 - **ENH-3011** — `ll-init` performs no git-repo check and silently writes/updates `.gitignore` outside a git repo
-- **BUG-3012** — `BRConfig.to_dict()` omits `refine_status`, `extensions`, and `orchestration`, breaking `ll-config get` for those sections; also adds an introspection-based parity guard so the next new section can't silently repeat this
+- **BUG-3012** — `BRConfig.to_dict()` omits **11** live config sections (`refine_status`, `orchestration`, `extensions` plus 8 never-modelled ones including `context_monitor`, `scratch_pad`, `session_capture`), making them unreachable via both `ll-config get` and `{{config.*}}` skill expansion; also adds a **schema-driven** parity guard so the next new section can't silently repeat this
 - **ENH-3013** — `config-schema.json`'s `issues` object declares 8 properties that read as per-issue-frontmatter fields, never consumed as global config
 - **ENH-3014** — `skill_budget.threshold_tokens` is a real, working config key missing from both `config-schema.json` and `docs/reference/CONFIGURATION.md`
 - **ENH-3015** — `docs/reference/CONFIGURATION.md` has no section documenting the top-level `cache` block
 - **ENH-3016** — `docs/reference/CLI.md` / `docs/guides/GETTING_STARTED.md` host list omits `kimi-code` and doesn't flag `opencode`/`pi` as recognized-but-unimplemented
 - **ENH-3017** — `docs/reference/CLI.md` describes the TUI wizard as 6 screens; code has 7 (missing "Plugin Install" screen, the first thing a new user sees)
 - **ENH-3018** — `skills/init/SKILL.md` cites hardcoded `cli.py` line numbers for `_run_plan`/`_run_apply` that have already drifted
+- **ENH-3021** — `ll-config get` can't distinguish an unknown config path from an unset one (silent, exit `0` for both); adds a stderr warning for unknown *sections*, the missing feedback loop that let BUG-3012 persist
 
 ## Sequencing and file contention
 
-Children are **not** all independent. Two ordering constraints are declared in
+Children are **not** all independent. Five ordering constraints are declared in
 child frontmatter (`depends_on`), not just prose:
 
 - **ENH-3015 `depends_on: [BUG-3009]`** — the `cache` doc section must state
@@ -97,25 +100,50 @@ child frontmatter (`depends_on`), not just prose:
   section of `docs/reference/CLI.md` (host lists at `:37,49`; wizard table at
   `:65-76`). Serialized to avoid a merge conflict under `parallel.epic_branches`.
 
-Lower-risk overlaps to be aware of but not gated by `depends_on`:
+- **ENH-3014 `depends_on: [ENH-3013]`** — both edit `config-schema.json` *and*
+  `scripts/tests/test_config_schema.py` (3013 removes 8 dead `issues`
+  properties; 3014 adds a top-level `skill_budget` object plus a default-parity
+  assert). Different regions of both files, but this is the tightest overlap in
+  the epic after the CLI.md pair. Previously prose-only — promoted to a real
+  edge because `parallel.epic_branches` reads `depends_on`, not Scope Boundaries
+  text.
+- **ENH-3014 `depends_on: [BUG-3012]`** — BUG-3012 adds a schema-driven parity
+  guard asserting every top-level `config-schema.json` property is emitted by
+  `to_dict()`. ENH-3014 adds a **new top-level** `skill_budget` property to that
+  schema. Whichever lands second turns the suite red unless ENH-3014 also emits
+  the key from `to_dict()` — so ENH-3014 now carries both the edge and an AC for
+  the `to_dict()` entry. This was the one genuine cross-issue break in the epic:
+  previously undeclared in either direction, and invisible to anyone reading
+  either issue alone.
+
+- **ENH-3021 `depends_on: [BUG-3012]`** — ENH-3021 warns when a dot-path's root
+  isn't a known config section. Retained for graph honesty (fix before
+  detector), but **no longer load-bearing**: ENH-3021 now derives its known-root
+  set from `to_dict()` keys *unioned with* `config-schema.json`'s top-level
+  properties, so `orchestration` and the other 10 sections are recognized
+  regardless of ordering. The union is also what stops it false-warning on
+  `install_source` and `$schema` — real config keys that BUG-3012 deliberately
+  excludes from `to_dict()`.
+
+Lower-risk overlap to be aware of but not gated by `depends_on`:
 
 - ENH-3014 and ENH-3015 both edit `docs/reference/CONFIGURATION.md`, in
   different sections (`skill_budget` vs. `cache`).
-- **ENH-3013 and ENH-3014 both edit `config-schema.json` *and*
-  `scripts/tests/test_config_schema.py`** — 3013 removes 8 dead `issues`
-  properties, 3014 adds a new top-level `skill_budget` object plus a
-  default-parity assert. Different regions of both files, but this is the
-  tightest overlap in the epic after the CLI.md pair: do not run them as
-  concurrent epic branches.
 
-Everything else (BUG-3010, ENH-3011, BUG-3012, ENH-3018) is genuinely
+**BUG-3012 is a hub, not an independent leaf.** It has two dependents
+(ENH-3014, ENH-3021) and its parity guard constrains every future top-level
+schema addition. Schedule it early; it is the widest-blast-radius child in the
+epic despite being additive.
+
+Everything else (BUG-3009, BUG-3010, ENH-3011, ENH-3018) is genuinely
 independent and safe to run concurrently.
 
 ## Acceptance Criteria
 
-- Each child issue is resolved per its own Acceptance Criteria section (the four
-  code children — BUG-3009, BUG-3010, BUG-3012, ENH-3011 — now carry explicit,
-  testable ACs rather than relying on this generic epic-level statement).
+- Each child issue is resolved per its own Acceptance Criteria section (the five
+  code children — BUG-3009, BUG-3010, BUG-3012, ENH-3011, ENH-3021 — now carry
+  explicit, testable ACs rather than relying on this generic epic-level
+  statement).
 - Docs children bring `docs/reference/CLI.md`, `docs/guides/GETTING_STARTED.md`,
   `docs/reference/CONFIGURATION.md`, and `config-schema.json` back in sync with
   actual code behavior.

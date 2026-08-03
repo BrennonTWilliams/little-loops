@@ -7,6 +7,9 @@ priority: P3
 discovered_date: 2026-08-02
 discovered_by: multi-agent-audit
 parent: EPIC-3008
+depends_on:
+- ENH-3013
+- BUG-3012
 program_design_not_applicable: true
 testable: true
 labels:
@@ -48,18 +51,57 @@ this key would start being rejected.
 ## Scope Boundaries
 
 In scope: adding a `skill_budget` object (with `threshold_tokens`) to
-`config-schema.json` and a matching section in `CONFIGURATION.md`. Out of
-scope: migrating `cli/docs.py`'s `._raw_config.get(...)` read to a typed
-`BRConfig` accessor (optional follow-up, not required for the doc/schema fix).
+`config-schema.json`, emitting it from `BRConfig.to_dict()` (see "Interaction
+with BUG-3012's parity guard" below), and a matching section in
+`CONFIGURATION.md`. Out of scope: migrating `cli/docs.py`'s
+`._raw_config.get(...)` read to a typed `BRConfig` accessor (optional
+follow-up, not required for the doc/schema fix).
 
-**File-contention note:** ENH-3013 edits the same two files — it removes 8 dead
-properties from the `issues` object in `config-schema.json` and may touch
+**Sequencing: `depends_on: [ENH-3013]`** (declared in frontmatter, not just
+prose). ENH-3013 edits the same two files — it removes 8 dead properties from
+the `issues` object in `config-schema.json` and may touch
 `scripts/tests/test_config_schema.py`, while this issue adds a new top-level
-schema object plus a new parity assert to that same test module. Different
-regions, so no `depends_on` is declared, but do not run these two as concurrent
-epic branches under `parallel.epic_branches` — land one, then the other.
+schema object plus a new parity assert to that same test module. This is the
+tightest file overlap in EPIC-3008 after the CLI.md pair, and prose alone is not
+enforced by anything: `parallel.epic_branches` reads `depends_on`, not Scope
+Boundaries text. Land ENH-3013 first.
+
 (Separately, this issue and ENH-3015 both edit `docs/reference/CONFIGURATION.md`
-in different sections.)
+in different sections — safe to run concurrently.)
+
+## Interaction with BUG-3012's parity guard — this is a hard break, not a style note
+
+**`depends_on: [BUG-3012]` is also declared, and this issue must emit
+`skill_budget` from `to_dict()`.** BUG-3012 adds a schema-driven parity test
+that reads `config-schema.json`'s top-level `properties`, subtracts the
+`{"$schema", "install_source"}` exclusion set, subtracts the keys `to_dict()`
+emits, and asserts the difference is empty.
+
+This issue adds a **new top-level** schema property. Adding it without a
+matching `to_dict()` entry makes that guard fail with
+`{'skill_budget'}` — so whichever of the two issues lands second turns the suite
+red. Verified against current code: the schema-vs-`to_dict()` diff today is
+exactly BUG-3012's 11 sections plus the two excluded meta keys, and the reverse
+diff is empty.
+
+Two resolutions were available; **emit it** was chosen over **exclude it**:
+
+- Adding `skill_budget` to the guard's exclusion set would suppress the failure
+  but leave `ll-config get skill_budget.threshold_tokens` unreachable — the
+  exact reachability defect BUG-3012 exists to fix. It would also grow an
+  exclusion list that is supposed to hold only non-config meta keys.
+- Emitting it costs one raw-passthrough entry (`self._raw_config.get(
+  "skill_budget", {})`, matching BUG-3012's Shape constraint 4 for
+  never-modelled sections) and makes the key resolvable through both documented
+  surfaces.
+
+Do **not** introduce a typed `SkillBudgetConfig` dataclass here — same reasoning
+as BUG-3012's Shape constraint 4. Consequence to accept: a project with no
+`skill_budget` block emits `{}`, so `ll-config get skill_budget.threshold_tokens`
+returns nothing rather than the built-in default. That matches every other
+never-modelled section and does not affect `ll-doctor`, which reads
+`_raw_config` directly and applies `_DEFAULT_BUDGET_TOKENS` itself
+(`cli/docs.py:171-177`).
 
 ## Expected Behavior
 
@@ -99,6 +141,16 @@ leave the read path as-is and just fix the schema/docs gap.
       (assert this equality in `test_config_schema.py` so the two can't drift).
 - [ ] `CONFIGURATION.md` gains a `### \`skill_budget\`` section documenting the
       full flag > config > default precedence, not just the config key.
+- [ ] `BRConfig.to_dict()` emits a top-level `skill_budget` key (raw
+      passthrough), so BUG-3012's schema-driven parity guard stays green with
+      the new schema property present.
+- [ ] `ll-config get skill_budget.threshold_tokens` returns the configured value
+      on a fixture project that sets it.
+- [ ] No `SkillBudgetConfig` dataclass is introduced; a project without a
+      `skill_budget` block emits `{}` and the lookup returns nothing (asserted
+      explicitly, per BUG-3012's Shape constraint 4).
+- [ ] `ll-doctor`'s skill-budget check is unaffected — it still falls back to
+      `_DEFAULT_BUDGET_TOKENS` when the key is unset (`cli/docs.py:171-177`).
 - [ ] `python -m pytest scripts/tests/` exits 0.
 
 ## Status

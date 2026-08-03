@@ -27,15 +27,32 @@ entirely undocumented there.
 
 ## Current Behavior
 
-Searching `docs/reference/CONFIGURATION.md` for a `### \`cache\`` heading or
+Searching `docs/reference/CONFIGURATION.md` for a `cache` heading or
 `require_repeat` returns no matches, even though `cache` is fully parsed into
 `BRConfig` (`config/core.py:260, 349-351`) and documented (via docstring) as a
 config knob in `host_runner.py:1700-1702`.
 
+## Heading level: use `##`, not `###`
+
+Most sections in `CONFIGURATION.md` sit under `## Configuration Sections` as
+`###` headings — but the tail of the file does not, and `cache`'s structural
+siblings are all in that tail:
+
+- `## \`compression\`` (`CONFIGURATION.md:1515`)
+- `## \`deferred_tools\`` (`:1565`) — the closest sibling, named by the AC below
+- `## \`observability\`` (`:1605`)
+
+So "match the neighboring sections" and "use `###`" contradict each other. The
+resolution: **place the new section adjacent to `deferred_tools` and use `##`,
+matching its immediate neighbors.** Do not normalize the file's pre-existing
+heading-level drift as part of this issue — that is a separate, larger docs
+cleanup, and mixing it in here makes the diff unreviewable.
+
 ## Scope Boundaries
 
-In scope: adding a `### \`cache\`` section to `CONFIGURATION.md`. Out of
-scope: fixing the underlying wiring gap (tracked separately as BUG-3009).
+In scope: adding a `## \`cache\`` section to `CONFIGURATION.md`. Out of
+scope: fixing the underlying wiring gap (tracked separately as BUG-3009), and
+normalizing the `##`/`###` heading-level drift across the rest of the file.
 
 **Sequencing: `depends_on: [BUG-3009]`** (now declared in frontmatter, not just
 prose). This section must state *where* `require_repeat` takes effect, and until
@@ -49,7 +66,7 @@ run concurrently, but a merge conflict in the section index/TOC is possible.
 
 ## Expected Behavior
 
-`CONFIGURATION.md` should include a `### \`cache\`` section describing
+`CONFIGURATION.md` should include a `## \`cache\`` section describing
 `require_repeat` (purpose, default, effect), consistent with the documentation
 depth given to every other top-level section.
 
@@ -63,9 +80,11 @@ section should also note where `require_repeat` actually takes effect
 
 ## Acceptance Criteria
 
-- [ ] `docs/reference/CONFIGURATION.md` gains a `### \`cache\`` section placed
-      consistently with the neighboring top-level sections (adjacent to the
-      existing `deferred_tools` section, which is the closest structural sibling).
+- [ ] `docs/reference/CONFIGURATION.md` gains a `## \`cache\`` section placed
+      adjacent to the existing `## \`deferred_tools\`` section
+      (`CONFIGURATION.md:1565`), at the **same heading level as that neighbor**
+      (`##`, not `###` — see "Heading level" above).
+- [ ] No other heading in `CONFIGURATION.md` changes level.
 - [ ] The section documents `require_repeat`: purpose, type, default (`true`,
       per `CacheConfig.require_repeat` at `config/features.py:576`), and effect
       when set to `false` (disables the cache-marking reuse gate — see
