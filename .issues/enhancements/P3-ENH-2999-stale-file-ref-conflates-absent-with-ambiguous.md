@@ -2,11 +2,21 @@
 id: ENH-2999
 status: open
 priority: P3
-captured_at: "2026-08-02T14:05:00Z"
+captured_at: '2026-08-02T14:05:00Z'
 discovered_date: 2026-08-02
 discovered_by: capture-issue
-relates_to: [ENH-2983, ENH-2971, ENH-2946]
+relates_to:
+- ENH-2983
+- ENH-2971
+- ENH-2946
+- ENH-3000
 testable: true
+confidence_score: 100
+outcome_confidence: 77
+score_complexity: 14
+score_test_coverage: 23
+score_ambiguity: 22
+score_change_surface: 18
 ---
 
 # `stale_file_ref` reports ambiguous multi-match references as drift
@@ -17,7 +27,13 @@ testable: true
 than one tracked file. Declining to resolve is correct — a silent pick would be
 worse — but `stale` tells the reader the file moved or vanished, when the truth
 is "this path matches two real files; disambiguate the reference." Wrong verdict
-class for a correct decision. **86 instances** across `.issues/`.
+class for a correct decision. **44 instances** across `.issues/`.
+
+> **Count corrected 2026-08-02** (pre-implementation review). The original
+> capture said 86; that was measured *before* the mirror tie-break landed. Fresh
+> measurement against the current tree: **44 ambiguous, 3,294 true stale** (3,338
+> `stale_file_ref` findings total). Reproduce with the snippet under
+> Implementation Steps § 3.
 
 ## Current Behavior
 
@@ -46,7 +62,7 @@ silently resolve") — this issue is about the *label*, not the resolution polic
 
 Note the mirror tie-break added alongside this issue's capture handles the
 specific case where the ambiguity is a generated host-adapter copy
-(`.codex/`, `.gemini/`, `.kimi-code/`) shadowing its source. The 86 above are
+(`.codex/`, `.gemini/`, `.kimi-code/`) shadowing its source. The 44 above are
 the residue: genuine same-name ambiguity between two real source paths.
 
 ## Expected Behavior
@@ -64,9 +80,12 @@ named so the reader can disambiguate:
 
 The two conditions call for opposite fixes. `stale` says "find where this moved
 or delete the reference"; ambiguous says "add the missing path prefix." Reporting
-both under one label sends the reader after the wrong fix, and — because 86 of
-them sit inside a 3,331-finding pile — makes the pile marginally less trustworthy
-in a way that discourages acting on any of it.
+both under one label sends the reader after the wrong fix.
+
+The volume argument is weak and should not be leaned on: 44 of 3,338 findings is
+1.3% of the pile. The case for this change is correctness of the verdict, not
+noise reduction — a reader who acts on an `ambiguous` finding as if it were
+`stale` will go looking for a file that never moved.
 
 ## Proposed Solution
 
@@ -82,40 +101,107 @@ narrow fix:
    distinguishing suffix.
 2. **`cli/issues/format_check.py:154`** — print the candidate paths, not just
    the ref. The count is the actionable part.
-3. **`issues/research_triage.py:186`** — `qualified_ref_count()` gates on
-   `in ("resolved", "stale")`. Decide deliberately whether an ambiguous ref
-   counts toward ENH-2971's ≥80% axis-coverage denominator. It probably should
-   (the author did cite a real file), but leaving the tuple untouched silently
-   drops it.
+3. **`issues/research_triage.py:193` and `:388-391`** — both hardcode
+   `in ("resolved", "stale")`. **Decided (pre-implementation review): `ambiguous`
+   joins the tuple in both places.** Rationale: today an ambiguous ref classifies
+   `stale` and therefore *is* denominator-eligible. Leaving the tuples untouched
+   would silently shift ENH-2971's ≥80% axis-coverage fractions as a side effect
+   of a labelling change. Including it is the behavior-preserving choice, and it
+   is also the substantively right one — the author cited a real file. Do not
+   re-litigate this during implementation; update both tuples.
 
 ## Program Design
 
-The resolution *policy* is unchanged; only the return channel widens so callers
-can tell the two failure modes apart. `resolve_ref_path` currently returns
-`str | None`, collapsing "no match" and "many matches" into `None`.
+The resolution *policy* is unchanged. The classifier needs to distinguish "no
+match" from "many matches", and the CLI needs the candidate paths to print — but
+neither requires widening `resolve_ref_path`'s return type.
+
+> **Design revised 2026-08-02 (pre-implementation review).** The original
+> proposal added a frozen `RefResolution` dataclass plus a new `resolve_ref()`,
+> keeping `resolve_ref_path` as a thin wrapper. The Codebase Research Findings
+> below establish that shape has **no precedent here**, and that the nearest
+> analogue (`subprocess_utils.py:43-54`) deliberately *avoided* widening a
+> return type for this exact reason. The shape below gets the same result with
+> one shared helper and no signature change — dropping the "novel shape" risk
+> and the churn on dependent tests that assert `resolve_ref_path(...) is None`.
 
 ### Signatures
 
 ```python
 RefStatus = Literal["resolved", "stale", "unresolvable_form", "planned_new", "ambiguous"]
 
-@dataclass(frozen=True)
-class RefResolution:
-    path: str | None = None            # the single resolved path, else None
-    candidates: tuple[str, ...] = ()   # >1 when ambiguous, empty when absent
+def suffix_match_candidates(ref: str, index: RefIndex) -> list[str]:
+    """Candidates for *ref* after the existing tie-break order.
 
-def resolve_ref(ref: str, index: RefIndex) -> RefResolution: ...
-def resolve_ref_path(ref: str, index: RefIndex) -> str | None: ...  # kept as a wrapper
+    0 = absent, 1 = resolves, >1 = ambiguous.
+    """
+
+def resolve_ref_path(ref: str, index: RefIndex) -> str | None: ...   # signature UNCHANGED
 ```
 
-`classify_file_ref` maps the resolution: `path` set → `resolved`; `candidates`
-non-empty → `ambiguous`; both empty → `stale`. The candidate list is what makes
-the report actionable, so it must survive to the CLI rather than being reduced
-to a boolean at the classifier boundary.
+`suffix_match_candidates` holds the shared body (exact-match short-circuit,
+suffix match, mirror tie-break). Both existing functions call it:
 
-`resolve_ref_path` stays as a thin wrapper returning `resolution.path` — ENH-2971's
-call sites want the target path, not the ambiguity detail, and keeping it spares
-them a change.
+> **Contract correction (pre-implementation review, 2026-08-02).** The helper is
+> **not** "the non-mirror suffix matches" — describing it that way silently
+> regresses mirror-only refs. Today's `resolve_ref_path` returns a lone match
+> *before* consulting `_mirror_prefixes()`, so a ref whose only match is a
+> generated mirror resolves to that mirror:
+>
+> ```
+> agents/codebase-analyzer.toml → .codex/agents/codebase-analyzer.toml   # resolves today
+> ```
+>
+> There are six such refs under `.codex/agents/` alone. The helper must
+> reproduce today's order exactly, in this sequence:
+>
+> 1. `ref in candidates` → return `[ref]` (exact match wins even when other
+>    suffix matches exist, so an exactly-cited path never reports `ambiguous`)
+> 2. `matches = [p for p in candidates if p.endswith("/" + ref)]`
+> 3. `len(matches) == 1` → return `matches` — **before** any mirror filtering
+> 4. otherwise return `[p for p in matches if not p.startswith(_mirror_prefixes())]`
+>
+> Only step 4 filters. Any implementation that filters earlier changes
+> resolution policy, which this issue explicitly does not do.
+>
+> **Edge case decided here so implementation does not have to:** when
+> `len(matches) > 1` and *every* match is a mirror, step 4 yields an empty list
+> → `stale`, matching today's `None` → `stale` exactly. It is not reported as
+> `ambiguous`. Pin this with a test; nothing else distinguishes it from the
+> zero-match path.
+
+- `resolve_ref_path` returns the single element when there is exactly one, else
+  `None` — **identical behavior and signature to today**, so ENH-2971's call
+  sites and the existing `is None` assertions are untouched.
+- `classify_file_ref` branches on the length: `1` → `resolved`, `>1` →
+  `ambiguous`, `0` → `stale`.
+
+The candidate list reaches the CLI through the `FormatGaps` entry string rather
+than a new rendering concept — every `FormatGaps` field is already `list[str]`
+and `_print_gaps` already renders one line per entry:
+
+```
+  ambiguous_file_ref: issues/anchor_sweep.py (2: scripts/little_loops/cli/issues/anchor_sweep.py, scripts/little_loops/issues/anchor_sweep.py)
+```
+
+**Truncation is required, not optional** _(pre-implementation review)_. The
+worst real case in the corpus is `agents/openai.yaml` with **66** candidates;
+rendering all of them puts a multi-kilobyte line in `format-check` output. The
+entry string is capped at the count plus the first three paths:
+
+```
+  ambiguous_file_ref: agents/openai.yaml (66: skills/align-issues/agents/openai.yaml, skills/audit-docs/agents/openai.yaml, skills/capture-issue/agents/openai.yaml, …)
+```
+
+The count is the actionable part and is always shown in full; the elision marker
+appears only when candidates exceed three. Candidates are sorted for
+determinism. Because `FormatGaps` fields are `list[str]` of prose entries, the
+`--format json` payload carries this same truncated string — the full candidate
+list is not exposed as structured data, and no consumer needs it.
+
+`check_format_gaps` calls `suffix_match_candidates()` only for the refs that came
+back `ambiguous` — a handful per issue, against an already-built index, so no
+measurable cost.
 
 ### Codebase Research Findings
 
@@ -145,23 +231,55 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ### Call Path
 
-`classify_issue_refs` → `classify_file_ref` → `resolve_ref` (new; wraps the
-existing suffix-match body), then out to the two consumers:
+`classify_issue_refs` → `classify_file_ref` → `suffix_match_candidates` (new;
+holds the existing suffix-match + mirror tie-break body), then out to the
+consumers:
 
-- `check_format_gaps` → `main_format_check` — gains an `ambiguous` bucket in
+- `check_format_gaps` → `_print_gaps` — gains an `ambiguous_file_ref` bucket in
   `FormatGaps` and prints the candidates
-- `qualified_ref_count` — decide explicitly whether `ambiguous` joins
-  `resolved`/`stale` in the coverage denominator
+- `qualified_ref_count` **and** `_triage_axis` — both gain `"ambiguous"` in the
+  eligibility tuple (decided above)
+- `resolve_ref_path` — reimplemented on top of the helper, signature and
+  behavior unchanged
 
 ## Integration Map
 
+### Sequencing: collides with in-flight ENH-2993
+
+_Added by pre-implementation review 2026-08-02._
+
+ENH-2993 (`duplicate_findings_block` / `ll-issues fold-findings`) is **present
+and uncommitted in the working tree**, and it modifies every consumer site this
+issue touches: `issue_parser.py` (`FormatGaps`, `has_gaps`, `to_dict`, the
+docstring block), `cli/issues/format_check.py` (the `_print_gaps` loop and the
+subparser `help=` CSV), `cli/issues/__init__.py:124` (the top-level CSV),
+`docs/reference/CLI.md`, and `test_ll_issues_format_check.py` (including the
+pinned JSON key literal).
+
+Consequences for this issue:
+
+- `FormatGaps` has **14** fields in the working tree, not the 13 recorded in the
+  Codebase Research Findings below. After this change it is 15.
+- Land ENH-2993 first (or rebase onto it) — implementing both against the same
+  five sites concurrently guarantees conflicts in `_print_gaps` and in the two
+  gap-class CSVs, neither of which has a test that would catch a bad merge.
+- Re-count before editing any doc that states a class count; do not trust the
+  numbers in this file.
+
 ### Files to Modify
 
-- `scripts/little_loops/text_utils.py` — `RefStatus`, `resolve_ref_path`,
-  `classify_file_ref`, and the numbered resolution-order docstring
-- `scripts/little_loops/issue_parser.py` — `FormatGaps` field + population
-- `scripts/little_loops/cli/issues/format_check.py` — reporting
-- `scripts/little_loops/issues/research_triage.py` — denominator membership
+- `scripts/little_loops/text_utils.py` — `RefStatus` (:111), new
+  `suffix_match_candidates`, `resolve_ref_path` (:255) reimplemented on it,
+  `classify_file_ref` (:252) branch, and the numbered resolution-order docstring
+- `scripts/little_loops/issue_parser.py` — `FormatGaps` field (:255 area),
+  `has_gaps` (:273), `to_dict()` (:291), docstring paragraph (:368), population
+  (:544)
+- `scripts/little_loops/cli/issues/format_check.py` — **three** sites, not one:
+  the `_print_gaps` loop (:154), the subparser `help=` gap-class CSV (:59-64),
+  and `cmd_format_check`'s docstring gap-class list (:163-166)
+  _(the latter two found by pre-implementation review)_
+- `scripts/little_loops/issues/research_triage.py` — **both** hardcoded
+  eligibility tuples: `qualified_ref_count` (:193) and `_triage_axis` (:388-391)
 - `.claude/CLAUDE.md` § CLI Tools — the `format-check` gap-class list enumerates
   every class by name and would go stale
 - `scripts/little_loops/cli/issues/__init__.py:124` — the top-level `format-check`
@@ -194,9 +312,13 @@ _Wiring pass added by `/ll:wire-issue`:_
   `classify_issue_refs`'s return-type reference (~line 7113-7125), a
   return-value table row (~line 7027), and `check_format_gaps`'s "twelve gap
   classes" prose plus its `stale_file_ref` bullet (~line 862, 874) — the count
-  is already stale pre-existing this issue (13 fields today) and both need
-  updating in the same pass. No dedicated section exists yet for the new
-  `resolve_ref`/`RefResolution` — one should be added, not just edited.
+  is already stale pre-existing this issue and both need updating in the same
+  pass. _(Review 2026-08-02: it is not only the count. The `API.md:862`
+  enumeration and the `CLI.md:1853` enumeration both **omit**
+  `unmarked_superseded_directive` and — once ENH-2993 lands —
+  `duplicate_findings_block`. Re-derive both lists from
+  `dataclasses.fields(FormatGaps)` rather than incrementing "twelve".)_ Add a short entry for the new
+  `suffix_match_candidates` to the `text_utils` function table (~line 7026-7028).
 - `docs/reference/CLI.md` — the `#### ll-issues format-check` section: the same
   "twelve classes" prose (~line 1811), a `stale_file_ref`-specific paragraph
   describing "no exact or unique suffix match" that conflates the two failure
@@ -204,6 +326,11 @@ _Wiring pass added by `/ll:wire-issue`:_
   example payload that lists every `FormatGaps` key in order (~line 1864) — a
   new key must be inserted into that example if `ambiguous` becomes its own
   field.
+- `docs/reference/CLI.md:1660` _(found by pre-implementation review)_ — the
+  **research-triage** section's prose on which classes are "excluded from both
+  sides of the fraction". The denominator decision above changes what that
+  sentence describes; it is a separate section from the `format-check` one
+  listed above and is easy to miss.
 
 ### Codebase Research Findings
 
@@ -215,8 +342,13 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   `classify_file_ref(...) != "resolved"` (lines 310-311) for the exact
   `anchor_sweep.py` two-file collision this issue cites — same loose-assertion
   style as the other test, same tightening needed, and its `is None` check
-  will also need updating to whatever sentinel `resolve_ref_path` (or its
-  `RefResolution` wrapper) returns once the return type widens.
+  will also need updating to whatever sentinel `resolve_ref_path` returns once
+  the return type widens.
+
+  _Superseded by the revised Program Design (2026-08-02): `resolve_ref_path`
+  keeps its `str | None` signature, so both `is None` assertions stay valid
+  as-is. Only the loose `!= "resolved"` assertions need tightening to
+  `== "ambiguous"`._
 - `scripts/tests/test_research_triage.py` was entirely absent from Dependent
   Files but is corpus-gated (skips under 100 issues) and sensitive to the
   research-triage denominator decision above:
@@ -262,29 +394,59 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. `RefStatus` gains `ambiguous`; `resolve_ref_path` distinguishes the zero-match
-   and many-match cases (returning the candidates, or a sentinel, rather than a
-   bare `None`).
-2. Each of the three consumers handles the new member explicitly — no silent
-   fall-through to an `else` branch.
-3. Corpus re-measurement shows ~86 findings moving `stale` → `ambiguous` and no
-   ref changing `resolved` → anything else.
+1. Extract `suffix_match_candidates(ref, index) -> list[str]` from
+   `resolve_ref_path`'s body; reimplement `resolve_ref_path` on it with an
+   unchanged signature. `RefStatus` gains `ambiguous`; `classify_file_ref`
+   branches on the candidate-list length.
+2. Each consumer handles the new member explicitly — no silent fall-through to
+   an `else` branch. That means all five sites: `FormatGaps` +
+   `check_format_gaps`, the three `format_check.py` sites, and **both**
+   `research_triage.py` eligibility tuples.
+3. Corpus re-measurement shows **44** findings moving `stale` → `ambiguous`,
+   3,294 remaining `stale`, and no ref changing `resolved` → anything else.
+   Baseline measured 2026-08-02 with:
+
+   ```python
+   from pathlib import Path
+   from little_loops.text_utils import build_ref_index, classify_issue_refs
+   idx = build_ref_index(Path("."))
+   amb = stale = 0
+   for p in Path(".issues").rglob("*.md"):
+       for ref, st in classify_issue_refs(p.read_text(errors="replace"), idx).items():
+           if st != "stale":
+               continue
+           base = ref.rsplit("/", 1)[-1]
+           n = len([x for x in idx.by_basename.get(base, []) if x.endswith("/" + ref)])
+           amb, stale = (amb + 1, stale) if n > 1 else (amb, stale + 1)
+   print(amb, stale)   # 44 3294 at capture time
+   ```
+
+   The corpus grows, so treat the exact numbers as a same-day baseline: the
+   invariant that must hold is `ambiguous + stale == the pre-change
+   stale_file_ref total`, measured immediately before and after.
 4. `python -m pytest scripts/tests/` passes.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Update `cli/issues/__init__.py:124` — append the new gap-class name to the
-  `format-check` subcommand's hardcoded help-string CSV
+- Update **all three** hardcoded gap-class CSVs — `cli/issues/__init__.py:124`
+  (top-level subcommand help), `cli/issues/format_check.py:59-64` (the
+  subparser's own `help=`), and `cli/issues/format_check.py:163-166`
+  (`cmd_format_check`'s docstring). The latter two were missed by the original
+  wiring pass and found by pre-implementation review; nothing tests any of them,
+  so a miss is silent.
 - Update `docs/reference/API.md` — fix the stale "twelve gap classes" count,
   update `RefStatus`/`classify_file_ref`/`classify_issue_refs` return-value
-  documentation, add a section for `resolve_ref`/`RefResolution`
+  documentation, add a table entry for `suffix_match_candidates`
 - Update `docs/reference/CLI.md` — fix the stale "twelve classes" count, split
   the `stale_file_ref` paragraph, update the worked `--format json` example
-  payload to include the new key
+  payload to include the new key, **and** update the research-triage
+  denominator prose at line 1660
 - Add a unit test for `qualified_ref_count()`'s `"ambiguous"` handling that
-  doesn't depend on the corpus-gated (skip-under-100) test
+  doesn't depend on the corpus-gated (skip-under-100) test, plus one asserting
+  `_triage_axis()` counts `ambiguous` the same way — the two tuples are
+  duplicated with nothing keeping them in sync
 - Add the new field's key to `test_clean_issue_json_output`'s pinned dict
   literal in `test_ll_issues_format_check.py`
 - Ruled out (checked, no change needed): `autodev.yaml` and `rn-remediate.yaml`
@@ -292,10 +454,51 @@ _These touchpoints were identified by wiring analysis and must be included in th
   `program_design_nonspecific`/`missing`/`empty`/`superseded_marker_count` —
   not `stale_file_ref` — so they are unaffected by this change
 
+## Acceptance Criteria
+
+_Added by pre-implementation review 2026-08-02._
+
+- [ ] `classify_file_ref("issues/anchor_sweep.py", index) == "ambiguous"` — the
+      two-real-source-path collision, currently `stale`
+- [ ] `resolve_ref_path("issues/anchor_sweep.py", index) is None` still holds —
+      the resolution policy is unchanged and the signature did not widen
+- [ ] `classify_file_ref("scripts/little_loops/session_store.py", index) ==
+      "stale"` — a genuinely absent path is unaffected
+- [ ] `classify_file_ref("confidence-check/SKILL.md", index) == "resolved"` —
+      the mirror tie-break still wins before ambiguity is declared
+- [ ] **No mirror-only regression.**
+      `resolve_ref_path("agents/codebase-analyzer.toml", index) ==
+      ".codex/agents/codebase-analyzer.toml"` and `classify_file_ref(...) ==
+      "resolved"` — a ref whose single match is a generated mirror resolves to
+      it, exactly as today. This is the failure mode a naively "non-mirror"
+      helper introduces; see the Contract correction in Program Design
+- [ ] A ref whose matches are >1 and *all* mirrors classifies `stale`, not
+      `ambiguous` — behavior-identical to today's `None`
+- [ ] The `ambiguous_file_ref` entry for `agents/openai.yaml` renders `66` and
+      at most three candidate paths followed by `…`; the two-candidate
+      `issues/anchor_sweep.py` entry renders both paths with no elision marker
+- [ ] **This issue file is its own fixture.** `ll-issues format-check ENH-2999`
+      today reports exactly two gaps, both mislabelled:
+      ```
+      stale_file_ref: agents/openai.yaml
+      stale_file_ref: issues/anchor_sweep.py
+      ```
+      After the change it must report zero `stale_file_ref` and two
+      `ambiguous_file_ref`, with candidate counts **66** and **2** rendered in
+      the output.
+- [ ] `test_every_format_gaps_field_is_rendered` passes with the new field —
+      i.e. `_print_gaps` gained its loop
+- [ ] Corpus invariant: `ambiguous + stale` after the change equals the
+      `stale_file_ref` total measured immediately before it (44 / 3,294 / 3,338
+      on 2026-08-02)
+- [ ] `python -m pytest scripts/tests/` exits 0
+
 ## Impact
 
 - **Effort**: Small-Medium — the classifier change is a few lines; the cost is
-  the three consumers and deciding the research-triage denominator question.
+  five consumer sites (`FormatGaps`, three `format_check.py` CSVs/loops, and
+  both `research_triage.py` tuples) plus the doc sweep. The research-triage
+  denominator question is now decided, not open.
 - **Risk**: Low — additive status; the resolution policy does not change.
 - **Breaking Change**: `RefStatus` is a public `Literal`. Any external consumer
   exhaustively matching it would need the new member, though there are none in
@@ -303,11 +506,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Scope Boundaries
 
-- **In scope**: the verdict label and its propagation to the three consumers.
+- **In scope**: the verdict label and its propagation to every consumer site.
 - **Out of scope**: changing *whether* ambiguous refs resolve. Declining is
   correct and stays.
 - **Out of scope**: untracked-by-design directories reporting `stale` — that is
-  a separate root cause with its own issue.
+  a separate root cause tracked as ENH-3000 (open).
 
 ## Related Key Documentation
 
@@ -317,6 +520,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 | `.claude/CLAUDE.md` | § CLI Tools enumerates `format-check`'s gap classes |
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-03T00:59:15 - `e098c4d0-bc23-4ca4-9927-7ae454650ec7.jsonl`
+- `/ll:confidence-check` - 2026-08-03T00:44:15 - `8195d557-878b-450d-98ab-271852b83e7a.jsonl`
 - `/ll:wire-issue` - 2026-08-03T00:37:25 - `ee2cf08a-9d4e-4629-b2ec-7211d56b5a4e.jsonl`
 - `/ll:refine-issue` - 2026-08-03T00:26:30 - `879a3201-ecea-4313-99de-95ce49087308.jsonl`
 - `/ll:capture-issue` - 2026-08-02
