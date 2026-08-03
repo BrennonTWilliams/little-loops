@@ -2596,6 +2596,105 @@ class TestMainInit:
 
         assert dry_mkdir_names == live_mkdir_names
 
+    def test_missing_templates_dir_exits_1_with_clean_error(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """BUG-3010: a broken/partial install (missing bundled templates) prints
+        a single `Error: ...` line and exits 1 instead of raising a traceback."""
+        from little_loops.init.cli import main_init
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.cli.get_bundled_templates_dir",
+                side_effect=FileNotFoundError("bundled templates dir missing"),
+            ),
+        ):
+            code = main_init(["--yes", "--root", str(tmp_project)])
+        assert code == 1
+        err = capsys.readouterr().err
+        assert err.startswith("Error:")
+        assert "Traceback" not in err
+
+    def test_corrupted_headless_config_exits_1(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """BUG-3010: a JSON decode failure surfacing during the headless merge
+        path is caught and reported as a clean exit-1 error."""
+        from little_loops.init.cli import main_init
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=(None, None, None),
+            ),
+            patch(
+                "little_loops.init.writers.load_existing_config",
+                side_effect=json.JSONDecodeError("bad json", "doc", 0),
+            ),
+        ):
+            code = main_init(["--yes", "--root", str(tmp_project)])
+        assert code == 1
+        err = capsys.readouterr().err
+        assert err.startswith("Error:")
+        assert "Traceback" not in err
+
+    def test_permission_error_exits_1(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """BUG-3010: a read-only `.ll/` (PermissionError writing config) is
+        caught and reported as a clean exit-1 error."""
+        from little_loops.init.cli import main_init
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=(None, None, None),
+            ),
+            patch(
+                "little_loops.init.writers.write_config",
+                side_effect=PermissionError("read-only .ll/"),
+            ),
+        ):
+            code = main_init(["--yes", "--root", str(tmp_project)])
+        assert code == 1
+        err = capsys.readouterr().err
+        assert "Error: read-only .ll/" in err
+        assert "Traceback" not in err
+
+    def test_unexpected_exception_still_raises(self, tmp_project: Path) -> None:
+        """BUG-3010: no catch-all was added — a genuine programming bug (e.g.
+        AttributeError) still propagates with a full traceback."""
+        from little_loops.init.cli import main_init
+
+        with (
+            patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT),
+            patch(
+                "little_loops.init.install_check.detect_installation",
+                return_value=(None, None, None),
+            ),
+            patch(
+                "little_loops.init.writers.write_config",
+                side_effect=AttributeError("unexpected programming bug"),
+            ),
+        ):
+            with pytest.raises(AttributeError, match="unexpected programming bug"):
+                main_init(["--yes", "--root", str(tmp_project)])
+
+    def test_unknown_enable_value_still_exits_2_not_1(
+        self, tmp_project: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """BUG-3010: the new OSError/JSONDecodeError wrapper must not broaden
+        the existing --enable validation error's exit code from 2 to 1."""
+        from little_loops.init.cli import main_init
+
+        with patch("little_loops.init.cli._plugin_root", return_value=_PROJECT_ROOT):
+            code = main_init(["--yes", "--enable", "bogus", "--root", str(tmp_project)])
+        assert code == 2
+        assert "Unknown feature" in capsys.readouterr().err
+
 
 # ===========================================================================
 # TestDetectHosts

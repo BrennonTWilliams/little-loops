@@ -2,10 +2,11 @@
 id: BUG-3010
 title: ll-init has no top-level exception handling; errors surface as raw tracebacks
 type: BUG
-status: open
+status: done
 priority: P2
 discovered_date: 2026-08-02
 discovered_by: multi-agent-audit
+completed_at: '2026-08-03T15:33:59Z'
 parent: EPIC-3008
 testable: true
 labels:
@@ -113,23 +114,35 @@ install is caught, and must extend past the `apply` subcommand dispatch
 
 ## Acceptance Criteria
 
-- [ ] A simulated missing/corrupt bundled templates dir makes `ll-init --yes`
+- [x] A simulated missing/corrupt bundled templates dir makes `ll-init --yes`
       print a single `Error: ...` line to stderr and exit `1` — no traceback.
-- [ ] A corrupted `.ll/ll-config.json` on the headless merge path exits `1` with
+- [x] A corrupted `.ll/ll-config.json` on the headless merge path exits `1` with
       one `Error:` line.
-- [ ] A read-only `.ll/` (PermissionError) exits `1` with one `Error:` line.
-- [ ] An unknown `--enable` value still exits `2` (argparse/validation path
+- [x] A read-only `.ll/` (PermissionError) exits `1` with one `Error:` line.
+- [x] An unknown `--enable` value still exits `2` (argparse/validation path
       unchanged by the new wrapper).
-- [ ] A deliberately injected `AttributeError` still raises with a full
+- [x] A deliberately injected `AttributeError` still raises with a full
       traceback (asserts no catch-all was added).
-- [ ] The `apply` subcommand and the `run_tui` tail call are both inside the
+- [x] The `apply` subcommand and the `run_tui` tail call are both inside the
       wrapped range.
-- [ ] New tests live in `scripts/tests/test_init_core.py` (`TestMainInit`);
+- [x] New tests live in `scripts/tests/test_init_core.py` (`TestMainInit`);
       `python -m pytest scripts/tests/` exits 0.
 
 ## Status
 
-**Open** | Created: 2026-08-02 | Priority: P2
+**Done** | Created: 2026-08-02 | Priority: P2
+
+## Resolution
+
+Wrapped the `main_init` dispatch block (`cli.py:858-926`) in
+`try: ... except (OSError, json.JSONDecodeError) as exc: print(f"Error: {exc}",
+file=sys.stderr); return 1`, matching the resolved design exactly. Added five
+tests to `TestMainInit` in `scripts/tests/test_init_core.py`: missing
+templates dir, corrupted headless config, permission error, unexpected
+exception still raises, and unknown `--enable` value still exits `2`. Full
+suite passes (pre-existing unrelated failures in `test_logo.py`,
+`test_des_audit.py`, and `test_sprint.py` confirmed present on clean `main`
+before this change).
 
 ## Impact
 
@@ -142,4 +155,5 @@ install is caught, and must extend past the `apply` subcommand dispatch
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-03T15:33:38 - `36b5dbbc-23bb-4041-827e-710fad3d2d8f.jsonl`
 - `/ll:confidence-check` - 2026-08-03T14:56:07 - `8315e9f9-979b-46c8-8d38-ae829695a554.jsonl`

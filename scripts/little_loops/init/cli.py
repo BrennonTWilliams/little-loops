@@ -855,72 +855,76 @@ Exit codes:
 
         args = parser.parse_args(argv)
 
-        project_root = (args.root or Path.cwd()).resolve()
-        plug_root = _plugin_root()
-        templates_dir = get_bundled_templates_dir()
-
-        # Resolve hosts: --hosts takes precedence; --codex is a deprecated alias.
-        # When neither is given, auto-detect from installed binaries / project dirs.
-        if args.hosts:
-            # Expand any comma-separated values (e.g. --hosts claude-code,codex)
-            hosts: list[str] = []
-            for h in args.hosts:
-                hosts.extend(h.split(","))
-        elif args.codex:
-            hosts = ["codex"]
-        else:
-            hosts = _detect_hosts(project_root)
-
-        if args.command == "apply":
-            return _run_apply(
-                plan_config=args.plan_config,
-                project_root=project_root,
-                templates_dir=templates_dir,
-                plugin_root=plug_root,
-                hosts=hosts,
-                force=getattr(args, "force", False),
-            )
-
-        # Resolve --enable/--disable feature flags (headless / plan paths only).
         try:
-            feature_choices = _feature_choices_from_args(args.enable, args.disable)
-        except ValueError as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            return 2
-        if feature_choices and not (args.plan or args.yes or args.dry_run):
-            print(
-                "Error: --enable/--disable require --yes, --dry-run, or --plan "
-                "(the interactive wizard uses its own feature checkboxes).",
-                file=sys.stderr,
-            )
-            return 2
+            project_root = (args.root or Path.cwd()).resolve()
+            plug_root = _plugin_root()
+            templates_dir = get_bundled_templates_dir()
 
-        if args.plan:
-            return _run_plan(
-                project_root,
-                templates_dir,
-                feature_choices=feature_choices,
-                upgrade=args.upgrade,
-            )
+            # Resolve hosts: --hosts takes precedence; --codex is a deprecated alias.
+            # When neither is given, auto-detect from installed binaries / project dirs.
+            if args.hosts:
+                # Expand any comma-separated values (e.g. --hosts claude-code,codex)
+                hosts: list[str] = []
+                for h in args.hosts:
+                    hosts.extend(h.split(","))
+            elif args.codex:
+                hosts = ["codex"]
+            else:
+                hosts = _detect_hosts(project_root)
 
-        if args.yes or args.dry_run or args.upgrade:
-            return _run_yes(
+            if args.command == "apply":
+                return _run_apply(
+                    plan_config=args.plan_config,
+                    project_root=project_root,
+                    templates_dir=templates_dir,
+                    plugin_root=plug_root,
+                    hosts=hosts,
+                    force=getattr(args, "force", False),
+                )
+
+            # Resolve --enable/--disable feature flags (headless / plan paths only).
+            try:
+                feature_choices = _feature_choices_from_args(args.enable, args.disable)
+            except ValueError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 2
+            if feature_choices and not (args.plan or args.yes or args.dry_run):
+                print(
+                    "Error: --enable/--disable require --yes, --dry-run, or --plan "
+                    "(the interactive wizard uses its own feature checkboxes).",
+                    file=sys.stderr,
+                )
+                return 2
+
+            if args.plan:
+                return _run_plan(
+                    project_root,
+                    templates_dir,
+                    feature_choices=feature_choices,
+                    upgrade=args.upgrade,
+                )
+
+            if args.yes or args.dry_run or args.upgrade:
+                return _run_yes(
+                    project_root=project_root,
+                    templates_dir=templates_dir,
+                    plugin_root=plug_root,
+                    force=args.force,
+                    dry_run=args.dry_run,
+                    hosts=hosts,
+                    feature_choices=feature_choices,
+                    upgrade=args.upgrade,
+                )
+
+            from little_loops.init.tui import run_tui
+
+            return run_tui(
                 project_root=project_root,
                 templates_dir=templates_dir,
                 plugin_root=plug_root,
                 force=args.force,
-                dry_run=args.dry_run,
                 hosts=hosts,
-                feature_choices=feature_choices,
-                upgrade=args.upgrade,
             )
-
-        from little_loops.init.tui import run_tui
-
-        return run_tui(
-            project_root=project_root,
-            templates_dir=templates_dir,
-            plugin_root=plug_root,
-            force=args.force,
-            hosts=hosts,
-        )
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
