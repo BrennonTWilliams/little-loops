@@ -263,7 +263,20 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Verification Notes
+
+_Added by `/ll:verify-issues`:_ Core defect still accurate —
+`_CLOSED_REASON_CODES = frozenset({"already_fixed", "superseded"})` remains
+hardcoded, and `invalid_ref` is still documented but rejected. Line-number
+citations have drifted: `_CLOSED_REASON_CODES` is now at
+`set_status.py:21` (was `L17`); the three `invalid_ref` docstrings are at
+`output_parsing.py:263`, `issue_lifecycle.py:312`, and `issue_lifecycle.py:912`
+(the issue's own corrected findings — matches current code); the
+`issue_manager.py` `close_reason == "invalid_ref"` special-case is now at
+`:908` (was cited `:773`).
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-03T04:54:47 - `d03f8e53-9873-4f8d-8cfd-bbc50704a66b.jsonl`
 - `/ll:refine-issue` - 2026-08-01T20:23:46 - `1f45db6d-28e7-4a99-8a50-d33fd51d2130.jsonl`
 - `/ll:capture-issue` - 2026-08-01T16:20:52 - `15f4582a-2df6-4315-9f84-3f5730f550e5.jsonl`
 

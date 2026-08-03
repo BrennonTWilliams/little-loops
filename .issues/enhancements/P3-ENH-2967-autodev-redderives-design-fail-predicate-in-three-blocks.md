@@ -336,7 +336,18 @@ closer model since Option A explicitly adopts that command's idiom.
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Verification Notes
+
+_Added by `/ll:verify-issues`:_ The three inline `DESIGN_FAIL` Python blocks
+in `autodev.yaml` still exist verbatim (same shape, same fail-quiet
+`except`/`|| echo "false"` pattern) and the core premise (three-way
+duplication, no shared predicate) is still fully accurate. Line-number
+citations have drifted with the file's growth: the blocks are now at
+`autodev.yaml:1195`, `:1737`, `:1974` (originally cited `L1095`, `L1594`,
+`L1758`).
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-03T04:54:47 - `d03f8e53-9873-4f8d-8cfd-bbc50704a66b.jsonl`
 - `/ll:refine-issue` - 2026-08-01T20:03:56 - `610a6707-96a5-4407-9a1a-bc051890c79f.jsonl`
 - `/ll:capture-issue` - 2026-08-01T16:20:51 - `15f4582a-2df6-4315-9f84-3f5730f550e5.jsonl`
 

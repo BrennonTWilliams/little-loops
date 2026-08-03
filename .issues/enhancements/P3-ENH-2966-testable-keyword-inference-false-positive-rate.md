@@ -292,7 +292,17 @@ same inference and are currently kept in sync only by convention.
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Verification Notes
+
+_Added by `/ll:verify-issues`:_ Core behavior and premise still accurate —
+`_TESTABLE_SIGNAL_KEYWORDS`, `_TESTABLE_KEYWORD_THRESHOLD = 2`,
+`_count_testable_keyword_matches`, and the whole-body scan surface
+(`scan_text = f"{title}\n{_strip_fm(content)}"`) all still match verbatim.
+Line-number citations are stale: the constants and functions now live around
+`issue_parser.py:550-716`, not the originally cited `L489-528`.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-03T04:54:47 - `d03f8e53-9873-4f8d-8cfd-bbc50704a66b.jsonl`
 - `/ll:refine-issue` - 2026-08-01T19:58:05 - `f7d70fe6-d3b1-4443-814c-32eee6e8b043.jsonl`
 - `/ll:capture-issue` - 2026-08-01T16:04:25 - `f9ef973a-acd3-40a7-a313-5e7a001f9a16.jsonl`
 
