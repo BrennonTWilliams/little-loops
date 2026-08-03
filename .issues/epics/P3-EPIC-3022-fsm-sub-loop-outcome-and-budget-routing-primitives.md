@@ -1,0 +1,116 @@
+---
+id: EPIC-3022
+title: FSM sub-loop outcome and budget routing primitives
+type: EPIC
+priority: P3
+status: open
+discovered_by: capture-issue
+discovered_date: 2026-08-02
+testable: true
+labels:
+- epic
+- fsm
+- loops
+---
+
+# EPIC-3022: FSM sub-loop outcome and budget routing primitives
+
+## Summary
+
+Two gaps surfaced by the same `/ll:debug-loop-run` analysis of a `deep-research`
+run (`deep-research-loop-analysis-2026-08-03.md`, Findings 2 and 5): a parent
+FSM state that invokes a `loop:` sub-state has no way to route differently when
+the sub-loop times out versus genuinely fails (**ENH-3019**), and no FSM loop
+has a per-state/iteration token or wall-clock budget hook analogous to
+`host_guard.py`'s memory-pressure `on_budget_exceeded` (**ENH-3020**). Both are
+additive, backward-compatible routing primitives at different granularities of
+the same underlying problem: a loop author cannot react to "we're running out
+of budget" before the blunt global `timeout:` forces a hard stop, discarding
+recoverable partial work.
+
+## Motivation
+
+Today the only backstop against runaway sub-loop or per-state cost is the
+loop-global `timeout:`, which fires blind to which state or sub-loop consumed
+the budget and routes to whatever `on_no`/`on_error` terminal the parent
+happens to be in — not a state the author chose based on *why* the loop ran
+out of time. Both children fix a different layer of this: ENH-3019 at the
+whole-sub-loop-termination-reason granularity, ENH-3020 at the
+per-state/iteration token-and-duration granularity. Neither blocks the other;
+together they let a loop degrade gracefully (route to salvage/synthesis)
+instead of losing partial work behind a hard failure terminal.
+
+## Children
+
+- **ENH-3019** (P2) — `on_timeout` route + `terminated_by` context exposure for
+  `loop:` sub-states, distinguishing timeout/max_iterations/signal from a
+  genuine `on_no`.
+- **ENH-3020** (P3) — optional per-state/iteration token/wall-clock budget
+  config + a routing hook analogous to `host_guard.py`'s `on_budget_exceeded`.
+
+Both are independent and can land in either order; no dependency edge between
+them.
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/fsm/executor.py` — `_execute_loop_state` (ENH-3019);
+  new per-state/iteration accounting check (ENH-3020)
+- `scripts/little_loops/fsm/fsm-loop-schema.json` — `on_timeout` route
+  (ENH-3019); `max_tokens_per_iteration`/`max_seconds_per_state` config keys
+  (ENH-3020)
+- `scripts/little_loops/fsm/types.py` — `ExecutionResult.terminated_by`
+  consumption (ENH-3019, already exists, needs exposure to `context`)
+- `scripts/little_loops/fsm/host_guard.py` — reference shape for the
+  `on_budget_exceeded`-style routing hook (ENH-3020)
+
+### Tests
+- `scripts/tests/` — new fixture loop YAMLs + unit coverage per child for the
+  new routing branch and context write.
+
+## Goal
+
+A loop author composing sub-loops or long-running states under a global
+`timeout:` has in-run signals to route to a salvage/synthesis path before the
+timeout forces a hard stop mid-state, without changing behavior for any
+existing loop that doesn't opt in.
+
+## Scope
+
+In scope: the two children above — schema additions, executor routing
+branches, and the context/counter plumbing each needs. Out of scope: changing
+`host_guard.py`'s existing memory-budget mechanism, changing the loop-global
+`timeout:` semantics, and any UI/reporting change to `/ll:debug-loop-run`
+(consumes the resulting context values but isn't itself in scope).
+
+## Impact
+
+- **Priority**: P3 — improves graceful degradation and debuggability; the
+  global `timeout:` is a working, if blunt, backstop today, so neither child
+  is blocking.
+- **Effort**: Medium — two children, each Medium (schema addition + one new
+  executor branch + one new context/counter write + test coverage).
+- **Risk**: Low — both children are additive/optional; loops that don't
+  declare the new config/routes behave exactly as today.
+
+## Status
+
+**Open** | Created: 2026-08-03 | Priority: P3
+
+## Success Criteria
+
+- [ ] `on_timeout` is a valid per-state route in the FSM schema, falls back to
+      `on_no` when unset, and `terminated_by` is exposed on parent `context`
+      after a `loop:` state resolves (ENH-3019)
+- [ ] An optional per-state/iteration token/wall-clock budget can be
+      configured and routed on, with no behavior change for loops that don't
+      configure it (ENH-3020)
+- [ ] `python -m pytest scripts/tests/` covers both new routing paths
+
+## Related Key Documentation
+
+- `.claude/CLAUDE.md` § Loop Authoring — the FSM design-rule table (`ll-loop
+  validate` MR-1..MR-14) both children's schema additions must stay
+  compatible with.
+- `scripts/little_loops/fsm/host_guard.py` — the reference shape ENH-3020's
+  routing hook follows.
