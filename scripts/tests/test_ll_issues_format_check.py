@@ -339,6 +339,8 @@ class TestFormatCheckJsonOutput:
             "unmarked_superseded_directive": [],
             # ENH-2993: one entry per H2 stacking >1 findings block.
             "duplicate_findings_block": [],
+            # ENH-2999: ambiguous (>1 suffix match) split out from stale_file_ref.
+            "ambiguous_file_ref": [],
             # ENH-2992: marker presence rides the same payload; not a gap, so
             # it does not affect the exit code above.
             "superseded_marker_count": 0,
@@ -699,6 +701,141 @@ class TestStaleFileRef:
             )
 
         assert mock_run.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# TestAmbiguousFileRef (ENH-2999)
+# ---------------------------------------------------------------------------
+
+_AMBIGUOUS_GIT_LS_FILES = subprocess.CompletedProcess(
+    args=["git", "ls-files", "-z"],
+    returncode=0,
+    stdout=b"scripts/little_loops/pkg1/dir/utils.py\0scripts/little_loops/pkg2/dir/utils.py\0",
+    stderr=b"",
+)
+
+
+class TestAmbiguousFileRef:
+    """``ambiguous_file_ref`` gap class (ENH-2999).
+
+    A reference whose suffix matches more than one tracked file is reported
+    under its own class, distinct from ``stale_file_ref`` — the file was not
+    deleted or moved, the reference just lacks enough path prefix to pick one
+    of several real matches.
+    """
+
+    def _write_bug_with_ref(self, format_check_dir: Path, bug_id: str, ref_line: str) -> Path:
+        filename = f"P3-{bug_id}-test-bug.md"
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", f"id: {bug_id}").replace(
+            "## Current Behavior\nIt breaks in a specific way.",
+            f"## Current Behavior\n{ref_line}",
+        )
+        return _write_issue(format_check_dir, filename, body)
+
+    def test_all_reports_ambiguous_not_stale(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._write_bug_with_ref(
+            format_check_dir,
+            "BUG-9601",
+            "See `dir/utils.py` for details.",
+        )
+
+        with patch(
+            "little_loops.text_utils.subprocess.run", return_value=_AMBIGUOUS_GIT_LS_FILES
+        ):
+            result = _invoke(
+                ["ll-issues", "format-check", "--all", "--config", str(temp_project_dir)]
+            )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "stale_file_ref" not in out
+        assert (
+            "ambiguous_file_ref: dir/utils.py (2: scripts/little_loops/pkg1/dir/utils.py, "
+            "scripts/little_loops/pkg2/dir/utils.py)" in out
+        )
+
+    def test_single_id_json_reports_ambiguous_file_ref(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._write_bug_with_ref(
+            format_check_dir,
+            "BUG-9602",
+            "See `dir/utils.py` for details.",
+        )
+
+        with patch(
+            "little_loops.text_utils.subprocess.run", return_value=_AMBIGUOUS_GIT_LS_FILES
+        ):
+            result = _invoke(
+                [
+                    "ll-issues",
+                    "format-check",
+                    "BUG-9602",
+                    "--format",
+                    "json",
+                    "--config",
+                    str(temp_project_dir),
+                ]
+            )
+        payload = json.loads(capsys.readouterr()[0])
+
+        assert result == 1
+        assert payload["stale_file_ref"] == []
+        assert payload["ambiguous_file_ref"] == [
+            "dir/utils.py (2: scripts/little_loops/pkg1/dir/utils.py, "
+            "scripts/little_loops/pkg2/dir/utils.py)"
+        ]
+
+    def test_more_than_three_candidates_are_elided(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """The count is always shown in full; candidate paths cap at three plus a marker."""
+        self._write_bug_with_ref(
+            format_check_dir,
+            "BUG-9603",
+            "See `agents/openai.yaml` for details.",
+        )
+        many_matches = subprocess.CompletedProcess(
+            args=["git", "ls-files", "-z"],
+            returncode=0,
+            stdout=b"\0".join(
+                f"skills/skill{i}/agents/openai.yaml".encode() for i in range(5)
+            )
+            + b"\0",
+            stderr=b"",
+        )
+
+        with patch("little_loops.text_utils.subprocess.run", return_value=many_matches):
+            result = _invoke(
+                [
+                    "ll-issues",
+                    "format-check",
+                    "BUG-9603",
+                    "--format",
+                    "json",
+                    "--config",
+                    str(temp_project_dir),
+                ]
+            )
+        payload = json.loads(capsys.readouterr()[0])
+
+        assert result == 1
+        assert len(payload["ambiguous_file_ref"]) == 1
+        entry = payload["ambiguous_file_ref"][0]
+        assert entry.startswith("agents/openai.yaml (5: ")
+        assert entry.endswith(", …)")
+        assert entry.count("skills/skill") == 3
 
 
 # ---------------------------------------------------------------------------

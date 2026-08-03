@@ -257,6 +257,34 @@ class TestReferenceFiltering:
 
         assert _by_axis(triage_research_axes(issue, root))["locator"].covered is False
 
+    def test_ambiguous_ref_is_denominator_eligible_but_not_covering(
+        self, tmp_path: Path
+    ) -> None:
+        """ENH-2999: an ambiguous ref stays eligible (cites a real file) but never
+        counts toward the numerator — only a `resolved` ref does that
+        (`research_triage.py:389-393`).
+        """
+        from little_loops.issues.research_triage import qualified_ref_count
+        from little_loops.text_utils import build_ref_index
+
+        root = _make_repo(
+            tmp_path,
+            {
+                "pkg1/dir/utils.py": SOURCE,
+                "pkg2/dir/utils.py": SOURCE,
+            },
+        )
+        issue = _write_issue(
+            root,
+            "# ENH-1\n\n## Integration Map\n\n- `dir/utils.py`\n",
+        )
+
+        index = build_ref_index(root)
+        assert qualified_ref_count(issue, "locator", index=index) == 1
+
+        locator = _by_axis(triage_research_axes(issue, root))["locator"]
+        assert locator.covered is False
+
 
 # ---------------------------------------------------------------------------
 # TestStalenessCheck

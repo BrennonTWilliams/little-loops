@@ -859,7 +859,7 @@ def check_format_gaps(
 
 Grade an issue's structural format gaps against its type template (ENH-2426). Deterministic (no LLM) — backs the `ll-issues format-check` subcommand and the `ensure_formatted` gate in `rn-remediate.yaml`. Unlike `is_formatted()`, this always runs the structural analysis; it does not honor the `/ll:format-issue` session-log shortcut, since every issue reaching the gate has already run that command.
 
-Reports twelve gap classes on the returned `FormatGaps` dataclass (`missing`, `renamed`, `empty`, `boilerplate`, `malformed_id`, `prose_dep_drift`, `stale_prose_dep`, `program_design_nonspecific`, `deprecated_key`, `multi_frontmatter`, `testable`, `stale_file_ref` — each a `list[str]`, plus a derived `has_gaps` property and a `to_dict()` for JSON output):
+Reports fifteen gap classes on the returned `FormatGaps` dataclass (`missing`, `renamed`, `empty`, `boilerplate`, `malformed_id`, `prose_dep_drift`, `stale_prose_dep`, `program_design_nonspecific`, `deprecated_key`, `multi_frontmatter`, `testable`, `stale_file_ref`, `unmarked_superseded_directive`, `duplicate_findings_block`, `ambiguous_file_ref` — each a `list[str]`, plus a derived `has_gaps` property and a `to_dict()` for JSON output; re-derive this count from `dataclasses.fields(FormatGaps)` rather than trusting the number written here):
 - **missing** — a required section header is absent from the body.
 - **renamed** — a present section header is `deprecated: true` in the template with an extractable canonical replacement in its `deprecation_reason` (e.g. `"Proposed Fix" -> "Proposed Solution"`).
 - **empty** — a required section header is present but its body is whitespace-only.
@@ -872,12 +872,15 @@ Reports twelve gap classes on the returned `FormatGaps` dataclass (`missing`, `r
 - **multi_frontmatter** (BUG-2955) — the issue carries more than one YAML frontmatter block in its header region (`little_loops.frontmatter.has_multiple_frontmatter_blocks()`), e.g. an outer `score_*` block prepended by the confidence-check scoring path followed by the canonical `id:`-bearing block.
 - **testable** — the body trips 2+ doc-only keyword signals (`doc`, `readme`, `changelog`, `typo`, etc.) while frontmatter has no explicit `testable:` key — an advisory that the issue is documentation-only.
 - **stale_file_ref** (ENH-2983) — a file path reference extracted from the body (`little_loops.text_utils.classify_issue_refs()`) classifies as `stale`: a `/`-qualified path with no exact or unique-suffix match against tracked files, i.e. genuine drift. Reporting only — a moved file can't be safely re-pointed without knowing intent. Only reported when `ref_index` is given.
+- **ambiguous_file_ref** (ENH-2999) — a file path reference classifies as `ambiguous`: the unrooted suffix matches more than one tracked file after the host-adapter mirror tie-break, so it cannot be resolved without disambiguation. Distinct from `stale_file_ref` — the file wasn't deleted or moved, the reference just lacks enough path prefix to pick one of several real matches. Each entry names the candidate count and up to three candidate paths (elided with `…` beyond that). Only reported when `ref_index` is given.
+- **unmarked_superseded_directive** (ENH-2995) — an issue's `### Codebase Research Findings` block contains a correction phrase from a closed detection list while none of `## Implementation Steps`/`### Files to Modify`/`## Acceptance Criteria` carries a `⚠ Superseded` marker.
+- **duplicate_findings_block** (ENH-2993) — an H2 section carries more than one `### Codebase Research Findings` block; entries are `"<H2> (N)"`.
 
 **Parameters:**
 - `issue_path` - Path to the issue markdown file
 - `templates_dir` - Optional override for the templates directory
 - `issue_statuses` - Optional `issue_id -> status` mapping used to distinguish `prose_dep_drift` from `stale_prose_dep`. When `None` (default), both prose-dependency gap classes fail open (report no gaps) — matching this module's existing convention.
-- `ref_index` - Optional `little_loops.text_utils.RefIndex` (built once per invocation via `build_ref_index()`) used to resolve file path references cited in the body. When `None` (default), no `stale_file_ref` gaps are reported.
+- `ref_index` - Optional `little_loops.text_utils.RefIndex` (built once per invocation via `build_ref_index()`) used to resolve file path references cited in the body. When `None` (default), no `stale_file_ref`/`ambiguous_file_ref` gaps are reported.
 
 **Returns:** A `FormatGaps` instance. Fails open (no gaps reported) when the file is unreadable, its type cannot be determined, or its template cannot be loaded — mirroring `is_formatted()`'s fail-open behavior.
 
@@ -7023,7 +7026,8 @@ Text extraction utilities for issue content. Provides shared functions for extra
 | `extract_file_paths` | Extract file paths from issue content |
 | `strip_code_fences` | Remove fenced code blocks — the public form of the fence handling `extract_file_paths` applies, so callers scanning the same text for something else use identical semantics (ENH-2971) |
 | `build_ref_index` | Index tracked files by basename via a single `git ls-files` call (ENH-2983) |
-| `classify_file_ref` | Classify one extracted file path reference: `resolved`/`stale`/`unresolvable_form`/`planned_new` (ENH-2983) |
+| `classify_file_ref` | Classify one extracted file path reference: `resolved`/`stale`/`unresolvable_form`/`planned_new`/`ambiguous` (ENH-2983, ENH-2999) |
+| `suffix_match_candidates` | Candidate tracked paths a reference's suffix matches, after the mirror tie-break — 0 = absent, 1 = resolves, >1 = ambiguous; shared body behind both `resolve_ref_path` and `classify_file_ref` (ENH-2999) |
 | `resolve_ref_path` | Return the tracked repo-relative path a reference resolves to, or `None` — steps 3-4 of `classify_file_ref`'s resolution order, for callers needing the *target* rather than the verdict (ENH-2971) |
 | `classify_issue_refs` | Classify every file path reference extracted from one issue body (ENH-2983) |
 | `extract_words` | Tokenize text into a set of significant words (3+ chars, stop words removed) |
@@ -7073,7 +7077,7 @@ print(paths)
 ### RefStatus / RefIndex
 
 ```python
-RefStatus = Literal["resolved", "stale", "unresolvable_form", "planned_new"]
+RefStatus = Literal["resolved", "stale", "unresolvable_form", "planned_new", "ambiguous"]
 
 @dataclass(frozen=True)
 class RefIndex:
@@ -7101,14 +7105,28 @@ Index tracked files by basename via a single `git ls-files -z` call. Fails open 
 def classify_file_ref(ref: str, index: RefIndex, *, line: str = "") -> RefStatus
 ```
 
-Classify one path reference extracted from issue prose. Resolution order (not commutative): form checks first (glob, `<placeholder>`, bare basename with no `/` — all `unresolvable_form`, checked before any suffix matching so a bare basename like `SKILL.md` cannot spuriously suffix-match dozens of tracked files); then `planned_new` from line context (a `(new)` marker); then an exact tracked-path match; then a *unique* suffix match against the basename-keyed index (`resolved`); otherwise `stale`. An ambiguous suffix match (2+ tracked files sharing the referenced suffix) does not resolve.
+Classify one path reference extracted from issue prose. Resolution order (not commutative): form checks first (glob, `<placeholder>`, bare basename with no `/` — all `unresolvable_form`, checked before any suffix matching so a bare basename like `SKILL.md` cannot spuriously suffix-match dozens of tracked files); then `planned_new` from line context (a `(new)` marker); then an exact tracked-path match; then a suffix match against the basename-keyed index via `suffix_match_candidates()` — zero candidates is `stale`, exactly one is `resolved`, more than one is `ambiguous` (ENH-2999). A ref whose only match is a generated host-adapter mirror still resolves; a ref whose matches are 2+ non-mirror paths declines with `ambiguous` rather than picking one silently.
 
 **Parameters:**
 - `ref` - The path reference as extracted from issue prose.
 - `index` - A `RefIndex` built once per invocation.
 - `line` - The source line the reference was found on, used only for `planned_new` detection.
 
-**Returns:** One of `"resolved"`, `"stale"`, `"unresolvable_form"`, or `"planned_new"`.
+**Returns:** One of `"resolved"`, `"stale"`, `"unresolvable_form"`, `"planned_new"`, or `"ambiguous"`.
+
+### suffix_match_candidates
+
+```python
+def suffix_match_candidates(ref: str, index: RefIndex) -> list[str]
+```
+
+Candidate tracked paths for *ref* after the existing resolution order (ENH-2999): exact-match short-circuit, then suffix match against the basename index, then the host-adapter mirror tie-break applied only when the raw suffix match is not already unique. `0 = absent, 1 = resolves, >1 = ambiguous`. Holds the shared body behind both `resolve_ref_path()` (which needs only the resolved target) and `classify_file_ref()` (which needs to distinguish "no match" from "many matches"). If every suffix match is a mirror, the mirror filter yields an empty list — reported the same as zero matches (`stale`), not `ambiguous`.
+
+**Parameters:**
+- `ref` - The path reference as extracted from issue prose.
+- `index` - A `RefIndex` built once per invocation.
+
+**Returns:** `list[str]` of tracked repo-relative paths *ref*'s suffix matches, after the mirror tie-break.
 
 ### classify_issue_refs
 

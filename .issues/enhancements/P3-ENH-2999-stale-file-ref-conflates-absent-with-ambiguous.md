@@ -1,6 +1,6 @@
 ---
 id: ENH-2999
-status: open
+status: done
 priority: P3
 captured_at: '2026-08-02T14:05:00Z'
 discovered_date: 2026-08-02
@@ -17,6 +17,7 @@ score_complexity: 14
 score_test_coverage: 23
 score_ambiguity: 22
 score_change_surface: 18
+completed_at: '2026-08-03T03:30:19Z'
 ---
 
 # `stale_file_ref` reports ambiguous multi-match references as drift
@@ -543,6 +544,8 @@ _Added by pre-implementation review 2026-08-02._
 | `docs/reference/API.md` | `check_format_gaps` gap-class prose (:862) and the `RefStatus` / `classify_file_ref` contract (:7073-7125) |
 
 ## Session Log
+- `ll-auto` - 2026-08-03T03:30:20 - `100c85e2-d4ca-4b47-9fdc-6d4055f54f9d.jsonl`
+- `/ll:ready-issue` - 2026-08-03T03:15:51 - `121b32eb-f0cb-4818-b279-81a06ea13052.jsonl`
 - `/ll:ready-issue` - 2026-08-03T02:55:30 - `98d80e04-349e-4ecb-960b-c2ce2d90ca46.jsonl`
 - `/ll:confidence-check` - 2026-08-03T00:59:15 - `e098c4d0-bc23-4ca4-9927-7ae454650ec7.jsonl`
 - `/ll:confidence-check` - 2026-08-03T00:44:15 - `8195d557-878b-450d-98ab-271852b83e7a.jsonl`
@@ -553,3 +556,23 @@ _Added by pre-implementation review 2026-08-02._
 ## Status
 
 - **Status**: open
+
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-08-02
+- **Status**: Completed (automated fallback)
+- **Implementation**: Command exited early but issue was addressed
+
+
+### Files Changed
+- See git history for details
+
+### Verification Results
+- Automated verification passed
+
+### Commits
+- See git log for details

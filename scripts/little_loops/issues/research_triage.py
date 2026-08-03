@@ -177,9 +177,11 @@ def qualified_ref_count(
     """Number of denominator-eligible path refs on *axis* for this issue.
 
     "Eligible" means the reference survived the form filter — i.e. it
-    classifies ``resolved`` or ``stale``, not ``unresolvable_form`` or
-    ``planned_new``. Exposed for the corpus length-neutrality measurement,
-    which bands issues by this count.
+    classifies ``resolved``, ``stale``, or ``ambiguous`` (ENH-2999: an
+    ambiguous ref still cites a real file, so it stays denominator-eligible —
+    only ``unresolvable_form`` and ``planned_new`` are excluded. Exposed for
+    the corpus length-neutrality measurement, which bands issues by this
+    count.
     """
     try:
         content = issue_path.read_text(encoding="utf-8", errors="replace")
@@ -190,7 +192,7 @@ def qualified_ref_count(
         index = build_ref_index(root)
     eligible = 0
     for _heading, ref, line in _axis_refs(content, axis):
-        if classify_file_ref(ref, index, line=line) in ("resolved", "stale"):
+        if classify_file_ref(ref, index, line=line) in ("resolved", "stale", "ambiguous"):
             eligible += 1
     return eligible
 
@@ -385,7 +387,7 @@ def _triage_axis(
 
     for heading, ref, line in _axis_refs(content, axis):
         status = classify_file_ref(ref, index, line=line)
-        if status not in ("resolved", "stale"):
+        if status not in ("resolved", "stale", "ambiguous"):
             continue
         eligible += 1
         if status == "resolved":

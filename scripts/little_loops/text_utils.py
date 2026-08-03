@@ -108,7 +108,7 @@ def extract_file_paths(content: str) -> set[str]:
 # File Reference Classification (ENH-2983)
 # =============================================================================
 
-RefStatus = Literal["resolved", "stale", "unresolvable_form", "planned_new"]
+RefStatus = Literal["resolved", "stale", "unresolvable_form", "planned_new", "ambiguous"]
 
 # Characters that mark a reference as a glob pattern rather than a literal
 # path (e.g. `skills/*/SKILL.md`) — always unresolvable_form.
@@ -220,10 +220,10 @@ def classify_file_ref(ref: str, index: RefIndex, *, line: str = "") -> RefStatus
        path) resolves.
     4. A *unique* suffix match against the basename-keyed index resolves —
        an unrooted partial path like ``fsm/executor.py`` cited without its
-       ``scripts/little_loops/`` prefix. Zero or more-than-one matches do
-       **not** resolve (ambiguous matches must not silently resolve), except
-       that generated host-adapter mirrors are tie-broken away first — see
-       :func:`resolve_ref_path`.
+       ``scripts/little_loops/`` prefix. Zero matches is ``stale``;
+       more-than-one is ``ambiguous`` (ambiguous matches must not silently
+       resolve), except that generated host-adapter mirrors are tie-broken
+       away first — see :func:`suffix_match_candidates`.
     5. Otherwise ``stale`` — a ``/``-qualified path with no match, the
        genuine-drift signal this classifier exists to surface.
 
@@ -234,8 +234,8 @@ def classify_file_ref(ref: str, index: RefIndex, *, line: str = "") -> RefStatus
             ``planned_new`` detection.
 
     Returns:
-        One of ``"resolved"``, ``"stale"``, ``"unresolvable_form"``, or
-        ``"planned_new"``.
+        One of ``"resolved"``, ``"stale"``, ``"unresolvable_form"``,
+        ``"planned_new"``, or ``"ambiguous"``.
     """
     if any(ch in ref for ch in _GLOB_CHARS):
         return "unresolvable_form"
@@ -249,7 +249,46 @@ def classify_file_ref(ref: str, index: RefIndex, *, line: str = "") -> RefStatus
     if line and _PLANNED_NEW_RE.search(line):
         return "planned_new"
 
-    return "resolved" if resolve_ref_path(ref, index) is not None else "stale"
+    candidates = suffix_match_candidates(ref, index)
+    if len(candidates) == 1:
+        return "resolved"
+    if len(candidates) > 1:
+        return "ambiguous"
+    return "stale"
+
+
+def suffix_match_candidates(ref: str, index: RefIndex) -> list[str]:
+    """Candidates for *ref* after the existing tie-break order.
+
+    0 = absent, 1 = resolves, >1 = ambiguous. Holds the shared body of the
+    resolution steps used by both :func:`resolve_ref_path` (which needs only
+    the resolved target) and :func:`classify_file_ref` (which needs to tell
+    "no match" apart from "many matches").
+
+    Ambiguity is resolved against generated host-adapter mirrors before it is
+    given up on: ``confidence-check/SKILL.md`` suffix-matches ``skills/…`` plus
+    one copy per adapter host, and reporting a plainly-present file as drift is
+    worse than picking the source of truth the mirrors were generated from. The
+    tie-break runs *after* the exact-match step below, so a deliberate ref to a
+    mirror (``.codex/agents/loop-specialist.toml``) still resolves to itself,
+    and *before* it is applied when there is already a unique suffix match —
+    a ref whose only match is a mirror (``agents/codebase-analyzer.toml`` ->
+    ``.codex/agents/codebase-analyzer.toml``) still resolves to that mirror.
+    Genuine same-name ambiguity between two non-mirror paths still declines;
+    if every match is a mirror, the mirror filter yields an empty list, which
+    is reported the same as zero matches (``stale``), not ``ambiguous``.
+    """
+    basename = ref.rsplit("/", 1)[-1]
+    candidates = index.by_basename.get(basename, [])
+    if ref in candidates:
+        return [ref]
+
+    suffix = "/" + ref
+    matches = [p for p in candidates if p.endswith(suffix)]
+    if len(matches) == 1:
+        return matches
+
+    return [p for p in matches if not p.startswith(_mirror_prefixes())]
 
 
 def resolve_ref_path(ref: str, index: RefIndex) -> str | None:
@@ -261,26 +300,14 @@ def resolve_ref_path(ref: str, index: RefIndex) -> str | None:
     Assumes the form checks have already passed; call it via
     :func:`classify_file_ref` unless you have run them yourself.
 
-    Ambiguity is resolved against generated host-adapter mirrors before it is
-    given up on: ``confidence-check/SKILL.md`` suffix-matches ``skills/…`` plus
-    one copy per adapter host, and reporting a plainly-present file as drift is
-    worse than picking the source of truth the mirrors were generated from. The
-    tie-break runs *after* the exact-match step above, so a deliberate ref to a
-    mirror (``.codex/agents/loop-specialist.toml``) still resolves to itself.
-    Genuine same-name ambiguity between two non-mirror paths still declines.
+    Signature and behavior are unchanged by ENH-2999: this still returns the
+    single element when there is exactly one, else ``None`` — a caller cannot
+    tell "no match" from "ambiguous" through this function; use
+    :func:`classify_file_ref` (or :func:`suffix_match_candidates` directly) for
+    that distinction.
     """
-    basename = ref.rsplit("/", 1)[-1]
-    candidates = index.by_basename.get(basename, [])
-    if ref in candidates:
-        return ref
-
-    suffix = "/" + ref
-    matches = [p for p in candidates if p.endswith(suffix)]
-    if len(matches) == 1:
-        return matches[0]
-
-    non_mirror = [p for p in matches if not p.startswith(_mirror_prefixes())]
-    return non_mirror[0] if len(non_mirror) == 1 else None
+    candidates = suffix_match_candidates(ref, index)
+    return candidates[0] if len(candidates) == 1 else None
 
 
 def classify_issue_refs(content: str, index: RefIndex) -> dict[str, RefStatus]:

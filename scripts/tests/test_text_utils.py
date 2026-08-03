@@ -18,6 +18,7 @@ from little_loops.text_utils import (
     extract_words,
     resolve_ref_path,
     score_bm25,
+    suffix_match_candidates,
 )
 
 
@@ -202,7 +203,7 @@ class TestClassifyFileRef:
             }
         )
         result = classify_file_ref("dir/utils.py", index)
-        assert result != "resolved"
+        assert result == "ambiguous"
 
     def test_bare_skill_md_is_not_suffix_matched(self) -> None:
         """Ordering guard: a bare SKILL.md must not suffix-match tracked SKILL.md files."""
@@ -308,7 +309,54 @@ class TestMirrorTieBreak:
             }
         )
         assert resolve_ref_path("issues/anchor_sweep.py", index) is None
-        assert classify_file_ref("issues/anchor_sweep.py", index) != "resolved"
+        assert classify_file_ref("issues/anchor_sweep.py", index) == "ambiguous"
+
+    def test_mirror_only_ambiguity_stays_stale_not_ambiguous(self) -> None:
+        """If every suffix match is a mirror, the mirror filter empties the list.
+
+        That must classify identically to zero matches (`stale`), not
+        `ambiguous` — nothing else distinguishes this case from genuine
+        absence (ENH-2999 Program Design edge case).
+        """
+        index = RefIndex(
+            by_basename={
+                "SKILL.md": [
+                    ".gemini/skills/confidence-check/SKILL.md",
+                    ".kimi-code/skills/confidence-check/SKILL.md",
+                ]
+            }
+        )
+        assert resolve_ref_path("confidence-check/SKILL.md", index) is None
+        assert classify_file_ref("confidence-check/SKILL.md", index) == "stale"
+
+    def test_mirror_only_single_match_still_resolves(self) -> None:
+        """A ref whose only match is a mirror resolves to that mirror, unchanged."""
+        index = RefIndex(
+            by_basename={
+                "codebase-analyzer.toml": [".codex/agents/codebase-analyzer.toml"],
+            }
+        )
+        assert (
+            resolve_ref_path("agents/codebase-analyzer.toml", index)
+            == ".codex/agents/codebase-analyzer.toml"
+        )
+        assert classify_file_ref("agents/codebase-analyzer.toml", index) == "resolved"
+
+    def test_suffix_match_candidates_returns_all_ambiguous_matches(self) -> None:
+        """The candidate list is exhaustive — truncation is a rendering concern, not this helper's."""
+        index = RefIndex(
+            by_basename={
+                "openai.yaml": [
+                    "skills/align-issues/agents/openai.yaml",
+                    "skills/audit-docs/agents/openai.yaml",
+                    "skills/capture-issue/agents/openai.yaml",
+                    "skills/commit/agents/openai.yaml",
+                ]
+            }
+        )
+        candidates = suffix_match_candidates("agents/openai.yaml", index)
+        assert len(candidates) == 4
+        assert set(candidates) == set(index.by_basename["openai.yaml"])
 
     def test_mirror_prefixes_derive_from_host_registry(self) -> None:
         """Prefixes come from HOST_CAPABILITIES so a new adapter host needs no edit here."""

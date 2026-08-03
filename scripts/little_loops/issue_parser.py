@@ -255,6 +255,7 @@ class FormatGaps:
     stale_file_ref: list[str] = field(default_factory=list)
     unmarked_superseded_directive: list[str] = field(default_factory=list)
     duplicate_findings_block: list[str] = field(default_factory=list)
+    ambiguous_file_ref: list[str] = field(default_factory=list)
 
     @property
     def has_gaps(self) -> bool:
@@ -274,6 +275,7 @@ class FormatGaps:
             or self.stale_file_ref
             or self.unmarked_superseded_directive
             or self.duplicate_findings_block
+            or self.ambiguous_file_ref
         )
 
     def to_dict(self) -> dict[str, list[str]]:
@@ -293,6 +295,7 @@ class FormatGaps:
             "stale_file_ref": self.stale_file_ref,
             "unmarked_superseded_directive": self.unmarked_superseded_directive,
             "duplicate_findings_block": self.duplicate_findings_block,
+            "ambiguous_file_ref": self.ambiguous_file_ref,
         }
 
 
@@ -377,6 +380,15 @@ def check_format_gaps(
             Only reported when *ref_index* is given. When absent, this check
             fails open (no gaps reported), matching this module's existing
             convention.
+        ambiguous_file_ref: a file path reference classifies as ``ambiguous``
+            (ENH-2999, :func:`little_loops.text_utils.classify_issue_refs`) —
+            the unrooted suffix matches more than one tracked file after the
+            host-adapter mirror tie-break, so the reference cannot be resolved
+            without disambiguation. Distinct from ``stale_file_ref``: the file
+            was not deleted or moved, the reference is just missing enough
+            path prefix to pick one of several real matches. Each entry names
+            the candidate count and up to three candidate paths (elided with
+            ``…`` beyond that). Only reported when *ref_index* is given.
         unmarked_superseded_directive: an issue's ``### Codebase Research
             Findings`` block contains a correction phrase from the closed
             list below (ENH-2995) while none of the three directive sections
@@ -540,11 +552,17 @@ def check_format_gaps(
             gaps.testable.append(issue_path.name)
 
     if ref_index is not None:
-        from little_loops.text_utils import classify_issue_refs
+        from little_loops.text_utils import classify_issue_refs, suffix_match_candidates
 
         for ref, status in sorted(classify_issue_refs(content, ref_index).items()):
             if status == "stale":
                 gaps.stale_file_ref.append(ref)
+            elif status == "ambiguous":
+                candidates = sorted(suffix_match_candidates(ref, ref_index))
+                shown = ", ".join(candidates[:3])
+                if len(candidates) > 3:
+                    shown += ", …"
+                gaps.ambiguous_file_ref.append(f"{ref} ({len(candidates)}: {shown})")
 
     findings_bodies = _heading_bodies(content, "Codebase Research Findings")
     has_correction = any(
