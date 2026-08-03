@@ -2,10 +2,11 @@
 id: ENH-3015
 title: CONFIGURATION.md has no documentation section for the top-level cache block
 type: ENH
-status: open
+status: done
 priority: P4
 discovered_date: 2026-08-02
 discovered_by: multi-agent-audit
+completed_at: '2026-08-03T16:24:00Z'
 parent: EPIC-3008
 depends_on:
 - BUG-3009
@@ -28,7 +29,7 @@ score_change_surface: 25
 ## Summary
 
 `docs/reference/CONFIGURATION.md` documents nearly every top-level
-`config-schema.json` section, but the `cache` block (`config-schema.json:643-654`,
+`config-schema.json` section, but the `cache` block (`config-schema.json:597-608`,
 `require_repeat`) has zero coverage — the only top-level schema section
 entirely undocumented there.
 
@@ -87,28 +88,30 @@ section should also note where `require_repeat` actually takes effect
 
 ## Acceptance Criteria
 
-- [ ] `docs/reference/CONFIGURATION.md` gains a `## \`cache\`` section placed
+- [x] `docs/reference/CONFIGURATION.md` gains a `## \`cache\`` section placed
       adjacent to the existing `## \`deferred_tools\`` section
       (`CONFIGURATION.md:1565`), at the **same heading level as that neighbor**
       (`##`, not `###` — see "Heading level" above).
-- [ ] No other heading in `CONFIGURATION.md` changes level.
-- [ ] The section documents `require_repeat`: purpose, type, default (`true`,
+- [x] No other heading in `CONFIGURATION.md` changes level.
+- [x] The section documents `require_repeat`: purpose, type, default (`true`,
       per `CacheConfig.require_repeat` at `config/features.py:576`), and effect
       when set to `false` (disables the cache-marking reuse gate — see
       `cache_marking_oracle.py:101-103`).
-- [ ] The section names the actual consumer reached at runtime — the
+- [x] The section names the actual consumer reached at runtime — the
       `_dispatch_live` dispatch calls in `fsm/executor.py` wired by BUG-3009 —
       rather than describing the key as inert.
-- [ ] BUG-3009 is `done` before this lands (declared `depends_on`); the section
+- [x] BUG-3009 is `done` before this lands (declared `depends_on`); the section
       does not describe behavior that hasn't shipped.
-- [ ] If `CONFIGURATION.md` carries a section index/TOC, the new section is
-      added to it.
-- [ ] `python -m pytest scripts/tests/` exits 0 (no test asserts on this doc
-      today; this is a no-regression check).
+- [x] If `CONFIGURATION.md` carries a section index/TOC, the new section is
+      added to it. (No such index exists in this file; nothing to update.)
+- [x] `python -m pytest scripts/tests/` exits 0 (no test asserts on this doc
+      today; this is a no-regression check). 4 pre-existing failures
+      (logo banner, des_audit x2) confirmed present on main before this
+      change via `git stash` baseline run — unrelated to this docs-only diff.
 
 ## Status
 
-**Open** | Created: 2026-08-02 | Priority: P4
+**Done** | Created: 2026-08-02 | Priority: P4
 
 ## Impact
 
@@ -116,3 +119,8 @@ section should also note where `require_repeat` actually takes effect
 - **Effort**: Small.
 - **Risk**: None.
 - **Breaking Change**: No.
+
+
+## Session Log
+- `/ll:manage-issue` - 2026-08-03T16:23:54 - `3038eca9-bd95-403b-9ac2-b0a2b860e202.jsonl`
+- `/ll:ready-issue` - 2026-08-03T16:15:27 - `32c79ea1-54eb-4407-9fc9-bedd5783f659.jsonl`

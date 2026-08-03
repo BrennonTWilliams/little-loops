@@ -1602,6 +1602,40 @@ picks which one: `"bm25"` (default, general-purpose relevance) or `"regex"`.
 
 ---
 
+## `cache`
+
+Top-level block (FEAT-2673, EPIC-2456 F1) governing the cache-marking oracle
+(`cache_marking_oracle.decide_cache_marking()`), which decides whether a
+stable prompt block (system / tool / stable-skill) is safe to mark with
+`cache_control: {"type": "ephemeral", ...}`. Consulted only when
+`_dispatch_live` reaches `host_runner.dispatch_anthropic_request()` /
+`dispatch_batch_request()` — i.e. for prompt-mode states whose resolved
+`request_path` (FEAT-2710) is `"sdk"` or `"batch"` (`fsm/executor.py`); the
+CLI shell path never sees a `cache_control` parameter regardless of this
+config.
+
+`require_repeat` mirrors the oracle's own conservative default: a block is
+marked only once its FEAT-2671 fragment key has already been observed as a
+repeat, avoiding the unamortized 1.25x write premium on a block that's never
+reused. Setting it to `false` disables this reuse gate, marking any block
+that clears the per-model cacheable-prefix minimum (1024 tokens for Sonnet,
+4096 for Opus) on first sight — appropriate only for callers with a
+stronger external stability signal than fragment-repeat observation.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `cache.require_repeat` | `boolean` | `true` | Whether a block must have been observed as a repeat fragment before it is marked cacheable. `false` disables the reuse gate and marks on first sight. |
+
+```json
+{
+  "cache": {
+    "require_repeat": true
+  }
+}
+```
+
+---
+
 ## `observability`
 
 Top-level block (FEAT-2478) governing OTel `gen_ai.*` attribute shaping and the
