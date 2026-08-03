@@ -2138,8 +2138,9 @@ def find_issues(
 
             issues_dir = config.project_root / config.issues.base_dir
             all_known_ids = gather_all_issue_ids(issues_dir, config=config)
-        except Exception:
-            pass
+        except Exception:  # pragma: no cover - defensive, mirrors sprint.py
+            logger.debug("Dependency mapping unavailable — falling back to active ID set")
+            all_known_ids = {info.issue_id for info in all_active}
         graph = DependencyGraph.from_issues(all_active, all_known_ids=all_known_ids)
         ready_ids = {info.issue_id for info in graph.get_ready_issues()}
         issues = [info for info in issues if info.issue_id in ready_ids]

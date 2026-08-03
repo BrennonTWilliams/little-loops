@@ -625,6 +625,27 @@ class TestDependencyAwareSequencing:
         assert "FEAT-001" in manager.dep_graph
         assert "FEAT-002" in manager.dep_graph
 
+    def test_dependency_graph_built_on_gather_all_issue_ids_exception(
+        self, temp_project_with_deps: Path
+    ) -> None:
+        """AutoManager.__init__ falls back to the active-issue ID set (not None)
+        when gather_all_issue_ids() raises, mirroring sprint.py's fix (BUG-3028)."""
+        from little_loops.config import BRConfig
+
+        config = BRConfig(temp_project_with_deps)
+        with patch(
+            "little_loops.dependency_mapper.gather_all_issue_ids",
+            side_effect=RuntimeError("boom"),
+        ):
+            manager = AutoManager(
+                config, dry_run=True, db_path=config.project_root / ".ll" / "history.db"
+            )
+
+        assert hasattr(manager, "dep_graph")
+        assert len(manager.dep_graph) == 2
+        assert "FEAT-001" in manager.dep_graph
+        assert "FEAT-002" in manager.dep_graph
+
     def test_blocked_issue_not_selected_first(self, temp_project_with_deps: Path) -> None:
         """Test that blocked issue is not selected before its blocker."""
         from little_loops.config import BRConfig

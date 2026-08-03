@@ -1371,6 +1371,34 @@ class TestFindIssues:
 
         assert "BUG-521" in [i.issue_id for i in issues]
 
+    def test_find_issues_skip_blocked_gather_all_issue_ids_exception_falls_back(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """When gather_all_issue_ids() raises, find_issues(skip_blocked=True) falls
+        back to the active-issue ID set (not None), mirroring sprint.py's fix
+        (BUG-3028) so a `done` blocker still unblocks without crashing."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+
+        (bugs_dir / "P0-BUG-540-done-blocker.md").write_text(
+            "---\nstatus: done\n---\n\n# BUG-540: Done Blocker\n\nContent."
+        )
+        (bugs_dir / "P0-BUG-541-unblocked.md").write_text(
+            "---\nstatus: open\nblocked_by:\n  - BUG-540\n---\n\n# BUG-541: Unblocked\n\nContent."
+        )
+
+        with patch(
+            "little_loops.dependency_mapper.gather_all_issue_ids",
+            side_effect=RuntimeError("boom"),
+        ):
+            issues = find_issues(config, category="bugs", skip_blocked=True)
+
+        assert "BUG-541" in [i.issue_id for i in issues]
+
     def test_find_issues_skip_blocked_deferred_blocker_still_blocks(
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:

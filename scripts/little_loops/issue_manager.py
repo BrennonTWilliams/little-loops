@@ -1517,8 +1517,9 @@ class AutoManager:
 
             issues_dir = config.project_root / config.issues.base_dir
             all_known_ids = gather_all_issue_ids(issues_dir, config=config)
-        except Exception:
-            self.logger.debug("Dependency mapping unavailable — skipping")
+        except Exception:  # pragma: no cover - defensive, mirrors sprint.py
+            self.logger.debug("Dependency mapping unavailable — falling back to active ID set")
+            all_known_ids = {info.issue_id for info in all_issues}
         self.dep_graph = DependencyGraph.from_issues(all_issues, all_known_ids=all_known_ids)
 
         # Warn about any cycles
