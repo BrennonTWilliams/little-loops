@@ -136,7 +136,7 @@ rather than "impossible".
 
 _Added by `/ll:refine-issue` — concrete steps grounded in actual file references._
 
-1. **Enumerate omp's native hook events** (gated on FEAT-1850). Inspect the oh-my-pi
+1. **Enumerate omp's native hook events** (FEAT-1850's omp runner has landed). Inspect the oh-my-pi
    SDK/plugin surface for its lifecycle event names and advisory/blocking semantics,
    mirroring how `gemini-cli-surface.md` § Q2 enumerated Gemini's 11 events.
 2. **Map omp events → the 7 ll intents** from

@@ -55,7 +55,7 @@ The main risk is staleness, not integration: loops mutate the codebase continuou
 
 - GitNexus and other browser-first/client-side tools — poor fit for headless CLI loops; the protocol leaves room for a future provider but none is built here
 - Index *building* or auto-reindex daemons — indexing stays the external tool's job; we only read and report freshness
-- Rolling graph-first discovery into `/ll:find-dead-code`, `/ll:audit-architecture`, `/ll:refine-issue`, `/ll:scan-codebase` — mechanical follow-ups gated on ENH-2578's measured win
+- Rolling graph-first discovery into `/ll:find-dead-code`, `/ll:audit-architecture`, `/ll:refine-issue`, `/ll:scan-codebase` — mechanical follow-ups that ENH-2578's measured win unlocks
 - Replacing `dependency_mapper` / `dependency_graph.py` (issue-level dependencies) — different domain; they may later *consume* `ll-code` but are untouched here
 
 ## Implementation Order

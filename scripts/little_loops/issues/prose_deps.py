@@ -1,12 +1,13 @@
 """Prose dependency extractor (FEAT-2849).
 
 Scans an issue body for canonical prose dependency phrasings ("Depends on
-FEAT-109", "Blocked by BUG-5", "Requires ENH-10", and ``## Blocked By``
-section bodies) and returns the referenced issue IDs, normalized to
-``TYPE-NNN``.
+FEAT-109", "Blocked by BUG-5", "Requires ENH-10", their unambiguous synonyms
+("blocked on", "gated on", "waiting on", "contingent on", "predicated on",
+"depends upon"), and ``## Blocked By`` section bodies) and returns the
+referenced issue IDs, normalized to ``TYPE-NNN``.
 
-Deliberately conservative: only the canonical phrasings above are matched.
-Recall matters less than not crying wolf (see FEAT-2849 for rationale).
+Deliberately conservative: only the phrasings above are matched. Recall
+matters less than not crying wolf (see FEAT-2849 for rationale).
 Callers are expected to pass the issue *body* only (post
 ``strip_frontmatter()``) — this module does not parse frontmatter itself.
 """
@@ -19,9 +20,14 @@ from little_loops.text_utils import _CODE_FENCE
 
 _ID_RE = r"(?:P[0-5]-)?(BUG|FEAT|ENH|EPIC)-(\d+)"
 
-# "Depends on FEAT-109", "Blocked by BUG-5", "Requires ENH-10"
+# "Depends on FEAT-109", "Blocked by BUG-5", "Requires ENH-10", plus the
+# unambiguous blocker synonyms ("blocked on BUG-5", "gated on FEAT-9", ...).
+# Deliberately excludes temporal/narrative phrasings ("after X", "once X",
+# "pending X", "needs X") — those are dominated by history, not live edges,
+# and a wrong blocked_by edge silently hides an issue from `ll-issues ready`.
 _PHRASE_RE = re.compile(
-    rf"\b(?:Depends on|Blocked by|Requires)\s+{_ID_RE}",
+    rf"\b(?:Depends on|Depends upon|Blocked by|Blocked on|Requires"
+    rf"|Gated on|Waiting on|Contingent on|Predicated on)\s+{_ID_RE}",
     re.IGNORECASE,
 )
 

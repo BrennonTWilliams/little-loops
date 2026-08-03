@@ -183,6 +183,12 @@ the findings. Rules:
 - Preserve any bullets that are still accurate.
 - Cite the driving finding inline where it clarifies (e.g. a short parenthetical),
   but keep the section directive and terse — this is not a findings dump.
+- **Canonical dependency phrasing.** If a rewritten line asserts that this issue
+  is blocked by another issue, phrase it as `Blocked by <ID>` / `Depends on
+  <ID>` / `Requires <ID>` (or `blocked on`, `gated on`, `waiting on`,
+  `contingent on`, `predicated on`). Paraphrases are invisible to
+  `extract_prose_deps()`, so `format-check`'s `prose_dep_drift` gate never fires
+  and no `blocked_by` frontmatter edge is written.
 - **Clear the `⚠ Superseded` markers (ENH-2992).** When rewriting a marked
   line, extend the Edit's `old_string` span to include the trailing
   `> ⚠ Superseded — …` line so the marker goes with the text it annotated —

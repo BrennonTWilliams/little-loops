@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from little_loops.issues.prose_deps import extract_prose_deps
 
 
@@ -15,6 +17,36 @@ def test_blocked_by_phrase() -> None:
 
 def test_requires_phrase() -> None:
     assert extract_prose_deps("Requires ENH-10 to be merged first.") == {"ENH-10"}
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "Blocked on",
+        "Gated on",
+        "Waiting on",
+        "Contingent on",
+        "Predicated on",
+        "Depends upon",
+    ],
+)
+def test_unambiguous_blocker_synonyms(phrase: str) -> None:
+    assert extract_prose_deps(f"{phrase} BUG-3028 landing first.") == {"BUG-3028"}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "Landed after BUG-3028 shipped.",
+        "Cleanup once FEAT-500 is merged.",
+        "Still pending ENH-10.",
+        "This needs BUG-42 for context.",
+    ],
+)
+def test_temporal_phrasings_not_treated_as_dependencies(body: str) -> None:
+    # "after"/"once"/"pending"/"needs" are dominated by narrative history in
+    # real issue bodies; matching them would inject wrong blocked_by edges.
+    assert extract_prose_deps(body) == set()
 
 
 def test_priority_prefixed_id_normalized() -> None:

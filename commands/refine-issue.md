@@ -742,6 +742,14 @@ Run /ll:ready-issue [ISSUE-ID] to validate.
 3. Preserve existing non-empty sections (append, don't replace)
 4. Add new sections in appropriate locations following v2.0 template ordering
 5. Ensure all added file paths and references are from actual research (no placeholders in auto mode)
+6. **Canonical dependency phrasing**: when any prose you write asserts that this
+   issue is blocked by another issue, phrase it canonically — `Blocked by
+   <ID>` / `Depends on <ID>` / `Requires <ID>` (or the synonyms `blocked on`,
+   `gated on`, `waiting on`, `contingent on`, `predicated on`). Paraphrases like
+   "blocking dependency unmet: BUG-3028's decision has not landed" are invisible
+   to `extract_prose_deps()`, so Step 6.7's gate never fires and the
+   `blocked_by` edge is never written — the issue then reads as unblocked to
+   `ll-issues ready` and sprint scheduling.
 
 ### 6.5. Append Session Log
 
@@ -772,8 +780,9 @@ inspect the `prose_dep_drift`/`stale_prose_dep`/`program_design_nonspecific`
 keys:
 
 - **`prose_dep_drift` non-empty**: the body claims a dependency in prose
-  ("Depends on ID", "Blocked by ID", "Requires ID", or a `## Blocked By`
-  section) on an active issue not reflected in `blocked_by`/`depends_on`
+  ("Depends on ID", "Blocked by ID", "Requires ID", the synonyms "blocked on",
+  "gated on", "waiting on", "contingent on", "predicated on", or a `## Blocked
+  By` section) on an active issue not reflected in `blocked_by`/`depends_on`
   frontmatter. Add the missing edge via `ll-issues link [ISSUE-ID] blocked_by
   [BLOCKER-ID]` (do not silently drop the prose) and re-run `format-check` to
   confirm the drift clears.

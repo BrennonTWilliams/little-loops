@@ -892,11 +892,17 @@ def extract_prose_deps(body: str) -> set[str]
 
 Extracts issue IDs claimed as dependencies in prose (FEAT-2849,
 `little_loops/issues/prose_deps.py`). Matches canonical phrasings only —
-"Depends on `<ID>`", "Blocked by `<ID>`", "Requires `<ID>`", and IDs listed
+"Depends on `<ID>`", "Blocked by `<ID>`", "Requires `<ID>`", their unambiguous
+synonyms ("blocked on", "gated on", "waiting on", "contingent on", "predicated
+on", "depends upon"), and IDs listed
 in the body of a `## Blocked By` section — normalizing `P\d-TYPE-NNN` /
 `TYPE-NNN` forms to `TYPE-NNN` and stripping case. Ignores IDs inside fenced
 code blocks. Deliberately conservative: recall matters less than not crying
-wolf. Callers pass the issue *body only* (post `strip_frontmatter()`) — this
+wolf — temporal/narrative phrasings ("after `<ID>`", "once `<ID>`", "pending
+`<ID>`", "needs `<ID>`") are **not** matched, since in real issue bodies they
+overwhelmingly describe history rather than a live edge, and a wrong
+`blocked_by` silently hides an issue from `ll-issues ready`. Callers pass the
+issue *body only* (post `strip_frontmatter()`) — this
 function does not parse frontmatter itself.
 
 **Parameters:**

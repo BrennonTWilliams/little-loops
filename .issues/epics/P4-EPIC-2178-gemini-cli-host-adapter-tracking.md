@@ -96,8 +96,8 @@ generic tool with `--host gemini` once `GeminiRunner` lands:
 **Live (Gemini-specific work):**
 
 - **FEAT-2179** — Research spike: gemini-cli binary surface, hook events, and plugin discovery — ✅ **done**
-- **ENH-2184** — GeminiRunner stub in host_runner.py — open (XS; next up — critical-path entry point)
-- **ENH-2185** — GeminiRunner full implementation (build_streaming, build_blocking_json, build_detached, build_version_check) — open (blocked on ENH-2184)
+- **ENH-2184** — GeminiRunner stub in host_runner.py — ✅ **done**
+- **ENH-2185** — GeminiRunner full implementation (build_streaming, build_blocking_json, build_detached, build_version_check) — ✅ **done**
 - **FEAT-2186** — Hook adapter — hooks/adapters/gemini/ — open (decision **ratified**: Option A, settings.json injection — ARCHITECTURE-046)
 - **ENH-2187** — Config probe — .gemini/ll-config.json in _config_candidates() — open (XS, independent)
 - **FEAT-2190** — GEMINI.md project context file (ll:init --gemini) — open (independent)
