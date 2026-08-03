@@ -7,6 +7,7 @@ status: open
 captured_at: "2026-08-01T21:03:45Z"
 discovered_date: 2026-08-01
 discovered_by: capture-issue
+parent: EPIC-2938
 ---
 
 # ENH-2979: --deep flag: LLM-adjudicated clustering for link-epics synthesize mode
@@ -127,7 +128,7 @@ Design agreed with user (this session):
 
 ## Impact
 
-- **Priority**: P3 - Quality-of-life improvement to an existing skill; no user is
+- **Priority**: P4 - Quality-of-life improvement to an existing skill; no user is
   currently blocked, but `--mode synthesize` is close to a no-op on backlogs like
   this project's current one (11/11 orphans landed as singletons).
 - **Effort**: Small - Additive flag on an existing skill's existing mode; reuses
@@ -141,9 +142,29 @@ Design agreed with user (this session):
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Note (2026-08-03)
+
+Parented under **EPIC-2938** (Offload mechanical work from `/ll:` skills/commands
+into `ll-* Python CLIs`) — this is a sibling of the epic's **FEAT-2942**
+(`ll-issues link-epics --mode assign|synthesize`), the same CLI surface this
+issue extends.
+
+Worth weighing against the parent epic before implementation: EPIC-2938's
+"Shared Conventions" and Motivation are explicitly about *removing*
+non-determinism (`--check` gates narrated by the model, Jaccard duplicated in
+prose vs. `text_utils.py`) and moving mechanical scoring into deterministic
+Python. This issue proposes the opposite direction for one step of that same
+CLI — swapping deterministic Jaccard clustering for an LLM-adjudicated pass.
+That may still be the right call (the motivation here — pure lexical overlap
+structurally misses same-theme, different-vocabulary orphans — is real and
+distinct from the determinism concern), but it should be an explicit,
+acknowledged tradeoff against EPIC-2938 §Motivation point 2, not an implicit
+one. The `--deep` opt-in gate (default path stays deterministic Jaccard) is
+the mitigation already designed into this issue.
+
 ## Status
 
-**Open** | Created: 2026-08-01 | Priority: P3
+**Open** | Created: 2026-08-01 | Priority: P4
 
 
 ## Session Log

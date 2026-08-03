@@ -6,6 +6,7 @@ status: open
 captured_at: "2026-08-02T00:00:00Z"
 discovered_date: 2026-08-02
 discovered_by: capture-issue
+parent: EPIC-3022
 ---
 
 # FSM sub-loop states can't distinguish timeout from normal on_no, and expose no outcome context

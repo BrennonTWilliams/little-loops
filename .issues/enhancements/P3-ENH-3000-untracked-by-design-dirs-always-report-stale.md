@@ -5,6 +5,7 @@ priority: P3
 captured_at: "2026-08-02T14:06:00Z"
 discovered_date: 2026-08-02
 discovered_by: capture-issue
+parent: EPIC-3023
 relates_to: [ENH-2983, ENH-2971, ENH-2999]
 decision_needed: true
 testable: true

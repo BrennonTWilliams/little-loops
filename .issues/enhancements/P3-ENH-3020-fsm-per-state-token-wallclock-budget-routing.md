@@ -6,6 +6,7 @@ status: open
 captured_at: "2026-08-02T00:00:00Z"
 discovered_date: 2026-08-02
 discovered_by: capture-issue
+parent: EPIC-3022
 ---
 
 # No per-state/iteration token or wall-clock budget routing primitive in FSM loops

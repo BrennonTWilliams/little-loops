@@ -7,6 +7,7 @@ status: open
 captured_at: '2026-08-02T05:14:22Z'
 discovered_date: 2026-08-02
 discovered_by: capture-issue
+parent: EPIC-3023
 testable: true
 relates_to:
 - ENH-2971

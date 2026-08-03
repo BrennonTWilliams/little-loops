@@ -49,6 +49,9 @@ Three concrete harms today:
 - **ENH-2951** — `ll-verify-skill-prose`: the lint gate that makes Success Criterion 1 enforceable (Wave 1)
 - **FEAT-2940** — `ll-help`: generate the command catalog from frontmatter, retire hardcoded help.md (Wave 2)
 - **FEAT-2942** — `ll-issues link-epics --mode assign|synthesize` (Wave 2)
+- **ENH-2979** — `--deep` flag: LLM-adjudicated clustering for `--mode synthesize`,
+  gated behind Jaccard pre-filtering (Wave 2, after FEAT-2942; parented 2026-08-03 —
+  see its Note re: tension with this epic's determinism motivation)
 - **ENH-2943** — `ll-loop rename` + `ll-loop cleanup` (Wave 2)
 - **ENH-2944** — `ll-issues normalize` (Wave 2)
 - **ENH-2953** — `ll-issues prioritize --apply` (Wave 2)

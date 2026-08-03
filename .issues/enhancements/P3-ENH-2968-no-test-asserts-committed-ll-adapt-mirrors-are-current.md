@@ -75,6 +75,16 @@ on a tree that `--apply` claims is already correct.
 (The `help.toml` regeneration was reverted rather than committed, to keep it
 out of an unrelated change. The drift is still present on `main`.)
 
+**Update (2026-08-03):** the `.gemini/commands/help.toml` symptom cited above
+was independently fixed by `e8ed3ca3` ("regenerate gemini/kimi-code mirrors
+for help and normalize-issues", 2026-08-01), which regenerated both
+`help.toml` and `normalize-issues.toml` for `.gemini` and `.kimi-code`. That
+was a manual, one-off `ll-adapt --apply` run, not a test — the underlying gap
+this issue exists to close (nothing *catches* the next drift automatically)
+is unaffected. Treat the specific `help.toml` example above as historical;
+the skip-predicate defect and the missing regeneration-diff test are still
+live.
+
 ## Expected Behavior
 
 A test regenerates each host's artifacts from the canonical sources into a
