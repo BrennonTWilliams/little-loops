@@ -39,6 +39,8 @@ class ProcessingState:
         timestamp: Last update timestamp
         completed_issues: List of completed issue IDs
         failed_issues: Mapping of issue ID to failure reason
+        skipped_issues: Mapping of issue ID to a non-failure skip reason
+            (e.g. blocked-by-dependency, plan-awaiting-approval)
         attempted_issues: Set of issues already attempted
         timing: Per-issue timing breakdown
         corrections: Mapping of issue ID to list of corrections made
@@ -49,6 +51,7 @@ class ProcessingState:
     timestamp: str = ""
     completed_issues: list[str] = field(default_factory=list)
     failed_issues: dict[str, str] = field(default_factory=dict)
+    skipped_issues: dict[str, str] = field(default_factory=dict)
     attempted_issues: set[str] = field(default_factory=set)
     timing: dict[str, dict[str, float]] = field(default_factory=dict)
     corrections: dict[str, list[str]] = field(default_factory=dict)
@@ -61,6 +64,7 @@ class ProcessingState:
             "timestamp": self.timestamp,
             "completed_issues": self.completed_issues,
             "failed_issues": self.failed_issues,
+            "skipped_issues": self.skipped_issues,
             "attempted_issues": list(self.attempted_issues),
             "timing": self.timing,
             "corrections": self.corrections,
@@ -75,6 +79,7 @@ class ProcessingState:
             timestamp=data.get("timestamp", ""),
             completed_issues=list(data.get("completed_issues", [])),
             failed_issues=dict(data.get("failed_issues", {})),
+            skipped_issues=dict(data.get("skipped_issues", {})),
             attempted_issues=set(data.get("attempted_issues", [])),
             timing=dict(data.get("timing", {})),
             corrections=dict(data.get("corrections", {})),
@@ -211,6 +216,19 @@ class StateManager:
         self.save()
         self._emit(
             "state.issue_failed", {"issue_id": issue_id, "reason": reason, "status": "failed"}
+        )
+
+    def mark_skipped(self, issue_id: str, reason: str) -> None:
+        """Mark an issue as skipped (a non-failure terminal outcome).
+
+        Args:
+            issue_id: Issue identifier
+            reason: Skip reason
+        """
+        self.state.skipped_issues[issue_id] = reason
+        self.save()
+        self._emit(
+            "state.issue_skipped", {"issue_id": issue_id, "reason": reason, "status": "skipped"}
         )
 
     def is_attempted(self, issue_id: str) -> bool:

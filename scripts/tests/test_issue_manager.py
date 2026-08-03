@@ -2840,6 +2840,9 @@ class TestFallbackVerification:
                                 )
 
         assert not result.success
+        # BUG-3005: this return previously omitted failure_reason entirely,
+        # so mark_failed() never fired and the summary silently under-reported.
+        assert result.failure_reason == "verification failed"
         mock_logger.error.assert_called()
 
     def test_fallback_completion_via_content_markers(
@@ -3544,6 +3547,129 @@ class TestAutoManagerRun:
         assert manager._unreachable_reason("BUG-999") == "not_found"
         assert "BUG-006 blocked by: BUG-005" in manager._unreachable_reason("BUG-006")
         assert manager._unreachable_reason("BUG-007") == "BUG-007: already_done"
+
+    def test_unreachable_reason_attempted_and_failed(self, full_project: Path) -> None:
+        """BUG-3005: an attempted-and-failed issue reports the real outcome, not
+        the "filtered out" catch-all — even though it is open/unblocked/acyclic."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        config = BRConfig(full_project)
+        with patch("little_loops.issue_manager.check_git_status", return_value=False):
+            manager = AutoManager(
+                config,
+                dry_run=False,
+                db_path=config.project_root / ".ll" / "history.db",
+            )
+
+        manager._run_attempted.add("BUG-001")
+        manager.state_manager.mark_attempted("BUG-001", save=False)
+        manager.state_manager.mark_failed("BUG-001", "verification failed")
+
+        reason = manager._unreachable_reason("BUG-001")
+        assert reason == "BUG-001: attempted, verification failed"
+        assert "filtered out" not in reason
+
+    def test_unreachable_reason_attempted_no_recorded_outcome(self, full_project: Path) -> None:
+        """BUG-3005: an attempted ID with no recorded reason still avoids the
+        catch-all (the bare-attempted_issues backstop invariant)."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        config = BRConfig(full_project)
+        with patch("little_loops.issue_manager.check_git_status", return_value=False):
+            manager = AutoManager(
+                config,
+                dry_run=False,
+                db_path=config.project_root / ".ll" / "history.db",
+            )
+
+        manager._run_attempted.add("BUG-001")
+        manager.state_manager.mark_attempted("BUG-001", save=False)
+
+        assert manager._unreachable_reason("BUG-001") == "BUG-001: attempted, outcome not recorded"
+
+    def test_unreachable_reason_was_blocked_and_plan_created_wording(
+        self, full_project: Path
+    ) -> None:
+        """BUG-3005: was_blocked/plan_created outcomes render their own,
+        non-failure wording via skipped_issues rather than the catch-all."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        issues_dir = full_project / ".issues" / "bugs"
+        (issues_dir / "P1-BUG-008-blocked-outcome.md").write_text(
+            "# BUG-008: Blocked outcome\n\n## Summary\nBlocked at runtime"
+        )
+        (issues_dir / "P1-BUG-009-plan-outcome.md").write_text(
+            "# BUG-009: Plan outcome\n\n## Summary\nPlan awaiting approval"
+        )
+
+        config = BRConfig(full_project)
+        with patch("little_loops.issue_manager.check_git_status", return_value=False):
+            manager = AutoManager(
+                config,
+                dry_run=False,
+                db_path=config.project_root / ".ll" / "history.db",
+            )
+
+        manager._run_attempted.update({"BUG-008", "BUG-009"})
+        manager.state_manager.mark_attempted("BUG-008", save=False)
+        manager.state_manager.mark_skipped("BUG-008", "skipped — blocked by open dependency")
+        manager.state_manager.mark_attempted("BUG-009", save=False)
+        manager.state_manager.mark_skipped("BUG-009", "plan created, awaiting approval")
+
+        assert (
+            manager._unreachable_reason("BUG-008")
+            == "BUG-008: attempted, skipped — blocked by open dependency"
+        )
+        assert (
+            manager._unreachable_reason("BUG-009")
+            == "BUG-009: attempted, plan created, awaiting approval"
+        )
+
+    def test_unreachable_reason_earlier_run_suffix(self, full_project: Path) -> None:
+        """BUG-3005: an outcome recorded in persisted state but not attempted in
+        *this* run's in-process set is worded as an earlier run's outcome."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        config = BRConfig(full_project)
+        with patch("little_loops.issue_manager.check_git_status", return_value=False):
+            manager = AutoManager(
+                config,
+                dry_run=False,
+                db_path=config.project_root / ".ll" / "history.db",
+            )
+
+        # Simulate persisted state loaded via --resume, without adding to
+        # this run's _run_attempted set.
+        manager.state_manager.mark_attempted("BUG-001", save=False)
+        manager.state_manager.mark_failed("BUG-001", "verification failed")
+
+        reason = manager._unreachable_reason("BUG-001")
+        assert reason == "BUG-001: attempted, verification failed (earlier run)"
+
+    def test_unreachable_reason_catch_all_reworded(self, full_project: Path) -> None:
+        """BUG-3005: the genuine "we don't know" catch-all names its own
+        uncertainty instead of implying a filter matched."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        issues_dir = full_project / ".issues" / "bugs"
+        (issues_dir / "P1-BUG-010-never-attempted.md").write_text(
+            "# BUG-010: Never attempted\n\n## Summary\nOpen, unblocked, never selected"
+        )
+
+        config = BRConfig(full_project)
+        with patch("little_loops.issue_manager.check_git_status", return_value=False):
+            manager = AutoManager(
+                config,
+                dry_run=False,
+                db_path=config.project_root / ".ll" / "history.db",
+            )
+
+        assert manager._unreachable_reason("BUG-010") == "BUG-010: not selected (no filter matched)"
 
     def test_timeout_on_one_issue_does_not_abort_remaining_issues(self, full_project: Path) -> None:
         """BUG-2976: a per-issue TimeoutExpired fails only that issue.

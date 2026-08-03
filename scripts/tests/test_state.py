@@ -27,6 +27,7 @@ class TestProcessingState:
         assert state.timestamp == ""
         assert state.completed_issues == []
         assert state.failed_issues == {}
+        assert state.skipped_issues == {}
         assert state.attempted_issues == set()
         assert state.timing == {}
         assert state.corrections == {}
@@ -39,6 +40,7 @@ class TestProcessingState:
             timestamp="2025-01-01T12:00:00+00:00",
             completed_issues=["BUG-001", "BUG-002"],
             failed_issues={"BUG-003": "Timeout"},
+            skipped_issues={"BUG-004": "plan created, awaiting approval"},
             attempted_issues={"BUG-001", "BUG-002", "BUG-003"},
             timing={"BUG-001": {"total": 120.5}},
             corrections={"BUG-001": ["Added missing section"]},
@@ -51,6 +53,7 @@ class TestProcessingState:
         assert result["timestamp"] == "2025-01-01T12:00:00+00:00"
         assert result["completed_issues"] == ["BUG-001", "BUG-002"]
         assert result["failed_issues"] == {"BUG-003": "Timeout"}
+        assert result["skipped_issues"] == {"BUG-004": "plan created, awaiting approval"}
         assert set(result["attempted_issues"]) == {"BUG-001", "BUG-002", "BUG-003"}
         assert result["timing"] == {"BUG-001": {"total": 120.5}}
         assert result["corrections"] == {"BUG-001": ["Added missing section"]}
@@ -75,6 +78,7 @@ class TestProcessingState:
             "timestamp": "2025-01-01T14:00:00+00:00",
             "completed_issues": ["FEAT-001"],
             "failed_issues": {"FEAT-002": "Merge conflict"},
+            "skipped_issues": {"FEAT-003": "skipped — blocked by open dependency"},
             "attempted_issues": ["FEAT-001", "FEAT-002"],
             "timing": {"FEAT-001": {"ready": 10.0, "implement": 100.0}},
             "corrections": {"FEAT-001": ["Updated file path", "Fixed line numbers"]},
@@ -87,6 +91,7 @@ class TestProcessingState:
         assert state.timestamp == "2025-01-01T14:00:00+00:00"
         assert state.completed_issues == ["FEAT-001"]
         assert state.failed_issues == {"FEAT-002": "Merge conflict"}
+        assert state.skipped_issues == {"FEAT-003": "skipped — blocked by open dependency"}
         assert state.attempted_issues == {"FEAT-001", "FEAT-002"}
         assert state.timing == {"FEAT-001": {"ready": 10.0, "implement": 100.0}}
         assert state.corrections == {"FEAT-001": ["Updated file path", "Fixed line numbers"]}
@@ -102,9 +107,25 @@ class TestProcessingState:
         assert state.timestamp == ""
         assert state.completed_issues == []
         assert state.failed_issues == {}
+        assert state.skipped_issues == {}
         assert state.attempted_issues == set()
         assert state.timing == {}
         assert state.corrections == {}
+
+    def test_from_dict_missing_skipped_issues_backward_compat(self) -> None:
+        """BUG-3005: pre-existing on-disk state files (written before
+        skipped_issues existed) must still load under --resume."""
+        data = {
+            "current_issue": "",
+            "phase": "idle",
+            "completed_issues": ["BUG-001"],
+            "failed_issues": {"BUG-002": "Timeout"},
+            "attempted_issues": ["BUG-001", "BUG-002"],
+        }
+
+        state = ProcessingState.from_dict(data)
+
+        assert state.skipped_issues == {}
 
     def test_roundtrip_serialization(self) -> None:
         """Test roundtrip through to_dict and from_dict."""
@@ -114,6 +135,7 @@ class TestProcessingState:
             timestamp="2025-01-01T00:00:00+00:00",
             completed_issues=["A", "B"],
             failed_issues={"C": "error"},
+            skipped_issues={"D": "plan created, awaiting approval"},
             attempted_issues={"A", "B", "C"},
             timing={"A": {"total": 50.0}},
             corrections={"A": ["Fixed section"], "B": ["Updated path", "Fixed lines"]},
@@ -126,6 +148,7 @@ class TestProcessingState:
         assert restored.timestamp == original.timestamp
         assert restored.completed_issues == original.completed_issues
         assert restored.failed_issues == original.failed_issues
+        assert restored.skipped_issues == original.skipped_issues
         assert restored.attempted_issues == original.attempted_issues
         assert restored.timing == original.timing
         assert restored.corrections == original.corrections
@@ -676,6 +699,24 @@ class TestStateManagerEventEmission:
         assert received[0]["reason"] == "Timeout after 3600s"
         assert received[0]["status"] == "failed"
         assert "ts" in received[0]
+
+    def test_mark_skipped_emits_event(self, temp_state_file: Path, mock_logger: MagicMock) -> None:
+        """BUG-3005: mark_skipped records the outcome and emits state.issue_skipped."""
+        from little_loops.events import EventBus
+
+        received: list[dict[str, Any]] = []
+        bus = EventBus()
+        bus.register(lambda e: received.append(e))
+
+        manager = StateManager(temp_state_file, mock_logger, event_bus=bus)
+        manager.mark_skipped("BUG-006", "skipped — blocked by open dependency")
+
+        assert manager.state.skipped_issues == {"BUG-006": "skipped — blocked by open dependency"}
+        assert len(received) == 1
+        assert received[0]["event"] == "state.issue_skipped"
+        assert received[0]["issue_id"] == "BUG-006"
+        assert received[0]["reason"] == "skipped — blocked by open dependency"
+        assert received[0]["status"] == "skipped"
 
     def test_no_event_bus_no_error(self, temp_state_file: Path, mock_logger: MagicMock) -> None:
         """StateManager without event_bus works without errors (backward compat)."""

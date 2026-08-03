@@ -13,7 +13,7 @@ labels:
 - diagnostics
 relates_to:
 - BUG-3004
-status: open
+status: done
 testable: true
 confidence_score: 95
 outcome_confidence: 86
@@ -21,6 +21,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 25
+completed_at: '2026-08-03T03:01:58Z'
 ---
 
 # BUG-3005: ll-auto reports attempted-and-failed issues as "filtered out"
@@ -473,6 +474,8 @@ during the review:
   Steps step 1. See Root Cause § Secondary cause.
 
 ## Session Log
+- `ll-auto` - 2026-08-03T03:01:58 - `98d80e04-349e-4ecb-960b-c2ce2d90ca46.jsonl`
+- `/ll:ready-issue` - 2026-08-03T02:52:26 - `78e7ae12-4bf0-4311-b826-6a46e7382253.jsonl`
 - `/ll:confidence-check` - 2026-08-03T02:36:50 - `4b555cbb-c972-4731-a4b3-0d01a144a21f.jsonl`
 - `/ll:confidence-check` - 2026-08-03T01:14:01 - `9cfff9ef-f5b0-4a8e-b829-b30d0ff041ac.jsonl`
 - `/ll:refine-issue` - 2026-08-03T01:10:31 - `b93224e0-1bd5-4f26-aa46-b0c7723c2060.jsonl`

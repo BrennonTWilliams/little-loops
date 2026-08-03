@@ -1375,6 +1375,7 @@ def process_issue_inplace(
         success=verified,
         duration=total_issue_time,
         issue_id=info.issue_id,
+        failure_reason="" if verified else "verification failed",
         corrections=corrections,
     )
 
@@ -1477,6 +1478,10 @@ class AutoManager:
 
         self.processed_count = 0
         self._shutdown_requested = False
+        # BUG-3005: IDs attempted in *this* run, as opposed to
+        # state.attempted_issues (persisted, may carry earlier-run IDs under
+        # --resume). Used by _unreachable_reason() to word outcomes correctly.
+        self._run_attempted: set[str] = set()
 
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
@@ -1607,6 +1612,13 @@ class AutoManager:
             )
 
         cycles = self.dep_graph.detect_cycles() if self.dep_graph.has_cycles() else []
+        state = self.state_manager.state
+
+        def _earlier_run_suffix(issue_id: str) -> str:
+            # BUG-3005: failed_issues/skipped_issues/attempted_issues persist
+            # across --resume, so an outcome here may date from a prior run,
+            # not this one. Say so rather than implying this run attempted it.
+            return "" if issue_id in self._run_attempted else " (earlier run)"
 
         reasons = []
         for issue_id in matches:
@@ -1615,6 +1627,27 @@ class AutoManager:
                 status = "completed" if issue_id in completed else info.status
                 reasons.append(f"{issue_id}: already_{status}")
                 continue
+            # BUG-3005: report what actually happened to an attempted issue
+            # instead of re-deriving eligibility from scratch — an attempted
+            # ID must never fall through to the catch-all below.
+            if issue_id in state.failed_issues:
+                reasons.append(
+                    f"{issue_id}: attempted, {state.failed_issues[issue_id]}"
+                    f"{_earlier_run_suffix(issue_id)}"
+                )
+                continue
+            if issue_id in state.skipped_issues:
+                reasons.append(
+                    f"{issue_id}: attempted, {state.skipped_issues[issue_id]}"
+                    f"{_earlier_run_suffix(issue_id)}"
+                )
+                continue
+            if issue_id in state.attempted_issues:
+                reasons.append(
+                    f"{issue_id}: attempted, outcome not recorded"
+                    f"{_earlier_run_suffix(issue_id)}"
+                )
+                continue
             if any(issue_id in cycle for cycle in cycles):
                 reasons.append(f"{issue_id}: in a dependency cycle")
                 continue
@@ -1622,7 +1655,7 @@ class AutoManager:
             if blockers:
                 reasons.append(f"{issue_id} blocked by: {', '.join(sorted(blockers))}")
             else:
-                reasons.append(f"{issue_id}: filtered out")
+                reasons.append(f"{issue_id}: not selected (no filter matched)")
         return "; ".join(reasons)
 
     def run(self) -> int:
@@ -1688,6 +1721,9 @@ class AutoManager:
         # gate had this inverted — it deleted state on the crash path and
         # preserved it only on Ctrl-C.
         if not self._shutdown_requested:
+            # BUG-3005: cleanup() only unlinks the state file; it leaves
+            # state_manager.state in memory intact, so the _unreachable_reason()
+            # read below (which happens after this call) stays I/O-free.
             self.state_manager.cleanup()
 
         self._log_timing_summary(run_start_time)
@@ -1760,6 +1796,7 @@ class AutoManager:
         """
         # Pre-processing state updates (before delegating)
         self.state_manager.mark_attempted(info.issue_id, save=False)
+        self._run_attempted.add(info.issue_id)
         self.state_manager.update_current(str(info.path), "processing")
 
         # BUG-2757: prefer the resolved model ID (from the result event's
@@ -1830,6 +1867,9 @@ class AutoManager:
         elif result.was_blocked:
             # Blocked issues are skipped, not failed — leave in pending state
             self.logger.info(f"{info.issue_id} skipped — blocked by open dependency")
+            self.state_manager.mark_skipped(
+                info.issue_id, "skipped — blocked by open dependency"
+            )
         elif result.success:
             self.state_manager.mark_completed(info.issue_id, {"total": result.duration})
         elif result.plan_created:
@@ -1839,6 +1879,7 @@ class AutoManager:
                 "leaving in pending state for manual approval"
             )
             # Issue remains in pending state (not marked as failed)
+            self.state_manager.mark_skipped(info.issue_id, "plan created, awaiting approval")
         elif result.failure_reason:
             self.state_manager.mark_failed(info.issue_id, result.failure_reason)
 
