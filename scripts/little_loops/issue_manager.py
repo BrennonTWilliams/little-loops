@@ -743,6 +743,11 @@ def process_issue_inplace(
             # (issue_manager.py:991-997). Without it, a gate refusal is
             # indistinguishable from a genuine implementation failure.
             print(f"CONFIDENCE_GATE_BLOCKED {info.issue_id}", flush=True)
+            # ENH-2989: also emit the Phase-1-not-reached marker so autodev's
+            # check_impl_reached discriminator catches this route too — it
+            # would otherwise share CONFIDENCE_GATE_BLOCKED's zero autodev.yaml
+            # consumers and be misreported as a phantom implementation.
+            print(f"PHASE1_NOT_STARTED {info.issue_id} confidence_gate", flush=True)
             return _stamped_result(
                 success=False,
                 duration=time.time() - issue_start_time,
@@ -841,6 +846,10 @@ def process_issue_inplace(
 
                             if retry_result.returncode != 0:
                                 logger.error(f"Fallback ready-issue failed for {info.issue_id}")
+                                print(
+                                    f"PHASE1_NOT_STARTED {info.issue_id} path_mismatch",
+                                    flush=True,
+                                )
                                 return _stamped_result(
                                     success=False,
                                     duration=time.time() - issue_start_time,
@@ -859,6 +868,10 @@ def process_issue_inplace(
                                         f"Fallback still mismatched: "
                                         f"got '{retry_validated_path}', "
                                         f"expected '{info.path}'"
+                                    )
+                                    print(
+                                        f"PHASE1_NOT_STARTED {info.issue_id} path_mismatch",
+                                        flush=True,
                                     )
                                     return _stamped_result(
                                         success=False,
@@ -897,6 +910,10 @@ def process_issue_inplace(
                             f"Skipping {info.issue_id}: invalid reference - "
                             "no matching issue file exists"
                         )
+                        print(
+                            f"PHASE1_NOT_STARTED {info.issue_id} close_failed",
+                            flush=True,
+                        )
                         return _stamped_result(
                             success=False,
                             duration=time.time() - issue_start_time,
@@ -911,6 +928,10 @@ def process_issue_inplace(
                         logger.warning(
                             f"Skipping close for {info.issue_id}: "
                             "ready-issue did not return validated file path"
+                        )
+                        print(
+                            f"PHASE1_NOT_STARTED {info.issue_id} close_failed",
+                            flush=True,
                         )
                         return _stamped_result(
                             success=False,
@@ -938,6 +959,10 @@ def process_issue_inplace(
                             corrections=corrections,
                         )
                     else:
+                        print(
+                            f"PHASE1_NOT_STARTED {info.issue_id} close_failed",
+                            flush=True,
+                        )
                         return _stamped_result(
                             success=False,
                             duration=time.time() - issue_start_time,
@@ -951,6 +976,7 @@ def process_issue_inplace(
                     logger.warning(
                         f"Issue {info.issue_id} blocked — open dependency detected by ready-issue"
                     )
+                    print(f"PHASE1_NOT_STARTED {info.issue_id} blocked", flush=True)
                     return _stamped_result(
                         success=False,
                         was_blocked=True,
@@ -965,6 +991,15 @@ def process_issue_inplace(
                     logger.error(
                         f"Issue {info.issue_id} is NOT READY for implementation "
                         f"(verdict: {parsed['verdict']})"
+                    )
+                    # ENH-2989: UNKNOWN is a non-compliant model turn (transient,
+                    # eligible for one autodev re-queue); NOT_READY/NEEDS_REVIEW
+                    # (and any other non-UNKNOWN verdict landing here) is a real
+                    # rejection (deterministic, terminal).
+                    _not_started_reason = "unknown" if parsed["verdict"] == "UNKNOWN" else "not_ready"
+                    print(
+                        f"PHASE1_NOT_STARTED {info.issue_id} {_not_started_reason}",
+                        flush=True,
                     )
                     return _stamped_result(
                         success=False,

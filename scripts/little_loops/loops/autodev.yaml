@@ -66,6 +66,8 @@ states:
       printf '' > ${context.run_dir}/autodev-skipped.txt
       printf '' > ${context.run_dir}/autodev-gate-blocked.txt
       printf '' > ${context.run_dir}/autodev-decision-unresolved.txt
+      printf '' > ${context.run_dir}/autodev-not-started.txt
+      printf '' > ${context.run_dir}/autodev-not-started-attempts.txt
       rm -f ${context.run_dir}/autodev-broke-down
       rm -f ${context.run_dir}/autodev-inflight
       tr ',' '\n' < ${context.run_dir}/autodev-input.txt \
@@ -842,8 +844,86 @@ states:
       ll-auto --only "$CURRENT" $SKIP_FLAG 2>&1 | tee "${context.run_dir}/ll_auto_last.txt"
     action_type: shell
     on_yes: dequeue_next
+    on_no: check_impl_reached
+    on_error: check_impl_reached
+
+  check_impl_reached:
+    # ENH-2989: distinguishes "Phase 1 rejected, implementation never
+    # attempted" (PHASE1_NOT_STARTED) from a genuine Phase 2 failure. Checked
+    # BEFORE check_learning_gate/check_impl_auth: a Phase 1 rejection never
+    # prints LEARNING_GATE_BLOCKED / IMPLEMENT_FAILED / the auth signatures,
+    # so this ordering cannot steal a real failure from either downstream
+    # check — it only catches the otherwise-unclassified case that used to
+    # fall through to finalize_done and be reported as `phantom`.
+    fragment: ll_auto_not_started_check
+    on_yes: mark_not_started
     on_no: check_learning_gate
     on_error: check_learning_gate
+
+  mark_not_started:
+    # ENH-2989: terminal/requeue handling for a Phase 1 rejection. Mirrors
+    # mark_gate_blocked's shape. Both the requeue and terminal paths remove
+    # the ID from autodev-staged.txt and clear the inflight sentinel — a
+    # requeued issue re-stages via check_passed on its second pass, so
+    # decision #4's staged-removal must run every time this state fires, not
+    # only on the terminal path.
+    action_type: shell
+    action: |
+      ID="${captured.input.output}"
+
+      if [ -f "${context.run_dir}/autodev-staged.txt" ]; then
+        grep -vxF "$ID" "${context.run_dir}/autodev-staged.txt" \
+          > "${context.run_dir}/autodev-staged.tmp" 2>/dev/null || true
+        mv "${context.run_dir}/autodev-staged.tmp" "${context.run_dir}/autodev-staged.txt"
+      fi
+      rm -f ${context.run_dir}/autodev-inflight
+
+      # ll_auto_last.txt is overwritten per issue (tee, not tee -a), so this
+      # grep needs no ID-scoping beyond the marker's own second field.
+      REASON=$(grep -F "PHASE1_NOT_STARTED $ID " "${context.run_dir}/ll_auto_last.txt" 2>/dev/null \
+        | tail -1 | awk '{print $3}')
+      case "$REASON" in
+        unknown|not_ready|blocked|close_failed|path_mismatch|confidence_gate) ;;
+        # An empty or unrecognized reason must be treated as terminal, never
+        # as unknown — defaulting a parse miss to "unknown" would re-queue on
+        # exactly the signal-loss condition this issue exists to stop
+        # misreporting.
+        *) REASON="unparsed" ;;
+      esac
+
+      TERMINAL=1
+      if [ "$REASON" = "unknown" ]; then
+        ATTEMPTS=$(grep -F "$ID " "${context.run_dir}/autodev-not-started-attempts.txt" 2>/dev/null \
+          | tail -1 | awk '{print $2}')
+        case "$ATTEMPTS" in
+          ''|*[!0-9]*) ATTEMPTS=0 ;;
+        esac
+        if [ "$ATTEMPTS" -lt 1 ]; then
+          TERMINAL=0
+          # Prepend to the head (decision #3b), not append to the tail, so the
+          # retried issue is the next one dequeued.
+          { echo "$ID"; cat "${context.run_dir}/autodev-queue.txt" 2>/dev/null; } \
+            > "${context.run_dir}/autodev-queue.tmp" \
+            && mv "${context.run_dir}/autodev-queue.tmp" "${context.run_dir}/autodev-queue.txt"
+          NEW_ATTEMPTS=$((ATTEMPTS + 1))
+          if [ -f "${context.run_dir}/autodev-not-started-attempts.txt" ]; then
+            grep -v -F "$ID " "${context.run_dir}/autodev-not-started-attempts.txt" \
+              > "${context.run_dir}/autodev-not-started-attempts.tmp" 2>/dev/null || true
+            mv "${context.run_dir}/autodev-not-started-attempts.tmp" "${context.run_dir}/autodev-not-started-attempts.txt"
+          fi
+          echo "$ID $NEW_ATTEMPTS" >> "${context.run_dir}/autodev-not-started-attempts.txt"
+        fi
+      fi
+
+      # decision #2b: write nothing to either ledger on the requeue pass —
+      # only a terminal classification (deterministic reason on first sight,
+      # or unknown with attempts exhausted) is ledgered.
+      if [ "$TERMINAL" = "1" ]; then
+        echo "$ID  $REASON" >> ${context.run_dir}/autodev-not-started.txt
+        echo "$ID  notstarted_$REASON" >> ${context.run_dir}/autodev-skipped.txt
+      fi
+    next: dequeue_next
+    on_error: dequeue_next
 
   check_learning_gate:
     # Learning-gate consistency: a gate block (ENH-2319, marker LEARNING_GATE_BLOCKED
@@ -2179,9 +2259,13 @@ states:
       # ENH-2909: exclude blocked_by_unmet pre-flight skips from the generic
       # Skipped bucket too — these never entered refinement (see the already_*
       # exclusion below for the identical ENH-2868 precedent).
+      # ENH-2989: exclude notstarted_* skips — a Phase 1 rejection never
+      # reached implementation, so it belongs in the not_started bucket, not
+      # double-counted here too (decision #2a).
       SKIPPED_IDS=$(cat ${context.run_dir}/autodev-skipped.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | grep -v 'refine_failed_infra' \
         | grep -v '[[:space:]]already_' | grep -v '[[:space:]]blocked_by_unmet' \
+        | grep -v '[[:space:]]notstarted_' \
         | sort -u || true)
       INFRA_SKIPPED_IDS=$(grep 'refine_failed_infra' ${context.run_dir}/autodev-skipped.txt 2>/dev/null \
         | awk '{print $1}' | grep -v '^[[:space:]]*$' | sort -u || true)
@@ -2194,6 +2278,11 @@ states:
         | grep -v '^[[:space:]]*$' | sort -u || true)
       DECISION_UNRESOLVED_IDS=$(cat ${context.run_dir}/autodev-decision-unresolved.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
+      # ENH-2989: "ID  reason" ledger lines formatted "ID (reason)" so the
+      # operator sees why without opening the ledger — the Already-resolved
+      # line's exact idiom.
+      NOT_STARTED_IDS=$(cat ${context.run_dir}/autodev-not-started.txt 2>/dev/null \
+        | awk '{print $1" ("$2")"}' | grep -v '^[[:space:]]*$' | sort -u || true)
 
       PASSED_COUNT=$(echo "$PASSED_IDS" | grep -c '[^[:space:]]' || true)
       [ -z "$PASSED_COUNT" ] && PASSED_COUNT=0
@@ -2209,6 +2298,8 @@ states:
       [ -z "$GATE_BLOCKED_COUNT" ] && GATE_BLOCKED_COUNT=0
       DECISION_UNRESOLVED_COUNT=$(echo "$DECISION_UNRESOLVED_IDS" | grep -c '[^[:space:]]' || true)
       [ -z "$DECISION_UNRESOLVED_COUNT" ] && DECISION_UNRESOLVED_COUNT=0
+      NOT_STARTED_COUNT=$(echo "$NOT_STARTED_IDS" | grep -c '[^[:space:]]' || true)
+      [ -z "$NOT_STARTED_COUNT" ] && NOT_STARTED_COUNT=0
 
       INFLIGHT=$(cat ${context.run_dir}/autodev-inflight 2>/dev/null | tr -d '[:space:]' || true)
       # BUG-2908 Step 4: a residual autodev-inflight sentinel at finalize means
@@ -2240,6 +2331,7 @@ states:
       BLOCKED_BY_UNMET_LIST=$(echo "$BLOCKED_BY_UNMET_IDS" | tr '\n' ',' | sed 's/,$//')
       GATE_BLOCKED_LIST=$(echo "$GATE_BLOCKED_IDS" | tr '\n' ',' | sed 's/,$//')
       DECISION_UNRESOLVED_LIST=$(echo "$DECISION_UNRESOLVED_IDS" | tr '\n' ',' | sed 's/,$//')
+      NOT_STARTED_LIST=$(echo "$NOT_STARTED_IDS" | tr '\n' ',' | sed 's/,$//')
       UNVERIFIED_LIST=$(echo "$UNVERIFIED_IDS" | tr '\n' ',' | sed 's/,$//')
 
       printf '\n=== Autodev Summary ===\n\n'
@@ -2260,6 +2352,9 @@ states:
       if [ "$DECISION_UNRESOLVED_COUNT" -gt 0 ]; then
         printf 'Decision-unresolved (%d): %s  (resolve with /ll:decide-issue, then re-run)\n' "$DECISION_UNRESOLVED_COUNT" "$DECISION_UNRESOLVED_LIST"
       fi
+      if [ "$NOT_STARTED_COUNT" -gt 0 ]; then
+        printf 'Not-started  (%d): %s  (never reached implementation — Phase 1 rejected)\n' "$NOT_STARTED_COUNT" "$NOT_STARTED_LIST"
+      fi
       if [ "$UNVERIFIED_COUNT" -gt 0 ]; then
         printf 'Unverified   (%d): %s  (threshold passed; implementation did not close — re-queue to retry)\n' "$UNVERIFIED_COUNT" "$UNVERIFIED_LIST"
       fi
@@ -2276,12 +2371,18 @@ states:
         VERDICT=partial
       elif [ "$UNVERIFIED_COUNT" -gt 0 ] || [ "$ABANDONED" -gt 0 ]; then
         VERDICT=phantom
+      elif [ "$NOT_STARTED_COUNT" -gt 0 ]; then
+        # ENH-2989: a Phase 1 rejection is a legitimate parking outcome, not
+        # an infrastructure failure — distinct from both `phantom` (a real
+        # implementation failure) and `no-op` (nothing happened at all;
+        # refine/wire/confidence-check ran here before the rejection).
+        VERDICT=not_started
       else
         VERDICT=no-op
       fi
 
-      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"gate_blocked":%s,"decision_unresolved":%s,"inflight_unresolved":%s,"abandoned":%s}\n' \
-        "$VERDICT" "$PASSED_COUNT" "$UNVERIFIED_COUNT" "$SKIPPED_COUNT" "$GATE_BLOCKED_COUNT" "$DECISION_UNRESOLVED_COUNT" "$ABANDONED" "$ABANDONED" \
+      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"gate_blocked":%s,"decision_unresolved":%s,"not_started":%s,"inflight_unresolved":%s,"abandoned":%s}\n' \
+        "$VERDICT" "$PASSED_COUNT" "$UNVERIFIED_COUNT" "$SKIPPED_COUNT" "$GATE_BLOCKED_COUNT" "$DECISION_UNRESOLVED_COUNT" "$NOT_STARTED_COUNT" "$ABANDONED" "$ABANDONED" \
         > ${context.run_dir}/summary.json
 
       # BUG-2908: route the FSM terminal on verified closure, not "reached the

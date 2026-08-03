@@ -236,7 +236,8 @@ class TestAutodevSmoke:
         topo = topology_dict(load_fsm(path))
 
         state_ids = {s["id"] for s in topo["states"]}
-        assert len(topo["states"]) == 77
+        # ENH-2989 added check_impl_reached + mark_not_started.
+        assert len(topo["states"]) == 79
 
         # Every edge endpoint is a known state id, or the target of a
         # declared sub-loop (`loop:`) cross-graph edge. `from` may be null

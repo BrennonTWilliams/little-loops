@@ -272,6 +272,25 @@ rather than laundered into a generic implementation failure. A uniform
 `skip_learning_gate` context knob (parity with `ll-auto --skip-learning-gate`)
 threads from each loop down to the inner `ll-auto --only` call.
 
+**`PHASE1_NOT_STARTED` (ENH-2989).** A distinct `issue_manager.py` stdout marker
+— `PHASE1_NOT_STARTED {issue_id} {reason}` — printed at every Phase-1 early
+return in `process_issue_inplace` (pre-Phase-1 confidence gate, path-mismatch
+fallback exhaustion, CLOSE failures, BLOCKED, and NOT READY/UNKNOWN verdicts),
+before Phase 2's `run_with_continuation` is ever reached. Unlike the outcome
+tokens in the table above, this is not an `rn-remediate` sidecar token — it is
+consumed the same way `LEARNING_GATE_BLOCKED`/`AUTH_FAILED` are, via a
+run-dir-file grep fragment (`ll_auto_not_started_check`, see
+[`docs/guides/LOOPS_REFERENCE.md`](LOOPS_REFERENCE.md)) placed ahead of
+`ll_auto_learning_gate_check` in `autodev.yaml`'s `implement_current` failure
+chain, so a Phase 1 rejection is reported as `not_started` in `summary.json`
+rather than misattributed as a failed implementation (`phantom`). The `reason`
+field distinguishes a transient non-compliant model turn (`unknown`, re-queued
+once) from a deterministic rejection (`not_ready`, `blocked`, `close_failed`,
+`path_mismatch`, `confidence_gate` — all terminal). Currently wired only into
+`autodev.yaml`; other loops that call `process_issue_inplace` (e.g.
+`ll-sprint`) receive the marker on stdout with no consumer, the same
+no-consumer state `IMPLEMENT_FAILED` is in below.
+
 `LEARNING_GATE_BLOCKED` is no longer exclusively a post-implement, `rn-remediate`-
 originated token. ENH-2406 added a pre-dequeue gate (`check_learning_ready` /
 `route_learning_ready` / `mark_learning_blocked`) directly in `rn-implement`'s

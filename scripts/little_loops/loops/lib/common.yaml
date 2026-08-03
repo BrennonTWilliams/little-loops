@@ -350,6 +350,34 @@ fragments:
       type: output_contains
       pattern: "GATE_BLOCKED"
 
+  ll_auto_not_started_check:
+    description: |
+      Shell state that greps a run-dir file for the Phase-1-not-reached marker
+      (PHASE1_NOT_STARTED, emitted by process_issue_inplace at every Phase-1
+      early return — ENH-2989) and emits NOT_STARTED or OK. Designed to follow
+      any `ll-auto --only` call site that tees its output to
+      ${context.run_dir}/ll_auto_last.txt (BUG-2594: reading from a file, rather
+      than interpolating captured output into a shell string, avoids untrusted
+      Markdown breaking the fragment's own shell parsing). State must supply:
+      on_yes (Phase 1 never reached → distinct not-started routing), on_no
+      (Phase 1 was reached → continue to the next check), on_error (residual
+      shell fault → degrade to the next check rather than crashing the loop).
+      Pair this BEFORE ll_auto_learning_gate_check / ll_auto_auth_check so a
+      Phase-1 rejection is not misattributed as a learning-gate block, an auth
+      failure, or a generic implementation failure — a Phase 2 crash never
+      prints this marker, so ordering does not steal real failures from the
+      other two checks.
+    action_type: shell
+    action: |
+      if grep -qF 'PHASE1_NOT_STARTED' "${context.run_dir}/ll_auto_last.txt" 2>/dev/null; then
+        echo "NOT_STARTED"
+      else
+        echo "OK"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "NOT_STARTED"
+
   subloop_rate_limit_diagnostic:
     description: |
       Sub-loop terminal handler for rate-limit exhaustion (ENH-1977 GAP A). Writes an

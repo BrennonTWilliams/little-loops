@@ -9,7 +9,7 @@ relates_to:
 - ENH-2995
 - ENH-2992
 testable: true
-confidence_score: 98
+confidence_score: 100
 outcome_confidence: 68
 score_complexity: 14
 score_test_coverage: 18
@@ -104,7 +104,8 @@ subsection" with "append to the existing subsection under this H2, or create it
 if absent."
 
 The section-locating primitive already exists and is already cited by this
-skill — `commands/refine-issue.md:546` points at
+skill — `commands/refine-issue.md:622` (§ 5c Gap-Analysis Mode, "Parse
+Existing Issue into Section Map") points at
 `scripts/little_loops/issue_history/doc_synthesis.py:_extract_section()` for H2
 extraction. The same approach locates an existing H3 within a sliced H2.
 
@@ -141,9 +142,30 @@ so wire-issue becomes a later *caller*, not a rewrite. Folding its four
 subsections (9,377 bullets across 1,140 issues) has its own placement questions
 (its blocks sit under H3 parents, not H2) and should not gate this change.
 
-**Existing-corpus migration: no.**
-The 1,140 already-refined issues are left alone. The `duplicate_findings_block`
-format-check gap (below) surfaces them if that decision is revisited.
+**Existing-corpus migration: no bulk sweep — but fold-on-touch, yes.**
+No pass is made over the 1,140 already-refined issues to collapse their stacked
+blocks. That decision stands, and it is about a *sweep*.
+
+It does not settle the on-touch case, which is distinct: when
+`fold-findings` writes into an H2 that **already** carries N stacked blocks,
+it collapses all N into one, rather than appending to one and leaving N-1
+siblings beside it. Rationale:
+
+- Leaving them makes the fold a no-op on exactly the issues that motivated
+  this issue. The corpus that has the problem is the refined corpus, and
+  refine is what touches it.
+- It is the only thing that makes `duplicate_findings_block` a usable in-pass
+  signal. Without it the gap fires on pre-existing stacks the pass did not
+  cause and cannot clear, and a permanently-red check trains the model to skim
+  past § 6.7 entirely — degrading the three keys there that do work.
+- It is within the operation this issue already sanctions. Collapsing N
+  existing blocks is the same relocation-only transform as folding a new batch
+  into one existing block: every bullet and every provenance line survives, in
+  order. § Scope Boundaries' "no delete, no summarize, no dedup" is unchanged.
+
+The backlog therefore drains as issues are worked, without a migration script
+and without a flag day. Issues never refined again keep their stacks; that is
+the accepted cost of no-sweep.
 
 ### Codebase Research Findings
 
@@ -205,7 +227,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   (older, e.g. `append-log`) or an exported `add_X_parser(subs)` from the
   subcommand's own module (current convention for everything added in the
   ENH-2900s range, e.g. `add_research_triage_parser()` in
-  `scripts/little_loops/issues/research_triage.py` — its module docstring
+  `scripts/little_loops/cli/issues/research_triage.py:25` — its module docstring
   explains the CLI entry point exists specifically because
   `commands/refine-issue.md`'s only route to Python is `Bash(ll-issues:*)`,
   and without a registered subcommand "the change ships inert").
@@ -213,19 +235,37 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ## Integration Map
 
 ### Files to Modify
-- `commands/refine-issue.md` — § Preservation Rule (lines 474-490); § Step 6
-  "Update Issue File" append instruction (line 680) uses the same subsection
-  marker; § Scope boundary (line 334) wrongly says `##` and must be corrected
-  to `###`
+- `commands/refine-issue.md` — **three** write sites emit the subsection
+  marker, not two; all must change together:
+  - **line 427** (§ 5a, option-block placement) — writes a
+    `### Codebase Research Findings` subsection into `## Proposed Solution`
+    and carries two hard constraints the CLI must honor: the block *must*
+    live under that exact H2 (it is the only section
+    `count_enumerable_options()`/`count_unresolved_options()` scan), and the
+    heading text takes **no `— suffix` decoration** because the probes match
+    headings by exact name.
+  - **lines 474-490** (§ Preservation Rule, Step 5a) — the canonical template.
+  - **line 680** (§ 5c Gap-Analysis Mode → "#### 5. Apply Additive Changes
+    Only") — a *distinct mode* with its own rules (additive-only, never
+    removes, `--gap-analysis` does not consume `max_refine_count`). This is
+    **not** § Step 6 "Update Issue File", which sits at line 710 and contains
+    no findings-marker instruction at all.
+  - § Scope boundary (line 334) wrongly says `##` and must be corrected
+    to `###`
+  - § 6.7 Prose Dependency & Program Design Gate (line 741) — add
+    `duplicate_findings_block` to the inspected `format-check` keys (see
+    § Adoption risk)
 - `scripts/little_loops/issue_parser.py` — add the `duplicate_findings_block`
-  gap to `check_format_gaps()` (gap dataclass ~256-292, detection ~546-559)
+  gap to `check_format_gaps()` (gap dataclass ~256-292, detection ~546-559).
+  **The detector cannot reuse the existing `_heading_bodies()` call** — see
+  Implementation Step 13.
 - `scripts/little_loops/cli/issues/format_check.py` — print the new gap
   (help text line 64, print loop ~156-157)
 - `scripts/little_loops/cli/issues/__init__.py` — extend the `format-check`
   gap-code list in the usage banner (line 124)
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/issues/fold_research_findings.py` (new) — core `find_subsection()`/`fold_research_findings()` logic, mirroring the core/CLI split used by `scripts/little_loops/issues/research_triage.py`
+- `scripts/little_loops/issues/fold_research_findings.py` (new) — core `find_subsections()`/`fold_research_findings()` logic, mirroring the core/CLI split used by `scripts/little_loops/issues/research_triage.py` + `scripts/little_loops/cli/issues/research_triage.py`
 - `scripts/little_loops/cli/issues/fold_findings.py` (new) — CLI wrapper: `add_fold_findings_parser()`, `cmd_fold_findings()`, mirroring `scripts/little_loops/cli/issues/research_triage.py`
 - `scripts/little_loops/cli/issues/__init__.py` — register the new subcommand (import block ~77-80, `add_fold_findings_parser(subs)` call ~928, dispatch branch ~1013-1014)
 
@@ -235,7 +275,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - TBD — use grep to find other readers of the marker string
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/issue_parser.py` — home of `_heading_bodies()` (580-596, 2 call sites at 546/556 inside `check_format_gaps()`), `_section_body_with_offset()` (200-228, H2-only, last-match-wins), `_iter_h2_sections()` (758-773, H2-only); `find_subsection()` extends the two-level regex already used by `_heading_bodies()`
+- `scripts/little_loops/issue_parser.py` — home of `_heading_bodies()` (580-596, 2 call sites at 546/556 inside `check_format_gaps()`), `_section_body_with_offset()` (200-228, H2-only, last-match-wins), `_iter_h2_sections()` (758-773, H2-only); `find_subsections()` extends the two-level regex already used by `_heading_bodies()`
 - `scripts/little_loops/session_log.py` — `append_session_log_entry()` (197-226) is the closest "find last header via `rfind`, insert in place" precedent the new fold insert should model
 - `scripts/little_loops/cli/issues/__init__.py` — Shape-B subcommand wiring for the new `fold-findings` subcommand: import block (~77-80), `add_fold_findings_parser(subs)` call (~928), `if args.command == "fold-findings"` dispatch branch (~1013-1014) — same 3-point pattern used by `add_research_triage_parser`
 - `skills/decide-issue/SKILL.md` — reads `### Codebase Research Findings` blocks for Phase 3 option extraction; must still parse correctly after folding
@@ -252,7 +292,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_session_log.py::TestAppendSessionLogEntry` (`test_appends_to_existing_section`, `test_duplicate_session_log_headers_only_inserts_once`, `test_multiple_appends_create_multiple_entries`) — direct test-shape template for the new fold test module: single-existing-section, duplicate-headers-already-present, multi-call idempotency
-- `scripts/tests/test_fold_research_findings.py` (new) — unit tests for `find_subsection()`/`fold_research_findings()`, following the template above
+- `scripts/tests/test_fold_research_findings.py` (new) — unit tests for `find_subsections()`/`fold_research_findings()`, following the template above
 - `scripts/tests/test_issue_parser.py` — no existing test constructs multiple stacked `### Codebase Research Findings` blocks under one H2; add a pre-fold baseline test (current N-blocks behavior via `_heading_bodies()`) alongside the new fold coverage
 - `scripts/tests/test_ll_issues_research_triage.py` — closest CLI round-trip template (`_invoke(argv)` → `main_issues()`, real git + `.issues/` fixture) for testing `ll-issues fold-findings` end-to-end
 - `scripts/tests/test_ll_issues_format_check.py::TestUnmarkedSupersededDirective` — exercises `_heading_bodies()` indirectly via `check_format_gaps()`; fixtures use single-occurrence blocks so folding shouldn't change assertions, but re-run to confirm
@@ -294,10 +334,26 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Signatures
 
-- `find_subsection(content: str, parent_heading: str, sub_heading: str) -> tuple[str, int, int] | None`
-  — locates an existing `sub_heading` (H3) nested inside the slice bounded by
-  `parent_heading` (H2); returns `(body, start_offset, end_offset)` or `None`
-  if absent. Extends the two-level regex already used by
+- `find_subsections(content: str, parent_heading: str, sub_heading: str) -> list[tuple[str, int, int]]`
+  — locates **every** existing `sub_heading` (H3) nested inside the slice
+  bounded by `parent_heading` (H2); returns a list of
+  `(body, start_offset, end_offset)` spans in document order, empty if absent.
+
+  **Returns all matches, not one.** A singular
+  `-> tuple[...] | None` cannot express the corpus's common case: ~1,140
+  already-refined issues carry N>1 stacked blocks under a single H2, one of
+  them 12. The two primitives cited as precedent disagree on which one a
+  singular return would pick — `_extract_section()`
+  (`scripts/little_loops/issue_history/doc_synthesis.py:104-127`) is
+  first-match, `_section_body_with_offset()`
+  (`scripts/little_loops/issue_parser.py:200-219`) is last-match-wins — so a
+  singular signature does not merely under-specify the multi-match case, it
+  invites the implementer to inherit whichever convention they read last.
+  Returning the full list makes the fold-on-touch collapse (§ Decisions)
+  expressible and makes the `duplicate_findings_block` detector fall out of
+  the same call (`len(spans) > 1` **within one H2 slice**).
+
+  Extends the two-level regex already used by
   `_heading_bodies()` (`scripts/little_loops/issue_parser.py:580-596`,
   `rf"^(#{{2,3}})\s+{{heading}}\s*$"`) with an H2-scoping pass borrowed from
   `_iter_h2_sections()` (`scripts/little_loops/issue_parser.py:758-773`).
@@ -314,18 +370,40 @@ _Wiring pass added by `/ll:wire-issue`:_
   invariant; H3-parented markers are `/ll:wire-issue`'s shape and are out of
   scope (see § Decisions).
 - `fold_research_findings(content: str, parent_heading: str, new_bullets: list[str], marker: str = "_Added by `/ll:refine-issue` — based on codebase analysis:_") -> str`
-  — if `find_subsection()` locates an existing
-  `### Codebase Research Findings` block under `parent_heading`, appends
-  `new_bullets` to it in place (same insert-after-header shape as
-  `append_session_log_entry()`, `scripts/little_loops/session_log.py:197-226`);
-  otherwise creates the heading + marker + bullets block, same as the current
-  refine-issue.md prose template.
+  — three cases, on the spans `find_subsections()` returns for
+  `parent_heading`:
+
+  - **0 spans** — create the heading + dated marker + bullets block, same as
+    the current refine-issue.md prose template.
+  - **1 span** — append `new_bullets` beneath it under a fresh dated
+    provenance line (same insert-after-header shape as
+    `append_session_log_entry()`,
+    `scripts/little_loops/session_log.py:197-226`).
+  - **N>1 spans (fold-on-touch, § Decisions)** — collapse all N into the
+    **first** span's position, concatenating their bodies in document order,
+    then append the new batch. Every bullet and every existing provenance
+    line is carried over verbatim; the N-1 later headings are removed and
+    nothing else is. First position, not last, because it is the one whose
+    surrounding prose was written to introduce the block.
+
+  Pure function on `str` — file I/O and the `--dry-run` branch live in the CLI
+  wrapper, so the dry-run path is "call the transform, print instead of write"
+  rather than a second code path.
+
+  **Not idempotent on bullets, by design.** § Scope Boundaries forbids dedup,
+  so two calls with identical bullets legitimately yield the bullets twice.
+  The invariants are the **heading count** (exactly 1 per H2 after any call)
+  and **provenance-line conservation** (folding a batch into a section that
+  held M provenance lines leaves M+1; collapsing N pre-existing blocks
+  carrying M lines total leaves M+1, never fewer). Tests assert those, not
+  bullet-set equality.
 - `add_fold_findings_parser(subs: argparse._SubParsersAction) -> argparse.ArgumentParser`
   — registers the CLI entry point, following the current convention (Shape B)
   demonstrated by `add_research_triage_parser()`
   (`scripts/little_loops/cli/issues/research_triage.py:25`), whose own module
   docstring states the reason this class of entry point exists:
   `commands/refine-issue.md`'s only route into Python is `Bash(ll-issues:*)`.
+  Flags: `--section` (required), `--dry-run`, `--no-create`.
 
 ### CLI Input Channel
 
@@ -349,17 +427,45 @@ EOF
   `cmd_research_triage()`.
 - `--section` names the parent H2 by exact heading text (without the `## `),
   matched case-insensitively with surrounding whitespace stripped.
-- stdin is the bullet list, one bullet per line, taken verbatim; the command
-  supplies the dated provenance line itself (see § Decisions) so the caller
-  never hand-writes the marker.
-- Exit 1 only on unresolvable issue ID or unknown `--section`; creating a
-  missing block is the ordinary success path, not an error.
+- stdin is a **verbatim markdown block**, not one bullet per line. Bullets are
+  delimited by lines beginning `- ` at column 0; every following line that is
+  blank or indented belongs to the preceding bullet. This is not pedantic —
+  essentially every findings bullet in the corpus wraps across multiple lines
+  with a 2-space continuation indent (including every bullet in this issue), so
+  a line-per-bullet reader would shred them. Trailing newlines are normalized;
+  the blank line between the provenance marker and the first bullet is supplied
+  by the command. The command supplies the dated provenance line itself
+  (see § Decisions) so the caller never hand-writes the marker.
+- Exit 1 only on unresolvable issue ID. Creating a missing findings block is
+  the ordinary success path, not an error.
+
+**Missing parent H2 must not be a hard error.** Refine *creates* sections that
+do not yet exist — § Enrichment Rules populates `## Integration Map`,
+`## Program Design` and `## Root Cause` on issues that lack them. A contract of
+"exit 1 on unknown `--section`" errors on exactly that path and pushes the model
+back to hand-`Edit`, which is precisely the inert-adoption failure mode
+§ Adoption risk exists to prevent. Resolution: when `--section` names an H2 that
+is absent, **create it** in v2.0 template order (the same ordering Step 6 point
+4 already requires of refine) and write the findings block beneath it. Reserve a
+distinct nonzero exit (2) for "section absent and `--no-create` was passed", so
+the prose fallback is reachable but never the default.
+
+**`--dry-run` is required, and its absence is a regression.**
+`commands/refine-issue.md:712` — "Skip file modifications if `DRY_RUN` is true"
+— is enforceable today only because this write goes through the
+`Edit(.issues/**)` tool, which the command's `allowed-tools` constrains. A
+Bash-mediated `ll-issues fold-findings` sits entirely outside that restriction,
+so absent an explicit flag, `/ll:refine-issue --dry-run` would begin mutating
+issue files. The subcommand takes `--dry-run` (print the resulting block to
+stdout, write nothing — precedent: `ll-issues anchor-sweep --dry-run`,
+`scripts/little_loops/cli/issues/anchor_sweep.py:38-45`), and the Step 5a prose
+must gate the Bash invocation on `DRY_RUN`.
 
 ### Call Path
 
 `commands/refine-issue.md` Step 5a -> `Bash("ll-issues fold-findings ...")`
 -> `cmd_fold_findings()` (new, `scripts/little_loops/cli/issues/`) ->
-`fold_research_findings()` -> `find_subsection()` -> `append_session_log_entry()`
+`fold_research_findings()` -> `find_subsections()` -> `append_session_log_entry()`
 (existing precedent for the insert-after-header shape,
 `scripts/little_loops/session_log.py:197`) -> file write.
 
@@ -373,7 +479,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   two-branch existence check (section present vs. absent) with **no
   merge/dedup logic**: it inserts exactly one new line directly under a fixed,
   single top-level heading text. It is not itself heading-level-aware or
-  parent-scoped. `find_subsection()` cannot reuse it as-is — it needs
+  parent-scoped. `find_subsections()` cannot reuse it as-is — it needs
   `_heading_bodies()`'s regex approach instead
   (`scripts/little_loops/issue_parser.py:580-596`,
   `rf"^(#{{2,3}})\s+{{heading}}\s*$"` plus an end-boundary scan to the next
@@ -400,7 +506,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. `find_subsection()` and `fold_research_findings()` exist in
+1. `find_subsections()` and `fold_research_findings()` exist in
    `scripts/little_loops/` (not `commands/refine-issue.md` prose) per the
    Proposed Solution's constraint that merge/dedup logic belongs in Python
    behind an `ll-issues` subcommand — a plain "find and append" instruction is
@@ -408,15 +514,28 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 2. A new `ll-issues fold-findings` (or similarly named) subcommand is
    registered via the current `add_X_parser(subs)` convention (Shape B, per
    `add_research_triage_parser()` in
-   `scripts/little_loops/issues/research_triage.py`), reachable from
+   `scripts/little_loops/cli/issues/research_triage.py:25`), reachable from
    `commands/refine-issue.md`'s `Bash(ll-issues:*)` allowed-tools scope.
-3. `commands/refine-issue.md` § Preservation Rule (Step 5a, lines 474-490) and
-   Step 6 "Update Issue File" (line 680) are updated to call the new subcommand
-   instead of unconditionally emitting the `### Codebase Research Findings`
-   template — both currently point at the same marker convention and must
-   change together, per the Codebase Research Findings note above. The prose
-   must state the CLI is the *only* route and that the heading and provenance
-   line are never hand-written, or the change ships inert (§ Adoption risk).
+3. All **three** `### Codebase Research Findings` write sites in
+   `commands/refine-issue.md` are updated to call the new subcommand instead of
+   emitting the template by hand — they share the marker convention and must
+   change together or the fold is only partial:
+   - **line 427** (§ 5a option-block placement into `## Proposed Solution`) —
+     the call must preserve this site's two constraints: the block stays under
+     that exact H2 (`count_enumerable_options()` scans only there) and the
+     heading takes no `— suffix` decoration.
+   - **lines 474-490** (§ Preservation Rule, Step 5a).
+   - **line 680** (§ 5c Gap-Analysis Mode → "#### 5. Apply Additive Changes
+     Only") — a separate mode, *not* Step 6 "Update Issue File" (line 710,
+     which carries no marker instruction). Its additive-only guarantee is
+     unchanged by the fold, since folding is relocation.
+
+   The prose must state the CLI is the *only* route and that the heading and
+   provenance line are never hand-written, or the change ships inert
+   (§ Adoption risk). Each call site is gated on `DRY_RUN` (or passes
+   `--dry-run`), preserving `commands/refine-issue.md:712`'s "Skip file
+   modifications if `DRY_RUN` is true" — which the Bash-mediated write no
+   longer inherits from the `Edit(.issues/**)` tool restriction.
    § Scope boundary (line 334) is corrected from `##` to `###` in the same
    pass.
 4. After a second `/ll:refine-issue --auto` pass against the same H2 in a
@@ -437,7 +556,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 7. Create `scripts/little_loops/issues/fold_research_findings.py` (core
-   `find_subsection()`/`fold_research_findings()` logic) and
+   `find_subsections()`/`fold_research_findings()` logic) and
    `scripts/little_loops/cli/issues/fold_findings.py` (CLI wrapper:
    `add_fold_findings_parser()`, `cmd_fold_findings()`), mirroring the
    `research_triage.py` / `cli/issues/research_triage.py` core+CLI split.
@@ -447,29 +566,92 @@ _These touchpoints were identified by wiring analysis and must be included in th
    1013-1014) — the same 3-point wiring used by `add_research_triage_parser`.
 9. Add `scripts/tests/test_fold_research_findings.py` following the
    `TestAppendSessionLogEntry` shape (`test_session_log.py:133-256`):
-   single-existing-section fold, duplicate-headers-already-present fold,
-   multi-call idempotency.
+   single-existing-section fold, duplicate-headers-already-present fold, and
+   **heading-count invariance across N calls** — after N folds with identical
+   bullets, `content.count("### Codebase Research Findings")` under the target
+   H2 is 1 and the provenance-line count is N. Do **not** assert bullet-set
+   idempotency: § Scope Boundaries forbids dedup, so repeated identical bullets
+   are the specified behavior, not a defect.
 10. Add a pre-fold baseline test in `scripts/tests/test_issue_parser.py`
     constructing an issue body with 3 stacked `### Codebase Research Findings`
     blocks under one H2, asserting `_heading_bodies()` returns 3 bodies before
     folding lands (no such fixture exists today).
 11. Update `docs/reference/CLI.md` with the new `ll-issues fold-findings`
-    entry.
+    entry, including the stdin contract, `--section`, `--dry-run`,
+    `--no-create`, and the exit-code table (0 success / 1 unresolvable issue /
+    2 section absent under `--no-create`).
 12. Confirm `skills/decide-issue/SKILL.md`'s Phase 3 option extraction still
     parses correctly against a folded issue file (manual or scripted check
     against the scratch issue file from Implementation Step 4).
 13. Add the `duplicate_findings_block` gap to `check_format_gaps()`
     (`scripts/little_loops/issue_parser.py`, gap dataclass ~256-292, detection
-    beside the existing `_heading_bodies()` call at ~546-559 — which already
-    returns all N bodies, so the detector is `len(bodies) > 1` per H2), surface
+    near the existing `_heading_bodies()` call at ~546-559), surface
     it in `scripts/little_loops/cli/issues/format_check.py` (help text line 64,
     print loop ~156-157) and in the usage banner
     (`scripts/little_loops/cli/issues/__init__.py:124`). Test alongside
     `scripts/tests/test_ll_issues_format_check.py::TestUnmarkedSupersededDirective`.
-14. Verify bullets survive the stdin round-trip verbatim: a fold whose bullets
+
+    **The detector cannot reuse that `_heading_bodies()` call.**
+    `_heading_bodies()` (`issue_parser.py:580-596`) is document-wide and
+    returns bodies with **no parent-section information**, so `len(bodies) > 1`
+    cannot express "per H2": a compliant document with one findings block under
+    each of three H2s returns 3 and would be flagged. The detector must slice
+    with `_iter_h2_sections()` (`issue_parser.py:758-773`) and count matching
+    H3s **within each slice**, flagging only slices with count > 1. Two further
+    traps: `_heading_bodies()`'s regex `rf"^(#{{2,3}})\s+{{heading}}\s*$"`
+    matches `##` *and* `###`, so the line-334 `## Codebase Research Findings`
+    variant this issue corrects would also register as a duplicate; and the
+    slice end boundary must be the next `##` while the H3 end boundary is the
+    next heading of level ≤ 3 (see § Signatures).
+14. Add `duplicate_findings_block` to the `format-check` keys inspected by
+    `commands/refine-issue.md` § 6.7 (line 741). Without it the adoption metric
+    is corpus-wide and after-the-fact; inside 6.7 it catches an inert pass **in
+    the same pass that caused it**, which is what § Adoption risk needs.
+
+    **Model the prose on `superseded_marker_count`, not on `prose_dep_drift`.**
+    § 6.7's other keys all promise a clearing remedy — "add the missing edge …
+    re-run `format-check` to confirm the drift clears", "revise that section
+    **once** … confirm it clears". `duplicate_findings_block` cannot promise
+    that: fold-on-touch (§ Decisions) clears duplicates in the H2s this pass
+    wrote to, but an issue may carry stacks under H2s the pass never touched,
+    and those are not this pass's to fix. `superseded_marker_count` is the
+    existing precedent for exactly this shape — "refine **annotates** but never
+    rewrites … Do not attempt the rewrite here. Surface it: report the count in
+    Step 8's output." Follow it:
+
+    - Non-empty **and the pass wrote to that H2** → the model hand-wrote the
+      heading instead of calling `fold-findings`; re-issue that write through
+      the CLI and confirm it clears. This is the adoption failure the gate
+      exists for.
+    - Non-empty **under an H2 the pass did not touch** → pre-existing stack,
+      not caused here. Report the count in Step 8's output and do not edit.
+      Folding it is a side effect of a future pass that touches that section,
+      per the no-sweep decision.
+
+    Write the two branches explicitly. Collapsed into one instruction the model
+    will either fix nothing (reading it as informational) or reach past
+    `fold-findings` to hand-edit untouched sections (violating no-sweep).
+15. Verify fold-on-touch: fold a new batch into an H2 carrying 3 stacked
+    blocks; assert the result has 1 heading, 4 provenance lines, and a bullet
+    count equal to the 3 originals plus the new batch — in document order,
+    positioned where the **first** original block stood. Assert
+    `duplicate_findings_block` is empty for that H2 afterward, and still
+    non-empty for a second, untouched H2 in the same file (the no-sweep
+    boundary).
+16. Verify bullets survive the stdin round-trip verbatim: a fold whose bullets
     contain backticks, `$`, `!` and an em-dash produces byte-identical text in
-    the file (guards the § CLI Input Channel decision).
-15. Verify the ENH-2995 interaction: after two folds into one block, the
+    the file, **and a bullet whose text wraps across three lines with a 2-space
+    continuation indent arrives as one bullet, not three** (guards the § CLI
+    Input Channel decision).
+17. Verify `--dry-run` writes nothing: fold into a scratch issue with
+    `--dry-run`, assert the block is printed to stdout and the file's bytes are
+    unchanged. Then verify `/ll:refine-issue --dry-run` end-to-end leaves the
+    issue file untouched — the prose gate, not just the flag. Include the
+    N>1-collapse case: dry-run against a stacked section must not collapse it.
+18. Verify the missing-H2 path: fold with `--section "Program Design"` into an
+    issue lacking that heading creates it in template order and exits 0;
+    the same call with `--no-create` exits 2 and writes nothing.
+19. Verify the ENH-2995 interaction: after two folds into one block, the
     superseded-annotation carve-out still fires only on the current pass's
     bullets — the per-batch provenance line is what makes "this pass's
     findings" identifiable once block boundaries are gone.
@@ -485,17 +667,25 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Success Metrics
 
-- **No *newly written* findings block creates a second
-  `### Codebase Research Findings` heading under an H2 that already has one.**
-  Scoped to writes made after this change lands — the existing corpus is
-  explicitly not migrated (§ Decisions), so a corpus-wide assertion would be
+- **Any H2 written to by a post-change pass carries exactly one
+  `### Codebase Research Findings` heading afterward** — whether the pass
+  appended to one existing block or collapsed N stacked ones (fold-on-touch,
+  § Decisions). Scoped to *touched* H2s: untouched sections in the un-migrated
+  corpus keep their stacks by decision, so a corpus-wide assertion would be
   false on day one and unmeasurable.
 - Measured by the new `duplicate_findings_block` gap in `ll-issues
-  format-check`: its count over issues refined after the change stays at 0.
-  This also catches the adoption failure mode below.
-- Zero bullets lost across a fold (verifiable by bullet count before/after).
-- Per-batch provenance lines are preserved: after N folds the block contains
-  N `_Added by …_` lines under one heading (§ Decisions).
+  format-check`, evaluated per-H2: for every H2 a pass wrote to, the gap is
+  empty afterward. This also catches the adoption failure mode below.
+- Zero bullets lost across a fold or a collapse (verifiable by bullet count
+  before/after).
+- Provenance lines are conserved, never merged: folding a batch into a section
+  holding M `_Added by …_` lines leaves M+1 under one heading — including the
+  N>1 collapse case, where the M lines come from the pre-existing stacked
+  blocks (§ Decisions).
+- Secondary, not a gate: the count of issues carrying stacked blocks trends
+  down over time as refine touches them. No target — it is the observable that
+  tells us fold-on-touch is actually draining the backlog rather than the gate
+  being permanently red.
 
 ### Adoption risk this metric guards
 
@@ -506,15 +696,33 @@ hand-writing the heading, the change ships inert and silently. The
 `duplicate_findings_block` gap is what makes that visible rather than assumed,
 which is why it is in scope here and not a follow-up.
 
+The gap must be wired into **§ 6.7's** in-pass `format-check` inspection
+(Implementation Step 14), not only into corpus-wide reporting. A corpus-wide
+count is measured after the fact by whoever happens to run `format-check`; the
+6.7 hook fails the pass that hand-wrote the heading, in that pass, which is the
+only feedback loop tight enough to actually prevent inert adoption. Note the
+three-site fan-out (§ Files to Modify): partial adoption — CLI at Step 5a,
+hand-`Edit` at line 427 or 680 — is the likeliest failure shape, and is exactly
+what a per-H2 duplicate count detects.
+
+Fold-on-touch is what keeps that gate honest. Without it the gap is non-empty
+on most refined issues from day one for reasons the pass did not cause, the
+model learns the key is noise, and the adoption signal is lost inside it —
+which is why the two are decided together (§ Decisions) rather than the
+collapse being deferred as a nicety.
+
 ## Scope Boundaries
 
 - Does **not** delete, summarize, or dedupe findings content — folding is
-  relocation only.
+  relocation only. This holds for the N>1 collapse too: every bullet and every
+  provenance line from the collapsed blocks survives in document order.
 - Does **not** amend the Preservation Rule's overwrite prohibition
   (that is ENH-2995).
-- Does **not** migrate the existing corpus — decided, not deferred
-  (§ Decisions). The `duplicate_findings_block` gap makes the backlog of
-  already-stacked blocks visible if that call is revisited.
+- Does **not** sweep the existing corpus — no migration script, no flag day;
+  decided, not deferred (§ Decisions). Pre-existing stacks are collapsed only
+  as a side effect of a pass that writes to that H2 (fold-on-touch), so an
+  issue never refined again keeps its stack indefinitely. The
+  `duplicate_findings_block` gap keeps the remaining backlog visible.
 - Does **not** fold `/ll:wire-issue`'s `_Wiring pass added by …_` markers —
   follow-up issue; the primitive is parameterized so wire-issue becomes a
   caller (§ Decisions).
@@ -527,6 +735,7 @@ which is why it is in scope here and not a follow-up.
 | `commands/reconcile-issue.md` | Downstream consumer of these blocks |
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-02T23:53:12 - `42a54472-d0ba-4ed3-ba41-1bd83e5ba46c.jsonl`
 - `/ll:confidence-check` - 2026-08-02T21:57:18 - `122b9e35-a883-466b-b221-9c07cbc675a2.jsonl`
 - `/ll:confidence-check` - 2026-08-02T21:29:09 - `a19bb83d-629a-488d-832c-2afbb30f5117.jsonl`
 - `/ll:refine-issue` - 2026-08-02T21:18:58 - `5927db07-ad5f-4874-b0e1-25eb77fc4c20.jsonl`

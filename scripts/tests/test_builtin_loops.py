@@ -4965,6 +4965,224 @@ class TestAutodevLoop:
         summary, _ = self._run_finalize_done(data, run_dir)
         assert summary["verdict"] == "no-op"
 
+    # --- ENH-2989: Phase-1-not-reached discriminator -------------------------
+
+    @pytest.fixture
+    def common(self) -> dict:
+        return yaml.safe_load((BUILTIN_LOOPS_DIR / "lib" / "common.yaml").read_text())
+
+    def test_ll_auto_not_started_check_fragment_content(self, common: dict) -> None:
+        """The shared fragment greps for PHASE1_NOT_STARTED via a run-dir file, never
+        the FSM `capture:` value (BUG-2594 guard, mirroring ll_auto_learning_gate_check)."""
+        frag = common["fragments"]["ll_auto_not_started_check"]
+        assert "PHASE1_NOT_STARTED" in frag["action"]
+        assert "${context.run_dir}/ll_auto_last.txt" in frag["action"]
+        assert "capture" not in frag["action"]
+        assert frag["evaluate"]["type"] == "output_contains"
+        assert frag["evaluate"]["pattern"] == "NOT_STARTED"
+
+    def _run_mark_not_started(
+        self, data: dict, run_dir: Path, issue_id: str, ll_auto_last: str
+    ) -> tuple[str, str]:
+        """Run mark_not_started's real shell action against a synthetic run_dir.
+        Returns (autodev-not-started.txt contents, autodev-skipped.txt contents)."""
+        (run_dir / "ll_auto_last.txt").write_text(ll_auto_last)
+        state = data["states"].get("mark_not_started", {})
+        script = state.get("action", "").replace("${captured.input.output}", issue_id)
+        script = script.replace("${context.run_dir}", str(run_dir))
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True
+        )
+        assert result.returncode == 0, f"mark_not_started failed: {result.stderr}"
+        not_started = (run_dir / "autodev-not-started.txt").read_text() if (
+            run_dir / "autodev-not-started.txt"
+        ).exists() else ""
+        skipped = (run_dir / "autodev-skipped.txt").read_text() if (
+            run_dir / "autodev-skipped.txt"
+        ).exists() else ""
+        return not_started, skipped
+
+    def test_check_impl_reached_state_shape(self, data: dict) -> None:
+        state = data["states"].get("check_impl_reached", {})
+        assert state.get("fragment") == "ll_auto_not_started_check"
+        assert state.get("on_yes") == "mark_not_started"
+        assert state.get("on_no") == "check_learning_gate"
+        assert state.get("on_error") == "check_learning_gate"
+
+    def test_mark_not_started_removes_id_from_staged_ledger(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """AC-1 regression guard: without staged-ledger removal, finalize_done still
+        promotes the ID into autodev-unverified.txt and reports phantom."""
+        run_dir = tmp_path
+        (run_dir / "autodev-staged.txt").write_text("FEAT-1\nOTHER-1\n")
+        (run_dir / "autodev-inflight").write_text("FEAT-1")
+        self._run_mark_not_started(data, run_dir, "FEAT-1", "PHASE1_NOT_STARTED FEAT-1 not_ready")
+        staged = (run_dir / "autodev-staged.txt").read_text()
+        assert "FEAT-1" not in staged.split()
+        assert "OTHER-1" in staged
+        assert not (run_dir / "autodev-inflight").exists()
+
+    def test_mark_not_started_removes_all_duplicate_staged_lines(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """A re-queued issue re-stages on its second pass — removal must strip every
+        occurrence, not just the first (grep -vxF whole-file rewrite)."""
+        run_dir = tmp_path
+        (run_dir / "autodev-staged.txt").write_text("FEAT-1\nOTHER-1\nFEAT-1\n")
+        self._run_mark_not_started(data, run_dir, "FEAT-1", "PHASE1_NOT_STARTED FEAT-1 blocked")
+        staged_lines = (run_dir / "autodev-staged.txt").read_text().split()
+        assert staged_lines.count("FEAT-1") == 0
+        assert staged_lines.count("OTHER-1") == 1
+
+    def test_mark_not_started_terminal_reason_ledgers_both_files(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        not_started, skipped = self._run_mark_not_started(
+            data, tmp_path, "FEAT-1", "PHASE1_NOT_STARTED FEAT-1 not_ready"
+        )
+        assert "FEAT-1  not_ready" in not_started
+        assert "FEAT-1  notstarted_not_ready" in skipped
+        queue = (tmp_path / "autodev-queue.txt")
+        assert not queue.exists() or "FEAT-1" not in queue.read_text()
+
+    def test_mark_not_started_unknown_requeues_to_head_and_writes_no_ledger(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """(a)/(5b): first unknown re-queues to the queue head at attempts=0 and writes
+        no ledger entry on that pass (decision #2b)."""
+        run_dir = tmp_path
+        (run_dir / "autodev-queue.txt").write_text("OTHER-1\n")
+        not_started, skipped = self._run_mark_not_started(
+            data, run_dir, "FEAT-1", "PHASE1_NOT_STARTED FEAT-1 unknown"
+        )
+        assert not_started.strip() == ""
+        assert skipped.strip() == ""
+        queue_lines = (run_dir / "autodev-queue.txt").read_text().splitlines()
+        assert queue_lines[0] == "FEAT-1", f"expected FEAT-1 at queue head, got {queue_lines!r}"
+        attempts = (run_dir / "autodev-not-started-attempts.txt").read_text()
+        assert "FEAT-1 1" in attempts
+
+    def test_mark_not_started_unknown_exhausted_is_terminal(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """(b): a second unknown (attempts already 1) does not re-queue and is
+        ledgered terminally."""
+        run_dir = tmp_path
+        (run_dir / "autodev-not-started-attempts.txt").write_text("FEAT-1 1\n")
+        (run_dir / "autodev-queue.txt").write_text("OTHER-1\n")
+        not_started, skipped = self._run_mark_not_started(
+            data, run_dir, "FEAT-1", "PHASE1_NOT_STARTED FEAT-1 unknown"
+        )
+        assert "FEAT-1  unknown" in not_started
+        assert "FEAT-1  notstarted_unknown" in skipped
+        queue_lines = (run_dir / "autodev-queue.txt").read_text().splitlines()
+        assert queue_lines == ["OTHER-1"], f"must not re-queue when exhausted, got {queue_lines!r}"
+
+    def test_mark_not_started_deterministic_reasons_never_requeue(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """(c): every terminal reason token never re-queues, regardless of attempts."""
+        for reason in ("not_ready", "blocked", "close_failed", "path_mismatch", "confidence_gate"):
+            run_dir = tmp_path / reason
+            run_dir.mkdir()
+            (run_dir / "autodev-queue.txt").write_text("OTHER-1\n")
+            not_started, skipped = self._run_mark_not_started(
+                data, run_dir, "FEAT-1", f"PHASE1_NOT_STARTED FEAT-1 {reason}"
+            )
+            assert f"FEAT-1  {reason}" in not_started, f"reason={reason}: {not_started!r}"
+            assert f"FEAT-1  notstarted_{reason}" in skipped, f"reason={reason}: {skipped!r}"
+            queue_lines = (run_dir / "autodev-queue.txt").read_text().splitlines()
+            assert queue_lines == ["OTHER-1"], f"reason={reason} must not re-queue: {queue_lines!r}"
+
+    def test_mark_not_started_unparsable_reason_is_terminal(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """AC-5a: a marker with no third field is terminal (never unknown) and
+        ledgered notstarted_unparsed."""
+        run_dir = tmp_path
+        (run_dir / "autodev-queue.txt").write_text("OTHER-1\n")
+        not_started, skipped = self._run_mark_not_started(
+            data, run_dir, "FEAT-1", "PHASE1_NOT_STARTED FEAT-1"
+        )
+        assert "FEAT-1  unparsed" in not_started
+        assert "FEAT-1  notstarted_unparsed" in skipped
+        queue_lines = (run_dir / "autodev-queue.txt").read_text().splitlines()
+        assert queue_lines == ["OTHER-1"]
+
+    def test_mark_not_started_resume_safe_with_no_attempts_file(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """AC-5c: init is bypassed on resume, so autodev-not-started-attempts.txt may
+        not exist — a missing counter must read as 0 attempts, not exhausted."""
+        run_dir = tmp_path
+        (run_dir / "autodev-queue.txt").write_text("")
+        assert not (run_dir / "autodev-not-started-attempts.txt").exists()
+        not_started, skipped = self._run_mark_not_started(
+            data, run_dir, "FEAT-1", "PHASE1_NOT_STARTED FEAT-1 unknown"
+        )
+        assert not_started.strip() == ""
+        assert skipped.strip() == ""
+        queue_lines = (run_dir / "autodev-queue.txt").read_text().splitlines()
+        assert queue_lines == ["FEAT-1"]
+
+    def test_finalize_done_not_started_verdict_and_no_double_count(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """AC-1/AC-2/AC-2a: a not-started-only run reports verdict=not_started (not
+        phantom, not no-op), not_started count, and excludes the ID from skipped."""
+        run_dir = tmp_path
+        (run_dir / "autodev-not-started.txt").write_text("FEAT-1  not_ready\n")
+        (run_dir / "autodev-skipped.txt").write_text("FEAT-1  notstarted_not_ready\n")
+        summary, out = self._run_finalize_done(data, run_dir)
+        assert summary["verdict"] == "not_started", f"got {summary}"
+        assert summary["not_started"] == 1, f"got {summary}"
+        assert summary["skipped"] == 0, f"got {summary}"
+        assert summary["not_closed"] == 0, f"got {summary}"
+        skipped_line = [ln for ln in out.splitlines() if ln.startswith("Skipped")]
+        assert skipped_line and "FEAT-1" not in skipped_line[0]
+        not_started_line = [ln for ln in out.splitlines() if ln.startswith("Not-started")]
+        assert not_started_line and "FEAT-1 (not_ready)" in not_started_line[0]
+        assert not [ln for ln in out.splitlines() if ln.startswith("Unverified")], (
+            "a not-started ID must never print an Unverified line"
+        )
+
+    def test_finalize_done_not_started_zero_when_no_ledger_entries(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """AC-5c companion: not_started defaults to 0 when the ledger is absent
+        (the resumed-run case, since init is bypassed on resume)."""
+        run_dir = tmp_path
+        assert not (run_dir / "autodev-not-started.txt").exists()
+        summary, _ = self._run_finalize_done(data, run_dir)
+        assert summary["not_started"] == 0
+        assert summary["verdict"] == "no-op"
+
+    def test_finalize_done_mixed_run_still_resolves_success(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """A mixed run (some passed, some not-started) still resolves success/partial
+        by the existing rules — not_started does not steal the verdict."""
+        run_dir = tmp_path
+        (run_dir / "autodev-staged.txt").write_text("FEAT-200\n")
+        (run_dir / "autodev-not-started.txt").write_text("FEAT-1  not_ready\n")
+        script_path = run_dir / "ll-issues"
+        script_path.write_text(
+            '#!/bin/sh\nif [ "$1" = "show" ]; then echo \'{"status": "Done"}\'; fi\n'
+        )
+        script_path.chmod(0o755)
+        env = dict(**{"PATH": f"{run_dir}:{os.environ['PATH']}"})
+        state = data["states"].get("finalize_done", {})
+        script = state.get("action", "").replace("${context.run_dir}", str(run_dir))
+        script = script.replace("$${", "${")
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True, env=env
+        )
+        assert result.returncode == 0
+        summary = json.loads((run_dir / "summary.json").read_text())
+        assert summary["verdict"] == "success"
+        assert summary["not_started"] == 1
+
     def test_implement_current_uses_shell_exit_fragment(self, data: dict) -> None:
         """implement_current must use shell_exit fragment for exit-code-aware routing."""
         state = data["states"].get("implement_current", {})
@@ -4982,20 +5200,34 @@ class TestAutodevLoop:
         state = data["states"].get("implement_current", {})
         assert state.get("on_yes") == "dequeue_next"
 
-    def test_implement_current_on_no_routes_to_check_learning_gate(self, data: dict) -> None:
-        """On non-zero exit (exit 1), route to check_learning_gate FIRST so a learning-gate
-        block (LEARNING_GATE_BLOCKED) is distinguished from a generic failure / auth failure."""
+    def test_implement_current_on_no_routes_to_check_impl_reached(self, data: dict) -> None:
+        """On non-zero exit (exit 1), route to check_impl_reached FIRST (ENH-2989) so a
+        Phase 1 rejection (PHASE1_NOT_STARTED) is distinguished from a learning-gate
+        block / auth failure / generic implementation failure."""
         state = data["states"].get("implement_current", {})
-        assert state.get("on_no") == "check_learning_gate", (
-            f"implement_current.on_no should be 'check_learning_gate', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "check_impl_reached", (
+            f"implement_current.on_no should be 'check_impl_reached', got {state.get('on_no')!r}"
         )
 
-    def test_implement_current_on_error_routes_to_check_learning_gate(self, data: dict) -> None:
-        """On fatal error, route to check_learning_gate first (then auth) before terminating."""
+    def test_implement_current_on_error_routes_to_check_impl_reached(self, data: dict) -> None:
+        """On fatal error, route to check_impl_reached first before terminating."""
         state = data["states"].get("implement_current", {})
-        assert state.get("on_error") == "check_learning_gate", (
-            f"implement_current.on_error should be 'check_learning_gate', got {state.get('on_error')!r}"
+        assert state.get("on_error") == "check_impl_reached", (
+            f"implement_current.on_error should be 'check_impl_reached', got {state.get('on_error')!r}"
         )
+
+    def test_check_impl_reached_routes_to_check_learning_gate_on_no(self, data: dict) -> None:
+        """check_impl_reached detects a Phase 1 rejection (on_yes → mark_not_started) and
+        otherwise falls through to check_learning_gate (on_no/on_error), preserving the
+        existing learning-gate/auth-check chain (ENH-2989)."""
+        state = data["states"].get("check_impl_reached", {})
+        assert state.get("fragment") == "ll_auto_not_started_check", (
+            f"check_impl_reached.fragment should be 'll_auto_not_started_check', "
+            f"got {state.get('fragment')!r}"
+        )
+        assert state.get("on_yes") == "mark_not_started"
+        assert state.get("on_no") == "check_learning_gate"
+        assert state.get("on_error") == "check_learning_gate"
 
     def test_check_learning_gate_routes_to_auth_check_on_no(self, data: dict) -> None:
         """check_learning_gate detects a gate block (on_yes → mark_gate_blocked) and otherwise
@@ -13295,11 +13527,15 @@ class TestAutodevAuthGuard:
         )
 
     def test_implement_current_routes_to_check_learning_gate_then_auth(self, data: dict) -> None:
-        """implement_current.on_no/on_error route to check_learning_gate, which falls through
-        to check_impl_auth on a non-gate failure — the auth fast-fail stays reachable."""
+        """implement_current.on_no/on_error route to check_impl_reached (ENH-2989), which
+        falls through to check_learning_gate, which falls through to check_impl_auth on a
+        non-gate failure — the auth fast-fail stays reachable."""
         state = data["states"]["implement_current"]
-        assert state.get("on_no") == "check_learning_gate"
-        assert state.get("on_error") == "check_learning_gate"
+        assert state.get("on_no") == "check_impl_reached"
+        assert state.get("on_error") == "check_impl_reached"
+        reached = data["states"]["check_impl_reached"]
+        assert reached.get("on_no") == "check_learning_gate"
+        assert reached.get("on_error") == "check_learning_gate"
         gate = data["states"]["check_learning_gate"]
         assert gate.get("on_no") == "check_impl_auth", (
             "check_learning_gate must fall through to check_impl_auth so the ENH-2353 "

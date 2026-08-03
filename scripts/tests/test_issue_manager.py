@@ -352,6 +352,62 @@ READY
         validated_resolved = Path(parsed["validated_file_path"]).resolve()
         assert validated_resolved != expected_file.resolve()
 
+    def test_path_mismatch_persisted_prints_not_started_marker(
+        self, temp_project_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """ENH-2989: a fallback retry that still mismatches never reaches Phase 2 —
+        emits PHASE1_NOT_STARTED with reason "path_mismatch"."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import process_issue_inplace
+        from little_loops.issue_parser import IssueInfo
+
+        issues_dir = temp_project_dir / ".issues" / "bugs"
+        issues_dir.mkdir(parents=True)
+        expected_file = issues_dir / "P1-BUG-001-test.md"
+        expected_file.write_text("# BUG-001: Test\n\n## Summary\nTest")
+        wrong_file = issues_dir / "P1-BUG-999-wrong.md"
+        wrong_file.write_text("# BUG-999: Wrong\n")
+
+        sample_issue = IssueInfo(
+            path=expected_file,
+            issue_type="bugs",
+            priority="P1",
+            issue_id="BUG-001",
+            title="Test",
+        )
+
+        config = MagicMock(spec=BRConfig)
+        config.project_root = temp_project_dir
+        config.repo_path = temp_project_dir
+        config.automation = MagicMock()
+        config.automation.timeout_seconds = 60
+        config.automation.stream_output = False
+        config.automation.max_continuations = 3
+        config.automation.ready_issue_unknown_retries = 1
+        config.get_category_action.return_value = "fix"
+        config.get_state_file.return_value = temp_project_dir / ".auto-state.json"
+
+        first_output = f"""
+## VERDICT
+READY
+
+## VALIDATED_FILE
+{wrong_file}
+"""
+        # The fallback retry still validates the wrong file — persistent mismatch.
+        retry_result = MagicMock(returncode=0, stdout=first_output, stderr="")
+        first_result = MagicMock(returncode=0, stdout=first_output, stderr="")
+
+        with patch(
+            "little_loops.issue_manager.run_claude_command",
+            side_effect=[first_result, retry_result],
+        ):
+            result = process_issue_inplace(sample_issue, config, MagicMock())
+
+        assert not result.success
+        assert "Path mismatch persisted after fallback" in result.failure_reason
+        assert f"PHASE1_NOT_STARTED {sample_issue.issue_id} path_mismatch" in capsys.readouterr().out
+
     def test_path_detection_in_ready_issue_command(self) -> None:
         """Test that ready-issue bash can distinguish paths from IDs.
 
@@ -2339,7 +2395,7 @@ class TestCloseVerdictHandling:
         )
 
     def test_close_with_invalid_ref_fails_without_file_ops(
-        self, mock_config: BRConfig, sample_issue: IssueInfo
+        self, mock_config: BRConfig, sample_issue: IssueInfo, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Test that CLOSE with invalid_ref returns error without file operations."""
         from little_loops.issue_manager import process_issue_inplace
@@ -2368,9 +2424,11 @@ CLOSE
         assert "Invalid reference" in result.failure_reason
         # close_issue should NOT be called
         mock_logger.warning.assert_called()
+        # ENH-2989: a failed CLOSE never reached Phase 2 — reason "close_failed".
+        assert f"PHASE1_NOT_STARTED {sample_issue.issue_id} close_failed" in capsys.readouterr().out
 
     def test_close_without_validated_path_fails(
-        self, mock_config: BRConfig, sample_issue: IssueInfo
+        self, mock_config: BRConfig, sample_issue: IssueInfo, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Test that CLOSE without validated_file_path returns error."""
         from little_loops.issue_manager import process_issue_inplace
@@ -2394,6 +2452,7 @@ duplicate
 
         assert not result.success
         assert "CLOSE without validated file path" in result.failure_reason
+        assert f"PHASE1_NOT_STARTED {sample_issue.issue_id} close_failed" in capsys.readouterr().out
 
     def test_close_success_returns_closed_result(
         self, mock_config: BRConfig, sample_issue: IssueInfo
@@ -2429,8 +2488,61 @@ Closed - Duplicate
         assert result.was_closed
         mock_close.assert_called_once()
 
+    def test_blocked_verdict_prints_not_started_marker(
+        self, mock_config: BRConfig, sample_issue: IssueInfo, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A BLOCKED verdict (open dependency) never reaches Phase 2 — reason "blocked"."""
+        from little_loops.issue_manager import process_issue_inplace
+
+        mock_logger = MagicMock()
+
+        output = f"""
+## VERDICT
+BLOCKED
+
+## CONCERNS
+- Depends on BUG-999
+
+## VALIDATED_FILE
+{sample_issue.path}
+"""
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = output
+
+        with patch("little_loops.issue_manager.run_claude_command", return_value=mock_result):
+            result = process_issue_inplace(sample_issue, mock_config, mock_logger)
+
+        assert not result.success
+        assert result.was_blocked
+        assert f"PHASE1_NOT_STARTED {sample_issue.issue_id} blocked" in capsys.readouterr().out
+
+    def test_unknown_verdict_prints_not_started_marker_with_unknown_reason(
+        self, mock_config: BRConfig, sample_issue: IssueInfo, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A non-compliant model turn (no recognizable verdict token) defaults to
+        UNKNOWN, which is transient — reason "unknown", not "not_ready" (ENH-2989)."""
+        from little_loops.issue_manager import process_issue_inplace
+
+        mock_logger = MagicMock()
+
+        # No ## VERDICT section at all — output_parsing.py defaults verdict to
+        # "UNKNOWN" when no strategy finds a recognizable token.
+        output = "Some non-compliant model output with no verdict marker."
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = output
+
+        with patch("little_loops.issue_manager.run_claude_command", return_value=mock_result):
+            result = process_issue_inplace(sample_issue, mock_config, mock_logger)
+
+        assert not result.success
+        assert f"PHASE1_NOT_STARTED {sample_issue.issue_id} unknown" in capsys.readouterr().out
+
     def test_not_ready_verdict_fails_processing(
-        self, mock_config: BRConfig, sample_issue: IssueInfo
+        self, mock_config: BRConfig, sample_issue: IssueInfo, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Test that NOT READY verdict fails processing."""
         from little_loops.issue_manager import process_issue_inplace
@@ -2459,6 +2571,10 @@ NOT_READY
         assert not result.success
         # The failure_reason includes the verdict and concern count
         assert result.failure_reason
+        # ENH-2989: a real NOT_READY verdict is a deterministic Phase 1
+        # rejection — reason token "not_ready", not "unknown".
+        captured = capsys.readouterr()
+        assert f"PHASE1_NOT_STARTED {sample_issue.issue_id} not_ready" in captured.out
 
 
 class TestFailureClassification:
@@ -4910,6 +5026,11 @@ class TestConfidenceGatePreCheck:
         assert "CONFIDENCE_GATE_BLOCKED BUG-001" in out
         assert "LEARNING_GATE_BLOCKED" not in out
         assert "IMPLEMENT_FAILED" not in out
+        # ENH-2989: the pre-Phase-1 confidence gate must also emit the
+        # generic Phase-1-not-reached marker (alongside, not instead of, the
+        # existing CONFIDENCE_GATE_BLOCKED marker) so autodev's
+        # check_impl_reached discriminator catches this route too.
+        assert "PHASE1_NOT_STARTED BUG-001 confidence_gate" in out
 
     def test_readiness_outcome_parity_matches_manage_issue(
         self, mock_config: BRConfig, sample_issue: IssueInfo
