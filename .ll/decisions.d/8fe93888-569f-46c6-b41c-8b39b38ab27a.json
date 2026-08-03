@@ -1,0 +1,11 @@
+{
+  "id": "1b7eceb6-478b-4b9a-adca-681659b0b8ff",
+  "type": "decision",
+  "timestamp": "2026-08-03T04:47:07Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Sub-loop timeouts fall through to on_no identically to real failures, discarding recoverable partial work; deep-research loop analysis surfaced this.",
+  "rule": "Captured: FSM sub-loop states can't distinguish timeout from normal on_no, and expose no outcome context",
+  "scope": "issue",
+  "issue": "ENH-3019"
+}

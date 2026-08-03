@@ -77,7 +77,7 @@ noted here for awareness, not as an actionable gap.
 - **BUG-3009** — `cache`/`deferred_tools` config parsed but never threaded into `host_runner` dispatch calls (functionally inert)
 - **BUG-3010** — `ll-init` has no top-level exception handling; unexpected errors surface as raw tracebacks despite a documented 0/1/2 exit-code contract
 - **ENH-3011** — `ll-init` performs no git-repo check and silently writes/updates `.gitignore` outside a git repo
-- **BUG-3012** — `BRConfig.to_dict()` omits `refine_status` and `extensions`, breaking `ll-config get` for those sections
+- **BUG-3012** — `BRConfig.to_dict()` omits `refine_status`, `extensions`, and `orchestration`, breaking `ll-config get` for those sections; also adds an introspection-based parity guard so the next new section can't silently repeat this
 - **ENH-3013** — `config-schema.json`'s `issues` object declares 8 properties that read as per-issue-frontmatter fields, never consumed as global config
 - **ENH-3014** — `skill_budget.threshold_tokens` is a real, working config key missing from both `config-schema.json` and `docs/reference/CONFIGURATION.md`
 - **ENH-3015** — `docs/reference/CONFIGURATION.md` has no section documenting the top-level `cache` block
@@ -97,10 +97,18 @@ child frontmatter (`depends_on`), not just prose:
   section of `docs/reference/CLI.md` (host lists at `:37,49`; wizard table at
   `:65-76`). Serialized to avoid a merge conflict under `parallel.epic_branches`.
 
-Lower-risk overlap to be aware of but not gated: ENH-3014 and ENH-3015 both edit
-`docs/reference/CONFIGURATION.md`, in different sections.
+Lower-risk overlaps to be aware of but not gated by `depends_on`:
 
-Everything else (BUG-3010, ENH-3011, BUG-3012, ENH-3013, ENH-3018) is genuinely
+- ENH-3014 and ENH-3015 both edit `docs/reference/CONFIGURATION.md`, in
+  different sections (`skill_budget` vs. `cache`).
+- **ENH-3013 and ENH-3014 both edit `config-schema.json` *and*
+  `scripts/tests/test_config_schema.py`** — 3013 removes 8 dead `issues`
+  properties, 3014 adds a new top-level `skill_budget` object plus a
+  default-parity assert. Different regions of both files, but this is the
+  tightest overlap in the epic after the CLI.md pair: do not run them as
+  concurrent epic branches.
+
+Everything else (BUG-3010, ENH-3011, BUG-3012, ENH-3018) is genuinely
 independent and safe to run concurrently.
 
 ## Acceptance Criteria

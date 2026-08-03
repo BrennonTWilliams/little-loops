@@ -48,11 +48,30 @@ periodically re-verified rather than assumed durable.
 
 ## Suggested Fix Direction
 
-Update `SKILL.md:140-141` to the current line numbers as an immediate fix, and
-consider dropping line-number citations in favor of `` `cli.py`'s `_run_plan`
-function `` style references (function-name-only) to avoid repeat drift. If
-other line-number references exist elsewhere in `skills/init/SKILL.md` or
-sibling skill files, spot-check those too during implementation.
+**Drop the line numbers; do not refresh them.** Rewriting `SKILL.md:140-141`
+to the currently-correct ranges (`_run_plan` = `cli.py:560-629`, `_run_apply` =
+`cli.py:632-719`) restores accuracy for exactly as long as it takes for someone
+to add a line above `cli.py:560` — which is the defect, not the fix. Replace the
+citations with function-name references, e.g. `` `scripts/little_loops/init/cli.py`'s
+`_run_plan` / `_run_apply` functions `` — durable under any edit above them, and
+directly greppable.
+
+Then spot-check the rest of `skills/init/SKILL.md` for other `path:NNN`-style
+citations and convert those the same way.
+
+## Acceptance Criteria
+
+- [ ] `skills/init/SKILL.md`'s `_run_plan`/`_run_apply` references name the
+      functions and file, with **no** line numbers.
+- [ ] `grep -nE ':[0-9]+' skills/init/SKILL.md` surfaces no remaining
+      source-line citations (URLs/version strings excepted); any found are
+      converted to symbol references.
+- [ ] The referenced symbols exist: `grep -n "def _run_plan\|def _run_apply"
+      scripts/little_loops/init/cli.py` returns both.
+- [ ] `skills/init/SKILL.md` still passes `ll-verify-skills` and stays under the
+      500-line skill cap.
+- [ ] No change to `scripts/little_loops/init/cli.py`.
+- [ ] `python -m pytest scripts/tests/` exits 0.
 
 ## Status
 

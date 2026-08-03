@@ -39,6 +39,12 @@ validation) nothing currently rejects them if a user tried anyway.
 
 ## Scope Boundaries
 
+**File-contention note:** ENH-3014 edits the same two files — it adds a
+`skill_budget` object to `config-schema.json` and a new parity assert to
+`scripts/tests/test_config_schema.py`. Different regions, so no `depends_on` is
+declared, but do not run these two as concurrent epic branches under
+`parallel.epic_branches` — land one, then the other.
+
 In scope: removing the 8 unused properties from the `issues` object in
 `config-schema.json` and updating `test_config_schema.py` if it asserts on
 the current property list. Out of scope: changing the per-issue frontmatter

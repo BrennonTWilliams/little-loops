@@ -94,7 +94,14 @@ construct a `BRConfig` per dispatch, which would re-read and re-parse
 2. In `_dispatch_live`, thread the values into **both** dispatch call sites —
    the SDK path (`executor.py:2475`) and the batch path (`executor.py:2499`) —
    as `require_repeat=`, `defer_loading_threshold=`, `search_tool_variant=`.
-3. Add tests asserting a non-default `ll-config.json` value changes the kwargs
+3. **Fold `executor.py:2010` onto the same accessor.** That site already
+   constructs `BRConfig(self.working_dir or Path.cwd())` — the identical root
+   expression the new accessor uses — and only reads `._raw_config` off it. Left
+   alone, it becomes a second full parse of the same file in the same executor,
+   which defeats the point of memoizing and makes the "constructed once" AC
+   below unverifiable. Reading `._raw_config` from the memoized instance is
+   behavior-identical.
+4. Add tests asserting a non-default `ll-config.json` value changes the kwargs
    actually passed, via a spy/mock on `dispatch_anthropic_request` *and* on
    `dispatch_batch_request` (the batch path is easy to forget — it currently has
    the same gap).
@@ -150,8 +157,18 @@ keyword args into `host_runner.dispatch_anthropic_request(...)`
 
 - [ ] `_dispatch_live`'s SDK path passes all three values from config.
 - [ ] `_dispatch_live`'s batch path passes all three values from config.
-- [ ] `BRConfig` is constructed at most once per executor instance, not once per
-      dispatch (assert via a spy on `BRConfig.__init__` across a multi-iteration run).
+- [ ] The dispatch path adds **zero** additional `BRConfig` constructions per
+      dispatch. Assert as a *delta*, not an absolute count: spy on
+      `BRConfig.__init__`, record the count after the first dispatch, run N more
+      dispatches, assert the count is unchanged.
+      **Do not assert `call_count == 1`** — `FSMExecutor` legitimately constructs
+      `BRConfig` at `executor.py:927`, `:1104`, `:1366`, and `:3137` for
+      unrelated reads, so an absolute-count assertion is ambiguous at best and
+      falsely red at worst.
+- [ ] `executor.py:2010` reads `_raw_config` off the memoized instance rather
+      than constructing its own (per Suggested Fix Direction step 3), verified by
+      the same spy: a run that exercises both that site and a dispatch adds one
+      construction total, not two.
 - [ ] Config root is `self.working_dir or Path.cwd()`, verified by a test that
       sets `working_dir` to a temp project with a non-default `ll-config.json`
       while cwd is elsewhere.

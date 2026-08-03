@@ -8,7 +8,7 @@ discovered_date: 2026-08-02
 discovered_by: multi-agent-audit
 parent: EPIC-3008
 program_design_not_applicable: true
-testable: false
+testable: true
 labels:
 - config-schema
 - docs
@@ -51,6 +51,15 @@ In scope: adding a `skill_budget` object (with `threshold_tokens`) to
 `config-schema.json` and a matching section in `CONFIGURATION.md`. Out of
 scope: migrating `cli/docs.py`'s `._raw_config.get(...)` read to a typed
 `BRConfig` accessor (optional follow-up, not required for the doc/schema fix).
+
+**File-contention note:** ENH-3013 edits the same two files — it removes 8 dead
+properties from the `issues` object in `config-schema.json` and may touch
+`scripts/tests/test_config_schema.py`, while this issue adds a new top-level
+schema object plus a new parity assert to that same test module. Different
+regions, so no `depends_on` is declared, but do not run these two as concurrent
+epic branches under `parallel.epic_branches` — land one, then the other.
+(Separately, this issue and ENH-3015 both edit `docs/reference/CONFIGURATION.md`
+in different sections.)
 
 ## Expected Behavior
 

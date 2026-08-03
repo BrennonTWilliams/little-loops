@@ -61,6 +61,25 @@ Cross-reference BUG-3009 in this same epic — once that bug is fixed, this
 section should also note where `require_repeat` actually takes effect
 (`fsm/executor.py` dispatch).
 
+## Acceptance Criteria
+
+- [ ] `docs/reference/CONFIGURATION.md` gains a `### \`cache\`` section placed
+      consistently with the neighboring top-level sections (adjacent to the
+      existing `deferred_tools` section, which is the closest structural sibling).
+- [ ] The section documents `require_repeat`: purpose, type, default (`true`,
+      per `CacheConfig.require_repeat` at `config/features.py:576`), and effect
+      when set to `false` (disables the cache-marking reuse gate — see
+      `cache_marking_oracle.py:101-103`).
+- [ ] The section names the actual consumer reached at runtime — the
+      `_dispatch_live` dispatch calls in `fsm/executor.py` wired by BUG-3009 —
+      rather than describing the key as inert.
+- [ ] BUG-3009 is `done` before this lands (declared `depends_on`); the section
+      does not describe behavior that hasn't shipped.
+- [ ] If `CONFIGURATION.md` carries a section index/TOC, the new section is
+      added to it.
+- [ ] `python -m pytest scripts/tests/` exits 0 (no test asserts on this doc
+      today; this is a no-regression check).
+
 ## Status
 
 **Open** | Created: 2026-08-02 | Priority: P4

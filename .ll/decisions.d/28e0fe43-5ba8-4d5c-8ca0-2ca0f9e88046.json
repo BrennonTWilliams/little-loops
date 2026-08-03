@@ -1,0 +1,11 @@
+{
+  "id": "b77579bc-8177-46df-bd6c-228511d6db19",
+  "type": "decision",
+  "timestamp": "2026-08-03T04:47:42Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Only global timeout exists as a cost backstop; no in-run signal to route on per-state/iteration budget overrun before the timeout forces a hard stop.",
+  "rule": "Captured: No per-state/iteration token or wall-clock budget routing primitive in FSM loops",
+  "scope": "issue",
+  "issue": "ENH-3020"
+}
