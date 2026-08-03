@@ -95,7 +95,7 @@ suffix-match set has more than one member after the mirror tie-break.
 Three consumers must be updated in the same change — this is why it is not a
 narrow fix:
 
-1. **`issue_parser.check_format_gaps()`** (`issue_parser.py:528`) — decide
+1. **`issue_parser.check_format_gaps()`** (`issue_parser.py:547`) — decide
    whether `ambiguous` gets its own `FormatGaps` field (recommended: it is
    separately actionable) or folds into `stale_file_ref`'s list with a
    distinguishing suffix.
@@ -244,27 +244,24 @@ consumers:
 
 ## Integration Map
 
-### Sequencing: collides with in-flight ENH-2993
+### Sequencing: ENH-2993 has landed — no longer a blocker
 
-_Added by pre-implementation review 2026-08-02._
+_Added by pre-implementation review 2026-08-02; **updated 2026-08-02 (second
+review): ENH-2993 is committed and `status: done`.** The earlier note said it was
+uncommitted in the working tree; that is no longer true and the rebase-first
+instruction is dropped._
 
-ENH-2993 (`duplicate_findings_block` / `ll-issues fold-findings`) is **present
-and uncommitted in the working tree**, and it modifies every consumer site this
-issue touches: `issue_parser.py` (`FormatGaps`, `has_gaps`, `to_dict`, the
-docstring block), `cli/issues/format_check.py` (the `_print_gaps` loop and the
-subparser `help=` CSV), `cli/issues/__init__.py:124` (the top-level CSV),
-`docs/reference/CLI.md`, and `test_ll_issues_format_check.py` (including the
-pinned JSON key literal).
+ENH-2993 (`duplicate_findings_block` / `ll-issues fold-findings`) touched every
+consumer site this issue touches. It is now on `main`, so implement directly.
+What it leaves behind for this issue:
 
-Consequences for this issue:
-
-- `FormatGaps` has **14** fields in the working tree, not the 13 recorded in the
-  Codebase Research Findings below. After this change it is 15.
-- Land ENH-2993 first (or rebase onto it) — implementing both against the same
-  five sites concurrently guarantees conflicts in `_print_gaps` and in the two
-  gap-class CSVs, neither of which has a test that would catch a bad merge.
-- Re-count before editing any doc that states a class count; do not trust the
-  numbers in this file.
+- `FormatGaps` has **14** fields on `main` (verified via
+  `dataclasses.fields(FormatGaps)`), not the 13 recorded in the Codebase
+  Research Findings below. After this change it is 15.
+- All three gap-class CSVs already carry `duplicate_findings_block`; append the
+  new class after it in each, keeping the existing order.
+- Re-derive any doc that states a class count from
+  `dataclasses.fields(FormatGaps)`; do not trust counts written in this file.
 
 ### Files to Modify
 
@@ -272,16 +269,20 @@ Consequences for this issue:
   `suffix_match_candidates`, `resolve_ref_path` (:255) reimplemented on it,
   `classify_file_ref` (:252) branch, and the numbered resolution-order docstring
 - `scripts/little_loops/issue_parser.py` — `FormatGaps` field (:255 area),
-  `has_gaps` (:273), `to_dict()` (:291), docstring paragraph (:368), population
-  (:544)
+  `has_gaps` (:274), `to_dict()` (:293), docstring paragraph (:371), population
+  (:547)
 - `scripts/little_loops/cli/issues/format_check.py` — **three** sites, not one:
   the `_print_gaps` loop (:154), the subparser `help=` gap-class CSV (:59-64),
   and `cmd_format_check`'s docstring gap-class list (:163-166)
   _(the latter two found by pre-implementation review)_
 - `scripts/little_loops/issues/research_triage.py` — **both** hardcoded
   eligibility tuples: `qualified_ref_count` (:193) and `_triage_axis` (:388-391)
-- `.claude/CLAUDE.md` § CLI Tools — the `format-check` gap-class list enumerates
-  every class by name and would go stale
+- ~~`.claude/CLAUDE.md` § CLI Tools~~ — **not a real edit site (second review,
+  2026-08-02).** `.claude/CLAUDE.md` has no `## CLI Tools` section and no
+  `format-check` gap-class list anywhere in it; `grep -n 'format-check\|gap
+  class\|CLI Tools' .claude/CLAUDE.md` returns nothing. Do not go looking for it.
+  The gap-class enumerations live only in `docs/reference/CLI.md:1853`,
+  `docs/reference/API.md:862`, and the three code CSVs below
 - `scripts/little_loops/cli/issues/__init__.py:124` — the top-level `format-check`
   subcommand's one-line `argparse` help string hardcodes the full gap-class list
   as a parenthesized CSV (`missing/renamed/.../stale_file_ref/...`); needs the
@@ -322,15 +323,18 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CLI.md` — the `#### ll-issues format-check` section: the same
   "twelve classes" prose (~line 1811), a `stale_file_ref`-specific paragraph
   describing "no exact or unique suffix match" that conflates the two failure
-  modes this issue splits apart (~line 1820-1828), and a worked `--format json`
-  example payload that lists every `FormatGaps` key in order (~line 1864) — a
-  new key must be inserted into that example if `ambiguous` becomes its own
-  field.
+  modes this issue splits apart (~line 1862), and a worked `--format json`
+  example payload that lists every `FormatGaps` key in order (**line 1914**, not
+  1864 — corrected second review) — a new key must be inserted into that example
+  if `ambiguous` becomes its own field.
 - `docs/reference/CLI.md:1660` _(found by pre-implementation review)_ — the
   **research-triage** section's prose on which classes are "excluded from both
-  sides of the fraction". The denominator decision above changes what that
-  sentence describes; it is a separate section from the `format-check` one
-  listed above and is easy to miss.
+  sides of the fraction". _Second review 2026-08-02: this edit is
+  **clarifying, not required**. The sentence is phrased by exclusion ("globs,
+  `<placeholder>` paths and bare basenames come back `unresolvable_form` and are
+  excluded") and stays literally true once `ambiguous` joins the eligibility
+  tuples. Add "and `ambiguous`" to the inclusion side only if it reads clearer;
+  do not treat a miss here as a defect._
 
 ### Codebase Research Findings
 
@@ -474,9 +478,21 @@ _Added by pre-implementation review 2026-08-02._
       helper introduces; see the Contract correction in Program Design
 - [ ] A ref whose matches are >1 and *all* mirrors classifies `stale`, not
       `ambiguous` — behavior-identical to today's `None`
-- [ ] The `ambiguous_file_ref` entry for `agents/openai.yaml` renders `66` and
-      at most three candidate paths followed by `…`; the two-candidate
-      `issues/anchor_sweep.py` entry renders both paths with no elision marker
+- [ ] The `ambiguous_file_ref` entry for `agents/openai.yaml` renders a count
+      **equal to `len(suffix_match_candidates(...))` measured against the live
+      index** (66 on 2026-08-02) followed by at most three candidate paths and a
+      `…`; the two-candidate `issues/anchor_sweep.py` entry renders both paths
+      with no elision marker. _Second review: do not hardcode 66 in a test — a
+      skill added or removed under `skills/*/agents/` changes it. Assert the
+      rendered count against a freshly computed `len()`, and assert the
+      `>3 → elide`, `≤3 → no marker` rule directly on a hand-built `RefIndex`._
+- [ ] **`_triage_axis` is behavior-preserving.** For every issue in the corpus,
+      `triage_research_axes()`'s `covered` verdict and coverage fraction are
+      identical before and after the change — `ambiguous` moves from the `stale`
+      bucket to its own name but stays denominator-eligible and stays out of the
+      numerator (`research_triage.py:389-393` only appends to `resolved` when
+      `status == "resolved"`). Verify by diffing triage output across the whole
+      `.issues/` tree pre/post, not just by reading the tuple change
 - [ ] **This issue file is its own fixture.** `ll-issues format-check ENH-2999`
       today reports exactly two gaps, both mislabelled:
       ```
@@ -502,7 +518,13 @@ _Added by pre-implementation review 2026-08-02._
 - **Risk**: Low — additive status; the resolution policy does not change.
 - **Breaking Change**: `RefStatus` is a public `Literal`. Any external consumer
   exhaustively matching it would need the new member, though there are none in
-  this repo outside the three listed.
+  this repo outside the three listed. _Consumer inventory confirmed exhaustive
+  (second review, 2026-08-02): grepping `classify_file_ref|classify_issue_refs|
+  resolve_ref_path|RefStatus` across `scripts/little_loops/`, `hooks/`, `loops/`,
+  `commands/`, `skills/`, and `.claude/` returns exactly `issue_parser.py:545`,
+  `research_triage.py:193`, and `research_triage.py:387-392` outside
+  `text_utils.py` itself. There is no fourth site. `stale_file_ref` likewise
+  appears in no loop YAML, skill, or hook._
 
 ## Scope Boundaries
 
@@ -517,9 +539,11 @@ _Added by pre-implementation review 2026-08-02._
 | Document | Relevance |
 |----------|-----------|
 | `scripts/little_loops/text_utils.py` | The classifier and its resolution-order contract |
-| `.claude/CLAUDE.md` | § CLI Tools enumerates `format-check`'s gap classes |
+| `docs/reference/CLI.md` | `#### ll-issues format-check` (:1853) enumerates every gap class; `--format json` example at :1914 |
+| `docs/reference/API.md` | `check_format_gaps` gap-class prose (:862) and the `RefStatus` / `classify_file_ref` contract (:7073-7125) |
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-03T02:55:30 - `98d80e04-349e-4ecb-960b-c2ce2d90ca46.jsonl`
 - `/ll:confidence-check` - 2026-08-03T00:59:15 - `e098c4d0-bc23-4ca4-9927-7ae454650ec7.jsonl`
 - `/ll:confidence-check` - 2026-08-03T00:44:15 - `8195d557-878b-450d-98ab-271852b83e7a.jsonl`
 - `/ll:wire-issue` - 2026-08-03T00:37:25 - `ee2cf08a-9d4e-4629-b2ec-7211d56b5a4e.jsonl`
