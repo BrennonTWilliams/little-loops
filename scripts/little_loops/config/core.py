@@ -809,6 +809,7 @@ class BRConfig:
                     "product",
                     "continuation",
                     "hooks",
+                    "skill_budget",
                 )
             },
             "design_tokens": {

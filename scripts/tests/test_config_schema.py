@@ -1022,6 +1022,47 @@ class TestConfigSchema:
         assert delay.get("default") is None, "loops.run_defaults.delay must default to null"
         assert delay.get("minimum") == 0, "loops.run_defaults.delay must have minimum: 0"
 
+    def test_skill_budget_in_schema(self) -> None:
+        """skill_budget.threshold_tokens must be declared in the schema (ENH-3014).
+
+        Read directly from raw config by cli/docs.py's validate_skill_budget /
+        ll-doctor's skill-budget check; the schema default must equal the live
+        _DEFAULT_BUDGET_TOKENS constant so the two can't drift.
+        """
+        from little_loops.doc_counts import _DEFAULT_BUDGET_TOKENS
+
+        data = json.loads(_load_schema_text())
+        assert "skill_budget" in data["properties"], (
+            "skill_budget is not declared in config-schema.json; configs setting "
+            "skill_budget.threshold_tokens will be rejected by additionalProperties: false"
+        )
+        skill_budget = data["properties"]["skill_budget"]
+        assert skill_budget["type"] == "object"
+        assert skill_budget.get("additionalProperties") is False
+        threshold = skill_budget["properties"]["threshold_tokens"]
+        assert threshold["type"] == "integer"
+        assert threshold["default"] == _DEFAULT_BUDGET_TOKENS, (
+            "config-schema.json's skill_budget.threshold_tokens default has drifted "
+            "from cli/doc_counts._DEFAULT_BUDGET_TOKENS"
+        )
+
+    def test_skill_budget_reachable_via_resolve_variable(self, temp_project_dir: Path) -> None:
+        """skill_budget.threshold_tokens must resolve through to_dict()/resolve_variable (ENH-3014)."""
+        ll_dir = temp_project_dir / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+        (ll_dir / "ll-config.json").write_text(
+            json.dumps({"skill_budget": {"threshold_tokens": 3500}})
+        )
+
+        config = BRConfig(temp_project_dir)
+        assert config.resolve_variable("skill_budget.threshold_tokens") == "3500"
+
+    def test_skill_budget_absent_emits_empty_dict(self, temp_project_dir: Path) -> None:
+        """No SkillBudgetConfig dataclass: an unset skill_budget block emits {} (ENH-3014, BUG-3012 Shape 4)."""
+        config = BRConfig(temp_project_dir)
+        assert config.to_dict()["skill_budget"] == {}
+        assert config.resolve_variable("skill_budget.threshold_tokens") is None
+
 
 class TestToDictSchemaParity:
     """Guards BUG-3012: every schema top-level section must be reachable via to_dict().

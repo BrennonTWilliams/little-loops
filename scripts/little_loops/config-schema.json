@@ -1935,6 +1935,18 @@
         }
       },
       "additionalProperties": false
+    },
+    "skill_budget": {
+      "type": "object",
+      "description": "Skill file token-budget enforcement, consumed by ll-verify-skill-budget / ll-doctor's skill-budget check (cli/docs.py, cli/doctor.py:536-555). Precedence: --threshold CLI flag > skill_budget.threshold_tokens here > built-in default.",
+      "properties": {
+        "threshold_tokens": {
+          "type": "integer",
+          "default": 2000,
+          "description": "Token budget threshold for skill files; overridden per-invocation by ll-verify-skill-budget's --threshold flag."
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

@@ -2,7 +2,7 @@
 id: ENH-3014
 title: skill_budget.threshold_tokens missing from config-schema.json and CONFIGURATION.md
 type: ENH
-status: open
+status: done
 priority: P3
 discovered_date: 2026-08-02
 discovered_by: multi-agent-audit
@@ -22,6 +22,7 @@ score_complexity: 22
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+completed_at: '2026-08-03T16:40:41Z'
 ---
 
 # ENH-3014: `skill_budget.threshold_tokens` missing from `config-schema.json` and `CONFIGURATION.md`
@@ -185,4 +186,26 @@ _Added by `/ll:confidence-check` on 2026-08-03_
 
 
 ## Session Log
+- `ll-auto` - 2026-08-03T16:40:41 - `0b049569-7148-4aae-a349-fc1323f61e30.jsonl`
+- `/ll:ready-issue` - 2026-08-03T16:33:15 - `bd3b078d-54ab-4908-a076-753908af70a3.jsonl`
 - `/ll:confidence-check` - 2026-08-03T15:02:32 - `a04a91fd-da40-48d9-b914-d105c7c9dba6.jsonl`
+
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-08-03
+- **Status**: Completed (automated fallback)
+- **Implementation**: Command exited early but issue was addressed
+
+
+### Files Changed
+- See git history for details
+
+### Verification Results
+- Automated verification passed
+
+### Commits
+- See git log for details

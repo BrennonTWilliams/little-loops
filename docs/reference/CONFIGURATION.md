@@ -672,6 +672,20 @@ persisted work-item queue (add/list/status/remove).
 |-----|------|---------|-------------|
 | `queue.db_path` | `string\|null` | `null` | Override the default `.ll/queue.db` location; relative paths resolve against the project root. |
 
+### `skill_budget`
+
+Skill file token-budget enforcement, consumed by `ll-verify-skill-budget` and `ll-doctor`'s skill-budget check.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `skill_budget.threshold_tokens` | `integer` | `2000` | Token budget threshold for skill files. |
+
+Precedence, highest to lowest:
+
+1. `--threshold` CLI flag on `ll-verify-skill-budget` (overrides `ll-config.json`).
+2. `skill_budget.threshold_tokens` in `.ll/ll-config.json`.
+3. Built-in default (`2000`).
+
 ### `sprints`
 
 Sprint management settings (ll-sprint, `/ll:create-sprint`):
