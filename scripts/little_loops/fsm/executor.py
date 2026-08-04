@@ -1510,6 +1510,7 @@ class FSMExecutor:
                     "output": result.output,
                     "exit_code": result.exit_code,
                     "state": self.current_state,
+                    "timeout_kind": result.timeout_kind,
                 }
                 # BUG-2962: compare-on-exit + fail-policy enforcement, same as
                 # the non-`next:` path below — runs regardless of the
@@ -1580,6 +1581,7 @@ class FSMExecutor:
             "output": action_result.output if action_result else "",
             "exit_code": action_result.exit_code if action_result else 0,
             "state": self.current_state,
+            "timeout_kind": action_result.timeout_kind if action_result else None,
         }
 
         # Update context with result for routing interpolation
@@ -1851,18 +1853,29 @@ class FSMExecutor:
                 cmd,
                 timeout=state.timeout or self.fsm.default_timeout or 30,
                 on_output_line=_on_line,
+                # FEAT-3033: idle resolution mirrors this branch's own
+                # wall-clock fallback (30, not the 3600 used elsewhere).
+                idle_timeout=state.idle_timeout or self.fsm.default_idle_timeout or 0,
             )
         elif action_mode == "contributed":
             assert (
                 state.action_type is not None
             )  # guaranteed by _action_mode returning "contributed"
             runner = self._contributed_actions[state.action_type]
+            # FEAT-3033: kwarg-gated like working_dir/automation_profile below
+            # — omitted when disabled so contributed-action runners predating
+            # this change (no idle_timeout param) keep working unchanged.
+            _contrib_extra: dict[str, Any] = {}
+            _contrib_idle = state.idle_timeout or self.fsm.default_idle_timeout or 0
+            if _contrib_idle:
+                _contrib_extra["idle_timeout"] = _contrib_idle
             result = runner.run(
                 action,
                 timeout=state.timeout or self.fsm.default_timeout or 3600,
                 is_slash_command=False,
                 on_output_line=_on_line,
                 on_usage=on_usage,
+                **_contrib_extra,
             )
         elif action_mode == "prompt" and self._resolve_request_path(state) in ("sdk", "batch"):
             result = self._dispatch_live(state, action, ctx)
@@ -1887,6 +1900,14 @@ class FSMExecutor:
                 and _pruning_profile_cfg.enabled
             ):
                 extra_kwargs["automation_profile"] = _pruning_profile_cfg.name
+
+            # FEAT-3033: kwarg-gated, same pattern as working_dir/
+            # automation_profile above — omitted when disabled so
+            # ActionRunner implementations predating this change keep
+            # working unchanged.
+            _idle_timeout = state.idle_timeout or self.fsm.default_idle_timeout or 0
+            if _idle_timeout:
+                extra_kwargs["idle_timeout"] = _idle_timeout
 
             result = self.action_runner.run(
                 action,
@@ -1991,6 +2012,7 @@ class FSMExecutor:
                     if result.exit_code != 0
                     else ""
                 ),
+                "timeout_kind": result.timeout_kind,
             }
 
         # Append to shared messages log if requested
@@ -2066,11 +2088,15 @@ class FSMExecutor:
         cmd: list[str],
         timeout: int,
         on_output_line: Any | None = None,
+        idle_timeout: int = 0,
     ) -> ActionResult:
         """Run a subprocess directly and return ActionResult.
 
         Uses selector-based I/O with wall-clock timeout enforcement so the
-        timeout is honoured even when the process hangs before producing output.
+        timeout is honoured even when the process hangs before producing
+        output. FEAT-3033: also tracks idle time (silence between reads) and
+        kills the process group on breach, mirroring
+        ``DefaultActionRunner.run``'s shell branch in ``runners.py``.
         """
         start = _now_ms()
         process = subprocess.Popen(
@@ -2081,7 +2107,10 @@ class FSMExecutor:
             cwd=self.working_dir,
         )
         self._current_process = process
-        deadline = time.time() + timeout
+        # FEAT-3033: timeout=0 means "no wall-clock cap" (BUG-3034 — a falsy
+        # budget must never compute a deadline already in the past).
+        deadline = time.time() + timeout if timeout else None
+        last_output_at = time.time()
 
         # ENH-2453: sample the subprocess's RSS while it runs (budget-gated).
         sampler: RssSampler | None = None
@@ -2099,19 +2128,27 @@ class FSMExecutor:
             sel.register(process.stderr, selectors.EVENT_READ, data="stderr")
 
         timed_out = False
+        idled_out = False
         try:
             while sel.get_map():
-                remaining = deadline - time.time()
-                if remaining <= 0:
+                remaining = (deadline - time.time()) if deadline is not None else None
+                if remaining is not None and remaining <= 0:
                     timed_out = True
                     break
-                poll_timeout = min(1.0, remaining)
+                poll_timeout = min(1.0, remaining) if remaining is not None else 1.0
                 ready = sel.select(timeout=poll_timeout)
                 if not ready:
+                    if idle_timeout and (time.time() - last_output_at) > idle_timeout:
+                        idled_out = True
+                        break
                     continue
                 for key, _mask in ready:
+                    # FEAT-3033 known boundary: readline() blocks until a
+                    # newline or EOF — see runners.py's shell branch for the
+                    # full note. Same "Accept it" choice applies here.
                     line = key.fileobj.readline()  # type: ignore[union-attr]
                     if line:
+                        last_output_at = time.time()
                         if key.data == "stdout":
                             output_chunks.append(line)
                             if on_output_line:
@@ -2120,13 +2157,16 @@ class FSMExecutor:
                             stderr_chunks.append(line)
                     else:
                         sel.unregister(key.fileobj)
+                if idle_timeout and (time.time() - last_output_at) > idle_timeout:
+                    idled_out = True
+                    break
         finally:
             sel.close()
             self._current_process = None
 
         peak_rss_mb = sampler.stop() if sampler is not None else None
 
-        if timed_out:
+        if timed_out or idled_out:
             _kill_process_group(process)
             try:
                 process.wait(timeout=5)
@@ -2135,9 +2175,11 @@ class FSMExecutor:
                 process.wait()
             return ActionResult(
                 output="".join(output_chunks),
-                stderr="".join(stderr_chunks) or "MCP call timed out",
+                stderr="".join(stderr_chunks)
+                or ("MCP call idle-timed out" if idled_out else "MCP call timed out"),
                 exit_code=124,
-                duration_ms=timeout * 1000,
+                duration_ms=_now_ms() - start,
+                timeout_kind="idle" if idled_out else "wall",
                 peak_rss_mb=peak_rss_mb,
             )
 
@@ -2695,6 +2737,11 @@ class FSMExecutor:
         """
         start = _now_ms()
         timeout = state.timeout or self.fsm.default_timeout or 3600
+        # FEAT-3033: the A/B baseline arm runs concurrently with the harness
+        # arm (ThreadPoolExecutor, see the caller) and must resolve idle
+        # under the same precedence chain, or the two arms compare under
+        # different liveness rules.
+        idle_timeout = state.idle_timeout or self.fsm.default_idle_timeout or 0
         # ENH-2724: the baseline arm calls run_claude_command() directly (not
         # through an ActionRunner), so it never got usage_events attached to its
         # ActionResult like the harness arm does — collect it here.
@@ -2712,6 +2759,7 @@ class FSMExecutor:
             completed = run_claude_command(
                 command=skill_command,
                 timeout=timeout,
+                idle_timeout=idle_timeout,
                 on_usage=on_usage,
                 on_usage_detailed=_collect_usage,
                 on_result_seen=_on_result_seen,
@@ -2724,12 +2772,14 @@ class FSMExecutor:
                 usage_events=collected_usage,
                 result_seen=result_seen[0],
             )
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as exc:
+            idled = exc.output == "idle_timeout"
             return ActionResult(
                 output="",
-                stderr="Baseline action timed out",
+                stderr="Baseline action idle-timed out" if idled else "Baseline action timed out",
                 exit_code=124,
-                duration_ms=timeout * 1000,
+                duration_ms=_now_ms() - start,
+                timeout_kind="idle" if idled else "wall",
                 result_seen=result_seen[0],
             )
 

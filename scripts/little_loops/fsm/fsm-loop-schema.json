@@ -94,6 +94,11 @@
       "description": "Default timeout for individual states in seconds",
       "minimum": 1
     },
+    "default_idle_timeout": {
+      "type": "integer",
+      "description": "Default idle timeout for individual states in seconds (silence, not wall-clock, per state). 0 disables idle detection (default).",
+      "minimum": 0
+    },
     "config": {
       "type": "object",
       "description": "Per-loop ll-config overrides (applied for the duration of this loop's execution)",
@@ -483,6 +488,11 @@
           "type": "integer",
           "description": "Action-level timeout in seconds",
           "minimum": 1
+        },
+        "idle_timeout": {
+          "type": "integer",
+          "description": "Kill the action if it emits no output for this many seconds (silence, not wall-clock). 0 disables idle detection (default). Resolved as state.idle_timeout or fsm.default_idle_timeout or 0.",
+          "minimum": 0
         },
         "on_maintain": {
           "type": "string",

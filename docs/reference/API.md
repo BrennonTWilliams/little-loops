@@ -5737,10 +5737,13 @@ class ActionResult:
     output: str       # stdout
     stderr: str       # stderr
     exit_code: int    # Exit code
-    duration_ms: int  # Execution time
+    duration_ms: int  # Execution time (elapsed, not the budget — FEAT-3033)
     usage_events: list[TokenUsage] = field(default_factory=list)  # Host-CLI token usage (ENH-2453)
     peak_rss_mb: float | None = None  # Peak subprocess RSS in MB (ENH-2453)
     result_seen: bool = False  # Stream-json "result" event observed before exit (BUG-2731)
+    session_id: str | None = None  # Host CLI session ID from stream-json system/init event (FEAT-2711)
+    timeout_kind: str | None = None  # "idle" | "wall" | None — discriminates an idle kill from
+                                      # a wall-clock kill on exit_code=124 (FEAT-3033)
 ```
 
 #### ActionRunner Protocol
@@ -5758,10 +5761,17 @@ class ActionRunner(Protocol):
         on_usage: UsageCallback | None = None,
         on_usage_detailed: DetailedUsageCallback | None = None,
         model: str | None = None,
+        working_dir: Path | None = None,
+        automation_profile: str | None = None,
+        idle_timeout: int = 0,  # Kill if no output for this many seconds; 0 disables (FEAT-3033)
     ) -> ActionResult: ...
 ```
 
 Implement this protocol to customize action execution (useful for testing). In the extension system, `ActionRunner` is also the contributed-actions runtime dispatch interface — extension plugins register runners against custom `action_type` strings via `ActionProviderExtension.provided_actions()`, and `FSMExecutor` dispatches to them through the `_contributed_actions` registry at runtime.
+
+`idle_timeout` is kwarg-gated at every executor call site (like `working_dir`/`automation_profile`): it's only passed when resolved to a non-zero value, so `ActionRunner` implementations predating FEAT-3033 keep working unchanged as long as idle detection isn't configured for the states they run.
+
+**Idle vs. wall-clock timeout.** `stateConfig.idle_timeout` / loop-level `default_idle_timeout` add a silence sensor alongside the existing wall-clock `timeout` / `default_timeout`, resolved with the same precedence (`state.idle_timeout or fsm.default_idle_timeout or 0`). `0` disables idle detection (the default) — a healthy long-running state that keeps producing output is never killed by it, however long it runs; only sustained silence trips it. On any timeout kill (`exit_code=124`), `ActionResult.timeout_kind` is `"idle"` or `"wall"`; the exit code stays `124` for both so BUG-1640/BUG-1815 error-routing is unaffected. The value flows into the interpolation context as `${prev.timeout_kind}` / `${captured.<name>.timeout_kind}` — read with `:default=` since checkpoints written before this field existed lack the key — so a downstream `shell_exit`-style classifier state can route a wedged process differently from a wall-clock kill. Shell and mcp states enforce idle via `last_output_at` tracking in their selector loops; prompt and baseline (sdk/batch) states pass through to `run_claude_command`'s existing `idle_timeout` implementation. Known boundary: `readline()`-based reads in the shell/mcp selector loops block until a newline or EOF, so a child that writes a partial line and then truly wedges mid-line is not caught by either sensor until it completes the line or exits — pre-existing behavior for the wall-clock sensor too, not introduced by idle detection. `_dispatch_live` (sdk/batch request paths with no subprocess) has no idle sensor and isn't in scope.
 
 ---
 

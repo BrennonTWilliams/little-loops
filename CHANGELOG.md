@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- FEAT-3033: Idle-timeout detection plumbed into the FSM action runner,
+  alongside the existing wall-clock `timeout`. New `stateConfig.idle_timeout`
+  and loop-level `default_idle_timeout` (both default `0`/disabled) kill a
+  state that stops producing output for that many seconds — distinct from a
+  wall-clock kill, which fires regardless of activity. Prompt/baseline states
+  pass through to the existing `run_claude_command` idle implementation;
+  shell/mcp selector loops (`runners.py`, `executor.py`) gained
+  `last_output_at` tracking. The kill cause is exposed as
+  `ActionResult.timeout_kind` (`"idle"` | `"wall"`, exit code stays `124` for
+  both so BUG-1640/BUG-1815 error-routing is unaffected) and surfaces to loop
+  authors as `${prev.timeout_kind}` / `${captured.<name>.timeout_kind}` for a
+  downstream `shell_exit`-style classifier to route a wedged process
+  differently from a slow-but-healthy one. Also fixes `duration_ms` on all
+  three timeout paths to report elapsed time rather than the configured
+  budget, and shell/mcp wall-clock resolution to treat `0`/negative as "no
+  deadline" rather than "already expired" (the BUG-3034 failure mode). This
+  is the prerequisite that unblocks BUG-3032.
 - FEAT-2414: `rn-build` end-to-end integration/acceptance gate. Until now every
   feature was built and self-judged in isolation (`goal-cluster` →
   `rn-implement`) and the spec's `## Acceptance Criteria` were only ever *read*

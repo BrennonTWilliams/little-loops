@@ -93,6 +93,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "backoff",
         "timeout",
         "default_timeout",
+        "default_idle_timeout",
         "maintain",
         "llm",
         "on_handoff",

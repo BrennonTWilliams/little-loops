@@ -656,6 +656,7 @@ class StateConfig:
     capture: str | None = None
     append_to_messages: str | None = None
     timeout: int | None = None
+    idle_timeout: int | None = None
     on_maintain: str | None = None
     max_retries: int | None = None
     on_retry_exhausted: str | None = None
@@ -738,6 +739,8 @@ class StateConfig:
             result["append_to_messages"] = self.append_to_messages
         if self.timeout is not None:
             result["timeout"] = self.timeout
+        if self.idle_timeout is not None:
+            result["idle_timeout"] = self.idle_timeout
         if self.on_maintain is not None:
             result["on_maintain"] = self.on_maintain
         if self.max_retries is not None:
@@ -873,6 +876,7 @@ class StateConfig:
             capture=data.get("capture"),
             append_to_messages=data.get("append_to_messages"),
             timeout=data.get("timeout"),
+            idle_timeout=data.get("idle_timeout"),
             on_maintain=data.get("on_maintain"),
             max_retries=data.get("max_retries"),
             on_retry_exhausted=data.get("on_retry_exhausted"),
@@ -1280,6 +1284,7 @@ class FSMLoop:
     backoff: float | None = None
     timeout: int | None = None
     default_timeout: int | None = None
+    default_idle_timeout: int | None = None
     maintain: bool = False
     singleton: bool = False  # BUG-2526: serialize loop-name conflicts regardless of scope
     llm: LLMConfig = field(default_factory=LLMConfig)
@@ -1377,6 +1382,8 @@ class FSMLoop:
             result["timeout"] = self.timeout
         if self.default_timeout is not None:
             result["default_timeout"] = self.default_timeout
+        if self.default_idle_timeout is not None:
+            result["default_idle_timeout"] = self.default_idle_timeout
         if self.maintain:
             result["maintain"] = self.maintain
         if self.singleton:
@@ -1543,6 +1550,7 @@ class FSMLoop:
             backoff=data.get("backoff"),
             timeout=data.get("timeout"),
             default_timeout=data.get("default_timeout"),
+            default_idle_timeout=data.get("default_idle_timeout"),
             maintain=data.get("maintain", False),
             singleton=data.get("singleton", False),
             llm=llm,

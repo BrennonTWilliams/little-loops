@@ -49,6 +49,7 @@ class ActionRunner(Protocol):
         model: str | None = None,
         working_dir: Path | None = None,
         automation_profile: str | None = None,
+        idle_timeout: int = 0,
     ) -> ActionResult:
         """Execute an action and return the result.
 
@@ -66,6 +67,8 @@ class ActionRunner(Protocol):
             automation_profile: ENH-2714 opt-in automation-context static-prefix
                 pruning profile name (prompt-mode only). None preserves full
                 unpruned behavior.
+            idle_timeout: FEAT-3033 — kill the action if it emits no output for
+                this many seconds (0 disables idle detection, the default).
 
         Returns:
             ActionResult with output, stderr, exit_code, duration_ms
@@ -105,6 +108,7 @@ class DefaultActionRunner:
         model: str | None = None,
         working_dir: Path | None = None,
         automation_profile: str | None = None,
+        idle_timeout: int = 0,
     ) -> ActionResult:
         """Execute action and return result, streaming output line by line.
 
@@ -123,6 +127,8 @@ class DefaultActionRunner:
             automation_profile: ENH-2714 opt-in automation-context static-prefix
                 pruning profile name (prompt-mode only). None preserves full
                 unpruned behavior.
+            idle_timeout: FEAT-3033 — kill the action if it emits no output for
+                this many seconds (0 disables idle detection, the default).
 
         Returns:
             ActionResult with execution details
@@ -183,15 +189,21 @@ class DefaultActionRunner:
                     model=model,
                     working_dir=working_dir,
                     automation_profile=automation_profile,
+                    idle_timeout=idle_timeout,
                     on_result_seen=_on_result_seen,
                     on_session_id_detected=_on_session_id,
                 )
-            except subprocess.TimeoutExpired:
+            except subprocess.TimeoutExpired as exc:
+                # FEAT-3033: run_claude_command sets output="idle_timeout" on an
+                # idle kill (subprocess_utils.py) versus a bare TimeoutExpired on
+                # a wall-clock kill — the only place this distinction is made.
+                idled = exc.output == "idle_timeout"
                 return ActionResult(
                     output="",
-                    stderr="Action timed out",
+                    stderr="Action idle-timed out" if idled else "Action timed out",
                     exit_code=124,
-                    duration_ms=timeout * 1000,
+                    duration_ms=_now_ms() - start,
+                    timeout_kind="idle" if idled else "wall",
                     result_seen=result_seen[0],
                     session_id=detected_session_id[0],
                 )
@@ -238,7 +250,11 @@ class DefaultActionRunner:
             start_new_session=True,
         )
         self._current_process = process
-        deadline = time.time() + timeout
+        # FEAT-3033: timeout=0 means "no wall-clock cap" (matches
+        # subprocess_utils.run_claude_command's convention); a falsy timeout
+        # must never compute a deadline in the past (BUG-3034).
+        deadline = time.time() + timeout if timeout else None
+        last_output_at = time.time()
 
         # ENH-2453: sample the subprocess's RSS while it runs (budget-gated).
         shell_sampler: RssSampler | None = None
@@ -256,21 +272,35 @@ class DefaultActionRunner:
             sel.register(process.stderr, selectors.EVENT_READ, data="stderr")
 
         timed_out = False
+        idled_out = False
         try:
             while sel.get_map():
                 # Bounded poll — never block longer than 1 second
-                remaining = deadline - time.time()
-                if remaining <= 0:
+                remaining = (deadline - time.time()) if deadline is not None else None
+                if remaining is not None and remaining <= 0:
                     timed_out = True
                     break
-                poll_timeout = min(1.0, remaining)
+                poll_timeout = min(1.0, remaining) if remaining is not None else 1.0
                 ready = sel.select(timeout=poll_timeout)
                 if not ready:
-                    # No pipes ready within poll window — loop re-checks deadline
+                    # No pipes ready within poll window — loop re-checks deadline/idle
+                    if idle_timeout and (time.time() - last_output_at) > idle_timeout:
+                        idled_out = True
+                        break
                     continue
                 for key, _mask in ready:
+                    # FEAT-3033 known boundary: readline() blocks until a
+                    # newline or EOF, so a child that writes a partial line
+                    # then goes silent is not caught by either sensor until it
+                    # eventually completes the line or exits. Fixing this
+                    # requires reading raw fds with os.read() instead, which
+                    # would require rewriting this loop's I/O model — deferred
+                    # (see FEAT-3033 Program Design "Accept it" option; a test
+                    # pins this as current, documented behavior rather than an
+                    # oversight).
                     line = key.fileobj.readline()  # type: ignore[union-attr]
                     if line:
+                        last_output_at = time.time()
                         if key.data == "stdout":
                             output_chunks.append(line)
                             if on_output_line:
@@ -280,13 +310,16 @@ class DefaultActionRunner:
                     else:
                         # EOF on this pipe — unregister it
                         sel.unregister(key.fileobj)
+                if idle_timeout and (time.time() - last_output_at) > idle_timeout:
+                    idled_out = True
+                    break
         finally:
             sel.close()
             self._current_process = None
 
         shell_peak_rss = shell_sampler.stop() if shell_sampler is not None else None
 
-        if timed_out:
+        if timed_out or idled_out:
             _kill_process_group(process)
             # Drain any remaining output after the kill
             try:
@@ -296,9 +329,10 @@ class DefaultActionRunner:
                 process.wait()
             return ActionResult(
                 output="".join(output_chunks),
-                stderr="".join(stderr_chunks) or "Action timed out",
+                stderr="".join(stderr_chunks) or ("Action idle-timed out" if idled_out else "Action timed out"),
                 exit_code=124,
-                duration_ms=timeout * 1000,
+                duration_ms=_now_ms() - start,
+                timeout_kind="idle" if idled_out else "wall",
                 peak_rss_mb=shell_peak_rss,
                 result_seen=False,
             )
@@ -345,6 +379,7 @@ class SimulationActionRunner:
         model: str | None = None,
         working_dir: Path | None = None,
         automation_profile: str | None = None,
+        idle_timeout: int = 0,
     ) -> ActionResult:
         """Prompt user for simulated result instead of executing.
 
@@ -365,7 +400,7 @@ class SimulationActionRunner:
             ActionResult with simulated exit code
         """
         # unused in simulation
-        del timeout, on_output_line, agent, tools, on_usage, model, working_dir
+        del timeout, on_output_line, agent, tools, on_usage, model, working_dir, idle_timeout
         self.calls.append(action)
         self.call_count += 1
 

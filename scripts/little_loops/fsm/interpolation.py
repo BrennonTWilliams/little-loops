@@ -45,8 +45,14 @@ class InterpolationContext:
 
     Attributes:
         context: User-defined variables from FSM context block
-        captured: Stored action results {varname: {output, stderr, exit_code, duration_ms}}
-        prev: Previous state result or None if first state
+        captured: Stored action results {varname: {output, stderr, exit_code,
+            duration_ms, timeout_kind}} (FEAT-3033: timeout_kind is "idle",
+            "wall", or None — access with :default= since older checkpoints
+            lack the key)
+        prev: Previous state result or None if first state (FEAT-3033: also
+            carries "timeout_kind" — access via
+            ${prev.timeout_kind:default=} since pre-change checkpoints lack
+            the key)
         result: Current evaluation result or None
         state_name: Current state name
         iteration: Current loop iteration (1-based)

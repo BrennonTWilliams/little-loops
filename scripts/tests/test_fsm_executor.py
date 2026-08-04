@@ -43,6 +43,7 @@ class MockActionRunner:
         default_factory=lambda: {"output": "", "stderr": "", "exit_code": 0}
     )
     working_dirs: list[Any] = field(default_factory=list)
+    idle_timeouts: list[int] = field(default_factory=list)
 
     use_indexed_order: bool = False
 
@@ -59,6 +60,7 @@ class MockActionRunner:
         model: str | None = None,
         working_dir: Any = None,
         automation_profile: str | None = None,
+        idle_timeout: int = 0,
     ) -> ActionResult:
         """Return configured result for action."""
         # Suppress unused variable warnings - these match the Protocol signature
@@ -74,6 +76,7 @@ class MockActionRunner:
             automation_profile,
         )
         self.working_dirs.append(working_dir)
+        self.idle_timeouts.append(idle_timeout)
         self.calls.append(action)
 
         # Use indexed results in order (when results were set as a list)
@@ -87,6 +90,7 @@ class MockActionRunner:
                 duration_ms=result_data.get("duration_ms", 100),
                 usage_events=result_data.get("usage_events", []),
                 result_seen=result_data.get("result_seen", False),
+                timeout_kind=result_data.get("timeout_kind"),
             )
 
         # Check for specific result by pattern
@@ -99,6 +103,7 @@ class MockActionRunner:
                     duration_ms=result_data.get("duration_ms", 100),
                     usage_events=result_data.get("usage_events", []),
                     result_seen=result_data.get("result_seen", False),
+                    timeout_kind=result_data.get("timeout_kind"),
                 )
 
         return ActionResult(
@@ -108,6 +113,7 @@ class MockActionRunner:
             duration_ms=self.default_result.get("duration_ms", 100),
             usage_events=self.default_result.get("usage_events", []),
             result_seen=self.default_result.get("result_seen", False),
+            timeout_kind=self.default_result.get("timeout_kind"),
         )
 
     def set_result(self, action: str, **kwargs: Any) -> None:
@@ -4666,10 +4672,15 @@ class TestDefaultActionRunnerProcessTracking:
             mock_sel.get_map.return_value = {"k": "v"}  # non-empty → loop runs
             mock_sel.select.return_value = []  # no data → timeout on deadline check
             mock_sel_cls.return_value = mock_sel
-            result = runner.run("slow-cmd", timeout=0, is_slash_command=False)
+            # FEAT-3033: timeout=0 now means "no wall-clock cap" (BUG-3034
+            # semantics) — use a small positive timeout so the deadline
+            # still fires. select() is mocked to return instantly, so this
+            # busy loop resolves in well under a second of real time.
+            result = runner.run("slow-cmd", timeout=0.05, is_slash_command=False)
 
         assert runner._current_process is None
         assert result.exit_code == 124
+        assert result.timeout_kind == "wall"
 
     def test_current_process_initially_none(self) -> None:
         """_current_process is None before any action is run."""
@@ -4804,10 +4815,14 @@ class TestFSMExecutorProcessTracking:
             mock_sel.get_map.return_value = {"k": "v"}  # non-empty → loop runs
             mock_sel.select.return_value = []  # no data → timeout
             mock_sel_cls.return_value = mock_sel
-            result = executor._run_subprocess(["slow-cmd"], timeout=0)
+            # FEAT-3033: timeout=0 now means "no wall-clock cap" (BUG-3034
+            # semantics) — use a small positive timeout so the deadline
+            # still fires.
+            result = executor._run_subprocess(["slow-cmd"], timeout=0.05)
 
         assert executor._current_process is None
         assert result.exit_code == 124
+        assert result.timeout_kind == "wall"
 
 
 class TestDefaultActionRunnerStderrDrain:

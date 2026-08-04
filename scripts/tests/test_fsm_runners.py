@@ -298,10 +298,15 @@ class TestDefaultActionRunnerShellPath:
             patch("little_loops.fsm.runners.selectors.DefaultSelector", return_value=sel),
             patch("little_loops.fsm.runners._kill_process_group") as mock_killpg,
         ):
-            result = runner.run("sleep 100", 0, False)  # timeout=0 → immediate deadline
+            # FEAT-3033: timeout=0 now means "no wall-clock cap" (BUG-3034
+            # semantics) — use a small positive timeout so the deadline still
+            # fires. sel.select() is mocked to return instantly, so this busy
+            # loop resolves in well under a second of real wall-clock time.
+            result = runner.run("sleep 100", 0.05, False)
 
         assert result.exit_code == 124
         assert "timed out" in result.stderr.lower()
+        assert result.timeout_kind == "wall"
         mock_killpg.assert_called_once_with(proc)
 
     def test_timeout_stderr_contains_message(self) -> None:
@@ -320,7 +325,9 @@ class TestDefaultActionRunnerShellPath:
             patch("little_loops.fsm.runners.selectors.DefaultSelector", return_value=sel),
             patch("little_loops.fsm.runners._kill_process_group"),
         ):
-            result = runner.run("sleep 100", 0, False)
+            # FEAT-3033: timeout=0 now means "no wall-clock cap"; use a small
+            # positive value so the deadline still fires (see comment above).
+            result = runner.run("sleep 100", 0.05, False)
 
         assert result.exit_code == 124
         assert "timed out" in result.stderr.lower()
@@ -346,7 +353,9 @@ class TestDefaultActionRunnerShellPath:
             patch("little_loops.fsm.runners.selectors.DefaultSelector", return_value=sel),
             patch("little_loops.fsm.runners._kill_process_group") as mock_killpg,
         ):
-            result = runner.run("hang forever", 0, False)
+            # FEAT-3033: timeout=0 now means "no wall-clock cap"; use a small
+            # positive value so the deadline still fires (see comment above).
+            result = runner.run("hang forever", 0.05, False)
 
         assert result.exit_code == 124
         mock_killpg.assert_called_once_with(proc)
@@ -467,7 +476,11 @@ class TestDefaultActionRunnerSlashPath:
             result = runner.run("/ll:slow-skill", 60, True)
 
         assert result.exit_code == 124
-        assert result.duration_ms == 60 * 1000
+        # FEAT-3033: duration_ms now reports elapsed time, not the budget —
+        # a wall-clock kill firing immediately (mocked) elapses far less than
+        # the 60s timeout it was killed by.
+        assert result.duration_ms < 60 * 1000
+        assert result.timeout_kind == "wall"
 
     def test_on_usage_detailed_forwarded_to_run_claude_command(self) -> None:
         runner = DefaultActionRunner()

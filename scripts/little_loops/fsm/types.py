@@ -102,6 +102,11 @@ class ActionResult:
             (shell, simulation) where no stream-json protocol applies
         session_id: Host CLI session ID from the stream-json system/init event
             (FEAT-2711); None for non-host-CLI actions or when undetected.
+        timeout_kind: Distinguishes an idle kill from a wall-clock kill on a
+            timeout (FEAT-3033); "idle", "wall", or None when the action did
+            not time out. exit_code stays 124 for both kinds (BUG-1640 /
+            BUG-1815 routing is unaffected) — this field is the only
+            discriminator.
     """
 
     output: str
@@ -112,6 +117,7 @@ class ActionResult:
     peak_rss_mb: float | None = None
     result_seen: bool = False
     session_id: str | None = None
+    timeout_kind: str | None = None
 
 
 # Type for event callback

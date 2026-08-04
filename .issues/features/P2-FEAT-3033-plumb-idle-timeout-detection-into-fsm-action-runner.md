@@ -3,9 +3,10 @@ id: FEAT-3033
 title: Plumb idle-timeout detection into the FSM action runner
 type: FEAT
 priority: P2
-status: open
+status: done
 discovered_date: 2026-08-03
 captured_at: '2026-08-04T04:17:13Z'
+completed_at: '2026-08-04T07:59:27Z'
 discovered_by: capture-issue
 relates_to:
 - BUG-3032
@@ -766,7 +767,59 @@ verdict; `_run_baseline` corrected to `_run_baseline_arm` (`executor.py:2680`),
 noting both A/B arms need the value; and the `ll-loop run --idle-timeout` open
 scope question is closed as a non-goal, deferred to ENH-2977.
 
+## Resolution
+
+Implemented per the Implementation Steps, all 13 acceptance criteria delivered:
+
+- **Steps 1-4 (BUG-3032 unblock)**: `idle_timeout` on `StateConfig` and
+  `default_idle_timeout` on `FSMLoop` (schema.py, fsm-loop-schema.json,
+  validation/_base.py), `timeout_kind: str | None` on `ActionResult`
+  (types.py), surfaced through `prev_result`/`captured` and interpolable as
+  `${prev.timeout_kind:default=}`. Prompt path (`runners.py`) and
+  `_run_baseline_arm` (executor.py) forward `idle_timeout` to
+  `run_claude_command` and map its `output == "idle_timeout"` sentinel to
+  `timeout_kind`. `duration_ms` fixed to elapsed time on all three timeout
+  paths. `idle_timeout` added to `ActionRunner.run`/`DefaultActionRunner.run`/
+  `SimulationActionRunner.run`, kwarg-gated at every executor dispatch site
+  (mcp_tool, contributed, default) exactly like `working_dir`/
+  `automation_profile` — omitted when resolved to 0/disabled.
+- **Step 5 (shell + mcp)**: `last_output_at` tracking added to the shell
+  selector loop (`runners.py`) and `_run_subprocess` (executor.py, mcp path).
+  `deadline = time.time() + timeout if timeout else None` fixes the BUG-3034
+  failure mode for both loops (0/negative timeout now means "no deadline").
+  **Blocking-`readline()` decision: "Accept it"**, not "fix it" — switching to
+  `os.read()` was prototyped but reverted: it requires real OS file
+  descriptors and breaks ~20 existing tests across `test_fsm_runners.py` /
+  `test_fsm_executor.py` that mock `readline()` on fake file objects (no
+  backing fd). The boundary (a partial line blocks past both sensors until
+  completed or EOF) is documented inline at both call sites and pinned by
+  `test_partial_line_liveness_boundary_documented`. mcp path keeps the
+  existing `mcp_result` `"timeout"` verdict for both kill causes, per the
+  issue's recommendation.
+- **Tests**: `scripts/tests/test_feat3033_idle_timeout.py` (25 tests) covers
+  schema round-trip, prompt-path sentinel mapping, shell/mcp idle kill +
+  steady-output-not-killed, the partial-line boundary, precedence,
+  kwarg-gating, baseline-arm forwarding, and an end-to-end
+  `${prev.timeout_kind}` → `shell_exit`-classifier routing test (both idle and
+  wall-clock branches). Existing tests that asserted `timeout=0` ⇒ instant
+  kill (the pre-BUG-3034-style semantics) and `duration_ms == budget` were
+  updated to the new, intentional semantics
+  (`test_fsm_runners.py`, `test_fsm_executor.py`).
+- **Docs**: `docs/reference/API.md` `ActionResult`/`ActionRunner` sections
+  updated (including previously-stale missing fields); `common.yaml`'s
+  `llm_gate` fragment now documents idle vs. wall-clock; CHANGELOG entry added
+  under `[1.153.0]`.
+- Full suite: `python -m pytest scripts/tests/` — 18238 passed, 42 skipped, no
+  failures (one unrelated pre-existing failure,
+  `test_execute_sub_loop_signature_drift_guard` on an untouched `run_effort`
+  param drift, confirmed present on `main` before this change via
+  `git stash`). `ruff check` and `mypy scripts/little_loops/` clean on all
+  touched files (mypy's 2 remaining repo-wide errors are in
+  `cli/issues/normalize.py`, untouched by this change).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-08-04T07:59:18 - `b564686a-bacb-4efa-aadc-e6e135e34623.jsonl`
+- `/ll:ready-issue` - 2026-08-04T07:04:12 - `f5b0cf95-c838-46d7-9cd5-d10d0fff4ede.jsonl`
 - `/ll:confidence-check` - 2026-08-04T06:42:05 - `8514697a-5862-4a38-a8e1-5c656efdf8f8.jsonl`
 - `/ll:refine-issue` - 2026-08-04T06:33:10 - `58473744-ba97-43e3-9145-5be88f2da018.jsonl`
 - `/ll:confidence-check` - 2026-08-04T06:26:01 - `3cb0a0fa-c62e-4f00-bb85-ee1d66537a41.jsonl`

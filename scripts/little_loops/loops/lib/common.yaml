@@ -48,12 +48,21 @@ fragments:
     description: |
       LLM prompt state evaluated by structured yes/no output.
       State must supply: action (the prompt text), evaluate.prompt (the yes/no question),
-      on_yes, on_no (and optionally on_error, timeout, capture).
+      on_yes, on_no (and optionally on_error, timeout, idle_timeout, capture).
       Timeout budget: when the prompt performs multiple MCP tool calls followed by synthesis
       (~10 calls), set timeout: 1500 or higher at the state level. The 3600s executor
       fallback only applies when neither state-level timeout: nor loop-level default_timeout:
       is set — a low default_timeout: bypasses the fallback and will kill MCP-heavy prompts
       mid-synthesis.
+      Idle vs. wall-clock (FEAT-3033): timeout: bounds total duration regardless of activity —
+      a healthy long-running synthesis and a wedged prompt look identical to it. idle_timeout:
+      (state-level) / default_idle_timeout: (loop-level) instead kills only on sustained
+      silence, so a state can run arbitrarily long while still producing output. Prefer
+      idle_timeout: over a large timeout: when the real risk is a wedged process rather than
+      a slow-but-healthy one; the two compose (whichever fires first wins), and idle_timeout: 0
+      (the default) disables idle detection entirely. On a kill, ${prev.timeout_kind:default=}
+      is "idle" or "wall" — read it in a downstream shell_exit classifier state to route a
+      wedge differently from a slow-but-legitimate run.
     action_type: prompt
     evaluate:
       type: llm_structured
