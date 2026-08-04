@@ -21,7 +21,12 @@ dissent}`) before the primary model commits to an approach.
 ## Children
 
 - **FEAT-3037** — Host-agnostic advisor: invocation mechanism, config,
-  capability floor, and `ll-doctor` check (slice 1)
+  capability floor, and `ll-doctor` check (slice 1). **Decomposed**
+  (scored Very Large) into three grandchildren, all still open:
+  - **FEAT-3042** — Advisor transport: shared `run_blocking_json` helper
+  - **FEAT-3043** — Advisor configuration: `AdvisorConfig` block
+  - **FEAT-3044** — Advisor core: `ll-advise` CLI, capability floor, and
+    `ll-doctor` check (depends on FEAT-3042, FEAT-3043)
 - **FEAT-3038** — Advisor signal-gated auto-consults and per-task budget:
   wires `confidence_gate`/`pre_done` triggers and `max_consults_per_task`
   (slice 2)
@@ -29,3 +34,30 @@ dissent}`) before the primary model commits to an approach.
   FSM loops escalate on stall and route on the verdict (slice 3)
 - **FEAT-3040** — Advisor consult telemetry in `history.db`: persists
   consults for `ll-ctx-stats` and downstream analytics (slice 4)
+
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-08-04:_
+
+Verdict: **OUTDATED** (corrected). FEAT-3037 ("slice 1") shows `status: done`
+but its Resolution is a decomposition, not an implementation — it was split
+into FEAT-3042/FEAT-3043/FEAT-3044 (all still `open`), which the `## Children`
+section previously did not mention. Updated the section above to reflect the
+decomposition. `epic-progress` rollup walks `parent:` transitively, so the
+grandchildren already count toward this epic's progress mechanically; this
+was a documentation gap, not a rollup bug.
+
+Also found and fixed a stale dependency: FEAT-3038 and FEAT-3039 both
+declared `depends_on: [3037]`. Since FEAT-3037 is `status: done`, dependency
+resolvers treat that edge as satisfied even though the actual slice-1
+deliverables don't exist yet (they're still open under FEAT-3042/3043/3044).
+Repointed both to `depends_on: [FEAT-3044]` (FEAT-3044 already correctly
+depends on FEAT-3042 and FEAT-3043).
+
+No active required decisions-log rules to check (log has no entries).
+Parent backlinks on all four direct children (FEAT-3037/3038/3039/3040)
+correctly resolve to `EPIC-3041`.
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-08-04T21:29:47 - `e72897bf-a708-4dcd-aeaa-907564ef9e34.jsonl`

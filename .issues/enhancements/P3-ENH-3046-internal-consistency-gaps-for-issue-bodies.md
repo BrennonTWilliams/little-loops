@@ -1,16 +1,17 @@
 ---
 id: ENH-3046
-title: 'Internal-consistency gap kinds in format-check + AC-vs-design pass in refine-issue'
+title: Internal-consistency gap kinds in format-check + AC-vs-design pass in refine-issue
 type: ENH
 priority: P3
 status: open
 discovered_by: capture-issue
 discovered_date: 2026-08-04
-captured_at: "2026-08-04T20:47:11Z"
+captured_at: '2026-08-04T20:47:11Z'
 relates_to:
 - ENH-2946
 - FEAT-3048
 - FEAT-2942
+- ENH-3049
 labels:
 - cli
 - issues

@@ -8,7 +8,7 @@ status: open
 testable: true
 discovered_date: 2026-08-03
 depends_on:
-- 3037
+- FEAT-3044
 labels:
 - planning-hub
 ---
@@ -181,3 +181,7 @@ non-fatal: a failed consult logs and proceeds, never blocking the primary path.
 ## Status
 
 **Open** | Created: 2026-08-03 | Priority: P3
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-08-04T21:29:47 - `e72897bf-a708-4dcd-aeaa-907564ef9e34.jsonl`

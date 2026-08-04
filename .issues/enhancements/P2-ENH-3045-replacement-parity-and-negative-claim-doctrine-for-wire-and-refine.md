@@ -1,19 +1,27 @@
 ---
 id: ENH-3045
-title: 'Replacement parity + negative-claim doctrine for /ll:wire-issue and /ll:refine-issue'
+title: Replacement parity + negative-claim doctrine for /ll:wire-issue and /ll:refine-issue
 type: ENH
 priority: P2
 status: open
 discovered_by: capture-issue
 discovered_date: 2026-08-04
-captured_at: "2026-08-04T20:47:11Z"
+captured_at: '2026-08-04T20:47:11Z'
 relates_to:
 - FEAT-3048
 - FEAT-2942
+- ENH-3050
+- ENH-3049
 labels:
 - skills
 - issues
 - quality
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-3045: Replacement parity + negative-claim doctrine for wire/refine
@@ -29,6 +37,11 @@ issue is about to replace, and never justify a negative finding**:
    artifact with a disposition (preserved / changed / dropped + why).
 2. **Negative-claim doctrine** — a conclusion of the form "no existing implementation exists"
    must name what was searched, and must search by *capability*, not by algorithm name.
+3. **Claim grounding** — the same doctrine applied to *positive* claims about existing code: an
+   assertion that a symbol is reusable, unchanged, or behaves a certain way must quote the line
+   that makes it true, not merely name the symbol. `FEAT-3048` is the mechanical sibling — it
+   verifies that a cited symbol *exists*; this half covers whether the claim *about* it holds,
+   which is not mechanically checkable and so belongs with the doctrine.
 
 Explicitly **not** parented to EPIC-2938: that epic's Scope excludes rewriting reasoning-heavy
 skills like `refine-issue`, and these are prompt/doctrine changes, not prose→CLI conversions.
@@ -80,6 +93,18 @@ refine emit a `### Behavior Parity` subsection under Integration Map:
 capability — the input/output shape, and the callers of the shared primitive the new code
 would call — and the resulting claim must state what was searched.
 
+**Claim grounding.** A `### Program Design` or `### Call Path` line asserting that an existing
+symbol is reusable, unchanged, or behaves a given way must quote the specific line that makes
+the claim true. Naming the symbol is not grounding — an anchor that *resolves* is what
+`program_design_nonspecific` already checks, and resolution says nothing about the claim.
+
+This issue's own Call Path is the worked example: it states that `_heading_bodies(content,
+"Behavior Parity")` is "reusable to confirm no `### Behavior Parity` section exists." The symbol
+resolves, so every gate passed it. Its body (`issue_parser.py:687`) is
+`rf"^(#{{2,3}})\s+{re.escape(heading)}\s*$"` — anchored and exact, so it cannot match the
+per-artifact heading this issue prescribes in Expected Behavior
+(`### Behavior Parity — skills/link-epics/SKILL.md`). One quoted line would have caught it.
+
 ## Motivation
 
 Parity alone accounts for 3 of the 7 defects found reviewing FEAT-2942 after three passes; the
@@ -95,10 +120,15 @@ what you looked for.*
   requirement to the Agent 1 and Agent 3 prompts (Phase 4).
 - **Refine** (`commands/refine-issue.md`): same parity requirement in its Integration Map
   emission (Step 5a).
-- **Detection** (optional, same change): a `missing_behavior_parity` gap kind in
+- **Detection** (required, same change): a `missing_behavior_parity` gap kind in
   `check_format_gaps()` — issue cites a file it will rewrite, that file exists, no
   `### Behavior Parity` section. Follows the `ENH-2946` precedent for adding gap kinds and
-  makes the doctrine enforceable rather than advisory.
+  makes the doctrine enforceable rather than advisory. **Not optional**: `ENH-3047` Phase 1.6
+  consumes this gap kind by name, and the evidence of this issue's own three-pass history is
+  that prose doctrine in these skills does not hold on its own.
+- **Claim grounding**: extend the same Agent 1/3 prompt change to require a quoted line behind
+  any positive claim about existing code, and require refine's Program Design lines to carry
+  the quote rather than only a resolving anchor.
 
 `/ll:wire-issue` is a skill and `/ll:refine-issue` is a command — both markdown, but confirm
 the wire skill's line budget (`ll-verify-skills` caps `SKILL.md` at 500 lines; it is currently
@@ -109,28 +139,169 @@ the wire skill's line budget (`ll-verify-skills` caps `SKILL.md` at 500 lines; i
 ### Files to Modify
 - `skills/wire-issue/SKILL.md` — Phase 3/4/8a changes (watch the 500-line cap; 455 today)
 - `commands/refine-issue.md` — Integration Map emission step
-- `scripts/little_loops/issue_parser.py` + `cli/issues/format_check.py` — optional gap kind
+- `scripts/little_loops/issue_parser.py` + `cli/issues/format_check.py` — `missing_behavior_parity`
+  gap kind (required; `ENH-3047` depends on it by name)
 - `scripts/tests/test_wire_issue_static_layer.py` and
   `scripts/tests/test_refine_issue_command.py` — the existing structural test homes for these
   two artifacts; extend rather than adding a new test module
 - `docs/reference/COMMANDS.md` — updated descriptions
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/issues/__init__.py:139` — top-level `format-check` subcommand
+  help text repeats the same gap-kind enumeration (`missing/renamed/.../ambiguous_file_ref`)
+  as `format_check.py`'s own `--help` string; a third copy, easy to miss [Agent 1 finding]
+- `.gemini/skills/wire-issue/SKILL.md` and `.kimi-code/skills/wire-issue/SKILL.md` — host
+  mirrors of `skills/wire-issue/SKILL.md`; `test_wire_issue_skill_mirror_matches_source`
+  (`scripts/tests/test_wiring_skills_and_commands.py:336-346`, ENH-2996) asserts the
+  post-frontmatter body is byte-identical to the source. **Any edit to
+  `skills/wire-issue/SKILL.md` breaks this test until the mirrors are regenerated** via
+  `ll-adapt --host gemini --apply && ll-adapt --host kimi --apply`. `commands/refine-issue.md`
+  has no equivalent mirror test (`.kimi-code/skills/ll-refine-issue/SKILL.md` is a thin
+  pointer stub, not a body copy) [Agent 1/2 finding]
+
+### Correction to stated test homes
+- `scripts/tests/test_wire_issue_static_layer.py` does **not** test
+  `skills/wire-issue/SKILL.md` prose despite its name — it exercises
+  `little_loops.decisions.load_coupling_entries()` against `.ll/decisions.yaml` fixtures
+  (Phase 3.5 Static Coupling Layer only) and never opens the SKILL.md file. The actual
+  structural test home for SKILL.md content (and for `commands/refine-issue.md` via a
+  separate `DOC_STRINGS_PRESENT` table) is
+  `scripts/tests/test_wiring_skills_and_commands.py`, which drives parametrized
+  `(doc_rel, needle, issue_id)` tuples through `test_string_present_in_doc` /
+  `test_string_absent_from_doc` (e.g. the ENH-2996 entries at lines 210, 274). A new
+  `### Behavior Parity` doctrine-text assertion belongs here, not in
+  `test_wire_issue_static_layer.py` [Agent 3 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md:1872` — "reports gaps in **fifteen** classes" + the full enumerated
+  parenthetical list ending `...ambiguous_file_ref\` (each documented below)` needs
+  "sixteen" + a new `missing_behavior_parity` bullet; `:1942`'s JSON example output line also
+  needs the new key inserted [Agent 2 finding]
+- `docs/reference/API.md:862` — same "fifteen gap classes" count + full name list; a sibling
+  `- **missing_behavior_parity** (ENH-3045) — ...` bullet is needed following the
+  `ambiguous_file_ref` bullet at `:875` [Agent 2 finding]
+- `docs/reference/COMMANDS.md` — two separate `/ll:wire-issue` descriptions need the new
+  category, not just "descriptions" generically: the **"Wiring categories searched" bullet
+  list** (~line 265-270: Callers/Config/Tests/Docs/Side effects — no Behavior Parity entry)
+  and the standalone summary sentence at line 259 ("traces the _where_: every caller,
+  importer, config entry, doc section, test file...") [Agent 2 finding]
+- `docs/guides/ISSUE_MANAGEMENT_GUIDE.md:306` — a second, independent prose description of
+  what `wire-issue` traces ("callers, config, docs, tests") in the pipeline guide, separate
+  from the CLI reference and equally stale once a parity category is added [Agent 2 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_ll_issues_format_check.py:326-347` — the hardcoded full-`to_dict()`
+  JSON-equality assertion (each key carries an `# ENH-XXXX:` comment per convention) needs a
+  `"missing_behavior_parity": [...] # ENH-3045` line added
+- `scripts/tests/test_ll_issues_format_check.py` — new `TestMissingBehaviorParity`-style
+  class, CLI-integration level, following `TestAmbiguousFileRef` (718-838, `--all` and
+  `--format json` variants) or the duplicate-block tests (1680-1717)
+- `scripts/tests/test_issue_parser.py` — new class near `TestStackedFindingsBlocks` (4269),
+  direct unit test of `_heading_bodies(content, "Behavior Parity")` returning `[]` when the
+  section is absent — the absence case is not currently covered by any existing
+  `_heading_bodies` test
+- `scripts/tests/test_wiring_skills_and_commands.py` — append `(doc_rel, needle, issue_id)`
+  tuples to `DOC_STRINGS_PRESENT` for both `skills/wire-issue/SKILL.md` and
+  `commands/refine-issue.md` asserting the `### Behavior Parity` doctrine text is present
+  (e.g. `("skills/wire-issue/SKILL.md", "### Behavior Parity", "ENH-3045")`) — this is the
+  only test surface possible for the capability-search doctrine itself, since it is pure
+  agent-prompt prose with no Python code path to unit test
+- `scripts/tests/test_wiring_skills_and_commands.py::test_wire_issue_skill_mirror_matches_source`
+  (336-346) — will fail as soon as `skills/wire-issue/SKILL.md` is edited; run
+  `ll-adapt --host gemini --apply && ll-adapt --host kimi --apply` before this test is green
+
+### Configuration
+_Checked: `scripts/little_loops/config-schema.json` and `.ll/decisions.yaml` coupling
+entries — no `FormatGaps` field names appear in either; this axis is clean, no edits needed._
+
 ### Similar Patterns
 - `ENH-2946` — extending `format-check` with new gap kinds
 - `ENH-494` — SKILL.md companion-file extraction when over the line cap
+- `ENH-2996` — host-mirror sync test pattern (`test_wiring_skills_and_commands.py`) that any
+  `skills/wire-issue/SKILL.md` edit must satisfy
+
+## Program Design
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-04 — based on codebase analysis:_
+
+### Types
+- `missing_behavior_parity: list[str]` — new `FormatGaps` field, `scripts/little_loops/issue_parser.py:236-259`; alongside `stale_file_ref`/`ambiguous_file_ref`/`duplicate_findings_block`, each of which is also a plain `list[str]`.
+- `RefStatus` — `"resolved" | "stale" | "unresolvable_form" | "planned_new" | "ambiguous"`, `scripts/little_loops/text_utils.py`; a parity-gap check filters for `"resolved"` refs near rewrite/delete/delegate language.
+
+### Signatures
+- `check_format_gaps(issue_path: Path, templates_dir: Path | None = None, issue_statuses: dict[str, str] | None = None, ref_index: RefIndex | None = None) -> FormatGaps` — `scripts/little_loops/issue_parser.py:342-347`; unchanged signature, the new gap kind is an added field plus a detection block inside the existing body.
+- `build_ref_index(root: Path) -> RefIndex` — `scripts/little_loops/text_utils.py:161`
+- `classify_file_ref(ref: str, index: RefIndex, *, line: str = "") -> RefStatus` — `scripts/little_loops/text_utils.py:201`
+- `classify_issue_refs(content: str, index: RefIndex) -> dict[str, RefStatus]` — `scripts/little_loops/text_utils.py:313`
+- `_heading_bodies(content, "Behavior Parity")` — `scripts/little_loops/issue_parser.py:677-693`; existing H2/H3 section-body lookup already used by `unmarked_superseded_directive`/`superseded_marker_count`, reusable to confirm no `### Behavior Parity` section exists.
+
+### Call Path
+- **wire-issue**: Phase 3 `EXISTING_WIRING` extraction (`skills/wire-issue/SKILL.md:100-127`) gains a sibling `REPLACED_ARTIFACTS` block → Phase 4 Agent 1 (codebase-locator, `SKILL.md:145-182`) and Agent 3 (codebase-pattern-finder, `SKILL.md:215-244`) prompts get the capability-search instruction appended after their existing boilerplate close → Phase 8a Integration Map Updates (`SKILL.md:330-380`) emits a `### Behavior Parity` subsection alongside the existing `### Documentation`/`### Tests` subsections, following the same heading + `_Wiring pass added by \`/ll:wire-issue\`:_` provenance-line shape → Phase 8c Preservation Rule (`SKILL.md:400-406`) governs it identically (append-only).
+- **refine-issue**: Step 5a Integration Map enrichment template (`commands/refine-issue.md:338-365`) gains a sixth `### Behavior Parity` subsection → written via `ll-issues fold-findings [ID] --section "Integration Map"` (`commands/refine-issue.md:485-516`), same append-only, `--dry-run`-aware route already used for every other subsection.
+- **gap-kind detection**: `check_format_gaps()` (`scripts/little_loops/issue_parser.py:342-582`) gains a detection block after the existing `ref_index` handling (`:571-582`) and before `_duplicate_findings_blocks` (`:599`) → calls `classify_issue_refs()` to find `"resolved"` file refs near rewrite/delete/delegate keywords, then `_heading_bodies()` to confirm no `### Behavior Parity` heading exists → populates `FormatGaps.missing_behavior_parity` → rendered by `cli/issues/format_check.py`'s `_print_gaps()` (`:132-162`) and help text (`:61-65`), following the ENH-2999/ENH-2993 precedent for adding a gap kind.
 
 ## Implementation Steps
 
 1. Add the parity step + table emission to wire and refine.
-2. Add the capability-search requirement to wire's Agent 1/3 prompts.
-3. Optional `missing_behavior_parity` gap kind + tests.
-4. Validate against FEAT-2942: parity table surfaces the corpus/tier/orphan gaps.
+2. Add the capability-search and claim-grounding requirements to wire's Agent 1/3 prompts and to
+   refine's Program Design emission.
+3. `missing_behavior_parity` gap kind + tests (required — see the four-site note in the Wiring
+   Phase below; `ENH-3047` consumes it by name).
+4. Validate against FEAT-2942: parity table surfaces the corpus/tier/orphan gaps, and the
+   union-find negative claim is either retracted or names `batch_similarity()`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Inside `scripts/little_loops/issue_parser.py`, the new `missing_behavior_parity` field
+  needs edits at **four** distinct sites, not one: the `FormatGaps` dataclass field
+  (`:236-259`), the `has_gaps` OR-chain (`:260-279`), `to_dict()` (`:281-299`), and the
+  detection block itself — missing any of the first three silently drops the gap from the
+  exit-code signal or JSON output even though detection ran correctly
+- Update `scripts/little_loops/cli/issues/format_check.py` in three places: `_print_gaps()`
+  (132-162), the `add_format_check_parser` `--help` string (61-65), and the
+  `cmd_format_check()` docstring (168-175) — three separate copies of the same enumeration
+- Update `scripts/little_loops/cli/issues/__init__.py:139` — the top-level subcommand help
+  text repeats the gap-kind list a third time
+- Update `docs/reference/CLI.md` and `docs/reference/API.md` — "fifteen" → "sixteen" gap
+  classes, plus a new per-kind bullet in each
+- Update `docs/reference/COMMANDS.md`'s wiring-categories bullet list and summary sentence,
+  and `docs/guides/ISSUE_MANAGEMENT_GUIDE.md:306` — both independently describe what
+  wire-issue traces and go stale together
+- Add `_heading_bodies(content, "Behavior Parity") == []` absence-case unit test in
+  `scripts/tests/test_issue_parser.py`, and `DOC_STRINGS_PRESENT` doctrine-text entries in
+  `scripts/tests/test_wiring_skills_and_commands.py` (not `test_wire_issue_static_layer.py`
+  — see correction note in Integration Map)
+- After editing `skills/wire-issue/SKILL.md`, run
+  `ll-adapt --host gemini --apply && ll-adapt --host kimi --apply` to regenerate
+  `.gemini/skills/wire-issue/SKILL.md` / `.kimi-code/skills/wire-issue/SKILL.md` before
+  `test_wire_issue_skill_mirror_matches_source` will pass
+- Cross-issue check (no action needed): `ENH-3047`'s Phase 1.6 already assumes the field
+  name `missing_behavior_parity` and frames its dependency on this issue as soft — confirmed
+  consistent with this issue's proposal, no reconciliation needed
 
 ## Impact
 
-- **Priority**: P2 — 4 of 7 observed defects, prompt-level effort
-- **Effort**: Low-Medium — markdown doctrine; optional small Python gate
-- **Risk**: Low — additive; worst case is a parity table on issues that don't need one
+- **Priority**: P2 — 4 of 7 observed defects, and `ENH-3047` is blocked on the gap kind
+- **Effort**: Medium — the doctrine half is markdown, but the now-required gap kind is a
+  four-site change in `issue_parser.py` (dataclass field, `has_gaps` OR-chain, `to_dict()`,
+  detection block), three enumeration copies across `format_check.py` and
+  `cli/issues/__init__.py`, four doc files, and three test surfaces. Re-rated up from
+  "Low-Medium" once the gap kind stopped being optional.
+- **Risk**: Low-Medium — the doctrine half is additive (worst case: a parity table on an issue
+  that doesn't need one), but `format-check` exits 1 on any gap and `autodev.yaml:1538` reads
+  its JSON in a routing gate, so a false-positive parity gap mis-routes real issues. The
+  detection rule needs its keyword list, proximity rule, and escape hatch pinned down before
+  implementation — see `ENH-3050`.
 
 ## Related Key Documentation
 
@@ -143,4 +314,7 @@ the wire skill's line budget (`ll-verify-skills` caps `SKILL.md` at 500 lines; i
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-04T21:22:57 - `e8e39a33-2d58-481a-aabd-651cc7d53758.jsonl`
+- `/ll:wire-issue` - 2026-08-04T21:20:39 - `90ea35aa-80f8-414c-acb5-630c56fbc5e6.jsonl`
+- `/ll:refine-issue` - 2026-08-04T21:02:31 - `51b5dc42-42bc-4a42-9db0-7c590083bc0b.jsonl`
 - `/ll:capture-issue` - 2026-08-04T20:50:27 - `2a9240a9-e6df-4ed5-ad2a-73a280bc7d8b.jsonl`
