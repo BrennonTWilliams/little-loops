@@ -9,6 +9,7 @@ discovered_by: human
 relates_to:
 - BUG-2976
 - FEAT-488
+- BUG-3034
 labels:
 - cli
 - ll-auto

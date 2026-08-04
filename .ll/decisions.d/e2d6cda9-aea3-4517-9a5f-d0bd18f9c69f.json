@@ -1,0 +1,11 @@
+{
+  "id": "c7b04cb1-d18d-4862-a5dc-0d09a925e0df",
+  "type": "decision",
+  "timestamp": "2026-08-04T04:20:19Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "FSM has only a wall-clock liveness sensor; idle detection is the prerequisite for removing the hard-coded 3600s cap on prompt states (BUG-3032).",
+  "rule": "Captured: Plumb idle-timeout detection into the FSM action runner",
+  "scope": "issue",
+  "issue": "FEAT-3033"
+}
