@@ -17,6 +17,12 @@ labels:
 - cli
 - issues
 - epics
+confidence_score: 93
+outcome_confidence: 76
+score_complexity: 16
+score_test_coverage: 20
+score_ambiguity: 18
+score_change_surface: 22
 ---
 
 # FEAT-2942: `ll-issues link-epics` — cluster orphans and propose EPIC assignment/synthesis
@@ -52,9 +58,80 @@ Build on ENH-2941's consolidated similarity (`text_utils.py`). Reuse `ll-issues 
 3. Rewrite `skills/link-epics/SKILL.md` to delegate (~362 → well under 100 lines).
 4. Tests: fixture corpus with known clusters; threshold/tier boundaries; `--apply` writes both directions and is idempotent.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-04 — based on codebase analysis:_
+
+- Test coverage precedent for a fixture corpus with known clusters/threshold boundaries: `scripts/tests/test_link_epics_skill.py` (`TestJaccardScoringBuckets`, line 154-193) and `scripts/tests/test_ll_issues_find_similar.py` already establish this shape for the shared `text_utils.py` scoring layer this issue builds on.
+- `--apply` idempotency precedent: `scripts/tests/test_link_cli.py` covers `ll-issues link`'s idempotent-write behavior, the closest existing test model for `apply_assignment()`'s round-trip-safe write.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Reconcile `skills/link-epics/SKILL.md`'s frontmatter `argument-hint` (currently `--auto`/`--min-score`/`--min-cluster`) with the new CLI's actual flags (`--mode`/`--threshold`/`--apply`) — don't just delegate under stale flag names.
+- Update `skills/link-epics/agents/openai.yaml`'s `interface.short_description` to drop Jaccard-specific wording, following `skills/map-dependencies/agents/openai.yaml`'s algorithm-agnostic phrasing.
+- Rewrite `docs/reference/COMMANDS.md`'s `/ll:link-epics` description (line 102), skill catalog row (line 1037), and `--auto`-flag reference table entry (line 16) to describe delegation instead of inline Jaccard/tier scoring.
+- Implement `apply_assignment()`'s `## Children` body-section append using `scripts/little_loops/cli/issues/epic_consistency.py`'s `_section_bounds()`/`atomic_write()` pattern (line 88/209) — no existing shared helper covers markdown body-section mutation.
+- Model `synthesize_clusters()` on `scripts/little_loops/cli/issues/clusters.py`'s `_get_components()` (line 323) adjacency/BFS shape, swapping BFS for union-find and structural edges for `calculate_word_overlap() >= min_score` edges.
+- Decide and implement the `--threshold` config-default: reuse `config-schema.json`'s `issues.duplicate_detection.similar_threshold` (update its description away from the dedup-specific wording) or add a new schema key — either way, cover it in `scripts/tests/test_config_schema.py`.
+- Rewrite `scripts/tests/test_link_epics_skill.py`'s `TestLinkEpicsSkillExists` flag/section-heading assertions (`test_auto_flag`, `test_min_score_flag`, `test_min_cluster_flag`, `test_assign_mode_section`, `test_synthesize_mode_section`, `test_post_write_validation_referenced`) to match the delegated skill's actual content; `TestUpdateFrontmatterRoundTrip`/`TestJaccardScoringBuckets` survive as-is.
+- Add `--apply`-gated JSON output tests following `scripts/tests/test_ll_issues_prioritize.py`'s `TestJsonOutput` pattern (`{"findings": [...], "applied": [...]}` shape).
+- Add CLI parser/dispatch registration following `epic_consistency.py`'s `add_epic_consistency_parser`/`cmd_epic_consistency` pair in `scripts/little_loops/cli/issues/__init__.py`.
+
 ## Use Case
 
 A maintainer with dozens of orphan issues runs `ll-issues link-epics --mode assign --json`, reviews ranked orphan→EPIC proposals, applies the good ones with `--apply`, then runs `--mode synthesize` to get clustered candidates for new EPICs — supplying only the final EPIC names themselves.
+
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-04 — based on codebase analysis:_
+
+### Files to Modify
+- `scripts/little_loops/cli/issues/__init__.py` — register the new `link-epics` subcommand parser and dispatch branch. Two registration conventions coexist in this file: module-owns-parser (`add_link_parser`/`cmd_link` in `link.py`, `add_prioritize_parser`/`cmd_prioritize` in `prioritize.py`) vs. parser-inlined-in-`__init__.py` with only `cmd_*` in the module (`clusters.py`, `find_similar.py`). `add_epic_consistency_parser`/`cmd_epic_consistency` (line 244/277) is the module-owns-parser pair to follow most closely — same shape as `link.py`/`prioritize.py`.
+- `scripts/little_loops/cli/issues/link_epics.py` (new) — would house `propose_assignments`, `synthesize_clusters`, `apply_assignment` per this issue's own Program Design section
+- `skills/link-epics/SKILL.md` — rewrite to delegate, per Expected Behavior. `skills/map-dependencies/SKILL.md` is the concrete delegation template already in this codebase: CLI-only invocations (`ll-deps analyze`, `ll-deps validate`, `ll-deps apply`, `ll-deps fix`, `ll-deps tree`), an `## Examples` table, an `## Auto Mode Behavior` section, no algorithm prose, and `allowed-tools` scoped to `Bash(ll-deps:*, git:*)` — narrower than `link-epics`'s current `[AskUserQuestion, Edit, Read, Write, Bash(ll-issues:*), Bash(git:*)]`, which is broad because it currently does writes itself. **Frontmatter `argument-hint` mismatch**: current SKILL.md advertises `[--mode assign|synthesize] [--auto] [--min-score <threshold>] [--min-cluster <n>]`, but this issue's own CLI signature is `--mode assign|synthesize [--threshold N] [--apply]` — no `--auto`/`--min-score`/`--min-cluster`. The rewrite must reconcile these flag names, not just delegate under the old ones.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `skills/link-epics/agents/openai.yaml` — Codex host-bridge metadata; `interface.short_description` currently reads `"Assign orphans to EPICs, or synthesize new EPICs from them, via Jaccard similarity"` (algorithm-specific). `skills/map-dependencies/agents/openai.yaml` keeps its `short_description` algorithm-agnostic — update this file in step with the SKILL.md rewrite.
+- `docs/reference/COMMANDS.md:102` (`### /ll:link-epics` description) and `:1037` (skill catalog table row) — both describe the *current* Jaccard-prose behavior ("using Jaccard similarity scoring... HIGH/MEDIUM/LOW confidence tiers"); rewrite to describe delegation. `docs/reference/COMMANDS.md:16` also lists `link-epics` in an `--auto`-flag reference table — needs updating/removing if `--auto` is dropped per the argument-hint mismatch above.
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/verify_skill_prose.py:97-108` already asserts a `union_find_cluster_merge` marker with `owner_cli="ll-issues link-epics"` — this lint currently expects `skills/link-epics/SKILL.md` to still contain union-find/cluster-merge prose; it will need the CLI to exist and the skill to be rewritten before this marker's intended (CLI-exists) state can be reached
+- `scripts/little_loops/cli/issues/format_check.py:108-115` (`_fix_prose_deps`) is the established precedent for one `ll-issues` subcommand invoking another subcommand's `cmd_*` function in-process rather than duplicating its write path — relevant if `apply_assignment()` needs `ll-issues link`'s cycle-safe write path for any field it doesn't own directly
+
+### Conventions in Force
+- Two competing conventions govern proposal-vs-write gating: `prioritize.py:184-189` and `format_check.py:92-103` default to proposal-only and require an explicit `--apply` to write; `link.py:82-88` instead defaults to writing and requires an explicit `--dry-run` to preview. This issue's Expected Behavior already specifies `--apply`, i.e. the `prioritize`/`format_check` shape, not `link`'s.
+- `--json`/`-j` is added via `add_json_arg()` (`cli_args.py:310-317`); most callers gate with `if getattr(args, "json", False): print_json(...)` (e.g. `clusters.py:595-616`), but `find_similar.py` always emits raw `json.dumps(...)` with no text mode — both conventions coexist in this CLI.
+- `--threshold` is config-defaulted rather than hardcoded, per `find_similar.py:47-57`'s `threshold=None` → `config.issues.duplicate_detection.similar_threshold` fallback.
+- No union-find/disjoint-set implementation exists anywhere in `scripts/little_loops/` today (confirmed by grep) — `synthesize_clusters()` is new code. The only existing clustering algorithm, `clusters.py:_get_components()` (BFS over dependency-edge adjacency), clusters on a structurally different input (existing relationship edges, not pairwise text similarity) and is not reusable here.
+- `update_frontmatter()` (`frontmatter.py:439-469`) only touches the YAML block. There is no existing helper for appending to a markdown body section — `apply_assignment()`'s EPIC-side write (append to `## Children`) has no existing shared helper. `link.py`'s `_write_reciprocal()` (lines 179-202) is the closest precedent (read → merge into existing list field → `update_frontmatter()` → write) but only covers frontmatter list fields, not prose section bodies.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- **More concrete body-section-append precedent than `_write_reciprocal()`**: `scripts/little_loops/cli/issues/epic_consistency.py`'s `_section_bounds()` (line 88, regex-locates a `## Heading` section's start/end) + `fix_epic()` (line 209, builds new bullets, splices into or appends the section, writes via `atomic_write`) is the closest existing "append to a markdown body section" implementation in this codebase — same `## Children` heading `apply_assignment()` needs to target. Either reuse `_section_bounds()` directly or hand-roll the same pattern.
+- `scripts/little_loops/cli/issues/clusters.py`'s `_get_components()` (line 323, BFS over an adjacency `dict[str, set[str]]`, returns `list[list[str]]` sorted by size descending) is the closest existing clustering shape to model `synthesize_clusters()` against — same input/output shape as union-find over pairwise similarity, differing only in algorithm (BFS vs union-find) and edge derivation (structural fields vs `calculate_word_overlap` ≥ `min_score`).
+- **Config threshold decision**: `--threshold`'s config-default could reuse `config-schema.json`'s existing `issues.duplicate_detection.similar_threshold` (min 0.0/max 1.0, default 0.8) — but its schema description ("...treated as similar (update existing issue)") is written for `find_similar`'s dedup use case and would read misleadingly for epic-assignment scoring if reused as-is without an update. Alternatively add a new schema key; either choice is covered by `scripts/tests/test_config_schema.py`.
+
+### Tests
+- `scripts/tests/test_link_epics_skill.py` — existing structural tests for the current skill, including `TestJaccardScoringBuckets` (line 154-193, asserts `calculate_word_overlap`/`extract_words` directly) and `TestUpdateFrontmatterRoundTrip` (line 97-127) — both already treat `text_utils.py`/`frontmatter.py` as source of truth even though the skill prose doesn't call them yet
+- `scripts/tests/test_link_cli.py` — existing `ll-issues link` subcommand tests, the closest precedent for testing an idempotent frontmatter-writing subcommand
+- `scripts/tests/test_ll_issues_find_similar.py` — existing tests for the ENH-2941 similarity foundation this issue builds on
+- `scripts/tests/test_text_utils.py`, `scripts/tests/test_frontmatter.py`, `scripts/tests/test_issue_parser.py` — unit coverage for the three reused modules
+
+_Wiring pass added by `/ll:wire-issue`:_
+- **`scripts/tests/test_link_epics_skill.py` needs a near-total pass, not just additions** — most of `TestLinkEpicsSkillExists` (lines 11-94) asserts literal substrings from the *current* algorithm-prose SKILL.md that will go stale under delegation: `test_auto_flag` (17-19, asserts `"--auto"` — new flag is `--apply`), `test_min_score_flag` (21-23, asserts `"--min-score"` — new flag is `--threshold`), `test_min_cluster_flag` (88-90, asserts `"--min-cluster"` — not in the new CLI signature at all), `test_config_issues_base_dir` (35-37, asserts the `{{config.issues.base_dir}}` macro — the `map-dependencies` delegation template doesn't use this macro in bash invocations), `test_assign_mode_section`/`test_synthesize_mode_section` (80-86, assert exact `"## Mode: `--mode assign`"`-style headings with no equivalent in the delegation template), `test_post_write_validation_referenced` (65-70, asserts `"Post-write consistency"` — that responsibility moves into `apply_assignment()` in Python once delegated). `TestUpdateFrontmatterRoundTrip` (97-127) and `TestJaccardScoringBuckets` (154-193) exercise `frontmatter.py`/`text_utils.py` directly, not SKILL.md content — these survive and are reusable as `link_epics.py` unit-test seeds.
+- `scripts/tests/test_epic_consistency.py`'s `TestEpicConsistencyFix`/`TestEpicConsistencyIdempotency` (lines 357-544, esp. `test_fix_preserves_existing_description`, `test_fix_does_not_drop_category_b_entries`, `test_fix_is_idempotent`) is the test pattern to follow for `apply_assignment()`'s `## Children` body-section append + round-trip idempotency — pairs with the `_section_bounds()`/`fix_epic()` implementation precedent noted above.
+- `scripts/tests/test_ll_issues_prioritize.py`'s `TestJsonOutput` (lines 309-355) is the closest precedent for `--apply`-gated JSON output shape (`{"findings": [...], "applied": [...]}`, `applied == []` without `--apply`) — matches this issue's own `assign`/`synthesize` proposal-vs-apply distinction more directly than `test_link_cli.py`'s boolean write-vs-dry-run shape.
+
+### Documentation
+- `docs/reference/CLI.md` — needs a new `link-epics` entry
+- `docs/reference/API.md` — needs `propose_assignments`/`synthesize_clusters`/`apply_assignment` entries (already flagged in Related Key Documentation)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/COMMANDS.md` — see Files to Modify above (lines 16, 102, 1037) for the specific Jaccard-prose and `--auto`-table passages that need rewriting.
+- FYI (no action here): `.issues/enhancements/P4-ENH-2979-deep-flag-llm-clustering-link-epics.md` is an open, unimplemented ENH written entirely against the *current* SKILL.md prose structure (names "Step 3, S1" of the skill as its insertion point for a `--deep` LLM-clustering flag). Once this issue lands, ENH-2979's plan is stale — its hook point becomes `synthesize_clusters()` in the new `link_epics.py` module, not a SKILL.md step. ENH-2979 will need its own Integration Map rewritten before implementation; out of scope to edit here.
 
 ## Program Design
 
@@ -103,4 +180,7 @@ assign and synthesize are independently shippable — split into two issues if t
 - `docs/reference/API.md` — the new CLI mode functions (`propose_assignments`, `synthesize_clusters`, `apply_assignment`) belong in the `cli/*` entry-point and `issue_parser`/`frontmatter` module reference this doc maintains.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-04T20:32:13 - `9a232634-c75e-4ea0-9ef9-0d29e428f8df.jsonl`
+- `/ll:wire-issue` - 2026-08-04T20:28:15 - `acac065d-330f-47d4-a8a4-9d824238c902.jsonl`
+- `/ll:refine-issue` - 2026-08-04T20:19:43 - `785f4a65-d938-4ebb-bae2-5c9ee18b9757.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-01T00:26:02 - `6fbac205-468a-44ce-b7fb-4626b0ac42e4.jsonl`

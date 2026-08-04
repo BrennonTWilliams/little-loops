@@ -142,10 +142,13 @@ implementation children can then proceed in parallel.
 
 ## Open Questions
 
-1. Should the adapter protocol extend the existing `ActionProviderExtension`
+1. ~~Should the adapter protocol extend the existing `ActionProviderExtension`
    (`extension.py:81`) or be a new `CommunicationAdapterExtension`? The former
    reuses the contributed-action dispatch; the latter is cleaner separation but
-   adds a new extension type.
+   adds a new extension type.~~ **Resolved** (via FEAT-1930's `/ll:decide-issue`,
+   2026-06-12): Option B — a new `CommunicationAdapterExtension` Protocol class
+   with a single `provided_adapters()` method, detected via `hasattr()` in
+   `wire_extensions()`.
 2. Response callback mechanism for PushNotification: event bus subscribe
    (`EventBus.register()` with a `human_response` event type) vs. file-poller
    (write response to `.ll/hitl-responses/<id>.json`, poll in
@@ -213,5 +216,6 @@ EventBus adapter; read "PushNotification" as "EventBus / Hermes-relay" throughou
 open
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-04T20:31:45 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`
 - backlog-grooming - 2026-07-03T00:00:00Z - Downgraded P2 -> P3 with active children (FEAT-1930/1794/1931): root FEAT-1930 unstarted since early June; downgrade keeps the P2 band meaningful. Re-raise when FEAT-1930 is scheduled. See also ENH-2249 (post-Hermes rescope).
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`

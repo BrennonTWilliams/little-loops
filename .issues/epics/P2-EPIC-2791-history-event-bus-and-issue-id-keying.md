@@ -4,7 +4,7 @@ title: History Event Bus and Issue Id Keying
 type: EPIC
 priority: P2
 status: open
-captured_at: "2026-07-25T02:35:31Z"
+captured_at: '2026-07-25T02:35:31Z'
 discovered_date: 2026-07-25
 discovered_by: create-epics-from-unparented
 relates_to:
@@ -12,6 +12,8 @@ relates_to:
 - BUG-2770
 - ENH-2771
 - ENH-2783
+blocked_by:
+- EPIC-2457
 ---
 
 # EPIC-2791: History Event Bus and Issue Id Keying
@@ -41,3 +43,7 @@ event bus).
 - `.claude/CLAUDE.md` — documents the issue-file id/status conventions
   (`ll-issues`, status values) that malformed-id ingest (BUG-2769) and
   `set-status` event emission (BUG-2770) must stay consistent with.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-04T20:31:46 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`

@@ -1,6 +1,6 @@
 ---
 id: FEAT-2261
-title: omp hook adapter — hooks/adapters/omp/
+title: "omp hook adapter \u2014 hooks/adapters/omp/"
 type: feature
 status: open
 priority: P4
@@ -13,6 +13,8 @@ labels:
 - host-compat
 - omp
 - hooks
+blocked_by:
+- FEAT-2263
 ---
 
 # FEAT-2261: omp hook adapter — hooks/adapters/omp/
@@ -56,3 +58,7 @@ The exact event set is established by FEAT-2263 (hook-event parity audit).
 
 - `.claude/CLAUDE.md` — `hooks/adapters/` is documented in CLAUDE.md's Key Directories as the host translation layer (one subdir per host), the exact location and pattern this issue adds an `omp/` entry to.
 - `docs/reference/API.md` — the new adapter wires oh-my-pi events into the documented `hooks` module's `LLHookEvent`/dispatch surface.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-04T20:31:46 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`

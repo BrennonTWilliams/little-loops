@@ -174,7 +174,13 @@ _Added by `/ll:refine-issue` — concrete steps grounded in actual file referenc
 - `.claude/CLAUDE.md` — `hooks/adapters/` (the location FEAT-2261 will create for this audit's findings) is documented in CLAUDE.md's Key Directories as the per-host translation layer.
 - `docs/reference/API.md` — the audit maps omp events against the documented `hooks` module's `LLHookEvent` intent set (`_dispatch_table()`, the canonical 7 ll intents).
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue and FEAT-2797 both specify content requirements for the same `HOST_COMPATIBILITY.md` `[^omp]` footnote — this issue wants it to carry hook-intent tracking info (epic/research-spike/artifact path/gating statement); FEAT-2797 wants it to state why `json_schema`/`structured_output` are `✗` and describe the frontmatter `output:` path. The footnote is a single shared definition — whichever issue lands first must extend it, not overwrite it, to preserve both requirements.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-04T20:31:44 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`
 - `/ll:refine-issue` - 2026-06-26T23:06:47 - `66288c91-3410-40d5-8af7-af4d0cb1a3f8.jsonl`
 - `/ll:format-issue` - 2026-06-26T22:57:21 - `ae5ff08e-cca8-4e62-8e12-44cfb2069975.jsonl`

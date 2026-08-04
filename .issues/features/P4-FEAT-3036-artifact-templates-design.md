@@ -8,6 +8,8 @@ discovered_date: 2026-08-03
 labels:
 - planning-hub
 parent: EPIC-2087
+depends_on:
+- FEAT-2301
 ---
 
 # FEAT-3036: Artifact templates design
@@ -214,3 +216,7 @@ snapshots; free-text fields embeddable only in local mode.
 - Non-HTML artifact types (images, diagrams): render step differs (e.g. SVG
   template → PNG rasterization). Manifest `renderer` field is the extension
   point; out of scope for v1.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-04T20:31:47 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`

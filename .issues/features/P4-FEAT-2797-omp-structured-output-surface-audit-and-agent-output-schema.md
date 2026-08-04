@@ -147,3 +147,13 @@ discovery after writing the emitter means rewriting it.
 
 - `.claude/CLAUDE.md` — the Host CLI Abstraction section governs `host_runner.py`/`OmpRunner.capabilities`, which this issue changes to explicitly declare `structured_output=False`.
 - `docs/reference/API.md` — directly touches the documented `host_runner` module (`OmpRunner.capabilities`) and the adapters' `emit_agent` surface.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue and FEAT-2263 both specify content requirements for the same `HOST_COMPATIBILITY.md` `[^omp]` footnote — FEAT-2263 wants it to carry hook-intent tracking info (epic/research-spike/artifact path/gating statement); this issue wants it to state why `json_schema`/`structured_output` are `✗` and describe the frontmatter `output:` path. The footnote is a single shared definition — whichever issue lands first must extend it, not overwrite it, to preserve both requirements.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-04T20:31:45 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`

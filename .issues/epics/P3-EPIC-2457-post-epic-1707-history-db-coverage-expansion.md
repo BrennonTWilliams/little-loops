@@ -42,6 +42,8 @@ labels:
 - epic
 - history-db
 - captured
+depends_on:
+- EPIC-2149
 ---
 
 # EPIC-2457: Post-EPIC-1707 history.db coverage expansion
@@ -322,6 +324,7 @@ _Audit 2026-07-08:_ 28 children in `relates_to` (was 25; added ENH-2580, ENH-258
 - `.claude/CLAUDE.md` — documents the `ll-session` CLI (`search --fts`, `recent --kind`, `backfill`, `rebuild`, `compact`) that surfaces each new event kind this epic's children add.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-04T20:31:47 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`
 - fourth-pass expansion - 2026-07-08 - Added 3 children (ENH-2580, ENH-2581, ENH-2582) following the raw-events architecture discussion. ENH-2581 is the structural prerequisite; design doc at `thoughts/history-db-raw-events-architecture.md` (mirrors the relationship between `thoughts/history-db-expand-wiring.md` and this epic).
 - audit - 2026-07-06 - Reconciled child counts (9 → 25) in closure criterion, Children note, Success Metrics, and Impact; marked done children in Sequencing; added 2026-07-06 verification-notes entry (4 done / 21 open, schema v18 verified in code).
 - third-pass expansion - 2026-07-06 - Added 9 children (ENH-2504..ENH-2512) following the autodev-bug2501-kill-analysis prompt: `verdict_events` (read-side verifier signals), `subagent_runs` (parent→child session linkage), `hook_events` (per-fire telemetry), `context_pressure_events` (PostToolUse pressure curve), `commit→tag` linkage on `commit_events`, worktree lifecycle widening of `session_lifecycle_events`, `context_query_events` (history-context fetcher cost), MCP tool-call telemetry on `tool_events`, and `review_events` (audit/review verdicts). Item sources: the user-reported gap list (2026-07-06); several fold into existing children (ENH-2495, ENH-2497, ENH-2458) as scope-widening.

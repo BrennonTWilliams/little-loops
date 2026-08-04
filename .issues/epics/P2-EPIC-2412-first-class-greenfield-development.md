@@ -93,9 +93,15 @@ When this epic is done:
   sprint loops) except where they share the new run-gate; deployment/CD infrastructure
   beyond a local service-start/health probe.
 
+**Note** (added by `/ll:audit-issue-conflicts`): This epic's `ENH-2415` (mandatory/loud eval-harness run-gating) and EPIC-2856's `FEAT-2878` (trace-level assertions + multi-host divergence runs) both extend the eval-harness templates/schema. Whichever lands second should confirm its changes are additive to the other's.
+
 ## Related Key Documentation
 
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` (meta-loop MR rules, MR-1 rationale)
 - `docs/guides/LOOPS_GUIDE.md` (Cluster vs Composer vs Router; rn-build orchestration)
 - `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` (`ll-loop run --baseline` validation)
 - Prior family EPIC-1811 (rn-build capstone, closed)
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-04T20:31:46 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`

@@ -176,7 +176,14 @@ Resolve the option with `/ll:decide-issue` before implementation.
 | `.claude/CLAUDE.md` | § Key Directories documents these dirs as real and gitignored |
 | `scripts/little_loops/text_utils.py` | `build_ref_index`'s tracked-files-only contract |
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-2966 both modify `check_format_gaps` in `scripts/little_loops/issue_parser.py` for unrelated gap classes (a new `stale_file_ref` verdict branch vs. the testable-keyword scan surface). Coordinate implementation order to avoid a merge collision in the same function.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-04T20:31:45 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`
 - `/ll:capture-issue` - 2026-08-02
 
 ## Status

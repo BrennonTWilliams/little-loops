@@ -1,13 +1,15 @@
 ---
 id: ENH-2979
-title: "--deep flag: LLM-adjudicated clustering for link-epics synthesize mode"
+title: '--deep flag: LLM-adjudicated clustering for link-epics synthesize mode'
 type: ENH
 priority: P4
 status: open
-captured_at: "2026-08-01T21:03:45Z"
+captured_at: '2026-08-01T21:03:45Z'
 discovered_date: 2026-08-01
 discovered_by: capture-issue
 parent: EPIC-2938
+blocked_by:
+- FEAT-2942
 ---
 
 # ENH-2979: --deep flag: LLM-adjudicated clustering for link-epics synthesize mode
@@ -168,4 +170,5 @@ the mitigation already designed into this issue.
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-04T20:31:46 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`
 - `/ll:capture-issue` - 2026-08-01T21:04:44 - `2cabd1bc-5bca-411b-af7d-d8f7d41a247b.jsonl`

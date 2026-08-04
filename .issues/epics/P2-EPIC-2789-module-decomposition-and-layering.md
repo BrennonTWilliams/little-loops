@@ -42,3 +42,13 @@ cli/loop/_helpers.py grab-bag into named modules).
   fsm/cli layering-boundary question the architecture doc describes.
 - `docs/reference/API.md` — documents `session_store`, `fsm/validation`,
   `fsm/executor`, and `history_reader`, the specific modules being split.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): ENH-2784 declares `parent: EPIC-2789`, but this epic's Summary/Children list above does not enumerate it — ENH-2784 covers extracting coercion helpers in `issue_parser.py`, which is a distinct in-file dedup concern rather than the module-decomposition/layering-inversion theme this epic tracks. Confirm whether ENH-2784 genuinely belongs here (and add it to Children if so) or re-parent it to a more fitting issue.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-04T20:31:44 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`

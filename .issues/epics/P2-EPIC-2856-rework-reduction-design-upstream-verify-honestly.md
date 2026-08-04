@@ -85,6 +85,12 @@ with `.ll/history.db`.
 sit alongside them, not instead of them; new event transports; hosted or
 multi-tenant reporting.
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This epic's `FEAT-2878` (trace-level assertions + multi-host divergence runs) and EPIC-2412's `ENH-2415` (mandatory/loud eval-harness run-gating) both extend the eval-harness templates/schema. Whichever lands second should confirm its changes are additive to the other's.
+
 ## Children
 
 **Substrate**
@@ -206,4 +212,5 @@ confidence-per-effort items in the set.
   workflow this epic's verification-integrity children extend.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-04T20:31:46 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-27T19:42:09 - `e2303183-4e52-4649-af90-4b53254bbda4.jsonl`

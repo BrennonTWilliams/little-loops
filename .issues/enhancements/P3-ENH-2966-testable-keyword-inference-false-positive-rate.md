@@ -301,7 +301,14 @@ _Added by `/ll:verify-issues`:_ Core behavior and premise still accurate —
 Line-number citations are stale: the constants and functions now live around
 `issue_parser.py:550-716`, not the originally cited `L489-528`.
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-3000 both modify `check_format_gaps` in `scripts/little_loops/issue_parser.py` for unrelated gap classes (testable-keyword scan surface vs. a new `stale_file_ref` verdict branch). Coordinate implementation order to avoid a merge collision in the same function.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-04T20:31:45 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`
 - `/ll:verify-issues` - 2026-08-03T04:54:47 - `d03f8e53-9873-4f8d-8cfd-bbc50704a66b.jsonl`
 - `/ll:refine-issue` - 2026-08-01T19:58:05 - `f7d70fe6-d3b1-4443-814c-32eee6e8b043.jsonl`
 - `/ll:capture-issue` - 2026-08-01T16:04:25 - `f9ef973a-acd3-40a7-a313-5e7a001f9a16.jsonl`
