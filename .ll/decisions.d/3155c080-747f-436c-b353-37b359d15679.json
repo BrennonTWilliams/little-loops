@@ -1,0 +1,12 @@
+{
+  "id": "93a33c2c-ea33-4de0-b8f1-8caf22c2aa2f",
+  "type": "decision",
+  "timestamp": "2026-08-04T06:33:17Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches this codebase's established convention that every idle/disable-style knob (subprocess_utils.py idle_timeout, config/automation.py idle_timeout_seconds, parallel/types.py idle_timeout_per_issue) defaults to 0/disabled and requires explicit non-zero opt-in; Option B (a measured-cadence global default) has no data source anywhere in the codebase and contradicts FEAT-3033's own start-at-zero schema design.",
+  "rule": "Option A: gate the or-3600 wall-clock-cap relaxation on explicit idle_timeout/default_idle_timeout opt-in",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: ship a non-zero default_idle_timeout chosen from measured agent-output cadence, applied unconditionally to every prompt state",
+  "issue": "BUG-3032"
+}

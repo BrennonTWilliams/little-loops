@@ -1,0 +1,27 @@
+=== Claim 1: cancel() on not-yet-started vs running task ===
+cancel() on running task: False
+cancel() on queued/not-started task: True
+
+=== Claim 2: as_completed() order vs submission order ===
+submission order (delays): [0.3, 0.05, 0.2, 0.01]
+completion order (delays): [0.01, 0.05, 0.2, 0.3]
+orders differ: True
+
+=== Claim 3: exception propagation timing ===
+as_completed() itself raised: False
+.result() raised: True
+
+=== Claim 4: wait() with FIRST_COMPLETED ===
+done count: 1, not_done count: 2
+
+=== Claim 5: map() preserves submission order ===
+map results: [0, 1, 2, 3]
+preserves order: True
+
+=== Claim 6: TimeoutError identity ===
+cf.TimeoutError is builtins.TimeoutError: True
+raised type: <class 'TimeoutError'>
+is cf.TimeoutError: True
+
+=== Claim 7: context manager exit blocks until completion ===
+elapsed on exit: 0.205s, flag done: True
