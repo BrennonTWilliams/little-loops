@@ -161,17 +161,33 @@ the only one of the four changes that can catch an omission.
    block *as part of this change*, or accept whole-backlog scope explicitly.
    Also pass `--auto` rather than relying on the implicit `LL_NON_INTERACTIVE`
    auto-enable at `:39-41`.
-2. **Prefer `--check` and gate on its exit code.** As originally specified —
-   `action_type: slash_command`, `on_error: check_hedges`, no exit-code
-   consumption — a `verify_issue` that *finds* the `print_logo` defect has no
-   route to act on it. It is advisory only, which does not satisfy this
-   issue's own Expected Behavior ("at least one non-LLM gate that can force
-   another refine pass independently of the confidence scores"). `--check`
-   supplies exit 1 on any non-VALID verdict, so `verify_issue` can be a
-   `fragment: shell_exit` gate routing `on_no → check_refine_limit`, exactly
-   like the two new probes. Decide between (a) `--auto` self-healing +
-   advisory, and (b) `--check` + hard gate, during implementation; (b) is the
-   shape the rest of this issue argues for.
+2. **Hard-gate via a written verdict artifact, not `fragment: shell_exit` on
+   the slash command itself.** `shell_exit` forces `action_type: shell`
+   (`lib/common.yaml:15-21`); `verify_issue` runs through the host CLI as
+   `action_type: slash_command`, and the *host process's* exit code reflects
+   whether the session completed, not `/ll:verify-issues --check`'s internal
+   verdict — the `[ID] verify: [verdict]` output and the doc's own
+   `exit 1`/`exit 0` contract (`verify-issues.md:148`) live inside the
+   skill's own Bash/prose and do not propagate to the host CLI's process exit
+   code. No shipped loop gates on a slash command's logical exit code today;
+   the codebase convention for "LLM state → deterministic gate" is a verdict
+   written to frontmatter or a marker file, followed by a separate shell
+   probe — the `decision_needed` / `check-flag` pattern already used four
+   times in this loop.
+
+   **Respecified (resolves Q1 as (b), hard gate):** `verify_issue`
+   (`action_type: slash_command`, `--check`) is extended so its `--check`
+   mode also writes its verdict to the run's issue frontmatter (e.g.
+   `verify_verdict: VALID|NON_VALID`, mirroring how `confidence_check`
+   persists `confidence_score`/`outcome_confidence`) instead of only
+   printing to stdout and setting a process exit code that never leaves the
+   host session. A new `check_verify_verdict` state
+   (`fragment: shell_exit`) then runs a new `ll-issues check-verify-verdict
+   <ID>` CLI — mirroring `check_open_questions.py`'s shape — that reads the
+   frontmatter field and exits 1 on `NON_VALID`, routing
+   `on_no → check_refine_limit`. This keeps MR-2 honest: the gate is a
+   deterministic shell probe over a persisted artifact, not a gate on an
+   LLM process's incidental exit status.
 
 ### 2. Widen `check-open-questions` and wire it in as a hard gate
 
@@ -234,8 +250,14 @@ nothing was ever contested, not that the issue is perfect. Two options:
 - **4b — score damping**: damp a first-pass score above some ceiling (e.g. 95)
   unless a verification state has run. No added budget; weaker signal.
 
-Lowest-confidence of the four. Tracked in Open Questions rather than
-pre-committed here.
+**Resolved (Q2): 4b, or drop change 4 entirely.** 4a contradicts this issue's
+own "no added budget" claim in Notes. More importantly, once changes 1-3 ship,
+an unchallenged 100 can no longer buy the shortest path to `done` anyway —
+`verify_issue`/`check_hedges`/`check_ac_automatable` sit between every run and
+`confidence_check` regardless of score, so the score itself stops being the
+gate that change 4 was designed to distrust. That leaves 4b as a weak,
+optional signal on top of gates that already do the real work; implement it
+only if it's cheap, otherwise drop change 4 and note the reason in Notes.
 
 ## Scope Boundaries
 
@@ -243,8 +265,13 @@ pre-committed here.
 `check-open-questions` section/signal widening; a new acceptance-criteria
 automatability probe; the `refine-issue.md` agent-assignment note for negative
 call-path facts; **`commands/verify-issues.md`'s unimplemented `ISSUE_ID`
-filter** (pending Q3 — change 1 is not safely implementable while
-`/ll:verify-issues <ID>` silently means "all issues").
+filter, fixed inside this issue (Q3 resolved — not split out)**: change 1 is
+not safely implementable while `/ll:verify-issues <ID>` silently means "all
+issues", and the fix is a one-edit change to Step 1's issue-listing block
+(`:47-51`), not large enough to justify a separate `blocked_by` edge; also in
+scope, `commands/verify-issues.md`'s `--check` mode gains a verdict-write
+step (frontmatter `verify_verdict` field, see Program Design change 1) and a
+new `ll-issues check-verify-verdict` CLI.
 
 **Out of scope**:
 
@@ -265,11 +292,18 @@ filter** (pending Q3 — change 1 is not safely implementable while
 
 ```yaml
 verify_issue:
-  action: "/ll:verify-issues ${captured.issue_id.output}"
+  action: "/ll:verify-issues ${captured.issue_id.output} --check"
   action_type: slash_command
   pruning_profile: {enabled: true, name: verify-issues-auto, suppress_claude_md: true}
-  next: check_hedges
-  on_error: check_hedges        # verification failure is non-fatal, like wire_issue
+  next: check_verify_verdict
+  on_error: check_verify_verdict  # verification failure is non-fatal, like wire_issue
+
+check_verify_verdict:
+  action: "ll-issues check-verify-verdict ${captured.issue_id.output}"
+  fragment: shell_exit
+  on_yes: check_hedges           # exit 0 = verdict VALID
+  on_no: check_refine_limit      # exit 1 = VERIFY_VERDICT_NON_VALID → force refine
+  on_error: check_hedges
 
 check_hedges:
   action: "ll-issues check-open-questions ${captured.issue_id.output}"
@@ -286,23 +320,43 @@ check_ac_automatable:
   on_error: confidence_check
 ```
 
-Entry: `check_decision_mid_wire`'s `on_no` / `on_error` retarget from
-`confidence_check` to `verify_issue`. Both gates route to
-`check_refine_limit`, which already caps loopbacks at 1 per run and falls
-through to `breakdown_issue` on exhaustion — so the new gates cannot spin.
+`/ll:verify-issues`'s `--check` mode must additionally be extended to persist
+`verify_verdict: VALID|NON_VALID` to the target issue's frontmatter as part of
+this change (today it only prints `[ID] verify: [verdict]` and sets a process
+exit code — see change 1 correction 2 above); `check_verify_verdict` reads
+that field rather than any process exit code.
+
+Entry: five mid-chain routes retarget from `confidence_check` to
+`verify_issue` — every path that currently skips straight to
+`confidence_check` must instead re-enter the verification chain:
+`check_wire_done.on_no` (`:174`), `check_wire_done.on_error` (`:175`),
+`wire_issue.on_error` (`:185`), `mark_wire_done.on_error` (`:191`), and
+`check_decision_mid_wire.on_no` / `.on_error` (`:202-203`). This closes the
+loopback bypass: the gate-driven corrective pass
+(`check_refine_limit → refine_followup → check_decision_mid_refine →
+check_wire_done`) re-enters at `check_wire_done`, whose `on_no` previously
+routed straight to `confidence_check` on the second pass (wire-done marker
+already `1`), skipping `verify_issue`, `check_hedges`, and
+`check_ac_automatable` entirely — the exact bypass this issue's own AC #1
+("on every run") requires closing. All five routes point at the same
+`verify_issue` entry state, so `check_verify_verdict` → `check_hedges` →
+`check_ac_automatable` → `confidence_check` is now the only path forward,
+regardless of which mid-chain state fires. `check_refine_limit`'s existing
+cap prevents spinning; `max_steps: 30` still holds.
 
 `max_steps` must rise from 20 to **30**: the happy path already used 12
-iterations, the three new states add 3, and a gate-driven `refine_followup`
-cycle costs roughly 5 more (`check_refine_limit → refine_followup → wire → the
-two gates`) — ~20 worst case, leaving headroom without slackening the
-phantom-convergence guard.
+iterations, the four new states (`verify_issue`, `check_verify_verdict`,
+`check_hedges`, `check_ac_automatable`) add 4, and a gate-driven
+`refine_followup` cycle costs roughly 6 more (`check_refine_limit →
+refine_followup → wire → the three gates`) — ~22 worst case, leaving headroom
+without slackening the phantom-convergence guard.
 
-**Ordering assumption (stated, not yet validated):** `check_hedges` runs *after*
-`verify_issue`, so prose that `verify_issue` itself deposits (verification
-notes, corrected claims) is scanned by the hedge gate in the same pass — but
-prose deposited by a gate-driven `refine_followup` is only re-scanned if the
-loop returns through the gates. Confirm the loopback re-enters at
-`verify_issue`, not at `confidence_check`, or the second pass is ungated.
+**Ordering assumption (validated by the Entry retarget above):** because all
+five mid-chain routes now point at `verify_issue`, a gate-driven
+`refine_followup` cycle always re-enters through `verify_issue` → the two
+probes, not at `confidence_check` — so prose deposited by `refine_followup`
+is re-scanned by `check_hedges`/`check_ac_automatable` on every pass, not
+only the first.
 
 ### Signatures
 
@@ -311,13 +365,25 @@ loop returns through the gates. Confirm the loopback re-enters at
 _OPEN_QUESTION_SECTIONS: tuple[str, ...]   # +Integration Map, Codebase Research
                                            #  Findings, Suggested Fix Direction,
                                            #  Program Design
-_OPEN_QUESTION_SIGNAL_RE: re.Pattern[str]  # +hedge vocabulary
+_OPEN_QUESTION_SIGNAL_RE: re.Pattern[str]  # +hedge vocabulary; compiled
+                                           #  re.IGNORECASE, each new phrase
+                                           #  wrapped in \b...\b word
+                                           #  boundaries (e.g. r"\bworth
+                                           #  confirming\b"), matching the
+                                           #  existing signal set's style
 def count_open_questions_in_sections(content: str) -> int: ...   # unchanged
 
 # scripts/little_loops/cli/issues/check_acceptance_criteria.py — new (change 3)
 def add_check_acceptance_criteria_parser(subs) -> argparse.ArgumentParser: ...
 def cmd_check_acceptance_criteria(config: BRConfig, args) -> int: ...
     # 0 = all criteria machine-checkable; 1 + MANUAL_CRITERIA_REMAIN token otherwise
+
+# scripts/little_loops/cli/issues/check_verify_verdict.py — new (change 1, respecified)
+def add_check_verify_verdict_parser(subs) -> argparse.ArgumentParser: ...
+def cmd_check_verify_verdict(config: BRConfig, args) -> int: ...
+    # 0 = verify_verdict == VALID; 1 + VERIFY_VERDICT_NON_VALID token otherwise;
+    # mirrors check_open_questions.py's _resolve_issue_id / exit-code-plus-
+    # stderr-token contract
 ```
 
 Mirror `check_open_questions.py` exactly — same parser shape, same
@@ -366,10 +432,21 @@ _Added by `/ll:refine-issue` — 2026-08-03 — based on codebase analysis:_
 ### Files to Modify
 
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml` — new `verify_issue`,
-  `check_hedges`, `check_ac_automatable` states; rerouting; `max_steps` raise
-  (currently 20; the happy path already consumed 12).
+  `check_verify_verdict`, `check_hedges`, `check_ac_automatable` states;
+  rerouting all five mid-chain `confidence_check` references (see Program
+  Design Entry note); `max_steps` raise (currently 20; the happy path already
+  consumed 12).
+- `commands/verify-issues.md` — fix the unimplemented `ISSUE_ID` filter in
+  Step 1 (`:47-51`) so `/ll:verify-issues <ID>` verifies only that issue
+  (Q3, resolved in scope); extend `--check` mode (`:148`) to persist
+  `verify_verdict: VALID|NON_VALID` to the target issue's frontmatter instead
+  of only printing and exiting.
+- `scripts/little_loops/cli/issues/` — new `check_verify_verdict.py`
+  subcommand (change 1, respecified), registered in `cli/issues/__init__.py`
+  alongside the change-3 subcommand below.
 - `scripts/little_loops/issue_parser.py` — `_OPEN_QUESTION_SECTIONS:1179`,
-  `_OPEN_QUESTION_SIGNAL_RE:1165`.
+  `_OPEN_QUESTION_SIGNAL_RE:1165` (widened, case-insensitive, `\b`-bounded
+  hedge phrases).
 - `scripts/little_loops/cli/issues/check_open_questions.py` — docstring/help
   text if the scanned-section set widens.
 - Possibly `scripts/little_loops/cli/issues/` — new `check-acceptance-criteria`
@@ -513,18 +590,23 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Open Questions
 
-- **Q1: change 1 shape — `--auto` self-healing (advisory) or `--check` hard
-  gate?** `--check` is what the Expected Behavior section argues for; `--auto`
-  is what fixes defects in place. Not exclusive (gate on `--check`, route
-  failures into `refine_followup`), but the combined form costs an extra pass.
-  Needs a decision before the loop edit lands.
-- **Q2: change 4 — 4a (mandatory `refine_followup`) or 4b (score damping)?**
-  4a invalidates this issue's "no added LLM budget" claim; 4b is cheaper but
-  only nudges a number the loop already distrusts. Deferring Q2 does not block
-  changes 1-3.
-- **Q3: does `commands/verify-issues.md`'s `ISSUE_ID` filter get fixed inside
-  this issue or split out?** Change 1 is not safely implementable without it.
-  If split, this issue gains a `blocked_by` edge.
+All three questions below are resolved pre-implementation; kept here with
+their resolutions for traceability rather than deleted.
+
+- **Q1 — RESOLVED: (b), `--check` hard gate**, respecified as a
+  write-verdict-then-shell-probe pair (`verify_issue` writes
+  `verify_verdict` to frontmatter; `check_verify_verdict` reads it) rather
+  than a `fragment: shell_exit` gate on the slash command's own process exit
+  code, which does not carry the skill's internal verdict. See Proposed
+  Solution change 1 and Program Design.
+- **Q2 — RESOLVED: 4b (score damping), or drop change 4.** 4a contradicts
+  the "no added LLM budget" claim; and once changes 1-3 ship, an unchallenged
+  100 can no longer buy the shortest path to `done` regardless, which removes
+  most of change 4's original motivation. See Proposed Solution change 4.
+- **Q3 — RESOLVED: fixed inside this issue, not split out.** The `ISSUE_ID`
+  filter is a one-edit change to `verify-issues.md`'s Step 1 issue-listing
+  block; a `blocked_by` edge for a two-line fix would add more overhead than
+  it saves. See Scope Boundaries.
 
 ## Acceptance Criteria
 
@@ -532,11 +614,16 @@ _Wiring pass added by `/ll:wire-issue`:_
       run, before `confidence_check`, on a path not gated by any score.
 - [ ] `ll-issues check-open-questions` exits 1 on BUG-3025's pre-review revision
       (both hedge lines detected); regression fixtures cover both lines.
+      Extract the fixture from `git show bf80f3df:<BUG-3025 path>` (original
+      pre-review text) — do not hand-reconstruct from memory of "before the
+      review".
 - [ ] At least one corrective route in `refine-to-ready-issue.yaml` is reachable
       with `confidence_score: 100` / `outcome_confidence: 92` — i.e. a perfect
       self-grade no longer guarantees the shortest path to `done`.
 - [ ] Acceptance-criteria automatability probe exits 1 on the pre-review
       BUG-3025 criterion "verify by temporarily removing the `isatty()` guard".
+      Extract the fixture from `git show d85f49b5:<BUG-3025 path>`
+      (reviewed-but-uncorrected state) — same rationale as above.
 - [ ] The widened probe's effect on `autodev.yaml` and `rn-remediate.yaml` is
       re-measured against the implemented regex/section set and matches the
       pre-review baseline recorded in Codebase Research Findings (0/65 → 4/65
@@ -576,14 +663,27 @@ codebase before filing; the `88db2cd0` / `print_logo` call-path facts and the
 `check-open-questions` exit-0 behavior were confirmed empirically.
 
 Changes 1-3 add no LLM budget beyond the single `verify_issue` invocation —
-the two gates are shell states running regexes. This holds only if change 4
-resolves to 4b (score damping); 4a adds a guaranteed `refine_followup` pass to
-every run. See Open Questions Q2.
+the three gates (`check_verify_verdict`, `check_hedges`,
+`check_ac_automatable`) are shell states running probes/regexes. This holds
+now that change 4/Q2 resolved to 4b-or-drop, not 4a; 4a would have added a
+guaranteed `refine_followup` pass to every run.
 
 Pre-implementation review (2026-08-03) corrected the change-1 action (the
 `ISSUE_ID` no-op and the missing `--check` prior art), fixed `max_steps` at 30,
 scoped the change-3 verb scan to checkbox items, and replaced the change-2/3
 "assess the blast radius" hand-wave with measured numbers.
+
+Second pre-implementation review (2026-08-03) found the loopback bypass was
+only partially closed (four of five mid-chain routes still skipped straight
+to `confidence_check` on a gate-forced second pass) and that the proposed
+`shell_exit` gate on `/ll:verify-issues --check` cannot work as specified —
+a slash command's internal verdict doesn't reach the host CLI's process exit
+code. Both are fixed above: all five routes retarget to `verify_issue`, and
+change 1 is respecified as a write-verdict/read-verdict pair
+(`verify_issue` → `check_verify_verdict`). Q1, Q2, and Q3 are resolved rather
+than left open, and the two BUG-3025 regression fixtures are pinned to
+`bf80f3df` (original) / `d85f49b5` (reviewed-but-uncorrected) so they're
+extracted from a stable ref.
 
 ## Status
 
