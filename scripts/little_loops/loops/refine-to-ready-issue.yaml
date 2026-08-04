@@ -3,6 +3,18 @@ description: "Drives a single issue from backlog to ready-state: refines it, wir
 category: issue-management
 # Routing summary:
 #   resolve_issue → check_epic_id → (on_yes: EPIC id) breakdown_issue | (on_no: leaf) check_lifetime_limit
+#   ENH-3031: every mid-chain route that used to skip straight to confidence_check
+#   (check_wire_done.on_no/.on_error, wire_issue.on_error, mark_wire_done.on_error,
+#   check_decision_mid_wire.on_no/.on_error) now retargets to verify_issue, so a
+#   gate-forced refine_followup cycle always re-enters through the gates below, not
+#   at confidence_check.
+#   verify_issue (/ll:verify-issues --check, non-fatal) → check_verify_verdict
+#     check_verify_verdict (reads persisted verify_verdict) → (on_yes) check_hedges
+#                                                            → (on_no)  check_refine_limit
+#     check_hedges (ll-issues check-open-questions)          → (on_yes) check_ac_automatable
+#                                                            → (on_no)  check_refine_limit
+#     check_ac_automatable (ll-issues check-acceptance-criteria) → (on_yes) confidence_check
+#                                                                 → (on_no)  check_refine_limit
 #   confidence_check (oracle: verify-confidence-scores) → (on_success) check_readiness → (on_yes) check_outcome → (on_yes) done
 #                                                       → (on_failure) diagnose
 #                      check_readiness         → (on_no)  check_refine_limit → refine_followup (additive --gap-analysis)
@@ -10,7 +22,13 @@ category: issue-management
 #                                                                               → (on_no)  breakdown_issue
 #   check_scores_from_file (error fallback) → (on_yes) done | (on_no) breakdown_issue
 initial: resolve_issue
-max_steps: 20
+# ENH-3031: 20 -> 30. The happy path already used 12 iterations; the four new
+# gate states (verify_issue, check_verify_verdict, check_hedges,
+# check_ac_automatable) add 4; a gate-driven refine_followup cycle costs
+# roughly 6 more (check_refine_limit -> refine_followup -> wire -> the three
+# gates) -> ~22 worst case, leaving headroom without slackening the
+# phantom-convergence guard.
+max_steps: 30
 on_handoff: spawn
 context:
   # readiness_threshold / outcome_threshold are seeded at launch from
@@ -171,8 +189,8 @@ states:
       operator: lt
       target: 1
     on_yes: wire_issue      # 0 → not yet wired → run wire
-    on_no: confidence_check # 1 → already wired → skip
-    on_error: confidence_check
+    on_no: verify_issue     # 1 → already wired → enter the verification chain (ENH-3031)
+    on_error: verify_issue
 
   wire_issue:
     action: "/ll:wire-issue ${captured.issue_id.output} --auto"
@@ -182,13 +200,13 @@ states:
       name: wire-issue-auto
       suppress_claude_md: true
     next: mark_wire_done
-    on_error: confidence_check  # wiring failure is non-fatal
+    on_error: verify_issue  # wiring failure is non-fatal (ENH-3031: re-enter via verify_issue)
 
   mark_wire_done:
     action: printf '1' > ${context.run_dir}/refine-to-ready-wire-done
     action_type: shell
     next: check_decision_mid_wire
-    on_error: confidence_check
+    on_error: verify_issue
 
   check_decision_mid_wire:
     # Mid-chain gate after wire: if /ll:wire-issue set decision_needed: true, skip
@@ -199,7 +217,61 @@ states:
     action: "ll-issues check-flag ${captured.issue_id.output} decision_needed"
     fragment: shell_exit
     on_yes: done
-    on_no: confidence_check
+    on_no: verify_issue
+    on_error: verify_issue
+
+  # ENH-3031: claim-verification gate, inserted before confidence_check on every
+  # path (all five mid-chain routes above now retarget here). Tests the issue's
+  # claims against the codebase rather than grading its own prose — the only
+  # state in this chain that can catch an omission (e.g. a call path that does
+  # not exist). Non-fatal on error, like wire_issue.
+  #
+  # ISSUE_ID is passed explicitly and verify-issues.md's Step 1 now honors it
+  # (fixed by this same issue) — without that fix this call would silently
+  # verify (and, with Edit in allowed-tools, potentially rewrite) the entire
+  # active backlog on every run.
+  verify_issue:
+    action: "/ll:verify-issues ${captured.issue_id.output} --check --auto"
+    action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: verify-issues-auto
+      suppress_claude_md: true
+    next: check_verify_verdict
+    on_error: check_verify_verdict  # verification failure is non-fatal, like wire_issue
+
+  check_verify_verdict:
+    # verify_issue's --check mode persists verify_verdict: VALID|NON_VALID to
+    # frontmatter rather than relying on the slash command's own process exit
+    # code, which never reaches the host CLI's exit status. This gate reads
+    # that written artifact — the write-verdict/read-verdict shape used
+    # throughout this file (decision_needed / check-flag).
+    action: "ll-issues check-verify-verdict ${captured.issue_id.output}"
+    fragment: shell_exit
+    on_yes: check_hedges           # exit 0 = verdict VALID (or absent, fail-open)
+    on_no: check_refine_limit      # exit 1 = VERIFY_VERDICT_NON_VALID → force refine
+    on_error: check_hedges
+
+  check_hedges:
+    # Score-independent gate: forces a refine pass on unresolved hedges/open
+    # questions regardless of confidence_score. Widened sections/vocabulary
+    # (ENH-3031) so prose deposited by refine/wire's research findings is
+    # scanned, not just Edge Cases / Confidence Check Notes / Open Questions.
+    action: "ll-issues check-open-questions ${captured.issue_id.output}"
+    fragment: shell_exit
+    on_yes: check_ac_automatable  # exit 0 = no hedges
+    on_no: check_refine_limit     # exit 1 = OPEN_QUESTIONS_REMAIN → force refine
+    on_error: check_ac_automatable
+
+  check_ac_automatable:
+    # Score-independent gate: a manual-verification acceptance criterion scores
+    # well on every confidence-check dimension (specific, unambiguous, small,
+    # testable-by-a-human) yet is exactly the decay mode this loop exists to
+    # prevent — no rubric axis can see it.
+    action: "ll-issues check-acceptance-criteria ${captured.issue_id.output}"
+    fragment: shell_exit
+    on_yes: confidence_check
+    on_no: check_refine_limit
     on_error: confidence_check
 
   confidence_check:

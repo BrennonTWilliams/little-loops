@@ -3,10 +3,11 @@ id: ENH-3031
 title: "refine-to-ready-issue has no claim-verification gate \u2014 every corrective\
   \ path is gated behind an LLM self-grade"
 type: ENH
-status: open
+status: done
 priority: P2
 discovered_date: 2026-08-03
 discovered_by: run-review
+completed_at: '2026-08-04T02:46:59Z'
 testable: true
 labels:
 - loops
@@ -622,47 +623,47 @@ their resolutions for traceability rather than deleted.
 
 ## Acceptance Criteria
 
-- [ ] `refine-to-ready-issue.yaml` invokes a claim-verification skill on every
+- [x] `refine-to-ready-issue.yaml` invokes a claim-verification skill on every
       run, before `confidence_check`, on a path not gated by any score.
-- [ ] `ll-issues check-open-questions` exits 1 on BUG-3025's pre-review revision
+- [x] `ll-issues check-open-questions` exits 1 on BUG-3025's pre-review revision
       (both hedge lines detected); regression fixtures cover both lines.
       Extract the fixture from `git show bf80f3df:<BUG-3025 path>` (original
       pre-review text) — do not hand-reconstruct from memory of "before the
       review".
-- [ ] At least one corrective route in `refine-to-ready-issue.yaml` is reachable
+- [x] At least one corrective route in `refine-to-ready-issue.yaml` is reachable
       with `confidence_score: 100` / `outcome_confidence: 92` — i.e. a perfect
       self-grade no longer guarantees the shortest path to `done`.
-- [ ] Acceptance-criteria automatability probe exits 1 on the pre-review
+- [x] Acceptance-criteria automatability probe exits 1 on the pre-review
       BUG-3025 criterion "verify by temporarily removing the `isatty()` guard".
       Extract the fixture from `git show d85f49b5:<BUG-3025 path>`
       (reviewed-but-uncorrected state) — same rationale as above.
-- [ ] The widened probe's effect on `autodev.yaml` and `rn-remediate.yaml` is
+- [x] The widened probe's effect on `autodev.yaml` and `rn-remediate.yaml` is
       re-measured against the implemented regex/section set and matches the
       pre-review baseline recorded in Codebase Research Findings (0/65 → 4/65
       active issues) within a small margin; a materially higher rate is a
       signal the vocabulary over-widened.
-- [ ] The acceptance-criteria probe scans only checkbox items, and does not
+- [x] The acceptance-criteria probe scans only checkbox items, and does not
       fire on FEAT-1236 / FEAT-1238's non-criterion prose ("Can be run manually
       on any issue...").
-- [ ] `ll-issues check-open-questions ENH-3031` exits 1 on this issue's own
+- [x] `ll-issues check-open-questions ENH-3031` exits 1 on this issue's own
       pre-review revision (the change-4 "worth a decision" hedge) — the loop's
       gates catch the defect class this issue was filed about, including in
       this issue.
-- [ ] `verify_issue` does not invoke `/ll:verify-issues` in a form that
+- [x] `verify_issue` does not invoke `/ll:verify-issues` in a form that
       verifies or edits issues other than the run's own issue.
-- [ ] All five retargeted mid-chain routes (`check_wire_done.on_no`/`.on_error`,
+- [x] All five retargeted mid-chain routes (`check_wire_done.on_no`/`.on_error`,
       `wire_issue.on_error`, `mark_wire_done.on_error`,
       `check_decision_mid_wire.on_no`/`.on_error`) point at `verify_issue`,
       asserted by routing tests — a gate-forced `refine_followup` cycle
       re-enters through the gates, not at `confidence_check`.
-- [ ] `/ll:verify-issues <ID> --check` persists `verify_verdict:
+- [x] `/ll:verify-issues <ID> --check` persists `verify_verdict:
       VALID|NON_VALID` to that issue's frontmatter; `ll-issues
       check-verify-verdict <ID>` exits 1 with a `VERIFY_VERDICT_NON_VALID`
       stderr token on `NON_VALID`, exit 0 on `VALID`, and exit 0 (fail-open,
       matching the loop's non-fatal `on_error` convention) when the field is
       absent.
-- [ ] `ll-loop validate refine-to-ready-issue` passes.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `ll-loop validate refine-to-ready-issue` passes.
+- [x] `python -m pytest scripts/tests/` exits 0.
 
 ## Impact
 
@@ -719,6 +720,7 @@ extracted from a stable ref.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-04T02:46:05 - `89cd7c8d-e3c1-4714-9619-db55e4f298cc.jsonl`
 - `/ll:confidence-check` - 2026-08-04T02:13:32 - `bf431c8e-9360-452f-ad2d-3353ebec0f47.jsonl`
 - `/ll:confidence-check` - 2026-08-03T22:42:41 - `45ffda97-3031-45d5-b9ae-4e6a5274c6b7.jsonl`
 - `/ll:wire-issue` - 2026-08-03T22:40:21 - `26597b53-279a-4c3f-b58f-74c43bfa7741.jsonl`

@@ -1162,6 +1162,8 @@ _RESOLVED_QUESTION_MARKER_RE = re.compile(
 # Open-question signals — a bullet/numbered item is "an open question" if it carries
 # any of these. Mirrors the confidence-check signal phrases from
 # skills/confidence-check/SKILL.md:356-371 and the canonical "Q:" / "?" patterns.
+# ENH-3031: widened with hedge vocabulary that accumulates via --gap-analysis
+# (additive, never removes content) and is never subsequently closed.
 _OPEN_QUESTION_SIGNAL_RE = re.compile(
     r"\?\s*$"  # ends with question mark
     r"|^\s*-\s*\*\*Q\d*"  # **Q1.** style
@@ -1171,33 +1173,79 @@ _OPEN_QUESTION_SIGNAL_RE = re.compile(
     r"|\bdecision needed\b"
     r"|\bopen decision\b"
     r"|\bunresolved decision\b"
-    r"|\bdecision point\b",
+    r"|\bdecision point\b"
+    r"|\bworth confirming\b"
+    r"|\bworth checking\b"
+    r"|\bshould be considered\b"
+    r"|\bTBD\b"
+    r"|\bto be determined\b"
+    r"|\bneeds confirmation\b"
+    r"|\bworth a decision\b"
+    r"|\bworth deciding\b",
     re.IGNORECASE,
 )
 
 
-_OPEN_QUESTION_SECTIONS = ("Edge Cases", "Confidence Check Notes", "Open Questions")
+# ENH-3031: widened to the sections refine/wire actually deposit prose into —
+# the original three-section scan missed hedges left in research findings and
+# design notes, which is where the additive --gap-analysis pass accumulates them.
+_OPEN_QUESTION_SECTIONS = (
+    "Edge Cases",
+    "Confidence Check Notes",
+    "Open Questions",
+    "Integration Map",
+    "Codebase Research Findings",
+    "Suggested Fix Direction",
+    "Program Design",
+)
+
+
+def _is_list_item_start(stripped: str) -> bool:
+    """Return True if *stripped* starts a new bullet/numbered list item."""
+    return stripped.startswith(("-", "*")) or (
+        len(stripped) > 2 and stripped[0].isdigit() and stripped[1] in (".", ")")
+    )
 
 
 def _count_unresolved_items_in_text(text: str) -> int:
-    """Count bullet/numbered items carrying an open-question signal and NOT a RESOLVED marker."""
+    """Count bullet/numbered items carrying an open-question signal and NOT a RESOLVED marker.
+
+    ENH-3031: wrapped continuation lines (prose that spills onto subsequent
+    physical lines without a leading bullet marker — the common shape for
+    refine/wire-deposited paragraphs) are joined onto the item that started
+    them before signal matching, so a hedge phrase split across a line wrap
+    (e.g. "Worth\\nconfirming ...") is still detected.
+    """
     if not text:
         return 0
     unresolved = 0
+    item_lines: list[str] = []
+
+    def _flush() -> None:
+        nonlocal unresolved
+        if not item_lines:
+            return
+        joined = " ".join(item_lines)
+        if not _RESOLVED_QUESTION_MARKER_RE.search(joined) and _OPEN_QUESTION_SIGNAL_RE.search(
+            joined
+        ):
+            unresolved += 1
+
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped:
+            _flush()
+            item_lines = []
             continue
-        is_item = stripped.startswith(("-", "*")) or (
-            len(stripped) > 2 and stripped[0].isdigit() and stripped[1] in (".", ")")
-        )
-        if not is_item:
-            continue
-        if _RESOLVED_QUESTION_MARKER_RE.search(stripped):
-            continue
-        if not _OPEN_QUESTION_SIGNAL_RE.search(stripped):
-            continue
-        unresolved += 1
+        if _is_list_item_start(stripped):
+            _flush()
+            item_lines = [stripped]
+        elif item_lines and not stripped.startswith("#"):
+            item_lines.append(stripped)
+        else:
+            _flush()
+            item_lines = []
+    _flush()
     return unresolved
 
 

@@ -1363,10 +1363,57 @@ class TestRefineToReadyIssueSubLoop:
             f"check_scores_from_file.on_no should be 'breakdown_issue', got {state.get('on_no')!r}"
         )
 
-    def test_verify_issue_state_absent(self, data: dict) -> None:
-        """verify_issue state must not exist — it was removed in ENH-980."""
-        assert "verify_issue" not in data["states"], (
-            "State 'verify_issue' should have been removed; confidence_check.on_yes now routes to 'done'"
+    def test_verify_issue_state_exists(self, data: dict) -> None:
+        """verify_issue state exists (ENH-3031) — reintroduced with a different
+        purpose than the state ENH-980 removed. ENH-980's verify_issue graded
+        confidence_check's own output; ENH-3031's verify_issue is a
+        claim-verification gate (/ll:verify-issues --check) inserted ahead of
+        confidence_check on every path, independent of any score."""
+        state = data["states"].get("verify_issue", {})
+        assert state, "State 'verify_issue' not found (ENH-3031)"
+        assert state.get("next") == "check_verify_verdict", (
+            f"verify_issue.next should be 'check_verify_verdict', got {state.get('next')!r}"
+        )
+        assert state.get("on_error") == "check_verify_verdict", (
+            f"verify_issue.on_error should be 'check_verify_verdict' (non-fatal), "
+            f"got {state.get('on_error')!r}"
+        )
+
+    def test_check_verify_verdict_state_routing(self, data: dict) -> None:
+        """check_verify_verdict gates on the persisted verify_verdict field (ENH-3031)."""
+        state = data["states"].get("check_verify_verdict", {})
+        assert state, "State 'check_verify_verdict' not found (ENH-3031)"
+        assert state.get("on_yes") == "check_hedges", (
+            f"check_verify_verdict.on_yes should be 'check_hedges', got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_no") == "check_refine_limit", (
+            f"check_verify_verdict.on_no should be 'check_refine_limit', got {state.get('on_no')!r}"
+        )
+        assert state.get("on_error") == "check_hedges", (
+            f"check_verify_verdict.on_error should be 'check_hedges' (fail-open), "
+            f"got {state.get('on_error')!r}"
+        )
+
+    def test_check_hedges_state_routing(self, data: dict) -> None:
+        """check_hedges force-routes to check_refine_limit regardless of score (ENH-3031)."""
+        state = data["states"].get("check_hedges", {})
+        assert state, "State 'check_hedges' not found (ENH-3031)"
+        assert state.get("on_yes") == "check_ac_automatable", (
+            f"check_hedges.on_yes should be 'check_ac_automatable', got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_no") == "check_refine_limit", (
+            f"check_hedges.on_no should be 'check_refine_limit', got {state.get('on_no')!r}"
+        )
+
+    def test_check_ac_automatable_state_routing(self, data: dict) -> None:
+        """check_ac_automatable force-routes to check_refine_limit regardless of score (ENH-3031)."""
+        state = data["states"].get("check_ac_automatable", {})
+        assert state, "State 'check_ac_automatable' not found (ENH-3031)"
+        assert state.get("on_yes") == "confidence_check", (
+            f"check_ac_automatable.on_yes should be 'confidence_check', got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_no") == "check_refine_limit", (
+            f"check_ac_automatable.on_no should be 'check_refine_limit', got {state.get('on_no')!r}"
         )
 
     def test_check_epic_id_state_exists(self, data: dict) -> None:
@@ -1810,11 +1857,35 @@ class TestRefineToReadyIssueSubLoop:
             "wire_issue action must include '--auto' flag to prevent interactive stalling"
         )
 
-    def test_wire_issue_on_error_is_confidence_check(self, data: dict) -> None:
-        """wire_issue.on_error must route to confidence_check (wiring failure is non-fatal)."""
+    def test_wire_issue_on_error_is_verify_issue(self, data: dict) -> None:
+        """wire_issue.on_error must route to verify_issue (ENH-3031): wiring failure
+        is non-fatal, and the retarget closes the loopback bypass that used to skip
+        the verification chain entirely on a gate-forced second pass."""
         state = data["states"].get("wire_issue", {})
-        assert state.get("on_error") == "confidence_check", (
-            f"wire_issue.on_error should be 'confidence_check', got {state.get('on_error')!r}"
+        assert state.get("on_error") == "verify_issue", (
+            f"wire_issue.on_error should be 'verify_issue', got {state.get('on_error')!r}"
+        )
+
+    def test_check_wire_done_on_no_and_on_error_route_to_verify_issue(self, data: dict) -> None:
+        """check_wire_done.on_no/.on_error must route to verify_issue (ENH-3031).
+
+        This is the loopback-bypass closure: on a gate-forced second pass the
+        wire-done marker is already 1, so on_no previously skipped straight to
+        confidence_check, bypassing verify_issue/check_hedges/check_ac_automatable.
+        """
+        state = data["states"].get("check_wire_done", {})
+        assert state.get("on_no") == "verify_issue", (
+            f"check_wire_done.on_no should be 'verify_issue', got {state.get('on_no')!r}"
+        )
+        assert state.get("on_error") == "verify_issue", (
+            f"check_wire_done.on_error should be 'verify_issue', got {state.get('on_error')!r}"
+        )
+
+    def test_mark_wire_done_on_error_routes_to_verify_issue(self, data: dict) -> None:
+        """mark_wire_done.on_error must route to verify_issue (ENH-3031)."""
+        state = data["states"].get("mark_wire_done", {})
+        assert state.get("on_error") == "verify_issue", (
+            f"mark_wire_done.on_error should be 'verify_issue', got {state.get('on_error')!r}"
         )
 
     def test_mark_wire_done_state_exists(self, data: dict) -> None:
@@ -2036,20 +2107,21 @@ class TestRefineToReadyIssueSubLoop:
             f"check_decision_mid_wire.on_yes should be 'done', got {state.get('on_yes')!r}"
         )
 
-    def test_check_decision_mid_wire_on_no_routes_to_confidence_check(self, data: dict) -> None:
-        """check_decision_mid_wire.on_no must route to confidence_check (no flag → fall through)."""
+    def test_check_decision_mid_wire_on_no_routes_to_verify_issue(self, data: dict) -> None:
+        """check_decision_mid_wire.on_no must route to verify_issue (ENH-3031: no flag
+        → fall through into the claim-verification chain, not straight to confidence_check)."""
         state = data["states"].get("check_decision_mid_wire", {})
-        assert state.get("on_no") == "confidence_check", (
-            f"check_decision_mid_wire.on_no should be 'confidence_check', "
+        assert state.get("on_no") == "verify_issue", (
+            f"check_decision_mid_wire.on_no should be 'verify_issue', "
             f"got {state.get('on_no')!r}"
         )
 
-    def test_check_decision_mid_wire_on_error_routes_to_confidence_check(self, data: dict) -> None:
-        """check_decision_mid_wire.on_error must fall through to confidence_check
+    def test_check_decision_mid_wire_on_error_routes_to_verify_issue(self, data: dict) -> None:
+        """check_decision_mid_wire.on_error must fall through to verify_issue (ENH-3031)
         (a transient check-flag failure should not stall the sub-loop)."""
         state = data["states"].get("check_decision_mid_wire", {})
-        assert state.get("on_error") == "confidence_check", (
-            f"check_decision_mid_wire.on_error should be 'confidence_check', "
+        assert state.get("on_error") == "verify_issue", (
+            f"check_decision_mid_wire.on_error should be 'verify_issue', "
             f"got {state.get('on_error')!r}"
         )
 

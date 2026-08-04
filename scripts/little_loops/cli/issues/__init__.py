@@ -21,6 +21,10 @@ def main_issues() -> int:
     with cli_event_context(DEFAULT_DB_PATH, "ll-issues", sys.argv[1:]):
         from little_loops.cli.issues.anchor_sweep import cmd_anchor_sweep
         from little_loops.cli.issues.append_log import cmd_append_log
+        from little_loops.cli.issues.check_acceptance_criteria import (
+            add_check_acceptance_criteria_parser,
+            cmd_check_acceptance_criteria,
+        )
         from little_loops.cli.issues.check_decidable import cmd_check_decidable
         from little_loops.cli.issues.check_design import cmd_check_design
         from little_loops.cli.issues.check_flag import cmd_check_flag
@@ -29,6 +33,10 @@ def main_issues() -> int:
             cmd_check_open_questions,
         )
         from little_loops.cli.issues.check_readiness import cmd_check_readiness
+        from little_loops.cli.issues.check_verify_verdict import (
+            add_check_verify_verdict_parser,
+            cmd_check_verify_verdict,
+        )
         from little_loops.cli.issues.clusters import cmd_clusters
         from little_loops.cli.issues.count_cmd import cmd_count
         from little_loops.cli.issues.decisions import (
@@ -133,6 +141,8 @@ Sub-commands:
   decisions        Manage rules, decisions, and exceptions log (list/add/outcome/generate/sync)
   normalize        Detect/fix filename & ID mechanics (missing_id/malformed_filename/duplicate_id/legacy_dir/type_mismatch)
   prioritize       Priority-rename mechanics: discover unprioritized/prioritized issues, apply a priority map from stdin JSON
+  check-acceptance-criteria  Exit 0 if no Acceptance Criteria checkbox item requires manual verification
+  check-verify-verdict       Exit 0 unless the issue's persisted verify_verdict is NON_VALID
 
 Examples:
   %(prog)s next-id
@@ -717,6 +727,8 @@ Examples:
         add_config_arg(loc)
 
         add_check_open_questions_parser(subs)
+        add_check_acceptance_criteria_parser(subs)
+        add_check_verify_verdict_parser(subs)
 
         cr = subs.add_parser(
             "check-readiness",
@@ -994,6 +1006,10 @@ Examples:
             return cmd_locate_options(config, args)
         if args.command == "check-open-questions":
             return cmd_check_open_questions(config, args)
+        if args.command == "check-acceptance-criteria":
+            return cmd_check_acceptance_criteria(config, args)
+        if args.command == "check-verify-verdict":
+            return cmd_check_verify_verdict(config, args)
         if args.command == "check-readiness":
             return cmd_check_readiness(config, args)
         if args.command == "set-scores":

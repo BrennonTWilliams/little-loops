@@ -220,7 +220,9 @@ states:
     on_error: run_refine
 
   run_refine:
-    # Delegate format → refine → wire → confidence-check to refine-to-ready-issue.
+    # Delegate format → refine → wire → verify → confidence-check to refine-to-ready-issue
+    # (ENH-3031 inserted a claim-verification/hedge/AC-automatability gate chain
+    # ahead of confidence_check, independent of any self-graded score).
     # context_passthrough passes captured.input as context.input to the sub-loop.
     # on_success = sub-loop reached 'done' (confidence pass OR breakdown_issue path).
     # on_failure = sub-loop reached 'failed' (true error condition; breakdown now occurs in sub-loop).

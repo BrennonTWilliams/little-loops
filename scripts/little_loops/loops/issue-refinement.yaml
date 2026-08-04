@@ -2,7 +2,7 @@ name: issue-refinement
 category: issue-management
 description: |
   Progressively refine all active issues to ready-state by delegating each one to
-  the refine-to-ready-issue sub-loop (format → refine → wire → confidence-check).
+  the refine-to-ready-issue sub-loop (format → refine → wire → verify → confidence-check).
   Uses ll-issues next-action to pick the highest-value action each cycle. Commits
   every 5 actions and continues until all issues pass quality thresholds or are exhausted.
 

@@ -319,6 +319,114 @@ class TestCountOpenQuestionsInSections:
         content = "## Edge Cases\n\n_(empty)_\n"
         assert count_open_questions_in_sections(content) == 0
 
+
+class TestCountOpenQuestionsWidenedSections:
+    """ENH-3031: sections/vocabulary widened past the original three sections."""
+
+    def test_integration_map_section_counted(self) -> None:
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = (
+            "## Integration Map\n"
+            "\n"
+            "### Tests\n"
+            "- Worth confirming whether this guard belongs here.\n"
+        )
+        assert count_open_questions_in_sections(content) == 1
+
+    def test_codebase_research_findings_section_counted(self) -> None:
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = (
+            "## Codebase Research Findings\n"
+            "\n"
+            "- TBD whether this path is actually hit.\n"
+        )
+        assert count_open_questions_in_sections(content) == 1
+
+    def test_suggested_fix_direction_section_counted(self) -> None:
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = (
+            "## Suggested Fix Direction\n"
+            "\n"
+            "- This needs confirmation before implementation.\n"
+        )
+        assert count_open_questions_in_sections(content) == 1
+
+    def test_program_design_section_counted(self) -> None:
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = (
+            "## Program Design\n"
+            "\n"
+            "- Worth deciding which module owns this.\n"
+        )
+        assert count_open_questions_in_sections(content) == 1
+
+    def test_hedge_vocabulary_worth_checking(self) -> None:
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = "## Open Questions\n\n- Worth checking whether this regresses.\n"
+        assert count_open_questions_in_sections(content) == 1
+
+    def test_hedge_vocabulary_should_be_considered(self) -> None:
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = "## Open Questions\n\n- An alternate approach should be considered.\n"
+        assert count_open_questions_in_sections(content) == 1
+
+    def test_hedge_vocabulary_to_be_determined(self) -> None:
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = "## Open Questions\n\n- Rollout timing: to be determined.\n"
+        assert count_open_questions_in_sections(content) == 1
+
+    def test_hedge_vocabulary_worth_a_decision(self) -> None:
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = "## Open Questions\n\n- Config default is worth a decision later.\n"
+        assert count_open_questions_in_sections(content) == 1
+
+    def test_hedge_split_across_wrapped_lines_is_detected(self) -> None:
+        """The BUG-3025 hedge line wraps 'Worth' / 'confirming' across lines."""
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = (
+            "## Integration Map\n"
+            "\n"
+            "### Tests\n"
+            "- `scripts/tests/test_logo.py` — existing logo unit tests; checked and\n"
+            "  contains no substring assertions, so it is unaffected. Worth\n"
+            "  confirming whether the marker guard belongs here rather than\n"
+            "  in the integration file.\n"
+        )
+        assert count_open_questions_in_sections(content) == 1
+
+    def test_bug_3025_pre_review_fixture_detects_hedge(self) -> None:
+        """Regression fixture pinned to bf80f3df (BUG-3025's original revision)."""
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        fixture = (
+            __import__("pathlib").Path(__file__).parent
+            / "fixtures"
+            / "issues"
+            / "BUG-3025-pre-review-original.md"
+        )
+        assert count_open_questions_in_sections(fixture.read_text()) >= 1
+
+    def test_bug_3025_reviewed_fixture_has_no_hedges(self) -> None:
+        """Regression fixture pinned to d85f49b5 — the reviewer already resolved the hedge."""
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        fixture = (
+            __import__("pathlib").Path(__file__).parent
+            / "fixtures"
+            / "issues"
+            / "BUG-3025-reviewed-uncorrected.md"
+        )
+        assert count_open_questions_in_sections(fixture.read_text()) == 0
+
     def test_fixture_mixed_shape(self) -> None:
         """FEAT-2339 fixture: 2 open questions in Edge Cases + 2 in Confidence Check Notes."""
         from little_loops.issue_parser import count_open_questions_in_sections
