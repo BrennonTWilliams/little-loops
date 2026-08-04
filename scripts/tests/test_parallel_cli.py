@@ -106,6 +106,27 @@ class TestParallelEnvVarSideEffects:
         assert result == 0
         assert os.environ.get("LL_CONTEXT_LIMIT") == "100000"
 
+    def test_negative_timeout_exits_via_parser_error(self, temp_project: Path) -> None:
+        """--timeout -1 rejects via parser.error() rather than reaching the
+        orchestrator, where it would instant-kill every worker (BUG-3034)."""
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-parallel",
+                "--timeout",
+                "-1",
+                "--config",
+                str(temp_project),
+            ],
+        ):
+            from little_loops.cli import main_parallel
+
+            with pytest.raises(SystemExit) as exc_info:
+                main_parallel()
+
+        assert exc_info.value.code == 2
+
 
 # ---------------------------------------------------------------------------
 # --prune-merged-branches mode

@@ -228,6 +228,9 @@ Examples:
         # Build priority filter (validates against VALID_PRIORITIES)
         priority_filter = parse_priorities(args.priority)
 
+        if args.timeout is not None and args.timeout < 0:
+            parser.error("--timeout must be >= 0 (0 disables the per-issue timeout)")
+
         if args.handoff_threshold is not None:
             if not (1 <= args.handoff_threshold <= 100):
                 parser.error("--handoff-threshold must be between 1 and 100")

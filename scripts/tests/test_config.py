@@ -1220,6 +1220,39 @@ class TestBRConfig:
         assert result.epic_branches.open_pr is True
         assert result.epic_branches.verify_before_merge is True
 
+    def test_create_parallel_config_timeout_explicit_zero(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """timeout_seconds=0 disables the per-issue timeout, not the config default (BUG-3034)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+        result = config.create_parallel_config(timeout_seconds=0)
+        assert result.timeout_per_issue == 0
+
+    def test_create_parallel_config_timeout_none_falls_back_to_config(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Omitting timeout_seconds falls back to config's parallel.timeout_seconds (BUG-3034)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+        result = config.create_parallel_config()
+        assert result.timeout_per_issue == sample_config["parallel"]["timeout_seconds"]
+
+    def test_create_parallel_config_timeout_zero_via_config_file(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """parallel.timeout_seconds: 0 in the config file resolves to a disabled timeout
+        end-to-end, with no CLI override (BUG-3034 live route)."""
+        cfg = dict(sample_config)
+        cfg["parallel"] = dict(sample_config["parallel"], timeout_seconds=0)
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(cfg))
+        config = BRConfig(temp_project_dir)
+        result = config.create_parallel_config()
+        assert result.timeout_per_issue == 0
+
     def test_to_dict_excludes_deprecated_dirs(
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:

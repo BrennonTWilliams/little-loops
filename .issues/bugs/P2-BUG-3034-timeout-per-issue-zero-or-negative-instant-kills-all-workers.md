@@ -3,9 +3,10 @@ id: BUG-3034
 title: timeout_per_issue of 0 or negative instant-kills all ll-parallel workers
 type: BUG
 priority: P2
-status: open
+status: done
 discovered_date: 2026-08-03
 captured_at: '2026-08-04T04:17:13Z'
+completed_at: '2026-08-04T06:20:17Z'
 discovered_by: capture-issue
 relates_to:
 - ENH-2977
@@ -387,6 +388,8 @@ _Added by `/ll:confidence-check` on 2026-08-04_
 - Program Design gate (`ll-issues check-design`) fails: the issue has no `## Program Design` section at all. All five readiness criteria otherwise score 20/20 — root cause, proposed fix, integration map, and tests are already concrete and code-anchored — so this is a missing-section gap, not a specificity gap (`PD_GAP` returned empty). Add a `## Program Design` section stating the concrete signatures/call path for the three edit sites (`orchestrator.py:1006`, `orchestrator.py:1553-1568`, `core.py:576`, `cli/parallel.py` guard), or set `program_design_not_applicable: true` in frontmatter if this is judged too small to warrant the section.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-04T06:19:53 - `f9c0ce42-221d-4060-b8ad-b26204cbfb47.jsonl`
+- `/ll:ready-issue` - 2026-08-04T06:03:53 - `88e835ea-974f-4b68-9ff8-caac2153bf90.jsonl`
 - `/ll:confidence-check` - 2026-08-04T05:49:42 - `9df56f7f-f5e3-45ee-877d-3b23694138c5.jsonl`
 - `/ll:refine-issue` - 2026-08-04T05:33:04 - `7203ba6d-70e4-4c00-af71-408c3983ed69.jsonl`
 - `/ll:confidence-check` - 2026-08-04T05:28:07 - `6fc7f771-e0c8-49da-88a4-78c95303784e.jsonl`

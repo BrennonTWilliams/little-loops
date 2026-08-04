@@ -391,7 +391,7 @@ Process issues concurrently using isolated git worktrees.
 | `--warn-only` | | With `--overlap-detection`, warn instead of serializing |
 | `--dry-run` | `-n` | Show what would be processed |
 | `--resume` | `-r` | Resume from previous checkpoint |
-| `--timeout` | `-t` | Timeout in seconds per issue |
+| `--timeout` | `-t` | Timeout in seconds per issue; `0` disables the per-issue timeout (pair with `--idle-timeout` to still bound hung workers); negative values are rejected |
 | `--quiet` | `-q` | Suppress non-essential output |
 | `--only` | | Process only these issue IDs |
 | `--skip` | | Skip these issue IDs |

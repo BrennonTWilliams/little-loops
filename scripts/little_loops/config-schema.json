@@ -307,9 +307,9 @@
         },
         "timeout_per_issue": {
           "type": "integer",
-          "description": "Timeout per issue in seconds",
+          "description": "Timeout per issue in seconds. 0 disables the per-issue timeout.",
           "default": 3600,
-          "minimum": 60
+          "minimum": 0
         },
         "max_merge_retries": {
           "type": "integer",

@@ -1003,7 +1003,8 @@ class ParallelOrchestrator:
 
         # Wait for completion
         try:
-            result = future.result(timeout=self.parallel_config.timeout_per_issue)
+            _timeout = self.parallel_config.timeout_per_issue
+            result = future.result(timeout=_timeout if _timeout > 0 else None)
             if result.success:
                 # Merge immediately for P0
                 self._merge_sequential(result)
@@ -1562,7 +1563,7 @@ class ParallelOrchestrator:
 
         start = time.time()
         while self.worker_pool.active_count > 0:
-            if time.time() - start > timeout:
+            if timeout > 0 and time.time() - start > timeout:
                 self.logger.warning(f"Timeout waiting for workers after {timeout}s")
                 self.worker_pool.terminate_all_processes()
                 break

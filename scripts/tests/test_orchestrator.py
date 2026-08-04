@@ -2472,6 +2472,59 @@ class TestProcessSequential:
 
         orchestrator.worker_pool.submit.assert_called_once()  # type: ignore[attr-defined]
 
+    def test_process_sequential_timeout_zero_passes_none_to_future_result(
+        self,
+        orchestrator: ParallelOrchestrator,
+        mock_issue: MagicMock,
+    ) -> None:
+        """timeout_per_issue=0 disables the wall-clock budget: future.result gets
+        timeout=None, not 0 (BUG-3034)."""
+        mock_issue.priority = "P0"
+        orchestrator.parallel_config.timeout_per_issue = 0
+
+        type(orchestrator.worker_pool).active_count = property(lambda self: 0)  # type: ignore[method-assign,assignment]
+
+        mock_future = MagicMock()
+        mock_future.result.return_value = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="parallel/bug-001",
+            worktree_path=Path("/tmp/worktree"),
+        )
+        orchestrator.worker_pool.submit.return_value = mock_future  # type: ignore[attr-defined]
+
+        with patch.object(orchestrator, "_merge_sequential"):
+            with patch("time.sleep"):
+                orchestrator._process_sequential(mock_issue)
+
+        mock_future.result.assert_called_once_with(timeout=None)
+
+    def test_process_sequential_negative_timeout_passes_none_to_future_result(
+        self,
+        orchestrator: ParallelOrchestrator,
+        mock_issue: MagicMock,
+    ) -> None:
+        """A negative timeout_per_issue is also treated as disabled, not expired (BUG-3034)."""
+        mock_issue.priority = "P0"
+        orchestrator.parallel_config.timeout_per_issue = -5
+
+        type(orchestrator.worker_pool).active_count = property(lambda self: 0)  # type: ignore[method-assign,assignment]
+
+        mock_future = MagicMock()
+        mock_future.result.return_value = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="parallel/bug-001",
+            worktree_path=Path("/tmp/worktree"),
+        )
+        orchestrator.worker_pool.submit.return_value = mock_future  # type: ignore[attr-defined]
+
+        with patch.object(orchestrator, "_merge_sequential"):
+            with patch("time.sleep"):
+                orchestrator._process_sequential(mock_issue)
+
+        mock_future.result.assert_called_once_with(timeout=None)
+
 
 class TestOnWorkerComplete:
     """Tests for _on_worker_complete callback."""
@@ -3756,6 +3809,58 @@ class TestWaitForCompletion:
             orchestrator._wait_for_completion()
 
         assert orchestrator.queue.mark_completed.call_count == 2  # type: ignore[attr-defined]
+
+    def test_wait_for_completion_timeout_per_issue_zero_does_not_terminate(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """timeout_per_issue=0 (orchestrator_timeout unset) disables the deadline
+        check entirely rather than expiring immediately (BUG-3034)."""
+        orchestrator.parallel_config.orchestrator_timeout = 0
+        orchestrator.parallel_config.timeout_per_issue = 0
+
+        active_count_sequence = [1, 1, 0]
+        call_idx = [0]
+
+        def get_active_count() -> int:
+            idx = min(call_idx[0], len(active_count_sequence) - 1)
+            call_idx[0] += 1
+            return active_count_sequence[idx]
+
+        type(orchestrator.worker_pool).active_count = property(lambda self: get_active_count())  # type: ignore[method-assign,assignment]
+        orchestrator.merge_coordinator.merged_ids = []  # type: ignore[misc]
+        orchestrator.merge_coordinator.failed_merges = {}  # type: ignore[misc,assignment]
+
+        with patch("time.sleep"):
+            orchestrator._wait_for_completion()
+
+        orchestrator.worker_pool.terminate_all_processes.assert_not_called()  # type: ignore[attr-defined]
+
+    def test_wait_for_completion_negative_timeout_per_issue_does_not_terminate(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """A negative timeout_per_issue also disables the deadline check rather
+        than treating it as already-expired (BUG-3034)."""
+        orchestrator.parallel_config.orchestrator_timeout = 0
+        orchestrator.parallel_config.timeout_per_issue = -5
+
+        active_count_sequence = [1, 1, 0]
+        call_idx = [0]
+
+        def get_active_count() -> int:
+            idx = min(call_idx[0], len(active_count_sequence) - 1)
+            call_idx[0] += 1
+            return active_count_sequence[idx]
+
+        type(orchestrator.worker_pool).active_count = property(lambda self: get_active_count())  # type: ignore[method-assign,assignment]
+        orchestrator.merge_coordinator.merged_ids = []  # type: ignore[misc]
+        orchestrator.merge_coordinator.failed_merges = {}  # type: ignore[misc,assignment]
+
+        with patch("time.sleep"):
+            orchestrator._wait_for_completion()
+
+        orchestrator.worker_pool.terminate_all_processes.assert_not_called()  # type: ignore[attr-defined]
 
 
 class TestReportResults:

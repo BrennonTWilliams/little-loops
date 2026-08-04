@@ -573,7 +573,11 @@ class BRConfig:
             priority_filter=priority_filter or self._issues.priorities,
             max_issues=max_issues,
             dry_run=dry_run,
-            timeout_per_issue=timeout_seconds or self._parallel.base.timeout_seconds,
+            timeout_per_issue=(
+                timeout_seconds
+                if timeout_seconds is not None
+                else self._parallel.base.timeout_seconds
+            ),
             idle_timeout_per_issue=idle_timeout_per_issue
             if idle_timeout_per_issue is not None
             else 0,
