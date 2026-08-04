@@ -19,6 +19,7 @@ labels:
 - fsm
 - timeout
 - runners
+verify_verdict: VALID
 ---
 
 # FEAT-3033: Plumb idle-timeout detection into the FSM action runner
@@ -159,6 +160,34 @@ the shape FEAT-488 established for `ll-auto`/`ll-parallel`.
   guards can read it. Exit code stays `124` for both, preserving BUG-1640
   routing unchanged.
 
+  **The author-facing path is `${prev.timeout_kind}`.** The seam is
+  `self.prev_result` (`executor.py:1509` and `:1579`), which flows into
+  `ctx.prev` at `executor.py:2773`. Two consequences that must be handled
+  rather than discovered:
+
+  - `prev_result` is serialized into checkpoints (`persistence.py:345`,
+    restored at `:410`). A run resumed from a pre-change checkpoint has no
+    `timeout_kind` key, so authored guards must be written
+    `${prev.timeout_kind:default=}` — a bare reference raises
+    `InterpolationError`. Document this in the guide, and make the round-trip
+    tolerate the missing key rather than defaulting it at restore time.
+  - Decide whether the `captured` namespace carries it too. `captured` entries
+    are documented as `{output, stderr, exit_code, duration_ms}`
+    (`interpolation.py:48`); omitting `timeout_kind` there leaves
+    `capture:`-based guards unable to express what `prev`-based guards can.
+    Recommendation: add it to both, so the two namespaces stay symmetric.
+
+- **Timeout results report the elapsed duration, not the budget.** Every
+  timeout path currently stamps `duration_ms = timeout * 1000`:
+  `runners.py:191` (prompt), `runners.py:299` (shell), and
+  `executor.py:2732` (`_run_baseline_arm`). An idle kill at minute 2 of a
+  3600s budget therefore reports 3 600 000 ms. That corrupts telemetry, cost
+  attribution, and any elapsed-based guard — and idle detection makes it far
+  more common, since dying early is the entire point. All three become
+  `_now_ms() - start`, which is already what the baseline arm's *success*
+  path does two lines above the bug (`executor.py:2723`). This is in scope
+  here rather than a follow-up: the feature actively worsens the defect.
+
 ## Proposed Solution
 
 ### Part 1 — pass-through (unblocks BUG-3032)
@@ -187,9 +216,12 @@ except subprocess.TimeoutExpired as exc:
     )
 ```
 
-The same two-line change applies to `_run_baseline` (`executor.py:~2670`),
-which calls `run_claude_command` directly rather than through an
-`ActionRunner`.
+The same two-line change applies to **`_run_baseline_arm`**
+(`executor.py:2680`, invoked at `:2615`), which calls `run_claude_command`
+directly rather than through an `ActionRunner`. Note it runs *concurrently*
+with the harness arm in a `ThreadPoolExecutor` — both arms need the resolved
+value, not just the harness one, or an A/B comparison would run the two arms
+under different liveness rules.
 
 ### Part 2 — selector loops (shell and mcp states)
 
@@ -222,12 +254,59 @@ Given how similar the two loops are, extracting the shared read-and-deadline
 logic into one helper is worth considering, but is not required by this issue
 and shouldn't gate it.
 
+#### Blocking `readline()` defeats both sensors — resolve before implementing
+
+The three-line patch above is *not sufficient on its own*. At
+`runners.py:270`, `sel.select()` reports a pipe ready as soon as any bytes are
+available, and the loop then calls `key.fileobj.readline()`, which blocks until
+a newline arrives or the pipe reaches EOF. A child that writes a partial line
+and then wedges blocks the loop indefinitely — past the wall-clock deadline and
+past the new `last_output_at` check, because neither is reached again.
+`executor.py:_run_subprocess` has the identical shape.
+
+This is exactly the wedged-process case the feature exists to catch, so it
+cannot be left implicit. Pick one and record it in the implementation:
+
+- **Fix it** — read with `os.read(fd, N)` on the raw descriptor and buffer
+  lines manually, so no read blocks past the poll window. This makes both
+  sensors actually enforceable and is the recommended option; it is the larger
+  share of step 5's cost.
+- **Accept it** — keep `readline()` and document the limitation explicitly
+  (idle detection covers silent children, not children stuck mid-line), so the
+  gap is a known boundary rather than a surprise during a real incident.
+
+Note this defect predates the issue — the wall-clock deadline is already
+unenforceable in the same circumstance. This feature does not introduce it, but
+it does make the gap load-bearing.
+
+#### MCP path: the exit-code short-circuit does not apply
+
+The "a new exit code cannot deliver differentiated recovery" argument in
+*Expected Behavior* has one exception, and it lands on a path this issue
+touches. `evaluators.py:1814` exempts `mcp_result` from the `exit_code == 124`
+short-circuit because `evaluate_mcp_result` has its own `timeout` verdict. So
+for mcp states the new selector-loop code must decide: keep emitting the
+existing `timeout` verdict for both kill causes (simplest, and `timeout_kind`
+remains the only discriminator, consistently with every other path), or add a
+distinct verdict. **Recommendation: keep `timeout`** — a second verdict would
+fork mcp-state authoring away from the uniform `${prev.timeout_kind}` idiom for
+no added expressive power. Either way, state it; today it is unspecified.
+
 ### Out of scope
 
 `_dispatch_live` (`executor.py`, the `sdk`/`batch` request paths) runs no
 subprocess, so neither mechanism applies to it. It keeps wall-clock-only
 behavior. State this explicitly rather than leaving it as an apparent
 oversight; a follow-up can add SDK-level idle if it proves needed.
+
+**No `ll-loop run --idle-timeout` flag.** The configuration surface this issue
+adds is YAML-only: `idle_timeout` on `stateConfig` and `default_idle_timeout`
+at the loop level. `add_idle_timeout_arg` (`cli_args.py:125`) exists and is
+wired into `ll-auto`/`ll-parallel`, so adding it here is cheap — but a
+run-level override interacts with per-state resolution in ways that belong with
+ENH-2977's broader timeout-surface work, not bolted on mid-feature. Closing
+this as a non-goal rather than leaving it open, so it isn't re-litigated during
+implementation.
 
 ### Choosing a default
 
@@ -270,8 +349,15 @@ to BUG-3032's default choice.
   - `~1835` — contributed-action runner (`self._contributed_actions[...]`), a
     separate third-party runner surface that needs the same kwarg-gating.
   - `~1866` — the main `self.action_runner.run(...)` call (prompt + shell).
-  - `~2670` — **`_run_baseline`, which calls `run_claude_command` directly**,
-    not `_run_subprocess`. Pass-through edit, per Part 1.
+  - `2680` — **`_run_baseline_arm`, which calls `run_claude_command` directly**,
+    not `_run_subprocess` (invoked from the `ThreadPoolExecutor` at `:2615`).
+    Pass-through edit, per Part 1.
+- `scripts/little_loops/fsm/types.py` — `ActionResult` (line 89) gains
+  `timeout_kind: str | None = None`, defaulted so every existing construction
+  site keeps working.
+- `scripts/little_loops/fsm/persistence.py:345, 410` — `prev_result` is
+  checkpointed and restored; the restore path must tolerate a `timeout_kind`
+  key absent from pre-change checkpoints.
 - `scripts/little_loops/fsm/schema.py` — `StateConfig` (line 658 area) gains
   `idle_timeout: int | None`; `FSMConfig` (line 1281 area) gains
   `default_idle_timeout`; both need `from_dict`/`to_dict` round-tripping
@@ -323,9 +409,25 @@ to BUG-3032's default choice.
   re-flattening the distinction.
 - `exit_code=124` still routes to verdict `error` via BUG-1640 regardless of
   `timeout_kind` — guards against the new field perturbing existing routing.
-- `timeout_kind` is readable from a transition guard / interpolation context
-  (the acceptance test for the differentiated-recovery use case; without it the
-  field is write-only and the feature's stated benefit is undelivered).
+- `timeout_kind` is readable from a transition guard as
+  `${prev.timeout_kind}` (the acceptance test for the differentiated-recovery
+  use case; without it the field is write-only and the feature's stated benefit
+  is undelivered). Include the `captured` namespace if that decision lands
+  symmetric.
+- A checkpoint written before this change restores without error, and
+  `${prev.timeout_kind:default=}` resolves empty rather than raising
+  (`persistence.py:410` round-trip guard).
+- **`duration_ms` on a timeout reflects elapsed time, not the budget.** A state
+  with `timeout: 3600` killed after ~2s reports a `duration_ms` in the seconds
+  range, not 3600000. Assert on all three paths: prompt (`runners.py:191`),
+  shell (`runners.py:299`), and `_run_baseline_arm` (`executor.py:2732`).
+- Selector-loop liveness under the chosen read strategy: a child that writes a
+  partial line (no trailing newline) and then goes silent is still killed at
+  `idle_timeout` — the regression guard for the blocking-`readline()` decision.
+  If the "accept it" option is taken instead, this test asserts and documents
+  the *current* behavior so the boundary is pinned rather than accidental.
+- mcp path: an idle kill still produces the `mcp_result` `timeout` verdict
+  (unchanged routing), with the distinction carried only by `timeout_kind`.
 - Precedence: `state.idle_timeout` overrides `fsm.default_idle_timeout`.
 - An `ActionRunner` implementation not accepting the new kwarg still runs
   (kwarg-gating regression guard), including `SimulationActionRunner`.
@@ -347,19 +449,26 @@ begins.
 1. Add `idle_timeout` / `default_idle_timeout` to `schema.py` and
    `fsm-loop-schema.json`, with `minimum: 0` and round-trip coverage; add the
    loop-level key to `validation/_base.py`.
-2. Add `timeout_kind` to `ActionResult` and surface it into the interpolation
-   context. Confirm `exit_code=124` routing through `evaluators.py` is
-   unchanged (BUG-1640 short-circuit intact).
+2. Add `timeout_kind` to `ActionResult` (`types.py:89`) and surface it via
+   `prev_result` → `${prev.timeout_kind}`, including the `persistence.py`
+   round-trip tolerance for checkpoints lacking the key. Confirm
+   `exit_code=124` routing through `evaluators.py` is unchanged (BUG-1640
+   short-circuit intact).
 3. Prompt path: forward `idle_timeout` to `run_claude_command` and stop
    flattening the sentinel in the `TimeoutExpired` handler
-   (`runners.py:131-194`). Same for `_run_baseline`.
+   (`runners.py:131-194`). Same for `_run_baseline_arm`. Fix `duration_ms` to
+   elapsed rather than budget on all three timeout paths while in these
+   handlers.
 4. Resolve and pass the value at the executor call sites, kwarg-gated on
    `ActionRunner.run` per the `working_dir` / `automation_profile` precedent;
    add the parameter to `SimulationActionRunner` and the contributed-action
    runner surface. **BUG-3032 is unblocked here.**
-5. Add `last_output_at` tracking to the `runners.py` shell selector loop and
-   mirror it in `executor.py:_run_subprocess`, including the
-   `deadline = ... if timeout else None` seam BUG-3032 needs.
+5. **Decide the blocking-`readline()` question first** (fix via `os.read` vs.
+   document the limitation) — it sizes the rest of this step. Then add
+   `last_output_at` tracking to the `runners.py` shell selector loop and mirror
+   it in `executor.py:_run_subprocess`, including the
+   `deadline = ... if timeout else None` seam BUG-3032 needs, and settle the
+   mcp `timeout`-verdict question.
 6. Tests per above.
 7. Docs, including the explicit `_dispatch_live` out-of-scope note.
 
@@ -375,7 +484,10 @@ begins.
   serves shell/mcp states rather than the motivating case. The
   schema/round-trip/validation surface and kwarg-gating across three runner
   surfaces (`ActionRunner`, `SimulationActionRunner`, contributed actions) are
-  the real cost.
+  the real cost — plus, if the blocking-`readline()` fix is taken, replacing
+  `readline()` with buffered `os.read` in two selector loops. That decision is
+  the single largest swing in this issue's size; steps 1-4 are unaffected
+  either way.
 - **Risk**: Low-Medium. Additive and default-off. Two genuine risks:
   choosing a default idle value too aggressive for streaming agent cadence
   (mitigated by defaulting to disabled and letting loop authors opt in), and
@@ -410,5 +522,21 @@ because of the BUG-1815 short-circuit, so the distinction moves to an
 `_run_subprocess` call site; `_dispatch_live` is now explicitly out of scope;
 and the default-off recommendation is reconciled with BUG-3032's sequencing.
 
+Revised 2026-08-04 after a second pre-implementation review that re-verified
+every code reference against the tree (all confirmed accurate). Six additions:
+blocking `readline()` in both selector loops defeats the new idle sensor *and*
+the existing wall-clock one, so the three-line patch is insufficient and the
+fix-vs-document decision is now called out as step 5's sizing question;
+`duration_ms = timeout * 1000` on all three timeout paths reports the budget
+rather than elapsed time, a defect this feature actively worsens and therefore
+fixes; the interpolation seam is named concretely as `${prev.timeout_kind}`
+with its `persistence.py` checkpoint round-trip and `:default=` requirement;
+the `mcp_result` evaluator is identified as the one exception to the
+exit-code short-circuit argument, with `timeout` recommended as the unchanged
+verdict; `_run_baseline` corrected to `_run_baseline_arm` (`executor.py:2680`),
+noting both A/B arms need the value; and the `ll-loop run --idle-timeout` open
+scope question is closed as a non-goal, deferred to ENH-2977.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-04T04:54:17 - `0645ab21-f89c-4db8-a208-435d990eba38.jsonl`
 - `/ll:capture-issue` - 2026-08-04T04:20:07 - `62eddd57-7e6c-4ca5-b631-081e050a3dc6.jsonl`

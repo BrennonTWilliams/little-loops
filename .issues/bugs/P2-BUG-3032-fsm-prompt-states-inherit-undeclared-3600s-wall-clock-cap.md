@@ -19,6 +19,7 @@ labels:
 - fsm
 - timeout
 - executor
+verify_verdict: NON_VALID
 ---
 
 # BUG-3032: FSM prompt states inherit an undeclared 3600s cap that overrides loop-level budgets
@@ -30,7 +31,7 @@ hour of wall-clock time by a hard-coded literal in the executor, regardless of
 the budget the loop declares. Agent states that exceed it are SIGKILLed and
 their output discarded unexamined.
 
-`scripts/little_loops/fsm/executor.py:1835` and `:1866`:
+`scripts/little_loops/fsm/executor.py:1862` and `:1893`:
 
 ```python
 timeout=state.timeout or self.fsm.default_timeout or 3600
@@ -69,7 +70,7 @@ budget still kills any single agent state at the one-hour mark.
 
 **The kill is maximally destructive.** On breach the process group is SIGKILLed
 (`_kill_process_group`) and the result stamped `exit_code=124`. Then
-`fsm/evaluators.py:1810-1817` (BUG-1640) short-circuits:
+`fsm/evaluators.py:1814-1818` (BUG-1640) short-circuits:
 
 ```python
 if exit_code == 124 and eval_type != "mcp_result":
@@ -103,8 +104,8 @@ budget the loop explicitly declares.
 ## Root Cause
 
 `scripts/little_loops/fsm/executor.py`, in the action-dispatch block — the
-`or 3600` terminal fallback on the `contributed` (line 1835) and default
-`action_runner.run` (line 1866) paths, plus the same expression at line 2670.
+`or 3600` terminal fallback on the `contributed` (line 1862) and default
+`action_runner.run` (line 1893) paths, plus the same expression at line 2697.
 
 The literal is not a considered default for agent work; it is a backstop that
 was never revisited as loops grew to multi-day budgets. `scripts/little_loops/
@@ -158,8 +159,8 @@ Two adjacent cleanups worth folding in:
 
 ### Files to Modify
 
-- `scripts/little_loops/fsm/executor.py` — lines 1835, 1866, 2670: drop the
-  `or 3600` terminal fallback on prompt/contributed paths. Line 1825 (`or 30`,
+- `scripts/little_loops/fsm/executor.py` — lines 1862, 1893, 2697: drop the
+  `or 3600` terminal fallback on prompt/contributed paths. Line 1852 (`or 30`,
   MCP) unchanged.
 - `scripts/little_loops/loops/lib/common.yaml` — lines 47-56, the `llm_gate`
   timeout-budget prose.
@@ -248,5 +249,41 @@ historically done more harm than good. Investigation found the harm is not the
 number of timeouts but this one undeclared default, and that four prior P2 bugs
 share its shape.
 
+## Verification Notes
+
+Verified 2026-08-03 via `/ll:verify-issues`. Core diagnosis, root cause, and
+proposed fix are all still accurate. Line-number citations had drifted since
+capture (likely from FEAT-2675's compression block and ENH-2714's
+pruning-profile block landing in `executor.py` in between) and were corrected
+in place:
+
+- `or 30` (MCP path): `:1825` → `:1852`
+- `or 3600` (contributed-action path): `:1835` → `:1862`
+- `or 3600` (main `action_runner.run`): `:1866` → `:1893`
+- `or 3600` (`_run_baseline`): `:2670` → `:2697`
+- `evaluators.py` BUG-1640 short-circuit: `:1810-1817` → `:1814-1818`
+
+`loops/lib/common.yaml:47-56`, `general-task.yaml:6`
+(`default_timeout: 14400`), and `issue-refinement.yaml`'s `timeout: 86400`
+with no `default_timeout` all confirmed exact, as-is.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-04T04:56:49 - `d6fd3e14-c984-4d6e-aad4-732de84b59ce.jsonl`
+- `/ll:verify-issues` - 2026-08-04T04:54:17 - `0645ab21-f89c-4db8-a208-435d990eba38.jsonl`
 - `/ll:capture-issue` - 2026-08-04T04:20:07 - `62eddd57-7e6c-4ca5-b631-081e050a3dc6.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): FEAT-3033 states that unconditionally
+removing the wall-clock cap is only safe if idle detection actually ships enabled for
+the affected states — its recommended default is `idle_timeout=0` (disabled), and it
+requires BUG-3032 to take one of two options to stay coherent: (a) relax the cap
+**only** for states/loops that explicitly declare `idle_timeout` /
+`default_idle_timeout`, leaving 3600s in force otherwise; or (b) ship a non-zero
+`default_idle_timeout` chosen from measured cadence. This issue's current Expected
+Behavior/Tests remove the cap unconditionally regardless of whether idle detection is
+configured, which would reproduce the "hung state occupies a worker for up to 4 days"
+outcome flagged in this issue's own Risk section. Implementation must pick (a) or (b)
+above — (a) is the safer default per FEAT-3033 — before landing the `or 3600` removal.

@@ -14,6 +14,7 @@ labels:
 - ll-parallel
 - timeout
 - orchestrator
+verify_verdict: VALID
 ---
 
 # BUG-3034: ll-parallel --timeout 0 would instant-kill all workers once the core.py truthiness bug is fixed
@@ -207,4 +208,5 @@ fix. Verifying that `0` was safe downstream turned up these two orchestrator
 sites where it is not.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-04T04:54:18 - `0645ab21-f89c-4db8-a208-435d990eba38.jsonl`
 - `/ll:capture-issue` - 2026-08-04T04:20:07 - `62eddd57-7e6c-4ca5-b631-081e050a3dc6.jsonl`
