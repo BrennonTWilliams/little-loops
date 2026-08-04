@@ -1,0 +1,11 @@
+DefaultSelector class: KqueueSelector
+got line repr='line1\n' elapsed=0.014 identity_ok=True
+select returned empty at elapsed=0.115
+select returned empty at elapsed=0.216
+select returned empty at elapsed=0.317
+got line repr='line2\n' elapsed=0.319 identity_ok=True
+EOF empty-string detected at elapsed=0.328, identity_ok=True
+get_map after loop (should be empty/falsy): {}
+empty_select_seen (proves select() can return [] without data): True
+total lines collected: ['line1\n', 'line2\n']
+proc exit code: 0

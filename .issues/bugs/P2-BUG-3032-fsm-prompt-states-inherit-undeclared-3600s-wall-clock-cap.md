@@ -21,12 +21,12 @@ labels:
 - timeout
 - executor
 verify_verdict: NON_VALID
-confidence_score: 80
-outcome_confidence: 79
-score_complexity: 18
-score_test_coverage: 18
-score_ambiguity: 18
-score_change_surface: 25
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 23
+score_test_coverage: 23
+score_ambiguity: 24
+score_change_surface: 23
 decision_needed: false
 ---
 
@@ -160,6 +160,14 @@ warns only against setting `default_timeout` too **low**:
 
 That prose does not recognize that 3600 is itself the ceiling being hit.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-04 — based on codebase analysis:_
+
+- FEAT-3033 (this issue's blocking dependency) landed in commit `0ce126fc` and is now `status: done`. It shifted line numbers and added the `idle_timeout` precedence chain, but did **not** touch the `or 3600`/`or 30` wall-clock fallback literals this issue targets — they remain unconditional and unchanged in shape.
+- Current locations (confirmed against `0ce126fc`, `executor.py`): `:1854` MCP path (`or 30`, out of scope, unchanged), `:1874` contributed-action path (`or 3600`, out of scope, unchanged), `:1914` main prompt/shell dispatch (`or 3600`, **primary target**, was cited as `:1893`), `:2739` `_run_baseline_arm` (`or 3600`, **secondary target**, was cited as `:2697`).
+- Confirmed behaviorally: setting `idle_timeout`/`default_idle_timeout` today does not raise or remove any wall-clock ceiling — a prompt state with only `idle_timeout` set is still SIGKILLed at 3600s if no explicit `timeout:`/`default_timeout:` is set, because FEAT-3033 added `idle_timeout` as an independent, coexisting cap rather than a substitute for the wall-clock one. This issue's fix is unblocked and unchanged in scope; only its code anchors had drifted.
+
 ## Frequency
 
 Affects 90 of 91 loops on every prompt state that doesn't set `timeout:`.
@@ -191,10 +199,11 @@ Two gates are load-bearing here and neither is optional:
 - `_idle` truthiness — the Option A opt-in. With no idle sensor declared, the
   `3600` fallback stays exactly as it is today.
 
-**This is why the issue depends on FEAT-3033**: shipping the relaxation without
-an idle sensor in place would leave a genuinely hung state bounded only by the
-loop-level budget, which for `goal-cluster` and the `loop-composer*` loops is
-four days.
+**This is why the issue depended on FEAT-3033** (now `status: done`, landed in
+commit `0ce126fc`): shipping the relaxation without an idle sensor in place
+would have left a genuinely hung state bounded only by the loop-level budget,
+which for `goal-cluster` and the `loop-composer*` loops is four days. The idle
+sensor now exists, so this issue is unblocked.
 
 Two adjacent cleanups worth folding in:
 
@@ -208,6 +217,13 @@ Two adjacent cleanups worth folding in:
 **Out of scope**: changing loop-level `timeout:` values in any YAML; the
 `minimum: 1` constraint in `fsm-loop-schema.json` that prevents expressing
 `default_timeout: 0` as an explicit opt-out (a separate, smaller gap).
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-04 — based on codebase analysis:_
+
+- Current line numbers for the four dispatch sites (confirmed against commit `0ce126fc`, which landed FEAT-3033): `executor.py:1854` (MCP, `or 30`, unchanged/out-of-scope), `:1874` (contributed, `or 3600`, unchanged/out-of-scope), `:1914` (main prompt/shell `else:` branch — **primary target**, was `:1893`), `:2739` (`_run_baseline_arm` — **secondary target**, was `:2697`).
+- The idle-resolution half of the snippet (`state.idle_timeout or self.fsm.default_idle_timeout or 0`) already exists verbatim at each site as of FEAT-3033 — at `:1858` (MCP, unconditional kwarg), `:1869-1871` (contributed, gated via `_contrib_extra["idle_timeout"]`), `:1908-1910` (main path, gated via `extra_kwargs["idle_timeout"]`), `:2744` (baseline arm, unconditional kwarg to `run_claude_command`). Only the `_wall_fallback` conditional on the `timeout=` line itself remains to be added — the fix is now a smaller diff than originally scoped, since half the snippet already landed as part of FEAT-3033's own kwarg-gating work.
 
 ## Proposed Solution
 
@@ -326,11 +342,29 @@ long-running work — establish both the pattern and the appetite for fixing it:
   defaults, update.
 - `CHANGELOG.md` — new entry in a concrete version section, not `[Unreleased]`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-04 — based on codebase analysis:_
+
+- Line-number refresh (post-FEAT-3033, commit `0ce126fc`): the four `Files to Modify` anchors have shifted — `:1852`→`:1854` (MCP, `or 30`, unchanged), `:1862`→`:1874` (contributed, `or 3600`, unchanged), `:1893`→`:1914` (main prompt/shell, `or 3600`, **primary target**), `:2697`→`:2739` (baseline arm, `or 3600`, **secondary target**).
+- `scripts/little_loops/loops/lib/common.yaml:47-65` — the `llm_gate` prose already received one rewrite as part of FEAT-3033 (a new "Idle vs. wall-clock (FEAT-3033)" subsection at lines 57-65 documents the `idle_timeout`/`timeout_kind` mechanism). Lines 52-56 still correctly describe the 3600s ceiling as unremediated current behavior — accurate today, but this prose will need a **second** rewrite once this issue's own fix lands, since it currently instructs authors to raise `timeout:` manually for MCP-heavy prompts, which is exactly the workaround this issue's fix is meant to make unnecessary for idle-opted-in states.
+- No loop under `scripts/little_loops/loops/` currently sets a literal `idle_timeout:`/`default_idle_timeout:` field (confirmed by repo-wide search; the only occurrences are inside `common.yaml`'s documentation prose). This issue's fix, once landed, changes behavior for zero loops until an author opts in — expected under the Option A decision, but confirms no loop-level regression risk exists today.
+- Test precedent for the required "non-leak" tests: `scripts/tests/test_feat3033_idle_timeout.py::TestIdleTimeoutPrecedence::test_idle_disabled_omits_kwarg_for_old_runners` (lines 423-464) defines a `LegacyRunner` with no `idle_timeout` parameter and asserts the FSM still runs successfully when idle resolves to 0 — the direct existing-pattern precedent for this issue's shell/MCP/contributed non-leak tests to follow.
+- `runners.py`'s `duration_ms` hard-prerequisite (cited under Dependent Files) is confirmed satisfied: every `ActionResult(...)` construction in `runners.py` (lines 205, 215, 223, 334) and the baseline-arm equivalents in `executor.py` (2771/2781) now computes `duration_ms=_now_ms() - start`, elapsed-time based on all three timeout paths (success, idle, wall) — no longer `timeout * 1000`.
+- `evaluators.py:1810-1818`'s exit_code==124 short-circuit (BUG-1640) does not consult `ActionResult.timeout_kind` at all — it routes to `verdict="error"` for exit_code 124 regardless of idle vs wall. `timeout_kind` is exposed only for a downstream state to branch on via `${prev.timeout_kind:default=}`, not inside the evaluator's own short-circuit logic. This confirms the issue's existing claim ("Its behavior for author-declared timeouts is unchanged and correct") with no correction needed.
+
 ## Program Design
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-04 — based on codebase analysis:_
+
+_Added by `/ll:refine-issue` — 2026-08-04 — based on codebase analysis:_
+
+- FEAT-3033 landed the `idle_timeout`/`default_idle_timeout` plumbing this section predicted, with the exact shape predicted: a second, parallel precedence chain `state.idle_timeout or self.fsm.default_idle_timeout or 0`, kwarg-gated into `ActionRunner.run` following the `working_dir`/`automation_profile` precedent — confirmed at `executor.py:1858` (MCP, unconditional), `:1869-1871` (contributed, via `_contrib_extra`), `:1908-1910` (main path, via `extra_kwargs`), `:2744` (baseline arm, unconditional).
+- `ActionRunner.run`'s signature (`fsm/runners.py:98-112`) now includes `idle_timeout: int = 0` as its final kwarg, confirming the Protocol was extended exactly as this section anticipated.
+- `ActionResult.timeout_kind: str | None` now exists at `fsm/types.py:105-110,120` ("idle"|"wall"|None), set at `runners.py:196-209` and `executor.py:2775-2784` by checking `exc.output == "idle_timeout"` on the caught `subprocess.TimeoutExpired` — the sentinel `run_claude_command` raises at `subprocess_utils.py:485`. Surfaced into loop context via `${prev.timeout_kind}` at `executor.py:1513,1584,2015`.
+- Call path refresh: `FSMExecutor._run_action_or_route` (`executor.py:1854`/`:1874`/`:1914`) -> `DefaultActionRunner.run` (`runners.py:98`) -> `run_claude_command` (`subprocess_utils.py:320`); `_run_baseline_arm` (`executor.py:2730-2784`) calls `run_claude_command` directly, same as before. Line numbers only — the shape this section described is otherwise unchanged and now confirmed live rather than speculative.
 
 ### Types
 - No new data shape introduced by this bug fix; `StateConfig.timeout: int | None` (`fsm/schema.py:658`) and `FSMConfig.default_timeout: int | None` (`fsm/schema.py:1281-1282`) are the existing fields whose precedence-chain resolution changes.
@@ -362,9 +396,11 @@ Under Option A (see Proposed Solution), this path gains a second, parallel prece
    FEAT-3033's step 5 (selector loops) and its unresolved blocking-`readline()`
    fork are **not** prerequisites — they serve shell/mcp states, which this
    issue deliberately leaves capped.
+   > ⚠ Superseded — FEAT-3033 landed in commit `0ce126fc` and is `done`; this step is complete
 2. Make the `or 3600` conditional at `executor.py:1893` and `:2697` per the
    Proposed Fix, gated on both `action_mode == "prompt"` and a non-zero
    resolved idle timeout. Leave `:1852` (MCP) and `:1862` (contributed) alone.
+   > ⚠ Superseded — line numbers are now 1914/2739 (target) and 1854/1874 (leave alone); see Root Cause findings
 3. Rewrite the `lib/common.yaml` `llm_gate` timeout prose.
 4. Add the tests above — the opt-in-OFF and shell non-leak guards are the two
    that enforce the Option A decision.
@@ -472,6 +508,8 @@ _Added by `/ll:confidence-check` on 2026-08-04_
   readiness; selecting one clears the ambiguity.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-04T19:32:26 - `85218b01-3290-46fd-968c-2ce6b21e0c91.jsonl`
+- `/ll:refine-issue` - 2026-08-04T19:27:36 - `813364aa-568d-4a3f-8a84-dae63f076d3c.jsonl`
 - `/ll:decide-issue` - 2026-08-04T06:33:17 - `d9b95d0a-bc35-44a3-9a60-f978eece0013.jsonl`
 - `/ll:refine-issue` - 2026-08-04T06:30:09 - `58473744-ba97-43e3-9145-5be88f2da018.jsonl`
 - `/ll:confidence-check` - 2026-08-04T06:24:18 - `3cb0a0fa-c62e-4f00-bb85-ee1d66537a41.jsonl`
