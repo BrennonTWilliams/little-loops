@@ -10,7 +10,6 @@ parent: EPIC-2938
 epic: EPIC-2938
 blocked_by:
 - ENH-2941
-- FEAT-2947
 relates_to:
 - FEAT-2947
 labels:
@@ -39,13 +38,22 @@ The skill's prose Jaccard has already diverged from `text_utils.py` (documented 
 
 `ll-issues link-epics --mode assign|synthesize [--threshold N] [--apply] --json`:
 
-- **assign**: score orphans against existing EPICs, emit ranked proposals `{orphan, epic, score, tier}`. Proposals only; `--apply` writes `parent:` + `## Children` via existing wiring code.
+- **assign**: score orphans against existing EPICs, emit ranked proposals `{orphan, epic, score, tier}`. Proposals only; `--apply` writes the orphan-side `parent:` (frontmatter, via `frontmatter.update_frontmatter` directly — **not** `ll-issues link`, which only manages `blocked_by`/`depends_on`/`relates_to` and has no `parent`/`epic` branch) and the EPIC-side `## Children` append.
 - **synthesize**: union-find cluster unmatched orphans on pairwise similarity; emit clusters with member lists, modal priority, and a frequency-derived *placeholder* title.
-- `/ll:link-epics` skill **delegates to** this CLI (map-dependencies-style) — the two do not coexist as independent implementations. Skill's remaining LLM work: name/validate synthesized EPICs, sanity-check odd cluster members, then apply via the CLI/`ll-issues link`.
+- `/ll:link-epics` skill **delegates to** this CLI (map-dependencies-style) — the two do not coexist as independent implementations. Skill's remaining LLM work: name/validate synthesized EPICs, sanity-check odd cluster members, then apply via this CLI directly (not `ll-issues link`, which does not cover EPIC assignment).
+- **`parent`/`epic` frontmatter decision**: this issue file itself sets both `parent:` and `epic:` (see frontmatter above), matching corpus convention elsewhere. `apply_assignment()` must write **both** fields, not `parent:` alone — writing only one when the corpus convention is both will read as a bug against existing issues.
 
 ## Proposed Solution
 
-Build on ENH-2941's consolidated similarity (`text_utils.py`). Reuse `ll-issues link` / `frontmatter.update_frontmatter` for writes, `issue_parser.find_issues` for corpus.
+Build on ENH-2941's consolidated similarity (`text_utils.py`). Reuse `frontmatter.update_frontmatter` directly for writes (`ll-issues link` / `link.py` has no `parent`/`epic` field support — see Expected Behavior — so it is not a write path for this issue), `issue_parser.find_issues` for corpus.
+
+Reuse `find_similar.batch_similarity(threshold=...)` (`find_similar.py:104-143`) as the pairwise edge source for **both** modes instead of writing a third scoring loop: it already runs the O(n²) pairwise `calculate_word_overlap` scan and returns `SimilarityPair`, which is exactly the edge list `synthesize_clusters()`'s union-find needs (member selection = filter pairs to orphans) and exactly what `propose_assignments()` needs (member selection = orphan vs. EPIC-typed candidates). This likely requires adding a candidate-set/`type_prefixes` param to `batch_similarity()` rather than duplicating its scan.
+
+**Scoring input decision**: `IssueInfo` (the type both signatures below take) has no `summary` field, and `find_similar`/`batch_similarity` score titles only. As written, this CLI would score title-vs-title, which is materially noisier (two 6-word titles) than the skill's current title+`## Summary` behavior. Either accept the title-only regression explicitly, or lift `list_cmd.py:94+`'s `--include-summary` body-extraction into the shared scoring layer (`text_utils.py`/`find_similar.py`) so both this CLI and `find-similar` benefit.
+
+**Threshold config decision**: do not reuse `issues.duplicate_detection.similar_threshold` (default 0.5) as-is — its semantics are "this is a duplicate," it's consumed by `find_similar.py:47-57` as a dedup gate, and the skill's own default for assign mode is 0.0 (show all proposals, `--auto` raises to 0.7). Reusing the dedup key as-is would silently drop MEDIUM/LOW proposals and overload one config knob for two purposes. Add a new key, e.g. `issues.link_epics.min_score`, instead of repurposing `similar_threshold`.
+
+**Orphan/EPIC corpus definition**: "orphan" = open `BUG`/`FEAT`/`ENH` issue with both `parent: null` and `epic: null` (`find_issues(type_prefixes={"BUG", "FEAT", "ENH"})` filtered on those fields). EPIC side = open `EPIC` issues. `find_issues` excludes `deferred` issues by default — state explicitly whether `deferred` orphans/EPICs are in or out of scope for scoring.
 
 **Soft dep on FEAT-2947 — do not implement EPIC creation here.** Synthesize mode emits *cluster proposals*, not EPIC files; the actual creation call is `ll-issues create --type EPIC` (FEAT-2947). If FEAT-2947 has not landed, synthesize mode still ships proposal-only and the skill creates the EPIC as it does today. Two independent ID-allocation/templating implementations is exactly the duplication this epic exists to remove.
 
@@ -137,7 +145,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Types
 
-- `EpicProposal: dataclass` — `orphan_id: str`, `epic_id: str`, `score: float`, `tier: Literal["HIGH", "MEDIUM", "LOW"]`
+- `EpicProposal: dataclass` — `orphan_id: str`, `epic_id: str`, `score: float`, `tier: Literal["HIGH", "MEDIUM", "LOW"]` — tier boundaries: `score >= 0.7` → HIGH, `0.4 <= score < 0.7` → MEDIUM, `score < 0.4` → LOW (carried over from the skill being deleted, `SKILL.md` L137-138; not documented anywhere else in this issue). State whether these boundaries are configurable or hardcoded, and cover the 0.4/0.7 boundary cases in Acceptance Criteria.
 - `ClusterProposal: dataclass` — `member_ids: list[str]`, `placeholder_title: str`, `modal_priority: str`, `pairwise_min_score: float`
 
 ### Signatures
@@ -163,7 +171,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Acceptance Criteria
 
-- [ ] Both modes emit deterministic JSON proposals; no writes without `--apply`
+- [ ] Both modes emit deterministic JSON proposals (tiebreak: score desc, then `orphan_id`, then `epic_id` — float ties are common on short titles); no writes without `--apply`
+- [ ] `--apply` is undefined/unsupported for `--mode synthesize` (synthesize is proposal-only; EPIC creation is delegated to FEAT-2947 per the Proposed Solution). `--apply --mode synthesize` must error out rather than silently create EPIC files, until FEAT-2947 lands.
 - [ ] `skills/link-epics/SKILL.md` contains no scoring/clustering algorithm prose
 - [ ] Similarity comes solely from `text_utils.py` (no local stop-word list)
 - [ ] Help text distinguishes this from `ll-issues clusters`
@@ -173,6 +182,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 ## Notes
 
 assign and synthesize are independently shippable — split into two issues if the union-find + synthesis half exceeds ~a day.
+
+Before relying on it as the post-rewrite gate: confirm whether `verify_skill_prose.py:97-108`'s `union_find_cluster_merge` marker (`owner_cli="ll-issues link-epics"`) currently has an `ll-prose-ok` suppression in `skills/link-epics/SKILL.md` — if not, this lint is either already live-failing or not wired to that file, and either way it needs to be resolved as part of the skill rewrite in Implementation Step 3.
 
 ## Related Key Documentation
 
