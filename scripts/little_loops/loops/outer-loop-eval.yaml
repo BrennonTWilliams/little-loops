@@ -64,7 +64,6 @@ states:
 
   run_sub_loop:
     loop: "${context.input}"
-    timeout: 3600
     with:
       input: "${context.loop_input}"
     capture: sub_loop_output

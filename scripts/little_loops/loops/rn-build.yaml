@@ -562,7 +562,6 @@ states:
 
   cluster_execute:
     loop: goal-cluster
-    timeout: 345600
     with:
       goals: "${captured.epic_id.output}"
       auto: "true"
@@ -647,7 +646,7 @@ states:
 
   eval_gate:
     loop: "${captured.harness_name.output}"
-    timeout: 7200
+    timeout: 14400
     capture: eval_result
     on_yes: derive_acceptance_checks
     on_no: check_eval_retry_budget

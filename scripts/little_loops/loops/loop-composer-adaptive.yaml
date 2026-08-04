@@ -289,7 +289,6 @@ states:
 
   dispatch_step:
     loop: "${captured.next_step_loop.output}"
-    timeout: 3600
     with:
       input: "${captured.next_step_input.output}"
     capture: step_output

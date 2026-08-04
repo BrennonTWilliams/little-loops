@@ -533,6 +533,18 @@ class TestStateConfig:
         state = StateConfig.from_dict(data)
         assert state.extra_routes == {"done": "final", "retry": "check"}
 
+    def test_on_timeout_lands_in_extra_routes(self) -> None:
+        """on_timeout on a loop: state parses into extra_routes["timeout"] (ENH-3019).
+
+        Guards against a future promotion of on_timeout to a first-class field
+        silently dropping target-reference validation and graph edges — see
+        ENH-3019 Proposed Solution for why promotion is explicitly rejected.
+        """
+        data = {"loop": "child", "on_timeout": "salvage", "on_no": "failed"}
+        state = StateConfig.from_dict(data)
+        assert state.extra_routes == {"timeout": "salvage"}
+        assert "salvage" in state.get_referenced_states()
+
     def test_extra_routes_in_to_dict(self) -> None:
         """to_dict serializes extra_routes as on_<verdict> keys."""
         state = StateConfig(extra_routes={"done": "final", "retry": "check"})

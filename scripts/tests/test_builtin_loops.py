@@ -14528,3 +14528,33 @@ class TestConfidenceGateThresholdsNotHardcoded:
         for key in ("readiness_threshold", "outcome_threshold"):
             if f"context.{key}" in text:
                 assert isinstance(ctx.get(key), int)
+
+
+class TestSubLoopStateTimeoutAudit:
+    """ENH-3019: state.timeout now bounds a loop: sub-loop's own budget (previously
+    ignored). Pins the post-audit set so a future loop adding timeout: to a loop:
+    state without a matching on_timeout route fails loudly instead of silently
+    acquiring a work-discarding cap (see issue's Migration section)."""
+
+    ALLOWED = {("rn-build", "eval_gate")}
+
+    @pytest.fixture
+    def builtin_loops(self) -> list[Path]:
+        files = sorted(p for p in BUILTIN_LOOPS_DIR.rglob("*.yaml") if is_runnable_loop(p))
+        assert len(files) > 0, "No built-in loop files found"
+        return files
+
+    def test_no_unreviewed_timeout_on_loop_states(self, builtin_loops: list[Path]) -> None:
+        offenders = []
+        for loop_file in builtin_loops:
+            data = yaml.safe_load(loop_file.read_text())
+            for state_name, state in (data.get("states") or {}).items():
+                if not isinstance(state, dict) or "loop" not in state:
+                    continue
+                if "timeout" in state and (loop_file.stem, state_name) not in self.ALLOWED:
+                    offenders.append(f"{loop_file.stem}.{state_name}")
+        assert offenders == [], (
+            f"loop: states declaring timeout: outside the audited allowlist: {offenders}. "
+            "Add a deliberate budget plus an on_timeout salvage route (ENH-3019), "
+            "then extend ALLOWED here."
+        )

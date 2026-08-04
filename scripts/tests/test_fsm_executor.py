@@ -8085,6 +8085,227 @@ class TestSubLoopBudgetClamping:
         result = executor.run()
         assert result.final_state == "fallback"
 
+    def test_state_timeout_further_clamps_below_parent_remaining(self, tmp_path: Path) -> None:
+        """A state-level timeout caps the child below parent's remaining budget (ENH-3019)."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        self._write_child_loop(loops_dir)
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            timeout=3600,
+            states={
+                "run_child": StateConfig(
+                    loop="child", timeout=60, on_yes="done", on_no="failed"
+                ),
+                "done": StateConfig(terminal=True),
+                "failed": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        executor.start_time_ms = 0
+
+        captured_child_timeouts: list[int | None] = []
+        original_run = FSMExecutor.run
+
+        def capturing_run(self_inner: FSMExecutor) -> ExecutionResult:
+            if self_inner.fsm.name == "child":
+                captured_child_timeouts.append(self_inner.fsm.timeout)
+            return original_run(self_inner)
+
+        with (
+            patch.object(FSMExecutor, "run", capturing_run),
+            patch("little_loops.fsm.executor._now_ms", return_value=1_800_000),
+        ):
+            state = parent_fsm.states["run_child"]
+            ctx = executor._build_context()
+            executor._execute_sub_loop(state, ctx)
+
+        # 30 min elapsed from 1h parent budget → 1800s remaining, but state.timeout=60
+        # is smaller, so the child is capped at 60, not 1800.
+        assert captured_child_timeouts == [60]
+
+    def test_state_timeout_applies_when_parent_has_no_timeout(self, tmp_path: Path) -> None:
+        """A state-level timeout caps the child even when the parent has no timeout (ENH-3019)."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        self._write_child_loop(loops_dir)
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            timeout=None,
+            states={
+                "run_child": StateConfig(
+                    loop="child", timeout=45, on_yes="done", on_no="failed"
+                ),
+                "done": StateConfig(terminal=True),
+                "failed": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+
+        captured_child_timeouts: list[int | None] = []
+        original_run = FSMExecutor.run
+
+        def capturing_run(self_inner: FSMExecutor) -> ExecutionResult:
+            if self_inner.fsm.name == "child":
+                captured_child_timeouts.append(self_inner.fsm.timeout)
+            return original_run(self_inner)
+
+        with patch.object(FSMExecutor, "run", capturing_run):
+            state = parent_fsm.states["run_child"]
+            ctx = executor._build_context()
+            executor._execute_sub_loop(state, ctx)
+
+        assert captured_child_timeouts == [45]
+
+
+class TestSubLoopTimeoutRouting:
+    """Tests for ENH-3019: on_timeout routing and terminated_by context exposure."""
+
+    def _write_child_loop(self, loops_dir: Path, name: str = "child") -> None:
+        (loops_dir / f"{name}.yaml").write_text(
+            f"name: {name}\ninitial: done\nstates:\n  done:\n    terminal: true\n"
+        )
+
+    def _write_timeout_child(self, loops_dir: Path, name: str = "slow_child") -> None:
+        # max_iterations=1 with an action that always "fails" evaluation drives the
+        # child to terminated_by="max_steps" — a budget-exhaustion reason.
+        (loops_dir / f"{name}.yaml").write_text(
+            f"name: {name}\ninitial: work\nmax_iterations: 1\n"
+            "states:\n  work:\n    action: 'false'\n    on_yes: done\n    on_no: work\n"
+            "  done:\n    terminal: true\n"
+        )
+
+    def test_on_timeout_route_fires_on_max_steps(self, tmp_path: Path) -> None:
+        """extra_routes["timeout"] fires when the child terminates via max_steps."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        self._write_timeout_child(loops_dir)
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            timeout=3600,
+            states={
+                "run_child": StateConfig(
+                    loop="slow_child",
+                    on_yes="success",
+                    on_no="fallback",
+                    extra_routes={"timeout": "salvage"},
+                ),
+                "success": StateConfig(terminal=True),
+                "fallback": StateConfig(terminal=True),
+                "salvage": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.final_state == "salvage"
+
+    def test_on_timeout_unset_falls_back_to_on_no(self, tmp_path: Path) -> None:
+        """Without extra_routes["timeout"], budget exhaustion falls back to on_no unchanged."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        self._write_timeout_child(loops_dir)
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            timeout=3600,
+            states={
+                "run_child": StateConfig(loop="slow_child", on_yes="success", on_no="fallback"),
+                "success": StateConfig(terminal=True),
+                "fallback": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.final_state == "fallback"
+
+    def test_interrupted_still_routes_on_no_not_on_timeout(self, tmp_path: Path) -> None:
+        """terminated_by='interrupted' is out of scope for on_timeout; keeps hitting on_no."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        self._write_child_loop(loops_dir)
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            timeout=3600,
+            states={
+                "run_child": StateConfig(
+                    loop="child",
+                    on_yes="success",
+                    on_no="fallback",
+                    extra_routes={"timeout": "salvage"},
+                ),
+                "success": StateConfig(terminal=True),
+                "fallback": StateConfig(terminal=True),
+                "salvage": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        original_run = FSMExecutor.run
+
+        def interrupt_child_run(self_inner: FSMExecutor) -> ExecutionResult:
+            if self_inner.fsm.name == "child":
+                return ExecutionResult(
+                    final_state="work",
+                    iterations=1,
+                    terminated_by="interrupted",
+                    duration_ms=0,
+                    captured={},
+                )
+            return original_run(self_inner)
+
+        with patch.object(FSMExecutor, "run", interrupt_child_run):
+            result = executor.run()
+        assert result.final_state == "fallback"
+
+    def test_captured_terminated_by_survives_context_passthrough_overwrite(
+        self, tmp_path: Path
+    ) -> None:
+        """captured[state].terminated_by survives the with_-triggered whole-dict merge (ENH-3019)."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        self._write_timeout_child(loops_dir)
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            timeout=3600,
+            states={
+                "run_child": StateConfig(
+                    loop="slow_child",
+                    with_={},
+                    on_yes="success",
+                    on_no="fallback",
+                ),
+                "success": StateConfig(terminal=True),
+                "fallback": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.final_state == "fallback"
+        assert executor.captured["run_child"]["terminated_by"] == "max_steps"
+
+    def test_captured_terminated_by_written_for_terminal_result(self, tmp_path: Path) -> None:
+        """captured[state].terminated_by is populated for a normal terminal completion too."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        self._write_child_loop(loops_dir)
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(loop="child", on_yes="success", on_no="fallback"),
+                "success": StateConfig(terminal=True),
+                "fallback": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.final_state == "success"
+        assert executor.captured["run_child"]["terminated_by"] == "terminal"
+
 
 class TestSubLoopWithBindings:
     """Tests for explicit with: parameter bindings on sub-loop states."""

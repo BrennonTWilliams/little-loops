@@ -3,7 +3,7 @@ id: ENH-3019
 title: FSM sub-loop states can't distinguish timeout from normal on_no, and expose
   no outcome context
 type: enhancement
-status: open
+status: done
 captured_at: '2026-08-02T00:00:00Z'
 discovered_date: 2026-08-02
 discovered_by: capture-issue
@@ -14,6 +14,7 @@ score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
+completed_at: '2026-08-04T04:44:49Z'
 ---
 
 # FSM sub-loop states can't distinguish timeout from normal on_no, and expose no outcome context
@@ -65,6 +66,16 @@ This is load-bearing for this issue. In `deep-research.yaml` the parent is `time
 4. A `loop:` state can bound its sub-loop below the parent's remaining budget by declaring `timeout:` on the state, leaving wall-clock headroom for the salvage state that `on_timeout` routes to. Without this, `on_timeout` is unreachable whenever the child's budget is clamped to the parent's deadline (see Current Behavior). The child's effective cap becomes `min(state.timeout, parent_remaining)`; when `state.timeout` is unset, behavior is unchanged from today.
 
 **Scope note**: the budget-exhaustion set is read off the *child's* `ExecutionResult.terminated_by` only. A parent-level cap firing (parent `max_steps`, parent `timeout` at the top of the run loop) terminates the parent directly and never reaches this routing code. `terminated_by == "handoff"` is likewise out of scope here — a sub-loop handoff routing to `on_no` is the same class of gap but is tracked separately, not fixed by this issue.
+
+## Scope Boundaries
+
+Out of scope for this issue:
+
+- **Parent-level cap firing.** A parent `max_steps` or parent `timeout` at the top of the run loop terminates the parent directly (`_finish("timeout")` / `_finish("max_iterations_reached")`, `executor.py:544-568`) and never reaches `_execute_loop_state`'s routing code. Only the *child's* `ExecutionResult.terminated_by` is read.
+- **`terminated_by == "handoff"`.** A sub-loop handoff routing to `on_no` is the same class of gap as the timeout case but is tracked separately, not fixed here.
+- **Non-budget-exhaustion termination reasons** (`interrupted`, `user_stopped`, `system_signal`, `cycle_detected`, `stall_detected`, `host_pressure_abort`, `host_budget_exceeded`) — these keep falling through to the existing `on_no`/`on_error` handling unchanged; only `timeout`, `max_steps`, and `max_iterations_reached` get the new `on_timeout` route.
+- **Promoting `on_timeout` to a first-class `StateConfig` field.** It stays on the existing `extra_routes` mechanism; see Proposed Solution for why promotion is explicitly rejected.
+- **`deep-research.yaml`'s own `run_research` state gaining `timeout:` + `on_timeout:`.** Tracked as an explicit follow-up, not required for this issue to land.
 
 ## Motivation
 
@@ -241,6 +252,8 @@ Prior gaps resolved: the `## Program Design` section now populates concrete type
 Effort revised Medium → Small for the core change; risk revised Low → Medium on account of the migration.
 
 ## Session Log
+- `ll-auto` - 2026-08-04T04:44:49 - `3f0a66d4-3049-4aa9-b795-fdd7f268ddc0.jsonl`
+- `/ll:ready-issue` - 2026-08-04T04:34:43 - `d2e70f88-1cf3-4407-924f-2ffda474825a.jsonl`
 - `/ll:confidence-check` - 2026-08-04T04:29:32 - `11dff0fa-9ec2-44f3-81e8-319ef1fb9543.jsonl`
 - `/ll:confidence-check` - 2026-08-04T04:21:52 - `a8c8283a-aacf-4897-9443-5051bca3af37.jsonl`
 - `/ll:confidence-check` - 2026-08-04T03:59:35 - `d555d105-f29e-4b14-98af-4d8c64f9a264.jsonl`
@@ -252,3 +265,23 @@ Effort revised Medium → Small for the core change; risk revised Low → Medium
 ## Status
 
 **Open** | Created: 2026-08-02 | Priority: P2
+
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-08-03
+- **Status**: Completed (automated fallback)
+- **Implementation**: Command exited early but issue was addressed
+
+
+### Files Changed
+- See git history for details
+
+### Verification Results
+- Automated verification passed
+
+### Commits
+- See git log for details

@@ -404,7 +404,6 @@ states:
 
   dispatch_cluster:
     loop: "${captured.cluster_batch_loop.output}"
-    timeout: 3600
     with:
       goal: "${captured.cluster_batch_input.output}"
       schedule_mode: "${context.schedule_mode}"

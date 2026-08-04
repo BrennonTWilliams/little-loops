@@ -1014,11 +1014,16 @@ class FSMExecutor:
 
         # Clamp child timeout to parent's remaining wall-clock budget so a slow sub-loop
         # can't silently consume the parent's deadline with no recourse for the parent FSM.
+        # A state-level timeout further bounds the child below that remaining budget,
+        # leaving wall-clock headroom for an on_timeout salvage state (ENH-3019).
         if self.fsm.timeout:
             elapsed_ms = _now_ms() - self.start_time_ms + self.elapsed_offset_ms
             remaining_s = max(1, int((self.fsm.timeout * 1000 - elapsed_ms) // 1000))
-            if child_fsm.timeout is None or child_fsm.timeout > remaining_s:
-                child_fsm.timeout = remaining_s
+            cap = min(state.timeout, remaining_s) if state.timeout else remaining_s
+            if child_fsm.timeout is None or child_fsm.timeout > cap:
+                child_fsm.timeout = cap
+        elif state.timeout and (child_fsm.timeout is None or child_fsm.timeout > state.timeout):
+            child_fsm.timeout = state.timeout
 
         try:
             child_result = child_executor.run()
@@ -1039,6 +1044,17 @@ class FSMExecutor:
         if (state.context_passthrough or state.with_) and child_executor.captured:
             self.captured[self.current_state] = child_executor.captured
 
+        # Expose termination metadata to the parent under the existing `captured`
+        # namespace (${captured.<state_name>.terminated_by}), so a downstream state
+        # can distinguish budget exhaustion from other on_no causes without a
+        # dedicated route. Written after the context_passthrough/with_ merge above,
+        # which does a whole-dict overwrite that would otherwise clobber it (ENH-3019).
+        self.captured.setdefault(self.current_state, {})["terminated_by"] = (
+            child_result.terminated_by
+        )
+        if child_result.failure_terminal:
+            self.captured[self.current_state]["failure_terminal"] = child_result.failure_terminal
+
         # Route based on child termination reason and the child's explicit
         # failure flag (ENH-2814) — not a re-derived "is it named done?" check.
         if child_result.terminated_by == "terminal":
@@ -1054,8 +1070,19 @@ class FSMExecutor:
             if state.on_error:
                 return interpolate(state.on_error, ctx)
             return interpolate(state.on_no, ctx) if state.on_no else None
+        elif child_result.terminated_by in ("timeout", "max_steps", "max_iterations_reached"):
+            # Budget exhaustion: the sub-loop was cut off mid-work rather than
+            # reaching a real conclusion. Routes to on_timeout (extra_routes["timeout"])
+            # when declared; falls back to on_no, preserving prior behavior (ENH-3019).
+            on_timeout = state.extra_routes.get("timeout")
+            if on_timeout:
+                return interpolate(on_timeout, ctx)
+            return interpolate(state.on_no, ctx) if state.on_no else None
         else:
-            # max_iterations, timeout, signal — all are failure
+            # interrupted, user_stopped, system_signal, cycle_detected,
+            # stall_detected, host_pressure_abort, host_budget_exceeded, handoff —
+            # semantically distinct from budget exhaustion; out of scope for
+            # on_timeout (ENH-3019 Scope Boundaries).
             return interpolate(state.on_no, ctx) if state.on_no else None
 
     def _execute_learning_state(self, state: StateConfig, ctx: InterpolationContext) -> str | None:

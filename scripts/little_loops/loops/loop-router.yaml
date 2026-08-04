@@ -359,7 +359,6 @@ states:
 
   dispatch:
     loop: "${captured.chosen.output}"
-    timeout: 3600
     with:
       input: "${captured.derived_params.output}"
     capture: sub_loop_output
