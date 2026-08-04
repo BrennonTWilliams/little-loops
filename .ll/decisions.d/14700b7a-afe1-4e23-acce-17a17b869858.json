@@ -1,0 +1,11 @@
+{
+  "id": "6a4925b6-8276-428c-aa52-ea037d4793ac",
+  "type": "decision",
+  "timestamp": "2026-08-04T20:50:57Z",
+  "category": "process",
+  "labels": [],
+  "rationale": "Wire/refine never read the artifact an issue replaces, and negative claims are name-searched not capability-searched; accounts for 4 of 7 FEAT-2942 review defects.",
+  "rule": "Captured: replacement parity + negative-claim doctrine for wire/refine",
+  "scope": "issue",
+  "issue": "ENH-3045"
+}

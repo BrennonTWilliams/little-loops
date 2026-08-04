@@ -6,6 +6,7 @@ priority: P2
 status: open
 discovered_by: skill-audit
 discovered_date: 2026-07-31
+relates_to: [FEAT-3048]
 labels:
 - epic
 - skills
@@ -60,6 +61,9 @@ Three concrete harms today:
 - **FEAT-2947** — `ll-issues create` + `scaffold-epic` (Wave 2, early)
 - **FEAT-2948** — `ll-loop scaffold-eval` / `scaffold-verify` (Wave 3)
 - **ENH-2949** — `ll-loop audit <run> --json` + VERDICT_JSON adoption (Wave 3)
+- **FEAT-3048** — Verify symbol and CLI-flag claims in issue bodies; extends the
+  FEAT-2846/2849/2850 prose-claim gap taxonomy to the claim classes that survive
+  refine/wire/confidence review (Wave 3; captured 2026-08-04 from a FEAT-2942 review)
 - **ENH-2952** — Flag-parse boilerplate consolidation — *measure before applying* — **resolved
   Option C (leave as-is, documented)**: measured ~150 tokens/site, paid per-invocation not
   cumulatively; Options A/B yielded ~0 or marginal net savings against their own build cost.

@@ -4,7 +4,7 @@ title: Host-agnostic advisor
 type: FEAT
 parent: EPIC-3041
 priority: P3
-status: open
+status: done
 testable: true
 discovered_date: 2026-08-03
 verify_verdict: NON_VALID
@@ -14,6 +14,7 @@ blocks:
 - 3040
 labels:
 - planning-hub
+size: Very Large
 ---
 
 # FEAT-3037: Host-agnostic advisor
@@ -212,6 +213,14 @@ _Added by `/ll:refine-issue` — 2026-08-04 — based on codebase analysis:_
 - Line-reference corrections: `evaluate_llm_structured` spans `fsm/evaluators.py:1083-1268` (not 1083-1270); `config/core.py`'s `to_dict()` `"orchestration"` key starts at line 786, not "near line 782" (782 is inside the preceding `refine_status` block).
 - `ll-action` / `ll-harness` (the cited CLI-shape precedent) both wrap their entire body in `cli_event_context(DEFAULT_DB_PATH, "ll-<name>", sys.argv[1:])`, dispatch to `cmd_<subcommand>(args) -> int` functions that return ints rather than raising or calling `sys.exit`, and use `with suppress(Exception):` around best-effort side-writes so a non-critical failure never changes the CLI's own exit code (`cli/action.py:262-277`) — `ll-advise`'s "fails soft, no traceback" requirement (AC #4, #7) should follow this same shape: catch host/timeout errors at the `cmd_*` boundary and return a nonzero int, never let them propagate.
 - `CheckResult.severity: Literal["error", "informational"]` (`cli/doctor.py:54-73`) is the existing mechanism for "warn but don't fail" — `_exit_code_for` (`doctor.py:124-127`) only fails the overall exit code on `severity == "error" and status == "unsupported"`. `_advisor_check` should set `severity="informational"` for `advisory`/`unknown` floor results to satisfy AC #10 without new plumbing, mirroring the existing `_ADVISORY_CAPABILITIES` frozenset pattern (`doctor.py:95`).
+
+_Added by `/ll:refine-issue` — 2026-08-04 — based on codebase analysis:_
+
+- `evaluate_llm_structured`'s error-handling order (`fsm/evaluators.py:1083-1268`) is check-order-dependent and must be preserved exactly by `run_blocking_json()`: `subprocess.TimeoutExpired` → `FileNotFoundError` → `proc.returncode != 0` (reports stderr) → **then** the empty-stdout-with-exit-0 guard (`:1155-1164`, only reached when `returncode == 0`) → JSON envelope parse. A non-zero exit with empty stdout hits the returncode branch, not the empty-output branch — collapsing these checks or reordering them changes which error message a caller sees for the same failure, breaking AC #13's "behavior is unchanged" bar even though tests may not always catch message-text drift.
+- `_structured_output_args` (`evaluators.py:159-172`) appends both `--json-schema <schema>` **and** `--no-session-persistence` when `invocation.capabilities.structured_output` is true — `run_blocking_json()` must carry over both flags, not just `--json-schema`.
+- The JSON envelope extraction inside `evaluate_llm_structured` (`:1171-1235`) has a specific fallback priority `run_blocking_json()` needs to replicate: whole-string `json.loads`, then last-non-blank-line JSONL fallback on `JSONDecodeError`; `subtype == "error_max_structured_output_retries"` and legacy `is_error` are checked before result extraction; result extraction tries `structured_output` dict field first, then `result` field (dict as-is, or string re-parsed via `json.loads`, falling back to `_extract_tagged_structured_output()` only on that inner `JSONDecodeError` and re-raising only if the tag fallback also returns `None`), then a bare `"verdict" in envelope` fallback, else an error with a 300-char `raw_preview`.
+- Evidence-coercion (`:1246-1248`) forces `verdict = "no"` specifically when `schema is None` (the *default* schema, not any caller-supplied schema) and evidence is blank and verdict isn't already `"error"` — this is schema-conditional behavior a shared `run_blocking_json()` must not apply unconditionally, since the advisor always supplies its own schema.
+- `apply_host_cli_from_config()` (`host_runner.py:1612-1637`) has three early-return guards that make it a no-op: `os.environ.get("LL_HOST_CLI")` already truthy, `config.orchestration.host_cli` raising `AttributeError` (e.g. test doubles), or `host_cli` falsy. Its one production call site is `cli/doctor.py:1050`, immediately before `resolve_host()` — confirming the advisor's "must not call this" constraint is a plain grep-absence check against `advisor.py`/`cli/advise.py`, not a runtime behavior to special-case around.
 
 ## API/Interface
 
@@ -541,18 +550,80 @@ Also unresolved and deferred:
 - **Breaking Change**: No — `advisor` is absent by default; all existing
   `resolve_host()` call sites are untouched.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-08-04:_
+
+Verdict: **NEEDS_UPDATE**. This is a pre-implementation proposal, so most content
+describes code that doesn't exist yet (correctly, per grep: `advisor.py`,
+`cli/advise.py`, `skills/advise/SKILL.md`, `test_advisor.py`,
+`test_cli_advise.py`, the `ll-advise` pyproject entry, and `AdvisorConfig` in
+`config/__init__.py` are all still absent). Of the 29 checkable claims about
+**existing** code (line numbers, function signatures, test names), 27 matched
+exactly; two issues found:
+
+- **Factual error** (Codebase Research Findings, "Existing tests always patch
+  `resolve_host` at the *calling* module... never at
+  `little_loops.host_runner.resolve_host`"): false. `test_cli_doctor.py` and
+  `test_cli_doctor_full.py` patch `little_loops.host_runner.resolve_host`
+  directly at ~10 call sites (e.g. `test_cli_doctor.py:74,92,120,153,...`).
+  Only `test_fsm_evaluators.py:933` patches at the caller namespace. Fix before
+  using this claim to guide `test_advisor.py`'s mocking strategy.
+- **Minor line-range drift**: `config/orchestration.py:62-103` cited for
+  `OrchestrationConfig.from_dict` — the class starts at 62 (docstring/fields),
+  but the `from_dict` method body itself is lines 96-103. Not blocking.
+- **Dependency backlink inconsistency**: `blocks: [3038, 3039, 3040]` uses bare
+  integers, unlike every other `blocks:` list in `.issues/` (which use full IDs,
+  e.g. `'FEAT-2847'`). More substantively, none of FEAT-3038/3039/3040 declare
+  `blocked_by: [FEAT-3037]` — the repo convention for a `blocks` reciprocal
+  (confirmed via `link.py:190`'s `blocked_by`↔`blocks` reciprocal-field mapping,
+  and via working examples like FEAT-1808→FEAT-1809/`blocked_by`). Instead they
+  each declare `depends_on: [3037]`, a separate, non-reciprocal field. Consider
+  adding `blocked_by: [FEAT-3037]` to FEAT-3038/3039/3040 (or switching
+  FEAT-3037's `blocks` entries to full-ID form) so `ll-issues show` renders the
+  dependency consistently with the rest of the backlog.
+
+Everything else — the extensive line-number citations against
+`host_runner.py`, `fsm/evaluators.py`, `config/core.py`,
+`config/orchestration.py`, `hooks/session_start.py`, `cli/doctor.py`,
+`config-schema.json`, `init/writers.py`, and the various test files — checked
+out exactly. `MODEL_ALIASES` has the claimed 4 entries; `apply_host_cli_from_config`'s
+three guards and sole call site (`doctor.py:1050`) are accurate;
+`cleanup_paths` is confirmed genuinely unexercised by any production caller
+today.
+
+No active required decision-log rules to check (decisions log has no entries).
+Dependency refs to FEAT-3038/3039/3040 all resolve to real, open issues.
+
 ## Related Key Documentation
 
 - `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` — MR-1, self-evaluation bias.
 - `docs/reference/HOST_COMPATIBILITY.md#orchestration-cli` — host abstraction.
 - `docs/reference/API.md#little_loopshost_runner`
 
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-08-04
+- **Reason**: Issue scored Very Large (11/11) on `ll-issues size` and covers
+  three architecturally separable concerns.
+
+### Decomposed Into
+- FEAT-3042: Advisor transport - shared run_blocking_json helper
+- FEAT-3043: Advisor configuration - AdvisorConfig block
+- FEAT-3044: Advisor core - ll-advise CLI, capability floor, and ll-doctor check
+
 ## Status
 
-**Open** | Created: 2026-08-03 | Priority: P3
+**Done** | Created: 2026-08-03 | Priority: P3
 
 
 ## Session Log
+- `/ll:issue-size-review` - 2026-08-04T20:47:21 - `b57cebec-46d2-436b-b650-9a1afa94ec18.jsonl`
+- `/ll:verify-issues` - 2026-08-04T20:42:53 - `97441ea7-5d7e-47f5-8c5d-364991183913.jsonl`
+- `/ll:refine-issue` - 2026-08-04T20:37:26 - `650434bc-d789-4e46-80af-5ca27b0d0f91.jsonl`
 - `/ll:verify-issues` - 2026-08-04T20:33:27 - `305bc37e-8d57-4c74-8cd3-5f3bd246d78c.jsonl`
 - `/ll:wire-issue` - 2026-08-04T20:29:14 - `9a232634-c75e-4ea0-9ef9-0d29e428f8df.jsonl`
 - `/ll:refine-issue` - 2026-08-04T20:18:49 - `de4d07bc-db46-48c5-9174-010f6f16478c.jsonl`

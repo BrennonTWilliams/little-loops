@@ -1,0 +1,11 @@
+{
+  "id": "6393085b-732d-4be5-ba86-e115631525f2",
+  "type": "decision",
+  "timestamp": "2026-08-04T20:50:57Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Extends FEAT-2846/2849/2850 prose-claim architecture to symbol and CLI-flag claims; motivated by a false ll-issues link claim in FEAT-2942 that survived refine/wire/confidence.",
+  "rule": "Captured: Verify symbol and CLI-flag claims in issue bodies",
+  "scope": "issue",
+  "issue": "FEAT-3048"
+}
