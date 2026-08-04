@@ -4,9 +4,10 @@ title: FSM prompt states inherit an undeclared 3600s cap that overrides loop-lev
   budgets
 type: BUG
 priority: P2
-status: open
+status: done
 discovered_date: 2026-08-03
 captured_at: '2026-08-04T04:17:13Z'
+completed_at: '2026-08-04T19:48:23Z'
 discovered_by: capture-issue
 depends_on:
 - FEAT-3033
@@ -435,6 +436,45 @@ Under Option A (see Proposed Solution), this path gains a second, parallel prece
 - `docs/reference/API.md` — documents the `fsm` module surface, including the
   executor dispatch path this changes.
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-08-04
+- **Status**: Completed
+- **Solution**: Option A (opt-in idle gate), as recorded under Decision Rationale
+
+### Changes Made
+
+- `scripts/little_loops/fsm/executor.py:1914` (main prompt/shell dispatch): the
+  `or 3600` fallback is now `or _wall_fallback`, where `_wall_fallback` is `0`
+  when `action_mode == "prompt"` and the resolved `state.idle_timeout or
+  self.fsm.default_idle_timeout` is non-zero, else `3600` — unchanged for shell
+  states and for any prompt state without an idle opt-in.
+- `scripts/little_loops/fsm/executor.py:2739` (`_run_baseline_arm`): same gate,
+  minus the `action_mode` check since this arm is always a single
+  `skill_command` prompt invocation.
+- `scripts/little_loops/fsm/executor.py:1854` (MCP `or 30`) and `:1874`
+  (contributed `or 3600`) intentionally left unchanged, per Integration Map.
+- `scripts/little_loops/loops/lib/common.yaml` — rewrote the `llm_gate`
+  timeout-budget prose to describe the new idle-gated relaxation instead of
+  instructing authors to always raise `timeout:` for MCP-heavy prompts.
+- `scripts/tests/test_bug3032_wall_clock_cap.py` — new file: opt-in ON/OFF,
+  shell/MCP/contributed non-leak, `state.timeout`/`fsm.default_timeout`
+  precedence, and `_run_baseline_arm` coverage (12 tests).
+- `scripts/tests/test_fsm_executor.py` — added a `timeouts: list[int]` capture
+  field to `MockActionRunner` so tests can assert the resolved timeout value
+  (previously only `idle_timeout`/`working_dir` were captured).
+- `CHANGELOG.md` — new `### Fixed` entry under `[1.153.0]`.
+
+### Verification Results
+
+- Tests: PASS (18250 passed, 42 skipped, full `scripts/tests/` suite)
+- Lint: PASS (`ruff check` on all touched Python files)
+- Types: PASS (`mypy scripts/little_loops/fsm/executor.py`)
+- `issue-refinement.yaml`'s missing `default_timeout` spot-checked per
+  Implementation Steps item 5 — confirmed deliberate (only `timeout: 86400` is
+  set), no change needed.
+
 ## Status
 
 **Open** | Created: 2026-08-03 | Priority: P2
@@ -508,6 +548,7 @@ _Added by `/ll:confidence-check` on 2026-08-04_
   readiness; selecting one clears the ambiguity.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-04T19:48:09 - `666fcf0b-91d8-48a6-b818-26ad19e94d52.jsonl`
 - `/ll:confidence-check` - 2026-08-04T19:32:26 - `85218b01-3290-46fd-968c-2ce6b21e0c91.jsonl`
 - `/ll:refine-issue` - 2026-08-04T19:27:36 - `813364aa-568d-4a3f-8a84-dae63f076d3c.jsonl`
 - `/ll:decide-issue` - 2026-08-04T06:33:17 - `d9b95d0a-bc35-44a3-9a60-f978eece0013.jsonl`

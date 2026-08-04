@@ -1909,9 +1909,18 @@ class FSMExecutor:
             if _idle_timeout:
                 extra_kwargs["idle_timeout"] = _idle_timeout
 
+            # BUG-3032: a prompt state that opts into idle detection relies on
+            # FEAT-3033's idle sensor to catch hangs, so the undeclared 3600s
+            # wall-clock fallback no longer applies to it — only state.timeout
+            # / fsm.default_timeout (both author-declared) still bound it.
+            # Shell states keep the 3600 fallback regardless of idle opt-in
+            # (this branch's `else:` serves both modes via is_slash_command
+            # below) since shell overrun genuinely does mean hung.
+            _wall_fallback = 0 if (action_mode == "prompt" and _idle_timeout) else 3600
+
             result = self.action_runner.run(
                 action,
-                timeout=state.timeout or self.fsm.default_timeout or 3600,
+                timeout=state.timeout or self.fsm.default_timeout or _wall_fallback,
                 is_slash_command=action_mode == "prompt",
                 on_output_line=_on_line,
                 agent=state.agent if action_mode == "prompt" else None,
@@ -2736,12 +2745,15 @@ class FSMExecutor:
             ActionResult with output, exit code, and duration
         """
         start = _now_ms()
-        timeout = state.timeout or self.fsm.default_timeout or 3600
         # FEAT-3033: the A/B baseline arm runs concurrently with the harness
         # arm (ThreadPoolExecutor, see the caller) and must resolve idle
         # under the same precedence chain, or the two arms compare under
         # different liveness rules.
         idle_timeout = state.idle_timeout or self.fsm.default_idle_timeout or 0
+        # BUG-3032: this arm always runs a single skill_command (prompt-mode,
+        # no shell branch), so the idle opt-in alone gates the relaxation —
+        # same rule as the main prompt/shell dispatch above.
+        timeout = state.timeout or self.fsm.default_timeout or (0 if idle_timeout else 3600)
         # ENH-2724: the baseline arm calls run_claude_command() directly (not
         # through an ActionRunner), so it never got usage_events attached to its
         # ActionResult like the harness arm does — collect it here.

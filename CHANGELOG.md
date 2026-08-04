@@ -67,6 +67,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- BUG-3032: `action_type: prompt` states inherited an undeclared 3600s
+  wall-clock cap (`fsm/executor.py`'s trailing `or 3600` fallback) that
+  overrode loop-level budgets — 90 of 91 loops relied on it, several
+  declaring multi-hour to multi-day `timeout:`. A state that legitimately
+  ran past an hour was SIGKILLed and its output discarded unexamined
+  (`evaluators.py`'s BUG-1640 exit-124 short-circuit never ran). The
+  fallback is now lifted only for a prompt state that opts into FEAT-3033's
+  idle detection (`state.idle_timeout` / `fsm.default_idle_timeout`
+  resolving non-zero) — those states rely on the idle sensor to catch a
+  genuine hang instead of a wall-clock guess. States without that opt-in,
+  plus shell/MCP/contributed actions, keep the `3600`/`30` fallback
+  unchanged. Author-declared `state.timeout` / `fsm.default_timeout` remain
+  authoritative throughout.
 - BUG-2894: `oracles/code-run-gate.yaml`'s `run_test` state double-prefixed its
   stdout (`pass_rate=pass_rate=<n>`), left the `grep` against
   `test-results.txt` unquoted (broke on a space-containing `run_dir`), and

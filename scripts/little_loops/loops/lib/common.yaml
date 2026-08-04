@@ -49,20 +49,24 @@ fragments:
       LLM prompt state evaluated by structured yes/no output.
       State must supply: action (the prompt text), evaluate.prompt (the yes/no question),
       on_yes, on_no (and optionally on_error, timeout, idle_timeout, capture).
-      Timeout budget: when the prompt performs multiple MCP tool calls followed by synthesis
-      (~10 calls), set timeout: 1500 or higher at the state level. The 3600s executor
-      fallback only applies when neither state-level timeout: nor loop-level default_timeout:
-      is set — a low default_timeout: bypasses the fallback and will kill MCP-heavy prompts
-      mid-synthesis.
+      Timeout budget: the 3600s executor fallback only applies when neither state-level
+      timeout: nor loop-level default_timeout: is set, AND the state has not opted into idle
+      detection (BUG-3032). Once a state (or its loop) declares idle_timeout: /
+      default_idle_timeout:, that fallback is lifted entirely — the state runs unbounded by
+      wall clock and relies on the idle sensor to catch a genuine hang. If you have not
+      opted into idle detection, a low default_timeout: still bypasses the 3600s fallback
+      and will kill MCP-heavy prompts mid-synthesis; set timeout: 1500 or higher at the
+      state level instead, or opt into idle_timeout: to remove the wall-clock cap outright.
       Idle vs. wall-clock (FEAT-3033): timeout: bounds total duration regardless of activity —
       a healthy long-running synthesis and a wedged prompt look identical to it. idle_timeout:
       (state-level) / default_idle_timeout: (loop-level) instead kills only on sustained
       silence, so a state can run arbitrarily long while still producing output. Prefer
       idle_timeout: over a large timeout: when the real risk is a wedged process rather than
       a slow-but-healthy one; the two compose (whichever fires first wins), and idle_timeout: 0
-      (the default) disables idle detection entirely. On a kill, ${prev.timeout_kind:default=}
-      is "idle" or "wall" — read it in a downstream shell_exit classifier state to route a
-      wedge differently from a slow-but-legitimate run.
+      (the default) disables idle detection entirely — and, per BUG-3032, also keeps this
+      state on the 3600s wall-clock fallback until you opt in. On a kill,
+      ${prev.timeout_kind:default=} is "idle" or "wall" — read it in a downstream shell_exit
+      classifier state to route a wedge differently from a slow-but-legitimate run.
     action_type: prompt
     evaluate:
       type: llm_structured

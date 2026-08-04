@@ -44,6 +44,7 @@ class MockActionRunner:
     )
     working_dirs: list[Any] = field(default_factory=list)
     idle_timeouts: list[int] = field(default_factory=list)
+    timeouts: list[int] = field(default_factory=list)
 
     use_indexed_order: bool = False
 
@@ -65,7 +66,6 @@ class MockActionRunner:
         """Return configured result for action."""
         # Suppress unused variable warnings - these match the Protocol signature
         del (
-            timeout,
             is_slash_command,
             on_output_line,
             agent,
@@ -77,6 +77,7 @@ class MockActionRunner:
         )
         self.working_dirs.append(working_dir)
         self.idle_timeouts.append(idle_timeout)
+        self.timeouts.append(timeout)
         self.calls.append(action)
 
         # Use indexed results in order (when results were set as a list)
