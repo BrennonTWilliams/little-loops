@@ -20,12 +20,20 @@ from unittest.mock import patch
 
 import pytest
 
+from little_loops.logo import get_logo, print_logo
+
 pytestmark = pytest.mark.integration
 
 
 # Patch target: detect_installation is imported function-locally inside
 # _run_yes (init/cli.py), so patching it at its definition site takes effect.
 _NO_INSTALL = ("little_loops.init.install_check.detect_installation",)
+
+# Derived from the asset itself (not hardcoded prose) so a future logo
+# redesign cannot silently invalidate TestInitLogoBanner's assertions the
+# way d8b3a17d did (BUG-3025). test_logo.py's non-empty guard covers the
+# failure mode where an emptied asset would make this vacuously "" in out.
+_LOGO_MARKER = (get_logo("full") or "").strip().splitlines()[0]
 
 
 def _run_init(argv: list[str]) -> int:
@@ -338,7 +346,13 @@ class TestInitHeadlessIntrospection:
 
 class TestInitLogoBanner:
     """The CLI logo banner prints on human-facing runs but never pollutes the
-    machine-readable --plan JSON output."""
+    machine-readable --plan JSON output.
+
+    The marker used to detect the banner is derived from get_logo("full")
+    itself (its first stripped line) rather than hardcoded prose, so a future
+    art redesign cannot silently invalidate these assertions the way
+    d8b3a17d did (BUG-3025).
+    """
 
     def test_yes_run_prints_logo_banner_on_tty(
         self,
@@ -356,7 +370,7 @@ class TestInitLogoBanner:
         assert _run_init(["--yes", "--hosts", "claude-code", "--root", str(project)]) == 0
 
         out = capsys.readouterr().out
-        assert "little loops" in out, "logo banner missing from --yes stdout on a TTY"
+        assert _LOGO_MARKER in out, "logo banner missing from --yes stdout on a TTY"
 
     def test_yes_run_omits_logo_when_not_tty(
         self, tmp_path: Path, capsys: pytest.CaptureFixture
@@ -368,7 +382,7 @@ class TestInitLogoBanner:
         assert _run_init(["--yes", "--hosts", "claude-code", "--root", str(project)]) == 0
 
         out = capsys.readouterr().out
-        assert "little loops" not in out, "logo banner leaked into non-TTY (piped) output"
+        assert _LOGO_MARKER not in out, "logo banner leaked into non-TTY (piped) output"
 
     def test_plan_output_has_no_logo_and_stays_valid_json(self, tmp_path: Path) -> None:
         import io
@@ -382,6 +396,12 @@ class TestInitLogoBanner:
             assert _run_init(["--plan", "--root", str(project)]) == 0
 
         stdout = buf.getvalue()
-        assert "little loops" not in stdout, "logo leaked into --plan output"
+        assert _LOGO_MARKER not in stdout, "logo leaked into --plan output"
         # stdout must remain parseable JSON (no banner prefix/suffix).
         json.loads(stdout)
+
+    def test_logo_marker_detects_a_printed_banner(self, capsys: pytest.CaptureFixture) -> None:
+        """Proves _LOGO_MARKER can actually detect a banner, so the negative
+        assertions above are live rather than vacuous."""
+        print_logo()
+        assert _LOGO_MARKER in capsys.readouterr().out

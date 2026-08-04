@@ -3,10 +3,11 @@ id: BUG-3025
 title: Logo banner tests assert a wordmark the redesign removed - one fails, two pass
   vacuously
 type: BUG
-status: open
+status: done
 priority: P2
 discovered_date: 2026-08-03
 discovered_by: user-report
+completed_at: '2026-08-04T03:02:39Z'
 testable: true
 labels:
 - tests
@@ -218,23 +219,26 @@ precisely the invariant the line-385 assertion must be restored to enforce.
 
 ## Acceptance Criteria
 
-- [ ] `test_yes_run_prints_logo_banner_on_tty` passes against the current asset.
-- [ ] A **detector-sanity test** asserts the chosen marker is found in captured
+- [x] `test_yes_run_prints_logo_banner_on_tty` passes against the current asset.
+- [x] A **detector-sanity test** asserts the chosen marker is found in captured
       `print_logo()` output. This is the automated form of "the negative
       assertions can actually fail", and is the criterion that distinguishes a
       real fix from re-silencing. (One-time manual confirmation via Steps to
       Reproduce step 3 is fine as a sanity check, but must not be the only
       evidence — a manual check is exactly the decay mode this bug is about.)
-- [ ] A unit-level guard in `scripts/tests/test_logo.py` asserts the marker is
+- [x] A unit-level guard in `scripts/tests/test_logo.py` asserts the marker is
       non-empty, covering the one direction where an emptied asset would make an
       assertion pass vacuously (the positive test).
-- [ ] The chosen marker is derived from or pinned against `get_logo("full")`, so
+- [x] The chosen marker is derived from or pinned against `get_logo("full")`, so
       a future art redesign cannot silently invalidate the assertions, and is
       defined once as a single constant shared by all three assertions.
-- [ ] `test_ll_loop_execution.py:352` is left untouched by this fix; its separate
+- [x] `test_ll_loop_execution.py:352` is left untouched by this fix; its separate
       disposition is filed as a follow-up (see Integration Map).
-- [ ] `python -m pytest scripts/tests/integration/test_init_e2e.py` exits 0.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `python -m pytest scripts/tests/integration/test_init_e2e.py` exits 0.
+- [x] `python -m pytest scripts/tests/` exits 0 modulo two pre-existing,
+      confirmed-unrelated `test_des_audit.py` failures (see Notes) that predate
+      this fix and share no code with the logo banner — reproduced failing on
+      unmodified `main` before any change in this commit.
 
 ## Status
 
@@ -262,8 +266,20 @@ Note that BUG-3009's Resolution section attributes four then-current failures to
 (`git status` on `scripts/little_loops/assets/` is empty); the residue is this
 single test-side drift, not an uncommitted working-tree change.
 
+While fixing this bug, `scripts/tests/test_logo.py::test_get_logo_returns_logo_content`
+was found failing on unmodified `main` for the identical root cause (a hardcoded,
+now letter-spacing-broken, contiguous substring check) and was fixed in the same
+commit as an in-kind sibling of this bug's fix.
+
+Also found on unmodified `main`, confirmed unrelated (different subsystem —
+`ll-verify-des-audit` real-tree walk) and left untouched by this fix:
+`scripts/tests/test_des_audit.py::TestAuditWalker::test_real_tree_passes` and
+`::TestMain::test_clean_real_tree_returns_zero`, both failing on an uncovered
+DES event type `state.issue_skipped`. Needs its own follow-up bug.
+
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-04T03:02:19 - `0b1b1631-3a6a-4f11-90b0-2a93a23548c3.jsonl`
 - `/ll:confidence-check` - 2026-08-04T02:14:56 - `bf431c8e-9360-452f-ad2d-3353ebec0f47.jsonl`
 - `/ll:confidence-check` - 2026-08-03T22:06:28 - `0625a809-cbc4-471f-aa6c-852d08e8ee2e.jsonl`
 - `/ll:wire-issue` - 2026-08-03T22:04:24 - `0a2cd27e-890b-4a2c-8139-d2e883aa3480.jsonl`
