@@ -2,6 +2,7 @@
 id: FEAT-3037
 title: Host-agnostic advisor
 type: FEAT
+parent: EPIC-3041
 priority: P3
 status: open
 testable: true

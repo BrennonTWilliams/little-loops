@@ -2,6 +2,7 @@
 id: FEAT-3040
 title: Advisor consult telemetry in history.db
 type: FEAT
+parent: EPIC-3041
 priority: P4
 status: open
 testable: true

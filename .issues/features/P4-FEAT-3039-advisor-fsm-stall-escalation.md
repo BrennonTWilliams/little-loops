@@ -2,6 +2,7 @@
 id: FEAT-3039
 title: Advisor FSM stall escalation and routable verdicts
 type: FEAT
+parent: EPIC-3041
 priority: P4
 status: open
 testable: true
