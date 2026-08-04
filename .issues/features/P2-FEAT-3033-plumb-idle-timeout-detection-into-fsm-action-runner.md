@@ -5,7 +5,7 @@ type: FEAT
 priority: P2
 status: open
 discovered_date: 2026-08-03
-captured_at: "2026-08-04T04:17:13Z"
+captured_at: '2026-08-04T04:17:13Z'
 discovered_by: capture-issue
 relates_to:
 - BUG-3032
@@ -20,6 +20,12 @@ labels:
 - timeout
 - runners
 verify_verdict: VALID
+confidence_score: 92
+outcome_confidence: 68
+score_complexity: 15
+score_test_coverage: 16
+score_ambiguity: 16
+score_change_surface: 21
 ---
 
 # FEAT-3033: Plumb idle-timeout detection into the FSM action runner
@@ -85,10 +91,66 @@ BUG-2718 reasons) is therefore only coherent if BUG-3032 takes one of:
 The first is the safer default. Whichever is chosen, it belongs in BUG-3032's
 acceptance criteria, not left implicit here.
 
+> ✅ **Settled 2026-08-04**: BUG-3032 selected the first option via
+> `/ll:decide-issue` and has propagated it into its Expected Behavior, Proposed
+> Fix, Tests, and Implementation Steps. This feature can therefore keep its
+> recommended `0`/disabled default with no further coordination.
+
 Secondary value independent of BUG-3032: idle detection catches a class of
 failure the wall clock misses entirely — a state that wedges at minute 2 of a
 60-minute budget currently burns the remaining 58 minutes before anything
 notices.
+
+## Use Case
+
+A loop author runs `autodev.yaml` (`timeout: 28800`) overnight. One
+implement-and-test prompt state does 90 minutes of real work on a large issue;
+another wedges two minutes in, waiting on a subprocess that will never return.
+
+Today both look identical to the executor: the first is SIGKILLed at 60 minutes
+with its output discarded, the second burns the remaining 58 minutes of its
+budget before anything notices. The author has exactly one dial — a stopwatch —
+and no setting of it separates the two cases.
+
+With idle detection the author writes:
+
+```yaml
+default_idle_timeout: 900        # 15 min of total silence means wedged
+
+states:
+  implement:
+    action_type: prompt
+    action: "/ll:manage-issue ${issue_id}"
+    # no `timeout:` — duration is not the signal; silence is
+    on_success: verify
+    on_error: classify_kill      # 124 lands here via the BUG-1640 short-circuit
+
+  classify_kill:
+    fragment: shell_exit
+    action: 'test "${prev.timeout_kind:default=}" = "idle"'
+    on_yes: escalate_wedged      # silent — genuinely stuck, escalate
+    on_no: retry_implement       # wall-clock or other error — retryable
+```
+
+The 90-minute state runs to completion because it never goes quiet for 15
+minutes. The wedged state dies at minute 17 instead of minute 60, and routes to
+a *different* recovery than a wall-clock kill — which no exit code can express,
+since BUG-1640/BUG-1815 route every non-zero exit to `error` alike.
+
+**Note the shape of that consumption.** The FSM has no `when:`/`transitions:`
+guard construct — `stateConfig` routes on *verdicts* (`on_success`, `on_error`,
+`on_yes`/`on_no`, `route`), and `${...}` interpolation happens inside a state's
+`action` / `evaluate.prompt` strings. So "readable from a guard" throughout this
+issue means precisely the above: a one-line `shell_exit` classifier state that
+interpolates `${prev.timeout_kind}` and converts it into a verdict. That is the
+idiom to document and to test against — not a hypothetical inline guard
+expression. The `:default=` is mandatory (see the checkpoint round-trip note
+under Expected Behavior); a bare `${prev.timeout_kind}` raises
+`InterpolationError` on a run resumed from a pre-change checkpoint.
+
+Secondary consumers: `ll-auto` and `ll-parallel` already expose exactly this
+dial via `--idle-timeout` (FEAT-488). A user who has tuned it there and then
+writes an FSM loop currently finds the concept simply absent.
 
 ## Current Behavior
 
@@ -156,11 +218,13 @@ the shape FEAT-488 established for `ll-auto`/`ll-parallel`.
   Concretely: add a field such as `timeout_kind: "wall" | "idle" | None` to
   `ActionResult`, populated on the prompt/baseline paths from the existing
   `exc.output == "idle_timeout"` sentinel and on the selector paths from the
-  new branch, then surface it into the interpolation context so transitions and
-  guards can read it. Exit code stays `124` for both, preserving BUG-1640
-  routing unchanged.
+  new branch, then surface it into the interpolation context so a downstream
+  state's `action` / `evaluate.prompt` can read it. Exit code stays `124` for
+  both, preserving BUG-1640 routing unchanged.
 
-  **The author-facing path is `${prev.timeout_kind}`.** The seam is
+  **The author-facing path is `${prev.timeout_kind}`, consumed by a
+  `shell_exit` classifier state** — the FSM has no inline guard construct;
+  routing is verdict-based. See the Use Case for the exact idiom. The seam is
   `self.prev_result` (`executor.py:1509` and `:1579`), which flows into
   `ctx.prev` at `executor.py:2773`. Two consequences that must be handled
   rather than discovered:
@@ -174,7 +238,7 @@ the shape FEAT-488 established for `ll-auto`/`ll-parallel`.
   - Decide whether the `captured` namespace carries it too. `captured` entries
     are documented as `{output, stderr, exit_code, duration_ms}`
     (`interpolation.py:48`); omitting `timeout_kind` there leaves
-    `capture:`-based guards unable to express what `prev`-based guards can.
+    `capture:`-based classifiers unable to express what `prev`-based ones can.
     Recommendation: add it to both, so the two namespaces stay symmetric.
 
 - **Timeout results report the elapsed duration, not the budget.** Every
@@ -185,8 +249,68 @@ the shape FEAT-488 established for `ll-auto`/`ll-parallel`.
   attribution, and any elapsed-based guard — and idle detection makes it far
   more common, since dying early is the entire point. All three become
   `_now_ms() - start`, which is already what the baseline arm's *success*
-  path does two lines above the bug (`executor.py:2723`). This is in scope
-  here rather than a follow-up: the feature actively worsens the defect.
+  path does two lines above the bug (`executor.py:2723`).
+
+  **This is a hard prerequisite for BUG-3032, not just telemetry hygiene.**
+  Once that issue lets the wall-clock budget resolve to `0` (no cap), the
+  expression evaluates to `0` for *every* idle kill on an uncapped state — the
+  exact states idle detection exists to serve, reporting exactly the number
+  that makes them look instantaneous. (Had BUG-3032 used `None` as its
+  no-cap sentinel it would be a `TypeError` instead; it uses `0` for this
+  reason among others.) Land this with step 3, before BUG-3032, not after.
+
+## Acceptance Criteria
+
+Grouped by the step that delivers them, so the BUG-3032 unblock is a clean cut
+at AC-9. Each maps to a test in the Tests section below.
+
+**Steps 1-4 — the BUG-3032 unblock**
+
+1. `stateConfig.idle_timeout` and loop-level `default_idle_timeout` exist in
+   `schema.py` and `fsm-loop-schema.json` with `minimum: 0`, round-trip through
+   `to_dict`/`from_dict` on both `StateConfig` and `FSMLoop`, and the loop-level
+   key is accepted by `validation/_base.py`.
+2. Resolution follows `state.idle_timeout or fsm.default_idle_timeout`, with
+   `0` meaning disabled — and `0`/unset reproduces today's behavior exactly on
+   every path.
+3. A prompt state with a non-zero resolved idle timeout that emits no output for
+   longer than it is killed, and its `ActionResult` carries
+   `timeout_kind == "idle"` with `exit_code == 124`.
+4. A prompt state that emits output steadily past its idle timeout is **not**
+   killed, however long it runs.
+5. A wall-clock kill carries `timeout_kind == "wall"`; the two are distinguished
+   by that field alone, with `exit_code` remaining `124` for both, so BUG-1640 /
+   BUG-1815 routing to verdict `error` is unchanged.
+6. `${prev.timeout_kind}` interpolates into a downstream state's `action`, so a
+   `shell_exit` classifier can convert it to a verdict (the Use Case idiom —
+   there is no inline guard construct to test against). A checkpoint
+   written before this change restores without error, and
+   `${prev.timeout_kind:default=}` resolves empty rather than raising.
+7. `duration_ms` on all three timeout paths (`runners.py:191`, `:299`,
+   `executor.py:2732`) reports elapsed time, not the budget.
+8. `_run_baseline_arm` receives the same resolved idle value as the harness arm,
+   so an A/B run does not evaluate its two arms under different liveness rules.
+9. The new runner parameter is kwarg-gated: an `ActionRunner` implementation
+   predating this change still runs, and `SimulationActionRunner` plus the
+   contributed-action runner surface both accept it.
+   → **BUG-3032 is unblocked at this point.**
+
+**Step 5 — shell and mcp**
+
+10. Shell and mcp states enforce idle detection via `last_output_at` tracking in
+    their selector loops, with the same semantics as the prompt path.
+11. The blocking-`readline()` question is resolved in the code, not left open —
+    either fixed via buffered `os.read`, or documented as a known boundary with
+    a test pinning the current behavior. Whichever is chosen is stated in the
+    implementation and in the docs.
+12. An mcp idle kill still produces the `mcp_result` `timeout` verdict; the
+    distinction is carried only by `timeout_kind`.
+13. Shell/mcp selector loops treat a `0` (or negative) wall-clock budget as
+    "no deadline," never "already expired" — the BUG-3034 failure mode.
+
+**Non-goals** (explicitly not delivered, and not defects if absent): idle
+detection for `_dispatch_live` (sdk/batch — no subprocess), and an
+`ll-loop run --idle-timeout` flag (deferred to ENH-2977).
 
 ## Proposed Solution
 
@@ -246,9 +370,18 @@ last_output_at = time.time()
         break
 ```
 
-Note the `if timeout else None` on the deadline — that is the seam BUG-3032
-needs in order to express "no wall-clock cap," and it belongs in this change so
-the two issues don't both edit the same expression.
+Note the `if timeout else None` on the deadline — this makes the shell loop
+honor `timeout=0` as "no wall-clock cap," matching the convention
+`run_claude_command` already documents (`subprocess_utils.py:346`, "0 for no
+timeout") and enforces (`:465`, `if timeout and ...`). It belongs in this
+change so the two issues don't both edit the same expression.
+
+**BUG-3032 does not depend on this particular line.** That issue relaxes only
+the *prompt* path, which reaches `run_claude_command`'s already-`0`-safe guard
+directly; it leaves shell states capped. This edit is here for internal
+consistency between the two selector loops, not as BUG-3032's seam. Guard it
+against the BUG-3034 failure mode while you're here: a `0` or negative budget
+must mean "no deadline," never "already expired."
 
 Given how similar the two loops are, extracting the shared read-and-deadline
 logic into one helper is worth considering, but is not required by this issue
@@ -265,7 +398,18 @@ past the new `last_output_at` check, because neither is reached again.
 `executor.py:_run_subprocess` has the identical shape.
 
 This is exactly the wedged-process case the feature exists to catch, so it
-cannot be left implicit. Pick one and record it in the implementation:
+cannot be left implicit. Pick one and record it in the implementation.
+
+**This fork does not block BUG-3032 and must not be treated as a start-blocker.**
+It lives entirely in step 5 (the shell and mcp selector loops). BUG-3032
+deliberately leaves shell and mcp states capped at their existing `or 3600` /
+`or 30` fallbacks, and the prompt path it relaxes reaches
+`run_claude_command`'s already-implemented, already-tested idle loop — which
+has the same `readline()` shape but is pre-existing behavior this feature
+neither introduces nor worsens there. Steps 1-4 can land, and BUG-3032 with
+them, while this remains open.
+
+The options:
 
 - **Fix it** — read with `os.read(fd, N)` on the raw descriptor and buffer
   lines manually, so no read blocks past the poll window. This makes both
@@ -362,6 +506,7 @@ to BUG-3032's default choice.
   `idle_timeout: int | None`; `FSMConfig` (line 1281 area) gains
   `default_idle_timeout`; both need `from_dict`/`to_dict` round-tripping
   (lines 875, 1544, 1378).
+  > ⚠ Superseded — class is `FSMLoop`, not `FSMConfig`; see Program Design findings
 - `scripts/little_loops/fsm/fsm-loop-schema.json` — new properties on
   `stateConfig` and at the root. Use `minimum: 0` (not `minimum: 1`, which the
   existing timeout properties use) so `0` can express "disabled."
@@ -409,11 +554,14 @@ to BUG-3032's default choice.
   re-flattening the distinction.
 - `exit_code=124` still routes to verdict `error` via BUG-1640 regardless of
   `timeout_kind` — guards against the new field perturbing existing routing.
-- `timeout_kind` is readable from a transition guard as
-  `${prev.timeout_kind}` (the acceptance test for the differentiated-recovery
-  use case; without it the field is write-only and the feature's stated benefit
-  is undelivered). Include the `captured` namespace if that decision lands
-  symmetric.
+- **End-to-end routing test, not just an interpolation unit test**: a two-state
+  loop where an idle-killed prompt state routes `on_error` to a `shell_exit`
+  state whose action is `test "${prev.timeout_kind:default=}" = "idle"`, and
+  the run reaches the `on_yes` target rather than the `on_no` one. This is the
+  acceptance test for the differentiated-recovery use case — without it the
+  field is write-only and the feature's stated benefit is undelivered. A
+  wall-clock kill through the same loop must reach `on_no`. Include the
+  `captured` namespace if that decision lands symmetric.
 - A checkpoint written before this change restores without error, and
   `${prev.timeout_kind:default=}` resolves empty rather than raising
   (`persistence.py:410` round-trip guard).
@@ -440,6 +588,87 @@ to BUG-3032's default choice.
   timeout-budget prose predates this and should mention idle.
 - `CHANGELOG.md` — new entry, in a concrete version section (not
   `[Unreleased]`).
+
+## Program Design
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-04 — based on codebase analysis:_
+
+### Types
+
+- `ActionResult` (`scripts/little_loops/fsm/types.py:88-114`) — current fields:
+  `output: str`, `stderr: str`, `exit_code: int`, `duration_ms: int`,
+  `usage_events: list[TokenUsage] = field(default_factory=list)`,
+  `peak_rss_mb: float | None = None`, `result_seen: bool = False`,
+  `session_id: str | None = None`. The last three were each added by appending
+  a defaulted field to this exact dataclass — the direct precedent for
+  appending `timeout_kind: str | None = None`.
+- `StateConfig` (`scripts/little_loops/fsm/schema.py:571-905`) — existing
+  `timeout: int | None = None` (line 658) is the field-for-field precedent for
+  the new `idle_timeout: int | None = None`.
+- `FSMLoop` (`scripts/little_loops/fsm/schema.py:1246-1350`) — **note: the
+  loop-level config class is `FSMLoop`, not `FSMConfig`; no `FSMConfig` class
+  exists in this file.** Existing `timeout: int | None = None` and
+  `default_timeout: int | None = None` (lines 1281-1282) are the precedent for
+  the new `default_idle_timeout: int | None = None`.
+- `prev_result: dict[str, Any] | None` (`executor.py:254`) — a hand-built dict,
+  not the `ActionResult` dataclass itself. It currently carries exactly
+  `{"output", "exit_code", "state"}` and is constructed at two separate
+  literal sites with no shared helper keeping them in sync
+  (`executor.py:1509-1513`, `:1579-1583`) — a `timeout_kind` key must be added
+  at both to become interpolable as `${prev.timeout_kind}`.
+
+### Signatures
+
+- `ActionRunner.run` Protocol (`scripts/little_loops/fsm/runners.py:39-52`) —
+  current signature carries no `idle_timeout` param: `run(self, action: str,
+  timeout: int, is_slash_command: bool, on_output_line=..., agent=...,
+  tools=..., on_usage=..., on_usage_detailed=..., model=..., working_dir: Path
+  | None = None, automation_profile: str | None = None) -> ActionResult`.
+  `DefaultActionRunner.run` (`runners.py:95-108`) mirrors it exactly and is
+  the concrete implementation to extend.
+- `run_claude_command` (`scripts/little_loops/subprocess_utils.py:320-341`) —
+  already accepts `idle_timeout: int = 0` and already raises
+  `subprocess.TimeoutExpired(cmd_args, idle_timeout, output="idle_timeout")`
+  on idle vs. a bare `TimeoutExpired(cmd_args, timeout)` on wall-clock
+  (`:465-485`); this is the implementation the prompt/baseline paths pass
+  through to, not new code.
+- `StateConfig.to_dict()`/`from_dict()` (`schema.py:705-798` / `:800-905`) and
+  `FSMLoop.to_dict()`/`from_dict()` (`schema.py:1352+` / `:1481-1550`) — the
+  round-trip pattern for both existing `timeout` fields is identical at three
+  sites per class: field declaration, an omit-if-`None` guard in `to_dict`
+  (`if self.timeout is not None: result["timeout"] = self.timeout`,
+  `schema.py:739-740` / `:1376-1379`), and a plain no-default `.get()` read in
+  `from_dict` (`schema.py:875`, `:1544-1545`). The new idle fields follow the
+  same three-site shape at each class.
+
+### Call Path
+
+- `executor.py:1497` / `:1555` → `_run_action_or_route`
+  (`executor.py:2736-2760`) → one of four dispatch branches at
+  `executor.py:1846-1901`: `mcp_tool` → `self._run_subprocess(...)`
+  (`:1850-1854`, bypasses `ActionRunner.run` entirely); `contributed` →
+  `runner.run(...)` (`:1859-1866`); `prompt`+sdk/batch →
+  `self._dispatch_live(...)` (`:1868`, defined at `:2497`); default →
+  `self.action_runner.run(..., **extra_kwargs)` (`:1891-1901`), where
+  `extra_kwargs` is the existing kwarg-gating pattern (`working_dir`,
+  `automation_profile`, `:1870-1889`) a new `idle_timeout` kwarg follows.
+- Timeout resolution is a repeated 3-tier chain at each dispatch branch:
+  `state.timeout or self.fsm.default_timeout or <mode-literal>` — `30` for
+  `mcp_tool` (`:1852`), `3600` elsewhere (`:1862`, `:1893`, and
+  `_run_baseline_arm`'s own copy at `:2697`). Idle-timeout resolution must
+  mirror this per-branch chain rather than assume one shared literal.
+- `prev_result` assignment (`executor.py:1509-1513`, `:1579-1583`) →
+  `_build_context()` (`:2762-2781`, sets `InterpolationContext(prev=
+  self.prev_result, ...)`) → `InterpolationContext.resolve()` `"prev"` branch
+  (`interpolation.py:72-90`) → `${prev.timeout_kind}` in guards/transitions.
+- Selector loops (`runners.py:252-314` shell, `executor.py:2064-2148` mcp)
+  share one shape: `deadline = time.time() + timeout` set once, `while
+  sel.get_map():` polling `sel.select(timeout=min(1.0, remaining))`, reads via
+  `key.fileobj.readline()`. Neither loop currently tracks a `last_output_at`;
+  both need the identical variable added and checked in the same branch, per
+  Proposed Solution Part 2.
 
 ## Implementation Steps
 
@@ -538,5 +767,8 @@ noting both A/B arms need the value; and the `ll-loop run --idle-timeout` open
 scope question is closed as a non-goal, deferred to ENH-2977.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-04T06:42:05 - `8514697a-5862-4a38-a8e1-5c656efdf8f8.jsonl`
+- `/ll:refine-issue` - 2026-08-04T06:33:10 - `58473744-ba97-43e3-9145-5be88f2da018.jsonl`
+- `/ll:confidence-check` - 2026-08-04T06:26:01 - `3cb0a0fa-c62e-4f00-bb85-ee1d66537a41.jsonl`
 - `/ll:verify-issues` - 2026-08-04T04:54:17 - `0645ab21-f89c-4db8-a208-435d990eba38.jsonl`
 - `/ll:capture-issue` - 2026-08-04T04:20:07 - `62eddd57-7e6c-4ca5-b631-081e050a3dc6.jsonl`
