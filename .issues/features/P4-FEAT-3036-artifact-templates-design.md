@@ -7,6 +7,7 @@ status: open
 discovered_date: 2026-08-03
 labels:
 - planning-hub
+parent: EPIC-2087
 ---
 
 # FEAT-3036: Artifact templates design

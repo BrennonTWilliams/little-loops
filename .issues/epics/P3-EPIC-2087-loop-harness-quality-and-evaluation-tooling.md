@@ -3,7 +3,7 @@ id: EPIC-2087
 title: Loop Harness Quality & Evaluation Tooling
 type: EPIC
 priority: P3
-status: done
+status: open
 captured_at: '2026-06-10T18:37:38Z'
 discovered_date: '2026-06-10'
 discovered_by: capture-issue
@@ -40,6 +40,8 @@ Loops are authored and iterated subjectively — authors assess quality via spot
 ## Children
 
 - **FEAT-2301** — Visual builder for policy-router and rubric FSM loops (UX shell; delta on FEAT-2390's shipped template) *(parented 2026-07-03 via unparented sweep)*
+- **FEAT-3036** — Artifact templates design *(parented 2026-08-04 via /ll:link-epics)*
+- **ENH-3035** — Factor a shared artifact template kit out of the policy-builder template *(parented 2026-08-04 via /ll:link-epics)*
 
 - **ENH-2079** — Enforce generator-fix discipline in meta-loop validation (MR-6)
 - **ENH-2080** — Add retry-budget calibration guide tied to evaluator health

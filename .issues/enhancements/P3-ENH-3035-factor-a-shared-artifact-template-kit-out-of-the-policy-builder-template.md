@@ -8,6 +8,7 @@ discovered_date: 2026-08-03
 labels:
 - artifact
 - ll-artifact
+parent: EPIC-2087
 ---
 
 # ENH-3035: Factor a shared artifact template kit out of the policy-builder template
