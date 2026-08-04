@@ -15,10 +15,10 @@ labels:
 - verification
 - self-assessment
 confidence_score: 100
-outcome_confidence: 79
-score_complexity: 18
-score_test_coverage: 25
-score_ambiguity: 18
+outcome_confidence: 76
+score_complexity: 16
+score_test_coverage: 22
+score_ambiguity: 20
 score_change_surface: 18
 ---
 
@@ -449,9 +449,11 @@ _Added by `/ll:refine-issue` — 2026-08-03 — based on codebase analysis:_
   hedge phrases).
 - `scripts/little_loops/cli/issues/check_open_questions.py` — docstring/help
   text if the scanned-section set widens.
-- Possibly `scripts/little_loops/cli/issues/` — new `check-acceptance-criteria`
+- `scripts/little_loops/cli/issues/` — new `check-acceptance-criteria`
   subcommand (change 3), registered in `cli/issues/__init__.py` (parser at
-  :719, dispatch at :995, usage banner at :117).
+  :719, dispatch at :995, usage epilog at :100-129 — see the Documentation
+  correction below: `check-acceptance-criteria` and `check-verify-verdict`
+  are new epilog coverage, not an existing precedent).
 
 ### Dependent Files (Callers/Importers)
 
@@ -472,8 +474,8 @@ _Wiring pass added by `/ll:wire-issue`:_
   223, 239) describe the delegated pipeline as "format → refine → wire →
   confidence-check" and reference `refine-to-ready-issue`'s
   `check_missing_artifacts` state by name — both go stale once
-  `verify_issue`/`check_hedges`/`check_ac_automatable` are spliced into the
-  chain ahead of `confidence_check`. [confirmed via grep]
+  `verify_issue`/`check_verify_verdict`/`check_hedges`/`check_ac_automatable`
+  are spliced into the chain ahead of `confidence_check`. [confirmed via grep]
 - `scripts/little_loops/loops/issue-refinement.yaml:5,18` — delegates through
   `recursive-refine` (`loop: recursive-refine`) and repeats the same
   "format → refine → wire → confidence-check" pipeline description in a
@@ -512,10 +514,16 @@ _Wiring pass added by `/ll:wire-issue`:_
   asserts `on_no == "confidence_check"`) and
   `test_check_decision_mid_wire_on_error_routes_to_confidence_check`
   (~2047-2054, asserts `on_error == "confidence_check"`). Both must be updated
-  to assert `"verify_issue"`.
+  to assert `"verify_issue"`. A third test breaks under the five-route
+  retarget: `test_wire_issue_on_error_is_confidence_check` (`:1813-1818`,
+  asserts `wire_issue.on_error == "confidence_check"`) — same update. The
+  other two retargeted routes (`check_wire_done.on_no`/`.on_error`,
+  `mark_wire_done.on_error`) have no existing routing assertions; add them
+  in the same class asserting `"verify_issue"`, so the loopback-bypass
+  closure is pinned by tests, not just by the YAML.
 - `scripts/tests/test_builtin_loops.py::TestValidatorWarningBudget::test_deterministic_warning_categories_do_not_regrow`
   (~12768-12869) — a global cross-loop WARNING ratchet over every built-in
-  loop. The three new states need full `on_yes`/`on_no`/`on_error` routing,
+  loop. The four new states need full `on_yes`/`on_no`/`on_error` routing,
   declared `required_inputs`, and guarded `${captured...}` interpolation, or
   this test fails and a new allowlist entry
   (`("refine-to-ready-issue", category)`, ~12801-12815) is required.
@@ -532,6 +540,10 @@ _Wiring pass added by `/ll:wire-issue`:_
   `ErrorHandling`/`TestCliRegistration`-shaped classes) with a
   `MANUAL_CRITERIA_REMAIN` stderr-token assertion in place of
   `OPEN_QUESTIONS_REMAIN`.
+- New file `scripts/tests/test_ll_issues_check_verify_verdict.py` — same
+  mirrored structure for the change-1 CLI: `verify_verdict: VALID` → exit 0,
+  `NON_VALID` → exit 1 + `VERIFY_VERDICT_NON_VALID` stderr token, field
+  absent → the documented fallback (see the field-absent AC).
 - New fixture `scripts/tests/fixtures/issues/<ID>-manual-verification-criteria.md`
   — a full-issue-shape fixture (frontmatter + body, following
   `FEAT-2339-mixed-resolved-unresolved.md`'s convention) containing a
@@ -541,7 +553,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Added by `/ll:refine-issue` — 2026-08-03 — based on codebase analysis:_
 
-- `scripts/tests/test_builtin_loops.py` — `test_all_validate_as_valid_fsm` (loop-wide gate, `:32-55`) already exercises every shipped loop including `refine-to-ready-issue.yaml` in-process via `little_loops.fsm.validation.load_and_validate`/`validate_fsm`, asserting zero ERROR-severity findings — this is what the Acceptance Criteria's `ll-loop validate refine-to-ready-issue` bullet is anchored to. A loop-specific `TestRefineToReadyIssueLoop` class (starting `:1243`) already asserts individual named states exist and are wired correctly (e.g. `"State 'check_wire_done' not found ..."` at `:1783`, `"State 'check_decision_mid_refine' not found ..."` at `:1961`) — new states (`verify_issue`, `check_hedges`, `check_ac_automatable`) get equivalent existence/wiring assertions in this same class, following its existing per-state test pattern rather than a new one.
+- `scripts/tests/test_builtin_loops.py` — `test_all_validate_as_valid_fsm` (loop-wide gate, `:32-55`) already exercises every shipped loop including `refine-to-ready-issue.yaml` in-process via `little_loops.fsm.validation.load_and_validate`/`validate_fsm`, asserting zero ERROR-severity findings — this is what the Acceptance Criteria's `ll-loop validate refine-to-ready-issue` bullet is anchored to. A loop-specific `TestRefineToReadyIssueLoop` class (starting `:1243`) already asserts individual named states exist and are wired correctly (e.g. `"State 'check_wire_done' not found ..."` at `:1783`, `"State 'check_decision_mid_refine' not found ..."` at `:1961`) — new states (`verify_issue`, `check_verify_verdict`, `check_hedges`, `check_ac_automatable`) get equivalent existence/wiring assertions in this same class, following its existing per-state test pattern rather than a new one.
 - `fragment: shell_exit` gate states that call `ll-issues check-*` and route `on_yes`/`on_no`/`on_error` on exit code already exist beyond this file: `autodev.yaml:529-548` (`check_decision_decidable`) and `rn-remediate.yaml:279-304` (same-named state, comment explicitly notes it "mirrors check_decision_needed_post's failure philosophy"). Both — and all four existing `check-flag` gates already inside `refine-to-ready-issue.yaml` itself (`check_decision_mid_refine`, `check_decision_mid_wire`, `check_decision_needed`, `check_missing_artifacts`) — route `on_error` to whichever branch keeps the loop moving forward (never to `diagnose`/`failed`), confirming the new `check_hedges`/`check_ac_automatable` gates' `on_error` should follow the same non-fatal convention already used throughout this file, not a stricter one.
 **Blast radius of change 2, measured 2026-08-03 (pre-review):** simulated
 `_OPEN_QUESTION_SECTIONS + (Integration Map, Codebase Research Findings,
@@ -593,17 +605,17 @@ _Wiring pass added by `/ll:wire-issue`:_
 All three questions below are resolved pre-implementation; kept here with
 their resolutions for traceability rather than deleted.
 
-- **Q1 — RESOLVED: (b), `--check` hard gate**, respecified as a
+- **Q1** — **RESOLVED**: (b), `--check` hard gate, respecified as a
   write-verdict-then-shell-probe pair (`verify_issue` writes
   `verify_verdict` to frontmatter; `check_verify_verdict` reads it) rather
   than a `fragment: shell_exit` gate on the slash command's own process exit
   code, which does not carry the skill's internal verdict. See Proposed
   Solution change 1 and Program Design.
-- **Q2 — RESOLVED: 4b (score damping), or drop change 4.** 4a contradicts
+- **Q2** — **RESOLVED**: 4b (score damping), or drop change 4. 4a contradicts
   the "no added LLM budget" claim; and once changes 1-3 ship, an unchallenged
   100 can no longer buy the shortest path to `done` regardless, which removes
   most of change 4's original motivation. See Proposed Solution change 4.
-- **Q3 — RESOLVED: fixed inside this issue, not split out.** The `ISSUE_ID`
+- **Q3** — **RESOLVED**: fixed inside this issue, not split out. The `ISSUE_ID`
   filter is a one-edit change to `verify-issues.md`'s Step 1 issue-listing
   block; a `blocked_by` edge for a two-line fix would add more overhead than
   it saves. See Scope Boundaries.
@@ -638,6 +650,17 @@ their resolutions for traceability rather than deleted.
       this issue.
 - [ ] `verify_issue` does not invoke `/ll:verify-issues` in a form that
       verifies or edits issues other than the run's own issue.
+- [ ] All five retargeted mid-chain routes (`check_wire_done.on_no`/`.on_error`,
+      `wire_issue.on_error`, `mark_wire_done.on_error`,
+      `check_decision_mid_wire.on_no`/`.on_error`) point at `verify_issue`,
+      asserted by routing tests — a gate-forced `refine_followup` cycle
+      re-enters through the gates, not at `confidence_check`.
+- [ ] `/ll:verify-issues <ID> --check` persists `verify_verdict:
+      VALID|NON_VALID` to that issue's frontmatter; `ll-issues
+      check-verify-verdict <ID>` exits 1 with a `VERIFY_VERDICT_NON_VALID`
+      stderr token on `NON_VALID`, exit 0 on `VALID`, and exit 0 (fail-open,
+      matching the loop's non-fatal `on_error` convention) when the field is
+      absent.
 - [ ] `ll-loop validate refine-to-ready-issue` passes.
 - [ ] `python -m pytest scripts/tests/` exits 0.
 
@@ -647,12 +670,17 @@ their resolutions for traceability rather than deleted.
   currently a self-report. Every issue it marks ready inherits that. The three
   BUG-3025 defects reached a human reviewer with a 100/92 score attached.
 - **Effort**: Medium — changes 1 and 2 are a loop edit plus a regex/list
-  widening. Change 3 is a new CLI subcommand. Change 4 needs a design decision.
+  widening. Change 3 and the change-1 respec each add a new CLI subcommand
+  (`check-acceptance-criteria`, `check-verify-verdict`) plus a
+  `verify-issues.md` edit. Change 4 is resolved (Q2): 4b or drop.
 - **Risk**: Low for change 2 (was Medium) — measured at 4/65 active issues
   newly firing, i.e. ~4 extra LLM passes across the whole backlog, and the
-  failure mode is an extra pass rather than a wrong terminal state. Change 1
-  carries the remaining risk: invoked in its naive form it runs a mutating
-  whole-backlog verification per loop run (see Prior Art precondition).
+  failure mode is an extra pass rather than a wrong terminal state. Change 1's
+  original risk — the naive form ran a mutating whole-backlog verification per
+  loop run (see Prior Art precondition) — is retired by the in-scope
+  `ISSUE_ID` fix plus `--check`; the residual change-1 risk is the new edit
+  surface in `commands/verify-issues.md` (verdict-write step) and the
+  fail-open `on_error` routes around the gates.
 - **Breaking Change**: No.
 
 ## Notes
@@ -691,6 +719,7 @@ extracted from a stable ref.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-04T02:13:32 - `bf431c8e-9360-452f-ad2d-3353ebec0f47.jsonl`
 - `/ll:confidence-check` - 2026-08-03T22:42:41 - `45ffda97-3031-45d5-b9ae-4e6a5274c6b7.jsonl`
 - `/ll:wire-issue` - 2026-08-03T22:40:21 - `26597b53-279a-4c3f-b58f-74c43bfa7741.jsonl`
 - `/ll:refine-issue` - 2026-08-03T22:32:09 - `ce4fd0b4-588c-496a-899f-5a7706ee3176.jsonl`
