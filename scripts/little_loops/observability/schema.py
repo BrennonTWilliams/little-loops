@@ -424,6 +424,13 @@ class StateIssueFailedVariant(DESVariant):
 
 
 @dataclass(frozen=True)
+class StateIssueSkippedVariant(DESVariant):
+    """StateManager._emit('state.issue_skipped') — issue lifecycle skipped (state bus)."""
+
+    type: Literal["state.issue_skipped"] = "state.issue_skipped"
+
+
+@dataclass(frozen=True)
 class IssueFailureCapturedVariant(DESVariant):
     """issue_lifecycle.emit('issue.failure_captured') — child issue captured from failure."""
 
@@ -658,6 +665,7 @@ DES_VARIANTS: Final[tuple[type[DESVariant], ...]] = (
     HandoffSpawnedVariant,
     StateIssueCompletedVariant,
     StateIssueFailedVariant,
+    StateIssueSkippedVariant,
     IssueFailureCapturedVariant,
     IssueClosedVariant,
     IssueCompletedVariant,
