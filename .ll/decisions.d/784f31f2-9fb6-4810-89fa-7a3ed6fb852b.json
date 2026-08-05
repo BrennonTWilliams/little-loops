@@ -1,0 +1,12 @@
+{
+  "id": "21a97782-b6e5-40a8-9a68-7d25ec33c891",
+  "type": "decision",
+  "timestamp": "2026-08-05T01:40:09Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "8 of 9 rubric.md Phase 2 tables use the plain Finding|Score shape; the Learning Test modifier table Option B cites as precedent is status-driven, not count-driven, weakening the analogy; Phase 3's hard-override mechanism reads independent shell variables regardless of table shape, so no downstream constraint favors a separate modifier table.",
+  "rule": "Option A \u2014 inline Criterion 4 deduction rows in rubric.md's Finding|Score table",
+  "scope": "issue",
+  "alternatives_rejected": "Option B \u2014 separate Target Status|Score Modifier|Action modifier table mirroring the Learning Test precedent",
+  "issue": "ENH-3047"
+}

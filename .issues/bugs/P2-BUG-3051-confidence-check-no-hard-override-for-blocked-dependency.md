@@ -6,7 +6,7 @@ priority: P2
 status: open
 discovered_by: capture-issue
 discovered_date: 2026-08-05
-captured_at: "2026-08-05T02:01:17Z"
+captured_at: '2026-08-05T02:01:17Z'
 relates_to:
 - ENH-3047
 labels:
@@ -14,6 +14,12 @@ labels:
 - issues
 - gates
 decision_needed: false
+confidence_score: 95
+outcome_confidence: 83
+score_complexity: 22
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # BUG-3051: confidence-check averages away a hard blocked_by dependency instead of forcing STOP
@@ -76,6 +82,24 @@ case — "Minor dependencies unresolved but non-blocking" still just scores 15, 
 - `skills/confidence-check/rubric.md` — document the override alongside the existing two, if the
   reference table there needs updating
 
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-05 — based on codebase analysis:_
+
+### Dependent Files (Consumers of the readiness score)
+- `skills/go-no-go/SKILL.md` — consumes confidence-check's readiness score/tier to make its go/no-go call
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — FSM loop gated by `commands.confidence_gate` (`readiness_threshold`/`outcome_threshold` in `.ll/ll-config.json`)
+- `scripts/little_loops/loops/sprint-refine-and-implement.yaml`, `scripts/little_loops/loops/sprint-build-and-validate.yaml` — sprint loops consuming the same gate
+- `scripts/little_loops/sprint.py`, `scripts/little_loops/cli/sprint/run.py` — sprint issue selection integrates readiness scores
+
+### Tests
+- `scripts/tests/test_confidence_check_skill.py` — the existing test file for this skill; already covers Phase 4/4.5/4.6, the Learning Test and Program Design hard overrides, Criterion D, Criterion A, and `VERDICT_JSON`. A Dependencies Hard Override test class belongs here, following the same shape as the existing `PD_FAIL`-override tests in this file.
+
+### Existing Prefetch Pattern to Extend
+- `skills/confidence-check/rubric.md:113-117` (Phase 1.5) and `SKILL.md:136-140` (Phase 1.6) both set their gate variable by shelling out to `ll-issues show/format-check ... --json` and parsing with an inline `python3 -c` script (no `jq` anywhere in this skill) — the same idiom this issue's Proposed Solution specifies for `DEP_FAIL` via `ll-issues show <ID> --json`.
+
 ## Program Design
 
 ### Types
@@ -91,8 +115,9 @@ case — "Minor dependencies unresolved but non-blocking" still just scores 15, 
 ### Call Path
 
 `skills/confidence-check/SKILL.md` Phase 1.x pre-fetch -> `ll-issues show <blocked_by ID> --json`
--> status extracted via inline `python -c` -> `DEP_FAIL` shell variable -> `SKILL.md` Phase 3
-hard-override paragraph (same slot as `PD_FAIL`, `SKILL.md:304`)
+-> `cmd_show()` (`scripts/little_loops/cli/issues/show.py:852`, JSON branch at `:871-872`) emits
+the issue's `status` field -> status extracted via inline `python -c` -> `DEP_FAIL` shell variable
+-> `SKILL.md` Phase 3 hard-override paragraph (same slot as `PD_FAIL`, `SKILL.md:304`)
 
 ## Impact
 
@@ -113,4 +138,16 @@ hard-override paragraph (same slot as `PD_FAIL`, `SKILL.md:304`)
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-05T02:36:55 - `b31d828d-efcd-47ab-bb1e-e15aa1cfb7d9.jsonl`
+- `/ll:refine-issue` - 2026-08-05T02:32:29 - `aa24e5e7-0f72-4dfd-ae25-e8166d71faf6.jsonl`
 - `/ll:capture-issue` - 2026-08-05T02:02:02 - `78b80840-5577-4179-95d0-0f368e10d2bb.jsonl`
+
+## Root Cause
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-05 — based on codebase analysis:_
+
+- **File**: `skills/confidence-check/SKILL.md`
+- **Anchor**: `### Phase 3: Score and Recommend` (SKILL.md:300), between the Learning Test Hard Override (SKILL.md:302) and Program Design Hard Override (SKILL.md:304)
+- **Cause**: Phase 3 defines exactly two hard-override paragraphs (Learning Test at SKILL.md:302, Program Design/`PD_FAIL` at SKILL.md:304) and no third one for dependencies. A grep across `skills/confidence-check/SKILL.md`, `rubric.md`, and `reference.md` for `blocked_by|depends_on` returns zero matches — the skill never reads that frontmatter structurally. Criterion 5's detection method (`SKILL.md:220-230`) only inspects issue-body prose ("Blocked By"/"Dependencies" sections) and a `{{config.issues.base_dir}}/completed/` directory check, not the `blocked_by`/`depends_on` fields. So the "Critical dependencies unresolved, cannot proceed" row (`rubric.md:247-252`, scores 0) is just one term in the SKILL.md:306 aggregate sum — there is no gate comparable to `PD_FAIL` that intercepts it before the score-to-tier table.

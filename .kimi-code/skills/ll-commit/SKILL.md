@@ -1,6 +1,7 @@
 ---
 name: ll-commit
 description: Create git commits with user approval and no Claude attribution
+model: haiku
 allowed-tools:
   - Bash(git:*)
 ---

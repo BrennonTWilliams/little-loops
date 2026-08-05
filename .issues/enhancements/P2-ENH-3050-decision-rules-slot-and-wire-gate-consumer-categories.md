@@ -126,6 +126,17 @@ Keep both halves prose-only and bounded — no new Python, no new gap kind.
 - `ENH-2852` — the `program_design_nonspecific` gate this extends conceptually
 - `ENH-494` — the companion-file pattern whose mirror gap this issue's second half exposes
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-05 — based on codebase analysis:_
+
+- **Template subsection convention** — new Program Design/Integration Map subsections (e.g. `### Behavior Parity` from ENH-3045) are added as a bare, exact `### Heading` line matched by `_heading_bodies()`'s anchored regex (`scripts/little_loops/issue_parser.py:677`); the emission trigger ("emit only when X") is stated as prose immediately below the heading in `commands/refine-issue.md`, not enforced by a dedicated gap function unless the issue explicitly adds one. `### Decision Rules` should follow this same shape rather than inventing new marker syntax.
+- **Content always via fold-findings** — every example subsection added by a prior issue (Behavior Parity, Decision-Point Formatting options) is deposited through `ll-issues fold-findings [ID] --section "..."`, never hand-written; ENH-3050's own Call Path section already states this route applies to its `### Decision Rules` addition.
+- **`MISSING_WIRING` category shape and Phase 8a emission gap** — existing categories (`skills/wire-issue/SKILL.md:265-274`) share a uniform `name: [source-agent, file-kind, exclusion clause]` shape, but Phase 8a (`:338-407`) does not give every category a dedicated output heading: `cli_coupling` folds into the existing "Documentation" example block (`:359-367`) and `schema_coupling` folds into "Configuration" (`:386-394`), while only `callers/importers`, `registrations`, `tests`, and `docs` get dedicated blocks, and `new_impl_steps` gets its own new `### Wiring Phase (added by /ll:wire-issue)` heading appended to `## Implementation Steps` (`:396-407`) with an explicit "do not continue parent numbering" rule. This issue's Implementation Steps do not yet say whether `gate_consumers`/`conditional_branches` get dedicated Phase 8a blocks or fold into an existing subsection (e.g. "Dependent Files") — that choice is currently unspecified.
+- **`DOC_STRINGS_PRESENT` pattern** — prior additions pair each new string with a `(file, needle, issue_id)` tuple, comment-grouped by issue: `("skills/wire-issue/SKILL.md", "### Behavior Parity", "ENH-3045")`, `("commands/refine-issue.md", "### Behavior Parity", "ENH-3045")` (`scripts/tests/test_wiring_skills_and_commands.py:229-232`); ENH-3049 follows the same shape with multiple needles per file (`:210-225`).
+- **Wire-issue mirror gate already exists and will fail on this edit** — `scripts/tests/test_wiring_skills_and_commands.py:351-371` (ENH-2996) asserts `skills/wire-issue/SKILL.md` is byte-identical (post-frontmatter) to `.gemini/skills/wire-issue/SKILL.md` and `.kimi-code/skills/wire-issue/SKILL.md`, failing with the exact remediation `ll-adapt --host gemini --apply && ll-adapt --host kimi-code --apply`. Any edit to `SKILL.md` here trips this test until mirrors are regenerated — consistent with Implementation Step 4.
+- **Multi-issue sequencing is convention only, not tooling-enforced** — the note to sequence ENH-3049 and ENH-3050's edits to `skills/wire-issue/SKILL.md` before one final mirror regeneration is documented in issue prose (this issue's own Integration Map), not enforced by any script or test.
+
 ## Program Design
 
 ### Types
@@ -215,4 +226,5 @@ _Self-applying this issue's own proposal:_
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-05T02:40:05 - `01b1f21d-ee5c-46e4-9926-f894d6a85704.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-05T00:25:09 - `2f3f7bc8-367e-4fba-936b-eaf8049da3c4.jsonl`
