@@ -1,15 +1,16 @@
-"""Repo-wide stale_symbol_ref/stale_cli_flag sweep (FEAT-3048), report-only.
+"""Repo-wide stale_symbol_ref/stale_cli_flag sweep (FEAT-3048/BUG-3063).
 
 Mirrors the FEAT-2850 sweep shape (test_prose_dep_sweep_gate.py): walks every
 active issue in this repo's real ``.issues/`` directory and runs
 ``check_format_gaps()`` with real ``ref_index``/``symbol_index``/``cli_index``.
 
-Deliberately **report-only** per FEAT-3048's Acceptance Criteria — the
-Claim Grammar's false-positive-control measures are new and unmeasured
-against the live backlog. This test does not assert zero gaps; it prints a
-summary so a human can sample and measure precision, and only exercises the
-code path end-to-end (catching crashes, not drift) until the precision bar
-is met and the assertion is added.
+Was report-only under FEAT-3048 (measured baseline: 32/72 issues, 94 hits,
+dominated by forward-looking-section and mis-attribution false positives).
+BUG-3063's A1 (current-state section allowlist) + C (resolves-elsewhere
+downgrade) fix cut that to a measured 2 stale_symbol_ref hits (2 issues) and
+5 mislocated_symbol_ref hits (4 issues) on this repo's corpus as of
+2026-08-05 (well under the § Acceptance Criteria 1 ceiling of 18) — this test
+now pins a real ceiling instead of only asserting the sweep completes.
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ def test_symbol_and_cli_flag_claim_sweep_report_only() -> None:
     active_issues = find_issues(config)
 
     symbol_hits: dict[str, list[str]] = {}
+    mislocated_hits: dict[str, list[str]] = {}
     cli_hits: dict[str, list[str]] = {}
     for info in active_issues:
         gaps = check_format_gaps(
@@ -47,15 +49,28 @@ def test_symbol_and_cli_flag_claim_sweep_report_only() -> None:
         )
         if gaps.stale_symbol_ref:
             symbol_hits[info.issue_id] = gaps.stale_symbol_ref
+        if gaps.mislocated_symbol_ref:
+            mislocated_hits[info.issue_id] = gaps.mislocated_symbol_ref
         if gaps.stale_cli_flag:
             cli_hits[info.issue_id] = gaps.stale_cli_flag
 
+    total_symbol_hits = sum(len(v) for v in symbol_hits.values()) + sum(
+        len(v) for v in mislocated_hits.values()
+    )
     print(
-        f"\n[FEAT-3048 report-only] stale_symbol_ref: {len(symbol_hits)}/{len(active_issues)} "
-        f"issue(s); stale_cli_flag: {len(cli_hits)}/{len(active_issues)} issue(s)"
+        f"\n[BUG-3063] stale_symbol_ref: {len(symbol_hits)}/{len(active_issues)} issue(s); "
+        f"mislocated_symbol_ref: {len(mislocated_hits)}/{len(active_issues)} issue(s); "
+        f"stale_cli_flag: {len(cli_hits)}/{len(active_issues)} issue(s)"
     )
 
-    # Report-only: no assertion on gap counts (see module docstring). The
-    # sweep itself must complete without raising.
-    assert isinstance(symbol_hits, dict)
-    assert isinstance(cli_hits, dict)
+    # BUG-3063 § Acceptance Criteria 1: combined stale_symbol_ref +
+    # mislocated_symbol_ref hits must stay at or below the measured A1+C
+    # ceiling (18) — the sweep no longer just asserts it completes without
+    # raising, it pins a real regression ceiling. stale_cli_flag is a
+    # separate gap class (FEAT-3048) not touched by this fix and stays
+    # unasserted here.
+    assert total_symbol_hits <= 18, (
+        f"stale_symbol_ref + mislocated_symbol_ref hit count regressed past the "
+        f"BUG-3063 A1+C ceiling: {total_symbol_hits} > 18 "
+        f"(stale={symbol_hits}, mislocated={mislocated_hits})"
+    )

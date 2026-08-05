@@ -350,6 +350,9 @@ class TestFormatCheckJsonOutput:
             # FEAT-3048: backticked symbol claim attributed to a cited file
             # that doesn't resolve as a def-site/module constant in it.
             "stale_symbol_ref": [],
+            # BUG-3063 C: symbol claim that doesn't resolve in the cited file
+            # but does resolve elsewhere in the repo (mis-attribution).
+            "mislocated_symbol_ref": [],
             # FEAT-3048: backticked `ll-<tool> <sub> [--flag]` claim naming a
             # subcommand/flag the tool's argparse parser doesn't accept.
             "stale_cli_flag": [],
@@ -660,7 +663,10 @@ class TestStaleFileRef:
         ) as mock_run:
             _invoke(["ll-issues", "format-check", "--all", "--config", str(temp_project_dir)])
 
-        assert mock_run.call_count == 1
+        # 2, not 1: ref_index (`git ls-files`) and the BUG-3063 C symbol reverse
+        # index (also `git ls-files`, via build_symbol_index) are each built
+        # exactly once per invocation, not once per issue.
+        assert mock_run.call_count == 2
 
     def test_ref_index_built_once_per_single_id_invocation(
         self,
@@ -678,7 +684,9 @@ class TestStaleFileRef:
         ) as mock_run:
             _invoke(["ll-issues", "format-check", "BUG-9404", "--config", str(temp_project_dir)])
 
-        assert mock_run.call_count == 1
+        # 2, not 1: ref_index and the BUG-3063 C symbol reverse index are each
+        # built exactly once.
+        assert mock_run.call_count == 2
 
     def test_ref_index_built_once_with_fix_apply_recheck(
         self,
@@ -712,7 +720,9 @@ class TestStaleFileRef:
                 ]
             )
 
-        assert mock_run.call_count == 1
+        # 2, not 1: ref_index and the BUG-3063 C symbol reverse index are each
+        # built exactly once, even across the --fix/--apply recheck.
+        assert mock_run.call_count == 2
 
 
 # ---------------------------------------------------------------------------

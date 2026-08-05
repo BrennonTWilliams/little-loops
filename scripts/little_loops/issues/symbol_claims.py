@@ -15,6 +15,7 @@ false-positive-control measure that keeps this extractor from choking on the
 from __future__ import annotations
 
 import re
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -29,7 +30,14 @@ from little_loops.text_utils import _CODE_FENCE, RefIndex, resolve_ref_path
 _SYMBOL_DEF_PATTERNS: list[re.Pattern[str]] = [
     pattern for pattern, kind in _ANCHOR_PATTERNS if kind in ("function", "class")
 ]
-_MODULE_CONSTANT_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*(?::[^=\n]+)?=(?!=)")
+# BUG-3063 D1: leading whitespace is allowed so indented class attributes and
+# dataclass fields ("    stale_file_ref: list[str] = field(...)") enter the
+# index too, not just module-level constants. This also admits indented
+# local-variable assignments inside function bodies -- an accepted precision
+# trade (§ Survivor Analysis D1), not a regression, since a local variable
+# claimed as a symbol was never distinguishable from a real attribute by name
+# alone.
+_MODULE_CONSTANT_RE = re.compile(r"^[ \t]*([A-Za-z_][A-Za-z0-9_]*)\s*(?::[^=\n]+)?=(?!=)")
 
 # Languages the def-site patterns above meaningfully cover — a cited file
 # outside this set produces no claim (fail-open), never a gap, per § Claim
@@ -215,29 +223,81 @@ def _extract_symbols(path: Path) -> set[str] | None:
     return found
 
 
+def _build_reverse_index(root: Path) -> dict[str, frozenset[str]]:
+    """Map every def-site symbol name to the tracked files that define it (BUG-3063 C).
+
+    One ``git ls-files`` call plus one read per file in
+    :data:`_SUPPORTED_SYMBOL_EXTENSIONS` — the same language set the
+    per-file resolver uses, not just ``*.py`` (§ Proposed Solution: "Index
+    the same language set the resolver does"). Follows the fail-*empty*
+    convention shared with :func:`~little_loops.text_utils.build_ref_index`:
+    an unavailable git binary or non-zero exit yields an empty index rather
+    than raising.
+    """
+    reverse: dict[str, set[str]] = {}
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-z"],
+            cwd=root,
+            capture_output=True,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    if result.returncode != 0:
+        return {}
+
+    names = result.stdout.decode("utf-8", errors="replace").split("\0")
+    for name in names:
+        if not name or Path(name).suffix not in _SUPPORTED_SYMBOL_EXTENSIONS:
+            continue
+        symbols = _extract_symbols(root / name)
+        if not symbols:
+            continue
+        for symbol in symbols:
+            reverse.setdefault(symbol, set()).add(name)
+    return {symbol: frozenset(files) for symbol, files in reverse.items()}
+
+
 @dataclass
 class SymbolIndex:
     """Lazily-populated per-file symbol cache, threaded through ``check_format_gaps``.
 
-    Built once per ``format-check`` invocation via :func:`build_symbol_index`
-    (cheap — just records *root*); each cited file's symbol set is parsed at
-    most once across the whole invocation, mirroring
-    :class:`~little_loops.text_utils.RefIndex`'s build-once-thread-everywhere
-    shape without re-reading a file already resolved for an earlier issue.
+    Built once per ``format-check`` invocation via :func:`build_symbol_index`.
+    Each cited file's symbol set is parsed at most once across the whole
+    invocation, mirroring :class:`~little_loops.text_utils.RefIndex`'s
+    build-once-thread-everywhere shape without re-reading a file already
+    resolved for an earlier issue.
+
+    :attr:`_reverse` (BUG-3063 C) is the one eager, non-lazy piece: the
+    repo-wide symbol -> files map is built once in :func:`build_symbol_index`
+    itself, not on first query, so ``check_format_gaps`` (which only ever
+    looks up an already-built index) never shells out — see
+    ``test_check_format_gaps_spawns_no_subprocess``.
     """
 
     root: Path
     _cache: dict[str, set[str] | None] = field(default_factory=dict)
+    _reverse: dict[str, frozenset[str]] = field(default_factory=dict)
 
     def symbols_in(self, rel_path: str) -> set[str] | None:
         if rel_path not in self._cache:
             self._cache[rel_path] = _extract_symbols(self.root / rel_path)
         return self._cache[rel_path]
 
+    def files_with_symbol(self, symbol: str) -> frozenset[str]:
+        return self._reverse.get(symbol, frozenset())
+
 
 def build_symbol_index(root: Path) -> SymbolIndex:
-    """Build (empty, lazily-populated) per-file symbol cache rooted at *root*."""
-    return SymbolIndex(root=root)
+    """Build a per-file symbol cache rooted at *root*, plus the C reverse index.
+
+    The per-file cache stays lazy; the symbol -> files reverse index (C) is
+    built eagerly here, once per invocation — measured at 739 tracked Python
+    files / 25,388 def-sites / 0.89s on this repo (BUG-3063 § Decision
+    Rationale).
+    """
+    return SymbolIndex(root=root, _reverse=_build_reverse_index(root))
 
 
 def symbol_exists_in_file(index: SymbolIndex, file: str, symbol: str) -> bool | None:
@@ -260,3 +320,14 @@ def symbol_exists_in_file(index: SymbolIndex, file: str, symbol: str) -> bool | 
     if symbols is None:
         return None
     return symbol in symbols
+
+
+def symbol_resolves_elsewhere(index: SymbolIndex, file: str, symbol: str) -> bool:
+    """Does *symbol* resolve as a def-site in some tracked file other than *file* (BUG-3063 C)?
+
+    Only meaningful once :func:`symbol_exists_in_file` has already returned
+    ``False`` for the same (*file*, *symbol*) pair — this does not re-check
+    *file* itself, only whether the claim is a mis-attribution rather than
+    a genuinely stale one.
+    """
+    return bool(index.files_with_symbol(symbol) - {file})

@@ -262,6 +262,7 @@ class FormatGaps:
     soft_dep_hard_edge: list[str] = field(default_factory=list)
     malformed_dep_id: list[str] = field(default_factory=list)
     stale_symbol_ref: list[str] = field(default_factory=list)
+    mislocated_symbol_ref: list[str] = field(default_factory=list)
     stale_cli_flag: list[str] = field(default_factory=list)
 
     @property
@@ -287,6 +288,7 @@ class FormatGaps:
             or self.soft_dep_hard_edge
             or self.malformed_dep_id
             or self.stale_symbol_ref
+            or self.mislocated_symbol_ref
             or self.stale_cli_flag
         )
 
@@ -312,6 +314,7 @@ class FormatGaps:
             "soft_dep_hard_edge": self.soft_dep_hard_edge,
             "malformed_dep_id": self.malformed_dep_id,
             "stale_symbol_ref": self.stale_symbol_ref,
+            "mislocated_symbol_ref": self.mislocated_symbol_ref,
             "stale_cli_flag": self.stale_cli_flag,
         }
 
@@ -470,10 +473,24 @@ def check_format_gaps(
             attributed to a cited file that itself resolves via *ref_index*,
             where the symbol does not resolve as a def-site or module-level
             constant in that file
-            (:func:`little_loops.issues.symbol_claims.symbol_exists_in_file`).
-            Only reported when both *ref_index* and *symbol_index* are given;
-            fails open otherwise, and for a cited file whose language is
-            outside the resolver's supported set.
+            (:func:`little_loops.issues.symbol_claims.symbol_exists_in_file`)
+            **and** does not resolve anywhere else in the repo either
+            (:func:`little_loops.issues.symbol_claims.symbol_resolves_elsewhere`,
+            BUG-3063 § Proposed Solution C). Claims are extracted only from the
+            current-state section allowlist (BUG-3063 § Proposed Solution A1,
+            :data:`_STALE_SYMBOL_SCOPE_H2_SECTIONS`) — a symbol named in a
+            forward-looking section (``## Program Design``, ``### Files to
+            Modify``, ``## Implementation Steps``, …) is never read as an
+            existence assertion. Only reported when both *ref_index* and
+            *symbol_index* are given; fails open otherwise, and for a cited
+            file whose language is outside the resolver's supported set.
+        mislocated_symbol_ref: the BUG-3063 § Proposed Solution C sibling of
+            ``stale_symbol_ref`` — a symbol claim, subject to the same
+            allowlist scoping, that does not resolve in the cited file but
+            does resolve somewhere else in the repo. This is a mis-attribution
+            (the symbol exists, just not where the issue says), not a stale
+            claim, and is reported separately rather than folded into
+            ``stale_symbol_ref``.
         stale_cli_flag: a backticked ``ll-<tool> <subcommand> [--flag ...]``
             claim (FEAT-3048,
             :func:`little_loops.issues.cli_claims.extract_cli_flag_claims`)
@@ -721,13 +738,20 @@ def check_format_gaps(
             from little_loops.issues.symbol_claims import (
                 extract_symbol_claims,
                 symbol_exists_in_file,
+                symbol_resolves_elsewhere,
             )
 
+            scoped_content = _symbol_claim_scope_text(content)
             for claim in sorted(
-                extract_symbol_claims(content, ref_index), key=lambda c: (c.file, c.symbol)
+                extract_symbol_claims(scoped_content, ref_index), key=lambda c: (c.file, c.symbol)
             ):
                 if symbol_exists_in_file(symbol_index, claim.file, claim.symbol) is False:
-                    gaps.stale_symbol_ref.append(f"{claim.symbol} (claimed in {claim.file})")
+                    if symbol_resolves_elsewhere(symbol_index, claim.file, claim.symbol):
+                        gaps.mislocated_symbol_ref.append(
+                            f"{claim.symbol} (claimed in {claim.file})"
+                        )
+                    else:
+                        gaps.stale_symbol_ref.append(f"{claim.symbol} (claimed in {claim.file})")
 
     if cli_index is not None:
         from little_loops.issues.cli_claims import extract_cli_flag_claims
@@ -877,6 +901,25 @@ def _behavior_parity_scope_text(content: str) -> str:
     for name in _BEHAVIOR_PARITY_SCOPE_HEADINGS:
         parts.extend(_heading_bodies(content, name))
     return "\n".join(parts)
+
+
+# Current-state allowlist for stale_symbol_ref (BUG-3063, § Proposed Solution A1):
+# only these H2 sections describe existing code, so only claims inside their
+# H2 span (_section_body — swallows nested H3s, matching the behavior-parity
+# helper's H2 branch) are read as existence assertions. Chosen over a denylist
+# of "future state" section names: measured on the active backlog, the
+# denylist clears 10% of false-positive hits versus this allowlist's 73%.
+_STALE_SYMBOL_SCOPE_H2_SECTIONS = ("Summary", "Current Behavior", "Root Cause", "Context")
+
+
+def _symbol_claim_scope_text(content: str) -> str:
+    """Concatenate the sections the stale_symbol_ref scope condition covers."""
+    return "\n".join(
+        body
+        for name in _STALE_SYMBOL_SCOPE_H2_SECTIONS
+        for body in [_section_body(content, name)]
+        if body
+    )
 
 
 def superseded_marker_count(issue_path: Path) -> int:

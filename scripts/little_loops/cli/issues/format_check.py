@@ -63,7 +63,8 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
         "stale_prose_dep/program_design_nonspecific/deprecated_key/"
         "multi_frontmatter/testable/stale_file_ref/unmarked_superseded_directive/"
         "duplicate_findings_block/ambiguous_file_ref/missing_behavior_parity/"
-        "soft_dep_hard_edge/malformed_dep_id/stale_symbol_ref/stale_cli_flag)",
+        "soft_dep_hard_edge/malformed_dep_id/stale_symbol_ref/mislocated_symbol_ref/"
+        "stale_cli_flag)",
     )
     p.set_defaults(command="format-check")
     p.add_argument(
@@ -175,6 +176,11 @@ def _print_gaps(gaps: FormatGaps) -> None:
         )
     for entry in gaps.stale_symbol_ref:
         print(f"  stale_symbol_ref: {entry}")
+    for entry in gaps.mislocated_symbol_ref:
+        print(
+            f"  mislocated_symbol_ref: {entry} (symbol exists elsewhere in the repo; "
+            "this is a mis-attribution, not a stale claim)"
+        )
     for entry in gaps.stale_cli_flag:
         print(f"  stale_cli_flag: {entry}")
 
@@ -186,7 +192,8 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
     prose_dep_drift/stale_prose_dep/program_design_nonspecific/deprecated_key/
     multi_frontmatter/testable/stale_file_ref/unmarked_superseded_directive/
     duplicate_findings_block/ambiguous_file_ref/missing_behavior_parity/
-    soft_dep_hard_edge/malformed_dep_id/stale_symbol_ref/stale_cli_flag.
+    soft_dep_hard_edge/malformed_dep_id/stale_symbol_ref/mislocated_symbol_ref/
+    stale_cli_flag.
 
     Every class in :class:`FormatGaps` must have a matching loop in
     :func:`_print_gaps`; a class counted by ``has_gaps`` but not rendered

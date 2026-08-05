@@ -136,7 +136,7 @@ Sub-commands:
   research-triage  Report which of refine-issue's three research axes an issue already covers
   fold-findings    Merge stdin markdown into the single Codebase Research Findings block under a section
   fingerprint      Extract structured fingerprint (id, files, key_terms) from an issue file
-  format-check     Deterministic structural linter for issue formatting (missing/renamed/empty/boilerplate/malformed_id/prose_dep_drift/stale_prose_dep/program_design_nonspecific/deprecated_key/multi_frontmatter/testable/stale_file_ref/unmarked_superseded_directive/duplicate_findings_block/ambiguous_file_ref/missing_behavior_parity/soft_dep_hard_edge/malformed_dep_id/stale_symbol_ref/stale_cli_flag)
+  format-check     Deterministic structural linter for issue formatting (missing/renamed/empty/boilerplate/malformed_id/prose_dep_drift/stale_prose_dep/program_design_nonspecific/deprecated_key/multi_frontmatter/testable/stale_file_ref/unmarked_superseded_directive/duplicate_findings_block/ambiguous_file_ref/missing_behavior_parity/soft_dep_hard_edge/malformed_dep_id/stale_symbol_ref/mislocated_symbol_ref/stale_cli_flag)
   size             Deterministic size scoring (file/section/word-count signals) for issue-size-review
   decisions        Manage rules, decisions, and exceptions log (list/add/outcome/generate/sync)
   normalize        Detect/fix filename & ID mechanics (missing_id/malformed_filename/duplicate_id/legacy_dir/type_mismatch)

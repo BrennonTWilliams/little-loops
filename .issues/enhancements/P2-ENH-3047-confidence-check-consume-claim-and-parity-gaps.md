@@ -129,20 +129,18 @@ Measured consequence — sweep of all 72 active issues via
 Spot-checking confirms the forward-reference failure mode dominates:
 
 - **FEAT-2942** (this issue's own motivating example) reports 8 claim gaps. Two of them:
-<!-- ll-prose-ok: quoted as example false-positive claims, not asserted as real def-sites -->
   `add_epic_consistency_parser` and `cmd_epic_consistency`, both "claimed in
   `scripts/little_loops/cli/issues/__init__.py`" — and both are functions FEAT-2942 proposes to
   *add*, not ones it claims already exist.
 - **ENH-3047 itself** reports two, both false:
-<!-- ll-prose-ok: quoted as example false-positive claims, not asserted as real def-sites -->
   `design_gate_failed`, attributed to `check_design.py` because that is the nearby file this issue
   cites, when it is genuinely defined in `program_design.py` and merely *called* there; and
   `missing_behavior_parity`, a `FormatGaps` field name this issue says the new test will assert on
   — a data key, not a def-site.
 
-  The `<!-- ll-prose-ok -->` markers above exist so this issue does not trip its own gate while
-  quoting the failure mode. That the markers are *needed here at all* is itself the argument
-  against the hard override.
+  These two false positives no longer trip the gate as of BUG-3063 (A1 scoping excludes
+  `## Expected Behavior`, where this section lives, from claim extraction entirely) — the
+  `<!-- ll-prose-ok -->` markers previously here are no longer needed.
 
 The better an issue's Program Design section, the more likely a hard override fires. That inverts
 Criterion 4's intent. Capping the criterion still moves the score in the right direction while
