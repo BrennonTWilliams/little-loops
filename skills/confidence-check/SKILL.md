@@ -135,7 +135,8 @@ See [rubric.md](rubric.md) § Phase 1.5 for the full bash invocation pattern, Le
 Run the deterministic structural linter and capture only the Program Design verdict:
 
 ```bash
-PD_GAP=$(ll-issues format-check {{issue_id}} --format json 2>/dev/null \
+FC_JSON=$(ll-issues format-check {{issue_id}} --format json 2>/dev/null || true)
+PD_GAP=$(echo "$FC_JSON" \
   | python -c "import json,sys; print('; '.join(json.load(sys.stdin).get('program_design_nonspecific', [])))" 2>/dev/null || true)
 PD_FAIL=$(ll-issues check-design {{issue_id}} >/dev/null 2>&1 && echo "" || echo "yes")
 ```
@@ -182,6 +183,28 @@ explicitly **non-terminal** for `blocked_by`/`depends_on` edges — only `done`/
 (displayed as `completed`/`cancelled`) resolve a dependency; anything else (`open`,
 `in_progress`, `blocked`, `deferred`) leaves `DEP_FAIL` set. `DEP_FAIL` is empty/inert when the
 issue has no `blocked_by` list or every listed ID is resolved.
+
+### Phase 1.8: Pre-Fetch Claim and Parity Gaps (ENH-3047)
+
+Extract the parity and claim gap keys from the same `$FC_JSON` payload Phase 1.6 already
+captured — do **not** issue a second `format-check` call:
+
+```bash
+# <!-- ll-prose-ok: mirrors the pre-existing PD_GAP idiom (SKILL.md Phase 1.6) for a one-off JSON field extraction, not a reimplemented algorithm -->
+PARITY_GAP=$(echo "$FC_JSON" | python -c "import json,sys; print('; '.join(json.load(sys.stdin).get('missing_behavior_parity', [])))" 2>/dev/null || true)
+# <!-- ll-prose-ok: mirrors the pre-existing PD_GAP idiom (SKILL.md Phase 1.6) for a one-off JSON field extraction, not a reimplemented algorithm -->
+CLAIM_GAP=$(echo "$FC_JSON" | python -c "import json,sys; d=json.load(sys.stdin); print('; '.join(d.get('stale_symbol_ref', []) + d.get('stale_cli_flag', [])))" 2>/dev/null || true)
+```
+
+`PARITY_GAP` is non-empty when the issue is missing a `### Behavior Parity` subsection
+describing what it replaces. `CLAIM_GAP` is non-empty when the issue asserts a symbol or CLI
+flag against the codebase that did not resolve (`stale_symbol_ref` + `stale_cli_flag`
+combined). Both are empty/inert on the present-but-empty case — an issue with no gaps leaves
+Criterion 4's scoring untouched. Do **not** re-judge either signal yourself; the CLI is the
+single source of truth for whether a reference resolves. `CLAIM_GAP` is **advisory input to
+Criterion 4 only** — it caps the criterion (see [rubric.md](rubric.md) Criterion 4) and must
+not be escalated to a `STOP` verdict, because forward-looking design/planning claims
+legitimately do not resolve yet.
 
 ### Phase 2: Five-Point Assessment
 

@@ -4,10 +4,11 @@ title: 'confidence-check: consume unverified-claim and missing-parity gaps as Cr
   4 deductions'
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_by: capture-issue
 discovered_date: 2026-08-04
 captured_at: '2026-08-04T20:47:11Z'
+completed_at: '2026-08-05T18:25:42Z'
 relates_to:
 - FEAT-3048
 - ENH-3045
@@ -399,7 +400,7 @@ _Added by `/ll:refine-issue` — 2026-08-05 — based on codebase analysis:_
 - One documented exception exists: gate-driven modifiers use a different `Target Status | Score Modifier | Action` shape, signed delta applied "on top of" the base criterion rather than folded into its Finding/Score rows — evidence: "Learning Test Status Scoring (Criterion 1 Modifier)" table, `rubric.md` lines 161-172.
 - Phase 3 hard overrides are named bolded paragraphs ("**X Hard Override**") placed before score summation, gated on a Phase-1.6-set variable being non-empty/non-zero, forcing `STOP — ADDRESS GAPS` "regardless of aggregate score" — evidence: Learning Test Hard Override and Program Design Hard Override, `skills/confidence-check/SKILL.md` "Phase 3: Score and Recommend" lines 300-306. This is the pattern the issue's Expected Behavior cites for "nonzero unverified-claim count as a readiness blocker."
 - `format-check --format json` keys are referenced two ways in this codebase, both established: inline bash/python extraction into shell variables (confidence-check's Phase 1.6), and pure markdown prose naming the key plus its non-empty/nonzero condition with no code shown (`commands/refine-issue.md` Step 6.7, lines 781-831, for `prose_dep_drift`/`stale_prose_dep`/`program_design_nonspecific`/`superseded_marker_count`/`duplicate_findings_block`).
-<!-- ll-prose-ok: quoted docstring; design_gate_failed is defined in issues/program_design.py, not the cited check_design.py -->
+<!-- ll-prose-ok: quoted docstring; design_gate_failed is defined in issue_parser.py, not the cited check_design.py -->
 - `check_design.py`'s `cmd_check_design` is the CLI-owner precedent named in this issue's "Similar Patterns" — its docstring states it is the "single CLI owner of the `design_gate_failed()` predicate, replacing the three independent inline `python3 -c "..."` blocks in autodev.yaml that each re-derived the same boolean from raw `format-check --format json` output," and that it "fails open (exit 0) on projects that haven't armed the ... gate, mirroring `check_format_gaps()`'s existing fail-open behavior."
 
 ## Program Design
@@ -411,7 +412,7 @@ _Added by `/ll:refine-issue` — 2026-08-05 — based on codebase analysis:_
 _Added by `/ll:refine-issue` — 2026-08-05 — based on codebase analysis:_
 
 - **Line-citation corrections (re-verified 2026-08-05, post ENH-3046/BUG-3059):** `FormatGaps` (`scripts/little_loops/issue_parser.py:236`) now has **18** `list[str]` gap-kind fields, not 16 — `soft_dep_hard_edge` (ENH-3046) and `malformed_dep_id` (BUG-3059) landed after this issue's Types section was written. `stale_symbol_ref`/`stale_cli_flag` remain correctly absent. The `missing_behavior_parity` mention in `has_gaps` is at `issue_parser.py:282` (not `:280`); its `to_dict()` entry is at `:305` (not `:301`, which is now the unrelated `stale_file_ref` entry). `docs/reference/CLI.md:1872` itself now says "eighteen classes."
-- `cmd_format_check`'s actual location is `scripts/little_loops/cli/issues/format_check.py:178` — both prior citations in this issue (`:163`, `:165`) are stale.
+- `cmd_format_check`'s actual location is `scripts/little_loops/cli/issues/format_check.py:182` — all prior citations in this issue (`:163`, `:165`, `:178`) are stale.
 - Additional rubric.md precedent for the table-shape decision (does not change the already-decided Option A): Criterion 5 (`rubric.md:245-259`) already pairs a plain two-column base table (`:249-252`) with a named "**Dependencies Hard Override** (BUG-3051)" prose paragraph directly beneath it in the same `### Criterion N` section (`:254-259`) — a second precedent, alongside SKILL.md's Phase 3 override paragraphs, for where Criterion 4's own override language could live if stage 2 needs a rubric-side pointer.
 
 ### Types
@@ -426,9 +427,9 @@ _Added by `/ll:refine-issue` — 2026-08-05 — based on codebase analysis:_
   `scripts/little_loops/issues/program_design.py:415` — the activation-gating pattern (unstamped project / grandfathered / `*_not_applicable: true` frontmatter all return `False`) that the Program Design gate uses to fail open; a parity/claim equivalent, if the CLI layer needs one, would follow this same shape.
 - `cmd_format_check() -> None`
 
-  `scripts/little_loops/cli/issues/format_check.py:178` — the JSON-serialization entry point (`gaps.to_dict()` via `check_format_gaps()`). All three keys are already threaded through it; it builds `symbol_index` and `cli_index` eagerly at `:265-266` and passes them to every `check_format_gaps()` call site, so no work is owed here. _(Both earlier `:163`/`:165` citations were stale.)_
-<!-- ll-prose-ok: design_gate_failed is defined in issues/program_design.py, not the cited check_design.py -->
-- `cmd_check_design` (`scripts/little_loops/cli/issues/check_design.py`) — sole CLI owner of the `design_gate_failed()` boolean predicate, which is itself defined in `scripts/little_loops/issues/program_design.py`.
+  `scripts/little_loops/cli/issues/format_check.py:182` — the JSON-serialization entry point (`gaps.to_dict()` via `check_format_gaps()`). All three keys are already threaded through it; it builds `symbol_index` and `cli_index` eagerly at `:265-266` and passes them to every `check_format_gaps()` call site, so no work is owed here. _(All earlier `:163`/`:165`/`:178` citations were stale.)_
+<!-- ll-prose-ok: design_gate_failed is defined in issue_parser.py, not the cited check_design.py -->
+- `cmd_check_design` (`scripts/little_loops/cli/issues/check_design.py`) — sole CLI owner of the `design_gate_failed()` boolean predicate, which is itself defined in `scripts/little_loops/issue_parser.py:319` (not `issues/program_design.py`, contrary to an earlier revision of this bullet).
 
   **Decision (2026-08-05): no `check-claims` CLI. Derive both booleans inline.** Research left
   this open; resolving it here so implementation does not stall. `cmd_check_design` exists
@@ -546,6 +547,23 @@ _These touchpoints were identified by wiring analysis and must be included in th
    no-`STOP` requirement well — it is 93/76 today and must not drop to `STOP` — so use it for
    AC8 while treating its gap list as noise, not as validation that detection works._
 
+   **Verified 2026-08-05 (implementation pass).** Ran the exact Phase 1.6/1.8 bash (with the
+   shipped `FC_JSON`/`PARITY_GAP`/`CLAIM_GAP` extraction) against live `format-check` output for
+   both fixtures, since the `Skill` tool's in-session cache of `SKILL.md` predates this session's
+   edits and a literal skill re-invocation would score against stale Phase 1.6/1.8 logic rather
+   than what shipped:
+   - **FEAT-2787** (AC7 parity fixture): `PARITY_GAP = "scripts/little_loops/adapters/omp.py"`
+     (non-empty) → Criterion 4 caps at 10 per the rubric.md cap row. It also carries a non-empty
+     `CLAIM_GAP` (5 stale symbol refs), which caps the same criterion via the same row — no
+     double-penalty since the cap is a ceiling, not additive.
+   - **FEAT-2942** (AC8 claim fixture): `PARITY_GAP = ""`, `CLAIM_GAP` non-empty (8 entries,
+     matching the Summary's motivating example) → Criterion 4 caps at 10. Phase 3 has no
+     `CLAIM_GAP`-keyed override (confirmed by
+     `TestConfidenceCheckClaimParityPrefetch::test_phase_3_does_not_name_claim_gap`), so the
+     aggregate score changes (Criterion 4 drops from whatever it scored before to 10) but the
+     verdict tier is driven by the aggregate, not forced to `STOP` — satisfying AC3/AC8's
+     no-`STOP` requirement.
+
 ## Impact
 
 - **Priority**: P3 — fully unblocked; both ENH-3045 and FEAT-3048 have landed
@@ -618,6 +636,8 @@ _Added by `/ll:confidence-check` on 2026-08-04_
 - Test coverage for the new path can only be structurally slice-tested (SKILL.md prose) until FEAT-3048's gap kinds actually exist in `FormatGaps`; true integration coverage is deferred by the same blocker as above.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-05T18:25:22 - `eb9eaf26-0b22-40bb-b5f6-1c9e4c21208b.jsonl`
+- `/ll:ready-issue` - 2026-08-05T18:02:54 - `6bc27eb1-e57d-4d36-bf3d-51921c3bfa9b.jsonl`
 - `/ll:confidence-check` - 2026-08-05T17:55:18 - `5e23105c-4eb4-4528-b7fe-55b105cf37c3.jsonl`
 - `/ll:confidence-check` - 2026-08-05T06:33:49 - `3f582821-770b-4d5b-a2a2-2dc16d0483b5.jsonl`
 - `/ll:verify-issues` - 2026-08-05T06:31:11 - `5ceed56d-d650-4654-ab0d-8a7ea09a822f.jsonl`

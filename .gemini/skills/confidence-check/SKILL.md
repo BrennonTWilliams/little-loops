@@ -12,6 +12,7 @@ allowed-tools:
   - Bash(git:*)
   - Bash(ll-history-context:*)
   - Bash(ll-learning-tests:*)
+  - Bash(ll-issues:*)
 metadata:
 trigger_fixtures:
   should_fire:
@@ -133,7 +134,8 @@ See [rubric.md](rubric.md) § Phase 1.5 for the full bash invocation pattern, Le
 Run the deterministic structural linter and capture only the Program Design verdict:
 
 ```bash
-PD_GAP=$(ll-issues format-check {{issue_id}} --format json 2>/dev/null \
+FC_JSON=$(ll-issues format-check {{issue_id}} --format json 2>/dev/null || true)
+PD_GAP=$(echo "$FC_JSON" \
   | python -c "import json,sys; print('; '.join(json.load(sys.stdin).get('program_design_nonspecific', [])))" 2>/dev/null || true)
 PD_FAIL=$(ll-issues check-design {{issue_id}} >/dev/null 2>&1 && echo "" || echo "yes")
 ```
@@ -147,6 +149,61 @@ empty/inert when the project has not armed the gate (no
 `.ll/program-design-cutover.json` stamp), when the issue is grandfathered, or when it
 carries `program_design_not_applicable: true`. Do **not** re-judge specificity yourself;
 the CLI is the single source of truth so the verdict is deterministic.
+
+### Phase 1.7: Pre-Fetch Dependencies Gate (BUG-3051)
+
+Resolve each ID in the issue's `blocked_by` frontmatter list and check whether it is
+actually resolved:
+
+```bash
+DEP_FAIL=""
+DEP_ROWS=""
+# <!-- ll-prose-ok: mirrors the pre-existing PD_GAP idiom (SKILL.md Phase 1.6) for a one-off JSON field extraction, not a reimplemented algorithm -->
+BLOCKED_BY=$(ll-issues show {{issue_id}} --json 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); v=d.get('blocked_by') or []; print(','.join(v) if isinstance(v, list) else v)" 2>/dev/null || true)
+
+if [ -n "$BLOCKED_BY" ]; then
+    IFS=',' read -ra DEPS <<< "$BLOCKED_BY"
+    for dep in "${DEPS[@]}"; do
+        dep=$(echo "$dep" | xargs)
+        [ -z "$dep" ] && continue
+        # <!-- ll-prose-ok: mirrors the pre-existing PD_GAP idiom (SKILL.md Phase 1.6) for a one-off JSON field extraction, not a reimplemented algorithm -->
+        dep_status=$(ll-issues show "$dep" --json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('status','unknown').lower())" 2>/dev/null || echo "unknown")
+        case "$dep_status" in
+            done|completed|cancelled) ;;
+            *) DEP_FAIL="yes"; DEP_ROWS+="$dep ($dep_status), " ;;
+        esac
+    done
+fi
+```
+
+`ll-issues show --json` emits `status` display-cased (e.g. `"Completed"` for `done`), so the
+check lowercases before matching. Per `.claude/CLAUDE.md` § Issue File Format, `deferred` is
+explicitly **non-terminal** for `blocked_by`/`depends_on` edges — only `done`/`cancelled`
+(displayed as `completed`/`cancelled`) resolve a dependency; anything else (`open`,
+`in_progress`, `blocked`, `deferred`) leaves `DEP_FAIL` set. `DEP_FAIL` is empty/inert when the
+issue has no `blocked_by` list or every listed ID is resolved.
+
+### Phase 1.8: Pre-Fetch Claim and Parity Gaps (ENH-3047)
+
+Extract the parity and claim gap keys from the same `$FC_JSON` payload Phase 1.6 already
+captured — do **not** issue a second `format-check` call:
+
+```bash
+# <!-- ll-prose-ok: mirrors the pre-existing PD_GAP idiom (SKILL.md Phase 1.6) for a one-off JSON field extraction, not a reimplemented algorithm -->
+PARITY_GAP=$(echo "$FC_JSON" | python -c "import json,sys; print('; '.join(json.load(sys.stdin).get('missing_behavior_parity', [])))" 2>/dev/null || true)
+# <!-- ll-prose-ok: mirrors the pre-existing PD_GAP idiom (SKILL.md Phase 1.6) for a one-off JSON field extraction, not a reimplemented algorithm -->
+CLAIM_GAP=$(echo "$FC_JSON" | python -c "import json,sys; d=json.load(sys.stdin); print('; '.join(d.get('stale_symbol_ref', []) + d.get('stale_cli_flag', [])))" 2>/dev/null || true)
+```
+
+`PARITY_GAP` is non-empty when the issue is missing a `### Behavior Parity` subsection
+describing what it replaces. `CLAIM_GAP` is non-empty when the issue asserts a symbol or CLI
+flag against the codebase that did not resolve (`stale_symbol_ref` + `stale_cli_flag`
+combined). Both are empty/inert on the present-but-empty case — an issue with no gaps leaves
+Criterion 4's scoring untouched. Do **not** re-judge either signal yourself; the CLI is the
+single source of truth for whether a reference resolves. `CLAIM_GAP` is **advisory input to
+Criterion 4 only** — it caps the criterion (see [rubric.md](rubric.md) Criterion 4) and must
+not be escalated to a `STOP` verdict, because forward-looking design/planning claims
+legitimately do not resolve yet.
 
 ### Phase 2: Five-Point Assessment
 
@@ -301,6 +358,8 @@ sites + `verification grep` + automated completeness test).
 **Learning Test Hard Override**: if Phase 1.5 found any `missing` or `refuted` target, output `STOP — ADDRESS GAPS` regardless of aggregate score.
 
 **Program Design Hard Override** (ENH-2852/ENH-2967): if Phase 1.6 set `PD_FAIL` to a non-empty value, output `STOP — ADDRESS GAPS` regardless of aggregate score, and include the reason verbatim from `PD_GAP` under **Gaps to Address** (when `PD_GAP` is itself empty — a missing/empty section rather than a non-specific one — state that directly instead). The remedy is to populate `## Program Design` with the concrete types, signatures, and call path (run `/ll:refine-issue` or `/ll:reconcile-issue`), or — for genuinely trivial work — to set `program_design_not_applicable: true` in the issue frontmatter. Both `PD_*` values are empty/inert whenever the gate is off, so this override is inert in unstamped projects.
+
+**Dependencies Hard Override** (BUG-3051): if Phase 1.7 set `DEP_FAIL` to a non-empty value, output `STOP — ADDRESS GAPS` regardless of aggregate score, listing the unresolved `blocked_by` ID(s) and their status from `DEP_ROWS` under **Gaps to Address**. The remedy is to wait for (or prioritize) the blocking issue(s), or to remove the dependency from `blocked_by` if it no longer applies. `DEP_FAIL` is empty/inert whenever the issue has no `blocked_by` frontmatter list or every listed ID already resolved (`done`/`cancelled`), so this override does not affect issues without unresolved hard dependencies. This is additive to Criterion 5's existing 0-20 scoring, which is unchanged for the non-blocking case ("Minor dependencies unresolved but non-blocking" still scores 15).
 
 Sum all readiness and outcome criterion scores (max 100 each). See [rubric.md](rubric.md) for the score-to-recommendation tables and recommendation tiers. The readiness score drives the go/no-go recommendation; outcome confidence is informational.
 

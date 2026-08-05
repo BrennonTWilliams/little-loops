@@ -499,6 +499,87 @@ class TestConfidenceCheckRubricDependenciesOverride:
         )
 
 
+class TestConfidenceCheckClaimParityPrefetch:
+    """Phase 1.8 must pre-fetch parity/claim gaps as a Criterion 4 cap, not a STOP (ENH-3047)."""
+
+    def _phase_text(self, heading: str) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index(heading)
+        next_heading = content.find("\n###", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_phase_1_8_heading_exists(self) -> None:
+        content = SKILL_FILE.read_text()
+        assert "### Phase 1.8: Pre-Fetch Claim and Parity Gaps" in content, (
+            "SKILL.md must contain a '### Phase 1.8: Pre-Fetch Claim and Parity Gaps' section (ENH-3047)"
+        )
+
+    def test_phase_1_8_names_all_three_gap_keys(self) -> None:
+        phase_text = self._phase_text("### Phase 1.8: Pre-Fetch Claim and Parity Gaps")
+        for key in ("missing_behavior_parity", "stale_symbol_ref", "stale_cli_flag"):
+            assert key in phase_text, (
+                f"Phase 1.8 must reference the '{key}' format-check gap key (ENH-3047)"
+            )
+
+    def test_phase_1_8_does_not_reissue_format_check(self) -> None:
+        phase_text = self._phase_text("### Phase 1.8: Pre-Fetch Claim and Parity Gaps")
+        assert "ll-issues format-check" not in phase_text, (
+            "Phase 1.8 must reuse $FC_JSON from Phase 1.6, not call format-check again (ENH-3047)"
+        )
+        assert "FC_JSON" in phase_text, (
+            "Phase 1.8 must read from the shared $FC_JSON variable (ENH-3047)"
+        )
+
+    def test_phase_1_6_captures_fc_json_once(self) -> None:
+        phase_text = self._phase_text("### Phase 1.6: Pre-Fetch Program Design Gate")
+        assert phase_text.count("format-check") == 1, (
+            "Phase 1.6 must invoke format-check exactly once, into FC_JSON, for Phase 1.8 to share (ENH-3047)"
+        )
+
+    def test_phase_1_8_marks_claim_gap_advisory(self) -> None:
+        phase_text = self._phase_text("### Phase 1.8: Pre-Fetch Claim and Parity Gaps")
+        assert "advisory" in phase_text.lower(), (
+            "Phase 1.8 must document CLAIM_GAP as advisory input to Criterion 4 only (ENH-3047)"
+        )
+
+    def test_phase_3_does_not_name_claim_gap(self) -> None:
+        phase_text = self._phase_text("### Phase 3:")
+        assert "CLAIM_GAP" not in phase_text, (
+            "Phase 3 must not escalate CLAIM_GAP to a hard override/STOP verdict (ENH-3047)"
+        )
+
+
+class TestConfidenceCheckRubricClaimParityCap:
+    """rubric.md Criterion 4 must document the parity/claim cap row (ENH-3047)."""
+
+    def _criterion_4_text(self) -> str:
+        content = RUBRIC_FILE.read_text()
+        start = content.index("### Criterion 4: Issue Well-Specified")
+        next_heading = content.find("\n###", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_cap_row_present(self) -> None:
+        section = self._criterion_4_text()
+        for key in ("missing_behavior_parity", "stale_symbol_ref", "stale_cli_flag"):
+            assert key in section, (
+                f"Criterion 4 table/notes must reference '{key}' (ENH-3047)"
+            )
+
+    def test_cap_documented_as_ceiling(self) -> None:
+        section = self._criterion_4_text()
+        assert "cap" in section.lower(), (
+            "Criterion 4 section must document the parity/claim cap (ENH-3047)"
+        )
+
+    def test_cap_documented_as_not_a_hard_override(self) -> None:
+        section = self._criterion_4_text()
+        assert "not" in section.lower() and "STOP" in section, (
+            "Criterion 4's parity/claim cap must explicitly document that it does not force STOP (ENH-3047)"
+        )
+
+
 class TestVerdictJsonTrailer:
     """rubric.md's single-issue output format must emit VERDICT_JSON (ENH-2949)."""
 
