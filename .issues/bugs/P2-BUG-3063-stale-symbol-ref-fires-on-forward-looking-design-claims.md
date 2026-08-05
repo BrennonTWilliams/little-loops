@@ -17,7 +17,7 @@ labels:
 - false-positives
 testable: true
 decision_needed: false
-confidence_score: 90
+confidence_score: 88
 outcome_confidence: 78
 score_complexity: 10
 score_test_coverage: 25
@@ -120,6 +120,19 @@ script is in § Validation.
 | Resolves **nowhere** (forward reference or genuinely stale — not separable mechanically) | 63 | 67% |
 | Resolves **elsewhere** in the repo (mis-attribution) | 31 | 33% |
 
+**Section × resolution crosstab** (added 2026-08-05 after the initial bucketization; sections
+assigned by H2 *span*, i.e. the semantics `_section_body()` actually implements — see § Proposed
+Solution A1 for why the level must be pinned):
+
+| | resolves elsewhere | resolves nowhere | total |
+|---|---|---|---|
+| **Outside** allowlist (removed by A1) | 23 | 45 | 68 |
+| **Inside** allowlist (`Summary`, `Current Behavior`) | 8 | 18 | 26 |
+
+Reading: **A1 alone leaves 26 survivors; A1 + C leaves 18** (an 81% reduction). This is the number
+§ Acceptance Criteria 1 is set from. Note that 26 vs. a 25-hit ceiling would have let A1-with-no-C
+pass by a single hit, which is why the criterion is pinned at the measured A1+C figure instead.
+
 **By enclosing section** (top buckets; the tail is long and includes non-canonical headings such as
 `Proposed Change`, `Files to Modify / Create`, `Scope`, `Children`):
 
@@ -136,7 +149,7 @@ script is in § Validation.
 | Implementation Steps | 2 |
 | Dependent Files (Callers/Importers) | 2 |
 
-Three consequences that drive the design below:
+Four consequences that drive the design below:
 
 1. **A denylist of the five "future state" section names clears only 10 of 94 hits (10%).** An
    allowlist of the four "current state" section names clears 68 of 94 (73%). These are not
@@ -146,6 +159,49 @@ Three consequences that drive the design below:
 3. **Mis-attribution is 33%, not a minor sub-class.** Building the repo-wide symbol→files reverse
    index it needs costs **739 files / 25,388 def-sites / 0.89s** — cheap enough that the cost
    argument for deferring it does not hold.
+4. **A fourth false-positive class dominates the post-fix residue** — see § Survivor Analysis. Of the
+   18 hits A1 + C leaves standing, roughly 13 are neither stale, forward-looking, nor mis-attributed;
+   they are non-code identifiers that merely have symbol *shape*. Two sub-causes, one of which is a
+   two-character resolver fix.
+
+### Survivor Analysis (the 18 A1 + C leaves standing)
+
+Fenced deliberately: every row below is a *quoted* claim from another issue, and rendering them as
+prose would make this section fire the very gap it documents (the § Self-demonstration effect again,
+this time inside an allowlisted section where A1 cannot help).
+
+```text
+ISSUE               CLAIM -> CITED FILE                          WHAT IT ACTUALLY IS
+ENH-3000/EPIC-3023  stale_file_ref -> issue_parser.py,           FormatGaps dataclass field
+                                      text_utils.py               (see D1)
+FEAT-3040           orchestration_runs, usage_events             SQL table names
+                      -> session_store/schema.py
+FEAT-3043           advisor -> config/core.py                    config key
+FEAT-3044           host_cli -> config/orchestration.py          config key
+EPIC-2616           remove, list -> cli/loop/_helpers.py         CLI subcommand names
+EPIC-1463           pre_tool_use, post_tool_use                   hook event names
+                      -> bench_opencode_adapter.py
+FEAT-3042 (x4)      resolve_host_named, run_blocking_json         <- the real signal:
+FEAT-3043 (x2)      AdvisorConfig                                    genuinely-stale or
+FEAT-1931           CommunicationAdapter                             forward-reference
+EPIC-3022           on_budget_exceeded                               candidates (5 of 18)
+```
+
+Two distinct causes, only the first of which is a scoping question:
+
+- **D1 — resolver blind spot (mechanically fixable).** `_extract_symbols()`
+  (`scripts/little_loops/issues/symbol_claims.py:212`) applies `_MODULE_CONSTANT_RE.match(line)`, and
+  that pattern is anchored `^([A-Za-z_]\w*)…=`. Indented lines never match, so **class attributes and
+  dataclass fields are absent from the index entirely**. `FormatGaps.stale_file_ref` is a real
+  attribute defined in `issue_parser.py` and still reports as stale. Allowing leading whitespace (or
+  adding a dedicated attribute pattern) clears this class, is independent of both A1 and C, and also
+  strengthens C — an attribute claim currently cannot even resolve *elsewhere*.
+- **D2 — non-code namespaces (scoping question, not a resolver bug).** SQL table names, config keys,
+  CLI subcommand names, and hook event names live in string literals and dict keys, not def-sites.
+  No resolver change makes them resolve. They are **declared out of scope for this issue**: the
+  suppression they need is a different discriminator (claim-shape or namespace-aware), tracked
+  separately rather than bolted onto A1 + C. § Acceptance Criteria 2 carries them as their own
+  survivor bucket so they are enumerated rather than silently absorbed.
 
 ## Expected Behavior
 
@@ -188,6 +244,24 @@ scoping helper is itself an allowlist of section names, not a denylist.
 Proposed allowlist (to be confirmed against the baseline during implementation):
 `## Summary`, `## Current Behavior`, `## Root Cause`, `## Context`.
 
+**Scoping level — pin it explicitly.** Two helpers exist and they are not interchangeable:
+`_section_body()` (`issue_parser.py:224-230`) returns the **H2 span**, swallowing every nested H3;
+`_heading_bodies()` (`issue_parser.py:911-927`) matches a heading by name at H2 *or* H3 and stops at
+the next equal-or-higher level. **Use `_section_body()` (H2-span) for the allowlist**, matching the
+behavior-parity helper's H2 branch. Consequences, both intended:
+
+- `### Codebase Research Findings` and `### Dependent Files` are excluded via their `## Integration
+  Map` parent; `### Call Path` and `### Signatures` via `## Program Design`. No H3 needs naming.
+- Conversely, an H3 nested under an allowlisted H2 **is in scope**. In this issue that is
+  load-bearing: `### Observed false positives` and `### Measured Baseline` sit inside
+  `## Current Behavior`, so their two `<!-- ll-prose-ok -->` markers must **stay** — see
+  § Implementation Steps 9, which scopes marker removal to § Signatures and § Call Path only.
+
+Note that the § Measured Baseline "by enclosing section" table buckets by *nearest* H2-or-H3 heading,
+which is a third semantics, matching neither helper. On the current corpus all three agree at 26
+in-allowlist hits (no H3-nested hits fall under `Summary`/`Current Behavior` today), so the
+divergence is latent — but the Step 7 re-run must bucket by H2 span to compare like with like.
+
 `## Expected Behavior` is deliberately **excluded** despite sounding current-state: it carries 7
 hits and describes post-fix behavior by definition. `## Codebase Research Findings` (6 hits) is a
 genuine current-state section but is machine-written from verified research, and its hits are
@@ -196,9 +270,17 @@ the allowlist rather than being special-cased.
 
 **C — resolves-elsewhere downgrade.** When the claimed symbol is absent from the cited file but
 present somewhere else in the repo, that is a mis-attribution, not a stale claim. Report it as a
-distinct, lower-severity signal or drop it. This covers 33% of current hits, including every hit in
-this issue's own § Self-demonstration, and — critically — it is the only half that reaches the 18
-hits sitting inside `## Summary`, which A1 leaves in scope by design.
+distinct, lower-severity signal or drop it. This covers 33% of current hits overall, including every
+hit in this issue's own § Self-demonstration, and — critically — it is the only half that reaches
+inside the allowlist, where it clears **8 of the 26 hits A1 leaves standing** (§ Measured Baseline
+crosstab).
+
+**Index the same language set the resolver does.** Build the reverse index by iterating
+`_SUPPORTED_SYMBOL_EXTENSIONS` (10 extensions), **not** `git ls-files '*.py'` as the § Validation
+prototype script does. The repo tracks 38 non-`.py` files in that set. No current hit cites one, so
+the asymmetry is latent — but a Python-only index would downgrade a mis-attributed Python symbol and
+silently keep firing on the identical TypeScript case. Cost impact is negligible against the measured
+739-file / 0.89s Python-only build.
 
 ### Rejected
 
@@ -242,7 +324,9 @@ survivor count is the honest measure of whether the gate still catches its motiv
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/issues/symbol_claims.py` — extraction scope and/or discriminator
+- `scripts/little_loops/issues/symbol_claims.py` — three seams: the reverse symbol→files index (C,
+  on `SymbolIndex`/`build_symbol_index`), and `_MODULE_CONSTANT_RE` / `_extract_symbols()` (D1, the
+  indentation fix at lines 43 and 212)
 - `scripts/little_loops/issue_parser.py` — `check_format_gaps()`, if a new gap kind or severity
   distinction is introduced
 - `scripts/tests/test_symbol_claims.py`, `scripts/tests/test_feat3048_symbol_cli_claim_gaps.py`,
@@ -370,6 +454,17 @@ for k, n in kind.most_common():
 A fix should move the hit count substantially while keeping genuinely stale claims reported. Record
 the post-fix numbers and hand-classify every survivor per § Acceptance Criteria.
 
+**Two known biases in this prototype script, both to correct in the Step 7 re-run:**
+
+1. It attributes a hit by ``body.find("`" + c.raw + "`")`` — the **first** occurrence only. A symbol
+   claimed in two sections is bucketed to whichever appears earlier in the file, so a bucket shift
+   between the before and after runs can reflect re-ordering rather than suppression. Prefer
+   resolving each claim's own offset, or at minimum bucket by H2 span (see below) where the
+   ambiguity is coarser and rarer.
+2. It buckets by *nearest* H2-or-H3 heading and builds the reverse index from `git ls-files '*.py'`.
+   The implementation uses H2 span and all of `_SUPPORTED_SYMBOL_EXTENSIONS`. Align both before
+   diffing, or the comparison is not like-for-like.
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-05 — based on codebase analysis:_
@@ -383,13 +478,18 @@ _Added by `/ll:refine-issue` — 2026-08-05 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-1. **Volume.** A post-fix `--all` sweep reports **≤ 25 of the current 94 hits** (a ≥ 73% reduction).
-   Both halves contribute: A1 removes hits outside the allowlist, C removes resolves-elsewhere hits
-   inside it.
-2. **Every survivor is hand-classified.** Each remaining hit is recorded in this issue as
-   *genuinely stale*, *forward reference*, or *mis-attribution*. Zero mis-attribution survivors is
-   required (that is C's whole job); a residue of forward references inside allowlisted sections is
-   acceptable and must be enumerated, not waved through.
+1. **Volume.** A post-fix `--all` sweep reports **≤ 18 of the current 94 hits** (an ≥ 81% reduction),
+   the figure the § Measured Baseline crosstab measures for A1 + C. Both halves must contribute:
+   A1 removes the 68 hits outside the allowlist, C removes the 8 resolves-elsewhere hits inside it.
+   The threshold is deliberately set below A1's standalone 26 so that a C-less implementation cannot
+   satisfy this criterion.
+2. **Every survivor is hand-classified** into one of **four** buckets: *genuinely stale*,
+   *forward reference*, *mis-attribution*, or *non-code identifier* (§ Survivor Analysis D2 — config
+   keys, SQL table names, CLI subcommand names, hook event names). Zero mis-attribution survivors is
+   required (that is C's whole job). Zero *class-attribute* survivors is required (that is D1's job —
+   `FormatGaps.stale_file_ref` must resolve after the fix). A residue of forward references inside
+   allowlisted sections, and the D2 non-code-identifier bucket, are both acceptable and must be
+   enumerated in this issue, not waved through.
 3. **Positive control holds.** A claim asserting a non-existent symbol inside `## Summary` or
    `## Current Behavior`, attributed to a file where it does not and cannot resolve anywhere in the
    repo, still fires `stale_symbol_ref`. Covered by a paired test (see § Tests).
@@ -413,19 +513,33 @@ _Added by `/ll:refine-issue` — 2026-08-05 — based on codebase analysis:_
 2. ~~Hand-audit the carriers~~ — done 2026-08-05, scripted rather than by hand; results in
    § Measured Baseline, script in § Validation.
 3. Implement A1: add the allowlist scope tuple and a scoping helper in `issue_parser.py`, mirroring
-   the behavior-parity scoping helper. No signature change to the extractor.
-4. Implement C: add the symbol→files reverse index and route resolves-elsewhere claims to a distinct
-   signal (a new `FormatGaps` field, per the convention in § Codebase Research Findings) or drop
-   them. If a new field is added, follow the Wiring Phase checklist below.
-5. Add the paired scoping tests for Acceptance Criteria 3–4, including the unlisted-heading case.
-6. Re-run the § Validation bucketization, compare against the 94-hit baseline, and record the
-   post-fix table plus the survivor classification in this issue.
-7. Tighten the sweep test to the post-fix number.
-8. Remove the now-unnecessary `<!-- ll-prose-ok -->` markers from this issue and from ENH-3047, and
-   verify both still report clean.
-9. Update `docs/reference/CLI.md` and `docs/reference/API.md` for the changed semantics and any new
-   gap kind.
-10. Notify ENH-3047 (or its successor) that the hard-override question can be revisited.
+   the behavior-parity scoping helper and using `_section_body()` (H2-span) per § Proposed Solution's
+   scoping-level note. No signature change to the extractor.
+4. Implement D1 (§ Survivor Analysis): make `_MODULE_CONSTANT_RE` tolerate leading indentation in
+   `_extract_symbols()` so class attributes and dataclass fields enter the index. Independent of A1
+   and C — land it with its own regression test (`FormatGaps.stale_file_ref` attributed to
+   `issue_parser.py` must resolve). Check the blast radius first: widening the constant pattern also
+   admits indented local-variable assignments inside function bodies, which is a precision trade the
+   test suite should pin explicitly (assert a known local does **not** become a claimable symbol, or
+   accept and document the widening).
+5. Implement C: add the symbol→files reverse index — over `_SUPPORTED_SYMBOL_EXTENSIONS`, not `*.py`
+   — and route resolves-elsewhere claims to a distinct signal (a new `FormatGaps` field, per the
+   convention in § Codebase Research Findings) or drop them. If a new field is added, follow the
+   Wiring Phase checklist below.
+6. Add the paired scoping tests for Acceptance Criteria 3–4, including the unlisted-heading case.
+7. Re-run the § Validation bucketization (bucketing by H2 span), compare against the 94-hit baseline
+   and the A1+C projection of 18, and record the post-fix table plus the four-bucket survivor
+   classification in this issue.
+8. Tighten the sweep test to the post-fix number.
+9. Remove the `<!-- ll-prose-ok -->` markers in **§ Signatures and § Call Path only** from this
+   issue, plus ENH-3047's two markers, and verify both still report clean. The two markers in
+   § Observed false positives and § Measured Baseline are inside `## Current Behavior`'s H2 span,
+   which A1 keeps in scope — they stay, and removing them is a regression, not a cleanup.
+10. Update `docs/reference/CLI.md` and `docs/reference/API.md` for the changed semantics and any new
+    gap kind.
+11. Notify ENH-3047 (or its successor) that the hard-override question can be revisited.
+12. Capture the D2 non-code-identifier class (§ Survivor Analysis) as a follow-up issue, sized from
+    the enumerated survivors recorded in Step 7.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -547,12 +661,36 @@ deleting the marker line above and re-running `ll-issues format-check BUG-3063`.
 - `docs/reference/API.md` — `check_format_gaps()` and `FormatGaps`
 - `.claude/CLAUDE.md` — Issue File Format
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-05_
+
+**Readiness Score**: 88/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 78/100 → moderate-high
+
+### Concerns
+- Criterion 4 (Issue Well-Specified) is capped at 10/20 by the Phase 1.8 Parity/Claim Cap
+  (ENH-3047): `ll-issues format-check BUG-3063` currently reports 3 `stale_symbol_ref` hits —
+  `build_symbol_index` and `check_format_gaps` (mis-attributed to `format_check.py`, their
+  caller, not their def-site in `symbol_claims.py`/`issue_parser.py`) and `isinstance`
+  (a builtin, claimed in `test_symbol_cli_claim_sweep.py`). These are exactly the
+  mis-attribution/non-code-identifier false-positive classes this issue exists to fix — the
+  `<!-- ll-prose-ok -->` markers on § Signatures and § Call Path suppress the issue's own
+  worked self-demonstration example but not these three, which sit outside those markers'
+  spans. This is advisory (the cap does not force STOP) and does not block implementation.
+- Minor line-number drift: § Files to Modify cites `_MODULE_CONSTANT_RE` / `_extract_symbols()`
+  "at lines 43 and 212"; current source has `_MODULE_CONSTANT_RE` at
+  `scripts/little_loops/issues/symbol_claims.py:32` (line 43 is `_DOTTED_RE`) and
+  `_extract_symbols()` still at line 195/212 as cited. Cosmetic — worth a quick fix during
+  implementation, not a blocker.
+
 ## Status
 
 **Open** | Created: 2026-08-05 | Priority: P2
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-05T20:53:33 - `f597033d-3e30-4b6d-a49f-8ff2ffd933a3.jsonl`
 - `/ll:confidence-check` - 2026-08-05T20:34:50 - `61e02669-4d4b-44ef-a675-d0cf8741eee7.jsonl`
 - `/ll:wire-issue` - 2026-08-05T20:11:44 - `7780f328-a190-442c-b6cd-b985cc9efb9b.jsonl`
 - `/ll:decide-issue` - 2026-08-05T20:03:01 - `355401d9-91ae-45a7-a85f-ac489c0e4268.jsonl`
