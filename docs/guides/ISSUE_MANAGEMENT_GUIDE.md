@@ -383,7 +383,7 @@ Issues that pass validation have their Status updated to `Ready`. Issues that fa
 
 Complementary to `ready-issue`, this skill evaluates implementation readiness from the agent's perspective. It produces two scores:
 
-- **Readiness Score** (0-100) — go/no-go for starting implementation. Evaluates five criteria: problem clarity, solution specificity, codebase context, test strategy, and risk understanding. If the issue declares `learning_tests_required` targets and any are `missing` or `refuted`, a hard STOP — ADDRESS GAPS is forced regardless of aggregate score.
+- **Readiness Score** (0-100) — go/no-go for starting implementation. Evaluates five criteria: problem clarity, solution specificity, codebase context, test strategy, and risk understanding. If the issue declares `learning_tests_required` targets and any are `missing` or `refuted`, a hard STOP — ADDRESS GAPS is forced regardless of aggregate score. The same hard override applies when a `blocked_by` frontmatter entry names an issue whose status is not `done`/`cancelled` (`deferred` is non-terminal) — the Dependencies Hard Override (BUG-3051). Separately, a `missing_behavior_parity`/`stale_symbol_ref`/`stale_cli_flag` gap from `ll-issues format-check` caps (but does not STOP-override) the Issue Well-Specified criterion at 10 (ENH-3047).
 - **Outcome Confidence Score** (0-100) — predicted implementation risk. Evaluates: correctness likelihood, completeness likelihood, test coverage likelihood, and no-regression likelihood.
 
 Both scores are persisted to the issue's frontmatter as `confidence_score` and `outcome_confidence`. Use these during sprint planning to sequence high-confidence issues first.
