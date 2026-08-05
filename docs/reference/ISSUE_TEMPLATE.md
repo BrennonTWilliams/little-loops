@@ -50,6 +50,17 @@ signature-*shaped* — they are never required to resolve, and their resolving a
 changes the verdict. An appended `### Deviations` note (recorded at implementation time)
 is inert: it neither rescues a prose section nor breaks a valid one.
 
+**Decision Rules** (ENH-3050): an optional `### Decision Rules` subsection of
+Program Design, emitted only when the issue's Proposed Solution or Expected
+Behavior introduces new decision logic — a new gap kind, gate, exit-code
+condition, keyword/phrase list, numeric threshold, or classification rule. It
+states the exact inputs, literal keyword/threshold values, proximity/scoping
+rule, and dismissal/escape hatch. Issues that only modify existing logic omit
+it, or satisfy it with the literal body `N/A — no new decision logic`. This
+subsection is advisory prose — `ll-issues format-check`'s
+`program_design_nonspecific` gate continues to check only anchor resolution,
+not Decision Rules content.
+
 ### Type-Specific Sections
 
 **BUG**: Steps to Reproduce (required), Actual Behavior (informal), Root Cause (conditional, NEW), Error Messages (conditional), Location (conditional)
