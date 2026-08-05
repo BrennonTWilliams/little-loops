@@ -1,0 +1,11 @@
+{
+  "id": "6f8057b4-a8e7-421a-9508-4f7779dcf8a3",
+  "type": "decision",
+  "timestamp": "2026-08-05T16:09:37Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Instruction-based defenses (SKILL.md prose, stay-in-turn contract, finalize re-drive) each narrow but do not close the background-task turn-end failure; CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 is the unpulled hard lever, blocked on the manage-issue server-smoke-test carve-out.",
+  "rule": "Captured: Hard-disable background tasks in headless automation",
+  "scope": "issue",
+  "issue": "FEAT-3060"
+}

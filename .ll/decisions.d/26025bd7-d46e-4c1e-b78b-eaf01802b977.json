@@ -1,0 +1,14 @@
+{
+  "id": "b35c7d8d-7e90-47c2-bcb2-1798e4155960",
+  "type": "rule",
+  "timestamp": "2026-08-05T05:44:24Z",
+  "category": "other",
+  "labels": [
+    "extracted",
+    "global"
+  ],
+  "rationale": "measure_test_strength() counted any pytest.skip() call identically whether reached unconditionally or only under a defensive environment guard, causing false-positive tamper-guard vetoes on strictly additive test changes.",
+  "rule": "When AST-walking to detect a semantic pattern (skip, disable, etc.), track reachability/conditionality \u2014 a flat ast.walk",
+  "enforcement": "advisory",
+  "issue": "BUG-3054"
+}
