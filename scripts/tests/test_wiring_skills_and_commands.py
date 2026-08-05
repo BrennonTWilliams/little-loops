@@ -73,7 +73,7 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/index.md", "codex/", "ENH-1495"),
     (
         "docs/reference/loops.md",
-        ".ll/runs/harness-optimize/<run-id>/states/<state>/trajectory.jsonl",
+        "${context.run_dir}/states/<state>/trajectory.jsonl",
         "ENH-1557",
     ),
     ("docs/reference/loops.md", "STATE_NAME", "ENH-1557"),

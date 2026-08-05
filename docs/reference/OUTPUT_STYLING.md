@@ -47,8 +47,8 @@ Color is enabled when `sys.stdout.isatty()` is `True` and `NO_COLOR` env var is 
 | `P1` | `38;5;208` | Orange |
 | `P2` | `33` | Yellow |
 | `P3` | `0` | Default |
-| `P4` | `2` | Dim |
-| `P5` | `2` | Dim |
+| `P4` | `90` | Gray |
+| `P5` | `90` | Gray |
 | `BUG` | `38;5;208` | Orange |
 | `FEAT` | `32` | Green |
 | `ENH` | `34` | Blue |
@@ -62,16 +62,24 @@ Category colors for `ll-loop list` headers (key is the lowercase slug used in `C
 | `code-quality` | `38;5;75` | 256-blue (v2: was `32` green) |
 | `data` | `34` | Blue |
 | `evaluation` | `38;5;208` | Orange |
+| `example` | `33;2` | Dim yellow |
 | `gate` | `38;5;160` | Red |
 | `harness` | `35` | Magenta |
 | `integration` | `38;5;39` | Sky |
 | `issue-management` | `36` | Cyan |
+| `lib` | `90` | Gray |
 | `meta` | `38;5;220` | 256-yellow (v2: was `38;5;208` orange) |
+| `optimization` | `33` | Yellow |
+| `orchestration` | `38;5;141` | Purple |
 | `planning` | `38;5;39` | Sky |
 | `quality` | `38;5;178` | 256-gold (v2: was `32` green) |
 | `research` | `36` | Cyan |
 | `rl` | `38;5;160` | Red |
+| `routing` | `35` | Magenta |
+| `api-adoption` | `33` | Yellow |
 | `uncategorized` | `0;2` | Reset-dim |
+
+Unknown slugs fall back to `36;1` (bright cyan) via `CATEGORY_COLOR.get(cat, "36;1")` in `cli/loop/info.py`.
 
 Label colors for `ll-loop list` rows (resolved via `LABEL_COLOR.get(label, "2")`; unknown labels default to dim `2`):
 
@@ -187,24 +195,37 @@ print(sparkline(current=7, total=20))
 ```python
 from little_loops.cli.output import set_output_mode, get_output_mode
 
-set_output_mode("json")           # callers gate rendering on this
+set_output_mode("json")           # toggles the module-global _OUTPUT_MODE
 mode = get_output_mode()          # returns Literal["human", "json", "plain"]
 ```
 
-`set_output_mode(mode)` toggles the module-global `_OUTPUT_MODE`; `get_output_mode()` reads it. Tools that support `--json` flip this once at startup and branch later formatters accordingly. The default is `"human"`; `"plain"` strips color regardless of `_USE_COLOR` at the formatter level.
+`set_output_mode(mode)` toggles the module-global `_OUTPUT_MODE`; `get_output_mode()` reads it. The default is `"human"`; `"plain"` strips color regardless of `_USE_COLOR` at the formatter level.
+
+**These are not how `--json` is actually gated.** No caller outside `output.py` (tests aside) invokes either function. Every `--json`-capable command branches on the parsed argument directly and returns early:
+
+```python
+if getattr(args, "json", False):
+    print_json(payload)
+    return 0
+```
+
+`print_json` is a plain `print(json.dumps(data, indent=2))` — it does not consult `_OUTPUT_MODE`. The pair is available for callers that want a process-wide mode, but the CLI surface does not use it today.
 
 ---
 
 ## Logo: `scripts/little_loops/logo.py`
 
-Reads and prints ASCII art from `scripts/little_loops/assets/ll-cli-logo.txt` (in-package since FEAT-2274). Silent no-op if the file is missing.
+Reads and prints ASCII art from `scripts/little_loops/assets/` (in-package since FEAT-2274). Silent no-op if the asset file is missing.
 
 ```python
 from little_loops.logo import print_logo, get_logo
 
-print_logo()          # prints logo with surrounding blank lines
-logo = get_logo()     # returns str | None
+print_logo()                    # prints logo with surrounding blank lines
+print_logo(variant="small")     # compact variant
+logo = get_logo()               # returns str | None
 ```
+
+Both take `variant: str = "full"`. `"full"` reads `ll-cli-logo.txt`; **any other value** reads `ll-cli-logo-small.txt` (the check is an else branch, not an explicit `"small"` match).
 
 ---
 
@@ -259,6 +280,7 @@ accidental column line (ENH-2574).
 |-------|--------|---------|
 | `Source` | `discovered_by` frontmatter | Short alias (`capture`, `scan`, `audit`, `format`) or first 7 chars; omitted if absent **or if the value is `manual`** (the default case is low-signal — ENH-2574) |
 | `Needs: formatting` | Required sections check | Renders only when the file is missing required template sections; omitted entirely when formatting is already correct (collapses the old always-on `Norm`/`Fmt` pair — ENH-2574) |
+| `Integration` / `Labels` / `Milestone` | Integration Map file count, `labels:` and `milestone:` frontmatter | Joined into a single middot-separated line (`Integration: 4 files · Labels: cli · Milestone: v0.9`); each part is dropped individually when empty, and the line is omitted entirely when all three are |
 | `Captured at` | `captured_at` frontmatter | Date-only (`YYYY-MM-DD`, time component dropped); **omitted** when it equals `Discovered` on the same calendar date (ENH-2574) |
 | `Discovered` | `discovered_date` frontmatter | YYYY-MM-DD date when the bug/feature was *observed*; distinct from `captured_at` (ENH-2535) |
 | `Discovered commit` | `discovered_commit` frontmatter | First 7 chars of the git SHA (short-form to avoid right-border bleed); omitted if absent (ENH-2535) |
@@ -266,7 +288,7 @@ accidental column line (ENH-2574).
 | `Completed at` | `completed_at` frontmatter | Date-only (time component dropped, ENH-2574); omitted if absent |
 | `Decision needed` / `Decision ref` | `decision_needed` + `decision_ref` frontmatter | Coupled form: `Decision needed → <decision_ref>` when both set; explicit `no` when `decision_needed: false`; standalone `Decision ref:` when only `decision_ref` is set (ENH-2535) |
 | `Parent` | `parent` frontmatter | `EPIC-NNN (Title)` when epic is resolvable; ID-only when not (ENH-2535) |
-| `Blocks` / `Blocked by` / `Depends on` / `Relates to` / `Supersedes` / `Decomposed into` / `Affects` / `Focus area` | relationship edge frontmatter | Comma-joined IDs (ENH-2535) |
+| `Blocks` / `Blocked by` / `Depends on` / `Relates to` / `Supersedes` / `Superseded by` / `Decomposed into` / `Affects` / `Focus area` | relationship edge frontmatter | Comma-joined IDs (ENH-2535). `Superseded by` is derived — the reverse of another issue's `supersedes:`, never hand-written frontmatter |
 | `History` | `## Session Log` body section | Distinct `/ll:*` commands with occurrence counts; omitted if absent |
 | `Closing note` / `Cancellation reason` / `Deferral reason` / `Closed by` / `Closed at` / `Deferred at` | closure context frontmatter | Rendered only when status is `done` / `cancelled` / `deferred`; `Closed at`/`Deferred at` are date-only (ENH-2535, dates per ENH-2574) |
 
@@ -275,9 +297,19 @@ above form a single column-aligned block: once it has 4 or more rows, labels
 right-pad to the widest label so every row's value starts at the same column
 (ENH-2574 item 6).
 
-Width targets `min(terminal_width() - 4, 100)` — the card widens on wide
-terminals instead of staying pinned to the longest structural (metadata) line,
-and never exceeds `terminal_width() - 4`. The summary is reflowed
+Width is computed in three steps, so the card widens on wide terminals instead
+of staying pinned to the longest structural (metadata) line:
+
+```python
+max_content_width = max(terminal_width() - 4, 20)         # hard ceiling
+wrap_width = max(min(max_content_width, 100), 60)         # 100 target, 60 floor
+width = max(longest_rendered_line + 2, wrap_width + 2)    # never clip content
+width = min(width, max_content_width)                     # but never overflow
+```
+
+So the card targets 100 columns, never renders narrower than 60 (unless the
+terminal itself is narrower — `max_content_width` wins last), and grows past the
+target when a rendered line demands it. The summary is reflowed
 paragraph-first (blank lines split paragraphs; hard breaks within a paragraph
 are joined) before wrapping with `textwrap.wrap()`. An unbreakable token wider
 than the content area is truncated with `…` rather than bleeding past the
@@ -336,7 +368,7 @@ U-route for back-edges (main-to-main):
     label text
 ```
 
-Vertical connectors for off-path states use `│` and `▼`, with separate label rows for down/up directions to prevent overlap. (`▲` U+25B2 is used only in the windowed-crop overflow banner at `layout.py:945`.)
+Vertical connectors for off-path states use `│` and `▼`, with separate label rows for down/up directions to prevent overlap. (`▲` U+25B2 is used only in the windowed-crop overflow banner, `_overflow_banner` at `layout.py:2212`.)
 
 Self-loops render as `↺ label` below the box row.
 

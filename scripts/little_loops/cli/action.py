@@ -425,7 +425,7 @@ Examples:
         # capabilities subcommand
         cap_parser = subparsers.add_parser(
             "capabilities",
-            help="Emit full CapabilityReport as JSON (host, binary, version, capabilities, hooks)",
+            help="Emit full CapabilityReport as JSON (host, binary, version, capabilities)",
             description="Call describe_capabilities() and serialize the full CapabilityReport to JSON",
         )
         cap_parser.add_argument(

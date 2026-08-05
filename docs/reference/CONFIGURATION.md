@@ -239,8 +239,8 @@ For interactive editing, use `/ll:configure`.
         "P1": "38;5;208",
         "P2": "33",
         "P3": "0",
-        "P4": "2",
-        "P5": "2"
+        "P4": "90",
+        "P5": "90"
       },
       "type": {
         "BUG": "38;5;208",
@@ -367,6 +367,7 @@ Sequential automation settings (ll-auto):
 | `max_workers` | `2` | Parallel workers |
 | `stream_output` | `true` | Stream subprocess output |
 | `max_continuations` | `3` | Maximum continuation prompts before automation stops (minimum 1) |
+| `ready_issue_unknown_retries` | `1` | Retries when `ready-issue` returns no parseable verdict (`UNKNOWN`). Distinct from a real `NOT_READY` — `UNKNOWN` means the model did not answer at all, a probabilistic misread that would otherwise discard the whole run. `0` disables (minimum 0) |
 
 ### `parallel`
 
@@ -519,6 +520,7 @@ Context window monitoring for automatic session handoff. See [Session Handoff Gu
 |-----|---------|-------------|
 | `enabled` | `true` | Enable context window monitoring (enabled by default; all project templates include this setting) |
 | `auto_handoff_threshold` | `80` | Context usage percentage to trigger handoff warning |
+| `state_file` | `.ll/ll-context-state.json` | File used to track context usage state between turns |
 | `context_limit_estimate` | `0` (auto) | Override for the context window token limit. Omit or set to `0` for auto-detection (`[1m]`-suffixed model ids resolve to 1M by identifier; known claude-*-4* base models → 200000; transcript baseline exceeding the resolved limit auto-upgrades to 1000000 as a fallback). Set to an explicit non-zero value to override, e.g. `1000000` for 1M-context models. Also overridable via `LL_CONTEXT_LIMIT` env var. |
 | `use_transcript_baseline` | `true` | Use JSONL transcript token counts as an API-exact baseline (one-turn lag). Part of the three-tier token priority system: `result_token_count > 0` (zero-lag authoritative, written by the `on_usage` callback from stream-json `result` events) → transcript baseline (one-turn lag, ±5–15%) → pure heuristics (±30–50%). This setting enables the second tier; the first tier (`result_token_count`) is always active when available. |
 
@@ -604,6 +606,7 @@ enabled; these keys control how skills and CLI tools *read* that data.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
+| `history.db_path` | `string\|null` | `null` | Override the default `.ll/history.db` location; relative paths resolve against the project root. The `LL_HISTORY_DB` env var takes precedence over this (ENH-2623). |
 | `history.velocity_window` | `integer` | `10` | Number of recent issues to use when computing velocity (ENH-1905). |
 | `history.effort_fields` | `list[str]` | `["session_count", "cycle_time_days"]` | Fields extracted from history.db for effort reporting (ENH-1905). |
 | `history.max_age_days` | `integer\|null` | `null` | Maximum age in days for history entries; `null` = no limit (ENH-1905). |
@@ -973,6 +976,7 @@ Persistent CLI defaults for `ll-loop run`. Values are backfilled when the corres
 |-----|------|---------|-------------|
 | `run_defaults.clear` | `boolean` | `true` | If `true`, inject `--clear` into every `ll-loop run` invocation. |
 | `run_defaults.show_diagrams` | `string\|null` | `"clean"` | Inject `--show-diagrams <value>` into every invocation. Valid values: `layered`, `neighborhood`, `inline`, `detailed`, `summary`, `clean`, `local`, `slim`, `oneline`, `default`. `null` disables. |
+| `run_defaults.show_input` | `boolean` | `true` | Show the `input:` field/value (packed onto the `loop:` line) in the `ll-loop run` diagram header, on both pinned and non-pinned paths. Set `false` to hide it (e.g. when the input contains sensitive data). |
 | `run_defaults.mode` | `string\|null` | `null` | Reserved for a future `--mode` flag on `ll-loop run`. No effect until that flag is added. |
 | `run_defaults.include` | `string` | `""` | Default loop allowlist injected into `fsm.context["include"]`; empty string = all loops visible. Accepts comma-separated selectors: `loop-name`, `builtin:*`, `project:*`, `category:<label>`. Override per-invocation with `--context include=VALUE`. |
 | `run_defaults.delay` | `number\|null` | `null` | Inject `--delay <seconds>` into every `ll-loop run` invocation (inter-iteration pause). Must be a non-negative number. Explicit `--delay` overrides. `null` disables (no pause injected). |
@@ -1123,8 +1127,8 @@ Override ANSI color codes for issue priority labels in list and card output.
 | `P1` | `38;5;208` | Orange |
 | `P2` | `33` | Yellow |
 | `P3` | `0` | Default |
-| `P4` | `2` | Dim |
-| `P5` | `2` | Dim |
+| `P4` | `90` | Gray |
+| `P5` | `90` | Gray |
 
 ### `cli.colors.type`
 
@@ -1170,10 +1174,10 @@ Override the default ANSI color codes used for FSM diagram edge labels and conne
 | `error` | `31` | Red | Error transitions |
 | `blocked` | `31` | Red | `on_blocked` routing |
 | `partial` | `33` | Yellow | Partial-success transitions |
-| `retry_exhausted` | `38;5;208` | Orange | `on_retry_exhausted` transitions |
+| `retry_exhausted` | `38;5;202` | Deep orange | `on_retry_exhausted` transitions |
 | `rate_limit_exhausted` | `38;5;214` | Amber | `on_rate_limit_exhausted` transitions |
-| `next` | `2` | Dim | Default/unconditional transitions |
-| `default` | `2` | Dim | Unlabeled / catch-all transitions (`_`) |
+| `next` | `90` | Gray | Default/unconditional transitions |
+| `default` | `90` | Gray | Unlabeled / catch-all transitions (`_`) |
 
 **Example** — use cyan for success edges and magenta for error edges:
 

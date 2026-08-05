@@ -73,18 +73,25 @@ pip install -e "./scripts[dev]"
 | `little_loops.analytics` | Analytics subpackage — association-rule mining (lift/PMI) and per-evaluator Bernoulli variance for loop diagnostics. |
 | `little_loops.design_tokens` | Multi-layer token loader (primitives → semantic → typography → spacing → theme) with profile-aware resolution (ENH-1768). Renders `{token.reference}` aliases for prompts and CSS. |
 | `little_loops.extensions` | Reference extension implementations — `ReferenceInterceptorExtension` copy-paste starting point for custom interceptors / event handlers. |
+| `little_loops.env_file` | `.env` fallback loader — `parse_env_file(path)` and `load_env_fallback(project_root)` read `<root>/.env` as a fallback source; already-set process environment variables always win. |
+| `little_loops.generate_schemas` | Draft-07 JSON Schema generation for every event type — `SCHEMA_DEFINITIONS` table, `generate_schemas(output_dir)`, and `event_type_to_filename()` (dots become underscores). Backs `ll-generate-schemas` and the committed files under `docs/reference/schemas/`. |
 | `little_loops.issue_progress` | EPIC progress aggregation: child-issue status rollup (`IssueProgress`), oldest-open detection, and `epic-progress` CLI support. |
 | `little_loops.issues` | Issue utility subpackage — anchor generation and sweep utilities used by `ll-issues anchor-sweep`, plus `research_triage` (ENH-2971), the coverage/staleness predicate behind `ll-issues research-triage`, plus `fold_research_findings` (ENH-2993), the H3-under-H2 fold primitive behind `ll-issues fold-findings` — `find_subsections()` returns *every* matching H3 span inside a named H2 slice (the existing extraction helpers are H2-only and read-oriented), and `fold_research_findings()` collapses them to one block, relocation-only. Its `analyzer` axis is additionally overridden by a failing Program Design gate (BUG-3003) — see `docs/reference/CLI.md`'s `ll-issues research-triage` entry. |
 | `little_loops.observability` | DES variant registry and audit-tree walker for cross-checking every emit site against registered event shapes (ENH-2475, F5 adoption gate). |
 | `little_loops.output` | Output-parsing subpackage — stop-sequence / prefill JSON helpers (`extract_between_tags`, `parse_prefilled_json`) for bounding LLM output-token cost (FEAT-2470). |
+| `little_loops.package_data` | Declarative manifest of runtime-read package assets (templates, prompts, adapter configs) — `check_asset_accessible(parts)` and `list_missing_assets()`. Backs `ll-verify-package-data`. |
+| `little_loops.paths` | Dependency-free project-root resolution (ENH-2924, relocated from `little_loops.issues.program_design`) — `find_project_root(start)` and `resolve_ll_dir(start, create=False)`. |
 | `little_loops.pricing` | Model pricing constants (USD per million tokens) for token cost estimation across the model registry. `INTRO_PRICING` overrides `MODEL_PRICING` for a model while a time-bounded introductory rate is active (e.g. Sonnet 5's $2/$10 rate through 2026-08-31 inclusive, ENH-2835); `estimate_cost_usd()` checks `date.today()` against each entry's `expires` date and falls back to standard `MODEL_PRICING` once it lapses. |
 | `little_loops.pytest_history_plugin` | Pytest plugin (registered under `pytest11` entry point) that records test-run pass/fail counts, duration, and failing node IDs into `.ll/history.db` (ENH-2459). |
 | `little_loops.queue_store` | Persisted `ll-queue` entry store (`.ll/queue.db`; FEAT-2682) — schema `{id, action, enqueuedAt, priority, status, result, claimedAt, ownerPid}` with tiered `(priority, enqueuedAt)` ordering. |
 | `little_loops.recursive_finalize` | Decomposed-parent lifecycle and EPIC re-linking. Powers `ll-issues finalize-decomposition` (ENH-1977 Fix 4), invoked from `rn-decompose` and `autodev`'s decomposition states (ENH-2615). |
+| `little_loops.rn_synth_queue` | Readiness-gated concurrent queue for `rn-refine` bottom-up synthesis (ENH-2565) — `try_pop_ready()`, `mark_complete()`, `queue_is_empty()`, plus a `main(argv)` CLI shim; lock-file coordinated. |
 | `little_loops.session_store` | Unified per-project SQLite + FTS5 history store (`.ll/history.db`; FEAT-1112) — single source of truth for tool events, file modifications, issue transitions, loop runs, and user corrections. |
 | `little_loops.sft_formatter` | SFT (supervised fine-tuning) data format converters — ChatML and siblings — used by `ll-messages --sft-format`. |
 | `little_loops.skill_expander` | Pre-expand skill/command Markdown content for subprocess prompts (replaces ToolSearch → Skill deferred-tool dependency in `ll-auto`). |
 | `little_loops.stats` | Statistical utilities — Wilson 95% binomial confidence intervals for honest uncertainty reporting at small sample sizes. |
+| `little_loops.test_file_patterns` | Test-file classification shared across gates — `is_test_file(path, config=None)` and `filter_test_files(paths, config=None)`. |
+| `little_loops.test_tamper_guard` | Test-weakening detection core (ENH-2933) — `snapshot_test_paths()` / `snapshot_test_paths_at_ref()`, `compare_snapshots()`, `measure_test_strength()`, `is_weakening()`, `filter_weakening_findings()`, with `TamperFinding` / `TamperReport` / `TestStrength` / `ConfigTarget` dataclasses. |
 | `little_loops.transport` | EventBus transport abstraction (`Transport` Protocol + `send`/`close`) with built-in `JsonlTransport`, `UnixSocketTransport`, and `OTelTransport` sinks. |
 | `little_loops.worktree_utils` | Shared worktree setup/cleanup utilities used by `ll-parallel`, `ll-sprint`, and `ll-loop`. |
 | `little_loops.mcp_call` | Thin CLI wrapper for direct MCP tool invocation via JSON-RPC |
@@ -5803,6 +5810,9 @@ class InterpolationContext:
     loop_name: str = ""                    # FSM loop name
     started_at: str = ""                   # ISO timestamp
     elapsed_ms: int = 0                    # Milliseconds since start
+    messages: list[str] = []               # Captured host messages for this run
+    messages_summary: str = ""             # Condensed summary of `messages`
+    param: dict[str, Any] = {}             # Sub-loop / fragment parameters
 ```
 
 **Supported namespaces:**
@@ -5813,6 +5823,8 @@ class InterpolationContext:
 - `state` - Current state metadata (name, iteration)
 - `loop` - Loop metadata (name, started_at, elapsed_ms, elapsed)
 - `env` - Environment variables
+- `messages` - Shared append-only message log (`${messages}`, `${messages.last(N)}`, `${messages.summary}`)
+- `param` - Per-state parameter bindings for fragment references (resolved from `fragment_bindings`)
 
 **Methods:**
 
@@ -9063,12 +9075,12 @@ LLHookResult(exit_code=2, feedback="context budget exceeded; consider /compact")
 CLI entry point. Invoked as `python -m little_loops.hooks <intent>`.
 
 ```python
-def main_hooks(argv: list[str]) -> int: ...
+def main_hooks() -> int: ...
 ```
 
 **Behavior:**
 1. Reads stdin as JSON (skips when stdin is a TTY).
-2. Builds `LLHookEvent(host=os.environ.get("LL_HOOK_HOST", "claude-code"), intent=argv[1], payload=<parsed>, cwd=os.getcwd())`. Note: `timestamp` and `session_id` stay at dataclass defaults — the CLI does not populate them.
+2. Builds `LLHookEvent(host=os.environ.get("LL_HOOK_HOST", "claude-code"), intent=sys.argv[1], payload=<parsed>, cwd=os.getcwd(), session_id=payload.get("session_id"))`. Note: `timestamp` stays at its dataclass default — the CLI does not populate it.
 3. Looks up the handler via `_dispatch_table()` — extension-contributed intents merged with built-ins, with built-ins shadowing extensions on collision.
 4. Calls the handler; writes `result.stdout` to stdout if non-`None`, prints `result.feedback` to stderr if truthy, and returns `result.exit_code` (the `__main__` shim raises `SystemExit(...)`).
 
@@ -9165,15 +9177,17 @@ class HostRunner(Protocol):
     def build_streaming(self, *, prompt: str, working_dir: Path | None = None,
                         resume: bool = False, agent: str | None = None,
                         tools: list[str] | None = None,
-                        sandbox_mode: str | None = None) -> HostInvocation: ...
+                        model: str | None = None,
+                        automation_profile: str | None = None,
+                        workspace_root: Path | None = None) -> HostInvocation: ...
     def build_blocking_json(self, *, prompt: str, model: str | None = None,
-                            json_schema: dict | None = None,
-                            sandbox_mode: str | None = None) -> HostInvocation: ...
+                            json_schema: dict | None = None) -> HostInvocation: ...
     def build_version_check(self) -> HostInvocation: ...
-    def build_detached(self, *, prompt: str,
-                       sandbox_mode: str | None = None) -> HostInvocation: ...
+    def build_detached(self, *, prompt: str) -> HostInvocation: ...
     def describe_capabilities(self) -> CapabilityReport: ...
 ```
+
+`sandbox_mode` is **not** part of the Protocol — it is a `CodexRunner`-only extension parameter on that class's `build_streaming` / `build_blocking_json` / `build_detached`. Code written against `HostRunner` must not pass it. `CodexRunner` likewise accepts `workspace_root` for signature compatibility but warns and ignores it.
 
 **Methods:**
 - `detect()` — return `True` if this host is available in the current environment (typically `shutil.which("<binary>") is not None`).
@@ -9253,7 +9267,7 @@ Used by `ll-doctor` (and `ll-doctor --json`) to generate human-readable and JSON
 Apply the `orchestration.host_cli` config key (or `LL_HOST_CLI` env var) to the runner selection before the binary probe runs. Typically called once at startup by orchestration entry points.
 
 ```python
-def apply_host_cli_from_config(config: dict) -> None: ...
+def apply_host_cli_from_config(config: object) -> None: ...
 ```
 
 ### resolve_host

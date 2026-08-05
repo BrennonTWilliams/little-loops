@@ -5,7 +5,10 @@ description: |
   Each iteration proposes an edit to a declared target file set, runs a benchmark
   via lib/benchmark.yaml, accepts the change if score rises (or meets target),
   and reverts otherwise. Commits accepted mutations to the current branch.
-  Trajectory persists to .ll/runs/harness-optimize/<run-id>/states/<state>/trajectory.jsonl.
+  Trajectory persists per mode: whole-file mode writes to
+  .ll/runs/harness-optimize-<unix-ts>/states/whole-file/trajectory.jsonl (the path
+  init_run mints and captures as traj_path); state mode writes to
+  ${context.run_dir}/states/<state>/trajectory.jsonl.
 initial: init_run
 max_steps: 30
 timeout: 7200

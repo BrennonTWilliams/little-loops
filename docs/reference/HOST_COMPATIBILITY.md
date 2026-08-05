@@ -136,7 +136,7 @@ into `LLHookEvent` payloads.
     **`disable-model-invocation` flag scope:** `ll-adapt --host codex`
     honours `disable-model-invocation: true` (see
     `scripts/little_loops/adapters/core.py:process_skills`/`process_commands`);
-    the 50 SKILL.md files carrying that flag are skipped and NOT exposed in
+    the 51 SKILL.md files carrying that flag are skipped and NOT exposed in
     Codex. The flag governs two other tools only:
     `ll-generate-skill-descriptions` (skips for token-budget compliance)
     and Claude Code's auto-invocation gate. See ENH-1497.

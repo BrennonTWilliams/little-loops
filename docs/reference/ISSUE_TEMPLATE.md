@@ -31,6 +31,7 @@ The little-loops issue template has been optimized to maximize value for both AI
 | **Implementation Steps** | | HIGH | High-level outline (NEW v2.0) |
 | **Impact** | ✓ | HIGH | Priority/Effort/Risk with justifications |
 | **Related Key Documentation** | | LOW | Links to docs |
+| **Session Log** | machine-written | LOW | Append-only provenance trail — one `` - `/ll:<command>` - <ISO timestamp> - `<session-id>.jsonl` `` line per command run against the issue. Created on first append by `ll-issues append-log` (inserted before the `---` / `## Status` footer) and never hand-edited; `ll-issues show` renders a `History` row summarizing it |
 | **Labels** | frontmatter | MEDIUM | Categorization — `labels:` field in frontmatter (post-ENH-1392); not a required body heading. The issue assembler no longer emits a `## Labels` body section when creating new issues (ENH-2399). |
 | **Status** | ✓ | HIGH | Status footer |
 
@@ -835,7 +836,7 @@ Authorization: Bearer <jwt-token>
 ### Full Template (v2.0)
 Includes all non-deprecated sections. Use for important issues.
 
-**Sections**: Summary, Current Behavior, Expected Behavior, Motivation, Proposed Solution, Implementation Steps, Impact, Related Key Documentation, Status + type-specific sections
+**Sections**: Summary, Current Behavior, Expected Behavior, Motivation, Proposed Solution, Integration Map, Implementation Steps, Impact, Related Key Documentation, Status + type-specific sections
 
 ### Minimal Template
 Core sections only. Use for quick captures that will be refined later.
@@ -917,7 +918,7 @@ Issue files may include a YAML frontmatter block at the top of the file. The fol
 | `spike_needed` | bool | absent | Set to `true` by `ll-issues set-flags` (`FLAG_RULES`, ENH-2946) when Outcome Risk Factors describe an unproven **internal** mechanism (e.g., "no precedent", "no existing test exercises", "novel mechanism") AND the score condition holds (`score_test_coverage` <= 10 or Criterion A Depth Moderate/Deep); suppressed when the risk names an external API surface (routes to `/ll:explore-api` instead); never re-flagged once `spike_attempted`/`spike_completed` is set; routes autodev to the code-spike remedy (FEAT-2567) rather than decide/wire/decompose |
 | `spike_attempted` | bool | absent | Set to `true` by `/ll:spike --auto` (FEAT-2567) when a code spike is run for the issue, whether or not it proved the mechanism. Read by autodev's `check_spike_needed` gate (ENH-2640) as the one-shot guard — an issue with `spike_attempted: true` never re-enters `run_spike`, so a failed or inconclusive spike does not thrash the triage lattice. |
 | `spike_completed` | bool | absent | Set to `true` by `/ll:spike --auto` (FEAT-2567) when the spike proved the mechanism (as opposed to merely attempting it). Companion to `spike_attempted`; together they suppress re-flagging of `spike_needed` (ENH-2640). |
-| `status` | string | `open` | Issue lifecycle status. Canonical values: `open`, `in_progress`, `blocked`, `deferred`, `done`, `cancelled`. Synonyms are coerced on read (`complete`/`completed`/`finished`/`closed` → `done`; `wip`/`in-progress`/`in progress` → `in_progress`) — write canonical values to avoid ambiguity. |
+| `status` | string | `open` | Issue lifecycle status. Canonical values: `open`, `in_progress`, `blocked`, `deferred`, `done`, `cancelled`. Synonyms are coerced on read (`complete`/`completed`/`finished`/`closed` → `done`; `wip`/`in-progress`/`in progress` → `in_progress`; `pending` → `open`) — write canonical values to avoid ambiguity. |
 | `parent` | string | absent | Bare issue ID of the parent issue that was decomposed to create this child (e.g., `ENH-179`). Written automatically by `/ll:issue-size-review` (Phase 4 and Phase 6) when generating child issues. Machine-readable; used alongside the `## Parent Issue` body section for parent→child tracing. |
 | `blocked_by` | list of strings | absent | Hard ordering prerequisites — issue is wave-gated until all listed blockers reach `done` or `cancelled`. Frontmatter is the canonical source and takes precedence over the `## Blocked By` body section when both are present. |
 | `blocks` | list of strings | absent | Issue IDs that this issue blocks (inverse of `blocked_by`). Set in frontmatter to declare blocking relationships explicitly; takes precedence over the `## Blocks` body section when both are present. |

@@ -56,7 +56,7 @@ See [`.ll/program.md` convention](program-md.md) for the steering file format an
 ### State Graph
 
 ```
-init_run  (shell: create ${context.run_dir}/states/whole-file/ dir, capture traj_path)
+init_run  (shell: create .ll/runs/harness-optimize-<unix-ts>/states/whole-file/ dir, capture traj_path)
   → load_directive  (reads .ll/program.md; builds state queue when targets is a loop YAML)
       on_yes (state-mode: queue non-empty) → check_queue
         on_yes → dequeue_state  (pops STATE_NAME + EXAMPLES_FILE from queue)
@@ -82,14 +82,25 @@ init_run  (shell: create ${context.run_dir}/states/whole-file/ dir, capture traj
 
 ### Trajectory
 
-Each iteration appends one JSON line to `.ll/runs/harness-optimize/<run-id>/states/<state>/trajectory.jsonl`:
+Each iteration appends one JSON line to a trajectory file:
 
 ```json
 {"iter": 3, "score": 0.82, "accepted": true, "commit_sha": "abc1234"}
 {"iter": 4, "score": 0.79, "accepted": false, "commit_sha": ""}
 ```
 
-In whole-file mode `<state>` is `whole-file`. In state mode `<state>` is the name of the state being optimized (e.g. `propose`, `apply`). The `<timestamp>` is the runner-injected run timestamp embedded in `${context.run_dir}`.
+The two modes write to **different roots** — `write_trajectory_accepted` /
+`write_trajectory_rejected` branch on whether a state name is queued:
+
+| Mode | Trajectory path |
+|------|-----------------|
+| whole-file (no state queue) | `.ll/runs/harness-optimize-<unix-ts>/states/whole-file/trajectory.jsonl` — minted by `init_run` and carried as `${captured.traj_path.output}` |
+| state (queue non-empty) | `${context.run_dir}/states/<state>/trajectory.jsonl`, i.e. `.loops/runs/<instance-id>/states/<state>/trajectory.jsonl` — `run_dir` is injected by the runner (`cli/loop/run.py`), not by the loop |
+
+In state mode `<state>` is the name of the state being optimized (e.g. `propose`,
+`apply`). `load_directive`'s trajectory-resume scan searches under
+`${context.run_dir}` only, so it recovers state-mode trajectories; whole-file
+trajectories are read back through `traj_path` within the same run.
 
 ### Resume Behavior
 
@@ -285,7 +296,7 @@ init  (shell: create run_dir artifacts; write pending-files.txt queue from conte
   → load_context  (shell: read CLAUDE.md + open issues into project-context.md)
     → read_file  (shell: pop next file from queue; pandoc PDF→MD if needed)
         on_yes (file popped) → extract_and_score
-        on_no  (queue empty) → report
+        on_no/on_error (queue empty) → finalize_report
       → extract_and_score  (prompt: read file via Read tool; emit RELEVANCE_SCORES: JSON)
         → validate_scores  (shell: parse JSON, validate 0–1 range; output count)
           on_yes (ge 0) → filter_items
@@ -298,9 +309,16 @@ init  (shell: create run_dir artifacts; write pending-files.txt queue from conte
                 → next_file
     → next_file  (shell: check pending-files.txt; exit 0=more, exit 1=empty)
         on_yes → read_file
-        on_no  → report
-  report  (shell: terminal; emit summary table)
+        on_no/on_error → finalize_report
+  finalize_report  (shell: read the total-*.txt counters + captured-issues.txt; emit summary table)
+      next     → report   (terminal; no action)
+      on_error → finalize_failed  (shell: emit fatal-init error, exit 1) → failed  (terminal)
 ```
+
+`read_file` also routes `on_no` (queue empty) straight to `finalize_report`. The
+report is produced by `finalize_report`; `report` is a bare terminal state that
+does no work — the pair is the standard "do the work, then land on a clean
+terminal" split, mirrored by `finalize_failed` → `failed` on the error path.
 
 ### Output Artifacts
 
@@ -310,7 +328,8 @@ All artifacts are written to `${context.run_dir}` (injected by the runner):
 |------|-------------|
 | `pending-files.txt` | Remaining file queue; drained as files are processed |
 | `project-context.md` | Snapshot of CLAUDE.md head + open issues table |
-| `current-content-file.txt` | Path to the content file being processed (set each iteration) |
+| `current-file.txt` | Path to the *source* file popped from the queue this iteration (pre-conversion) |
+| `current-content-file.txt` | Path to the content file actually read (set each iteration) — same as `current-file.txt` except when a PDF was converted, where it points at the generated `.md` |
 | `scored-items.json` | Validated relevance-scored items for the current file |
 | `filtered-items.json` | Items surviving threshold and cap; input to synthesis |
 | `captured-issues.txt` | Newline-separated list of confirmed captured issue IDs |
@@ -935,13 +954,32 @@ Config overrides: `orchestration.composer.max_plan_nodes`, `orchestration.compos
 
 ```
 discover_loops → decompose_goal → [approve_plan] → execute_plan
-                                                      on_success → (more steps?) execute_plan | summarize → done
+                                                      on_success → (more steps?) execute_plan | summarize → present_result (terminal)
                                                       on_failure → reassess
                                                                     CONTINUE    → execute_plan (next step)
-                                                                    REPLAN_TAIL → replan_tail → execute_plan
-                                                                    ABORT       → failed
-                                                  (max_replans exhausted) → failed
+                                                                    REPLAN_TAIL → route_reassess_replan → check_replan_budget
+                                                                    ABORT       → finalize_abort_composer
+                                        (any abort path) → finalize_abort_composer → abort_composer (terminal, failure: true)
 ```
+
+The `REPLAN_TAIL` tail is four real states, not one:
+
+```
+route_reassess_replan   (only an actual REPLAN_TAIL token consults the budget)
+  on_yes → check_replan_budget      (reads replan_count.txt BEFORE increment, so
+                                     max_replans=N permits exactly N replans)
+    on_yes → increment_replan_count (writes the bumped count back)
+      next → apply_replan           (merges succeeded steps + the new tail)
+        next → validate_replan      (fragment: validate_plan — re-runs the initial
+                                     plan validation over the merged plan)
+          on_yes → execute_plan
+```
+
+Every `on_no` / `on_error` in that chain routes to `finalize_abort_composer`. The
+abort terminal is `abort_composer` (declared `failure: true`), reached only via
+`finalize_abort_composer`; there is no bare `failed` state on this path. `CONTINUE`
+and `ABORT` decisions never reach `check_replan_budget`, so they do not consume
+replan budget.
 
 ---
 
@@ -976,6 +1014,8 @@ ll-loop run goal-cluster '[{"goal_id":"g01","goal_text":"Fix auth bug"}]'
 | `max_batch_size` | `"5"` | Maximum goals per batch. |
 | `enable_dedup` | `"true"` | Merge or skip overlapping goals before batching. |
 | `propagate_context` | `"true"` | Extract cross-batch hints for injection into the next batch. |
+| `max_replans` | `"1"` | Maximum reassess replan attempts per cluster run; exceeding it routes to `finalize_abort_cluster`. |
+| `schedule_mode` | `"fifo"` | Scheduling mode passed through to dispatched batches. `"value_ranked"` hands value-ranked scheduling to `rn-implement`. |
 
 Config overrides: `orchestration.cluster.*` in `.ll/ll-config.json`.
 

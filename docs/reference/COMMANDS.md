@@ -13,10 +13,10 @@ Commands and skills support optional `--flag` modifiers passed after arguments. 
 | `--deep` | Increase thoroughness, accept longer execution | `scan-codebase`, `audit-architecture`, `handoff`, `ready-issue` |
 | `--focus [area]` | Narrow scope to a specific area | `scan-codebase` |
 | `--dry-run` | Show what would happen without making changes | `manage-issue`, `align-issues`, `refine-issue`, `format-issue`, `manage-release`, `audit-issue-conflicts` |
-| `--auto` | Non-interactive mode (no prompts) | `commit`, `refine-issue`, `prioritize-issues`, `format-issue`, `confidence-check`, `verify-issues`, `map-dependencies`, `issue-size-review`, `audit-issue-conflicts`, `link-epics` |
+| `--auto` | Non-interactive mode (no prompts). Also activated independently by the `LL_NON_INTERACTIVE` or `DANGEROUSLY_SKIP_PERMISSIONS` env var, or by `--dangerously-skip-permissions` | `commit`, `refine-issue`, `prioritize-issues`, `format-issue`, `confidence-check`, `spike`, `verify-issues`, `map-dependencies`, `issue-size-review`, `audit-issue-conflicts`, `link-epics`, `audit-loop-run`, `debug-loop-run` |
 | `--gap-analysis` | Additive-only enrichment: fill gaps, never remove content; exempt from `max_refine_count` | `refine-issue` |
 | `--full-rewrite` | Full-rewrite mode (legacy): overwrites sections with research findings | `refine-issue` |
-| `--check` | Check-only mode for FSM loop evaluators: run scoring/validation without writes, exit 1 if any fail | `ready-issue`, `verify-issues`, `confidence-check`, `issue-size-review`, `go-no-go` |
+| `--check` | Check-only mode for FSM loop evaluators: run scoring/validation without writes, exit 1 if any fail | `ready-issue`, `verify-issues`, `confidence-check`, `issue-size-review`, `go-no-go`, `spike` |
 | `--verbose` | Include detailed output | `align-issues` |
 | `--all` | Process all items instead of a single item | `align-issues`, `format-issue`, `confidence-check` |
 | `--sprint <name>` | Scope to issues in a named sprint definition | `confidence-check`, `issue-size-review` |
@@ -52,7 +52,7 @@ List all available little-loops commands with descriptions.
 Interactively configure specific areas in ll-config.json.
 
 **Arguments:**
-- `area` (optional): `project`, `issues`, `commands`, `parallel`, `automation`, `documents`, `continuation`, `context`, `prompt`, `scan`, `sync`, `allowed-tools`, `hooks`, `design-tokens`, `learning-tests`, `analytics`, `decisions`, `history`
+- `area` (optional): `project`, `issues`, `commands`, `parallel`, `automation`, `documents`, `continuation`, `context`, `prompt`, `scan`, `sync`, `allowed-tools`, `hooks`, `design-tokens`, `learning-tests`, `analytics`, `decisions`, `history`, `loops.run_defaults`
 
 **Flags:** `--list`, `--show`, `--reset`
 
@@ -346,6 +346,26 @@ Pre-implementation confidence check that validates readiness and estimates outco
 - **`decision_needed`**: signal phrases ("open decision", "unresolved decision", "resolve before implementing", "decision point", "either/or", "either...or", "resolve before starting", "open question", "Option A/B", "Option A or"). This ensures the autodev loop's decision gate fires automatically for issues where `confidence-check` identified an unresolved blocking decision.
 - **`missing_artifacts`**: signal phrases indicating absent files or unwired components ("not yet created", "does not exist", "needs wiring", "missing artifact", "absent", "unwired component"). Suppressed when the absent file is listed under the issue's own `### Files to Create` section (a co-deliverable, not a genuine pre-condition gap) — `implementation_order_risk` fires instead when that suppression applies.
 - **`implementation_order_risk`**: signal phrases indicating implementation ordering advice rather than a true wiring gap ("co-deliverable", "implement tests first", "write tests before", "test-first", "tests are co-deliverables", "implement first so"), or fired because `missing_artifacts`' co-deliverable suppression applied this run. Captures ordering concerns that should NOT trigger the `run_wire` repair path in autodev — they belong in the Implementation Steps body text.
+
+### `/ll:spike`
+Retire concentrated technical risk on an issue by planning, implementing, and verifying a **code spike** — a standalone library plus test class that proves a novel *internal* mechanism in isolation — before the real integration point is touched.
+
+**Arguments:**
+- `issue_id` (required): Issue whose risk the spike must retire
+
+**Flags:** `--auto` (non-interactive), `--check` (check-only FSM evaluator mode, implies `--auto`), `--plan-only` (stop after writing the plan doc), `--plan <file>` (implement a caller-supplied plan, skipping risk extraction), `--force` (override the one-spike-per-issue budget)
+
+**When to use**: after `/ll:confidence-check` sets `spike_needed: true` (its Phase 4.10 failure mode) because a mechanism has **zero precedent** in the codebase and no test exercises the risky core. Not for unproven *external* API assumptions (use `/ll:explore-api` + the Learning Test Registry), unresolved Option A/B ambiguity (`/ll:decide-issue`), absent files or unwired integration (`/ll:wire-issue`), or an over-large issue (`/ll:issue-size-review`). If the extracted risk factor names a third-party package or external API surface, the skill refuses and redirects to `/ll:explore-api`.
+
+**Flow**: locate issue (`ll-issues path`) → extract risks from `## Confidence Check Notes` → `### Outcome Risk Factors` → write a plan doc to `${context.run_dir}` (inside an FSM loop) or `.ll/spikes/` (interactive) in the shape of `skills/spike/plan-template.md` → implement under `scripts/tests/spike/<slug>/` → verify with the plan's `pytest` commands → write back → recommend the next step. Spike code lives **only** under `scripts/tests/spike/`; production files under `scripts/little_loops/` are read-only in this skill (enforced by `allowed-tools`).
+
+**Budget discipline**: one spike per issue. If the frontmatter already carries `spike_attempted: true`, the skill refuses and exits 0 unless `--force` is passed.
+
+**Write-back**: on success, appends `## Spike Results` (retired-risk table, spike location, verification counts, promotion note) and sets both `spike_completed: true` and `spike_attempted: true`. On failure, sets only `spike_attempted: true` and appends `## Spike Findings` documenting what was disproven and which approach it rules out. Either way it appends a session log via `ll-issues append-log` and `git add`s the issue file. Skipped entirely in `--check` mode.
+
+**`--check` mode**: runs the spike's AC suite with no writes and exits 0 (pass) / 1 (fail), matching FSM `evaluate: type: exit_code` routing. The `spike-gate.yaml` wrapper loop (ENH-2641) consumes this contract to gate an implementation loop on a proven internal mechanism.
+
+**Related frontmatter:** `spike_needed`, `spike_attempted`, `spike_completed` — see [ISSUE_TEMPLATE.md](ISSUE_TEMPLATE.md).
 
 ### `/ll:issue-workflow`
 Quick reference for the little-loops issue management workflow. Displays the issue lifecycle diagram and command order.
@@ -785,7 +805,7 @@ Analyze loop execution history to synthesize actionable issues from fault signal
 - `loop_name` (optional): Loop name to analyze. If omitted, auto-selects the most recently updated interrupted/failed loop.
 - `tail` (optional): Limit history events analyzed to the N most recent (default 200)
 - `--skip-issue-creation` (flag): Skip issue creation entirely and exit cleanly after presenting signals
-- `--auto` (flag): Non-interactive mode; suppress all `AskUserQuestion` calls and default to no for issue creation (implies `--skip-issue-creation`). Also activates when `--dangerously-skip-permissions` is in effect.
+- `--auto` (flag): Non-interactive mode; suppress all `AskUserQuestion` calls and default to no for issue creation (implies `--skip-issue-creation`). Also activates when `--dangerously-skip-permissions` is in effect, or when either the `LL_NON_INTERACTIVE` or `DANGEROUSLY_SKIP_PERMISSIONS` environment variable is set — each is an independent trigger, and `host_runner.py` injects both into every host CLI invocation, so auto mode is always on inside `ll-auto` / `ll-parallel` / `ll-sprint` / FSM loop runs.
 
 **Signal detection rules:**
 
@@ -868,7 +888,7 @@ Audit whether a loop's execution actually achieved its stated goal — checking 
 - `tail` (optional): Limit history events analyzed to the N most recent (default: all events; auto-scaled via `wc -l` on the run archive)
 - `--no-rubric-audit` (flag): Skip the LLM rubric-vs-description pass (cost gate)
 - `--skip-issue-creation` (flag): Skip issue creation entirely and exit cleanly after presenting proposals
-- `--auto` (flag): Non-interactive mode; suppress all `AskUserQuestion` calls and default to no for issue creation (implies `--skip-issue-creation`). Also activates when `--dangerously-skip-permissions` is in effect.
+- `--auto` (flag): Non-interactive mode; suppress all `AskUserQuestion` calls and default to no for issue creation (implies `--skip-issue-creation`). Also activates when `--dangerously-skip-permissions` is in effect, or when either the `LL_NON_INTERACTIVE` or `DANGEROUSLY_SKIP_PERMISSIONS` environment variable is set — each is an independent trigger, and `host_runner.py` injects both into every host CLI invocation, so auto mode is always on inside `ll-auto` / `ll-parallel` / `ll-sprint` / FSM loop runs.
 
 **Sub-loop visibility:** Step 2 uses `--resolved --json`, making sub-loop states visible under `_subloop` keys in the FSM output. The Step 8 laundering check (`on_yes == on_no` on any sub-loop state) now operates on the fully-resolved state map.
 
@@ -1032,6 +1052,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `manage-issue`^ | Full issue lifecycle management |
 | `iterate-plan` | Update implementation plans |
 | `confidence-check`^ | Pre-implementation confidence check for readiness |
+| `spike`^ | Prove an unproven internal mechanism with an isolated code spike before implementing |
 | `refine-issue` | Refine issues with codebase-driven research |
 | `decide-issue`^ | Resolve competing implementation options via codebase evidence scoring |
 | `wire-issue`^ | Complete integration map — trace callers, config, docs, tests |

@@ -144,12 +144,11 @@ Returns the full `CapabilityReport` for the configured host. Does not invoke Cla
     {"name": "tool_allowlist", "status": "full", "note": ""},
     {"name": "json_schema", "status": "full", "note": "..."},
     {"name": "structured_output", "status": "full", "note": "..."}
-  ],
-  "hooks": [
-    {"name": "session_start", "status": "installed", "note": ""}
   ]
 }
 ```
+
+The payload has exactly four keys — `host`, `binary`, `version`, `capabilities`. A never-populated `hooks` key was removed by BUG-2760.
 
 #### `list`
 
@@ -255,7 +254,7 @@ Beyond the host-capability table, `ll-doctor` always runs 5 default install-surf
 
 **Flags:**
 - `-j`, `--json` — emit the report as JSON instead of the human-readable table. The JSON payload is a superset of the `CapabilityReport` dataclass: alongside `host`/`binary`/`version`/`capabilities` it includes `analytics_capture` (`{skills, cli_commands, corrections, file_events, correction_patterns}`), `issues` (`{auto_commit, auto_commit_prefix}`), and the install-surface keys `entry_points` (list of `{name, status, note}`), `skills_commands` (`{status, note, total}`), `decisions_store` (`{status, note}`), `history_db` (`{status, note}`), and `loop_validity` (`{status, note, total, invalid}`) — the same config/check state the text output prints under their respective sections (ENH-2762, FEAT-2793).
-- `--full` — additionally run the full `ll-verify-*` / `ll-check-links` checker family (FEAT-2795) under a "Full Verification (--full)" section: `docs`, `skill_budget`, `skills`, `triggers`, `decisions`, `package_data`, `kinds`, `design_tokens`, `des_audit`, `check_links` (does not wrap `ll-verify-cli-allowlist`). Adds a `full` key (dict keyed by verifier name → `{status, note, findings}`) to the `--json` payload when combined with `-j`/`--json`. `check_links` reports `severity: "error"` on genuinely broken links and `severity: "informational"` when the only failures are unreachable (network timeout/DNS) links (ENH-2836), so a flaky or offline network doesn't fail this check. `docs` and `check_links` additionally populate `findings` (a list of `{label, action_severity, route_owner}`, one entry per mismatched doc category or broken/unreachable link) surfacing each finding's `auto`/`mention`/`route` action-severity (ENH-2886/ENH-2887) — a distinct axis from `severity`, which only governs `ll-doctor`'s exit code. Every other `--full` verifier's `findings` is an empty list. The text-output rendering prints a `- <label>: <action_severity>` sub-line (with `-> <route_owner>` when routed) under any verifier with findings, without changing the one-line-per-verifier summary shape for verifiers that don't.
+- `--full` — additionally run the full `ll-verify-*` / `ll-check-links` checker family (FEAT-2795) under a "Full Verification (--full)" section: `docs`, `skill_budget`, `skills`, `skill_prose`, `triggers`, `decisions`, `package_data`, `kinds`, `host_map`, `design_tokens`, `des_audit`, `check_links` (does not wrap `ll-verify-cli-allowlist`). Adds a `full` key (dict keyed by verifier name → `{status, note, findings}`) to the `--json` payload when combined with `-j`/`--json`. `check_links` reports `severity: "error"` on genuinely broken links and `severity: "informational"` when the only failures are unreachable (network timeout/DNS) links (ENH-2836), so a flaky or offline network doesn't fail this check. `docs` and `check_links` additionally populate `findings` (a list of `{label, action_severity, route_owner}`, one entry per mismatched doc category or broken/unreachable link) surfacing each finding's `auto`/`mention`/`route` action-severity (ENH-2886/ENH-2887) — a distinct axis from `severity`, which only governs `ll-doctor`'s exit code. Every other `--full` verifier's `findings` is an empty list. The text-output rendering prints a `- <label>: <action_severity>` sub-line (with `-> <route_owner>` when routed) under any verifier with findings, without changing the one-line-per-verifier summary shape for verifiers that don't.
 
 **Exit codes:** `0` = all error-tier checks passed, `1` = an error-tier check failed. `ll-doctor` folds the host-capability report and any registered install-surface checks (FEAT-2793's `CheckResult` registry) — including the `--full` verifier family when requested — into a single severity split: `unsupported` capabilities/checks are error-tier (fail the exit code, as before); informational checks — e.g. an absent-but-optional subsystem — never affect it regardless of status.
 
@@ -1040,6 +1039,28 @@ ll-loop next-loop --exclude autodev        # Skip autodev (e.g. from its own on-
 ll-loop next-loop --count 3 --json        # Top 3 as JSON for downstream tooling
 ```
 
+#### `ll-loop audit`
+
+Compute deterministic counters for a single archived loop run (ENH-2949) — the non-LLM evidence base that `/ll:audit-loop-run` reasons over. Distinct from [`ll-loop audit-meta`](#ll-loop-audit-meta), which aggregates LLM-vs-external-evaluator agreement across many runs of one loop.
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `run` (positional) | | Run directory name under `.loops/.history/`, e.g. `<run_id>-<loop_name>`. Optional when `--latest` is given |
+| `--latest LOOP` | | Resolve the most recent archived run for LOOP instead of naming a run directory |
+| `--max-steps N` | | Override the loop's `max_steps` when computing budget utilization (default: read from the run's `state.json` → loop spec) |
+| `--json` | `-j` | Output counters as a JSON object |
+
+**JSON keys:** `run_id`, `loop`, `events_total`, `events_by_type`, `per_state` (each value `{entries, actions_complete, duration_s}`), `aux_mutation_count`, `tool_call_count`, `diff_stall_present`, `steps_consumed`, `max_steps`, `budget_utilization`, `terminated_by`, `failure_terminal`, `verdict_inputs`.
+
+**Exit codes:** 0 = counters computed; 1 = run directory could not be resolved.
+
+**Examples:**
+```bash
+ll-loop audit 1730000000-autodev          # Human-readable counter summary
+ll-loop audit --latest autodev --json     # Most recent autodev run, as JSON
+ll-loop audit --latest autodev --max-steps 40
+```
+
 #### `ll-loop audit-meta`
 
 Read `meta-eval.jsonl` from archived runs and print a summary table of LLM vs. external-evaluator agreement statistics. Useful for diagnosing meta-loops where the LLM judge may be too lenient or agreeing on no-op iterations.
@@ -1241,6 +1262,7 @@ List issues with optional filters.
 | `--asc` | Sort ascending |
 | `--desc` | Sort descending |
 | `--limit` / `-n` | Cap output at N issues (must be ≥ 1) |
+| `--no-truncate` | Show full untruncated titles (default: truncate to terminal width) |
 | `--config` | Path to project root |
 
 #### `ll-issues count` / `ll-issues c`
@@ -3816,6 +3838,38 @@ ll-verify-des-audit                          # Auto-discover source dir from cwd
 ll-verify-des-audit --json                   # Machine-readable JSON output
 ll-verify-des-audit --source-dir DIR         # Walk a specific source directory
 ll-verify-des-audit -C /path/to/root         # Discover under a specific project root
+```
+
+---
+
+### ll-verify-cli-allowlist
+
+Assert that `skills/configure/areas.md` and `writers._LL_PERMISSIONS` cover every `ll-` console entry point declared in `pyproject.toml` (BUG-2764). A new CLI added without a matching allowlist preset entry means consuming projects hit a permission prompt for a tool little-loops itself installs; this gate catches that drift at commit time.
+
+**Flags:** none (beyond `-h`/`--help`).
+
+**Exit codes:** `0` = every entry point is covered by both presets; `1` = one or more missing, printed as `ERROR: missing from <preset>: <tools>` on stderr. If `skills/configure/areas.md` is absent (running from an installed package rather than the plugin repo), that preset is skipped with a `SKIP:` notice on stderr and only `writers._LL_PERMISSIONS` is checked.
+
+**Examples:**
+```bash
+ll-verify-cli-allowlist   # OK: all ll- CLI presets cover every pyproject.toml entry point.
+```
+
+Note: `ll-doctor --full` does **not** wrap this verifier — run it directly (or via the pytest suite).
+
+---
+
+### ll-verify-host-map
+
+Assert that the adapter host-capability map agrees with [HOST_COMPATIBILITY.md](HOST_COMPATIBILITY.md), `host_runner.HostCapabilities`, and the emitters' actual behavior (ENH-2873). Includes the ENH-2874 cross-check that a host declaring `subagents='none'` alongside `agents=True` has a working degraded-mode `agent_output_format`.
+
+**Flags:** none (beyond `-h`/`--help`).
+
+**Exit codes:** `0` = the map agrees with all cross-checks; `1` = drift, with one `ERROR: <detail>` line per disagreement on stderr. If HOST_COMPATIBILITY.md is absent, the doc cross-check is skipped with a `SKIP:` notice and only runtime/emitter agreement is verified.
+
+**Examples:**
+```bash
+ll-verify-host-map   # OK: adapter host-capability map agrees with all cross-checks.
 ```
 
 ---

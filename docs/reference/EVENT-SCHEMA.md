@@ -78,7 +78,7 @@ Round-trip note: `to_dict()` emits the timestamp under the key `ts`; `from_dict(
 #### Per-intent payload notes
 
 - **`pre_compact`** — reads exactly one payload key, `transcript_path` (falls back to `""`). Writes `.ll/ll-precompact-state.json`. Returns `LLHookResult(exit_code=2, feedback="[ll] Task state preserved before context compaction. Check .ll/ll-precompact-state.json if resuming work.")` to surface a state-preservation notice on context compaction.
-- **`pre_compact_handoff`** — reads `.ll/ll-precompact-state.json` as an idempotency guard (exits `0` on skip if no state snapshot present); writes `.ll/ll-continue-prompt.md` atomically. Returns `exit_code=2` on success with `feedback="[ll] Session handoff snapshot written."`, `exit_code=0` on idempotency skip (prompt already fresher than `compacted_at`) or any error. Invoked via `hooks/adapters/claude-code/precompact-handoff.sh`.
+- **`pre_compact_handoff`** — reads `.ll/ll-precompact-state.json` as an idempotency guard, proceeding to write when no state snapshot is present; writes `.ll/ll-continue-prompt.md` atomically. Returns `exit_code=2` on success with `feedback="[ll] Session handoff snapshot written."`, `exit_code=0` on idempotency skip (prompt already fresher than `compacted_at`) or any error. Invoked via `hooks/adapters/claude-code/precompact-handoff.sh`.
 - **`session_start`** — reads `transcript_path` from the payload when available (Codex/OpenCode hosts; ENH-1945), falling back to `Path.cwd()`-based directory probing. Returns `LLHookResult(exit_code=0, feedback=<stderr-lines>, stdout=<merged-config-json-or-None>)`.
 - **`session_end`** — reads no payload keys; operates via `payload.cwd` or `event.cwd`, falling back to `Path.cwd()`. Handler reads done issue IDs via `find_issues(status_filter={"done"})` and the `hooks.stale_ref_fix` key from the raw config; outputs sweep findings in `result.feedback`. Always exits `0`.
 
@@ -631,6 +631,7 @@ Emitted once when the executor finishes, regardless of how it terminated.
 |-------|------|-------------|
 | `final_state` | `str` | Name of the state at termination. Usually the last state entered; when `terminated_by="timeout"` this may be a state that was routed to but never entered. **Exception (BUG-1226):** when that pending state is a shell action, the executor flushes it — emitting `state_enter` with `flushed: true` and running its action — before honoring the timeout, so `state_enter` for `final_state` is always emitted before `loop_complete`. Slash commands and sub-loops are not flushed. |
 | `iterations` | `int` | Total number of iterations completed |
+| `failure_terminal` | `bool` | Emitted unconditionally (ENH-2814). `true` only when `terminated_by="terminal"` **and** the reached terminal state declares `failure: true` — the single source of truth for "did this run fail?", keyed on the flag rather than the state's name. Absent in run archives predating ENH-2814. |
 | `terminated_by` | `str` | Reason for termination: `"signal"` (OS signal), `"error"` (no valid transition or unhandled error), `"timeout"` (wall-clock timeout elapsed), `"terminal"` (a terminal state was reached), `"stall_detected"` (FEAT-1637 circuit fired with `on_repeated_failure: "abort"`), `"cycle_detected"` (same edge traversed more than `max_edge_revisits` times), `"max_steps"` (step cap reached), `"max_iterations_reached"` (full-pass cap reached), `"user_stopped"`, `"system_signal"`, `"interrupted"`, `"host_pressure_abort"` (ENH-2452 memory pressure), `"host_budget_exceeded"` (ENH-2453 subprocess RSS budget), or `"handoff"` (ContextLimitHandoff handler) |
 | `error` | `str` | only when `terminated_by="error"` | Error message explaining why the loop crashed. Read this field directly from the JSONL stream to diagnose crash reasons without filesystem forensics. |
 
@@ -992,7 +993,7 @@ This section documents, for every event-emitter surface, what JSON callers can e
 - **Observer and transport exceptions are caught and logged.** `logger.warning("EventBus observer raised an exception", exc_info=True)` and `logger.warning("EventBus transport raised an exception", exc_info=True)` swallow every failure. **No exit-code bump, no error envelope, and no exception is propagated to the caller.** A failing sink never blocks the others.
 - **Filtered observers silently skip non-matching events.** Observers registered with a `filter=...` pattern only see events where `fnmatch.fnmatch(event_type, p)` matches at least one pattern; non-matching events are skipped with no notification.
 - **Dispatch order is deterministic.** Observers are iterated in registration order first, then transports in registration order. There is no priority, preemption, or backpressure.
-- **`close()` exceptions are isolated per transport.** `scripts/little_loops/events.py:110-115` catches and logs exceptions from `transport.close()` so one misbehaving transport cannot prevent others from shutting down.
+- **`close_transports()` exceptions are isolated per transport.** `scripts/little_loops/events.py:110-115` catches and logs exceptions from `transport.close()` so one misbehaving transport cannot prevent others from shutting down.
 
 **Caller implications:** Treat `bus.emit(event)` as fire-and-forget. To assert that an event reached a sink, query the sink itself (e.g. `transport.get_stats()` for the Unix-socket transport) — do not rely on `emit()` return value (it returns `None`).
 
@@ -1043,7 +1044,7 @@ This section documents, for every event-emitter surface, what JSON callers can e
 
 ### `SQLiteTransport`
 
-**Source:** `scripts/little_loops/session_store/writers.py:1773-1893` (despite the package name, this transport lives with the session store, not in `transport.py`; ENH-2890 split the former flat `session_store.py` into a `session_store/` package).
+**Source:** `scripts/little_loops/session_store/writers.py:1904` (despite the package name, this transport lives with the session store, not in `transport.py`; ENH-2890 split the former flat `session_store.py` into a `session_store/` package).
 
 - **Connection failure at construction → `send()` is a silent no-op forever.** If the SQLite database cannot be opened, `self._conn` stays `None` and `send()` returns early. **No error is raised to the caller.**
 - **Per-write failures are logged + swallowed** (`writers.py`'s `SQLiteTransport.send()`). Writes are serialized with a `threading.Lock`.
@@ -1054,7 +1055,7 @@ This section documents, for every event-emitter surface, what JSON callers can e
 
 ### `action_error` event contract
 
-**Source:** `scripts/little_loops/fsm/executor.py:1970-1983`
+**Source:** `scripts/little_loops/fsm/executor.py:2798-2822`
 
 - **Emitted only when a state config defines `on_error`.** If `on_error` is absent on the failing state, the exception re-raises and the top-level loop handler terminates the loop with `loop_complete.terminated_by="error"` and the message in `loop_complete.error`. **No `action_error` event is emitted in that case** — the loop just ends.
 - **Payload schema:** `{state, error, route: "on_error"}` — same shape as a `route` event plus the original `error` string.
@@ -1107,6 +1108,8 @@ docs/reference/schemas/
 ├── evaluate.json
 ├── handoff_detected.json
 ├── handoff_spawned.json
+├── infra_retry.json
+├── infra_retry_exhausted.json
 ├── issue_closed.json
 ├── issue_completed.json
 ├── issue_deferred.json
@@ -1218,6 +1221,8 @@ See [`ll-generate-schemas`](CLI.md#ll-generate-schemas) in the CLI reference and
 | `action_error` | FSM | `fsm/executor.py` |
 | `evaluate` | FSM | `fsm/executor.py` |
 | `retry_exhausted` | FSM | `fsm/executor.py` |
+| `infra_retry` | FSM | `fsm/executor.py` |
+| `infra_retry_exhausted` | FSM | `fsm/executor.py` |
 | `stall_detected` | FSM | `fsm/executor.py` |
 | `rate_limit_exhausted` | FSM | `fsm/executor.py` |
 | `rate_limit_storm` | FSM | `fsm/executor.py` |
@@ -1268,7 +1273,7 @@ When `OTelTransport` is active (`events.transports: ["otel"]`), the following ev
 | Event | OTel action | Field used |
 |-------|-------------|------------|
 | `action_complete` | Closes action span | — |
-| `loop_complete` | Closes state + action spans; sets loop span status; closes loop span | `outcome` → status code (`"error"` / `"failed"` / `"exhausted"` → `ERROR`, all others → `OK`) |
+| `loop_complete` | Closes state + action spans; sets loop span status; closes loop span | `outcome` → status code (`"error"` / `"failed"` / `"exhausted"` → `ERROR`, all others → `OK`) — but **no emitter ever sets `outcome` on a `loop_complete` payload** (see the field table above), so in practice the lookup always falls through to `""` and every loop span closes `OK`, including failed runs. `session_store/writers.py` has the same latent read. Consumers that need failure status must read `failure_terminal` / `terminated_by` instead. |
 
 ### Span event records
 
