@@ -122,7 +122,7 @@ The lifecycle diagram above shows conceptual workflow phases. The frontmatter `s
 | `done` | Work finished and committed |
 | `cancelled` | Decided not to implement or closed without a code change |
 
-Synonyms (`complete`, `completed`, `finished`, `closed`, `wip`, `in-progress`, `in progress`) are silently coerced to canonical values on read; authors don't need to worry about fixing them manually.
+Synonyms (`complete`, `completed`, `finished`, `closed`, `wip`, `in-progress`, `in progress`, `pending`) are silently coerced to canonical values on read; authors don't need to worry about fixing them manually.
 
 A `deferred` transition also stamps `deferred_by` (`human` by default, or `automation` when
 `rn-implement`'s remediation circuit-breaker, or `autodev`'s not-ready exits (ENH-2666), park

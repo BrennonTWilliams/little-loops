@@ -196,7 +196,7 @@ If analytics is enabled, it records user **corrections** (messages matching patt
 
 ## PreToolUse
 
-Four hooks run before a tool executes. These are the only place little-loops can **deny** an action outright.
+Five hooks run before a tool executes. These are the only place little-loops can **deny** an action outright.
 
 ### Duplicate issue-ID guard (blocks)
 
@@ -354,7 +354,7 @@ is host-agnostic and mirrored to Codex. (ENH-2503)
 
 ## Stop
 
-Two hooks run after each assistant turn (Claude Code's `Stop` event). Both are advisory and must never fail.
+Three hooks run after each assistant turn (Claude Code's `Stop` event). All are advisory and must never fail.
 
 ### Context handoff sentinel
 

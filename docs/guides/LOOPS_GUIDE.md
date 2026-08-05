@@ -695,7 +695,7 @@ The snapshot is taken at *this guarded state's own entry*, never at run start �
 This `tamper_guard:` key is FSM-only. `ll-auto`, `ll-parallel`, and `ll-sprint` verify
 completed work in plain Python (`work_verification.py`), never entering the FSM, so this key
 never applies to them. That non-FSM path has its own guard hook (ENH-2935) driven by the
-[`tamper_guard.policy` project config key](./CONFIGURATION.md#tamper_guard) instead — the two
+[`tamper_guard.policy` project config key](../reference/CONFIGURATION.md#tamper_guard) instead — the two
 are independent; the project config key never overrides an explicit state-level `tamper_guard:`
 key here. Since ENH-2958, the non-FSM path's guard also brackets a live post-implement window
 (a snapshot captured right after the implement phase returns, compared byte-strictly at the
@@ -1306,7 +1306,7 @@ auth_failed:
   terminal: true
 ```
 
-The `error_patterns` list on `output_contains` overrides `verdict="no"` to `verdict="error"` *only when* the main pattern did not match but any listed error pattern is found in the output (`scripts/little_loops/fsm/evaluators.py:369-380`). When the main pattern matches first, `error_patterns` is never consulted. The `verdict="error"` route reaches `on_error` without raising an exception or incrementing the retry counter. Without `on_error:`, the loop terminates with `terminated_by="error"`. `error_patterns` do not trigger a `NON_RECOVERABLE` signal; they are a shorthand for verdict-routing, not an exception path.
+The `error_patterns` list on `output_contains` overrides `verdict="no"` to `verdict="error"` *only when* the main pattern did not match but any listed error pattern is found in the output (`scripts/little_loops/fsm/evaluators.py:455-465`, in `evaluate_output_contains`). When the main pattern matches first, `error_patterns` is never consulted. The `verdict="error"` route reaches `on_error` without raising an exception or incrementing the retry counter. Without `on_error:`, the loop terminates with `terminated_by="error"`. `error_patterns` do not trigger a `NON_RECOVERABLE` signal; they are a shorthand for verdict-routing, not an exception path.
 
 **"No state found" on resume.** The loop already completed or was never started — completed loops have no resumable state. Check `ll-loop status <name>`.
 

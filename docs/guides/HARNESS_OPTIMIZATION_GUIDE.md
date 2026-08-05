@@ -231,7 +231,7 @@ states:
     next: baseline
 
   baseline:                          # measure BEFORE the edit so the gate has a reference
-    action: "pytest scripts/tests/test_capture_issue.py -q --tb=no; echo $(pytest --co -q | wc -l)"
+    action: "pytest scripts/tests/test_capture_issue_skill.py -q --tb=no; echo $(pytest --co -q | wc -l)"
     action_type: shell
     capture: baseline
     next: propose
@@ -247,7 +247,7 @@ states:
     next: score
 
   score:                             # measure AFTER the edit
-    action: "pytest scripts/tests/test_capture_issue.py -q --tb=no; echo $(pytest --co -q | wc -l)"
+    action: "pytest scripts/tests/test_capture_issue_skill.py -q --tb=no; echo $(pytest --co -q | wc -l)"
     action_type: shell
     capture: benchmark_score
     next: gate
@@ -360,7 +360,7 @@ What it does:
 1. Runs the normal baseline A/B on your primary host (whatever `resolve_host()`
    selects — `LL_HOST_CLI` / `orchestration.host_cli` / probe order).
 2. Picks the next available host from the probe order (`claude-code`, `codex`,
-   `pi`, `gemini`, `omp` — `opencode` is deliberately absent) whose binary is on
+   `pi`, `gemini`, `omp`, `kimi-code` — `opencode` is deliberately absent) whose binary is on
    `PATH`, and re-runs the identical baseline trial with `LL_HOST_CLI` overridden
    to it. `--baseline-skill` and `--items` are forwarded unchanged.
 3. Prints a **Cross-host Comparison** table: per-host harness pass rate with
@@ -370,7 +370,7 @@ What it does:
 Cross-host Comparison
   Host                   Pass rate              95% CI      n
   --------------------  ----------  ------------------  -----
-  claude                       80%  [0.49, 0.94]           10
+  claude-code                  80%  [0.49, 0.94]           10
   codex                        60%  [0.31, 0.83]           10
 ```
 
@@ -483,7 +483,7 @@ The canonical example with a commented `check_substrate` block is at
 `check_substrate` uses `evaluate: type: llm_structured`. In a standard specialist-pipeline
 loop (not a meta-loop), MR-1 does not apply. Meta-loop status is not decided by the loop's
 `category:` field — it is detected by `_is_meta_loop()` in
-[`scripts/little_loops/fsm/validation.py`](../../scripts/little_loops/fsm/validation.py),
+[`scripts/little_loops/fsm/validation/meta_rules.py`](../../scripts/little_loops/fsm/validation/meta_rules.py),
 which flags a loop as meta if it imports `lib/benchmark.yaml`, or if any state's `action`
 string matches a harness-artifact-path pattern (writes another loop YAML, skill, agent,
 command, or `.claude/CLAUDE.md`), or references `yaml_state_editor`/`replace_action`. A

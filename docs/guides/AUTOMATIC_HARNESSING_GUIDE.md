@@ -229,7 +229,7 @@ check_contract:
 
 **Placement**: `check_contract` slots after `check_concrete` (cheap shell gates first) and before `check_skill` / `check_semantic`. It reads files directly — no shell action needed — and runs at LLM-judge latency (~2–5s per pair). Use it when your harness implements both sides of an interface in the same session and you want an explicit integration gate before the full user-simulation phase.
 
-**MR-1 note**: MR-1 is the meta-loop design rule requiring every LLM-judged state to be paired with a non-LLM evaluator (see [HARNESS_OPTIMIZATION_GUIDE.md](HARNESS_OPTIMIZATION_GUIDE.md#the-design-rules-mr-1mr-10)). `check_contract` uses an LLM judge and does **not** satisfy MR-1 in meta-loops. Pair it with a non-LLM evaluator (e.g., `diff_stall` or `exit_code`) when `modifies_harness: true`.
+**MR-1 note**: MR-1 is the meta-loop design rule requiring every LLM-judged state to be paired with a non-LLM evaluator (see [HARNESS_OPTIMIZATION_GUIDE.md](HARNESS_OPTIMIZATION_GUIDE.md#the-design-rules-mr-1mr-14)). `check_contract` uses an LLM judge and does **not** satisfy MR-1 in meta-loops. Pair it with a non-LLM evaluator (e.g., `diff_stall` or `exit_code`) when `modifies_harness: true`.
 
 ### Skill-as-Judge (`check_skill`)
 
@@ -1134,7 +1134,7 @@ two output strings.
 When validating or running a harness under `ll-loop run`, know how the
 loop reacts to POSIX signals — the audit trail's durability depends on
 it. The signal handlers live at
-`scripts/little_loops/cli/loop/_helpers.py:78-173` and are registered
+`scripts/little_loops/cli/loop/_helpers.py:121-172` and are registered
 for both `SIGINT` and `SIGTERM`.
 
 ### First Ctrl-C (or `SIGTERM`) — graceful shutdown
@@ -1164,7 +1164,7 @@ locks in CI.
 POSIX `SIGKILL` cannot be intercepted by a Python signal handler. If a
 supervisor, CI runner, or OOM killer issues `SIGKILL`, the loop dies
 without invoking any handler code. Rows already appended to
-`events.jsonl` survive (ENH-2515, `scripts/little_loops/fsm/persistence.py:135-151` —
+`events.jsonl` survive (ENH-2515, `scripts/little_loops/fsm/persistence.py:193-209` —
 every append is `flush()` + `os.fsync()`-d before returning), but the
 `.history/<run_id>-<loop_name>/` archive and the final `state.json`
 snapshot may not land.
@@ -1192,7 +1192,7 @@ lands — instead of assuming the latest state was captured.
 ## See Also
 
 - [LOOPS_GUIDE.md](LOOPS_GUIDE.md) — Full FSM loops reference: evaluators, state fields, CLI commands
-- [`skills/create-loop/loop-types.md`](../../skills/create-loop/loop-types.md) — Wizard implementation: Harness Questions section (lines 548–914)
+- [`skills/create-loop/loop-types.md`](../../skills/create-loop/loop-types.md) — Wizard implementation: Harness Questions section (lines 549–1046)
 - [`skills/create-loop/reference.md`](../../skills/create-loop/reference.md) — FSM field reference, evaluator catalog, harness state diagrams
 - [`scripts/little_loops/loops/issue-refinement.yaml`](../../scripts/little_loops/loops/issue-refinement.yaml) — Real-world harness-like loop: multi-skill pipeline over active issues with commit cadence
 - [`scripts/little_loops/loops/harness-single-shot.yaml`](../../scripts/little_loops/loops/harness-single-shot.yaml) — Runnable Variant A example: single-shot harness with all evaluation phases annotated

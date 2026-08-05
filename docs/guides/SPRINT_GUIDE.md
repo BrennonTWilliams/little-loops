@@ -185,7 +185,7 @@ The skill performs a six-phase analysis:
 5. **Backlog scan** — are there related issues not in the sprint that belong?
 6. **Removal proposals** — issues that are completed, invalid, or out of scope
 
-**EPIC awareness**: When any sprint member has a `parent:` field referencing an EPIC, the review also produces an **EPIC Context** section. For each touched EPIC, it resolves the full active-children set (via `ll-issues list --group-by epic`) and computes the delta — EPIC children not in the sprint. If a delta member is listed in any sprint member's `blocked_by:`, the review flags it as a critical-path blocker gap and offers to add it to the sprint. This prevents the common mid-sprint stall where a manually curated sprint includes the "interesting" children of an EPIC but skips the blocker.
+**EPIC awareness**: When any sprint member has a `parent:` field referencing an EPIC, the review also produces an **EPIC Context** section. For each touched EPIC, it resolves the full active-children set (via `ll-sprint show EPIC-NNN`, backed by `ll-deps tree EPIC-NNN --json` for blocker edges) and computes the delta — EPIC children not in the sprint. If a delta member is listed in any sprint member's `blocked_by:`, the review flags it as a critical-path blocker gap and offers to add it to the sprint. This prevents the common mid-sprint stall where a manually curated sprint includes the "interesting" children of an EPIC but skips the blocker.
 
 The skill is interactive: it proposes changes and you approve or reject each one. Accepted changes are applied via `ll-sprint edit`. When you're done reviewing, the sprint is ready to run.
 

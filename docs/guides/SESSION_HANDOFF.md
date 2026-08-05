@@ -272,7 +272,7 @@ Run /ll:handoff to generate one, or specify a custom path:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `context_monitor.enabled` | `false` | Enable automatic context monitoring |
+| `context_monitor.enabled` | `true` | Enable automatic context monitoring |
 | `context_monitor.auto_handoff_threshold` | `80` | Percentage (50-95) to trigger warnings |
 | `context_monitor.context_limit_estimate` | `0` (auto) | Override for the context window token limit. Omit or set to `0` for auto-detection (`[1m]`-suffixed model ids resolve to 1M by identifier; known Claude 4 base models → 200000; if the measured transcript baseline exceeds the resolved limit but is ≤ 1,100,000 — an upper bound that guards against corrupt transcript reads triggering a false upgrade — it auto-upgrades to 1000000 as a fallback). Set explicitly to override, e.g. `1000000` for 1M-context sessions. |
 | `context_monitor.estimate_weights.read_per_line` | `10` | Token cost per line for Read tool calls |
@@ -422,7 +422,7 @@ Ensure the handoff command outputs the signal:
 CONTEXT_HANDOFF: Ready for fresh session
 ```
 
-Check `subprocess_utils.py` detection pattern:
+Check `scripts/little_loops/subprocess_utils.py` detection pattern:
 
 ```python
 CONTEXT_HANDOFF_PATTERN = re.compile(r"CONTEXT_HANDOFF:\s*Ready for fresh session")

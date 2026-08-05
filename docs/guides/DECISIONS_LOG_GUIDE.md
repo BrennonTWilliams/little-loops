@@ -312,7 +312,7 @@ ll-issues decisions add \
 ```
 
 Entry IDs are auto-generated as a random UUID4 (e.g.
-`4e1ec28d-ae1d-4af7-b32c-d084668d36b1`). Override with `--entry-id` if you need a
+`4e1ec28d-ae1d-4af7-b32c-d084668d36b1`). Override with `--id` if you need a
 specific ID. The older count-based scheme (`ARCHITECTURE-005`, `TESTING-002`) was
 retired in BUG-2642 — sequential ids collided when concurrent EPIC-branch appends
 minted the same `{category}-{count+1}` value; UUID4s never collide, which is what

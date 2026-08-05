@@ -521,7 +521,7 @@ judge:
   on_failure: done
 ```
 
-> **Note**: Although `loop:` is interpolated at parse time (`scripts/little_loops/fsm/executor.py:779` runs `interpolate(state.loop, ctx)`), `ll-loop validate` skips dynamic loop names so a `${context.skill_name}` reference is only checkable at runtime. Hardcode the oracle path in production YAML; treat interpolation here as a debugging convenience, not a load-bearing tool.
+> **Note**: Although `loop:` is interpolated at parse time (`scripts/little_loops/fsm/executor.py:840` runs `interpolate(state.loop, ctx)`), `ll-loop validate` skips dynamic loop names so a `${context.skill_name}` reference is only checkable at runtime. Hardcode the oracle path in production YAML; treat interpolation here as a debugging convenience, not a load-bearing tool.
 
 ### 4. Calibrate the oracle
 
@@ -631,7 +631,7 @@ The `source` field distinguishes harvested real examples from synthesized target
 ## See Also
 
 - [LOOPS_REFERENCE.md](LOOPS_REFERENCE.md) — quick-reference section for `examples-miner`: context variables table, FSM flow diagram, perturbation taxonomy, basic invocations
-- [`scripts/little_loops/loops/examples-miner.yaml`](../../scripts/little_loops/loops/examples-miner.yaml) — full annotated loop source (12 non-terminal states + a `done` terminal)
+- [`scripts/little_loops/loops/examples-miner.yaml`](../../scripts/little_loops/loops/examples-miner.yaml) — full annotated loop source (11 non-terminal states + a `done` terminal)
 - [`scripts/little_loops/loops/oracles/oracle-capture-issue.yaml`](../../scripts/little_loops/loops/oracles/oracle-capture-issue.yaml) — reference implementation for the v2 oracle sub-loop (two-phase: shell mechanical checks + LLM semantic scoring)
 - [`scripts/little_loops/loops/apo-textgrad.yaml`](../../scripts/little_loops/loops/apo-textgrad.yaml) — inner optimizer loop invoked by `run_optimizer`; reads `examples_file`, emits `FAILURE_PATTERN` / `ROOT_CAUSE` / `GRADIENT`
 - [Automatic Harnessing Guide](AUTOMATIC_HARNESSING_GUIDE.md) — related guide for wrapping skills in layered quality evaluation pipelines
