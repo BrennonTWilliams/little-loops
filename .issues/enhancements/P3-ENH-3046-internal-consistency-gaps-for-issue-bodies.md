@@ -16,6 +16,12 @@ labels:
 - cli
 - issues
 - gates
+confidence_score: 92
+outcome_confidence: 86
+score_complexity: 20
+score_test_coverage: 24
+score_ambiguity: 20
+score_change_surface: 22
 ---
 
 # ENH-3046: Internal-consistency gaps for issue bodies
@@ -88,6 +94,60 @@ and neither blocks the other.
 - `scripts/tests/` — per-gap-kind coverage
 - `docs/reference/CLI.md` — document the new gap kinds
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/issues/__init__.py:139` — third hardcoded `--kinds`/help CSV string;
+  already named as site 4 of the Program Design "five sites" contract (`:119`) but was absent from
+  this list [Agent 1 finding]
+- `docs/reference/API.md:849-885` (`check_format_gaps` reference entry) — second independent
+  gap-kind enumeration; currently stale (says "fifteen gap classes", already omits
+  `missing_behavior_parity` from ENH-3045) — not in the original Integration Map [Agent 2 finding]
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/issues/check_design.py` — calls `check_format_gaps()` and
+  `design_gate_failed()`; verify no gap-kind allowlist needs updating for the two new kinds
+  [Agent 1 finding]
+- `scripts/little_loops/issues/research_triage.py` — references `check_format_gaps()` /
+  `program_design_nonspecific` in docstrings and analysis [Agent 1 finding]
+- `scripts/little_loops/loops/autodev.yaml` — routes on `design_gate_failed()` output derived from
+  `check_format_gaps()`; confirm new gap kinds don't change routing [Agent 1 finding]
+- `scripts/little_loops/loops/rn-remediate.yaml` — uses format-check gaps for remediation routing
+  [Agent 1 finding]
+- `skills/confidence-check/SKILL.md` (Phase 1.6, `:132-150`) — functionally parses
+  `program_design_nonspecific` out of `format-check --format json`; establishes the consumption
+  pattern the two new kinds could plug into later, not touched by this issue [Agent 2 finding]
+- `skills/format-issue/SKILL.md`, `skills/decide-issue/SKILL.md` — reference format-check gap
+  concepts generally [Agent 1 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` — references format-checking/gap concepts [Agent 1
+  finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_ll_issues_format_check.py` — `TestAmbiguousFileRef` (`:718`, ENH-2999) is the
+  exact pattern to mirror for both new gap kinds (`_write_bug_with_*` helper + `--all` text
+  assertion + single-ID `--format json` exact-list assertion); `test_clean_issue_json_output`
+  (`:302`) and `test_every_format_gaps_field_is_rendered` (`:1555`) must gain the two new keys
+  [Agent 3 finding]
+- `scripts/tests/test_issue_parser.py` — direct unit-level precedent for testing
+  `check_format_gaps()` without going through the CLI (`TestCheckFormatGapsTestablePopulation`,
+  `:4074`; ENH-2426 block, `:3811`) [Agent 3 finding]
+- `scripts/tests/test_refine_issue_command.py` — `TestProgramDesignGateExtension` (`:435`) and
+  `TestSessionLogPrecedesProgramDesignGate` (`:469`) assert on Step 6.7's markdown content and
+  heading order; the new judgment-pass step must extend these the same way (slice the section,
+  assert new phrases/keys appear) [Agent 3 finding]
+- `scripts/tests/test_program_design_gate.py` — `TestFormatGapsWiring` covers `FormatGaps`
+  wiring/serialization [Agent 1 finding]
+- `scripts/tests/test_ll_issues_check_design.py` — tests the `check-design` command that calls
+  `check_format_gaps()` [Agent 1 finding]
+- `scripts/tests/test_prose_dep_sweep_gate.py` — uses `check_format_gaps()` for prose-dependency
+  validation [Agent 1 finding]
+
 ### Similar Patterns
 - `ENH-2946` — the direct precedent for extending `format-check` with gap kinds
 - `FEAT-2849` — extractor + gap taxonomy shape
@@ -128,6 +188,30 @@ The judgment-pass step (AC-vs-Program-Design contradiction prompt) anchors at th
 4. Refine-issue AC-vs-Program-Design prompt step.
 5. Validate against FEAT-2942: both contradictions reported.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/cli/issues/__init__.py:139` — third hardcoded `--kinds`/help CSV,
+  alongside the two already named in `format_check.py`.
+- Update `docs/reference/API.md:849-885` — the `check_format_gaps()` reference entry, a second
+  enumeration site independent of `docs/reference/CLI.md`.
+- Update `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` — general format-check/gap-kind references.
+- Update `scripts/tests/test_ll_issues_format_check.py` — add `soft_dep_hard_edge`/`ac_flag_drift`
+  fixtures mirroring `TestAmbiguousFileRef` (`:718`); add both keys to `test_clean_issue_json_output`
+  (`:302`).
+- Update `scripts/tests/test_issue_parser.py` — direct `check_format_gaps()` unit coverage
+  following the `TestCheckFormatGapsTestablePopulation` (`:4074`) shape.
+- Update `scripts/tests/test_refine_issue_command.py` — extend `TestProgramDesignGateExtension`
+  (`:435`) and `TestSessionLogPrecedesProgramDesignGate` (`:469`) for the new judgment-pass step's
+  markdown and heading order.
+- **Pre-existing gap, not in this issue's scope but touches the same code**: `missing_behavior_parity`
+  (ENH-3045) currently has no `_print_gaps()` loop and is missing from all three `--kinds` CSV
+  strings and from `docs/reference/API.md`; `test_clean_issue_json_output` and
+  `test_every_format_gaps_field_is_rendered` appear to already fail against it at HEAD. Since this
+  issue edits the same `_print_gaps()`/CSV/API.md sites, sweep this field in alongside the two new
+  ones or flag it explicitly if left for a separate fix.
+
 ## Impact
 
 - **Priority**: P3 — real but narrower than FEAT-3048/ENH-3045
@@ -145,5 +229,7 @@ The judgment-pass step (AC-vs-Program-Design contradiction prompt) anchors at th
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-05T01:56:57 - `6569bf0b-4efa-4bb9-8b85-a0e909af608e.jsonl`
+- `/ll:wire-issue` - 2026-08-05T01:47:19 - `6569bf0b-4efa-4bb9-8b85-a0e909af608e.jsonl`
 - `/ll:refine-issue` - 2026-08-05T01:31:38 - `eb7fedb4-0dd1-4b7c-8880-6ff7b6346575.jsonl`
 - `/ll:capture-issue` - 2026-08-04T20:50:27 - `2a9240a9-e6df-4ed5-ad2a-73a280bc7d8b.jsonl`

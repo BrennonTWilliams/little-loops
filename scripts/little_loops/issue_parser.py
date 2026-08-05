@@ -256,6 +256,7 @@ class FormatGaps:
     unmarked_superseded_directive: list[str] = field(default_factory=list)
     duplicate_findings_block: list[str] = field(default_factory=list)
     ambiguous_file_ref: list[str] = field(default_factory=list)
+    missing_behavior_parity: list[str] = field(default_factory=list)
 
     @property
     def has_gaps(self) -> bool:
@@ -276,6 +277,7 @@ class FormatGaps:
             or self.unmarked_superseded_directive
             or self.duplicate_findings_block
             or self.ambiguous_file_ref
+            or self.missing_behavior_parity
         )
 
     def to_dict(self) -> dict[str, list[str]]:
@@ -296,6 +298,7 @@ class FormatGaps:
             "unmarked_superseded_directive": self.unmarked_superseded_directive,
             "duplicate_findings_block": self.duplicate_findings_block,
             "ambiguous_file_ref": self.ambiguous_file_ref,
+            "missing_behavior_parity": self.missing_behavior_parity,
         }
 
 
@@ -419,6 +422,18 @@ def check_format_gaps(
             heuristic (like ``testable``) — not proof the correction actually
             refutes the specific line, only that the block and the marker are
             both absent or present.
+        missing_behavior_parity: a file ref in ``## Summary``,
+            ``## Proposed Solution``, or ``### Files to Modify`` (ENH-3045)
+            resolves (:func:`little_loops.text_utils.classify_file_ref`) and
+            shares a line with a replacement keyword (``delete``, ``remove``,
+            ``replace``, ``rewrite``, ``supersede``, ``delegate``, and their
+            inflections — same line only, no multi-line proximity window),
+            while no ``### Behavior Parity`` section exists
+            (:func:`_heading_bodies`). Suppressed unconditionally by
+            ``behavior_parity_not_applicable: true`` in frontmatter, a human
+            decision mirroring ``program_design_not_applicable`` — refine and
+            wire must never set it themselves. Only reported when *ref_index*
+            is given.
 
     Args:
         issue_path: Path to the issue markdown file.
@@ -569,7 +584,12 @@ def check_format_gaps(
             gaps.testable.append(issue_path.name)
 
     if ref_index is not None:
-        from little_loops.text_utils import classify_issue_refs, suffix_match_candidates
+        from little_loops.text_utils import (
+            classify_file_ref,
+            classify_issue_refs,
+            extract_file_paths,
+            suffix_match_candidates,
+        )
 
         for ref, status in sorted(classify_issue_refs(content, ref_index).items()):
             if status == "stale":
@@ -580,6 +600,25 @@ def check_format_gaps(
                 if len(candidates) > 3:
                     shown += ", …"
                 gaps.ambiguous_file_ref.append(f"{ref} ({len(candidates)}: {shown})")
+
+        if not fm.get("behavior_parity_not_applicable") and not _heading_bodies(
+            content, "Behavior Parity"
+        ):
+            scope_text = _behavior_parity_scope_text(content)
+            scope_lines = scope_text.splitlines()
+            for ref in sorted(extract_file_paths(scope_text)):
+                replacement_line = next(
+                    (
+                        ln
+                        for ln in scope_lines
+                        if ref in ln and _BEHAVIOR_PARITY_KEYWORD_RE.search(ln)
+                    ),
+                    None,
+                )
+                if replacement_line is None:
+                    continue
+                if classify_file_ref(ref, ref_index, line=replacement_line) == "resolved":
+                    gaps.missing_behavior_parity.append(ref)
 
     findings_bodies = _heading_bodies(content, "Codebase Research Findings")
     has_correction = any(
@@ -643,6 +682,39 @@ _SUPERSEDED_CORRECTION_PHRASES = (
 )
 _SUPERSEDED_DIRECTIVE_SECTIONS = ("Implementation Steps", "Files to Modify", "Acceptance Criteria")
 _SUPERSEDED_MARKER_PREFIX = "⚠ Superseded"
+
+# ENH-3045: closed replacement-keyword list for the missing_behavior_parity
+# gap class — matched as whole words, same line as the ref only (Program
+# Design § Decision Rules condition 3; no multi-line proximity window in v1).
+_BEHAVIOR_PARITY_KEYWORD_RE = re.compile(
+    r"\b("
+    r"delete|deletes|deleted|"
+    r"remove|removes|removed|"
+    r"replace|replaces|replaced|"
+    r"rewrite|rewrites|rewritten|"
+    r"supersede|supersedes|superseded|"
+    r"delegate|delegates|delegated"
+    r")\b",
+    re.IGNORECASE,
+)
+# Scope condition (§ Decision Rules condition 1): only these sections name a
+# replacement target; ### Similar Patterns/Documentation/Tests and Current
+# Behavior/Session Log cite files as evidence or precedent, not as targets.
+_BEHAVIOR_PARITY_SCOPE_H2_SECTIONS = ("Summary", "Proposed Solution")
+_BEHAVIOR_PARITY_SCOPE_HEADINGS = ("Files to Modify",)
+
+
+def _behavior_parity_scope_text(content: str) -> str:
+    """Concatenate the sections the missing_behavior_parity scope condition covers."""
+    parts = [
+        body
+        for name in _BEHAVIOR_PARITY_SCOPE_H2_SECTIONS
+        for body in [_section_body(content, name)]
+        if body
+    ]
+    for name in _BEHAVIOR_PARITY_SCOPE_HEADINGS:
+        parts.extend(_heading_bodies(content, name))
+    return "\n".join(parts)
 
 
 def superseded_marker_count(issue_path: Path) -> int:

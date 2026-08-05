@@ -223,6 +223,13 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/guides/ISSUE_MANAGEMENT_GUIDE.md", "/ll:reconcile-issue", "ENH-3049"),
     # ENH-3049: COMMANDS.md's wire-issue entry names the annotation behavior.
     ("docs/reference/COMMANDS.md", "may additionally **annotate**", "ENH-3049"),
+    # ENH-3045: both wire and refine emit the same bare `### Behavior Parity`
+    # heading doctrine; this is the only test surface for the capability-search
+    # and claim-grounding doctrine, which is pure prose with no Python path.
+    ("skills/wire-issue/SKILL.md", "### Behavior Parity", "ENH-3045"),
+    ("skills/wire-issue/behavior-parity.md", "### Behavior Parity", "ENH-3045"),
+    ("commands/refine-issue.md", "### Behavior Parity", "ENH-3045"),
+    ("commands/refine-issue.md", "Capability-search and claim-grounding", "ENH-3045"),
 ]
 
 

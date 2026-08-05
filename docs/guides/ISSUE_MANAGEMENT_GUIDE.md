@@ -310,6 +310,7 @@ A post-refinement pass focused on **completeness of the Integration Map**. Where
 - **Doc mentions** — documentation sections that describe the changed behavior
 - **Test coverage** — tests that exercise the affected code paths
 - **Side-effect files** — plugin manifests, `__init__.py` exports, registration hooks
+- **Behavior parity** — when the issue rewrites, deletes, or delegates away an existing file, each of its behaviors gets a preserved/changed/dropped disposition (ENH-3045)
 
 Run after `refine-issue` when the Integration Map looks thin — callers underspecified, test coverage missing, or side-effect files absent. Use `--dry-run` to preview what would be added without modifying the issue file.
 

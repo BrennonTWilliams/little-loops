@@ -114,7 +114,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - Two competing conventions govern proposal-vs-write gating: `prioritize.py:184-189` and `format_check.py:92-103` default to proposal-only and require an explicit `--apply` to write; `link.py:82-88` instead defaults to writing and requires an explicit `--dry-run` to preview. This issue's Expected Behavior already specifies `--apply`, i.e. the `prioritize`/`format_check` shape, not `link`'s.
 - `--json`/`-j` is added via `add_json_arg()` (`cli_args.py:310-317`); most callers gate with `if getattr(args, "json", False): print_json(...)` (e.g. `clusters.py:595-616`), but `find_similar.py` always emits raw `json.dumps(...)` with no text mode — both conventions coexist in this CLI.
 - `--threshold` is config-defaulted rather than hardcoded, per `find_similar.py:47-57`'s `threshold=None` → `config.issues.duplicate_detection.similar_threshold` fallback.
-- No union-find/disjoint-set implementation exists anywhere in `scripts/little_loops/` today (confirmed by grep) — `synthesize_clusters()` is new code. The only existing clustering algorithm, `clusters.py:_get_components()` (BFS over dependency-edge adjacency), clusters on a structurally different input (existing relationship edges, not pairwise text similarity) and is not reusable here.
+- **Capability-search correction (ENH-3045)**: the original claim here — "no union-find/disjoint-set implementation exists anywhere in `scripts/little_loops/` today (confirmed by grep)" — searched by algorithm name, not capability, and was materially incomplete: `find_similar.batch_similarity()` (`scripts/little_loops/cli/issues/find_similar.py:104-143`) already performs the exact O(n²) pairwise `calculate_word_overlap` scan that produces the edge list `synthesize_clusters()`'s union-find needs — found by searching for the input/output shape (`list[IssueInfo]` in, pairwise-scored edges out) and the callers of the shared `calculate_word_overlap()` primitive. `synthesize_clusters()`'s union-find step over that edge list is still new code with no existing implementation, but its input is not built from scratch — the Proposed Solution's "Reuse `find_similar.batch_similarity()`" bullet above already states this; this note reconciles the two. The only existing *clustering* algorithm, `clusters.py:_get_components()` (BFS over dependency-edge adjacency), clusters on a structurally different input (existing relationship edges, not pairwise text similarity) and is not reusable for the union-find half.
 - `update_frontmatter()` (`frontmatter.py:439-469`) only touches the YAML block. There is no existing helper for appending to a markdown body section — `apply_assignment()`'s EPIC-side write (append to `## Children`) has no existing shared helper. `link.py`'s `_write_reciprocal()` (lines 179-202) is the closest precedent (read → merge into existing list field → `update_frontmatter()` → write) but only covers frontmatter list fields, not prose section bodies.
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -140,6 +140,15 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/COMMANDS.md` — see Files to Modify above (lines 16, 102, 1037) for the specific Jaccard-prose and `--auto`-table passages that need rewriting.
 - FYI (no action here): `.issues/enhancements/P4-ENH-2979-deep-flag-llm-clustering-link-epics.md` is an open, unimplemented ENH written entirely against the *current* SKILL.md prose structure (names "Step 3, S1" of the skill as its insertion point for a `--deep` LLM-clustering flag). Once this issue lands, ENH-2979's plan is stale — its hook point becomes `synthesize_clusters()` in the new `link_epics.py` module, not a SKILL.md step. ENH-2979 will need its own Integration Map rewritten before implementation; out of scope to edit here.
+
+### Behavior Parity
+
+_Wiring pass added by `/ll:wire-issue`, validated against ENH-3045's motivating-defects retrospective:_
+| Artifact | Behavior | Disposition | Notes |
+|---|---|---|---|
+| `skills/link-epics/SKILL.md` | Scores orphan × EPIC similarity on title + `## Summary` body text | CHANGED | `IssueInfo` has no `summary` field, and `find_similar`/`batch_similarity` score titles only — see the "Scoring input decision" note above. This CLI would score title-only unless `--include-summary`-style body extraction is lifted into the shared scoring layer. Accept the narrowed corpus explicitly, or fix before shipping — do not let it pass silently. |
+| `skills/link-epics/SKILL.md` | HIGH/MEDIUM/LOW confidence tiers at 0.7/0.4 score thresholds | DROPPED | The tier boundaries appear nowhere in this issue's CLI signature or `EpicProposal` shape — only a `score`/`tier` field is declared, with no threshold constants carried into Program Design or Proposed Solution. Must be restated (as literal 0.7/0.4 constants) in the new module if tiering is still wanted, or explicitly dropped in favor of raw scores. |
+| `skills/link-epics/SKILL.md` | "Orphan" = an open BUG/FEAT/ENH issue with no `parent:` frontmatter field | PRESERVED (must be restated) | This definition exists only in the skill prose being replaced; `synthesize_clusters`/`propose_assignments`'s Program Design section does not state it. Must be written into the new CLI module's docstring or Program Design before implementation, or the CLI silently redefines "orphan" from scratch. |
 
 ## Program Design
 
@@ -191,6 +200,7 @@ Before relying on it as the post-rewrite gate: confirm whether `verify_skill_pro
 - `docs/reference/API.md` — the new CLI mode functions (`propose_assignments`, `synthesize_clusters`, `apply_assignment`) belong in the `cli/*` entry-point and `issue_parser`/`frontmatter` module reference this doc maintains.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-05T01:57:18 - `6569bf0b-4efa-4bb9-8b85-a0e909af608e.jsonl`
 - `/ll:confidence-check` - 2026-08-04T20:32:13 - `9a232634-c75e-4ea0-9ef9-0d29e428f8df.jsonl`
 - `/ll:wire-issue` - 2026-08-04T20:28:15 - `acac065d-330f-47d4-a8a4-9d824238c902.jsonl`
 - `/ll:refine-issue` - 2026-08-04T20:19:43 - `785f4a65-d938-4ebb-bae2-5c9ee18b9757.jsonl`

@@ -362,7 +362,34 @@ For each **FILLABLE** gap, update the issue with research findings.
 
 ### Configuration
 - [Config files if relevant, from locator]
+
+### Behavior Parity
+| Artifact | Behavior | Disposition | Notes |
+|---|---|---|---|
+| `path/to/old_file.py` | [behavior] | PRESERVED / CHANGED / DROPPED | [why] |
 ```
+
+**Behavior Parity** (ENH-3045): when `## Summary` or `## Proposed Solution`
+names an existing file this issue rewrites, deletes, or delegates away, add
+the `### Behavior Parity` subsection above — bare heading, one table per
+issue, with the replaced artifact as a table column (never as heading text;
+`_heading_bodies()` matches the heading anchored and exact, so a
+per-artifact heading would never be detected downstream). Enumerate each of
+the old file's behaviors with a disposition. Skip if no cited file is being
+replaced, or if `behavior_parity_not_applicable: true` is set in
+frontmatter — a human decision; refine must never set this flag itself.
+
+**Capability-search and claim-grounding** (ENH-3045): before writing a
+conclusion of the form "no existing implementation exists," search by
+**capability** — the input/output shape the new code needs, and the callers
+of the shared primitive that shape suggests — not by the algorithm's name; a
+grep for an algorithm name finds nothing when the codebase never names it,
+even when a function with the identical contract already exists under an
+unrelated name. State what was searched in the resulting claim. The same
+grounding applies to positive claims about existing code in `## Program
+Design`: an assertion that a symbol is reusable, unchanged, or behaves a
+given way must quote the specific line that makes it true — naming the
+symbol only proves it resolves, not that the claim about it holds.
 
 **Root Cause** (BUG) — populate with analyzer findings:
 ```markdown

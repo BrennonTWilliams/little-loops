@@ -1,12 +1,13 @@
 ---
 id: ENH-3047
-title: 'confidence-check: consume unverified-claim and missing-parity gaps as Criterion 4 deductions'
+title: 'confidence-check: consume unverified-claim and missing-parity gaps as Criterion
+  4 deductions'
 type: ENH
 priority: P3
 status: open
 discovered_by: capture-issue
 discovered_date: 2026-08-04
-captured_at: "2026-08-04T20:47:11Z"
+captured_at: '2026-08-04T20:47:11Z'
 blocked_by:
 - FEAT-3048
 relates_to:
@@ -17,7 +18,13 @@ labels:
 - skills
 - issues
 - gates
-decision_needed: true
+decision_needed: false
+confidence_score: 75
+outcome_confidence: 68
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-3047: Feed claim/parity gaps into confidence-check scoring
@@ -89,21 +96,83 @@ _Added by `/ll:refine-issue` — 2026-08-05 — based on codebase analysis:_
 
 **Option A**: Add deduction rows directly into the existing `### Criterion 4: Issue Well-Specified` `Finding | Score` table in `rubric.md` (absolute point value per row, same two-column shape as today). Mirrors the majority precedent — 5 of 6 rubric.md criterion tables use this shape.
 
+> **Selected:** Option A — evidence shows 8 of 9 Phase 2 scoring tables use this plain `Finding | Score` shape, and no downstream mechanism (Phase 3's hard-override reads independent shell variables, not a table) requires the alternative shape. See Decision Rationale below.
+
 **Option B**: Add a separate modifier table (`Target Status | Score Modifier | Action`) applied "on top of" Criterion 4, mirroring the one existing gate-driven-modifier precedent: the "Learning Test Status Scoring (Criterion 1 Modifier)" table (`rubric.md` lines 161-172).
 
 **Recommended**: Option B — the two new gap kinds are count/presence-based hard signals (a claim either references current code or it doesn't; a parity gap either exists or it doesn't), structurally closer to the Learning Test target's `missing`/`refuted` states than to Criterion 4's existing qualitative "how well specified is this issue" prose conditions. Folding counts into the absolute Finding/Score table would require inventing prose bands ("mostly clean but 1 stale ref = 15") that don't reflect the actual signal shape, whereas a modifier table keeps the count-driven deduction explicit and composable with the Phase 3 hard-override paragraph pattern already established for Program Design and Learning Test gates.
+
+### Decision Rationale
+
+_Added by `/ll:decide-issue` — 2026-08-04:_
+
+**Selected: Option A** (add deduction rows directly into the existing Criterion 4 `Finding | Score`
+table), overriding this section's inline "Recommended: Option B" note. Evidence-based scoring found
+the status-driven analogy Option B's recommendation rests on does not hold up:
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|---|---|---|---|---|---|
+| A — inline Criterion 4 rows | 2 | 3 | 3 | 3 | **11/12** |
+| B — separate modifier table | 1 | 1 | 3 | 2 | 7/12 |
+
+**Key evidence:**
+- 8 of 9 tables in `rubric.md` Phase 2 ("Readiness Scoring Tables") use the plain two-column
+  `Finding | Score` shape; only the Learning Test table uses the three-column
+  `Target Status | Score Modifier | Action` shape Option B proposes to mirror.
+- The Learning Test modifier table is **status-driven** — a lookup over four discrete labels
+  (`proven`/`stale`/`refuted`/`missing`) — not count-driven. A scalar claim/parity count is a
+  materially different signal shape, weakening the analogy Option B's "Recommended" note relies on.
+- The codebase's actual count-based-modifier precedent (Outcome Confidence's history-correction
+  signal, `-0.1` per matched correction, capped at 5) is a formula applied directly to the score,
+  not a three-column table — so even the closest true count-driven analog doesn't match Option B's
+  proposed shape.
+- SKILL.md Phase 3's hard-override mechanism (Learning Test and Program Design overrides) reads
+  independently-computed shell variables (`PD_FAIL`, Learning Test target presence) regardless of
+  which table shape backs the underlying score — Program Design has no modifier table at all and
+  its override still works. No downstream mechanism requires Option B's separate-table structure.
 
 ## Integration Map
 
 ### Files to Modify
 - `skills/confidence-check/SKILL.md` — Phase 1.6 pre-fetch, Phase 3 recommendation
 - `skills/confidence-check/rubric.md` — Criterion 4 deduction table
-- `scripts/tests/` — scoring assertions for the deduction path
+- `scripts/tests/test_confidence_check_skill.py` — scoring assertions for the deduction path
 
 ### Similar Patterns
 - `ENH-2852` / `ENH-2967` — Program Design gate pre-fetch and its `check-design` CLI owner;
   the exact shape to copy
 - `ENH-2946` — confidence-check already consuming `format-check` output
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — the `ll-issues format-check --format json` gap-class enumeration
+  (~line 1872) and JSON example payload (~line 1942) do not list `missing_behavior_parity`
+  today and will not list `stale_symbol_ref`/`stale_cli_flag` once FEAT-3048 lands; Phase 1.6
+  is the first consumer that depends on these keys being documented accurately [Agent 2
+  finding — strictly FEAT-3048/ENH-3045's obligation to add the keys, but this issue's Phase
+  1.6 change is what breaks first if that update is skipped]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_confidence_check_skill.py` — no existing test class covers Phase 1.6 or
+  Criterion 4 (existing classes cover Phase 4/4.5/4.6, Criterion D, Criterion A, learning-test
+  prefetch, VERDICT_JSON); follow the `TestConfidenceCheckLearningTestPrefetch` structural-slice
+  pattern — slice `### Phase 1.6:` and the Criterion 4 table via `content.index`/`content.find`,
+  then assert the new gap-field names and deduction-point language appear in the sliced text
+  [Agent 3 finding]. Confidence-check's Phase 1.6 bash logic is untested by pytest today — the
+  Program Design gate precedent (PD_GAP/PD_FAIL) only tests the underlying CLI predicate
+  (`test_ll_issues_check_design.py`), never the SKILL.md prose itself, so this file gets a new
+  test class rather than an update to an existing one.
+
+### Adapter Mirrors
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `.kimi-code/skills/confidence-check/SKILL.md` and `.gemini/skills/confidence-check/SKILL.md`
+  are git-tracked, generated mirrors of `skills/confidence-check/SKILL.md` (produced by
+  `ll-adapt --host <host> --apply`, marked `# generated by ll-adapt`). Editing Phase 1.6/Phase 3
+  in the source without regenerating both mirrors leaves them drifted [Agent 2 finding].
 
 ### Codebase Research Findings
 
@@ -149,6 +218,21 @@ _Added by `/ll:refine-issue` — 2026-08-05 — based on codebase analysis:_
 3. Make a nonzero unverified-claim count a Phase 3 readiness blocker.
 4. Validate against FEAT-2942: score drops materially from 93.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Add a new test class to `scripts/tests/test_confidence_check_skill.py` covering Phase 1.6's
+  new gap-field parsing and Criterion 4's new deduction rows, following the
+  `TestConfidenceCheckLearningTestPrefetch` structural-slice pattern
+- Regenerate the generated adapter mirrors — `ll-adapt --host kimi-code --apply` and
+  `ll-adapt --host gemini --apply` — after editing `skills/confidence-check/SKILL.md`, so
+  `.kimi-code/skills/confidence-check/SKILL.md` and `.gemini/skills/confidence-check/SKILL.md`
+  stay in sync
+- Update `docs/reference/CLI.md`'s `format-check --format json` gap-class enumeration and JSON
+  example to include the new gap keys once they exist (coordinate with FEAT-3048/ENH-3045,
+  which own adding the keys)
+
 ## Impact
 
 - **Priority**: P3 — depends on FEAT-3048; without it, no signal to consume
@@ -166,7 +250,26 @@ _Added by `/ll:refine-issue` — 2026-08-05 — based on codebase analysis:_
 **Open** | Created: 2026-08-04 | Priority: P3
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-04_
+
+**Readiness Score**: 75/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 68/100 → MODERATE
+
+### Concerns
+- Hard blocker `FEAT-3048` is still `status: open` — this issue's own text states "without it there is nothing to read," so Dependencies Satisfied scored 0/20 despite the other four criteria scoring near-perfect (75 total masks a real cannot-start-yet state; treat as blocked, not merely cautioned, until FEAT-3048 lands).
+- `format-check` flags a missing "Scope Boundaries" section (Criterion 4, −5).
+- Program Design's own research left one implementation decision open: whether claim/parity verification needs a dedicated `check-claims`-style CLI owner (mirroring `cmd_check_design`) or should stay inline like `PD_FAIL` today — noted as "unresolved by research and is an implementation decision."
+
+### Outcome Risk Factors
+- Moderate breadth (6 touch sites: SKILL.md, rubric.md, test file, CLI.md docs, two generated adapter mirrors) with local-logic depth in the Phase 1.6 bash parsing extension — not mechanical-only.
+- Test coverage for the new path can only be structurally slice-tested (SKILL.md prose) until FEAT-3048's gap kinds actually exist in `FormatGaps`; true integration coverage is deferred by the same blocker as above.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-05T01:56:50 - `6569bf0b-4efa-4bb9-8b85-a0e909af608e.jsonl`
+- `/ll:wire-issue` - 2026-08-05T01:49:15 - `2c309fa5-8c43-401a-82fc-22975e2f2e35.jsonl`
+- `/ll:decide-issue` - 2026-08-05T01:40:16 - `f80f4891-ce9f-494e-aa23-5cc25bc1524e.jsonl`
 - `/ll:refine-issue` - 2026-08-05T01:31:24 - `42ca0c4a-7282-4fbe-9b00-3b9e16ffcd31.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-05T00:25:09 - `b9710cb8-1d2b-4d04-8cf1-ad93d3cfccb7.jsonl`
 - `/ll:capture-issue` - 2026-08-04T20:50:28 - `2a9240a9-e6df-4ed5-ad2a-73a280bc7d8b.jsonl`

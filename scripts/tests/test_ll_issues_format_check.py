@@ -341,6 +341,8 @@ class TestFormatCheckJsonOutput:
             "duplicate_findings_block": [],
             # ENH-2999: ambiguous (>1 suffix match) split out from stale_file_ref.
             "ambiguous_file_ref": [],
+            # ENH-3045: replacement-target ref with no Behavior Parity table.
+            "missing_behavior_parity": [],
             # ENH-2992: marker presence rides the same payload; not a gap, so
             # it does not affect the exit code above.
             "superseded_marker_count": 0,
@@ -836,6 +838,179 @@ class TestAmbiguousFileRef:
         assert entry.startswith("agents/openai.yaml (5: ")
         assert entry.endswith(", …)")
         assert entry.count("skills/skill") == 3
+
+
+# ---------------------------------------------------------------------------
+# TestMissingBehaviorParity (ENH-3045)
+# ---------------------------------------------------------------------------
+
+_RESOLVED_GIT_LS_FILES = subprocess.CompletedProcess(
+    args=["git", "ls-files", "-z"],
+    returncode=0,
+    stdout=b"scripts/little_loops/session_store.py\0",
+    stderr=b"",
+)
+
+
+class TestMissingBehaviorParity:
+    """``missing_behavior_parity`` gap class (ENH-3045).
+
+    Fires when a resolved file ref in Summary/Proposed Solution/Files to
+    Modify shares a line with a replacement keyword and no ``### Behavior
+    Parity`` section exists; suppressed by the escape hatch or by scope.
+    """
+
+    def _write_bug_with_summary(self, format_check_dir: Path, bug_id: str, summary: str) -> Path:
+        filename = f"P3-{bug_id}-test-bug.md"
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", f"id: {bug_id}").replace(
+            "## Summary\nA real problem happens under specific conditions.",
+            f"## Summary\n{summary}",
+        )
+        return _write_issue(format_check_dir, filename, body)
+
+    def test_fires_on_resolved_ref_with_replacement_keyword_same_line(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._write_bug_with_summary(
+            format_check_dir,
+            "BUG-9701",
+            "This deletes `scripts/little_loops/session_store.py` entirely.",
+        )
+
+        with patch("little_loops.text_utils.subprocess.run", return_value=_RESOLVED_GIT_LS_FILES):
+            result = _invoke(
+                ["ll-issues", "format-check", "BUG-9701", "--config", str(temp_project_dir)]
+            )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "missing_behavior_parity: scripts/little_loops/session_store.py" in out
+
+    def test_no_gap_without_replacement_keyword(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._write_bug_with_summary(
+            format_check_dir,
+            "BUG-9702",
+            "This uses `scripts/little_loops/session_store.py` as a helper.",
+        )
+
+        with patch("little_loops.text_utils.subprocess.run", return_value=_RESOLVED_GIT_LS_FILES):
+            result = _invoke(
+                ["ll-issues", "format-check", "BUG-9702", "--config", str(temp_project_dir)]
+            )
+        out, _ = capsys.readouterr()
+
+        assert result == 0
+        assert "missing_behavior_parity" not in out
+
+    def test_no_gap_when_behavior_parity_section_present(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", "id: BUG-9703").replace(
+            "## Summary\nA real problem happens under specific conditions.",
+            "## Summary\nThis deletes `scripts/little_loops/session_store.py` entirely.",
+        ).replace(
+            "## Impact",
+            "### Behavior Parity\n"
+            "| Artifact | Behavior | Disposition | Notes |\n"
+            "|---|---|---|---|\n"
+            "| `scripts/little_loops/session_store.py` | stores sessions | DROPPED | n/a |\n"
+            "\n## Impact",
+        )
+        _write_issue(format_check_dir, "P3-BUG-9703-test-bug.md", body)
+
+        with patch("little_loops.text_utils.subprocess.run", return_value=_RESOLVED_GIT_LS_FILES):
+            result = _invoke(
+                ["ll-issues", "format-check", "BUG-9703", "--config", str(temp_project_dir)]
+            )
+        out, _ = capsys.readouterr()
+
+        assert result == 0
+        assert "missing_behavior_parity" not in out
+
+    def test_no_gap_with_escape_hatch(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        body = _CLEAN_BUG_BODY.replace(
+            "id: BUG-9101", "id: BUG-9704\nbehavior_parity_not_applicable: true"
+        ).replace(
+            "## Summary\nA real problem happens under specific conditions.",
+            "## Summary\nThis deletes `scripts/little_loops/session_store.py` entirely.",
+        )
+        _write_issue(format_check_dir, "P3-BUG-9704-test-bug.md", body)
+
+        with patch("little_loops.text_utils.subprocess.run", return_value=_RESOLVED_GIT_LS_FILES):
+            result = _invoke(
+                ["ll-issues", "format-check", "BUG-9704", "--config", str(temp_project_dir)]
+            )
+        out, _ = capsys.readouterr()
+
+        assert result == 0
+        assert "missing_behavior_parity" not in out
+
+    def test_no_gap_outside_scope_sections(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A replacement keyword in Current Behavior (not in scope) never fires."""
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", "id: BUG-9705").replace(
+            "## Current Behavior\nIt breaks in a specific way.",
+            "## Current Behavior\nThis deletes `scripts/little_loops/session_store.py`.",
+        )
+        _write_issue(format_check_dir, "P3-BUG-9705-test-bug.md", body)
+
+        with patch("little_loops.text_utils.subprocess.run", return_value=_RESOLVED_GIT_LS_FILES):
+            result = _invoke(
+                ["ll-issues", "format-check", "BUG-9705", "--config", str(temp_project_dir)]
+            )
+        out, _ = capsys.readouterr()
+
+        assert result == 0
+        assert "missing_behavior_parity" not in out
+
+    def test_single_id_json_reports_missing_behavior_parity(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._write_bug_with_summary(
+            format_check_dir,
+            "BUG-9706",
+            "This deletes `scripts/little_loops/session_store.py` entirely.",
+        )
+
+        with patch("little_loops.text_utils.subprocess.run", return_value=_RESOLVED_GIT_LS_FILES):
+            result = _invoke(
+                [
+                    "ll-issues",
+                    "format-check",
+                    "BUG-9706",
+                    "--format",
+                    "json",
+                    "--config",
+                    str(temp_project_dir),
+                ]
+            )
+        payload = json.loads(capsys.readouterr()[0])
+
+        assert result == 1
+        assert payload["missing_behavior_parity"] == ["scripts/little_loops/session_store.py"]
 
 
 # ---------------------------------------------------------------------------

@@ -74,7 +74,8 @@
         "Note configuration files, constants, or settings affected",
         "Consider integration points with external systems",
         "Think: what breaks if I change this in isolation?",
-        "Use N/A for categories with no changes, don't leave blank"
+        "Use N/A for categories with no changes, don't leave blank",
+        "When rewriting/deleting/delegating away an existing file cited here, add a `### Behavior Parity` subsection (artifact as a table column, one table per issue) enumerating its behaviors as preserved/changed/dropped \u2014 or set `behavior_parity_not_applicable: true` in frontmatter (human decision only)"
       ],
       "creation_template": "### Files to Modify\n- TBD - requires codebase analysis\n\n### Dependent Files (Callers/Importers)\n- TBD - use grep to find references\n\n### Similar Patterns\n- TBD - search for consistency\n\n### Tests\n- TBD - identify test files to update\n\n### Documentation\n- TBD - docs that need updates\n\n### Configuration\n- N/A or list config files"
     },

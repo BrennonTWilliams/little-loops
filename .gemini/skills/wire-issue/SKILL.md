@@ -118,6 +118,12 @@ EXISTING_WIRING:
   key_symbols: [function/class/module names extracted from issue text]
 ```
 
+**Replacement parity (ENH-3045)**: also extract `REPLACED_ARTIFACTS` — files
+the issue names (in Summary/Proposed Solution/Files to Modify) alongside a
+replacement keyword (delete/remove/replace/rewrite/supersede/delegate) that
+resolve to a real tracked file. Full extraction procedure and the Phase 4/8a
+work it drives: [behavior-parity.md](behavior-parity.md).
+
 **Key symbol extraction rules:**
 - Scan all sections for backtick-quoted names: `foo.py`, `ClassName`, `function_name()`, `--flag`, `config_key`
 - Extract module names from `import` or `from X import` snippets if present
@@ -161,6 +167,7 @@ Find:
 3. Test files — any test file that covers or exercises code in files_to_modify
 4. Plugin/manifest registrations — plugin.json, __init__.py exports, commands/ listings, skills/ directories, agents/ listings, hooks/hooks.json that reference the affected files or symbols
 5. Config files — ll-config.json, settings.json, .claude/CLAUDE.md entries that mention affected areas
+6. If `REPLACED_ARTIFACTS` is non-empty: locate every behavior of each replaced file, and before concluding "no existing implementation exists" for any capability, search by capability (input/output shape, callers of the shared primitive) rather than by algorithm name — see [behavior-parity.md](behavior-parity.md). State what was searched in the resulting claim.
 
 Return file paths grouped by:
 - Direct importers
@@ -229,6 +236,7 @@ Find:
 3. Tests that will likely break due to the planned changes (call the changed functions with the old API)
 4. Integration or end-to-end test files that exercise the affected functionality
 5. If no tests exist for the changed area, show the test pattern to follow from the closest similar test file
+6. Same capability-search and claim-grounding requirement as Agent 1 — see [behavior-parity.md](behavior-parity.md)
 
 Return examples with anchor-based references (function/class names).
 Distinguish between: existing tests to update vs. new tests to write vs. tests that may break.
@@ -367,6 +375,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `tests/test_new_feature.py` — new test file needed, follow pattern in `tests/test_similar.py` [Agent 3 finding]
 - `tests/test_integration.py` — calls old API in `test_handle_request()`, will break — update [Agent 3 finding]
 ```
+
+**Behavior Parity** (ENH-3045) — when `REPLACED_ARTIFACTS` (Phase 3) is
+non-empty, append a `### Behavior Parity` subsection — bare heading, one
+table per issue, replaced artifact as a table column (never heading text).
+Skip if `REPLACED_ARTIFACTS` is empty or `behavior_parity_not_applicable:
+true` is set. Full template and rationale: [behavior-parity.md](behavior-parity.md).
 
 **Config / schema** — append to a "Configuration" subsection:
 

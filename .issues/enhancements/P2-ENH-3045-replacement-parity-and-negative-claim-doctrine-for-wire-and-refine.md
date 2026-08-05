@@ -3,10 +3,11 @@ id: ENH-3045
 title: Replacement parity + negative-claim doctrine for /ll:wire-issue and /ll:refine-issue
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_by: capture-issue
 discovered_date: 2026-08-04
 captured_at: '2026-08-04T20:47:11Z'
+completed_at: '2026-08-05T01:59:31Z'
 relates_to:
 - FEAT-3048
 - FEAT-2942
@@ -443,6 +444,8 @@ doc/test/mirror updates those two require.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-05T01:59:02 - `6569bf0b-4efa-4bb9-8b85-a0e909af608e.jsonl`
+- `/ll:ready-issue` - 2026-08-05T01:37:17 - `32d58794-1548-4ea3-85e2-be0181a88760.jsonl`
 - `/ll:confidence-check` - 2026-08-04T21:22:57 - `e8e39a33-2d58-481a-aabd-651cc7d53758.jsonl`
 - `/ll:wire-issue` - 2026-08-04T21:20:39 - `90ea35aa-80f8-414c-acb5-630c56fbc5e6.jsonl`
 - `/ll:refine-issue` - 2026-08-04T21:02:31 - `51b5dc42-42bc-4a42-9db0-7c590083bc0b.jsonl`

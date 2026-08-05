@@ -4317,3 +4317,41 @@ class TestStackedFindingsBlocks:
         folded = fold_research_findings(stacked, "Integration Map", "- new")
         # No-sweep boundary: the untouched H2 keeps its stack.
         assert _duplicate_findings_blocks(folded) == ["Program Design (2)"]
+
+
+class TestBehaviorParityHeadingDetection:
+    """`_heading_bodies(content, "Behavior Parity")` absence/presence (ENH-3045).
+
+    The absence case was uncovered by any existing ``_heading_bodies`` test —
+    ``missing_behavior_parity`` relies on it returning ``[]`` to fire at all.
+    The positive case pins the fixed-heading contract from Expected Behavior:
+    a per-artifact heading (``### Behavior Parity — foo.py``) must NOT match,
+    since ``_heading_bodies``'s regex is anchored and exact.
+    """
+
+    def test_absent_heading_returns_empty_list(self) -> None:
+        from little_loops.issue_parser import _heading_bodies
+
+        content = "# ENH-1\n\n## Integration Map\n\n### Files to Modify\n- a.py\n"
+        assert _heading_bodies(content, "Behavior Parity") == []
+
+    def test_bare_heading_is_matched(self) -> None:
+        from little_loops.issue_parser import _heading_bodies
+
+        content = (
+            "# ENH-1\n\n## Integration Map\n\n"
+            "### Behavior Parity\n\n| a | b | c | d |\n\n"
+            "### Tests\n- x.py\n"
+        )
+        bodies = _heading_bodies(content, "Behavior Parity")
+        assert len(bodies) == 1
+        assert "| a | b | c | d |" in bodies[0]
+
+    def test_per_artifact_heading_is_not_matched(self) -> None:
+        from little_loops.issue_parser import _heading_bodies
+
+        content = (
+            "# ENH-1\n\n## Integration Map\n\n"
+            "### Behavior Parity — skills/link-epics/SKILL.md\n\n| a | b | c | d |\n"
+        )
+        assert _heading_bodies(content, "Behavior Parity") == []
