@@ -62,7 +62,8 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
         "(missing/renamed/empty/boilerplate/malformed_id/prose_dep_drift/"
         "stale_prose_dep/program_design_nonspecific/deprecated_key/"
         "multi_frontmatter/testable/stale_file_ref/unmarked_superseded_directive/"
-        "duplicate_findings_block/ambiguous_file_ref/missing_behavior_parity)",
+        "duplicate_findings_block/ambiguous_file_ref/missing_behavior_parity/"
+        "soft_dep_hard_edge)",
     )
     p.set_defaults(command="format-check")
     p.add_argument(
@@ -162,6 +163,11 @@ def _print_gaps(gaps: FormatGaps) -> None:
         print(f"  ambiguous_file_ref: {entry}")
     for entry in gaps.missing_behavior_parity:
         print(f"  missing_behavior_parity: {entry}")
+    for entry in gaps.soft_dep_hard_edge:
+        print(
+            f"  soft_dep_hard_edge: {entry} (body describes this as a soft dependency; "
+            "move it from blocked_by/depends_on to relates_to, don't delete the prose)"
+        )
 
 
 def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
@@ -170,7 +176,8 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
     Gap classes: missing/renamed/empty/boilerplate/malformed_id/
     prose_dep_drift/stale_prose_dep/program_design_nonspecific/deprecated_key/
     multi_frontmatter/testable/stale_file_ref/unmarked_superseded_directive/
-    duplicate_findings_block/ambiguous_file_ref/missing_behavior_parity.
+    duplicate_findings_block/ambiguous_file_ref/missing_behavior_parity/
+    soft_dep_hard_edge.
 
     Every class in :class:`FormatGaps` must have a matching loop in
     :func:`_print_gaps`; a class counted by ``has_gaps`` but not rendered

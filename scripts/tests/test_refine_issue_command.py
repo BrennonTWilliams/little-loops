@@ -466,6 +466,36 @@ class TestProgramDesignGateExtension:
         )
 
 
+class TestSoftDepHardEdgeAndContradictionGate:
+    """Step 6.7 must read soft_dep_hard_edge and run the AC-vs-Design pass (ENH-3046)."""
+
+    def _gate_text(self) -> str:
+        content = COMMAND_FILE.read_text()
+        start = content.index("### 6.7. Prose Dependency & Program Design Gate")
+        end = content.index("### 7.5. Extract Learning Targets")
+        return content[start:end]
+
+    def test_soft_dep_hard_edge_key_read(self) -> None:
+        assert "soft_dep_hard_edge" in self._gate_text(), (
+            "Step 6.7 must inspect the soft_dep_hard_edge key from "
+            "`ll-issues format-check --format json`"
+        )
+
+    def test_soft_dep_hard_edge_remedy_moves_to_relates_to_not_deletes_prose(self) -> None:
+        text = self._gate_text()
+        assert "relates_to" in text, "remedy must move the ID to relates_to"
+        assert "do not delete the soft-dependency prose" in text, (
+            "remedy must explicitly preserve the soft-dependency prose, not delete it"
+        )
+
+    def test_ac_vs_program_design_contradiction_pass_documented(self) -> None:
+        text = self._gate_text()
+        assert "Acceptance Criteria" in text and "Program Design" in text
+        assert "report only" in text.lower() or "never auto-applied" in text.lower(), (
+            "the AC-vs-Program-Design pass must be documented as report-only"
+        )
+
+
 class TestSessionLogPrecedesProgramDesignGate:
     """Session Log append must precede the gate check that reads it (BUG-3001).
 

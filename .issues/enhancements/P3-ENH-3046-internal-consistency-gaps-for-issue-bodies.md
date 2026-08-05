@@ -3,7 +3,8 @@ id: ENH-3046
 title: soft_dep_hard_edge gap kind in format-check + AC-vs-design pass in refine-issue
 type: ENH
 priority: P3
-status: open
+status: done
+completed_at: '2026-08-05T04:35:00Z'
 testable: true
 discovered_by: capture-issue
 discovered_date: 2026-08-04
@@ -175,10 +176,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Tests
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_ll_issues_format_check.py` — `TestAmbiguousFileRef` (`:718`, ENH-2999) is the
+- `scripts/tests/test_ll_issues_format_check.py` — `TestAmbiguousFileRef` (`:720`, ENH-2999) is the
   exact pattern to mirror for both new gap kinds (`_write_bug_with_*` helper + `--all` text
   assertion + single-ID `--format json` exact-list assertion); `test_clean_issue_json_output`
-  (`:302`) and `test_every_format_gaps_field_is_rendered` (`:1555`) must gain the two new keys
+  (`:302`) and `test_every_format_gaps_field_is_rendered` (`:1730`) must gain the two new keys
   [Agent 3 finding]
 - `scripts/tests/test_issue_parser.py` — direct unit-level precedent for testing
   `check_format_gaps()` without going through the CLI (`TestCheckFormatGapsTestablePopulation`,
@@ -245,9 +246,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
   `docs/reference/CLI.md`.
 - Update `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` — general format-check/gap-kind references.
 - Update `scripts/tests/test_ll_issues_format_check.py` — add a `soft_dep_hard_edge` fixture
-  mirroring `TestMissingBehaviorParity` (`:856`, ENH-3045 — the newest and closest precedent,
+  mirroring `TestMissingBehaviorParity` (`:855`, ENH-3045 — the newest and closest precedent,
   since it also gates on frontmatter state); add the key to `test_clean_issue_json_output`
-  (`:345`).
+  (`:302`).
 - Update `scripts/tests/test_issue_parser.py` — direct `check_format_gaps()` unit coverage
   following the `TestCheckFormatGapsTestablePopulation` (`:4074`) shape.
 - Update `scripts/tests/test_refine_issue_command.py` — extend `TestProgramDesignGateExtension`
@@ -279,6 +280,7 @@ sweep required; it is the copy-target precedent instead.
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-05T03:20:01 - `b93ed61c-d438-457c-84c0-8c0cd5956068.jsonl`
 - `/ll:confidence-check` - 2026-08-05T02:43:49 - `373c0340-8e1f-44ea-8319-fc74f63a37a4.jsonl`
 - `/ll:confidence-check` - 2026-08-05T01:56:57 - `6569bf0b-4efa-4bb9-8b85-a0e909af608e.jsonl`
 - `/ll:wire-issue` - 2026-08-05T01:47:19 - `6569bf0b-4efa-4bb9-8b85-a0e909af608e.jsonl`

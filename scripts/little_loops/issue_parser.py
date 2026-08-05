@@ -257,6 +257,7 @@ class FormatGaps:
     duplicate_findings_block: list[str] = field(default_factory=list)
     ambiguous_file_ref: list[str] = field(default_factory=list)
     missing_behavior_parity: list[str] = field(default_factory=list)
+    soft_dep_hard_edge: list[str] = field(default_factory=list)
 
     @property
     def has_gaps(self) -> bool:
@@ -278,6 +279,7 @@ class FormatGaps:
             or self.duplicate_findings_block
             or self.ambiguous_file_ref
             or self.missing_behavior_parity
+            or self.soft_dep_hard_edge
         )
 
     def to_dict(self) -> dict[str, list[str]]:
@@ -299,6 +301,7 @@ class FormatGaps:
             "duplicate_findings_block": self.duplicate_findings_block,
             "ambiguous_file_ref": self.ambiguous_file_ref,
             "missing_behavior_parity": self.missing_behavior_parity,
+            "soft_dep_hard_edge": self.soft_dep_hard_edge,
         }
 
 
@@ -434,6 +437,14 @@ def check_format_gaps(
             decision mirroring ``program_design_not_applicable`` — refine and
             wire must never set it themselves. Only reported when *ref_index*
             is given.
+        soft_dep_hard_edge: an ID in ``blocked_by``/``depends_on`` (ENH-3046)
+            that the body describes with soft-dependency language ("soft dep",
+            "optional", "nice to have", "has not landed") in the same
+            blank-line-delimited paragraph as the ID. The hard structured edge
+            contradicts the soft prose — remedy is moving the ID to
+            ``relates_to``, not deleting the prose (the soft language is
+            usually the accurate statement). No suppression escape hatch.
+            Only reported when *issue_statuses* is given.
 
     Args:
         issue_path: Path to the issue markdown file.
@@ -572,6 +583,24 @@ def check_format_gaps(
             elif prose_id not in structured_deps:
                 gaps.prose_dep_drift.append(prose_id)
 
+        if structured_deps:
+            from little_loops.issues.prose_deps import _ID_ONLY_RE, _in_fence
+            from little_loops.text_utils import _CODE_FENCE
+
+            fence_spans = [(m.start(), m.end()) for m in _CODE_FENCE.finditer(body_only)]
+            soft_edges: set[str] = set()
+            for para_start, para_end in _paragraph_spans(body_only):
+                if _in_fence(para_start, para_end, fence_spans):
+                    continue
+                paragraph = body_only[para_start:para_end]
+                if not _SOFT_DEP_PHRASE_RE.search(paragraph):
+                    continue
+                for id_match in _ID_ONLY_RE.finditer(paragraph):
+                    candidate = f"{id_match.group(1).upper()}-{id_match.group(2)}"
+                    if candidate in structured_deps:
+                        soft_edges.add(candidate)
+            gaps.soft_dep_hard_edge.extend(sorted(soft_edges))
+
     if "testable" not in fm:
         from little_loops.frontmatter import strip_frontmatter as _strip_fm
 
@@ -682,6 +711,35 @@ _SUPERSEDED_CORRECTION_PHRASES = (
 )
 _SUPERSEDED_DIRECTIVE_SECTIONS = ("Implementation Steps", "Files to Modify", "Acceptance Criteria")
 _SUPERSEDED_MARKER_PREFIX = "⚠ Superseded"
+
+# ENH-3046: closed soft-dependency phrase list for the soft_dep_hard_edge gap
+# class — proximity window is the blank-line-delimited paragraph containing
+# the blocked_by/depends_on ID, not the same line (Expected Behavior).
+_SOFT_DEP_PHRASE_RE = re.compile(
+    r"\b(?:soft dep(?:endency)?|soft-dep|optional|nice to have|has(?:n't| not) landed)\b",
+    re.IGNORECASE,
+)
+
+
+def _paragraph_spans(text: str) -> list[tuple[int, int]]:
+    """Return (start, end) offsets of *text*'s blank-line-delimited paragraphs."""
+    spans: list[tuple[int, int]] = []
+    start: int | None = None
+    end = 0
+    pos = 0
+    for line in text.splitlines(keepends=True):
+        if line.strip():
+            if start is None:
+                start = pos
+            end = pos + len(line.rstrip("\n"))
+        elif start is not None:
+            spans.append((start, end))
+            start = None
+        pos += len(line)
+    if start is not None:
+        spans.append((start, end))
+    return spans
+
 
 # ENH-3045: closed replacement-keyword list for the missing_behavior_parity
 # gap class — matched as whole words, same line as the ref only (Program

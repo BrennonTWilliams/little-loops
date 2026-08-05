@@ -343,6 +343,8 @@ class TestFormatCheckJsonOutput:
             "ambiguous_file_ref": [],
             # ENH-3045: replacement-target ref with no Behavior Parity table.
             "missing_behavior_parity": [],
+            # ENH-3046: blocked_by/depends_on ID whose body describes it as soft.
+            "soft_dep_hard_edge": [],
             # ENH-2992: marker presence rides the same payload; not a gap, so
             # it does not affect the exit code above.
             "superseded_marker_count": 0,
@@ -746,9 +748,7 @@ class TestAmbiguousFileRef:
             "See `dir/utils.py` for details.",
         )
 
-        with patch(
-            "little_loops.text_utils.subprocess.run", return_value=_AMBIGUOUS_GIT_LS_FILES
-        ):
+        with patch("little_loops.text_utils.subprocess.run", return_value=_AMBIGUOUS_GIT_LS_FILES):
             result = _invoke(
                 ["ll-issues", "format-check", "--all", "--config", str(temp_project_dir)]
             )
@@ -773,9 +773,7 @@ class TestAmbiguousFileRef:
             "See `dir/utils.py` for details.",
         )
 
-        with patch(
-            "little_loops.text_utils.subprocess.run", return_value=_AMBIGUOUS_GIT_LS_FILES
-        ):
+        with patch("little_loops.text_utils.subprocess.run", return_value=_AMBIGUOUS_GIT_LS_FILES):
             result = _invoke(
                 [
                     "ll-issues",
@@ -811,9 +809,7 @@ class TestAmbiguousFileRef:
         many_matches = subprocess.CompletedProcess(
             args=["git", "ls-files", "-z"],
             returncode=0,
-            stdout=b"\0".join(
-                f"skills/skill{i}/agents/openai.yaml".encode() for i in range(5)
-            )
+            stdout=b"\0".join(f"skills/skill{i}/agents/openai.yaml".encode() for i in range(5))
             + b"\0",
             stderr=b"",
         )
@@ -916,16 +912,20 @@ class TestMissingBehaviorParity:
         format_check_dir: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", "id: BUG-9703").replace(
-            "## Summary\nA real problem happens under specific conditions.",
-            "## Summary\nThis deletes `scripts/little_loops/session_store.py` entirely.",
-        ).replace(
-            "## Impact",
-            "### Behavior Parity\n"
-            "| Artifact | Behavior | Disposition | Notes |\n"
-            "|---|---|---|---|\n"
-            "| `scripts/little_loops/session_store.py` | stores sessions | DROPPED | n/a |\n"
-            "\n## Impact",
+        body = (
+            _CLEAN_BUG_BODY.replace("id: BUG-9101", "id: BUG-9703")
+            .replace(
+                "## Summary\nA real problem happens under specific conditions.",
+                "## Summary\nThis deletes `scripts/little_loops/session_store.py` entirely.",
+            )
+            .replace(
+                "## Impact",
+                "### Behavior Parity\n"
+                "| Artifact | Behavior | Disposition | Notes |\n"
+                "|---|---|---|---|\n"
+                "| `scripts/little_loops/session_store.py` | stores sessions | DROPPED | n/a |\n"
+                "\n## Impact",
+            )
         )
         _write_issue(format_check_dir, "P3-BUG-9703-test-bug.md", body)
 
@@ -1011,6 +1011,153 @@ class TestMissingBehaviorParity:
 
         assert result == 1
         assert payload["missing_behavior_parity"] == ["scripts/little_loops/session_store.py"]
+
+
+# ---------------------------------------------------------------------------
+# TestSoftDepHardEdge (ENH-3046)
+# ---------------------------------------------------------------------------
+
+
+class TestSoftDepHardEdge:
+    """``soft_dep_hard_edge`` gap class (ENH-3046).
+
+    Fires when an ID in ``blocked_by``/``depends_on`` shares a blank-line-
+    delimited paragraph with soft-dependency language ("soft dep",
+    "optional", "nice to have", "has not landed"). No suppression escape
+    hatch.
+    """
+
+    def _write_bug_with_blocker(
+        self,
+        format_check_dir: Path,
+        bug_id: str,
+        summary: str,
+        *,
+        blocked_by: str = "FEAT-9300",
+    ) -> Path:
+        filename = f"P3-{bug_id}-test-bug.md"
+        body = _CLEAN_BUG_BODY.replace(
+            "id: BUG-9101",
+            f"id: {bug_id}\nblocked_by:\n- {blocked_by}",
+        ).replace(
+            "## Summary\nA real problem happens under specific conditions.",
+            f"## Summary\n{summary}",
+        )
+        return _write_issue(format_check_dir, filename, body)
+
+    def test_fires_on_soft_language_same_paragraph(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        _write_feature(
+            format_check_dir,
+            "P2-FEAT-9300-blocker.md",
+            "---\nid: FEAT-9300\nstatus: open\n---\n\n# FEAT-9300: Blocker\n",
+        )
+        self._write_bug_with_blocker(
+            format_check_dir,
+            "BUG-9901",
+            "Soft dep on FEAT-9300 — do not implement here. "
+            "If FEAT-9300 has not landed, this still ships proposal-only.",
+        )
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9901", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "soft_dep_hard_edge: FEAT-9300" in out
+
+    def test_no_gap_without_soft_language(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        _write_feature(
+            format_check_dir,
+            "P2-FEAT-9301-blocker.md",
+            "---\nid: FEAT-9301\nstatus: open\n---\n\n# FEAT-9301: Blocker\n",
+        )
+        self._write_bug_with_blocker(
+            format_check_dir,
+            "BUG-9902",
+            "This requires FEAT-9301 to ship first.",
+            blocked_by="FEAT-9301",
+        )
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9902", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 0
+        assert "soft_dep_hard_edge" not in out
+
+    def test_no_gap_when_soft_language_in_different_paragraph(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Soft phrase in a different paragraph than the ID must not fire."""
+        _write_feature(
+            format_check_dir,
+            "P2-FEAT-9302-blocker.md",
+            "---\nid: FEAT-9302\nstatus: open\n---\n\n# FEAT-9302: Blocker\n",
+        )
+        self._write_bug_with_blocker(
+            format_check_dir,
+            "BUG-9903",
+            "This requires FEAT-9302 to ship first.\n\n"
+            "Some other paragraph mentions this is optional in general.",
+            blocked_by="FEAT-9302",
+        )
+
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9903", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+
+        assert result == 0
+        assert "soft_dep_hard_edge" not in out
+
+    def test_single_id_json_reports_soft_dep_hard_edge(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        _write_feature(
+            format_check_dir,
+            "P2-FEAT-9303-blocker.md",
+            "---\nid: FEAT-9303\nstatus: open\n---\n\n# FEAT-9303: Blocker\n",
+        )
+        self._write_bug_with_blocker(
+            format_check_dir,
+            "BUG-9904",
+            "Soft dep on FEAT-9303 — nice to have but not required.",
+            blocked_by="FEAT-9303",
+        )
+
+        result = _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9904",
+                "--format",
+                "json",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        payload = json.loads(capsys.readouterr()[0])
+
+        assert result == 1
+        assert payload["soft_dep_hard_edge"] == ["FEAT-9303"]
 
 
 # ---------------------------------------------------------------------------

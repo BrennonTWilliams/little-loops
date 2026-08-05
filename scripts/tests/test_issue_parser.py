@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+import pytest
+
 from little_loops.config import BRConfig
 from little_loops.issue_parser import (
     IssueInfo,
@@ -4129,6 +4131,77 @@ class TestCheckFormatGapsTestablePopulation:
         gaps = check_format_gaps(issue_file)
 
         assert gaps.testable == []
+
+
+# Frozen at `5186d1d5^` (FEAT-2942, before the same-commit human repair) — the
+# only known real specimen of a soft-dep/blocked_by contradiction. See
+# ENH-3046's Scope Boundaries: do not assert this against the live issue file.
+_FROZEN_FEAT_2942_FRONTMATTER_AND_PROSE = (
+    "---\n"
+    "id: FEAT-2942\n"
+    "status: open\n"
+    "blocked_by:\n"
+    "- ENH-2941\n"
+    "- FEAT-2947\n"
+    "---\n\n"
+    "# FEAT-2942: `ll-issues link-epics` — cluster orphans and propose EPIC assignment/synthesis\n\n"
+    "## Proposed Solution\n\n"
+    "**Soft dep on FEAT-2947 — do not implement EPIC creation here.** Synthesize mode emits "
+    "*cluster proposals*, not EPIC files; the actual creation call is `ll-issues create --type "
+    "EPIC` (FEAT-2947). If FEAT-2947 has not landed, synthesize mode still ships proposal-only "
+    "and the skill creates the EPIC as it does today. Two independent ID-allocation/templating "
+    "implementations is exactly the duplication this epic exists to remove.\n"
+)
+
+
+class TestCheckFormatGapsSoftDepHardEdge:
+    """check_format_gaps()'s `soft_dep_hard_edge` gap population (ENH-3046)."""
+
+    def test_frozen_feat_2942_fixture_reports_soft_dep_hard_edge(self, tmp_path: Path) -> None:
+        """Regression guard: the FEAT-2942 contradiction frozen at `5186d1d5^`."""
+        from little_loops.issue_parser import check_format_gaps
+
+        features_dir = tmp_path / "features"
+        features_dir.mkdir()
+        issue_file = features_dir / "P2-FEAT-2942-test.md"
+        issue_file.write_text(_FROZEN_FEAT_2942_FRONTMATTER_AND_PROSE)
+
+        gaps = check_format_gaps(
+            issue_file, issue_statuses={"ENH-2941": "open", "FEAT-2947": "open"}
+        )
+
+        assert gaps.soft_dep_hard_edge == ["FEAT-2947"]
+
+    def test_live_feat_2942_issue_reports_nothing(self) -> None:
+        """The repaired live issue must not fire — proves the detector tracks the repair."""
+        from little_loops.issue_parser import check_format_gaps
+        from little_loops.paths import find_project_root
+
+        project_root = find_project_root(Path(__file__))
+        if project_root is None:
+            pytest.skip("project root not resolvable in this checkout")
+        candidates = list((project_root / ".issues" / "features").glob("*-FEAT-2942-*.md"))
+        if not candidates:
+            pytest.skip("FEAT-2942 issue file not present in this checkout")
+
+        gaps = check_format_gaps(
+            candidates[0], issue_statuses={"ENH-2941": "open", "FEAT-2947": "done"}
+        )
+
+        assert gaps.soft_dep_hard_edge == []
+
+    def test_no_gap_without_issue_statuses(self, tmp_path: Path) -> None:
+        """Fails open when issue_statuses is absent, matching this module's convention."""
+        from little_loops.issue_parser import check_format_gaps
+
+        features_dir = tmp_path / "features"
+        features_dir.mkdir()
+        issue_file = features_dir / "P2-FEAT-9310-test.md"
+        issue_file.write_text(_FROZEN_FEAT_2942_FRONTMATTER_AND_PROSE.replace("2942", "9310"))
+
+        gaps = check_format_gaps(issue_file)
+
+        assert gaps.soft_dep_hard_edge == []
 
 
 class TestSectionBodyLastMatchWins:

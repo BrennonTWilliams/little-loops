@@ -812,6 +812,25 @@ keys:
     sweep. Like `superseded_marker_count`, **report the count in Step 8's
     output and do not edit**; it folds as a side effect of a future pass that
     writes to that section.
+- **`soft_dep_hard_edge` non-empty** (ENH-3046): an ID in `blocked_by`/
+  `depends_on` frontmatter shares a paragraph with soft-dependency language
+  ("soft dep", "optional", "nice to have", "has not landed"). The soft prose
+  is usually the accurate statement and the hard edge is the mistake — move
+  the ID from `blocked_by`/`depends_on` to `relates_to` via `ll-issues link
+  [ISSUE-ID] relates_to [ID] --unlink [ISSUE-ID] blocked_by [ID]` (or the
+  equivalent two-step edit), and **do not delete the soft-dependency prose**
+  — that would silently harden a dependency that was deliberately optional.
+  Re-run `format-check` to confirm it clears. No suppression escape hatch
+  exists for this key.
+- **AC-vs-Program-Design contradiction pass** (ENH-3046, judgment-class —
+  report only, never auto-applied): read only the `## Acceptance Criteria`
+  and `## Program Design` sections and identify any pair of statements that
+  cannot both be satisfied (e.g. one AC requires a behavior another AC or the
+  Program Design section forbids). This is not mechanical — no gap kind
+  catches it, since both statements may reference the same flags/types and
+  differ only in what they permit. List any findings as `[AC N] vs
+  [AC M / Program Design]: [one-sentence contradiction]` in Step 8's output
+  under the gate report; do not edit the issue file to resolve them.
 - Skip this gate if `DRY_RUN` is true.
 
 ### 7.5. Extract Learning Targets (ENH-2209)
@@ -896,6 +915,8 @@ ISSUE REFINED: [ISSUE-ID]
 - stale_prose_dep: [clear | fixed | — ]
 - superseded_marker_count: [N — run `/ll:reconcile-issue [ID]` | 0]
 - program_design_nonspecific: [clear | revised once, now clear | STILL FAILING after one revision — operator action needed | not applicable (unarmed/grandfathered)]
+- soft_dep_hard_edge: [clear | fixed (moved [ID] to relates_to) | — ]
+- AC-vs-Program-Design contradictions: [none found | N found — see findings below]
 
 ## FILE STATUS
 - [Modified | Not modified (--dry-run)]
