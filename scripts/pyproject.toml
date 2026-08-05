@@ -138,7 +138,10 @@ dev = [
     "pytest-timeout>=2.0",
     "hypothesis>=6.0",
     "mutmut>=3.0",
-    "ruff>=0.1.0",
+    # Pinned (not >=): an unpinned ruff let formatting drift between
+    # contributor machines, surfacing as a ~50-file reformat on unrelated
+    # branches. Bump deliberately, in the same commit as a full reformat.
+    "ruff==0.14.10",
     "mypy>=1.0",
     "hatch>=1.0",
     "syrupy>=4.0",
