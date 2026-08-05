@@ -286,9 +286,7 @@ class BRConfig:
         )
         self._history = HistoryConfig.from_dict(self._raw_config.get("history", {}))
         self._queue = QueueConfig.from_dict(self._raw_config.get("queue", {}))
-        self._tamper_guard = TamperGuardConfig.from_dict(
-            self._raw_config.get("tamper_guard", {})
-        )
+        self._tamper_guard = TamperGuardConfig.from_dict(self._raw_config.get("tamper_guard", {}))
 
     @property
     def project(self) -> ProjectConfig:

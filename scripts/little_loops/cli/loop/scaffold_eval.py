@@ -75,7 +75,9 @@ def _splice_proof_states(
     states[execute_state].next = proof_names[0]
 
 
-def _variant_a(issue_id: str, info: IssueInfo, lt_enabled: bool) -> tuple[dict[str, StateConfig], str]:
+def _variant_a(
+    issue_id: str, info: IssueInfo, lt_enabled: bool
+) -> tuple[dict[str, StateConfig], str]:
     states: dict[str, StateConfig] = {
         "execute": StateConfig(
             action=_EXECUTE_PLACEHOLDER,
@@ -112,7 +114,7 @@ def _variant_b(
 ) -> tuple[dict[str, StateConfig], str]:
     quoted_ids = ", ".join(f"'{i}'" for i in issue_ids)
     discover_action = (
-        "python3 -c \"\n"
+        'python3 -c "\n'
         "import sys\n"
         f"ids = [{quoted_ids}]\n"
         "pf = '${context.run_dir}/processed.txt'\n"
@@ -186,9 +188,7 @@ def _variant_b(
         proof_names = [_proof_state_name(t) for t in target_to_ids]
         for i, (target, ids) in enumerate(target_to_ids.items()):
             on_yes = proof_names[i + 1] if i + 1 < len(proof_names) else "check_skill"
-            guard = " || ".join(
-                f'[ "${{captured.current_item.output}}" = "{iid}" ]' for iid in ids
-            )
+            guard = " || ".join(f'[ "${{captured.current_item.output}}" = "{iid}" ]' for iid in ids)
             cmd = f'll-learning-tests check --stale-aware "{target}"'
             states[proof_names[i]] = StateConfig(
                 action=f"({guard}) && {cmd} || exit 0\n",

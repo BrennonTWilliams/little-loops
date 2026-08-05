@@ -627,15 +627,11 @@ class TestVerifyWorkWasDoneTamperGuard:
         repo = self._repo_with_committed_test(tmp_path)
         (repo / "tests" / "test_x.py").write_text("def test_x():\n    pass  # assert 1 == 1\n")
 
-        result = verify_work_was_done(
-            mock_logger, changed_files=["tests/test_x.py"], config=None
-        )
+        result = verify_work_was_done(mock_logger, changed_files=["tests/test_x.py"], config=None)
 
         assert result is True
 
-    def test_untampered_source_change_passes(
-        self, mock_logger: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_untampered_source_change_passes(self, mock_logger: MagicMock, tmp_path: Path) -> None:
         """A normal source-only change with untouched tests passes the guard."""
         from little_loops.config import BRConfig
 

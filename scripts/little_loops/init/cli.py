@@ -124,9 +124,7 @@ def _dispatch_host_adapters(
             elif installed and not dry_run:
                 from little_loops.init.writers import kimi_config_path
 
-                print(
-                    f"[Kimi] Hook adapter installed to {kimi_config_path()} (managed block)"
-                )
+                print(f"[Kimi] Hook adapter installed to {kimi_config_path()} (managed block)")
                 print(
                     "[Kimi] Note: hooks are user-level (kimi has no project-local hook "
                     "file) and take effect in new kimi sessions."

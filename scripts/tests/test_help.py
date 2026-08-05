@@ -83,7 +83,13 @@ class TestRenderCatalog:
         ]
         out = render_catalog(entries, None, "json")
         assert json.loads(out) == [
-            {"name": "foo", "kind": "command", "description": "d", "argument_hint": None, "area": "A"}
+            {
+                "name": "foo",
+                "kind": "command",
+                "description": "d",
+                "argument_hint": None,
+                "area": "A",
+            }
         ]
 
     def test_area_filter(self) -> None:

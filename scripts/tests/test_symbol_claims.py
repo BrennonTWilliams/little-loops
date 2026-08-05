@@ -168,9 +168,7 @@ def test_extract_symbols_indented_class_attribute_resolves(repo: Path) -> None:
         "    stale_file_ref: list = field(default_factory=list)\n"
     )
     idx = build_symbol_index(repo)
-    assert symbol_exists_in_file(
-        idx, "scripts/little_loops/issues/gaps.py", "stale_file_ref"
-    )
+    assert symbol_exists_in_file(idx, "scripts/little_loops/issues/gaps.py", "stale_file_ref")
 
 
 def test_extract_symbols_indented_local_variable_also_resolves(repo: Path) -> None:
@@ -195,9 +193,7 @@ def test_symbol_resolves_elsewhere_false_when_only_cited_file_has_it() -> None:
         root=Path("."),
         _reverse={"cmd_link": frozenset({"scripts/little_loops/cli/issues/link.py"})},
     )
-    assert not symbol_resolves_elsewhere(
-        idx, "scripts/little_loops/cli/issues/link.py", "cmd_link"
-    )
+    assert not symbol_resolves_elsewhere(idx, "scripts/little_loops/cli/issues/link.py", "cmd_link")
 
 
 def test_symbol_resolves_elsewhere_false_when_absent_from_reverse_index() -> None:

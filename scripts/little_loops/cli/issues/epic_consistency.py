@@ -209,10 +209,7 @@ def compute_drift(
     # different closure surface (## Cancelled <date>) and do not need a separate
     # disposition heading.
     is_terminal = epic_info.status in _TERMINAL_STATUSES
-    composition_review_missing = (
-        not is_terminal
-        and _COMPOSITION_REVIEW_RE.search(content) is None
-    )
+    composition_review_missing = not is_terminal and _COMPOSITION_REVIEW_RE.search(content) is None
 
     return EpicDrift(
         epic_id=epic_id,

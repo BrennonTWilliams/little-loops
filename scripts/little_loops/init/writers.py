@@ -775,7 +775,11 @@ def install_kimi_adapter(
         return False
 
     if dry_run:
-        action = "replace little-loops managed block" if span is not None else "add little-loops managed block"
+        action = (
+            "replace little-loops managed block"
+            if span is not None
+            else "add little-loops managed block"
+        )
         print(f"[write] {dest} ({action})")
         return True
 

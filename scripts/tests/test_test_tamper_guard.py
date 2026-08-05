@@ -749,7 +749,9 @@ class TestIsWeakening:
         ``is_weakening`` level -- fixing it needs assertion attribution
         through helper calls, a separate mechanism per the issue's Proposed
         Solution. Reproduction verbatim from the issue's Current Behavior."""
-        before = "def test_a():\n    assert 1\n    assert 2\ndef test_b():\n    assert 3\n    assert 4\n"
+        before = (
+            "def test_a():\n    assert 1\n    assert 2\ndef test_b():\n    assert 3\n    assert 4\n"
+        )
         after = (
             "def _check(x):\n    assert x\n"
             "def test_a():\n    _check(1); _check(2)\n"
@@ -895,9 +897,7 @@ class TestFilterWeakeningFindingsCrossFileNetting:
         kept = filter_weakening_findings(findings, repo, "HEAD")
         assert [f.path for f in kept] == ["test_a.py"]
 
-    def test_move_plus_unrelated_deletion_in_same_file_still_flagged(
-        self, tmp_path: Path
-    ) -> None:
+    def test_move_plus_unrelated_deletion_in_same_file_still_flagged(self, tmp_path: Path) -> None:
         """AC row 8: move ``test_b`` out of A *and* delete an assertion from
         A's retained ``test_a`` -- must not be laundered by the move; the
         adjusted-baseline guard."""

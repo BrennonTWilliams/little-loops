@@ -995,7 +995,9 @@ class TestBRConfig:
         assert config.resolve_variable("refine_status.columns") == "id title"
         assert config.resolve_variable("refine_status.elide_order") == "title"
 
-    def test_to_dict_extensions(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
+    def test_to_dict_extensions(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
         """extensions is a list, not a dict — resolve_variable can join it but not descend (BUG-3012)."""
         sample_config["extensions"] = ["ext-a", "ext-b"]
         config_path = temp_project_dir / ".ll" / "ll-config.json"

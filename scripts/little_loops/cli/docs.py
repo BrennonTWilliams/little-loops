@@ -439,8 +439,6 @@ Exit codes:
         # genuine broken link (host answered "no") does.
         if result.has_errors:
             return 1
-        if args.strict_network and (
-            result.unreachable_links > 0 or result.indeterminate_links > 0
-        ):
+        if args.strict_network and (result.unreachable_links > 0 or result.indeterminate_links > 0):
             return 1
         return 0

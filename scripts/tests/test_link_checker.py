@@ -1046,9 +1046,7 @@ class TestLoadRetryConfig:
     def test_parses_milliseconds(self, tmp_path: Path) -> None:
         from little_loops.link_checker import load_retry_config
 
-        (tmp_path / ".mlc.config.json").write_text(
-            json.dumps({"fallbackRetryDelay": "500ms"})
-        )
+        (tmp_path / ".mlc.config.json").write_text(json.dumps({"fallbackRetryDelay": "500ms"}))
 
         config = load_retry_config(tmp_path)
         assert config["fallback_retry_delay"] == 0.5

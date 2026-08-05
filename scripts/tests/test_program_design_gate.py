@@ -208,10 +208,10 @@ class TestSignatureShape:
         from little_loops.issues.program_design import parse_signature_lines
 
         for line in (
-            '- `foo(a: int) -> Bar`',
-            '- `foo(a: int) -> Bar` — does a thing',
+            "- `foo(a: int) -> Bar`",
+            "- `foo(a: int) -> Bar` — does a thing",
             '- `foo(a: Literal["x", "y"]) -> Bar`',
-            '- `foo(a: int, *, b: str) -> Bar`',
+            "- `foo(a: int, *, b: str) -> Bar`",
         ):
             assert parse_signature_lines(line), line
 

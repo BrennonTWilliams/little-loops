@@ -410,7 +410,9 @@ class _StopWatch(Exception):
 class TestWatchPickup:
     """FEAT-2930: `ll-queue run --watch` picks up entries enqueued after it started."""
 
-    def test_watch_picks_up_entry_added_after_start(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_watch_picks_up_entry_added_after_start(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         dispatched: list[str] = []
         late_id: dict[str, str] = {}
 
@@ -452,7 +454,9 @@ class TestWatchBusySpinFix:
                 raise _StopWatch
 
         with patch("little_loops.cli.queue.time.sleep", side_effect=fake_sleep):
-            with patch("sys.argv", ["ll-queue", "run", "--watch", "--poll-interval", "7", "--json"]):
+            with patch(
+                "sys.argv", ["ll-queue", "run", "--watch", "--poll-interval", "7", "--json"]
+            ):
                 with pytest.raises(_StopWatch):
                     main_queue()
 
@@ -577,7 +581,9 @@ class TestReclaimStale:
         entry_id = _add_and_get_id(capsys, "audit-docs")
         claim_entry(entry_id, owner_pid=999999)  # not a live pid the mock will confirm
 
-        with patch("little_loops.cli.queue.psutil.Process", side_effect=Exception("no such process")):
+        with patch(
+            "little_loops.cli.queue.psutil.Process", side_effect=Exception("no such process")
+        ):
             count = _reclaim_stale(DEFAULT_DB_PATH)
 
         assert count == 1
@@ -592,7 +598,13 @@ class TestReclaimStale:
         claim_entry(entry_id, owner_pid=4321)
 
         mock_proc = MagicMock()
-        mock_proc.cmdline.return_value = ["python", "-m", "little_loops.cli.queue", "run", "--watch"]
+        mock_proc.cmdline.return_value = [
+            "python",
+            "-m",
+            "little_loops.cli.queue",
+            "run",
+            "--watch",
+        ]
         with patch("little_loops.cli.queue.psutil.Process", return_value=mock_proc):
             count = _reclaim_stale(DEFAULT_DB_PATH)
 
@@ -610,7 +622,6 @@ class TestReclaimStale:
         assert count == 0
 
 
-
 class TestCmdRequeue:
     """FEAT-2930: `ll-queue requeue <id>` — manual escape hatch for a stranded `running` entry."""
 
@@ -618,7 +629,9 @@ class TestCmdRequeue:
         entry_id = _add_and_get_id(capsys, "audit-docs")
         claim_entry(entry_id, owner_pid=999999)
 
-        with patch("little_loops.cli.queue.psutil.Process", side_effect=Exception("no such process")):
+        with patch(
+            "little_loops.cli.queue.psutil.Process", side_effect=Exception("no such process")
+        ):
             with patch("sys.argv", ["ll-queue", "requeue", entry_id, "--json"]):
                 result = main_queue()
 
@@ -691,9 +704,7 @@ class TestWatchNdjsonFlush:
                         with pytest.raises(_StopWatch):
                             main_queue()
 
-        printed = "".join(
-            call.args[0] for call in mock_stdout.write.call_args_list if call.args
-        )
+        printed = "".join(call.args[0] for call in mock_stdout.write.call_args_list if call.args)
         lines = [line for line in printed.splitlines() if line.strip()]
         assert len(lines) == 1
         record = json.loads(lines[0])

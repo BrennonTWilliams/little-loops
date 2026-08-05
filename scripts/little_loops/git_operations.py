@@ -44,6 +44,7 @@ def filter_ll_noise(paths: list[str]) -> list[str]:
     filtered = filter_excluded_files(paths)
     return [p for p in filtered if not any(p.startswith(d) for d in LL_NOISE_DIRECTORIES)]
 
+
 # Common .gitignore patterns with metadata.
 # Format: (pattern, category, description, priority)
 # Lower priority number = higher precedence when matching files.
@@ -748,8 +749,7 @@ def preserve_dirty_tree(
             if write_tree.returncode != 0:
                 if logger:
                     logger.error(
-                        f"preserve_dirty_tree: `git write-tree` failed: "
-                        f"{write_tree.stderr.strip()}"
+                        f"preserve_dirty_tree: `git write-tree` failed: {write_tree.stderr.strip()}"
                     )
                 return None
             tree_sha = write_tree.stdout.strip()

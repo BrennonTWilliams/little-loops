@@ -375,7 +375,8 @@ def _test_functions(source: str) -> dict[str, ast.AST] | None:
     return {
         node.name: node
         for node in tree.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test")
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test")
     }
 
 
@@ -453,7 +454,12 @@ def filter_weakening_findings(
         before_strength = measure_test_strength(before_src, finding.path)
         before_names = _test_functions(before_src)
         after_strength = measure_test_strength(after_src, finding.path)
-        if before_strength is None or before_names is None or after_strength is None or not relocated:
+        if (
+            before_strength is None
+            or before_names is None
+            or after_strength is None
+            or not relocated
+        ):
             kept.append(finding)
             continue
 

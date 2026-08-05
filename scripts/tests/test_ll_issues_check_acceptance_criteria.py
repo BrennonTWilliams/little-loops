@@ -80,8 +80,7 @@ class TestCheckAcceptanceCriteriaHappyPath:
     def test_clean_issue_exits_zero(self, temp_project_dir: Path) -> None:
         body = _feature(
             "FEAT-9101",
-            "- [ ] `pytest scripts/tests/` exits 0.\n"
-            "- [ ] `ll-loop validate my-loop` passes.\n",
+            "- [ ] `pytest scripts/tests/` exits 0.\n- [ ] `ll-loop validate my-loop` passes.\n",
         )
         _write_issue(temp_project_dir, body)
         result = _invoke(temp_project_dir, "check-acceptance-criteria", "FEAT-9101")
@@ -162,17 +161,13 @@ class TestCheckAcceptanceCriteriaBug3025Fixtures:
     def test_pre_review_fixture_has_manual_criterion(self) -> None:
         from little_loops.cli.issues.check_acceptance_criteria import _find_manual_criteria
 
-        fixture = (
-            Path(__file__).parent / "fixtures" / "issues" / "BUG-3025-pre-review-original.md"
-        )
+        fixture = Path(__file__).parent / "fixtures" / "issues" / "BUG-3025-pre-review-original.md"
         assert _find_manual_criteria(fixture.read_text())
 
     def test_reviewed_fixture_has_no_manual_criterion(self) -> None:
         from little_loops.cli.issues.check_acceptance_criteria import _find_manual_criteria
 
-        fixture = (
-            Path(__file__).parent / "fixtures" / "issues" / "BUG-3025-reviewed-uncorrected.md"
-        )
+        fixture = Path(__file__).parent / "fixtures" / "issues" / "BUG-3025-reviewed-uncorrected.md"
         assert not _find_manual_criteria(fixture.read_text())
 
 

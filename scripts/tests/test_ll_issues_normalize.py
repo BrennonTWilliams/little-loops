@@ -210,7 +210,15 @@ class TestDuplicateId:
 
         # No malformed_id gap for the moved file (format-check sibling gate).
         result2, out2 = _invoke(
-            ["ll-issues", "format-check", "--all", "--format", "json", "--config", str(temp_project_dir)]
+            [
+                "ll-issues",
+                "format-check",
+                "--all",
+                "--format",
+                "json",
+                "--config",
+                str(temp_project_dir),
+            ]
         )
         gaps = json.loads(out2)
         moved_gaps = gaps.get(fm["id"], {})
@@ -220,7 +228,9 @@ class TestDuplicateId:
         self, temp_project_dir: Path, normalize_dir: Path
     ) -> None:
         _write(normalize_dir / "bugs" / "P2-BUG-100-first.md", _issue_body(id_="BUG-100"))
-        loser = _write(normalize_dir / "features" / "P2-FEAT-100-second.md", _issue_body(id_="FEAT-100"))
+        loser = _write(
+            normalize_dir / "features" / "P2-FEAT-100-second.md", _issue_body(id_="FEAT-100")
+        )
 
         result, out = _invoke(
             ["ll-issues", "normalize", "--check", "--config", str(temp_project_dir)]

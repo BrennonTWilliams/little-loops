@@ -114,8 +114,7 @@ class TestReconcileScopeBoundariesEligibility:
     def test_not_a_general_rewrite_addition(self) -> None:
         text = self._contract_text()
         assert "narrow" in text.lower(), (
-            "the carve-out must be described as narrow, not a general addition "
-            "to the rewrite list"
+            "the carve-out must be described as narrow, not a general addition to the rewrite list"
         )
         assert "Preserve untouched" in text, (
             "unrefuted Scope Boundaries prose must still be listed under Preserve untouched"
@@ -131,8 +130,7 @@ class TestReconcileScopeBoundariesEligibility:
     def test_contradiction_check_step_documented(self) -> None:
         content = COMMAND_FILE.read_text()
         assert "4a. Detect contradicted Scope Boundaries claims" in content, (
-            "command must add a step 4a contradiction-detection pass for "
-            "Scope Boundaries claims"
+            "command must add a step 4a contradiction-detection pass for Scope Boundaries claims"
         )
 
     def test_factual_mismatch_and_open_scope_call_branches(self) -> None:
@@ -151,8 +149,7 @@ class TestReconcileScopeBoundariesEligibility:
     def test_sections_rewritten_includes_scope_boundaries(self) -> None:
         content = COMMAND_FILE.read_text()
         assert "Scope Boundaries: [rewritten" in content, (
-            "Output Format's SECTIONS_REWRITTEN checklist must include a "
-            "Scope Boundaries line"
+            "Output Format's SECTIONS_REWRITTEN checklist must include a Scope Boundaries line"
         )
 
 

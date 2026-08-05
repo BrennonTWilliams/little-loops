@@ -710,9 +710,7 @@ class TestDesignGateRefineRemedy:
         action = data["states"]["dequeue_next"]["action"]
         assert "autodev-design-remedy-attempted" not in action
 
-    def test_dispatch_design_remedy_routes_refine_design_token(
-        self, data: dict[str, Any]
-    ) -> None:
+    def test_dispatch_design_remedy_routes_refine_design_token(self, data: dict[str, Any]) -> None:
         state = data["states"]["dispatch_design_remedy"]
         assert "refine_design" in state.get("action", "")
         assert state.get("on_yes") == "refine_for_design"

@@ -111,9 +111,7 @@ def _cmd_sprint_edit(args: argparse.Namespace, manager: SprintManager) -> int:
             _all_known_ids: set[str] | None = None
             try:
                 _issues_dir = (
-                    _config.project_root / _config.issues.base_dir
-                    if _config
-                    else Path(".issues")
+                    _config.project_root / _config.issues.base_dir if _config else Path(".issues")
                 )
                 _all_known_ids = gather_all_issue_ids(_issues_dir, config=_config)
             except Exception:  # pragma: no cover - defensive, mirrors sprint.py

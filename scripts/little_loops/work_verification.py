@@ -133,8 +133,7 @@ def _run_non_fsm_tamper_guard(
         )
     elif report.findings:
         logger.warning(
-            f"Tamper guard ({report.policy}) found and handled: "
-            f"{[f.path for f in report.findings]}"
+            f"Tamper guard ({report.policy}) found and handled: {[f.path for f in report.findings]}"
         )
     passed = report.passed
 

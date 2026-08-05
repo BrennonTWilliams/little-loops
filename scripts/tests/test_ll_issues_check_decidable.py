@@ -187,9 +187,7 @@ class TestCheckDecidablePatternEDirective:
         )
         assert "Scope Boundaries" in result.stdout
 
-    def test_bare_or_prose_without_imperative_marker_exit_one(
-        self, temp_project_dir: Path
-    ) -> None:
+    def test_bare_or_prose_without_imperative_marker_exit_one(self, temp_project_dir: Path) -> None:
         """Guardrail: bare 'X or Y' prose with no imperative decide-marker must NOT
         be treated as decidable — that is the settled-informal-list case automation
         must not re-litigate."""

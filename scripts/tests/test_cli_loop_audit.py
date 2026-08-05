@@ -25,7 +25,9 @@ def _write_run(
         for event in events:
             f.write(json.dumps(event) + "\n")
     (run_dir / "state.json").write_text(
-        json.dumps(state or {"loop_name": loop_name, "status": "completed", "iteration": len(events)})
+        json.dumps(
+            state or {"loop_name": loop_name, "status": "completed", "iteration": len(events)}
+        )
     )
     if summary is not None:
         (run_dir / "summary.json").write_text(json.dumps(summary))

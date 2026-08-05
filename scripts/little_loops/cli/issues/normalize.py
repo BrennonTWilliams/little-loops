@@ -84,10 +84,7 @@ _TYPE_MISMATCH_CONFIDENCE_CUTOFF = 0.7
 # issues name their parent epic in Summary/Root Cause). Exclude that case
 # with a negative lookahead so only a genuine "epic"/"epics" word counts.
 _KEYWORD_RES: dict[str, list[re.Pattern[str]]] = {
-    t: [
-        re.compile(re.escape(kw) + r"(?!-\d)" if kw == "epic" else re.escape(kw))
-        for kw in kws
-    ]
+    t: [re.compile(re.escape(kw) + r"(?!-\d)" if kw == "epic" else re.escape(kw)) for kw in kws]
     for t, kws in _TYPE_SIGNALS.items()
 }
 
@@ -429,9 +426,7 @@ def rewrite_inbound_refs(config: BRConfig, old_id: str, new_id: str) -> list[Pat
     return changed
 
 
-def apply_normalize(
-    config: BRConfig, findings: list[NormalizeFinding]
-) -> list[NormalizeFinding]:
+def apply_normalize(config: BRConfig, findings: list[NormalizeFinding]) -> list[NormalizeFinding]:
     """Apply every auto-fixable finding: rename, sync frontmatter `id:`, rewrite edges.
 
     Never applies a finding outside :data:`AUTO_FIXABLE_KINDS`, never
@@ -497,8 +492,7 @@ def _print_findings(findings: list[NormalizeFinding]) -> None:
         elif f.kind == "type_mismatch":
             confidence = f.confidence if f.confidence is not None else 0.0
             print(
-                f"[{loc}] normalize: type mismatch -> {f.proposed_id} "
-                f"(confidence {confidence:.2f})"
+                f"[{loc}] normalize: type mismatch -> {f.proposed_id} (confidence {confidence:.2f})"
             )
 
 
@@ -567,13 +561,17 @@ def cmd_normalize(config: BRConfig, args: argparse.Namespace) -> int:
     gate_failed = any(f.kind in relevant_kinds for f in findings)
 
     if getattr(args, "json", False):
-        print_json({"findings": [f.to_dict() for f in findings], "applied": [f.to_dict() for f in applied]})
+        print_json(
+            {"findings": [f.to_dict() for f in findings], "applied": [f.to_dict() for f in applied]}
+        )
     else:
         _print_findings(findings)
         if applied:
             print(f"Applied {len(applied)} fix(es).")
             reassigned = [
-                f for f in applied if f.kind in ("duplicate_id", "malformed_filename") and f.proposed_id
+                f
+                for f in applied
+                if f.kind in ("duplicate_id", "malformed_filename") and f.proposed_id
             ]
             if reassigned:
                 names = ", ".join(sorted(f.path.name for f in reassigned))
@@ -583,7 +581,11 @@ def cmd_normalize(config: BRConfig, args: argparse.Namespace) -> int:
                     "definitions, and prose mentions must be updated manually if needed."
                 )
         if check_mode:
-            print(f"{sum(1 for f in findings if f.kind in relevant_kinds)} normalization issues found" if gate_failed else "All issues normalized")
+            print(
+                f"{sum(1 for f in findings if f.kind in relevant_kinds)} normalization issues found"
+                if gate_failed
+                else "All issues normalized"
+            )
 
     if check_mode:
         return 1 if gate_failed else 0

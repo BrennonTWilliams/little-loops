@@ -329,7 +329,8 @@ class DefaultActionRunner:
                 process.wait()
             return ActionResult(
                 output="".join(output_chunks),
-                stderr="".join(stderr_chunks) or ("Action idle-timed out" if idled_out else "Action timed out"),
+                stderr="".join(stderr_chunks)
+                or ("Action idle-timed out" if idled_out else "Action timed out"),
                 exit_code=124,
                 duration_ms=_now_ms() - start,
                 timeout_kind="idle" if idled_out else "wall",

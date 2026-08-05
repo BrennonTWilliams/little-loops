@@ -2112,8 +2112,7 @@ class TestRefineToReadyIssueSubLoop:
         → fall through into the claim-verification chain, not straight to confidence_check)."""
         state = data["states"].get("check_decision_mid_wire", {})
         assert state.get("on_no") == "verify_issue", (
-            f"check_decision_mid_wire.on_no should be 'verify_issue', "
-            f"got {state.get('on_no')!r}"
+            f"check_decision_mid_wire.on_no should be 'verify_issue', got {state.get('on_no')!r}"
         )
 
     def test_check_decision_mid_wire_on_error_routes_to_verify_issue(self, data: dict) -> None:
@@ -5062,16 +5061,18 @@ class TestAutodevLoop:
         state = data["states"].get("mark_not_started", {})
         script = state.get("action", "").replace("${captured.input.output}", issue_id)
         script = script.replace("${context.run_dir}", str(run_dir))
-        result = subprocess.run(
-            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True
-        )
+        result = subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
         assert result.returncode == 0, f"mark_not_started failed: {result.stderr}"
-        not_started = (run_dir / "autodev-not-started.txt").read_text() if (
-            run_dir / "autodev-not-started.txt"
-        ).exists() else ""
-        skipped = (run_dir / "autodev-skipped.txt").read_text() if (
-            run_dir / "autodev-skipped.txt"
-        ).exists() else ""
+        not_started = (
+            (run_dir / "autodev-not-started.txt").read_text()
+            if (run_dir / "autodev-not-started.txt").exists()
+            else ""
+        )
+        skipped = (
+            (run_dir / "autodev-skipped.txt").read_text()
+            if (run_dir / "autodev-skipped.txt").exists()
+            else ""
+        )
         return not_started, skipped
 
     def test_check_impl_reached_state_shape(self, data: dict) -> None:
@@ -5115,7 +5116,7 @@ class TestAutodevLoop:
         )
         assert "FEAT-1  not_ready" in not_started
         assert "FEAT-1  notstarted_not_ready" in skipped
-        queue = (tmp_path / "autodev-queue.txt")
+        queue = tmp_path / "autodev-queue.txt"
         assert not queue.exists() or "FEAT-1" not in queue.read_text()
 
     def test_mark_not_started_unknown_requeues_to_head_and_writes_no_ledger(
@@ -5905,9 +5906,9 @@ class TestAutodevLoop:
         assert "do not start otherwise" in action
         assert "measurement \\(gate\\)" in action
         assert "pre-implementation measurement" in action
-        assert action.index("GATE_MARKER") < action.index(
-            "amb = int(d.get('score_ambiguity')"
-        ), "the measurement-gate check must run before the ambiguity-subscore fallback"
+        assert action.index("GATE_MARKER") < action.index("amb = int(d.get('score_ambiguity')"), (
+            "the measurement-gate check must run before the ambiguity-subscore fallback"
+        )
 
     def test_dequeue_next_clears_pre_deferral_remedy_files(self, data: dict) -> None:
         """BUG-2803: dequeue_next must clear the pre-deferral remedy handshake and
@@ -13711,8 +13712,7 @@ class TestAutodevAuthGuard:
         )
         summary = json.loads((run_dir / "summary.json").read_text())
         assert summary.get("abandoned"), (
-            f"abandoned must stay truthy even though the duplicate line was suppressed: "
-            f"{summary!r}"
+            f"abandoned must stay truthy even though the duplicate line was suppressed: {summary!r}"
         )
         unverified_line = [ln for ln in result.stdout.splitlines() if ln.startswith("Unverified")]
         assert unverified_line and "(1)" in unverified_line[0], (
@@ -13750,9 +13750,7 @@ class TestAutodevAuthGuard:
 
         implement_current = states["implement_current"]
         entry_points = [
-            implement_current.get(k)
-            for k in ("on_no", "on_error")
-            if implement_current.get(k)
+            implement_current.get(k) for k in ("on_no", "on_error") if implement_current.get(k)
         ]
         assert entry_points, "implement_current must define on_no/on_error failure routing"
 

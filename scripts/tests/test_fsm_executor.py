@@ -8111,9 +8111,7 @@ class TestSubLoopBudgetClamping:
             initial="run_child",
             timeout=3600,
             states={
-                "run_child": StateConfig(
-                    loop="child", timeout=60, on_yes="done", on_no="failed"
-                ),
+                "run_child": StateConfig(loop="child", timeout=60, on_yes="done", on_no="failed"),
                 "done": StateConfig(terminal=True),
                 "failed": StateConfig(terminal=True),
             },
@@ -8151,9 +8149,7 @@ class TestSubLoopBudgetClamping:
             initial="run_child",
             timeout=None,
             states={
-                "run_child": StateConfig(
-                    loop="child", timeout=45, on_yes="done", on_no="failed"
-                ),
+                "run_child": StateConfig(loop="child", timeout=45, on_yes="done", on_no="failed"),
                 "done": StateConfig(terminal=True),
                 "failed": StateConfig(terminal=True),
             },

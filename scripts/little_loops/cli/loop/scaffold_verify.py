@@ -105,9 +105,7 @@ def _adversarial_states(issue_id: str, title: str) -> dict[str, StateConfig]:
     """Build the fixed 3-probe adversarial template (emitted verbatim, no per-issue variation)."""
     states: dict[str, StateConfig] = {}
     names = [p[0] for p in _PROBES]
-    for i, (name, probe_class, result_file, verb, instructions, evidence_ref) in enumerate(
-        _PROBES
-    ):
+    for i, (name, probe_class, result_file, verb, instructions, evidence_ref) in enumerate(_PROBES):
         next_state = names[i + 1] if i + 1 < len(names) else "count_probes"
         action_text = (
             f"{verb} for {issue_id}: {title}.\n\n"

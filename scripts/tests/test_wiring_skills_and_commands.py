@@ -367,9 +367,7 @@ WIRE_ISSUE_SKILL_MIRRORS = [
 @pytest.mark.parametrize("mirror_rel", WIRE_ISSUE_SKILL_MIRRORS)
 def test_wire_issue_skill_mirror_matches_source(project_root: Path, mirror_rel: str) -> None:
     """Mirror bodies must match the source skill (ENH-2996)."""
-    source_body = _body_after_frontmatter(
-        (project_root / "skills/wire-issue/SKILL.md").read_text()
-    )
+    source_body = _body_after_frontmatter((project_root / "skills/wire-issue/SKILL.md").read_text())
     mirror_body = _body_after_frontmatter((project_root / mirror_rel).read_text())
     assert source_body == mirror_body, (
         f"{mirror_rel} is stale relative to skills/wire-issue/SKILL.md. Regenerate with: "

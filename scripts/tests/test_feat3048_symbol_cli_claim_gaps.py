@@ -75,6 +75,7 @@ def _write_scoped_issue(tmp_path: Path, **sections: str) -> Path:
     path.write_text(_SCOPE_TEMPLATE.format(**values))
     return path
 
+
 _TEMPLATE = """---
 id: FEAT-9001
 title: Sample

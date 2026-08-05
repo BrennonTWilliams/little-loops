@@ -202,8 +202,7 @@ class TestInjectedRework:
         record_commit_event(
             db,
             "eeeeeeee0000000000000000000000000000000",
-            "Revert 'fix BUG-800'\n\n"
-            "This reverts commit 800abcdef0000000000000000000000000000000.",
+            "Revert 'fix BUG-800'\n\nThis reverts commit 800abcdef0000000000000000000000000000000.",
             issue_id="BUG-800",
             ts="2026-08-02T00:00:00Z",
         )

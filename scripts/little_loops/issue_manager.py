@@ -1053,7 +1053,9 @@ def process_issue_inplace(
                     # eligible for one autodev re-queue); NOT_READY/NEEDS_REVIEW
                     # (and any other non-UNKNOWN verdict landing here) is a real
                     # rejection (deterministic, terminal).
-                    _not_started_reason = "unknown" if parsed["verdict"] == "UNKNOWN" else "not_ready"
+                    _not_started_reason = (
+                        "unknown" if parsed["verdict"] == "UNKNOWN" else "not_ready"
+                    )
                     print(
                         f"PHASE1_NOT_STARTED {info.issue_id} {_not_started_reason}",
                         flush=True,
@@ -1778,8 +1780,7 @@ class AutoManager:
                 continue
             if issue_id in state.attempted_issues:
                 reasons.append(
-                    f"{issue_id}: attempted, outcome not recorded"
-                    f"{_earlier_run_suffix(issue_id)}"
+                    f"{issue_id}: attempted, outcome not recorded{_earlier_run_suffix(issue_id)}"
                 )
                 continue
             if any(issue_id in cycle for cycle in cycles):
@@ -2001,9 +2002,7 @@ class AutoManager:
         elif result.was_blocked:
             # Blocked issues are skipped, not failed — leave in pending state
             self.logger.info(f"{info.issue_id} skipped — blocked by open dependency")
-            self.state_manager.mark_skipped(
-                info.issue_id, "skipped — blocked by open dependency"
-            )
+            self.state_manager.mark_skipped(info.issue_id, "skipped — blocked by open dependency")
         elif result.success:
             self.state_manager.mark_completed(info.issue_id, {"total": result.duration})
         elif result.plan_created:

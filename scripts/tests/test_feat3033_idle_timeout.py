@@ -258,7 +258,9 @@ class TestShellSelectorLoopIdle:
             patch("little_loops.fsm.runners._kill_process_group"),
             patch("little_loops.fsm.runners.time.time", side_effect=_time),
         ):
-            result = DefaultActionRunner().run("partial-line-then-silent", 1000, False, idle_timeout=5)
+            result = DefaultActionRunner().run(
+                "partial-line-then-silent", 1000, False, idle_timeout=5
+            )
 
         assert result.exit_code == 124
         assert result.timeout_kind == "idle"

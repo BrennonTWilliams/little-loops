@@ -100,9 +100,7 @@ class TestCheckReadinessCliArgFallback:
     def test_cli_args_win_when_config_absent(self, temp_project_dir: Path) -> None:
         bugs_dir = _setup_dirs(temp_project_dir)
         _make_issue(bugs_dir, "P2-BUG-001-test.md", confidence_score=60, outcome_confidence=60)
-        assert (
-            _run_check_readiness(temp_project_dir, ["--readiness", "50", "--outcome", "50"]) == 0
-        )
+        assert _run_check_readiness(temp_project_dir, ["--readiness", "50", "--outcome", "50"]) == 0
 
     def test_config_value_wins_when_present(self, temp_project_dir: Path) -> None:
         config = {"commands": {"confidence_gate": {"readiness_threshold": 90}}}

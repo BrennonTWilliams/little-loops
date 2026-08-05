@@ -168,9 +168,7 @@ def test_excluded_dir_still_allowed(validator: str | None) -> None:
     assert result.returncode == 0, result.stderr
 
 
-@pytest.mark.parametrize(
-    "rel", [".ll/ll-continue-prompt.md", ".ll/private-refs.local.txt"]
-)
+@pytest.mark.parametrize("rel", [".ll/ll-continue-prompt.md", ".ll/private-refs.local.txt"])
 def test_excluded_scratch_file_still_allowed(validator: str | None, rel: str) -> None:
     """Machine-local scratch/handoff content — never blocked, never hinted."""
     if validator is None:

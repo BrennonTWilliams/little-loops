@@ -125,9 +125,7 @@ class TestSubstituteConfig:
 
         ll_dir = tmp_path / ".ll"
         ll_dir.mkdir()
-        (ll_dir / "ll-config.json").write_text(
-            json.dumps({"orchestration": {"host_cli": "codex"}})
-        )
+        (ll_dir / "ll-config.json").write_text(json.dumps({"orchestration": {"host_cli": "codex"}}))
         config = BRConfig(tmp_path)
 
         result = _substitute_config("Host: {{config.orchestration.host_cli}}", config)

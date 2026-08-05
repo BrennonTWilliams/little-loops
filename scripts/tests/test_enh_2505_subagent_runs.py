@@ -351,9 +351,7 @@ class TestKimiSubagentPayloadTolerance:
     no-op — the ``agent_type`` fallback is what these tests pin down.
     """
 
-    def test_kimi_start_agent_name_fallback_no_crash(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_kimi_start_agent_name_fallback_no_crash(self, tmp_path: Path, monkeypatch) -> None:
         """kimi-shaped SubagentStart (agent_name, no agent_id) is a clean no-op."""
         monkeypatch.chdir(tmp_path)
         event = LLHookEvent(

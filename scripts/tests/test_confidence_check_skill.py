@@ -493,7 +493,7 @@ class TestConfidenceCheckRubricDependenciesOverride:
         content = RUBRIC_FILE.read_text()
         start = content.index("### Criterion 5: Dependencies Satisfied")
         next_heading = content.find("\n---", start)
-        section = content[start:next_heading if next_heading != -1 else len(content)]
+        section = content[start : next_heading if next_heading != -1 else len(content)]
         assert "Dependencies Hard Override" in section, (
             "rubric.md Criterion 5 section must document the Dependencies Hard Override (BUG-3051)"
         )
@@ -563,9 +563,7 @@ class TestConfidenceCheckRubricClaimParityCap:
     def test_cap_row_present(self) -> None:
         section = self._criterion_4_text()
         for key in ("missing_behavior_parity", "stale_symbol_ref", "stale_cli_flag"):
-            assert key in section, (
-                f"Criterion 4 table/notes must reference '{key}' (ENH-3047)"
-            )
+            assert key in section, f"Criterion 4 table/notes must reference '{key}' (ENH-3047)"
 
     def test_cap_documented_as_ceiling(self) -> None:
         section = self._criterion_4_text()

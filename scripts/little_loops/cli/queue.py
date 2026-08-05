@@ -460,9 +460,7 @@ def _drain_once(
         pending = [e for e in list_entries(QUEUE_DB_PATH) if e.status == "pending"]
         if not pending:
             break
-        entry = next(
-            (e for e in pending if claim_entry(e.id, db_path=QUEUE_DB_PATH)), None
-        )
+        entry = next((e for e in pending if claim_entry(e.id, db_path=QUEUE_DB_PATH)), None)
         if entry is None:
             # Every currently-pending entry lost its claim to another drainer;
             # re-read on the next iteration rather than treating this as drained.

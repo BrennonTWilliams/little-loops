@@ -104,9 +104,7 @@ class TestUnknownSectionWarning:
         assert captured.out.strip() == "little-loops"
         assert captured.err == ""
 
-    def test_construction_error_emits_no_warning(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_construction_error_emits_no_warning(self, capsys: pytest.CaptureFixture[str]) -> None:
         with (
             patch("sys.argv", ["ll-config", "get", "totally.made.up.path"]),
             patch("little_loops.config.BRConfig", side_effect=Exception("boom")),

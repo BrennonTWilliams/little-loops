@@ -158,8 +158,7 @@ def _load_issue_events(conn: sqlite3.Connection) -> dict[str, list[tuple[str, st
 def _load_commits(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     try:
         rows = conn.execute(
-            "SELECT ts, commit_sha, message, issue_id, files_json FROM commit_events "
-            "ORDER BY ts"
+            "SELECT ts, commit_sha, message, issue_id, files_json FROM commit_events ORDER BY ts"
         ).fetchall()
     except sqlite3.Error:
         logger.warning("rework: commit_events query failed", exc_info=True)

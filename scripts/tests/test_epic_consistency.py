@@ -1072,10 +1072,7 @@ def _write_epic_with_composition_review(
 ) -> Path:
     """Write an EPIC file with optional `## Composition Review` heading."""
     fm_status = f"status: {status}\n"
-    body = (
-        f"---\n{fm_status}---\n"
-        f"# {epic_id}: Test epic\n\n## Summary\nTest.\n"
-    )
+    body = f"---\n{fm_status}---\n# {epic_id}: Test epic\n\n## Summary\nTest.\n"
     if include_composition_review:
         body += "\n## Composition Review\n\n**Disposition**: KEEP\n"
     path = epics_dir / f"P2-{epic_id}-test-epic.md"

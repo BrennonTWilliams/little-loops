@@ -260,9 +260,7 @@ class TestCmdList:
         assert result == 0
         assert "timeout=120" in capsys.readouterr().out
 
-    def test_list_truncates_long_input_by_default(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_list_truncates_long_input_by_default(self, capsys: pytest.CaptureFixture[str]) -> None:
         long_input = "x" * 100
         with patch(
             "sys.argv",

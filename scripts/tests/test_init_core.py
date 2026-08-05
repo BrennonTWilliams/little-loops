@@ -1286,9 +1286,7 @@ class TestInstallKimiAdapter:
         monkeypatch.setenv("KIMI_CODE_HOME", str(home))
         return home
 
-    def test_installs_managed_block_creates_file(
-        self, tmp_path: Path, kimi_home: Path
-    ) -> None:
+    def test_installs_managed_block_creates_file(self, tmp_path: Path, kimi_home: Path) -> None:
         import little_loops.init.writers as writers_mod
 
         installed = install_kimi_adapter(tmp_path, tmp_path)
@@ -1357,9 +1355,7 @@ class TestInstallKimiAdapter:
             forced = install_kimi_adapter(tmp_path, tmp_path, force=True)
         assert forced is True
 
-    def test_preserves_user_content_outside_markers(
-        self, tmp_path: Path, kimi_home: Path
-    ) -> None:
+    def test_preserves_user_content_outside_markers(self, tmp_path: Path, kimi_home: Path) -> None:
         kimi_home.mkdir(parents=True)
         dest = kimi_home / "config.toml"
         dest.write_text('[workspace]\nname = "mine"\n\n[models]\n', encoding="utf-8")

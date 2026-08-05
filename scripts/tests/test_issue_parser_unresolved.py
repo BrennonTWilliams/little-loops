@@ -327,41 +327,26 @@ class TestCountOpenQuestionsWidenedSections:
         from little_loops.issue_parser import count_open_questions_in_sections
 
         content = (
-            "## Integration Map\n"
-            "\n"
-            "### Tests\n"
-            "- Worth confirming whether this guard belongs here.\n"
+            "## Integration Map\n\n### Tests\n- Worth confirming whether this guard belongs here.\n"
         )
         assert count_open_questions_in_sections(content) == 1
 
     def test_codebase_research_findings_section_counted(self) -> None:
         from little_loops.issue_parser import count_open_questions_in_sections
 
-        content = (
-            "## Codebase Research Findings\n"
-            "\n"
-            "- TBD whether this path is actually hit.\n"
-        )
+        content = "## Codebase Research Findings\n\n- TBD whether this path is actually hit.\n"
         assert count_open_questions_in_sections(content) == 1
 
     def test_suggested_fix_direction_section_counted(self) -> None:
         from little_loops.issue_parser import count_open_questions_in_sections
 
-        content = (
-            "## Suggested Fix Direction\n"
-            "\n"
-            "- This needs confirmation before implementation.\n"
-        )
+        content = "## Suggested Fix Direction\n\n- This needs confirmation before implementation.\n"
         assert count_open_questions_in_sections(content) == 1
 
     def test_program_design_section_counted(self) -> None:
         from little_loops.issue_parser import count_open_questions_in_sections
 
-        content = (
-            "## Program Design\n"
-            "\n"
-            "- Worth deciding which module owns this.\n"
-        )
+        content = "## Program Design\n\n- Worth deciding which module owns this.\n"
         assert count_open_questions_in_sections(content) == 1
 
     def test_hedge_vocabulary_worth_checking(self) -> None:

@@ -406,7 +406,9 @@ READY
 
         assert not result.success
         assert "Path mismatch persisted after fallback" in result.failure_reason
-        assert f"PHASE1_NOT_STARTED {sample_issue.issue_id} path_mismatch" in capsys.readouterr().out
+        assert (
+            f"PHASE1_NOT_STARTED {sample_issue.issue_id} path_mismatch" in capsys.readouterr().out
+        )
 
     def test_path_detection_in_ready_issue_command(self) -> None:
         """Test that ready-issue bash can distinguish paths from IDs.
@@ -1381,9 +1383,7 @@ class TestRunWithContinuation:
             "little_loops.issue_manager.run_claude_command", side_effect=fake_run_claude_command
         ):
             with patch("little_loops.issue_manager.detect_context_handoff", return_value=False):
-                run_with_continuation(
-                    "test command", mock_logger, on_result_seen=seen.append
-                )
+                run_with_continuation("test command", mock_logger, on_result_seen=seen.append)
 
         assert seen == [True]
 
@@ -1407,9 +1407,7 @@ class TestRunWithContinuation:
             "little_loops.issue_manager.run_claude_command", side_effect=fake_run_claude_command
         ):
             with patch("little_loops.issue_manager.detect_context_handoff", return_value=False):
-                run_with_continuation(
-                    "test command", MagicMock(), automation_profile="ll-auto"
-                )
+                run_with_continuation("test command", MagicMock(), automation_profile="ll-auto")
 
         assert captured == ["ll-auto"]
 
@@ -5355,7 +5353,9 @@ class TestConfidenceGatePreCheck:
         still exit 1 — see test_check_readiness.py.)"""
         from little_loops.issue_manager import process_issue_inplace
 
-        status = self._status(confidence=90, outcome=60, readiness_threshold=85, outcome_threshold=65)
+        status = self._status(
+            confidence=90, outcome=60, readiness_threshold=85, outcome_threshold=65
+        )
         with (
             patch(
                 "little_loops.cli.issues.check_readiness.readiness_status",

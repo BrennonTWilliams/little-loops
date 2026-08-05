@@ -222,9 +222,7 @@ def audit_run(run_dir: Path, max_steps: int | None = None) -> RunAuditStats:
             failure_terminal = bool(event.get("failure_terminal", False))
             steps_consumed = int(event.get("iterations") or 0)
 
-    aux_mutation_count = _scan_aux_mutations(
-        run_dir, events[0].get("ts") if events else None
-    )
+    aux_mutation_count = _scan_aux_mutations(run_dir, events[0].get("ts") if events else None)
 
     budget_utilization: float | None = None
     if max_steps:

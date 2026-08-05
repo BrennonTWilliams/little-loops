@@ -257,9 +257,7 @@ class TestReferenceFiltering:
 
         assert _by_axis(triage_research_axes(issue, root))["locator"].covered is False
 
-    def test_ambiguous_ref_is_denominator_eligible_but_not_covering(
-        self, tmp_path: Path
-    ) -> None:
+    def test_ambiguous_ref_is_denominator_eligible_but_not_covering(self, tmp_path: Path) -> None:
         """ENH-2999: an ambiguous ref stays eligible (cites a real file) but never
         counts toward the numerator — only a `resolved` ref does that
         (`research_triage.py:389-393`).

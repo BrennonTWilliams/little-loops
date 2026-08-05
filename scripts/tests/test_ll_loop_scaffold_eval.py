@@ -101,8 +101,9 @@ class TestScaffoldEvalVariantA:
         assert "on_yes: check_proof_libthree" in result.yaml_text
         assert "on_yes: check_skill" in result.yaml_text
 
-    def test_learning_tests_disabled_skips_proof_states(self, tmp_path: Path,
-                                                          monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_learning_tests_disabled_skips_proof_states(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         _make_project(tmp_path, learning_tests_enabled=False)
         monkeypatch.chdir(tmp_path)
         _write_issue(tmp_path, "FEAT-104", learning_tests_required=["somelib"])
