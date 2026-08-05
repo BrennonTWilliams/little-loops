@@ -17,9 +17,35 @@ import pytest
 
 from little_loops.work_verification import (
     EXCLUDED_DIRECTORIES,
+    _sample,
     filter_excluded_files,
     verify_work_was_done,
 )
+
+
+class TestSample:
+    """BUG-3055: truncated diagnostics must admit that they truncated."""
+
+    def test_short_list_renders_whole_and_says_nothing_about_truncation(self) -> None:
+        assert _sample(["a.py", "b.py"]) == "['a.py', 'b.py']"
+
+    def test_list_exactly_at_limit_is_not_annotated(self) -> None:
+        paths = [f"{n}.py" for n in range(5)]
+        assert "first" not in _sample(paths)
+
+    def test_truncated_list_reports_the_full_count(self) -> None:
+        """The exact defect: a 9-file change must not read as a 5-file change."""
+        paths = [f"{n}.py" for n in range(9)]
+        rendered = _sample(paths)
+        assert "(first 5 of 9)" in rendered
+        assert "8.py" not in rendered
+
+    def test_custom_limit_is_reflected_in_the_annotation(self) -> None:
+        paths = [f"{n}.py" for n in range(25)]
+        assert "(first 10 of 25)" in _sample(paths, 10)
+
+    def test_empty_list_renders_empty(self) -> None:
+        assert _sample([]) == "[]"
 
 
 class TestExcludedDirectories:

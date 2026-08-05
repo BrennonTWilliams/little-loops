@@ -4204,6 +4204,117 @@ class TestCheckFormatGapsSoftDepHardEdge:
         assert gaps.soft_dep_hard_edge == []
 
 
+class TestCheckFormatGapsMalformedDepId:
+    """check_format_gaps()'s `malformed_dep_id` gap population (BUG-3059)."""
+
+    @staticmethod
+    def _issue(tmp_path: Path, frontmatter: str) -> Path:
+        features_dir = tmp_path / "features"
+        features_dir.mkdir(exist_ok=True)
+        issue_file = features_dir / "P2-FEAT-9400-test.md"
+        issue_file.write_text(f"---\nid: FEAT-9400\n{frontmatter}---\n\n# FEAT-9400: Test\n")
+        return issue_file
+
+    def test_bare_numeric_depends_on_is_flagged(self, tmp_path: Path) -> None:
+        """The live defect: `depends_on: [3038]` silently drops the graph edge."""
+        from little_loops.issue_parser import check_format_gaps
+
+        issue = self._issue(tmp_path, "depends_on:\n- FEAT-3044\n- 3038\n")
+
+        gaps = check_format_gaps(issue)
+
+        assert gaps.malformed_dep_id == ["depends_on: 3038 (expected TYPE-NNN)"]
+
+    def test_all_five_edge_keys_are_checked(self, tmp_path: Path) -> None:
+        from little_loops.issue_parser import check_format_gaps
+
+        issue = self._issue(
+            tmp_path,
+            "blocked_by:\n- 1\ndepends_on:\n- 2\nblocks:\n- 3\n"
+            "relates_to:\n- 4\nsupersedes:\n- 5\n",
+        )
+
+        gaps = check_format_gaps(issue)
+
+        assert len(gaps.malformed_dep_id) == 5
+        for key in ("blocked_by", "depends_on", "blocks", "relates_to", "supersedes"):
+            assert any(entry.startswith(f"{key}: ") for entry in gaps.malformed_dep_id)
+
+    def test_well_formed_ids_are_not_flagged(self, tmp_path: Path) -> None:
+        from little_loops.issue_parser import check_format_gaps
+
+        issue = self._issue(tmp_path, "depends_on:\n- FEAT-3038\n- BUG-12\n- EPIC-7\n- ENH-99\n")
+
+        gaps = check_format_gaps(issue)
+
+        assert gaps.malformed_dep_id == []
+
+    def test_priority_prefixed_id_is_accepted(self, tmp_path: Path) -> None:
+        """The `P<n>-` filename form is tolerated, matching prose_deps' _ID_RE."""
+        from little_loops.issue_parser import check_format_gaps
+
+        issue = self._issue(tmp_path, "depends_on:\n- P2-FEAT-3038\n")
+
+        gaps = check_format_gaps(issue)
+
+        assert gaps.malformed_dep_id == []
+
+    def test_scalar_string_value_is_checked(self, tmp_path: Path) -> None:
+        from little_loops.issue_parser import check_format_gaps
+
+        issue = self._issue(tmp_path, "depends_on: 3038\n")
+
+        gaps = check_format_gaps(issue)
+
+        assert gaps.malformed_dep_id == ["depends_on: 3038 (expected TYPE-NNN)"]
+
+    def test_unknown_type_prefix_is_flagged(self, tmp_path: Path) -> None:
+        from little_loops.issue_parser import check_format_gaps
+
+        issue = self._issue(tmp_path, "depends_on:\n- TASK-12\n")
+
+        gaps = check_format_gaps(issue)
+
+        assert gaps.malformed_dep_id == ["depends_on: TASK-12 (expected TYPE-NNN)"]
+
+    def test_absent_keys_report_nothing(self, tmp_path: Path) -> None:
+        from little_loops.issue_parser import check_format_gaps
+
+        issue = self._issue(tmp_path, "priority: P2\n")
+
+        gaps = check_format_gaps(issue)
+
+        assert gaps.malformed_dep_id == []
+
+    def test_reported_without_issue_statuses(self, tmp_path: Path) -> None:
+        """Pure frontmatter-shape validation — no corpus context needed."""
+        from little_loops.issue_parser import check_format_gaps
+
+        issue = self._issue(tmp_path, "depends_on:\n- 3038\n")
+
+        assert check_format_gaps(issue).malformed_dep_id
+        assert check_format_gaps(issue, issue_statuses={}).malformed_dep_id
+
+
+class TestCorpusHasNoMalformedDepIds:
+    """BUG-3059: the corpus defect this gap kind was built to catch stays fixed."""
+
+    def test_no_malformed_dependency_entries_in_repo(self) -> None:
+        from little_loops.config.core import BRConfig
+        from little_loops.issue_parser import check_format_gaps, find_issues
+
+        repo_root = Path(__file__).resolve().parents[2]
+        config = BRConfig(repo_root)
+
+        offenders = {
+            info.issue_id: gaps.malformed_dep_id
+            for info in find_issues(config)
+            if (gaps := check_format_gaps(info.path)).malformed_dep_id
+        }
+
+        assert not offenders, f"malformed dependency entries found: {offenders}"
+
+
 class TestSectionBodyLastMatchWins:
     """Regression tests for BUG-2985: stacked repeat headings must resolve to the
     last occurrence, not the first."""

@@ -345,6 +345,8 @@ class TestFormatCheckJsonOutput:
             "missing_behavior_parity": [],
             # ENH-3046: blocked_by/depends_on ID whose body describes it as soft.
             "soft_dep_hard_edge": [],
+            # BUG-3059: dependency entry that isn't a well-formed TYPE-NNN ID.
+            "malformed_dep_id": [],
             # ENH-2992: marker presence rides the same payload; not a gap, so
             # it does not affect the exit code above.
             "superseded_marker_count": 0,

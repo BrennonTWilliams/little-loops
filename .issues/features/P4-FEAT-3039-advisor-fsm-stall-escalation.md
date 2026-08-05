@@ -9,7 +9,7 @@ testable: true
 discovered_date: 2026-08-03
 depends_on:
 - FEAT-3044
-- 3038
+- FEAT-3038
 labels:
 - planning-hub
 ---

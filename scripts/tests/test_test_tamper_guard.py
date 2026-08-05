@@ -643,6 +643,68 @@ class TestMeasureTestStrength:
         strength = measure_test_strength("", "test_x.py")
         assert strength == TestStrength(assertions=0, test_functions=0, skip_markers=0)
 
+    def test_conditional_pytest_skip_is_not_a_skip_marker(self) -> None:
+        """BUG-3054: a guarded skip is an environment check, not a disabled test.
+
+        This is the exact shape that vetoed a complete ll-auto run: a test that
+        skips only when a fixture file is absent from the checkout, added
+        alongside new assertions, was read as tampering.
+        """
+        source = (
+            "import pytest\n\n"
+            "def test_a():\n"
+            "    if not candidates:\n"
+            "        pytest.skip('fixture not present in this checkout')\n"
+            "    assert candidates\n"
+        )
+        strength = measure_test_strength(source, "test_x.py")
+        assert strength is not None
+        assert strength.skip_markers == 0
+
+    def test_skip_inside_try_block_is_not_a_skip_marker(self) -> None:
+        source = (
+            "import pytest\n\n"
+            "def test_a():\n"
+            "    try:\n"
+            "        pytest.skip('optional dep missing')\n"
+            "    except Exception:\n"
+            "        pass\n"
+            "    assert True\n"
+        )
+        strength = measure_test_strength(source, "test_x.py")
+        assert strength is not None
+        assert strength.skip_markers == 0
+
+    def test_unconditional_pytest_skip_still_counts(self) -> None:
+        """A skip on an always-executed path genuinely neuters the test."""
+        source = "import pytest\n\ndef test_a():\n    pytest.skip('disabled')\n    assert True\n"
+        strength = measure_test_strength(source, "test_x.py")
+        assert strength is not None
+        assert strength.skip_markers == 1
+
+    def test_non_pytest_skip_call_is_not_counted(self) -> None:
+        """BUG-3054: only ``pytest.skip``/bare ``skip`` count, not any ``*.skip()``."""
+        source = "def test_a():\n    runner.skip('unrelated api')\n    assert True\n"
+        strength = measure_test_strength(source, "test_x.py")
+        assert strength is not None
+        assert strength.skip_markers == 0
+
+    def test_guarded_skip_plus_new_assertions_is_not_weakening(self) -> None:
+        """BUG-3054 end-to-end: the ENH-3046 regression, at the classifier level."""
+        before = "def test_a():\n    assert 1\n"
+        after = (
+            "import pytest\n\n"
+            "def test_a():\n"
+            "    assert 1\n\n"
+            "def test_b():\n"
+            "    if not root:\n"
+            "        pytest.skip('no project root')\n"
+            "    if not files:\n"
+            "        pytest.skip('fixture absent')\n"
+            "    assert files\n"
+        )
+        assert is_weakening(before, after, "test_x.py") is False
+
 
 class TestIsWeakening:
     """BUG-2954: is_weakening discriminates tampering from legitimate additive edits."""

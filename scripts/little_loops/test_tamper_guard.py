@@ -232,13 +232,69 @@ def _call_name(node: ast.expr) -> str:
     return ""
 
 
+_CONDITIONAL_NODES = (
+    ast.If,
+    ast.Try,
+    ast.While,
+    ast.For,
+    ast.AsyncFor,
+    ast.With,
+    ast.AsyncWith,
+)
+
+
+def _is_pytest_skip(func: ast.expr) -> bool:
+    """True for ``pytest.skip(...)`` or a bare imported ``skip(...)``.
+
+    Deliberately narrower than ``_call_name(func) == "skip"``: an unrelated
+    ``runner.skip(...)`` / ``queue.skip(...)`` is not a pytest skip and must
+    not inflate the skip-marker count (BUG-3054).
+    """
+    if isinstance(func, ast.Attribute):
+        return (
+            func.attr == "skip" and isinstance(func.value, ast.Name) and func.value.id == "pytest"
+        )
+    if isinstance(func, ast.Name):
+        return func.id == "skip"
+    return False
+
+
+def _count_unconditional_skip_calls(node: ast.AST) -> int:
+    """Count ``pytest.skip()`` calls that run unconditionally within *node*.
+
+    BUG-3054: descends only through statements that always execute, so a skip
+    nested under ``if``/``try``/loop/``with`` is NOT counted. That shape is a
+    runtime environment guard ("the fixture file isn't in this checkout"), not
+    a disabled test, and counting it read a strictly-additive test edit as
+    tampering — vetoing an otherwise-complete ll-auto run. A bare
+    ``pytest.skip()`` at the top of a test body still counts: that genuinely
+    neuters the test.
+    """
+    total = 0
+    for child in ast.iter_child_nodes(node):
+        if isinstance(child, _CONDITIONAL_NODES):
+            continue
+        if (
+            isinstance(child, ast.Expr)
+            and isinstance(child.value, ast.Call)
+            and _is_pytest_skip(child.value.func)
+        ):
+            total += 1
+        total += _count_unconditional_skip_calls(child)
+    return total
+
+
 def measure_test_strength(source: str, path: str) -> TestStrength | None:
     """Measure a Python test file's strength: assertion, test-function, and skip-marker counts.
 
     Counts ``ast.Assert`` nodes plus ``self.assert*``/``pytest.raises`` calls as
     assertions, ``FunctionDef``/``AsyncFunctionDef`` nodes named ``test*`` as test
-    functions, and ``skip``/``skipif``/``xfail`` decorators or ``pytest.skip(...)``
-    calls as skip markers.
+    functions, and ``skip``/``skipif``/``xfail`` decorators or *unconditional*
+    ``pytest.skip(...)`` calls as skip markers.
+
+    BUG-3054: a ``pytest.skip(...)`` nested under ``if``/``try``/loop/``with``
+    is a runtime environment guard, not a disabled test, and is not counted.
+    Only a skip on an always-executed path counts, alongside the decorators.
 
     Returns None for a non-Python *path* or an unparseable *source* -- callers
     must treat that conservatively (finding kept, per ``is_weakening``).
@@ -276,8 +332,10 @@ def measure_test_strength(source: str, path: str) -> TestStrength | None:
             name = _call_name(node.func)
             if name.startswith("assert") or name == "raises":
                 assertions += 1
-            elif name == "skip":
-                skip_markers += 1
+
+    # BUG-3054: skip *calls* are counted separately from the walk above so the
+    # count can be restricted to unconditionally-reached ones.
+    skip_markers += _count_unconditional_skip_calls(tree)
 
     return TestStrength(
         assertions=assertions, test_functions=test_functions, skip_markers=skip_markers

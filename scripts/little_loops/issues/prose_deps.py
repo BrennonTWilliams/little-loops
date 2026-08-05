@@ -37,15 +37,49 @@ _NEXT_HEADING_RE = re.compile(r"^##\s+", re.MULTILINE)
 _ID_ONLY_RE = re.compile(_ID_RE)
 
 
+# BUG-3057: boundaries that start a new attribution scope. A dependency
+# phrase describes whichever issue is the subject of its own sentence or list
+# item -- an EPIC's "## Children" list ("- **FEAT-3044** ... (depends on
+# FEAT-3042)") states FEAT-3044's dependency, not the EPIC's, and charging it
+# to the host issue turned the repo-wide drift gate red on correct data.
+_SCOPE_BOUNDARY_RE = re.compile(
+    r"[.!?][\s)\"']"  # sentence terminator
+    r"|\n\s*\n"  # blank line (paragraph break)
+    r"|^[ \t]*(?:[-*+]|\d+\.)\s",  # markdown list-item marker
+    re.MULTILINE,
+)
+
+
 def _normalize(issue_type: str, number: str) -> str:
     return f"{issue_type.upper()}-{number}"
+
+
+def _scope_subject(body: str, match_start: int) -> str | None:
+    """Return the issue ID that owns the dependency phrase at *match_start*.
+
+    The scope is the enclosing sentence or list item; the subject is the last
+    issue ID mentioned inside it before the phrase. ``None`` means no other
+    issue was named, so the phrase belongs to the host issue.
+
+    Scoping to the sentence (rather than the paragraph) is what keeps
+    "This builds on BUG-5. Depends on FEAT-109." attributed to the host --
+    BUG-5 sits in a different sentence and is not the subject.
+    """
+    scope_start = 0
+    for boundary in _SCOPE_BOUNDARY_RE.finditer(body, 0, match_start):
+        scope_start = boundary.end()
+    preceding = body[scope_start:match_start]
+    subject = None
+    for id_match in _ID_ONLY_RE.finditer(preceding):
+        subject = _normalize(id_match.group(1), id_match.group(2))
+    return subject
 
 
 def _in_fence(start: int, end: int, fence_spans: list[tuple[int, int]]) -> bool:
     return any(fs <= start and end <= fe for fs, fe in fence_spans)
 
 
-def extract_prose_deps(body: str) -> set[str]:
+def extract_prose_deps(body: str, host_id: str | None = None) -> set[str]:
     """Extract issue IDs claimed as dependencies in prose.
 
     Matches canonical phrasings only: "Depends on <ID>", "Blocked by <ID>",
@@ -54,6 +88,12 @@ def extract_prose_deps(body: str) -> set[str]:
 
     Args:
         body: Issue markdown body (frontmatter already stripped).
+        host_id: Normalized ID of the issue *body* belongs to (e.g.
+            ``"EPIC-3041"``). When given, a dependency phrase whose sentence
+            or list item names a different issue as its subject is attributed
+            to that issue and excluded (BUG-3057) -- an EPIC listing its
+            children's dependencies is not declaring its own. ``None``
+            disables attribution and preserves the original behavior.
 
     Returns:
         Set of normalized issue IDs (e.g. {"FEAT-109"}).
@@ -68,6 +108,10 @@ def extract_prose_deps(body: str) -> set[str]:
     for m in _PHRASE_RE.finditer(body):
         if _in_fence(m.start(), m.end(), fence_spans):
             continue
+        if host_id is not None:
+            subject = _scope_subject(body, m.start())
+            if subject is not None and subject != host_id.upper():
+                continue
         deps.add(_normalize(m.group(1), m.group(2)))
 
     heading_match = _BLOCKED_BY_HEADING_RE.search(body)

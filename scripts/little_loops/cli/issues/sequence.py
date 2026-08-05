@@ -35,7 +35,7 @@ def _unverified_prose_deps(issue: IssueInfo, issue_statuses: dict[str, str]) -> 
 
     body_only = strip_frontmatter(content)
     unverified = []
-    for prose_id in sorted(extract_prose_deps(body_only)):
+    for prose_id in sorted(extract_prose_deps(body_only, host_id=issue.issue_id)):
         if prose_id == issue.issue_id or prose_id in structured_deps:
             continue
         if issue_statuses.get(prose_id) in ("done", "cancelled"):

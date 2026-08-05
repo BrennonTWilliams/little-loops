@@ -9,9 +9,9 @@ testable: true
 discovered_date: 2026-08-03
 verify_verdict: NON_VALID
 blocks:
-- 3038
-- 3039
-- 3040
+- FEAT-3038
+- FEAT-3039
+- FEAT-3040
 labels:
 - planning-hub
 size: Very Large

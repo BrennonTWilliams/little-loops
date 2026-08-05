@@ -89,6 +89,27 @@ def _compute_relative_path(abs_path: Path, base_dir: Path | None = None) -> str:
         return str(abs_path)
 
 
+# BUG-3058: sent when the implement turn ended cleanly but never finalized the
+# issue lifecycle -- almost always because the agent backgrounded its final test
+# run and waited for a notification that cannot arrive under `claude -p`. The
+# work is typically already on disk, so this asks only for the finalize tail and
+# is explicit about running the suite in the foreground.
+FINALIZE_RETRY_PROMPT = """The previous session implemented {issue_id} but ended \
+its turn without finalizing the issue.
+
+The implementation is likely already on disk. Do NOT re-implement it. Finish the \
+lifecycle, in this turn:
+
+1. Run the test suite in the FOREGROUND and wait for it to finish. Never use \
+`run_in_background`, a trailing `&`, or a completion notification -- that signal \
+never fires here, and waiting on it ends the session with the work unfinished.
+2. If tests fail, fix them, then re-run in the foreground.
+3. Set `status: done` and `completed_at` in the frontmatter of {issue_path}.
+4. Commit the implementation together with the issue file.
+
+If the work turns out to be incomplete, finish it first, then do the above."""
+
+
 @contextmanager
 def timed_phase(
     logger: Logger,
@@ -127,6 +148,7 @@ def run_claude_command(
     preview_full: bool = False,
     resume_session: bool = False,
     on_result_seen: ResultSeenCallback | None = None,
+    automation_profile: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke Claude CLI command with real-time output streaming.
 
@@ -147,6 +169,11 @@ def run_claude_command(
             most recent conversation (used for Option E explicit-handoff path).
         on_result_seen: Optional callback invoked once, right before return, with
             whether a stream-json "result" event was observed (BUG-2731/BUG-3026).
+        automation_profile: ENH-2714 pruning profile name, forwarded to the host
+            runner so ``LL_AUTOMATION``/``LL_AUTOMATION_PROFILE`` reach the child.
+            BUG-3058: without it the SessionStart hook's headless "stay in turn"
+            contract is never injected, so a subagent can end its turn awaiting a
+            background task that will never report.
 
     Returns:
         CompletedProcess with stdout/stderr captured
@@ -187,6 +214,7 @@ def run_claude_command(
         on_usage_detailed=on_usage_detailed,
         resume_session=resume_session,
         on_result_seen=on_result_seen,
+        automation_profile=automation_profile,
     )
 
 
@@ -237,6 +265,7 @@ def run_with_continuation(
     run_dir: str | None = None,
     sprint_context: SprintWorkerContext | None = None,
     on_result_seen: ResultSeenCallback | None = None,
+    automation_profile: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a Claude command with automatic continuation on context handoff.
 
@@ -268,6 +297,9 @@ def run_with_continuation(
             whether the last stream-json "result" event was observed (BUG-3026) —
             lets callers distinguish a clean turn completion from a truncated one
             when the issue's lifecycle wasn't finalized despite returncode 0.
+        automation_profile: ENH-2714 pruning profile name forwarded to every
+            round's subprocess (BUG-3058), so the headless "stay in turn"
+            contract is injected on continuations too, not just the first round.
 
     Returns:
         Final CompletedProcess result
@@ -314,6 +346,7 @@ def run_with_continuation(
             on_usage=_tracking_usage,
             preview_full=preview_full,
             on_result_seen=_tracking_result_seen,
+            automation_profile=automation_profile,
         )
 
         all_stdout.append(result.stdout)
@@ -494,6 +527,7 @@ def run_with_continuation(
                 preview_full=preview_full,
                 resume_session=True,
                 on_result_seen=_tracking_result_seen,
+                automation_profile=automation_profile,
             )
             all_stdout.append(result.stdout)
             all_stderr.append(result.stderr)
@@ -1167,6 +1201,14 @@ def process_issue_inplace(
                 sprint_context=sprint_context,
                 context_limit=context_window_for(None, override=context_limit),
                 on_result_seen=lambda seen: _phase2_result_seen.__setitem__(0, seen),
+                # BUG-3058: ll-auto never passed this, so LL_AUTOMATION was
+                # never set for the implement subprocess and the SessionStart
+                # hook's headless "stay in turn" contract (BUG-2730) never
+                # reached the very phase that most needs it -- the agent
+                # backgrounded its final test suite, ended the turn awaiting a
+                # notification that cannot fire under `claude -p`, and Phase 5
+                # (status flip + commit) never ran.
+                automation_profile="ll-auto",
             )
         else:
             logger.info(f"Would run: /ll:manage-issue {info.issue_type} {action} {info.issue_id}")
@@ -1330,6 +1372,46 @@ def process_issue_inplace(
                     if _phase2_result_seen[0]
                     else "no stream-json result event observed before the subprocess exited"
                 )
+                # BUG-3058: before dropping to the evidence fallback (which can
+                # only ever *infer* completion from a dirty tree), give the
+                # primary path one chance to finish the job it started. A clean
+                # result event with an unfinalized lifecycle is the signature of
+                # an agent that did the work and then ended its turn early --
+                # re-driving it with an explicit finalize instruction recovers
+                # the run properly instead of guessing. Single-shot by
+                # construction: this block is inside `if not verified`, and
+                # `verified` is re-read from the issue file immediately after.
+                if _phase2_result_seen[0]:
+                    logger.info(
+                        f"Re-driving {info.issue_id} to finalize "
+                        "(turn ended cleanly without completing the lifecycle)"
+                    )
+                    _finalize_result = run_claude_command(
+                        FINALIZE_RETRY_PROMPT.format(
+                            issue_id=info.issue_id,
+                            issue_path=_compute_relative_path(info.path),
+                        ),
+                        logger,
+                        timeout=config.automation.timeout_seconds,
+                        stream_output=config.automation.stream_output,
+                        idle_timeout=config.automation.idle_timeout_seconds,
+                        preview_full=preview_full,
+                        automation_profile="ll-auto",
+                    )
+                    if _finalize_result.returncode == 0:
+                        verified = verify_issue_completed(info, config, logger)
+                        if verified:
+                            logger.success(
+                                f"Finalize retry completed {info.issue_id} "
+                                "(primary path recovered, no fallback needed)"
+                            )
+                    else:
+                        logger.warning(
+                            f"Finalize retry exited {_finalize_result.returncode} "
+                            f"for {info.issue_id}; falling back to evidence check"
+                        )
+
+            if not verified and result.returncode == 0:
                 logger.info(
                     "Command returned success but issue not moved - "
                     f"checking for evidence of work... ({_fallback_reason})"

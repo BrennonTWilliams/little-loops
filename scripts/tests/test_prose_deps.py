@@ -133,3 +133,52 @@ def test_empty_body() -> None:
 def test_multiple_phrases_combined() -> None:
     body = "Depends on FEAT-1. Blocked by BUG-2. Requires ENH-3."
     assert extract_prose_deps(body) == {"FEAT-1", "BUG-2", "ENH-3"}
+
+
+class TestSubjectAttribution:
+    """BUG-3057: a phrase describes the subject of its own sentence/list item.
+
+    Without ``host_id`` the extractor is unchanged, so every pre-existing
+    caller and test above keeps its old semantics.
+    """
+
+    def test_epic_children_list_attributes_to_the_child(self) -> None:
+        """The exact shape that turned the repo-wide drift gate red."""
+        body = (
+            "## Children\n\n"
+            "- **FEAT-3042** - Advisor transport: shared helper\n"
+            "- **FEAT-3044** - Advisor core: `ll-advise` CLI, capability floor, and\n"
+            "  `ll-doctor` check (depends on FEAT-3042, FEAT-3043)\n"
+        )
+        assert extract_prose_deps(body, host_id="EPIC-3041") == set()
+
+    def test_narration_about_another_issue_is_attributed_to_it(self) -> None:
+        body = "Repointed both edges (FEAT-3044 already correctly depends on FEAT-3042)."
+        assert extract_prose_deps(body, host_id="EPIC-3041") == set()
+
+    def test_host_own_dependency_still_extracted(self) -> None:
+        assert extract_prose_deps("Depends on FEAT-1 for the helper.", host_id="ENH-9") == {
+            "FEAT-1"
+        }
+
+    def test_prior_sentence_subject_does_not_suppress(self) -> None:
+        """Scope is the sentence, not the paragraph -- BUG-5 is not the subject."""
+        body = "This work builds on BUG-5. Depends on FEAT-109 for the shared helper."
+        assert extract_prose_deps(body, host_id="ENH-9") == {"FEAT-109"}
+
+    def test_host_named_as_its_own_subject_still_extracted(self) -> None:
+        body = "- **ENH-9** - the thing (depends on FEAT-1)\n"
+        assert extract_prose_deps(body, host_id="ENH-9") == {"FEAT-1"}
+
+    def test_host_id_matching_is_case_insensitive(self) -> None:
+        body = "- **ENH-9** - the thing (depends on FEAT-1)\n"
+        assert extract_prose_deps(body, host_id="enh-9") == {"FEAT-1"}
+
+    def test_new_list_item_resets_scope(self) -> None:
+        """A bullet starts a new subject even with no sentence terminator."""
+        body = "- **FEAT-2** - some prior item\n- Depends on FEAT-1 for the helper\n"
+        assert extract_prose_deps(body, host_id="ENH-9") == {"FEAT-1"}
+
+    def test_omitting_host_id_preserves_legacy_behavior(self) -> None:
+        body = "- **FEAT-3044** - core (depends on FEAT-3042)\n"
+        assert extract_prose_deps(body) == {"FEAT-3042"}

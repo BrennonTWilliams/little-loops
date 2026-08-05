@@ -107,7 +107,8 @@ def handle(event: LLHookEvent) -> LLHookResult:
     # sessions (no LL_AUTOMATION) are unaffected.
     import os as _os
 
-    if _os.environ.get("LL_AUTOMATION"):
+    _under_automation = bool(_os.environ.get("LL_AUTOMATION"))
+    if _under_automation:
         _pruning_gate_enabled = True
         with contextlib.suppress(Exception):
             from little_loops.config.features import HistoryConfig as _HistoryConfig
@@ -268,6 +269,19 @@ def handle(event: LLHookEvent) -> LLHookResult:
 
     # 6. Feature-flag validation warnings.
     feedback_lines.extend(_validate_features(merged_config))
+
+    # BUG-3058: the stay-in-turn contract is a property of running headlessly,
+    # not of pruning. It used to be emitted only on the pruned early-return
+    # above, so disabling `history.automation_pruning` — an escape hatch meant
+    # to restore *more* hook output for debugging — silently dropped the one
+    # instruction that keeps a headless agent from ending its turn while a
+    # background task is still pending. Prepend it on the unpruned path too.
+    if _under_automation:
+        stdout_payload = (
+            _STAY_IN_TURN_INSTRUCTION
+            if stdout_payload is None
+            else f"{_STAY_IN_TURN_INSTRUCTION}\n\n{stdout_payload}"
+        )
 
     feedback = "\n".join(feedback_lines) if feedback_lines else None
     return LLHookResult(exit_code=0, feedback=feedback, stdout=stdout_payload)

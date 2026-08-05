@@ -258,6 +258,7 @@ class FormatGaps:
     ambiguous_file_ref: list[str] = field(default_factory=list)
     missing_behavior_parity: list[str] = field(default_factory=list)
     soft_dep_hard_edge: list[str] = field(default_factory=list)
+    malformed_dep_id: list[str] = field(default_factory=list)
 
     @property
     def has_gaps(self) -> bool:
@@ -280,6 +281,7 @@ class FormatGaps:
             or self.ambiguous_file_ref
             or self.missing_behavior_parity
             or self.soft_dep_hard_edge
+            or self.malformed_dep_id
         )
 
     def to_dict(self) -> dict[str, list[str]]:
@@ -302,6 +304,7 @@ class FormatGaps:
             "ambiguous_file_ref": self.ambiguous_file_ref,
             "missing_behavior_parity": self.missing_behavior_parity,
             "soft_dep_hard_edge": self.soft_dep_hard_edge,
+            "malformed_dep_id": self.malformed_dep_id,
         }
 
 
@@ -445,6 +448,13 @@ def check_format_gaps(
             ``relates_to``, not deleting the prose (the soft language is
             usually the accurate statement). No suppression escape hatch.
             Only reported when *issue_statuses* is given.
+        malformed_dep_id: an entry in ``blocked_by``/``depends_on``/``blocks``/
+            ``relates_to``/``supersedes`` that is not a well-formed
+            ``TYPE-NNN`` ID (BUG-3059) -- most often a bare number, e.g.
+            ``depends_on: [3038]`` instead of ``[FEAT-3038]``. This is not
+            cosmetic: ``DependencyGraph`` matches IDs by exact string, so a
+            malformed entry silently drops the edge from the graph. The
+            optional ``P<n>-`` filename prefix is accepted and normalized.
 
     Args:
         issue_path: Path to the issue markdown file.
@@ -556,6 +566,22 @@ def check_format_gaps(
         if raw_str.upper() != canonical:
             gaps.malformed_id.append(f"id: {raw_str} (expected {canonical})")
 
+    # BUG-3059: dependency-entry *shape*. malformed_id above only checks the
+    # `id:` key against the filename; nothing validated the edge keys, so a
+    # bare-numeric entry (`depends_on: [3038]`) passed every gate while
+    # DependencyGraph's exact-string membership test silently dropped the edge.
+    for dep_key in ("blocked_by", "depends_on", "blocks", "relates_to", "supersedes"):
+        dep_value = fm.get(dep_key)
+        if isinstance(dep_value, list):
+            dep_entries = [str(v).strip() for v in dep_value]
+        elif isinstance(dep_value, str) and dep_value.strip():
+            dep_entries = [dep_value.strip()]
+        else:
+            continue
+        for dep_entry in dep_entries:
+            if dep_entry and not _DEP_ID_RE.fullmatch(dep_entry):
+                gaps.malformed_dep_id.append(f"{dep_key}: {dep_entry} (expected TYPE-NNN)")
+
     if issue_statuses is not None:
         from little_loops.frontmatter import strip_frontmatter
         from little_loops.issues.prose_deps import extract_prose_deps
@@ -574,7 +600,7 @@ def check_format_gaps(
                 structured_deps.add(value.strip().upper())
 
         body_only = strip_frontmatter(content)
-        for prose_id in sorted(extract_prose_deps(body_only)):
+        for prose_id in sorted(extract_prose_deps(body_only, host_id=own_id)):
             if prose_id == own_id:
                 continue
             status = issue_statuses.get(prose_id)
@@ -711,6 +737,11 @@ _SUPERSEDED_CORRECTION_PHRASES = (
 )
 _SUPERSEDED_DIRECTIVE_SECTIONS = ("Implementation Steps", "Files to Modify", "Acceptance Criteria")
 _SUPERSEDED_MARKER_PREFIX = "⚠ Superseded"
+
+# BUG-3059: a well-formed dependency entry. The optional `P<n>-` prefix is the
+# filename form and is tolerated here; anything else (bare number, typo'd type,
+# free text) is a dropped graph edge waiting to happen.
+_DEP_ID_RE = re.compile(r"(?:P[0-5]-)?(?:BUG|FEAT|ENH|EPIC)-\d+", re.IGNORECASE)
 
 # ENH-3046: closed soft-dependency phrase list for the soft_dep_hard_edge gap
 # class — proximity window is the blank-line-delimited paragraph containing

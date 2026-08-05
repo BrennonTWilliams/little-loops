@@ -44,6 +44,19 @@ def filter_excluded_files(files: list[str]) -> list[str]:
     ]
 
 
+def _sample(paths: list[str], limit: int = 5) -> str:
+    """Render *paths* truncated to *limit*, saying so when anything is elided.
+
+    BUG-3055: these diagnostics used to pair a full ``len()`` with a bare
+    ``[:5]`` slice, so a 9-file change printed as a 5-item list with no
+    indication the rest existed — actively misleading when the log is the
+    only forensic record of a failed automated run.
+    """
+    if len(paths) <= limit:
+        return f"{paths}"
+    return f"{paths[:limit]} (first {limit} of {len(paths)})"
+
+
 def _effective_tamper_guard_policy(config: BRConfig) -> TamperPolicy:
     """Resolve config.tamper_guard.policy, falling back to the built-in default
     for an unrecognized value (schema validation is expected to catch this
@@ -210,13 +223,14 @@ def _detect_meaningful_changes(
         meaningful_changes = filter_excluded_files(changed_files)
         if meaningful_changes:
             logger.info(
-                f"Found {len(meaningful_changes)} file(s) changed: {meaningful_changes[:5]}"
+                f"Found {len(meaningful_changes)} file(s) changed: {_sample(meaningful_changes)}"
             )
             return True
         # Log which excluded files were modified for diagnostic purposes
         excluded_files = [f for f in changed_files if f]
         logger.warning(
-            f"No meaningful changes detected - only excluded files modified: {excluded_files[:10]}"
+            f"No meaningful changes detected - only excluded files modified: "
+            f"{_sample(excluded_files, 10)}"
         )
         return False
 
@@ -234,7 +248,7 @@ def _detect_meaningful_changes(
             meaningful_changes = filter_excluded_files(files)
             if meaningful_changes:
                 logger.info(
-                    f"Found {len(meaningful_changes)} file(s) changed: {meaningful_changes[:5]}"
+                    f"Found {len(meaningful_changes)} file(s) changed: {_sample(meaningful_changes)}"
                 )
                 return True
             # Collect excluded files for diagnostic logging
@@ -251,7 +265,7 @@ def _detect_meaningful_changes(
             meaningful_staged = filter_excluded_files(staged)
             if meaningful_staged:
                 logger.info(
-                    f"Found {len(meaningful_staged)} staged file(s): {meaningful_staged[:5]}"
+                    f"Found {len(meaningful_staged)} staged file(s): {_sample(meaningful_staged)}"
                 )
                 return True
             # Collect excluded files for diagnostic logging
@@ -277,7 +291,7 @@ def _detect_meaningful_changes(
                         if meaningful_committed:
                             logger.info(
                                 f"Found {len(meaningful_committed)} file(s) committed since "
-                                f"baseline: {meaningful_committed[:5]}"
+                                f"baseline: {_sample(meaningful_committed)}"
                             )
                             return True
                         all_excluded_files.extend(
@@ -290,7 +304,7 @@ def _detect_meaningful_changes(
         if all_excluded_files:
             logger.warning(
                 f"No meaningful changes detected - only excluded files modified: "
-                f"{all_excluded_files[:10]}"
+                f"{_sample(all_excluded_files, 10)}"
             )
         else:
             logger.warning("No meaningful changes detected - no files modified")

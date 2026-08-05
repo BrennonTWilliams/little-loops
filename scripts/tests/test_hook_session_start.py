@@ -547,9 +547,17 @@ class TestAutomationPruningStayInTurn:
         # Pruning still suppresses the normal digest/config-JSON payload.
         assert "<project_context>" not in result.stdout
 
-    def test_pruning_gate_disabled_falls_through_to_normal_payload(
+    def test_pruning_gate_disabled_still_emits_stay_in_turn(
         self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """BUG-3058: the contract follows headlessness, not the pruning flag.
+
+        ``automation_pruning.enabled: false`` is a debugging escape hatch meant
+        to restore *more* hook output. It previously dropped the stay-in-turn
+        instruction entirely, so the one setting an operator reaches for when a
+        headless run misbehaves also removed the guardrail against the most
+        common headless failure -- ending the turn awaiting a background task.
+        """
         (in_tmp / ".ll").mkdir(exist_ok=True)
         (in_tmp / ".ll" / "ll-config.json").write_text(
             json.dumps({"history": {"automation_pruning": {"enabled": False}}})
@@ -560,7 +568,10 @@ class TestAutomationPruningStayInTurn:
 
         assert result.exit_code == 0
         assert result.stdout is not None
-        assert "headlessly" not in result.stdout
+        assert "headlessly" in result.stdout
+        assert "Never end your turn" in result.stdout
+        # Unpruned, so the normal payload is still present alongside it.
+        assert len(result.stdout) > len("headlessly")
 
     def test_no_automation_env_no_stay_in_turn_instruction(self, in_tmp: Path) -> None:
         (in_tmp / ".ll").mkdir(exist_ok=True)

@@ -1302,6 +1302,42 @@ class TestRunClaudeCommand:
             assert mock_run.call_args.kwargs["on_usage_detailed"] is on_usage_detailed
 
 
+class TestFinalizeRetryPrompt:
+    """BUG-3058: the re-drive prompt must not reproduce the failure it recovers."""
+
+    def test_prompt_forbids_backgrounding_the_test_run(self) -> None:
+        from little_loops.issue_manager import FINALIZE_RETRY_PROMPT
+
+        body = FINALIZE_RETRY_PROMPT.lower()
+        assert "foreground" in body
+        assert "run_in_background" in body
+        assert "notification" in body
+
+    def test_prompt_does_not_ask_for_reimplementation(self) -> None:
+        """The work is already on disk; re-implementing risks undoing it."""
+        from little_loops.issue_manager import FINALIZE_RETRY_PROMPT
+
+        assert "Do NOT re-implement" in FINALIZE_RETRY_PROMPT
+
+    def test_prompt_covers_the_full_finalize_tail(self) -> None:
+        from little_loops.issue_manager import FINALIZE_RETRY_PROMPT
+
+        body = FINALIZE_RETRY_PROMPT.lower()
+        assert "status: done" in body
+        assert "completed_at" in body
+        assert "commit" in body
+
+    def test_prompt_interpolates_issue_id_and_path(self) -> None:
+        from little_loops.issue_manager import FINALIZE_RETRY_PROMPT
+
+        rendered = FINALIZE_RETRY_PROMPT.format(
+            issue_id="ENH-3046", issue_path=".issues/enhancements/P3-ENH-3046-x.md"
+        )
+        assert "ENH-3046" in rendered
+        assert ".issues/enhancements/P3-ENH-3046-x.md" in rendered
+        assert "{" not in rendered
+
+
 class TestRunWithContinuation:
     """Tests for run_with_continuation context handoff handling (ENH-207)."""
 
@@ -1350,6 +1386,55 @@ class TestRunWithContinuation:
                 )
 
         assert seen == [True]
+
+    def test_forwards_automation_profile_to_subprocess(self, temp_project_dir: Path) -> None:
+        """BUG-3058: LL_AUTOMATION must reach the child, or the headless
+        stay-in-turn contract is never injected into the implement phase."""
+        from little_loops.issue_manager import run_with_continuation
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "Normal output"
+        mock_result.stderr = ""
+
+        captured: list[object] = []
+
+        def fake_run_claude_command(*args: object, **kwargs: object) -> MagicMock:
+            captured.append(kwargs.get("automation_profile"))
+            return mock_result
+
+        with patch(
+            "little_loops.issue_manager.run_claude_command", side_effect=fake_run_claude_command
+        ):
+            with patch("little_loops.issue_manager.detect_context_handoff", return_value=False):
+                run_with_continuation(
+                    "test command", MagicMock(), automation_profile="ll-auto"
+                )
+
+        assert captured == ["ll-auto"]
+
+    def test_automation_profile_defaults_to_none(self, temp_project_dir: Path) -> None:
+        """Unset means unset -- callers that never opted in are unaffected."""
+        from little_loops.issue_manager import run_with_continuation
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "Normal output"
+        mock_result.stderr = ""
+
+        captured: list[object] = []
+
+        def fake_run_claude_command(*args: object, **kwargs: object) -> MagicMock:
+            captured.append(kwargs.get("automation_profile"))
+            return mock_result
+
+        with patch(
+            "little_loops.issue_manager.run_claude_command", side_effect=fake_run_claude_command
+        ):
+            with patch("little_loops.issue_manager.detect_context_handoff", return_value=False):
+                run_with_continuation("test command", MagicMock())
+
+        assert captured == [None]
 
     def test_exits_cleanly_when_handoff_detected(self, temp_project_dir: Path) -> None:
         """When CONTEXT_HANDOFF detected, exits cleanly without spawning continuation."""

@@ -18,6 +18,7 @@ from pathlib import Path
 from little_loops.logger import Logger
 from little_loops.work_verification import (  # noqa: F401
     EXCLUDED_DIRECTORIES,
+    _sample,
     filter_excluded_files,
     verify_work_was_done,
 )
@@ -877,7 +878,7 @@ def preserve_before_teardown(
     if logger:
         logger.error(
             f"Worktree {worktree_path.name} holds {len(paths)} uncommitted non-noise "
-            f"path(s) at teardown; preserving before removal: {sorted(paths)[:10]}"
+            f"path(s) at teardown; preserving before removal: {_sample(sorted(paths), 10)}"
         )
     return preserve_dirty_tree(
         worktree_path,

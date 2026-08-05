@@ -488,6 +488,13 @@ def _corpus_issues() -> list[Path]:
     return sorted(p for p in _CORPUS.rglob("*.md") if p.name[0].isupper() or "-" in p.name)
 
 
+# BUG-3056: each of these sweeps the whole .issues/ corpus, spawning a
+# `git grep` per Program Design symbol anchor -- ~121s apiece today, against
+# the suite-wide --timeout=120 in pyproject.toml. They were already crossing
+# that line intermittently (serial runs failed, parallel squeaked through),
+# and corpus growth only widens the gap. The work is legitimately slow, not
+# hung, so raise the ceiling for this class rather than lower the coverage.
+@pytest.mark.timeout(600)
 @pytest.mark.slow
 class TestCorpusBaseline:
     """Corpus-level gates from the issue's Acceptance Criteria.
