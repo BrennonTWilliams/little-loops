@@ -92,6 +92,34 @@ and neither blocks the other.
 - `ENH-2946` — the direct precedent for extending `format-check` with gap kinds
 - `FEAT-2849` — extractor + gap taxonomy shape
 
+## Program Design
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-05 — based on codebase analysis:_
+
+### Types
+
+- `FormatGaps.soft_dep_hard_edge: list[str] = field(default_factory=list)` — new field, same shape as the 15 existing `FormatGaps` fields (`scripts/little_loops/issue_parser.py:237-299`)
+- `FormatGaps.ac_flag_drift: list[str] = field(default_factory=list)` — new field, same shape
+
+### Signatures
+
+- `check_format_gaps(issue_path: Path, templates_dir: Path | None = None, issue_statuses: dict[str, str] | None = None, ref_index: RefIndex | None = None) -> FormatGaps` — `scripts/little_loops/issue_parser.py:342-347`. Both new gap kinds are detected as additional blocks in this function's body (`:444-601`); `soft_dep_hard_edge` belongs beside the existing `prose_dep_drift`/`stale_prose_dep` block (`:533-558`, already gated on `issue_statuses is not None` and already reading `blocked_by`/`depends_on` via `fm.get(key)`, `:543-548`).
+- `_in_fence(start: int, end: int, fence_spans: list[tuple[int, int]]) -> bool` — `scripts/little_loops/issues/prose_deps.py:44-45`, pure function reusable as-is for `soft_dep_hard_edge`'s fence exclusion.
+- `_ID_ONLY_RE = re.compile(_ID_RE)` — `scripts/little_loops/issues/prose_deps.py:37`, bare-ID scan reusable for locating `blocked_by`/`depends_on` IDs mentioned in body prose. No existing phrase-list-scan helper is shared across consumers — `soft_dep_hard_edge` needs its own compiled phrase regex mirroring `_PHRASE_RE`'s shape (`prose_deps.py:28-32`), not a call into a generic utility.
+- `_SIG_CALL` / `_SIG_FIELD` (`scripts/little_loops/issues/program_design.py:79-90`) — analogous signature-shape regexes for the `program_design_nonspecific` gate, but Python-signature-shaped, not CLI-flag-shaped; `ac_flag_drift` has no reusable extractor and must parse flag/mode tokens (e.g. `--apply`, `--dry-run`) directly out of `## Acceptance Criteria` and whatever section states the CLI signature (fenced block or `## Program Design` prose).
+
+### Call Path
+
+`cmd_format_check` (`scripts/little_loops/cli/issues/format_check.py`) -> `check_format_gaps()` (`issue_parser.py:342`) -> new `soft_dep_hard_edge` block reusing `_in_fence`/`_ID_ONLY_RE` (`prose_deps.py`) + a new phrase-list regex -> `FormatGaps.soft_dep_hard_edge` -> `_print_gaps()` (`format_check.py:132-162`, one `for entry in gaps.soft_dep_hard_edge: print(...)` loop)
+
+`cmd_format_check` -> `check_format_gaps()` -> new `ac_flag_drift` block (direct fence/prose parse, no shared extractor) -> `FormatGaps.ac_flag_drift` -> `_print_gaps()` (same shape)
+
+Five sites every new field must touch, traced end-to-end on the most recent precedent (ENH-2999's `ambiguous_file_ref`): `FormatGaps` field + `has_gaps` clause (`issue_parser.py:278`) + `to_dict()` key (`:298`) + docstring `Gap classes:` paragraph (`:356-421`) -> `check_format_gaps()` detection block -> `_print_gaps()` loop (`format_check.py:161-162`, pinned by the structural guard `test_every_format_gaps_field_is_rendered`, `scripts/tests/test_ll_issues_format_check.py:1555-1577`) -> three hardcoded `--kinds`/help CSV strings (`format_check.py:60-65`, `:168-171`; `cli/issues/__init__.py:139`) -> `docs/reference/CLI.md:1872-1898` prose + `:1942` JSON example -> `test_clean_issue_json_output` literal dict pin (`test_ll_issues_format_check.py:299-347`).
+
+The judgment-pass step (AC-vs-Program-Design contradiction prompt) anchors at the existing `### 6.7. Prose Dependency & Program Design Gate` in `commands/refine-issue.md:781-831`, extending its `## PROSE/PROGRAM DESIGN GATE [Step 6.7]` output block (`:910-914`) with one more status line, matching the read-only "report, don't edit" posture already used there for `superseded_marker_count`/`duplicate_findings_block`.
+
 ## Implementation Steps
 
 1. `soft_dep_hard_edge` gap kind + phrase list + tests.
@@ -117,4 +145,5 @@ and neither blocks the other.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-05T01:31:38 - `eb7fedb4-0dd1-4b7c-8880-6ff7b6346575.jsonl`
 - `/ll:capture-issue` - 2026-08-04T20:50:27 - `2a9240a9-e6df-4ed5-ad2a-73a280bc7d8b.jsonl`
