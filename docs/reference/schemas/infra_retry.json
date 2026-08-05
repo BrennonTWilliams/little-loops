@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://event-infra_retry.json",
+  "title": "Infra Retry",
+  "description": "Emitted on each in-place retry of an action that failed for infrastructure reasons rather than implementation ones \u2014 a headless host CLI exiting 143 after already emitting a stream-json result event (BUG-2731).",
+  "type": "object",
+  "required": [
+    "event",
+    "ts",
+    "state",
+    "attempt",
+    "backoff"
+  ],
+  "properties": {
+    "event": {
+      "type": "string",
+      "description": "Event type identifier"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp"
+    },
+    "state": {
+      "type": "string",
+      "description": "State name that hit the infra-retry path"
+    },
+    "attempt": {
+      "type": "integer",
+      "description": "Attempt number just made"
+    },
+    "backoff": {
+      "type": "integer",
+      "description": "Flat backoff seconds before the retry"
+    }
+  },
+  "additionalProperties": true
+}

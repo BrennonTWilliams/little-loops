@@ -1,4 +1,4 @@
-"""JSON Schema generation for all 23 LLEvent types.
+"""JSON Schema generation for all 41 LLEvent types.
 
 Generates one JSON Schema (draft-07) file per event type to docs/reference/schemas/.
 Schemas validate the flat wire format: {"event": type, "ts": timestamp, ...payload}.
@@ -94,7 +94,14 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
         "Emitted when the FSM enters a state.",
         {
             "state": _str("State name"),
-            "iteration": _int("Iteration count (1-based)"),
+            "iteration": _int("Step count (1-based); increments on every state entry"),
+            "iteration_count": _int(
+                "Full-pass (maintain-mode) restart count (0-based); 0 for loops without maintain"
+            ),
+            "flushed": _bool(
+                "Present and true only when the executor flushed a pending shell-action "
+                "state before honoring a wall-clock timeout (BUG-1226)."
+            ),
         },
         ["state", "iteration"],
     ),
@@ -179,6 +186,30 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
             "next": _str("Next state the FSM transitions to"),
         },
         ["state", "retries", "next"],
+    ),
+    "infra_retry": _schema(
+        "infra_retry",
+        "Infra Retry",
+        "Emitted on each in-place retry of an action that failed for infrastructure "
+        "reasons rather than implementation ones — a headless host CLI exiting 143 "
+        "after already emitting a stream-json result event (BUG-2731).",
+        {
+            "state": _str("State name that hit the infra-retry path"),
+            "attempt": _int("Attempt number just made"),
+            "backoff": _int("Flat backoff seconds before the retry"),
+        },
+        ["state", "attempt", "backoff"],
+    ),
+    "infra_retry_exhausted": _schema(
+        "infra_retry_exhausted",
+        "Infra Retry Exhausted",
+        "Emitted once the infra-retry budget is spent and the executor falls through "
+        "to normal verdict routing (BUG-2731).",
+        {
+            "state": _str("State name that exhausted infra retries"),
+            "retries": _int("Total retries attempted before exhaustion"),
+        },
+        ["state", "retries"],
     ),
     "cycle_detected": _schema(
         "cycle_detected",
@@ -411,6 +442,13 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
                 "marker — e.g. kernel OOM/SIGKILL), 'error', 'handoff', "
                 "'cycle_detected', 'stall_detected', 'host_pressure_abort' "
                 "(ENH-2452), 'host_budget_exceeded' (ENH-2453)."
+            ),
+            "failure_terminal": _bool(
+                "True when terminated_by='terminal' and the reached terminal state is "
+                "marked failure: true — the single source of truth for 'did this run "
+                "fail?', keyed on the flag rather than the state's name (ENH-2814). "
+                "Emitted unconditionally on every loop_complete; absent only in run "
+                "archives predating ENH-2814."
             ),
             "error": _str(
                 "Error message explaining why the loop crashed. "

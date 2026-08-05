@@ -31,7 +31,11 @@
     },
     "terminated_by": {
       "type": "string",
-      "description": "What caused loop termination (e.g. terminal_state, max_iterations)"
+      "description": "What caused loop termination. One of: 'terminal', 'max_steps', 'max_iterations_reached', 'timeout', 'interrupted', 'user_stopped' (ENH-2522: ll-loop stop wrote user-stop.marker before signalling), 'system_signal' (ENH-2522: POSIX process killed by signal N, no user marker \u2014 e.g. kernel OOM/SIGKILL), 'error', 'handoff', 'cycle_detected', 'stall_detected', 'host_pressure_abort' (ENH-2452), 'host_budget_exceeded' (ENH-2453)."
+    },
+    "failure_terminal": {
+      "type": "boolean",
+      "description": "True when terminated_by='terminal' and the reached terminal state is marked failure: true \u2014 the single source of truth for 'did this run fail?', keyed on the flag rather than the state's name (ENH-2814). Emitted unconditionally on every loop_complete; absent only in run archives predating ENH-2814."
     },
     "error": {
       "type": "string",

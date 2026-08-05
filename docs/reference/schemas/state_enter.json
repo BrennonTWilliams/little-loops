@@ -31,6 +31,10 @@
     "iteration_count": {
       "type": "integer",
       "description": "Full-pass (maintain-mode) restart count (0-based); 0 for loops without maintain"
+    },
+    "flushed": {
+      "type": "boolean",
+      "description": "Present and true only when the executor flushed a pending shell-action state before honoring a wall-clock timeout (BUG-1226)."
     }
   },
   "additionalProperties": true
