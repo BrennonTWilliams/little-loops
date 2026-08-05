@@ -8,9 +8,8 @@ status: open
 discovered_by: capture-issue
 discovered_date: 2026-08-04
 captured_at: '2026-08-04T20:47:11Z'
-depends_on:
-- FEAT-3048
 relates_to:
+- FEAT-3048
 - ENH-3045
 - ENH-2946
 - FEAT-2942
@@ -40,6 +39,12 @@ internal contradictions, and three undefined terms. Wire the FEAT-3048 claim gap
 ENH-3045 parity gap into a new Phase 1.8 pre-fetch as explicit Criterion 4 deductions, so
 the score reflects what the new gates find.
 
+> **Rescoped 2026-08-05 (review pass).** Both dependencies have now landed, so this ships as a
+> single stage — the earlier stage 1 / stage 2 split is gone. The claim signal is wired as a
+> **soft cap, not a hard override**: a measured sweep found it would `STOP` 51% of the active
+> backlog, largely on forward-looking design claims. See § Blast Radius and § Why Claims Are a
+> Cap, Not an Override.
+
 ## Current Behavior
 
 Criterion 4 ("Issue Well-Specified") checks for the **presence** of sections — acceptance
@@ -59,31 +64,95 @@ _Added by `/ll:refine-issue` — 2026-08-05 — based on codebase analysis:_
 
 - Phase 1.6's existing pre-fetch (`skills/confidence-check/SKILL.md`, `### Phase 1.6: Pre-Fetch Program Design Gate (ENH-2852)`, lines 132-150) is the concrete template this issue **copies into a new Phase 1.8 block** (not extends — see Integration Map § Coordination) — it populates two shell variables from `ll-issues format-check {{issue_id}} --format json`: `PD_GAP` (raw reason string, `json.load(sys.stdin).get('program_design_nonspecific', [])` joined with `; `) and `PD_FAIL` (a separate pass/fail verdict from the dedicated `ll-issues check-design {{issue_id}}` exit code, not re-derived from JSON in the skill).
 - **Superseded 2026-08-05 — ENH-3045 has since landed.** The original finding read: "the target keys ... do not exist anywhere in the current schema ... none of the three target keys are present." That is now false for one of the three. `missing_behavior_parity` is live in `FormatGaps` (`scripts/little_loops/issue_parser.py:259`), mirrored in `has_gaps` (`:280`) and `to_dict()` (`:301`), emitted by `cmd_format_check` (`scripts/little_loops/cli/issues/format_check.py:163`), and documented (`docs/reference/CLI.md:1900` and the JSON example at `:1950`; `docs/reference/API.md:878`). `FormatGaps` now has 16 `list[str]` fields, not 15. Only `stale_symbol_ref` and `stale_cli_flag` (FEAT-3048) remain absent from the schema.
-- The "no precedent for defensively reading a not-yet-emitted key" concern therefore applies **only to the FEAT-3048 pair**, not to parity. For those two, `.get('stale_symbol_ref', [])` on a payload that lacks the key yields `[]`, which makes the claim deduction and its hard override inert — the same fail-open end state as the Program Design gate on an unstamped project, reached by a different route (schema-absent key vs. schema-present-but-empty). Stage 2 must not ship until FEAT-3048 lands, but stage 1 is unaffected: `missing_behavior_parity` is schema-present today.
+- **Superseded 2026-08-05 (review pass) — FEAT-3048 has since landed** (commit `6477b4db`, status
+  `done`). The "no precedent for defensively reading a not-yet-emitted key" concern is now moot for
+  all three keys. `stale_symbol_ref` and `stale_cli_flag` are live `list[str]` fields on `FormatGaps`
+  (`scripts/little_loops/issue_parser.py:264-265`), mirrored in `has_gaps` (`:289-290`) and
+  `to_dict()` (`:314-315`), and documented (`docs/reference/CLI.md:1872`, `:1924-1931`, JSON example
+  at `:1984`; `docs/reference/API.md:864`, `:883-884`). All three keys are schema-present today, so
+  the only fail-open shape that exists is **present-but-empty**, and this issue ships as one stage.
+- **Both claim keys are populated unconditionally by the CLI.** `check_format_gaps()` only reports
+  them when given `symbol_index`/`cli_index`, but `cmd_format_check` builds both eagerly
+  (`scripts/little_loops/cli/issues/format_check.py:265-266`) and threads them into every call site,
+  so a plain `ll-issues format-check <ID> --format json` always carries them. No flag is required.
+  It also means the call now costs **~5.3s wall / ~19s CPU** — see Integration Map § Cost.
 
 ## Expected Behavior
 
-A new Phase 1.8 block pre-fetches, via `ll-issues format-check --format json` (see Integration
-Map § Coordination — Phase 1.7's separate-block shape is the precedent, not a Phase 1.6
-extension):
+A new Phase 1.8 block reads three gap keys out of the `format-check --format json` payload that
+Phase 1.6 already fetches (see Integration Map § Coordination for the block shape and § Cost for
+why the payload is fetched once, not twice):
 
-- missing behavior parity (`missing_behavior_parity` — **shipped by ENH-3045**, available today)
-- unverified-claim count (`stale_symbol_ref` + `stale_cli_flag` — awaiting FEAT-3048)
+- missing behavior parity (`missing_behavior_parity` — shipped by ENH-3045)
+- unverified claims (`stale_symbol_ref` + `stale_cli_flag` — shipped by FEAT-3048)
 
-The two signals are deliberately wired to different mechanisms, because they carry different
-weight:
+Both signals are wired to the **same** mechanism: a Criterion 4 cap. Neither forces
+`STOP — ADDRESS GAPS`.
 
-- **Parity → soft deduction.** A missing `### Behavior Parity` subsection means the issue may
-  have under-described what it replaces. That is a specification weakness; it caps Criterion 4
-  but does not by itself make the issue unimplementable.
-- **Claims → hard override.** A `stale_symbol_ref`/`stale_cli_flag` gap means the issue asserts
-  something about the codebase that is not true. A false claim about the implementation surface
-  is not a "well specified" issue at any score, so it forces `STOP — ADDRESS GAPS` regardless of
-  aggregate, following the Learning Test / Program Design hard-override shape.
+- **Parity → cap at 10.** A missing `### Behavior Parity` subsection means the issue may have
+  under-described what it replaces. That is a specification weakness, not an unimplementable issue.
+- **Claims → cap at 10.** A `stale_symbol_ref`/`stale_cli_flag` gap means the issue asserts
+  something about the codebase that did not resolve. That is strong evidence of a specification
+  problem and belongs in the score — but it is not reliable enough to gate on. See § Why Claims
+  Are a Cap, Not an Override.
 
-Both must fail open: when a gap key is absent from the payload (unarmed project, or FEAT-3048
-not yet landed) the deduction and the override are inert, and the score is exactly what it is
+Both fail open on the present-but-empty shape: all three keys are schema-present, so an issue with
+no gaps yields empty strings, the cap rows are unreachable, and the score is exactly what it is
 today.
+
+### Why Claims Are a Cap, Not an Override
+
+_Added 2026-08-05 (review pass). This reverses the original design, which routed claims to a Phase
+3 hard override following the Learning Test / Program Design shape._
+
+The original reasoning was: "a false claim about the implementation surface is not a well-specified
+issue at any score." That premise assumes a detector precision `stale_symbol_ref` does not have on
+forward-looking issues.
+
+`symbol_claims.py` extracts claims from the **entire issue body**, with no section scoping — its
+`_SENTENCE_BOUNDARY_RE` / `_MAX_ATTRIBUTION_DISTANCE` grammar controls false positives *within* a
+sentence, but nothing excludes `## Program Design § Signatures`, `### Files to Modify`, or
+`## Implementation Steps`. Those sections exist precisely to name symbols the issue will **create**.
+A symbol that does not resolve yet is the expected state there, not a defect.
+
+Measured consequence — sweep of all 72 active issues via
+`ll-issues format-check --all --format json`:
+
+| Gap | Issues | % of active |
+|---|---|---|
+| `missing_behavior_parity` | 1 | 1% |
+| `stale_symbol_ref` | 33 | 46% |
+| `stale_cli_flag` | 7 | 10% |
+| **either claim key (would have hard-stopped)** | **37** | **51%** |
+
+Spot-checking confirms the forward-reference failure mode dominates:
+
+- **FEAT-2942** (this issue's own motivating example) reports 8 claim gaps. Two of them:
+<!-- ll-prose-ok: quoted as example false-positive claims, not asserted as real def-sites -->
+  `add_epic_consistency_parser` and `cmd_epic_consistency`, both "claimed in
+  `scripts/little_loops/cli/issues/__init__.py`" — and both are functions FEAT-2942 proposes to
+  *add*, not ones it claims already exist.
+- **ENH-3047 itself** reports two, both false:
+<!-- ll-prose-ok: quoted as example false-positive claims, not asserted as real def-sites -->
+  `design_gate_failed`, attributed to `check_design.py` because that is the nearby file this issue
+  cites, when it is genuinely defined in `program_design.py` and merely *called* there; and
+  `missing_behavior_parity`, a `FormatGaps` field name this issue says the new test will assert on
+  — a data key, not a def-site.
+
+  The `<!-- ll-prose-ok -->` markers above exist so this issue does not trip its own gate while
+  quoting the failure mode. That the markers are *needed here at all* is itself the argument
+  against the hard override.
+
+The better an issue's Program Design section, the more likely a hard override fires. That inverts
+Criterion 4's intent. Capping the criterion still moves the score in the right direction while
+leaving the decision with the reviewer, and it degrades gracefully under a noisy detector in a way
+a `STOP` does not.
+
+**Follow-up owed:** the false-positive class above is FEAT-3048's to fix — either scope extraction
+away from design/planning sections, or add a forward-reference discriminator. Revisit the hard
+override only once that lands and the false-positive rate is re-measured. `stale_cli_flag` (10%,
+and "no such subcommand" is a much sharper signal than an unresolved symbol) is the more defensible
+future override candidate of the two.
 
 ## Motivation
 
@@ -101,16 +170,11 @@ coupling.
 Keep the deduction table in `rubric.md` (the skill already delegates all scoring tables there),
 not in `SKILL.md` — that file is 405 lines against the 500-line cap.
 
-**Dependency (revised 2026-08-05):** this issue was captured as hard-`blocked_by: [FEAT-3048]`
-on the reasoning that "without it there is nothing to read." ENH-3045 has since landed, so
-there *is* something to read: `missing_behavior_parity` is in the schema today. The edge is
-therefore `depends_on: [FEAT-3048]`, not `blocked_by`, and the work splits into two stages:
-
-- **Stage 1 (unblocked, ship now)** — parity pre-fetch + Criterion 4 deduction row + tests.
-- **Stage 2 (on FEAT-3048)** — claim pre-fetch + Phase 3 hard override + tests.
-
-Stage 1 is self-contained and leaves the claim path as an inert `.get(..., [])` read, so
-stage 2 is a pure addition rather than a rework.
+**Dependency (resolved 2026-08-05):** this issue was captured as hard-`blocked_by: [FEAT-3048]`
+on the reasoning that "without it there is nothing to read," then relaxed to `depends_on` when
+ENH-3045 landed, with the work split into two stages. **Both dependencies have now landed**
+(ENH-3045, and FEAT-3048 at commit `6477b4db`), so the edge is a plain `relates_to` and the stage
+split is removed — this ships as one change reading all three keys from one payload.
 
 ### Deduction Rows (resolves the open Option A row-authoring gap)
 
@@ -123,16 +187,21 @@ re-litigate it. Criterion 4's table becomes:
 |---------|-------|
 | Clear acceptance criteria, specific files, defined scope; no parity or claim gaps | 20 |
 | Most details present, 1-2 minor gaps fillable from context; no parity or claim gaps | 15 |
-| Any `missing_behavior_parity` gap (cap — apply regardless of otherwise-higher row) | 10 |
+| Any `missing_behavior_parity`, `stale_symbol_ref`, or `stale_cli_flag` gap (cap — apply regardless of otherwise-higher row) | 10 |
 | Key details missing but inferrable from codebase research | 10 |
-| Any `stale_symbol_ref` / `stale_cli_flag` gap (also forces the Phase 3 hard override) | 0 |
 | Vague requirements, significant guesswork needed | 0 |
 
-The parity row is a **ceiling, never a floor**: it lowers an otherwise-higher row to 10 and never
-raises a lower one (an issue that would score 0 on "vague requirements" still scores 0 with a
-parity gap). It preserves the table's absolute-value convention (the one Option A property Option B challenged) while still expressing a
-count-driven signal. The claim row is scored 0 for internal consistency only — the Phase 3
-hard override is what actually gates, so the point value is not load-bearing.
+Both gap kinds share one cap row rather than getting a row each: they carry the same weight and the
+same direction, and a single row keeps the table at five rows instead of six.
+
+The cap is a **ceiling, never a floor**: it lowers an otherwise-higher row to 10 and never raises a
+lower one (an issue that would score 0 on "vague requirements" still scores 0 with a parity gap).
+It preserves the table's absolute-value convention (the one Option A property Option B challenged)
+while still expressing a count-driven signal.
+
+_Revised 2026-08-05 (review pass): the original six-row version scored claim gaps 0 and routed them
+to a Phase 3 hard override. Both are removed — see Expected Behavior § Why Claims Are a Cap, Not an
+Override._
 
 ### Codebase Research Findings
 
@@ -177,9 +246,9 @@ the status-driven analogy Option B's recommendation rests on does not hold up:
 
 ## Scope Boundaries
 
-**In scope:** a new Phase 1.8 pre-fetch of two existing/planned `format-check` gap keys, one Criterion 4
-table revision in `rubric.md`, one Phase 3 hard-override paragraph in `SKILL.md`, the matching
-test class, and regenerating the two adapter mirrors.
+**In scope:** a new Phase 1.8 block reading three existing `format-check` gap keys out of the
+payload Phase 1.6 already fetches, one Criterion 4 table revision in `rubric.md`, the matching test
+class, and regenerating the two adapter mirrors.
 
 **Explicitly out of scope:**
 
@@ -192,16 +261,50 @@ test class, and regenerating the two adapter mirrors.
   score-to-tier thresholds in `.ll/ll-config.json` (`commands.confidence_gate`).
 - Re-scoring existing issues. Downward re-scoring is an intended *consequence* on next run, not
   a batch migration this issue performs.
-- The Dependencies hard override — that is BUG-3051's scope, not this issue's, even though both
-  edit the same Phase 3 block.
+- The Dependencies hard override — that is BUG-3051's scope, not this issue's.
+- **Any Phase 3 hard override.** Removed from scope 2026-08-05; `SKILL.md`'s Phase 3 block is now
+  untouched by this issue. See Expected Behavior § Why Claims Are a Cap, Not an Override.
+- **Reducing `stale_symbol_ref`'s forward-reference false positives.** That is FEAT-3048's
+  detector, not this consumer. This issue absorbs the current noise level by capping rather than
+  gating; the fix is the follow-up named in that same section.
 
 ## Integration Map
 
 ### Files to Modify
-- `skills/confidence-check/SKILL.md` — new Phase 1.8 pre-fetch block, Phase 3 recommendation
-  (four overrides live at `:336-340` as of BUG-3051; 441 lines total)
-- `skills/confidence-check/rubric.md` — Criterion 4 deduction table
+- `skills/confidence-check/SKILL.md` — new Phase 1.8 block, plus a one-line change to Phase 1.6 so
+  the `format-check` payload is captured once and shared (see § Cost). Phase 3 is **not** modified
+  (441 lines total; three hard overrides live at `:336-340` as of BUG-3051 and stay as they are)
+- `skills/confidence-check/rubric.md` — Criterion 4 deduction table (`:236-243` today)
 - `scripts/tests/test_confidence_check_skill.py` — scoring assertions for the deduction path
+
+### Cost: fetch the payload once, not twice
+
+_Added 2026-08-05 (review pass)._
+
+FEAT-3048 made `ll-issues format-check <ID> --format json` substantially more expensive: it now
+builds a repo-wide symbol index (`build_symbol_index`) and scrapes every `ll-*` tool's `--help` to
+build a CLI surface index (`build_cli_surface_index`), both unconditionally at
+`format_check.py:265-266`. Measured on this repo: **~5.3s wall, ~19s CPU** for a single issue.
+
+Phase 1.6 already pays that once. A Phase 1.8 block issuing its own `format-check` call would pay
+it a **second** time — ~11s per `/ll:confidence-check` run — to re-parse a byte-identical payload.
+
+So Phase 1.8 must **not** call `format-check` itself. Capture the JSON once in Phase 1.6 into a
+shell variable and have both phases extract from it:
+
+```bash
+FC_JSON=$(ll-issues format-check {{issue_id}} --format json 2>/dev/null || true)
+```
+
+Phase 1.6's `PD_GAP` and Phase 1.8's `PARITY_GAP` / `CLAIM_GAP` then each pipe `$FC_JSON` into
+their own one-line `python -c` extraction, preserving the per-call `2>/dev/null || true`
+fail-open tail on each. `PD_FAIL` is unaffected — `ll-issues check-design` calls
+`check_format_gaps()` directly without either index (`check_design.py:38`), so it stays cheap and
+keeps its own invocation.
+
+Note this diverges from Phase 1.7's precedent in one respect: Phase 1.7 is a self-contained block
+because `ll-issues show` is cheap and unrelated to `format-check`. The separate-block *structure*
+is still the precedent to follow (see § Coordination); the separate *invocation* is not.
 
 ### Similar Patterns
 - `ENH-2852` / `ENH-2967` — Program Design gate pre-fetch and its `check-design` CLI owner;
@@ -214,9 +317,10 @@ test class, and regenerating the two adapter mirrors.
 `BUG-3051` **has landed** (commit `5cfaf967`). The anticipated edit collision is resolved in its
 favor: this issue is the one that rebases. Concretely, as of that commit:
 
-- Phase 3 now carries **four** overrides at `skills/confidence-check/SKILL.md:336-340` (Learning
-  Test, Program Design, Dependencies) — not lines ~300-306 as originally written. Stage 2's
-  **Unverified Claim Hard Override** appends after the Dependencies override.
+- Phase 3 now carries **three** overrides at `skills/confidence-check/SKILL.md:336`, `:338`, `:340`
+  (Learning Test, Program Design, Dependencies) — not lines ~300-306 as originally written, and not
+  four as an earlier revision of this bullet miscounted. **This issue no longer edits Phase 3 at
+  all** (review pass, 2026-08-05), so the collision this section anticipated cannot occur.
 - **Precedent change (important).** BUG-3051 did *not* extend Phase 1.6. It added a distinct
   `### Phase 1.7: Pre-Fetch Dependencies Gate (BUG-3051)` block with its own variables
   (`DEP_FAIL`, `DEP_ROWS`). That is the shape this issue now follows: a new
@@ -231,10 +335,12 @@ _Wiring pass added by `/ll:wire-issue`; corrected 2026-08-05:_
   (~line 1872) and JSON example payload (~line 1942) "do not list `missing_behavior_parity`
   today." **That is no longer true**: ENH-3045 added it at `CLI.md:1872` (in the sixteen-class
   enumeration), `:1900` (its own description paragraph), and `:1950` (the JSON example), plus
-  `docs/reference/API.md:862`/`:878`. Stage 1 needs no CLI.md change.
-- The note stands only for stage 2: `stale_symbol_ref`/`stale_cli_flag` are FEAT-3048's
-  obligation to document, but Phase 1.8 is the first consumer that breaks if that update is
-  skipped [Agent 2 finding]
+  `docs/reference/API.md:862`/`:878`. No CLI.md change is needed for parity.
+- **Resolved 2026-08-05 (review pass):** the residual note — that `stale_symbol_ref`/`stale_cli_flag`
+  were FEAT-3048's obligation to document, with Phase 1.8 the first consumer to break if skipped —
+  is discharged. FEAT-3048 documented both: `CLI.md:1872` (now "twenty classes"), `:1924-1931`
+  (description), `:1984` (JSON example), `API.md:864` and `:883-884`. **This issue needs no
+  documentation changes at all** [Agent 2 finding, closed]
 
 ### Tests
 
@@ -253,9 +359,10 @@ _Wiring pass added by `/ll:wire-issue`:_
   the concrete pytest gate behind Acceptance Criterion 6's "500-line cap enforced by
   `ll-verify-skills`" claim, not previously named anywhere in this issue. It globs `skills/*/SKILL.md`
   only (not `rubric.md`, which has no line-count gate). `skills/confidence-check/SKILL.md` is
-  **442 lines today, not 441** (off-by-one in AC6's count) — leaving ~58 lines of headroom before
-  Phase 1.8 (stage 1) plus the Unverified Claim Hard Override paragraph (stage 2) would need to
-  trip this gate [Agent 3 finding, pattern-finder pass].
+  **441 lines** (`wc -l`, re-verified 2026-08-05 on `main` — the wire-issue pass's "442, off-by-one
+  in AC6" note was itself the off-by-one and is withdrawn), leaving ~59 lines of headroom. With the
+  Phase 3 override dropped from scope, Phase 1.8 is the only addition and the gate is not close
+  [Agent 3 finding, corrected].
 
 ### Adapter Mirrors
 
@@ -282,7 +389,7 @@ _Added by `/ll:refine-issue` — 2026-08-05 — based on codebase analysis:_
 _Added by `/ll:refine-issue` — 2026-08-05 — based on codebase analysis:_
 
 - **Pre-fetch block internal shape (pattern-finder, new detail).** Phase 1.6/1.7 blocks in `SKILL.md` share more structure than just the `PD_GAP`/`DEP_FAIL`-style variables already noted above: each external `ll-issues ...` call is *individually* wrapped in `2>/dev/null || true` (not once for the whole block) — `SKILL.md:138-140`, `:162`, `:170`. Phase 1.7's inline JSON-extraction lines carry an explicit `<!-- ll-prose-ok: mirrors the pre-existing PD_GAP idiom (SKILL.md Phase 1.6) ... -->` comment naming the precedent it copies (`SKILL.md:161`, `:169`) — Phase 1.8 should carry the same self-documenting annotation. Both blocks close with prose (not just code) covering three things: what the variable means, when it is empty/inert, and an explicit "do not re-derive/re-judge yourself, the CLI is the source of truth" instruction (`SKILL.md:143-151`, `:179-184`).
-- **Phase 3 override paragraph template (pattern-finder, new detail).** Each hard-override paragraph follows: condition ("if Phase 1.N set X to ...") → consequence ("`STOP — ADDRESS GAPS` regardless of aggregate score") → what to list under **Gaps to Address** → remedy sentence → inert-condition sentence. Learning Test's override (`SKILL.md:336`) is terser and skips the last two parts; Program Design (`:338`) and Dependencies (`:340`) both have all four, and Dependencies additionally closes by tying back to its Criterion's existing 0-20 scoring ("This is additive to Criterion 5's existing 0-20 scoring, which is unchanged for the non-blocking case") — the Unverified Claim override (stage 2) should follow the fuller four-part template, not the terser Learning Test one.
+- **Phase 3 override paragraph template (pattern-finder, new detail).** Each hard-override paragraph follows: condition ("if Phase 1.N set X to ...") → consequence ("`STOP — ADDRESS GAPS` regardless of aggregate score") → what to list under **Gaps to Address** → remedy sentence → inert-condition sentence. Learning Test's override (`SKILL.md:336`) is terser and skips the last two parts; Program Design (`:338`) and Dependencies (`:340`) both have all four, and Dependencies additionally closes by tying back to its Criterion's existing 0-20 scoring ("This is additive to Criterion 5's existing 0-20 scoring, which is unchanged for the non-blocking case"). _Superseded 2026-08-05 (review pass): this finding described the template for an Unverified Claim override that is no longer in scope. Retained only as reference for the future revisit noted in § Why Claims Are a Cap, Not an Override._
 - **Test-class convention (pattern-finder, new detail beyond the existing Tests § pointer to `TestConfidenceCheckDependenciesPrefetch`).** The codebase keeps a SKILL.md-phase test class and a rubric.md-override test class separate rather than combined (`test_confidence_check_skill.py:432`, `:489`). Both use a private `_phase_text(self, heading)` helper, but the slice boundary differs by file: SKILL.md slicing stops at the next `\n###` heading (`:435-440`, matching `TestConfidenceCheckPhase4CLI._phase_text` at `:15-20`), while the rubric.md override test slices from the Criterion heading to the next `\n---` divider instead (`:493-496`) — using the SKILL.md-style `\n###` boundary on rubric.md would silently include unrelated Criterion sections. Every individual `test_*` assertion message across both classes ends with the issue ID in parens, e.g. `"... (BUG-3051)"` (`:445`, `:451`, `:457`, `:463`, `:469`, `:477`, `:485`, `:498`).
 - **Rubric/SKILL pairing convention (pattern-finder, new detail).** Criterion 5's rubric table (`rubric.md:245-252`) is immediately followed, with no divider, by a `**Dependencies Hard Override** (BUG-3051):` paragraph inside the same `### Criterion 5` section (`rubric.md:254-259`) that cross-references "see SKILL.md Phase 3" rather than duplicating the STOP instruction in full — this is the second rubric.md precedent (alongside the Program Design § Signatures note already in this issue) for where stage 2's Criterion 4 override language could live if a rubric-side pointer is wanted.
 
@@ -292,6 +399,7 @@ _Added by `/ll:refine-issue` — 2026-08-05 — based on codebase analysis:_
 - One documented exception exists: gate-driven modifiers use a different `Target Status | Score Modifier | Action` shape, signed delta applied "on top of" the base criterion rather than folded into its Finding/Score rows — evidence: "Learning Test Status Scoring (Criterion 1 Modifier)" table, `rubric.md` lines 161-172.
 - Phase 3 hard overrides are named bolded paragraphs ("**X Hard Override**") placed before score summation, gated on a Phase-1.6-set variable being non-empty/non-zero, forcing `STOP — ADDRESS GAPS` "regardless of aggregate score" — evidence: Learning Test Hard Override and Program Design Hard Override, `skills/confidence-check/SKILL.md` "Phase 3: Score and Recommend" lines 300-306. This is the pattern the issue's Expected Behavior cites for "nonzero unverified-claim count as a readiness blocker."
 - `format-check --format json` keys are referenced two ways in this codebase, both established: inline bash/python extraction into shell variables (confidence-check's Phase 1.6), and pure markdown prose naming the key plus its non-empty/nonzero condition with no code shown (`commands/refine-issue.md` Step 6.7, lines 781-831, for `prose_dep_drift`/`stale_prose_dep`/`program_design_nonspecific`/`superseded_marker_count`/`duplicate_findings_block`).
+<!-- ll-prose-ok: quoted docstring; design_gate_failed is defined in issues/program_design.py, not the cited check_design.py -->
 - `check_design.py`'s `cmd_check_design` is the CLI-owner precedent named in this issue's "Similar Patterns" — its docstring states it is the "single CLI owner of the `design_gate_failed()` predicate, replacing the three independent inline `python3 -c "..."` blocks in autodev.yaml that each re-derived the same boolean from raw `format-check --format json` output," and that it "fails open (exit 0) on projects that haven't armed the ... gate, mirroring `check_format_gaps()`'s existing fail-open behavior."
 
 ## Program Design
@@ -308,7 +416,7 @@ _Added by `/ll:refine-issue` — 2026-08-05 — based on codebase analysis:_
 
 ### Types
 
-- `FormatGaps` (`scripts/little_loops/issue_parser.py:237`) — the dataclass all `format-check` JSON/text consumers key off; **16** `list[str]` gap-kind fields as of ENH-3045, each mirrored in `has_gaps` and `to_dict()` (`:301`). `missing_behavior_parity` is present at `:259` and needs no schema work. Stage 2 presupposes FEAT-3048 adds `stale_symbol_ref` and `stale_cli_flag` as two more `list[str]` fields on this same dataclass. _(Corrected 2026-08-05 — the original finding said all three keys were absent.)_
+- `FormatGaps` (`scripts/little_loops/issue_parser.py:236`) — the dataclass all `format-check` JSON/text consumers key off; **20** `list[str]` gap-kind fields as of FEAT-3048, each mirrored in `has_gaps` and `to_dict()`. All three keys this issue reads are present and need no schema work: `missing_behavior_parity` (`:261`), `stale_symbol_ref` (`:264`), `stale_cli_flag` (`:265`). _(Re-verified 2026-08-05 review pass. Earlier revisions of this bullet said all three keys were absent, then that two were; both are now stale — treat `dataclasses.fields(FormatGaps)` as authoritative over any count written here, per CLI.md's own instruction.)_
 - `PD_GAP: str` / `PD_FAIL: str` — the two shell-variable shapes Phase 1.6 currently populates from `format-check`/`check-design` output (`skills/confidence-check/SKILL.md:132-150`): a joined reason-string (`PD_GAP`, from a `list[str]` JSON key) and a separate pass/fail verdict (`PD_FAIL`, `""` or `"yes"`, from a dedicated CLI's exit code rather than re-derived from JSON).
 
 ### Signatures
@@ -318,8 +426,9 @@ _Added by `/ll:refine-issue` — 2026-08-05 — based on codebase analysis:_
   `scripts/little_loops/issues/program_design.py:415` — the activation-gating pattern (unstamped project / grandfathered / `*_not_applicable: true` frontmatter all return `False`) that the Program Design gate uses to fail open; a parity/claim equivalent, if the CLI layer needs one, would follow this same shape.
 - `cmd_format_check() -> None`
 
-  `scripts/little_loops/cli/issues/format_check.py:165` — the existing JSON-serialization entry point (`gaps.to_dict()` via `check_format_gaps()`) that would need the new `FormatGaps` fields threaded through before Phase 1.8 has anything new to parse (stage 2 only — parity is already threaded).
-- `cmd_check_design` — sole CLI owner of the `design_gate_failed()` boolean predicate (`scripts/little_loops/cli/issues/check_design.py`).
+  `scripts/little_loops/cli/issues/format_check.py:178` — the JSON-serialization entry point (`gaps.to_dict()` via `check_format_gaps()`). All three keys are already threaded through it; it builds `symbol_index` and `cli_index` eagerly at `:265-266` and passes them to every `check_format_gaps()` call site, so no work is owed here. _(Both earlier `:163`/`:165` citations were stale.)_
+<!-- ll-prose-ok: design_gate_failed is defined in issues/program_design.py, not the cited check_design.py -->
+- `cmd_check_design` (`scripts/little_loops/cli/issues/check_design.py`) — sole CLI owner of the `design_gate_failed()` boolean predicate, which is itself defined in `scripts/little_loops/issues/program_design.py`.
 
   **Decision (2026-08-05): no `check-claims` CLI. Derive both booleans inline.** Research left
   this open; resolving it here so implementation does not stall. `cmd_check_design` exists
@@ -333,35 +442,38 @@ _Added by `/ll:refine-issue` — 2026-08-05 — based on codebase analysis:_
 
 ### Call Path
 
-`skills/confidence-check/SKILL.md` Phase 1.8 bash block -> `ll-issues format-check --format json` -> `cmd_format_check()` (`format_check.py:165`) -> `check_format_gaps()` (`issue_parser.py`) -> `FormatGaps.to_dict()` (`issue_parser.py:281`) -> parsed via inline `python -c` in the SKILL.md bash block -> stored in a shell variable -> read by `rubric.md`'s Criterion 4 table and/or `SKILL.md` Phase 3's hard-override paragraph.
+`skills/confidence-check/SKILL.md` Phase 1.6 bash block -> `ll-issues format-check {{issue_id}} --format json` (**one** invocation, captured into `FC_JSON` — see Integration Map § Cost) -> `cmd_format_check()` (`format_check.py:178`) -> `check_format_gaps()` with `symbol_index`/`cli_index` (`issue_parser.py`) -> `FormatGaps.to_dict()` -> `$FC_JSON` re-read by the Phase 1.8 block's inline `python -c` -> stored in `PARITY_GAP` / `CLAIM_GAP` -> read by `rubric.md`'s Criterion 4 cap row. Phase 3 is not on this path.
 
 ## Implementation Steps
 
-### Stage 1 — parity deduction (unblocked, ship now)
+_Single stage as of the 2026-08-05 review pass — both dependencies have landed._
 
-1. Add a new `### Phase 1.8: Pre-Fetch Claim and Parity Gaps (ENH-3047)` block to `SKILL.md`,
-   immediately after Phase 1.7, populating `PARITY_GAP` from
-   `ll-issues format-check {{issue_id}} --format json`, joining
-   `.get('missing_behavior_parity', [])` with `; ` — same extraction shape as the existing
-   `PD_GAP` line, including the `2>/dev/null || true` fail-open tail. Do **not** extend Phase
-   1.6 (see Integration Map § Coordination).
-2. Revise the Criterion 4 table in `rubric.md` to the six rows specified in Proposed Solution §
-   Deduction Rows, including the parity cap row.
-3. Add the new test class to `scripts/tests/test_confidence_check_skill.py` (structural slice,
+1. In `SKILL.md` Phase 1.6, hoist the `format-check` invocation into `FC_JSON` and rewrite the
+   existing `PD_GAP` line to extract from `$FC_JSON` instead of re-invoking. Leave `PD_FAIL`
+   (`ll-issues check-design`) alone. See Integration Map § Cost.
+2. Add a new `### Phase 1.8: Pre-Fetch Claim and Parity Gaps (ENH-3047)` block to `SKILL.md`,
+   immediately after Phase 1.7, populating from `$FC_JSON`:
+   - `PARITY_GAP` — `.get('missing_behavior_parity', [])` joined with `; `
+   - `CLAIM_GAP` — `.get('stale_symbol_ref', []) + .get('stale_cli_flag', [])` joined with `; `
+
+   Same extraction shape as the existing `PD_GAP` line, including the `2>/dev/null || true`
+   fail-open tail on each, and the `<!-- ll-prose-ok: ... -->` annotation naming the Phase 1.6
+   idiom it copies (Phase 1.7's convention). Do **not** extend Phase 1.6's block itself (see
+   Integration Map § Coordination) and do **not** issue a second `format-check` call.
+3. Close the block with the three-part prose the Phase 1.6/1.7 precedent requires: what each
+   variable means, when it is empty/inert, and an explicit "do not re-judge claims yourself, the
+   CLI is the source of truth" instruction. Add a fourth sentence here that the other blocks do
+   not need: `CLAIM_GAP` is **advisory input to Criterion 4 only** — it caps the criterion and
+   must not be escalated to a `STOP` verdict, because forward-looking design claims legitimately
+   do not resolve (cross-reference Expected Behavior § Why Claims Are a Cap, Not an Override).
+4. Revise the Criterion 4 table in `rubric.md` (`:236-243`) to the five rows specified in
+   Proposed Solution § Deduction Rows, including the shared cap row.
+5. Add the new test class to `scripts/tests/test_confidence_check_skill.py` (structural slice,
    per the wiring note below).
-4. Regenerate both adapter mirrors.
-
-### Stage 2 — claim hard override (on FEAT-3048)
-
-5. Extend Phase 1.8 to populate `CLAIM_GAP` from `stale_symbol_ref` + `stale_cli_flag`, derived
-   inline — no new CLI (see Program Design § Signatures).
-6. Add the **Unverified Claim Hard Override** paragraph to `SKILL.md` Phase 3 **after** the
-   Dependencies Hard Override (`SKILL.md:340`, landed), following the Program Design override's
-   shape: non-empty `CLAIM_GAP` forces `STOP — ADDRESS GAPS` regardless of aggregate score, with
-   the reason strings reproduced verbatim under **Gaps to Address**.
-7. Extend the test class to cover the override and the claim rows.
-8. Confirm FEAT-3048 documented the two new keys in `docs/reference/CLI.md`; file a follow-up
-   against FEAT-3048 if not.
+6. Regenerate both adapter mirrors.
+7. File the FEAT-3048 follow-up for the forward-reference false-positive class (Expected Behavior
+   § Why Claims Are a Cap, Not an Override), so the hard-override question can be revisited on
+   evidence rather than dropped.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -374,30 +486,32 @@ _These touchpoints were identified by wiring analysis and must be included in th
   `ll-adapt --host gemini --apply` — after editing `skills/confidence-check/SKILL.md`, so
   `.kimi-code/skills/confidence-check/SKILL.md` and `.gemini/skills/confidence-check/SKILL.md`
   stay in sync
-- Update `docs/reference/CLI.md`'s `format-check --format json` gap-class enumeration and JSON
-  example to include the new gap keys once they exist — **stage 2 / FEAT-3048 only**; ENH-3045
-  already did this for `missing_behavior_parity`
+- ~~Update `docs/reference/CLI.md`'s gap-class enumeration and JSON example to include the new gap
+  keys once they exist~~ — **discharged 2026-08-05**: ENH-3045 and FEAT-3048 each documented their
+  own keys. This issue owes no documentation change (see § Documentation).
 
 ## Acceptance Criteria
 
-1. A `format-check --format json` payload with a non-empty `missing_behavior_parity` list caps
-   that issue's Criterion 4 score at 10.
-2. Fail-open, in the two distinct shapes it actually takes:
-   - **Present-but-empty** (parity): `missing_behavior_parity` is schema-present today and can
-     never be absent, so its fail-open case is an empty list. `PARITY_GAP` comes back empty, the
-     cap row is unreachable, scoring is identical to today.
-   - **Absent key** (claims, pre-FEAT-3048): `.get('stale_symbol_ref', [])` /
-     `.get('stale_cli_flag', [])` on a payload lacking both keys yields `[]`. `CLAIM_GAP` comes
-     back empty, the claim row and the Phase 3 override are inert.
+1. A `format-check --format json` payload with a non-empty `missing_behavior_parity`,
+   `stale_symbol_ref`, or `stale_cli_flag` list caps that issue's Criterion 4 score at 10.
+2. Fail-open. All three keys are schema-present, so the only shape is **present-but-empty**: an
+   issue with no gaps yields empty `PARITY_GAP` and `CLAIM_GAP`, the cap row is unreachable, and
+   scoring is identical to today — no error, no stderr output, no score change.
 
-   Neither case produces an error, stderr output, or a score change. Both are testable
-   independently of FEAT-3048.
-3. (Stage 2) A non-empty `stale_symbol_ref` or `stale_cli_flag` list forces `STOP — ADDRESS
-   GAPS` regardless of aggregate readiness score, and the offending reason strings appear
-   verbatim under **Gaps to Address**.
+   _Revised 2026-08-05: the former "absent key" case is deleted. It described the pre-FEAT-3048
+   world and is now unreachable and untestable._
+3. **No `STOP` from either signal.** A non-empty `CLAIM_GAP` caps Criterion 4 and appears under
+   **Gaps to Address** as an advisory line, but does not change the PROCEED/CAUTION/STOP verdict
+   on its own. Concretely: an issue whose only gap is `stale_symbol_ref` and which would otherwise
+   score above the readiness threshold must still come back as PROCEED (with a reduced score), not
+   `STOP — ADDRESS GAPS`.
 4. `scripts/tests/test_confidence_check_skill.py` gains a test class asserting that the sliced
-   `### Phase 1.8:` block names `missing_behavior_parity` and that the sliced Criterion 4 table
-   contains the parity cap row; `python -m pytest scripts/tests/` exits 0.
+   `### Phase 1.8:` block names all three gap keys, that the sliced Criterion 4 table contains the
+   cap row, and that the sliced Phase 3 block does **not** name `CLAIM_GAP` (the regression guard
+   for AC3); `python -m pytest scripts/tests/` exits 0.
+   _Slice `SKILL.md` to the next `\n###` and `rubric.md` to the next `\n---`, per the
+   `TestConfidenceCheckDependenciesPrefetch` / `TestConfidenceCheckRubricDependenciesOverride`
+   convention, and end each assertion message with `(ENH-3047)`._
 5. `.kimi-code/skills/confidence-check/SKILL.md` and `.gemini/skills/confidence-check/SKILL.md`
    match a fresh `ll-adapt --host <host> --apply` run — no drift.
 
@@ -405,39 +519,65 @@ _These touchpoints were identified by wiring analysis and must be included in th
    1.7. The regen this issue performs will therefore also carry BUG-3051's content into the
    mirrors. That is correct, but expect a larger mirror diff than this issue's own edits._
 6. `skills/confidence-check/SKILL.md` stays under the 500-line cap enforced by `ll-verify-skills`
-   (**441** lines today after BUG-3051; stages 1 and 2 together add roughly 15, landing near
-   456 — the margin is thinner than the original 405-line estimate assumed, so keep the Phase
-   1.8 prose tight and push any explanatory detail to `rubric.md`)
-   > ⚠ Superseded — actual count is 442, not 441 [wire-issue].
+   (concretely `scripts/tests/test_skill_size_checker.py::TestSkillLineLimit::test_all_skills_within_limit`).
+   **441** lines today, re-verified by `wc -l` on `main` 2026-08-05; Phase 1.8 adds roughly 12,
+   landing near 453. Comfortable margin now that the Phase 3 override is out of scope, but keep
+   the Phase 1.8 prose tight and push explanatory detail to `rubric.md` regardless.
 7. **End-to-end validation fixture.** Re-running `/ll:confidence-check` on an issue with a
    `missing_behavior_parity` gap reports **Criterion 4 = 10** and reproduces the parity reason
    string under **Gaps to Address**. Record which issue was used.
 
    _Rewritten 2026-08-05 — the original wording ("scores at or below 85 readiness") is
-   unfalsifiable with the only available fixture. Re-measured blast radius: **1 of 65 swept
-   active issues (1.5%)**, not 10 of 170 (6%) — the sole issue carrying a parity gap is
-   `FEAT-2787` (`missing_behavior_parity: ['scripts/little_loops/adapters/omp.py']`), and it
-   already scores **56 readiness**, so the ≤85 assertion passes whether or not the cap fires.
-   The criterion-level assertion above is the one with signal. If a fixture that would otherwise
-   score >85 is wanted, construct a synthetic issue rather than hunting the backlog._
+   unfalsifiable with the only available fixture. `FEAT-2787` is the sole parity carrier
+   (`missing_behavior_parity: ['scripts/little_loops/adapters/omp.py']`) and already scores
+   **56 readiness**, so a ≤85 assertion passes whether or not the cap fires. The criterion-level
+   assertion above is the one with signal. If a fixture that would otherwise score >85 is wanted,
+   construct a synthetic issue rather than hunting the backlog._
 
-   _Note (2026-08-05): the Summary's motivating example, FEAT-2942, is **not** a valid fixture
-   for stage 1 — `ll-issues format-check FEAT-2942` reports only a `testable` gap, no parity
-   gap. Its defects (false claim about its own write path, contradictions, undefined terms) are
-   claim-class, so FEAT-2942 validates **stage 2**, not stage 1. It is still 93/76 today, so it
-   remains a live stage-2 fixture._
+8. **Claim-path validation fixture.** Re-running `/ll:confidence-check` on an issue with a
+   `stale_symbol_ref` gap reports **Criterion 4 = 10** and a **PROCEED or PROCEED WITH CAUTION**
+   verdict — not `STOP` — with the claim reason strings listed advisorily under **Gaps to
+   Address**. Record which issue was used.
+
+   _Note (2026-08-05): `FEAT-2942`, the Summary's motivating example, is a poor fixture here. Its
+   8 claim gaps are dominated by forward references to functions it proposes to create
+   (`add_epic_consistency_parser`, `cmd_epic_consistency`, `synthesize_clusters`), which is
+   exactly the false-positive class § Why Claims Are a Cap documents. It does demonstrate the
+   no-`STOP` requirement well — it is 93/76 today and must not drop to `STOP` — so use it for
+   AC8 while treating its gap list as noise, not as validation that detection works._
 
 ## Impact
 
-- **Priority**: P3 — stage 1 is unblocked as of ENH-3045; stage 2 waits on FEAT-3048
+- **Priority**: P3 — fully unblocked; both ENH-3045 and FEAT-3048 have landed
 - **Effort**: Low — prompt/rubric wiring on an existing pre-fetch
-- **Risk**: Low — scoring change only; re-scores some existing issues downward (intended)
-- **Blast radius (re-measured 2026-08-05 via `ll-issues format-check --all --format json`)**:
-  **1 of 65 swept active issues (1.5%)** carries a `missing_behavior_parity` gap — `FEAT-2787`.
-  This supersedes the earlier "10 of 170 (6%)" figure. The stage-1 cap is therefore close to
-  inert against today's backlog; it is a forward-looking gate on newly written issues, not a
-  re-scoring event. The cap value (10 vs. a softer 15) has almost no empirical consequence
-  today, so keep 10 for the stricter default rather than re-litigating it.
+- **Risk**: **Medium**, raised from Low on 2026-08-05. Still a scoring-only change with no code
+  path, but it re-scores half the active backlog downward, and that score is consumed by
+  `/ll:go-no-go`, `ll-auto`, and sprint selection. The risk is concentrated in the claim signal's
+  false-positive rate, which is why it caps rather than gates.
+- **Blast radius (re-measured 2026-08-05 via `ll-issues format-check --all --format json`,
+  72 active issues)**:
+
+  | Gap | Issues | % |
+  |---|---|---|
+  | `missing_behavior_parity` | 1 (`FEAT-2787`) | 1% |
+  | `stale_symbol_ref` | 33 | 46% |
+  | `stale_cli_flag` | 7 | 10% |
+  | **any → Criterion 4 capped at 10** | **37** | **51%** |
+
+  This supersedes both the original "10 of 170 (6%)" figure and the 2026-08-05 "1 of 65 (1.5%)"
+  correction — **each measured parity only**, the latter because FEAT-3048 had not landed at the
+  time. The parity cap really is near-inert against today's backlog (1 issue). The claim cap is
+  not: it costs 37 issues up to 10 Criterion 4 points, i.e. up to 10 readiness points each.
+
+  Whether that is a re-scoring event worth absorbing depends on the follow-up: if FEAT-3048's
+  forward-reference false positives are fixed, the 46% should fall substantially and the
+  remaining hits are genuine. Shipping the cap now is still net-positive — a capped score is
+  recoverable and visible, and it surfaces the false-positive rate as a measurable signal — but
+  do not treat the 51% as a steady-state expectation.
+
+  The cap value (10 vs. a softer 15) now *does* have empirical consequence at this volume. Keep
+  10: a 5-point difference across 37 issues is not worth a second round of re-scoring once the
+  detector improves, and 10 matches the parity row it shares.
 
 ## Related Key Documentation
 
@@ -454,11 +594,16 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _Added by `/ll:confidence-check` on 2026-08-04_
 
-> **Stale as of 2026-08-05 — re-run before implementing.** Three of the four recorded concerns
-> have since been addressed: the hard blocker was downgraded to `depends_on` (ENH-3045 landed,
-> making stage 1 startable), the open `check-claims` CLI decision was resolved (no new CLI), and
-> the missing Scope Boundaries section was added. The 75 readiness score below predates all
-> three and understates current readiness.
+> **Stale as of 2026-08-05 — re-run before implementing.** All three recorded concerns are now
+> resolved: the `FEAT-3048` blocker has **landed** (commit `6477b4db`), so the dependency edge is
+> gone entirely and Criterion 5 no longer scores 0; the open `check-claims` CLI decision was
+> resolved (no new CLI); and the missing Scope Boundaries section was added. The 75 readiness
+> score below predates all three and understates current readiness.
+>
+> Note the design has also changed materially since this run: the claim signal is now a Criterion 4
+> cap rather than a Phase 3 hard override, and the second listed Outcome Risk Factor ("test
+> coverage can only be structurally slice-tested until FEAT-3048's gap kinds actually exist") no
+> longer applies.
 
 **Readiness Score**: 75/100 → PROCEED WITH CAUTION
 **Outcome Confidence**: 68/100 → MODERATE
@@ -473,6 +618,7 @@ _Added by `/ll:confidence-check` on 2026-08-04_
 - Test coverage for the new path can only be structurally slice-tested (SKILL.md prose) until FEAT-3048's gap kinds actually exist in `FormatGaps`; true integration coverage is deferred by the same blocker as above.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-05T17:55:18 - `5e23105c-4eb4-4528-b7fe-55b105cf37c3.jsonl`
 - `/ll:confidence-check` - 2026-08-05T06:33:49 - `3f582821-770b-4d5b-a2a2-2dc16d0483b5.jsonl`
 - `/ll:verify-issues` - 2026-08-05T06:31:11 - `5ceed56d-d650-4654-ab0d-8a7ea09a822f.jsonl`
 - `/ll:wire-issue` - 2026-08-05T06:28:08 - `a6e5f56c-0e65-481a-b5ae-a4af5a727e15.jsonl`

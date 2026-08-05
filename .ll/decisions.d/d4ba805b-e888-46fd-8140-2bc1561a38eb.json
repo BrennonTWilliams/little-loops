@@ -1,0 +1,11 @@
+{
+  "id": "6db542b8-b737-4c91-afbd-1eb59679ba14",
+  "type": "decision",
+  "timestamp": "2026-08-05T17:56:09Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "FEAT-3048 symbol-claim extraction has no section scoping; 33 of 72 active issues carry the gap, dominated by forward references and call-path mis-attributions. Blocks ENH-3047 from gating on claim results.",
+  "rule": "Captured: stale_symbol_ref fires on forward-looking design claims",
+  "scope": "issue",
+  "issue": "BUG-3063"
+}
