@@ -20,6 +20,12 @@ labels:
 testable: true
 blocked_by:
 - ENH-3047
+confidence_score: 80
+outcome_confidence: 84
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 20
+score_change_surface: 25
 ---
 
 # ENH-3050: Decision Rules slot + wire gate-consumer and conditional-branch categories
@@ -122,6 +128,25 @@ Keep both halves prose-only and bounded — no new Python, no new gap kind.
   so `ll-adapt --host gemini --apply && ll-adapt --host kimi --apply` runs once at the end
 - `skills/confidence-check/rubric.md` — only if the optional Criterion 4 deduction is included
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_refine_issue_command.py::TestProgramDesignGapTaxonomy::test_all_three_gap_tables_name_types_signatures_call_path`
+  (`:390-396`) — asserts `text.count("Types/signatures/call path") == 3` scoped to
+  `commands/refine-issue.md`'s BUG/FEAT/ENH gap tables; the new "new decision logic present but
+  unspecified" gap row (Implementation Step 2) must not reuse this literal string or the count
+  assertion breaks [Agent 3 finding]
+- `scripts/tests/test_refine_issue_command.py::TestProgramDesignEnrichmentRule::test_program_design_enrichment_block_present`
+  (`:408-415`) — presence-only check for `### Types`/`### Signatures`/`### Call Path` between the
+  Step 5a and 5b headings; adding `### Decision Rules` in that range won't break the assertion,
+  but its own message text ("the template's three subheadings") goes stale [Agent 3 finding]
+- `scripts/tests/test_enh494_skill_companions.py::TestSkillLineLimit::test_all_skills_within_limit`
+  (`:74-84`) — `skills/wire-issue/SKILL.md` is actually 490/500 lines today, not 455/500 as stated
+  above (ENH-3049 already landed and grew it); this edit has ~10 lines of headroom before the
+  500-line cap breaks and the ENH-494 companion-extraction remedy is required [Agent 2 finding]
+- `.gemini/commands/refine-issue.toml` — embeds `commands/refine-issue.md`'s full body verbatim in
+  its `prompt` field, but unlike `skills/wire-issue/SKILL.md` there is no committed drift test
+  comparing them; the `### Decision Rules` addition can go stale in this mirror silently
+  [Agent 2 finding]
+
 ### Similar Patterns
 - `ENH-2852` — the `program_design_nonspecific` gate this extends conceptually
 - `ENH-494` — the companion-file pattern whose mirror gap this issue's second half exposes
@@ -197,6 +222,24 @@ _Self-applying this issue's own proposal:_
    `missing_behavior_parity` keyword list and escape hatch, and a wire pass surfaces
    `autodev.yaml` as a gate consumer and the companion-mirror gap as a conditional branch.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Verify `scripts/tests/test_refine_issue_command.py::test_all_three_gap_tables_name_types_signatures_call_path`
+  still asserts `count == 3` after Step 2's new gap-class row — do not reuse the literal string
+  `"Types/signatures/call path"` for that row
+- Confirm `skills/wire-issue/SKILL.md`'s line count stays ≤500 after Step 3 (currently 490/500,
+  not 455/500) — if it crosses the cap, extract a 4th companion file per the existing ENH-494
+  pattern (`learning-targets.md`, `static-coupling-layer.md`, `graph-discovery-layer.md`) rather
+  than trimming Phase 5/agent-brief prose
+- Manually update `.gemini/commands/refine-issue.toml`'s embedded `prompt` body to match
+  `commands/refine-issue.md`'s new `### Decision Rules` template — no automated drift test covers
+  this mirror the way `test_wire_issue_skill_mirror_matches_source` covers `wire-issue/SKILL.md`
+- Optional: add `test_decision_rules_subsection_is_inert` to `scripts/tests/test_program_design_gate.py`,
+  mirroring `test_deviations_subsection_is_inert` (`:304-332`), to lock in that `### Decision
+  Rules` falls through `DESIGN_SUBSECTIONS` (`program_design.py:64`) as inert grading evidence
+
 ## Impact
 
 - **Priority**: P3 — preventive rather than corrective; smaller blast radius than ENH-3049
@@ -220,11 +263,23 @@ _Self-applying this issue's own proposal:_
 - `docs/reference/COMMANDS.md` — `/ll:wire-issue` wiring categories
 - `.claude/CLAUDE.md` § Automation — the `format-check` JSON contract that gate consumers read
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-04_
+
+**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (hard override, dependency)
+**Outcome Confidence**: 84/100 → HIGH CONFIDENCE
+
+### Gaps to Address
+- `blocked_by: ENH-3047` is still `open` (not `done`/`cancelled`), so the Dependencies Hard Override (BUG-3051) forces STOP regardless of the 80/100 aggregate. This issue's Program Design already leans on ENH-3047 owning the rubric-deduction surface ("Kept optional here deliberately — `ENH-3047` owns the rubric-deduction surface and should absorb it if it lands first"), so wait for ENH-3047 to resolve, or remove it from `blocked_by` if that coupling is dropped.
+
 ## Status
 
 **Open** | Created: 2026-08-04 | Priority: P3
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-05T02:56:02 - `4535f4d4-f14b-460b-89bd-b88362861660.jsonl`
+- `/ll:wire-issue` - 2026-08-05T02:53:04 - `a1d9a3c9-2fcc-4cb1-9a96-631cffa38e74.jsonl`
 - `/ll:refine-issue` - 2026-08-05T02:40:05 - `01b1f21d-ee5c-46e4-9926-f894d6a85704.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-05T00:25:09 - `2f3f7bc8-367e-4fba-936b-eaf8049da3c4.jsonl`
