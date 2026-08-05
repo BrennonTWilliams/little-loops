@@ -1,0 +1,12 @@
+{
+  "id": "6b68d446-301d-44ec-9a58-00c8587f5f1e",
+  "type": "decision",
+  "timestamp": "2026-08-05T20:02:54Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses the existing _heading_bodies()/_section_body() scoping idiom already proven by missing_behavior_parity (ENH-3045); ~20-30 LOC vs Option B's 120-180 LOC and unproven creation-verb heuristic.",
+  "rule": "Option A \u2014 section scoping",
+  "scope": "issue",
+  "alternatives_rejected": "Option B \u2014 forward-reference discriminator (creation-verb detection + reverse symbol index, no existing precedent, higher false-negative risk)",
+  "issue": "BUG-3063"
+}

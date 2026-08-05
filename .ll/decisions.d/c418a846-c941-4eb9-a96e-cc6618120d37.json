@@ -1,0 +1,12 @@
+{
+  "id": "dd944781-f004-4c57-9b22-132ef9d2347e",
+  "type": "decision",
+  "timestamp": "2026-08-05T20:38:30Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Sub-loop mechanism (with: params, done/failed contract, oracles/ path resolution) is proven in production (verify-confidence-scores); Option A's duplication pattern already caused BUG-1416/BUG-2595 and two remediation issues (ENH-2443, ENH-2446).",
+  "rule": "Option B \u2014 extract as a sub-loop, and convert autodev to call it",
+  "scope": "issue",
+  "alternatives_rejected": "Option A \u2014 duplicate the cluster into refine-to-ready-issue",
+  "issue": "BUG-3065"
+}
