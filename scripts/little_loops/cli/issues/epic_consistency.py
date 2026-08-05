@@ -14,11 +14,14 @@ if TYPE_CHECKING:
     from little_loops.issue_parser import IssueInfo
 
 _ALL_STATUSES: set[str] = {"open", "in_progress", "blocked", "done", "cancelled", "deferred"}
+_TERMINAL_STATUSES: frozenset[str] = frozenset({"done", "cancelled"})
 
 # Matches the frontmatter type: field value (captures the value after "type: ")
 _FM_TYPE_RE = re.compile(r"^type:\s*(\S+)", re.MULTILINE)
 # Matches a frontmatter children: key (list start)
 _FM_CHILDREN_RE = re.compile(r"^children\s*:", re.MULTILINE)
+# Matches a top-level `## Composition Review` heading (ENH-162 AC #1).
+_COMPOSITION_REVIEW_RE = re.compile(r"^##\s+Composition\s+Review\s*$", re.MULTILINE | re.IGNORECASE)
 
 # Issue types that participate in the (a)/(b) parent-child diff.
 # EPIC-* refs in body are treated as sub-epic prose (advisory only).
@@ -50,6 +53,7 @@ class EpicDrift:
     sub_epic_advisory: list[str] = field(default_factory=list)  # advisory
     type_casing_wrong: bool = False  # schema: type: must be 'EPIC'
     has_children_frontmatter: bool = False  # schema: children: key forbidden
+    composition_review_missing: bool = False  # ENH-162 AC #1
 
     @property
     def has_drift(self) -> bool:
@@ -59,12 +63,18 @@ class EpicDrift:
         an advisory, not drift: listing children in ``relates_to`` is the established
         maintainer convention (it holds on the large majority of EPICs), so it is
         reported but never fails the check.
+
+        `composition_review_missing` (ENH-162 AC #1) is failing drift for non-terminal
+        EPICs; terminal EPICs (status in {done, cancelled}) are exempt — the exemption
+        is enforced in `compute_drift` itself (the field is False for terminal EPICs),
+        so `has_drift` does not need to inspect status here.
         """
         return bool(
             self.missing_from_body
             or self.body_without_parent
             or self.type_casing_wrong
             or self.has_children_frontmatter
+            or self.composition_review_missing
         )
 
     @property
@@ -194,6 +204,16 @@ def compute_drift(
     relates_to_set = set(epic_info.relates_to or [])
     relates_to_is_child = sorted(relates_to_set & parent_children)
 
+    # (ENH-162 AC #1) Composition Review heading required on non-terminal EPICs.
+    # Terminal EPICs (status in {done, cancelled}) are exempt — they have a
+    # different closure surface (## Cancelled <date>) and do not need a separate
+    # disposition heading.
+    is_terminal = epic_info.status in _TERMINAL_STATUSES
+    composition_review_missing = (
+        not is_terminal
+        and _COMPOSITION_REVIEW_RE.search(content) is None
+    )
+
     return EpicDrift(
         epic_id=epic_id,
         epic_title=epic_info.title,
@@ -203,6 +223,7 @@ def compute_drift(
         sub_epic_advisory=sub_epic_advisory,
         type_casing_wrong=type_casing_wrong,
         has_children_frontmatter=has_children_frontmatter,
+        composition_review_missing=composition_review_missing,
     )
 
 

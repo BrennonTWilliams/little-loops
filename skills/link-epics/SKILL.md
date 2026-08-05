@@ -176,15 +176,29 @@ For each accepted proposal (child orphan → parent EPIC):
    `parent: EPIC-NNN` before the closing `---` of the frontmatter block. If
    `parent:` already exists with a non-null value, skip and log:
    `⚠ CHILD_ID already has parent: <existing_value>, skipping.`
-2. **Update EPIC `## Children`.** If it exists, append
-   `- **CHILD_ID** — child issue title`. If not, insert the section before
-   `## Status` (or at end of file).
+2. **Update EPIC `## Children`.** If it exists, append a bullet in the
+   canonical rendered shape:
+
+   ```markdown
+   - **CHILD_ID** — child issue title (open)
+   ```
+
+   The trailing `(open)` reflects the child's status at write time. This
+   format mirrors what `ll-issues epic-progress EPIC-NNN --format markdown`
+   emits under `- **Children**` (single home for child membership in the
+   rendered form per ENH-162 AC #2). If the section does not exist, insert
+   it before `## Status` (or at end of file).
+
 3. **Post-write consistency check.** Re-read the child's frontmatter and confirm
    `parent:` equals the EPIC ID; confirm the child ID appears in the EPIC's
    `## Children` section. If either check fails, emit a non-blocking warning:
    `⚠ Post-write consistency check failed for CHILD_ID: parent: not set to
    EPIC-NNN or child absent from ## Children`. This substitutes for
    `ll-issues epic-consistency` until FEAT-2332 ships.
+
+   > **Note (ENH-162)**: never write child IDs into `relates_to:` — containment
+   > lives in `parent:` only. `relates_to:` is for peer/see-also links
+   > between EPICs and sibling issues.
 4. **Stage both files**: `git add "child_issue_path"` and `git add "epic_path"`.
 
 ### A5: Report Results
@@ -301,7 +315,7 @@ status: open
 captured_at: "<TODAY, date -u +%Y-%m-%dT%H:%M:%SZ>"
 discovered_date: <DATE_ONLY, date -u +%Y-%m-%d>
 discovered_by: link-epics
-relates_to: [CHILD_ID_1, CHILD_ID_2, ...]
+relates_to: []
 ---
 
 # EPIC-NNN: <synthesized title>
@@ -312,9 +326,16 @@ relates_to: [CHILD_ID_1, CHILD_ID_2, ...]
 
 ## Children
 
-- **CHILD_ID_1** — child issue 1 title
-- **CHILD_ID_2** — child issue 2 title
+- **CHILD_ID_1** — child issue 1 title (open)
+- **CHILD_ID_2** — child issue 2 title (open)
 ```
+
+> **Note (ENH-162)**: `relates_to:` is reserved for peer/see-also cross-references
+> between EPICs and sibling issues. Child IDs must NOT be listed in `relates_to:` —
+> containment is expressed via `parent:` on each child, and the rendered child
+> membership lives in the EPIC's `## Children` section (mirrored by
+> `ll-issues epic-progress EPIC-NNN --format markdown`). The canonical rendered
+> form of child membership is the CLI output, not `relates_to:`.
 
 4. **Write `parent:` back to each child** — same `Edit`-before-closing-`---`
    procedure as A4 step 1; same skip-and-warn behavior on an existing non-null

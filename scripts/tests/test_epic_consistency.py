@@ -29,8 +29,15 @@ def epic_consistency_dir(temp_project_dir: Path, sample_config: dict[str, Any]) 
 
 
 def _write_epic(epics_dir: Path, epic_id: str, children_section: str = "") -> Path:
-    """Write an EPIC file with an optional ## Children section."""
+    """Write an EPIC file with an optional ## Children section.
+
+    ENH-162 AC #1: open EPICs must carry a `## Composition Review` heading.
+    The helper includes the heading by default to match the post-refactor
+    convention; tests that exercise the missing-heading case use
+    `_write_epic_with_composition_review(..., include_composition_review=False)`.
+    """
     body = f"---\nstatus: open\n---\n# {epic_id}: Test epic\n\n## Summary\nTest.\n"
+    body += "\n## Composition Review\n\n**Disposition**: KEEP\n"
     if children_section:
         body += f"\n## Children\n\n{children_section}\n"
     path = epics_dir / f"P2-{epic_id}-test-epic.md"
@@ -719,6 +726,7 @@ class TestEpicConsistencyRelatesTo:
         epic_content = (
             "---\nstatus: open\nrelates_to:\n- FEAT-130\n---\n"
             "# EPIC-100: Test\n\n## Summary\nTest.\n\n"
+            "## Composition Review\n\n**Disposition**: KEEP\n\n"
             "## Children\n\n- **FEAT-130** — child\n"
         )
         (epics_dir / "P2-EPIC-100-test.md").write_text(epic_content)
@@ -750,6 +758,7 @@ class TestEpicConsistencyRelatesTo:
         epic_content = (
             "---\nstatus: open\nrelates_to:\n- FEAT-131\n---\n"
             "# EPIC-101: Test\n\n## Summary\nTest.\n\n"
+            "## Composition Review\n\n**Disposition**: KEEP\n\n"
             "## Children\n\n- **FEAT-131** — child\n"
         )
         (epics_dir / "P2-EPIC-101-test.md").write_text(epic_content)
@@ -845,10 +854,15 @@ class TestEpicConsistencyTypeCasing:
     """Schema lint: type: must be 'EPIC' (uppercase) on EPIC files."""
 
     def _write_epic_with_type(self, epics_dir: Path, epic_id: str, type_value: str) -> Path:
-        """Write an EPIC file with an explicit type: field."""
+        """Write an EPIC file with an explicit type: field.
+
+        Includes `## Composition Review` heading (ENH-162 AC #1) so type-lint
+        tests don't fail on the missing-heading check.
+        """
         body = (
             f"---\nid: {epic_id}\nstatus: open\ntype: {type_value}\n---\n"
             f"# {epic_id}: Test epic\n\n## Summary\nTest.\n"
+            f"\n## Composition Review\n\n**Disposition**: KEEP\n"
         )
         path = epics_dir / f"P2-{epic_id}-test-epic.md"
         path.write_text(body)
@@ -1042,3 +1056,172 @@ class TestEpicConsistencyChildrenFrontmatter:
         data = json.loads(captured.out)
         entry = data if "epic" in data else data["results"][0]
         assert entry.get("has_children_frontmatter") is True
+
+
+# ---------------------------------------------------------------------------
+# TestEpicConsistencyCompositionReview (ENH-162 AC #1)
+# ---------------------------------------------------------------------------
+
+
+def _write_epic_with_composition_review(
+    epics_dir: Path,
+    epic_id: str,
+    *,
+    status: str = "open",
+    include_composition_review: bool = True,
+) -> Path:
+    """Write an EPIC file with optional `## Composition Review` heading."""
+    fm_status = f"status: {status}\n"
+    body = (
+        f"---\n{fm_status}---\n"
+        f"# {epic_id}: Test epic\n\n## Summary\nTest.\n"
+    )
+    if include_composition_review:
+        body += "\n## Composition Review\n\n**Disposition**: KEEP\n"
+    path = epics_dir / f"P2-{epic_id}-test-epic.md"
+    path.write_text(body)
+    return path
+
+
+class TestEpicConsistencyCompositionReview:
+    """ENH-162 AC #1: open EPICs must carry a `## Composition Review` heading."""
+
+    def test_open_epic_with_heading_exits_zero(
+        self,
+        temp_project_dir: Path,
+        epic_consistency_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Open EPIC WITH the heading exits 0 (no drift)."""
+        epics_dir = epic_consistency_dir / "epics"
+        _write_epic_with_composition_review(
+            epics_dir, "EPIC-220", status="open", include_composition_review=True
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "epic-consistency", "EPIC-220", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+
+    def test_open_epic_without_heading_exits_nonzero(
+        self,
+        temp_project_dir: Path,
+        epic_consistency_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Open EPIC WITHOUT the heading fails (composition_review_missing drift)."""
+        epics_dir = epic_consistency_dir / "epics"
+        _write_epic_with_composition_review(
+            epics_dir, "EPIC-221", status="open", include_composition_review=False
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "epic-consistency", "EPIC-221", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result != 0
+        captured = capsys.readouterr()
+        assert "composition_review" in captured.out.lower() or "EPIC-221" in captured.out
+
+    def test_in_progress_epic_without_heading_exits_nonzero(
+        self,
+        temp_project_dir: Path,
+        epic_consistency_dir: Path,
+    ) -> None:
+        """`in_progress` is non-terminal — missing heading still fails."""
+        epics_dir = epic_consistency_dir / "epics"
+        _write_epic_with_composition_review(
+            epics_dir, "EPIC-222", status="in_progress", include_composition_review=False
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "epic-consistency", "EPIC-222", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result != 0
+
+    def test_deferred_epic_without_heading_exits_nonzero(
+        self,
+        temp_project_dir: Path,
+        epic_consistency_dir: Path,
+    ) -> None:
+        """`deferred` is non-terminal — missing heading still fails."""
+        epics_dir = epic_consistency_dir / "epics"
+        _write_epic_with_composition_review(
+            epics_dir, "EPIC-223", status="deferred", include_composition_review=False
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "epic-consistency", "EPIC-223", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result != 0
+
+
+class TestEpicConsistencyCompositionReviewTerminalExempt:
+    """ENH-162 AC #1: terminal EPICs (done/cancelled) are exempt from the heading requirement."""
+
+    def test_cancelled_epic_without_heading_exits_zero(
+        self,
+        temp_project_dir: Path,
+        epic_consistency_dir: Path,
+    ) -> None:
+        """Cancelled EPICs are exempt — missing heading does not fail."""
+        epics_dir = epic_consistency_dir / "epics"
+        _write_epic_with_composition_review(
+            epics_dir, "EPIC-224", status="cancelled", include_composition_review=False
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "epic-consistency", "EPIC-224", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+
+    def test_done_epic_without_heading_exits_zero(
+        self,
+        temp_project_dir: Path,
+        epic_consistency_dir: Path,
+    ) -> None:
+        """Done EPICs are exempt — missing heading does not fail."""
+        epics_dir = epic_consistency_dir / "epics"
+        _write_epic_with_composition_review(
+            epics_dir, "EPIC-225", status="done", include_composition_review=False
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "epic-consistency", "EPIC-225", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0

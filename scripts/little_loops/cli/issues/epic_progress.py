@@ -100,6 +100,11 @@ def cmd_epic_progress(config: BRConfig, args: argparse.Namespace) -> int:
             for bc in (c for c in prog.children if c.status == "blocked"):
                 by_str = ", ".join(bc.blocked_by) if bc.blocked_by else "(unknown)"
                 lines.append(f"- **Blocked**: {bc.issue_id} → blocked_by {by_str}")
+        # Children enumeration — single home for child membership in rendered form (ENH-162 AC #2)
+        if prog.children:
+            lines.append(f"- **Children** ({len(prog.children)}):")
+            for c in sorted(prog.children, key=lambda x: x.issue_id):
+                lines.append(f"  - **{c.issue_id}** — {c.title} ({c.status})")
         print("\n".join(lines))
         return 0
 

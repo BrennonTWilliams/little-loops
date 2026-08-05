@@ -391,11 +391,13 @@ For each child (learning test sub-issues first, then implementation children) th
 
 #### 5a: Append child to EPIC `## Children` section
 
-If the EPIC body already contains a `## Children` section (created from the template in Phase 4), append a new bullet:
+If the EPIC body already contains a `## Children` section (created from the template in Phase 4), append a new bullet using the canonical rendered shape:
 
 ```markdown
-- **CHILD_ID** — [one-sentence child title]
+- **CHILD_ID** — [one-sentence child title] (open)
 ```
+
+The trailing `(open)` reflects the child's current status at write time. The bullet format mirrors what `ll-issues epic-progress EPIC-NNN --format markdown` emits under `- **Children**` (single home for child membership in the rendered form per ENH-162 AC #2).
 
 Use `Edit` to append the bullet line after the last existing bullet in that section.
 
@@ -404,7 +406,7 @@ If no `## Children` section exists (should not happen with the full EPIC templat
 ```markdown
 ## Children
 
-- **CHILD_ID** — [one-sentence child title]
+- **CHILD_ID** — [one-sentence child title] (open)
 ```
 
 #### 5b: Verify `parent:` and post-write consistency
@@ -418,6 +420,8 @@ After verifying `parent:`, also confirm the child ID appears exactly once in the
 ```
 
 This inline validation substitutes for `ll-issues epic-consistency` until FEAT-2332 ships.
+
+> **Note (ENH-162)**: child membership lives in `parent:` frontmatter, not in `relates_to:`. Never populate `relates_to:` with child IDs — containment is expressed via `parent:` only. `relates_to:` is reserved for peer/see-also cross-references between EPICs and sibling issues.
 
 ---
 
