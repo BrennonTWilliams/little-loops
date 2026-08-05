@@ -3,10 +3,11 @@ id: BUG-3051
 title: 'confidence-check: no hard override for an unresolved blocked_by dependency'
 type: BUG
 priority: P2
-status: open
+status: done
 discovered_by: capture-issue
 discovered_date: 2026-08-05
 captured_at: '2026-08-05T02:01:17Z'
+completed_at: '2026-08-05T03:05:22Z'
 relates_to:
 - ENH-3047
 labels:
@@ -31,6 +32,16 @@ cannot be started at all: it is `blocked_by: [FEAT-3048]`, FEAT-3048 is `status:
 ENH-3047's own body says "without it there is nothing to read." Criterion 5 (Dependencies
 Satisfied) correctly scored 0/20, but with no hard override to back it, that 0 was simply
 averaged against four near-perfect criteria (20+20+20+15+0=75) into a passing tier.
+
+## Steps to Reproduce
+
+1. Have an issue (e.g. ENH-3047) with `blocked_by: [FEAT-3048]` in frontmatter, where FEAT-3048
+   is `status: open`.
+2. Run `/ll:confidence-check ENH-3047`.
+3. Observe Criterion 5 (Dependencies Satisfied) correctly scores 0/20, but the aggregate readiness
+   score still sums to a passing tier (e.g. 75/100 → PROCEED WITH CAUTION) instead of being forced
+   to `STOP — ADDRESS GAPS`, because no hard override exists for this criterion the way it does
+   for the Learning Test and Program Design gates.
 
 ## Current Behavior
 
@@ -134,10 +145,12 @@ the issue's `status` field -> status extracted via inline `python -c` -> `DEP_FA
 
 ## Status
 
-**Open** | Created: 2026-08-05 | Priority: P2
+**Completed** | Created: 2026-08-05 | Completed: 2026-08-05 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-05T03:04:22 - `4535f4d4-f14b-460b-89bd-b88362861660.jsonl`
+- `/ll:ready-issue` - 2026-08-05T02:47:14 - `d359d751-fc31-4860-a2ab-1331fcb490fc.jsonl`
 - `/ll:confidence-check` - 2026-08-05T02:36:55 - `b31d828d-efcd-47ab-bb1e-e15aa1cfb7d9.jsonl`
 - `/ll:refine-issue` - 2026-08-05T02:32:29 - `aa24e5e7-0f72-4dfd-ae25-e8166d71faf6.jsonl`
 - `/ll:capture-issue` - 2026-08-05T02:02:02 - `78b80840-5577-4179-95d0-0f368e10d2bb.jsonl`
@@ -151,3 +164,20 @@ _Added by `/ll:refine-issue` — 2026-08-05 — based on codebase analysis:_
 - **File**: `skills/confidence-check/SKILL.md`
 - **Anchor**: `### Phase 3: Score and Recommend` (SKILL.md:300), between the Learning Test Hard Override (SKILL.md:302) and Program Design Hard Override (SKILL.md:304)
 - **Cause**: Phase 3 defines exactly two hard-override paragraphs (Learning Test at SKILL.md:302, Program Design/`PD_FAIL` at SKILL.md:304) and no third one for dependencies. A grep across `skills/confidence-check/SKILL.md`, `rubric.md`, and `reference.md` for `blocked_by|depends_on` returns zero matches — the skill never reads that frontmatter structurally. Criterion 5's detection method (`SKILL.md:220-230`) only inspects issue-body prose ("Blocked By"/"Dependencies" sections) and a `{{config.issues.base_dir}}/completed/` directory check, not the `blocked_by`/`depends_on` fields. So the "Critical dependencies unresolved, cannot proceed" row (`rubric.md:247-252`, scores 0) is just one term in the SKILL.md:306 aggregate sum — there is no gate comparable to `PD_FAIL` that intercepts it before the score-to-tier table.
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-08-05
+- **Status**: Completed
+
+### Changes Made
+
+- `skills/confidence-check/SKILL.md`: Added `### Phase 1.7: Pre-Fetch Dependencies Gate` — resolves each `blocked_by` frontmatter ID via `ll-issues show --json`, lowercases `status`, and sets `DEP_FAIL`/`DEP_ROWS` when any entry is not `done`/`cancelled` (`deferred` treated as non-terminal per `.claude/CLAUDE.md`). Added a **Dependencies Hard Override** paragraph to Phase 3 (alongside the existing Learning Test and Program Design overrides) that forces `STOP — ADDRESS GAPS` when `DEP_FAIL` is set. Added `Bash(ll-issues:*)` to the skill's `allowed-tools` frontmatter (it was already invoked by the pre-existing Program Design pre-fetch but missing from the allowlist).
+- `skills/confidence-check/rubric.md`: Documented the Dependencies Hard Override directly under the Criterion 5 scoring table.
+- `scripts/tests/test_confidence_check_skill.py`: Added `TestConfidenceCheckDependenciesPrefetch` and `TestConfidenceCheckRubricDependenciesOverride` covering the new Phase 1.7 heading, `blocked_by` read, `ll-issues show` usage, the deferred-non-terminal note, the Phase 3 override text, and the allowed-tools entry.
+
+### Verification Results
+- Tests: PASS (18280 passed, 42 skipped; 1 pre-existing unrelated failure — `test_prose_dep_sweep_gate.py::test_no_prose_dependency_drift_in_repo`, confirmed present on `main` before this change via `git stash`)
+- Lint: PASS (`ruff check`)
+- The new inline `python3 -c` calls in Phase 1.7 are suppressed from the `ll-verify-skill-prose` algorithm-as-prose baseline gate via `<!-- ll-prose-ok: ... -->` comments, matching the pre-existing PD_GAP idiom in Phase 1.6

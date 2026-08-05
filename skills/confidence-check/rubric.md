@@ -251,6 +251,13 @@ Use the table matching the issue type.
 | Some dependencies unresolved, workarounds possible | 10 |
 | Critical dependencies unresolved, cannot proceed | 0 |
 
+**Dependencies Hard Override** (BUG-3051): an unresolved `blocked_by` frontmatter entry (status
+other than `done`/`cancelled` — `deferred` is non-terminal, see `.claude/CLAUDE.md` § Issue File
+Format) is a "Critical dependencies unresolved, cannot proceed" (0) finding, but unlike the other
+rows in this table it is not just summed into the aggregate: Phase 1.7 sets `DEP_FAIL`, and the
+Phase 3 hard override (see SKILL.md Phase 3) forces `STOP — ADDRESS GAPS` regardless of the
+aggregate score, mirroring the Learning Test and Program Design hard overrides.
+
 ---
 
 ## Phase 2b — Outcome Confidence Scoring Tables (0-25 points each, max 100)

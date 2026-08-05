@@ -429,6 +429,76 @@ class TestConfidenceCheckRubricLearningTestStatus:
         )
 
 
+class TestConfidenceCheckDependenciesPrefetch:
+    """Phase 1.7 must pre-fetch and hard-gate on unresolved blocked_by deps (BUG-3051)."""
+
+    def _phase_text(self, heading: str) -> str:
+        content = SKILL_FILE.read_text()
+        start = content.index(heading)
+        next_heading = content.find("\n###", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_phase_1_7_heading_exists(self) -> None:
+        content = SKILL_FILE.read_text()
+        assert "### Phase 1.7: Pre-Fetch Dependencies Gate" in content, (
+            "SKILL.md must contain a '### Phase 1.7: Pre-Fetch Dependencies Gate' section (BUG-3051)"
+        )
+
+    def test_phase_1_7_reads_blocked_by(self) -> None:
+        phase_text = self._phase_text("### Phase 1.7: Pre-Fetch Dependencies Gate")
+        assert "blocked_by" in phase_text, (
+            "Phase 1.7 must read the blocked_by frontmatter field (BUG-3051)"
+        )
+
+    def test_phase_1_7_uses_ll_issues_show(self) -> None:
+        phase_text = self._phase_text("### Phase 1.7: Pre-Fetch Dependencies Gate")
+        assert "ll-issues show" in phase_text, (
+            "Phase 1.7 must resolve each blocked_by ID via ll-issues show --json (BUG-3051)"
+        )
+
+    def test_phase_1_7_treats_deferred_as_non_terminal(self) -> None:
+        phase_text = self._phase_text("### Phase 1.7: Pre-Fetch Dependencies Gate")
+        assert "deferred" in phase_text and "non-terminal" in phase_text, (
+            "Phase 1.7 must document that deferred does not resolve a blocked_by edge (BUG-3051)"
+        )
+
+    def test_dependencies_hard_override_in_phase_3(self) -> None:
+        phase_text = self._phase_text("### Phase 3:")
+        assert "Dependencies Hard Override" in phase_text and "DEP_FAIL" in phase_text, (
+            "Phase 3 must document the DEP_FAIL hard override for unresolved blocked_by deps (BUG-3051)"
+        )
+
+    def test_dependencies_override_forces_stop(self) -> None:
+        phase_text = self._phase_text("### Phase 3:")
+        dep_start = phase_text.index("Dependencies Hard Override")
+        dep_paragraph = phase_text[dep_start : dep_start + 400]
+        assert "STOP" in dep_paragraph, (
+            "Dependencies Hard Override must force a STOP recommendation (BUG-3051)"
+        )
+
+    def test_ll_issues_in_allowed_tools(self) -> None:
+        content = SKILL_FILE.read_text()
+        frontmatter_end = content.index("\n---", 3)
+        frontmatter = content[:frontmatter_end]
+        assert "ll-issues" in frontmatter, (
+            "SKILL.md allowed-tools frontmatter must include Bash(ll-issues:*) (BUG-3051)"
+        )
+
+
+class TestConfidenceCheckRubricDependenciesOverride:
+    """rubric.md must document the Dependencies Hard Override alongside the scoring table (BUG-3051)."""
+
+    def test_hard_override_documented(self) -> None:
+        content = RUBRIC_FILE.read_text()
+        start = content.index("### Criterion 5: Dependencies Satisfied")
+        next_heading = content.find("\n---", start)
+        section = content[start:next_heading if next_heading != -1 else len(content)]
+        assert "Dependencies Hard Override" in section, (
+            "rubric.md Criterion 5 section must document the Dependencies Hard Override (BUG-3051)"
+        )
+
+
 class TestVerdictJsonTrailer:
     """rubric.md's single-issue output format must emit VERDICT_JSON (ENH-2949)."""
 
