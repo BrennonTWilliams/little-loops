@@ -137,7 +137,7 @@ ll-loop status docs-sync             # alive? which state? where's the log?
 ll-loop resume docs-sync             # interrupted? continue mid-trajectory
 ```
 
-> **Bounded by design.** Every run carries a step cap, per-edge cycle detection, and a repeated-failure stall detector that catches the "already done" no-op before it burns your iteration budget. Cost ceilings (`--max-cost`, per-state `cost_ceiling:`) and a host memory guard keep spend and RAM honest. And you can rehearse before paying: `ll-loop validate <name>` checks the YAML, `--dry-run --show-diagrams` prints the FSM and execution plan without running anything, `--worktree` isolates a run on its own branch.
+> **Bounded by design.** Every run carries a step cap, per-edge cycle detection, and a repeated-failure stall detector that catches the "already done" no-op before it burns your iteration budget. Cost ceilings (per-state `cost_ceiling:`) and a host memory guard keep spend and RAM honest. And you can rehearse before paying: `ll-loop validate <name>` checks the YAML, `--dry-run --show-diagrams` prints the FSM and execution plan without running anything, `--worktree` isolates a run on its own branch.
 
 When a built-in is *almost* right, `ll-loop install <name>` copies it into `.loops/` for local editing; `/ll:create-loop` writes a new one from a plain-language description; and any loop can invoke another as a sub-loop state, so pipelines compose instead of duplicating.
 
@@ -176,8 +176,8 @@ ll-loop run harness-optimize -b        # Score-gated hill climbing in the backgr
 
 - **29 slash commands** — issue discovery, refinement, planning, code quality, git, automation
 - **9 specialized agents** — codebase analysis, quality assurance, automation, and research
-- **40 skills** — deterministic harnesses for common workflows (confidence checks, issue wiring, loop creation)
-- **46 typed CLI tools** — `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, and more
+- **37 skills** — deterministic harnesses for common workflows (confidence checks, issue wiring, loop creation)
+- **47 typed CLI tools** — `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, and more
 - **102 FSM loops** — recurring automation workflows (backlog triage, sprint building, eval harnesses)
 - **Configuration system** — project-type templates for Python, JS/TS, Go, Rust, Java, .NET, and generic
 - **Design tokens** — WCAG AA palette template set with FSM context injection for artifact-generating loops

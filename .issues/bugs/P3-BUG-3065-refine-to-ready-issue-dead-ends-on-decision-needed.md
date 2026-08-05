@@ -952,6 +952,7 @@ Findings 1 and 2 were load-bearing enough to block a first implementation attemp
 pre-existing defect this refactor would otherwise have copied forward under a "Preserved" label.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-05T21:40:43 - `5b36b1a8-f955-4387-b628-060e5d47565a.jsonl`
 - `/ll:confidence-check` - 2026-08-05T21:26:23 - `df4641bf-83a3-4970-9d63-8766a6c28feb.jsonl`
 - `/ll:confidence-check` - 2026-08-05T21:06:35 - `1280ced4-9fda-4c58-a33f-cf524332bd3e.jsonl`
 - `/ll:verify-issues` - 2026-08-05T21:02:01 - `d1ec8a23-5bcc-4a5c-abec-47eb0e38a04f.jsonl`

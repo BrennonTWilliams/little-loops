@@ -360,20 +360,20 @@ def scan_normalize(
 
     # --- type_mismatch (report-only) ---
     for info in all_issues:
-        cat = path_category.get(info.path)
-        if cat is None:
+        mismatch_cat = path_category.get(info.path)
+        if mismatch_cat is None:
             continue
-        current_prefix = config.get_issue_prefix(cat)
+        current_prefix = config.get_issue_prefix(mismatch_cat)
         inferred_prefix, confidence = classify_type(info)
         if inferred_prefix and inferred_prefix != current_prefix:
             if confidence >= _TYPE_MISMATCH_CONFIDENCE_CUTOFF:
                 m = _FILENAME_ID_RE.search(info.path.name)
-                proposed_id = f"{inferred_prefix}-{m.group(2)}" if m else None
+                mismatch_proposed_id = f"{inferred_prefix}-{m.group(2)}" if m else None
                 findings.append(
                     NormalizeFinding(
                         path=info.path,
                         kind="type_mismatch",
-                        proposed_id=proposed_id,
+                        proposed_id=mismatch_proposed_id,
                         confidence=confidence,
                     )
                 )
