@@ -21,7 +21,7 @@ Settings are stored in `.ll/ll-config.json` under `prompt_optimization`:
 
 | Setting | Values | Description |
 |---------|--------|-------------|
-| `enabled` | ON/OFF | Enable/disable auto-optimization |
+| `enabled` | ON/OFF | Enable/disable auto-optimization (default: OFF) |
 | `mode` | quick/thorough | Quick uses config only; thorough spawns agent |
 | `confirm` | ON/OFF | Show diff before applying vs auto-apply |
 

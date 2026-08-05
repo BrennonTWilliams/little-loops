@@ -315,6 +315,8 @@ Run after `refine-issue` when the Integration Map looks thin — callers undersp
 
 **Flags:** `--auto` — non-interactive mode for FSM (finite-state machine) loop automation. `--dry-run` — preview proposed additions.
 
+`wire-issue` can also **annotate** a directive line that its own additions contradict with an inline `⚠ Superseded` marker (ENH-2995, ENH-3049) — the same channel `refine-issue` uses, never a rewrite. If a marker appears, run `/ll:reconcile-issue [issue-id]` afterward to rewrite the contradicted section and clear it; this is a routine post-wire step, not an exceptional one.
+
 ### Verifying Against Codebase
 
 ```

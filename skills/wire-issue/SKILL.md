@@ -397,13 +397,33 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `docs/relevant.md` — reflect changed behavior in documentation
 ```
 
-### 8c: Preservation Rule
+### 8c: Preservation Rule & Contradiction Carve-Out
 
 **Do NOT overwrite** any existing content. Only append. Mark all wiring additions with:
 
 ```
 _Wiring pass added by `/ll:wire-issue`:_
 ```
+
+**Contradiction-marking carve-out** (ported from ENH-2995, ENH-3049): a narrow
+exception — when content **this pass is appending** contradicts a line in
+`## Implementation Steps`, `### Files to Modify`, or `## Acceptance Criteria`,
+annotate that line instead of leaving the contradiction silent. Never
+`## Summary`, `## Motivation`, `## Proposed Solution`, or `### Option …` /
+`### Decision Rationale` prose.
+
+- **Provenance (wire-specific)**: fires only on content this pass is
+  appending — an Integration Map bullet or a Wiring Phase entry — never from
+  re-reading a prior pass's already-appended blocks. Wire has no
+  `### Codebase Research Findings` heading to key on.
+- **Marker text and placement**: insert `> ⚠ Superseded — <reason ≤10 words>`
+  as a new line immediately below the contradicted line, indented to that
+  line's content column (3 spaces under `1. `, 2 under `- `) — never column 0.
+- **Idempotent**: skip if the line below already contains `⚠ Superseded`.
+- **No marker-removal right for wire**: markers carry no provenance, so wire
+  cannot distinguish its own markers from refine's. Wire may only **insert**
+  markers and must **never delete** one — that right stays with
+  `/ll:refine-issue` alone.
 
 ---
 

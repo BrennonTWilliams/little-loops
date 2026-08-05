@@ -256,7 +256,7 @@ Resolve multi-option implementation decisions by gathering codebase evidence for
 **Decisions log:** When decisions log is enabled, appends a `decision` entry to the log (as an append-only `.ll/decisions.d/*.json` fragment). Silently skipped if the log is absent (neither `.ll/decisions.yaml` nor `.ll/decisions.d/`).
 
 ### `/ll:wire-issue`
-Post-refinement wiring pass that completes an issue's **Integration Map** — the structured record of every file that must change when the issue is implemented. Where `/ll:refine-issue` fills in the _what_ and _why_, `wire-issue` traces the _where_: every caller, importer, config entry, doc section, test file, and side-effect file that the implementation will touch.
+Post-refinement wiring pass that completes an issue's **Integration Map** — the structured record of every file that must change when the issue is implemented. Where `/ll:refine-issue` fills in the _what_ and _why_, `wire-issue` traces the _where_: every caller, importer, config entry, doc section, test file, and side-effect file that the implementation will touch. It may additionally **annotate** a directive line that its own wiring additions contradict with an inline `⚠ Superseded` marker (ENH-2995, ENH-3049) — never a rewrite, and wire may only insert markers, never delete one.
 
 **The Integration Map** lives in the issue file under `## Integration Map`. A thin map might list 3–5 files; a wired map covers 10–20+, including non-obvious side effects like `__init__.py` exports, CLI registration hooks, and plugin manifests. Thin maps are the primary cause of incomplete implementations.
 

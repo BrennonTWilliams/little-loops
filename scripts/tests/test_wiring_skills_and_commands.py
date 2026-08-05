@@ -208,6 +208,21 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     # ENH-2996: Wiring Phase entries are unnumbered bullets, matching the
     # sibling Phase-8a subsections' convention.
     ("skills/wire-issue/SKILL.md", "- Update `path/to/caller.py`", "ENH-2996"),
+    # ENH-3049: wire-issue gains the ENH-2995 contradiction-marking carve-out —
+    # same marker prefix and three-section scope, wire's own provenance rule.
+    ("skills/wire-issue/SKILL.md", "⚠ Superseded", "ENH-3049"),
+    ("skills/wire-issue/SKILL.md", "Implementation Steps", "ENH-3049"),
+    ("skills/wire-issue/SKILL.md", "Files to Modify", "ENH-3049"),
+    ("skills/wire-issue/SKILL.md", "Acceptance Criteria", "ENH-3049"),
+    ("skills/wire-issue/SKILL.md", "this pass is appending", "ENH-3049"),
+    ("skills/wire-issue/SKILL.md", "never delete", "ENH-3049"),
+    # ENH-3049: refine's refutation test gains a contradiction-driven branch
+    # alongside the existing finding-driven one.
+    ("commands/refine-issue.md", "Contradiction-driven", "ENH-3049"),
+    # ENH-3049: reconcile-issue becomes a routine post-wire step in the guide.
+    ("docs/guides/ISSUE_MANAGEMENT_GUIDE.md", "/ll:reconcile-issue", "ENH-3049"),
+    # ENH-3049: COMMANDS.md's wire-issue entry names the annotation behavior.
+    ("docs/reference/COMMANDS.md", "may additionally **annotate**", "ENH-3049"),
 ]
 
 
@@ -272,6 +287,9 @@ DOC_STRINGS_ABSENT: list[tuple[str, str, str]] = [
     # ENH-2996: Wiring Phase entries must not continue the parent
     # Implementation Steps list's numbering.
     ("skills/wire-issue/SKILL.md", "N+1. Update", "ENH-2996"),
+    # ENH-3049: wire may only insert markers, never delete one — refine's
+    # "Bounded marker-removal right" (ENH-2995) does not port to wire.
+    ("skills/wire-issue/SKILL.md", "Bounded marker-removal right", "ENH-3049"),
 ]
 
 
@@ -342,5 +360,5 @@ def test_wire_issue_skill_mirror_matches_source(project_root: Path, mirror_rel: 
     mirror_body = _body_after_frontmatter((project_root / mirror_rel).read_text())
     assert source_body == mirror_body, (
         f"{mirror_rel} is stale relative to skills/wire-issue/SKILL.md. Regenerate with: "
-        "ll-adapt --host gemini --apply && ll-adapt --host kimi --apply"
+        "ll-adapt --host gemini --apply && ll-adapt --host kimi-code --apply"
     )

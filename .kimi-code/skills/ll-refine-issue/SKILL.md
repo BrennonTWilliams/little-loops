@@ -530,11 +530,17 @@ it.
 - **Same pass only**: fires only when the refutation comes from THIS pass's
   own research findings, never from re-reading a prior pass's appended
   `### Codebase Research Findings` block.
-- **Refutation test**: a finding refutes a line when it names or quotes the
-  line and asserts it is wrong. Correction-phrase guidance (non-exhaustive —
-  a finding that plainly refutes the line in other words still qualifies):
-  `is wrong` · `does not exist` · `will not work` · `must be dropped` ·
-  `target file is wrong` · `is stale` · `omit entirely`.
+- **Refutation test — two branches**: either qualifies.
+  - **Finding-driven**: a finding names or quotes the line and asserts it is
+    wrong. Correction-phrase guidance (non-exhaustive — a finding that
+    plainly refutes the line in other words still qualifies): `is wrong` ·
+    `does not exist` · `will not work` · `must be dropped` · `target file
+    is wrong` · `is stale` · `omit entirely`.
+  - **Contradiction-driven**: content this pass is appending elsewhere in
+    the issue contradicts the line by implication, without a finding that
+    names it directly — e.g. an elaboration that enumerates a change as
+    mandatory while an existing line calls it optional. Fires only on
+    content THIS pass appends, same "same pass only" scoping as above.
 - **Marker text and placement**: insert as a new line immediately below the
   refuted line, indented to that line's own content column (3 spaces under a
   `1. ` step, 2 under a `- ` bullet) — never at column 0, which would both
@@ -743,6 +749,14 @@ Run /ll:ready-issue [ISSUE-ID] to validate.
 3. Preserve existing non-empty sections (append, don't replace)
 4. Add new sections in appropriate locations following v2.0 template ordering
 5. Ensure all added file paths and references are from actual research (no placeholders in auto mode)
+6. **Canonical dependency phrasing**: when any prose you write asserts that this
+   issue is blocked by another issue, phrase it canonically — `Blocked by
+   <ID>` / `Depends on <ID>` / `Requires <ID>` (or the synonyms `blocked on`,
+   `gated on`, `waiting on`, `contingent on`, `predicated on`). Paraphrases like
+   "blocking dependency unmet: BUG-3028's decision has not landed" are invisible
+   to `extract_prose_deps()`, so Step 6.7's gate never fires and the
+   `blocked_by` edge is never written — the issue then reads as unblocked to
+   `ll-issues ready` and sprint scheduling.
 
 ### 6.5. Append Session Log
 
@@ -773,8 +787,9 @@ inspect the `prose_dep_drift`/`stale_prose_dep`/`program_design_nonspecific`
 keys:
 
 - **`prose_dep_drift` non-empty**: the body claims a dependency in prose
-  ("Depends on ID", "Blocked by ID", "Requires ID", or a `## Blocked By`
-  section) on an active issue not reflected in `blocked_by`/`depends_on`
+  ("Depends on ID", "Blocked by ID", "Requires ID", the synonyms "blocked on",
+  "gated on", "waiting on", "contingent on", "predicated on", or a `## Blocked
+  By` section) on an active issue not reflected in `blocked_by`/`depends_on`
   frontmatter. Add the missing edge via `ll-issues link [ISSUE-ID] blocked_by
   [BLOCKER-ID]` (do not silently drop the prose) and re-run `format-check` to
   confirm the drift clears.

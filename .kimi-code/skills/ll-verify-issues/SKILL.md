@@ -49,10 +49,19 @@ if [[ "$FLAGS" == *"--check"* ]]; then CHECK_MODE=true; AUTO_MODE=true; fi
 ### 1. Find Issues to Verify
 
 ```bash
-# List only active issues (open, in_progress, blocked) — skips deferred, done, cancelled
-ll-issues list --json --status all | \
-  python3 -c "import json,sys; [print(i['path']) for i in json.load(sys.stdin) if i.get('status') in {'open','in_progress','blocked'}]" | \
-  sort -u
+if [ -n "$ISSUE_ID" ]; then
+    # ENH-3031: honor a provided issue_id — verify only that issue, not the
+    # whole active backlog. Without this filter, every caller that passes an
+    # explicit ID (e.g. a per-issue FSM gate) silently falls through to a
+    # whole-backlog pass, and with Edit in allowed-tools that pass can mutate
+    # issues the caller never asked to touch.
+    ll-issues path "$ISSUE_ID"
+else
+    # List only active issues (open, in_progress, blocked) — skips deferred, done, cancelled
+    ll-issues list --json --status all | \
+      python3 -c "import json,sys; [print(i['path']) for i in json.load(sys.stdin) if i.get('status') in {'open','in_progress','blocked'}]" | \
+      sort -u
+fi
 ```
 
 ### 2. For Each Issue
@@ -146,7 +155,27 @@ When an issue matches a completed issue, perform regression analysis:
 
 ### 2.5. Check Mode Behavior (--check)
 
-**When `CHECK_MODE` is true**: Run all verification logic (sections 2A-2E) without writing changes. For each issue with a non-VALID verdict, print `[ID] verify: [verdict]`. After all issues checked, if any were non-VALID: print `N issues not verified`, then `exit 1`. If all VALID: print `All issues verified`, then `exit 0`. This integrates with FSM `evaluate: type: exit_code` routing (0=success, 1=failure, 2+=error).
+**When `CHECK_MODE` is true**: Run all verification logic (sections 2A-2E) without writing changes (other than the verdict persistence below). For each issue with a non-VALID verdict, print `[ID] verify: [verdict]`. After all issues checked, if any were non-VALID: print `N issues not verified`, then `exit 1`. If all VALID: print `All issues verified`, then `exit 0`. This integrates with FSM `evaluate: type: exit_code` routing (0=success, 1=failure, 2+=error).
+
+**Persist the verdict to frontmatter (ENH-3031).** A slash command's internal
+exit code never reaches the host CLI's process exit code — `action_type:
+slash_command` runs through the host session, not a shell whose exit status an
+FSM `fragment: shell_exit` gate can read. Callers that need a deterministic
+gate on this command's verdict (e.g. `refine-to-ready-issue.yaml`'s
+`verify_issue` → `check_verify_verdict` pair) read a persisted artifact
+instead. For **each** issue checked in this mode, use the `Edit` tool to write
+or update a `verify_verdict:` line in that issue's YAML frontmatter block:
+
+- `VALID` verdict → `verify_verdict: VALID`
+- Any other verdict (`OUTDATED`, `RESOLVED`, `INVALID`, `NEEDS_UPDATE`,
+  `REGRESSION_LIKELY`, `POSSIBLE_REGRESSION`, `DEP_ISSUES`,
+  `DECISIONS_VIOLATION`) → `verify_verdict: NON_VALID`
+
+If the field already exists in the frontmatter, replace its value in place;
+otherwise insert it alongside the issue's other single-line frontmatter
+fields (e.g. after `confidence_score` if present). This write happens even
+though `CHECK_MODE` otherwise skips section 4's content edits — it is the
+one artifact this mode is responsible for producing.
 
 ### 3. Request User Approval
 

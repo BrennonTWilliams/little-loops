@@ -529,11 +529,17 @@ it.
 - **Same pass only**: fires only when the refutation comes from THIS pass's
   own research findings, never from re-reading a prior pass's appended
   `### Codebase Research Findings` block.
-- **Refutation test**: a finding refutes a line when it names or quotes the
-  line and asserts it is wrong. Correction-phrase guidance (non-exhaustive —
-  a finding that plainly refutes the line in other words still qualifies):
-  `is wrong` · `does not exist` · `will not work` · `must be dropped` ·
-  `target file is wrong` · `is stale` · `omit entirely`.
+- **Refutation test — two branches**: either qualifies.
+  - **Finding-driven**: a finding names or quotes the line and asserts it is
+    wrong. Correction-phrase guidance (non-exhaustive — a finding that
+    plainly refutes the line in other words still qualifies): `is wrong` ·
+    `does not exist` · `will not work` · `must be dropped` · `target file
+    is wrong` · `is stale` · `omit entirely`.
+  - **Contradiction-driven**: content this pass is appending elsewhere in
+    the issue contradicts the line by implication, without a finding that
+    names it directly — e.g. an elaboration that enumerates a change as
+    mandatory while an existing line calls it optional. Fires only on
+    content THIS pass appends, same "same pass only" scoping as above.
 - **Marker text and placement**: insert as a new line immediately below the
   refuted line, indented to that line's own content column (3 spaces under a
   `1. ` step, 2 under a `- ` bullet) — never at column 0, which would both
