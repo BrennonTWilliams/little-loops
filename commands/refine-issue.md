@@ -298,6 +298,7 @@ A section can be "present" per the template but still lack the codebase-specific
 | Test coverage | Which tests exist for affected code, what's untested | codebase-locator |
 | Related fixes | Similar bugs fixed before — patterns to follow | codebase-pattern-finder |
 | Types/signatures/call path | The concrete types, function signatures, and call chain the fix will touch | codebase-analyzer |
+| New decision logic present but unspecified | A new gap kind, gate, keyword list, or threshold the fix introduces with no exact inputs/values/escape hatch pinned down | codebase-analyzer |
 
 **For FEATs:**
 | Knowledge Gap | What's Missing | Research Source |
@@ -308,6 +309,7 @@ A section can be "present" per the template but still lack the codebase-specific
 | Test patterns | How similar features are tested | codebase-pattern-finder |
 | Reusable code | Existing utilities/modules to leverage | codebase-pattern-finder |
 | Types/signatures/call path | The concrete types, function signatures, and call chain the feature will touch | codebase-analyzer |
+| New decision logic present but unspecified | A new gap kind, gate, keyword list, or threshold the feature introduces with no exact inputs/values/escape hatch pinned down | codebase-analyzer |
 
 **For ENHs:**
 | Knowledge Gap | What's Missing | Research Source |
@@ -318,6 +320,7 @@ A section can be "present" per the template but still lack the codebase-specific
 | Callers/dependents | What code uses the component being enhanced | codebase-locator |
 | Existing abstractions | Shared code that already partially solves this | codebase-pattern-finder |
 | Types/signatures/call path | The concrete types, function signatures, and call chain the enhancement will touch | codebase-analyzer |
+| New decision logic present but unspecified | A new gap kind, gate, keyword list, or threshold the enhancement introduces with no exact inputs/values/escape hatch pinned down | codebase-analyzer |
 
 #### Gap Detection
 
@@ -412,6 +415,12 @@ symbol only proves it resolves, not that the claim about it holds.
 
 ### Call Path
 `existing_caller` -> `new_or_modified_function` -> `existing_callee` [from analyzer/locator]
+
+### Decision Rules
+- [only when the issue proposes new decision logic — a new gap kind, gate, exit-code
+  condition, keyword/phrase list, numeric threshold, or classification rule; exact
+  inputs, literal keyword/threshold values, proximity/scoping rule, and the
+  dismissal/escape hatch. `N/A — no new decision logic` otherwise.]
 ```
 Fill this from `codebase-analyzer`'s anchor-level findings (function/class names,
 existing signatures) — the same material Integration Map draws from, filed here
@@ -422,6 +431,14 @@ report, recommend `program_design_not_applicable: true` as a note for the
 operator. **Never set this frontmatter field directly** — it is a human decision
 (`program_design_gate_active`, `scripts/little_loops/issues/program_design.py:415`),
 and a command that can opt itself out of a gate destroys the gate's value.
+
+**Decision Rules** (ENH-3050): emit `### Decision Rules` only when the issue's
+Proposed Solution or Expected Behavior introduces a new gap kind, gate, exit-code
+condition, keyword/phrase list, numeric threshold, or classification rule. Do not
+emit for issues that only modify existing logic. Escape hatch: a `### Decision
+Rules` section whose body is the literal `N/A — no new decision logic` satisfies
+the requirement. This section is advisory prose, not gated mechanically —
+`program_design_nonspecific` continues to check only anchor resolution.
 
 **Proposed Solution** — enrich with pattern-finder findings:
 - If a Proposed Solution section exists but is vague, add a subsection with concrete implementation guidance based on similar patterns found

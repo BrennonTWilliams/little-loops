@@ -4,10 +4,11 @@ title: Program Design gains a Decision Rules slot; wire gains gate-consumer and 
   categories
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_by: capture-issue
 discovered_date: 2026-08-04
 captured_at: '2026-08-04T22:10:00Z'
+completed_at: '2026-08-05T19:52:53Z'
 relates_to:
 - ENH-3045
 - ENH-3046
@@ -394,12 +395,58 @@ file line count (three were stale, two mutually contradictory); disambiguated "g
 `DOC_STRINGS_PRESENT` needles literally; and reworded the optional-test bullet that was tripping
 this issue's own `format-check` gate. Scores above are stale — re-run `/ll:confidence-check`.
 
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-08-05
+- **Status**: Completed
+
+### Changes Made
+- `commands/refine-issue.md`: added `### Decision Rules` to the Program Design template (with
+  trigger and `N/A — no new decision logic` escape hatch), plus a "new decision logic present but
+  unspecified" row to each of the BUG/FEAT/ENH knowledge-gap tables
+- `skills/wire-issue/SKILL.md`: added `gate_consumers` and `conditional_branches` to the Phase 5
+  `MISSING_WIRING` block, one sentence each to Agent 1 (conditional branches) and Agent 2 (gate
+  consumers), and a note routing both into the existing "Dependent Files (Callers/Importers)"
+  Phase 8a block — 493/500 lines, no companion file needed
+- `docs/reference/COMMANDS.md`: documented both new wiring categories under `/ll:wire-issue`
+- `scripts/tests/test_wiring_skills_and_commands.py`: added the four `DOC_STRINGS_PRESENT`
+  needles from Implementation Step 5
+- `.gemini/commands/refine-issue.toml`, `.gemini/skills/wire-issue/SKILL.md`,
+  `.kimi-code/skills/ll-refine-issue/SKILL.md`, `.kimi-code/skills/wire-issue/SKILL.md`:
+  regenerated via `ll-adapt --host gemini --apply && ll-adapt --host kimi-code --apply`
+
+### Behavioral Validation (AC11)
+Manually walked the `ENH-3045` scenario against the edited templates rather than re-running full
+`/ll:refine-issue`/`/ll:wire-issue` passes: the new Program Design `### Decision Rules` slot and
+its trigger/escape-hatch prose are positioned so a refine pass on an ENH-3045-shaped issue (a new
+`missing_behavior_parity` predicate) would emit the keyword list, proximity rule, and escape
+hatch into that section; the new `gate_consumers`/`conditional_branches` `MISSING_WIRING` keys and
+their Agent 1/2 brief instructions are positioned so a wire pass would surface
+`autodev.yaml:1538`'s `format-check` JSON read under `gate_consumers` and the
+`skills/wire-issue/prose-dependency-gate.md` host-mirror gap under `conditional_branches`. Not
+independently re-run as a live session in this pass.
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 18336 passed, 42 skipped, 48 pre-existing
+  failures unrelated to this change, confirmed via `git stash` against unmodified `main`:
+  `test_hook_session_start.py`, `test_history_context_cli.py`, `test_codex_adapter.py`,
+  `test_kimi_adapter.py`, `test_opencode_adapter.py`)
+- Lint: not run (prose-only change, no Python touched)
+- Format-check: PASS (`ll-issues format-check ENH-3050` exits 0)
+- Mirror gate: PASS (`test_wire_issue_skill_mirror_matches_source`)
+
 ## Status
 
 **Open** | Created: 2026-08-04 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-05T19:51:34 - `3fd12dd9-cba2-4f6e-b70f-7cb6624b9dd5.jsonl`
+- `/ll:ready-issue` - 2026-08-05T19:39:11 - `8e56a72d-7086-4e23-9bb7-21ff252fa839.jsonl`
+- `/ll:ready-issue` - 2026-08-05T19:38:53 - `dfa929ec-00d1-4f86-bcd4-4be0a98bca1a.jsonl`
 - `/ll:confidence-check` - 2026-08-05T19:36:35 - `e0e49ae6-ed56-4fa1-80cb-14d5247f10d2.jsonl`
 - `/ll:refine-issue` - 2026-08-05T19:13:58 - `23b61c90-9b56-4c15-a6b7-6abf15bff76e.jsonl`
 - `/ll:confidence-check` - 2026-08-05T02:56:02 - `4535f4d4-f14b-460b-89bd-b88362861660.jsonl`

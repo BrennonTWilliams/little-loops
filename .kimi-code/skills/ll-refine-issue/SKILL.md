@@ -299,6 +299,7 @@ A section can be "present" per the template but still lack the codebase-specific
 | Test coverage | Which tests exist for affected code, what's untested | codebase-locator |
 | Related fixes | Similar bugs fixed before — patterns to follow | codebase-pattern-finder |
 | Types/signatures/call path | The concrete types, function signatures, and call chain the fix will touch | codebase-analyzer |
+| New decision logic present but unspecified | A new gap kind, gate, keyword list, or threshold the fix introduces with no exact inputs/values/escape hatch pinned down | codebase-analyzer |
 
 **For FEATs:**
 | Knowledge Gap | What's Missing | Research Source |
@@ -309,6 +310,7 @@ A section can be "present" per the template but still lack the codebase-specific
 | Test patterns | How similar features are tested | codebase-pattern-finder |
 | Reusable code | Existing utilities/modules to leverage | codebase-pattern-finder |
 | Types/signatures/call path | The concrete types, function signatures, and call chain the feature will touch | codebase-analyzer |
+| New decision logic present but unspecified | A new gap kind, gate, keyword list, or threshold the feature introduces with no exact inputs/values/escape hatch pinned down | codebase-analyzer |
 
 **For ENHs:**
 | Knowledge Gap | What's Missing | Research Source |
@@ -319,6 +321,7 @@ A section can be "present" per the template but still lack the codebase-specific
 | Callers/dependents | What code uses the component being enhanced | codebase-locator |
 | Existing abstractions | Shared code that already partially solves this | codebase-pattern-finder |
 | Types/signatures/call path | The concrete types, function signatures, and call chain the enhancement will touch | codebase-analyzer |
+| New decision logic present but unspecified | A new gap kind, gate, keyword list, or threshold the enhancement introduces with no exact inputs/values/escape hatch pinned down | codebase-analyzer |
 
 #### Gap Detection
 
@@ -363,7 +366,34 @@ For each **FILLABLE** gap, update the issue with research findings.
 
 ### Configuration
 - [Config files if relevant, from locator]
+
+### Behavior Parity
+| Artifact | Behavior | Disposition | Notes |
+|---|---|---|---|
+| `path/to/old_file.py` | [behavior] | PRESERVED / CHANGED / DROPPED | [why] |
 ```
+
+**Behavior Parity** (ENH-3045): when `## Summary` or `## Proposed Solution`
+names an existing file this issue rewrites, deletes, or delegates away, add
+the `### Behavior Parity` subsection above — bare heading, one table per
+issue, with the replaced artifact as a table column (never as heading text;
+`_heading_bodies()` matches the heading anchored and exact, so a
+per-artifact heading would never be detected downstream). Enumerate each of
+the old file's behaviors with a disposition. Skip if no cited file is being
+replaced, or if `behavior_parity_not_applicable: true` is set in
+frontmatter — a human decision; refine must never set this flag itself.
+
+**Capability-search and claim-grounding** (ENH-3045): before writing a
+conclusion of the form "no existing implementation exists," search by
+**capability** — the input/output shape the new code needs, and the callers
+of the shared primitive that shape suggests — not by the algorithm's name; a
+grep for an algorithm name finds nothing when the codebase never names it,
+even when a function with the identical contract already exists under an
+unrelated name. State what was searched in the resulting claim. The same
+grounding applies to positive claims about existing code in `## Program
+Design`: an assertion that a symbol is reusable, unchanged, or behaves a
+given way must quote the specific line that makes it true — naming the
+symbol only proves it resolves, not that the claim about it holds.
 
 **Root Cause** (BUG) — populate with analyzer findings:
 ```markdown
@@ -386,6 +416,12 @@ For each **FILLABLE** gap, update the issue with research findings.
 
 ### Call Path
 `existing_caller` -> `new_or_modified_function` -> `existing_callee` [from analyzer/locator]
+
+### Decision Rules
+- [only when the issue proposes new decision logic — a new gap kind, gate, exit-code
+  condition, keyword/phrase list, numeric threshold, or classification rule; exact
+  inputs, literal keyword/threshold values, proximity/scoping rule, and the
+  dismissal/escape hatch. `N/A — no new decision logic` otherwise.]
 ```
 Fill this from `codebase-analyzer`'s anchor-level findings (function/class names,
 existing signatures) — the same material Integration Map draws from, filed here
@@ -396,6 +432,14 @@ report, recommend `program_design_not_applicable: true` as a note for the
 operator. **Never set this frontmatter field directly** — it is a human decision
 (`program_design_gate_active`, `scripts/little_loops/issues/program_design.py:415`),
 and a command that can opt itself out of a gate destroys the gate's value.
+
+**Decision Rules** (ENH-3050): emit `### Decision Rules` only when the issue's
+Proposed Solution or Expected Behavior introduces a new gap kind, gate, exit-code
+condition, keyword/phrase list, numeric threshold, or classification rule. Do not
+emit for issues that only modify existing logic. Escape hatch: a `### Decision
+Rules` section whose body is the literal `N/A — no new decision logic` satisfies
+the requirement. This section is advisory prose, not gated mechanically —
+`program_design_nonspecific` continues to check only anchor resolution.
 
 **Proposed Solution** — enrich with pattern-finder findings:
 - If a Proposed Solution section exists but is vague, add a subsection with concrete implementation guidance based on similar patterns found
@@ -829,6 +873,25 @@ keys:
     sweep. Like `superseded_marker_count`, **report the count in Step 8's
     output and do not edit**; it folds as a side effect of a future pass that
     writes to that section.
+- **`soft_dep_hard_edge` non-empty** (ENH-3046): an ID in `blocked_by`/
+  `depends_on` frontmatter shares a paragraph with soft-dependency language
+  ("soft dep", "optional", "nice to have", "has not landed"). The soft prose
+  is usually the accurate statement and the hard edge is the mistake — move
+  the ID from `blocked_by`/`depends_on` to `relates_to` via `ll-issues link
+  [ISSUE-ID] relates_to [ID] --unlink [ISSUE-ID] blocked_by [ID]` (or the
+  equivalent two-step edit), and **do not delete the soft-dependency prose**
+  — that would silently harden a dependency that was deliberately optional.
+  Re-run `format-check` to confirm it clears. No suppression escape hatch
+  exists for this key.
+- **AC-vs-Program-Design contradiction pass** (ENH-3046, judgment-class —
+  report only, never auto-applied): read only the `## Acceptance Criteria`
+  and `## Program Design` sections and identify any pair of statements that
+  cannot both be satisfied (e.g. one AC requires a behavior another AC or the
+  Program Design section forbids). This is not mechanical — no gap kind
+  catches it, since both statements may reference the same flags/types and
+  differ only in what they permit. List any findings as `[AC N] vs
+  [AC M / Program Design]: [one-sentence contradiction]` in Step 8's output
+  under the gate report; do not edit the issue file to resolve them.
 - Skip this gate if `DRY_RUN` is true.
 
 ### 7.5. Extract Learning Targets (ENH-2209)
@@ -913,6 +976,8 @@ ISSUE REFINED: [ISSUE-ID]
 - stale_prose_dep: [clear | fixed | — ]
 - superseded_marker_count: [N — run `/ll:reconcile-issue [ID]` | 0]
 - program_design_nonspecific: [clear | revised once, now clear | STILL FAILING after one revision — operator action needed | not applicable (unarmed/grandfathered)]
+- soft_dep_hard_edge: [clear | fixed (moved [ID] to relates_to) | — ]
+- AC-vs-Program-Design contradictions: [none found | N found — see findings below]
 
 ## FILE STATUS
 - [Modified | Not modified (--dry-run)]

@@ -169,6 +169,7 @@ Find:
 4. Plugin/manifest registrations — plugin.json, __init__.py exports, commands/ listings, skills/ directories, agents/ listings, hooks/hooks.json that reference the affected files or symbols
 5. Config files — ll-config.json, settings.json, .claude/CLAUDE.md entries that mention affected areas
 6. If `REPLACED_ARTIFACTS` is non-empty: locate every behavior of each replaced file, and before concluding "no existing implementation exists" for any capability, search by capability (input/output shape, callers of the shared primitive) rather than by algorithm name — see [behavior-parity.md](behavior-parity.md). State what was searched in the resulting claim.
+7. Conditional branches (ENH-3050): if the plan states a conditional fallback naming an alternate implementation target ("if X overflows, do Y", "otherwise extract to", "fall back to"), wire Y's touchpoints as first-class.
 
 Return file paths grouped by:
 - Direct importers
@@ -206,6 +207,7 @@ Analyze:
 3. CLI and command coupling — if any CLI flags or commands change, what references them in help text, docs, or other commands?
 4. Error message / log coupling — if error messages or log labels change, are there tests that assert on those strings?
 5. Schema / config coupling — if config keys or schema change, what reads or validates those keys?
+6. Gate consumers (ENH-3050): if the change adds/alters a field in a CLI's `--format json` output or an exit-code condition, grep the CLI invocation string (not the Python symbol) across `scripts/little_loops/loops/`, `hooks/`, `skills/`, `commands/`, `docs/`.
 
 Return analysis with specific anchor-based references (function/class names) for each coupling found.
 Exclude files already known from the issue.
@@ -271,6 +273,8 @@ MISSING_WIRING:
   docs_to_add: [doc files from Agent 2 not in known_docs]
   cli_coupling: [CLI/command files from Agent 2 that need updating]
   schema_coupling: [config/schema files from Agent 2 that need updating]
+  gate_consumers: [loop/hook/skill/command/doc files reading a changed CLI JSON field or exit code]
+  conditional_branches: [touchpoints of an alternate implementation target named by a conditional fallback]
   new_impl_steps: [phases that should be added to Implementation Steps based on missing files]
 ```
 
@@ -339,7 +343,7 @@ Update the issue using the Edit tool with the following rules:
 
 Locate the `## Integration Map` section (or `### Files to Modify` subsection). Add missing entries:
 
-**Callers / importers** — append to the "Dependent Files (Callers/Importers)" subsection (create it if absent):
+**Callers / importers** — append to the "Dependent Files (Callers/Importers)" subsection (create it if absent). `gate_consumers` and `conditional_branches` (ENH-3050) also route here, not to a new heading:
 
 ```markdown
 ### Dependent Files (Callers/Importers)

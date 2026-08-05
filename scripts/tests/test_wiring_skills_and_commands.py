@@ -230,6 +230,12 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("skills/wire-issue/behavior-parity.md", "### Behavior Parity", "ENH-3045"),
     ("commands/refine-issue.md", "### Behavior Parity", "ENH-3045"),
     ("commands/refine-issue.md", "Capability-search and claim-grounding", "ENH-3045"),
+    # ENH-3050: refine's Program Design gains a Decision Rules slot, and wire
+    # gains gate-consumer and conditional-branch MISSING_WIRING categories.
+    ("commands/refine-issue.md", "### Decision Rules", "ENH-3050"),
+    ("skills/wire-issue/SKILL.md", "gate_consumers", "ENH-3050"),
+    ("skills/wire-issue/SKILL.md", "conditional_branches", "ENH-3050"),
+    ("docs/reference/COMMANDS.md", "gate_consumers", "ENH-3050"),
 ]
 
 
