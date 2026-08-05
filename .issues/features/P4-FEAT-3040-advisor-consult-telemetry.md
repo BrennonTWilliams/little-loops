@@ -8,8 +8,8 @@ status: open
 testable: true
 discovered_date: 2026-08-03
 depends_on:
-- 3037
-- 3038
+- FEAT-3044
+- FEAT-3038
 labels:
 - planning-hub
 ---
@@ -162,3 +162,7 @@ action, never automatically.
 ## Status
 
 **Open** | Created: 2026-08-03 | Priority: P4
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-04T23:56:02 - `81d59bbb-17b9-42e5-908c-ba7206c84d60.jsonl`

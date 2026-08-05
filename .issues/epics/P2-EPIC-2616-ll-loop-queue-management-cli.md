@@ -117,4 +117,5 @@ identity, not just liveness, before terminating).
 open
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-05T00:25:07 - `2f3f7bc8-367e-4fba-936b-eaf8049da3c4.jsonl`
 - `/ll:scope-epic` - 2026-07-12T19:49:49Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8999ce06-5d43-4dd5-bc03-841f57c28bf2.jsonl`

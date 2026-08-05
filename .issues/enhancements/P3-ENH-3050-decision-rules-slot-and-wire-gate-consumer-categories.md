@@ -1,6 +1,7 @@
 ---
 id: ENH-3050
-title: 'Program Design gains a Decision Rules slot; wire gains gate-consumer and conditional-branch categories'
+title: Program Design gains a Decision Rules slot; wire gains gate-consumer and conditional-branch
+  categories
 type: ENH
 priority: P3
 status: open
@@ -17,6 +18,8 @@ labels:
 - issues
 - quality
 testable: true
+blocked_by:
+- ENH-3047
 ---
 
 # ENH-3050: Decision Rules slot + wire gate-consumer and conditional-branch categories
@@ -209,3 +212,7 @@ _Self-applying this issue's own proposal:_
 ## Status
 
 **Open** | Created: 2026-08-04 | Priority: P3
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-05T00:25:09 - `2f3f7bc8-367e-4fba-936b-eaf8049da3c4.jsonl`

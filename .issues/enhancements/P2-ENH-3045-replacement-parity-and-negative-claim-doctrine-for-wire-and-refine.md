@@ -16,6 +16,7 @@ labels:
 - skills
 - issues
 - quality
+testable: true
 confidence_score: 100
 outcome_confidence: 82
 score_complexity: 14
@@ -42,9 +43,6 @@ issue is about to replace, and never justify a negative finding**:
    that makes it true, not merely name the symbol. `FEAT-3048` is the mechanical sibling — it
    verifies that a cited symbol *exists*; this half covers whether the claim *about* it holds,
    which is not mechanically checkable and so belongs with the doctrine.
-
-Explicitly **not** parented to EPIC-2938: that epic's Scope excludes rewriting reasoning-heavy
-skills like `refine-issue`, and these are prompt/doctrine changes, not prose→CLI conversions.
 
 ## Current Behavior
 
@@ -80,14 +78,25 @@ for *callers of the shared primitive* would have surfaced it immediately.
 refine emit a `### Behavior Parity` subsection under Integration Map:
 
 ```markdown
-### Behavior Parity — skills/link-epics/SKILL.md
+### Behavior Parity
 
-| Behavior | Disposition | Notes |
-|---|---|---|
-| Scores title + `## Summary` | CHANGED | CLI scores title only — accepted regression? |
-| Tiers HIGH/MED/LOW at 0.7/0.4 | DROPPED | not carried into CLI spec |
-| Orphan = open BUG/FEAT/ENH, no `parent:` | PRESERVED | must be restated in the CLI spec |
+| Artifact | Behavior | Disposition | Notes |
+|---|---|---|---|
+| `skills/link-epics/SKILL.md` | Scores title + `## Summary` | CHANGED | CLI scores title only — accepted regression? |
+| `skills/link-epics/SKILL.md` | Tiers HIGH/MED/LOW at 0.7/0.4 | DROPPED | not carried into CLI spec |
+| `skills/link-epics/SKILL.md` | Orphan = open BUG/FEAT/ENH, no `parent:` | PRESERVED | must be restated in the CLI spec |
 ```
+
+**The heading is exactly `### Behavior Parity` — one section per issue, with the replaced
+artifact carried as a table column, never as heading text.** Two reasons, both binding on
+implementation:
+
+1. `_heading_bodies()` (`issue_parser.py:686`) matches
+   `rf"^(#{{2,3}})\s+{re.escape(heading)}\s*$"` — anchored and exact. A per-artifact heading
+   (`### Behavior Parity — skills/link-epics/SKILL.md`) would not match, so the detection in
+   Program Design below would report the section absent on every issue that has one. Keeping
+   the heading fixed means the existing helper works unmodified and no parser change is needed.
+2. An issue that replaces several artifacts gets one table, not N sibling headings.
 
 **Negative claims.** Before concluding "no existing implementation," the agent must search by
 capability — the input/output shape, and the callers of the shared primitive the new code
@@ -98,12 +107,16 @@ symbol is reusable, unchanged, or behaves a given way must quote the specific li
 the claim true. Naming the symbol is not grounding — an anchor that *resolves* is what
 `program_design_nonspecific` already checks, and resolution says nothing about the claim.
 
-This issue's own Call Path is the worked example: it states that `_heading_bodies(content,
+This issue's own Call Path was the worked example: it stated that `_heading_bodies(content,
 "Behavior Parity")` is "reusable to confirm no `### Behavior Parity` section exists." The symbol
-resolves, so every gate passed it. Its body (`issue_parser.py:687`) is
-`rf"^(#{{2,3}})\s+{re.escape(heading)}\s*$"` — anchored and exact, so it cannot match the
-per-artifact heading this issue prescribes in Expected Behavior
-(`### Behavior Parity — skills/link-epics/SKILL.md`). One quoted line would have caught it.
+resolves, so every gate passed it — refine, wire, and confidence-check (100/82). Its body
+(`issue_parser.py:686`) is `rf"^(#{{2,3}})\s+{re.escape(heading)}\s*$"` — anchored and exact, so
+it could not match the per-artifact heading the first draft of this issue prescribed in Expected
+Behavior (`### Behavior Parity — skills/link-epics/SKILL.md`). One quoted line would have caught
+it; instead the contradiction survived three passes and a human review found it.
+
+**Resolved above** by fixing the heading to bare `### Behavior Parity`. The anecdote is retained
+because it is the motivating evidence for this bullet, not an open defect.
 
 ## Motivation
 
@@ -125,7 +138,9 @@ what you looked for.*
   `### Behavior Parity` section. Follows the `ENH-2946` precedent for adding gap kinds and
   makes the doctrine enforceable rather than advisory. **Not optional**: `ENH-3047` Phase 1.6
   consumes this gap kind by name, and the evidence of this issue's own three-pass history is
-  that prose doctrine in these skills does not hold on its own.
+  that prose doctrine in these skills does not hold on its own. The predicate is fully
+  specified in **Program Design § Decision Rules** below — implement it as written; do not
+  re-derive a keyword list or proximity rule at implementation time.
 - **Claim grounding**: extend the same Agent 1/3 prompt change to require a quoted line behind
   any positive claim about existing code, and require refine's Program Design lines to carry
   the quote rather than only a resolving anchor.
@@ -241,22 +256,54 @@ _Added by `/ll:refine-issue` — 2026-08-04 — based on codebase analysis:_
 - `build_ref_index(root: Path) -> RefIndex` — `scripts/little_loops/text_utils.py:161`
 - `classify_file_ref(ref: str, index: RefIndex, *, line: str = "") -> RefStatus` — `scripts/little_loops/text_utils.py:201`
 - `classify_issue_refs(content: str, index: RefIndex) -> dict[str, RefStatus]` — `scripts/little_loops/text_utils.py:313`
-- `_heading_bodies(content, "Behavior Parity")` — `scripts/little_loops/issue_parser.py:677-693`; existing H2/H3 section-body lookup already used by `unmarked_superseded_directive`/`superseded_marker_count`, reusable to confirm no `### Behavior Parity` section exists.
+- `_heading_bodies(content, "Behavior Parity")` — `scripts/little_loops/issue_parser.py:677-693`; existing H2/H3 section-body lookup already used by `unmarked_superseded_directive`/`superseded_marker_count`. Its body is `rf"^(#{{2,3}})\s+{re.escape(heading)}\s*$"` — **anchored and exact**, which is why Expected Behavior fixes the heading to bare `### Behavior Parity`. Used unmodified: a non-empty return means the section is present.
+
+### Decision Rules
+
+_The `missing_behavior_parity` predicate, specified in full. Implement as written._
+
+**Fires when** all four hold:
+
+1. **Scope** — the file ref appears in `## Summary`, `## Proposed Solution`, or
+   `### Files to Modify` (under `## Integration Map`). Refs in `### Similar Patterns`,
+   `### Documentation`, `### Tests`, `## Current Behavior`, or the Session Log are ignored;
+   those cite files as evidence or precedent, not as replacement targets.
+2. **Ref resolves** — `classify_issue_refs()` returns `"resolved"` for the ref. A
+   `planned_new` / `stale` / `unresolvable_form` / `ambiguous` ref has no live behavior to
+   preserve, so it cannot produce a parity obligation.
+3. **Replacement keyword** — a closed, case-insensitive list, matched as whole words on the
+   **same line** as the ref: `delete`, `deletes`, `deleted`, `remove`, `removes`, `removed`,
+   `replace`, `replaces`, `replaced`, `rewrite`, `rewrites`, `rewritten`, `supersede`,
+   `supersedes`, `superseded`, `delegate`, `delegates`, `delegated`. Same-line-only is the
+   deliberate conservative start — no multi-line proximity window in v1. If the sweep in
+   Acceptance Criteria shows same-line is too tight, widening to "the bullet containing the
+   ref" is the pre-approved next step; widening further is not.
+4. **No parity section** — `_heading_bodies(content, "Behavior Parity")` returns `[]`.
+
+**Escape hatch** — `behavior_parity_not_applicable: true` in frontmatter suppresses the gap
+unconditionally, mirroring the `program_design_not_applicable` precedent
+(`issue_parser.py:377`, `issues/program_design.py:435`, the three `*-sections.json` templates).
+Per that precedent it is a **human decision**: refine and wire must never set it themselves.
+Unknown frontmatter keys are not flagged by any existing check (only the deprecated-key
+registry at `issue_parser.py:53-92` is consulted), so no registry work is required.
+
+**Explicitly does not fire on**: an issue that only *reads* or *calls* the cited file; a file
+named solely as a test/doc/config touchpoint by the wiring pass; an issue whose replacement
+target is a directory or a glob rather than a concrete resolved path.
 
 ### Call Path
 - **wire-issue**: Phase 3 `EXISTING_WIRING` extraction (`skills/wire-issue/SKILL.md:100-127`) gains a sibling `REPLACED_ARTIFACTS` block → Phase 4 Agent 1 (codebase-locator, `SKILL.md:145-182`) and Agent 3 (codebase-pattern-finder, `SKILL.md:215-244`) prompts get the capability-search instruction appended after their existing boilerplate close → Phase 8a Integration Map Updates (`SKILL.md:330-380`) emits a `### Behavior Parity` subsection alongside the existing `### Documentation`/`### Tests` subsections, following the same heading + `_Wiring pass added by \`/ll:wire-issue\`:_` provenance-line shape → Phase 8c Preservation Rule (`SKILL.md:400-406`) governs it identically (append-only).
 - **refine-issue**: Step 5a Integration Map enrichment template (`commands/refine-issue.md:338-365`) gains a sixth `### Behavior Parity` subsection → written via `ll-issues fold-findings [ID] --section "Integration Map"` (`commands/refine-issue.md:485-516`), same append-only, `--dry-run`-aware route already used for every other subsection.
-- **gap-kind detection**: `check_format_gaps()` (`scripts/little_loops/issue_parser.py:342-582`) gains a detection block after the existing `ref_index` handling (`:571-582`) and before `_duplicate_findings_blocks` (`:599`) → calls `classify_issue_refs()` to find `"resolved"` file refs near rewrite/delete/delegate keywords, then `_heading_bodies()` to confirm no `### Behavior Parity` heading exists → populates `FormatGaps.missing_behavior_parity` → rendered by `cli/issues/format_check.py`'s `_print_gaps()` (`:132-162`) and help text (`:61-65`), following the ENH-2999/ENH-2993 precedent for adding a gap kind.
+- **gap-kind detection**: `check_format_gaps()` (`scripts/little_loops/issue_parser.py:342-582`) gains a detection block after the existing `ref_index` handling (`:571-582`) and before `_duplicate_findings_blocks` (`:599`) → checks the frontmatter escape hatch first, then applies the four conditions in § Decision Rules above via `classify_issue_refs()` and `_heading_bodies(content, "Behavior Parity")` → populates `FormatGaps.missing_behavior_parity` → rendered by `cli/issues/format_check.py`'s `_print_gaps()` (`:132-162`) and help text (`:61-65`), following the ENH-2999/ENH-2993 precedent for adding a gap kind.
 
 ## Implementation Steps
 
 1. Add the parity step + table emission to wire and refine.
 2. Add the capability-search and claim-grounding requirements to wire's Agent 1/3 prompts and to
    refine's Program Design emission.
-3. `missing_behavior_parity` gap kind + tests (required — see the four-site note in the Wiring
-   Phase below; `ENH-3047` consumes it by name).
-4. Validate against FEAT-2942: parity table surfaces the corpus/tier/orphan gaps, and the
-   union-find negative claim is either retracted or names `batch_similarity()`.
+3. `missing_behavior_parity` gap kind + tests, implementing § Decision Rules verbatim (required
+   — see the four-site note in the Wiring Phase below; `ENH-3047` consumes it by name).
+4. Validate against FEAT-2942 and sweep the backlog — see Acceptance Criteria.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -278,9 +325,17 @@ _These touchpoints were identified by wiring analysis and must be included in th
   and `docs/guides/ISSUE_MANAGEMENT_GUIDE.md:306` — both independently describe what
   wire-issue traces and go stale together
 - Add `_heading_bodies(content, "Behavior Parity") == []` absence-case unit test in
-  `scripts/tests/test_issue_parser.py`, and `DOC_STRINGS_PRESENT` doctrine-text entries in
-  `scripts/tests/test_wiring_skills_and_commands.py` (not `test_wire_issue_static_layer.py`
-  — see correction note in Integration Map)
+  `scripts/tests/test_issue_parser.py`, plus its positive counterpart asserting a bare
+  `### Behavior Parity` heading **is** matched (the fixed-heading contract from Expected
+  Behavior — a regression here silently disables the whole gate), and `DOC_STRINGS_PRESENT`
+  doctrine-text entries in `scripts/tests/test_wiring_skills_and_commands.py` (not
+  `test_wire_issue_static_layer.py` — see correction note in Integration Map)
+- Read `behavior_parity_not_applicable` from frontmatter in the `check_format_gaps()`
+  detection block as the first condition checked; add its guidance line to
+  `scripts/little_loops/templates/bug-sections.json`,
+  `scripts/little_loops/templates/feat-sections.json`, and
+  `scripts/little_loops/templates/enh-sections.json` alongside the existing
+  `program_design_not_applicable` line (`:90` in each)
 - After editing `skills/wire-issue/SKILL.md`, run
   `ll-adapt --host gemini --apply && ll-adapt --host kimi --apply` to regenerate
   `.gemini/skills/wire-issue/SKILL.md` / `.kimi-code/skills/wire-issue/SKILL.md` before
@@ -288,6 +343,51 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Cross-issue check (no action needed): `ENH-3047`'s Phase 1.6 already assumes the field
   name `missing_behavior_parity` and frames its dependency on this issue as soft — confirmed
   consistent with this issue's proposal, no reconciliation needed
+
+## Acceptance Criteria
+
+**Doctrine (wire + refine)**
+
+1. `skills/wire-issue/SKILL.md` and `commands/refine-issue.md` both instruct emission of a
+   `### Behavior Parity` subsection — bare heading, artifact as a table column — under
+   `## Integration Map`, and both are asserted by `DOC_STRINGS_PRESENT` entries in
+   `scripts/tests/test_wiring_skills_and_commands.py`.
+2. `skills/wire-issue/SKILL.md` stays under the 500-line `ll-verify-skills` cap (455 today), or
+   the overflow is extracted to a companion file per the ENH-494 pattern.
+3. `.gemini/` and `.kimi-code/` mirrors are regenerated and
+   `test_wire_issue_skill_mirror_matches_source` passes.
+4. Wire's Agent 1 and Agent 3 prompts require capability-shaped search (input/output shape and
+   callers of the shared primitive) before any "no existing implementation" conclusion, and
+   require the resulting claim to state what was searched.
+
+**Gap kind**
+
+5. `missing_behavior_parity` is present in the `FormatGaps` dataclass, the `has_gaps` OR-chain,
+   `to_dict()`, and `_print_gaps()` — the last enforced automatically by the existing parity
+   test at `scripts/tests/test_ll_issues_format_check.py:1559-1577`.
+6. The predicate matches § Decision Rules exactly: unit tests cover each of the four firing
+   conditions in isolation, each of the three explicit non-firing cases, and the
+   `behavior_parity_not_applicable: true` escape hatch.
+7. `ll-issues format-check FEAT-2942 --format json` reports `missing_behavior_parity`
+   non-empty before FEAT-2942 gains a parity table, and empty after.
+
+**Validation against the motivating defects**
+
+8. Running the updated wire/refine over FEAT-2942 produces a parity table that names all three
+   originally-missed behaviors: the title+`## Summary` → title-only scoring-corpus narrowing,
+   the 0.7/0.4 HIGH/MEDIUM/LOW tier boundaries, and the definition of "orphan".
+9. FEAT-2942's union-find negative claim is either retracted or restated naming
+   `batch_similarity()` (`scripts/little_loops/cli/issues/find_similar.py`) and the search
+   performed.
+
+**False-positive sweep (gates the autodev risk)**
+
+10. `ll-issues format-check --all --format json` across the active backlog is triaged
+    issue-by-issue for `missing_behavior_parity` hits; every hit is either a genuine missing
+    parity table or an accepted escape-hatch case. Zero unexplained hits — `format-check` exits
+    1 on any gap and `autodev.yaml:1538` routes on this JSON, so an untriaged false positive
+    mis-routes real issues.
+11. `python -m pytest scripts/tests/` exits 0.
 
 ## Impact
 
@@ -300,8 +400,37 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Risk**: Low-Medium — the doctrine half is additive (worst case: a parity table on an issue
   that doesn't need one), but `format-check` exits 1 on any gap and `autodev.yaml:1538` reads
   its JSON in a routing gate, so a false-positive parity gap mis-routes real issues. The
-  detection rule needs its keyword list, proximity rule, and escape hatch pinned down before
-  implementation — see `ENH-3050`.
+  detection rule's keyword list, proximity rule, scope limit, and escape hatch are pinned in
+  **Program Design § Decision Rules** — deliberately specified *here* rather than deferred to
+  `ENH-3050`, which is P3 and sits behind `ENH-3047` → `FEAT-3048`, while `ENH-3047` in turn
+  consumes this issue's gap kind by name. Waiting on 3050 for the spec would be circular.
+  `ENH-3050` remains the right home for generalizing a `### Decision Rules` slot across all
+  issues; it is not a prerequisite for this one.
+
+## Scope Boundaries
+
+**In scope**: the three doctrine changes to `skills/wire-issue/SKILL.md` and
+`commands/refine-issue.md`; the `missing_behavior_parity` gap kind and its escape hatch; the
+doc/test/mirror updates those two require.
+
+**Out of scope**:
+
+- **Not parented to `EPIC-2938`.** That epic's Scope excludes rewriting reasoning-heavy skills
+  like `refine-issue`, and these are prompt/doctrine changes, not prose→CLI conversions.
+- **No generalized `### Decision Rules` slot.** This issue pins *its own* predicate under
+  Program Design. Making Decision Rules a first-class template section for all issues — with
+  its own gap kind and refine emission — is `ENH-3050`.
+- **No mechanical verification of claims.** Checking that a cited symbol exists is `FEAT-3048`;
+  this issue's claim-grounding bullet is prose doctrine only, with no gate and no new
+  `program_design_nonspecific` behavior.
+- **No confidence-check scoring changes.** Feeding these gaps into Criterion 4 deductions is
+  `ENH-3047`, which consumes `missing_behavior_parity` by name.
+- **No intra-issue contradiction detection.** `ENH-3049`.
+- **No auto-population of parity tables.** Wire and refine *prompt for* and *emit* the table
+  from research findings; nothing infers behaviors from the replaced artifact's source
+  automatically.
+- **No retroactive backfill.** Existing issues are not swept and amended; the sweep in
+  Acceptance Criteria is a false-positive triage, not a remediation campaign.
 
 ## Related Key Documentation
 

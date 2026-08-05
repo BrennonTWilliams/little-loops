@@ -13,6 +13,8 @@ labels:
 - config-schema
 - ux
 - docs
+blocked_by:
+- EPIC-2700
 ---
 
 # EPIC-3008: ll-init / config-schema wiring and UX audit
@@ -173,3 +175,7 @@ independent and safe to run concurrently.
 ## Status
 
 **Open** | Created: 2026-08-02 | Priority: P3
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-05T00:25:08 - `2f3f7bc8-367e-4fba-936b-eaf8049da3c4.jsonl`

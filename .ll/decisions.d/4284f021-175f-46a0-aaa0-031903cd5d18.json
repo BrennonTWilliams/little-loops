@@ -1,0 +1,12 @@
+{
+  "id": "ff53fe44-3ac2-4368-bdc2-599db2f52314",
+  "type": "decision",
+  "timestamp": "2026-08-05T00:03:22Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Widening _SUPERSEDED_DIRECTIVE_SECTIONS/reconcile's rewrite contract/carve-out scope together (Option A) touches a Python constant shared by two detectors and requires rebuilding ENH-2937's conditional-carve-out machinery, with unbounded re-fire risk reconcile's preserve-list exists to prevent. Option B produces an inert marker invisible to routing and the gap detector. Option C requires zero scope changes; ENH-3045 evidence shows 2/4 contradiction sites already fall in scope, so fixing the trigger alone is sufficient.",
+  "rule": "Option C \u2014 Do not widen; fix the trigger only",
+  "scope": "issue",
+  "alternatives_rejected": "Option A (widen all three components); Option B (widen carve-out scope only, marker stays inert)",
+  "issue": "ENH-3049"
+}
