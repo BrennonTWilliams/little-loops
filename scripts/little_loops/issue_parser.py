@@ -21,6 +21,8 @@ from little_loops.frontmatter import (
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
+    from little_loops.issues.cli_surface import CliSurfaceIndex
+    from little_loops.issues.symbol_claims import SymbolIndex
     from little_loops.text_utils import RefIndex
 
 
@@ -259,6 +261,8 @@ class FormatGaps:
     missing_behavior_parity: list[str] = field(default_factory=list)
     soft_dep_hard_edge: list[str] = field(default_factory=list)
     malformed_dep_id: list[str] = field(default_factory=list)
+    stale_symbol_ref: list[str] = field(default_factory=list)
+    stale_cli_flag: list[str] = field(default_factory=list)
 
     @property
     def has_gaps(self) -> bool:
@@ -282,6 +286,8 @@ class FormatGaps:
             or self.missing_behavior_parity
             or self.soft_dep_hard_edge
             or self.malformed_dep_id
+            or self.stale_symbol_ref
+            or self.stale_cli_flag
         )
 
     def to_dict(self) -> dict[str, list[str]]:
@@ -305,6 +311,8 @@ class FormatGaps:
             "missing_behavior_parity": self.missing_behavior_parity,
             "soft_dep_hard_edge": self.soft_dep_hard_edge,
             "malformed_dep_id": self.malformed_dep_id,
+            "stale_symbol_ref": self.stale_symbol_ref,
+            "stale_cli_flag": self.stale_cli_flag,
         }
 
 
@@ -353,6 +361,8 @@ def check_format_gaps(
     templates_dir: Path | None = None,
     issue_statuses: dict[str, str] | None = None,
     ref_index: RefIndex | None = None,
+    symbol_index: SymbolIndex | None = None,
+    cli_index: CliSurfaceIndex | None = None,
 ) -> FormatGaps:
     """Grade an issue's structural format gaps against its type template.
 
@@ -455,6 +465,23 @@ def check_format_gaps(
             cosmetic: ``DependencyGraph`` matches IDs by exact string, so a
             malformed entry silently drops the edge from the graph. The
             optional ``P<n>-`` filename prefix is accepted and normalized.
+        stale_symbol_ref: a backticked symbol claim (FEAT-3048,
+            :func:`little_loops.issues.symbol_claims.extract_symbol_claims`)
+            attributed to a cited file that itself resolves via *ref_index*,
+            where the symbol does not resolve as a def-site or module-level
+            constant in that file
+            (:func:`little_loops.issues.symbol_claims.symbol_exists_in_file`).
+            Only reported when both *ref_index* and *symbol_index* are given;
+            fails open otherwise, and for a cited file whose language is
+            outside the resolver's supported set.
+        stale_cli_flag: a backticked ``ll-<tool> <subcommand> [--flag ...]``
+            claim (FEAT-3048,
+            :func:`little_loops.issues.cli_claims.extract_cli_flag_claims`)
+            naming a subcommand or long flag the tool's argparse parser does
+            not accept, per a ``--help``-scraped surface index
+            (:func:`little_loops.issues.cli_surface.build_cli_surface_index`).
+            Only reported when *cli_index* is given; fails open for an
+            unscrapable tool.
 
     Args:
         issue_path: Path to the issue markdown file.
@@ -469,6 +496,21 @@ def check_format_gaps(
             :func:`little_loops.text_utils.build_ref_index`, used to resolve
             file path references cited in the body. When absent, no
             ``stale_file_ref`` gaps are reported.
+        symbol_index: Optional
+            :class:`little_loops.issues.symbol_claims.SymbolIndex` built once
+            per invocation via
+            :func:`little_loops.issues.symbol_claims.build_symbol_index`,
+            used to resolve symbol claims. When absent, no
+            ``stale_symbol_ref`` gaps are reported.
+        cli_index: Optional
+            :class:`little_loops.issues.cli_surface.CliSurfaceIndex` built
+            once per invocation via
+            :func:`little_loops.issues.cli_surface.build_cli_surface_index`,
+            used to resolve CLI-flag claims. Lazily scrapes and caches a
+            tool's ``--help`` surface on first query per tool (not eagerly
+            for every registered tool), so a body naming no ``ll-*`` command
+            triggers no subprocess at all. When absent, no
+            ``stale_cli_flag`` gaps are reported.
 
     Returns:
         A FormatGaps instance. Fails open (empty FormatGaps, no gaps) when the
@@ -674,6 +716,37 @@ def check_format_gaps(
                     continue
                 if classify_file_ref(ref, ref_index, line=replacement_line) == "resolved":
                     gaps.missing_behavior_parity.append(ref)
+
+        if symbol_index is not None:
+            from little_loops.issues.symbol_claims import (
+                extract_symbol_claims,
+                symbol_exists_in_file,
+            )
+
+            for claim in sorted(
+                extract_symbol_claims(content, ref_index), key=lambda c: (c.file, c.symbol)
+            ):
+                if symbol_exists_in_file(symbol_index, claim.file, claim.symbol) is False:
+                    gaps.stale_symbol_ref.append(f"{claim.symbol} (claimed in {claim.file})")
+
+    if cli_index is not None:
+        from little_loops.issues.cli_claims import extract_cli_flag_claims
+        from little_loops.issues.cli_surface import cli_surface_accepts
+
+        for cli_claim in sorted(
+            extract_cli_flag_claims(content), key=lambda c: (c.tool, c.subcommand, c.flags)
+        ):
+            if cli_surface_accepts(cli_index, cli_claim.tool, cli_claim.subcommand) is False:
+                gaps.stale_cli_flag.append(f"{cli_claim.raw} (no such subcommand)")
+                continue
+            for flag in cli_claim.flags:
+                if (
+                    cli_surface_accepts(cli_index, cli_claim.tool, cli_claim.subcommand, flag)
+                    is False
+                ):
+                    gaps.stale_cli_flag.append(
+                        f"{cli_claim.tool} {cli_claim.subcommand} {flag} (no such flag)"
+                    )
 
     findings_bodies = _heading_bodies(content, "Codebase Research Findings")
     has_correction = any(

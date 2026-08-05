@@ -347,6 +347,12 @@ class TestFormatCheckJsonOutput:
             "soft_dep_hard_edge": [],
             # BUG-3059: dependency entry that isn't a well-formed TYPE-NNN ID.
             "malformed_dep_id": [],
+            # FEAT-3048: backticked symbol claim attributed to a cited file
+            # that doesn't resolve as a def-site/module constant in it.
+            "stale_symbol_ref": [],
+            # FEAT-3048: backticked `ll-<tool> <sub> [--flag]` claim naming a
+            # subcommand/flag the tool's argparse parser doesn't accept.
+            "stale_cli_flag": [],
             # ENH-2992: marker presence rides the same payload; not a gap, so
             # it does not affect the exit code above.
             "superseded_marker_count": 0,

@@ -63,7 +63,7 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
         "stale_prose_dep/program_design_nonspecific/deprecated_key/"
         "multi_frontmatter/testable/stale_file_ref/unmarked_superseded_directive/"
         "duplicate_findings_block/ambiguous_file_ref/missing_behavior_parity/"
-        "soft_dep_hard_edge/malformed_dep_id)",
+        "soft_dep_hard_edge/malformed_dep_id/stale_symbol_ref/stale_cli_flag)",
     )
     p.set_defaults(command="format-check")
     p.add_argument(
@@ -173,6 +173,10 @@ def _print_gaps(gaps: FormatGaps) -> None:
             f"  malformed_dep_id: {entry} (DependencyGraph matches IDs by exact "
             "string, so this edge is silently dropped from the graph)"
         )
+    for entry in gaps.stale_symbol_ref:
+        print(f"  stale_symbol_ref: {entry}")
+    for entry in gaps.stale_cli_flag:
+        print(f"  stale_cli_flag: {entry}")
 
 
 def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
@@ -182,7 +186,7 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
     prose_dep_drift/stale_prose_dep/program_design_nonspecific/deprecated_key/
     multi_frontmatter/testable/stale_file_ref/unmarked_superseded_directive/
     duplicate_findings_block/ambiguous_file_ref/missing_behavior_parity/
-    soft_dep_hard_edge/malformed_dep_id.
+    soft_dep_hard_edge/malformed_dep_id/stale_symbol_ref/stale_cli_flag.
 
     Every class in :class:`FormatGaps` must have a matching loop in
     :func:`_print_gaps`; a class counted by ``has_gaps`` but not rendered
@@ -201,6 +205,8 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
     )
     from little_loops.issue_progress import _ALL_STATUSES
     from little_loops.issue_template import resolve_templates_dir
+    from little_loops.issues.cli_surface import build_cli_surface_index
+    from little_loops.issues.symbol_claims import build_symbol_index
     from little_loops.text_utils import build_ref_index
 
     issue_id: str | None = getattr(args, "issue_id", None)
@@ -251,8 +257,13 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
     templates_dir = resolve_templates_dir(config)
     # Built exactly once per invocation, ahead of every check_format_gaps()
     # call site below (single-ID, --all, and the post-`--fix` re-checks) —
-    # this is where the "index built at most once" AC (ENH-2983) is enforced.
+    # this is where the "index built at most once" AC (ENH-2983, FEAT-3048)
+    # is enforced. cli_index starts empty and populates lazily per tool on
+    # first query (see cli_surface.py) rather than eagerly scraping every
+    # registered ll-* tool's --help up front.
     ref_index = build_ref_index(config.project_root)
+    symbol_index = build_symbol_index(config.project_root)
+    cli_index = build_cli_surface_index()
 
     if check_all:
         # Sweep only active issues (default status_filter excludes
@@ -268,6 +279,8 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
                     templates_dir=templates_dir,
                     issue_statuses=issue_statuses,
                     ref_index=ref_index,
+                    symbol_index=symbol_index,
+                    cli_index=cli_index,
                 )
             except OSError as exc:
                 print(f"Warning: skipping {info.path}: {exc}", file=sys.stderr)
@@ -280,6 +293,8 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
                         templates_dir=templates_dir,
                         issue_statuses=issue_statuses,
                         ref_index=ref_index,
+                        symbol_index=symbol_index,
+                        cli_index=cli_index,
                     )
             if gaps.has_gaps:
                 results[info.issue_id] = gaps
@@ -308,6 +323,8 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
         templates_dir=templates_dir,
         issue_statuses=issue_statuses,
         ref_index=ref_index,
+        symbol_index=symbol_index,
+        cli_index=cli_index,
     )
 
     if fix and gaps.prose_dep_drift:
@@ -320,6 +337,8 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
                 templates_dir=templates_dir,
                 issue_statuses=issue_statuses,
                 ref_index=ref_index,
+                symbol_index=symbol_index,
+                cli_index=cli_index,
             )
 
     if suppressed:
