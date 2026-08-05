@@ -1,0 +1,11 @@
+{
+  "id": "9feceb21-064c-4186-b052-dd977eb682ff",
+  "type": "decision",
+  "timestamp": "2026-08-05T02:16:04Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Investigated 68 high-confidence type_mismatch findings from ll-issues normalize; ~81% were false positives from EPIC keyword-name collision or verb-density over-weighting, and 100% were already closed issues.",
+  "rule": "Captured: normalize type_mismatch heuristic false-positives on EPIC keyword and never excludes closed issues",
+  "scope": "issue",
+  "issue": "ENH-3053"
+}
