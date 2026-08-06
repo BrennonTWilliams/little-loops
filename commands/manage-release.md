@@ -95,7 +95,7 @@ questions:
     multiSelect: true
     options:
       - label: "Full release (Recommended)"
-        description: "Run bump + tag + changelog + release in sequence"
+        description: "Run bump + changelog + tag + release in sequence"
       - label: "Tag only"
         description: "Create a git tag for the release version"
       - label: "Changelog only"
@@ -121,7 +121,7 @@ Map user responses to action and version variables:
 - "Tag only" → `ACTION=tag`
 - "Changelog only" → `ACTION=changelog`
 - "GitHub release only" → `ACTION=release`
-- If multiple selected, execute each in order: bump → tag → changelog → release
+- If multiple selected, execute each in order: bump → changelog → tag → release
 - "Auto-detect" → `VERSION=auto`
 - "Patch" / "Minor" / "Major" → `VERSION=patch|minor|major`
 
@@ -286,7 +286,12 @@ After all Wave 1 agents complete:
 
 If `DRY_RUN` is true, show preview of each action instead of executing.
 
-Execute actions in order: **bump → tag → changelog → release**
+Execute actions in order: **bump → changelog → tag → release**
+
+The changelog is written and committed **before** the tag is created, so the
+tag points at a commit that contains its own `CHANGELOG.md` entry (and so the
+GitHub release, whose notes are derived from that entry, is consistent with the
+tagged tree).
 
 ##### Action: `bump`
 
@@ -304,40 +309,6 @@ After bumping, commit the version change:
 ```bash
 git add {{config.project.src_dir}}pyproject.toml .claude-plugin/plugin.json {{config.project.src_dir}}little_loops/__init__.py
 git commit -m "chore(release): bump version to NEW_VERSION"
-```
-
-##### Pre-Release: Learning Test Audit
-
-Before creating a tag, run the learning-test pre-release audit if `learning_tests.enabled` is true in `.ll/ll-config.json`:
-
-```bash
-python -c "
-import sys, pathlib
-from little_loops.learning_tests.release_gate import run_release_gate
-sys.exit(run_release_gate(pathlib.Path.cwd()))
-"
-```
-
-- If the script exits **1**, abort the release and display the warning table output above.
-- If the script exits **0**, continue to tag creation.
-- If `learning_tests.enabled` is false or absent, skip this step silently.
-
-The audit behavior is controlled by `learning_tests.release_gate` in `.ll/ll-config.json`:
-- `warn` (default) — prints a warning table but continues
-- `block` — aborts the release with exit 1
-
-##### Action: `tag`
-
-Create an annotated git tag:
-
-```bash
-git tag -a vX.Y.Z -m "Release vX.Y.Z"
-```
-
-If `--push` flag is set:
-
-```bash
-git push origin vX.Y.Z
 ```
 
 ##### Action: `changelog`
@@ -389,6 +360,40 @@ git add CHANGELOG.md
 git commit -m "docs(release): add changelog for vX.Y.Z"
 ```
 
+##### Pre-Release: Learning Test Audit
+
+Before creating a tag, run the learning-test pre-release audit if `learning_tests.enabled` is true in `.ll/ll-config.json`:
+
+```bash
+python -c "
+import sys, pathlib
+from little_loops.learning_tests.release_gate import run_release_gate
+sys.exit(run_release_gate(pathlib.Path.cwd()))
+"
+```
+
+- If the script exits **1**, abort the release and display the warning table output above.
+- If the script exits **0**, continue to tag creation.
+- If `learning_tests.enabled` is false or absent, skip this step silently.
+
+The audit behavior is controlled by `learning_tests.release_gate` in `.ll/ll-config.json`:
+- `warn` (default) — prints a warning table but continues
+- `block` — aborts the release with exit 1
+
+##### Action: `tag`
+
+Create an annotated git tag:
+
+```bash
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+```
+
+If `--push` flag is set:
+
+```bash
+git push origin vX.Y.Z
+```
+
 ##### Action: `release`
 
 Create a GitHub release:
@@ -413,7 +418,7 @@ git push origin vX.Y.Z
 
 ##### Action: `full`
 
-Execute all actions in sequence: bump → (learning test audit) → tag → changelog → release
+Execute all actions in sequence: bump → changelog → (learning test audit) → tag → release
 
 ---
 
@@ -479,7 +484,7 @@ $ARGUMENTS
   - `changelog` — Generate changelog from commits and completed issues since last tag
   - `release` — Create a GitHub release with generated notes
   - `bump` — Update version strings in project files
-  - `full` — Run bump + tag + changelog + release in sequence
+  - `full` — Run bump + changelog + tag + release in sequence
   - If omitted, enters interactive mode
 
 - **version** (optional): Version target
