@@ -4,7 +4,8 @@ title: Verify actual scope of CLAUDE_CODE_DISABLE_BACKGROUND_TASKS via a real ho
   invocation
 type: FEAT
 priority: P3
-status: open
+status: done
+completed_at: '2026-08-06T06:45:52Z'
 testable: true
 parent: FEAT-3060
 labels:
@@ -54,6 +55,16 @@ this answer before they can proceed correctly:
   reading of the docs alone when a five-minute manual check can confirm it
   directly.
 
+## Current Behavior
+
+`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`'s scope is only known from the vendored
+docs (`docs/claude-code/settings.md:772`), which assert it covers both `Bash`
+`run_in_background` and subagent-tool backgrounding. No test or manual
+verification in this codebase has confirmed that description against a real
+`claude` child process — every existing test that touches host invocation
+(`test_fsm*.py`, `test_issue_manager.py`, `test_subprocess_utils.py`) mocks
+`Popen`/`resolve_host`, so nothing exercises the flag's real effect.
+
 ## Expected Behavior
 
 A documented, evidence-backed answer to: does
@@ -61,6 +72,21 @@ A documented, evidence-backed answer to: does
 environment reject only `Bash run_in_background: true` calls, or does it also
 prevent the agent from launching background subagents (the mechanism
 `ll-parallel` depends on)?
+
+## Impact
+
+FEAT-3077 (carve-out decision) and FEAT-3078 (main implementation) are both
+blocked on trusting an unverified docs claim. If the flag's real scope is
+broader than a Bash-only reading suggests, the known carve-outs
+(`manage-issue`'s smoke tests, `go-no-go`'s concurrent agent launch) would
+need to be handled differently in FEAT-3077, and FEAT-3078 risks shipping its
+acceptance criteria against an incorrect assumption.
+
+## Status
+
+Open — investigation not yet performed. No blocking code changes exist for
+this repo; the flag is not currently set, read, or referenced anywhere in
+`scripts/little_loops/`.
 
 ## Proposed Solution
 
@@ -88,6 +114,15 @@ _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
 - Recording convention: issues of this shape (proving a real external CLI's behavior, no shipped code) record findings directly in the issue body under a terminal `## Findings` section, one subsection per research question opened with a ✓/✗ verdict — evidence: `.issues/features/P4-FEAT-2179-gemini-cli-research-spike-binary-surface-hooks-plugins.md`.
 - Citable-evidence convention: a completed determination is recorded with a bolded verdict line followed by `Key evidence:` file:line-anchored bullets — evidence: this issue's own parent, FEAT-3060, `### Decision Rationale` section.
 - `/ll:spike` explicitly routes external-API/CLI-behavior questions like this one away from itself to `/ll:explore-api` + the Learning Test Registry (`skills/spike/SKILL.md`: "Not for: unproven *external* API assumptions"). This issue's manual-check framing (no automated harness) matches that routing rather than the `/ll:spike` pytest-package convention, which is reserved for unproven *internal* mechanisms.
+
+## Use Case
+
+As the implementer of FEAT-3077 (carve-out decision) or FEAT-3078 (config
+threading), I need a citable, verified answer for whether
+`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` blocks subagent-tool backgrounding in
+addition to `Bash run_in_background`, so I can scope the carve-out policy and
+implementation correctly instead of inferring it from unverified vendored
+docs.
 
 ## Acceptance Criteria
 
@@ -154,6 +189,48 @@ N/A — no new decision logic. This issue records an empirical finding, not a ga
 | `skills/go-no-go/SKILL.md:174,274,278` | Second carve-out that depends on this answer (see FEAT-3077) |
 
 
+## Findings
+
+_Added by `/ll:manage-issue` — 2026-08-06 — verified via real `claude -p` child-process invocations (`claude --version` 2.1.219), comparing behavior with and without `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` in the child's environment. Full raw stream-json transcripts and methodology: `postmortems/feat-3076-verify/README.md`._
+
+### Does the flag disable `Bash` `run_in_background`? ✓ Confirmed
+
+**Bash `run_in_background` is disabled when the flag is set.** With the flag
+unset, a `Bash` call with `run_in_background: true` launches asynchronously
+and returns immediately ("Command running in background with ID: ..."). With
+the flag set, the model's own `thinking` block states intent to pass
+`run_in_background: true`, but the emitted tool call omits the parameter
+entirely, and the command executes synchronously (blocked for the full
+`sleep 3` duration, returning the command's stdout directly). Key evidence:
+`postmortems/feat-3076-verify/bash_control.jsonl` vs.
+`postmortems/feat-3076-verify/bash_disabled.jsonl`.
+
+### Does the flag also disable subagent-tool (`Agent`) background launches? ✓ Confirmed — yes, broader than Bash-only
+
+**Agent-tool subagent backgrounding is also disabled, not just Bash.** With
+the flag unset, an `Agent` call with `run_in_background: true` returns
+"Async agent launched successfully... The agent is working in the
+background," and the model's own turn text confirms genuine async behavior
+(launch now, notified on completion in a later turn). With the flag set, the
+same call's `run_in_background` value is coerced to a **string** (`"true"`
+vs. boolean `true` in the control — a schema-handling difference under the
+flag) and the tool result returns the subagent's full final response and
+`agentId` synchronously, in the same turn, with none of the
+launched-in-background/notify-on-completion language from the control. The
+subagent still runs, but the async launch/notify mechanism is unavailable.
+Key evidence: `postmortems/feat-3076-verify/agent_control.jsonl` vs.
+`postmortems/feat-3076-verify/agent_disabled.jsonl`.
+
+**Bottom line for FEAT-3077/FEAT-3078**: the vendored docs description
+(`docs/claude-code/settings.md:772`) is accurate — the flag's scope covers
+both mechanisms. Both known carve-outs (`manage-issue`'s smoke-test
+Bash-background step, `go-no-go`'s concurrent `Agent`-tool background launch)
+would be affected by enabling this flag, not just Bash-specific steps. This
+must factor into FEAT-3077's carve-out policy: a carve-out is needed for both
+mechanisms if either is required to stay functional, not just for Bash.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-08-06T06:45:38 - `5bcd5d84-ac9a-4ec4-b551-41ee4656d380.jsonl`
+- `/ll:ready-issue` - 2026-08-06T06:35:24 - `5fdbc0dc-95be-4333-a38d-9c11253fc947.jsonl`
 - `/ll:refine-issue` - 2026-08-06T05:41:13 - `5d36237a-64c0-48ea-973e-fbf5147c9f9f.jsonl`
 - `/ll:issue-size-review` - 2026-08-06T05:11:26 - `c21cd57e-cb03-41ae-b233-cd39e3e2a29a.jsonl`
