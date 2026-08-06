@@ -459,6 +459,15 @@ states:
   breakdown_issue:
     action: "/ll:issue-size-review ${captured.issue_id.output} --auto"
     action_type: slash_command
+    # ENH-2805 MR-12: same profile name/shape as autodev.yaml's identical
+    # run_size_review state — enabling it sets LL_AUTOMATION for the child
+    # session, which suppresses the SessionStart config+digest payload
+    # (~1K tokens). This was the one skill-invoking state in this loop
+    # without a resolvable profile.
+    pruning_profile:
+      enabled: true
+      name: issue-size-review-auto
+      suppress_claude_md: true
     # BUG-2726: capture so a size-review failure surfaces via
     # ${captured.breakdown_issue.*} in the diagnose prompt.
     capture: breakdown_issue
