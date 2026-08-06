@@ -24,6 +24,8 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+learning_tests_required:
+- subprocess
 ---
 
 # ENH-3081: `host_runner` cannot clear an inherited `LL_AUTOMATION`, so an explicit opt-out is silently overridden
@@ -203,6 +205,26 @@ currently asserts.
   `scripts/little_loops/session_store/lifecycle.py:157` — the merge sites; all
   use `dict.update` semantics, which the empty-string approach relies on.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/learning_tests/extractor.py:135` — a fifth merge site
+  (`env={**os.environ, **inv.env}`), same `dict.update` semantics; the `""`
+  override reaches the child here too. [Agent 1 finding, verified]
+- `scripts/little_loops/runner_spec.py:182` — direct caller of
+  `resolve_host().build_streaming(..., automation_profile=automation_profile)`;
+  defaults to `None` unless `spec.args` carries a profile. [Agent 1 finding,
+  graph-confirmed]
+- `scripts/little_loops/fsm/runners.py:51,110,191` — `ActionRunner` Protocol and
+  `DefaultActionRunner.run()` forward `automation_profile` into
+  `run_claude_command`; `SimulationActionRunner` declares but ignores it. [Agent 1
+  finding, verified]
+- `scripts/little_loops/issue_manager.py:217,349` — local `run_claude_command` /
+  `run_with_continuation` wrappers forward `automation_profile`; the `ll-auto`
+  paths hardcode `"ll-auto"` at `:1213` and `:1401` (non-`None`, unaffected).
+  [Agent 1 finding, verified]
+- `scripts/little_loops/fsm/executor.py:1902` — the non-`None` origin: sets
+  `automation_profile` from the pruning-profile config when one is enabled. [Agent 1
+  finding, verified]
+
 ### Tests
 
 - `scripts/tests/test_host_runner.py` — extend the existing assertion at
@@ -213,6 +235,24 @@ currently asserts.
   automation" (`hooks/session_start.py:110`, `cli/history_context.py:198`), so a
   later switch to a presence check (`"LL_AUTOMATION" in os.environ`) fails loudly
   rather than silently re-enabling the gate.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_hook_session_start.py` — the SessionStart half of the
+  truthiness regression guard: a `monkeypatch.setenv("LL_AUTOMATION", "")` variant
+  of `TestAutomationPruningStayInTurn::test_no_automation_env_no_stay_in_turn_instruction`
+  (`:579`), asserting `""` does not trigger the stay-in-turn instruction. [Agent 3
+  finding]
+- `scripts/tests/test_history_context_cli.py` — the history-context half of the
+  guard: a `monkeypatch.setenv("LL_AUTOMATION", "")` variant asserting normal
+  (non-pruned) output, mirroring `TestArgumentParsing::test_issue_id_accepted`
+  (`:63`). [Agent 3 finding]
+- `scripts/tests/test_subprocess_utils.py` — a new override regression test
+  anchored on `test_invocation_env_overrides_os_environ` (`:2371-2403`): assert
+  `LL_AUTOMATION=""` in `invocation.env` beats an ambient
+  `os.environ["LL_AUTOMATION"]="1"` through the real `subprocess_utils.py:412-413`
+  merge. No existing test asserts the empty-string semantics anywhere; no existing
+  test breaks (verified: no presence-based absence assertion on the var tree-wide).
+  [Agent 2/3 findings]
 
 ### Documentation
 
@@ -226,6 +266,41 @@ _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
 - **Stale anchor**: `cli/history_context.py:198` (cited in Current Behavior and Program Design → Call Path) no longer resolves to the `LL_AUTOMATION` read — the current line is `cli/history_context.py:206` (`if _os.environ.get("LL_AUTOMATION"):`). The file has an uncommitted local diff at capture time; verify the anchor again before implementing in case it moves further.
 - **Test coverage gap, precise**: the only existing `LL_AUTOMATION` assertion in `scripts/tests/test_host_runner.py` is `TestKimiRunner.test_automation_profile_env` (`:962-966`), covering Kimi's non-`None` branch only. No equivalent test exists for `ClaudeCodeRunner`, `CodexRunner`, `GeminiRunner`, or `OmpRunner`, and no test in the file calls `build_streaming(automation_profile=None)` for any runner — the `None` branch is untested tree-wide today, not just for the regression this issue adds.
 - **Truthiness convention confirmed at both consumers**: `hooks/session_start.py:110` (`bool(_os.environ.get("LL_AUTOMATION"))`) and `cli/history_context.py:206` both read via bare truthiness, never `"LL_AUTOMATION" in os.environ`. No consumer anywhere in the tree does a presence check on this var.
+
+## Implementation Steps
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `host_runner.py:233-237` — `ClaudeCodeRunner.build_streaming` docstring
+  states "`None` (the default) preserves full unpruned behavior"; reword to reflect
+  that `None` now actively clears an inherited `LL_AUTOMATION`. The other four
+  runners carry no such prose, so this is the only in-file docstring to touch.
+  [Agent 2/3 findings, verified]
+- Update `subprocess_utils.py:364-367` — `run_claude_command` docstring repeats the
+  same "None (default) preserves full unpruned behavior" phrasing on the chokepoint
+  through which every `build_streaming` caller funnels; align it. [Agent 2 finding]
+- Update `config/features.py:1033-1044` — `AutomationPruningConfig` docstring
+  claims the env var "is only ever set by a loop/state that explicitly declares a
+  `pruning_profile`"; the `else` branch makes this technically false (a `None`
+  invocation now also sets it, to `""`). Mark as staleness. [Agent 2 finding,
+  verified]
+- Grouped informational alignment (forwarder docstrings with the same
+  "None preserves full unpruned behavior" phrasing, lower value): `runner_spec.py:124-127`,
+  `fsm/schema.py:452-453`, `issue_manager.py:172,300`, `fsm/runners.py:67,127`.
+  [Agent 2 finding]
+- Add the two consumer regression guards — `test_hook_session_start.py` and
+  `test_history_context_cli.py` (see Integration Map → Tests for anchors).
+  [Agent 3 finding]
+- Add the override regression test in `test_subprocess_utils.py` (see Integration
+  Map → Tests). [Agent 2/3 finding]
+- Note on the `LL_AUTOMATION_PROFILE` drop option: if the "drop it" branch of the
+  Proposed Solution is chosen, `test_host_runner.py:966` (`env["LL_AUTOMATION_PROFILE"] == "autodev"`)
+  fails and must be updated; the informational readers `fsm/schema.py:472`,
+  `docs/ARCHITECTURE.md:777`, `docs/guides/LOOPS_GUIDE.md:628`,
+  `fsm-loop-schema.json:403`, `config/features.py:1038`, and the
+  `host_runner.py:468` capability string all go stale. [Agent 2 finding]
 
 ## Acceptance Criteria
 
@@ -279,4 +354,5 @@ _Added 2026-08-06 during pre-implementation review — this issue previously had
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-06T23:27:05 - `304efef5-84e8-4f90-bcb1-2c715d8e2940.jsonl`
 - `/ll:refine-issue` - 2026-08-06T17:43:47 - `dd5c238a-0e0c-4810-a3f6-b5d2f810c62d.jsonl`
