@@ -2,7 +2,7 @@
 id: BUG-3088
 type: BUG
 title: Audit unscoped loops and warn at validate time when `scope:` is missing
-priority: P2
+priority: P3
 status: open
 parent: BUG-3083
 captured_at: '2026-08-06T16:17:02Z'
