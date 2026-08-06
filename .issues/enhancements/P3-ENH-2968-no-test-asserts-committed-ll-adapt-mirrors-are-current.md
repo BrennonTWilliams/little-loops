@@ -3,7 +3,7 @@ id: ENH-2968
 title: No test asserts committed ll-adapt host mirrors are current
 type: ENH
 priority: P3
-status: open
+status: cancelled
 captured_at: '2026-08-01T16:02:14Z'
 discovered_date: 2026-08-01
 discovered_by: capture-issue
@@ -14,6 +14,7 @@ testable: true
 labels:
 - adapters
 - tests
+closed_reason: superseded
 ---
 
 # ENH-2968: No test asserts committed `ll-adapt` host mirrors are current
@@ -362,6 +363,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-06T05:57:00 - `b806aadf-1033-4656-b34d-bd948c43350c.jsonl`
 - `/ll:refine-issue` - 2026-08-01T20:09:21 - `844dd8a3-cedc-47e7-8eb3-e4133f298428.jsonl`
 - `/ll:capture-issue` - 2026-08-01T16:20:51 - `15f4582a-2df6-4315-9f84-3f5730f550e5.jsonl`
 
@@ -370,3 +372,11 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-08-01 | Priority: P3
+
+---
+
+## Resolution
+
+- **Completed**: 2026-08-06
+- **Reason**: Superseded by ENH-3062 via conflict resolution audit
+- **Proposed change**: Consolidate the mirror-staleness gate into ENH-3062's simpler dry-run parametrized-test approach (no new production seam required), absorbing this issue's Codex presence-only skip-check defect finding as scope on ENH-3062.

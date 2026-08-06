@@ -16,6 +16,8 @@ labels:
 - testing
 - host-adapters
 - drift
+supersedes:
+- ENH-2968
 ---
 
 # ENH-3062: No suite gate runs ll-adapt --dry-run, so host mirrors drift undetected
@@ -168,7 +170,16 @@ but the fix is small and the detection machinery already exists unused.
 
 **Open**
 
+---
+
+## Scope Addition
+
+**Source**: Merged from [ENH-2968] during `/ll:audit-issue-conflicts` conflict resolution.
+
+ENH-2968 independently found the same gap (no test asserts committed `.gemini`/`.kimi-code`/`.codex` mirrors match `ll-adapt` output) and additionally documented a real defect: `CodexEmitter.emit_command`'s skip check (`adapters/codex.py:307`) and `emit_skill`'s sidecar check (`codex.py:260`) are presence-only, not content comparisons, unlike Gemini/Kimi's `out_path.exists() and out_path.read_text() == new_content` pattern. Fix these two content-comparison checks as part of implementing this issue's gate, so a fully-drifted Codex tree can't report false success.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-06T05:57:00 - `b806aadf-1033-4656-b34d-bd948c43350c.jsonl`
 - `/ll:capture-issue` - 2026-08-05T16:14:07 - `fb7ca535-1f06-49a2-8ac3-7943736f7215.jsonl`
 
 - `/ll:capture-issue` - 2026-08-05 - Captured from the ENH-3046 run forensics
