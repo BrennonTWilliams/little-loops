@@ -1,4 +1,8 @@
 ---
+id: BUG-3066
+type: BUG
+title: OTel loop spans never close ERROR — loop_complete never carries outcome
+priority: P3
 discovered_commit: fc652df07b9234f2a79fb0663efd253590b170eb
 discovered_branch: main
 discovered_date: 2026-08-05
@@ -7,8 +11,6 @@ status: open
 labels:
 - observability
 - otel
-learning_tests_required:
-- opentelemetry
 verify_verdict: VALID
 testable: true
 size: Small
@@ -197,9 +199,9 @@ _Wiring pass added by `/ll:wire-issue`:_ the `fsm.persistence` import is confirm
    `terminated_by="terminal"` with `failure_terminal=true`) closes its OTel loop span with
    `StatusCode.ERROR`.
 3. A `loop_complete` with `terminated_by="terminal"`, `failure_terminal=false` closes `OK`.
-4. A `loop_complete` with `terminated_by` in `{user_stopped, system_signal, interrupted,
-   max_steps, max_iterations_reached, handoff}` closes `UNSET` for `handoff`/`interrupted`
-   buckets per the mapping table — i.e. neither `OK` nor `ERROR`.
+4. A `loop_complete` with `terminated_by` in `{interrupted, max_steps,
+   max_iterations_reached, handoff}` closes `UNSET` — i.e. neither `OK` nor `ERROR`.
+   `user_stopped` and `system_signal` are **not** in this set; see the note below.
 5. The loop span carries `ll.terminated_by` and `ll.final_status` attributes.
 6. `SQLiteTransport` writes a **non-NULL** `state` for every `loop_complete` row, equal to
    the `map_final_status` bucket. A regression test asserts non-NULL explicitly (the
@@ -216,6 +218,24 @@ _Wiring pass added by `/ll:wire-issue`:_ the `fsm.persistence` import is confirm
    mapping table instead.
 10. `python -m pytest scripts/tests/` exits 0.
 
+### `user_stopped` / `system_signal` map to ERROR — accepted
+
+_Resolved 2026-08-06 during pre-implementation review._ An earlier draft of AC 4 listed
+`user_stopped` and `system_signal` among the "neither OK nor ERROR" cases, contradicting
+this issue's own mapping table and Decision Rules: `_map_final_status` buckets both into
+`failed`, which this fix maps to `StatusCode.ERROR`.
+
+The contradiction is resolved **in favour of the table** — reuse `_map_final_status`
+exactly as it is. Ctrl-C closing an ERROR span is arguably wrong semantically, but
+re-bucketing those two values is not an OTel change: `_map_final_status` also drives the
+**persisted run status**, so moving `user_stopped` out of `failed` would silently change
+`ll-loop status` / run-archive output for every host. That is a separate, wider decision
+than "stop closing every span OK," and folding it in here would defeat the point of having
+one source of truth.
+
+If the semantics are later judged wrong, change `_map_final_status` once — for all three
+consumers — under its own issue, rather than adding an OTel-only exception here.
+
 ## Impact
 
 - **Priority**: P3 — observability-only; no runtime behavior or data loss. Matters
@@ -225,9 +245,14 @@ _Wiring pass added by `/ll:wire-issue`:_ the `fsm.persistence` import is confirm
 - **Risk**: Low. The main risk is a test suite that currently passes for the wrong
   reason: the ERROR-path tests must be rewritten to feed a realistic `loop_complete`
   payload, or the fix will look verified when it is not. AC 8 is the guard.
-- **`learning_tests_required: [opentelemetry]` retained** — justified only by the
-  introduction of `StatusCode.UNSET`, which no existing test exercises. Drop the gate if
-  the `UNSET` decision is later reversed.
+- **`learning_tests_required: [opentelemetry]` removed** (2026-08-06). It was justified
+  only by the introduction of `StatusCode.UNSET` — an enum member, not API semantics that
+  need an LLM proof session. Keeping it also created a dated trap: the
+  `.ll/learning-tests/opentelemetry.md` record is dated `2026-07-08`, so at
+  `stale_after_days: 30` it goes stale on **2026-08-08** and the gate would have blocked
+  this issue from that date onward for no substantive reason. The existing record's
+  assertions already cover the span/context mechanics this fix relies on; only the status
+  code is new, and AC 2–4 test it directly.
 
 ## Integration Map
 

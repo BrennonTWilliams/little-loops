@@ -109,6 +109,24 @@ existing records.
 **Recommended**: Option A now (small, unblocks the immediate noise) with Option B as the
 durable fix. Option C alone is not sufficient.
 
+### Sequencing: re-prove the three records **before** implementation starts
+
+_Added 2026-08-06 during pre-implementation review._ This issue's frontmatter declares
+`learning_tests_required: [hypothesis, pytest, questionary]` — precisely the three stale
+records it is about. So `ll-auto` runs the learning gate on all three *before* it will
+implement anything here, and that gate run is the one that produced ENH-3084's worked
+example (`Learning gate impl-failed for ENH-3073`).
+
+**Consequence:** AC 4 ("the three records were re-proven via `ll-learning-tests prove`") is
+not an implementation step — it is a **pre-step**. Run the three `prove` invocations by
+hand first, confirm the records are re-dated, and only then start implementation.
+Attempting the reverse order gates the issue on itself.
+
+Two adjacent issues reduce the friction but are not prerequisites: BUG-3087 (scope the
+issue-lifecycle loops so they stop locking the repo root, removing the false conflict) and
+ENH-3084 (a verdict that distinguishes this infra failure from an implementation failure).
+Neither has to land first if the three records are proven up front.
+
 ### Clearing the three current records
 
 Option A changes the gate's *output*, not `is_record_stale` — so it does not by itself
@@ -363,14 +381,24 @@ _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
 - ENH-2214 — release gate blocking on stale/refuted records (introduced this gate)
 - BUG-3072 — failing assertions invisible under `proven` status
 - BUG-3070 — release ordering; determines what a `block`-mode abort leaves behind
+- BUG-3089 — the audit's import-scan relevance filter misses most records; filed 2026-08-06
+  from this issue's adjacent-defect note, and a de facto prerequisite (see below)
 - _(to file)_ Option B follow-up — version-stamped staleness instead of calendar age; carries
   the `is_record_stale` signature-change caller list and schema/migration work dropped above
 
-**Adjacent defect noticed during review, not fixed here**: `run_release_gate` matches
-`r.target in imported_packages` raw (`release_gate.py:67`), while `cmd_orphans` normalizes
-with `r.target.split()[0].lower()` (`cli/learning_tests.py:157`). A record targeted
-`"Anthropic SDK streaming"` can therefore never hit the release gate regardless of its
-status or age. Worth its own BUG; deliberately out of scope here.
+**Adjacent defect — now filed as [[BUG-3089]] (P2).** This note originally read: "`run_release_gate`
+matches `r.target in imported_packages` raw (`release_gate.py:67`), while `cmd_orphans`
+normalizes with `r.target.split()[0].lower()` (`cli/learning_tests.py:157`) … worth its own
+BUG." Investigation on 2026-08-06 found the divergent normalization is the *smaller* half of
+the problem: `get_imported_packages`'s regex is `^`-anchored and dot-free, so it sees neither
+function-local imports nor dotted module names. Four of this repo's own records
+(`anthropic`, `opentelemetry`, `concurrent.futures`, `ruamel.yaml`) are consequently invisible
+to the gate today.
+
+**This raises ENH-3073's sequencing.** Making remediation reachable does not help for rows
+that never print, and BUG-3089 is exactly why they do not print. BUG-3089 is P2 to this
+issue's P3 and should land first; ENH-3073's per-row remediation text then applies to an
+audit that actually flags what it should.
 
 ## Status
 
