@@ -12,7 +12,14 @@ labels:
 - confidence-check
 - registry
 testable: true
-size: Medium
+size: Large
+verify_verdict: VALID
+confidence_score: 85
+outcome_confidence: 59
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 10
 ---
 
 # BUG-3072: A `result: fail` assertion is invisible to every consumer once the record is `proven`
@@ -147,6 +154,37 @@ def run_release_gate(cwd: Path, *, base_dir: Path | None = None) -> int:
 - `run_release_gate` (`learning_tests/release_gate.py:36`) → `list_records` (`:117`)
 - `skills/confidence-check/rubric.md:130` shells out to `ll-learning-tests check`
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Audit `scripts/little_loops/loops/rn-implement.yaml`, `learning-tests-audit.yaml`, `migrate-sdk-version.yaml`, and the generator `scripts/little_loops/cli/loop/scaffold_eval.py` for the same status-only blind spot before finalizing the option — `fsm/executor.py` and `cli/ctx_stats.py` already branch on proven status the same way as the primary consumers
+- If a new record field is added (Option B/C), extend `session_store/writers.py`'s `learning_test_events` INSERT/upsert and table schema for the new top-level column
+- Update `docs/guides/LEARNING_TESTS_GUIDE.md`, `docs/reference/API.md`, `docs/ARCHITECTURE.md`, `docs/reference/CLI.md`, `docs/reference/CONFIGURATION.md` to match the chosen option
+- After editing `skills/confidence-check/{SKILL.md,rubric.md}` or `skills/explore-api/SKILL.md`, run the adapter sync (`ll-adapt --host gemini --apply && ll-adapt --host kimi-code --apply`) to keep the untested `.gemini`/`.kimi-code` mirrors from going stale
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
+
+### Additional Types (from analyzer)
+
+```python
+@dataclass
+class Assertion:
+    claim: str
+    result: Literal["pass", "fail", "untested"]
+```
+Declared once at `learning_tests/__init__.py:27-41`; `from_dict` defaults `result` to `"untested"` when absent (`:37-41`), `claim` has no default. `LearnTestRecord.status` `Literal` is likewise declared exactly once (`:50`) — no other `Literal["proven","refuted","stale"]` exists elsewhere in the codebase, so a 4th status value (Option B's `partial`) has a single declaration site to change, but 8 separate string-equality call sites to update (release_gate.py:58,78; cli/learning_tests.py:42,74; hooks/learning_tests_gate.py:128,140; hooks/install_learning_gate.py:121; history_context.py:74).
+
+### Existing reusable pattern
+
+`_render_learning_test_section()` (`cli/history_context.py:59-92`) already computes an "effective status" independent of the stored field — `effective_status = "stale" if is_record_stale(record, stale_after_days) else record.status` (`:74`) — and separately counts `passes`/`fails`/`untested` via three `sum(1 for a in record.assertions if a.result == X)` comprehensions (`:75-77`). This is the only place in the codebase that inspects `assertions` at all; it is inline, not exposed as a method on `Assertion`/`LearnTestRecord`, and would need extracting to be reused by Option A/B/C's gating logic. It also demonstrates the precedent shape (a derived value shadowing the stored `status`) that Option B or a `has_failing_assertions` property (Option C) would follow.
+
+No JSON Schema constrains `status`/`result` values — `config-schema.json:1032`+ only covers `learning_tests` gate *configuration* (`enabled`, `stale_after_days`, etc.), not the record file schema; parsing stays permissive via `.get()` calls with no enum enforcement.
+
+The write-time rule producing this exact symptom is authored prose, not code: `skills/explore-api/SKILL.md` § Phase 4: Refine (lines 181-217, rule at 190-193) — "`proven` = at least one assertion is `pass`", independent of any coexisting `fail`.
+
 ## Acceptance Criteria
 
 - [ ] `ll-learning-tests check <target>` on a record containing a `result: fail` assertion
@@ -175,6 +213,49 @@ refutations behind a single passing claim.
 - `skills/explore-api/SKILL.md:187-192` — status determination spec
 - `.ll/learning-tests/pytest.md`, `.ll/learning-tests/raw/pytest.txt` — the affected record
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
+
+- `scripts/little_loops/hooks/learning_tests_gate.py:128,140` — two additional `record.status == "proven"` gate checks not listed above; same blind spot to `fail` assertions coexisting with `proven` status
+- `scripts/little_loops/hooks/install_learning_gate.py:121` — third `record.status == "proven"` gate check with the same blind spot
+- `scripts/little_loops/learning_tests/gate.py` — `is_record_stale` (`:40`), `format_nudge_message` (`:26`), `run_learning_gate_for_issue` (`:61`); has its own unrelated `Literal["passed", "blocked", "impl_failed", "skipped"]` gate-verdict type (`:67`) for `proof-first-task`/`ready-to-implement-gate` loop runs — distinct concept from `LearnTestRecord.status`, do not conflate when scoping a status-Literal change
+- Test files to extend per option: `scripts/tests/test_learning_tests.py` (`TestLearnTestRecord` round-trip tests — status/assertion derivation logic), `scripts/tests/test_cli_learning_tests.py` (`TestStaleAwareCLI` lines 220-310 exercises the `cmd_check --stale-aware` gate branch; `TestMainLearningTestsProve` lines 312-412 exercises `cmd_prove`'s return code), `scripts/tests/test_release_gate.py` (`TestReleaseGateWarnMode`/`TestReleaseGateBlockMode` lines 146-207 test the `problem_records` filter), `scripts/tests/test_learning_tests_discoverability.py` (covers the `hooks/learning_tests_gate.py` call sites).
+  > ⚠ Superseded — `test_history_context_cli.py` already covers this (see Tests below)
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/executor.py:1160,1166,1200` — checks `record.status == "proven"` for learning-gate FSM states; same proven-blind-to-fail-assertions blind spot as the release/hook gates
+- `scripts/little_loops/cli/ctx_stats.py:660,662,663` — renders learning-test status counts for `ll-ctx-stats`; would misreport a `proven`-with-`fail` record the same way
+- `scripts/little_loops/session_store/writers.py` — `record_learning_test_event()`/`_backfill_learning_test_events()` mirror `status`/`assertions` into the `learning_test_events` SQLite table; a new top-level record field (Option B/C) needs an explicit column added to the INSERT/upsert, a new `Assertion` field round-trips via the existing JSON blob for free
+- `hooks/hooks.json:93` — manifest registration for the already-known `learning_tests_gate` PreToolUse hook
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_history_context_cli.py` — `TestRenderLearningTestSection` (420-488) already covers `_render_learning_test_section`, including a `fail`-assertion fixture (`test_formats_table_with_assertion_counts`, line 435, asserting the `"1/1/1"` pass/fail/untested column). Extend this class for AC2's distinguishability test rather than writing a first test for this function.
+- `scripts/tests/test_learning_tests_extractor.py`, `test_learning_tests_gate.py`, `test_install_learning_gate.py`, `test_cli_ctx_stats.py`, `test_history_reader.py`, `test_session_store_writers.py`, `test_session_store_lifecycle.py`, `test_learning_state.py`, `test_issue_manager.py`, `test_worker_pool.py`, `test_sprint_integration.py`, `tests/integration/test_init_e2e.py` — cover the newly-found callers/importers above; review each for `assertions=[]`/all-`pass` fixtures that would need a `fail`-assertion variant once the option is decided (none of the existing `.ll/learning-tests/*.md` test fixtures across the codebase currently construct a `proven` record with a `fail` assertion, so no currently-passing test breaks under any option)
+- `scripts/tests/test_rn_implement.py` — asserts exact substrings of the embedded `ll-learning-tests check --stale-aware` invocation in `rn-implement.yaml` (lines 1189, 1191, 1259, 1328) and stubs a fake `ll-learning-tests` binary keyed on exit code only (line 1360); extend the stub if the fix changes exit-code semantics
+- `scripts/tests/test_ll_loop_scaffold_eval.py:92`, `test_create_eval_from_issues.py:547,610` — assert the literal generated-YAML substring `"ll-learning-tests check --stale-aware"`
+- `scripts/tests/test_confidence_check_skill.py` — `TestConfidenceCheckRubricLearningTestStatus` (418-429) asserts `rubric.md`'s exact penalty strings (`−10`, `−5` — en-dash); AC3's rubric change must preserve or update these in lockstep
+- `scripts/tests/test_ready_issue_lint.py` (137-200), `test_scope_epic_skill.py` (128-167) — assert verbatim `ll-learning-tests check` / status-branching prose in `commands/ready-issue.md` and `skills/scope-epic/SKILL.md`; must stay in sync with any status-model wording change
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LEARNING_TESTS_GUIDE.md` — canonical guide; "Record Status: proven, refuted, stale" section (~line 97) and release-gate table (389-425) restate the three-value contract
+- `docs/reference/API.md`, `docs/ARCHITECTURE.md`, `docs/reference/CLI.md`, `docs/reference/CONFIGURATION.md` — restate the `LearnTestRecord`/status field table, `check` exit-code semantics, and the `release_gate` config block
+- `docs/guides/LOOPS_REFERENCE.md`, `docs/reference/ISSUE_TEMPLATE.md`, `docs/reference/COMMANDS.md` — loop-catalog entries and verdict-mapping prose duplicate the proven/refuted/stale contract
+- `commands/ready-issue.md` (250-254), `commands/refine-issue.md` (906-922), `commands/manage-release.md`, `skills/go-no-go/SKILL.md` (158-167), `skills/scope-epic/SKILL.md`, `skills/init/SKILL.md`, `skills/configure/SKILL.md` + `areas.md`, `skills/create-eval-from-issues/SKILL.md`, `skills/spike/SKILL.md` + `plan-template.md`, `skills/audit-loop-run/SKILL.md` — each independently re-implements or restates the proven/stale/refuted/missing branching; keep consistent with whichever option is chosen
+- `.gemini/skills/confidence-check/*`, `.kimi-code/skills/confidence-check/*`, `.gemini/skills/explore-api/SKILL.md`, `.kimi-code/skills/explore-api/SKILL.md` — git-tracked adapter mirrors (ENH-2996 pattern) with no drift test for confidence-check/explore-api (only wire-issue's own mirror is test-enforced); editing the primary skill/rubric files without re-running the adapter leaves these silently stale
+
+### Configuration
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/config-schema.json:1032-1083` — `learning_tests` block (`stale_after_days`, `discoverability.mode`, `release_gate`); Option B/C's new status value or `has_failing_assertions` flag has no schema slot today
+- `.ll/ll-config.json` — project-level `learning_tests` config, review defaults if a new gate mode is added
+
 ## Related Issues
 
 - ENH-2214 — release gate blocking on stale/refuted records
@@ -183,3 +264,38 @@ refutations behind a single passing claim.
 ## Status
 
 Open. Root cause confirmed; remedy option (A/B/C) undecided.
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-05_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 59/100 → LOW
+
+### Concerns
+- Remedy option (A/B/C) is explicitly undecided in the issue body; Criterion 2 and the
+  outcome-confidence Complexity/Change Surface scores assume the recommended minimal
+  Option A footprint, not Option B/C's larger blast radius (8+ status-check call sites,
+  `Literal` type change, `skills/explore-api/SKILL.md` re-spec).
+- Format-check (`ll-issues format-check`) flagged `ll-learning-tests check` and
+  `ll-learning-tests check --stale-aware` as stale CLI references (`stale_cli_flag`),
+  capping Criterion 4 at 10 per the ENH-3047 parity/claim cap. Manual verification
+  (`ll-learning-tests --help`, `ll-learning-tests check --help`) shows both are valid,
+  currently-registered subcommands — this reads as a format-check false positive, but
+  per skill policy the CLI-derived signal is not re-judged, so the cap is applied as-is.
+
+### Outcome Risk Factors
+- Ambiguity (Criterion C, scored 10/25): the A/B/C decision is unresolved and materially
+  changes scope — Option B requires updating 8 separate string-equality call sites plus
+  the `LearnTestRecord.status` `Literal` declaration and `skills/explore-api/SKILL.md`.
+- Complexity (Criterion A, scored 14/25): breadth is scored assuming the wiring-pass audit
+  (checking `fsm/executor.py`, `rn-implement.yaml`, `learning-tests-audit.yaml`,
+  `migrate-sdk-version.yaml`, `scaffold_eval.py` for the same blind spot) surfaces
+  additional touch points before the option is finalized, not just Option A's minimal
+  footprint.
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-06T02:00:48 - `96c3fd03-2fac-40c0-96a7-577067bc1c31.jsonl`
+- `/ll:verify-issues` - 2026-08-06T01:57:41 - `62bb44a7-83be-436c-8b10-ab0f9ad7fe0f.jsonl`
+- `/ll:wire-issue` - 2026-08-06T01:55:59 - `e9e22ffe-68d7-422e-8491-1092bcde8600.jsonl`
+- `/ll:refine-issue` - 2026-08-06T01:47:53 - `291de748-bfdc-4d40-8b57-e67e2eaa46a8.jsonl`

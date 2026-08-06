@@ -14,6 +14,13 @@ labels:
 - diagnostics
 testable: true
 size: Small
+verify_verdict: VALID
+confidence_score: 100
+outcome_confidence: 89
+score_complexity: 23
+score_test_coverage: 23
+score_ambiguity: 20
+score_change_surface: 23
 ---
 
 # BUG-3071: `program_design_nonspecific` names `Types/Signatures`, a heading its own parser rejects
@@ -100,6 +107,14 @@ treat `types/signatures` as matching if any `/`-split part is in `DESIGN_SUBSECT
 This makes already-written issues carrying the combined heading grade correctly instead
 of silently dropping their evidence.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
+
+- **Convention evidence for the primary fix**: "must be one of" / "here are the valid values" diagnostics elsewhere in this codebase are built by joining the canonical collection at message-construction time, never restated as a separate literal — `fsm/validation/structural_rules.py:93-94,116-117,233,1613`, `pii.py:75`, `queue_store.py:230`, `session_store/queries.py:75`, `history_reader.py:944,1776,1948`, `fsm/validation/_base.py:161`, `compaction/instant.py:136,144` (derives prompt/fallback header text from the same `SECTION_HEADERS` tuple it displays). `program_design.py:329` is presently the outlier in this codebase — a hand-typed literal with zero structural connection to `DESIGN_SUBSECTIONS`.
+- **Test precedent for the sync-assertion AC**: `scripts/tests/test_hook_intents.py:827-855` (`test_dispatch_table_intent_event_name_usage_stay_consistent`) splits a usage string into tokens and asserts set equality against a canonical enumeration (`_dispatch_table()`), failing with the symmetric difference on mismatch. This is the closest existing shape to follow for the new "every heading named in the message is a member of `DESIGN_SUBSECTIONS`" test.
+- **Secondary fix has no existing precedent**: checked `_subsection_title`, `_subsection_body`, and every `.split("/")` usage across `scripts/little_loops/` (`parallel/file_hints.py`, `init/introspect.py`, `git_operations.py`, `issue_history/debt.py`, `issue_history/hotspots.py`, `hooks/learning_tests_gate.py`, `cli/loop/layout.py`) — none split a heading/title and check membership of the parts against a canonical set. The slash-normalization in the Secondary proposal would be genuinely new logic, not an extension of anything already in the codebase.
+
 ## Program Design
 
 **Invariant.** Every heading named by a `program_design_nonspecific` reason is a heading
@@ -147,6 +162,40 @@ verbatim into three issue files as remediation guidance.
 - `scripts/tests/spike/program_design_specificity/program_design.py:197` — spike copy,
   out of scope (frozen spike artifact).
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/issues/research_triage.py:349` (`_program_design_unmet`) — calls
+  `grade_issue_section` and joins `verdict.reasons` verbatim into its own evidence string
+  at `:372`, the same pass-through pattern as `issue_parser.py:617`. A second, previously
+  unlisted consumer of the reason text; no change expected, but must not break. [Agent 1 finding]
+- `scripts/little_loops/cli/issues/format_check.py:149-150` — prints `program_design_nonspecific`
+  reason text verbatim via `ll-issues format-check`; no change expected. [Agent 1 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_program_design_gate.py` — add the sync-assertion test here (new
+  method in `TestGrading` or a new class), following `test_hook_intents.py:827-855`'s
+  `TestDispatchTable.test_dispatch_table_intent_event_name_usage_stay_consistent` shape:
+  split the new message into heading tokens and assert set equality against
+  `DESIGN_SUBSECTIONS` (plus the documented preamble exception). No existing test in this
+  file asserts the literal old string, so nothing breaks — this is purely additive. [Agent 3 finding]
+- `scripts/tests/test_research_triage.py` — `TestProgramDesignGateOverride` (line 384) has
+  no case that reaches `verdict.reasons` via `_program_design_unmet` for a
+  signature-less-but-nonempty-nonboilerplate body; its three existing cases short-circuit
+  at `"section missing"`/`"section empty"`/`"section boilerplate"` before reaching
+  `grade_issue_section`. Optional new test to cover the second reason-text consumer
+  end-to-end. [Agent 3 finding]
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
+
+- `scripts/tests/test_program_design_gate.py` — existing test file for this gate (module docstring cites originating issue; tests grouped into `Test*` classes, e.g. `TestGrading`, with declarative method names like `test_reproduction_lines_from_bug_2960`). The new sync-assertion test belongs here, following this file's convention rather than a new file.
+- `program_design.py:333` — the sibling `no call-path anchor resolves against the repo: {', '.join(anchors)}` reason already interpolates a runtime-derived value via f-string join; the fix at `:329` brings that line in line with a pattern already present two lines away in the same function.
+- `issue_parser.py:617` — confirmed pass-through: `verdict.reasons` is joined with `"; "` and prefixed with the section name (`"Program Design: "`) with no rewriting, so whatever string `grade_program_design` returns reaches `program_design_nonspecific` verbatim.
+
 ## Related Key Documentation
 
 - `scripts/little_loops/issues/program_design.py` module docstring (resolution-indifference contract)
@@ -155,3 +204,10 @@ verbatim into three issue files as remediation guidance.
 
 Open. Root cause confirmed by corpus evidence; message-fix vs. membership-fix decided in
 favor of the message.
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-06T02:28:10 - `9a303797-dd2e-465b-82b0-9952a9e6503a.jsonl`
+- `/ll:verify-issues` - 2026-08-06T02:26:52 - `d10f284f-800d-4288-9288-7d13118a8c95.jsonl`
+- `/ll:wire-issue` - 2026-08-06T02:25:18 - `76885966-401d-4c5e-9b76-1f9b9dd3bccf.jsonl`
+- `/ll:refine-issue` - 2026-08-06T02:18:59 - `5fee6689-6af2-4cd7-be3d-79729fbae839.jsonl`
