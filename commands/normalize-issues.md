@@ -55,14 +55,17 @@ them — this is the one class of finding that needs judgment, not just a
 keyword count. For each `type_mismatch` in the report:
 
 **Heuristics** — the CLI counts these signal keywords in Summary,
-Motivation/Current Behavior, and Root Cause sections for each candidate type:
+Motivation/Current Behavior, and Root Cause sections for each candidate type.
+`type_mismatch` findings are only reported for `open`/`in_progress`/`blocked`
+issues — `done`/`cancelled`/`deferred` issues are excluded since reclassifying
+closed work has no actionable follow-up (ENH-3053):
 
 | Signal keywords | Suggests type |
 |-----------------|---------------|
 | "broken", "regression", "error", "crash", "fails", "wrong behavior", "should not", "defect", "incorrect", "unexpected" | BUG |
 | "new capability", "users can't currently", "add support for", "implement", "missing feature", "not yet possible" | FEAT |
 | "improve", "optimize", "enhance", "refactor", "better UX", "reduce", "increase performance", "simplify" | ENH |
-| "epic", "initiative", "umbrella", "rollup", "decompose into", "coordinate", "milestone", "multi-issue" | EPIC |
+| "decompose into", "umbrella", "rollup of", "multi-issue initiative", "coordination container", "should be an epic", "milestone" | EPIC |
 
 1. Read the flagged issue file to confirm (or override) the CLI's inferred type
 2. If confirmed, reclassify manually: `git mv` the file into the target

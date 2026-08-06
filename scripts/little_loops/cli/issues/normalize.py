@@ -66,26 +66,27 @@ _TYPE_SIGNALS: dict[str, tuple[str, ...]] = {
         "simplify",
     ),
     "EPIC": (
-        "epic",
-        "initiative",
-        "umbrella",
-        "rollup",
         "decompose into",
-        "coordinate",
+        "umbrella",
+        "rollup of",
+        "multi-issue initiative",
+        "coordination container",
+        "should be an epic",
         "milestone",
-        "multi-issue",
     ),
 }
 
 _TYPE_MISMATCH_CONFIDENCE_CUTOFF = 0.7
 
-# "epic" as a bare keyword would otherwise fire on every issue that merely
-# *cross-references* an EPIC-NNNN id in prose (extremely common — most
-# issues name their parent epic in Summary/Root Cause). Exclude that case
-# with a negative lookahead so only a genuine "epic"/"epics" word counts.
+# Statuses excluded from type_mismatch reporting (ENH-3053): reclassifying
+# closed historical work has no actionable follow-up. Scan-local set — NOT
+# the shared issue_progress._TERMINAL_STATUSES ({"done", "cancelled"}), which
+# deliberately treats "deferred" as non-terminal for dependency-graph
+# resolution (BUG-2897) and must not widen to match this check's needs.
+_TYPE_MISMATCH_EXCLUDED_STATUSES: frozenset[str] = frozenset({"done", "cancelled", "deferred"})
+
 _KEYWORD_RES: dict[str, list[re.Pattern[str]]] = {
-    t: [re.compile(re.escape(kw) + r"(?!-\d)" if kw == "epic" else re.escape(kw)) for kw in kws]
-    for t, kws in _TYPE_SIGNALS.items()
+    t: [re.compile(re.escape(kw)) for kw in kws] for t, kws in _TYPE_SIGNALS.items()
 }
 
 
@@ -359,6 +360,8 @@ def scan_normalize(
     for info in all_issues:
         mismatch_cat = path_category.get(info.path)
         if mismatch_cat is None:
+            continue
+        if info.status in _TYPE_MISMATCH_EXCLUDED_STATUSES:
             continue
         current_prefix = config.get_issue_prefix(mismatch_cat)
         inferred_prefix, confidence = classify_type(info)

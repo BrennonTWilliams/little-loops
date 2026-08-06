@@ -51,12 +51,17 @@ def _write(path: Path, body: str) -> Path:
 
 
 def _issue_body(
-    *, id_: str | None = None, title: str = "Test issue", extra_fm: str = "", body: str = ""
+    *,
+    id_: str | None = None,
+    title: str = "Test issue",
+    extra_fm: str = "",
+    body: str = "",
+    status: str = "open",
 ) -> str:
     fm_lines = ["---"]
     if id_ is not None:
         fm_lines.append(f"id: {id_}")
-    fm_lines.append("status: open")
+    fm_lines.append(f"status: {status}")
     if extra_fm:
         fm_lines.append(extra_fm.strip())
     fm_lines.append("---")
@@ -340,6 +345,86 @@ class TestScoping:
         scoped = scan_normalize(config, only_ids=["ENH-050"])
         assert len(scoped) == 1
         assert scoped[0].path.name == "ENH-050-a.md"
+
+
+# ---------------------------------------------------------------------------
+# type_mismatch (ENH-3053)
+# ---------------------------------------------------------------------------
+
+
+class TestTypeMismatch:
+    def test_fires_on_epic_phrase_level_signal(
+        self, temp_project_dir: Path, normalize_dir: Path
+    ) -> None:
+        body = (
+            "## Summary\n\n"
+            "This work should decompose into smaller pieces. It acts as a "
+            "coordination container and umbrella issue, and should decompose "
+            "into further sub-tasks.\n"
+        )
+        _write(
+            normalize_dir / "bugs" / "P3-BUG-100-scope.md",
+            _issue_body(id_="BUG-100", body=body),
+        )
+
+        config = _config(temp_project_dir)
+        findings = scan_normalize(config)
+        mismatches = [f for f in findings if f.kind == "type_mismatch"]
+        assert len(mismatches) == 1
+        assert mismatches[0].proposed_id == "EPIC-100"
+
+    def test_no_fire_on_bare_epic_feature_area_mention(
+        self, temp_project_dir: Path, normalize_dir: Path
+    ) -> None:
+        body = (
+            "## Summary\n\n"
+            "The bug is in the --group-by epic option of the EPIC schema; "
+            "users see incorrect epic counts in epic-progress output.\n"
+        )
+        _write(
+            normalize_dir / "bugs" / "P3-BUG-100-scope.md",
+            _issue_body(id_="BUG-100", body=body),
+        )
+
+        config = _config(temp_project_dir)
+        findings = scan_normalize(config)
+        assert not [f for f in findings if f.kind == "type_mismatch"]
+
+    def test_no_fire_on_closed_status_despite_signal(
+        self, temp_project_dir: Path, normalize_dir: Path
+    ) -> None:
+        body = (
+            "## Summary\n\n"
+            "This is broken and causes a crash. The regression is an "
+            "unexpected defect with incorrect, wrong behavior.\n"
+        )
+        _write(
+            normalize_dir / "enhancements" / "P3-ENH-200-scope.md",
+            _issue_body(id_="ENH-200", body=body, status="done"),
+        )
+
+        config = _config(temp_project_dir)
+        findings = scan_normalize(config)
+        assert not [f for f in findings if f.kind == "type_mismatch"]
+
+    def test_fires_on_open_status_with_same_signal(
+        self, temp_project_dir: Path, normalize_dir: Path
+    ) -> None:
+        body = (
+            "## Summary\n\n"
+            "This is broken and causes a crash. The regression is an "
+            "unexpected defect with incorrect, wrong behavior.\n"
+        )
+        _write(
+            normalize_dir / "enhancements" / "P3-ENH-200-scope.md",
+            _issue_body(id_="ENH-200", body=body, status="open"),
+        )
+
+        config = _config(temp_project_dir)
+        findings = scan_normalize(config)
+        mismatches = [f for f in findings if f.kind == "type_mismatch"]
+        assert len(mismatches) == 1
+        assert mismatches[0].proposed_id == "BUG-200"
 
 
 # ---------------------------------------------------------------------------

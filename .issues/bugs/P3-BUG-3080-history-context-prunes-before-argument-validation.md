@@ -17,6 +17,13 @@ labels:
 - automation
 - cli
 - history
+verify_verdict: VALID
+confidence_score: 100
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3080: `ll-history-context` prunes before argument validation, so malformed invocations exit 0 silently under automation
@@ -109,6 +116,12 @@ Consider the same audit for `hooks/session_start.py:110-123` — that gate has n
 argument surface to validate, so it is very likely fine, but confirm rather than
 assume.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
+
+- `hooks/session_start.py` audit confirmed: `handle()` in `scripts/little_loops/hooks/session_start.py:86` has a structurally identical `LL_AUTOMATION` pruning gate at `:102-124`, but no argparse-style validation guard exists anywhere in the function — it receives a pre-built `LLHookEvent` (`scripts/little_loops/hooks/types.py:20-81`) whose `from_dict()` classmethod uses `.get()` with fallbacks rather than raising on missing/malformed keys. No code path in `handle()`, before or after the gate, raises or returns a non-zero `exit_code` for a malformed event. This confirms the issue's own speculation ("very likely fine, but confirm rather than assume") — no reorder is needed at that site.
+
 ## Program Design
 
 No new types, functions, or signatures — the fix is a statement reorder inside an
@@ -156,6 +169,16 @@ gate's `:195` comment claims today but does not do.
 - `docs/reference/CLI.md` — if it documents `ll-history-context` exit codes,
   note that validation errors are not suppressed under automation.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
+
+- Docstring inconsistency (pre-existing, independent of this fix): `main_history_context()`'s docstring at `history_context.py:181-183` states "1 on argument error", but `parser.error()` actually raises `SystemExit(2)` — the docstring is already wrong today regardless of the reorder.
+- `cli_event_context(DEFAULT_DB_PATH, "ll-history-context", sys.argv[1:])` (`history_context.py:184`) wraps the entire function body and logs the invocation to the session history store on every branch — a malformed invocation is recorded in history today even when pruned to exit 0. The reorder doesn't change what gets logged, only the exit code/stderr the caller observes.
+- Convention check: the `LL_AUTOMATION` pruning gate is confined to exactly two sites codebase-wide — `history_context.py:191-207` and `hooks/session_start.py:102-124` — no other `cli/*.py` entry point references `LL_AUTOMATION`/`automation_pruning`. Other `main_*` CLI functions (`cli/auto.py:74-86`, `cli/artifact.py:167-174`) place `parser.error(...)` validation immediately after `parser.parse_args()` with no gate interposed; the fix's post-fix ordering matches that established shape rather than introducing a new one.
+- Test pattern: the dominant assertion style for malformed-arg tests in this codebase is `with pytest.raises(SystemExit) as exc_info: ...; assert exc_info.value.code == 2` (e.g. `scripts/tests/test_cli_args.py:177-179` and seven further sites). The existing `test_history_context_cli.py:18-23` (`test_missing_issue_id_exits`) currently uses the lighter `pytest.raises(SystemExit)` form without checking `.code` — the new tests this issue's Tests subsection calls for should assert `exc_info.value.code == 2` to match the dominant pattern.
+- No shared helper backs the `LL_AUTOMATION` + `automation_pruning.enabled` check at either site — it's hand-duplicated with different exception-suppression idioms (`try/except Exception: pass` in `history_context.py` vs `contextlib.suppress(Exception)` in `session_start.py`). Noted as existing state only; not proposed as in-scope for this fix.
+
 ## Impact
 
 - **Priority**: P3 — no incorrect output is produced; the harm is a masked
@@ -177,3 +200,9 @@ gate's `:195` comment claims today but does not do.
 ## Status
 
 - [ ] Not started
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-06T06:29:32 - `ef76915a-3ba4-4822-85d4-e84d2c3b1923.jsonl`
+- `/ll:verify-issues` - 2026-08-06T06:27:51 - `0e1edeb1-2d67-4cea-b6d6-80a4401a3eb9.jsonl`
+- `/ll:refine-issue` - 2026-08-06T06:20:58 - `23c3f239-5e25-4dcb-b1ff-eacc214882e7.jsonl`

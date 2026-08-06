@@ -4,10 +4,11 @@ title: normalize type_mismatch heuristic false-positives on EPIC keyword and nev
   excludes closed issues
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues normalize
 discovered_date: 2026-08-05
 captured_at: '2026-08-05T02:14:50Z'
+completed_at: '2026-08-06T06:32:48Z'
 labels:
 - issues
 - normalize
@@ -79,10 +80,32 @@ collision + no closed-issue filtering) is fixable without discarding the check
 entirely. Improving precision here makes `/ll:normalize-issues` cheaper to run
 regularly instead of something to skip past.
 
+## Impact
+
+Reduces `type_mismatch` output from 250 findings to a small, actionable set on
+this repo's backlog (68 at confidence >= 0.85 today, and only ~13 of those with
+any plausible signal). Makes `/ll:normalize-issues` Step 2 review cheap enough
+to run regularly instead of being skipped due to noise volume. No behavior
+change for other `ll-issues normalize` checks (`legacy_dir`, duplicate-ID
+detection, etc.) — scoped entirely to the `type_mismatch` check.
+
+## Scope Boundaries
+
+In scope: the EPIC candidate-type keyword signal in `_TYPE_SIGNALS`/
+`_KEYWORD_RES`, and adding a status-based exclusion/deprioritization to the
+`type_mismatch` reporting loop in `scan_normalize()`. Out of scope: the FEAT
+candidate's action-verb over-weighting (~26/68 findings) and the BUG candidate
+signal — this issue's Expected Behavior and measured findings target the EPIC
+keyword and closed-status noise specifically, not a full rescoring of all four
+candidate types. Also out of scope: whole-file scanning (already rejected per
+the existing `_CLASSIFY_SECTIONS` comment for its false-positive rate) and
+removing the `type_mismatch` check entirely.
+
 ## Proposed Solution
 
-TBD - requires investigation into the exact scoring implementation (likely
-`scripts/little_loops/issue_normalize.py` or similar — needs codebase location) to:
+Requires modifying the scoring implementation at
+`scripts/little_loops/cli/issues/normalize.py` (confirmed location; see
+Integration Map below) to:
 - add a status filter (`done`/`cancelled`/`deferred` excluded from default
   `type_mismatch` reporting, or surfaced under a separate low-priority bucket)
 - replace/augment the EPIC candidate's raw "epic" keyword count with phrase-level
@@ -231,6 +254,8 @@ _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-06T06:32:48 - `59fbc129-c7ae-42ef-bdbc-ef35194a2aba.jsonl`
+- `/ll:ready-issue` - 2026-08-06T06:20:30 - `2745a1f2-0017-4ee6-b08b-0ec3255ff6db.jsonl`
 - `/ll:confidence-check` - 2026-08-06T04:24:27 - `5a58a91a-17b2-403c-a45c-f7271276a547.jsonl`
 - `/ll:wire-issue` - 2026-08-06T04:21:03 - `90ac5a00-ccc9-4464-ba1a-550d9d9d19e7.jsonl`
 - `/ll:decide-issue` - 2026-08-06T04:15:41 - `2ccb54ed-3c09-40c8-a5de-ca5f2244d26f.jsonl`
