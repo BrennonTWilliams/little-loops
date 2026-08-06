@@ -5,6 +5,198 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.154.0] - 2026-08-05
+
+A large consolidation release: a new **test tamper guard** subsystem, the
+**kimi-code** host adapter, a long-lived **`ll-queue` drainer**, and a broad
+push to move deterministic mechanics out of skill markdown and into `ll-issues`
+/ `ll-loop` CLI subcommands. 133 issues closed (12 features, 47 bug fixes, 74
+enhancements) across 170 commits. No breaking changes.
+
+### Added
+
+**Test tamper guard.** A new subsystem that snapshots test files before an
+agent runs, compares them after, and reverts weakening edits — closing the hole
+where an autonomous run could "pass" by deleting or neutering the tests meant
+to hold it accountable. Core snapshot/compare/revert (ENH-2933), an FSM
+adapter exposing a state-level `tamper_guard` key (ENH-2934), and a Python
+adapter covering `ll-auto`/`ll-parallel`/`ll-sprint` (ENH-2935). Strength
+scoring moved off a per-file aggregate count that both false-positived on
+legitimate refactors and left a same-count evasion hole (ENH-2964), and a
+deterministic pre-patch test-failure check now runs in verification loops
+(ENH-2853, ENH-2854).
+
+**kimi-code host adapter.** Full `KimiRunner` implementation —
+`build_streaming`, `build_blocking_json`, `build_detached`,
+`build_version_check` (FEAT-2914, ENH-2912) — with config probing for
+`.kimi-code/ll-config.json` (ENH-2913), an `ll-adapt` emitter atomic with the
+`HOST_COMPATIBILITY` adapter row (FEAT-2916), `kimi.plugin.json` packaging for
+the kimi-native install path (FEAT-2917), a `hooks/adapters/kimi` hook adapter
+with `ll-init` wiring and a shared `write_agents_md()` (FEAT-2974), conformance
+and host-list plumbing (ENH-2918), and onboarding docs (ENH-2919).
+
+**`ll-queue` maturity.** `ll-queue run --watch` is a long-lived drainer, so
+queued work starts without a manual run (FEAT-2930), and `RunnerType.LOOP`
+entries now dispatch via `PersistentExecutor` (FEAT-2906).
+
+**Issue-claim verification.** Symbol and CLI-flag claims in issue bodies are
+verified against the codebase, extending the prose-claim gap taxonomy
+(FEAT-3048). Stale file-path references are detected (ENH-2983), with
+ambiguous multi-match references reported distinctly from true drift
+(ENH-2999).
+
+**New CLI surface.** `ll-help` generates the command/skill catalog from
+frontmatter instead of a hardcoded `help.md` (FEAT-2940); `ll-loop
+scaffold-eval` / `scaffold-verify` template eval and verification loops
+(FEAT-2948); `ll-loop rename` / `cleanup` take over loop lifecycle mechanics
+(ENH-2943); `ll-loop audit <run> --json` feeds VERDICT_JSON adoption in
+judgment skills (ENH-2949). A host-agnostic advisor landed (FEAT-3037), and
+rework rate is now the quality-adjustment term on batch throughput (FEAT-2867).
+
+**Mechanics out of markdown.** New `ll-issues` subcommands replacing prose
+algorithms in skills: `normalize` (ENH-2944), `size` (ENH-2945), `set-flags
+--from-notes` plus a `format-check` extension (ENH-2946), `find-similar` with
+Jaccard consolidated into `text_utils` (ENH-2941), `prioritize --apply`
+(ENH-2953), and `locate-options --json` exposing option spans so
+`decide-issue` stops re-implementing them (ENH-2950). Backed by
+`ll-verify-skill-prose`, a lint gate that fails on algorithm-as-prose in skill
+and command markdown (ENH-2951), and `ll-verify-cli-docs`, which verifies
+CLAUDE.md's documented CLI surface resolves to real commands (ENH-2970).
+
+**Observability.** `ll-doctor --trim` context-residency verdicts plus a
+`refine-issue` constraint register (ENH-2975), dequeue-time commit SHA recorded
+at orchestrator dequeue and worktree creation (ENH-2866), and analytics
+`capture.skills` / `cli_commands` gates wired onto the skill and CLI event
+writers (ENH-2932).
+
+### Fixed
+
+**Gates that silently passed.** `code-run-gate`'s `aggregate` never saw the
+test result, so a failing suite yielded `GATE_PASS` (BUG-2902), and its
+`run_test` evaluator errored on every invocation (BUG-2894). `autodev` reported
+`Passed` at threshold-pass time without ever verifying closure (BUG-2908),
+reported a Phase 1 verdict failure as a phantom implementation (ENH-2989),
+leaked the inflight sentinel while `finalize_done` double-counted the same
+issue as unverified (BUG-2981), and routed `design_gate_failed` to
+`reconcile-issue`, whose contract excludes the Program Design section
+(BUG-3002). A scoped completion commit could close an issue while leaving its
+implementation uncommitted (BUG-2963).
+
+**Timeouts and budgets.** FSM prompt states inherited an undeclared 3600s cap
+that overrode loop-level budgets (BUG-3032); `timeout_per_issue` of 0 or
+negative instant-killed all `ll-parallel` workers (BUG-3034); a per-issue
+timeout aborted the whole `ll-auto` run and deleted its resume state
+(BUG-2976); `ll-queue` LOOP entries were killed by a 120s subprocess timeout
+that discarded the FSM's own budget and `summary.json` (BUG-2928); the
+generator-evaluator screenshot state had no timeout bound, hanging up to an
+hour (BUG-2904, ENH-2903).
+
+**Concurrency and state.** `ll-queue run`'s claim was a TOCTOU race letting
+concurrent drainers double-execute the same entry (BUG-2929); `worker_pool`
+dropped `baseline_sha` from `verify_work_was_done`, making the parallel-path
+tamper guard's reference point non-deterministic (BUG-2959).
+
+**Dependency graph.** A `deferred` blocker was silently treated as satisfied
+(BUG-2897); dependency-entry shape was unvalidated, so a bare-numeric ID
+dropped the edge entirely (BUG-3059); `ll-issues link` warned "unknown issue"
+for edges pointing at done/cancelled issues (BUG-2915); `resolve_epic` passed
+an active-only ID set as `all_known_ids`, warning on every reference to a done
+issue (BUG-3024); `ll-sprint` printed "depends_on unknown issue" for a
+dependency that existed and was done (BUG-3027). Unguarded
+`gather_all_issue_ids()` call sites that crashed CLI commands were audited and
+fixed (BUG-3029, BUG-3028), and the prose dependency extractor gained blocker
+synonyms (ENH-3030) while no longer charging another issue's dependency phrase
+to the host issue (BUG-3057).
+
+**Issue-file parsing.** `set-status` wrote to the wrong frontmatter block on
+double-frontmatter files (BUG-2955); `_section_body` returned the first
+matching heading rather than the most recent on issues with stacked repeat
+sections (BUG-2985); repeated Codebase Research Findings blocks now fold into
+one per section (ENH-2993); cross-type issue-number reuse silently dropped
+`issue_events` completion rows (BUG-3006).
+
+**Tamper-guard false positives.** Any `pyproject.toml` edit was vetoed in
+projects using `[tool.pytest.ini_options]` (BUG-2957); conditional
+`pytest.skip()` guards counted as test weakening (BUG-3054); the fail policy
+was inert on convergent routing and clobbered its own evidence (BUG-2962).
+
+**`refine` / `reconcile` / `confidence` chain.** `refine-issue` never populated
+`## Program Design` despite it being the prescribed gate remedy (BUG-3001) and
+cited a nonexistent `TestGap` with the wrong resolution primitive (BUG-2980);
+`research-triage` marked the analyzer axis covered while the Program Design
+gate was still failing, so refine skipped the enrichment (BUG-3003); `ll-auto`
+never checked the confidence gate, burning a full `ready-issue` pass on issues
+`manage-issue` would immediately halt (BUG-3004) and had no hard override for
+an unresolved `blocked_by` dependency (BUG-3051); `stale_symbol_ref` fired on
+forward-looking design claims, affecting 46% of active issues (BUG-3063).
+
+**Config and paths.** `BRConfig.to_dict()` omitted 11 live config sections,
+breaking `ll-config get` and `{{config.*}}` expansion (BUG-3012);
+`cache`/`deferred_tools` config was parsed but never threaded into
+`host_runner` dispatch (BUG-3009); `find_project_root` now prefers a `.git`
+ancestor over the nearest `.ll` directory (ENH-2924) and `ll-*` CLIs no longer
+implicitly create `.ll/` outside a resolved project root (ENH-2927);
+`ll-config get` can distinguish an unknown path from an unset one (ENH-3021).
+
+**`ll-init` and reporting.** Top-level exception handling added so errors no
+longer surface as raw tracebacks (BUG-3010), a git-repo check before
+writing `.gitignore` (ENH-3011), and a full audit remediation across defects,
+wiring, UX, and the output layer (ENH-3068). `ll-auto --only` no longer exits 0
+when no requested issue was ever eligible (BUG-2907), its run summary no longer
+reports attempted-and-failed issues as "filtered out" (BUG-3005), Phase 2 now
+receives the headless stay-in-turn contract with recovery for an unfinalized
+turn (BUG-3058), and work-verification diagnostics no longer print a full count
+beside a silently truncated list (BUG-3055).
+
+### Changed
+
+- `prompt_optimization` is now **opt-in** (default off) (ENH-3007).
+- `reconcile-issue` routes on contradiction, not only on readiness plateau
+  (ENH-2992), with a contradiction-marking channel ported into `wire` and
+  refine's carve-out firing on intra-pass contradiction (ENH-3049).
+- Program Design gains a Decision Rules slot; `wire` gains gate-consumer and
+  conditional-branch categories (ENH-3050). Replacement parity and a
+  negative-claim doctrine now apply to `/ll:wire-issue` and `/ll:refine-issue`
+  (ENH-3045), and `confidence-check` consumes unverified-claim and
+  missing-parity gaps as Criterion 4 deductions (ENH-3047).
+- `refine-issue` no longer spawns three research subagents unconditionally
+  (ENH-2971) and marks superseded directive lines in place (ENH-2995).
+- `refine-to-ready-issue` gained a claim-verification gate, so corrective paths
+  are no longer gated solely behind an LLM self-grade (ENH-3031), and its
+  `breakdown_issue` state gained a resolvable pruning profile (ENH-3069).
+- `/ll:commit` is pinned to haiku via `model:` frontmatter (ENH-3052).
+- Occasional-knowledge sections migrated out of `.claude/CLAUDE.md` into skills
+  (ENH-2972); the duplicated 15-line flag-parse block was consolidated across
+  17 skill/command files (ENH-2952); session-log JSONL-hunting prose was
+  replaced by `ll-issues append-log` (ENH-2939).
+- `ll-logs` consolidated its duplicated target/window flags and added
+  `--since`/`--until` plus count-based `--sort` (ENH-2925).
+- New `ll-verify-private-refs` gate with added-lines-only judging and a
+  machine-local scratch exemption; `fsm.topology` emits static loop topology
+  JSON; an `rl-rlhf` example loop template was added.
+
+### Other
+
+- Doc-scope and link-checker fixes, classifying non-authoritative HTTP statuses
+  as non-fatal (ENH-2920); `HOST_COMPATIBILITY.md` kimi-code column
+  (ENH-2919); CLI/GETTING_STARTED host lists now include kimi-code and flag
+  unimplemented adapters (ENH-3016); `ll-init` wizard documented as 7 screens
+  (ENH-3017); stale `cli.py` line numbers corrected in `skills/init/SKILL.md`
+  (ENH-3018); `config-schema.json` dead per-issue-frontmatter keys removed
+  (ENH-3013) with `skill_budget.threshold_tokens` (ENH-3014) and the top-level
+  `cache` block (ENH-3015) documented.
+- `EvaluateConfig.from_dict` rejects/warns on unknown keys (ENH-2896);
+  closure reason codes are no longer a hardcoded set, with `invalid_ref`
+  accepted (ENH-2969); `general-task.yaml` gained a `failure: true` terminal so
+  ENH-2814 exit-code plumbing is live (ENH-2892); FSM sub-loop states can
+  distinguish timeout from normal `on_no` and expose outcome context
+  (ENH-3019); `format-check` on a single issue ID no longer emits deprecation
+  warnings for the whole corpus (ENH-2961); `edit_batch_nudge` uses
+  `PostToolUse` `additionalContext` instead of surfacing as a blocking error
+  (ENH-2994); the opencode adapter's never-running typecheck was fixed and
+  gated (BUG-2922); the effort-level display in `ll-loop run`'s model header
+  was compacted (ENH-2987).
+
 ## [1.153.0] - 2026-07-29
 
 ### Added
@@ -549,6 +741,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ENH-2655: Standardize a .ll/ artifact directory for /ll:spike plan docs
 - refactor(runners): extract shared RunnerType/ActionSpec dispatch abstraction (c835911a)
 
+[1.154.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.153.0...v1.154.0
 [1.153.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.152.0...v1.153.0
 [1.152.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.151.1...v1.152.0
 [1.151.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.151.0...v1.151.1
