@@ -2546,7 +2546,7 @@ resolver and take priority under `--provider auto`.
 | `importers-of <module>` | Who imports this module/file (heuristic on `fallback`, exact on `codegraph`) |
 | `defines <path>` | Symbols defined in a file (exact) |
 | `references <symbol>` | All reference sites — defs + uses (heuristic on `fallback`, exact on `codegraph`) |
-| `impact-of <paths...> [--depth N]` | Reverse transitive closure of files impacted by changes to *paths* (default depth: `2`; `fallback` only — `codegraph` has no edge kind mapping to this verb) |
+| `impact-of <paths...> [--depth N]` | Reverse transitive closure of files impacted by changes to *paths* (default depth: `2`; heuristic on `fallback` (AST-parsed import graph), exact on `codegraph` (indexed 'imports' edges walked to depth)) |
 
 Every result carries a `confidence` (`exact` or `heuristic`) and `provider` field. Exit codes:
 `0` = hits, `1` = no hits, `2` = provider error.

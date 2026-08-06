@@ -18,9 +18,10 @@ Schema discovered against this repo's live index (2026-06-01 build,
 
 Verb mapping: ``callers_of``/``callees_of`` <- edges.kind='calls',
 ``importers_of`` <- edges.kind='imports', ``references`` <- edges.kind in
-('calls', 'references'), ``defines`` <- nodes filtered by file_path. No edge
-kind maps to ``impact_of``; it stays out of :meth:`capabilities` and raises
-:class:`~little_loops.codequery.core.Unsupported`.
+('calls', 'references'), ``defines`` <- nodes filtered by file_path,
+``impact_of`` <- ``importers_of`` walked transitively to ``depth`` (same
+'imports' relation, not a call/reference traversal -- see ``impact_of``'s
+docstring for why).
 """
 
 from __future__ import annotations
@@ -32,7 +33,7 @@ import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
-from little_loops.codequery.core import CodeRef, Freshness, ProviderStatus, Unsupported
+from little_loops.codequery.core import CodeRef, Freshness, ProviderStatus
 from little_loops.git_operations import porcelain_paths
 
 _NAME = "codegraph"
@@ -204,7 +205,14 @@ class CodegraphProvider:
     name = _NAME
 
     def capabilities(self) -> set[str]:
-        return {"callers_of", "callees_of", "importers_of", "defines", "references"}
+        return {
+            "callers_of",
+            "callees_of",
+            "importers_of",
+            "defines",
+            "references",
+            "impact_of",
+        }
 
     def _config(self):
         from little_loops.config import BRConfig
@@ -489,7 +497,34 @@ class CodegraphProvider:
             conn.close()
 
     def impact_of(self, paths: list[str], depth: int = 2) -> list[CodeRef]:
-        raise Unsupported(
-            "codegraph provider has no edge kind mapping to impact_of; "
-            "use the fallback provider for this query"
-        )
+        """Reverse transitive closure of files that import *paths*, to *depth* hops.
+
+        Deliberately walks the same 'imports' edge :meth:`importers_of` uses,
+        not a call/reference traversal: ``impact_of`` is a file-granularity
+        question ("what depends on this file") that must catch non-call
+        dependents (tests, config, docs referencing the path/module), which a
+        symbol-scoped call-graph walk would miss.
+        """
+        visited = set(paths)
+        frontier = set(paths)
+        impacted: dict[str, CodeRef] = {}
+        for _ in range(max(depth, 1)):
+            next_frontier: set[str] = set()
+            for path in frontier:
+                for ref in self.importers_of(path):
+                    if ref.path in visited:
+                        continue
+                    visited.add(ref.path)
+                    impacted[ref.path] = CodeRef(
+                        path=ref.path,
+                        line=ref.line,
+                        symbol=ref.symbol,
+                        kind="impact",
+                        confidence="exact",
+                        provider=self.name,
+                    )
+                    next_frontier.add(ref.path)
+            if not next_frontier:
+                break
+            frontier = next_frontier
+        return sorted(impacted.values(), key=lambda r: (r.path, r.line))

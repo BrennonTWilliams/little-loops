@@ -1,6 +1,7 @@
 ---
 id: FEAT-3078
-title: Thread a disable_background_tasks config flag through host_runner and all call sites
+title: Thread a disable_background_tasks config flag through host_runner and all call
+  sites
 type: FEAT
 priority: P3
 status: open
@@ -12,6 +13,13 @@ labels:
 - automation
 - headless
 - host-runner
+verify_verdict: VALID
+confidence_score: 90
+outcome_confidence: 70
+score_complexity: 9
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # FEAT-3078: Thread a disable_background_tasks config flag through host_runner and all call sites
@@ -33,9 +41,31 @@ automation instead of instructing against them. Resolves Acceptance Criteria
 
 ## Dependency
 
-Depends on FEAT-3077's decision on the carve-out policy — that decision sets
-this config flag's default value (`true` if both known carve-outs are
-retired, `false` if either is preserved).
+FEAT-3077's carve-out decision is **recorded and resolved** (its
+`### Decision Rationale`, Option C). The value this issue consumes:
+
+> **`orchestration.disable_background_tasks` defaults to `true`.**
+
+Rationale in one line: the `manage-issue` smoke-test carve-out is retired at
+the tool level and restated in shell terms — shell-level `&` backgrounding is
+outside the flag's reach, empirically verified in
+`postmortems/feat-3077-verify/` — so defaulting on costs no capability; and
+the `go-no-go` carve-out is not reachable under the `automation_profile` gate
+today and degrades to sequential-but-correct if it ever is.
+
+Consequences for this issue, beyond the default value itself:
+
+- The JSON-Schema `description` needs **default-on** phrasing (state what
+  changes when enabled, and that `false` restores today's behavior) — not the
+  `epic_worktree.enabled` / `rubric_gated_compaction.enabled` "when false
+  (default), behavior is preserved unchanged" template, which assumes
+  default-off.
+- This is a **behavior change on upgrade** for any consuming project with
+  `project.run_cmd` configured, since their smoke-test step loses tool-level
+  backgrounding. AC6 covers the release note. (Note: this repo's own
+  `run_cmd` is `null`, so the local test suite will not surface it.)
+- FEAT-3077 must land first, or `manage-issue`'s skill prose will still
+  instruct agents toward a capability the default now removes.
 
 ## Decision Rationale (inherited from parent)
 
@@ -64,6 +94,11 @@ every caller down to `build_streaming()`.
 - `scripts/little_loops/config/core.py:784-801` — `BRConfig`'s orchestration serializer block hand-lists fields (not a generic dataclass dump); the new field must be added explicitly or it silently disappears from serialized config output (e.g. `ll-config get`).
 - `scripts/little_loops/host_runner.py:196,216` (`HostRunner` Protocol) and its 6 sibling `build_streaming()` signatures — `CodexRunner:590`, `OpenCodeRunner:799` (stub), `PiRunner:873` (stub), `GeminiRunner:984`, `OmpRunner:1181`, `KimiRunner:1369` — all need the new parameter for Protocol conformance, even where inert.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/runners.py:39-53` — the `ActionRunner` Protocol's `run()` signature itself declares `automation_profile: str | None = None`; the issue previously only cited the `:191` forwarding call, not this source signature that `:191` reads from. Needs `disable_background_tasks: bool = False` added here for Protocol conformance.
+- `scripts/little_loops/fsm/runners.py:98-135` (`DefaultActionRunner.run()`) — concrete implementation whose explicit signature mirrors the Protocol; needs the same new parameter before it can forward it at `:191`.
+- `scripts/little_loops/fsm/runners.py:352-409` (`SimulationActionRunner.run()`) — needs the parameter added to its own signature (mirroring `automation_profile`), not just a survey note as the existing AC3 entry implies; confirmed its `del (...)` no-op list at `:404` already omits `automation_profile`, so add both `automation_profile` and `disable_background_tasks` to that list together.
+
 ### Dependent Files (Callers/Importers) — threading `disable_background_tasks` through
 - `scripts/little_loops/subprocess_utils.py:320` `run_claude_command()` — the chokepoint where `invocation.env` reaches `subprocess.Popen`.
 - `scripts/little_loops/issue_manager.py:1213,1401` — hardcode `automation_profile="ll-auto"`; the new flag inherits the same hardcoding pattern at these two call sites.
@@ -71,6 +106,10 @@ every caller down to `build_streaming()`.
 - `scripts/little_loops/fsm/executor.py:1902` — sets `extra_kwargs["automation_profile"]` from `PruningProfileConfig`; a second, config-driven origin for `automation_profile` that needs the same wiring.
 - `scripts/little_loops/fsm/runners.py:191` and `scripts/little_loops/runner_spec.py:145,176,182` — forward `automation_profile` straight into `resolve_host().build_streaming(...)`.
 - `scripts/little_loops/host_runner.py:644,1036,1223,1418` — sibling `if automation_profile is not None:` env blocks in `CodexRunner`, `GeminiRunner`, `OmpRunner`, `KimiRunner`; survey and either add a no-op parity entry or document as deliberately excluded (`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` has no meaning for non-Claude binaries). `OpenCodeRunner`/`PiRunner` are stub runners with no env-building logic.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/conftest.py:725-742` (`_CMD_RUN_ENV_VARS`, `_restore_cmd_run_env_vars`) — the autouse fixture scrubs `LL_AUTOMATION`/`LL_AUTOMATION_PROFILE` specifically because they leak into descendant `pytest` processes when a test run is itself launched from inside an `ll-auto`/FSM-loop session (documented at `:713-724`, historically broke 48 tests). `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` is injected in the identical `if automation_profile is not None:` block per this issue's own gate, so it is subject to the same leak vector and must be added to `_CMD_RUN_ENV_VARS`.
+- `scripts/little_loops/fsm/executor.py:1886-1910` (`_execute_action` `extra_kwargs` assembly) — correction to the existing Call Path claim: `extra_kwargs["automation_profile"]` at `:1902` is sourced from `PruningProfileConfig` (a per-loop/per-state declarative field via `state.pruning_profile or self.fsm.pruning_profile`), not from `OrchestrationConfig`. `disable_background_tasks` lives on `OrchestrationConfig` (a global config object), a structurally different source with no existing per-call read in this block — the memoized `FSMExecutor._get_br_config()` (`:2063-2073`, already used elsewhere for `cache`/`deferred_tools`/`learning_tests` dispatch) is the accessor to consult here, not a copy of the `PruningProfileConfig` pattern.
 
 ### Conventions in Force
 - Config sections are `@dataclass`es with a `from_dict(cls, data)` classmethod using `.get(key, default)` (lenient), mirrored by a `config-schema.json` object entry that is `additionalProperties: false` with a documented `default` — evidence: `scripts/little_loops/config/orchestration.py:63-103`, `scripts/little_loops/config-schema.json:1554-1631`.
@@ -97,11 +136,49 @@ every caller down to `build_streaming()`.
 - `scripts/tests/test_config_schema.py:787-823` — add a structural schema test mirroring `test_orchestration_host_cli_in_schema`.
 - `scripts/tests/test_issue_manager.py:1390-1435` (`test_forwards_automation_profile_to_subprocess`/`test_automation_profile_defaults_to_none`) — template pair to copy for the `issue_manager.py:139-218` local wrapper's `disable_background_tasks` forwarding.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_executor.py:36-70` (`MockActionRunner.run()`) — hand-written mock with an explicit (non-`**kwargs`) parameter list including `automation_profile`/`idle_timeout`; will raise `TypeError` once the FSM path passes `disable_background_tasks` through `extra_kwargs`, unless the mock's signature and `del (...)` line are updated. Also imported into `test_feat3033_idle_timeout.py:28` — update propagates there too.
+- `scripts/tests/test_fsm_executor.py` (additional inline fake `ActionRunner` implementations around `:10963-10980`, `:11201-11220`) — same explicit-signature break risk as `MockActionRunner`; confirm and update alongside it.
+- `scripts/tests/test_fsm_persistence.py:774` and `scripts/tests/test_usage_journal.py:25` — inline `run()` fakes mirroring the Protocol's explicit parameter list; same break risk.
+- `scripts/tests/test_feat3033_idle_timeout.py:390-467` (`TestIdleTimeoutPrecedence`, esp. `test_idle_disabled_omits_kwarg_for_old_runners`) — direct template for a `disable_background_tasks` kwarg-gating regression test (asserts a runner predating a new kwarg still runs when that kwarg is omitted/default).
+- `scripts/tests/test_feat3033_idle_timeout.py:90-105` (`test_idle_timeout_forwarded_to_run_claude_command`) — template for asserting `disable_background_tasks` is forwarded from the FSM path to `run_claude_command` via `patch(...)` + captured kwargs.
+- `scripts/tests/test_fsm_runners.py:101-171` (`TestSimulationActionRunnerScenarios`) and `scripts/tests/test_fsm_executor.py:3850+` (`TestSimulationActionRunner`) — neither currently passes or asserts `automation_profile`/`idle_timeout` no-op behavior; genuine gap, add a case asserting `SimulationActionRunner.run(..., disable_background_tasks=True)` still returns the scenario-driven `ActionResult` unchanged.
+- `scripts/tests/conformance/test_host_conformance.py:70-89` (`test_golden_path_invocation`, `isolated_env` fixture) — the `isolated_env` fixture clears `LL_HOST_CLI`/`LL_HOOK_HOST` but not `LL_AUTOMATION`-style vars; consider whether `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` needs a golden-path case per host for conformance coverage.
+
 ### Documentation
 - `docs/reference/API.md` (~5769-5789 `ActionRunner` Protocol block, ~9173-9198 `HostRunner` Protocol block) — hand-maintained signature mirrors; both need the new parameter added, matching the pattern used when `idle_timeout` (FEAT-3033) was added.
 - `docs/guides/LOOPS_GUIDE.md:604-636` — line 632 states "This env-signal path is the only part that is implemented," describing the `automation_profile` gate; needs updating now that a second unconditional env var shares the gate.
 - `docs/ARCHITECTURE.md` (~line 777, `PruningProfileConfig` row) — needs a note or row for `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`.
 - `docs/reference/CONFIGURATION.md:1199-1269` (`orchestration` table, `:1203-1206`) — needs a new row for the config flag, following the `host_cli`/`request_path` pattern.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/schema.py:439-466` (`PruningProfileConfig` docstring, esp. the `.. warning::` block at `:455-466`) — a second, source-level (not `docs/*.md`) description of the env-injection mechanism; its "**Only the env-signal path is implemented**" claim becomes stale once a second, unconditional env var (`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`, sourced from `OrchestrationConfig` rather than `PruningProfileConfig`) shares the same gate. Needs a note distinguishing the two env vars' distinct config origins.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
+
+### Open Questions Raised During Decision Review (2026-08-06)
+
+Neither is resolved; both should be settled before or during implementation.
+
+1. **Env override.** `orchestration.host_cli` has `LL_HOST_CLI`. Should this
+   flag have `LL_DISABLE_BACKGROUND_TASKS`? Debugging a loop where the agent
+   suddenly cannot background anything is far easier with a one-shot env
+   override than a config edit — and the default is now `true`, so the
+   surprising case is the common case. Either add it or record that it is
+   deliberately config-only.
+2. **Third parameter through the same Protocol.** `automation_profile`, then
+   `idle_timeout` (FEAT-3033), now `disable_background_tasks` — each costs
+   seven runner signatures, the `ActionRunner` Protocol plus three
+   implementations, and roughly eight test files of hand-written
+   explicit-signature mocks (enumerated in the wiring passes above). That is
+   the majority of this issue's change surface, and the next flag pays it
+   again. Not in scope here, but worth filing an ENH to collapse these into
+   an `AutomationContext` dataclass rather than leaving the cost unspoken.
+
+### Pattern B Precedent Now Located
+The Decision Rationale's rejected Option B ("a one-time `os.environ` mutation at config-load time") is not hypothetical — a live example of that exact pattern exists at `apply_host_cli_from_config()` (`scripts/little_loops/host_runner.py:1612`), which reads `config.orchestration.host_cli` and writes `LL_HOST_CLI` into `os.environ` once, before `resolve_host()` runs, with no per-call scoping. This is useful evidence for why Option A (per-call parameter) was chosen over mirroring this existing precedent: `apply_host_cli_from_config()`'s host_cli use case doesn't need per-invocation scoping (host selection is stable for a whole process), whereas `disable_background_tasks` does (per AC2), so the two config-threading patterns coexisting in this codebase are each correct for their own field, not in tension.
 
 ## Acceptance Criteria
 
@@ -112,9 +189,52 @@ every caller down to `build_streaming()`.
 3. All env-injection blocks in `host_runner.py` are surveyed and either updated
    for parity or documented as deliberately excluded.
 4. A test asserts presence and absence of the variable across both branches.
-5. The config flag's default value matches FEAT-3077's carve-out decision, and
+5. `orchestration.disable_background_tasks` defaults to `true` (FEAT-3077's
+   recorded decision), with a default-on schema `description`, and
    `docs/reference/CONFIGURATION.md`/`docs/ARCHITECTURE.md`/`docs/reference/API.md`/`docs/guides/LOOPS_GUIDE.md`
    are updated.
+6. Because the default is on, the change is user-visible on upgrade for
+   projects with `project.run_cmd` configured: a CHANGELOG entry records the
+   behavior change and names `disable_background_tasks: false` as the opt-out.
+   `docs/reference/HOST_COMPATIBILITY.md` records that the var is
+   Claude-Code-only and inert for the other five runners (the other half of
+   AC3's "documented as deliberately excluded").
+
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
+
+### Threading Gap Not Previously Called Out
+Three `run_claude_command()` call sites in `issue_manager.py` — `:826` (`_run_ready` inside Phase 1), `:893` (retry_result), `:1089` (decide_result) — currently omit `automation_profile` entirely (the parameter defaults to `None` at those call sites). Because the proposed gate is `disable_background_tasks and automation_profile is not None`, threading the new flag alone will NOT activate it at these three sites — `automation_profile` would need to be added there first, which is out of this issue's stated scope (mirroring the *existing* threading pattern, not extending it). Document these three as sites where the new flag structurally cannot take effect yet, rather than silently expecting parity with the other call sites.
+
+### Additional No-Op Site for AC3 Survey
+`SimulationActionRunner.run()` (`fsm/runners.py:382`) declares `automation_profile` in its signature but ignores it by design (docstring: "Ignored in simulation"). Not previously listed among the sites AC3 requires surveying; add it to the parity survey as a fourth deliberately-excluded site (alongside `OpenCodeRunner`/`PiRunner` stubs), since `ActionRunner` implementations are exactly the surface AC3's "all env-injection blocks... surveyed" language covers.
+
+## Program Design
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
+
+### Types
+N/A — no new data shape is introduced; `disable_background_tasks` is a single boolean flag threaded as a parameter, not a new record type.
+
+### Signatures
+- `ClaudeCodeRunner.build_streaming(self, *, prompt: str, working_dir: Path | None = None, resume: bool = False, agent: str | None = None, tools: list[str] | None = None, model: str | None = None, automation_profile: str | None = None, workspace_root: Path | None = None) -> HostInvocation` — `host_runner.py:297-308`, gains `disable_background_tasks: bool = False`.
+- `OrchestrationConfig` dataclass (`config/orchestration.py:62-73`) currently has only `host_cli`, `request_path`, `composer`, `cluster` — gains `disable_background_tasks: bool` field plus a `.get("disable_background_tasks", <default>)` entry in `from_dict()` (`:95-103`).
+- `run_claude_command(command: str, ..., automation_profile: str | None = None) -> subprocess.CompletedProcess[str]` — `subprocess_utils.py:320`, gains the matching parameter, forwarded to `resolve_host().build_streaming(...)` at `:400-408`.
+
+### Call Path
+Automation entry point: `process_issue_inplace` (`issue_manager.py:676+`) -> `run_with_continuation` (`issue_manager.py:252`, forwards `automation_profile="ll-auto"` hardcoded at `:1213`/`:1401`) -> local `run_claude_command` wrapper (`issue_manager.py:139`, forwards at `:217`) -> `subprocess_utils.run_claude_command` (`:320`) -> `resolve_host().build_streaming` (`host_runner.py:297`), env block `:351-353` (the single insertion point).
+
+FSM/loop path: `fsm/executor.py:_execute_action` (env-kwarg assembly `:1882-1910`, sets `extra_kwargs["automation_profile"]` from `PruningProfileConfig` at `:1902`) -> `ActionRunner.run` (Protocol `fsm/runners.py:39-53`, `DefaultActionRunner.run` `:98-112`) -> same `run_claude_command` (`:191`). `SimulationActionRunner` (`fsm/runners.py:382`) also declares the kwarg but ignores it by design ("Ignored in simulation") — a third no-op site for AC3's survey, not previously listed in Integration Map.
+
+Spec-driven path: `runner_spec.py:128` originates `automation_profile: str | None = spec.args.get("automation_profile")` (not previously cited as the origination point — only the forwarding lines `:145,176,182` were listed) -> forwarded at `:145,176` -> `resolve_host().build_streaming(...)` directly at `:182`.
+
+### Decision Rules
+See `### Decision Rules` under `## Proposed Solution` — already states the gate (`disable_background_tasks and automation_profile is not None`) and escape hatch; not duplicated here to avoid two sources of truth for the same rule.
 
 ## Impact
 
@@ -132,4 +252,11 @@ sprint.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-06T20:25:34 - `70105668-3d2b-42b6-9a2d-3321c9e583d9.jsonl`
+- `/ll:confidence-check` - 2026-08-06T20:05:56 - `6c2620d2-aa67-44ea-8afe-5abae5a9b234.jsonl`
+- `/ll:verify-issues` - 2026-08-06T20:02:48 - `de53cd9d-a131-4b06-884e-b0b516bc04e2.jsonl`
+- `/ll:refine-issue` - 2026-08-06T19:55:59 - `c721496d-ea12-4b5c-888c-b28707f79159.jsonl`
+- `/ll:verify-issues` - 2026-08-06T19:50:56 - `b7dcfe12-1edc-4611-8efa-f277da09acfa.jsonl`
+- `/ll:wire-issue` - 2026-08-06T19:46:10 - `9bd75941-bf4b-41b7-becc-e0c44aaa00f0.jsonl`
+- `/ll:refine-issue` - 2026-08-06T19:35:57 - `6539e50d-3e51-42e1-bbc0-e1420a206a6f.jsonl`
 - `/ll:issue-size-review` - 2026-08-06T05:11:26 - `c21cd57e-cb03-41ae-b233-cd39e3e2a29a.jsonl`

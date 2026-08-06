@@ -21,7 +21,6 @@ from little_loops.codequery.codegraph import CodegraphProvider
 from little_loops.codequery.core import (
     QUERY_KINDS,
     CodeQueryProvider,
-    Unsupported,
     resolve_provider,
 )
 from tests.helpers import copy_git_template
@@ -236,15 +235,10 @@ class TestSchemaGuard:
 
 
 class TestCapabilities:
-    def test_capabilities_excludes_impact_of(self) -> None:
+    def test_capabilities_includes_impact_of(self) -> None:
         provider = CodegraphProvider()
-        assert "impact_of" not in provider.capabilities()
+        assert "impact_of" in provider.capabilities()
         assert provider.capabilities() <= QUERY_KINDS
-
-    def test_impact_of_raises_unsupported(self) -> None:
-        provider = CodegraphProvider()
-        with pytest.raises(Unsupported):
-            provider.impact_of(["pkg/a.py"])
 
     def test_satisfies_protocol(self) -> None:
         assert isinstance(CodegraphProvider(), CodeQueryProvider)
@@ -651,6 +645,54 @@ class TestQueries:
     def test_unknown_symbol_returns_empty(self, repo: Path) -> None:
         provider = CodegraphProvider()
         assert provider.callers_of("does_not_exist") == []
+
+    def test_impact_of_one_hop(self, repo: Path) -> None:
+        provider = CodegraphProvider()
+        refs = provider.impact_of(["pkg/b.py"], depth=1)
+        assert {ref.path for ref in refs} == {"pkg/a.py"}
+        assert refs[0].kind == "impact"
+        assert refs[0].confidence == "exact"
+
+    def test_impact_of_no_hits_returns_empty(self, repo: Path) -> None:
+        provider = CodegraphProvider()
+        assert provider.impact_of(["pkg/does_not_exist.py"], depth=2) == []
+
+
+class TestImpactOfTransitive:
+    """impact_of walks 'imports' edges transitively -- pkg/c.py -> pkg/a.py -> pkg/b.py."""
+
+    @pytest.fixture
+    def repo(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        repo = _init_repo(tmp_path / "repo")
+        _write_config(repo)
+        db_path = repo / ".codegraph" / "codegraph.db"
+        _build_index(db_path, indexed_at_ms=0)
+        conn = sqlite3.connect(db_path)
+        try:
+            _insert_node(conn, "file:pkg/c.py", "file", "c.py", "c.py", "pkg/c.py", 1)
+            _insert_node(conn, "import:pkg.a", "import", "a", "pkg.a", "pkg/c.py", 1)
+            _insert_edge(conn, "file:pkg/c.py", "import:pkg.a", "imports", line=1)
+            _insert_file(conn, "pkg/c.py", indexed_at_ms=0)
+            conn.commit()
+        finally:
+            conn.close()
+        monkeypatch.chdir(repo)
+        return repo
+
+    def test_depth_one_stops_at_direct_importers(self, repo: Path) -> None:
+        provider = CodegraphProvider()
+        refs = provider.impact_of(["pkg/b.py"], depth=1)
+        assert {ref.path for ref in refs} == {"pkg/a.py"}
+
+    def test_depth_two_walks_transitive_importers(self, repo: Path) -> None:
+        provider = CodegraphProvider()
+        refs = provider.impact_of(["pkg/b.py"], depth=2)
+        assert {ref.path for ref in refs} == {"pkg/a.py", "pkg/c.py"}
+
+    def test_input_paths_excluded_from_results(self, repo: Path) -> None:
+        provider = CodegraphProvider()
+        refs = provider.impact_of(["pkg/b.py", "pkg/a.py"], depth=2)
+        assert {ref.path for ref in refs} == {"pkg/c.py"}
 
 
 class TestResolverRegistration:

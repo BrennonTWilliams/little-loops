@@ -1,0 +1,12 @@
+{
+  "id": "5d75d742-a672-469f-ae2f-d25f7c891b96",
+  "type": "decision",
+  "timestamp": "2026-08-06T19:40:35Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses existing WARNING-rule scaffolding with zero runtime risk (ll-loop validate never gates ll-loop run); Option B carries evidenced breakage risk against unaudited repo-wide loops and a template-resolution divergence between run.py and run_background().",
+  "rule": "Option A \u2014 lint warning for scope-less loops via ll-loop validate",
+  "scope": "issue",
+  "alternatives_rejected": "Option B \u2014 narrow the implicit scope default to ${context.run_dir}",
+  "issue": "BUG-3088"
+}
