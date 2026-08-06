@@ -331,6 +331,34 @@ Described in words with no identifiers at all.
         still_specific = grade_program_design(with_deviations, lambda s: s == "check_format_gaps")
         assert still_specific.is_specific is True, "Deviations must not break a valid section"
 
+    def test_nonspecific_reason_names_only_accepted_headings(self) -> None:
+        """BUG-3071: every heading named in the message is one `_evidence_body` retains.
+
+        The old message hardcoded a combined `Types/Signatures` heading that
+        `DESIGN_SUBSECTIONS` does not contain, so following it produced the one
+        heading guaranteed to fail the gate. Assert the reason text is built from
+        `DESIGN_SUBSECTIONS` itself (title-cased) plus the documented preamble
+        exception, so the two can never drift apart again.
+        """
+        from little_loops.issues.program_design import DESIGN_SUBSECTIONS, grade_program_design
+
+        verdict = grade_program_design("Just prose, no signatures here.", lambda _s: True)
+
+        assert verdict.is_specific is False
+        [reason] = [r for r in verdict.reasons if r.startswith("no signature-shaped line")]
+
+        assert "Types/Signatures" not in reason
+        named_headings = {
+            token.strip().lower()
+            for token in reason.split(" found in ", 1)[1].split(",")
+            if token.strip().lower() not in ("or the section preamble", "the section preamble")
+        }
+        named_headings = {h.removeprefix("or ").strip() for h in named_headings}
+        assert named_headings == set(DESIGN_SUBSECTIONS), (
+            f"reason names headings outside DESIGN_SUBSECTIONS: "
+            f"{named_headings.symmetric_difference(set(DESIGN_SUBSECTIONS))}"
+        )
+
 
 class TestRealRepoResolution:
     """`git_grep_resolver` resolves real symbols in a real repo."""

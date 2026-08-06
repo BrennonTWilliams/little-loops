@@ -63,6 +63,21 @@ CUTOVER_STAMP_NAME = "program-design-cutover.json"
 SECTION_TITLE = "Program Design"
 DESIGN_SUBSECTIONS = ("types", "signatures", "call path")
 
+
+def _list_with_or(items: list[str]) -> str:
+    """Join *items* as a human-readable list: ``"a, b, or c"``."""
+    if len(items) == 1:
+        return items[0]
+    return ", ".join(items[:-1]) + f", or {items[-1]}"
+
+
+#: Human-readable locations named in `program_design_nonspecific` reasons — derived
+#: from `DESIGN_SUBSECTIONS` (plus the documented preamble exception) so the message
+#: can never name a heading `_evidence_body` does not actually retain (BUG-3071).
+_SIGNATURE_LOCATIONS = _list_with_or(
+    [s.title() for s in DESIGN_SUBSECTIONS] + ["the section preamble"]
+)
+
 # A type expression: dotted/bracketed/union tokens, no bare spaces.
 # Subscripts nest one level (`dict[str, list[int]]`) — a flat `[^\]]*` stops at the
 # inner bracket and would reject any realistic return type.
@@ -326,7 +341,7 @@ def grade_program_design(body: str, resolver: Resolver) -> DesignVerdict:
 
     reasons: list[str] = []
     if not signatures:
-        reasons.append("no signature-shaped line found in Types/Signatures")
+        reasons.append(f"no signature-shaped line found in {_SIGNATURE_LOCATIONS}")
     if not anchors:
         reasons.append("no call-path anchors named in Call Path")
     elif not resolved:

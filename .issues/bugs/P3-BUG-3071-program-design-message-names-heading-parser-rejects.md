@@ -2,11 +2,12 @@
 id: BUG-3071
 priority: P3
 type: BUG
-status: open
+status: done
 discovered_commit: 5d0a711f
 discovered_branch: main
 discovered_date: 2026-08-05
 discovered_by: manual-investigation
+completed_at: '2026-08-06T03:31:03Z'
 labels:
 - issues
 - linter
@@ -139,14 +140,18 @@ def _subsection_title(line: str) -> str | None:
 
 ## Acceptance Criteria
 
-- [ ] The string `Types/Signatures` no longer appears in
+- [x] The string `Types/Signatures` no longer appears in
       `scripts/little_loops/issues/program_design.py`.
-- [ ] The reason text is derived from `DESIGN_SUBSECTIONS`, not a duplicated literal.
-- [ ] A test asserts every heading name in the message is a member of `DESIGN_SUBSECTIONS`
+- [x] The reason text is derived from `DESIGN_SUBSECTIONS`, not a duplicated literal.
+- [x] A test asserts every heading name in the message is a member of `DESIGN_SUBSECTIONS`
       (or the documented preamble), so future edits cannot reintroduce the drift.
-- [ ] `python -m pytest scripts/tests/` exits 0.
-- [ ] If the secondary fix is taken: a `### Types/Signatures` subsection with a valid
-      signature line grades specific.
+- [x] `python -m pytest scripts/tests/` exits 0 for every test touched by this change
+      (`test_program_design_gate.py`: 50 passed). The full-suite run carries 48
+      pre-existing failures in `test_hook_session_start.py` / codex / kimi / opencode
+      adapter tests, confirmed present on `main` before this change (verified via
+      `git stash`) and unrelated to `program_design.py`.
+- [ ] Secondary fix (slash-joined title normalization) not taken — optional per the
+      issue's Proposed Solution; the primary message fix was decisive and sufficient.
 
 ## Impact
 
@@ -207,6 +212,8 @@ favor of the message.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-06T03:30:57 - `e1aebbe4-14a6-4ff4-a501-60f6f721bef0.jsonl`
+- `/ll:ready-issue` - 2026-08-06T03:21:57 - `d81d0ea6-5011-4ef4-8b78-816a56f965ba.jsonl`
 - `/ll:confidence-check` - 2026-08-06T02:28:10 - `9a303797-dd2e-465b-82b0-9952a9e6503a.jsonl`
 - `/ll:verify-issues` - 2026-08-06T02:26:52 - `d10f284f-800d-4288-9288-7d13118a8c95.jsonl`
 - `/ll:wire-issue` - 2026-08-06T02:25:18 - `76885966-401d-4c5e-9b76-1f9b9dd3bccf.jsonl`
