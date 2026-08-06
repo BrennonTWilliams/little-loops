@@ -4,11 +4,12 @@ title: ll-history-context prunes before argument validation, so malformed invoca
   exit 0 silently under automation
 type: BUG
 priority: P3
-status: open
+status: done
 testable: true
 discovered_by: run-forensics
 discovered_date: 2026-08-06
 captured_at: '2026-08-06T00:35:00Z'
+completed_at: '2026-08-06T17:43:49Z'
 relates_to:
 - ENH-2714
 - ENH-3081
@@ -197,12 +198,35 @@ _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
   `LL_AUTOMATION` cannot be cleared by an explicit opt-out).
 - BUG-3058 — prior work on the same env signal.
 
+## Resolution
+
+Moved the ENH-2714 automation-pruning block in `main_history_context()`
+(`scripts/little_loops/cli/history_context.py`) to sit after the
+mutual-exclusion/required-argument validation guards, as a pure statement
+reorder — no signature or config change. Well-formed calls under
+`LL_AUTOMATION=1` still prune to a silent exit 0; malformed calls (missing
+`ISSUE_ID`, or `--project` + `ISSUE_ID` together) now correctly hit
+`parser.error()` and exit 2 regardless of automation. Also fixed the
+pre-existing docstring inaccuracy ("1 on argument error" → "2 on argument
+error") and updated the gate's comment to state the ordering invariant.
+
+Added `test_missing_issue_id_exits_under_automation`,
+`test_project_and_issue_id_mutually_exclusive_under_automation`, and
+`test_well_formed_call_still_prunes_under_automation` to
+`test_history_context_cli.py`, and tightened existing malformed-arg
+assertions to check `exc_info.value.code == 2` per the codebase's dominant
+pattern. Confirmed the `hooks/session_start.py` gate needs no equivalent
+change (already noted in the issue's research findings — it has no
+argparse-style validation to protect).
+
 ## Status
 
-- [ ] Not started
+- [x] Complete
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-06T17:43:02 - `10a4dda7-3bc6-4a1f-94ff-501ee053ac5f.jsonl`
+- `/ll:ready-issue` - 2026-08-06T17:33:42 - `3863ed7e-9cf2-467b-9093-f54778f2842a.jsonl`
 - `/ll:confidence-check` - 2026-08-06T06:29:32 - `ef76915a-3ba4-4822-85d4-e84d2c3b1923.jsonl`
 - `/ll:verify-issues` - 2026-08-06T06:27:51 - `0e1edeb1-2d67-4cea-b6d6-80a4401a3eb9.jsonl`
 - `/ll:refine-issue` - 2026-08-06T06:20:58 - `23c3f239-5e25-4dcb-b1ff-eacc214882e7.jsonl`

@@ -19,8 +19,46 @@ class TestArgumentParsing:
         # issue_id is now nargs="?", so argparse no longer rejects bare invocation;
         # the mutual-exclusion guard in main_history_context() raises SystemExit instead.
         with patch("sys.argv", ["ll-history-context"]):
-            with pytest.raises(SystemExit):
+            with pytest.raises(SystemExit) as exc_info:
                 main_history_context()
+        assert exc_info.value.code == 2
+
+    def test_missing_issue_id_exits_under_automation(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # BUG-3080: the ENH-2714 automation-pruning gate must not suppress
+        # argument-validation errors, even under LL_AUTOMATION=1.
+        monkeypatch.setenv("LL_AUTOMATION", "1")
+        with patch("sys.argv", ["ll-history-context"]):
+            with pytest.raises(SystemExit) as exc_info:
+                main_history_context()
+        assert exc_info.value.code == 2
+
+    def test_project_and_issue_id_mutually_exclusive_under_automation(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # BUG-3080: same as above, for the other malformed-invocation form.
+        monkeypatch.setenv("LL_AUTOMATION", "1")
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        with patch("sys.argv", ["ll-history-context", "--project", "--db", str(db), "ENH-1708"]):
+            with pytest.raises(SystemExit) as exc_info:
+                main_history_context()
+        assert exc_info.value.code == 2
+
+    def test_well_formed_call_still_prunes_under_automation(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # BUG-3080: only malformed invocations should change behavior; a
+        # well-formed call must still prune to a silent exit 0.
+        monkeypatch.setenv("LL_AUTOMATION", "1")
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        with patch("sys.argv", ["ll-history-context", "--db", str(db), "ENH-9999"]):
+            result = main_history_context()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert out.strip() == ""
 
     def test_issue_id_accepted(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -203,8 +241,9 @@ class TestProjectMode:
         db = tmp_path / "history.db"
         ensure_db(db)
         with patch("sys.argv", ["ll-history-context", "--project", "--db", str(db), "ENH-1708"]):
-            with pytest.raises(SystemExit):
+            with pytest.raises(SystemExit) as exc_info:
                 main_history_context()
+        assert exc_info.value.code == 2
 
 
 class TestHistoryContextEffortFlag:

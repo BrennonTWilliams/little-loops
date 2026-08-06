@@ -179,7 +179,7 @@ def main_history_context() -> int:
     """Entry point for ll-history-context command.
 
     Returns:
-        0 on success (including empty output when no matches or DB absent), 1 on argument error.
+        0 on success (including empty output when no matches or DB absent), 2 on argument error.
     """
     with cli_event_context(DEFAULT_DB_PATH, "ll-history-context", sys.argv[1:]):
         configure_output()
@@ -188,11 +188,19 @@ def main_history_context() -> int:
         parser = _build_parser()
         args = parser.parse_args()
 
+        # Mutual-exclusion guard: require exactly one of issue_id or --project.
+        if args.project and args.issue_id:
+            parser.error("--project and ISSUE_ID are mutually exclusive")
+        if not args.project and not args.issue_id:
+            parser.error("one of ISSUE_ID or --project is required")
+
         # ENH-2714: automation-context static-prefix pruning. Under an
         # automation profile, exit 0 with no output — this CLI's whole
         # purpose is injecting historical-context prefix content that a
         # tightly-scoped automation invocation doesn't need. Mirrors the
-        # --for-skill guard immediately below.
+        # --for-skill guard below. Must run AFTER argument validation above:
+        # pruning suppresses a valid call's output, it must never suppress a
+        # malformed call's error (BUG-3080).
         import os as _os
 
         if _os.environ.get("LL_AUTOMATION"):
@@ -205,12 +213,6 @@ def main_history_context() -> int:
                 pass
             if _pruning_gate_enabled:
                 return 0
-
-        # Mutual-exclusion guard: require exactly one of issue_id or --project.
-        if args.project and args.issue_id:
-            parser.error("--project and ISSUE_ID are mutually exclusive")
-        if not args.project and not args.issue_id:
-            parser.error("one of ISSUE_ID or --project is required")
 
         # --project: print the project-wide digest dry-run and exit.
         if args.project:
