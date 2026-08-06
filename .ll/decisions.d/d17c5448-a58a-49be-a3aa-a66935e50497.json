@@ -1,0 +1,12 @@
+{
+  "id": "f4e31a84-3e42-4bff-8732-8b9f64743443",
+  "type": "decision",
+  "timestamp": "2026-08-06T04:51:42Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "AC2 requires the env var to be absent per-invocation when automation_profile is unset; Option B's process-wide os.environ mutation cannot satisfy that, while Option A reuses the existing automation_profile per-call gating pattern.",
+  "rule": "Option A: Thread disable_background_tasks bool param through build_streaming() call chain",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: apply_disable_background_tasks_from_config() os.environ helper mirroring apply_host_cli_from_config() (Pattern B) \u2014 rejected because it leaks the disable into later interactive/non-automation invocations sharing the process.",
+  "issue": "FEAT-3060"
+}

@@ -233,6 +233,18 @@ states:
     on_success: check_passed
     on_failure: gate_recursion
     on_error: gate_recursion
+    # BUG-3065: on_rate_limit_exhausted is DEAD CONFIG on a loop: state — it reads
+    # as working and silently never fires. _execute_sub_loop (executor.py:820)
+    # returns a routing target straight from child_result.terminated_by and never
+    # produces an ActionResult, while the 429 interception (executor.py:1673) is
+    # gated on `action_result is not None` — so a loop: state is never classified
+    # as rate-limited. The child's exit is also indistinguishable after the fact:
+    # captured.<state>.failure_terminal is a bool, not the terminal's name, so
+    # declaring a distinct rate_limited terminal in the child would buy nothing
+    # here either. A 429 exhausted inside refine-to-ready-issue surfaces as
+    # on_failure -> gate_recursion. Kept (harmless) rather than deleted so the
+    # intent is on record; making it real needs a marker file the child writes
+    # before exiting failed, which callers check on on_failure.
     on_rate_limit_exhausted: dequeue_next
 
   check_passed:
