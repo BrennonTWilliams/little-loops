@@ -115,27 +115,90 @@ Decided by `/ll:decide-issue` on 2026-08-05.
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis to locate the `type_mismatch` scoring logic
+- `scripts/little_loops/cli/issues/normalize.py` — `_TYPE_SIGNALS` (37-78),
+  `_KEYWORD_RES` (86-89), `classify_type()` (185-216), `scan_normalize()`
+  type_mismatch block (358-376) — primary implementation target
+- `commands/normalize-issues.md` (lines 57-66) — heuristics table; EPIC row
+  needs to reflect the new phrase-level signal
+- _Wiring pass added by `/ll:wire-issue`:_
+- `.gemini/commands/normalize-issues.toml` (lines 26-42) — exact duplicate of
+  the `commands/normalize-issues.md` heuristics table (including the EPIC
+  keyword row and `--strict` gate description); will drift out of sync with
+  the real scoring logic if not updated in lockstep [Agent 2 finding]
+- `.kimi-code/skills/ll-normalize-issues/SKILL.md` (lines 40-56) — second
+  exact duplicate of the same heuristics table; same lockstep-update
+  requirement [Agent 2 finding]
+- `docs/reference/CLI.md` (lines 2077-2098, `#### ll-issues normalize`) —
+  documents the scoring formula and states the scan "Scans all
+  categories/statuses"; that sentence becomes literally false once a status
+  filter excludes `done`/`cancelled`/`deferred` from `type_mismatch`
+  reporting and must be revised [Agent 2 finding]
 
 ### Dependent Files (Callers/Importers)
-- `commands/normalize-issues.md` / `skills/normalize-issues` (documents the
-  heuristics table this issue proposes changing)
-- `.claude/CLAUDE.md` § normalize-issues Heuristics table, if the signal-keyword
-  table there needs updating to match
+- `commands/normalize-issues.md` (documents the heuristics table this issue
+  proposes changing)
+- `.claude/CLAUDE.md` — corrected: the file's only `normalize-issues`
+  reference is a one-line listing entry (Commands & Skills, Issue Refinement
+  bullet); there is no "normalize-issues Heuristics table" in CLAUDE.md
+  itself — the real table lives in `commands/normalize-issues.md`
+  lines 57-66 [Agent 2 finding]
+- _Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/issues/__init__.py` (lines 80-82) — imports
+  `add_normalize_parser`, `cmd_normalize` from `normalize.py` [Agent 1 finding]
+- `skills/ll-normalize-issues/SKILL.md` — corrected path: the issue's
+  existing bullet says `skills/normalize-issues`, which does not exist; the
+  actual command-wrapping skill is at `skills/ll-normalize-issues/SKILL.md`
+  [Agent 1/2 findings]
+- `docs/reference/API.md` — checked, no `type_mismatch`/`classify_type`
+  mention exists despite being listed under Related Key Documentation below;
+  no coupling to update there [Agent 2 finding]
 
 ### Similar Patterns
-- TBD - search for consistency with other closed-issue-aware filters in
-  `ll-issues` subcommands
+- Status-filter precedent via `find_issues(status_filter=...)`:
+  `scripts/little_loops/hooks/sweep_stale_refs.py:170` (`{"done"}`),
+  `scripts/little_loops/cli/issues/sequence.py:128` (`{"done", "cancelled"}`),
+  `scripts/little_loops/cli/issues/deferred_triage.py:83` (`{"deferred"}`) —
+  all confirmed single/multi-value inline sets, consistent with the chosen
+  Option B scan-local set [Agent 1 finding]
+- `scripts/little_loops/cli/issues/show.py:521` defines its own module-local
+  `_TERMINAL_STATUSES = {"done", "cancelled", "deferred", "closed"}` (a
+  four-value set, wider than this issue's proposed three-value set) —
+  further precedent that per-check local status sets are an established
+  shape in this codebase [Agent 1 finding]
 
 ### Tests
-- TBD - identify/add tests covering EPIC-keyword-collision and closed-status
-  exclusion cases
+- `scripts/tests/test_ll_issues_normalize.py` — confirmed zero existing
+  coverage of `classify_type`/`type_mismatch` (no `TestTypeMismatch` class);
+  reusable scaffolding present but `_issue_body()` (line 53-63) hardcodes
+  `status: open` and needs a `status:` override param to build
+  done/cancelled/deferred fixtures [Agent 3 finding]
+- New `TestTypeMismatch` class needed in that file, modeled on
+  `scripts/tests/test_ll_issues_format_check.py::TestMissingBehaviorParity`
+  (lines 869-1002) — paired fires/doesn't-fire methods keyed on section
+  placement (`test_fires_on_resolved_ref_with_replacement_keyword_same_line`
+  885 vs. `test_no_gap_outside_scope_sections` 982) for the EPIC phrase-level
+  signal, plus an escape-hatch-style suppression test
+  (`test_no_gap_with_escape_hatch` 959-980 is the template) for the new
+  status-filter behavior [Agent 3 finding]
+- No existing tests will break — confirmed no test in `scripts/tests/`
+  currently asserts on bare-"epic"-keyword-fires behavior or asserts
+  `type_mismatch` fires on closed-status issues; the change is purely
+  additive from a test-breakage standpoint [Agent 3 finding]
 
 ### Documentation
-- `.claude/CLAUDE.md` normalize-issues Heuristics table if signal definitions change
+- `commands/normalize-issues.md` (lines 57-66) — heuristics table
+- _Wiring pass added by `/ll:wire-issue`:_
+- `.gemini/commands/normalize-issues.toml` (lines 26-42) and
+  `.kimi-code/skills/ll-normalize-issues/SKILL.md` (lines 40-56) — duplicate
+  heuristics tables, must update in lockstep [Agent 2 finding]
+- `docs/reference/CLI.md` (lines 2077-2098) — scoring formula and "Scans all
+  categories/statuses" scope claim, needs revision once status filtering
+  ships [Agent 2 finding]
 
 ### Configuration
-- N/A
+- N/A — checked `scripts/little_loops/config-schema.json` for
+  `type_mismatch`/`classify_type`/`confidence` coupling; no matches related
+  to this check [Agent 2 finding]
 
 ### Codebase Research Findings
 
@@ -161,6 +224,7 @@ _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-06T04:21:03 - `90ac5a00-ccc9-4464-ba1a-550d9d9d19e7.jsonl`
 - `/ll:decide-issue` - 2026-08-06T04:15:41 - `2ccb54ed-3c09-40c8-a5de-ca5f2244d26f.jsonl`
 - `/ll:refine-issue` - 2026-08-06T04:09:47 - `4b855c62-651d-448c-a114-23d7b08f1bd8.jsonl`
 - `/ll:capture-issue` - 2026-08-05T02:15:56 - `7d7d4b6a-30bd-4214-a516-9ddf81a651e2.jsonl`
