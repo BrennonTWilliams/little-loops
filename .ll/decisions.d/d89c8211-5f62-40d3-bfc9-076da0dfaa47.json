@@ -1,0 +1,12 @@
+{
+  "id": "4b3910fc-6946-4cd4-885f-033924cb582d",
+  "type": "decision",
+  "timestamp": "2026-08-06T04:15:34Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses the established find_issues(status_filter=<local set>) mechanism without widening the shared _TERMINAL_STATUSES constant, which is load-bearing for dependency-graph resolution (BUG-2897) and deliberately treats deferred as non-terminal elsewhere.",
+  "rule": "Option B \u2014 scan-local three-value status set (done, cancelled, deferred) for type_mismatch filtering",
+  "scope": "issue",
+  "alternatives_rejected": "Option A \u2014 reuse issue_progress._TERMINAL_STATUSES (done, cancelled) directly; under-filters relative to this issue's Expected Behavior since deferred is excluded from that shared constant by design.",
+  "issue": "ENH-3053"
+}

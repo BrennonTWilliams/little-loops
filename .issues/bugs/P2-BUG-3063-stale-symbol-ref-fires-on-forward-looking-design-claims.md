@@ -12,6 +12,8 @@ relates_to:
 - FEAT-3048
 - ENH-3047
 - FEAT-2846
+supersedes:
+- ENH-3064
 labels:
 - issues
 - gates

@@ -12,7 +12,19 @@ labels:
 - release
 - gates
 testable: true
+learning_tests_required:
+- hypothesis
+- pytest
+- questionary
+- questionary
+decision_needed: false
 size: Small
+confidence_score: 90
+outcome_confidence: 68
+score_complexity: 20
+score_test_coverage: 20
+score_ambiguity: 10
+score_change_surface: 18
 ---
 
 # ENH-3073: Learning-test staleness warns on every release forever, with no path that clears it
@@ -68,23 +80,62 @@ installed version has not changed — which is directly observable and is not co
 
 Options, to be decided:
 
-- **A — make re-proving reachable.** Have the gate's output name the exact remediation
-  command per row (`ll-learning-tests prove "<target>"`), and optionally add a
-  `--reprove` flag to the release gate that runs it for each hit. Cheapest; removes the
-  dead-end without changing policy.
-- **B — gate on installed version, not the calendar.** Record the resolved package version
-  in the record at prove time; treat a record as stale when the installed version differs
-  from the proven one, falling back to age when no version was captured. Matches what
-  staleness is actually a proxy for. Requires a schema field and a migration path for
-  existing records.
+**Option A**: make re-proving reachable. Have the gate's output name the exact remediation
+command per row (`ll-learning-tests prove "<target>"`), and optionally add a
+`--reprove` flag to the release gate that runs it for each hit. Cheapest; removes the
+dead-end without changing policy.
+
+> **Selected:** Option A — `cmd_prove` and its `ll-loop run ready-to-implement-gate`
+> invocation already exist and are directly callable; wiring them in is incremental, not
+> new infrastructure.
+
+**Option B**: gate on installed version, not the calendar. Record the resolved package version
+in the record at prove time; treat a record as stale when the installed version differs
+from the proven one, falling back to age when no version was captured. Matches what
+staleness is actually a proxy for. Requires a schema field and a migration path for
+existing records.
+
 - **C — raise `stale_after_days` for this project.** Set an explicit value in
   `.ll/ll-config.json`. Silences the symptom; the dead-end returns at the new threshold.
 
-Recommend A now (small, unblocks the immediate noise) with B as the durable fix. C alone
-is not sufficient.
+**Recommended**: Option A now (small, unblocks the immediate noise) with Option B as the
+durable fix. Option C alone is not sufficient.
 
 Independent of the option chosen, the three current records should be re-proven or
 explicitly re-dated so the release table is empty and a future entry means something.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-08-05.
+
+**Selected**: Option A — make re-proving reachable
+
+**Reasoning**: `cmd_prove` (`cli/learning_tests.py:47`) and its underlying
+`ll-loop run ready-to-implement-gate` invocation already exist and are directly callable
+as-is; the "name the exact fix-it command per row" shape has two direct precedents in this
+codebase (`normalize.py:491`, `rn-implement.yaml:1658`), and a config-gated auto-reprove
+architecture already exists in `rn-implement.yaml`/ENH-2487. Option B's version-stamp
+mechanic is precedented too (`_warn_adapter_staleness`), but only for little-loops' own
+version — extending it to arbitrary third-party dependencies requires a new generic
+version resolver, a widened `is_record_stale` signature that ripples through 7 production
+call sites plus a full existing test class, and no existing migration mechanism for
+`.ll/learning-tests/*.md` frontmatter.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A | 3/3 | 3/3 | 3/3 | 2/3 | 11/12 |
+| Option B | 1/3 | 1/3 | 1/3 | 1/3 | 4/12 |
+
+**Key evidence**:
+- Option A: `cmd_prove` is already a callable module-level function shelling to
+  `ll-loop run ready-to-implement-gate`; the release gate already prints a generic
+  remediation line (`release_gate.py:87-91`) that naming a per-row command only extends.
+- Option B: the version-stamp-and-compare shape is precedented via
+  `_warn_adapter_staleness`/`installed_package_version`, but that helper is hardcoded to
+  `little-loops`'s own version and `is_record_stale`'s 2-arg signature has 7 production
+  call sites plus a dedicated 6-test class that would need updating.
 
 ## Scope Boundaries
 
@@ -165,6 +216,99 @@ false positive leaves a changelog commit with no tag.
 - `.ll/learning-tests/hypothesis.md`, `.ll/learning-tests/pytest.md`,
   `.ll/learning-tests/questionary.md` — the three affected records
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `.kimi-code/skills/ll-manage-release/SKILL.md:317-318` — verbatim mirror of the
+  `run_release_gate` invocation in `commands/manage-release.md`; drifts if the canonical
+  invocation or its exit-1 remediation text changes and this copy isn't updated in lockstep
+- `.gemini/commands/manage-release.toml:296-297` — same verbatim-mirror risk as the kimi-code copy
+- **Only if option B is taken** (staleness predicate gains an `installed_version` param): every
+  existing caller of `is_record_stale(record, stale_after_days)` breaks on the signature change —
+  `scripts/little_loops/fsm/executor.py:1113,1161`, `scripts/little_loops/hooks/learning_tests_gate.py:28,129`,
+  `scripts/little_loops/hooks/install_learning_gate.py:31,122`, and two callers missed by the
+  earlier wiring pass — `scripts/little_loops/cli/ctx_stats.py:31` and
+  `scripts/little_loops/cli/history_context.py` (both import `is_record_stale`/`list_records` for
+  coverage-stats display)
+- If a `--reprove`-style flag is added to `prove` (Option A's optional half): the epilog usage
+  example in `scripts/little_loops/cli/learning_tests.py:183-189` (`main_learning_tests()`'s
+  argparse `epilog=` block) shows a bare `ll-learning-tests prove "..."` invocation with no flags
+  and would need a matching example line — same file as the primary change, but a distinct block
+  from `cmd_prove`'s body
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LEARNING_TESTS_GUIDE.md:387-416` — `## Release Gate` section's literal example
+  output block ends with the exact current remediation string (`"✗ Release blocked: fix or
+  re-prove the above records, or set release_gate: warn to proceed."`, line 415); already carries
+  a `<!-- TODO: ENH-2621 -->` comment (line 407) noting this example can drift from
+  `release_gate.py` — must be updated to match whatever remediation text option A adds
+- `docs/reference/CLI.md:4208,4219` — the `prove <target>` row and usage example; needs a new
+  row/example if `cmd_prove` gains a flag as part of wiring `--reprove` through to it
+- **Only if option B is taken**: `docs/reference/CONFIGURATION.md:893-905` (documents
+  `stale_after_days`/`release_gate` semantics) and `docs/ARCHITECTURE.md:690`
+  (`learning_test_events` v26 migration) would need updating for the new version-drift field
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_release_gate.py` (`TestReleaseGateWarnMode`, `TestReleaseGateBlockMode`) —
+  existing tests assert only the integer return code, never printed stdout; the AC's "test
+  asserts the printed remediation text" requirement has no home yet and must be added here via
+  `capsys`, following the `capsys.readouterr()` pattern already used in
+  `test_cli_learning_tests.py`
+- `scripts/tests/test_cli_learning_tests.py` (`TestMainLearningTestsProve`, lines 354-453) — needs
+  new cases if `cmd_prove`'s parser gains a flag; follow the boolean-flag pattern already used for
+  `orphans --mark-stale` (`:539-553`) and `check --stale-aware` (`TestStaleAwareCLI`, `:262-351`) —
+  patch `sys.argv` with/without the flag and assert on the mocked collaborator plus `result`
+- `scripts/tests/test_release_gate.py` (`TestReleaseGateWarnMode`, `TestReleaseGateBlockMode`) has
+  **no `capsys` usage anywhere in the file today** — every existing test asserts only the integer
+  return code, so a new `capsys`-based test class (e.g. `TestReleaseGateRemediationText`) is the
+  first of its kind here; follow the `capsys.readouterr().out`/`.err` substring-assertion pattern
+  already used in `test_cli_learning_tests.py` (`TestMainLearningTestsOrphans.test_no_orphans_prints_message`,
+  `:482-494`)
+- **Only if `--reprove` becomes a new subcommand** (rather than a flag on the existing `prove`
+  subparser): `scripts/tests/test_cli_surface.py:16-35,114-116,138` — `_METAVAR_SUBCOMMANDS_HELP` is
+  a frozen fixture of real `ll-learning-tests --help` output (captured for BUG-3074) asserting
+  `set(surface) == {"check", "list", "mark-stale", "orphans", "prove"}`; a new subcommand name
+  would need to be added to that set
+- **Only if option B is taken**: `scripts/tests/test_learning_tests_discoverability.py`
+  (`TestIsRecordStale`, lines 454-498) — all six tests call `is_record_stale(record, threshold)`
+  positionally with exactly 2 args and will break on a signature change;
+  `scripts/tests/test_config.py` (`TestLearningTestsConfig`, lines 2934-3005) — needs a new field
+  case if `LearnTestRecord`/config schema grows an `installed_version`-style field;
+  `scripts/tests/test_install_learning_gate.py` — exercises the install-time nudge hook that also
+  calls `is_record_stale`
+
+### Configuration
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/config-schema.json:1046-1051,1069-1074` — `stale_after_days` and
+  `release_gate` schema entries; unaffected by option A, but option B's new record field would
+  need a corresponding schema addition plus a migration path for existing
+  `.ll/learning-tests/*.md` frontmatter beyond the three records already named above
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
+
+- `scripts/little_loops/learning_tests/__init__.py` — `LearnTestRecord` dataclass and `list_records()` (called by `run_release_gate`, feeds `is_record_stale`)
+- `scripts/little_loops/loops/ready-to-implement-gate.yaml` — the loop `cmd_prove()` invokes for re-proving a record; the unwired remediation target for option A's `--reprove` flag
+- `scripts/little_loops/loops/learning-tests-audit.yaml` — separate audit loop for learning-test triage; distinct from the release-gate path but reads the same `.ll/learning-tests/*.md` records
+- Additional test files exercising this area not previously listed: `scripts/tests/test_learning_tests.py`, `scripts/tests/test_learning_tests_gate.py`, `scripts/tests/test_learning_state.py`, `scripts/tests/test_learning_tests_extractor.py`
+
+_Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
+
+- `scripts/little_loops/loops/learning-tests-audit.yaml` — separate audit loop that reads the
+  same `.ll/learning-tests/*.md` records as `run_release_gate`; a second consumer of the
+  staleness predicate not previously listed here.
+- BUG-3072 landed as commit `430a8db4` ("fix(learning-tests): surface failing claims on proven
+  records", `status: done`). It touched `.ll/learning-tests/pytest.md` (corrected `claim3`'s
+  assertion from `result: fail` to `result: pass`) but did not change the record's `date` field
+  (still `2026-06-26`, still 40+ days old) — confirms this issue's Scope Boundaries separation
+  from BUG-3072 held: the failing-claim fix did not touch or reset staleness age.
+
 ## Related Issues
 
 - ENH-2214 — release gate blocking on stale/refuted records (introduced this gate)
@@ -174,3 +318,12 @@ false positive leaves a changelog commit with no tag.
 ## Status
 
 Open. Mechanism confirmed; policy option (A/B/C) undecided.
+
+
+## Session Log
+- `/ll:wire-issue` - 2026-08-06T04:16:16 - `5575a942-ec0f-465f-9cb3-a989e3f3d563.jsonl`
+- `/ll:decide-issue` - 2026-08-06T04:10:08 - `2ccb54ed-3c09-40c8-a5de-ca5f2244d26f.jsonl`
+- `/ll:refine-issue` - 2026-08-06T04:06:39 - `d69578eb-cc9b-4928-97bc-631b38148add.jsonl`
+- `/ll:refine-issue` - 2026-08-06T04:04:21 - `2ccb54ed-3c09-40c8-a5de-ca5f2244d26f.jsonl`
+- `/ll:wire-issue` - 2026-08-06T03:47:02 - `f0e9ad86-a944-4acc-a368-a18a0cfd6c1c.jsonl`
+- `/ll:refine-issue` - 2026-08-06T03:31:53 - `657c1532-4b4b-49ec-ba80-7e4debdd4dbe.jsonl`

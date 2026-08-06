@@ -1,0 +1,12 @@
+{
+  "id": "7fd9c970-e022-4f76-a4c5-093aff7042c1",
+  "type": "decision",
+  "timestamp": "2026-08-06T04:10:08Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "cmd_prove and its ll-loop run ready-to-implement-gate invocation already exist and are directly callable; two direct precedents for naming an exact fix-it command per row (normalize.py:491, rn-implement.yaml:1658); Option B's version-stamp mechanic is precedented only for little-loops' own version and would break 7 production call sites of is_record_stale plus a 6-test class.",
+  "rule": "Option A \u2014 make re-proving reachable (name exact remediation command per row; optional --reprove flag)",
+  "scope": "issue",
+  "alternatives_rejected": "Option B (gate on installed version) \u2014 durable but high blast radius, deferred as future work per issue's own recommendation; Option C (raise stale_after_days alone) \u2014 silences symptom without fixing dead-end",
+  "issue": "ENH-3073"
+}
