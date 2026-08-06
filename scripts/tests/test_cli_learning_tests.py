@@ -619,6 +619,36 @@ class TestMainLearningTestsOrphans:
         # boto3 is imported in src_dir — not an orphan
         assert result == 0
 
+    def test_scope_flag_real_scan_covers_function_local_and_dotted_imports(
+        self, tmp_path: Path
+    ) -> None:
+        """Real (non-mocked) scan resolves the four BUG-3089 import shapes."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "a.py").write_text("def f():\n    import anthropic\n    return anthropic\n")
+        (src_dir / "b.py").write_text(
+            "def outer():\n    def inner():\n        import opentelemetry\n    return inner\n"
+        )
+        (src_dir / "c.py").write_text("from concurrent.futures import ThreadPoolExecutor\n")
+        (src_dir / "d.py").write_text("import ruamel.yaml\n")
+
+        records = [
+            self._make_record("anthropic"),
+            self._make_record("opentelemetry"),
+            self._make_record("concurrent.futures"),
+            self._make_record("ruamel.yaml"),
+        ]
+        with (
+            patch(
+                "sys.argv",
+                ["ll-learning-tests", "orphans", "--scope", str(src_dir)],
+            ),
+            patch("little_loops.learning_tests.list_records", return_value=records),
+            patch("little_loops.config.core.resolve_config_path", return_value=None),
+        ):
+            result = main_learning_tests()
+        assert result == 0
+
     def test_multiword_target_uses_first_word(self, capsys: pytest.CaptureFixture[str]) -> None:
         record = self._make_record("Anthropic SDK streaming")
         with (

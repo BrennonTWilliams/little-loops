@@ -4,11 +4,12 @@ type: BUG
 title: Release gate's import scan misses function-local and dotted imports, so most
   records can never be flagged
 priority: P2
-status: open
+status: done
 verify_verdict: VALID
 discovered_date: 2026-08-06
 discovered_by: pre-implementation-review
 captured_at: '2026-08-06T18:05:00Z'
+completed_at: '2026-08-06T21:34:48Z'
 labels:
 - learning-tests
 - release
@@ -567,6 +568,7 @@ _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-06T21:34:26 - `f5480c50-da98-4b22-a4fd-8c1a946cc856.jsonl`
 - `/ll:confidence-check` - 2026-08-06T21:07:38 - `4d056033-a5b1-40d2-9e37-2ea3bc0a3a8f.jsonl`
 - `/ll:confidence-check` - 2026-08-06T19:56:13 - `eb8636a6-46bc-4112-9372-8e2c5095cc16.jsonl`
 - `/ll:confidence-check` - 2026-08-06T19:15:45 - `b7d3f312-b65f-41c2-b355-e4dab95a731c.jsonl`

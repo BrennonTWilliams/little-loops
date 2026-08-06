@@ -17,7 +17,7 @@ from little_loops.config.core import resolve_config_path
 from little_loops.config.features import LearningTestsConfig
 from little_loops.learning_tests import list_records
 from little_loops.learning_tests.gate import is_record_stale
-from little_loops.learning_tests.import_scan import get_imported_packages
+from little_loops.learning_tests.import_scan import get_imported_packages, normalize_target
 
 
 def _load_lt_config(cwd: Path) -> LearningTestsConfig:
@@ -64,7 +64,7 @@ def run_release_gate(cwd: Path, *, base_dir: Path | None = None) -> int:
     source_dirs = [cwd / d for d in lt_config.scan_dirs]
     imported_packages = get_imported_packages(source_dirs)
 
-    hits = [r for r in problem_records if r.target in imported_packages]
+    hits = [r for r in problem_records if normalize_target(r.target) in imported_packages]
 
     if not hits:
         return 0

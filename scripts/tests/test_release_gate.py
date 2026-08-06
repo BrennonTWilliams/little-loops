@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 from little_loops.learning_tests import LearnTestRecord, write_record
-from little_loops.learning_tests.import_scan import get_imported_packages
+from little_loops.learning_tests.import_scan import get_imported_packages, normalize_target
 from little_loops.learning_tests.release_gate import run_release_gate
 
 # ---------------------------------------------------------------------------
@@ -122,6 +122,79 @@ class TestGetImportedPackages:
         result = get_imported_packages([tmp_path])
         assert result == {"requests"}
 
+    def test_finds_function_local_import(self, tmp_path: Path) -> None:
+        (tmp_path / "mod.py").write_text("def f():\n    import anthropic\n    return anthropic\n")
+        result = get_imported_packages([tmp_path])
+        assert "anthropic" in result
+
+    def test_finds_import_under_nested_scope(self, tmp_path: Path) -> None:
+        (tmp_path / "mod.py").write_text(
+            "def outer():\n"
+            "    def inner():\n"
+            "        import opentelemetry\n"
+            "        return opentelemetry\n"
+            "    return inner\n"
+        )
+        result = get_imported_packages([tmp_path])
+        assert "opentelemetry" in result
+
+    def test_dotted_from_import_yields_full_and_top_level(self, tmp_path: Path) -> None:
+        (tmp_path / "mod.py").write_text("from concurrent.futures import ThreadPoolExecutor\n")
+        result = get_imported_packages([tmp_path])
+        assert "concurrent" in result
+        assert "concurrent.futures" in result
+
+    def test_dotted_import_yields_full_and_top_level(self, tmp_path: Path) -> None:
+        (tmp_path / "mod.py").write_text("import ruamel.yaml\n")
+        result = get_imported_packages([tmp_path])
+        assert "ruamel" in result
+        assert "ruamel.yaml" in result
+
+    def test_prefix_expansion_capped_at_two_segments(self, tmp_path: Path) -> None:
+        (tmp_path / "mod.py").write_text("import little_loops.cli.loop._scaffold_core\n")
+        result = get_imported_packages([tmp_path])
+        assert result == {"little_loops", "little_loops.cli"}
+
+    def test_ignores_imports_in_strings_comments_docstrings(self, tmp_path: Path) -> None:
+        (tmp_path / "mod.py").write_text(
+            '"""This module does not import stripe."""\n# import boto3\ns = "import requests"\n'
+        )
+        result = get_imported_packages([tmp_path])
+        assert result == set()
+
+    def test_unparseable_file_skipped_without_raising(self, tmp_path: Path) -> None:
+        (tmp_path / "broken.py").write_text("def f(:\n    pass\n")
+        (tmp_path / "ok.py").write_text("import requests\n")
+        result = get_imported_packages([tmp_path])
+        assert result == {"requests"}
+
+    def test_relative_imports_not_reported(self, tmp_path: Path) -> None:
+        (tmp_path / "mod.py").write_text("from .foo import x\nfrom ..bar import y\n")
+        result = get_imported_packages([tmp_path])
+        assert "foo" not in result
+        assert "bar" not in result
+
+    def test_aliased_dotted_import_reported(self, tmp_path: Path) -> None:
+        (tmp_path / "mod.py").write_text("import a.b as c\n")
+        result = get_imported_packages([tmp_path])
+        assert "a" in result
+        assert "a.b" in result
+
+
+class TestNormalizeTarget:
+    def test_lowercases_and_takes_first_word(self) -> None:
+        assert normalize_target("Anthropic SDK streaming") == "anthropic"
+
+    def test_simple_target_lowercased(self) -> None:
+        assert normalize_target("Requests") == "requests"
+
+    def test_matches_between_consumers(self) -> None:
+        # A record target that one consumer considers imported must be considered
+        # imported by the other (AC 6) — both call normalize_target the same way.
+        record_target = "Concurrent.Futures"
+        imported = {"concurrent.futures"}
+        assert normalize_target(record_target) in imported
+
 
 # ---------------------------------------------------------------------------
 # Tests: run_release_gate
@@ -171,6 +244,17 @@ class TestReleaseGateBlockMode:
         _write_config(tmp_path, enabled=True, release_gate="block")
         _write_record_file(tmp_path, "anthropic", "refuted")
         _write_source_file(tmp_path, "scripts/main.py", "import anthropic\n")
+        result = run_release_gate(tmp_path, base_dir=_base_dir(tmp_path))
+        assert result == 1
+
+    def test_returns_1_on_refuted_function_local_import(self, tmp_path: Path) -> None:
+        _write_config(tmp_path, enabled=True, release_gate="block")
+        _write_record_file(tmp_path, "anthropic", "refuted")
+        _write_source_file(
+            tmp_path,
+            "scripts/main.py",
+            "def f():\n    import anthropic\n    return anthropic\n",
+        )
         result = run_release_gate(tmp_path, base_dir=_base_dir(tmp_path))
         assert result == 1
 

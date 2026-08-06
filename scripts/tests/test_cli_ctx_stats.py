@@ -1141,6 +1141,41 @@ class TestLearningTestsSection:
         assert rc == 0
         assert "Coverage gaps" not in output
 
+    def test_gaps_filters_stdlib_and_first_party_real_scan(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AC 11: gaps excludes stdlib and first-party names under an unmocked scan."""
+        monkeypatch.chdir(tmp_path)
+        db = tmp_path / ".ll" / "history.db"
+        db.parent.mkdir(exist_ok=True)
+        _populate_tool_events(db, [("Read", 200, 1024, 0)])
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.write_text(
+            json.dumps({"learning_tests": {"enabled": True, "scan_dirs": ["src"]}}),
+            encoding="utf-8",
+        )
+
+        src_dir = tmp_path / "src"
+        (src_dir / "myapp").mkdir(parents=True)
+        (src_dir / "myapp" / "core.py").write_text("x = 1\n")
+        (src_dir / "mod.py").write_text(
+            "def f():\n"
+            "    import os\n"
+            "\n"
+            "from acme.widgets import Widget\n"
+            "from myapp.core import Thing\n"
+        )
+
+        rc, output = self._run(tmp_path)
+        assert rc == 0
+        gap_line = next((ln for ln in output.splitlines() if "gaps" in ln.lower()), "")
+        gap_entries = [g.strip() for g in gap_line.split(":", 1)[-1].split(",")]
+        assert "acme" in gap_entries or "acme.widgets" in gap_entries
+        assert "os" not in gap_entries
+        assert "myapp" not in gap_entries
+        assert "myapp.core" not in gap_entries
+
     def test_json_mode_includes_learning_tests(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -132,7 +132,7 @@ def cmd_orphans(args: argparse.Namespace) -> int:
     from little_loops.config.core import resolve_config_path
     from little_loops.issue_parser import slugify
     from little_loops.learning_tests import list_records, mark_stale
-    from little_loops.learning_tests.import_scan import get_imported_packages
+    from little_loops.learning_tests.import_scan import get_imported_packages, normalize_target
 
     source_dirs: list[Path]
     if args.scope:
@@ -154,7 +154,7 @@ def cmd_orphans(args: argparse.Namespace) -> int:
     imported = get_imported_packages(source_dirs)
 
     records = list_records()
-    orphans = [r for r in records if r.target.split()[0].lower() not in imported]
+    orphans = [r for r in records if normalize_target(r.target) not in imported]
 
     if not orphans:
         print("No orphaned records found.")

@@ -388,6 +388,8 @@ The gate caches each package lookup for the lifetime of the hook process (`_SESS
 
 When `learning_tests.enabled` is `true`, `/ll:manage-release` runs a pre-release audit that scans actively-imported packages across `learning_tests.scan_dirs` source files (via `get_imported_packages()`) and cross-references them against the learning-test registry. If any imported package has a `refuted` record or a `proven` record older than `stale_after_days`, the gate reports or blocks depending on the `release_gate` config value.
 
+`get_imported_packages()` parses source files with `ast` rather than regex, so it finds imports at any indentation level (including function-local imports) and reports full dotted module names plus their prefix, capped at two segments (e.g. `from concurrent.futures import X` yields both `concurrent` and `concurrent.futures`). Relative imports (`from .foo import x`) are not reported. Record targets are matched via a shared `normalize_target()` helper (`.split()[0].lower()`), used consistently by this gate and `ll-learning-tests orphans`.
+
 **What it flags:**
 
 | Record state | Gate signal |

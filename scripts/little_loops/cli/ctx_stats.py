@@ -631,6 +631,23 @@ def _load_lt_config(cwd: Path) -> LearningTestsConfig:
         return LearningTestsConfig()
 
 
+def _first_party_top_level_names(scan_dirs: list[Path]) -> set[str]:
+    """Top-level directory names under scan_dirs (e.g. ``little_loops``, ``tests``).
+
+    Used to exclude first-party modules from the "coverage gaps" list (AC 11) —
+    a widened import scan otherwise surfaces hundreds of ``little_loops.*``
+    submodules as spurious gaps.
+    """
+    names: set[str] = set()
+    for scan_dir in scan_dirs:
+        if not scan_dir.is_dir():
+            continue
+        for entry in scan_dir.iterdir():
+            if entry.is_dir() and not entry.name.startswith("."):
+                names.add(entry.name.lower())
+    return names
+
+
 def _compute_learning_tests_stats(
     cwd: Path,
     lt_config: LearningTestsConfig,
@@ -668,7 +685,15 @@ def _compute_learning_tests_stats(
 
     scan_dirs = [cwd / d for d in lt_config.scan_dirs]
     imported = get_imported_packages(scan_dirs)
-    gaps = sorted(pkg for pkg in imported if slugify(pkg) not in known_slugs)
+    stdlib_names = set(sys.stdlib_module_names)
+    first_party_names = _first_party_top_level_names(scan_dirs)
+    gaps = sorted(
+        pkg
+        for pkg in imported
+        if slugify(pkg) not in known_slugs
+        and pkg.split(".")[0] not in stdlib_names
+        and pkg.split(".")[0] not in first_party_names
+    )
 
     return {
         "total": len(records),

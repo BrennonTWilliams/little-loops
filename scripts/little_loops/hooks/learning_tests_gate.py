@@ -26,7 +26,12 @@ from little_loops.config.features import LearningTestsConfig
 from little_loops.hooks.types import LLHookEvent, LLHookResult
 from little_loops.learning_tests import check_learning_test
 from little_loops.learning_tests.gate import is_record_stale
-from little_loops.learning_tests.import_scan import _PY_IMPORT_RE
+
+# Scans an in-flight Write/Edit tool call's content/new_string fragment, which is
+# frequently not independently parseable Python — an ast-based scan is not a safe
+# drop-in here (BUG-3089). Column-0-anchored, so it does not see function-local or
+# dotted imports; that's an accepted limitation of scanning fragments, not files.
+_PY_IMPORT_RE = re.compile(r"^(?:import|from)\s+([A-Za-z_][A-Za-z0-9_]*)", re.MULTILINE)
 
 _JS_REQUIRE_RE = re.compile(r"""require\s*\(\s*['"]([^./'"][^'"]*)['"]\s*\)""")
 _JS_IMPORT_RE = re.compile(
