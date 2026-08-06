@@ -707,24 +707,35 @@ def _isolate_session_log_dir(
 # cmd_run env-var isolation (BUG-2011 follow-up)
 # =============================================================================
 
-# Env vars that cmd_run() writes directly via os.environ (not monkeypatch).
-# Without this fixture a test that calls cmd_run() with --handoff-threshold,
-# --context-limit, or --worktree will leak the written value into subsequent
-# tests.  The setenv("") + delenv() pattern registers a teardown for the var
-# even when it was absent before the test, so cmd_run's direct write is
-# always undone at test cleanup.
+# Env vars scrubbed for the duration of every test.  Two distinct hazards:
+#
+# 1. Leak-out (BUG-2011): cmd_run() writes these directly via os.environ (not
+#    monkeypatch), so a test calling cmd_run() with --handoff-threshold,
+#    --context-limit, or --worktree leaks the written value into later tests.
+# 2. Leak-in: LL_AUTOMATION is exported into the whole descendant process tree
+#    by host_runner (automation_profile -> env["LL_AUTOMATION"]="1"), so a
+#    `python -m pytest` run from inside an ll-auto / FSM-loop session inherits
+#    it.  The ENH-2714 pruning gates in hooks/session_start.py and
+#    cli/history_context.py then suppress their output, breaking 48 tests that
+#    assert the ordinary non-automation behaviour.  Tests that *want* the gate
+#    monkeypatch.setenv() it in the test body, which still wins over this.
+#
+# The setenv("") + delenv() pattern registers a teardown for the var even when
+# it was absent before the test, so a direct write is always undone at cleanup.
 _CMD_RUN_ENV_VARS = (
     "LL_HANDOFF_THRESHOLD",
     "LL_CONTEXT_LIMIT",
     "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR",
     "LL_HOST_CLI",
     "LL_HOOK_HOST",
+    "LL_AUTOMATION",
+    "LL_AUTOMATION_PROFILE",
 )
 
 
 @pytest.fixture(autouse=True)
 def _restore_cmd_run_env_vars(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
-    """Restore env vars that cmd_run writes directly to os.environ."""
+    """Scrub env vars that leak into or out of a test via raw os.environ."""
     for var in _CMD_RUN_ENV_VARS:
         monkeypatch.setenv(var, "")
         monkeypatch.delenv(var)

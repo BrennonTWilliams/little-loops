@@ -7,6 +7,9 @@ this module exercises the pure-function handler under unit conditions.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -584,3 +587,62 @@ class TestAutomationPruningStayInTurn:
         assert result.exit_code == 0
         assert result.stdout is not None
         assert "headlessly" not in result.stdout
+
+
+# Sentinel that marks the nested pytest spawned by the guard below, so that run
+# skips the guard instead of recursing into itself forever.
+_AMBIENT_GUARD_SENTINEL = "LL_TEST_AMBIENT_AUTOMATION_GUARD"
+
+
+class TestAmbientAutomationEnvHermeticity:
+    """The suite must pass with an ambient ``LL_AUTOMATION`` in the environment.
+
+    ``host_runner`` exports ``LL_AUTOMATION=1`` into the whole descendant
+    process tree of an automation run, so a ``python -m pytest`` invoked from a
+    shell inside an ll-auto / FSM-loop session inherits it. The ENH-2714 pruning
+    gates in ``hooks/session_start.py`` and ``cli/history_context.py`` then
+    suppress the output these tests assert on -- 48 phantom failures, on exactly
+    the verification gate meant to validate an implementation.
+
+    ``conftest._CMD_RUN_ENV_VARS`` scrubs the var per test. This guard re-runs a
+    sensitive module in a subprocess with the var deliberately set, so removing
+    that scrub fails loudly instead of only inside automation runs.
+    """
+
+    @pytest.mark.skipif(
+        bool(os.environ.get(_AMBIENT_GUARD_SENTINEL)),
+        reason="inner run spawned by this guard; would recurse",
+    )
+    def test_suite_passes_with_ambient_ll_automation(self) -> None:
+        repo_root = Path(__file__).resolve().parents[2]
+        env = {
+            **os.environ,
+            "LL_AUTOMATION": "1",
+            "LL_AUTOMATION_PROFILE": "hermeticity-guard",
+            _AMBIENT_GUARD_SENTINEL: "1",
+        }
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                str(Path(__file__).resolve()),
+                "-q",
+                "-p",
+                "no:randomly",
+                # -n 0 keeps the inner run serial: this guard may itself already
+                # be executing inside an xdist worker.
+                "-n",
+                "0",
+            ],
+            cwd=repo_root,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        assert proc.returncode == 0, (
+            "session_start tests fail with an ambient LL_AUTOMATION=1 -- the "
+            "conftest env scrub regressed.\n"
+            f"stdout tail:\n{proc.stdout[-3000:]}\n\nstderr tail:\n{proc.stderr[-2000:]}"
+        )
