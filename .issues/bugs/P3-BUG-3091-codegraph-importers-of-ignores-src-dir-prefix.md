@@ -4,9 +4,10 @@ title: CodegraphProvider.importers_of/impact_of can't resolve paths nested under
 type: BUG
 priority: P3
 captured_at: '2026-08-06T20:15:36Z'
+completed_at: '2026-08-06T23:38:34Z'
 discovered_date: 2026-08-06
 discovered_by: session
-status: open
+status: done
 testable: true
 verify_verdict: VALID
 labels:
@@ -32,7 +33,7 @@ score_change_surface: 25
 
 `CodegraphProvider.importers_of()` guesses a dotted module name from a repo-relative
 file path (`_module_to_file_guess` / the `dotted_guess` local in `importers_of()`,
-`scripts/little_loops/codequery/codegraph.py:194-198,395-432`) by taking the path
+`scripts/little_loops/codequery/codegraph.py:195-199,403-440`) by taking the path
 verbatim relative to the **repo root**. But the `codegraph` tool indexes import
 `qualified_name`s relative to the project's **source root** (this repo's
 `project.src_dir: "scripts/"`), so every lookup for a path under `src_dir` fails to
@@ -136,7 +137,7 @@ _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
   - `scripts/tests/test_codequery_codegraph.py` — existing suite. `importers_of` tests at lines 632-643; `impact_of` one-hop/no-hits at 649-658; `TestImpactOfTransitive` at 661-695.
   - Fixture `_build_index()` (lines 185-210) already encodes the mismatch: import node `qualified_name="pkg.b"` (line 203) is src-relative while `file_path="pkg/a.py"` (line 202) is repo-relative.
   - `_write_config()` (lines 213-221) writes only `{"code_query": ...}` — a regression test must write `project.src_dir` (e.g. `"scripts/"`) so the stripped candidate is exercised. Precedent for that config shape exists across the suite (`test_worker_pool.py`, `conftest.py`, `test_issue_parser.py`).
-  - `TestSchemaGuard` (lines 31-48) pins the codegraph DB schema and must keep passing.
+  - `TestSchemaGuard` (class at `test_codequery_codegraph.py:224`; `_SCHEMA_COLUMNS` pin at lines 31-48) pins the codegraph DB schema and must keep passing.
 - **Documentation**
   - `docs/reference/CLI.md:2546,2549` — `importers-of`/`impact-of` rows.
   - `docs/reference/CONFIGURATION.md:297` — `project.src_dir` row.
@@ -209,14 +210,16 @@ _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
 3. `impact_of()` returns non-empty transitive results for the same inputs through its existing `importers_of()` walk (`codegraph.py:514`); `impact_of` itself is unchanged.
 4. A regression test in `scripts/tests/test_codequery_codegraph.py` exercises the fixture mismatch (`qualified_name="pkg.b"` at line 203 vs `file_path="pkg/a.py"` at line 202) with a `project.src_dir`-bearing config; verified by `python -m pytest scripts/tests/test_codequery_codegraph.py -v`.
    > ⚠ Superseded — existing fixture resolves via un-stripped guess; strip not load-bearing
-5. `TestSchemaGuard` (`test_codequery_codegraph.py:31-48`) and the existing `TestQueries`/`TestImpactOfTransitive` (lines 591-695) pass unchanged — the fix is additive against the pinned schema.
+5. `TestSchemaGuard` (`test_codequery_codegraph.py:224`) and the existing `TestQueries`/`TestImpactOfTransitive` (lines 591-695) pass unchanged — the fix is additive against the pinned schema.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
+```text
 - A second regression test must cover the package-`__init__` case: an index row with import `qualified_name="pkg"` (bare package) and a query of `scripts/pkg/__init__.py` under `src_dir="scripts/"`, asserting non-empty. This case fails both before *and* after a src_dir-strip-only fix, so it is not covered by the test below.
 - In `scripts/tests/test_codequery_codegraph.py`, the regression test must force the strip path with index rows whose `qualified_name` excludes the `src_dir` prefix while `file_path` includes it (e.g. `file_path="scripts/pkg/a.py"`, `qualified_name="pkg.b"`, query `scripts/pkg/b.py` with `src_dir="scripts/"`) — the current fixture row (`qualified_name="pkg.b"`, `file_path="pkg/a.py"`) already resolves via the un-stripped `dotted_guess` and the `_short_symbol` candidate, so adding `src_dir` to `_write_config()` alone does not exercise the stripped candidate.
+```
 - No caller, registration, or schema changes are required: the fix adds no new public symbols, changes no `CodeQueryProvider` Protocol signatures, and alters no `--format json` fields or exit codes.
 
 ## Impact
@@ -246,7 +249,7 @@ _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
 
 `bug`, `codequery`, `codegraph`
 
----
+## Status
 
 **Open** | Created: 2026-08-06 | Priority: P3
 
@@ -264,6 +267,34 @@ _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-06T23:38:14 - `304efef5-84e8-4f90-bcb1-2c715d8e2940.jsonl`
+- `/ll:ready-issue` - 2026-08-06T23:25:58 - `cdb7e470-93e0-4781-9573-7c5e633437ca.jsonl`
 - `/ll:confidence-check` - 2026-08-06T23:03:48 - `45d23f17-20f2-477b-8ebe-0c8ee65c5e61.jsonl`
 - `/ll:wire-issue` - 2026-08-06T22:57:38 - `88167c0c-eda5-4b33-af85-8b5220a43ff7.jsonl`
 - `/ll:refine-issue` - 2026-08-06T22:41:48 - `046a1620-bd2e-485d-9777-bc6571cad05e.jsonl`
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-08-06
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/codequery/codegraph.py`: added `_dotted_candidates()` helper that
+  produces a repo-root-relative dotted guess plus a `project.src_dir`-stripped guess
+  (dropping a trailing `.__init__` segment for package `__init__.py` paths); `importers_of()`
+  now reads `project.src_dir` via a fresh `BRConfig` and OR-matches the additional candidate,
+  with the `CodeRef.symbol` fallback preferring the src-relative name. `impact_of()` unchanged —
+  inherits through its `importers_of()` walk.
+- `scripts/tests/test_codequery_codegraph.py`: `_write_config()` now accepts an optional
+  `src_dir`; added `TestImportersOfSrcDir` (4 regression tests covering src_dir-prefixed file
+  paths, package `__init__.py` → bare-qname resolution, and both through `impact_of`).
+
+### Verification Results
+- Tests: PASS — `python -m pytest scripts/tests/` (18534 passed, 42 skipped)
+- Lint: PASS — `ruff check` on changed files
+- Types: N/A (no `type_cmd` mismatch; mypy not run for this scoped change)
+- Run: PASS — live index smoke: `importers_of("scripts/little_loops/issue_manager.py")` 0→4,
+  `importers_of("scripts/little_loops/config/__init__.py")` 0→92, `impact_of(...)` 0→4
+- Integration: PASS — no signature/JSON/exit-code contract changes; existing
+  `TestQueries`/`TestImpactOfTransitive`/`TestSchemaGuard`/`test_codequery_fallback.py` green

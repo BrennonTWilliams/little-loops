@@ -210,15 +210,17 @@ def _build_index(db_path: Path, indexed_at_ms: int) -> None:
         conn.close()
 
 
-def _write_config(repo: Path, staleness: str = "warn") -> None:
+def _write_config(repo: Path, staleness: str = "warn", src_dir: str | None = None) -> None:
     import json
 
     ll_dir = repo / ".ll"
     ll_dir.mkdir(exist_ok=True)
-    (ll_dir / "ll-config.json").write_text(
-        json.dumps({"code_query": {"provider": "codegraph", "staleness": staleness}}),
-        encoding="utf-8",
-    )
+    config: dict[str, object] = {
+        "code_query": {"provider": "codegraph", "staleness": staleness}
+    }
+    if src_dir is not None:
+        config["project"] = {"src_dir": src_dir}
+    (ll_dir / "ll-config.json").write_text(json.dumps(config), encoding="utf-8")
 
 
 class TestSchemaGuard:
@@ -693,6 +695,77 @@ class TestImpactOfTransitive:
         provider = CodegraphProvider()
         refs = provider.impact_of(["pkg/b.py", "pkg/a.py"], depth=2)
         assert {ref.path for ref in refs} == {"pkg/c.py"}
+
+
+class TestImportersOfSrcDir:
+    """BUG-3091: importers_of/impact_of must resolve repo-relative paths under project.src_dir.
+
+    The index stores import qualified_names relative to the source root
+    (``pkg.b``), while ``ll-code importers-of scripts/pkg/b.py`` hands the
+    provider a repo-root-relative path. The provider must strip the configured
+    ``project.src_dir`` prefix before building the dotted guess, and drop the
+    trailing ``.__init__`` segment for package ``__init__.py`` paths.
+    """
+
+    @pytest.fixture
+    def repo(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        repo = _init_repo(tmp_path / "repo")
+        _write_config(repo, src_dir="scripts/")
+        db_path = repo / ".codegraph" / "codegraph.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(db_path)
+        try:
+            _create_schema(conn)
+            conn.execute(
+                "INSERT INTO schema_versions (version, applied_at, description) "
+                "VALUES (4, 0, 'x')"
+            )
+            # Importer file lives under src_dir; its import node's qname is
+            # src-relative (no "scripts." prefix).
+            _insert_node(
+                conn, "file:scripts/pkg/a.py", "file", "a.py", "a.py", "scripts/pkg/a.py", 1
+            )
+            _insert_node(
+                conn, "import:pkg.b", "import", "b", "pkg.b", "scripts/pkg/a.py", 1
+            )
+            _insert_edge(conn, "file:scripts/pkg/a.py", "import:pkg.b", "imports", line=1)
+            _insert_file(conn, "scripts/pkg/a.py", 0)
+            _insert_file(conn, "scripts/pkg/b.py", 0)
+            # Package __init__.py resolves to the bare package qname "pkg",
+            # imported here by a separate file.
+            _insert_node(
+                conn, "file:scripts/main.py", "file", "main.py", "main.py", "scripts/main.py", 1
+            )
+            _insert_node(conn, "import:pkg", "import", "pkg", "pkg", "scripts/main.py", 1)
+            _insert_edge(conn, "file:scripts/main.py", "import:pkg", "imports", line=1)
+            _insert_file(conn, "scripts/main.py", 0)
+            _insert_file(conn, "scripts/pkg/__init__.py", 0)
+            conn.commit()
+        finally:
+            conn.close()
+        monkeypatch.chdir(repo)
+        return repo
+
+    def test_importers_of_resolves_src_dir_file_path(self, repo: Path) -> None:
+        provider = CodegraphProvider()
+        refs = provider.importers_of("scripts/pkg/b.py")
+        assert {ref.path for ref in refs} == {"scripts/pkg/a.py"}
+        assert refs[0].kind == "import"
+
+    def test_importers_of_resolves_pkg_init_path(self, repo: Path) -> None:
+        provider = CodegraphProvider()
+        refs = provider.importers_of("scripts/pkg/__init__.py")
+        assert {ref.path for ref in refs} == {"scripts/main.py"}
+
+    def test_impact_of_resolves_src_dir_path(self, repo: Path) -> None:
+        provider = CodegraphProvider()
+        refs = provider.impact_of(["scripts/pkg/b.py"], depth=1)
+        assert {ref.path for ref in refs} == {"scripts/pkg/a.py"}
+
+    def test_impact_of_resolves_pkg_init_path(self, repo: Path) -> None:
+        provider = CodegraphProvider()
+        refs = provider.impact_of(["scripts/pkg/__init__.py"], depth=1)
+        assert {ref.path for ref in refs} == {"scripts/main.py"}
 
 
 class TestResolverRegistration:

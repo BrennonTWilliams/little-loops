@@ -199,6 +199,28 @@ def _module_to_file_guess(module: str) -> str:
     return module.replace(".", "/") + ".py"
 
 
+def _dotted_candidates(file_guess: str, src_dir: str) -> list[str]:
+    """Dotted-module guesses for a repo-relative ``.py`` path (BUG-3091).
+
+    Returns the repo-root-relative guess (``scripts/pkg/b.py`` ->
+    ``scripts.pkg.b``) plus, when the path nests under ``src_dir``, the
+    src-relative guess (``pkg.b``) first. ``__init__.py`` paths drop the
+    trailing ``.__init__`` segment so they resolve to the bare package qname
+    the index stores (``little_loops.config``, never ``.config.__init__``).
+    """
+    dotted = file_guess[: -len(".py")].replace("/", ".")
+    if file_guess.endswith("/__init__.py"):
+        dotted = dotted[: -len(".__init__")]
+    prefix = src_dir.rstrip("/") + "/"
+    if prefix != "/" and file_guess.startswith(prefix):
+        stripped = file_guess[len(prefix):]
+        stripped_dotted = stripped[: -len(".py")].replace("/", ".")
+        if stripped.endswith("__init__.py"):
+            stripped_dotted = stripped_dotted[: -len(".__init__")]
+        return [stripped_dotted, dotted]
+    return [dotted]
+
+
 class CodegraphProvider:
     """`codegraph` SQLite index-backed :class:`~little_loops.codequery.core.CodeQueryProvider`."""
 
@@ -406,11 +428,22 @@ class CodegraphProvider:
             return []
         try:
             file_guess = _module_to_file_guess(module)
-            dotted_guess = file_guess[: -len(".py")].replace("/", ".")
+
+            from little_loops.config import BRConfig
+
+            src_dir = BRConfig(_git_root()).project.src_dir
+            dotted_candidates = _dotted_candidates(file_guess, src_dir)
+            qname_candidates: list[str] = []
+            for candidate in (*dotted_candidates, module):
+                if candidate and candidate not in qname_candidates:
+                    qname_candidates.append(candidate)
+            if not qname_candidates:
+                return []
+            placeholders = ",".join("?" for _ in qname_candidates)
             rows = conn.execute(
                 "SELECT id FROM nodes WHERE kind = 'import' "
-                "AND (qualified_name = ? OR qualified_name = ? OR name = ?)",
-                (dotted_guess, module, _short_symbol(module)),
+                f"AND (qualified_name IN ({placeholders}) OR name = ?)",
+                (*qname_candidates, _short_symbol(module)),
             ).fetchall()
             ids = [row["id"] for row in rows]
             if not ids:
@@ -425,11 +458,12 @@ class CodegraphProvider:
                 """,
                 ids,
             ).fetchall()
+            symbol_fallback = dotted_candidates[0]
             return [
                 CodeRef(
                     path=row["path"],
                     line=row["eline"] or row["sline"],
-                    symbol=row["sym"] or dotted_guess,
+                    symbol=row["sym"] or symbol_fallback,
                     kind="import",
                     confidence="exact",
                     provider=self.name,
