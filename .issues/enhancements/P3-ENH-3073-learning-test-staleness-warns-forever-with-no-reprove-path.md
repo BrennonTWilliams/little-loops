@@ -404,6 +404,7 @@ advertise (hardening now in scope); Option B had no successor issue (now an AC);
 LEARNING_TESTS_GUIDE / kimi-code / gemini mirror updates had no AC (now added)._
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-06T06:18:23 - `947fa9b7-8ab1-44ef-9fcd-dc534fce8613.jsonl`
 - `/ll:confidence-check` - 2026-08-06T04:30:52 - `be4424fb-bd22-4a4d-8f91-9e0d0eb44d1c.jsonl`
 - `/ll:reconcile-issue` - 2026-08-06T04:23:34 - `b80e47d8-635f-4079-b216-2ccd61850853.jsonl`
 - `/ll:confidence-check` - 2026-08-06T04:21:44 - `fde16fb9-dfe9-4d3c-b7c4-2dc8bf0e171d.jsonl`

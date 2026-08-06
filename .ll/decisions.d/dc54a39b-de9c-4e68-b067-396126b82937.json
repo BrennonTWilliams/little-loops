@@ -1,0 +1,11 @@
+{
+  "id": "6842f43f-c3ed-4efd-aff7-1fc4de598ad0",
+  "type": "decision",
+  "timestamp": "2026-08-06T16:20:36Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "_unreachable_reason already holds every issue ID but returns a bare not_found; a cross-type numeric match would name the real issue.",
+  "rule": "Captured: ll-auto --only reports bare not_found with no did-you-mean for a wrong type prefix",
+  "scope": "issue",
+  "issue": "ENH-3086"
+}

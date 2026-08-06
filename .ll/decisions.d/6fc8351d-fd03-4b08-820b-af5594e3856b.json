@@ -1,0 +1,11 @@
+{
+  "id": "53cd259f-5cd3-4a54-b984-c1cc01e1385e",
+  "type": "decision",
+  "timestamp": "2026-08-06T16:20:36Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Every non-terminal non-zero gate exit collapses to impl_failed, misreporting lock contention as a failed implementation and misrouting autodev remediation.",
+  "rule": "Captured: Learning gate has no verdict distinguishing infra contention from implementation failure",
+  "scope": "issue",
+  "issue": "ENH-3084"
+}
