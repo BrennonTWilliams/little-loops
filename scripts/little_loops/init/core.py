@@ -58,6 +58,25 @@ def schema_default(dotted_path: str) -> Any:
     return node["default"]
 
 
+def schema_enum(dotted_path: str) -> list[str]:
+    """Return config-schema.json's declared ``enum`` for a dotted property path.
+
+    Same dotted walk as :func:`schema_default`. Raises ``KeyError`` when the
+    path or its ``enum`` is missing.
+    """
+    node: dict[str, Any] = _load_schema()
+    for part in dotted_path.split("."):
+        properties = node.get("properties", {})
+        if part not in properties:
+            raise KeyError(
+                f"config-schema.json has no property at {dotted_path!r} (missing {part!r})"
+            )
+        node = properties[part]
+    if "enum" not in node:
+        raise KeyError(f"config-schema.json property {dotted_path!r} declares no enum")
+    return list(node["enum"])
+
+
 def strip_none_leaves(config: dict[str, Any]) -> dict[str, Any]:
     """Return a deep copy of *config* with all ``None``-valued leaves removed.
 
@@ -90,6 +109,12 @@ def build_config(
     Ports the skill's Step 4 and Step 8 config-building logic. The resulting
     dict is ready for serialisation with ``atomic_write_json``.
 
+    Default precedence: config-schema.json is the single source of truth for
+    feature defaults (via ``schema_default``); templates contribute only
+    project-type *structure* (commands, scan focus/excludes, issue
+    categories). A template block that disagrees with a schema default is a
+    template bug, not an override.
+
     Args:
         template: Matched template from detect_project_type().
         choices: Optional overrides. Booleans/values not listed here fall back to
@@ -113,6 +138,19 @@ def build_config(
               feature).
             - ``loop_clear_default`` (bool): write loops.run_defaults.clear.
             - ``loop_show_diagrams_default`` (str | None): write loops.run_defaults.show_diagrams.
+            - ``parallel_enabled`` (bool, opt-in): write a parallel section so
+              headless init matches what the TUI writes when parallel is selected.
+            - ``documents_enabled`` (bool | None): tri-state. True always writes
+              the documents section; False omits it; None (default) writes it
+              only when ``documents_categories`` detected something.
+            - ``documents_categories`` (dict): detected document categories to
+              attach when the documents section is written.
+            - ``design_tokens_enabled`` (bool, opt-in): write design_tokens with
+              the schema-default profile.
+            - ``sync_enabled`` (bool, opt-in): write sync.enabled=true.
+            - ``confidence_gate_enabled`` (bool, opt-in): write
+              commands.confidence_gate with schema-default thresholds.
+            - ``tdd_enabled`` (bool, opt-in): write commands.tdd_mode=true.
 
     Returns:
         Complete config dict (``$schema`` key first, then sections).
@@ -218,5 +256,46 @@ def build_config(
             "show_diagrams": loop_show_diagrams,
         }
     }
+
+    # --- parallel (opt-in; carries the template's stamped defaults) ---
+    # ARCHITECTURE-096 mandates the parallel stamp in every project-type
+    # template so init-using projects see the same defaults as config-file
+    # users; carrying the block here is what makes that stamp live (the
+    # headless path previously dropped it — audit M-2).
+    if choices.get("parallel_enabled"):
+        config["parallel"] = dict(data.get("parallel", {}))
+
+    # --- documents (opt-in or auto-detected categories) ---
+    documents_choice = choices.get("documents_enabled")
+    documents_categories = choices.get("documents_categories") or {}
+    if documents_choice is True or (documents_choice is None and documents_categories):
+        doc_section: dict[str, Any] = {"enabled": True}
+        if documents_categories:
+            doc_section["categories"] = documents_categories
+        config["documents"] = doc_section
+
+    # --- design_tokens (opt-in; schema-default profile) ---
+    if choices.get("design_tokens_enabled"):
+        config["design_tokens"] = {
+            "enabled": True,
+            "active": schema_default("design_tokens.active"),
+        }
+
+    # --- sync (opt-in) ---
+    if choices.get("sync_enabled"):
+        config["sync"] = {"enabled": True}
+
+    # --- commands block (confidence_gate + tdd_mode; opt-in each) ---
+    commands: dict[str, Any] = {}
+    if choices.get("confidence_gate_enabled"):
+        commands["confidence_gate"] = {
+            "enabled": True,
+            "readiness_threshold": schema_default("commands.confidence_gate.readiness_threshold"),
+            "outcome_threshold": schema_default("commands.confidence_gate.outcome_threshold"),
+        }
+    if choices.get("tdd_enabled"):
+        commands["tdd_mode"] = True
+    if commands:
+        config["commands"] = commands
 
     return strip_none_leaves(config)

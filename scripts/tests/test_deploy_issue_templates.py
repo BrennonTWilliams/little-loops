@@ -69,7 +69,7 @@ class TestDeployIssueTemplates:
         created = deploy_issue_templates(ll_dir, fake_templates_dir, dry_run=True)
         assert created is True
         assert not (ll_dir / "templates").exists()
-        assert "[write]" in capsys.readouterr().out
+        assert "write " in capsys.readouterr().out
 
     def test_skips_if_no_section_files(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
         tdir = tmp_path / "templates"

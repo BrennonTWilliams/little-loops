@@ -27,9 +27,16 @@ repo, apply the corrected plan, then smoke-check the settled commands. A
 fully-declared repo (all `provenance: declared`) is nearly as fast as
 `ll-init --yes` — there's nothing to settle, so Inspect is a no-op.
 
+This skill drives the **headless** seam. A user who wants the interactive
+7-screen wizard should run `ll-init` with no arguments directly in a
+terminal — it is not reachable through this skill.
+
 ## Process
 
 ### 1. Parse Flags
+
+Pure bash parameter expansion — no `grep -P` (PCRE mode is GNU-only and
+silently fails on stock macOS/BSD grep):
 
 ```bash
 FLAGS="${flags:-}"
@@ -41,8 +48,9 @@ UPGRADE=false
 
 if [[ "$FLAGS" == *"--force"* ]]; then FORCE_FLAG="--force"; fi
 if [[ "$FLAGS" == *"--dry-run"* ]]; then DRY_RUN=true; fi
-if [[ "$FLAGS" == *"--hosts"* ]]; then
-    HOSTS_VALUE=$(echo "$FLAGS" | grep -oP '(?<=--hosts\s)\S+' || true)
+if [[ "$FLAGS" == *"--hosts "* ]]; then
+    _after_hosts="${FLAGS#*--hosts }"   # strip through "--hosts "
+    HOSTS_VALUE="${_after_hosts%% *}"   # first whitespace-delimited token
     if [[ -n "$HOSTS_VALUE" ]]; then HOSTS_FLAG="--hosts $HOSTS_VALUE"; fi
 fi
 if [[ "$FLAGS" == *"--codex"* ]]; then CODEX_FLAG="--codex"; fi
@@ -91,13 +99,16 @@ ll-init apply --config <plan.json> $FORCE_FLAG
 ```
 
 **`--dry-run`**: stop here instead — print the corrected plan and exit
-without calling `apply`. Nothing is written.
+without calling `apply`. Nothing is written. (This is a *plan-only* stop:
+it differs from the CLI's own `ll-init --yes --dry-run`, which runs the
+headless flow and previews each planned write.)
 
 ### 5. Handle `--upgrade`
 
-`ll-init apply` has no upgrade path (it always installs adapters at the
-current version). If `UPGRADE` is true, after Apply completes run the
-upgrade side effects as a separate step:
+`ll-init apply` honors `requested_upgrade` in the plan by refreshing host
+adapters after the writes, but it does not upgrade the package or plugin
+itself. If `UPGRADE` is true, after Apply completes run the upgrade side
+effects as a separate step:
 
 ```bash
 ll-init --yes --upgrade $HOSTS_FLAG $CODEX_FLAG

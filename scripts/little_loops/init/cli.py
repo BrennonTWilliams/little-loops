@@ -13,11 +13,11 @@ from typing import Any
 from little_loops.issue_template import get_bundled_templates_dir
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
-# Feature keys toggleable via --enable/--disable in the headless path. These map
-# to the ``*_enabled`` choice keys honored by build_config(). Richer features
-# (parallel, sync, design_tokens, confidence_gate, tdd) carry sub-config and
-# remain interactive-only. ``documents`` is auto-detected in the headless path
-# (ENH-2701) but still isn't toggleable via --enable/--disable.
+# Feature keys toggleable via --enable/--disable in the headless path. These
+# map to the ``*_enabled`` choice keys honored by build_config(). Sections
+# with sub-config (parallel, documents, design_tokens, sync, confidence_gate,
+# tdd) are written in their schema-default shapes when enabled; the TUI
+# remains the place to fine-tune sub-values interactively (audit M-1).
 _TOGGLEABLE_FEATURES: frozenset[str] = frozenset(
     {
         "product",
@@ -29,6 +29,12 @@ _TOGGLEABLE_FEATURES: frozenset[str] = frozenset(
         "session_capture",
         "session_digest",
         "prompt_optimization",
+        "parallel",
+        "documents",
+        "design_tokens",
+        "sync",
+        "confidence_gate",
+        "tdd",
     }
 )
 
@@ -86,29 +92,26 @@ def _dispatch_host_adapters(
     dry_run: bool = False,
 ) -> None:
     """Install adapters for each selected host; print per-host post-install notes."""
+    from little_loops.cli.output import error, info, warning
     from little_loops.init.writers import install_codex_adapter, install_kimi_adapter
 
     for host in hosts:
         if host not in _KNOWN_HOSTS:
-            print(
-                f"[Warning] Unknown host {host!r}; skipping. Known hosts: {sorted(_KNOWN_HOSTS)}",
-                file=sys.stderr,
-            )
+            error(f"Unknown host {host!r}; skipping. Known hosts: {sorted(_KNOWN_HOSTS)}")
             continue
         if host == "codex":
             installed = install_codex_adapter(
                 project_root, plugin_root, force=force, dry_run=dry_run
             )
             if installed is None:
-                print(
-                    "[Codex] Warning: adapter template not found in package install; "
-                    ".codex/hooks.json was not written.",
-                    file=sys.stderr,
+                warning(
+                    "Codex: adapter template not found in package install; "
+                    ".codex/hooks.json was not written."
                 )
             elif installed and not dry_run:
-                print("[Codex] Hook adapter installed to .codex/hooks.json")
-                print(
-                    "[Codex] Note: Codex will show a hook-trust dialog on next session start. "
+                info("Codex: hook adapter installed to .codex/hooks.json")
+                info(
+                    "Codex: Codex will show a hook-trust dialog on next session start. "
                     "Hooks are silently skipped (HookRunStatus::Untrusted) until trusted."
                 )
         elif host == "kimi-code":
@@ -116,23 +119,22 @@ def _dispatch_host_adapters(
                 project_root, plugin_root, force=force, dry_run=dry_run
             )
             if installed is None:
-                print(
-                    "[Kimi] Warning: adapter template not found in package install; "
-                    "kimi config.toml managed block was not written.",
-                    file=sys.stderr,
+                warning(
+                    "Kimi: adapter template not found in package install; "
+                    "kimi config.toml managed block was not written."
                 )
             elif installed and not dry_run:
                 from little_loops.init.writers import kimi_config_path
 
-                print(f"[Kimi] Hook adapter installed to {kimi_config_path()} (managed block)")
-                print(
-                    "[Kimi] Note: hooks are user-level (kimi has no project-local hook "
+                info(f"Kimi: hook adapter installed to {kimi_config_path()} (managed block)")
+                info(
+                    "Kimi: hooks are user-level (kimi has no project-local hook "
                     "file) and take effect in new kimi sessions."
                 )
         elif host == "opencode":
-            print("[OpenCode] Adapter not yet available — opencode orchestration not yet wired.")
+            info("OpenCode: adapter not yet available — opencode orchestration not yet wired.")
         elif host == "pi":
-            print("[Pi] Adapter not yet available — tracked in EPIC-1622.")
+            info("Pi: adapter not yet available — tracked in EPIC-1622.")
         # claude-code: no adapter file needed; plugin hooks fire when globally enabled
 
 
@@ -158,6 +160,7 @@ def _dispatch_host_upgrade(
             claude-code scope-aware behavior ("project-claude-code" auto-updates;
             anything else is advise-only to avoid mutating shared global state).
     """
+    from little_loops.cli.output import info
     from little_loops.host_runner import HostNotConfigured, resolve_host
 
     for host in hosts:
@@ -170,7 +173,7 @@ def _dispatch_host_upgrade(
             except HostNotConfigured:
                 binary = None
             if binary:
-                print("[Claude] Updating project-scoped plugin ll@little-loops...")
+                info("Claude Code: updating project-scoped plugin ll@little-loops...")
                 # Best-effort (check=False): a missing/unauthenticated host must
                 # never abort the init or config write.
                 _subprocess.run(
@@ -205,7 +208,7 @@ def _warn_adapter_staleness(hosts: list[str], project_root: Path) -> None:
     installed = installed_package_version()
     if stamp and installed and stamp != installed:
         print(
-            f"[Codex] Adapter generated against {stamp}, package is now {installed} "
+            f"Warning: Codex adapter generated against {stamp}, package is now {installed} "
             "— re-run with --upgrade to regenerate .codex/hooks.json.",
             file=sys.stderr,
         )
@@ -258,15 +261,23 @@ def _feature_choices_from_args(enable: list[str], disable: list[str]) -> dict[st
         Mapping of ``{name}_enabled`` -> bool for recognized features.
 
     Raises:
-        ValueError: If any name is not a known toggleable feature.
+        ValueError: If any name is not a known toggleable feature, or the
+            same name is passed to both --enable and --disable (audit M-5:
+            the contradiction previously resolved silently to disabled).
     """
-    choices: dict[str, Any] = {}
     unknown = sorted({f for f in (*enable, *disable) if f not in _TOGGLEABLE_FEATURES})
     if unknown:
         raise ValueError(
             f"Unknown feature(s): {', '.join(unknown)}. "
             f"Valid features: {', '.join(sorted(_TOGGLEABLE_FEATURES))}"
         )
+    conflicting = sorted(set(enable) & set(disable))
+    if conflicting:
+        raise ValueError(
+            f"Conflicting flags for feature(s): {', '.join(conflicting)} "
+            "— passed to both --enable and --disable."
+        )
+    choices: dict[str, Any] = {}
     for f in enable:
         choices[f"{f}_enabled"] = True
     for f in disable:
@@ -288,6 +299,79 @@ def _print_introspection_summary(introspection: Any) -> None:
         )
 
 
+def _persist_host_selection(config: dict[str, Any], hosts: list[str], explicit: bool) -> None:
+    """Persist an explicit host selection into the config (audit rec-13).
+
+    Init asks which hosts to wire; previously the answer landed only in
+    filesystem side effects (adapter files) while the config keys that name
+    the host (``hooks.host``, ``orchestration.host_cli``) stayed unset.
+    Auto-detected hosts are NOT persisted: detection reflects the machine,
+    not a user decision.
+    """
+    if not explicit or not hosts:
+        return
+    from little_loops.init.core import schema_enum
+
+    primary = hosts[0]
+    config.setdefault("orchestration", {})["host_cli"] = primary
+    # hooks.host's enum covers only hosts with a hook-intent adapter; skip
+    # hosts outside it rather than write a schema-invalid value.
+    if primary in schema_enum("hooks.host"):
+        config.setdefault("hooks", {})["host"] = primary
+
+
+_NEXT_STEPS: tuple[str, ...] = (
+    "/ll:scan-codebase  — index the codebase for context-aware skills",
+    "ll-doctor          — verify host integration and capabilities",
+    "/ll:help           — browse every command and skill",
+)
+
+
+def _print_next_steps() -> None:
+    """Print the onboarding next-steps footer (audit U-3).
+
+    Shared by every headless completion path; the TUI renders the same hints
+    through rich. Follows cli/loop/info.py's dim-hint styling.
+    """
+    from little_loops.cli.output import colorize
+
+    print()
+    print(colorize("Next steps:", "1"))
+    for step in _NEXT_STEPS:
+        print(colorize(f"  {step}", "90"))
+
+
+def _render_headless_summary(
+    config: dict[str, Any],
+    project_root: Path,
+    hosts: list[str],
+    config_path: Path | None = None,
+    dry_run: bool = False,
+) -> None:
+    """Print the completion summary for headless runs (audit rec-5/rec-11/U-4).
+
+    Shares its row extraction with the TUI's rich summary panel
+    (init/summary.py) so both paths report the same configuration, then adds
+    the terminal statement a dry run previously lacked and the next-steps
+    footer neither path had.
+    """
+    from little_loops.cli.output import info, status_block, success
+    from little_loops.init.summary import summary_rows
+
+    rows = summary_rows(config, project_root)
+    rows.append(("Hosts", ", ".join(hosts) if hosts else "none"))
+    print()
+    print(status_block(dict(rows)))
+    print()
+    if dry_run:
+        success("Dry run complete — no files were written.")
+    else:
+        success(f"little-loops initialized in {project_root}")
+        if config_path is not None:
+            info(f"Config: {config_path}")
+    _print_next_steps()
+
+
 def _run_yes(
     project_root: Path,
     templates_dir: Path,
@@ -297,6 +381,7 @@ def _run_yes(
     hosts: list[str],
     feature_choices: dict[str, Any] | None = None,
     upgrade: bool = False,
+    hosts_explicit: bool = False,
 ) -> int:
     """Execute the non-interactive --yes init flow."""
     from little_loops.logo import print_logo
@@ -343,8 +428,10 @@ def _run_yes(
     # Load existing config as baseline for pre-population (and the merge below).
     existing_config = load_existing_config(project_root)
 
-    if existing_config and not dry_run:
+    if existing_config:
         # --force resets to template defaults; a plain re-init merges (BUG-2310).
+        # Printed for dry runs too: the preview must show the same merge
+        # disposition the real run will apply (audit U-4).
         print(
             "Overwriting existing configuration."
             if force
@@ -498,13 +585,13 @@ def _run_yes(
         )
     if feature_choices:
         choices.update(feature_choices)
-    config = build_config(template, choices)
-
-    # documents is unmodeled by build_config (mirrors tui.py's post-build
-    # assembly); only inject detected categories when no existing documents
-    # section would otherwise be clobbered by the new_config-wins merge below.
+    # documents: route detected categories through build_config (ENH-2701),
+    # guarding against clobbering an existing documents section in the
+    # new_config-wins merge below. --enable/--disable documents flows through
+    # feature_choices as documents_enabled.
     if documents_categories and not existing_config.get("documents"):
-        config["documents"] = {"enabled": True, "categories": documents_categories}
+        choices["documents_categories"] = documents_categories
+    config = build_config(template, choices)
 
     # Preserve any config keys build_config does not model (BUG-2310); --force
     # bypasses the merge to reset to template defaults.
@@ -512,6 +599,7 @@ def _run_yes(
 
     if install_source:
         config["install_source"] = install_source
+    _persist_host_selection(config, hosts, explicit=hosts_explicit)
 
     issues_base_rel = config.get("issues", {}).get("base_dir", ".issues")
     issues_base = project_root / issues_base_rel
@@ -520,16 +608,16 @@ def _run_yes(
     make_issue_dirs(issues_base, dry_run=dry_run)
 
     if config.get("product", {}).get("enabled"):
-        deploy_goals(ll_dir, templates_dir, dry_run=dry_run)
+        deploy_goals(ll_dir, templates_dir, dry_run=dry_run, force=force)
 
     if config.get("design_tokens", {}).get("enabled"):
-        deploy_design_tokens(ll_dir, templates_dir, dry_run=dry_run)
+        deploy_design_tokens(ll_dir, templates_dir, dry_run=dry_run, force=force)
 
     if config.get("issues", {}).get("deploy_templates"):
-        deploy_issue_templates(ll_dir, templates_dir, dry_run=dry_run)
+        deploy_issue_templates(ll_dir, templates_dir, dry_run=dry_run, force=force)
 
     if config.get("learning_tests", {}).get("enabled"):
-        make_learning_tests_dir(ll_dir, dry_run=dry_run)
+        make_learning_tests_dir(ll_dir, dry_run=dry_run, force=force)
 
     update_gitignore(project_root, dry_run=dry_run)
 
@@ -554,25 +642,24 @@ def _run_yes(
         if not dry_run:
             _warn_adapter_staleness(hosts, project_root)
 
-    if not dry_run:
-        print("\nValidating dependencies...")
-        warnings = validate_deps(config, _plugin_version(), project_root)
-        for w in warnings:
-            msg = f"Warning: {w.message}"
-            if w.install_hint:
-                msg += f"\n  Install/fix: {w.install_hint}"
-            print(msg, file=sys.stderr)
-        if not _is_git_repo(project_root):
-            print(
-                "Note: this directory isn't a git repository; git-dependent features "
-                "(auto-commit, worktree-based parallel epics) won't work until you run "
-                "git init.",
-                file=sys.stderr,
-            )
+    # Dependency validation is read-only and one of the things a dry-run
+    # preview is most useful for, so it runs in both modes (audit U-4).
+    print("\nValidating dependencies...")
+    warnings = validate_deps(config, _plugin_version(), project_root)
+    for w in warnings:
+        msg = f"Warning: {w.message}"
+        if w.install_hint:
+            msg += f"\n  Install/fix: {w.install_hint}"
+        print(msg, file=sys.stderr)
+    if not dry_run and not _is_git_repo(project_root):
+        print(
+            "Note: this directory isn't a git repository; git-dependent features "
+            "(auto-commit, worktree-based parallel epics) won't work until you run "
+            "git init.",
+            file=sys.stderr,
+        )
 
-    if not dry_run:
-        print(f"\n✓ little-loops initialized in {project_root}")
-        print(f"  Config: {config_path}")
+    _render_headless_summary(config, project_root, hosts, config_path=config_path, dry_run=dry_run)
     return 0
 
 
@@ -581,13 +668,24 @@ def _run_plan(
     templates_dir: Path,
     feature_choices: dict[str, Any] | None = None,
     upgrade: bool = False,
+    force: bool = False,
 ) -> int:
-    """Emit a machine-readable JSON plan without writing anything."""
+    """Emit a machine-readable JSON plan without writing anything.
+
+    ``proposed_config`` runs the SAME merge preview ``apply`` performs
+    (merge_with_existing against the current config, honoring --force), so
+    the plan is the contract it claims to be: what lands on disk after
+    ``apply``, not a pre-merge draft (audit M-6).
+    """
     from little_loops.init.core import build_config
     from little_loops.init.detect import detect_documents, detect_project_type_all
     from little_loops.init.introspect import introspect
     from little_loops.init.validate import validate_deps
-    from little_loops.init.writers import load_existing_config
+    from little_loops.init.writers import (
+        DEFAULT_SETTINGS_FILE,
+        load_existing_config,
+        merge_with_existing,
+    )
 
     candidates = detect_project_type_all(project_root, templates_dir)
     template = candidates[0]
@@ -604,9 +702,12 @@ def _run_plan(
         choices[flat_key] = iv.value
     if feature_choices:
         choices.update(feature_choices)
+    # Same documents guard as _run_yes: never advertise categories that apply
+    # would discard in favor of an existing documents section (audit M-6).
+    if documents_categories and not existing_config.get("documents"):
+        choices["documents_categories"] = documents_categories
     config = build_config(template, choices)
-    if documents_categories:
-        config["documents"] = {"enabled": True, "categories": documents_categories}
+    config = merge_with_existing(config, existing_config, force)
     warnings = validate_deps(config, _plugin_version(), project_root)
 
     plan: dict[str, Any] = {
@@ -626,8 +727,10 @@ def _run_plan(
         "host_options": {
             "has_claude_code": bool(shutil.which("claude")),
             "has_codex": bool(shutil.which("codex")),
+            "has_opencode": bool(shutil.which("opencode")),
             "has_pi": bool(shutil.which("pi")),
-            "suggested_settings_file": ".claude/settings.local.json",
+            "has_kimi_code": bool(shutil.which("kimi")),
+            "suggested_settings_file": DEFAULT_SETTINGS_FILE,
         },
         "warnings": [{"message": w.message, "install_hint": w.install_hint} for w in warnings],
         "provenance": [
@@ -655,8 +758,19 @@ def _run_apply(
     plugin_root: Path,
     hosts: list[str],
     force: bool,
+    dry_run: bool = False,
+    hosts_explicit: bool = False,
 ) -> int:
-    """Apply writes from a --plan JSON (file path or raw JSON string)."""
+    """Apply writes from a --plan JSON (file path or raw JSON string).
+
+    ``--dry-run`` previews the application without writing — the one place a
+    preview is most valuable, since the plan may have been machine-edited
+    (audit M-7). A ``requested_upgrade`` flag in the plan is honored by
+    refreshing host integration surfaces after the writes, mirroring the
+    ``--yes --upgrade`` post-write behavior.
+    """
+    from little_loops.cli.output import info, success
+    from little_loops.init.install_check import detect_installation
     from little_loops.init.validate import validate_deps
     from little_loops.init.writers import (
         AGENTS_MD_HOSTS,
@@ -692,40 +806,41 @@ def _run_apply(
 
     # Preserve any config keys the plan does not model (BUG-2310); --force resets.
     config = merge_with_existing(config, load_existing_config(project_root), force)
+    _persist_host_selection(config, hosts, explicit=hosts_explicit)
 
     issues_base_rel = config.get("issues", {}).get("base_dir", ".issues")
     issues_base = project_root / issues_base_rel
 
-    write_config(config, ll_dir)
-    make_issue_dirs(issues_base)
+    write_config(config, ll_dir, dry_run=dry_run)
+    make_issue_dirs(issues_base, dry_run=dry_run)
 
     if config.get("product", {}).get("enabled"):
-        deploy_goals(ll_dir, templates_dir)
+        deploy_goals(ll_dir, templates_dir, dry_run=dry_run, force=force)
 
     if config.get("design_tokens", {}).get("enabled"):
-        deploy_design_tokens(ll_dir, templates_dir)
+        deploy_design_tokens(ll_dir, templates_dir, dry_run=dry_run, force=force)
 
     if config.get("issues", {}).get("deploy_templates"):
-        deploy_issue_templates(ll_dir, templates_dir)
+        deploy_issue_templates(ll_dir, templates_dir, dry_run=dry_run, force=force)
 
     if config.get("learning_tests", {}).get("enabled"):
-        make_learning_tests_dir(ll_dir)
+        make_learning_tests_dir(ll_dir, dry_run=dry_run, force=force)
 
-    update_gitignore(project_root)
+    update_gitignore(project_root, dry_run=dry_run)
 
     extra_permissions: list[str] | None = None
     if config.get("learning_tests", {}).get("enabled"):
         extra_permissions = ["Skill(ll:explore-api)"]
-    merge_settings(project_root, extra_permissions=extra_permissions)
+    merge_settings(project_root, extra_permissions=extra_permissions, dry_run=dry_run)
 
-    write_claude_md(project_root)
+    write_claude_md(project_root, dry_run=dry_run)
 
     # AGENTS.md is the cross-tool convention read by codex / kimi-code
     # (AGENTS_MD_HOSTS); claude-specific content stays in CLAUDE.md.
     if any(h in AGENTS_MD_HOSTS for h in hosts):
-        write_agents_md(project_root)
+        write_agents_md(project_root, dry_run=dry_run)
 
-    _dispatch_host_adapters(hosts, project_root, plugin_root, force=force)
+    _dispatch_host_adapters(hosts, project_root, plugin_root, force=force, dry_run=dry_run)
 
     warnings = validate_deps(config, _plugin_version(), project_root)
     for w in warnings:
@@ -734,7 +849,16 @@ def _run_apply(
             msg += f"\n  Install/fix: {w.install_hint}"
         print(msg, file=sys.stderr)
 
-    print(f"✓ Applied init plan to {project_root}")
+    if plan.get("requested_upgrade") and not dry_run:
+        install_source, _installed_version, _install_path = detect_installation(project_root)
+        _dispatch_host_upgrade(hosts, project_root, plugin_root, install_source)
+
+    if dry_run:
+        success("Dry run complete — no files were written.")
+        info("Re-run without --dry-run to apply this plan.")
+    else:
+        success(f"Applied init plan to {project_root}")
+    _print_next_steps()
     return 0
 
 
@@ -753,19 +877,26 @@ def main_init(argv: list[str] | None = None) -> int:
 Examples:
   %(prog)s --yes                      # Non-interactive full init with defaults
   %(prog)s --yes --dry-run            # Preview without writing files
-  %(prog)s --yes --force              # Overwrite existing configuration
+  %(prog)s --yes --force              # Reset config and redeploy bundled artifacts
   %(prog)s --yes --upgrade            # Upgrade stale package/plugin automatically
   %(prog)s --plan                     # Emit JSON plan without writing
   %(prog)s apply --config plan.json   # Apply writes from a --plan output
+  %(prog)s apply --config plan.json --dry-run   # Preview a plan application
   %(prog)s --yes --enable decisions --enable session_capture
-  %(prog)s --yes --enable prompt_optimization
+  %(prog)s --yes --enable parallel --enable sync
 
 Feature flags (headless --yes / --plan only):
   --enable / --disable accept: product, analytics, context_monitor,
   learning_tests, decisions, scratch_pad, session_capture, session_digest,
-  prompt_optimization. Richer features (parallel, sync, documents,
-  design_tokens, confidence_gate, tdd) carry sub-config and are
-  interactive-only.
+  prompt_optimization, parallel, documents, design_tokens, sync,
+  confidence_gate, tdd. Enabling a sub-config section writes its
+  schema-default shape; use the interactive wizard to fine-tune sub-values.
+
+Scope of --force:
+  Resets .ll/ll-config.json to template defaults and redeploys bundled
+  artifacts (goals, issue section templates, design-token profiles,
+  learning-tests placeholder); regenerates host adapters. Does NOT rewrite
+  a ## little-loops section already present in CLAUDE.md/AGENTS.md.
 
 Exit codes:
   0 - Success
@@ -783,7 +914,10 @@ Exit codes:
             "--force",
             "-f",
             action="store_true",
-            help="Overwrite existing .ll/ll-config.json",
+            help=(
+                "Overwrite existing .ll/ll-config.json and redeploy bundled "
+                "artifacts (goals, issue templates, design-token profiles)"
+            ),
         )
         parser.add_argument(
             "--dry-run",
@@ -801,12 +935,14 @@ Exit codes:
         )
         parser.add_argument(
             "--hosts",
-            nargs="+",
+            action="append",
             metavar="HOST",
             default=None,
             help=(
                 "Host harnesses to install adapters for "
-                "(claude-code, codex, kimi-code, pi). Defaults to auto-detected hosts."
+                "(claude-code, codex, opencode, kimi-code, pi). Repeatable, and "
+                "comma-separated values are accepted (--hosts claude-code,codex). "
+                "Defaults to auto-detected hosts."
             ),
         )
         parser.add_argument(
@@ -818,7 +954,8 @@ Exit codes:
                 "Enable a feature in the headless config (repeatable). "
                 "Valid: decisions, scratch_pad, session_capture, product, "
                 "analytics, context_monitor, learning_tests, session_digest, "
-                "prompt_optimization."
+                "prompt_optimization, parallel, documents, design_tokens, "
+                "sync, confidence_gate, tdd."
             ),
         )
         parser.add_argument(
@@ -828,8 +965,20 @@ Exit codes:
             metavar="FEATURE",
             help=(
                 "Disable a feature in the headless config (repeatable). "
-                "Same valid names as --enable."
+                "Same valid names as --enable. Passing the same name to both "
+                "--enable and --disable is a usage error."
             ),
+        )
+        _color_group = parser.add_mutually_exclusive_group()
+        _color_group.add_argument(
+            "--color",
+            action="store_true",
+            help="Force colored output even when stdout is not a TTY",
+        )
+        _color_group.add_argument(
+            "--no-color",
+            action="store_true",
+            help="Disable colored output (NO_COLOR is always honored too)",
         )
         parser.add_argument(
             "--upgrade",
@@ -865,14 +1014,42 @@ Exit codes:
             dest="plan_config",
             help="Path to plan JSON file, or raw JSON string",
         )
+        # Distinct dests so the subparser defaults don't shadow values the
+        # parent parser already parsed (BUG: ``ll-init --force apply`` used
+        # to silently downgrade to a merge because this subparser's default
+        # False overwrote the parent's True). Both positions are resolved by
+        # OR-combining in main_init.
         apply_parser.add_argument(
             "--force",
             "-f",
             action="store_true",
+            dest="apply_force",
             help="Overwrite existing configuration",
+        )
+        apply_parser.add_argument(
+            "--dry-run",
+            "-n",
+            action="store_true",
+            dest="apply_dry_run",
+            help="Preview the plan application without writing files",
         )
 
         args = parser.parse_args(argv)
+
+        # Shared output layer (audit U-1): ll-init previously bypassed
+        # cli/output.py entirely, ignoring config color settings, NO_COLOR,
+        # and FORCE_COLOR. The --color/--no-color flags refine the default
+        # gate; NO_COLOR still wins over an explicit --color.
+        import os as _os
+
+        from little_loops.cli.output import configure_output, set_use_color
+
+        configure_output()
+        if args.no_color:
+            set_use_color(False)
+        elif args.color and _os.environ.get("NO_COLOR", "") == "":
+            set_use_color(True)
+        color_choice: bool | None = False if args.no_color else (True if args.color else None)
 
         try:
             project_root = (args.root or Path.cwd()).resolve()
@@ -881,15 +1058,20 @@ Exit codes:
 
             # Resolve hosts: --hosts takes precedence; --codex is a deprecated alias.
             # When neither is given, auto-detect from installed binaries / project dirs.
+            # hosts_explicit distinguishes a user decision from machine
+            # detection for config persistence (audit rec-13).
             if args.hosts:
                 # Expand any comma-separated values (e.g. --hosts claude-code,codex)
                 hosts: list[str] = []
                 for h in args.hosts:
                     hosts.extend(h.split(","))
+                hosts_explicit = True
             elif args.codex:
                 hosts = ["codex"]
+                hosts_explicit = True
             else:
                 hosts = _detect_hosts(project_root)
+                hosts_explicit = False
 
             if args.command == "apply":
                 return _run_apply(
@@ -898,7 +1080,13 @@ Exit codes:
                     templates_dir=templates_dir,
                     plugin_root=plug_root,
                     hosts=hosts,
-                    force=getattr(args, "force", False),
+                    # OR-combined: both the parent flag position
+                    # (ll-init --force apply) and the subparser position
+                    # (ll-init apply --force) must work (audit H-1).
+                    force=getattr(args, "force", False) or getattr(args, "apply_force", False),
+                    dry_run=getattr(args, "dry_run", False)
+                    or getattr(args, "apply_dry_run", False),
+                    hosts_explicit=hosts_explicit,
                 )
 
             # Resolve --enable/--disable feature flags (headless / plan paths only).
@@ -921,6 +1109,7 @@ Exit codes:
                     templates_dir,
                     feature_choices=feature_choices,
                     upgrade=args.upgrade,
+                    force=args.force,
                 )
 
             if args.yes or args.dry_run or args.upgrade:
@@ -933,6 +1122,7 @@ Exit codes:
                     hosts=hosts,
                     feature_choices=feature_choices,
                     upgrade=args.upgrade,
+                    hosts_explicit=hosts_explicit,
                 )
 
             from little_loops.init.tui import run_tui
@@ -943,7 +1133,10 @@ Exit codes:
                 plugin_root=plug_root,
                 force=args.force,
                 hosts=hosts,
+                color_choice=color_choice,
             )
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            # ValueError included: version strings compared during init come
+            # from pip/plugin output and are external input (audit H-3).
             print(f"Error: {exc}", file=sys.stderr)
             return 1

@@ -71,14 +71,5 @@
   "parallel": {
     "use_feature_branches": false,
     "epic_branches": { "enabled": false }
-  },
-  "product": {
-    "enabled": false
-  },
-  "analytics": {
-    "enabled": false
-  },
-  "context_monitor": {
-    "enabled": true
   }
 }

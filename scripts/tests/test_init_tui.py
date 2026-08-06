@@ -306,13 +306,33 @@ class TestConditionalParallel:
     def test_default_workers_omits_parallel_section(
         self, mock_q: MagicMock, tmp_path: Path
     ) -> None:
+        # The omit-on-default sentinel is schema-derived (parallel.max_workers
+        # default is 2 — audit H-4), so accepting the prompt default must NOT
+        # silently drop the section's only key.
+        from little_loops.init.core import schema_default
+
+        default_workers = str(schema_default("parallel.max_workers"))
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            _wire_q(mock_q, features=["parallel"], workers=default_workers)
+            run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
+
+        config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
+        assert "parallel" not in config
+
+    @patch("little_loops.init.tui.questionary")
+    def test_old_sentinel_workers_now_written(
+        self, mock_q: MagicMock, tmp_path: Path
+    ) -> None:
+        """Audit H-4 regression: 4 was the old hard-coded sentinel and was
+        silently dropped; it is a non-default value and must be written."""
         with patch("sys.stdin") as mock_stdin:
             mock_stdin.isatty.return_value = True
             _wire_q(mock_q, features=["parallel"], workers="4")
             run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
 
         config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())
-        assert "parallel" not in config
+        assert config["parallel"]["max_workers"] == 4
 
     @patch("little_loops.init.tui.questionary")
     def test_feature_branches_enabled_written_to_config(
@@ -614,6 +634,8 @@ class TestBuildFinalConfig:
         assert config["parallel"]["max_workers"] == 8
 
     def test_default_workers_omits_parallel_section(self, generic_template: object) -> None:
+        from little_loops.init.core import schema_default
+
         config = _build_final_config(
             template=generic_template,
             name="proj",
@@ -623,7 +645,7 @@ class TestBuildFinalConfig:
             type_cmd="",
             format_cmd="",
             selected_set={"parallel"},
-            parallel_workers=4,
+            parallel_workers=int(schema_default("parallel.max_workers")),
         )
         assert "parallel" not in config
 
@@ -1018,9 +1040,16 @@ class TestWorktreeCopyFiles:
 
     @patch("little_loops.init.tui.questionary")
     def test_empty_worktree_files_no_key(self, mock_q: MagicMock, tmp_path: Path) -> None:
+        from little_loops.init.core import schema_default
+
         with patch("sys.stdin") as mock_stdin:
             mock_stdin.isatty.return_value = True
-            _wire_q(mock_q, features=["parallel", "analytics"], workers="4", worktree_files=[])
+            _wire_q(
+                mock_q,
+                features=["parallel", "analytics"],
+                workers=str(schema_default("parallel.max_workers")),
+                worktree_files=[],
+            )
             run_tui(tmp_path, _TEMPLATES_DIR, _PLUGIN_ROOT)
 
         config = json.loads((tmp_path / ".ll" / "ll-config.json").read_text())

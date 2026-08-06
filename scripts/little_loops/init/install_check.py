@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import json
+import re
 import subprocess
 import sys
 from enum import Enum
@@ -181,12 +182,56 @@ def check_version(installed: str, latest: str) -> InstallStatus:
         latest: Version string from the latest available release (PyPI or marketplace).
 
     Returns:
-        UpToDate if installed >= latest (semver), OutOfDate if installed < latest.
+        UpToDate if installed >= latest, OutOfDate if installed < latest.
+
+    Tolerates real-world version strings: non-numeric segments ("1.2.0rc1",
+    "1.2.0.dev0", "2024.10") never raise, and unequal segment counts compare
+    numerically ("1.2" == "1.2.0", not OutOfDate). A segment carrying a
+    non-numeric suffix sorts before the same segment without one, matching
+    semver's prerelease ordering ("1.2.0rc1" < "1.2.0").
     """
-
-    def _parse(v: str) -> tuple[int, ...]:
-        return tuple(int(x) for x in v.split("."))
-
-    if _parse(installed) >= _parse(latest):
+    installed_key, latest_key = _pad_version_keys(_version_key(installed), _version_key(latest))
+    if installed_key >= latest_key:
         return InstallStatus.UpToDate
     return InstallStatus.OutOfDate
+
+
+# Leading digits of a dot-separated version segment; the remainder (rc1,
+# dev0, …) is carried along as a suffix rather than raising.
+_SEGMENT_RE = re.compile(r"^(\d*)(.*)$")
+
+# Release-rank half of a segment key: a segment WITHOUT a suffix (plain
+# release) sorts after the same segment WITH one (prerelease).
+_RELEASE = (1, "")
+
+
+def _version_key(version: str) -> tuple[tuple[int, int, str], ...]:
+    """Return a comparable key for *version*, padding-safe across lengths.
+
+    Each dot-separated segment becomes ``(numeric_prefix, release_rank,
+    suffix)``. Trailing empty segments compare equal to zero ("1.2" vs
+    "1.2.0"): the shorter key is padded with release-zero segments.
+    """
+    # PEP 440 build metadata ("+local") carries no precedence — strip it.
+    version = version.strip().split("+", 1)[0]
+    parts: list[tuple[int, int, str]] = []
+    for segment in version.split("."):
+        match = _SEGMENT_RE.match(segment)
+        digits = match.group(1) if match else ""
+        suffix = match.group(2) if match else segment
+        rank, rank_suffix = _RELEASE if not suffix else (0, suffix)
+        parts.append((int(digits) if digits else 0, rank, rank_suffix))
+
+    if not parts:
+        parts.append((0, *_RELEASE))
+    return tuple(parts)
+
+
+def _pad_version_keys(
+    a: tuple[tuple[int, int, str], ...], b: tuple[tuple[int, int, str], ...]
+) -> tuple[tuple[tuple[int, int, str], ...], tuple[tuple[int, int, str], ...]]:
+    """Pad the shorter of two version keys with release-zero segments."""
+    pad = ((0, *_RELEASE),) * abs(len(a) - len(b))
+    if len(a) < len(b):
+        return a + pad, b
+    return a, b + pad

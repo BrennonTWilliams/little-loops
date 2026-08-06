@@ -838,7 +838,9 @@ class TestWriteConfig:
         write_config({"$schema": SCHEMA_URL}, ll_dir, dry_run=True)
         assert not (ll_dir / "ll-config.json").exists()
         out = capsys.readouterr().out
-        assert "$schema" in out
+        # The full config dump was replaced by a single planned-write line
+        # (audit U-4); the summary surface shows the config contents.
+        assert "write" in out and "ll-config.json" in out
 
 
 # ===========================================================================
@@ -870,7 +872,7 @@ class TestUpdateGitignore:
         changed = update_gitignore(tmp_project, dry_run=True)
         assert changed is True
         assert not (tmp_project / ".gitignore").exists()
-        assert "[update]" in capsys.readouterr().out
+        assert "update " in capsys.readouterr().out
 
     def test_partial_entries_only_appends_missing(self, tmp_project: Path) -> None:
         existing = _GITIGNORE_ENTRIES[0] + "\n"
@@ -1026,7 +1028,7 @@ class TestMergeSettings:
     def test_dry_run_no_write(self, tmp_project: Path, capsys: pytest.CaptureFixture) -> None:
         merge_settings(tmp_project, dry_run=True)
         assert not (tmp_project / ".claude" / "settings.local.json").exists()
-        assert "[update]" in capsys.readouterr().out
+        assert "update " in capsys.readouterr().out
 
 
 # ===========================================================================
@@ -1050,7 +1052,7 @@ class TestMakeIssueDirs:
         base = tmp_project / ".issues"
         make_issue_dirs(base, dry_run=True)
         assert not base.exists()
-        assert "[mkdir]" in capsys.readouterr().out
+        assert "mkdir " in capsys.readouterr().out
 
 
 # ===========================================================================
@@ -1079,7 +1081,7 @@ class TestMakeLearningTestsDir:
         created = make_learning_tests_dir(ll_dir, dry_run=True)
         assert created is True
         assert not (ll_dir / "learning-tests").exists()
-        assert "[mkdir]" in capsys.readouterr().out
+        assert "mkdir " in capsys.readouterr().out
 
 
 # ===========================================================================
@@ -1120,7 +1122,7 @@ class TestDeployGoals:
         created = deploy_goals(ll_dir, templates_dir, dry_run=True)
         assert created is True
         assert not (ll_dir / "ll-goals.md").exists()
-        assert "[write]" in capsys.readouterr().out
+        assert "write " in capsys.readouterr().out
 
 
 # ===========================================================================
@@ -1151,7 +1153,7 @@ class TestDeployDesignTokens:
         created = deploy_design_tokens(ll_dir, templates_dir, dry_run=True)
         assert created is True
         assert not (ll_dir / "design-tokens").exists()
-        assert "[write]" in capsys.readouterr().out
+        assert "write " in capsys.readouterr().out
 
     def test_skips_if_source_missing(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
         ll_dir = tmp_path / ".ll"
@@ -1216,7 +1218,7 @@ class TestInstallCodexAdapter:
         installed = install_codex_adapter(project_root, plugin_root, dry_run=True)
         assert installed is True
         assert not (project_root / ".codex" / "hooks.json").exists()
-        assert "[write]" in capsys.readouterr().out
+        assert "write " in capsys.readouterr().out
 
     def test_skips_when_template_missing(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1380,7 +1382,7 @@ class TestInstallKimiAdapter:
         installed = install_kimi_adapter(tmp_path, tmp_path, dry_run=True)
         assert installed is True
         assert not (kimi_home / "config.toml").exists()
-        assert "[write]" in capsys.readouterr().out
+        assert "write " in capsys.readouterr().out
 
     def test_dry_run_reports_noop_at_same_version(
         self, tmp_path: Path, kimi_home: Path, capsys: pytest.CaptureFixture
@@ -1486,7 +1488,7 @@ class TestWriteClaudeMd:
         assert result is True
         assert not (tmp_path / ".claude" / "CLAUDE.md").exists()
         out = capsys.readouterr().out
-        assert "[write]" in out
+        assert "write " in out
         assert "CLAUDE.md" in out
 
     def test_dry_run_append(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
@@ -1498,7 +1500,7 @@ class TestWriteClaudeMd:
         assert result is True
         assert dest.read_text(encoding="utf-8") == original  # unchanged
         out = capsys.readouterr().out
-        assert "[update]" in out
+        assert "update " in out
         assert "CLAUDE.md" in out
 
     def test_dry_run_noop_when_section_present(
@@ -1571,7 +1573,7 @@ class TestWriteAgentsMd:
         assert result is True
         assert not (tmp_path / "AGENTS.md").exists()
         out = capsys.readouterr().out
-        assert "[write]" in out
+        assert "write " in out
         assert "AGENTS.md" in out
 
     def test_dry_run_append(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
@@ -1582,7 +1584,7 @@ class TestWriteAgentsMd:
         assert result is True
         assert dest.read_text(encoding="utf-8") == original  # unchanged
         out = capsys.readouterr().out
-        assert "[update]" in out
+        assert "update " in out
         assert "AGENTS.md" in out
 
     def test_content_is_host_generic(self, tmp_path: Path) -> None:
@@ -2486,7 +2488,7 @@ class TestMainInit:
     def test_dry_run_shows_epics_not_completed_deferred(
         self, tmp_project: Path, capsys: pytest.CaptureFixture
     ) -> None:
-        """--dry-run [mkdir] lines list 'epics' (not stale 'completed'/'deferred')."""
+        """--dry-run mkdir lines list 'epics' (not stale 'completed'/'deferred')."""
         from little_loops.init.cli import main_init
 
         with (
@@ -2499,7 +2501,7 @@ class TestMainInit:
             code = main_init(["--yes", "--dry-run", "--root", str(tmp_project)])
         assert code == 0
         out = capsys.readouterr().out
-        mkdir_lines = [line for line in out.splitlines() if "[mkdir]" in line]
+        mkdir_lines = [line for line in out.splitlines() if "mkdir " in line]
         assert any("epics" in line for line in mkdir_lines)
         assert not any("completed" in line for line in mkdir_lines)
         assert not any("deferred" in line for line in mkdir_lines)
@@ -2587,7 +2589,7 @@ class TestMainInit:
     def test_dry_run_output_matches_yes_writes(
         self, tmp_path: Path, capsys: pytest.CaptureFixture
     ) -> None:
-        """Issue-subdir [mkdir] names in --dry-run match the directories --yes creates."""
+        """Issue-subdir mkdir names in --dry-run match the directories --yes creates."""
         from little_loops.init.cli import main_init
 
         dry_root = tmp_path / "dry"
@@ -2606,9 +2608,9 @@ class TestMainInit:
         assert code == 0
         out = capsys.readouterr().out
         dry_mkdir_names = {
-            Path(line.strip().split(None, 1)[1].strip()).name
+            Path(line.split("mkdir ", 1)[1].strip()).name
             for line in out.splitlines()
-            if "[mkdir]" in line and ".issues" in line
+            if "mkdir " in line and ".issues" in line
         }
 
         with (
@@ -2936,7 +2938,7 @@ class TestHostDispatch:
             code = main_init(["--yes", "--hosts", "kimi-code", "--root", str(tmp_project)])
         assert code == 0
         out = capsys.readouterr().out
-        assert "[Kimi] Hook adapter installed" in out
+        assert "Kimi: hook adapter installed" in out
         assert "user-level" in out
 
     def test_hosts_codex_produces_agents_md(self, tmp_project: Path) -> None:

@@ -12,6 +12,25 @@ from typing import Any
 from little_loops.file_utils import atomic_write, atomic_write_json
 from little_loops.init.core import strip_none_leaves
 
+# Default Claude Code settings file that ll-init merges tool permissions
+# into. Single source of truth: merge_settings' signature default and
+# --plan's host_options.suggested_settings_file both reference it (audit M-8).
+DEFAULT_SETTINGS_FILE = ".claude/settings.local.json"
+
+
+def info(msg: str) -> None:
+    """cli.output.info via lazy import.
+
+    A module-level ``from little_loops.cli.output import info`` closes a
+    circular import: ``little_loops.cli.__init__`` imports
+    verify_cli_allowlist, which imports ``_LL_PERMISSIONS`` from this
+    module. The dry-run branches below are the only callers.
+    """
+    from little_loops.cli.output import info as _output_info
+
+    _output_info(msg)
+
+
 # Entries added to .gitignore by ll-init (idempotently).
 #
 # ``.ll/`` follows the ``.claude/`` model: the **repo-root** directory is tracked and
@@ -280,10 +299,12 @@ def write_config(config: dict[str, Any], ll_dir: Path, dry_run: bool = False) ->
     Args:
         config: Config dict produced by build_config().
         ll_dir: Path to the .ll/ directory.
-        dry_run: If True, print JSON to stdout; do not write files.
+        dry_run: If True, print the planned write; do not write files. The
+            full config dump the old implementation emitted here was replaced
+            by the run-level summary (audit U-4).
     """
     if dry_run:
-        print(json.dumps(config, indent=2))
+        info(f"write {ll_dir / 'll-config.json'}")
         return
     ll_dir.mkdir(parents=True, exist_ok=True)
     atomic_write_json(ll_dir / "ll-config.json", config)
@@ -310,7 +331,7 @@ def update_gitignore(project_root: Path, dry_run: bool = False) -> bool:
         return False
 
     if dry_run:
-        print(f"[update] .gitignore (+{len(missing)} entries)")
+        info(f"update .gitignore (+{len(missing)} entries)")
         return True
 
     block = _GITIGNORE_COMMENT + "\n" + "\n".join(missing) + "\n"
@@ -327,7 +348,7 @@ def update_gitignore(project_root: Path, dry_run: bool = False) -> bool:
 
 def merge_settings(
     project_root: Path,
-    settings_file: str = ".claude/settings.local.json",
+    settings_file: str = DEFAULT_SETTINGS_FILE,
     extra_permissions: list[str] | None = None,
     dry_run: bool = False,
 ) -> None:
@@ -373,7 +394,7 @@ def merge_settings(
     data["permissions"] = perms
 
     if dry_run:
-        print(f"[update] {settings_file}")
+        info(f"update {settings_file}")
         if extra_permissions:
             for perm in extra_permissions:
                 print(f"  + {perm}")
@@ -392,53 +413,61 @@ def make_issue_dirs(base_dir: Path, dry_run: bool = False) -> None:
     """
     if dry_run:
         for sd in _ISSUE_SUBDIRS:
-            print(f"[mkdir] {base_dir / sd}")
+            info(f"mkdir {base_dir / sd}")
         return
     for sd in _ISSUE_SUBDIRS:
         (base_dir / sd).mkdir(parents=True, exist_ok=True)
 
 
-def make_learning_tests_dir(ll_dir: Path, dry_run: bool = False) -> bool:
+def make_learning_tests_dir(ll_dir: Path, dry_run: bool = False, force: bool = False) -> bool:
     """Create .ll/learning-tests/ with a .gitkeep placeholder.
 
     Args:
         ll_dir: The .ll/ directory.
         dry_run: If True, print planned mkdir; do not create directories.
+        force: Re-touch the placeholder even when the directory exists
+            (--force reset semantics; audit M-4).
 
     Returns:
-        True if the directory was created; False if it already existed.
+        True if the directory was created or refreshed; False if it already
+        existed without ``force``.
     """
     lt_dir = ll_dir / "learning-tests"
-    if lt_dir.exists():
+    if lt_dir.exists() and not force:
         return False
     if dry_run:
-        print(f"[mkdir] {lt_dir}")
+        info(f"mkdir {lt_dir}")
         return True
     lt_dir.mkdir(parents=True, exist_ok=True)
     (lt_dir / ".gitkeep").touch()
     return True
 
 
-def deploy_goals(ll_dir: Path, templates_dir: Path, dry_run: bool = False) -> bool:
+def deploy_goals(
+    ll_dir: Path, templates_dir: Path, dry_run: bool = False, force: bool = False
+) -> bool:
     """Deploy the goals template to .ll/ll-goals.md (skip if already present).
 
     Args:
         ll_dir: The .ll/ directory.
         templates_dir: templates/ directory containing ll-goals-template.md.
         dry_run: If True, print planned write; do not copy files.
+        force: Overwrite an existing ll-goals.md from the bundled template
+            (--force reset semantics; audit M-4).
 
     Returns:
-        True if deployed; False if already existed or source not found.
+        True if deployed; False if already existed without ``force`` or
+        source not found.
     """
     dest = ll_dir / "ll-goals.md"
-    if dest.exists():
+    if dest.exists() and not force:
         return False
     src = templates_dir / "ll-goals-template.md"
     if not src.exists():
         print(f"  Warning: goals template source not found at {src}", file=sys.stderr)
         return False
     if dry_run:
-        print(f"[write] {dest} (from {src.name})")
+        info(f"write {dest} (from {src.name})")
         return True
     ll_dir.mkdir(parents=True, exist_ok=True)
     atomic_write(dest, src.read_text(encoding="utf-8"))
@@ -450,6 +479,7 @@ def deploy_design_tokens(
     templates_dir: Path,
     active_profile: str = "default",
     dry_run: bool = False,
+    force: bool = False,
 ) -> bool:
     """Mirror templates/design-tokens/profiles/ into .ll/design-tokens/profiles/.
 
@@ -461,13 +491,16 @@ def deploy_design_tokens(
         active_profile: Name of the active profile (for display only; not
             written to config by this function).
         dry_run: If True, print planned write; do not copy files.
+        force: Replace an existing profiles/ tree with the bundled copy
+            (--force reset semantics; audit M-4).
 
     Returns:
-        True if deployed; False if already existed or source not found.
+        True if deployed; False if already existed without ``force`` or
+        source not found.
     """
     src_profiles = templates_dir / "design-tokens" / "profiles"
     dest_profiles = ll_dir / "design-tokens" / "profiles"
-    if dest_profiles.exists():
+    if dest_profiles.exists() and not force:
         return False
     if not src_profiles.exists():
         print(
@@ -476,32 +509,40 @@ def deploy_design_tokens(
         )
         return False
     if dry_run:
-        print(f"[write] {dest_profiles}/ (design-token profiles)")
+        info(f"write {dest_profiles}/ (design-token profiles)")
         return True
+    if dest_profiles.exists():
+        shutil.rmtree(dest_profiles)
     shutil.copytree(src_profiles, dest_profiles)
     return True
 
 
-def deploy_issue_templates(ll_dir: Path, templates_dir: Path, dry_run: bool = False) -> bool:
+def deploy_issue_templates(
+    ll_dir: Path, templates_dir: Path, dry_run: bool = False, force: bool = False
+) -> bool:
     """Copy bundled *-sections.json files to .ll/templates/ (skip if already present).
 
     Args:
         ll_dir: The .ll/ directory.
         templates_dir: templates/ directory containing *-sections.json files.
         dry_run: If True, print planned write; do not copy files.
+        force: Re-copy the bundled section files over an existing
+            .ll/templates/, overwriting the bundled names but leaving any
+            user-added files untouched (--force reset semantics; audit M-4).
 
     Returns:
-        True if deployed; False if already existed or no section files found.
+        True if deployed; False if already existed without ``force`` or no
+        section files found.
     """
     dest = ll_dir / "templates"
-    if dest.exists():
+    if dest.exists() and not force:
         return False
     section_files = list(templates_dir.glob("*-sections.json"))
     if not section_files:
         print(f"Warning: no *-sections.json files found in {templates_dir}", file=sys.stderr)
         return False
     if dry_run:
-        print(f"[write] {dest}/ (issue section templates)")
+        info(f"write {dest}/ (issue section templates)")
         return True
     dest.mkdir(parents=True, exist_ok=True)
     for f in section_files:
@@ -540,13 +581,13 @@ def write_claude_md(project_root: Path, dry_run: bool = False) -> bool:
         if _CLAUDE_MD_SECTION_MARKER in existing:
             return False
         if dry_run:
-            print(f"[update] {rel} (append ## little-loops CLI Commands)")
+            info(f"update {rel} (append ## little-loops CLI Commands)")
             return True
         new_content = existing.rstrip("\n") + "\n" + _CLAUDE_MD_COMMANDS_BLOCK
         atomic_write(target, new_content)
     else:
         if dry_run:
-            print(f"[write] {rel} (ll- CLI command documentation)")
+            info(f"write {rel} (ll- CLI command documentation)")
             return True
         target.parent.mkdir(parents=True, exist_ok=True)
         atomic_write(target, _CLAUDE_MD_NEW_FILE_CONTENT)
@@ -593,13 +634,13 @@ def write_agents_md(project_root: Path, dry_run: bool = False) -> bool:
         if _CLAUDE_MD_SECTION_MARKER in existing:
             return False
         if dry_run:
-            print(f"[update] {rel} (append ## little-loops CLI Commands)")
+            info(f"update {rel} (append ## little-loops CLI Commands)")
             return True
         new_content = existing.rstrip("\n") + "\n" + _AGENTS_MD_COMMANDS_BLOCK
         atomic_write(target, new_content)
     else:
         if dry_run:
-            print(f"[write] {rel} (ll- CLI command documentation)")
+            info(f"write {rel} (ll- CLI command documentation)")
             return True
         target.parent.mkdir(parents=True, exist_ok=True)
         atomic_write(target, _AGENTS_MD_NEW_FILE_CONTENT)
@@ -654,7 +695,7 @@ def install_codex_adapter(
     )
 
     if dry_run:
-        print("[write] .codex/hooks.json")
+        info("write .codex/hooks.json")
         return True
 
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -780,7 +821,7 @@ def install_kimi_adapter(
             if span is not None
             else "add little-loops managed block"
         )
-        print(f"[write] {dest} ({action})")
+        info(f"write {dest} ({action})")
         return True
 
     if span is not None:

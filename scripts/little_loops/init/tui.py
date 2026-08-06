@@ -11,6 +11,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from little_loops.init.core import schema_default
+
 # Feature choices in display order for the multi-select screen
 _FEATURE_CHOICES: list[tuple[str, str]] = [
     ("Parallel processing  (ll-parallel)", "parallel"),
@@ -127,12 +129,16 @@ def run_tui(
     plugin_root: Path,
     force: bool = False,
     hosts: list[str] | None = None,
+    color_choice: bool | None = None,
 ) -> int:
     """Run the interactive TUI for ll-init.
 
     Args:
         hosts: Detection-seeded default host list shown pre-checked.
                When None, defaults to ["claude-code"].
+        color_choice: Explicit --color/--no-color from the parser. True
+            forces rich terminal output, False forces no_color, None lets
+            rich auto-detect (which itself honors NO_COLOR).
 
     Returns:
         0 on success, 1 on user-abort/config-exists/error, 130 on Ctrl-C.
@@ -159,7 +165,12 @@ def run_tui(
     )
     from little_loops.init.writers import load_existing_config
 
-    console = Console()
+    if color_choice is False:
+        console = Console(no_color=True)
+    elif color_choice is True:
+        console = Console(force_terminal=True)
+    else:
+        console = Console()
     ll_dir = project_root / ".ll"
     config_path = ll_dir / "ll-config.json"
 
@@ -203,8 +214,15 @@ def run_tui(
         _adapter_stale = _adapter_stamp is not None and _adapter_stamp != installed_version
 
     if _needs_install or _pkg_outdated or _plugin_outdated or _adapter_stale:
+        # Screen numbering (audit U-5): this Plugin Install screen is
+        # conditional on staleness, so a healthy install has six screens.
+        # The labels used to be hardcoded "1 / 7"…"7 / 7", making a
+        # healthy run visibly start at "2 / 7" — reading as a bug on the
+        # first frame of the first-run experience.
+        _total_screens = 7
+        _screen_offset = 0
         console.print()
-        console.rule("[bold]1 / 7  Plugin Install[/bold]")
+        console.rule(f"[bold]{1 - _screen_offset} / {_total_screens}  Plugin Install[/bold]")
         if _needs_install:
             console.print(
                 "[yellow]little-loops package not detected.[/yellow] "
@@ -246,10 +264,14 @@ def run_tui(
             console.print("[yellow]Aborted — no changes made.[/yellow]")
             return 1
     else:
+        _total_screens = 6
+        _screen_offset = 1
         if install_source is not None:
+            _status_mark = " ✓" if console.color_system else ""
             console.print(
                 f"[dim]Plugin status: {install_source} "
-                f"{'v' + installed_version if installed_version else '(version unknown)'} ✓[/dim]"
+                f"{'v' + installed_version if installed_version else '(version unknown)'}"
+                f"{_status_mark}[/dim]"
             )
 
     candidates = detect_project_type_all(project_root, templates_dir)
@@ -263,8 +285,8 @@ def run_tui(
 
     default_hosts: frozenset[str] = frozenset(hosts or ["claude-code"])
 
-    # --- Screen 2 / 7: Project Basics ---
-    console.rule("[bold]2 / 7  Project Basics[/bold]")
+    # --- Screen 2: Project Basics ---
+    console.rule(f"[bold]{2 - _screen_offset} / {_total_screens}  Project Basics[/bold]")
 
     _ex_proj = existing_config.get("project", {})
 
@@ -313,9 +335,9 @@ def run_tui(
     if format_cmd is None:
         return 130
 
-    # --- Screen 3 / 7: Scan ---
+    # --- Screen 3: Scan ---
     console.print()
-    console.rule("[bold]3 / 7  Scan[/bold]")
+    console.rule(f"[bold]{3 - _screen_offset} / {_total_screens}  Scan[/bold]")
 
     _scan_data = template.data.get("scan", {})
     _ex_focus = existing_config.get("scan", {}).get("focus_dirs")
@@ -342,9 +364,9 @@ def run_tui(
         if custom_excludes_str is None:
             return 130
 
-    # --- Screen 4 / 7: Features ---
+    # --- Screen 4: Features ---
     console.print()
-    console.rule("[bold]4 / 7  Features[/bold]")
+    console.rule(f"[bold]{4 - _screen_offset} / {_total_screens}  Features[/bold]")
 
     _pre_checked_features = (
         _features_from_existing_config(existing_config) if existing_config else _DEFAULT_FEATURES
@@ -363,14 +385,20 @@ def run_tui(
 
     # Conditional: parallel worker count, worktree copy files, and feature-branch mode
     _ex_parallel = existing_config.get("parallel", {})
-    parallel_workers: int = 4
+    # Schema default, not a literal: the "write only non-defaults" comparison
+    # in _build_final_config uses the same source, so accepting the prompt
+    # default must round-trip to the value the user was shown (audit H-4 —
+    # the old literal 4 disagreed with the schema default and silently
+    # dropped the user's choice).
+    _default_workers = int(schema_default("parallel.max_workers"))
+    parallel_workers: int = _default_workers
     worktree_copy_files: list[str] = []
     use_feature_branches: bool = False
     use_epic_branches: bool = False
     if "parallel" in selected_set:
         workers_str = questionary.text(
             "Max parallel workers:",
-            default=str(_ex_parallel.get("max_workers", 4)),
+            default=str(_ex_parallel.get("max_workers", _default_workers)),
         ).ask()
         if workers_str is None:
             return 130
@@ -379,8 +407,10 @@ def run_tui(
             if parallel_workers < 1:
                 raise ValueError("must be positive")
         except ValueError:
-            console.print("[yellow]Invalid worker count; defaulting to 4.[/yellow]")
-            parallel_workers = 4
+            console.print(
+                f"[yellow]Invalid worker count; defaulting to {_default_workers}.[/yellow]"
+            )
+            parallel_workers = _default_workers
 
         _ex_wt_files = set(_ex_parallel.get("worktree_copy_files", []))
         wt_files: list[str] | None = questionary.checkbox(
@@ -480,9 +510,9 @@ def run_tui(
         return 130
     loop_show_diagrams_default: str | None = None if _raw_sd == "__disabled__" else _raw_sd
 
-    # --- Screen 5 / 7: Hosts ---
+    # --- Screen 5: Hosts ---
     console.print()
-    console.rule("[bold]5 / 7  Hosts[/bold]")
+    console.rule(f"[bold]{5 - _screen_offset} / {_total_screens}  Hosts[/bold]")
 
     selected_hosts: list[str] | None = questionary.checkbox(
         "Which host harnesses should ll-init wire adapters for?",
@@ -494,9 +524,9 @@ def run_tui(
     if selected_hosts is None:
         return 130
 
-    # --- Screen 6 / 7: Settings target ---
+    # --- Screen 6: Settings target ---
     console.print()
-    console.rule("[bold]6 / 7  Settings[/bold]")
+    console.rule(f"[bold]{6 - _screen_offset} / {_total_screens}  Settings[/bold]")
 
     settings_target: str | None = questionary.select(
         "Where should ll tool permissions be written?",
@@ -518,9 +548,9 @@ def run_tui(
     if settings_target is None:
         return 130
 
-    # --- Screen 7 / 7: CLAUDE.md ---
+    # --- Screen 7: CLAUDE.md ---
     console.print()
-    console.rule("[bold]7 / 7  CLAUDE.md[/bold]")
+    console.rule(f"[bold]{7 - _screen_offset} / {_total_screens}  CLAUDE.md[/bold]")
 
     _dot_claude_md = project_root / ".claude" / "CLAUDE.md"
     _root_claude_md = project_root / "CLAUDE.md"
@@ -693,7 +723,7 @@ def _build_final_config(
     # Optional sections from feature toggles
     if "parallel" in selected_set:
         parallel_section: dict[str, Any] = {}
-        if parallel_workers != 4:
+        if parallel_workers != schema_default("parallel.max_workers"):
             parallel_section["max_workers"] = parallel_workers
         if worktree_copy_files:
             parallel_section["worktree_copy_files"] = list(worktree_copy_files)
@@ -722,8 +752,8 @@ def _build_final_config(
     if "confidence_gate" in selected_set:
         commands["confidence_gate"] = {
             "enabled": True,
-            "readiness_threshold": 85,
-            "outcome_threshold": 65,
+            "readiness_threshold": schema_default("commands.confidence_gate.readiness_threshold"),
+            "outcome_threshold": schema_default("commands.confidence_gate.outcome_threshold"),
         }
     if "tdd" in selected_set:
         commands["tdd_mode"] = True
@@ -743,25 +773,21 @@ def _render_summary(
     claude_md_opt_in: bool = False,
     claude_md_section_present: bool = False,
 ) -> None:
-    """Render a rich bordered summary panel of the proposed configuration."""
-    proj = config.get("project", {})
+    """Render a rich bordered summary panel of the proposed configuration.
+
+    Config-derived rows come from the shared init/summary.py extraction
+    (audit rec-11) — the same rows the headless completion summary prints —
+    with the Features row rendered from the user's checkbox selection and
+    the wizard-only rows (Hosts, Settings, CLAUDE.md) appended.
+    """
+    from little_loops.init.summary import summary_rows
 
     table = Table(show_header=False, box=None, padding=(0, 1))
     table.add_column("Key", style="bold cyan", min_width=14)
     table.add_column("Value")
 
-    table.add_row("Project", proj.get("name", project_root.name))
-    table.add_row("Source dir", proj.get("src_dir", ""))
-
-    for field, label in [
-        ("test_cmd", "Test"),
-        ("lint_cmd", "Lint"),
-        ("type_cmd", "Type-check"),
-        ("format_cmd", "Format"),
-    ]:
-        val = proj.get(field)
-        if val:
-            table.add_row(label, str(val))
+    for key, value in summary_rows(config, project_root, include_features=False):
+        table.add_row(key, value)
 
     enabled = [_FEATURE_LABELS[k] for k in _FEATURE_LABELS if k in selected_set]
     if enabled:
@@ -769,59 +795,6 @@ def _render_summary(
 
     host_labels = [_HOST_LABELS.get(h, h) for h in selected_hosts]
     table.add_row("Hosts", ", ".join(host_labels) if host_labels else "none")
-
-    # New: sync / commands
-    if config.get("sync", {}).get("enabled"):
-        table.add_row("Sync", "GitHub sync enabled")
-
-    cmds = config.get("commands", {})
-    cmd_parts = []
-    if cmds.get("confidence_gate", {}).get("enabled"):
-        cmd_parts.append("confidence gate")
-    if cmds.get("tdd_mode"):
-        cmd_parts.append("TDD mode")
-    if cmd_parts:
-        table.add_row("Commands", ", ".join(cmd_parts))
-
-    # Design-token profile
-    dt = config.get("design_tokens", {})
-    if dt.get("enabled"):
-        table.add_row("Design tokens", dt.get("active", "default"))
-
-    # Documents categories
-    doc_cats = config.get("documents", {}).get("categories", {})
-    if doc_cats:
-        table.add_row("Documents", f"{len(doc_cats)} categories detected")
-
-    # Worktree copy files
-    wt_files = config.get("parallel", {}).get("worktree_copy_files", [])
-    if wt_files:
-        table.add_row("Worktree files", ", ".join(wt_files))
-
-    # Session digest
-    sd_enabled = config.get("history", {}).get("session_digest", {}).get("enabled", True)
-    table.add_row("Session digest", "on" if sd_enabled else "off")
-
-    # Opt-in feature sections written by the new toggles
-    if config.get("decisions", {}).get("enabled"):
-        table.add_row("Decisions", "rules log enabled")
-    if config.get("scratch_pad", {}).get("enabled"):
-        table.add_row("Scratch pad", "enabled")
-    if config.get("session_capture", {}).get("enabled"):
-        table.add_row("Session capture", "enabled")
-
-    # Prompt optimization (default-off; only written when opted in)
-    if config.get("prompt_optimization", {}).get("enabled") is True:
-        table.add_row("Prompt optim.", "on")
-
-    # Loop run defaults
-    rd = config.get("loops", {}).get("run_defaults", {})
-    rd_parts = []
-    if rd.get("clear"):
-        rd_parts.append("--clear")
-    if rd.get("show_diagrams"):
-        rd_parts.append(f"--show-diagrams {rd['show_diagrams']}")
-    table.add_row("Loop defaults", " ".join(rd_parts) if rd_parts else "none")
 
     if settings_target == "skip":
         sf = "Skip — no permissions written"
@@ -857,7 +830,11 @@ def _apply_config(
 ) -> None:
     """Write all ll-init artifacts to disk."""
     from little_loops import __version__
-    from little_loops.init.cli import _dispatch_host_adapters, _is_git_repo
+    from little_loops.init.cli import (
+        _dispatch_host_adapters,
+        _is_git_repo,
+        _persist_host_selection,
+    )
     from little_loops.init.validate import validate_deps
     from little_loops.init.writers import (
         AGENTS_MD_HOSTS,
@@ -873,6 +850,10 @@ def _apply_config(
         write_claude_md,
         write_config,
     )
+
+    # The wizard's host question is always an explicit user selection —
+    # persist it to hooks.host / orchestration.host_cli (audit rec-13).
+    _persist_host_selection(config, hosts, explicit=True)
 
     # Preserve any config keys the wizard does not model (BUG-2310); --force resets.
     config = merge_with_existing(config, existing_config or {}, force)
@@ -931,5 +912,15 @@ def _apply_config(
             "until you run git init.[/yellow]"
         )
 
-    console.print(f"\n[bold green]✓ little-loops initialized in {project_root}[/bold green]")
+    # Gated glyph: the ✓ must not leak into piped/CI output (audit U-1).
+    _mark = "✓ " if console.color_system else ""
+    console.print(f"\n[bold green]{_mark}little-loops initialized in {project_root}[/bold green]")
     console.print(f"  Config: [cyan]{config_path}[/cyan]")
+
+    # Next steps — the same hints the headless paths print (audit U-3).
+    from little_loops.init.cli import _NEXT_STEPS
+
+    console.print()
+    console.print("[bold]Next steps:[/bold]")
+    for step in _NEXT_STEPS:
+        console.print(f"  [dim]{step}[/dim]")

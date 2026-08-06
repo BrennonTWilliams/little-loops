@@ -205,6 +205,18 @@ def use_color_enabled() -> bool:
     return _USE_COLOR
 
 
+def set_use_color(enabled: bool) -> None:
+    """Override the module-level color state directly.
+
+    For explicit CLI flags (--color/--no-color) that must refine the gate
+    ``configure_output()`` computed from environment and TTY state. Callers
+    own the precedence policy (e.g. ll-init still lets NO_COLOR win over an
+    explicit --color).
+    """
+    global _USE_COLOR
+    _USE_COLOR = enabled
+
+
 def colorize(text: str, code: str) -> str:
     """Wrap *text* in the given ANSI escape *code*, or return it unchanged."""
     if not _USE_COLOR:
