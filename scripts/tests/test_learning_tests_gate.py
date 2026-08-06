@@ -259,3 +259,36 @@ class TestRunLearningGateForIssueDirectInvocation:
 
         assert verdict == "blocked"
         mock_history.assert_not_called()
+
+    def test_invocation_passes_queue_flag(self, tmp_path: Path) -> None:
+        """ENH-3073 follow-up: --queue lets ready-to-implement-gate wait out a
+        scope-lock held by an unrelated concurrently running loop (e.g.
+        refine-to-ready-issue, which locks the whole repo) instead of the
+        caller instantly collapsing to impl_failed."""
+        issue_path = tmp_path / "ENH-12.md"
+        issue_path.write_text("---\nid: ENH-12\n---\n")
+
+        with patch(
+            "little_loops.learning_tests.gate.subprocess.run",
+            return_value=self._ok_result(),
+        ) as mock_sub:
+            run_learning_gate_for_issue(issue_path, cwd=tmp_path, targets=["stripe"])
+
+        cmd = mock_sub.call_args[0][0]
+        assert "--queue" in cmd
+
+    def test_scope_conflict_never_clearing_yields_impl_failed(self, tmp_path: Path) -> None:
+        """A conflicting loop that never releases its lock within the queue-wait
+        budget must surface as impl_failed rather than hanging ll-auto forever."""
+        import subprocess
+
+        issue_path = tmp_path / "ENH-13.md"
+        issue_path.write_text("---\nid: ENH-13\n---\n")
+
+        with patch(
+            "little_loops.learning_tests.gate.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="ll-loop", timeout=900),
+        ):
+            verdict = run_learning_gate_for_issue(issue_path, cwd=tmp_path, targets=["stripe"])
+
+        assert verdict == "impl_failed"

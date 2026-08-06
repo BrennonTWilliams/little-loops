@@ -22,6 +22,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Bound on how long the --queue wait (ENH-3073 follow-up) may block ll-auto
+# for a single issue before giving up on a conflicting scope lock clearing.
+_QUEUE_WAIT_TIMEOUT_SECONDS = 900
+
 
 def format_nudge_message(pkg: str, stale: bool = False) -> str:
     """Return a nudge message for a package with no proven or stale learning test.
@@ -120,13 +124,29 @@ def run_learning_gate_for_issue(
             "ready-to-implement-gate",
             "--context",
             f"targets={','.join(targets)}",
+            # ENH-3073 follow-up: refine-to-ready-issue (and other unscoped
+            # issue-management loops) lock the whole repo, so a second ll-auto
+            # issue can legitimately hit a scope conflict here even though
+            # ready-to-implement-gate itself is narrowly scoped to its own
+            # run_dir (BUG-2864). --queue waits for the conflicting loop to
+            # release the lock instead of instantly collapsing to impl_failed.
+            "--queue",
         ]
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            cwd=working_dir,
-        )
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                cwd=working_dir,
+                timeout=_QUEUE_WAIT_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired:
+            logger.error(
+                "ready-to-implement-gate did not clear a scope-lock conflict "
+                "within %ds; treating as an infra failure (not a refuted target)",
+                _QUEUE_WAIT_TIMEOUT_SECONDS,
+            )
+            return "impl_failed"
 
         # Function-local import: little_loops.fsm's package __init__ pulls in
         # the executor, which imports little_loops.config — a cycle at
