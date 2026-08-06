@@ -321,9 +321,7 @@ class TestConditionalParallel:
         assert "parallel" not in config
 
     @patch("little_loops.init.tui.questionary")
-    def test_old_sentinel_workers_now_written(
-        self, mock_q: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_old_sentinel_workers_now_written(self, mock_q: MagicMock, tmp_path: Path) -> None:
         """Audit H-4 regression: 4 was the old hard-coded sentinel and was
         silently dropped; it is a non-default value and must be written."""
         with patch("sys.stdin") as mock_stdin:
