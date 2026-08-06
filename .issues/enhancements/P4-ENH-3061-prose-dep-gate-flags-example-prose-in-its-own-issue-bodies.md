@@ -3,11 +3,12 @@ id: ENH-3061
 title: prose-dep gate flags example prose in issues that document the extractor
 type: ENH
 priority: P4
-status: open
+status: done
 testable: true
 discovered_by: capture-issue
 discovered_date: 2026-08-05
 captured_at: '2026-08-05T16:06:39Z'
+completed_at: '2026-08-06T03:20:47Z'
 relates_to:
 - BUG-3057
 - FEAT-2849
@@ -188,6 +189,7 @@ way.
 **Open**
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-06T03:20:25 - `232d852d-4057-4b16-8278-ff50e4d40a37.jsonl`
 - `/ll:confidence-check` - 2026-08-06T02:49:04 - `8261be84-d0d0-4d57-8c61-d48eb1009eae.jsonl`
 - `/ll:verify-issues` - 2026-08-06T02:47:05 - `49441385-227b-43ee-a778-cf10f3432c0e.jsonl`
 - `/ll:wire-issue` - 2026-08-06T02:44:00 - `ac96a421-ca52-45fc-a963-abd2a97d00f4.jsonl`

@@ -111,6 +111,29 @@ def test_blocked_by_section_ignores_fenced_ids() -> None:
     assert extract_prose_deps(body) == set()
 
 
+def test_ignores_ids_in_inline_code() -> None:
+    body = "\n".join(
+        [
+            "Some text.",
+            "An example: `Depends on FEAT-999`.",
+            "No real dependency here.",
+        ]
+    )
+    assert extract_prose_deps(body) == set()
+
+
+def test_blocked_by_section_ignores_inline_code_ids() -> None:
+    body = "\n".join(
+        [
+            "## Blocked By",
+            "Example: `FEAT-999`",
+            "",
+            "## Impact",
+        ]
+    )
+    assert extract_prose_deps(body) == set()
+
+
 def test_no_phrase_no_match() -> None:
     assert extract_prose_deps("See FEAT-5 for related discussion.") == set()
 

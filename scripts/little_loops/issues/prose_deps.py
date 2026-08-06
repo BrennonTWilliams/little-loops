@@ -36,6 +36,11 @@ _BLOCKED_BY_HEADING_RE = re.compile(r"^##\s+Blocked By\s*$", re.IGNORECASE | re.
 _NEXT_HEADING_RE = re.compile(r"^##\s+", re.MULTILINE)
 _ID_ONLY_RE = re.compile(_ID_RE)
 
+# Inline code spans ("`Depends on FEAT-109`"), suppressed the same as fenced
+# blocks (ENH-3061). Matches the single-backtick pattern already used by
+# `symbol_claims._BACKTICK_SPAN_RE` and `cli_claims._BACKTICK_SPAN_RE`.
+_BACKTICK_SPAN_RE = re.compile(r"`([^`\n]+)`")
+
 
 # BUG-3057: boundaries that start a new attribution scope. A dependency
 # phrase describes whichever issue is the subject of its own sentence or list
@@ -84,7 +89,7 @@ def extract_prose_deps(body: str, host_id: str | None = None) -> set[str]:
 
     Matches canonical phrasings only: "Depends on <ID>", "Blocked by <ID>",
     "Requires <ID>", and IDs listed in the body of a "## Blocked By" section.
-    IDs inside fenced code blocks are ignored.
+    IDs inside fenced code blocks or inline backticks are ignored.
 
     Args:
         body: Issue markdown body (frontmatter already stripped).
@@ -102,6 +107,7 @@ def extract_prose_deps(body: str, host_id: str | None = None) -> set[str]:
         return set()
 
     fence_spans = [(m.start(), m.end()) for m in _CODE_FENCE.finditer(body)]
+    fence_spans += [(m.start(), m.end()) for m in _BACKTICK_SPAN_RE.finditer(body)]
 
     deps: set[str] = set()
 
