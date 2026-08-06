@@ -19,7 +19,19 @@ def cmd_check(args: argparse.Namespace) -> int:
         print(f"Error: no record found for {args.target!r}", file=sys.stderr)
         return 1
 
-    print_json(record.to_dict())
+    failing = record.failing_claims()
+    output = record.to_dict()
+    output["failing_claims"] = len(failing)
+    print_json(output)
+
+    if failing:
+        print(
+            f"⚠ {len(failing)} failing assertion(s) in {args.target!r} "
+            f"(status={record.status}):",
+            file=sys.stderr,
+        )
+        for claim in failing:
+            print(f"  - {claim}", file=sys.stderr)
 
     if getattr(args, "stale_aware", False):
         import json as _json

@@ -70,6 +70,15 @@ class LearnTestRecord:
             raw_output_path=data.get("raw_output_path"),
         )
 
+    def failing_claims(self) -> list[str]:
+        """Return claim text for every assertion with result == 'fail'.
+
+        A ``proven`` record only requires one passing assertion (BUG-3072), so a
+        record can be ``proven`` while still carrying contradicted claims. This
+        surfaces those claims independent of the coarse ``status`` field.
+        """
+        return [a.claim for a in self.assertions if a.result == "fail"]
+
 
 def _resolve_base(base_dir: Path | None) -> Path:
     return base_dir if base_dir is not None else Path.cwd() / _DEFAULT_BASE_DIR

@@ -98,7 +98,7 @@ The skill diffs each claim against the captured output and classifies the result
 
 Every record carries one of three statuses:
 
-- **`proven`** — at least one assertion passed. This is a deliberately loose threshold: partial proof is still useful evidence, and the per-assertion `pass`/`fail`/`untested` results in the record itself give the reader the full picture. A `proven` record with 1/5 passes is not the same as 5/5; read the assertions before relying on it.
+- **`proven`** — at least one assertion passed. This is a deliberately loose threshold: partial proof is still useful evidence, and the per-assertion `pass`/`fail`/`untested` results in the record itself give the reader the full picture. A `proven` record with 1/5 passes is not the same as 5/5; read the assertions before relying on it. `ll-learning-tests check` surfaces this for you: it adds a `failing_claims` count to the JSON output and prints the text of any `result: fail` assertions to stderr, so a `proven` record with contradicted claims doesn't read as unqualified evidence (BUG-3072). `/ll:confidence-check` applies a −5 penalty when a required target is `proven` with `failing_claims > 0` (see [Learning Test Status Scoring](../../skills/confidence-check/rubric.md)).
 - **`refuted`** — every exercised assertion failed. Something you assumed about the API is wrong. The raw output (see `raw_output_path`) usually shows the actual error or shape; read it before deciding what to do.
 - **`stale`** — the record was valid when written but has been explicitly invalidated (see [Troubleshooting](#troubleshooting) for `mark-stale`). Never set on initial write.
 

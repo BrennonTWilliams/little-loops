@@ -126,13 +126,17 @@ if [ -n "$LT_TARGETS" ]; then
         result=$(ll-learning-tests check "$target" 2>/dev/null)
         if [ $? -eq 0 ] && [ -n "$result" ]; then
             status=$(echo "$result" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status','unknown'))")
+            failing_claims=$(echo "$result" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('failing_claims',0))")
             notes=""
             if [ "$status" = "refuted" ]; then
                 notes=$(echo "$result" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('refutation_summary',''))")
                 LT_STOP=true
+            elif [ "$status" = "proven" ] && [ "$failing_claims" != "0" ]; then
+                notes="$failing_claims contradicted claim(s) recorded alongside the passing evidence"
             fi
         else
             status="missing"
+            failing_claims=0
             LT_STOP=true
         fi
         LT_ROWS+="| \"$target\" | $status | $notes |\n"
@@ -164,7 +168,8 @@ These modifiers apply on top of Criterion 1 when `learning_tests_required` is pr
 
 | Target Status | Score Modifier | Action |
 |---------------|----------------|--------|
-| proven | 0 | No penalty |
+| proven, no failing claims | 0 | No penalty |
+| proven, ≥1 failing claim (`failing_claims` > 0) | −5 | A contradicted claim coexists with the passing evidence (BUG-3072: `proven` only requires one passing assertion); verify the failing claim before relying on this target |
 | stale | −5 | API may have changed; verify before implementing |
 | refuted | −10 | Assumption disproven; forces STOP — ADDRESS GAPS |
 | missing | −10 | No test record found; forces STOP — ADDRESS GAPS |

@@ -4201,7 +4201,7 @@ Query and manage the learning test registry. Skills and loops call this via `Bas
 
 | Subcommand | Description |
 |------------|-------------|
-| `check <target> [--stale-aware]` | Print record JSON; exit 1 if not found or (with `--stale-aware`) if the record is stale |
+| `check <target> [--stale-aware]` | Print record JSON (with a derived `failing_claims` count) and, on stderr, the text of any `result: fail` assertions; exit 1 if not found or (with `--stale-aware`) if the record is stale. A `proven` record only requires one passing assertion, so it can still carry contradicted claims — `failing_claims` surfaces that independent of `status` (BUG-3072) |
 | `list` | Print all records as a JSON array |
 | `mark-stale <target>` | Set status=stale; exit 1 if not found |
 | `orphans [--mark-stale]` | List records whose target package is not imported by any project file; optionally mark them all stale |

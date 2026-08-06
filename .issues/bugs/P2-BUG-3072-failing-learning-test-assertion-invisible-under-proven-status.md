@@ -2,11 +2,12 @@
 id: BUG-3072
 priority: P2
 type: BUG
-status: open
+status: done
 discovered_commit: 5d0a711f
 discovered_branch: main
 discovered_date: 2026-08-05
 discovered_by: manual-investigation
+completed_at: '2026-08-06T03:45:05Z'
 labels:
 - learning-tests
 - confidence-check
@@ -187,14 +188,20 @@ The write-time rule producing this exact symptom is authored prose, not code: `s
 
 ## Acceptance Criteria
 
-- [ ] `ll-learning-tests check <target>` on a record containing a `result: fail` assertion
+- [x] `ll-learning-tests check <target>` on a record containing a `result: fail` assertion
       makes the failing claim(s) explicit in its output.
-- [ ] A test asserts that a `proven` record with ≥1 failing assertion is distinguishable
+- [x] A test asserts that a `proven` record with ≥1 failing assertion is distinguishable
       from a `proven` record with none, at the consumer boundary chosen by the decision.
-- [ ] `skills/confidence-check/rubric.md` states how failing assertions affect scoring.
-- [ ] The `pytest` record's `claim3` assertion is re-run and its result corrected, or the
+- [x] `skills/confidence-check/rubric.md` states how failing assertions affect scoring.
+- [x] The `pytest` record's `claim3` assertion is re-run and its result corrected, or the
       claim reworded to match what the probe actually tests.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `python -m pytest scripts/tests/` exits 0 for every test this change touches
+      (`test_learning_tests.py`, `test_cli_learning_tests.py`, `test_confidence_check_skill.py`
+      all pass). The full-suite run has 48 pre-existing failures on `main`
+      (`test_hook_session_start.py`, `test_codex_adapter.py`, `test_kimi_adapter.py`,
+      `test_opencode_adapter.py`, `test_history_context_cli.py::TestPriorWorkCondensedSection`)
+      confirmed present before this change via `git stash` — unrelated to learning tests,
+      out of scope here.
 
 ## Impact
 
@@ -263,7 +270,38 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Status
 
-Open. Root cause confirmed; remedy option (A/B/C) undecided.
+Done. Implemented Option A ("surface, don't gate") as recommended in Proposed Solution.
+
+## Resolution
+
+Implemented **Option A**: status semantics (`proven`/`refuted`/`stale`) are unchanged;
+failing claims are surfaced at every point a human or gate reads a record, without
+gating on them.
+
+- `LearnTestRecord.failing_claims()` (`learning_tests/__init__.py`) derives the list of
+  `result: fail` claim text independent of `status`.
+- `ll-learning-tests check` (`cli/learning_tests.py::cmd_check`) adds a `failing_claims`
+  count to its JSON output and prints the failing claim text to stderr when any exist.
+- `skills/confidence-check/rubric.md` adds a `−5` scoring row for a `learning_tests_required`
+  target that is `proven` with `failing_claims > 0`, and Phase 1.5's fetch script surfaces
+  the count in the injected Learning Test Context table's Notes column.
+- `docs/reference/CLI.md` and `docs/guides/LEARNING_TESTS_GUIDE.md` document the new field.
+- `.ll/learning-tests/pytest.md`'s `claim3` (`--strict-markers` + unregistered marker) was
+  re-verified directly (`python -m pytest --strict-markers` against an unregistered
+  marker exits 2 with a collection error) — the claim is true; the original `fail` was a
+  probe artifact (the proof script read `rc=0` instead of the real exit code). Corrected to
+  `result: pass`; `raw/pytest.txt` updated with a note explaining the correction.
+
+**Option B** (deriving/validating `status` from `assertions`, adding a `partial` state) is
+deferred — the issue explicitly recommended A now, B as a separate decision. The 8+
+string-equality call sites, `fsm/executor.py`, hook gates, and `release_gate.py` are
+unaffected because status semantics did not change.
+
+AC2 ("a test asserts a `proven` record with ≥1 failing assertion is distinguishable from
+one with none") is satisfied at the CLI boundary: `test_check_surfaces_failing_claims_on_proven_record`
+and `test_check_proven_record_with_no_failures_is_distinguishable` in
+`scripts/tests/test_cli_learning_tests.py`, plus unit coverage in
+`scripts/tests/test_learning_tests.py::TestLearnTestRecord`.
 
 ## Confidence Check Notes
 
@@ -295,6 +333,8 @@ _Added by `/ll:confidence-check` on 2026-08-05_
   footprint.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-06T03:44:46 - `bf103488-a31f-4dd9-a3e6-d8cbc150b2c3.jsonl`
+- `/ll:ready-issue` - 2026-08-06T03:32:49 - `657c1532-4b4b-49ec-ba80-7e4debdd4dbe.jsonl`
 - `/ll:confidence-check` - 2026-08-06T02:00:48 - `96c3fd03-2fac-40c0-96a7-577067bc1c31.jsonl`
 - `/ll:verify-issues` - 2026-08-06T01:57:41 - `62bb44a7-83be-436c-8b10-ab0f9ad7fe0f.jsonl`
 - `/ll:wire-issue` - 2026-08-06T01:55:59 - `e9e22ffe-68d7-422e-8491-1092bcde8600.jsonl`

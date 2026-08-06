@@ -118,6 +118,48 @@ class TestMainLearningTestsCheck:
             f"Expected an assertion with result='untested', got {assertions}"
         )
 
+    def test_check_surfaces_failing_claims_on_proven_record(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """BUG-3072: a proven record can still carry a contradicted (fail) claim."""
+        record = LearnTestRecord(
+            target="pytest",
+            date="2026-06-26",
+            status="proven",
+            assertions=[
+                Assertion(claim="claim that held", result="pass"),
+                Assertion(claim="claim that was contradicted", result="fail"),
+            ],
+            raw_output_path=None,
+        )
+        with patch("sys.argv", ["ll-learning-tests", "check", "pytest"]):
+            with patch(
+                "little_loops.learning_tests.check_learning_test",
+                return_value=record,
+            ):
+                result = main_learning_tests()
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["status"] == "proven"
+        assert data["failing_claims"] == 1
+        assert "claim that was contradicted" in captured.err
+
+    def test_check_proven_record_with_no_failures_is_distinguishable(
+        self, capsys: pytest.CaptureFixture[str], sample_record: LearnTestRecord
+    ) -> None:
+        """A proven record with zero fail assertions must not look like a failing one."""
+        with patch("sys.argv", ["ll-learning-tests", "check", "Anthropic SDK streaming"]):
+            with patch(
+                "little_loops.learning_tests.check_learning_test",
+                return_value=sample_record,
+            ):
+                main_learning_tests()
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["failing_claims"] == 0
+        assert captured.err == ""
+
 
 class TestMainLearningTestsList:
     def test_list_empty_prints_array(self, capsys: pytest.CaptureFixture[str]) -> None:

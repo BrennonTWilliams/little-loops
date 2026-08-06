@@ -9,7 +9,7 @@ assertions:
   result: pass
 - claim: using an unregistered marker with --strict-markers active causes collection
     error (exit non-zero)
-  result: fail
+  result: pass
 - claim: pytest.mark.skipif(True, reason=...) skips the test without failing the suite
   result: pass
 - claim: a fixture defined in conftest.py is visible to tests in subdirectories of

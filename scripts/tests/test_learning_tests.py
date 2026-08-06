@@ -117,6 +117,24 @@ class TestLearnTestRecord:
         assertion = Assertion.from_dict({"claim": "Some claim without result"})
         assert assertion.result == "untested"
 
+    def test_failing_claims_empty_when_all_pass(self, sample_record: LearnTestRecord) -> None:
+        assert sample_record.failing_claims() == []
+
+    def test_failing_claims_returns_fail_result_claims(self) -> None:
+        """BUG-3072: a proven record's fail assertions must be reachable independent of status."""
+        record = LearnTestRecord(
+            target="pytest",
+            date="2026-06-26",
+            status="proven",
+            assertions=[
+                Assertion(claim="claim that held", result="pass"),
+                Assertion(claim="claim that was contradicted", result="fail"),
+                Assertion(claim="claim never exercised", result="untested"),
+            ],
+            raw_output_path=None,
+        )
+        assert record.failing_claims() == ["claim that was contradicted"]
+
 
 class TestWriteRecord:
     """Tests for write_record function."""
