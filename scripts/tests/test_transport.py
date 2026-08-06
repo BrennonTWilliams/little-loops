@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import shutil
 import socket
 import tempfile
@@ -712,7 +713,7 @@ class TestOTelTransport:
         t.send({"event": "state_enter", "state": "run"})
         t.send({"event": "action_start", "action": "ll:do-task"})
         t.send({"event": "action_complete", "result": "ok"})
-        t.send({"event": "loop_complete", "outcome": "success"})
+        t.send({"event": "loop_complete", "terminated_by": "terminal", "failure_terminal": False})
         t.close()
 
         spans = exporter.get_finished_spans()
@@ -736,7 +737,7 @@ class TestOTelTransport:
 
         t = OTelTransport(_tracer_provider=test_provider)
         t.send({"event": "loop_start", "loop_name": "l"})
-        t.send({"event": "loop_complete", "outcome": "success"})
+        t.send({"event": "loop_complete", "terminated_by": "terminal", "failure_terminal": False})
         t.close()
 
         spans = exporter.get_finished_spans()
@@ -748,7 +749,7 @@ class TestOTelTransport:
 
         t = OTelTransport(_tracer_provider=test_provider)
         t.send({"event": "loop_start", "loop_name": "l"})
-        t.send({"event": "loop_complete", "outcome": "error"})
+        t.send({"event": "loop_complete", "terminated_by": "error"})
         t.close()
 
         spans = exporter.get_finished_spans()
@@ -760,7 +761,7 @@ class TestOTelTransport:
         t = OTelTransport(_tracer_provider=test_provider)
         t.send({"event": "loop_start", "loop_name": "first-run"})
         t.send({"event": "loop_resume", "loop_name": "resumed-run"})
-        t.send({"event": "loop_complete", "outcome": "success"})
+        t.send({"event": "loop_complete", "terminated_by": "terminal", "failure_terminal": False})
         t.close()
 
         spans = exporter.get_finished_spans()
@@ -785,7 +786,7 @@ class TestOTelTransport:
             t.send({"event": "loop_start", "loop_name": "inner", "depth": 1})
             t.send({"event": "state_enter", "state": "inner-state", "depth": 1})
             t.send({"event": "loop_start", "loop_name": "inner2", "depth": 2})
-        t.send({"event": "loop_complete", "outcome": "success"})
+        t.send({"event": "loop_complete", "terminated_by": "terminal", "failure_terminal": False})
         t.close()
 
         warning_count = sum(1 for r in caplog.records if "sub-loop" in r.message)
@@ -797,7 +798,7 @@ class TestOTelTransport:
         t.send({"event": "loop_start", "loop_name": "l"})
         t.send({"event": "state_enter", "state": "run"})
         t.send({"event": "evaluate", "result": "continue"})
-        t.send({"event": "loop_complete", "outcome": "success"})
+        t.send({"event": "loop_complete", "terminated_by": "terminal", "failure_terminal": False})
         t.close()
 
         spans = exporter.get_finished_spans()
@@ -813,10 +814,70 @@ class TestOTelTransport:
 
         t = OTelTransport(_tracer_provider=test_provider)
         with caplog.at_level(logging.WARNING, logger="little_loops.transport"):
-            t.send({"event": "loop_complete", "outcome": "success"})
+            t.send(
+                {"event": "loop_complete", "terminated_by": "terminal", "failure_terminal": False}
+            )
         t.close()
 
         assert any("loop_complete" in r.message for r in caplog.records)
+
+    def test_loop_status_error_on_timeout(self, test_provider: Any, exporter: Any) -> None:
+        """BUG-3066: terminated_by='timeout' maps to ERROR."""
+        from opentelemetry.trace import StatusCode
+
+        t = OTelTransport(_tracer_provider=test_provider)
+        t.send({"event": "loop_start", "loop_name": "l"})
+        t.send({"event": "loop_complete", "terminated_by": "timeout"})
+        t.close()
+
+        spans = exporter.get_finished_spans()
+        loop = next(s for s in spans if s.name == "l")
+        assert loop.status.status_code == StatusCode.ERROR
+
+    def test_loop_status_error_on_failure_terminal(self, test_provider: Any, exporter: Any) -> None:
+        """BUG-3066: terminated_by='terminal' with failure_terminal=True maps to ERROR."""
+        from opentelemetry.trace import StatusCode
+
+        t = OTelTransport(_tracer_provider=test_provider)
+        t.send({"event": "loop_start", "loop_name": "l"})
+        t.send({"event": "loop_complete", "terminated_by": "terminal", "failure_terminal": True})
+        t.close()
+
+        spans = exporter.get_finished_spans()
+        loop = next(s for s in spans if s.name == "l")
+        assert loop.status.status_code == StatusCode.ERROR
+
+    @pytest.mark.parametrize(
+        "terminated_by", ["interrupted", "max_steps", "max_iterations_reached", "handoff"]
+    )
+    def test_loop_status_unset_for_non_terminal_outcomes(
+        self, test_provider: Any, exporter: Any, terminated_by: str
+    ) -> None:
+        """BUG-3066: interrupted/max_steps/max_iterations_reached/handoff map to UNSET, not OK."""
+        from opentelemetry.trace import StatusCode
+
+        t = OTelTransport(_tracer_provider=test_provider)
+        t.send({"event": "loop_start", "loop_name": "l"})
+        t.send({"event": "loop_complete", "terminated_by": terminated_by})
+        t.close()
+
+        spans = exporter.get_finished_spans()
+        loop = next(s for s in spans if s.name == "l")
+        assert loop.status.status_code == StatusCode.UNSET
+
+    def test_loop_complete_sets_terminated_by_and_final_status_attributes(
+        self, test_provider: Any, exporter: Any
+    ) -> None:
+        """BUG-3066: the loop span carries ll.terminated_by and ll.final_status attributes."""
+        t = OTelTransport(_tracer_provider=test_provider)
+        t.send({"event": "loop_start", "loop_name": "l"})
+        t.send({"event": "loop_complete", "terminated_by": "error"})
+        t.close()
+
+        spans = exporter.get_finished_spans()
+        loop = next(s for s in spans if s.name == "l")
+        assert loop.attributes["ll.terminated_by"] == "error"
+        assert loop.attributes["ll.final_status"] == "failed"
 
     def test_wire_transports_otel(self, test_provider: Any, tmp_path: Path) -> None:
         """wire_transports() wires OTelTransport when 'otel' is in transports list."""
@@ -993,3 +1054,18 @@ class TestWebhookTransport:
             MockWebhook.assert_not_called()
 
         assert any("url is None" in r.message for r in caplog.records)
+
+
+def test_no_hand_constructed_loop_complete_outcome_key() -> None:
+    """BUG-3066 AC 8: no test hand-constructs a loop_complete event with an 'outcome'
+    key — production never emits it, so a test doing so silently exercises dead code."""
+    tests_dir = Path(__file__).parent
+    offenders = []
+    pattern = re.compile(r'"event"\s*:\s*"loop_complete"[^}]*"outcome"\s*:')
+    for path in tests_dir.rglob("*.py"):
+        if path == Path(__file__):
+            continue
+        text = path.read_text(encoding="utf-8")
+        if pattern.search(text):
+            offenders.append(str(path.relative_to(tests_dir)))
+    assert not offenders, f"loop_complete events with a fake 'outcome' key: {offenders}"

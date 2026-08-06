@@ -114,7 +114,7 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def _map_final_status(terminated_by: str, *, failure_terminal: bool = False) -> str:
+def map_final_status(terminated_by: str, *, failure_terminal: bool = False) -> str:
     """Map a termination reason to a persisted ``LoopState.status`` value.
 
     Single implementation shared by ``PersistentExecutor.run()`` and
@@ -929,7 +929,7 @@ class PersistentExecutor:
         """
         # ENH-2814: a signal-driven force-exit has no ExecutionResult, so read
         # the failure flag off the state the executor is currently sitting on.
-        final_status = _map_final_status(
+        final_status = map_final_status(
             terminated_by,
             failure_terminal=(
                 terminated_by == "terminal"
@@ -972,7 +972,7 @@ class PersistentExecutor:
         result = self._executor.run()
 
         # Update final state
-        final_status = _map_final_status(
+        final_status = map_final_status(
             result.terminated_by, failure_terminal=result.failure_terminal
         )
 

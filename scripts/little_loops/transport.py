@@ -332,7 +332,6 @@ _OTEL_EVENT_TYPES = frozenset(
         "action_output",
     }
 )
-_OTEL_ERROR_OUTCOMES = frozenset({"error", "failed", "exhausted"})
 
 
 class OTelTransport:
@@ -462,17 +461,26 @@ class OTelTransport:
     def _handle_loop_complete(self, event: dict[str, Any]) -> None:
         from opentelemetry.trace import StatusCode
 
+        from little_loops.fsm.persistence import map_final_status
+
         self._close_state_and_action()
         if self._loop_span is None:
             logger.warning(
                 "OTelTransport: loop_complete received without a prior loop_start; skipping"
             )
             return
-        outcome = str(event.get("outcome", ""))
-        if outcome in _OTEL_ERROR_OUTCOMES:
-            self._loop_span.set_status(StatusCode.ERROR, outcome)
-        else:
+        terminated_by = str(event.get("terminated_by", ""))
+        final_status = map_final_status(
+            terminated_by, failure_terminal=bool(event.get("failure_terminal", False))
+        )
+        self._loop_span.set_attribute("ll.terminated_by", terminated_by)
+        self._loop_span.set_attribute("ll.final_status", final_status)
+        if final_status in ("failed", "timed_out"):
+            self._loop_span.set_status(StatusCode.ERROR, final_status)
+        elif final_status == "completed":
             self._loop_span.set_status(StatusCode.OK)
+        else:
+            self._loop_span.set_status(StatusCode.UNSET)
         self._loop_span.end()
         self._loop_span = None
 

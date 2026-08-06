@@ -1939,7 +1939,12 @@ class SQLiteTransport:
                     loop_name = str(event.get("loop_name", "")) or None
                     state = event.get("state")
                     if event_type == "loop_complete":
-                        state = event.get("outcome", state)
+                        from little_loops.fsm.persistence import map_final_status
+
+                        state = map_final_status(
+                            str(event.get("terminated_by", "")),
+                            failure_terminal=bool(event.get("failure_terminal", False)),
+                        )
                     retries = event.get("retries")
                     conn.execute(
                         "INSERT INTO loop_events(ts, loop_name, state, transition, retries) "

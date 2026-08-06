@@ -7,7 +7,8 @@ discovered_commit: fc652df07b9234f2a79fb0663efd253590b170eb
 discovered_branch: main
 discovered_date: 2026-08-05
 discovered_by: audit-docs
-status: open
+completed_at: '2026-08-06T22:23:15Z'
+status: done
 labels:
 - observability
 - otel
@@ -289,6 +290,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - [thoughts/audit-docs-reference-2026-08-05.md](../../thoughts/audit-docs-reference-2026-08-05.md) — the docs audit that surfaced this
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-06T22:22:47 - `56c06e76-d4a2-4d58-9e2c-53c94de88236.jsonl`
 - `/ll:confidence-check` - 2026-08-06T00:35:27 - `2ea053a9-974c-4ef9-a923-fb98627db81f.jsonl`
 - `/ll:confidence-check` - 2026-08-06T00:14:47 - `22a2d710-b927-4674-8d5f-e2d567aaea06.jsonl`
 - `/ll:refine-issue` - 2026-08-06T00:10:23 - `e8c97e21-d6b8-47c7-b5a5-a7c138f3cb82.jsonl`

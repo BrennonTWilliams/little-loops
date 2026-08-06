@@ -71,12 +71,31 @@ class TestSQLiteTransport:
         transport.close()
         assert recent(db, kind="loop") == []
 
-    def test_loop_complete_records_outcome_as_state(self, tmp_path: Path) -> None:
+    def test_loop_complete_records_mapped_final_status_as_state(self, tmp_path: Path) -> None:
+        """BUG-3066: state derives from terminated_by/failure_terminal via map_final_status,
+        not a phantom 'outcome' key production never emits."""
         db = tmp_path / "session.db"
         transport = SQLiteTransport(db)
-        transport.send({"event": "loop_complete", "loop_name": "x", "outcome": "success"})
+        transport.send(
+            {
+                "event": "loop_complete",
+                "loop_name": "x",
+                "terminated_by": "terminal",
+                "failure_terminal": False,
+            }
+        )
         transport.close()
-        assert recent(db, kind="loop")[0]["state"] == "success"
+        assert recent(db, kind="loop")[0]["state"] == "completed"
+
+    def test_loop_complete_records_non_null_state_on_failure(self, tmp_path: Path) -> None:
+        """BUG-3066 AC 6: a crashed run must not leave state NULL in the session store."""
+        db = tmp_path / "session.db"
+        transport = SQLiteTransport(db)
+        transport.send({"event": "loop_complete", "loop_name": "x", "terminated_by": "error"})
+        transport.close()
+        row = recent(db, kind="loop")[0]
+        assert row["state"] is not None
+        assert row["state"] == "failed"
 
     def test_send_after_close_is_noop(self, tmp_path: Path) -> None:
         db = tmp_path / "session.db"

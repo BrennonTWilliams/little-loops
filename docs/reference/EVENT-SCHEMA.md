@@ -1273,7 +1273,17 @@ When `OTelTransport` is active (`events.transports: ["otel"]`), the following ev
 | Event | OTel action | Field used |
 |-------|-------------|------------|
 | `action_complete` | Closes action span | — |
-| `loop_complete` | Closes state + action spans; sets loop span status; closes loop span | `outcome` → status code (`"error"` / `"failed"` / `"exhausted"` → `ERROR`, all others → `OK`) — but **no emitter ever sets `outcome` on a `loop_complete` payload** (see the field table above), so in practice the lookup always falls through to `""` and every loop span closes `OK`, including failed runs. `session_store/writers.py` has the same latent read. Consumers that need failure status must read `failure_terminal` / `terminated_by` instead. |
+| `loop_complete` | Closes state + action spans; sets `ll.terminated_by` / `ll.final_status` attributes; sets loop span status; closes loop span | `terminated_by` and `failure_terminal` → `fsm.persistence.map_final_status()` bucket → status code. `session_store/writers.py` uses the same mapping for the `loop_events.state` column (BUG-3066). |
+
+`map_final_status` bucket → OTel `StatusCode`:
+
+| `map_final_status` bucket | OTel `StatusCode` |
+|---|---|
+| `failed` | `ERROR` |
+| `timed_out` | `ERROR` |
+| `completed` | `OK` |
+| `interrupted` | `UNSET` |
+| `awaiting_continuation` | `UNSET` |
 
 ### Span event records
 
