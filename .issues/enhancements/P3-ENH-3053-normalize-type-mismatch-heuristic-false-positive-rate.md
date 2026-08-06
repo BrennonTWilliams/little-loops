@@ -1,6 +1,7 @@
 ---
 id: ENH-3053
-title: normalize type_mismatch heuristic false-positives on EPIC keyword and never excludes closed issues
+title: normalize type_mismatch heuristic false-positives on EPIC keyword and never
+  excludes closed issues
 type: ENH
 priority: P3
 status: open
@@ -14,6 +15,12 @@ labels:
 decision_needed: false
 testable: true
 program_design_not_applicable: true
+confidence_score: 98
+outcome_confidence: 72
+score_complexity: 17
+score_test_coverage: 15
+score_ambiguity: 18
+score_change_surface: 22
 ---
 
 # ENH-3053: normalize type_mismatch heuristic false-positives on EPIC keyword and never excludes closed issues
@@ -224,6 +231,7 @@ _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-06T04:24:27 - `5a58a91a-17b2-403c-a45c-f7271276a547.jsonl`
 - `/ll:wire-issue` - 2026-08-06T04:21:03 - `90ac5a00-ccc9-4464-ba1a-550d9d9d19e7.jsonl`
 - `/ll:decide-issue` - 2026-08-06T04:15:41 - `2ccb54ed-3c09-40c8-a5de-ca5f2244d26f.jsonl`
 - `/ll:refine-issue` - 2026-08-06T04:09:47 - `4b855c62-651d-448c-a114-23d7b08f1bd8.jsonl`
