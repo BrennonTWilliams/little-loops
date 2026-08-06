@@ -3,9 +3,10 @@ id: BUG-3087
 type: BUG
 title: Scope the issue-lifecycle loops so they stop locking the repo root
 priority: P2
-status: open
+status: done
 parent: BUG-3083
 captured_at: '2026-08-06T16:17:02Z'
+completed_at: '2026-08-06T19:00:41Z'
 discovered_date: 2026-08-06
 discovered_by: capture-issue
 labels:
@@ -18,6 +19,12 @@ relates_to:
 - BUG-3083
 - BUG-3088
 verify_verdict: VALID
+confidence_score: 95
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # BUG-3087: Scope the issue-lifecycle loops so they stop locking the repo root
@@ -214,12 +221,41 @@ N/A — no new decision logic. This issue only changes the declared `scope:` val
 | `docs/ARCHITECTURE.md` | FSM concurrency / scope-lock design |
 | `.claude/CLAUDE.md` § Loop Authoring | Where a `scope:` authoring rule would live |
 
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-08-06
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml`: added `scope: [".issues/", "${context.run_dir}"]`
+- `scripts/little_loops/loops/issue-refinement.yaml`: added `scope: [".issues/", "${context.run_dir}"]`
+- `scripts/little_loops/loops/issue-staleness-review.yaml`: added `scope: [".issues/", "${context.run_dir}"]`
+- `scripts/little_loops/loops/recursive-refine.yaml`: added `scope: [".issues/", "${context.run_dir}"]`
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml`: added `scope: [".issues/", "${context.run_dir}"]` (top-level lock scope, distinct from the pre-existing `context.scope` variable)
+- `scripts/little_loops/loops/issue-discovery-triage.yaml`: added `scope: [".issues/", "${context.run_dir}"]`
+- `scripts/little_loops/learning_tests/gate.py`: updated the stale inline comment (lines ~122-133) to reflect that `refine-to-ready-issue` is now scoped, not repo-root
+- `scripts/little_loops/loops/README.md`: added scope-rationale prose to each of the six issue-lifecycle loop rows, following the `autodev` row's inline-prose convention
+- `scripts/tests/test_concurrency.py`: added `test_refine_to_ready_issue_instances_still_conflict_on_shared_issues_scope`, `test_refine_to_ready_issue_with_dot_scope_still_conflicts`, and `test_refine_to_ready_issue_and_ready_to_implement_gate_acquire_simultaneously` to `TestMultiInstanceSameName`
+- `scripts/tests/test_builtin_loops.py`: added `test_scope_declared` to `TestIssueRefinementSubLoop`, `TestRefineToReadyIssueSubLoop`, `TestAutoRefineAndImplementLoop`, `TestRecursiveRefineLoop`, `TestIssueStalenessReviewLoop`, and a new `TestIssueDiscoveryTriageLoop` class
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 1505+ passed)
+- Lint: PASS (`ruff check` on touched files)
+- Loop validation: PASS (`ll-loop validate` on all six loops — pre-existing warnings unrelated to this change)
+
 ## Status
 
 open
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-06T19:00:35 - `74391729-5d5f-4f39-800d-29d2ce941af3.jsonl`
+- `/ll:ready-issue` - 2026-08-06T18:28:32 - `e4e3d836-0f5a-404f-86b4-472963d98a40.jsonl`
+- `/ll:confidence-check` - 2026-08-06T18:26:15 - `c6f9506d-468c-4c3e-a502-42686a1640e3.jsonl`
+- `/ll:verify-issues` - 2026-08-06T18:23:51 - `b120f4f0-cbf0-49c0-9986-80a6f8eaddbd.jsonl`
 - `/ll:verify-issues` - 2026-08-06T17:18:54 - `a5dc412a-dfaf-48c4-97ff-e79aaf559ba8.jsonl`
 - `/ll:wire-issue` - 2026-08-06T17:16:55 - `52d0c931-e024-4921-8fa9-d5d15e1b5612.jsonl`
 - `/ll:refine-issue` - 2026-08-06T17:08:02 - `605e232f-8b33-4cb7-9b5e-758db1444177.jsonl`

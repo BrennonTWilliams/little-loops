@@ -7,6 +7,9 @@ description: |
   cycle discovers no net-new issues (diminishing returns), then commits and
   stops.
 initial: count_baseline
+scope:
+  - ".issues/"
+  - "${context.run_dir}"
 import:
   - lib/prompt-fragments.yaml
 states:

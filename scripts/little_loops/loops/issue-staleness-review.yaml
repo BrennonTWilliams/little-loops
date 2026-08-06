@@ -5,6 +5,9 @@ description: |
   ones. Identifies issues that haven't been touched in a configurable number
   of days, evaluates each for continued relevance, and takes action.
 initial: find_stale
+scope:
+  - ".issues/"
+  - "${context.run_dir}"
 on_handoff: spawn
 context:
   stale_days: 30

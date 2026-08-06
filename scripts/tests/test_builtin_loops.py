@@ -1238,6 +1238,21 @@ class TestIssueRefinementSubLoop:
             f"State '{state_name}' should be absent; issue-refinement is now an alias for recursive-refine"
         )
 
+    def test_scope_declared(self, data: dict) -> None:
+        """issue-refinement must declare scope: [".issues/", "${context.run_dir}"]
+        so it no longer locks the repo root against unrelated concurrent
+        loops (BUG-3087).
+        """
+        scope = data.get("scope")
+        assert scope is not None, (
+            "issue-refinement.yaml must declare a 'scope' field (BUG-3087)."
+        )
+        assert isinstance(scope, list), f"scope must be a list, got {type(scope).__name__}"
+        assert ".issues/" in scope, f"scope must contain '.issues/', got {scope!r}"
+        assert "${context.run_dir}" in scope, (
+            f"scope must contain '${{context.run_dir}}' template, got {scope!r}"
+        )
+
 
 class TestRefineToReadyIssueSubLoop:
     """Tests that refine-to-ready-issue.yaml routes correctly through wire, breakdown, and confidence states."""
@@ -2251,6 +2266,21 @@ class TestRefineToReadyIssueSubLoop:
         assert state.get("on_error") == "verify_issue", (
             f"check_decision_mid_wire.on_error should be 'verify_issue', "
             f"got {state.get('on_error')!r}"
+        )
+
+    def test_scope_declared(self, data: dict) -> None:
+        """refine-to-ready-issue must declare scope: [".issues/", "${context.run_dir}"]
+        — the loop most likely to run concurrently with ll-auto, so its
+        default `["."]` scope was the primary trigger of BUG-3083 (BUG-3087).
+        """
+        scope = data.get("scope")
+        assert scope is not None, (
+            "refine-to-ready-issue.yaml must declare a 'scope' field (BUG-3087)."
+        )
+        assert isinstance(scope, list), f"scope must be a list, got {type(scope).__name__}"
+        assert ".issues/" in scope, f"scope must contain '.issues/', got {scope!r}"
+        assert "${context.run_dir}" in scope, (
+            f"scope must contain '${{context.run_dir}}' template, got {scope!r}"
         )
 
 
@@ -3933,6 +3963,21 @@ class TestAutoRefineAndImplementLoop:
         assert "summary.json" in action
         assert "verdict" in action
         assert "subloop_outcome_auto-refine-and-implement" in action
+
+    def test_scope_declared(self, data: dict) -> None:
+        """auto-refine-and-implement must declare scope: [".issues/", "${context.run_dir}"]
+        so it no longer locks the repo root against unrelated concurrent
+        loops (BUG-3087). Distinct from the pre-existing `context.scope`
+        variable (sprint name / EPIC-NNN), which lives under `context:`."""
+        scope = data.get("scope")
+        assert scope is not None, (
+            "auto-refine-and-implement.yaml must declare a top-level 'scope' field (BUG-3087)."
+        )
+        assert isinstance(scope, list), f"scope must be a list, got {type(scope).__name__}"
+        assert ".issues/" in scope, f"scope must contain '.issues/', got {scope!r}"
+        assert "${context.run_dir}" in scope, (
+            f"scope must contain '${{context.run_dir}}' template, got {scope!r}"
+        )
 
 
 class TestSprintRefineAndImplementLoop:
@@ -7460,6 +7505,20 @@ class TestRecursiveRefineLoop:
             "interfere with stdout capture"
         )
 
+    def test_scope_declared(self, data: dict) -> None:
+        """recursive-refine must declare scope: [".issues/", "${context.run_dir}"]
+        so it no longer locks the repo root against unrelated concurrent
+        loops (BUG-3087)."""
+        scope = data.get("scope")
+        assert scope is not None, (
+            "recursive-refine.yaml must declare a 'scope' field (BUG-3087)."
+        )
+        assert isinstance(scope, list), f"scope must be a list, got {type(scope).__name__}"
+        assert ".issues/" in scope, f"scope must contain '.issues/', got {scope!r}"
+        assert "${context.run_dir}" in scope, (
+            f"scope must contain '${{context.run_dir}}' template, got {scope!r}"
+        )
+
 
 class TestSprintBuildAndValidateLoop:
     """Structural tests for the sprint-build-and-validate FSM loop."""
@@ -10505,6 +10564,36 @@ class TestTestCoverageImprovementLoop:
         assert data["states"]["done"].get("terminal") is True
 
 
+class TestIssueDiscoveryTriageLoop:
+    """Structural tests for the issue-discovery-triage FSM loop."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "issue-discovery-triage.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        assert data.get("name") == "issue-discovery-triage"
+        assert data.get("initial") == "count_baseline"
+        assert isinstance(data.get("states"), dict)
+
+    def test_scope_declared(self, data: dict) -> None:
+        """issue-discovery-triage must declare scope: [".issues/", "${context.run_dir}"]
+        so it no longer locks the repo root against unrelated concurrent
+        loops (BUG-3087)."""
+        scope = data.get("scope")
+        assert scope is not None, (
+            "issue-discovery-triage.yaml must declare a 'scope' field (BUG-3087)."
+        )
+        assert isinstance(scope, list), f"scope must be a list, got {type(scope).__name__}"
+        assert ".issues/" in scope, f"scope must contain '.issues/', got {scope!r}"
+        assert "${context.run_dir}" in scope, (
+            f"scope must contain '${{context.run_dir}}' template, got {scope!r}"
+        )
+
+
 class TestBacklogFlowOptimizerLoop:
     """Structural tests for the backlog-flow-optimizer FSM loop."""
 
@@ -10563,6 +10652,20 @@ class TestIssueStalenessReviewLoop:
 
     def test_done_state_is_terminal(self, data: dict) -> None:
         assert data["states"]["done"].get("terminal") is True
+
+    def test_scope_declared(self, data: dict) -> None:
+        """issue-staleness-review must declare scope: [".issues/", "${context.run_dir}"]
+        so it no longer locks the repo root against unrelated concurrent
+        loops (BUG-3087)."""
+        scope = data.get("scope")
+        assert scope is not None, (
+            "issue-staleness-review.yaml must declare a 'scope' field (BUG-3087)."
+        )
+        assert isinstance(scope, list), f"scope must be a list, got {type(scope).__name__}"
+        assert ".issues/" in scope, f"scope must contain '.issues/', got {scope!r}"
+        assert "${context.run_dir}" in scope, (
+            f"scope must contain '${{context.run_dir}}' template, got {scope!r}"
+        )
 
 
 class TestDocsSyncLoop:

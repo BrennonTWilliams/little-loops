@@ -732,6 +732,136 @@ class TestMultiInstanceSameName:
             f"Both instances with dot scope should conflict; exactly one should fail, got: {results}"
         )
 
+    def test_refine_to_ready_issue_instances_still_conflict_on_shared_issues_scope(
+        self, tmp_loops: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Two refine-to-ready-issue instances, each scoped to .issues/ +
+        their own distinct run_dir, still conflict with EACH OTHER because
+        .issues/ is shared (BUG-3087 intentionally keeps same-loop instances
+        mutually exclusive on issue files — only cross-loop conflicts against
+        unrelated, disjointly-scoped loops are what the fix removes; see
+        test_refine_to_ready_issue_and_ready_to_implement_gate_acquire_simultaneously
+        below for that case)."""
+        run1 = tmp_path / ".loops" / "runs" / "refine-to-ready-issue-20240115T103000"
+        run2 = tmp_path / ".loops" / "runs" / "refine-to-ready-issue-20240115T103001"
+        run1.mkdir(parents=True)
+        run2.mkdir(parents=True)
+
+        manager = LockManager(tmp_loops)
+        results: list[bool] = []
+        barrier = threading.Barrier(2)
+
+        monkeypatch.chdir(tmp_path)
+
+        def try_acquire(instance_id: str, scope: list[str]) -> None:
+            barrier.wait()
+            result = manager.acquire("refine-to-ready-issue", scope, instance_id=instance_id)
+            results.append(result)
+
+        id1 = "refine-to-ready-issue-20240115T103000"
+        id2 = "refine-to-ready-issue-20240115T103001"
+        t1 = threading.Thread(
+            target=try_acquire,
+            args=(id1, [".issues/", str(run1.relative_to(tmp_path))]),
+        )
+        t2 = threading.Thread(
+            target=try_acquire,
+            args=(id2, [".issues/", str(run2.relative_to(tmp_path))]),
+        )
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        assert results.count(True) == 1, (
+            f"Both instances share .issues/ in scope, so exactly one should "
+            f"acquire; got: {results}"
+        )
+        assert results.count(False) == 1, (
+            f"Both instances share .issues/ in scope, so exactly one should "
+            f"fail; got: {results}"
+        )
+
+    def test_refine_to_ready_issue_with_dot_scope_still_conflicts(
+        self, tmp_loops: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Two refine-to-ready-issue instances with ["."] scope still
+        conflict (regression guard for the pre-BUG-3087 default-scope bug)."""
+        manager = LockManager(tmp_loops)
+        results: list[bool] = []
+        barrier = threading.Barrier(2)
+
+        monkeypatch.chdir(tmp_path)
+
+        def try_acquire(instance_id: str, scope: list[str]) -> None:
+            barrier.wait()
+            result = manager.acquire("refine-to-ready-issue", scope, instance_id=instance_id)
+            results.append(result)
+
+        id1 = "refine-to-ready-issue-20240115T103000"
+        id2 = "refine-to-ready-issue-20240115T103001"
+        t1 = threading.Thread(target=try_acquire, args=(id1, ["."]))
+        t2 = threading.Thread(target=try_acquire, args=(id2, ["."]))
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        assert results.count(True) == 1, (
+            f"Both instances with dot scope should conflict; exactly one should acquire, got: {results}"
+        )
+        assert results.count(False) == 1, (
+            f"Both instances with dot scope should conflict; exactly one should fail, got: {results}"
+        )
+
+    def test_refine_to_ready_issue_and_ready_to_implement_gate_acquire_simultaneously(
+        self, tmp_loops: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """refine-to-ready-issue (scoped to .issues/ + its run_dir) and
+        ready-to-implement-gate (scoped to its own run_dir) can hold locks
+        simultaneously once BUG-3087 lands, instead of the gate subprocess
+        hitting 'Scope conflict with running loop: refine-to-ready-issue'."""
+        refine_run = tmp_path / ".loops" / "runs" / "refine-to-ready-issue-20240115T103000"
+        gate_run = tmp_path / ".loops" / "runs" / "ready-to-implement-gate-20240115T103001"
+        refine_run.mkdir(parents=True)
+        gate_run.mkdir(parents=True)
+
+        manager = LockManager(tmp_loops)
+        results: list[bool] = []
+        barrier = threading.Barrier(2)
+
+        monkeypatch.chdir(tmp_path)
+
+        def try_acquire(loop_name: str, instance_id: str, scope: list[str]) -> None:
+            barrier.wait()
+            result = manager.acquire(loop_name, scope, instance_id=instance_id)
+            results.append(result)
+
+        t1 = threading.Thread(
+            target=try_acquire,
+            args=(
+                "refine-to-ready-issue",
+                "refine-to-ready-issue-20240115T103000",
+                [".issues/", str(refine_run.relative_to(tmp_path))],
+            ),
+        )
+        t2 = threading.Thread(
+            target=try_acquire,
+            args=(
+                "ready-to-implement-gate",
+                "ready-to-implement-gate-20240115T103001",
+                [str(gate_run.relative_to(tmp_path))],
+            ),
+        )
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        assert results.count(True) == 2, (
+            f"refine-to-ready-issue and ready-to-implement-gate should both acquire; got: {results}"
+        )
+
 
 class TestSingletonLock:
     """BUG-2526: singleton field serializes loop-name conflicts regardless of scope.

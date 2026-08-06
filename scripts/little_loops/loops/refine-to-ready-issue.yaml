@@ -30,6 +30,9 @@ category: issue-management
 #   respectively) on_success, or routes to record_decision_unresolved →
 #   failed on_failure/on_error.
 initial: resolve_issue
+scope:
+  - ".issues/"
+  - "${context.run_dir}"
 # ENH-3031: 20 -> 30. The happy path already used 12 iterations; the four new
 # gate states (verify_issue, check_verify_verdict, check_hedges,
 # check_ac_automatable) add 4; a gate-driven refine_followup cycle costs

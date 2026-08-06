@@ -8,6 +8,9 @@ description: |
 
   Alias for: recursive-refine with order=next-action, commit_every=5, no_recursion=true
 initial: run_all
+scope:
+  - ".issues/"
+  - "${context.run_dir}"
 max_steps: 10
 timeout: 86400
 on_handoff: spawn

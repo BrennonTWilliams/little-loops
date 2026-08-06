@@ -53,6 +53,9 @@ description: |
   epic branch, so their commits also land on epic/<EPIC-ID>-<slug> instead of
   bypassing it. Non-EPIC scopes keep the single upfront resolution.
 initial: init
+scope:
+  - ".issues/"
+  - "${context.run_dir}"
 max_steps: 50
 timeout: 28800
 on_handoff: spawn

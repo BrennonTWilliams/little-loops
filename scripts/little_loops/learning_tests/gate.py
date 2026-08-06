@@ -134,12 +134,13 @@ def run_learning_gate_for_issue(
             "ready-to-implement-gate",
             "--context",
             f"targets={','.join(targets)}",
-            # ENH-3073 follow-up: refine-to-ready-issue (and other unscoped
-            # issue-management loops) lock the whole repo, so a second ll-auto
-            # issue can legitimately hit a scope conflict here even though
-            # ready-to-implement-gate itself is narrowly scoped to its own
-            # run_dir (BUG-2864). --queue waits for the conflicting loop to
-            # release the lock instead of instantly collapsing to impl_failed.
+            # ENH-3073 follow-up: refine-to-ready-issue and the other
+            # issue-management loops are now scoped to .issues/ +
+            # ${context.run_dir} (BUG-3087), so this no longer conflicts on
+            # the whole repo — but a genuine .issues/ overlap with a
+            # concurrent ll-auto issue can still occur. --queue waits for the
+            # conflicting loop to release the lock instead of instantly
+            # collapsing to impl_failed.
             "--queue",
             "--queue-timeout",
             str(_queue_wait_budget),
