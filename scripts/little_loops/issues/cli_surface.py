@@ -32,7 +32,24 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
-_SUBCOMMAND_CHOICES_RE = re.compile(r"\{([a-z0-9_,-]+)\}")
+# The "positional arguments:" section, up to the next blank-line-terminated
+# section (or end of text). argparse's HelpFormatter renders this header
+# whether the subparsers action is displayed as a metavar (e.g. "COMMAND")
+# or a brace choices list (e.g. "{a,b,c}") -- either way, subcommand entries
+# are nested one indent level (4 spaces) deeper than the pseudo-argument
+# line itself (2 spaces), so anchoring to this block (rather than matching
+# the first brace group anywhere in the help text) works for both renderings
+# and avoids misreading an unrelated flag's choices list (e.g. "--format
+# {text,json}") as the subcommand set.
+_POSITIONAL_ARGS_SECTION_RE = re.compile(
+    r"^positional arguments:\n(.*?)(?=\n\n|\Z)", re.MULTILINE | re.DOTALL
+)
+# Subcommand entry lines are indented exactly 4 spaces, e.g.
+# "    check       Print a record as JSON" or "    next-id (ni)  ...".
+# Description-continuation lines (wrapped help text) are indented further,
+# so this does not also match those. The optional parenthesized group
+# captures argparse `aliases=[...]` short names, e.g. "(ni)" or "(l, ls)".
+_SUBCOMMAND_ENTRY_RE = re.compile(r"^    (\S+)(?:\s+\(([^)]+)\))?", re.MULTILINE)
 # Option-definition lines in argparse's default HelpFormatter are indented
 # exactly two spaces (description continuation lines are indented further),
 # e.g. "  --format {text,json}, -f {text,json}" or "  -h, --help".
@@ -88,12 +105,23 @@ def _scrape_tool(tool: str) -> dict[str, set[str]] | None:
     if top_help is None:
         return None
 
-    subs_match = _SUBCOMMAND_CHOICES_RE.search(top_help)
-    if not subs_match:
-        # No subparsers -- top-level flags only, keyed under "".
+    section_match = _POSITIONAL_ARGS_SECTION_RE.search(top_help)
+    if not section_match:
+        # No "positional arguments:" block at all -- this tool genuinely has
+        # no subparsers. Top-level flags only, keyed under "".
         return {"": set(_LONG_FLAG_RE.findall(top_help))}
 
-    subcommands = sorted({s for s in subs_match.group(1).split(",") if s})
+    subcommands: set[str] = set()
+    for name, aliases in _SUBCOMMAND_ENTRY_RE.findall(section_match.group(1)):
+        subcommands.add(name)
+        subcommands.update(a.strip() for a in aliases.split(",") if a.strip())
+    if not subcommands:
+        # A positional-arguments block exists but no subcommand entries were
+        # found beneath it -- undetermined (could be a plain, non-subparser
+        # positional argument in a format this scraper doesn't recognize).
+        # Fail open rather than asserting the tool has no subcommands.
+        return None
+
     tool_surface: dict[str, set[str]] = {}
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as pool:
         sub_helps = pool.map(lambda sub: (sub, _run_help([tool, sub, "--help"])), subcommands)
@@ -146,8 +174,10 @@ def cli_surface_accepts(
     same or a different issue within the same invocation, is a cache hit.
 
     Returns:
-        True/False, or ``None`` (fail open) when *tool* was unscrapable or is
-        not a registered ``ll-*`` console script.
+        True/False, or ``None`` (fail open) when *tool* was unscrapable, is
+        not a registered ``ll-*`` console script, or its help text has a
+        "positional arguments:" block whose subcommand list could not be
+        determined.
     """
     tool_surface = _tool_surface(index, tool)
     if tool_surface is None:

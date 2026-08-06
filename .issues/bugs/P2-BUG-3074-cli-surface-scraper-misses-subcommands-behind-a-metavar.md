@@ -2,11 +2,12 @@
 id: BUG-3074
 priority: P2
 type: BUG
-status: open
+status: done
 discovered_commit: 5d0a711f
 discovered_branch: main
 discovered_date: 2026-08-05
 discovered_by: manual-investigation
+completed_at: '2026-08-06T04:00:31Z'
 labels:
 - issues
 - linter
@@ -56,7 +57,7 @@ if not subs_match:
 with `_SUBCOMMAND_CHOICES_RE = re.compile(r"\{([a-z0-9_,-]+)\}")` (`:35`).
 
 `ll-learning-tests --help` renders `positional arguments: COMMAND` — no braces — because
-`cli/learning_tests.py:180` calls
+`cli/learning_tests.py:192` calls
 `parser.add_subparsers(dest="command", metavar="COMMAND")`. The comment's assumption
 ("no subparsers") is false here: the tool has five.
 
@@ -69,7 +70,7 @@ The returned surface is `{"": {...flags}}`, so `cli_surface_accepts` (`:139`) hi
 
 | Module | Line | metavar value |
 |---|---|---|
-| `scripts/little_loops/cli/learning_tests.py` | 180 | COMMAND |
+| `scripts/little_loops/cli/learning_tests.py` | 192 | COMMAND |
 | `scripts/little_loops/cli/queue.py` | 746 | COMMAND |
 | `scripts/little_loops/cli/harness.py` | 131 | RUNNER |
 | `scripts/little_loops/cli/action.py` | 394 | COMMAND |
@@ -152,17 +153,17 @@ def build_cli_surface_index() -> CliSurfaceIndex:
 
 ## Acceptance Criteria
 
-- [ ] `ll-issues format-check BUG-3072` reports no `stale_cli_flag` gap for
+- [x] `ll-issues format-check BUG-3072` reports no `stale_cli_flag` gap for
       `ll-learning-tests check`.
-- [ ] `ll-issues format-check ENH-3073` reports no `stale_cli_flag` gap for
+- [x] `ll-issues format-check ENH-3073` reports no `stale_cli_flag` gap for
       `ll-learning-tests prove`.
-- [ ] A test drives `_scrape_tool` against a metavar-using parser's help text and asserts
+- [x] A test drives `_scrape_tool` against a metavar-using parser's help text and asserts
       the subcommand set is non-empty.
-- [ ] A test asserts `cli_surface_accepts` returns `None` (not `False`) when the
+- [x] A test asserts `cli_surface_accepts` returns `None` (not `False`) when the
       subcommand list cannot be determined from help output.
-- [ ] A test covers all four metavar-using tools: every subcommand listed in their
+- [x] A test covers all four metavar-using tools: every subcommand listed in their
       `--help` is accepted by the index.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `python -m pytest scripts/tests/` exits 0.
 
 ## Impact
 
@@ -262,12 +263,36 @@ _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
   (same family: linter diagnostics diverging from linter behavior)
 - BUG-3072, ENH-3073 — the issues whose valid CLI references surfaced this
 
+## Resolution
+
+Fixed by anchoring subcommand discovery to the `positional arguments:` block
+(`_POSITIONAL_ARGS_SECTION_RE`) and matching 4-space-indented entry lines
+(`_SUBCOMMAND_ENTRY_RE`, capturing `aliases=[...]` parens too) instead of the
+first brace group anywhere in `--help` text. `_scrape_tool` now returns:
+`{"": flags}` only when no `positional arguments:` block exists at all (no
+subparsers); `None` (fail open) when the block exists but no subcommand
+entries are found beneath it (undetermined — e.g. a plain positional arg);
+otherwise the real `{subcommand: flags}` surface. Verified `ll-issues
+format-check` no longer flags `ll-learning-tests check`/`prove` on
+BUG-3072/ENH-3073. Added unit tests for the metavar-fixture and
+undetermined-block cases, plus an integration test sweeping all four
+metavar-using tools (`ll-learning-tests`, `ll-queue`, `ll-harness`,
+`ll-action`) against their real installed `--help`.
+
+`python -m pytest scripts/tests/` has 48 pre-existing failures unrelated to
+this change (session-start hook / adapter tests expecting no headless-mode
+banner stdout — confirmed present on `main` before this fix via `git
+stash`). `scripts/tests/test_cli_surface.py` (16/16) and the rest of the
+suite pass; this fix introduces no new failures.
+
 ## Status
 
 Open. Root cause confirmed and blast radius enumerated.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-06T03:59:23 - `21d382ff-bdc5-49b4-b2f0-c3c9027339cd.jsonl`
+- `/ll:ready-issue` - 2026-08-06T03:47:31 - `f0e9ad86-a944-4acc-a368-a18a0cfd6c1c.jsonl`
 - `/ll:confidence-check` - 2026-08-06T02:14:53 - `2c2ed4b0-a0cc-4b2b-9f94-ec37f4f418d9.jsonl`
 - `/ll:verify-issues` - 2026-08-06T02:12:34 - `2ab091b6-a25c-43a8-8b74-306723885800.jsonl`
 - `/ll:wire-issue` - 2026-08-06T02:10:37 - `93637b45-3d1c-4823-bb7b-5c884c8a1529.jsonl`
