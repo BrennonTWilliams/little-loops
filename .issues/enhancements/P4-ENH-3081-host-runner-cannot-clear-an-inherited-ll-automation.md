@@ -18,6 +18,12 @@ labels:
 - automation
 - host-runner
 - hardening
+confidence_score: 95
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-3081: `host_runner` cannot clear an inherited `LL_AUTOMATION`, so an explicit opt-out is silently overridden

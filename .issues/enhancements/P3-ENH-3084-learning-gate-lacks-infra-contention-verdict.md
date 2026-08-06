@@ -18,6 +18,12 @@ relates_to:
 - BUG-3083
 - BUG-2864
 - BUG-2833
+confidence_score: 95
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-3084: Learning gate has no verdict distinguishing infra contention from implementation failure
@@ -324,5 +330,6 @@ open
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-06T18:14:17 - `2714e173-0113-42e1-b8e8-e7f650c61db7.jsonl`
 - `/ll:refine-issue` - 2026-08-06T17:41:21 - `bf1b7c6a-6d5b-4c22-84fe-40280423c7d4.jsonl`
 - `/ll:capture-issue` - 2026-08-06T16:20:22 - `ee676905-966c-42aa-ac9d-d7d4aaeea91d.jsonl`

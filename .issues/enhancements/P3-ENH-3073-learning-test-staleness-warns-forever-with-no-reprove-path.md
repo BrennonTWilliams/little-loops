@@ -19,10 +19,10 @@ learning_tests_required:
 decision_needed: false
 reconcile_attempted: true
 size: Small
-confidence_score: 98
-outcome_confidence: 80
-score_complexity: 20
-score_test_coverage: 22
+confidence_score: 95
+outcome_confidence: 77
+score_complexity: 14
+score_test_coverage: 25
 score_ambiguity: 20
 score_change_surface: 18
 ---
@@ -432,6 +432,7 @@ advertise (hardening now in scope); Option B had no successor issue (now an AC);
 LEARNING_TESTS_GUIDE / kimi-code / gemini mirror updates had no AC (now added)._
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-06T18:14:18 - `2714e173-0113-42e1-b8e8-e7f650c61db7.jsonl`
 - `/ll:ready-issue` - 2026-08-06T06:18:23 - `947fa9b7-8ab1-44ef-9fcd-dc534fce8613.jsonl`
 - `/ll:confidence-check` - 2026-08-06T04:30:52 - `be4424fb-bd22-4a4d-8f91-9e0d0eb44d1c.jsonl`
 - `/ll:reconcile-issue` - 2026-08-06T04:23:34 - `b80e47d8-635f-4079-b216-2ccd61850853.jsonl`

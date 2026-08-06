@@ -25,6 +25,12 @@ labels:
 - refactor
 testable: true
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 71
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-3075: Convert `autodev`'s inline decision cluster to the shared decision sub-loop
@@ -500,10 +506,22 @@ was the largest gap given its Large effort and Medium-High risk._
 | `docs/guides/LOOPS_REFERENCE.md` | `autodev` FSM flow + decision-cluster prose |
 | `.claude/CLAUDE.md` | § Loop Authoring — `ll-loop validate` enforcement |
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-06_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 71/100 → MODERATE
+
+### Outcome Risk Factors
+- Moderate per-site depth: most of the conversion (state deletion, entry-point retargeting, marker rename) is mechanical, but the rate-limit-exhaustion discrimination requires a genuinely new marker-handshake + gate state to work around `_execute_sub_loop`'s inability to surface `on_rate_limit_exhausted` through a `loop:` call state — this is the one subsystem the issue itself flags as needing design, not assumption.
+- Breadth spans 6 files (2 to modify, 2 test files with ~25 assertions to rewrite, 2 docs) with no automated end-to-end coverage — AC 11 requires a manual `ll-loop run autodev` pass to backstop the structural rewrite.
+
 ## Status
 
 - [ ] Not started
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-06T18:13:35 - `2714e173-0113-42e1-b8e8-e7f650c61db7.jsonl`
 - `/ll:refine-issue` - 2026-08-06T17:38:13 - `71a5b5c8-8b5f-4779-9a91-00cc882432b5.jsonl`

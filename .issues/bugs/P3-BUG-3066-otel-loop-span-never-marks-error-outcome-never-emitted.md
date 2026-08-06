@@ -1,7 +1,7 @@
 ---
 id: BUG-3066
 type: BUG
-title: OTel loop spans never close ERROR — loop_complete never carries outcome
+title: "OTel loop spans never close ERROR \u2014 loop_complete never carries outcome"
 priority: P3
 discovered_commit: fc652df07b9234f2a79fb0663efd253590b170eb
 discovered_branch: main
@@ -14,12 +14,12 @@ labels:
 verify_verdict: VALID
 testable: true
 size: Small
-confidence_score: 95
-outcome_confidence: 78
-score_complexity: 18
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
 score_test_coverage: 25
-score_ambiguity: 23
-score_change_surface: 12
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-3066: OTel loop spans never close ERROR — `loop_complete` never carries `outcome`
