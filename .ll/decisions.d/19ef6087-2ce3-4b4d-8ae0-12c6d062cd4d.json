@@ -1,0 +1,14 @@
+{
+  "id": "9b513560-2522-498e-8538-7c8b6737b1bd",
+  "type": "rule",
+  "timestamp": "2026-08-06T05:45:33Z",
+  "category": "testing",
+  "labels": [
+    "extracted",
+    "global"
+  ],
+  "rationale": "LL_AUTOMATION leaking from host_runner.py into every descendant process (including pytest run via Bash tool) caused 48 phantom test failures only inside automation sessions, since ENH-2714 pruning gates silently suppressed stdout/stderr when the var was set.",
+  "rule": "Test suites must produce identical results regardless of ambient LL_* / automation env vars; scrub them in test fixtures",
+  "enforcement": "advisory",
+  "issue": "BUG-3082"
+}
