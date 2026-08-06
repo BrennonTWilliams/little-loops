@@ -22,9 +22,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Bound on how long the --queue wait (ENH-3073 follow-up) may block ll-auto
-# for a single issue before giving up on a conflicting scope lock clearing.
-_QUEUE_WAIT_TIMEOUT_SECONDS = 900
+# Slack added on top of the child's own queue-wait budget (BUG-3085) so the
+# outer subprocess.run(timeout=...) only fires as a backstop against a
+# genuinely wedged child, never as the normal exit path for a clean timeout.
+_QUEUE_WAIT_BACKSTOP_SLACK_SECONDS = 60
 
 
 def format_nudge_message(pkg: str, stale: bool = False) -> str:
@@ -118,6 +119,15 @@ def run_learning_gate_for_issue(
     working_dir = cwd or Path.cwd()
 
     if targets:
+        # BUG-3085: pass the configured queue-wait budget down explicitly so
+        # the child's --queue wait *is* the caller's budget, rather than
+        # racing it against an independent hard-coded outer timeout. The
+        # outer subprocess.run timeout is set above this budget purely as a
+        # backstop for a genuinely wedged child.
+        from little_loops.config import BRConfig
+
+        _queue_wait_budget = BRConfig(working_dir).loops.queue_wait_timeout_seconds
+
         cmd = [
             "ll-loop",
             "run",
@@ -131,6 +141,8 @@ def run_learning_gate_for_issue(
             # run_dir (BUG-2864). --queue waits for the conflicting loop to
             # release the lock instead of instantly collapsing to impl_failed.
             "--queue",
+            "--queue-timeout",
+            str(_queue_wait_budget),
         ]
         try:
             proc = subprocess.run(
@@ -138,13 +150,14 @@ def run_learning_gate_for_issue(
                 capture_output=True,
                 text=True,
                 cwd=working_dir,
-                timeout=_QUEUE_WAIT_TIMEOUT_SECONDS,
+                timeout=_queue_wait_budget + _QUEUE_WAIT_BACKSTOP_SLACK_SECONDS,
             )
         except subprocess.TimeoutExpired:
             logger.error(
                 "ready-to-implement-gate did not clear a scope-lock conflict "
-                "within %ds; treating as an infra failure (not a refuted target)",
-                _QUEUE_WAIT_TIMEOUT_SECONDS,
+                "within its %ds queue-wait budget; treating as an infra "
+                "failure (not a refuted target)",
+                _queue_wait_budget,
             )
             return "impl_failed"
 

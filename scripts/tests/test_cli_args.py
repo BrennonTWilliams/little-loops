@@ -442,6 +442,39 @@ class TestAddHandoffThresholdArg:
             parser.parse_args(["--handoff-threshold", "abc"])
 
 
+class TestAddQueueTimeoutArg:
+    """Tests for add_queue_timeout_arg() function (BUG-3085)."""
+
+    def test_default_is_none(self) -> None:
+        """Defaults to None when flag not provided."""
+        from little_loops.cli_args import add_queue_timeout_arg
+
+        parser = argparse.ArgumentParser()
+        add_queue_timeout_arg(parser)
+        args = parser.parse_args([])
+        assert args.queue_timeout is None
+
+    def test_accepts_integer(self) -> None:
+        """Accepts integer value."""
+        from little_loops.cli_args import add_queue_timeout_arg
+
+        parser = argparse.ArgumentParser()
+        add_queue_timeout_arg(parser)
+        args = parser.parse_args(["--queue-timeout", "3600"])
+        assert args.queue_timeout == 3600
+
+    def test_rejects_non_integer(self) -> None:
+        """Rejects non-integer value."""
+        import pytest
+
+        from little_loops.cli_args import add_queue_timeout_arg
+
+        parser = argparse.ArgumentParser()
+        add_queue_timeout_arg(parser)
+        with pytest.raises(SystemExit):
+            parser.parse_args(["--queue-timeout", "abc"])
+
+
 class TestAddSkipArg:
     """Tests for add_skip_arg() function."""
 

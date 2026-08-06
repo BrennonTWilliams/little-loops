@@ -27,7 +27,7 @@ class TestLoopArgumentParsing:
         """Create parser for run subcommand tests."""
         from pathlib import Path
 
-        from little_loops.cli_args import add_handoff_threshold_arg
+        from little_loops.cli_args import add_handoff_threshold_arg, add_queue_timeout_arg
 
         parser = argparse.ArgumentParser(prog="ll-loop run")
         parser.add_argument("loop")
@@ -49,6 +49,7 @@ class TestLoopArgumentParsing:
         parser.add_argument("--baseline-skill", type=str, default=None, metavar="SKILL")
         parser.add_argument("--items", type=int, default=None, metavar="N")
         add_handoff_threshold_arg(parser)
+        add_queue_timeout_arg(parser)
         return parser
 
     def _create_subparser_only(self) -> argparse.ArgumentParser:
@@ -339,6 +340,39 @@ class TestLoopArgumentParsing:
         mock_run.assert_called_once()
         run_args = mock_run.call_args[0][1]
         assert getattr(run_args, "handoff_threshold", None) == 55
+
+    def test_queue_timeout_parsed(self) -> None:
+        """--queue-timeout is registered on the run subparser (BUG-3085)."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["my-loop", "--queue-timeout", "1800"])
+        assert args.queue_timeout == 1800
+
+    def test_queue_timeout_default_is_none(self) -> None:
+        """--queue-timeout defaults to None when not specified."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["my-loop"])
+        assert args.queue_timeout is None
+
+    def test_queue_timeout_registered_on_real_run_parser(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--queue-timeout is accepted by the actual ll-loop run parser."""
+        import sys
+        from unittest.mock import patch
+
+        monkeypatch.chdir(tmp_path)
+        with (
+            patch.object(sys, "argv", ["ll-loop", "run", "my-loop", "--queue-timeout", "1800"]),
+            patch("little_loops.cli.loop.run.cmd_run", return_value=0) as mock_run,
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        mock_run.assert_called_once()
+        run_args = mock_run.call_args[0][1]
+        assert getattr(run_args, "queue_timeout", None) == 1800
 
     def test_follow_flag_default_is_false(self) -> None:
         """--follow defaults to False when not specified."""

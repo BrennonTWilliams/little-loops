@@ -399,6 +399,8 @@ def cmd_run(
                 acquired = False
                 _wait_start = time.time()
                 _budget = _config.loops.queue_wait_timeout_seconds
+                if getattr(args, "queue_timeout", None) is not None:
+                    _budget = args.queue_timeout
                 while time.time() - _wait_start < _budget:
                     _remaining = _budget - (time.time() - _wait_start)
                     if not lock_manager.wait_for_scope(

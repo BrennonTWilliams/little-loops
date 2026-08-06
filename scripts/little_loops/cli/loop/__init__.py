@@ -7,7 +7,11 @@ import sys
 from pathlib import Path
 
 from little_loops.cli.loop.diagram_modes import _parse_show_diagrams
-from little_loops.cli_args import add_context_limit_arg, add_handoff_threshold_arg
+from little_loops.cli_args import (
+    add_context_limit_arg,
+    add_handoff_threshold_arg,
+    add_queue_timeout_arg,
+)
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
 __all__ = ["main_loop"]
@@ -281,6 +285,7 @@ Examples:
         run_parser.add_argument(
             "--queue", "-q", action="store_true", help="Wait for conflicting loops to finish"
         )
+        add_queue_timeout_arg(run_parser)
         run_parser.add_argument(
             "--no-lock", action="store_true", help="Skip scope lock (for demos/recordings)"
         )

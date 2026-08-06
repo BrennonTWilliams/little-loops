@@ -150,6 +150,20 @@ def add_handoff_threshold_arg(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_queue_timeout_arg(parser: argparse.ArgumentParser) -> None:
+    """Add --queue-timeout argument for per-run queue-wait budget override.
+
+    Args:
+        parser: The argument parser to add the argument to
+    """
+    parser.add_argument(
+        "--queue-timeout",
+        type=int,
+        default=None,
+        help="Override --queue scope-conflict wait budget in seconds (default: from config)",
+    )
+
+
 def add_intent_arg(parser: argparse.ArgumentParser) -> None:
     """Add --intent <query> flag for output filtering.
 
@@ -562,6 +576,7 @@ __all__ = [
     "add_timeout_arg",
     "add_idle_timeout_arg",
     "add_handoff_threshold_arg",
+    "add_queue_timeout_arg",
     "add_context_limit_arg",
     "add_intent_arg",
     "add_intent_limit_arg",

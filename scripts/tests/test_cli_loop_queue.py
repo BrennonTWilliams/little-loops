@@ -32,6 +32,7 @@ def _make_args(**kwargs: object) -> argparse.Namespace:
         "queue": True,
         "no_lock": False,
         "handoff_threshold": None,
+        "queue_timeout": None,
         "program_md": None,
         "worktree": False,
         "context_limit": None,
@@ -157,6 +158,31 @@ class TestQueueRetryOnRace:
 
         assert result == 1
         assert mock_lm.acquire.call_count == 1
+        mock_lm.wait_for_scope.assert_not_called()
+
+    def test_queue_timeout_arg_overrides_configured_budget(self, tmp_path: Path) -> None:
+        """--queue-timeout=0 (BUG-3085) must shrink the wait budget below the
+        default config value, so the retry loop's time-based condition is
+        already false on entry and wait_for_scope is never reached."""
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        loops_dir = _make_loop(tmp_path)
+        logger = Logger(use_color=False)
+        args = _make_args(queue_timeout=0)
+
+        with (
+            patch("little_loops.fsm.concurrency.LockManager") as mock_lm_cls,
+            patch("little_loops.fsm.persistence._reconcile_stale_runs"),
+        ):
+            mock_lm = MagicMock()
+            mock_lm_cls.return_value = mock_lm
+            mock_lm.acquire.return_value = False
+            mock_lm.find_conflict.return_value = _conflict()
+
+            result = cmd_run("test-loop", args, loops_dir, logger)
+
+        assert result == 1
         mock_lm.wait_for_scope.assert_not_called()
 
 

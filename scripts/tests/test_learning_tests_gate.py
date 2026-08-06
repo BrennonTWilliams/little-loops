@@ -277,6 +277,49 @@ class TestRunLearningGateForIssueDirectInvocation:
         cmd = mock_sub.call_args[0][0]
         assert "--queue" in cmd
 
+    def test_invocation_forwards_configured_queue_wait_budget(self, tmp_path: Path) -> None:
+        """BUG-3085: the child's --queue-timeout must carry the configured
+        loops.queue_wait_timeout_seconds budget (default 86400) so the
+        caller's outer subprocess.run timeout no longer preempts it."""
+        issue_path = tmp_path / "ENH-14.md"
+        issue_path.write_text("---\nid: ENH-14\n---\n")
+
+        with patch(
+            "little_loops.learning_tests.gate.subprocess.run",
+            return_value=self._ok_result(),
+        ) as mock_sub:
+            run_learning_gate_for_issue(issue_path, cwd=tmp_path, targets=["stripe"])
+
+        cmd = mock_sub.call_args[0][0]
+        assert "--queue-timeout" in cmd
+        assert cmd[cmd.index("--queue-timeout") + 1] == "86400"
+        assert mock_sub.call_args.kwargs["timeout"] == 86400 + 60
+
+    def test_invocation_forwards_custom_configured_queue_wait_budget(
+        self, tmp_path: Path
+    ) -> None:
+        """BUG-3085: a non-default loops.queue_wait_timeout_seconds must flow
+        through to --queue-timeout and the outer subprocess.run timeout,
+        proving the value is read from config rather than hard-coded."""
+        import json
+
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            json.dumps({"loops": {"queue_wait_timeout_seconds": 120}})
+        )
+        issue_path = tmp_path / "ENH-15.md"
+        issue_path.write_text("---\nid: ENH-15\n---\n")
+
+        with patch(
+            "little_loops.learning_tests.gate.subprocess.run",
+            return_value=self._ok_result(),
+        ) as mock_sub:
+            run_learning_gate_for_issue(issue_path, cwd=tmp_path, targets=["stripe"])
+
+        cmd = mock_sub.call_args[0][0]
+        assert cmd[cmd.index("--queue-timeout") + 1] == "120"
+        assert mock_sub.call_args.kwargs["timeout"] == 120 + 60
+
     def test_scope_conflict_never_clearing_yields_impl_failed(self, tmp_path: Path) -> None:
         """A conflicting loop that never releases its lock within the queue-wait
         budget must surface as impl_failed rather than hanging ll-auto forever."""
@@ -287,7 +330,7 @@ class TestRunLearningGateForIssueDirectInvocation:
 
         with patch(
             "little_loops.learning_tests.gate.subprocess.run",
-            side_effect=subprocess.TimeoutExpired(cmd="ll-loop", timeout=900),
+            side_effect=subprocess.TimeoutExpired(cmd="ll-loop", timeout=86400 + 60),
         ):
             verdict = run_learning_gate_for_issue(issue_path, cwd=tmp_path, targets=["stripe"])
 

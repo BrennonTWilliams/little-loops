@@ -793,7 +793,7 @@ scope:
   - "tests/"
 ```
 
-If a conflicting loop is already running, `ll-loop run` errors. Use `--queue` to wait instead — the maximum wait is `loops.queue_wait_timeout_seconds` in `.ll/ll-config.json` (default 24 h), and queued loops acquire the lock in arrival order.
+If a conflicting loop is already running, `ll-loop run` errors. Use `--queue` to wait instead — the maximum wait is `loops.queue_wait_timeout_seconds` in `.ll/ll-config.json` (default 24 h), overridable per-run with `--queue-timeout SECONDS`, and queued loops acquire the lock in arrival order.
 
 ### Singleton (one-instance-per-name)
 
