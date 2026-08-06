@@ -3,10 +3,11 @@ id: BUG-3065
 title: refine-to-ready-issue dead-ends on decision_needed instead of resolving it
 type: BUG
 priority: P3
-status: open
+status: done
 discovered_by: capture-issue
 discovered_date: 2026-08-05
 captured_at: '2026-08-05T20:05:24Z'
+completed_at: '2026-08-06T04:38:48Z'
 relates_to:
 - ENH-3075
 - BUG-3063
@@ -1038,6 +1039,8 @@ Finding 1 was load-bearing: implemented as previously written, a 429 storm would
 under a misleading reason with no route ever taken.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-06T04:38:22 - `be4424fb-bd22-4a4d-8f91-9e0d0eb44d1c.jsonl`
+- `/ll:ready-issue` - 2026-08-06T04:21:07 - `90ac5a00-ccc9-4464-ba1a-550d9d9d19e7.jsonl`
 - `/ll:confidence-check` - 2026-08-06T04:18:58 - `d0756c3a-5f12-4d7f-a29e-55bed7835840.jsonl`
 - `/ll:confidence-check` - 2026-08-05T21:40:43 - `5b36b1a8-f955-4387-b628-060e5d47565a.jsonl`
 - `/ll:confidence-check` - 2026-08-05T21:26:23 - `df4641bf-83a3-4970-9d63-8766a6c28feb.jsonl`

@@ -1,0 +1,183 @@
+name: resolve-decision
+visibility: internal
+description: |
+  Extracted from autodev.yaml's inline decision cluster (BUG-3065). Probes
+  whether an issue's decision_needed flag is decidable, deposits competing
+  options if not, runs /ll:decide-issue --auto, and re-verifies the flag
+  cleared. Returns done (flag cleared) or failed (still armed, errored before
+  reaching decide, or rate-limit budget exhausted) — callers own their own
+  post-resolution routing (re-score, defer, resume a mid-chain gate).
+initial: route_entry
+max_steps: 20
+timeout: 3600
+parameters:
+  issue_id:
+    type: string
+    required: true
+  skip_probe:
+    type: string
+    required: false
+    default: "false"
+context:
+  issue_id: ""
+  skip_probe: "false"
+import:
+  - lib/common.yaml
+
+states:
+  route_entry:
+    # Entry demultiplexer (### Fifth entry point). Four callers enter via the
+    # decidability probe (skip_probe unset/false). autodev's
+    # triage_outcome_failure enters directly at run_decide (skip_probe:
+    # "true") because its predicate is score_ambiguity <= 10 OR
+    # decision_needed, where check-decidable is not the right gate. That
+    # binding itself lands with ENH-3075; this sub-loop only needs to expose
+    # the branch.
+    action: "[ \"${context.skip_probe}\" = \"true\" ]"
+    fragment: shell_exit
+    on_yes: run_decide
+    on_no: check_decision_decidable
+
+  check_decision_decidable:
+    # ENH-2443 parity: decision_needed:true may have zero enumerable options
+    # in ## Proposed Solution, in which case run_decide silently leaves the
+    # flag unchanged and the issue never converges. ll-issues check-decidable
+    # is the deterministic (non-LLM) companion to /ll:decide-issue
+    # --validate-only. Marker-bounded: once deposit_options has run once for
+    # this issue, skip re-validation and go straight to run_decide (bounds
+    # the detour to one retry). ENH-2446: chain check-open-questions first —
+    # coverage-aware probe that catches the mixed case (resolved options +
+    # free-form open questions). Extracted from autodev.yaml's
+    # check_decision_decidable.
+    action: |
+      if [ -f ${context.run_dir}/decide-options-deposited-${context.issue_id} ]; then
+        exit 0
+      fi
+      ll-issues check-open-questions ${context.issue_id} || \
+        ll-issues check-decidable ${context.issue_id}
+    fragment: shell_exit
+    on_yes: run_decide
+    on_no: deposit_options
+    on_error: run_decide
+
+  deposit_options:
+    # Bounded retry: refine --auto may deposit Option A/B/C blocks that
+    # run_decide can then score. Write-once marker prevents infinite loops if
+    # refine also can't deposit options — falls through to run_decide with no
+    # enumerable options; assert_decision_cleared remains the safety net.
+    # Extracted from autodev.yaml's deposit_options. on_rate_limit_exhausted
+    # routes to failed, not done — a loop: sub-loop state can never observe
+    # the rate-limit terminal (### Rate-limit exhaustion), so this is the
+    # only signal a caller can act on.
+    fragment: with_rate_limit_handling
+    action_type: slash_command
+    action: "/ll:refine-issue ${context.issue_id} --auto"
+    pruning_profile:
+      enabled: true
+      name: refine-issue-auto
+      suppress_claude_md: true
+    on_yes: record_options_deposited
+    on_no: run_decide
+    on_partial: record_options_deposited
+    on_error: run_decide
+    on_rate_limit_exhausted: failed
+
+  record_options_deposited:
+    # Marker ensures the deposit_options detour runs at most once per issue.
+    # BUG-3065: named per-issue (not autodev's flat
+    # autodev-decide-options-deposited) because the inherited run_dir may be
+    # shared across a multi-issue queue (recursive-refine's
+    # context_passthrough) — a flat name would make issue #2 onward find the
+    # marker already set and skip deposit_options entirely.
+    action_type: shell
+    action: |
+      printf '1' > ${context.run_dir}/decide-options-deposited-${context.issue_id}
+    next: check_open_question_progress
+
+  check_open_question_progress:
+    # ENH-2446: progress-gated deposit_options re-fire (parity with
+    # rn-remediate.yaml). Appends the current unresolved-question count to a
+    # per-issue history file, then lets the open_question_stall evaluator
+    # decide whether to retry (on_yes: check_decision_decidable) or surface
+    # via run_decide (on_no / on_error). BUG-3065 fix: declares
+    # evaluate.history_file explicitly, per-issue, matching the write path —
+    # the autodev original wrote this same per-issue file but never declared
+    # history_file, so the evaluator fell back to a flat default path nothing
+    # wrote and the gate was inert (always on_yes, rounds: 0).
+    action_type: shell
+    action: |
+      ID="${context.issue_id}"
+      RUN_DIR="${context.run_dir}"
+      HISTORY_FILE="$${RUN_DIR}/.open_questions_$${ID}.history"
+
+      COUNT=$(python3 -c "
+      from little_loops.cli.issues.show import _resolve_issue_id
+      from little_loops.config import BRConfig
+      from little_loops.issue_parser import (
+          count_open_questions_in_sections,
+          count_unresolved_options,
+      )
+      cfg = BRConfig('.')
+      path = _resolve_issue_id(cfg, '$ID')
+      if path is None:
+          print(0)
+      else:
+          c = path.read_text()
+          print(count_unresolved_options(c) + count_open_questions_in_sections(c))
+      " 2>/dev/null || echo 0)
+
+      echo "$${COUNT}"
+      echo "$${COUNT}" >> "$${HISTORY_FILE}"
+    fragment: open_question_stall_gate
+    evaluate:
+      history_file: "${context.run_dir}/.open_questions_${context.issue_id}.history"
+    on_yes: check_decision_decidable
+    on_no: run_decide
+    on_error: run_decide
+
+  run_decide:
+    # Run /ll:decide-issue to select a winning implementation option and
+    # clear decision_needed. Extracted from autodev.yaml's run_decide, minus
+    # the caller-side mark_decide_ran / rerun_confidence_after_decide /
+    # recheck_after_decide chain (### The extraction boundary) — those stay
+    # in each caller, downstream of this sub-loop's terminal.
+    # check_decision_after_decide_error (ENH-2717) collapses into
+    # assert_decision_cleared below, which every exit path — success or
+    # error — now reaches directly.
+    fragment: with_rate_limit_handling
+    action: "/ll:decide-issue ${context.issue_id} --auto"
+    action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: decide-issue-auto
+      suppress_claude_md: true
+    next: assert_decision_cleared
+    on_error: assert_decision_cleared
+    on_rate_limit_exhausted: failed
+
+  assert_decision_cleared:
+    # BUG-2595: scores passing after run_decide does not prove decide-issue
+    # actually cleared decision_needed — a silent no-op (BUG-1416) leaves the
+    # flag armed. Re-verify the flag directly rather than trusting the
+    # decide-issue exit code, which is exactly what let a manage-issue Phase
+    # 2.3 halt get misclassified as a generic implementation failure.
+    # Extracted from autodev.yaml's assert_decision_cleared; now sits
+    # directly after run_decide instead of after the caller's re-score chain
+    # — a tightening on the score-passing branch (checks sooner), with one
+    # accepted behavior difference on the autodev path documented in
+    # ### The extraction boundary.
+    # on_error routes to failed rather than done (autodev's on_error:
+    # implement_current would fail ENH-2825's failure-edge-to-success-terminal
+    # gate here): an unverifiable flag state is treated conservatively as
+    # unresolved, not silently as cleared.
+    action: "ll-issues check-flag ${context.issue_id} decision_needed"
+    fragment: shell_exit
+    on_yes: failed
+    on_no: done
+    on_error: failed
+
+  done:
+    terminal: true
+
+  failed:
+    terminal: true

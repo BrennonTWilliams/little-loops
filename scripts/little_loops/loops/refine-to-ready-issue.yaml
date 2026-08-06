@@ -18,9 +18,17 @@ category: issue-management
 #   confidence_check (oracle: verify-confidence-scores) → (on_success) check_readiness → (on_yes) check_outcome → (on_yes) done
 #                                                       → (on_failure) diagnose
 #                      check_readiness         → (on_no)  check_refine_limit → refine_followup (additive --gap-analysis)
-#                      check_outcome           → (on_no)  check_decision_needed → (on_yes) done
-#                                                                               → (on_no)  breakdown_issue
+#                      check_outcome           → (on_no)  check_decision_needed → (on_yes) resolve_decision_pre_breakdown
+#                                                                               → (on_no)  check_missing_artifacts
 #   check_scores_from_file (error fallback) → (on_yes) done | (on_no) breakdown_issue
+#   BUG-3065: the three decision_needed gates (check_decision_mid_refine,
+#   check_decision_mid_wire, check_decision_needed) no longer exit via done on
+#   on_yes — each routes to its own loop: oracles/resolve-decision call state
+#   (resolve_decision_mid_refine / resolve_decision_mid_wire /
+#   resolve_decision_pre_breakdown), which resolves the decision inline and
+#   resumes the chain (check_wire_done / verify_issue / confidence_check
+#   respectively) on_success, or routes to record_decision_unresolved →
+#   failed on_failure/on_error.
 initial: resolve_issue
 # ENH-3031: 20 -> 30. The happy path already used 12 iterations; the four new
 # gate states (verify_issue, check_verify_verdict, check_hedges,
@@ -28,7 +36,15 @@ initial: resolve_issue
 # roughly 6 more (check_refine_limit -> refine_followup -> wire -> the three
 # gates) -> ~22 worst case, leaving headroom without slackening the
 # phantom-convergence guard.
-max_steps: 30
+# BUG-3065: 30 -> 40. check_decision_needed's resolve_decision_pre_breakdown
+# re-enters confidence_check on_success, closing a
+# confidence_check -> check_readiness -> check_outcome -> check_decision_needed
+# -> resolve_decision_pre_breakdown -> confidence_check cycle that costs
+# ~6 more steps than the ENH-3031 budget accounted for (### Three gates need
+# three call states). The cycle cannot spin: the second pass through
+# check_decision_needed sees decision_needed: false (the sub-loop's done
+# terminal asserts exactly that) and falls through on_no.
+max_steps: 40
 on_handoff: spawn
 context:
   # readiness_threshold / outcome_threshold are seeded at launch from
@@ -170,15 +186,29 @@ states:
 
   check_decision_mid_refine:
     # Mid-chain gate after refine: if /ll:refine-issue set decision_needed: true,
-    # skip the remaining wire + confidence_check invocations and exit via done so
-    # the outer autodev loop's check_decision_after_refine (autodev.yaml:165) can
-    # route to run_decide. Mirrors check_decision_needed (line 197) pattern; differs
-    # only in placement (mid-chain, not end-of-chain). BUG-2528.
+    # resolve it inline via the resolve-decision sub-loop and resume the chain
+    # at check_wire_done, rather than dead-ending on done and leaving wire +
+    # confidence_check unrun (BUG-3065). Mirrors check_decision_needed
+    # (line ~369) pattern; differs only in placement (mid-chain, not
+    # end-of-chain). BUG-2528.
     action: "ll-issues check-flag ${captured.issue_id.output} decision_needed"
     fragment: shell_exit
-    on_yes: done
+    on_yes: resolve_decision_mid_refine
     on_no: check_wire_done
     on_error: check_wire_done
+
+  resolve_decision_mid_refine:
+    # BUG-3065: resolves the decision_needed flag armed by refine_issue /
+    # refine_followup, then resumes the chain at check_wire_done — the same
+    # target check_decision_mid_refine's on_no already used, so a resolved
+    # decision costs nothing beyond the sub-loop's own steps.
+    loop: oracles/resolve-decision
+    with:
+      issue_id: "${captured.issue_id.output}"
+    capture: resolve_decision_mid_refine
+    on_success: check_wire_done
+    on_failure: record_decision_unresolved
+    on_error: record_decision_unresolved
 
   check_wire_done:
     action: |
@@ -209,16 +239,26 @@ states:
     on_error: verify_issue
 
   check_decision_mid_wire:
-    # Mid-chain gate after wire: if /ll:wire-issue set decision_needed: true, skip
-    # the confidence_check invocation. Same exit-via-done contract as
-    # check_decision_mid_refine; lets the outer autodev/recursive-refine loop's
-    # post-return decision gate route to run_decide without the wasted LLM budget
-    # of a confidence check the flag invalidates. BUG-2528.
+    # Mid-chain gate after wire: if /ll:wire-issue set decision_needed: true,
+    # resolve it inline via the resolve-decision sub-loop and resume the chain
+    # at verify_issue (BUG-3065; was: exit via done and dead-end). BUG-2528.
     action: "ll-issues check-flag ${captured.issue_id.output} decision_needed"
     fragment: shell_exit
-    on_yes: done
+    on_yes: resolve_decision_mid_wire
     on_no: verify_issue
     on_error: verify_issue
+
+  resolve_decision_mid_wire:
+    # BUG-3065: resolves the decision_needed flag armed by wire_issue, then
+    # resumes the chain at verify_issue — the same target
+    # check_decision_mid_wire's on_no already used.
+    loop: oracles/resolve-decision
+    with:
+      issue_id: "${captured.issue_id.output}"
+    capture: resolve_decision_mid_wire
+    on_success: verify_issue
+    on_failure: record_decision_unresolved
+    on_error: record_decision_unresolved
 
   # ENH-3031: claim-verification gate, inserted before confidence_check on every
   # path (all five mid-chain routes above now retarget here). Tests the issue's
@@ -369,13 +409,35 @@ states:
   check_decision_needed:
     # Gate before size-review: if decision_needed=true the low outcome score is driven
     # by unresolved option ambiguity (0/25 ambiguity), not by scope being too large.
-    # Exit via done so autodev's check_decision_after_refine can route to run_decide.
-    # on_no falls through to check_missing_artifacts before breakdown_issue.
+    # Resolve it inline via the resolve-decision sub-loop and re-enter
+    # confidence_check to re-score against the resolved decision (BUG-3065;
+    # was: exit via done and dead-end). on_no falls through to
+    # check_missing_artifacts before breakdown_issue.
     action: "ll-issues check-flag ${captured.issue_id.output} decision_needed"
     fragment: shell_exit
-    on_yes: done
+    on_yes: resolve_decision_pre_breakdown
     on_no: check_missing_artifacts
     on_error: check_missing_artifacts
+
+  resolve_decision_pre_breakdown:
+    # BUG-3065: resolves the decision_needed flag that drove the outcome-score
+    # failure, then re-enters confidence_check — NOT check_missing_artifacts,
+    # check_decision_needed's on_no target — so the outcome score is
+    # recomputed against the resolved decision rather than the ambiguity the
+    # decision removed (### Three gates need three call states; matches
+    # autodev's run_decide -> rerun_confidence_after_decide ordering). The
+    # resulting confidence_check -> check_readiness -> check_outcome ->
+    # check_decision_needed -> resolve_decision_pre_breakdown -> confidence_check
+    # cycle is bounded: the second pass sees decision_needed: false (asserted
+    # by the sub-loop's done terminal) and falls through check_decision_needed's
+    # on_no.
+    loop: oracles/resolve-decision
+    with:
+      issue_id: "${captured.issue_id.output}"
+    capture: resolve_decision_pre_breakdown
+    on_success: confidence_check
+    on_failure: record_decision_unresolved
+    on_error: record_decision_unresolved
 
   check_missing_artifacts:
     # Gate before size-review: if missing_artifacts=true the low outcome score is
@@ -480,6 +542,33 @@ states:
     next: done
     # ENH-2825: failing to record the decomposition marker loses the signal the
     # parent loop reads — surface it instead of exiting 0.
+    on_error: failed
+
+  record_decision_unresolved:
+    # BUG-3065: shared on_failure/on_error target for all three
+    # resolve_decision_* call states. Mirrors autodev.yaml's
+    # record_decision_unresolved so the DECISION_UNRESOLVED ledger contract
+    # auto-refine-and-implement.yaml:840 reads holds regardless of which loop
+    # resolved (or failed to resolve) the decision — this loop is now
+    # reachable both standalone and nested under autodev. Defers the issue
+    # rather than exiting via done, which would reproduce the exact
+    # silent-success bug this issue exists to fix (### refine-to-ready-issue's
+    # handling of the failed terminal).
+    action: |
+      ID="${captured.issue_id.output}"
+      echo "$ID" >> ${context.run_dir}/autodev-decision-unresolved.txt
+      # BUG-2729 postmortem: never flip an already-resolved issue to deferred.
+      STATUS=$(ll-issues show "$ID" --json 2>/dev/null \
+        | python3 -c "import json,sys; print((json.load(sys.stdin).get('status') or '').lower())" \
+        2>/dev/null || echo "")
+      if [ "$STATUS" = "done" ] || [ "$STATUS" = "completed" ] || [ "$STATUS" = "cancelled" ]; then
+        echo "[SKIP-DEFER] $ID already $STATUS; leaving status untouched"
+      else
+        ll-issues set-status "$ID" deferred --by automation --reason decision_unresolved 2>/dev/null || true
+        echo "[DECISION_UNRESOLVED] $ID — resolve-decision sub-loop did not clear decision_needed; deferred (resolve with /ll:decide-issue, then re-run to resurface)"
+      fi
+    action_type: shell
+    next: failed
     on_error: failed
 
   done:

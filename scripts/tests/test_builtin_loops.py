@@ -1964,6 +1964,128 @@ class TestRefineToReadyIssueSubLoop:
             f"check_decision_needed.on_no should be 'check_missing_artifacts', got {state.get('on_no')!r}"
         )
 
+    def test_check_decision_needed_on_yes_routes_to_resolve_decision_pre_breakdown(
+        self, data: dict
+    ) -> None:
+        """check_decision_needed.on_yes (decision_needed=true) must route to the
+        resolve-decision sub-loop call state, not exit via done (BUG-3065)."""
+        state = data["states"].get("check_decision_needed", {})
+        assert state.get("on_yes") == "resolve_decision_pre_breakdown", (
+            f"check_decision_needed.on_yes should be 'resolve_decision_pre_breakdown', "
+            f"got {state.get('on_yes')!r}"
+        )
+
+    def test_three_decision_gates_no_longer_route_on_yes_to_done(self, data: dict) -> None:
+        """BUG-3065: none of the three decision_needed gates' on_yes may still equal
+        'done' — that was the exact silent dead-end this issue exists to fix."""
+        for gate in (
+            "check_decision_mid_refine",
+            "check_decision_mid_wire",
+            "check_decision_needed",
+        ):
+            state = data["states"].get(gate, {})
+            assert state.get("on_yes") != "done", (
+                f"{gate}.on_yes must not be 'done' — the resolve-decision sub-loop "
+                f"must run before this loop exits (BUG-3065)"
+            )
+
+    def test_three_decision_gates_call_states_use_resolve_decision_oracle(
+        self, data: dict
+    ) -> None:
+        """Each of the three decision-resolution call states must delegate to the
+        oracles/resolve-decision sub-loop with issue_id bound, mirroring the
+        confidence_check -> oracles/verify-confidence-scores shape (BUG-3065)."""
+        for state_name in (
+            "resolve_decision_mid_refine",
+            "resolve_decision_mid_wire",
+            "resolve_decision_pre_breakdown",
+        ):
+            state = data["states"].get(state_name, {})
+            assert state.get("loop") == "oracles/resolve-decision", (
+                f"{state_name}.loop should be 'oracles/resolve-decision', "
+                f"got {state.get('loop')!r}"
+            )
+            assert state.get("with", {}).get("issue_id") == "${captured.issue_id.output}", (
+                f"{state_name}.with.issue_id should bind the captured issue id, "
+                f"got {state.get('with')!r}"
+            )
+            assert state.get("on_failure") == "record_decision_unresolved", (
+                f"{state_name}.on_failure should be 'record_decision_unresolved', "
+                f"got {state.get('on_failure')!r}"
+            )
+
+    def test_resolve_decision_pre_breakdown_on_success_reenters_confidence_check(
+        self, data: dict
+    ) -> None:
+        """resolve_decision_pre_breakdown.on_success must be confidence_check, NOT
+        check_decision_needed's on_no target (check_missing_artifacts) — otherwise
+        the outcome score is graded against the stale pre-decision ambiguity instead
+        of being recomputed against the resolved decision (BUG-3065)."""
+        state = data["states"].get("resolve_decision_pre_breakdown", {})
+        assert state.get("on_success") == "confidence_check", (
+            f"resolve_decision_pre_breakdown.on_success should be 'confidence_check', "
+            f"got {state.get('on_success')!r}"
+        )
+
+    def test_resolve_decision_mid_refine_on_success_resumes_check_wire_done(
+        self, data: dict
+    ) -> None:
+        """resolve_decision_mid_refine.on_success must resume the chain at
+        check_wire_done — the same target check_decision_mid_refine.on_no uses."""
+        state = data["states"].get("resolve_decision_mid_refine", {})
+        assert state.get("on_success") == "check_wire_done", (
+            f"resolve_decision_mid_refine.on_success should be 'check_wire_done', "
+            f"got {state.get('on_success')!r}"
+        )
+
+    def test_resolve_decision_mid_wire_on_success_resumes_verify_issue(
+        self, data: dict
+    ) -> None:
+        """resolve_decision_mid_wire.on_success must resume the chain at
+        verify_issue — the same target check_decision_mid_wire.on_no uses."""
+        state = data["states"].get("resolve_decision_mid_wire", {})
+        assert state.get("on_success") == "verify_issue", (
+            f"resolve_decision_mid_wire.on_success should be 'verify_issue', "
+            f"got {state.get('on_success')!r}"
+        )
+
+    def test_record_decision_unresolved_defers_and_routes_to_failed(self, data: dict) -> None:
+        """record_decision_unresolved must set-status deferred with reason
+        decision_unresolved and terminate via the failed terminal, not done —
+        routing to done here would reproduce the exact silent-success bug
+        BUG-3065 exists to fix."""
+        state = data["states"].get("record_decision_unresolved", {})
+        action = state.get("action", "")
+        assert "set-status" in action and "decision_unresolved" in action, (
+            f"record_decision_unresolved.action should defer via "
+            f"'ll-issues set-status ... --reason decision_unresolved', got {action!r}"
+        )
+        assert state.get("next") == "failed", (
+            f"record_decision_unresolved.next should be 'failed', got {state.get('next')!r}"
+        )
+
+    def test_max_steps_at_least_40(self, data: dict) -> None:
+        """max_steps must be >= 40 (BUG-3065: the check_decision_needed re-entry
+        cycle through confidence_check no longer fits in the old budget of 30)."""
+        assert data.get("max_steps", 0) >= 40, (
+            f"max_steps should be >= 40, got {data.get('max_steps')!r}"
+        )
+
+    def test_no_loop_call_state_declares_on_rate_limit_exhausted(self, data: dict) -> None:
+        """No loop: call state in refine-to-ready-issue.yaml may declare
+        on_rate_limit_exhausted — a loop: state's sub-loop execution never
+        produces an ActionResult, so the 429 interception can never fire there;
+        declaring the field would read as working and silently never fire
+        (### Rate-limit exhaustion)."""
+        offenders = [
+            name
+            for name, state in data["states"].items()
+            if state.get("loop") and "on_rate_limit_exhausted" in state
+        ]
+        assert not offenders, (
+            f"loop: call states must not declare on_rate_limit_exhausted: {offenders}"
+        )
+
     def test_context_fallbacks_match_selector_defaults(self, data: dict) -> None:
         """Seeded thresholds must be 85/65 to match next-action defaults (BUG-2035).
 
@@ -2050,12 +2172,16 @@ class TestRefineToReadyIssueSubLoop:
             f"got {action!r}"
         )
 
-    def test_check_decision_mid_refine_on_yes_routes_to_done(self, data: dict) -> None:
-        """check_decision_mid_refine.on_yes (decision_needed=true) must exit via done
-        so the outer autodev loop's check_decision_after_refine routes to run_decide."""
+    def test_check_decision_mid_refine_on_yes_routes_to_resolve_decision_mid_refine(
+        self, data: dict
+    ) -> None:
+        """check_decision_mid_refine.on_yes (decision_needed=true) must route to the
+        resolve-decision sub-loop call state, not exit via done (BUG-3065: a bare
+        done here silently dead-ends the issue instead of resolving the decision)."""
         state = data["states"].get("check_decision_mid_refine", {})
-        assert state.get("on_yes") == "done", (
-            f"check_decision_mid_refine.on_yes should be 'done', got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "resolve_decision_mid_refine", (
+            f"check_decision_mid_refine.on_yes should be 'resolve_decision_mid_refine', "
+            f"got {state.get('on_yes')!r}"
         )
 
     def test_check_decision_mid_refine_on_no_routes_to_check_wire_done(self, data: dict) -> None:
@@ -2099,12 +2225,15 @@ class TestRefineToReadyIssueSubLoop:
             f"got {action!r}"
         )
 
-    def test_check_decision_mid_wire_on_yes_routes_to_done(self, data: dict) -> None:
-        """check_decision_mid_wire.on_yes (decision_needed=true) must exit via done
-        so the outer autodev/recursive-refine loop's post-return decision gate handles decide."""
+    def test_check_decision_mid_wire_on_yes_routes_to_resolve_decision_mid_wire(
+        self, data: dict
+    ) -> None:
+        """check_decision_mid_wire.on_yes (decision_needed=true) must route to the
+        resolve-decision sub-loop call state, not exit via done (BUG-3065)."""
         state = data["states"].get("check_decision_mid_wire", {})
-        assert state.get("on_yes") == "done", (
-            f"check_decision_mid_wire.on_yes should be 'done', got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "resolve_decision_mid_wire", (
+            f"check_decision_mid_wire.on_yes should be 'resolve_decision_mid_wire', "
+            f"got {state.get('on_yes')!r}"
         )
 
     def test_check_decision_mid_wire_on_no_routes_to_verify_issue(self, data: dict) -> None:
@@ -2123,6 +2252,165 @@ class TestRefineToReadyIssueSubLoop:
             f"check_decision_mid_wire.on_error should be 'verify_issue', "
             f"got {state.get('on_error')!r}"
         )
+
+
+class TestResolveDecisionOracle:
+    """Tests for the oracles/resolve-decision.yaml sub-loop (BUG-3065): the
+    decision cluster extracted from autodev.yaml's inline copy, adopted by
+    refine-to-ready-issue.yaml's three decision_needed gates."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "oracles" / "resolve-decision.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_declares_import_lib_common(self, data: dict) -> None:
+        """Every moved state uses a fragment defined in lib/common.yaml (shell_exit,
+        with_rate_limit_handling, open_question_stall_gate) — omitting the import
+        fails FSM load with 'Fragment library not found' (### The extraction boundary)."""
+        assert "lib/common.yaml" in (data.get("import") or []), (
+            f"resolve-decision.yaml must declare 'import: [lib/common.yaml]', "
+            f"got {data.get('import')!r}"
+        )
+
+    def test_declares_required_issue_id_parameter(self, data: dict) -> None:
+        """_validate_with_bindings is ERROR-severity: both callers' with: {issue_id: ...}
+        bindings fail loop loading unless issue_id is declared required in parameters:."""
+        params = data.get("parameters") or {}
+        assert params.get("issue_id", {}).get("required") is True, (
+            f"parameters.issue_id.required should be True, got {params.get('issue_id')!r}"
+        )
+
+    def test_declares_optional_skip_probe_parameter_default_false(self, data: dict) -> None:
+        """skip_probe must be optional with default 'false' so the four probe-first
+        callers can bind nothing extra (### Fifth entry point)."""
+        params = data.get("parameters") or {}
+        skip_probe = params.get("skip_probe", {})
+        assert skip_probe.get("required") is not True, (
+            f"parameters.skip_probe.required should not be True, got {skip_probe!r}"
+        )
+        assert skip_probe.get("default") == "false", (
+            f"parameters.skip_probe.default should be 'false', got {skip_probe.get('default')!r}"
+        )
+
+    def test_initial_state_is_route_entry(self, data: dict) -> None:
+        """The sub-loop's initial: must be the route_entry demultiplexer, not
+        check_decision_decidable directly — else triage_outcome_failure's
+        skip_probe binding (ENH-3075) has nowhere to enter."""
+        assert data.get("initial") == "route_entry", (
+            f"initial should be 'route_entry', got {data.get('initial')!r}"
+        )
+
+    def test_route_entry_skip_probe_true_routes_to_run_decide(self, data: dict) -> None:
+        """route_entry must route skip_probe='true' straight to run_decide, bypassing
+        check_decision_decidable (### Fifth entry point)."""
+        state = data["states"].get("route_entry", {})
+        assert state.get("on_yes") == "run_decide", (
+            f"route_entry.on_yes should be 'run_decide', got {state.get('on_yes')!r}"
+        )
+
+    def test_route_entry_default_routes_to_check_decision_decidable(self, data: dict) -> None:
+        """route_entry's default (skip_probe unset/false) must route to
+        check_decision_decidable — the four probe-first entry points' path."""
+        state = data["states"].get("route_entry", {})
+        assert state.get("on_no") == "check_decision_decidable", (
+            f"route_entry.on_no should be 'check_decision_decidable', got {state.get('on_no')!r}"
+        )
+
+    def test_deposit_options_carries_on_partial(self, data: dict) -> None:
+        """deposit_options must carry on_partial (autodev.yaml:564) alongside
+        on_yes/on_no/on_error — easy to drop in a hand-move and nothing else
+        re-creates the route."""
+        state = data["states"].get("deposit_options", {})
+        assert state.get("on_partial") == "record_options_deposited", (
+            f"deposit_options.on_partial should be 'record_options_deposited', "
+            f"got {state.get('on_partial')!r}"
+        )
+
+    def test_no_loop_state_declares_on_rate_limit_exhausted_done(self, data: dict) -> None:
+        """deposit_options and run_decide must not route on_rate_limit_exhausted to
+        done — a 429-exhausted sub-loop returning done reads as decision-resolved to
+        the caller when the decision was never attempted (### Rate-limit exhaustion)."""
+        offenders = [
+            name
+            for name, state in data["states"].items()
+            if state.get("on_rate_limit_exhausted") == "done"
+        ]
+        assert not offenders, (
+            f"states must not route on_rate_limit_exhausted to 'done': {offenders}"
+        )
+
+    def test_options_deposited_marker_is_per_issue(self, data: dict) -> None:
+        """The options-deposited marker path must interpolate ${context.issue_id} —
+        the only automated defense against cross-issue leakage when a caller shares
+        one run_dir across a multi-issue queue (### Marker semantics)."""
+        for state_name in ("check_decision_decidable", "record_options_deposited"):
+            action = data["states"].get(state_name, {}).get("action", "")
+            assert "decide-options-deposited-${context.issue_id}" in action, (
+                f"{state_name}.action should reference a per-issue marker path "
+                f"interpolating ${{context.issue_id}}, got {action!r}"
+            )
+
+    def test_check_open_question_progress_declares_per_issue_history_file(
+        self, data: dict
+    ) -> None:
+        """check_open_question_progress must declare evaluate.history_file
+        interpolating ${context.issue_id}, matching its write path — otherwise the
+        evaluator falls back to a flat default path nothing writes and the gate is
+        inert (### Open-question stall gate is inert)."""
+        state = data["states"].get("check_open_question_progress", {})
+        history_file = (state.get("evaluate") or {}).get("history_file", "")
+        assert "${context.issue_id}" in history_file, (
+            f"check_open_question_progress.evaluate.history_file should interpolate "
+            f"${{context.issue_id}}, got {history_file!r}"
+        )
+
+    def test_no_captured_substring_anywhere(self, data: dict) -> None:
+        """No state body may reference ${captured.* — every moved state must read
+        the issue ID from ${context.issue_id} instead (### The extraction boundary),
+        including inside the check_open_question_progress shell heredoc."""
+        raw = self.LOOP_FILE.read_text()
+        assert "${captured." not in raw, (
+            "resolve-decision.yaml must not reference ${captured.* anywhere — "
+            "all state bodies read ${context.issue_id}"
+        )
+
+    def test_run_decide_and_assert_decision_cleared_routing(self, data: dict) -> None:
+        """run_decide must route directly to assert_decision_cleared on both success
+        and error — collapsing ENH-2717's check_decision_after_decide_error into a
+        single post-decide gate (### The extraction boundary)."""
+        state = data["states"].get("run_decide", {})
+        assert state.get("next") == "assert_decision_cleared", (
+            f"run_decide.next should be 'assert_decision_cleared', got {state.get('next')!r}"
+        )
+        assert state.get("on_error") == "assert_decision_cleared", (
+            f"run_decide.on_error should be 'assert_decision_cleared', "
+            f"got {state.get('on_error')!r}"
+        )
+        assert "check_decision_after_decide_error" not in data["states"], (
+            "check_decision_after_decide_error should not exist as a separate "
+            "state — it collapses into assert_decision_cleared"
+        )
+
+    def test_assert_decision_cleared_terminal_contract(self, data: dict) -> None:
+        """assert_decision_cleared.on_yes (flag still armed) must route to failed;
+        on_no (flag cleared) must route to done — the sub-loop's binary
+        done/failed terminal contract."""
+        state = data["states"].get("assert_decision_cleared", {})
+        assert state.get("on_yes") == "failed", (
+            f"assert_decision_cleared.on_yes should be 'failed', got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_no") == "done", (
+            f"assert_decision_cleared.on_no should be 'done', got {state.get('on_no')!r}"
+        )
+
+    def test_failed_terminal_is_a_failure_terminal(self, data: dict) -> None:
+        """'failed' must be recognized as a failure terminal (FAILURE_TERMINAL_NAMES)
+        so the caller's on_failure route actually fires."""
+        state = data["states"].get("failed", {})
+        assert state.get("terminal") is True
 
 
 class TestVegaVizScoringGate:
