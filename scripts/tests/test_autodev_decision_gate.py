@@ -132,16 +132,16 @@ class TestCheckDecisionAtDequeueStructural:
             f"got {state.get('fragment')!r}"
         )
 
-    def test_check_decision_at_dequeue_on_yes_routes_to_check_decision_decidable(
+    def test_check_decision_at_dequeue_on_yes_routes_to_resolve_decision(
         self, data: dict[str, Any]
     ) -> None:
-        """decision_needed=true must route through check_decision_decidable so the
-        deposit_options detour gets one bounded attempt before run_decide fires
-        (BUG-2605: the fast path previously skipped the detour entirely)."""
+        """decision_needed=true must route into the shared resolve_decision
+        sub-loop call state (ENH-3075), which owns the decidability probe and
+        deposit-options detour that used to live inline (BUG-2605)."""
         state = data["states"]["check_decision_at_dequeue"]
-        assert state.get("on_yes") == "check_decision_decidable", (
-            f"check_decision_at_dequeue.on_yes should be 'check_decision_decidable' "
-            f"(BUG-2605: route through the deposit-options detour), "
+        assert state.get("on_yes") == "resolve_decision", (
+            f"check_decision_at_dequeue.on_yes should be 'resolve_decision' "
+            f"(ENH-3075: route into the shared decision sub-loop), "
             f"got {state.get('on_yes')!r}"
         )
 
@@ -350,15 +350,15 @@ class TestCheckDecisionBeforeSizeReviewStructural:
             f"got {state.get('fragment')!r}"
         )
 
-    def test_check_decision_before_size_review_on_yes_routes_to_check_decision_decidable(
+    def test_check_decision_before_size_review_on_yes_routes_to_resolve_decision(
         self, data: dict[str, Any]
     ) -> None:
-        """decision_needed=true must route through check_decision_decidable so the
-        deposit_options detour gets one bounded attempt before run_decide fires
-        (BUG-2605)."""
+        """decision_needed=true must route into the shared resolve_decision
+        sub-loop call state (ENH-3075), which owns the decidability probe and
+        deposit-options detour that used to live inline (BUG-2605)."""
         state = data["states"]["check_decision_before_size_review"]
-        assert state.get("on_yes") == "check_decision_decidable", (
-            f"check_decision_before_size_review.on_yes should be 'check_decision_decidable', "
+        assert state.get("on_yes") == "resolve_decision", (
+            f"check_decision_before_size_review.on_yes should be 'resolve_decision', "
             f"got {state.get('on_yes')!r}"
         )
 
@@ -938,84 +938,51 @@ class TestCheckDecisionBeforeSizeReviewRouting:
 
 
 class TestAssertDecisionClearedStructural:
-    """BUG-2595: structural assertions on the post-decide decision-gate re-check.
-
-    Mirrors ``TestCheckDecisionAtDequeueStructural`` for the new
-    ``assert_decision_cleared`` state, which sits between ``recheck_after_decide``
-    (score-only gate) and ``implement_current`` so a silent ``decide-issue``
-    no-op (BUG-1416) cannot leak a still-gated issue into implementation.
+    """BUG-2595 / ENH-3075: the post-decide decision-gate re-check
+    (``assert_decision_cleared``) moved into ``oracles/resolve-decision.yaml``
+    (see ``TestResolveDecisionOracle`` in ``test_builtin_loops.py``) — it no
+    longer exists inline in ``autodev.yaml``'s own ``states:`` block. This
+    class now guards the dangling-edge fix that deletion forced:
+    ``recheck_after_decide.on_yes`` retargets to ``implement_current`` (the
+    same target ``assert_decision_cleared.on_no``/``.on_error`` already used),
+    and the caller-side ``record_decision_unresolved`` behaviour survives
+    unchanged.
     """
 
     @pytest.fixture
     def data(self) -> dict[str, Any]:
         return _load_autodev_yaml()
 
-    def test_recheck_after_decide_on_yes_routes_to_assert_decision_cleared(
+    def test_recheck_after_decide_on_yes_routes_to_implement_current(
         self, data: dict[str, Any]
     ) -> None:
-        """BUG-2595: recheck_after_decide.on_yes must no longer go straight to
-        implement_current — it must be re-verified by assert_decision_cleared first."""
+        """ENH-3075: recheck_after_decide.on_yes retargets from the now-deleted
+        assert_decision_cleared to implement_current — the score-passing path
+        is unchanged end to end since that is what assert_decision_cleared's
+        own on_no/on_error already routed to."""
         state = data["states"]["recheck_after_decide"]
-        assert state.get("on_yes") == "assert_decision_cleared", (
-            f"recheck_after_decide.on_yes should be 'assert_decision_cleared' "
-            f"(BUG-2595: score pass alone does not prove decision_needed was "
-            f"cleared), got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "implement_current", (
+            f"recheck_after_decide.on_yes should be 'implement_current' "
+            f"(ENH-3075: assert_decision_cleared deleted), got {state.get('on_yes')!r}"
         )
 
-    def test_assert_decision_cleared_state_exists(self, data: dict[str, Any]) -> None:
+    def test_assert_decision_cleared_absent_from_autodev_states(
+        self, data: dict[str, Any]
+    ) -> None:
+        """ENH-3075: assert_decision_cleared moved into
+        oracles/resolve-decision.yaml and must leave no dangling reference or
+        stale definition behind in autodev.yaml's own states block."""
         states = data.get("states", {})
-        assert "assert_decision_cleared" in states, (
-            "assert_decision_cleared state missing from autodev.yaml — BUG-2595"
+        assert "assert_decision_cleared" not in states, (
+            "assert_decision_cleared must be deleted from autodev.yaml's states "
+            "block — it now lives in oracles/resolve-decision.yaml (ENH-3075)"
         )
-
-    def test_assert_decision_cleared_uses_check_flag_predicate(self, data: dict[str, Any]) -> None:
-        state = data["states"]["assert_decision_cleared"]
-        action = state.get("action", "")
-        assert "ll-issues check-flag" in action, (
-            f"assert_decision_cleared.action must call 'll-issues check-flag', got {action!r}"
-        )
-        assert "decision_needed" in action, (
-            f"assert_decision_cleared.action must check decision_needed, got {action!r}"
-        )
-
-    def test_assert_decision_cleared_uses_shell_exit_fragment(self, data: dict[str, Any]) -> None:
-        state = data["states"]["assert_decision_cleared"]
-        assert state.get("fragment") == "shell_exit", (
-            f"assert_decision_cleared.fragment should be 'shell_exit', got {state.get('fragment')!r}"
-        )
-
-    def test_assert_decision_cleared_on_yes_routes_to_record_decision_unresolved(
-        self, data: dict[str, Any]
-    ) -> None:
-        """decision_needed still true (check-flag exit 0) means decide-issue no-op'd
-        → must NOT proceed to implement_current."""
-        state = data["states"]["assert_decision_cleared"]
-        assert state.get("on_yes") == "record_decision_unresolved", (
-            f"assert_decision_cleared.on_yes should be 'record_decision_unresolved', "
-            f"got {state.get('on_yes')!r}"
-        )
-
-    def test_assert_decision_cleared_on_no_routes_to_implement_current(
-        self, data: dict[str, Any]
-    ) -> None:
-        """decision_needed cleared (check-flag exit 1) → safe to implement."""
-        state = data["states"]["assert_decision_cleared"]
-        assert state.get("on_no") == "implement_current", (
-            f"assert_decision_cleared.on_no should be 'implement_current', "
-            f"got {state.get('on_no')!r}"
-        )
-
-    def test_assert_decision_cleared_on_error_fails_open_to_implement_current(
-        self, data: dict[str, Any]
-    ) -> None:
-        """A check-flag error (e.g. transient issue-lookup failure) must not
-        strand the issue — fail open to implement_current like the sibling
-        pre-decide gates do for their downstream target."""
-        state = data["states"]["assert_decision_cleared"]
-        assert state.get("on_error") == "implement_current", (
-            f"assert_decision_cleared.on_error should be 'implement_current', "
-            f"got {state.get('on_error')!r}"
-        )
+        for name, state in states.items():
+            for edge in ("on_yes", "on_no", "on_error", "on_success", "on_failure", "next"):
+                assert state.get(edge) != "assert_decision_cleared", (
+                    f"{name}.{edge} still references deleted state "
+                    "assert_decision_cleared (ENH-3075)"
+                )
 
     def test_record_decision_unresolved_advances_queue_without_failing(
         self, data: dict[str, Any]
@@ -1042,90 +1009,15 @@ class TestAssertDecisionClearedStructural:
         assert "--reason decision_unresolved" in action
 
 
-class TestCheckDecisionAfterDecideErrorStructural:
-    """ENH-2717: structural assertions on the decide-error decision gate.
-
-    Mirrors ``TestAssertDecisionClearedStructural`` for the new
-    ``check_decision_after_decide_error`` state, which sits between
-    ``run_decide.on_error`` and ``recheck_after_decide`` so a killed/failed
-    ``/ll:decide-issue --auto`` run that left ``decision_needed: true`` short-
-    circuits straight to ``record_decision_unresolved`` instead of paying for
-    a redundant ``run_size_review`` call that would just re-discover the same
-    flag.
-    """
-
-    @pytest.fixture
-    def data(self) -> dict[str, Any]:
-        return _load_autodev_yaml()
-
-    def test_run_decide_on_error_routes_to_check_decision_after_decide_error(
-        self, data: dict[str, Any]
-    ) -> None:
-        state = data["states"]["run_decide"]
-        assert state.get("on_error") == "check_decision_after_decide_error", (
-            f"run_decide.on_error should be 'check_decision_after_decide_error' "
-            f"(ENH-2717), got {state.get('on_error')!r}"
-        )
-
-    def test_check_decision_after_decide_error_state_exists(self, data: dict[str, Any]) -> None:
-        states = data.get("states", {})
-        assert "check_decision_after_decide_error" in states, (
-            "check_decision_after_decide_error state missing from autodev.yaml — ENH-2717"
-        )
-
-    def test_check_decision_after_decide_error_uses_check_flag_predicate(
-        self, data: dict[str, Any]
-    ) -> None:
-        state = data["states"]["check_decision_after_decide_error"]
-        action = state.get("action", "")
-        assert "ll-issues check-flag" in action, (
-            f"check_decision_after_decide_error.action must call 'll-issues check-flag', "
-            f"got {action!r}"
-        )
-        assert "decision_needed" in action, (
-            f"check_decision_after_decide_error.action must check decision_needed, got {action!r}"
-        )
-
-    def test_check_decision_after_decide_error_uses_shell_exit_fragment(
-        self, data: dict[str, Any]
-    ) -> None:
-        state = data["states"]["check_decision_after_decide_error"]
-        assert state.get("fragment") == "shell_exit", (
-            f"check_decision_after_decide_error.fragment should be 'shell_exit', "
-            f"got {state.get('fragment')!r}"
-        )
-
-    def test_check_decision_after_decide_error_on_yes_routes_to_record_decision_unresolved(
-        self, data: dict[str, Any]
-    ) -> None:
-        """decision_needed still true → short-circuit past run_size_review."""
-        state = data["states"]["check_decision_after_decide_error"]
-        assert state.get("on_yes") == "record_decision_unresolved", (
-            f"check_decision_after_decide_error.on_yes should be "
-            f"'record_decision_unresolved', got {state.get('on_yes')!r}"
-        )
-
-    def test_check_decision_after_decide_error_on_no_routes_to_recheck_after_decide(
-        self, data: dict[str, Any]
-    ) -> None:
-        """decision_needed was cleared despite the error → fall back to the
-        normal readiness re-check."""
-        state = data["states"]["check_decision_after_decide_error"]
-        assert state.get("on_no") == "recheck_after_decide", (
-            f"check_decision_after_decide_error.on_no should be "
-            f"'recheck_after_decide', got {state.get('on_no')!r}"
-        )
-
-    def test_check_decision_after_decide_error_on_error_falls_back_to_recheck_after_decide(
-        self, data: dict[str, Any]
-    ) -> None:
-        """A check-flag error must not strand the issue — fail open to the
-        existing degraded-mode path."""
-        state = data["states"]["check_decision_after_decide_error"]
-        assert state.get("on_error") == "recheck_after_decide", (
-            f"check_decision_after_decide_error.on_error should be "
-            f"'recheck_after_decide', got {state.get('on_error')!r}"
-        )
+# ENH-2717's check_decision_after_decide_error is deleted (ENH-3075): its
+# short-circuit collapses into oracles/resolve-decision.yaml's
+# assert_decision_cleared, which every run_decide exit path (success or
+# error) now reaches directly. The 5 routing assertions that used to live in
+# TestCheckDecisionAfterDecideErrorStructural are replaced by
+# test_run_decide_on_error_routes_to_assert_decision_cleared in
+# TestResolveDecisionOracle (test_builtin_loops.py), modeled on
+# test_run_decide_and_assert_decision_cleared_routing /
+# test_assert_decision_cleared_terminal_contract in that same test class.
 
 
 class TestAssertDecisionClearedRouting:

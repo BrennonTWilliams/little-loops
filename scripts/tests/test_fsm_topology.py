@@ -239,7 +239,13 @@ class TestAutodevSmoke:
         # ENH-2989 added check_impl_reached + mark_not_started.
         # ENH-3084 added check_learning_gate_infra + mark_gate_infra (+2), raising
         # it to 81 — learning-gate infra-failure discriminator + distinct record.
-        assert len(topo["states"]) == 81
+        # ENH-3075 converted the inline decision cluster to the shared
+        # oracles/resolve-decision sub-loop: removed check_decision_decidable,
+        # deposit_options, record_options_deposited, check_open_question_progress,
+        # run_decide, check_decision_after_decide_error, assert_decision_cleared (-7);
+        # added resolve_decision, resolve_decision_direct, check_decide_rate_limited
+        # (+3), lowering it to 77.
+        assert len(topo["states"]) == 77
 
         # Every edge endpoint is a known state id, or the target of a
         # declared sub-loop (`loop:`) cross-graph edge. `from` may be null

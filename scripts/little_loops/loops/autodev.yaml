@@ -102,7 +102,15 @@ states:
 
       rm -f ${context.run_dir}/refine-broke-down ${context.run_dir}/autodev-broke-down
       rm -f ${context.run_dir}/autodev-decide-ran
-      rm -f ${context.run_dir}/autodev-decide-options-deposited
+      # ENH-3075: per-issue marker shared with oracles/resolve-decision.yaml
+      # (which now owns deposit_options/record_options_deposited). Unlike the
+      # neighbouring per-issue markers on this line, which deliberately are
+      # NOT cleared because filename-scoping alone already self-isolates them
+      # (see :130/:157 below), this one IS cleared here: it gates a bounded
+      # retry that should be available again if this issue is re-dequeued in
+      # the same run, not a one-shot-per-issue bound (the write-once bound
+      # comes from the marker's presence, not from this clear).
+      rm -f ${context.run_dir}/decide-options-deposited-$CURRENT
       rm -f ${context.run_dir}/autodev-size-review-skipped-this-pass
 
       # FEAT-2751: snapshot the pre-refine Readiness score per-issue so
@@ -224,16 +232,17 @@ states:
     on_error: dequeue_next
 
   check_decision_at_dequeue:
-    # BUG-2513: route decision_needed:true issues to run_decide on first dequeue,
-    # BEFORE refine_current runs. Decouples the decision gate from the sub-loop's
-    # on_success / on_failure / on_error / on_no / on_rate_limit_exhausted outcome.
-    # dequeue_next clears autodev-decide-ran and autodev-decide-options-deposited
-    # on every dequeue, so this gate enters clean. The existing
-    # check_decision_after_refine gate still catches flags added during refinement
-    # (defense in depth) on the post-refine path.
+    # BUG-2513: route decision_needed:true issues to the resolve_decision
+    # sub-loop on first dequeue, BEFORE refine_current runs. Decouples the
+    # decision gate from the sub-loop's on_success / on_failure / on_error
+    # outcome. dequeue_next clears autodev-decide-ran and this issue's
+    # per-issue decide-options-deposited-<ID> marker on every dequeue, so this
+    # gate enters clean. The existing check_decision_after_refine gate still
+    # catches flags added during refinement (defense in depth) on the
+    # post-refine path.
     action: "ll-issues check-flag ${captured.input.output} decision_needed"
     fragment: shell_exit
-    on_yes: check_decision_decidable
+    on_yes: resolve_decision
     on_no: check_blockers_at_dequeue
     on_error: check_blockers_at_dequeue
 
@@ -488,7 +497,7 @@ states:
     # so an unresolved design decision is resolved on the direct post-refine path.
     action: "ll-issues check-flag ${captured.input.output} decision_needed"
     fragment: shell_exit
-    on_yes: check_decision_decidable
+    on_yes: resolve_decision
     on_no: check_passed
     on_error: check_passed
 
@@ -523,118 +532,68 @@ states:
       fi
       ll-issues check-flag ${captured.input.output} decision_needed
     fragment: shell_exit
-    on_yes: check_decision_decidable
+    on_yes: resolve_decision
     on_no: implement_current
 
-  check_decision_decidable:
-    # ENH-2443 parity insertion (Implementation Step #7): same rn-remediate gate —
-    # decide_current's decision_needed:true may have zero enumerable options in
-    # ## Proposed Solution, in which case run_decide silently leaves the flag
-    # unchanged and the issue never converges. ll-issues check-decidable is the
-    # deterministic (non-LLM) companion to /ll:decide-issue --validate-only.
-    # Marker-bounded: once deposit_options has run once this iteration, skip
-    # re-validation and go straight to run_decide (bounds the detour to one retry).
-    # ENH-2446: chain check-open-questions first — coverage-aware probe that
-    # catches the mixed case (resolved options + free-form open questions).
-    action: |
-      if [ -f ${context.run_dir}/autodev-decide-options-deposited ]; then
-        exit 0
-      fi
-      ll-issues check-open-questions ${captured.input.output} || \
-        ll-issues check-decidable ${captured.input.output}
+  resolve_decision:
+    # ENH-3075: shared decision-cluster sub-loop (BUG-3065's
+    # oracles/resolve-decision.yaml) — probes decidability (ENH-2443/ENH-2446),
+    # deposits competing options via /ll:refine-issue --auto if needed, runs
+    # /ll:decide-issue --auto, and re-verifies decision_needed cleared
+    # (BUG-2595). Entered from the four probe-first entry points:
+    # check_decision_at_dequeue, check_decision_after_refine,
+    # decide_current.on_yes, and check_decision_before_size_review.on_yes —
+    # all bind issue_id only, relying on the sub-loop's skip_probe: "false"
+    # default. mark_decide_ran / rerun_confidence_after_decide /
+    # recheck_after_decide / record_decision_unresolved stay caller-side;
+    # see oracles/resolve-decision.yaml for the extracted cluster's own
+    # contract and Behavior Parity notes in ENH-3075.
+    loop: oracles/resolve-decision
+    with:
+      issue_id: "${captured.input.output}"
+    capture: resolve_decision
+    on_success: mark_decide_ran
+    on_failure: check_decide_rate_limited
+    on_error: check_decide_rate_limited
+
+  resolve_decision_direct:
+    # Same sub-loop as resolve_decision, but entered directly from
+    # triage_outcome_failure.on_yes with skip_probe: "true" — the fifth entry
+    # point BUG-3065's route_entry demultiplexer exists to serve (BUG-2513's
+    # direct-to-decide route: triage_outcome_failure's predicate is
+    # score_ambiguity <= 10 OR decision_needed, not "is this decidable", so
+    # the decidability probe is skipped rather than run redundantly). `with:`
+    # is bound per call state, so this cannot share resolve_decision's state.
+    loop: oracles/resolve-decision
+    with:
+      issue_id: "${captured.input.output}"
+      skip_probe: "true"
+    capture: resolve_decision_direct
+    on_success: mark_decide_ran
+    on_failure: check_decide_rate_limited
+    on_error: check_decide_rate_limited
+
+  check_decide_rate_limited:
+    # ENH-3075 Option A: a `loop:` call state can never observe
+    # oracles/resolve-decision's rate-limit-exhaustion terminal directly —
+    # _execute_sub_loop (executor.py:1055-1079) routes only on
+    # terminated_by/failure_terminal (a bool, not a terminal name), and the
+    # 429 interception at executor.py:1673-1686 is gated on action_result,
+    # which a loop: state never produces. So the sub-loop's
+    # mark_decide_rate_limited writes a marker before exiting `failed`, and
+    # this gate — reached from both call states' on_failure AND on_error, so
+    # a child that dies with terminated_by == "error" after a 429 cannot skip
+    # the check — reads it. Present: the 429 budget is exhausted; terminate
+    # the run gracefully, matching every other on_rate_limit_exhausted: done
+    # site in this file, rather than deferring this issue and immediately
+    # walking the rest of the queue into the same exhaustion. Absent: decide
+    # genuinely didn't resolve the flag (or errored for an unrelated reason);
+    # fall through to record_decision_unresolved as before.
+    action: "[ -f ${context.run_dir}/decide-rate-limited-${captured.input.output} ]"
     fragment: shell_exit
-    on_yes: run_decide
-    on_no: deposit_options
-    on_error: run_decide
-
-  deposit_options:
-    # Bounded retry: refine --auto may deposit Option A/B/C blocks that
-    # run_decide can then score. Write-once marker prevents infinite loops if
-    # refine also can't deposit options — falls through to run_decide with no
-    # enumerable options; the existing decision_needed gate remains the safety net.
-    fragment: with_rate_limit_handling
-    action_type: slash_command
-    action: "/ll:refine-issue ${captured.input.output} --auto"
-    pruning_profile:
-      enabled: true
-      name: refine-issue-auto
-      suppress_claude_md: true
-    on_yes: record_options_deposited
-    on_no: run_decide
-    on_partial: record_options_deposited
-    on_error: run_decide
-    on_rate_limit_exhausted: done
-
-  record_options_deposited:
-    # Marker ensures the deposit_options detour runs at most once per issue
-    # per iteration (cleared at dequeue_next, mirroring autodev-decide-ran).
-    action_type: shell
-    action: |
-      printf '1' > ${context.run_dir}/autodev-decide-options-deposited
-    next: check_open_question_progress
-
-  # ENH-2446: progress-gated deposit_options re-fire (parity with rn-remediate.yaml).
-  # Same shape: append current unresolved-question count to a per-issue history
-  # file, then let the open_question_stall evaluator decide whether to retry
-  # (on_yes: check_decision_decidable) or surface via run_decide (on_no / on_error).
-  check_open_question_progress:
-    action_type: shell
-    action: |
-      ID="${captured.input.output}"
-      RUN_DIR="${context.run_dir}"
-      HISTORY_FILE="$${RUN_DIR}/.open_questions_$${ID}.history"
-
-      COUNT=$(python3 -c "
-      from little_loops.cli.issues.show import _resolve_issue_id
-      from little_loops.config import BRConfig
-      from little_loops.issue_parser import (
-          count_open_questions_in_sections,
-          count_unresolved_options,
-      )
-      cfg = BRConfig('.')
-      path = _resolve_issue_id(cfg, '$ID')
-      if path is None:
-          print(0)
-      else:
-          c = path.read_text()
-          print(count_unresolved_options(c) + count_open_questions_in_sections(c))
-      " 2>/dev/null || echo 0)
-
-      echo "$${COUNT}"
-      echo "$${COUNT}" >> "$${HISTORY_FILE}"
-    fragment: open_question_stall_gate
-    on_yes: check_decision_decidable
-    on_no: run_decide
-    on_error: run_decide
-
-  run_decide:
-    # Run /ll:decide-issue to select a winning implementation option and clear
-    # the decision_needed flag. Routes to rerun_confidence_after_decide so the
-    # outcome score is recomputed against the resolved decision before
-    # thresholds are checked. run_decide is reachable from both score-passing
-    # and score-failing paths.
-    fragment: with_rate_limit_handling
-    action: "/ll:decide-issue ${captured.input.output} --auto"
-    action_type: slash_command
-    pruning_profile:
-      enabled: true
-      name: decide-issue-auto
-      suppress_claude_md: true
-    next: mark_decide_ran
-    on_error: check_decision_after_decide_error
-    on_rate_limit_exhausted: done
-
-  check_decision_after_decide_error:
-    # ENH-2717: run_decide.on_error can't distinguish "decide genuinely
-    # failed/was interrupted" from other failure modes, but if decision_needed
-    # is still true the blocker is already fully known — short-circuit
-    # straight to record_decision_unresolved instead of paying for a redundant
-    # run_size_review call that would just re-discover the same flag.
-    action: "ll-issues check-flag ${captured.input.output} decision_needed"
-    fragment: shell_exit
-    on_yes: record_decision_unresolved
-    on_no: recheck_after_decide
-    on_error: recheck_after_decide
+    on_yes: done
+    on_no: record_decision_unresolved
+    on_error: record_decision_unresolved
 
   mark_decide_ran:
     # ENH-1415: record that decide has already run for the current issue so
@@ -680,23 +639,19 @@ states:
         --outcome ${context.outcome_threshold} \
         && echo "${captured.input.output}" >> ${context.run_dir}/autodev-staged.txt
     fragment: shell_exit
-    on_yes: assert_decision_cleared
+    # ENH-3075: assert_decision_cleared (BUG-2595's post-decide flag
+    # re-verify) moved into oracles/resolve-decision.yaml, where it now sits
+    # directly after run_decide rather than after this re-score chain — an
+    # accepted reorder (ENH-3075 Behavior Parity table). on_yes retargets to
+    # implement_current, the same target assert_decision_cleared.on_no /
+    # .on_error already used, so the score-passing path is unchanged end to
+    # end. The one accepted loss: an issue with a still-armed flag AND
+    # failing scores no longer reaches snap_and_size_review (ENH-1415) — it
+    # is deferred via record_decision_unresolved instead. No caller-side
+    # score branch was added to preserve that escape (decided, ENH-3075).
+    on_yes: implement_current
     on_no: snap_and_size_review
     on_error: snap_and_size_review
-
-  assert_decision_cleared:
-    # BUG-2595: scores passing after run_decide does not prove decide-issue
-    # actually cleared decision_needed — a silent no-op (BUG-1416) leaves the
-    # flag armed while stale-but-passing scores let recheck_after_decide
-    # through. Re-verify the flag directly before handing off to
-    # implement_current, which would otherwise halt at manage-issue's Phase
-    # 2.3 Decision Gate and have its failure misclassified by
-    # check_learning_gate as a generic implementation failure.
-    action: "ll-issues check-flag ${captured.input.output} decision_needed"
-    fragment: shell_exit
-    on_yes: record_decision_unresolved
-    on_no: implement_current
-    on_error: implement_current
 
   record_decision_unresolved:
     # Record the still-gated issue distinctly (mirrors mark_gate_blocked) and
@@ -1243,17 +1198,20 @@ states:
     # added by BUG-1277; on_error closes the latent dead-end BUG-2519.
     action: "ll-issues check-flag ${captured.input.output} decision_needed"
     fragment: shell_exit
-    on_yes: check_decision_decidable
+    on_yes: resolve_decision
     on_no: run_size_review
     on_error: run_size_review
 
   triage_outcome_failure:
     # Diagnose why outcome_confidence failed before routing to size-review.
     # decision_needed=true (authoritative flag) OR low score_ambiguity (≤10,
-    # proxy) routes to run_decide. Otherwise → check_spike_needed (ENH-2640) to
-    # test for an unproven internal mechanism before check_missing_artifacts /
-    # size-review. Decide-first ordering: an unresolved design decision must be
-    # settled before spiking an approach.
+    # proxy) routes to resolve_decision_direct, bypassing the decidability
+    # probe (skip_probe: "true") since the predicate here already IS the
+    # decide-or-not decision, not "is this decidable". Otherwise →
+    # check_spike_needed (ENH-2640) to test for an unproven internal
+    # mechanism before check_missing_artifacts / size-review. Decide-first
+    # ordering: an unresolved design decision must be settled before spiking
+    # an approach.
     # on_error falls back to detect_children safely.
     action: |
       ll-issues show ${captured.input.output} --json | python3 -c "
@@ -1261,7 +1219,7 @@ states:
       d = json.load(sys.stdin)
       sys.exit(0 if (int(d.get('score_ambiguity') or 25) <= 10 or d.get('decision_needed') == 'true') else 1)"
     fragment: shell_exit
-    on_yes: run_decide
+    on_yes: resolve_decision_direct
     on_no: check_spike_needed
     on_error: detect_children
 
@@ -2044,9 +2002,12 @@ states:
         # nothing actionable (Pattern E's own bar included) fell through to
         # readiness_stagnated/low_readiness — a truthful-sounding but wrong
         # reason (ENH-2866 postmortem). Re-check the flag directly, mirroring
-        # assert_decision_cleared / check_decision_after_decide_error's idiom,
-        # before the stagnation/low-readiness branches below get a chance to
-        # mask it.
+        # the same "re-verify decision_needed directly rather than trusting a
+        # score" idiom oracles/resolve-decision.yaml's assert_decision_cleared
+        # uses (ENH-3075 moved the inline states that idiom originally named
+        # here — check_decision_after_decide_error and assert_decision_cleared
+        # — into that sub-loop), before the stagnation/low-readiness branches
+        # below get a chance to mask it.
         DECISION_NEEDED=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
       import json, sys
       d = json.load(sys.stdin)

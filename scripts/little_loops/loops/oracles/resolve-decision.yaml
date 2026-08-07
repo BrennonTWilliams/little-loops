@@ -80,15 +80,16 @@ states:
     on_no: run_decide
     on_partial: record_options_deposited
     on_error: run_decide
-    on_rate_limit_exhausted: failed
+    on_rate_limit_exhausted: mark_decide_rate_limited
 
   record_options_deposited:
     # Marker ensures the deposit_options detour runs at most once per issue.
-    # BUG-3065: named per-issue (not autodev's flat
-    # autodev-decide-options-deposited) because the inherited run_dir may be
-    # shared across a multi-issue queue (recursive-refine's
-    # context_passthrough) — a flat name would make issue #2 onward find the
-    # marker already set and skip deposit_options entirely.
+    # BUG-3065: named per-issue (autodev used to keep its own flat
+    # autodev-decide-options-deposited before ENH-3075 converted it to call
+    # this sub-loop) because the inherited run_dir may be shared across a
+    # multi-issue queue (recursive-refine's context_passthrough) — a flat
+    # name would make issue #2 onward find the marker already set and skip
+    # deposit_options entirely.
     action_type: shell
     action: |
       printf '1' > ${context.run_dir}/decide-options-deposited-${context.issue_id}
@@ -153,7 +154,27 @@ states:
       suppress_claude_md: true
     next: assert_decision_cleared
     on_error: assert_decision_cleared
-    on_rate_limit_exhausted: failed
+    on_rate_limit_exhausted: mark_decide_rate_limited
+
+  mark_decide_rate_limited:
+    # ENH-3075 Option A: a `loop:` call state can never observe this
+    # terminal's identity — _execute_sub_loop (executor.py:1055-1079) routes
+    # a child's exit purely on terminated_by/failure_terminal (a bool, not a
+    # terminal name), and the 429 interception at executor.py:1673-1686 is
+    # gated on action_result, which a loop: state never produces
+    # (recursive-refine.yaml:239-250 and rn-implement.yaml:745-746 document
+    # the same limitation independently). on_rate_limit_exhausted is a
+    # routing target (executor.py:3110), not a hook that runs before the
+    # target, so the marker write needs its own state rather than being
+    # attached to deposit_options/run_decide directly. Callers (autodev's
+    # check_decide_rate_limited) read this marker on_failure/on_error to
+    # terminate their run instead of deferring the issue and immediately
+    # re-hitting the same 429 on the next queued issue. Per-issue and
+    # run-dir-scoped, so it needs no explicit clearing.
+    action_type: shell
+    action: printf '1' > ${context.run_dir}/decide-rate-limited-${context.issue_id}
+    next: failed
+    on_error: failed
 
   assert_decision_cleared:
     # BUG-2595: scores passing after run_decide does not prove decide-issue

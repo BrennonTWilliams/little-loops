@@ -2410,7 +2410,10 @@ class TestResolveDecisionOracle:
     def test_run_decide_and_assert_decision_cleared_routing(self, data: dict) -> None:
         """run_decide must route directly to assert_decision_cleared on both success
         and error — collapsing ENH-2717's check_decision_after_decide_error into a
-        single post-decide gate (### The extraction boundary)."""
+        single post-decide gate (### The extraction boundary). ENH-3075: this is
+        also the AC 8 replacement for the 5 routing assertions that used to live in
+        test_autodev_decision_gate.py's (now-deleted)
+        TestCheckDecisionAfterDecideErrorStructural."""
         state = data["states"].get("run_decide", {})
         assert state.get("next") == "assert_decision_cleared", (
             f"run_decide.next should be 'assert_decision_cleared', got {state.get('next')!r}"
@@ -2441,6 +2444,85 @@ class TestResolveDecisionOracle:
         so the caller's on_failure route actually fires."""
         state = data["states"].get("failed", {})
         assert state.get("terminal") is True
+
+    def test_deposit_options_and_run_decide_route_rate_limit_to_mark_decide_rate_limited(
+        self, data: dict
+    ) -> None:
+        """ENH-3075 Option A: both on_rate_limit_exhausted sites target the marker
+        state, not failed directly — the marker must be written before the
+        terminal is reached so the caller's check_decide_rate_limited gate can
+        discriminate 429 exhaustion from a genuine decision_unresolved."""
+        for state_name in ("deposit_options", "run_decide"):
+            state = data["states"].get(state_name, {})
+            assert state.get("on_rate_limit_exhausted") == "mark_decide_rate_limited", (
+                f"{state_name}.on_rate_limit_exhausted should be "
+                f"'mark_decide_rate_limited', got {state.get('on_rate_limit_exhausted')!r}"
+            )
+
+    def test_check_decision_decidable_routes_and_chains_coverage_probe(self, data: dict) -> None:
+        """ENH-2443/ENH-2446, moved here by ENH-3075: check_decision_decidable uses the
+        deterministic ll-issues check-decidable companion CLI, chains check-open-questions
+        first for coverage-aware detection, and routes yes/error->run_decide,
+        no->deposit_options."""
+        state = data["states"].get("check_decision_decidable", {})
+        assert state.get("fragment") == "shell_exit"
+        action = state.get("action", "")
+        assert "ll-issues check-decidable" in action
+        assert "check-open-questions" in action
+        assert action.index("check-open-questions") < action.index("check-decidable")
+        assert state.get("on_yes") == "run_decide"
+        assert state.get("on_no") == "deposit_options"
+        assert state.get("on_error") == "run_decide"
+
+    def test_deposit_options_and_record_options_deposited_routing(self, data: dict) -> None:
+        """ENH-2443/ENH-2446, moved here by ENH-3075: deposit_options runs
+        /ll:refine-issue --auto and routes success through
+        record_options_deposited -> check_open_question_progress ->
+        (back to) check_decision_decidable."""
+        do = data["states"].get("deposit_options", {})
+        assert do.get("fragment") == "with_rate_limit_handling"
+        assert do.get("action_type") == "slash_command"
+        assert "/ll:refine-issue" in do.get("action", "")
+        assert "--auto" in do.get("action", "")
+        assert do.get("on_yes") == "record_options_deposited"
+        assert do.get("on_partial") == "record_options_deposited"
+        assert do.get("on_no") == "run_decide"
+        assert do.get("on_error") == "run_decide"
+
+        rod = data["states"].get("record_options_deposited", {})
+        assert rod.get("action_type") == "shell"
+        assert rod.get("next") == "check_open_question_progress"
+        assert "decide-options-deposited-${context.issue_id}" in rod.get("action", "")
+
+    def test_check_open_question_progress_routing(self, data: dict) -> None:
+        """ENH-2446, moved here by ENH-3075: progress-gated re-fire between
+        record_options_deposited and check_decision_decidable."""
+        cop = data["states"].get("check_open_question_progress", {})
+        assert cop.get("fragment") == "open_question_stall_gate"
+        assert cop.get("on_yes") == "check_decision_decidable"
+        assert cop.get("on_no") == "run_decide"
+        assert cop.get("on_error") == "run_decide"
+
+    def test_mark_decide_rate_limited_writes_per_issue_marker_and_routes_to_failed(
+        self, data: dict
+    ) -> None:
+        """mark_decide_rate_limited must write
+        decide-rate-limited-${context.issue_id} and route next/on_error to
+        'failed' (not 'done') — TestBuiltinLoopFiles.
+        test_no_failure_edge_routes_to_a_success_terminal depends on this."""
+        state = data["states"].get("mark_decide_rate_limited", {})
+        action = state.get("action", "")
+        assert "decide-rate-limited-${context.issue_id}" in action, (
+            f"mark_decide_rate_limited.action should write a per-issue "
+            f"decide-rate-limited-<issue_id> marker, got {action!r}"
+        )
+        assert state.get("next") == "failed", (
+            f"mark_decide_rate_limited.next should be 'failed', got {state.get('next')!r}"
+        )
+        assert state.get("on_error") == "failed", (
+            f"mark_decide_rate_limited.on_error should be 'failed', "
+            f"got {state.get('on_error')!r}"
+        )
 
 
 class TestVegaVizScoringGate:
@@ -4565,7 +4647,9 @@ class TestAutodevLoop:
             "enqueue_or_skip",
             "recheck_after_size_review",
             "decide_current",
-            "run_decide",
+            "resolve_decision",
+            "resolve_decision_direct",
+            "check_decide_rate_limited",
             "mark_decide_ran",
             "rerun_confidence_after_decide",
             "snap_and_size_review",
@@ -4666,15 +4750,17 @@ class TestAutodevLoop:
             f"check_decision_at_dequeue (BUG-2513); chain stalled at {node!r}"
         )
 
-    def test_check_decision_at_dequeue_on_yes_routes_to_check_decision_decidable(
+    def test_check_decision_at_dequeue_on_yes_routes_to_resolve_decision(
         self, data: dict
     ) -> None:
-        """BUG-2605: check_decision_at_dequeue.on_yes (decision_needed=true) must route to
-        check_decision_decidable, not directly to run_decide, so a fresh dequeue gets the
-        deposit_options detour before decide-issue is asked to choose an option."""
+        """ENH-3075 (was BUG-2605): check_decision_at_dequeue.on_yes (decision_needed=true)
+        must route into the shared resolve_decision sub-loop call state, not directly
+        to a local run_decide, so a fresh dequeue gets the deposit_options detour
+        (now owned by oracles/resolve-decision.yaml) before decide-issue is asked to
+        choose an option."""
         state = data["states"].get("check_decision_at_dequeue", {})
-        assert state.get("on_yes") == "check_decision_decidable", (
-            f"check_decision_at_dequeue.on_yes should be 'check_decision_decidable', "
+        assert state.get("on_yes") == "resolve_decision", (
+            f"check_decision_at_dequeue.on_yes should be 'resolve_decision', "
             f"got {state.get('on_yes')!r}"
         )
 
@@ -5863,11 +5949,11 @@ class TestAutodevLoop:
         )
 
     def test_check_decision_after_refine_routes_correctly(self, data: dict) -> None:
-        """check_decision_after_refine must route to check_decision_decidable (on_yes, BUG-2605)
-        and check_passed (on_no/on_error)."""
+        """check_decision_after_refine must route to resolve_decision (on_yes, ENH-3075
+        — was BUG-2605's check_decision_decidable) and check_passed (on_no/on_error)."""
         state = data["states"].get("check_decision_after_refine", {})
-        assert state.get("on_yes") == "check_decision_decidable", (
-            f"check_decision_after_refine.on_yes should be 'check_decision_decidable', "
+        assert state.get("on_yes") == "resolve_decision", (
+            f"check_decision_after_refine.on_yes should be 'resolve_decision', "
             f"got {state.get('on_yes')!r}"
         )
         assert state.get("on_no") == "check_passed", (
@@ -6372,14 +6458,15 @@ class TestAutodevLoop:
             f"check_decision_before_size_review.fragment should be 'shell_exit', got {state.get('fragment')!r}"
         )
 
-    def test_check_decision_before_size_review_on_yes_routes_to_check_decision_decidable(
+    def test_check_decision_before_size_review_on_yes_routes_to_resolve_decision(
         self, data: dict
     ) -> None:
-        """check_decision_before_size_review.on_yes (decision_needed=true) must route to
-        check_decision_decidable (BUG-2605), not straight to run_decide."""
+        """check_decision_before_size_review.on_yes (decision_needed=true) must route into
+        the shared resolve_decision sub-loop call state (ENH-3075, was BUG-2605's
+        check_decision_decidable), not straight to a local run_decide."""
         state = data["states"].get("check_decision_before_size_review", {})
-        assert state.get("on_yes") == "check_decision_decidable", (
-            f"check_decision_before_size_review.on_yes should be 'check_decision_decidable', "
+        assert state.get("on_yes") == "resolve_decision", (
+            f"check_decision_before_size_review.on_yes should be 'resolve_decision', "
             f"got {state.get('on_yes')!r}"
         )
 
@@ -6411,11 +6498,16 @@ class TestAutodevLoop:
             f"triage_outcome_failure.fragment should be 'shell_exit', got {state.get('fragment')!r}"
         )
 
-    def test_triage_outcome_failure_on_yes_routes_to_run_decide(self, data: dict) -> None:
-        """triage_outcome_failure.on_yes (low ambiguity score) must route to run_decide."""
+    def test_triage_outcome_failure_on_yes_routes_to_resolve_decision_direct(
+        self, data: dict
+    ) -> None:
+        """triage_outcome_failure.on_yes (low ambiguity score or decision_needed) must route
+        directly into resolve_decision_direct (ENH-3075's fifth entry point, skip_probe:
+        "true"), bypassing the decidability probe rather than a local run_decide."""
         state = data["states"].get("triage_outcome_failure", {})
-        assert state.get("on_yes") == "run_decide", (
-            f"triage_outcome_failure.on_yes should be 'run_decide', got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "resolve_decision_direct", (
+            f"triage_outcome_failure.on_yes should be 'resolve_decision_direct', "
+            f"got {state.get('on_yes')!r}"
         )
 
     def test_triage_outcome_failure_on_no_routes_to_check_spike_needed(self, data: dict) -> None:
@@ -6669,69 +6761,35 @@ class TestAutodevLoop:
             f"decide_current.fragment should be 'shell_exit', got {state.get('fragment')!r}"
         )
 
-    def test_decide_current_on_yes_routes_to_check_decision_decidable(self, data: dict) -> None:
-        """ENH-2443: decide_current.on_yes (decision_needed=true) must route to
-        check_decision_decidable (parity insertion mirroring rn-remediate), which then
-        routes to run_decide once the issue has enumerable options to decide between."""
+    def test_decide_current_on_yes_routes_to_resolve_decision(self, data: dict) -> None:
+        """ENH-3075 (was ENH-2443's check_decision_decidable): decide_current.on_yes
+        (decision_needed=true) must route into the shared resolve_decision sub-loop
+        call state, not a local run_decide. The decidability probe and deposit
+        detour now live in oracles/resolve-decision.yaml — see
+        TestResolveDecisionOracle for their coverage."""
         state = data["states"].get("decide_current", {})
-        assert state.get("on_yes") == "check_decision_decidable", (
-            f"decide_current.on_yes should be 'check_decision_decidable', got "
+        assert state.get("on_yes") == "resolve_decision", (
+            f"decide_current.on_yes should be 'resolve_decision', got "
             f"{state.get('on_yes')!r}"
         )
 
-    def test_check_decision_decidable_state_exists_and_routes(self, data: dict) -> None:
-        """ENH-2443: check_decision_decidable uses the deterministic ll-issues
-        check-decidable companion CLI and routes yes->run_decide, no->deposit_options."""
-        state = data["states"].get("check_decision_decidable", {})
-        assert state.get("fragment") == "shell_exit"
-        assert "ll-issues check-decidable" in state.get("action", "")
-        assert state.get("on_yes") == "run_decide"
-        assert state.get("on_no") == "deposit_options"
-        assert state.get("on_error") == "run_decide"
-
-    def test_deposit_options_state_exists_and_routes(self, data: dict) -> None:
-        """ENH-2443: deposit_options runs /ll:refine-issue --auto and routes success
-        through record_options_deposited back to check_decision_decidable (via
-        check_open_question_progress as of ENH-2446)."""
-        do = data["states"].get("deposit_options", {})
-        assert do.get("fragment") == "with_rate_limit_handling"
-        assert do.get("action_type") == "slash_command"
-        assert "/ll:refine-issue" in do.get("action", "")
-        assert "--auto" in do.get("action", "")
-        assert do.get("on_yes") == "record_options_deposited"
-        assert do.get("on_partial") == "record_options_deposited"
-        assert do.get("on_no") == "run_decide"
-        assert do.get("on_error") == "run_decide"
-
-        rod = data["states"].get("record_options_deposited", {})
-        assert rod.get("action_type") == "shell"
-        # ENH-2446: routes through check_open_question_progress (progress gate)
-        # before reaching check_decision_decidable — lets deposit_options re-fire
-        # while open-question counts are still strictly decreasing.
-        assert rod.get("next") == "check_open_question_progress"
-        assert "autodev-decide-options-deposited" in rod.get("action", "")
-
-    def test_check_decision_decidable_chains_coverage_probe(self, data: dict) -> None:
-        """ENH-2446: chains check-open-questions before check-decidable for
-        coverage-aware decidability detection (mixed resolved-options + open-questions)."""
-        action = data["states"]["check_decision_decidable"].get("action", "")
-        assert "check-open-questions" in action
-        assert action.index("check-open-questions") < action.index("check-decidable")
-
-    def test_check_open_question_progress_state_exists(self, data: dict) -> None:
-        """ENH-2446: progress-gated re-fire between record_options_deposited and
-        check_decision_decidable; uses open_question_stall_gate fragment."""
-        cop = data["states"].get("check_open_question_progress", {})
-        assert cop.get("fragment") == "open_question_stall_gate"
-        assert cop.get("on_yes") == "check_decision_decidable"
-        assert cop.get("on_no") == "run_decide"
-        assert cop.get("on_error") == "run_decide"
-
     def test_dequeue_next_clears_decide_options_deposited_marker(self, data: dict) -> None:
-        """ENH-2443: the deposit-options marker must be cleared per-issue (mirrors the
-        existing autodev-decide-ran clear) so the retry is bounded to one per issue."""
+        """ENH-3075: the per-issue deposit-options marker must be cleared on every
+        dequeue (mirrors the existing autodev-decide-ran clear) so a re-dequeued
+        issue can retry deposit_options, bounded to one attempt per issue. The clear
+        must use the bareword shell-local $CURRENT, not
+        ${captured.input.output} (which still holds the *previous* iteration's
+        issue ID at this point in dequeue_next) and not the braced-and-doubled
+        $${CURRENT} (which would push a literal ${CURRENT} through FSM
+        interpolation and raise "expected namespace.path")."""
         dq = data["states"].get("dequeue_next", {})
-        assert "autodev-decide-options-deposited" in dq.get("action", "")
+        action = dq.get("action", "")
+        assert "decide-options-deposited-$CURRENT" in action, (
+            f"dequeue_next.action should clear decide-options-deposited-$CURRENT "
+            f"(bareword), got {action!r}"
+        )
+        assert "decide-options-deposited-${captured.input.output}" not in action
+        assert "decide-options-deposited-$${CURRENT}" not in action
 
     def test_decide_current_on_no_routes_to_implement_current(self, data: dict) -> None:
         """decide_current.on_no (no decision needed) must route to implement_current."""
@@ -6740,29 +6798,59 @@ class TestAutodevLoop:
             f"decide_current.on_no should be 'implement_current', got {state.get('on_no')!r}"
         )
 
-    def test_run_decide_uses_with_rate_limit_handling_fragment(self, data: dict) -> None:
-        """run_decide must use with_rate_limit_handling fragment."""
-        state = data["states"].get("run_decide", {})
-        assert state.get("fragment") == "with_rate_limit_handling"
+    def test_resolve_decision_call_states_declare_on_error_matching_on_failure(
+        self, data: dict
+    ) -> None:
+        """ENH-3075: both loop: oracles/resolve-decision call states must route
+        on_error to the same target as on_failure (check_decide_rate_limited) — the
+        regression guard for a child that dies with terminated_by == "error" after
+        a 429, so it cannot skip the rate-limit marker check and get deferred as
+        decision_unresolved instead."""
+        for state_name in ("resolve_decision", "resolve_decision_direct"):
+            state = data["states"].get(state_name, {})
+            assert state.get("loop") == "oracles/resolve-decision", (
+                f"{state_name}.loop should be 'oracles/resolve-decision', got "
+                f"{state.get('loop')!r}"
+            )
+            assert state.get("on_success") == "mark_decide_ran", (
+                f"{state_name}.on_success should be 'mark_decide_ran', got "
+                f"{state.get('on_success')!r}"
+            )
+            assert state.get("on_failure") == "check_decide_rate_limited", (
+                f"{state_name}.on_failure should be 'check_decide_rate_limited', got "
+                f"{state.get('on_failure')!r}"
+            )
+            assert state.get("on_error") == state.get("on_failure"), (
+                f"{state_name}.on_error should match on_failure "
+                f"({state.get('on_failure')!r}), got {state.get('on_error')!r}"
+            )
 
-    def test_run_decide_next_routes_to_mark_decide_ran(self, data: dict) -> None:
-        """ENH-1415: run_decide.next must route to mark_decide_ran so the decide-ran flag is
-        set before the refreshed-score gate; mark_decide_ran in turn routes to
-        rerun_confidence_after_decide."""
-        state = data["states"].get("run_decide", {})
-        assert state.get("next") == "mark_decide_ran"
+    def test_resolve_decision_direct_binds_skip_probe_true(self, data: dict) -> None:
+        """ENH-3075: only resolve_decision_direct (triage_outcome_failure's fifth
+        entry point) binds skip_probe: "true"; the four probe-first entries share
+        resolve_decision, which relies on the sub-loop's "false" default."""
+        direct = data["states"].get("resolve_decision_direct", {})
+        assert direct.get("with", {}).get("skip_probe") == "true", (
+            f"resolve_decision_direct.with.skip_probe should be 'true', got "
+            f"{direct.get('with', {}).get('skip_probe')!r}"
+        )
+        probe_first = data["states"].get("resolve_decision", {})
+        assert "skip_probe" not in probe_first.get("with", {}), (
+            "resolve_decision.with should not bind skip_probe — relies on the "
+            f"sub-loop's default, got {probe_first.get('with')!r}"
+        )
 
-    def test_run_decide_on_error_routes_to_implement_current(self, data: dict) -> None:
-        """ENH-2717: run_decide.on_error must route to check_decision_after_decide_error, which
-        short-circuits to record_decision_unresolved if decision_needed is still true rather than
-        falling through to a redundant run_size_review."""
-        state = data["states"].get("run_decide", {})
-        assert state.get("on_error") == "check_decision_after_decide_error"
-
-    def test_run_decide_on_rate_limit_exhausted_routes_to_done(self, data: dict) -> None:
-        """run_decide.on_rate_limit_exhausted must terminate the loop."""
-        state = data["states"].get("run_decide", {})
-        assert state.get("on_rate_limit_exhausted") == "done"
+    def test_check_decide_rate_limited_gate_routing(self, data: dict) -> None:
+        """ENH-3075 Option A: check_decide_rate_limited reads the per-issue
+        decide-rate-limited marker; present -> done (terminate the run, matching
+        the pre-conversion on_rate_limit_exhausted: done semantics), absent ->
+        record_decision_unresolved (as before)."""
+        state = data["states"].get("check_decide_rate_limited", {})
+        assert state.get("fragment") == "shell_exit"
+        assert "decide-rate-limited-" in state.get("action", "")
+        assert state.get("on_yes") == "done"
+        assert state.get("on_no") == "record_decision_unresolved"
+        assert state.get("on_error") == "record_decision_unresolved"
 
     def test_rerun_confidence_after_decide_state_exists(self, data: dict) -> None:
         """rerun_confidence_after_decide must be present in the state machine."""
@@ -6880,6 +6968,27 @@ class TestAutodevLoop:
         assert state.get("on_error") == "snap_and_size_review", (
             f"recheck_after_decide.on_error should also fall through to snap_and_size_review, "
             f"got {state.get('on_error')!r}"
+        )
+
+    def test_recheck_after_decide_on_yes_routes_to_implement_current(self, data: dict) -> None:
+        """ENH-3075: assert_decision_cleared moved into the sub-loop and is deleted
+        from autodev.yaml's own states — recheck_after_decide.on_yes (score passed)
+        must retarget from the now-deleted assert_decision_cleared to
+        implement_current (the target assert_decision_cleared.on_no/.on_error
+        already used), leaving the score-passing path unchanged end to end."""
+        state = data["states"].get("recheck_after_decide", {})
+        assert state.get("on_yes") == "implement_current", (
+            f"recheck_after_decide.on_yes should be 'implement_current', got "
+            f"{state.get('on_yes')!r}"
+        )
+        assert "assert_decision_cleared" not in data["states"], (
+            "assert_decision_cleared should be deleted from autodev.yaml's own "
+            "states — it now lives in oracles/resolve-decision.yaml"
+        )
+        assert "check_decision_after_decide_error" not in data["states"], (
+            "check_decision_after_decide_error should be deleted from autodev.yaml — "
+            "its ENH-2717 short-circuit collapses into the sub-loop's "
+            "assert_decision_cleared"
         )
 
     def test_decide_current_checks_decide_ran_flag(self, data: dict) -> None:

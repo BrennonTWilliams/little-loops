@@ -3,7 +3,8 @@ id: ENH-3075
 title: Convert autodev's inline decision cluster to the shared decision sub-loop
 type: ENH
 priority: P3
-status: open
+status: done
+completed_at: '2026-08-07T23:00:00Z'
 discovered_by: pre-implementation-review
 discovered_date: 2026-08-05
 captured_at: '2026-08-05T22:40:00Z'
@@ -725,6 +726,7 @@ _Added by `/ll:confidence-check` on 2026-08-06_
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-07T22:45:04 - `1b9fc019-6765-44e3-bf90-98c928290f8b.jsonl`
 - `/ll:confidence-check` - 2026-08-07T21:50:28 - `e94e5558-c960-4e55-b425-20f7c378ecf8.jsonl`
 - `/ll:reconcile-issue` - 2026-08-07T21:44:35 - `cfb55693-d0a0-4b9e-85d0-b30adca32d69.jsonl`
 - `/ll:confidence-check` - 2026-08-07T20:01:12 - `a287babb-e322-4cb0-b11c-8aa259850da0.jsonl`
