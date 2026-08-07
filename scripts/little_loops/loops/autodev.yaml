@@ -931,13 +931,41 @@ states:
     # otherwise be laundered into a generic implementation failure / auth check.
     # Detect it FIRST and record it distinctly so the run summary can tell a
     # gate block (remedy: /ll:explore-api) from a real failure. on_no falls through
-    # to the auth check (mirrors rn-remediate's ordering for cross-loop parity).
+    # to the infra discriminator (ENH-3084) before the auth check (mirrors
+    # rn-remediate's ordering for cross-loop parity).
     # on_error (BUG-2594): a residual shell fault reading the run-dir file (e.g.
     # permission error) must not crash the loop — degrade to the auth check.
     fragment: ll_auto_learning_gate_check
     on_yes: mark_gate_blocked
+    on_no: check_learning_gate_infra
+    on_error: check_impl_auth
+
+  check_learning_gate_infra:
+    # ENH-3084: ll_auto_learning_gate_check emits GATE_INFRA (not GATE_BLOCKED) when
+    # the inner `ll-auto --only` could not run the gate at all (scope-lock contention,
+    # missing binary, wedged child). Its GATE_BLOCKED evaluate pattern does not match
+    # GATE_INFRA, so this discriminator tells it apart from a clean OK and routes to a
+    # distinct record (mark_gate_infra) rather than deferring the issue as gate_blocked
+    # with the wrong reason/message. on_no/on_error degrade to the auth check.
+    fragment: ll_auto_learning_gate_infra_check
+    on_yes: mark_gate_infra
     on_no: check_impl_auth
     on_error: check_impl_auth
+
+  mark_gate_infra:
+    # ENH-3084: the learning gate could not run (infra contention/crash), so nothing
+    # was implemented. Record it distinctly from a gate block and advance the queue —
+    # do NOT defer as gate_blocked (the unproven-deps remedy is the wrong reason for a
+    # transient infra condition) and do NOT burn a remediation cycle. The issue stays
+    # in place to be retried on a later run.
+    action: |
+      ID="${captured.input.output}"
+      echo "$ID" >> ${context.run_dir}/autodev-gate-infra.txt
+      rm -f ${context.run_dir}/autodev-inflight
+      echo "[GATE_INFRA_FAILED] $ID — learning gate could not run (scope-lock contention, missing binary, or wedged child); retry later"
+    action_type: shell
+    next: dequeue_next
+    on_error: dequeue_next
 
   mark_gate_blocked:
     # Record the gate-blocked issue distinctly and advance the queue. ENH-2666:

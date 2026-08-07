@@ -2173,6 +2173,32 @@ class TestRunCodeGate:
         # the equivalent failure emitter.
         assert state.get("next") in {"emit_implement_failed", "failed"}
 
+    # --- emit_gate_infra_failed state (ENH-3084) ---
+
+    def test_emit_gate_infra_failed_writes_distinct_sidecar(self) -> None:
+        """emit_gate_infra_failed writes GATE_INFRA_FAILED (distinct from
+        LEARNING_GATE_BLOCKED) to its own sidecar so the parent's
+        route_rem_gate_infra_failed routes to retry/skip rather than the
+        explore-api block remedy or the generic remediation bucket."""
+        data = _load_loop()
+        state = data["states"]["emit_gate_infra_failed"]
+        action = state["action"]
+        assert "GATE_INFRA_FAILED" in action
+        assert "subloop_outcome_" in action
+        assert "LEARNING_GATE_BLOCKED" not in action
+        assert state.get("next") == "failed"
+
+    def test_check_learning_gate_infra_state_exists(self) -> None:
+        """The infra discriminator (ENH-3084) sits between check_learning_gate and
+        the auth check so GATE_INFRA_FAILED is not misattributed as a gate block or
+        a generic implementation failure."""
+        data = _load_loop()
+        assert "check_learning_gate_infra" in data["states"]
+        state = data["states"]["check_learning_gate_infra"]
+        assert state["fragment"] == "ll_auto_learning_gate_infra_check"
+        assert state["on_yes"] == "emit_gate_infra_failed"
+        assert state["on_no"] == "check_impl_auth"
+
     # --- context defaults ---
 
     def test_min_pass_rate_default_defined(self) -> None:

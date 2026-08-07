@@ -237,7 +237,9 @@ class TestAutodevSmoke:
 
         state_ids = {s["id"] for s in topo["states"]}
         # ENH-2989 added check_impl_reached + mark_not_started.
-        assert len(topo["states"]) == 79
+        # ENH-3084 added check_learning_gate_infra + mark_gate_infra (+2), raising
+        # it to 81 — learning-gate infra-failure discriminator + distinct record.
+        assert len(topo["states"]) == 81
 
         # Every edge endpoint is a known state id, or the target of a
         # declared sub-loop (`loop:`) cross-graph edge. `from` may be null

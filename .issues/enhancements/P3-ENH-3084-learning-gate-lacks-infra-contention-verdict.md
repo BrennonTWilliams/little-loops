@@ -4,9 +4,10 @@ type: ENH
 title: Learning gate has no verdict distinguishing infra contention from implementation
   failure
 priority: P3
-status: open
+status: done
 testable: true
 captured_at: '2026-08-06T16:17:02Z'
+completed_at: '2026-08-07T19:13:16Z'
 discovered_date: 2026-08-06
 discovered_by: capture-issue
 labels:
@@ -329,7 +330,7 @@ _Added 2026-08-06 during pre-implementation review — this issue previously had
    (`TestRunLearningGateForIssueTerminalDiscrimination`) are unchanged.
 6. The two existing tests that assert the collapsed verdict are flipped to `infra_failed`:
    `test_infra_failure_yields_impl_failed_not_blocked` (`test_learning_tests_gate.py:225-243`)
-   and `test_scope_conflict_never_clearing_yields_impl_failed` (`:280-294`). Rename both —
+   and `test_scope_conflict_never_clearing_yields_impl_failed` (`:323-337`). Rename both —
    their names encode the behavior being removed.
 7. Both routing chains (`rn-remediate.yaml`, `rn-implement.yaml`) have a router state for
    `GATE_INFRA_FAILED` ahead of the generic-failure bucket, and the token routes to
@@ -368,7 +369,33 @@ checkable set of call sites.
 open
 
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-08-07
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/learning_tests/gate.py`: widened `run_learning_gate_for_issue`'s return `Literal` with `infra_failed`; targets branch returns it for `TimeoutExpired`, non-terminal non-zero exit, and a new `except FileNotFoundError` (missing `ll-loop` binary). Corrected the post-BUG-3085 `TimeoutExpired` log text (wedged-child backstop, not scope-lock). Proof-first-task fallback keeps `impl_failed` (BUG-2833).
+- `scripts/little_loops/issue_manager.py`: new `elif verdict == "infra_failed"` branch printing `GATE_INFRA_FAILED <ID>` with `failure_reason` naming the infra cause — prevents silent fall-through to Phase 2.
+- `scripts/little_loops/loops/lib/common.yaml`: `ll_auto_learning_gate_check` now recognizes `GATE_INFRA_FAILED` (emits `GATE_INFRA`); added `ll_auto_learning_gate_infra_check` discriminator fragment.
+- `scripts/little_loops/loops/rn-remediate.yaml`: `check_learning_gate.on_no` → new `check_learning_gate_infra` discriminator → new `emit_gate_infra_failed` (writes `GATE_INFRA_FAILED` sidecar). Token inventory comment updated.
+- `scripts/little_loops/loops/autodev.yaml`: same discriminator chain routing to new `mark_gate_infra` (records distinctly, advances queue, does not defer).
+- `scripts/little_loops/loops/rn-implement.yaml`: `route_rem_learning_gate.on_no` → new `route_rem_gate_infra_failed` router → `record_gate_infra_failed` (tags `failures.txt`, dequeues next — skips remediation). Report tally subtracts `GATE_INFRA_FAILED` from `failed`.
+- Tests: flipped two gate verdict tests, added `FileNotFoundError` test, added anti-fall-through + marker tests in `test_issue_manager.py`, `TestRouteRemGateInfraFailed`, fragment discriminator tests, rn-remediate emit tests, autodev infra tests, report-tally test; updated 4 breaking topology/edge tests.
+- Docs: `docs/reference/API.md`, `docs/guides/RECURSIVE_LOOPS_GUIDE.md`, `docs/guides/LOOPS_REFERENCE.md` updated for the fifth verdict / token / fragments.
+
+### Verification Results
+- Tests: PASS (18571 passed)
+- Lint: PASS
+- Types: PASS
+- Run: N/A
+- Integration: PASS
+
+
 ## Session Log
+- `/ll:manage-issue` - 2026-08-07T19:12:43 - `0b5a31a9-26ac-4da6-a930-a629b84aa52a.jsonl`
+- `/ll:ready-issue` - 2026-08-07T18:24:50 - `06358436-0daa-4ee0-aa6c-8eb1bb20a037.jsonl`
 - `/ll:confidence-check` - 2026-08-07T18:16:42 - `c3385b65-8008-4cbd-a89f-ad4cc3a58492.jsonl`
 - `/ll:wire-issue` - 2026-08-07T18:11:49 - `55969b1e-cf03-47ea-b399-a117b1306df5.jsonl`
 - `/ll:confidence-check` - 2026-08-06T18:14:17 - `2714e173-0113-42e1-b8e8-e7f650c61db7.jsonl`

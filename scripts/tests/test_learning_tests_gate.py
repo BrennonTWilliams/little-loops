@@ -222,10 +222,12 @@ class TestRunLearningGateForIssueDirectInvocation:
         assert verdict == "passed"
         mock_history.assert_not_called()
 
-    def test_infra_failure_yields_impl_failed_not_blocked(self, tmp_path: Path) -> None:
-        """BUG-2864: a non-FAILURE_TERMINAL_EXIT_CODE exit (e.g. a scope-lock
-        conflict) means the loop never reached a terminal at all, so it must
-        not be misdiagnosed as a genuine refuted-target "blocked" verdict."""
+    def test_infra_failure_yields_infra_failed_not_blocked(self, tmp_path: Path) -> None:
+        """BUG-2864 + ENH-3084: a non-FAILURE_TERMINAL_EXIT_CODE exit (e.g. a
+        scope-lock conflict) means the loop never reached a terminal at all, so it
+        must not be misdiagnosed as a genuine refuted-target "blocked" verdict —
+        and must be reported as infra_failed, not impl_failed (nothing was
+        implemented, so a claim about the implementation is wrong)."""
         issue_path = tmp_path / "ENH-10.md"
         issue_path.write_text("---\nid: ENH-10\n---\n")
 
@@ -238,8 +240,9 @@ class TestRunLearningGateForIssueDirectInvocation:
         ):
             verdict = run_learning_gate_for_issue(issue_path, cwd=tmp_path, targets=["stripe"])
 
-        assert verdict == "impl_failed"
+        assert verdict == "infra_failed"
         assert verdict != "blocked"
+        assert verdict != "impl_failed"
         mock_history.assert_not_called()
 
     def test_refuted_target_terminal_yields_blocked_without_history_lookup(
@@ -320,9 +323,11 @@ class TestRunLearningGateForIssueDirectInvocation:
         assert cmd[cmd.index("--queue-timeout") + 1] == "120"
         assert mock_sub.call_args.kwargs["timeout"] == 120 + 60
 
-    def test_scope_conflict_never_clearing_yields_impl_failed(self, tmp_path: Path) -> None:
-        """A conflicting loop that never releases its lock within the queue-wait
-        budget must surface as impl_failed rather than hanging ll-auto forever."""
+    def test_scope_conflict_never_clearing_yields_infra_failed(self, tmp_path: Path) -> None:
+        """A genuinely wedged child that never returns within the outer backstop
+        timeout must surface as infra_failed rather than impl_failed or hanging
+        ll-auto forever (ENH-3084). Post-BUG-3085 this TimeoutExpired is the
+        wedged-child backstop, not the scope-lock path — still infra either way."""
         import subprocess
 
         issue_path = tmp_path / "ENH-13.md"
@@ -334,4 +339,19 @@ class TestRunLearningGateForIssueDirectInvocation:
         ):
             verdict = run_learning_gate_for_issue(issue_path, cwd=tmp_path, targets=["stripe"])
 
-        assert verdict == "impl_failed"
+        assert verdict == "infra_failed"
+
+    def test_missing_binary_yields_infra_failed(self, tmp_path: Path) -> None:
+        """ENH-3084 AC 2: a FileNotFoundError from subprocess.run (ll-loop binary
+        missing) must be caught and yield infra_failed rather than propagating out
+        of the function uncaught — the gate never ran at all."""
+        issue_path = tmp_path / "ENH-16.md"
+        issue_path.write_text("---\nid: ENH-16\n---\n")
+
+        with patch(
+            "little_loops.learning_tests.gate.subprocess.run",
+            side_effect=FileNotFoundError("No such file or directory: 'll-loop'"),
+        ):
+            verdict = run_learning_gate_for_issue(issue_path, cwd=tmp_path, targets=["stripe"])
+
+        assert verdict == "infra_failed"

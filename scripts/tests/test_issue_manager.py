@@ -4941,6 +4941,65 @@ class TestAutoManagerLearningGate:
         assert "LEARNING_GATE_BLOCKED" not in out
         assert issue.issue_id in out
 
+    def test_infra_failed_gate_verdict_skips_implement_phase(
+        self, lt_enabled_config: BRConfig, temp_project_dir: Path
+    ) -> None:
+        """ENH-3084 AC 3 (anti-fall-through): an infra_failed verdict must STOP and
+        report failure — it must NOT fall through the if/elif chain as if passed and
+        proceed to Phase 2 (silent success is worse than the misclassification)."""
+        from little_loops.issue_manager import process_issue_inplace
+
+        issue = self._make_issue(temp_project_dir, learning_tests_required=["anthropic"])
+
+        with (
+            patch(
+                "little_loops.issue_manager.run_claude_command",
+                return_value=MagicMock(returncode=1, stdout="", stderr=""),
+            ),
+            patch(
+                "little_loops.issue_manager.run_learning_gate_for_issue",
+                return_value="infra_failed",
+            ),
+            patch("little_loops.issue_manager.run_with_continuation") as mock_impl,
+        ):
+            result = process_issue_inplace(
+                issue, lt_enabled_config, MagicMock(), skip_learning_gate=False
+            )
+
+        assert result.success is False
+        assert "Learning gate could not run" in result.failure_reason
+        assert "implementation failed" not in result.failure_reason.lower()
+        mock_impl.assert_not_called()
+
+    def test_infra_failed_gate_prints_gate_infra_failed_marker(
+        self, lt_enabled_config: BRConfig, temp_project_dir: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """ENH-3084 AC 4: an infra_failed verdict prints GATE_INFRA_FAILED — not
+        LEARNING_GATE_BLOCKED nor IMPLEMENT_FAILED — so downstream FSM loops can
+        retry/skip rather than remediate."""
+        from little_loops.issue_manager import process_issue_inplace
+
+        issue = self._make_issue(temp_project_dir, learning_tests_required=["anthropic"])
+
+        with (
+            patch(
+                "little_loops.issue_manager.run_claude_command",
+                return_value=MagicMock(returncode=1, stdout="", stderr=""),
+            ),
+            patch(
+                "little_loops.issue_manager.run_learning_gate_for_issue",
+                return_value="infra_failed",
+            ),
+            patch("little_loops.issue_manager.run_with_continuation"),
+        ):
+            process_issue_inplace(issue, lt_enabled_config, MagicMock(), skip_learning_gate=False)
+
+        out = capsys.readouterr().out
+        assert "GATE_INFRA_FAILED" in out
+        assert "LEARNING_GATE_BLOCKED" not in out
+        assert "IMPLEMENT_FAILED" not in out
+        assert issue.issue_id in out
+
     def test_skip_learning_gate_bypasses_gate_and_runs_implement(
         self, lt_enabled_config: BRConfig, temp_project_dir: Path
     ) -> None:

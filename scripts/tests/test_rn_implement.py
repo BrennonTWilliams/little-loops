@@ -590,6 +590,25 @@ class TestReportAndTerminal:
         missing = expected_keys - set(summary.keys())
         assert not missing, f"summary.json missing keys: {missing}; got: {set(summary.keys())}"
 
+    def test_report_tallies_gate_infra_failed_separately(self, tmp_path: Path) -> None:
+        """ENH-3084: a GATE_INFRA_FAILED tag in failures.txt is surfaced in summary.json
+        as its own counter and subtracted from `failed` — the infra-vs-impl distinction
+        must survive into the report, not be merged into genuine implementation failures."""
+        data = _load_loop()
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        sidecars = {
+            "failures.txt": "2026-08-07T00:00:00Z ENH-1 GATE_INFRA_FAILED\n",
+            "subloop_outcome_ENH-1.txt": "GATE_INFRA_FAILED\n",
+        }
+        summary = self._run_report(data, run_dir, sidecars=sidecars)
+        assert summary["gate_infra_failed"] == 1, summary
+        assert summary["failed"] == 0, (
+            f"GATE_INFRA_FAILED must not count as a genuine implementation failure: {summary}"
+        )
+        per_issue = {r["id"]: r for r in summary["per_issue"]}
+        assert per_issue["ENH-1"]["reason"] == "GATE_INFRA_FAILED"
+
     def test_report_has_on_error_route(self) -> None:
         """ENH-2533 + MR-10: the report state must declare an explicit `on_error:` route
         so the parser-swallow lint (which fires whenever the heredoc calls json.loads
@@ -814,10 +833,14 @@ class TestValidation:
         GATE_FAILED diagnostic router, inserted on route_rem_learning_gate's on_no
         edge so a GATE_FAILED outcome from the code-run-gate oracle is triaged
         distinctly from a genuine IMPLEMENT_FAILED.
+        ENH-3084 added route_rem_gate_infra_failed + record_gate_infra_failed (+2),
+        raising it to 48 — GATE_INFRA_FAILED triage so a learning gate that could
+        not run (scope-lock contention, missing binary, wedged child) skips
+        remediation instead of consuming a remediation cycle.
         """
         data = _load_loop()
         state_count = len(data["states"])
-        assert state_count <= 46, f"Expected ≤46 states in orchestrator, got {state_count}"
+        assert state_count <= 48, f"Expected ≤48 states in orchestrator, got {state_count}"
         assert state_count >= 10, f"Expected ≥10 states in orchestrator, got {state_count}"
 
 
@@ -1309,13 +1332,13 @@ class TestProveRemLearningGate:
 
     def test_route_rem_learning_gate_points_at_prove_state(self) -> None:
         """route_rem_learning_gate.on_yes goes through the prove step, not straight
-        to record_learning_gate_blocked; on_no falls through to route_rem_gate_failed
-        (FEAT-2552) so a GATE_FAILED outcome is triaged distinctly from a genuine
-        IMPLEMENT_FAILED before record_failure."""
+        to record_learning_gate_blocked; on_no falls through to route_rem_gate_infra_failed
+        (ENH-3084) so a GATE_INFRA_FAILED outcome is triaged before GATE_FAILED
+        (FEAT-2552), which is before a genuine IMPLEMENT_FAILED reaches record_failure."""
         data = _load_loop()
         router = data["states"]["route_rem_learning_gate"]
         assert router["on_yes"] == "prove_rem_learning_gate"
-        assert router["on_no"] == "route_rem_gate_failed"
+        assert router["on_no"] == "route_rem_gate_infra_failed"
 
     def test_prove_state_gates_and_proves(self) -> None:
         """The state resolves auto-prove the same 3-tier way and makes a prove call
@@ -1844,3 +1867,74 @@ class TestRouteRemGateFailed:
         rf = data["states"]["record_failure"]
         assert "failures.txt" in rf["action"]
         assert rf["next"] == "dequeue_next"
+
+
+# TestRouteRemGateInfraFailed — ENH-3084: route GATE_INFRA_FAILED through retry/skip
+# ----------------------------------------------------------------------------------
+
+
+class TestRouteRemGateInfraFailed:
+    """ENH-3084: GATE_INFRA_FAILED is a new outcome token written by rn-remediate's
+    emit_gate_infra_failed when the inner learning gate could not run at all (scope-lock
+    contention, missing binary, wedged child). The token reaches the parent via the
+    existing subloop_outcome_<ID>.txt sidecar; the parent must route it through a
+    dedicated route_rem_gate_infra_failed router so it skips remediation (dequeue_next)
+    instead of consuming a remediation cycle on an issue whose implementation was never
+    attempted.
+
+    Without this router, GATE_INFRA_FAILED falls through to the generic record_failure
+    bucket (it is not a substring of GATE_FAILED, so route_rem_gate_failed misses it) and
+    is merged into the generic FAILED bucket — operators lose the infra-vs-impl
+    distinction this issue exists to establish.
+    """
+
+    def test_route_rem_gate_infra_failed_state_exists(self) -> None:
+        data = _load_loop()
+        assert "route_rem_gate_infra_failed" in data["states"], (
+            "rn-implement must add route_rem_gate_infra_failed router to triage "
+            "GATE_INFRA_FAILED out of the generic record_failure bucket (ENH-3084)"
+        )
+
+    def test_route_rem_gate_infra_failed_matches_token(self) -> None:
+        data = _load_loop()
+        state = data["states"]["route_rem_gate_infra_failed"]
+        assert state["evaluate"]["type"] == "output_contains"
+        assert state["evaluate"]["pattern"] == "GATE_INFRA_FAILED"
+
+    def test_route_rem_gate_infra_failed_source_uses_rem_outcome_capture(self) -> None:
+        """The router reads the captured child outcome (the parent's rem_outcome
+        capture from classify_remediation), not a fresh sub-process invocation."""
+        data = _load_loop()
+        state = data["states"]["route_rem_gate_infra_failed"]
+        assert "${captured.rem_outcome.output}" in state["evaluate"]["source"]
+
+    def test_route_rem_gate_infra_failed_routes_to_record_state(self) -> None:
+        """GATE_INFRA_FAILED → record_gate_infra_failed (the distinct record that skips
+        remediation via dequeue_next), NOT record_failure — the generic bucket."""
+        data = _load_loop()
+        state = data["states"]["route_rem_gate_infra_failed"]
+        assert state["on_yes"] == "record_gate_infra_failed"
+        assert state["on_yes"] != "record_failure"
+
+    def test_route_rem_gate_infra_failed_on_no_falls_through_to_gate_failed(self) -> None:
+        """A non-infra outcome falls through to route_rem_gate_failed (FEAT-2552) so
+        the GATE_FAILED triage edge is preserved before the generic bucket."""
+        data = _load_loop()
+        state = data["states"]["route_rem_gate_infra_failed"]
+        assert state["on_no"] == "route_rem_gate_failed"
+
+    def test_route_rem_gate_infra_failed_on_error_routes_to_record_failure(self) -> None:
+        """on_error fails closed to record_failure (the evaluate itself crashed)."""
+        data = _load_loop()
+        state = data["states"]["route_rem_gate_infra_failed"]
+        assert state["on_error"] == "record_failure"
+
+    def test_record_gate_infra_failed_tags_and_skips_remediation(self) -> None:
+        """The end-to-end triage: GATE_INFRA_FAILED sidecar → route_rem_gate_infra_failed
+        → record_gate_infra_failed → failures.txt (tagged), next dequeue_next — NOT
+        remediation. This is AC 7's 'token not silently swallowed by the generic bucket'."""
+        data = _load_loop()
+        rec = data["states"]["record_gate_infra_failed"]
+        assert "GATE_INFRA_FAILED" in rec["action"]
+        assert "failures.txt" in rec["action"]
+        assert rec["next"] == "dequeue_next"

@@ -2580,3 +2580,47 @@ class TestLlAutoFragmentsAdversarialOutput:
         result = self._run_fragment(fragments, "ll_auto_learning_gate_check", tmp_path, output)
         assert result.returncode == 0
         assert result.stdout.strip() == "GATE_BLOCKED"
+
+    def test_learning_gate_check_emits_gate_infra_for_infra_marker(
+        self, fragments: dict, tmp_path: Path
+    ) -> None:
+        """ENH-3084 AC 8: ll_auto_learning_gate_check recognizes GATE_INFRA_FAILED and
+        emits GATE_INFRA (not GATE_BLOCKED) so the caller's on_no routes to the infra
+        discriminator rather than the gate-blocked remedy."""
+        output = self.ADVERSARIAL_OUTPUT + "\nGATE_INFRA_FAILED\n"
+        result = self._run_fragment(fragments, "ll_auto_learning_gate_check", tmp_path, output)
+        assert result.returncode == 0
+        assert result.stdout.strip() == "GATE_INFRA"
+
+    def test_learning_gate_check_prefers_infra_over_block(self, fragments: dict, tmp_path: Path) -> None:
+        """If both markers are present, GATE_INFRA_FAILED wins (a gate that could not
+        run is the more severe signal — it preempts the explore-api block remedy)."""
+        output = self.ADVERSARIAL_OUTPUT + "\nGATE_INFRA_FAILED\nLEARNING_GATE_BLOCKED\n"
+        result = self._run_fragment(fragments, "ll_auto_learning_gate_check", tmp_path, output)
+        assert result.returncode == 0
+        assert result.stdout.strip() == "GATE_INFRA"
+
+    def test_learning_gate_infra_check_survives_adversarial_output(
+        self, fragments: dict, tmp_path: Path
+    ) -> None:
+        result = self._run_fragment(
+            fragments, "ll_auto_learning_gate_infra_check", tmp_path, self.ADVERSARIAL_OUTPUT
+        )
+        assert result.returncode == 0, (
+            f"ll_auto_learning_gate_infra_check must not fail to parse on adversarial output: "
+            f"{result.stderr!r}"
+        )
+        assert result.stdout.strip() == "OK"
+
+    def test_learning_gate_infra_check_detects_marker_amid_adversarial_output(
+        self, fragments: dict, tmp_path: Path
+    ) -> None:
+        """The discriminator fragment (ENH-3084) greps specifically for GATE_INFRA_FAILED
+        so the caller can route infra failures to retry/skip rather than the explore-api
+        block remedy."""
+        output = self.ADVERSARIAL_OUTPUT + "\nGATE_INFRA_FAILED\n"
+        result = self._run_fragment(
+            fragments, "ll_auto_learning_gate_infra_check", tmp_path, output
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == "GATE_INFRA"

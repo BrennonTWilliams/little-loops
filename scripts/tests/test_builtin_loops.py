@@ -5637,7 +5637,8 @@ class TestAutodevLoop:
 
     def test_check_learning_gate_routes_to_auth_check_on_no(self, data: dict) -> None:
         """check_learning_gate detects a gate block (on_yes → mark_gate_blocked) and otherwise
-        falls through to check_impl_auth (on_no), preserving the ENH-2353 auth fast-fail."""
+        falls through to the infra discriminator (on_no → check_learning_gate_infra, ENH-3084),
+        which then reaches check_impl_auth — the ENH-2353 auth fast-fail stays reachable."""
         state = data["states"].get("check_learning_gate", {})
         assert state.get("fragment") == "ll_auto_learning_gate_check", (
             f"check_learning_gate should use the ll_auto_learning_gate_check fragment, "
@@ -5646,8 +5647,8 @@ class TestAutodevLoop:
         assert state.get("on_yes") == "mark_gate_blocked", (
             f"check_learning_gate.on_yes should be 'mark_gate_blocked', got {state.get('on_yes')!r}"
         )
-        assert state.get("on_no") == "check_impl_auth", (
-            f"check_learning_gate.on_no should fall through to 'check_impl_auth', "
+        assert state.get("on_no") == "check_learning_gate_infra", (
+            f"check_learning_gate.on_no should fall through to 'check_learning_gate_infra', "
             f"got {state.get('on_no')!r}"
         )
 
@@ -5689,6 +5690,39 @@ class TestAutodevLoop:
         assert "ll-issues set-status" in action and "deferred" in action
         assert "--by automation" in action
         assert "--reason gate_blocked" in action
+
+    def test_check_learning_gate_falls_through_to_infra_discriminator(self, data: dict) -> None:
+        """ENH-3084: check_learning_gate.on_no (no LEARNING_GATE_BLOCKED marker —
+        possibly GATE_INFRA_FAILED) routes to the infra discriminator before the
+        auth check, mirroring rn-remediate's ordering for cross-loop parity."""
+        gate = data["states"].get("check_learning_gate", {})
+        assert gate.get("fragment") == "ll_auto_learning_gate_check"
+        assert gate.get("on_yes") == "mark_gate_blocked"
+        assert gate.get("on_no") == "check_learning_gate_infra"
+
+    def test_check_learning_gate_infra_routes_to_mark_gate_infra(self, data: dict) -> None:
+        """ENH-3084: the infra discriminator tells GATE_INFRA apart from OK and routes
+        to mark_gate_infra; on_no/on_error degrade to the auth check."""
+        gate = data["states"].get("check_learning_gate_infra", {})
+        assert gate.get("fragment") == "ll_auto_learning_gate_infra_check"
+        assert gate.get("on_yes") == "mark_gate_infra"
+        assert gate.get("on_no") == "check_impl_auth"
+        assert gate.get("on_error") == "check_impl_auth"
+
+    def test_mark_gate_infra_advances_queue_without_defers(self, data: dict) -> None:
+        """ENH-3084: mark_gate_infra records an infra failure distinctly and advances
+        the queue. It must NOT defer as gate_blocked (the unproven-deps reason is the
+        wrong remedy for transient infra contention) and must NOT consume remediation."""
+        state = data["states"].get("mark_gate_infra", {})
+        action = state.get("action", "")
+        assert "autodev-gate-infra.txt" in action, (
+            "mark_gate_infra should record the issue to autodev-gate-infra.txt"
+        )
+        assert "GATE_INFRA_FAILED" in action
+        assert "ll-issues set-status" not in action, (
+            "mark_gate_infra must not defer — infra contention is transient"
+        )
+        assert state.get("next") == "dequeue_next"
 
     def test_record_decision_unresolved_defers_via_set_status(self, data: dict) -> None:
         """ENH-2666: record_decision_unresolved aligns to rn-implement's mark_deferred
@@ -13992,8 +14026,9 @@ class TestAutodevAuthGuard:
 
     def test_implement_current_routes_to_check_learning_gate_then_auth(self, data: dict) -> None:
         """implement_current.on_no/on_error route to check_impl_reached (ENH-2989), which
-        falls through to check_learning_gate, which falls through to check_impl_auth on a
-        non-gate failure — the auth fast-fail stays reachable."""
+        falls through to check_learning_gate, which falls through to the infra
+        discriminator (ENH-3084) and then check_impl_auth on a non-gate failure — the
+        auth fast-fail stays reachable."""
         state = data["states"]["implement_current"]
         assert state.get("on_no") == "check_impl_reached"
         assert state.get("on_error") == "check_impl_reached"
@@ -14001,9 +14036,15 @@ class TestAutodevAuthGuard:
         assert reached.get("on_no") == "check_learning_gate"
         assert reached.get("on_error") == "check_learning_gate"
         gate = data["states"]["check_learning_gate"]
-        assert gate.get("on_no") == "check_impl_auth", (
-            "check_learning_gate must fall through to check_impl_auth so the ENH-2353 "
-            "auth fast-fail still runs on a non-gate failure"
+        assert gate.get("on_no") == "check_learning_gate_infra", (
+            "check_learning_gate must fall through to check_learning_gate_infra so a "
+            "GATE_INFRA_FAILED is not misattributed and the ENH-2353 auth fast-fail "
+            "still runs on a non-gate failure"
+        )
+        infra = data["states"]["check_learning_gate_infra"]
+        assert infra.get("on_no") == "check_impl_auth", (
+            "the infra discriminator must fall through to check_impl_auth so the "
+            "ENH-2353 auth fast-fail still runs"
         )
 
     def test_check_impl_auth_state_exists(self, data: dict) -> None:
@@ -14320,13 +14361,33 @@ class TestLearningGateConsistency:
         assert impl["on_no"] == "check_learning_gate"
         assert impl["on_error"] == "check_learning_gate"
 
-    def test_rn_remediate_check_learning_gate_falls_through_to_auth(
+    def test_rn_remediate_check_learning_gate_falls_through_to_infra_discriminator(
         self, rn_remediate: dict
     ) -> None:
+        """A LEARNING_GATE_BLOCKED gate block routes to emit_learning_gate_blocked;
+        on_no (no block marker — possibly GATE_INFRA_FAILED) falls through to the
+        infra discriminator (ENH-3084) before the auth check."""
         gate = rn_remediate["states"]["check_learning_gate"]
         assert gate["fragment"] == "ll_auto_learning_gate_check"
         assert gate["on_yes"] == "emit_learning_gate_blocked"
+        assert gate["on_no"] == "check_learning_gate_infra"
+
+    def test_rn_remediate_check_learning_gate_infra_routes_to_emit(self, rn_remediate: dict) -> None:
+        """The infra discriminator (ENH-3084) tells GATE_INFRA apart from OK and routes
+        to emit_gate_infra_failed; on_no/on_error degrade to the auth check."""
+        gate = rn_remediate["states"]["check_learning_gate_infra"]
+        assert gate["fragment"] == "ll_auto_learning_gate_infra_check"
+        assert gate["on_yes"] == "emit_gate_infra_failed"
         assert gate["on_no"] == "check_impl_auth"
+        assert gate.get("on_error") == "check_impl_auth"
+
+    def test_rn_remediate_emits_distinct_gate_infra_token(self, rn_remediate: dict) -> None:
+        """emit_gate_infra_failed writes GATE_INFRA_FAILED (distinct from
+        LEARNING_GATE_BLOCKED) to its own sidecar so the parent routes to retry/skip."""
+        emit = rn_remediate["states"]["emit_gate_infra_failed"]
+        assert "GATE_INFRA_FAILED" in emit["action"]
+        assert "subloop_outcome_${context.issue_id}.txt" in emit["action"]
+        assert emit["next"] == "failed"
 
     def test_rn_remediate_check_learning_gate_on_error_does_not_crash_loop(
         self, rn_remediate: dict
@@ -14363,10 +14424,11 @@ class TestLearningGateConsistency:
         (ENH-2487 gate-site-2 auto-prove) before recording the block, and only a
         non-learning outcome falls through to the next router.
 
-        FEAT-2552: the non-learning fall-through now lands in
-        `route_rem_gate_failed` (the GATE_FAILED diagnostic router) before
-        `record_failure`, so a GATE_FAILED outcome can be triaged distinctly
-        from a genuine IMPLEMENT_FAILED.
+        ENH-3084: the non-learning fall-through now lands in
+        `route_rem_gate_infra_failed` (the GATE_INFRA_FAILED router) before
+        `route_rem_gate_failed` (FEAT-2552), so a GATE_INFRA_FAILED outcome skips
+        remediation and a GATE_FAILED outcome is triaged distinctly from a genuine
+        IMPLEMENT_FAILED.
         """
         assert (
             rn_implement["states"]["route_rem_env_not_ready"]["on_no"] == "route_rem_learning_gate"
@@ -14377,9 +14439,33 @@ class TestLearningGateConsistency:
         # ENH-2487: on_yes now goes through the config-gated prove step, not straight
         # to record_learning_gate_blocked.
         assert router["on_yes"] == "prove_rem_learning_gate"
-        # FEAT-2552: non-learning outcome falls through to route_rem_gate_failed
-        # (GATE_FAILED diagnostic triage) before record_failure.
+        # ENH-3084: non-learning outcome falls through to route_rem_gate_infra_failed
+        # (GATE_INFRA_FAILED triage) before route_rem_gate_failed (FEAT-2552).
+        assert router["on_no"] == "route_rem_gate_infra_failed"
+
+    def test_rn_implement_routes_gate_infra_failed_before_generic_failure(
+        self, rn_implement: dict
+    ) -> None:
+        """AC 7: route_rem_gate_infra_failed sits ahead of the generic record_failure
+        bucket (via route_rem_gate_failed) so GATE_INFRA_FAILED is not silently
+        swallowed as a generic implementation failure."""
+        router = rn_implement["states"]["route_rem_gate_infra_failed"]
+        assert router["evaluate"]["pattern"] == "GATE_INFRA_FAILED"
+        assert "${captured.rem_outcome.output}" in router["evaluate"]["source"]
+        assert router["on_yes"] == "record_gate_infra_failed"
+        assert router["on_yes"] != "record_failure"
+        # on_no preserves the FEAT-2552 GATE_FAILED triage edge.
         assert router["on_no"] == "route_rem_gate_failed"
+
+    def test_rn_implement_record_gate_infra_failed_skips_remediation(
+        self, rn_implement: dict
+    ) -> None:
+        """record_gate_infra_failed tags failures.txt and dequeues next rather than
+        remediating — the retry/skip routing the issue's AC 7 requires."""
+        rec = rn_implement["states"]["record_gate_infra_failed"]
+        assert "GATE_INFRA_FAILED" in rec["action"]
+        assert "failures.txt" in rec["action"]
+        assert rec["next"] == "dequeue_next"
 
     def test_rn_implement_record_state_tags_and_advances(self, rn_implement: dict) -> None:
         rec = rn_implement["states"]["record_learning_gate_blocked"]

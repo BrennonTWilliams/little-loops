@@ -69,7 +69,7 @@ def run_learning_gate_for_issue(
     skip: bool = False,
     cwd: Path | None = None,
     targets: list[str] | None = None,
-) -> Literal["passed", "blocked", "impl_failed", "skipped"]:
+) -> Literal["passed", "blocked", "impl_failed", "infra_failed", "skipped"]:
     """Determine the learning-gate verdict for an issue and return it.
 
     ``skip=True`` short-circuits to "skipped" (honours --skip-learning-gate).
@@ -82,10 +82,13 @@ def run_learning_gate_for_issue(
     afterwards). ``ready-to-implement-gate`` has exactly two terminals
     (``done``/``blocked``), and the subprocess exit code alone discriminates
     between the two — but a non-``FAILURE_TERMINAL_EXIT_CODE`` non-zero exit
-    (e.g. a scope-lock conflict, BUG-2864) is neither: it means the loop
-    never ran to a terminal at all, so it is reported as ``"impl_failed"``
-    (infra failure) rather than misdiagnosed as a genuine refuted-target
-    ``"blocked"``. This mirrors the proven
+    (e.g. a scope-lock conflict, BUG-2864), a backstop ``TimeoutExpired``
+    (a genuinely wedged child, BUG-3085), or a missing ``ll-loop`` binary
+    (``FileNotFoundError``, ENH-3084) is neither: the loop never ran to a
+    terminal at all. These are reported as ``"infra_failed"`` (ENH-3084) —
+    distinct from both a genuine refuted-target ``"blocked"`` and BUG-2833's
+    delegated-impl ``"impl_failed"`` — so callers can retry/skip instead of
+    consuming a remediation cycle. This mirrors the proven
     ``_run_learning_gate_preflight()`` pattern in
     ``little_loops.cli.sprint.run``.
 
@@ -154,13 +157,26 @@ def run_learning_gate_for_issue(
                 timeout=_queue_wait_budget + _QUEUE_WAIT_BACKSTOP_SLACK_SECONDS,
             )
         except subprocess.TimeoutExpired:
+            # BUG-3085: the child carries its own --queue-timeout budget, so a
+            # parent-side TimeoutExpired only fires as the backstop for a
+            # genuinely wedged child — NOT a scope-lock wait that exhausted its
+            # budget (that exits non-zero on its own and lands in the
+            # returncode branch below). Report it as an infra failure either way.
             logger.error(
-                "ready-to-implement-gate did not clear a scope-lock conflict "
-                "within its %ds queue-wait budget; treating as an infra "
-                "failure (not a refuted target)",
+                "ready-to-implement-gate child wedged past its %ds queue-wait "
+                "budget backstop; treating as an infra failure (not a refuted "
+                "target)",
                 _queue_wait_budget,
             )
-            return "impl_failed"
+            return "infra_failed"
+        except FileNotFoundError:
+            # ENH-3084: ll-loop binary missing — the gate could not run at all.
+            logger.error(
+                "ready-to-implement-gate could not start (ll-loop binary not "
+                "found); treating as an infra failure (not a refuted target)",
+                exc_info=True,
+            )
+            return "infra_failed"
 
         # Function-local import: little_loops.fsm's package __init__ pulls in
         # the executor, which imports little_loops.config — a cycle at
@@ -171,9 +187,11 @@ def run_learning_gate_for_issue(
             return "passed"
         if proc.returncode == FAILURE_TERMINAL_EXIT_CODE:
             return "blocked"
-        # Infra failure (scope-lock conflict, crash, missing binary) — not a
-        # refuted target (BUG-2864). Log the captured output so the reason
-        # is recoverable instead of silently collapsing to "blocked".
+        # Infra failure (scope-lock contention, queue-wait exhaustion, crash,
+        # missing binary) — not a refuted target (BUG-2864) and not a genuine
+        # delegated-impl failure (BUG-2833). Log the captured output so the
+        # reason is recoverable instead of silently collapsing to "blocked"
+        # or being misrouted as an implementation failure (ENH-3084).
         logger.error(
             "ready-to-implement-gate failed with exit %d (not a refuted target)\n"
             "stdout: %s\nstderr: %s",
@@ -181,7 +199,7 @@ def run_learning_gate_for_issue(
             proc.stdout,
             proc.stderr,
         )
-        return "impl_failed"
+        return "infra_failed"
 
     cmd = [
         "ll-loop",

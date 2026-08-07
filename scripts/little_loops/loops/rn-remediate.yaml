@@ -605,7 +605,8 @@ states:
     # printed by process_issue_inplace) exits 1 from `ll-auto --only`, which would
     # otherwise be laundered into IMPLEMENT_FAILED. Detect it FIRST so the parent
     # can report it distinctly (mirrors the ENV_NOT_READY split, ENH-2353). on_no
-    # falls through to the auth check, then the generic failure path.
+    # falls through to the infra discriminator (ENH-3084) before the auth check, then
+    # the generic failure path.
     #
     # ENH-2406 safety net: rn-implement's check_learning_ready gate now catches
     # registered learning_tests_required targets BEFORE this issue ever reaches
@@ -615,6 +616,18 @@ states:
     # unchanged — it remains the defense-in-depth path, not the primary catch.
     fragment: ll_auto_learning_gate_check
     on_yes: emit_learning_gate_blocked
+    on_no: check_learning_gate_infra
+    on_error: check_impl_auth
+
+  check_learning_gate_infra:
+    # ENH-3084: ll_auto_learning_gate_check emits GATE_INFRA (not GATE_BLOCKED) when
+    # the inner `ll-auto --only` could not run the gate at all (scope-lock contention,
+    # missing binary, wedged child). Its GATE_BLOCKED evaluate pattern does not match
+    # GATE_INFRA, so this discriminator tells it apart from a clean OK and routes to a
+    # distinct emit (retry/skip) rather than deferring the issue as gate_blocked with
+    # the wrong reason/message. on_no/on_error degrade to the auth check.
+    fragment: ll_auto_learning_gate_infra_check
+    on_yes: emit_gate_infra_failed
     on_no: check_impl_auth
     on_error: check_impl_auth
 
@@ -910,7 +923,7 @@ states:
   # Each terminal path writes exactly one outcome token to the shared run_dir so
   # the parent's classify_remediation can route deterministically rather than
   # collapsing every non-done terminal into "decompose". Tokens:
-  #   IMPLEMENTED | NEEDS_DECOMPOSE | NEEDS_MANUAL_REVIEW | IMPLEMENT_FAILED | SCORES_MISSING | RATE_LIMITED | ENV_NOT_READY | LEARNING_GATE_BLOCKED | GATE_FAILED | GATE_FAILED_INFRA | GATE_SKIP
+  #   IMPLEMENTED | NEEDS_DECOMPOSE | NEEDS_MANUAL_REVIEW | IMPLEMENT_FAILED | SCORES_MISSING | RATE_LIMITED | ENV_NOT_READY | LEARNING_GATE_BLOCKED | GATE_INFRA_FAILED | GATE_FAILED | GATE_FAILED_INFRA | GATE_SKIP
   #
   # FEAT-2552: GATE_FAILED is written by record_gate_failure (gate child
   # reached its `failed` terminal — code quality issue). GATE_FAILED_INFRA
@@ -918,6 +931,10 @@ states:
   # from code quality, ENH-2005 mirror). GATE_SKIP is written by the oracle
   # directly when all commands are null/empty (docs-only no-op pass) and is
   # treated identically to GATE_PASS by run_code_gate's on_success route.
+  # ENH-3084: GATE_INFRA_FAILED is written by emit_gate_infra_failed when the
+  # inner learning gate could not run at all (scope-lock contention, missing
+  # binary, wedged child) — distinct from LEARNING_GATE_BLOCKED so the parent
+  # routes to retry/skip rather than the explore-api remedy.
 
   emit_implemented:
     action_type: shell
@@ -1135,6 +1152,19 @@ states:
     action: |
       echo "LEARNING_GATE_BLOCKED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
       echo "Learning gate blocked ${context.issue_id}: prove external-API deps with /ll:explore-api, then re-run"
+    next: failed
+
+  emit_gate_infra_failed:
+    # ENH-3084: the inner `ll-auto --only` could not run the learning gate at all
+    # (scope-lock contention, missing binary, wedged child) — GATE_INFRA_FAILED,
+    # distinct from LEARNING_GATE_BLOCKED. Write its own sidecar token so the parent's
+    # route_rem_gate_infra_failed routes to retry/skip rather than the generic
+    # remediation bucket (which would burn a remediation cycle on an issue whose
+    # implementation was never attempted).
+    action_type: shell
+    action: |
+      echo "GATE_INFRA_FAILED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
+      echo "Learning gate could not run ${context.issue_id}: infra failure (scope-lock contention, missing binary, or wedged child); retry later"
     next: failed
 
   # =========================================================================

@@ -1145,6 +1145,30 @@ def process_issue_inplace(
                     failure_reason="Learning gate: implementation failed",
                     corrections=corrections,
                 )
+            elif verdict == "infra_failed":
+                # ENH-3084: the gate never ran to a terminal at all — scope-lock
+                # contention, missing ll-loop binary, or a wedged child. Nothing
+                # was implemented, so this must NOT fall through to Phase 2 (silent
+                # success) nor be misreported as an implementation failure. Emit a
+                # distinct marker (mirroring the LEARNING_GATE_BLOCKED / ENV_NOT_READY
+                # token convention, ENH-2353) so FSM loops that capture `ll-auto
+                # --only ... 2>&1` can retry/skip rather than consume a remediation
+                # cycle.
+                logger.warning(
+                    f"Learning gate could not run for {info.issue_id}: infra failure "
+                    "(scope-lock contention, missing binary, or wedged child)"
+                )
+                print(f"GATE_INFRA_FAILED {info.issue_id}", flush=True)
+                return _stamped_result(
+                    success=False,
+                    duration=time.time() - issue_start_time,
+                    issue_id=info.issue_id,
+                    failure_reason=(
+                        "Learning gate could not run: infra failure (scope-lock "
+                        "contention, missing binary, or wedged child)"
+                    ),
+                    corrections=corrections,
+                )
 
     # Phase 2: Implement the issue (with automatic continuation on context handoff)
     # `action` was already resolved by the pre-Phase-1 confidence gate above.

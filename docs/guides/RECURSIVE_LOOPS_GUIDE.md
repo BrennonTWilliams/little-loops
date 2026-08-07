@@ -257,6 +257,7 @@ it and route. For `rn-remediate`:
 | `SIZE_REVIEW_FAILED` | `/ll:issue-size-review` errored or was inconclusive during decompose | Record diagnostic failure separately, continue |
 | `ENV_NOT_READY` | Host auth not configured (HTTP 401/403 during `ll-auto`) | Abort the queue (ENH-2353) |
 | `LEARNING_GATE_BLOCKED` | Learning gate (ENH-2319) blocked the issue on unproven external-API deps | Record diagnostic separately (remedy: `/ll:explore-api`), continue |
+| `GATE_INFRA_FAILED` | ENH-3084: the inner learning gate could not run at all (scope-lock contention, missing binary, wedged child) — nothing was implemented. Written by `rn-remediate.emit_gate_infra_failed`. Distinct from `LEARNING_GATE_BLOCKED` (the gate didn't reach a verdict, so the `/ll:explore-api` remedy is wrong). | `route_rem_gate_infra_failed` → `record_gate_infra_failed` (tagged `GATE_INFRA_FAILED` in `failures.txt`), **skip remediation** (dequeue next) |
 
 The learning-gate routing is **consistent across all three loops that call
 `ll-auto --only` directly**: `rn-remediate` (the sub-loop `rn-implement`
@@ -266,11 +267,17 @@ its own, see [`rn-implement` — the orchestrator you run](#rn-implement--the-or
 `autodev`) `sprint-refine-and-implement` all implement through the same
 `ll-auto --only` choke point, which runs the ENH-2319 gate inside
 `process_issue_inplace`. On a block, `ll-auto` prints the `LEARNING_GATE_BLOCKED`
-marker; each loop screens the captured output (`ll_auto_learning_gate_check`
-fragment) *before* the auth/failure checks so a gate block is reported distinctly
-rather than laundered into a generic implementation failure. A uniform
-`skip_learning_gate` context knob (parity with `ll-auto --skip-learning-gate`)
-threads from each loop down to the inner `ll-auto --only` call.
+marker; when the gate could not run at all (scope-lock contention, missing
+binary, wedged child) it prints `GATE_INFRA_FAILED` instead (ENH-3084). Each
+loop screens the captured output (`ll_auto_learning_gate_check` fragment, which
+recognizes both markers and emits `GATE_INFRA` for the infra one) *before* the
+auth/failure checks, then a `ll_auto_learning_gate_infra_check` discriminator
+routes `GATE_INFRA` to a distinct retry/skip path (rn-remediate emits
+`GATE_INFRA_FAILED` to its sidecar; autodev records it and advances the queue)
+rather than deferring the issue as `gate_blocked` with the wrong remedy. A
+uniform `skip_learning_gate` context knob (parity with `ll-auto
+--skip-learning-gate`) threads from each loop down to the inner `ll-auto --only`
+call.
 
 **`PHASE1_NOT_STARTED` (ENH-2989).** A distinct `issue_manager.py` stdout marker
 — `PHASE1_NOT_STARTED {issue_id} {reason}` — printed at every Phase-1 early
