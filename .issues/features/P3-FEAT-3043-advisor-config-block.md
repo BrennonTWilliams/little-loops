@@ -116,6 +116,18 @@ class AdvisorConfig:
 
 - `AdvisorConfig.from_dict(data: dict[str, Any]) -> AdvisorConfig`
 
+### Call Path
+
+`BRConfig.__init__` (`config/core.py:215`) -> `_load_config` (`config/core.py:229-240`) -> `_parse_config` (`config/core.py:242-289`) -> `AdvisorConfig.from_dict(raw.get("advisor", {}))` -> `self._advisor` -> `property advisor` -> consumer `BRConfig(project_root).advisor` -> `to_dict()` (`config/core.py:650`) -> `"advisor"` entry (mirrors the `"orchestration"` entry at `config/core.py:784-801`)
+
+### Decision Rules
+
+- `advisor.host` — 7-value registry enum (`claude-code | codex | opencode | pi | gemini | omp | kimi-code`); duplicated inline in `config-schema.json` because the schema has no `$ref`/`$defs` support.
+- `timeout_seconds` — mandatory-with-default `180`; no absent path is valid (a sync in-band consult with no timeout can hang a loop indefinitely).
+- `triggers` — keyword list (`confidence_gate`, `loop_stall`, `pre_done`); membership is the only validation.
+- `min_tier` — capability-floor gate: enforced within a host, warned across hosts.
+- `max_consults_per_task` — deliberately absent; deferred to FEAT-3038 (task identity) — shipping an accepted-but-ignored key is a footgun.
+
 ## Integration Map
 
 ### Files to Modify
@@ -154,6 +166,16 @@ class AdvisorConfig:
 ### Configuration
 
 - `.ll/ll-config.json` — new optional `advisor` block (absent = disabled).
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
+
+- **Schema/to_dict lockstep**: `test_config_schema.py:1082` (`test_to_dict_emits_every_schema_section`) and `:1104` (`test_to_dict_emits_no_key_absent_from_schema`) force `config-schema.json` and `BRConfig.to_dict()` to stay bidirectionally in sync — declaring `advisor` in the schema without emitting it in `to_dict()` (or vice versa) breaks the suite. `test_config_cli.py:164` additionally requires every schema root be a known `ll-config get` root.
+- **No runtime jsonschema validation**: `jsonschema` is not a dependency; the `host` enum is enforced structurally (test asserts the schema's enum content, cf. `test_config_schema.py:787`) and by `ll-init` when writing configs — there is no runtime validator that rejects a bad `advisor.host`. AC #3 is satisfiable by a schema-structure test, not a runtime check.
+- **`to_dict()` does not strip `None`**: `config/core.py:785` emits `"host_cli": null` when unset; `AdvisorConfig`'s `host: str | None` / `min_tier: str | None` fields round-trip as `null` in the `"advisor"` entry, matching existing convention.
+- **`ll.local.md` merge is raw-dict level only**: `deep_merge()` (`config/core.py:57-84`) merges `.ll/ll.local.md` into the session-context payload dict at `hooks/session_start.py:146`; `BRConfig._load_config` (`config/core.py:229-240`) reads only the JSON config file. A `BRConfig(...).advisor` property reflects `ll-config.json` only — the advisor ll.local.md-merge test must exercise `deep_merge()` on the raw dict, not through `BRConfig`.
+- **Consumer idiom**: existing blocks are read as `BRConfig(project_root).<block>` (`cli/loop/run.py:231`, `cli/loop/lifecycle.py:570`, `cli/loop/config_cmds.py:23`); FEAT-3044's advisor core will consume `advisor` the same way.
 
 ## Acceptance Criteria
 
@@ -197,4 +219,5 @@ class AdvisorConfig:
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-07T01:21:35 - `eb104739-3a43-4761-b465-271da6b9bac2.jsonl`
 - `/ll:issue-size-review` - 2026-08-04T20:47:20 - `b57cebec-46d2-436b-b650-9a1afa94ec18.jsonl`

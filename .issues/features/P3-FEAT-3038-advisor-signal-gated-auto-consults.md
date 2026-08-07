@@ -6,6 +6,7 @@ parent: EPIC-3041
 priority: P3
 status: open
 testable: true
+decision_needed: false
 discovered_date: 2026-08-03
 depends_on:
 - FEAT-3044
@@ -86,6 +87,15 @@ from both wiring points so the gating logic has one implementation.
 Both call `little_loops.advisor.consult()` with an explicit signal. Failures are
 non-fatal: a failed consult logs and proceeds, never blocking the primary path.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
+
+- Prerequisite reality: as of this refine (2026-08-06) the advisor stack is unimplemented — `scripts/little_loops/advisor.py`, `cli/advise.py`, `AdvisorConfig`, `test_advisor.py`, and the `ll-advise` entry point do not exist. The `Current Behavior` section describes the post-FEAT-3037 state, which lands via the still-open decomposition FEAT-3044 → {FEAT-3042, FEAT-3043}. FEAT-3038's `depends_on: FEAT-3044` is the direct edge; `AdvisorConfig` (enabled/triggers) ships in FEAT-3043, `consult()`/`AdvisorVerdict` in FEAT-3044.
+- `resolve_task_key()` precedence resolves from existing primitives: issue ID via `_resolve_issue_id()` (`cli/issues/show.py:40-120`) / `IssueInfo.issue_id`; ll-loop `instance_id` = `f"{loop_name}-{YYYYmmddT%H%M%S}"` (`cli/loop/_helpers.py:1505-1507`) with run dir `loops_dir/runs/<instance_id>` = `${context.run_dir}` (`cli/loop/run.py:189-198`, `:572`); ll-auto/ll-sprint/ll-parallel `run_id` = `uuid4().hex` (`issue_manager.py:1580`, `parallel/orchestrator.py:123`); session ID via `get_current_session_id()` (`session_log.py:141-155`, `CLAUDE_SESSION_ID` env → JSONL-stem fallback) or `LLHookEvent.session_id`.
+- Budget counter persistence location differs by runner: ll-loop → `${context.run_dir}` (precedent: `usage.jsonl`/`ab.json` written under run_dir at `cli/loop/_helpers.py:1892-1923`); ll-auto → `.ll/.auto-manage-state.json` (`config.automation.state_file`, resolved at `config/core.py:510`). Per-task counter-file idiom precedent: `rn-remediate.yaml:1008-1011` (`remediation_count_<ISSUE_ID>.txt`).
+- Fail-soft contract is established in the hook layer: `hooks/__init__.py:40-43` (hook telemetry "never alters the handler's exit code or exception propagation") and every handler wraps in try/except returning exit 0 (`pre_compact.py:84-171`, `drift_check.py:113-157`). A `pre_done` consult failure follows the same shape — log and proceed, never block the primary path (AC #7).
+
 ## Program Design
 
 ### Types
@@ -106,6 +116,14 @@ non-fatal: a failed consult logs and proceeds, never blocking the primary path.
 `confidence-gate evaluation` -> `should_consult("confidence_gate", ...)` -> `consult_for_trigger` -> `little_loops.advisor.consult`
 
 `Stop hook` -> `main_hooks()` dispatch -> `pre_done handler` -> `should_consult("pre_done", ...)` -> `consult_for_trigger`
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
+
+- Call-path anchors: the `confidence-gate evaluation` hop in the call path is concretely `issue_manager.py:788-816` (ll-auto pre-Phase-1 gate) and/or the FSM `${context.readiness_threshold}` shell gates (`loops/autodev.yaml:1553,1658-1666`), both thresholded against `ConfidenceGateConfig.readiness_threshold` (default 85). The `Stop hook` hop is `main_hooks()` (`hooks/__init__.py:168-226`) dispatching to a new `pre_done` handler.
+- `consult_for_trigger(...) -> AdvisorVerdict | None` consumes the FEAT-3044 verdict shape: `AdvisorVerdict {recommendation: str, risks: list[str], confidence: float, dissent: str, signal: str, host: str, model: str}` (frozen dataclass in `advisor.py`).
+- `should_consult(trigger, config: BRConfig)` reads `advisor.enabled` / `advisor.triggers` from `AdvisorConfig` (FEAT-3043): `{enabled, host, model, min_tier, timeout_seconds, triggers}`; `max_consults_per_task` (default 3) is the field this issue adds to that dataclass.
 
 ## Integration Map
 
@@ -141,6 +159,19 @@ non-fatal: a failed consult logs and proceeds, never blocking the primary path.
 
 - `docs/reference/CLI.md`, `docs/reference/API.md`, `.claude/CLAUDE.md` hooks
   section.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
+
+- `scripts/little_loops/issue_manager.py:788-816` — the ll-auto pre-Phase-1 confidence gate: sub-threshold readiness prints `CONFIDENCE_GATE_BLOCKED <id>` and `PHASE1_NOT_STARTED <id> confidence_gate`, then returns `below_readiness_threshold`. A `confidence_gate` consult branch must hook the sub-threshold path without changing that blocking outcome.
+- `scripts/little_loops/cli/issues/check_readiness.py` — `ReadinessStatus.meets_readiness` (`:33-35`) and `readiness_status()` (`:42-96`) own the threshold comparison (`confidence >= readiness_threshold`); `cmd_check_readiness` (`:99-125`) exits 0/1. The gap analysis this module produces is the consult context the confidence_gate trigger passes.
+- FSM loop gates — `loops/autodev.yaml:1553` and `:1658-1666` (and `rn-remediate.yaml`, `rn-implement.yaml`, `refine-to-ready-issue.yaml`, `recursive-refine.yaml`) compare `int(cur) < ${context.readiness_threshold}` in shell; the context value is seeded by `seed_confidence_thresholds()` (`cli/loop/_helpers.py:1366-1392`) from `commands.confidence_gate.readiness_threshold` (default 85, `config/automation.py:143-159`).
+- `hooks/hooks.json:199-230` — the `Stop` event currently runs three shell scripts (context-handoff-sentinel, session-cleanup, record-hook-event); none dispatch through `python -m little_loops.hooks`. A Python `pre_done` handler requires a new `Stop` entry plus an adapter following the SessionStart/SessionEnd pattern (`hooks/adapters/claude-code/` pipes stdin JSON to `python -m little_loops.hooks <intent>`).
+- Adding a `pre_done` intent means touching all three dispatch sites in `hooks/__init__.py` — `_INTENT_EVENT_NAME` (`:68-80`), `_USAGE` (`:111-116`), `_dispatch_table()` (`:134-165`) — because `scripts/tests/test_hook_intents.py::test_dispatch_table_intent_event_name_usage_stay_consistent` (`:827-855`) asserts the three enumerate the identical intent set.
+- `main_hooks()` (`hooks/__init__.py:168-226`) builds `LLHookEvent.session_id` from `payload.get("session_id")` (`:203`) — the hook-context session-ID source for `resolve_task_key()`.
+- `scripts/tests/test_config.py` — `TestOrchestrationConfig` (`:3406`), `TestBRConfigOrchestration` (`:3476`), `test_to_dict_orchestration` (`:1012-1048`) hold the config round-trip pattern that `AdvisorConfig.max_consults_per_task` tests mirror (FEAT-3043 applies the same pattern).
+- `scripts/tests/test_advisor.py` does not exist yet; FEAT-3044 defines its scope (consult/rank_model/check_floor) plus a separate `test_cli_advise.py` for `main_advise` argparse. FEAT-3038's `should_consult`/`resolve_task_key`/budget tests extend `test_advisor.py` per this issue's Tests section.
 
 ## Acceptance Criteria
 
@@ -184,4 +215,5 @@ non-fatal: a failed consult logs and proceeds, never blocking the primary path.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-07T01:01:06 - `398b6d9c-0dab-4222-b27d-682f375c74d7.jsonl`
 - `/ll:verify-issues` - 2026-08-04T21:29:47 - `e72897bf-a708-4dcd-aeaa-907564ef9e34.jsonl`

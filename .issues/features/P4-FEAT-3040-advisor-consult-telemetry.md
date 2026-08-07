@@ -165,4 +165,5 @@ action, never automatically.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-07T01:37:33 - `43a0ea06-a76f-4e88-9656-365f95bb1daf.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T23:56:02 - `81d59bbb-17b9-42e5-908c-ba7206c84d60.jsonl`

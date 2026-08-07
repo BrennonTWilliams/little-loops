@@ -166,4 +166,5 @@ Determinism: consults stay excluded from the resume/replay input hash
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-07T01:35:15 - `0ee091c0-c5a3-41d6-b340-a6539437cf84.jsonl`
 - `/ll:verify-issues` - 2026-08-04T21:29:47 - `e72897bf-a708-4dcd-aeaa-907564ef9e34.jsonl`

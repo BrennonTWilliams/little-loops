@@ -233,6 +233,30 @@ ll-advise --signal <name> --question <text>
 `ll-doctor` -> `_run_registered_checks` -> `_advisor_check` -> `check_floor` /
 `HostRunner.build_version_check`
 
+### Decision Rules
+
+- `--signal` is required: a missing `--signal` is a usage error via the
+  argparse required-argument path — non-zero exit, no consult; `user_requested`
+  is an explicit, valid signal.
+- Capability floor (new classification rule): `check_floor(...)` returns `ok`
+  (proceed), `violation` (same host, consult refused, non-zero exit), `advisory`
+  (cross-host, proceed with stderr warning), or `unknown` (unrankable model,
+  warn + proceed — never a silent pass). Pinned case:
+  `check_floor("claude-code", "haiku", "claude-code", "opus")` → `violation`.
+- Unwired/unauthenticated host: `HostNotConfigured` (or a host/transport
+  timeout) at the `cmd_*` boundary → non-zero exit with a clear reason — no
+  traceback, no partial stdout.
+- Open threshold: whether advisor == main rank counts as `ok` or `violation`
+  is not pinned by this issue (only the haiku<opus case is given). Equality
+  semantics must be fixed before the floor gate is wired.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
+
+- No capability-rank/ordering table exists anywhere in the codebase — `MODEL_RANKS` is genuinely new. Adjacent model tables are not ranks: `MODEL_ALIASES` (`host_runner.py:79-84`, alias→concrete-ID map), `MODEL_PRICING` (`pricing.py:15-79`, insertion order implies a hierarchy but is not a rank), `MODEL_CONTEXT_WINDOW` (`context_window.py:19-33`). Rank lookup must normalize through `resolve_model_alias()` (`host_runner.py:87-96`: case-insensitive, whitespace-stripped, unknown values pass through unchanged) before table lookup, per the issue's own requirement.
+- The canonical host-name set `MODEL_RANKS` keys on is `_HOST_RUNNER_REGISTRY`'s keys (`host_runner.py:1522-1530`): `claude-code`, `codex`, `opencode`, `pi`, `gemini`, `omp`, `kimi-code` — these are the names `resolve_host_named`/`consult` will present. `opencode`/`pi` are unwired stubs (`HostNotConfigured`), so their rank rows are unreachable: an unwired host fails soft in `consult` before `check_floor` ever sees it.
+
 ## Integration Map
 
 ### Files to Modify
@@ -306,6 +330,17 @@ ll-advise --signal <name> --question <text>
   explicit note that cross-host capability floors are **advisory, not
   enforced**.
 - `.claude/CLAUDE.md` — add `/ll:advise` to the command list.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
+
+- FEAT-3042's `resolve_host_named` / `run_blocking_json` have **zero code presence today** — grep across `scripts/little_loops/` returns nothing. The only existing transport primitive to compose against is `HostRunner.build_blocking_json`, present on every runner class (Protocol: `host_runner.py:250-258`; concrete build→`subprocess.run` shape at `fsm/evaluators.py:1120-1130`). `consult()` composes against whatever FEAT-3042 ships; this issue's `blocked_by: FEAT-3042` edge must be resolved before the consult path is implementable by name.
+- The unwired-host fail-soft (AC 4) maps onto a concrete exception: `opencode`/`pi` are registered in `_HOST_RUNNER_REGISTRY` (`host_runner.py:1522-1530`) but their runner classes raise `HostNotConfigured` (`OpenCodeRunner`: `host_runner.py:779-851`, `PiRunner`: `:853-907`). The `cmd_*` boundary must catch `HostNotConfigured` plus host/transport timeouts and return a nonzero int, per the `ll-action`/`ll-harness` fails-soft shape (`cli/action.py:262-277`).
+- New-CLI registration has a sixth lockstep surface beyond the five listed here: `cli/__init__.py`'s module docstring (`cli/__init__.py:1-44`) enumerates every `ll-*` entry point with a one-line description and is part of the CLI's discoverable surface.
+- `_LL_COMMANDS` (`init/writers.py:156-218`) is **not** test-enforced — `ll-verify-cli-allowlist` imports and checks only `_LL_PERMISSIONS` (`init/writers.py:80-134`) and the `areas.md` "All ll- commands" preset (`skills/configure/areas.md:849`; gate wiring: `cli/verify_cli_allowlist.py:23,75-95`). Adding `ll-advise` to `_LL_COMMANDS` is still the convention — it renders consuming projects' `CLAUDE.md`/`AGENTS.md` command blocks via `_render_commands_block` (`init/writers.py:231-245`) — but a missing entry fails no test. Current anchors: `_LL_PERMISSIONS` at `init/writers.py:80-134`, `_LL_COMMANDS` at `:156-218` (the `~61-115` / `137-199` citations above predate the current layout).
+- Non-registered doctor-check wiring site: `_capability_check_results(report)` is folded into the same `CheckResult` vocabulary at `main_doctor` (`cli/doctor.py:1088`: `results = _capability_check_results(report) + _run_registered_checks()`), the existing precedent for "needs resolved HostRunner at call time" checks (`cli/doctor.py:76-80`).
+- `/ll:advise` skill-shape precedent: the closest non-prefixed skill wrapping an `ll-` CLI is `skills/init/SKILL.md` — `disable-model-invocation: true` frontmatter, `allowed-tools` granting `Bash(ll-init:*)` (`skills/init/SKILL.md:6-11`), a `<!-- PLUGIN_VERSION: x.y.z -->` marker, numbered Process body. The 500-line SKILL.md cap (`doc_counts.py:384-420`) does **not** apply to `disable-model-invocation` skills (`doc_counts.py:414`). The bridged `ll-`-prefixed skills (`skills/ll-check-code/SKILL.md`) are a different shape (thin pointers to `commands/*.md`) — the issue's non-prefixed `/ll:advise` name selects the `init` shape, not the bridged one.
 
 ## Acceptance Criteria
 
@@ -393,4 +428,5 @@ Also unresolved and deferred:
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-07T01:31:56 - `122ea141-1333-4987-8849-731d61382a3b.jsonl`
 - `/ll:issue-size-review` - 2026-08-04T20:47:21 - `b57cebec-46d2-436b-b650-9a1afa94ec18.jsonl`
