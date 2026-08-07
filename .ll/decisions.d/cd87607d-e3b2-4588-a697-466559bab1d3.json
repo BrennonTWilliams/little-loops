@@ -1,0 +1,12 @@
+{
+  "id": "11529c2a-bc96-4df4-bbed-42c4cfce5eb4",
+  "type": "decision",
+  "timestamp": "2026-08-07T21:34:20Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Collapse after FEAT-3078 validates the net-new deprecated pass-through shim against the real third-knob consumer; matches recommendation in both issues and avoids BUG-3093 timing trap (11/12 vs 8/12).",
+  "rule": "Option A - sequence AutomationContext collapse after FEAT-3078",
+  "scope": "issue",
+  "alternatives_rejected": "Option B - sequence before FEAT-3078",
+  "issue": "ENH-3094"
+}

@@ -13,6 +13,10 @@ labels:
 - automation
 - headless
 - host-runner
+relates_to:
+- BUG-3093
+- ENH-3094
+- ENH-3081
 verify_verdict: VALID
 confidence_score: 90
 outcome_confidence: 70
@@ -82,10 +86,69 @@ reuses the already-proven, already-tested per-call gating pattern
 ## Proposed Solution
 
 Inject `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` alongside the existing
-`LL_AUTOMATION` pair in `ClaudeCodeRunner.build_streaming()`'s env block,
-gated on `disable_background_tasks and automation_profile is not None`, with
-`disable_background_tasks` read from the new config flag threaded through
-every caller down to `build_streaming()`.
+`LL_AUTOMATION` pair, gated on `disable_background_tasks and
+automation_profile is not None`, with `disable_background_tasks` read from the
+new config flag threaded through every caller down to `build_streaming()`.
+
+### ⚠️ Superseding correction — ENH-3081 (`bab8c1fc`, 2026-08-07) landed after this issue was refined
+
+Two structural premises below are **stale** and must be re-read before
+implementing. Sections not corrected here (config schema, dataclass, docs,
+test templates) are unaffected.
+
+**(a) The five env blocks are now one helper.** This issue's *Files to Modify*
+and *Dependent Files* describe five hand-written sibling
+`if automation_profile is not None:` blocks at `host_runner.py:644,1036,1223,1418`,
+and *Conventions in Force* asserts there is "no shared cross-runner helper."
+Both are obsolete. ENH-3081 extracted `_apply_automation_env(env, automation_profile)`
+(`host_runner.py:1547-1564`), called identically from all five real runners at
+`:353, 644, 1034, 1219, 1412`.
+
+Consequences:
+
+- **AC3's survey shrinks to one function** — but this *inverts the default*.
+  Adding the var inside the helper injects it for Codex/Gemini/Omp/Kimi too,
+  contradicting AC6's "Claude-Code-only and inert for the other five runners."
+  **A design decision must be recorded before implementing**: either (i) add
+  the var in `ClaudeCodeRunner.build_streaming()` only, adjacent to the
+  `_apply_automation_env()` call, keeping the helper host-agnostic; or (ii)
+  extend the helper with a host guard. Option (i) matches the existing
+  precedent for host-scoped vars — `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR`
+  is written directly into `ClaudeCodeRunner`'s dict literal
+  (`host_runner.py:347-350`) and was deliberately left out of the ENH-3081
+  extraction. Recommend (i).
+- `scripts/tests/test_host_runner.py:62-82` (ENH-3081's own presence/absence
+  test for the clear branch) is a closer template for AC4 than the
+  `:962-966` `test_automation_profile_env()` this issue currently cites, and
+  is the natural place to extend.
+
+**(b) AC2's "the variable is absent" is now the wrong contract.**
+`_apply_automation_env()`'s docstring states the semantics explicitly:
+
+> `env` is merged over `os.environ` at every spawn site, so an absent key means
+> "inherit the parent's value", never "clear".
+
+That is why ENH-3081 added the neutralizing `else` branch setting
+`LL_AUTOMATION=""`. `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` sits on the same
+gate and inherits the same leak vector: an interactive or non-automation
+`claude` spawned from inside an automation session would silently keep the
+flag and lose backgrounding, with no way to tell why. **AC2 must become
+"explicitly neutralized on the `automation_profile is None` path," not
+"absent"** — see the revised AC2 below.
+
+### Open Question (blocking AC2) — what value turns the flag off?
+
+`LL_AUTOMATION=""` works as an off-switch because *our own* readers
+(`hooks/session_start.py:110`, `cli/history_context.py:206`) test truthiness of
+the string. `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` is read by the **host**, not
+by us, and its falsy-value handling is unverified. `""`, `"0"`, and
+popping the key are three different behaviors and only one is right.
+
+Resolve with a fourth probe using the FEAT-3076/3077 harness (real `claude -p`
+child, stream-json capture, record under `postmortems/feat-3078-verify/`):
+spawn with `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=""` and again with `="0"`, and
+check whether a `Bash run_in_background: true` call succeeds. Cheap, and AC2's
+correctness depends on the answer.
 
 ### Files to Modify
 - `scripts/little_loops/host_runner.py` — `ClaudeCodeRunner.build_streaming()` env block at lines 345-362; the new `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` conditional inserts here.
@@ -168,14 +231,17 @@ Neither is resolved; both should be settled before or during implementation.
    override than a config edit — and the default is now `true`, so the
    surprising case is the common case. Either add it or record that it is
    deliberately config-only.
-2. **Third parameter through the same Protocol.** `automation_profile`, then
-   `idle_timeout` (FEAT-3033), now `disable_background_tasks` — each costs
-   seven runner signatures, the `ActionRunner` Protocol plus three
-   implementations, and roughly eight test files of hand-written
-   explicit-signature mocks (enumerated in the wiring passes above). That is
+2. **Third parameter through the same Protocol.** — **RESOLVED: filed as
+   ENH-3094** (2026-08-07). `automation_profile`, then `idle_timeout`
+   (FEAT-3033), now `disable_background_tasks` — each costs seven runner
+   signatures, the `ActionRunner` Protocol plus three implementations, and
+   roughly eight test files of hand-written explicit-signature mocks. That is
    the majority of this issue's change surface, and the next flag pays it
-   again. Not in scope here, but worth filing an ENH to collapse these into
-   an `AutomationContext` dataclass rather than leaving the cost unspoken.
+   again. ENH-3094 proposes an `AutomationContext` dataclass and recommends
+   sequencing it **after** this issue, so the collapse has three proven
+   consumers rather than two. Not a blocker — but if the mock-signature churn
+   stalls this implementation, flip the order rather than adding `**kwargs`
+   escape hatches to the mocks.
 
 ### Pattern B Precedent Now Located
 The Decision Rationale's rejected Option B ("a one-time `os.environ` mutation at config-load time") is not hypothetical — a live example of that exact pattern exists at `apply_host_cli_from_config()` (`scripts/little_loops/host_runner.py:1612`), which reads `config.orchestration.host_cli` and writes `LL_HOST_CLI` into `os.environ` once, before `resolve_host()` runs, with no per-call scoping. This is useful evidence for why Option A (per-call parameter) was chosen over mirroring this existing precedent: `apply_host_cli_from_config()`'s host_cli use case doesn't need per-invocation scoping (host selection is stable for a whole process), whereas `disable_background_tasks` does (per AC2), so the two config-threading patterns coexisting in this codebase are each correct for their own field, not in tension.
@@ -184,11 +250,21 @@ The Decision Rationale's rejected Option B ("a one-time `os.environ` mutation at
 
 1. When `automation_profile` is set and the new config flag is enabled, the child
    environment carries `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`.
-2. When `automation_profile` is unset, the variable is absent — interactive
-   sessions are unaffected.
-3. All env-injection blocks in `host_runner.py` are surveyed and either updated
-   for parity or documented as deliberately excluded.
-4. A test asserts presence and absence of the variable across both branches.
+2. When `automation_profile` is unset, the variable is **explicitly neutralized**
+   in the built env — not merely omitted. Omission means "inherit the parent's
+   value" (`_apply_automation_env()` docstring, `host_runner.py:1552-1556`), which
+   would leak the flag into interactive and non-automation children spawned from
+   inside an automation session. The neutralizing value is whatever the Open
+   Question probe establishes the host treats as off.
+3. The `_apply_automation_env()` helper (`host_runner.py:1547`) and
+   `ClaudeCodeRunner.build_streaming()` are the only env-construction sites;
+   the recorded design decision (helper-with-host-guard vs. Claude-only line)
+   is applied, and the other five runners are documented as deliberately
+   excluded.
+4. A test asserts, in both the automation and non-automation branches, that the
+   variable is set to `1` and neutralized respectively — extending
+   `scripts/tests/test_host_runner.py:62-82` (ENH-3081's clear-branch test),
+   which already has this exact shape for `LL_AUTOMATION`.
 5. `orchestration.disable_background_tasks` defaults to `true` (FEAT-3077's
    recorded decision), with a default-on schema `description`, and
    `docs/reference/CONFIGURATION.md`/`docs/ARCHITECTURE.md`/`docs/reference/API.md`/`docs/guides/LOOPS_GUIDE.md`
@@ -206,8 +282,12 @@ The Decision Rationale's rejected Option B ("a one-time `os.environ` mutation at
 
 _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
 
-### Threading Gap Not Previously Called Out
-Three `run_claude_command()` call sites in `issue_manager.py` — `:826` (`_run_ready` inside Phase 1), `:893` (retry_result), `:1089` (decide_result) — currently omit `automation_profile` entirely (the parameter defaults to `None` at those call sites). Because the proposed gate is `disable_background_tasks and automation_profile is not None`, threading the new flag alone will NOT activate it at these three sites — `automation_profile` would need to be added there first, which is out of this issue's stated scope (mirroring the *existing* threading pattern, not extending it). Document these three as sites where the new flag structurally cannot take effect yet, rather than silently expecting parity with the other call sites.
+### Threading Gap — now filed as BUG-3093
+Three `run_claude_command()` call sites in `issue_manager.py` — `:826` (`_run_ready` inside Phase 1), `:893` (retry_result), `:1089` (decide_result) — omit `automation_profile` entirely (it defaults to `None`). Because the gate is `disable_background_tasks and automation_profile is not None`, threading the new flag alone will NOT activate it at these three sites.
+
+**Escalated 2026-08-07: this is a defect in its own right, filed as BUG-3093**, not merely a scoping footnote. Post-ENH-3081 these three children now receive `LL_AUTOMATION=""` — an *explicit assertion* that they are not under automation, read as such by `hooks/session_start.py:110` and `cli/history_context.py:206` — even though they are `ll-auto` subprocesses of the same run as `:1237`/`:1425`, which do declare `automation_profile="ll-auto"`.
+
+Consequence for this issue: without BUG-3093, `/ll:ready-issue` and `/ll:decide-issue` keep tool-level backgrounding under `ll-auto` while `/ll:manage-issue` loses it — preserving in three places the exact inconsistency FEAT-3060 was filed to remove. BUG-3093 is small (three call sites plus one test) and **should land with or before this issue**; if it does not, AC6's release note must name the three phases as not-yet-covered.
 
 ### Additional No-Op Site for AC3 Survey
 `SimulationActionRunner.run()` (`fsm/runners.py:382`) declares `automation_profile` in its signature but ignores it by design (docstring: "Ignored in simulation"). Not previously listed among the sites AC3 requires surveying; add it to the parity survey as a fourth deliberately-excluded site (alongside `OpenCodeRunner`/`PiRunner` stubs), since `ActionRunner` implementations are exactly the surface AC3's "all env-injection blocks... surveyed" language covers.

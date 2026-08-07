@@ -25,6 +25,7 @@ labels:
 - refactor
 testable: true
 decision_needed: false
+reconcile_attempted: true
 confidence_score: 100
 outcome_confidence: 71
 score_complexity: 10
@@ -74,6 +75,11 @@ _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
 
 - Line-range verification against current `autodev.yaml` (2026-08-06): all four inline blocks still present and structurally unchanged, only shifted 1-2 lines from unrelated intervening edits — `check_decision_decidable`/`deposit_options`/`record_options_deposited` now `:529-574` (was `:529-573`); `check_open_question_progress` body `:580-608` (comment starts `:576`); `run_decide` now ends `:625` (was `:624`); `assert_decision_cleared` now `:687-699` (was `:685-697`).
 - All five entry-point line numbers (`:236`, `:491`, `:526`, `:1218`, `:1236`) verified exact, zero drift, against current `autodev.yaml`.
+
+_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
+
+- **Entry-point line drift (verified 2026-08-07)** — the two tail entry points moved +28 lines since this issue's block ranges were cited, caused by ENH-3084's `check_learning_gate_infra` (`:943`) and `mark_gate_infra` (`:955`) insertion. `check_decision_before_size_review.on_yes` is now `:1246` (state `:1236-1248`; issue cites `:1218`); `triage_outcome_failure.on_yes: run_decide` is now `:1264` (state `:1250-1266`; issue cites `:1236`). The three earlier entry points are unchanged: `check_decision_at_dequeue` `:236`, `check_decision_after_refine` `:491`, `decide_current.on_yes` `:526` — note `:526` is `decide_current.on_yes`, not `check_decision_before_size_review` (that state is the `:1236-1248` one); the issue's five-entry-point list conflates the two gates. Routing substance is unchanged — all four probe-first entries still target `check_decision_decidable`, `triage_outcome_failure` still routes directly to `run_decide`.
+- **`dequeue_next`'s marker clear confirmed current** (`autodev.yaml:105`): `rm -f ${context.run_dir}/autodev-decide-options-deposited` uses the flat marker name, not `$CURRENT` and not `${captured.input.output}`. The trap described in the issue (at the `rm -f` point, `captured.input.output` holds the *previous* iteration's ID — the capture is written by `dequeue_next` itself at `:154`/`:156`) is real and current. Post-conversion the clear targets the per-issue path with bareword `$CURRENT` as AC 4 requires.
 
 ## Expected Behavior
 
@@ -278,13 +284,41 @@ _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
 
 - **Resolved — the marker-clear line needs bareword `$CURRENT`, not `$${CURRENT}`.** Verified against every other `CURRENT` reference in `autodev.yaml` (`:101`, `:114`, `:154`, `:821`, `:844`): all are unbraced `$CURRENT`, none escaped. The correct Site 3 edit is `rm -f ${context.run_dir}/decide-options-deposited-$CURRENT` — `${context.run_dir}` interpolated FSM-side (braced), `$CURRENT` left as a plain bash variable (unbraced, shell-side), matching this action block's existing style throughout. Do not apply the `$${...}` doubling here; it is unnecessary and would break interpolation (raises "expected namespace.path") since `CURRENT` is not an FSM context path.
 
+_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
+
+- **Option A already has in-tree precedent — the `loop:`-can't-surface-429 limitation and the marker-file remedy are documented at two independent places that are NOT callers of `resolve-decision`**: `recursive-refine.yaml:239-250` (its comment names `_execute_sub_loop` (`executor.py:820`), the `action_result is not None` gate (`executor.py:1673`), the bool `failure_terminal`, and states the Option A remedy directly: "a child writes a marker file before exiting `failed`; the caller checks for it on `on_failure`") and `rn-implement.yaml:745-746` ("a loop child can never yield a rate-limit verdict; RATE_LIMITED now arrives via the token channel"). Both are precedent for the pattern, not sites to update — cite them in `### Rate-limit exhaustion`'s rationale rather than treating the marker handshake as novel. Note `rn-implement.yaml`'s token-channel comment means the `on_rate_limit_exhausted: failed` semantics in the sub-loop and the caller-side marker are complementary, not competing signals.
+- **Confirmed today's inline `on_rate_limit_exhausted: done` sites** the sub-loop's `failed` replaces: `deposit_options` `autodev.yaml:566`, `run_decide` `autodev.yaml:625`. The sub-loop already states the routing contract (`resolve-decision.yaml:68-71`: "route to failed, push discrimination to the caller") and `assert_decision_cleared`'s comment (`:169-172`) already documents the `on_error: implement_current` → `on_error: failed` flip against autodev's inline `on_error` (`:624` region).
+
 ## Integration Map
+
+### Behavior Parity
+
+Replaced artifact: `autodev.yaml`'s inline decision cluster (states moved into `oracles/resolve-decision`). Rows marked `autodev` stay caller-side. Dispositions follow BUG-3065's table; both accepted design differences (rate-limit Option A, assert reorder) are recorded here as required by AC 7 and the "Decided" blockquotes.
+
+| Behavior (autodev.yaml) | Artifact | Status |
+|---|---|---|
+| Marker short-circuit skips re-validation once options deposited (`check_decision_decidable`, `:540`) | sub-loop | **CHANGED** — probe lives in the sub-loop (`resolve-decision.yaml:41-61`); marker becomes the per-issue name AC 4 targets |
+| `check-open-questions \|\| check-decidable` probe order (ENH-2446) | sub-loop | PRESERVED |
+| `deposit_options` bounded single retry via `/ll:refine-issue --auto` (`:550-565`) | sub-loop | PRESERVED — `on_partial: record_options_deposited` carried (`resolve-decision.yaml:81`) |
+| Write-once options-deposited marker (`:573`) | sub-loop | **CHANGED** — per-issue name `decide-options-deposited-${context.issue_id}`; `dequeue_next` clears it on re-dequeue (AC 4, bareword `$CURRENT`) |
+| `check_open_question_progress` stall gate (ENH-2446, `:580-608`) | sub-loop | **CHANGED** — becomes functional: `evaluate.history_file` declared at `resolve-decision.yaml:132-133`, whereas the inline copy's read path was inert (BUG-3065 `### Open-question stall gate is inert`) |
+| `run_decide` `/ll:decide-issue --auto` + pruning profile (`:610-625`) | sub-loop | PRESERVED |
+| `on_rate_limit_exhausted: done` on `run_decide`/`deposit_options` (`:625`, `:566`) | sub-loop + autodev | **CHANGED** — sub-loop routes `failed`; Option A's `decide-rate-limited-<issue_id>` marker gates autodev's `on_failure` to terminate the run rather than defer |
+| `assert_decision_cleared` post-decide flag re-verify (BUG-2595, `:687-699`) | sub-loop | **REORDERED** — directly after `run_decide`; accepted difference (AC 7) |
+| `check_decision_after_decide_error` short-circuit on still-armed flag (ENH-2717, `:627-637`) | — | **DELETED** — collapses into `assert_decision_cleared` |
+| `mark_decide_ran` → `autodev-decide-ran` marker (ENH-1415, `:639-648`) | autodev | PRESERVED — caller-side |
+| `rerun_confidence_after_decide` re-score (`:650-667`) | autodev | PRESERVED — caller-side |
+| `recheck_after_decide` threshold re-check + `on_no: snap_and_size_review` (`:669-685`) | autodev | **CHANGED** — caller-side, but the `snap_and_size_review` escape for still-armed-plus-sub-threshold issues is removed (accepted, AC 7, ENH-1415) |
+| `record_decision_unresolved` defer + `DECISION_UNRESOLVED` ledger (`:701-724`) | autodev | PRESERVED — caller-side; `auto-refine-and-implement.yaml:848` consumes |
+| `triage_outcome_failure` direct `run_decide` route (`:1250-1266`) | autodev | PRESERVED — via `skip_probe: "true"` binding (AC 3) |
 
 ### Files to Modify
 
 - `scripts/little_loops/loops/autodev.yaml` — the conversion itself.
-- `scripts/little_loops/loops/oracles/resolve-decision.yaml` — only if the rate-limit marker
-  (Option A) or the `autodev-decide-ran` write is added to the sub-loop.
+- `scripts/little_loops/loops/oracles/resolve-decision.yaml` — adds the rate-limit marker
+  write (Option A, decided 2026-08-06) before both `on_rate_limit_exhausted: failed` routes
+  (`deposit_options`, `run_decide`); also modified if the `autodev-decide-ran` write is added
+  to the child.
 
 ### Dependent Files (Callers/Importers)
 
@@ -373,6 +407,22 @@ plus a manual run.
   then re-verify post-conversion.
 - `CHANGELOG.md`
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
+
+- **Drift — most `test_builtin_loops.py` anchors in the Tests section above are stale** (verified 2026-08-07). The decision-cluster tests the rewrite must touch now live in `TestAutodevLoop` at `:6313-6866`. Current anchors: `test_required_states_exist` `:4547-4580` (was `:4215-4249`; required set includes `run_decide` `:4568`, `mark_decide_ran` `:4569`, `rerun_confidence_after_decide` `:4570`); `test_check_decision_at_dequeue_on_yes_routes_to_check_decision_decidable` `:4669-4677` (was `:4337`); `test_record_decision_unresolved_defers_via_set_status` `:5693-5696` (was `:5359-5362`); `test_check_decision_after_refine_routes_correctly` `:5831-5848` (was `:5498`); the `check_decision_before_size_review`/`triage_outcome_failure` group `:6313-6392` (was `:6007`/`:6046`); the cluster-core group `:6638-6866` (was `:6304`/`:6314`/`:6324`/`:6375-6396`/`:6460-6479`), specifically `test_decide_current_on_yes_routes_to_check_decision_decidable` `:6638`, `test_check_decision_decidable_state_exists_and_routes` `:6648`, `test_deposit_options_state_exists_and_routes` `:6658`, `test_check_open_question_progress_state_exists` `:6687`, `test_dequeue_next_clears_decide_options_deposited_marker` `:6696`, `test_run_decide_uses_with_rate_limit_handling_fragment` `:6709`, `test_run_decide_next_routes_to_mark_decide_ran` `:6714`, `test_run_decide_on_error_routes_to_implement_current` `:6721`, `test_run_decide_on_rate_limit_exhausted_routes_to_done` `:6728`, `test_rerun_confidence_after_decide_*` `:6733-6791`, `test_mark_decide_ran_*` `:6794-6813`, `test_recheck_after_decide_on_no_routes_to_snap_and_size_review` `:6838`; `TestBuiltinLoopReferencesResolve.test_all_static_loop_references_resolve` `:13336` (was `:12963`). Only `:6341-6360`, `:6375-6396`, and `:6767` remain roughly accurate. `test_autodev_decision_gate.py` anchors are essentially current (within ~4 lines): `:1061`/`:1070` (cited `~:1066`/`~:1072`), `:965-1016` (cited `~:967-1018`), `:1020-1041` (cited `~:1022-1041`).
+- **New — `TestResolveDecisionOracle` (17 tests, `test_builtin_loops.py:2287-2445`)** — dedicated coverage of `oracles/resolve-decision.yaml`, added since this issue's Tests section was written. The rewrite must keep these green, and the moved assertions (AC 8) belong here. Notable: `test_route_entry_skip_probe_true_routes_to_run_decide` `:2336` and `test_route_entry_default_routes_to_check_decision_decidable` `:2344` — the existing model for AC 3's asymmetry assertion; `test_no_loop_state_declares_on_rate_limit_exhausted_done` `:2362` — must not regress when the rate-limit marker (AC 6) lands; `test_options_deposited_marker_is_per_issue` `:2375` — pins the per-issue marker name AC 4's `dequeue_next` clear must target; `test_run_decide_and_assert_decision_cleared_routing` `:2410` and `test_assert_decision_cleared_terminal_contract` `:2427` — the sub-loop-internal model for AC 8's replacement assertion. `TestRefineToReadyIssueSubLoop` (`:1257`, call-state tests `:1982-2269`) is the model for autodev's new `loop:` call-state assertions.
+- **Correction — `rn-remediate.yaml` does not use the `autodev-decide-options-deposited` literal** (grep-verified). Its inline copy uses its own marker `decide_options_deposited_${context.issue_id}.txt`, routes to a `decide` state rather than `run_decide`, and is covered by `scripts/tests/test_rn_remediate.py:175-348` — a separate file this issue's Tests section does not mention. Consequences: (a) AC 5's except-clause "except where `rn-remediate.yaml`'s independent copy legitimately retains it" is vacuous — no autodev-marker literal exists there to retain, so the AC effectively requires the string gone from `scripts/little_loops/` and `scripts/tests/` with no carve-out; (b) the "parity copy and its cross-reference comment" sweep item is about the parity comment in `autodev.yaml`'s `check_decision_decidable` (`:540` region), which points at rn-remediate's *shape*, not its marker name — `test_rn_remediate.py` and `test_fsm_open_question_stall.py` are unaffected by the marker rename.
+- **Drift — the `auto-refine-and-implement.yaml:840` citation no longer resolves to the consumption**; the `DECISION_UNRESOLVED=$(count autodev-decision-unresolved.txt)` line moved to `auto-refine-and-implement.yaml:848` (count helper `:710`, BUG-2595 comment block `:843-847`, summary.json `:959`/`:965`). The issue cites `:840` in four places (Proposed Solution "Decided" blockquote, "Preserved behaviors", this Integration Map bullet, AC 2) — all should read `:848`.
+
+_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
+
+- **Test-anchor drift (verified 2026-08-07)** — most `test_builtin_loops.py` cluster-group anchors have moved +34 since the last refine. Current anchors in `TestAutodevLoop`: `test_required_states_exist` `:4547-4589` (unchanged); `test_decide_current_on_yes_routes_to_check_decision_decidable` `:6672` (was `:6638`); `test_check_decision_decidable_state_exists_and_routes` `:6682` (was `:6648`); `test_deposit_options_state_exists_and_routes` `:6692` (was `:6658`); the `test_run_decide_*` group `:6743-6762` (was `:6709-6728`); `test_rerun_confidence_after_decide_state_exists` `:6767` (was `:6733`); marker literal asserted at `:6712` and `:6734`. `test_autodev_decision_gate.py` anchors are essentially current (within ~4 lines): `:965-1016`, `:1020-1041`, `:1061-1128` (was `~:967-1018`, `~:1022-1041`, `~:1066/1072`). `TestResolveDecisionOracle` `:2287-2445` and `TestRefineToReadyIssueSubLoop` call-state tests `:1982-2269` unchanged — the models for the rewrite.
+- **Doc-anchor drift (verified 2026-08-07)** — `docs/guides/LOOPS_REFERENCE.md` cluster-prose region moved +3: ASCII diagram now `:1003-1048` (was `:1000-1045`), "Diagram omissions" `:1050` (was `:1047`), "Outcome failure triage" `:1056` (was `:1053`), "Decidability gate parity" `:1058` (was `:1055`). Content unchanged — still spells out the inline cluster by exact state name and still contains the pre-existing inaccuracy about `triage_outcome_failure` that AC 10 says to fix.
+- **`auto-refine-and-implement.yaml:848` confirmed current** — the `DECISION_UNRESOLVED=$(count autodev-decision-unresolved.txt)` count line (issue cites `:848` in AC 2 and "Preserved behaviors").
+- **Convention: caller-side `on_failure` marker gates are established** — `autodev.yaml:385-400` (`refine_current`, `loop: refine-to-ready-issue`) routes `on_failure: skip_inflight`; the child's `classify_terminal` (`refine-to-ready-issue.yaml:721-737`) writes `${context.run_dir}/refine-terminal-class` immediately before `next: failed`, and `skip_inflight` (`autodev.yaml:422-436`) reads it with `[ -f ... ]`. This is the identical "child writes a marker before exiting `failed`, caller gates on it" shape Option A's `decide-rate-limited` marker needs — an in-tree working precedent, not just the two docs-comment precedents (`recursive-refine.yaml:239-250`, `rn-implement.yaml:745-746`).
+
 ## Program Design
 
 The deliverable is loop YAML, not Python — no new modules, types, or functions. What the design must
@@ -414,6 +464,16 @@ _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
 - `ExecutionResult.failure_terminal: bool = False` confirmed current at `scripts/little_loops/fsm/types.py:60`, exposed to JSON serialization but carrying no terminal name.
 - `assert_decision_cleared`'s behavior difference is explicit in `resolve-decision.yaml`'s own comments (`:169-172`), which directly contrast its `on_error: failed` against autodev's inline copy's `on_error: implement_current` and call it out as the accepted extraction-boundary difference — this is documentation already in place in the sub-loop, not something this issue needs to newly establish.
 
+_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
+
+- **Engine anchor refinement** (verified 2026-08-07): `_execute_sub_loop`'s child-routing dispatch is at `executor.py:1055-1079` (issue cites `:1058-1086` — off by 3, same shape): `terminated_by == "terminal"` + `not failure_terminal` → `on_yes` (`:1060-1062`); `+ failure_terminal` → `on_no` (`:1063-1065`); `terminated_by == "error"` → `on_error`/`on_no` (`:1066-1072`); timeout family → `extra_routes`/`on_no` (`:1073-1080`); everything else (`interrupted`, `user_stopped`, `system_signal`, `cycle_detected`, `stall_detected`, `host_pressure_abort`, `host_budget_exceeded`, `handoff`) → `on_no` (`:1081-1086`). No `on_rate_limit_exhausted` branch exists. The 429 gate is `executor.py:1673-1686` (issue cites `:1673-1685`), gated on `action_result is not None` — confirmed structurally unreachable for a `loop:` state (`_execute_state`'s loop branch at `:1454-1460` returns `_execute_sub_loop`'s `str | None` directly; `action_result` is only assigned on the non-loop action path `:1546-1563`). The exhaustion path itself: `_handle_rate_limit` `:2878` → `_exhaust_rate_limit` `:3098` → `target = state.on_rate_limit_exhausted or state.on_error` `:3110`; `failure_terminal` set at `executor.py:3206-3208` (`terminated_by == "terminal" and self.current_state in failure_states`).
+
+_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
+
+- **Confirmed — the sub-loop's `failed` terminal is a failure terminal even without explicit `failure: true`**: `resolve-decision.yaml:182-183` declares `failed: {terminal: true}`; `scripts/little_loops/fsm/schema.py:33-35` (`FAILURE_TERMINAL_NAMES` includes `"failed"`) plus `schema.py:870-875` (terminal states default `failure` to `name in FAILURE_TERMINAL_NAMES`) make a caller's `loop:` state route it to `on_no`/`on_failure` (`executor.py:1055-1065`). This is what makes the sub-loop's `on_rate_limit_exhausted: failed` observable by autodev's `on_failure` gate — Option A's `check_decide_rate_limited` can rely on it without the caller distinguishing terminal names.
+- **Behavioral delta — the sub-loop's stall gate is functional where autodev's inline copy is inert**: `resolve-decision.yaml:132-133` declares `evaluate.history_file` explicitly; autodev's inline `check_open_question_progress` (`:580-608`) writes a per-issue `.open_questions_<ID>.history` file but never declares `history_file`, so its evaluator falls back to a flat default path nothing writes — the gate is inert today (BUG-3065's `### Open-question stall gate is inert`). Post-conversion autodev inherits the *functional* gate. This is a behavior change beyond the accepted assert-reorder difference; it should be recorded in the Behavior Parity table as a CHANGED (functional) stall gate.
+- **Anchor moved — `recursive-refine.yaml`'s dead `on_rate_limit_exhausted: dequeue_next` is now `:251`, not `:236`** (+15, shifted by the BUG-3065 comment block at `:239-250`; `:236` is now `on_success: check_passed`). The deadness claim itself is unchanged and is now documented inline at `:239-250`.
+
 ## Scope Boundaries
 
 **In scope:** `autodev.yaml`'s conversion to the sub-loop, deletion of its inline cluster states and
@@ -447,20 +507,24 @@ was the largest gap given its Large effort and Medium-High risk._
 2. `mark_decide_ran`, `rerun_confidence_after_decide`, `recheck_after_decide`, and
    `record_decision_unresolved` remain caller-side in `autodev.yaml` and are unchanged in
    behavior. `record_decision_unresolved` still defers and still writes the
-   `DECISION_UNRESOLVED` ledger entry that `auto-refine-and-implement.yaml:840` consumes.
-3. All five entry points route to the call state. The four probe-first entries (`:236`,
-   `:491`, `:526`, `:1218`) bind no `skip_probe` (relying on the `"false"` default);
-   `triage_outcome_failure` (`:1236`) binds `skip_probe: "true"`. A test asserts this
-   asymmetry explicitly — it is the only reason `route_entry` exists.
+   `DECISION_UNRESOLVED` ledger entry that `auto-refine-and-implement.yaml:848` consumes
+   (the count line moved from `:840`; count helper at `:710`).
+3. All five entry points route to the call state. The four probe-first entries
+   (`check_decision_at_dequeue` `:236`, `check_decision_after_refine` `:491`,
+   `decide_current.on_yes` `:526`, `check_decision_before_size_review.on_yes` `:1246`)
+   bind no `skip_probe` (relying on the `"false"` default);
+   `triage_outcome_failure.on_yes: run_decide` (`:1264`) binds `skip_probe: "true"`. A
+   test asserts this asymmetry explicitly — it is the only reason `route_entry` exists.
 4. `dequeue_next`'s marker clear targets the per-issue path
    `${context.run_dir}/decide-options-deposited-$CURRENT` using **bareword `$CURRENT`**, not
    `${captured.input.output}` (which holds the *previous* iteration's ID at that point) and
    not `$${CURRENT}`. A test asserts the exact form. The accompanying comment explains why
    this marker is cleared when the neighbouring per-issue markers deliberately are not.
 5. The literal `autodev-decide-options-deposited` appears nowhere in
-   `scripts/little_loops/` or `scripts/tests/` after the conversion, except where
-   `rn-remediate.yaml`'s independent copy legitimately retains it. Grep-enforceable — a
-   missed *read* site silently disables ENH-2443's write-once bound.
+   `scripts/little_loops/` or `scripts/tests/` after the conversion — with no carve-out:
+   `rn-remediate.yaml`'s inline copy uses its own
+   `decide_options_deposited_${context.issue_id}.txt` marker, not the autodev literal.
+   Grep-enforceable — a missed *read* site silently disables ENH-2443's write-once bound.
 6. **Rate limit (Option A):** `oracles/resolve-decision.yaml` writes
    `${context.run_dir}/decide-rate-limited-${context.issue_id}` before both
    `on_rate_limit_exhausted: failed` routes, and `autodev.yaml`'s `on_failure` path gates on
@@ -473,11 +537,13 @@ was the largest gap given its Large effort and Medium-High risk._
 8. Every assertion listed in the Tests section is rewritten, not deleted to make the suite
    pass. Specifically: `check_decision_after_decide_error`'s 5 routing assertions
    (`test_autodev_decision_gate.py:~1072-1128`) are **replaced** by a sub-loop-internal
-   assertion that `run_decide.on_error == "assert_decision_cleared"`, and
-   `test_builtin_loops.py`'s `required` state-set literal (`~:4215-4249`) is updated rather
-   than having the moved names removed.
+   assertion that `run_decide.on_error == "assert_decision_cleared"`, placed in
+   `TestResolveDecisionOracle` (modeled on `test_run_decide_and_assert_decision_cleared_routing`
+   at `:2410` and `test_assert_decision_cleared_terminal_contract` at `:2427`), and
+   `test_builtin_loops.py`'s `required` state-set literal (`test_required_states_exist`, now
+   `:4547-4589` in `TestAutodevLoop`) is updated rather than having the moved names removed.
 9. `ll-loop validate` passes for `autodev.yaml` and `oracles/resolve-decision.yaml`.
-10. `LOOPS_REFERENCE.md:1000-1055` is updated: the ASCII flow diagram, the "Diagram
+10. `LOOPS_REFERENCE.md:1003-1058` is updated: the ASCII flow diagram, the "Diagram
     omissions" paragraph, the "Outcome failure triage" paragraph, and the "Decidability gate
     parity" paragraph — the last of which is *already* inaccurate against
     `triage_outcome_failure`'s direct route and must be corrected regardless.
@@ -523,5 +589,11 @@ _Added by `/ll:confidence-check` on 2026-08-06_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-07T21:50:28 - `e94e5558-c960-4e55-b425-20f7c378ecf8.jsonl`
+- `/ll:reconcile-issue` - 2026-08-07T21:44:35 - `cfb55693-d0a0-4b9e-85d0-b30adca32d69.jsonl`
+- `/ll:confidence-check` - 2026-08-07T20:01:12 - `a287babb-e322-4cb0-b11c-8aa259850da0.jsonl`
+- `/ll:refine-issue` - 2026-08-07T19:57:52 - `c3f6228f-e420-45ad-922f-96e16665418b.jsonl`
+- `/ll:reconcile-issue` - 2026-08-07T19:38:27 - `1f5af319-7482-44be-be25-d2e6c1b0a6b2.jsonl`
+- `/ll:refine-issue` - 2026-08-07T18:29:34 - `9f8183ff-cd3e-48be-b744-b28f9ff368f6.jsonl`
 - `/ll:confidence-check` - 2026-08-06T18:13:35 - `2714e173-0113-42e1-b8e8-e7f650c61db7.jsonl`
 - `/ll:refine-issue` - 2026-08-06T17:38:13 - `71a5b5c8-8b5f-4779-9a91-00cc882432b5.jsonl`

@@ -1,0 +1,14 @@
+mypy --version: exit=0 stdout='mypy 1.10.1 (compiled: yes)' stderr=''
+
+C1 clean exit=0 stdout='Success: no issues found in 1 source file' stderr=''
+C2 type-error exit=1
+   stdout='bad.py:1: error: Incompatible types in assignment (expression has type "str", variable has type "int")  [assignment]\nFound 1 error in 1 file (checked 1 source file)'
+   stderr=''
+C4 stderr-empty=True diag_in_stdout=True
+   matched_line='bad.py:1: error: Incompatible types in assignment (expression has type "str", variable has type "int")  [assignment]'
+   has_col=True has_code=True
+C3 nonexistent-file exit=2 stdout='' stderr="mypy: can't read file 'does-not-exist.py': No such file or directory"
+C5 config-discovered exit=1 col_in_diag=True line='bad.py:1:14: error: Incompatible types in assignment (expression has type "str", variable has type "int")  [assignment]'
+C6 warn-unused-ignores exit=1 stdout='unused_ignore.py:1: error: Unused "type: ignore" comment  [unused-ignore]\nFound 1 error in 1 file (checked 1 source file)'
+C7 no-flag exit=1 has_import_error=True
+C7 with-flag exit=0 clean=True stdout='Success: no issues found in 1 source file'

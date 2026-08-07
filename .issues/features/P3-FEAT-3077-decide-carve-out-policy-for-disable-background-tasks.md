@@ -12,14 +12,16 @@ labels:
 - automation
 - headless
 - host-runner
+relates_to:
+- BUG-3093
 decision_needed: false
 verify_verdict: VALID
-confidence_score: 90
-outcome_confidence: 81
-score_complexity: 24
-score_test_coverage: 15
-score_ambiguity: 22
-score_change_surface: 20
+confidence_score: 100
+outcome_confidence: 90
+score_complexity: 22
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # FEAT-3077: Decide and document the smoke-test/go-no-go carve-out policy for CLAUDE_CODE_DISABLE_BACKGROUND_TASKS
@@ -36,6 +38,15 @@ affects:
   with `run_in_background: true`, then waits for both before a foreground
   judge step.
 
+A third skill mentions backgrounding but is **already compliant**:
+`skills/decide-issue/SKILL.md:335` spawns one
+`ll:codebase-pattern-finder` agent per option in a single message, explicitly
+specifying `run_in_background: false` and waiting synchronously. It needs no
+disposition. It is named here because the "two carve-outs" inventory was a
+point-in-time grep with nothing defending it, and `decide-issue` sits on the
+`ll-auto` path (`issue_manager.py:1089`) — see AC7 for the guard that makes
+the inventory durable.
+
 **The decision is made and recorded below** (see `### Decision Rationale`):
 the flag defaults to `true`, the `manage-issue` carve-out is retired at the
 tool level and restated in terms of shell-level backgrounding (zero capability
@@ -44,7 +55,14 @@ unchanged because it is not reachable under automation today and degrades to
 sequential execution rather than failure.
 
 What remains in this issue is the documentation edit implementing that
-decision. FEAT-3078 consumes the default from AC2.
+decision, plus an inventory-guard test. FEAT-3078 consumes the default
+(`true`) from `### Decision Rationale`.
+
+**Size note.** This is a ~20-line change across four files (one SKILL.md, two
+generated mirrors, one test). The `depends_on: FEAT-3077` edge on FEAT-3078 is
+ordering-only — the two issues touch disjoint files — so landing both in a
+single pass is fine, provided this one's SKILL.md edit precedes FEAT-3078's
+default-on flag.
 
 ## Parent Issue
 
@@ -68,9 +86,10 @@ Apply the recorded decision as a documentation edit:
 1. Rewrite `skills/manage-issue/SKILL.md:367` (and the carve-out sentence at
    `:394-396`) to state the shell-level pattern explicitly instead of a
    blanket permission to background.
-2. Leave `skills/go-no-go/SKILL.md` unchanged, per AC3's "explicitly confirmed
-   to need no change" disposition.
+2. Leave `skills/go-no-go/SKILL.md` byte-identical, per AC3.
 3. Regenerate the host-adapter mirrors (see Wiring Phase).
+4. Add the carve-out inventory guard test (AC7), so the "two carve-outs"
+   finding is enforced rather than re-derived by grep next time.
 
 ### Reachability Analysis
 
@@ -191,6 +210,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - After editing `skills/manage-issue/SKILL.md`, regenerate the stale host-adapter mirrors via `ll-adapt --host kimi-code --apply` and `ll-adapt --host gemini --apply` (or confirm the project's adapter-sync convention) so `.kimi-code/skills/manage-issue/SKILL.md` and `.gemini/skills/manage-issue/SKILL.md` don't diverge from source. The `go-no-go` mirrors need no regeneration.
 - Edit `manage-issue/SKILL.md:394-396` as an append, not a reflow of the surrounding paragraph — `scripts/tests/test_wiring_skills_and_commands.py` asserts the literal strings `"foreground-blocking"` and `"scheduled wakeup"` at lines 389-393 (BUG-2408).
 - Mind the 500-line cap enforced by `scripts/tests/test_enh494_skill_companions.py`: `manage-issue/SKILL.md` has only 3 lines of headroom (497/500). The Option C edit is a restatement of two existing sentences (`:367` and `:394-396`), not an addition, so it should be net-neutral on line count — but verify, and extract to a companion file (ENH-494 pattern) if it isn't.
+- Extend the ENH-2996 mirror-drift guard so AC4 (mirror regeneration) is test-enforced, not just instructed. `scripts/tests/test_wiring_skills_and_commands.py:351-375` (`WIRE_ISSUE_SKILL_MIRRORS` / `test_wire_issue_skill_mirror_matches_source`) currently asserts mirror-body equality only for `wire-issue`; add `.kimi-code/skills/manage-issue/SKILL.md` and `.gemini/skills/manage-issue/SKILL.md` to that parametrized list (the `_body_after_frontmatter()` helper is reusable as-is). Today the only mirror-currency test covers `wire-issue`, so skipping the `ll-adapt --host ... --apply` regeneration after this edit would pass CI silently — the very gap ENH-2996 was filed to close. `go-no-go` mirrors need no guard (unchanged). [Agent 1/2/3 finding]
 
 ### Codebase Research Findings
 
@@ -201,34 +221,67 @@ _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis; reac
 - **Shell-level backgrounding is out of the flag's reach.** Probed directly for this decision: `postmortems/feat-3077-verify/README.md` (probes C1 and C2, `claude --version` 2.1.219). This is what makes Option C available and is the load-bearing fact behind the recorded decision.
 - `.issues/features/P3-FEAT-3078-thread-disable-background-tasks-config-flag-through-host-runner.md` already exists as the sibling implementation issue (`depends_on: FEAT-3077`) and follows the `automation_profile`-style per-call threading pattern (its own `### Decision Rationale`, Option A) — this issue's decision is a direct input to that work's flag default, not a parallel implementation track.
 
+_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
+
+- **Shell-level start/stop-with-PID is already an established pattern here.** `scripts/little_loops/loops/oracles/code-run-gate.yaml:334-390` (`service_health` state) backgrounds a server and manages its PID entirely at the shell level inside one foreground call: `bash -c "$RUN_CMD" > service.log 2>&1 &` → `SERVICE_PID=$!` → PID written to `service.pid` → teardown/ensure `kill "$SERVICE_PID"` / `kill "$(cat ${run_dir}/service.pid)"` under `trap cleanup EXIT`. It polls via curl `--max-time` against a PID-file rather than `sleep N; kill $pid`, but it is the closest existing relative of the Option C pattern the manage-issue restatement proposes, and the documented consumer of the smoke-test config fields (`run_cmd`/`health_url` at `docs/reference/CONFIGURATION.md:304-305` and `docs/reference/loops.md:834-835`). Restating `skills/manage-issue/SKILL.md:367` in shell terms therefore aligns with an existing codebase idiom, not an invented one. [codebase-pattern-finder]
+
 ## Acceptance Criteria
 
-1. Both known carve-outs have an explicit, recorded disposition:
-   `manage-issue` smoke test → **retired at the tool level**, restated in
-   shell terms; `go-no-go` concurrent agent launch → **preserved unchanged**.
-   (Satisfied by `### Decision Rationale`; verify it survives implementation
-   rather than re-deciding.)
-2. FEAT-3078's `orchestration.disable_background_tasks` default is
-   **`true`**. This is the single value FEAT-3078 consumes from this issue.
-3. `skills/manage-issue/SKILL.md:367` no longer grants a blanket permission to
+> **The decision is already made and recorded** in `### Decision Rationale`
+> (Option C; `disable_background_tasks` defaults to `true`). Do not re-derive
+> it. The deliverable below is a documentation edit plus one test, roughly 20
+> lines across four files.
+
+1. The recorded decision survives implementation unchanged: `manage-issue`
+   smoke test **retired at the tool level** and restated in shell terms;
+   `go-no-go` concurrent agent launch **preserved unchanged**;
+   FEAT-3078's default **`true`**. Satisfied by `### Decision Rationale`
+   already being in this file — this AC is a no-change assertion, not work.
+2. `skills/manage-issue/SKILL.md:367` no longer grants a blanket permission to
    background, and instead names the shell-level pattern (`cmd & pid=$!;
    sleep N; kill $pid` in one foreground `Bash` call). The carve-out sentence
    at `:394-396` is updated to match, without reflowing lines 389-393.
-4. `skills/go-no-go/SKILL.md` is confirmed unchanged, with the reason recorded
-   (not reachable under the `automation_profile` gate today; degrades to
-   sequential-but-correct if it ever is).
-5. `.kimi-code/skills/manage-issue/SKILL.md` and
+3. `skills/go-no-go/SKILL.md` is byte-identical to its pre-change state. The
+   reason is recorded in `### Reachability Analysis` (not reachable under the
+   `automation_profile` gate today; degrades to sequential-but-correct if it
+   ever is) — no edit, no new prose.
+4. `.kimi-code/skills/manage-issue/SKILL.md` and
    `.gemini/skills/manage-issue/SKILL.md` are regenerated so the mirrors match
    the edited source.
+5. `skills/manage-issue/SKILL.md` stays at or under 500 lines. It is currently
+   **497** — 3 lines of headroom. The shell-pattern restatement is likely to
+   need 2-3 lines where one stood, so measure before and after; extract to a
+   companion file (ENH-494 pattern) if it overflows.
 6. `python -m pytest scripts/tests/test_wiring_skills_and_commands.py
-   scripts/tests/test_enh494_skill_companions.py` passes (BUG-2408 literals
-   intact; 500-line cap not exceeded).
+   scripts/tests/test_enh494_skill_companions.py
+   scripts/tests/test_skill_expander.py` passes (BUG-2408 literals intact;
+   500-line cap not exceeded; `{{config.project.run_cmd}}` interpolation
+   preserved at `:367`).
+7. A new test pins the carve-out inventory: grep `skills/` for
+   `run_in_background: true` and assert the matches equal an explicit
+   allowlist (`go-no-go` only, after AC2 lands). Without this, AC1's "both
+   known carve-outs" is a point-in-time snapshot that the next skill author
+   silently invalidates. `scripts/tests/test_wiring_skills_and_commands.py` is
+   the natural home.
 
 ## Integration Map
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
+
+_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
+
+- **Correction — `config-schema.json` `orchestration` is not "currently only `host_cli`/`request_path`".** The object at `scripts/little_loops/config-schema.json:1554-1632` (`additionalProperties: false`) now declares four properties: `host_cli`, `request_path`, `composer`, `cluster` (corroborated by `scripts/little_loops/config/orchestration.py:62-93`). The load-bearing half of that Dependent-Files bullet still holds — no `disable_background_tasks` entry exists (grep of `scripts/` matches nothing) — so FEAT-3078 adds a fifth property to this object. [codebase-analyzer]
+- **The inverse description phrasing FEAT-3078 needs for a default-`true` flag is already conventional.** The Conventions-in-Force bullet above predicts FEAT-3078's `disable_background_tasks` schema `description` must state what changes when on and that setting it `false` restores today's behavior. Existing default-`true` flags already use exactly that shape in `config-schema.json`: `learning_tests.auto_prove_learning_gate` (~1042-1043, "Default true (self-healing); set false to keep the gates check-only"), `epic_branches.merge_to_base_on_complete` (~400, "When true (default), the EPIC integration branch is itself merged back..."), `learning_tests.enabled` (~1037-1038). So the phrasing is not first-of-kind. [codebase-pattern-finder]
+- **Caveat on the "no `> Note:` callout convention exists for this" claim.** The narrow claim is accurate — carve-out exceptions are written as plain prose, not callouts. But `> **Note:**` callouts are otherwise idiomatic in this codebase and in `skills/manage-issue/SKILL.md` itself (`:327`), plus `skills/map-dependencies/SKILL.md:109`, `skills/link-epics/SKILL.md:333`, `skills/scope-epic/SKILL.md:424`. If the implementer prefers a callout shape for the restated carve-out, it would not be stylistically foreign. [codebase-pattern-finder]
+
+_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
+
+- **Re-verification pass (2026-08-07, `--auto`) — all substantive claims still hold.** The `manage-issue` carve-out prose sits at `skills/manage-issue/SKILL.md:367` (backgrounding sentence) and `:394-396` (carve-out sentence); the `go-no-go` carve-out at `skills/go-no-go/SKILL.md:174-176` (concurrent launch) and `:278` (foreground judge); no `disable_background_tasks` string exists under `scripts/` (tree-wide grep matches nothing). File sizes now: `manage-issue/SKILL.md` is **497**/500 lines, `go-no-go/SKILL.md` **481**/500 (re-measured 2026-08-07; earlier revisions of this issue quoted 498/482, off by one) — the Option C edit must stay within the 3-line headroom as AC5 requires. [codebase-analyzer]
+- **Anchor drift — current line numbers for previously cited sites.** `issue_manager.py` hardcodes `automation_profile="ll-auto"` at `:1237` (implement subprocess) and `:1425` (finalize-retry), not `:1213,1401`; the smoke test runs inside those `claude -p` children. `cli/action.py` `cmd_invoke` at `:214` sets no `automation_profile` (repo-wide grep of `action.py` = zero matches); `_VERIFIER_SKILLS` is at `:30`. `runner_spec.py:128` still sources `automation_profile` from `spec.args.get("automation_profile")`; `fsm/executor.py:1902` still maps `pruning_profile` → `automation_profile`; the only `/ll:go-no-go` mention in any loop YAML is a comment at `scripts/little_loops/loops/autodev.yaml:1954`. [codebase-analyzer]
+- **`build_streaming()` signature drift.** `ClaudeCodeRunner.build_streaming` def is at `scripts/little_loops/host_runner.py:299` (not `:297`), `automation_profile: str | None = None` at `:308`, and the signature gained `workspace_root: Path | None = None` (FEAT-2878) — it is not the bare `(prompt, automation_profile=None)` the Signatures section implies; it still has no `disable_background_tasks` parameter. [codebase-analyzer]
+- **BUG-2408 literal anchors.** `scripts/tests/test_wiring_skills_and_commands.py:196-197` asserts the `"foreground-blocking"` / `"scheduled wakeup"` literals, which live in `skills/manage-issue/SKILL.md` at `:380-391` (immediately above the carve-out at `:394-396`) — this issue's "lines 389-393" phrasing refers to the SKILL file, not the test file. [codebase-analyzer]
 
 ### Files to Modify
 - `skills/manage-issue/SKILL.md:367,394-396` — smoke-test carve-out (Bash `run_in_background`). **Retire at the tool level; restate as shell-level backgrounding.**
@@ -253,6 +306,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_wiring_skills_and_commands.py` (`DOC_STRINGS_PRESENT`, ~lines 190-197) — BUG-2408 asserts the literal strings `"foreground-blocking"` and `"scheduled wakeup"` at `skills/manage-issue/SKILL.md:389-393`, immediately preceding the carve-out sentence at 394-396 this issue edits. No test asserts the carve-out sentence itself, but a reflow of that paragraph (vs. an append-only edit) risks breaking this test — verify after editing. [Agent 3 finding]
 - `scripts/tests/test_enh494_skill_companions.py` (`SKILL_LINE_LIMIT = 500`, `test_no_oversized_skills`) — `skills/manage-issue/SKILL.md` is currently 497/500 lines (3 lines of headroom) and `skills/go-no-go/SKILL.md` is 481/500 (19 lines of headroom). If the recorded decision requires adding more than a couple of sentences (e.g. a full carve-out-explanation subsection for `go-no-go`, per this issue's own "Conventions in Force" note that no such subsection precedent exists yet), `manage-issue/SKILL.md` will trip this test and require companion-file extraction (ENH-494 pattern) to stay compliant. [Agent 3 finding]
+- `scripts/tests/test_skill_expander.py:292-313` (`TestExpandSkillAgainstRealManageIssue`) — expands the real `manage-issue/SKILL.md` and asserts no unresolved `{{config.` / `$ARGUMENTS` tokens. The `:367` restatement must keep the `{{config.project.run_cmd}}` interpolation (and the `:394-396` carve-out sentence must not introduce a new template token), or this test fails — the one new may-break risk beyond the BUG-2408 literals. [Agent 3 finding]
+- `scripts/tests/test_manage_issue_changelog_gate.py:16` (`SKILL_FILE`) and `scripts/tests/test_feat1896_skill_bridges.py:14` (`GO_NO_GO_SKILL`) — read the two changed files' real content (changelog-gate/Deviations prose; go-no-go frontmatter + Step-3f bridge). Both target regions outside this issue's edit scope (go-no-go is unchanged per AC4), so they are safe — listed so a reflow beyond the carve-out region is caught. [Agent 3 finding]
+- `scripts/tests/test_issue_manager.py:1310-1316` (`TestFinalizeRetryPrompt::test_prompt_forbids_backgrounding_the_test_run`, BUG-3058) — asserts the Python constant `FINALIZE_RETRY_PROMPT` in `scripts/little_loops/issue_manager.py` forbids backgrounding the final test run. Code-side sibling of the same foreground-only rule: it corroborates that the rule already has Python-level enforcement on the finalize-retry path (`issue_manager.py:1425`), independent of this skill's prose — the skill edit changes nothing about that enforcement. [Agent 3 finding]
 
 ### Documentation
 - `docs/claude-code/settings.md:772` — vendored flag scope description, confirmed accurate by FEAT-3076's findings (covers both Bash and Agent-tool `run_in_background`).
@@ -262,11 +318,23 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/COMMANDS.md:396` — the `/ll:go-no-go` command description paraphrases the concurrent-launch carve-out ("Launches two isolated background agents concurrently — one arguing for implementation, one against..."). This was flagged as conditionally stale if the carve-out were retired; **under the recorded decision it is not retired, so this line stays accurate and needs no edit**. No equivalent paraphrase of the `manage-issue` smoke-test carve-out exists elsewhere. [Agent 2 finding, disposition updated]
 
+### Behavior Parity
+
+| Artifact | Behavior | Disposition | Notes |
+|---|---|---|---|
+| `skills/manage-issue/SKILL.md:367` | Smoke-test step grants blanket permission to background long-running processes via `run_in_background` | CHANGED | Restated as shell-level `cmd & pid=$!; sleep N; kill $pid` in a single foreground `Bash` call — the start/wait/terminate capability is preserved, verified empirically (probes C1/C2, `postmortems/feat-3077-verify/`) |
+| `skills/manage-issue/SKILL.md:394-396` | Carve-out sentence exempting the `run_cmd` smoke test from the foreground-only rule | CHANGED | Updated to name the shell-level pattern; must not reflow lines 389-393 (BUG-2408 literals `"foreground-blocking"` / `"scheduled wakeup"`) |
+| `skills/go-no-go/SKILL.md:172-176,272-278` | Concurrent background launch of pro/con agents, then a foreground judge | PRESERVED | Not reachable under the `automation_profile` gate today (AC1/AC4); degrades to sequential-but-correct if ever reached |
+
 ## Program Design
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
+
+_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
+
+- **Correction — `build_streaming()` signature anchor is `:299-310`, not `:297`.** `def build_streaming(` is at `scripts/little_loops/host_runner.py:299`, `automation_profile: str | None = None` at `:308`; `:297` is inside `detect()` (`return shutil.which("claude") is not None`). Verified 299-369: no `disable_background_tasks` parameter exists. The substantive Program Design claim (takes `automation_profile=None`, unmodified by this issue) is unchanged. FEAT-3078's Program Design carries the same `:297` drift and should be corrected there too. [codebase-analyzer]
 
 ### Types
 N/A — this issue produces no new data types; it records a policy decision and edits two skill markdown files.
@@ -317,6 +385,10 @@ is auditable rather than re-litigated.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-07T20:21:09 - `88962bfb-2ed2-4d72-ace5-bef5a2160a60.jsonl`
+- `/ll:wire-issue` - 2026-08-07T20:17:00 - `23d10d83-6e93-491c-a17a-3b2dcb204ab4.jsonl`
+- `/ll:refine-issue` - 2026-08-07T20:05:20 - `cf7d98cd-deb3-45fb-9bdf-d58c491714ab.jsonl`
+- `/ll:refine-issue` - 2026-08-07T18:30:38 - `9d4f2cf6-011f-4121-9477-800003034eb9.jsonl`
 - `/ll:confidence-check` - 2026-08-06T20:25:05 - `e7f6993a-a8d5-48b8-8d90-4645279ad635.jsonl`
 - `/ll:confidence-check` - 2026-08-06T18:48:21 - `4dc5300f-8d50-475c-a216-8456e00992c3.jsonl`
 - `/ll:verify-issues` - 2026-08-06T18:46:47 - `8cd4c2d4-8653-49ff-88ec-c6c2607521de.jsonl`
