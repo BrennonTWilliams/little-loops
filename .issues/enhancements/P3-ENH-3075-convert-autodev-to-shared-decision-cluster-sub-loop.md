@@ -83,27 +83,69 @@ _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 
 ## Expected Behavior
 
-`autodev.yaml` reaches the same behavior through `loop: oracles/resolve-decision` call states, with
-`mark_decide_ran`, `rerun_confidence_after_decide`, `recheck_after_decide`, and
-`record_decision_unresolved` remaining caller-side. The inline cluster states are deleted from
-`autodev.yaml`'s own `states:` block.
+`autodev.yaml` reaches the same behavior through two `loop: oracles/resolve-decision` call states,
+with `mark_decide_ran`, `rerun_confidence_after_decide`, `recheck_after_decide`, and
+`record_decision_unresolved` remaining caller-side, plus one new `check_decide_rate_limited` gate on
+the failure edge. The inline cluster states — including `assert_decision_cleared` — are deleted from
+`autodev.yaml`'s own `states:` block, and `recheck_after_decide.on_yes` retargets to
+`implement_current`.
 
 ## Proposed Solution
 
 ### Conversion steps
 
-1. Replace the four inline blocks with `loop: oracles/resolve-decision` call states binding
-   `with: {issue_id: "${captured.input.output}"}`. Route `on_success` → `mark_decide_ran` and
-   `on_failure` → `record_decision_unresolved`.
-2. Retarget the four probe-first entry points (`:236`, `:491`, `:526`, `:1218`) to the call state.
-3. Bind `skip_probe: "true"` at `triage_outcome_failure` (`:1236`) only — this is the fifth entry
-   point BUG-3065's `route_entry` demultiplexer exists to serve.
+1. Replace the four inline blocks with **exactly two** `loop: oracles/resolve-decision` call states
+   (see `### Two call states, not one` below), each binding
+   `with: {issue_id: "${captured.input.output}"}` and declaring `capture:`. Route `on_success` →
+   `mark_decide_ran`, and `on_failure` **and `on_error`** → the `check_decide_rate_limited` gate
+   (Option A), which falls through to `record_decision_unresolved`.
+2. Retarget the four probe-first entry points (`:236`, `:491`, `:526`, `:1246`) to the probe-first
+   call state.
+3. Bind `skip_probe: "true"` on the second call state, entered only from `triage_outcome_failure`
+   (`:1264`) — this is the fifth entry point BUG-3065's `route_entry` demultiplexer exists to serve.
 4. Delete `check_decision_after_decide_error` (`:627-637`); its ENH-2717 short-circuit collapses into
    the sub-loop's `assert_decision_cleared`. See BUG-3065's `### The extraction boundary` for the one
    accepted behavioral difference.
-5. Rename the options-deposited marker to the per-issue form at all **three** live sites (below), so
-   `autodev` and the sub-loop share one marker rather than each keeping its own.
-6. Handle the rate-limit discrimination problem (below) and the `assert` reorder consequence (below).
+5. Delete `assert_decision_cleared` (`:687-699`) from `autodev.yaml` as well — it moves into the
+   sub-loop — and retarget its only inbound edge, `recheck_after_decide.on_yes` (`:683`), to
+   `implement_current` (the target `assert_decision_cleared.on_no`/`on_error` already used). See
+   `### Deleting assert_decision_cleared dangles recheck_after_decide.on_yes` below.
+6. Rename the options-deposited marker to the per-issue form at all **three** live functional sites
+   (below), so `autodev` and the sub-loop share one marker rather than each keeping its own, and
+   reword the three stale comment sites.
+7. Handle the rate-limit discrimination problem (below) and the `assert` reorder consequence (below).
+
+### Two call states, not one
+
+`with:` is bound **per state**, so `triage_outcome_failure`'s `skip_probe: "true"` cannot share a
+call state with the four probe-first entries. The conversion produces exactly two:
+
+| Call state | Entered from | `with:` |
+|---|---|---|
+| `resolve_decision` | `check_decision_at_dequeue` `:236`, `check_decision_after_refine` `:491`, `decide_current.on_yes` `:526`, `check_decision_before_size_review.on_yes` `:1246` | `issue_id` only (`skip_probe` defaults `"false"`) |
+| `resolve_decision_direct` | `triage_outcome_failure.on_yes` `:1264` | `issue_id` + `skip_probe: "true"` |
+
+Both carry identical outcome routing. Model them on `refine-to-ready-issue.yaml:204-215`
+(`resolve_decision_mid_refine`), the only in-tree call-site precedent — note it declares
+`capture:` **and `on_error:`** alongside `on_success`/`on_failure`. `on_error` fires when the child
+exits with `terminated_by == "error"` (`executor.py:1066-1072`), which is a distinct edge from the
+`failed` terminal; routing it anywhere other than `check_decide_rate_limited` would let a child that
+died after a 429 skip the marker check and defer the issue anyway, reintroducing the exact failure
+Option A exists to prevent. Route `on_failure` and `on_error` to the same gate.
+
+### Deleting `assert_decision_cleared` dangles `recheck_after_decide.on_yes`
+
+`assert_decision_cleared` moves into the sub-loop, so `autodev.yaml`'s copy (`:687-699`) is deleted —
+but it has exactly one inbound reference in the file, `recheck_after_decide.on_yes` (`:683`,
+grep-verified 2026-08-07). Leaving it unretargeted is a dangling edge; retarget it to
+`implement_current`, which is what `assert_decision_cleared.on_no` and `.on_error` already route to
+today, so the score-passing path is unchanged end to end.
+
+Consequence for the Preserved-behaviors list: `recheck_after_decide` is **not** literally unchanged —
+its `on_no: snap_and_size_review` and threshold logic survive, but its `on_yes` target changes from
+`assert_decision_cleared` to `implement_current`. That is the mechanical half of the accepted assert
+reorder, not a second behavior change: the flag re-verify still happens, just earlier, inside the
+sub-loop.
 
 ### Marker rename — three sites, and a `$CURRENT` trap
 
@@ -135,10 +177,27 @@ per-issue filename-scoped markers "self-isolate" and are deliberately **not** cl
 is intentional — those markers gate one-shot-per-issue behavior, this one gates a retry that should
 be available again on re-dequeue. Say so in the comment.
 
-Also sweep the non-functional references that go stale: `rn-remediate.yaml`'s parity copy and its
-cross-reference comment, `test_builtin_loops.py` / `test_autodev_decision_gate.py` assertions on the
-literal string, and `docs/guides/LOOPS_REFERENCE.md`'s cluster prose. Grep the literal before
-editing; a missed read site silently disables the write-once bound.
+Also sweep the non-functional references that go stale. Grep the literal before editing; a missed
+**read** site silently disables the write-once bound. Full current inventory (grep-verified
+2026-08-07) — note three of these are *comments*, and one lives in the sub-loop, so the sweep is not
+confined to `autodev.yaml`:
+
+| Site | Kind | Disposition |
+|---|---|---|
+| `autodev.yaml:105` | functional (clear) | rewrite to the per-issue path (AC 4) |
+| `autodev.yaml:540` | functional (read) | deleted with the inline block |
+| `autodev.yaml:573` | functional (write) | deleted with the inline block |
+| `autodev.yaml:230` | comment in `check_decision_at_dequeue` | reword — names the flat marker `dequeue_next` clears |
+| `autodev.yaml:2047` | comment, "mirroring `assert_decision_cleared` / `check_decision_after_decide_error`'s idiom" | reword — both named states no longer exist in this file |
+| `oracles/resolve-decision.yaml:88` | comment (BUG-3065 rationale for the per-issue name) | reword to past tense; do **not** delete the rationale |
+| `test_builtin_loops.py:6712`, `:6734` | assertions on the literal | rewrite per the Tests section |
+| `docs/guides/LOOPS_REFERENCE.md:1058` | cluster prose | rewrite per the Documentation section |
+
+`rn-remediate.yaml` is **not** on this list — it uses its own
+`decide_options_deposited_${context.issue_id}.txt` marker, not the autodev literal (see the
+Codebase Research Findings correction below). Its cross-reference is the parity comment in
+`autodev.yaml`'s `check_decision_decidable` (`:540` region), which points at rn-remediate's *shape*;
+that comment is deleted with the block and its staleness is picked up by [[ENH-3090]].
 
 ### Rate-limit exhaustion cannot propagate out of a `loop:` state
 
@@ -193,14 +252,27 @@ which will immediately hit the same 429 on the next issue and walk the whole que
 > the inherited `${context.run_dir}` and the marker-handshake idiom this cluster already
 > uses in four other places. The asymmetry in cost is large and one-sided.
 >
-> **Implementation shape:** `oracles/resolve-decision.yaml` writes
-> `${context.run_dir}/decide-rate-limited-${context.issue_id}` immediately before routing to
-> its `failed` terminal on `on_rate_limit_exhausted` (both sites — `deposit_options` and
-> `run_decide`). Autodev's `on_failure` routes to a new `check_decide_rate_limited` gate
-> that tests for the file: present → terminate the run (preserving today's
-> `on_rate_limit_exhausted: done` semantics), absent → `record_decision_unresolved` as
-> before. The marker is per-issue and lives under the run dir, so it needs no explicit
-> clearing.
+> **Implementation shape.** `on_rate_limit_exhausted` is a *routing target*
+> (`executor.py:3110`: `target = state.on_rate_limit_exhausted or state.on_error`), so there
+> is no "write a marker before it" — the write needs its own state. Concretely:
+>
+> - Add `mark_decide_rate_limited` to `oracles/resolve-decision.yaml`: `action_type: shell`,
+>   `action: printf '1' > ${context.run_dir}/decide-rate-limited-${context.issue_id}`,
+>   `next: failed`, `on_error: failed`.
+> - Retarget **both** existing `on_rate_limit_exhausted: failed` sites to it —
+>   `deposit_options` (`resolve-decision.yaml:83`) and `run_decide` (`:156`).
+> - Autodev's call-state `on_failure` **and `on_error`** route to a new
+>   `check_decide_rate_limited` gate that tests for the file: present → terminate the run
+>   (preserving today's `on_rate_limit_exhausted: done` semantics), absent →
+>   `record_decision_unresolved` as before.
+>
+> The marker is per-issue and lives under the run dir, so it needs no explicit clearing.
+>
+> Two existing guards must stay green through this: `TestResolveDecisionOracle.
+> test_no_loop_state_declares_on_rate_limit_exhausted_done` (`test_builtin_loops.py:2362`)
+> — still satisfied, since neither site routes to `done` — and
+> `TestBuiltinLoopFiles.test_no_failure_edge_routes_to_a_success_terminal`, which is why
+> `mark_decide_rate_limited.next` must be `failed` and not `done`.
 
 ### The `assert_decision_cleared` reorder loses a `snap_and_size_review` escape
 
@@ -246,7 +318,8 @@ improved by decomposition), but it is a **behavior change on a guarded path**, n
 Everything in BUG-3065's `### Behavior Parity` table marked `autodev` stays caller-side and must
 survive: `mark_decide_ran` → `autodev-decide-ran` (ENH-1415's re-entry short-circuit),
 `rerun_confidence_after_decide`, `recheck_after_decide` (reads `${context.readiness_threshold}`,
-routes `on_no: snap_and_size_review`), and `record_decision_unresolved`'s defer +
+routes `on_no: snap_and_size_review` — but see `### Deleting assert_decision_cleared` for its one
+required change, `on_yes` → `implement_current`), and `record_decision_unresolved`'s defer +
 `DECISION_UNRESOLVED` ledger entry that `auto-refine-and-implement.yaml:840` consumes.
 
 `deposit_options`'s `on_partial: record_options_deposited` (`:564`) must survive the move — BUG-3065
@@ -262,10 +335,26 @@ After BUG-3065, `refine-to-ready-issue` also calls the decision sub-loop, and `a
   that way), but stop treating it as the primary resolution path.
 - `mark_decide_ran` is caller-side, so a decide performed **inside** `refine-to-ready-issue`'s nested
   sub-loop call does not set `autodev-decide-ran`. If `recheck_after_size_review` later routes back to
-  `decide_current`, ENH-1415's short-circuit will not fire and decide could run a second time. The
-  `assert_decision_cleared` / `check-decidable` guards make that a no-op rather than a correctness
-  bug, but confirm it — or have the sub-loop write the `autodev-decide-ran` marker itself, which the
-  inherited `run_dir` makes possible.
+  `decide_current`, ENH-1415's short-circuit will not fire and decide could run a second time.
+
+  > **Decided 2026-08-07 (pre-implementation review): leave `mark_decide_ran` caller-side.
+  > Do not have the sub-loop write `autodev-decide-ran`.**
+  >
+  > The second decide is already a no-op on every path. `decide_current` (`autodev.yaml:520`)
+  > re-checks `decision_needed` before routing, so a cleared flag exits to
+  > `implement_current` without entering the sub-loop at all; if the flag *is* still armed,
+  > a second decide is the correct action, not a wasted one. Failing both, the sub-loop's
+  > `check_decision_decidable` marker short-circuit and `assert_decision_cleared` bound the
+  > cost to one `run_decide` call.
+  >
+  > Writing `autodev-decide-ran` from the child would couple a shared oracle to one caller's
+  > marker vocabulary — `refine-to-ready-issue` and (later) `rn-remediate` would inherit an
+  > `autodev-`prefixed side effect that means nothing to them — which is precisely the
+  > caller/cluster coupling the extraction exists to remove. The `run_dir` being inherited
+  > makes it *possible*, not *right*.
+  >
+  > Verification is by inspection, not a new state: confirm `decide_current`'s flag re-check
+  > guards the re-entry path (AC 13). No change to `oracles/resolve-decision.yaml` for this.
 - No infinite nesting: the decision sub-loop is a leaf and never calls back. There is no depth cap in
   `executor.py` (`_depth` at `:409` is used only for event forwarding), so verify this by inspection
   rather than relying on an engine guarantee.
@@ -303,22 +392,25 @@ Replaced artifact: `autodev.yaml`'s inline decision cluster (states moved into `
 | Write-once options-deposited marker (`:573`) | sub-loop | **CHANGED** — per-issue name `decide-options-deposited-${context.issue_id}`; `dequeue_next` clears it on re-dequeue (AC 4, bareword `$CURRENT`) |
 | `check_open_question_progress` stall gate (ENH-2446, `:580-608`) | sub-loop | **CHANGED** — becomes functional: `evaluate.history_file` declared at `resolve-decision.yaml:132-133`, whereas the inline copy's read path was inert (BUG-3065 `### Open-question stall gate is inert`) |
 | `run_decide` `/ll:decide-issue --auto` + pruning profile (`:610-625`) | sub-loop | PRESERVED |
-| `on_rate_limit_exhausted: done` on `run_decide`/`deposit_options` (`:625`, `:566`) | sub-loop + autodev | **CHANGED** — sub-loop routes `failed`; Option A's `decide-rate-limited-<issue_id>` marker gates autodev's `on_failure` to terminate the run rather than defer |
+| `on_rate_limit_exhausted: done` on `run_decide`/`deposit_options` (`:625`, `:566`) | sub-loop + autodev | **CHANGED** — sub-loop routes to `mark_decide_rate_limited` → `failed`; Option A's `decide-rate-limited-<issue_id>` marker gates autodev's `on_failure`/`on_error` to terminate the run rather than defer |
 | `assert_decision_cleared` post-decide flag re-verify (BUG-2595, `:687-699`) | sub-loop | **REORDERED** — directly after `run_decide`; accepted difference (AC 7) |
 | `check_decision_after_decide_error` short-circuit on still-armed flag (ENH-2717, `:627-637`) | — | **DELETED** — collapses into `assert_decision_cleared` |
 | `mark_decide_ran` → `autodev-decide-ran` marker (ENH-1415, `:639-648`) | autodev | PRESERVED — caller-side |
 | `rerun_confidence_after_decide` re-score (`:650-667`) | autodev | PRESERVED — caller-side |
 | `recheck_after_decide` threshold re-check + `on_no: snap_and_size_review` (`:669-685`) | autodev | **CHANGED** — caller-side, but the `snap_and_size_review` escape for still-armed-plus-sub-threshold issues is removed (accepted, AC 7, ENH-1415) |
+| `recheck_after_decide.on_yes: assert_decision_cleared` (`:683`) | autodev | **CHANGED** — retargeted to `implement_current` (assert's own `on_no`/`on_error` target) since the state is deleted; mechanical half of the assert reorder, score-passing path unchanged end to end (AC 1, AC 2) |
+| Call-state `on_error` (child `terminated_by == "error"`) | autodev | **NEW** — no inline analogue; routes to `check_decide_rate_limited` alongside `on_failure` so a child that dies after a 429 cannot skip the marker check |
 | `record_decision_unresolved` defer + `DECISION_UNRESOLVED` ledger (`:701-724`) | autodev | PRESERVED — caller-side; `auto-refine-and-implement.yaml:848` consumes |
 | `triage_outcome_failure` direct `run_decide` route (`:1250-1266`) | autodev | PRESERVED — via `skip_probe: "true"` binding (AC 3) |
 
 ### Files to Modify
 
 - `scripts/little_loops/loops/autodev.yaml` — the conversion itself.
-- `scripts/little_loops/loops/oracles/resolve-decision.yaml` — adds the rate-limit marker
-  write (Option A, decided 2026-08-06) before both `on_rate_limit_exhausted: failed` routes
-  (`deposit_options`, `run_decide`); also modified if the `autodev-decide-ran` write is added
-  to the child.
+- `scripts/little_loops/loops/oracles/resolve-decision.yaml` — adds the `mark_decide_rate_limited`
+  state (Option A, decided 2026-08-06) and retargets both `on_rate_limit_exhausted: failed` routes
+  (`deposit_options` `:83`, `run_decide` `:156`) to it; also rewords the stale
+  `autodev-decide-options-deposited` reference in `record_options_deposited`'s comment (`:88`). No
+  `autodev-decide-ran` write — rejected 2026-08-07.
 
 ### Dependent Files (Callers/Importers)
 
@@ -380,9 +472,17 @@ state names inside `autodev.yaml`'s own `states:` dict and **will break**:
   corrected in the Codebase Research Findings below. `CURRENT` is a plain bash local, so the
   braced-and-doubled form would push the literal `${CURRENT}` through FSM interpolation and
   raise "expected namespace.path". Assert the bareword form.)
-- The rate-limit marker handshake (Option A, decided below): the sub-loop writes
-  `decide-rate-limited-<issue_id>` before exiting `failed`, and autodev's `on_failure` gate
-  reads it and terminates the run rather than deferring the issue.
+- The rate-limit marker handshake (Option A, decided below): `resolve-decision.yaml`'s
+  `mark_decide_rate_limited` writes `decide-rate-limited-<issue_id>` and routes `next: failed`,
+  both `on_rate_limit_exhausted` sites target it, and autodev's `check_decide_rate_limited`
+  gate reads it and terminates the run rather than deferring the issue (both branches).
+- Exactly two `loop: oracles/resolve-decision` call states in `autodev.yaml`, each declaring
+  `on_error` with the same target as its `on_failure` (`check_decide_rate_limited`) — the
+  regression guard for a child that dies with `terminated_by == "error"` after a 429.
+- `recheck_after_decide.on_yes == "implement_current"` and `assert_decision_cleared` absent
+  from `autodev.yaml`'s `states:` — the dangling-edge guard for AC 1/AC 2. Belongs alongside
+  the existing `test_recheck_after_decide_on_no_routes_to_snap_and_size_review`
+  (`test_builtin_loops.py:6838` region).
 
 **Auto-covered, no new test needed:** `TestBuiltinLoopReferencesResolve.test_all_static_loop_references_resolve`
 (~`:12963`) fails on an unresolvable `loop:` target; `TestBuiltinLoopFiles` (`:29-38`) runs
@@ -476,8 +576,11 @@ _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 
 ## Scope Boundaries
 
-**In scope:** `autodev.yaml`'s conversion to the sub-loop, deletion of its inline cluster states and
-`check_decision_after_decide_error`, the options-deposited marker rename at its three sites, the
+**In scope:** `autodev.yaml`'s conversion to the sub-loop, deletion of its inline cluster states
+including `check_decision_after_decide_error` and `assert_decision_cleared` (with the
+`recheck_after_decide.on_yes` → `implement_current` retarget that deletion forces), the
+`check_decide_rate_limited` gate, the options-deposited marker rename at its three functional sites
+plus the three comment sites, the
 rate-limit and assert-reorder design decisions on the `autodev` path, the associated test rewrite in
 `test_autodev_decision_gate.py` and `test_builtin_loops.py`, and the `autodev` sections of
 `LOOPS_REFERENCE.md`.
@@ -490,10 +593,13 @@ rate-limit and assert-reorder design decisions on the `autodev` path, the associ
   duplicate once this lands; file a follow-up rather than widening this change, since converting it
   means re-verifying a separate remediation loop's routing on top of an already Medium-High-risk
   rewrite.
-- Fixing `recursive-refine.yaml:236`'s dead `on_rate_limit_exhausted` config. Note it in a comment
-  where noticed; removing it is a separate, unrelated correctness cleanup.
-- Any change to the sub-loop's contract itself beyond the two additions this conversion may require
-  (the rate-limit marker under Option A, and optionally writing `autodev-decide-ran` from the child).
+- Fixing `recursive-refine.yaml:251`'s dead `on_rate_limit_exhausted` config (`:236` in earlier
+  drafts; the deadness is now documented inline at `:239-250`). Note it in a comment where noticed;
+  removing it is a separate, unrelated correctness cleanup.
+- Any change to the sub-loop's contract itself beyond the one addition this conversion requires: the
+  `mark_decide_rate_limited` state + marker under Option A, plus rewording the stale comment at
+  `resolve-decision.yaml:88`. Writing `autodev-decide-ran` from the child is explicitly **rejected**
+  (decided 2026-08-07, `### Cross-nesting check`).
 
 ## Acceptance Criteria
 
@@ -501,36 +607,56 @@ _Added 2026-08-06 during pre-implementation review — this issue previously had
 was the largest gap given its Large effort and Medium-High risk._
 
 1. `autodev.yaml` contains no `check_decision_decidable`, `deposit_options`,
-   `record_options_deposited`, `check_open_question_progress`, `run_decide`, or
-   `check_decision_after_decide_error` state in its own `states:` block — all four inline
-   blocks are replaced by `loop: oracles/resolve-decision` call states.
+   `record_options_deposited`, `check_open_question_progress`, `run_decide`,
+   `check_decision_after_decide_error`, or `assert_decision_cleared` state in its own
+   `states:` block — all four inline blocks are replaced by `loop: oracles/resolve-decision`
+   call states.
 2. `mark_decide_ran`, `rerun_confidence_after_decide`, `recheck_after_decide`, and
-   `record_decision_unresolved` remain caller-side in `autodev.yaml` and are unchanged in
-   behavior. `record_decision_unresolved` still defers and still writes the
-   `DECISION_UNRESOLVED` ledger entry that `auto-refine-and-implement.yaml:848` consumes
-   (the count line moved from `:840`; count helper at `:710`).
-3. All five entry points route to the call state. The four probe-first entries
-   (`check_decision_at_dequeue` `:236`, `check_decision_after_refine` `:491`,
-   `decide_current.on_yes` `:526`, `check_decision_before_size_review.on_yes` `:1246`)
-   bind no `skip_probe` (relying on the `"false"` default);
-   `triage_outcome_failure.on_yes: run_decide` (`:1264`) binds `skip_probe: "true"`. A
-   test asserts this asymmetry explicitly — it is the only reason `route_entry` exists.
+   `record_decision_unresolved` remain caller-side in `autodev.yaml`, with exactly one
+   change among them: `recheck_after_decide.on_yes` retargets from the now-deleted
+   `assert_decision_cleared` to `implement_current` (`:683`). Its threshold logic and
+   `on_no: snap_and_size_review` are untouched, and no dangling reference to
+   `assert_decision_cleared` remains in the file. `record_decision_unresolved` still defers
+   and still writes the `DECISION_UNRESOLVED` ledger entry that
+   `auto-refine-and-implement.yaml:848` consumes (the count line moved from `:840`; count
+   helper at `:710`).
+3. `autodev.yaml` declares **exactly two** `loop: oracles/resolve-decision` call states.
+   The four probe-first entries (`check_decision_at_dequeue` `:236`,
+   `check_decision_after_refine` `:491`, `decide_current.on_yes` `:526`,
+   `check_decision_before_size_review.on_yes` `:1246`) all route to the first, which binds
+   no `skip_probe` (relying on the `"false"` default); `triage_outcome_failure.on_yes`
+   (`:1264`) routes to the second, which binds `skip_probe: "true"`. A test asserts this
+   asymmetry explicitly — it is the only reason `route_entry` exists. Both call states
+   declare `capture:` and route `on_success` → `mark_decide_ran` and **both** `on_failure`
+   and `on_error` → `check_decide_rate_limited`; a test asserts `on_error` is declared and
+   shares `on_failure`'s target on both.
 4. `dequeue_next`'s marker clear targets the per-issue path
    `${context.run_dir}/decide-options-deposited-$CURRENT` using **bareword `$CURRENT`**, not
    `${captured.input.output}` (which holds the *previous* iteration's ID at that point) and
    not `$${CURRENT}`. A test asserts the exact form. The accompanying comment explains why
    this marker is cleared when the neighbouring per-issue markers deliberately are not.
 5. The literal `autodev-decide-options-deposited` appears nowhere in
-   `scripts/little_loops/` or `scripts/tests/` after the conversion — with no carve-out:
-   `rn-remediate.yaml`'s inline copy uses its own
+   `scripts/little_loops/` or `scripts/tests/` after the conversion — **including comments**,
+   which are reworded rather than deleted where they carry rationale. The full site
+   inventory is in `### Marker rename` above; note three comment sites (`autodev.yaml:230`,
+   `autodev.yaml:2047`, `oracles/resolve-decision.yaml:88`) that a functional-only sweep
+   would miss, and that `resolve-decision.yaml:88`'s BUG-3065 rationale must survive in
+   reworded form. No carve-out for `rn-remediate.yaml`: its inline copy uses its own
    `decide_options_deposited_${context.issue_id}.txt` marker, not the autodev literal.
    Grep-enforceable — a missed *read* site silently disables ENH-2443's write-once bound.
-6. **Rate limit (Option A):** `oracles/resolve-decision.yaml` writes
-   `${context.run_dir}/decide-rate-limited-${context.issue_id}` before both
-   `on_rate_limit_exhausted: failed` routes, and `autodev.yaml`'s `on_failure` path gates on
-   that marker — present terminates the run, absent falls through to
-   `record_decision_unresolved`. A test covers both branches. Without the present-branch,
-   429 exhaustion walks the whole queue into deferral.
+6. **Rate limit (Option A):** `oracles/resolve-decision.yaml` gains a
+   `mark_decide_rate_limited` state that writes
+   `${context.run_dir}/decide-rate-limited-${context.issue_id}` and routes `next: failed`
+   (`on_error: failed`), and **both** existing `on_rate_limit_exhausted: failed` routes
+   (`deposit_options` `:83`, `run_decide` `:156`) target it instead of `failed` directly —
+   `on_rate_limit_exhausted` is a routing target, so the marker cannot be written "before"
+   it without its own state. `autodev.yaml`'s `check_decide_rate_limited` gate, reached from
+   both call states' `on_failure` and `on_error`, tests for that marker: present terminates
+   the run, absent falls through to `record_decision_unresolved`. A test covers both
+   branches. Without the present-branch, 429 exhaustion walks the whole queue into deferral.
+   `TestResolveDecisionOracle.test_no_loop_state_declares_on_rate_limit_exhausted_done`
+   (`test_builtin_loops.py:2362`) and
+   `TestBuiltinLoopFiles.test_no_failure_edge_routes_to_a_success_terminal` both stay green.
 7. **Assert reorder:** the loss of the `recheck_after_decide.on_no → snap_and_size_review`
    escape for still-armed-plus-sub-threshold issues is recorded as an accepted difference in
    the Behavior Parity table, referencing ENH-1415. No caller-side score branch is added.
@@ -547,10 +673,20 @@ was the largest gap given its Large effort and Medium-High risk._
     omissions" paragraph, the "Outcome failure triage" paragraph, and the "Decidability gate
     parity" paragraph — the last of which is *already* inaccurate against
     `triage_outcome_failure`'s direct route and must be corrected regardless.
-11. A manual `ll-loop run autodev` completes at least one issue end to end. There is no
-    automated end-to-end coverage for this path, so structural tests alone do not verify
-    the conversion.
+11. **Operator-owned, not implementation-blocking:** a manual `ll-loop run autodev` completes
+    at least one issue end to end. There is no automated end-to-end coverage for this path,
+    so structural tests alone do not verify the conversion — but this criterion cannot be
+    satisfied by an automated implementation run (`/ll:manage-issue`, `ll-auto`). Treat it as
+    a post-merge verification step owned by the operator: the implementation run satisfies
+    AC 1-10 and AC 12-13 and may close on those, recording AC 11 as pending. Do **not** stall
+    the loop waiting on it, and do not mark it satisfied without an actual run.
 12. `python -m pytest scripts/tests/` exits 0.
+13. **Cross-nesting:** `autodev-decide-ran` stays caller-side — `oracles/resolve-decision.yaml`
+    does not write it (decided 2026-08-07, `### Cross-nesting check`). Verified by inspection
+    that `decide_current` (`autodev.yaml:520`) still re-checks `decision_needed` before
+    routing into the call state, so a decide performed inside `refine-to-ready-issue`'s
+    nested call cannot cause a wasted second decide on the `recheck_after_size_review` →
+    `decide_current` re-entry path.
 
 ## Impact
 

@@ -3,7 +3,7 @@ id: ENH-3094
 type: ENH
 title: Collapse the per-call automation kwargs into a single AutomationContext dataclass
 priority: P3
-status: open
+status: done
 discovered_date: 2026-08-07
 discovered_by: pre-implementation-review
 captured_at: '2026-08-07T00:00:00Z'
@@ -19,12 +19,13 @@ relates_to:
 - FEAT-3033
 - ENH-2714
 verify_verdict: VALID
-confidence_score: 80
+confidence_score: 70
 outcome_confidence: 69
 score_complexity: 9
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 10
+size: Very Large
 ---
 
 # ENH-3094: Collapse the per-call automation kwargs into a single AutomationContext dataclass
@@ -188,6 +189,11 @@ Decided by `/ll:decide-issue` on 2026-08-07.
 
 _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 
+_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
+
+- **Two of the 7 `build_streaming()` implementations never evaluate `automation_profile` at all**: `OpenCodeRunner.build_streaming()` (`host_runner.py:797-812`) and `PiRunner.build_streaming()` (`host_runner.py:871-886`) both declare `automation_profile: str | None = None` for Protocol conformance, but each unconditionally `raise HostNotConfigured(...)` before any parameter is read — so these two consumers require no behavioral verification beyond "the collapsed signature still compiles," unlike the 5 real runners that call `_apply_automation_env()`.
+- **`CapabilityNotSupported` is a distinct, unrelated warning convention** (`host_runner.py:108-116`): a `UserWarning` subclass emitted via `warnings.warn(msg, CapabilityNotSupported, stacklevel=2)` when a non-Claude runner receives a parameter it can't honor (e.g. `CodexRunner` warns on `workspace_root`/`tools`, `GeminiRunner` on `agent`/`tools`/`workspace_root`, `OmpRunner` on `agent`/`workspace_root`, `KimiRunner` on `tools`/an `agent`+`resume` combo). This is a capability-mismatch signal, not a deprecated-kwarg signal — it should not be reused or confused with the deprecated pass-through shim this issue proposes; no existing warning class in this codebase covers the deprecated-kwarg case.
+
 ### Files to Modify
 - `scripts/little_loops/host_runner.py` — add `AutomationContext` dataclass alongside `HostInvocation`; replace `automation_profile` kwarg with `automation: AutomationContext | None` in `HostRunner` Protocol (`:216-248`) and 7 concrete `build_streaming()` signatures; update `_apply_automation_env()` signature (`:1547`)
 - `scripts/little_loops/fsm/runners.py` — replace `automation_profile`/`idle_timeout` kwargs with `automation: AutomationContext | None` in `ActionRunner` Protocol (`:39-53`) and 2 implementations (`DefaultActionRunner:98-112`, `SimulationActionRunner:370-384`)
@@ -291,6 +297,13 @@ Unchanged in shape — the refactor narrows what flows through it:
 - When both an `automation` context and a legacy kwarg are supplied, the
   explicit context wins; log a deprecation warning rather than merging.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
+
+- **`_apply_automation_env()` current signature confirmed** (`host_runner.py:1547-1564`): `def _apply_automation_env(env: dict[str, str], automation_profile: str | None) -> None` — exactly two parameters today. Neither `idle_timeout` nor a `disable_background_tasks`-shaped parameter exists on this function yet; the collapse to `automation: AutomationContext | None` is a real signature change here, not just at the Protocol boundary.
+- **`HostRunner.build_streaming()` Protocol's current parameter list** (`host_runner.py:216-227`): `prompt`, `working_dir`, `resume`, `agent`, `tools`, `model`, `automation_profile`, `workspace_root` — `automation_profile` sits between `model` and `workspace_root` in declaration order, useful for keeping the new `automation:` parameter's position stable across all 7 signatures during the mechanical edit.
+
 ## Implementation Steps
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -342,7 +355,37 @@ _Added by `/ll:confidence-check` on 2026-08-07_
 - Complexity — Breadth scores 0/12: the full site count (7 `build_streaming()` signatures, 4 `ActionRunner` declarations, ~15 test-mock signatures, 2+ doc mirrors) is 16+, so per-site risk is diluted across a wide sweep even though each site's substitution is largely mechanical.
 - Change Surface / Fanout Verifiability scores 10/25 (Pattern A, 6-10 callers): `worker_pool.py`, `testing.py`, `workflow_sequence/__init__.py`, `generate_skill_descriptions.py`, and the second `fsm/executor.py:2771-2774` forwarding site each need individual judgment about whether/how the `automation=` context applies — not a uniform regex-style substitution, so a site could be missed silently.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-07_
+
+**Readiness Score**: 70/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 69/100 → MODERATE
+
+### Concerns
+- Criterion 5 (Dependencies Satisfied) scores 0/20: the issue's own Decision Rationale (Option A, decided by `/ll:decide-issue`) explicitly sequences this after FEAT-3078, which remains `status: Open`. Starting implementation now reverts that decision to the rejected Option B — validating the deprecated pass-through shim against two known consumers instead of three, and hard-coding the BUG-3093 `idle_timeout`-only asymmetry (`issue_manager.py:826,893,1089`) the decision explicitly wanted FEAT-3078 to settle first. There is no `blocked_by` frontmatter entry recording this — the dependency is prose-only.
+- Criterion 4 (Issue Well-Specified) is capped at 10/20 by the ENH-3047 parity gate: `missing_behavior_parity` is non-empty for `scripts/little_loops/fsm/runners.py`, `scripts/little_loops/host_runner.py`, and `scripts/little_loops/subprocess_utils.py` — none has a `### Behavior Parity` subsection describing what the collapsed `automation=` parameter replaces.
+
+### Outcome Risk Factors
+- Complexity — Breadth scores 0/12: the full site count (7 `build_streaming()` signatures, 4 `ActionRunner` declarations, ~15 test-mock signatures, 2+ doc mirrors) is 16+, so per-site risk is diluted across a wide sweep even though each site's substitution is largely mechanical.
+- Change Surface / Fanout Verifiability scores 10/25 (Pattern A, 6-10 callers): `worker_pool.py`, `testing.py`, `workflow_sequence/__init__.py`, `generate_skill_descriptions.py`, and the second `fsm/executor.py:2771-2774` forwarding site each need individual judgment about whether/how the `automation=` context applies — not a uniform regex-style substitution, so a site could be missed silently.
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-08-07
+- **Reason**: Issue too large for single session (size score 11/11, Very Large)
+
+### Decomposed Into
+- ENH-3095: Add AutomationContext dataclass and thread it through HostRunner.build_streaming()
+- ENH-3096: Thread AutomationContext through ActionRunner.run() and fsm/executor.py (blocked_by ENH-3095)
+- ENH-3097: Thread AutomationContext through run_claude_command() and its callers (blocked_by ENH-3095)
+
 ## Session Log
+- `/ll:issue-size-review` - 2026-08-07T22:09:44 - `dec986a1-15de-4376-b5dd-5868a8d3e188.jsonl`
+- `/ll:confidence-check` - 2026-08-07T22:05:18 - `be718998-ce66-4f72-a7b2-40535fefcbf2.jsonl`
+- `/ll:verify-issues` - 2026-08-07T22:02:51 - `d20647a8-8c7e-46e5-b5ca-92b2eb790808.jsonl`
+- `/ll:refine-issue` - 2026-08-07T21:59:29 - `497d3fef-fc67-4e0f-ae59-8420a934aaa4.jsonl`
 - `/ll:confidence-check` - 2026-08-07T21:55:33 - `e94f284e-432d-4bf1-8e65-a9ce191c682e.jsonl`
 - `/ll:verify-issues` - 2026-08-07T21:53:01 - `42a03bea-7711-429c-a09f-f876f3f7e3d8.jsonl`
 - `/ll:wire-issue` - 2026-08-07T21:49:12 - `35e6ddfc-4405-4f10-9efb-d6c8092f14b6.jsonl`
