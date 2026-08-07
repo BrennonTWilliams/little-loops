@@ -18,7 +18,7 @@ relates_to:
 - BUG-3083
 - BUG-2864
 - BUG-2833
-confidence_score: 95
+confidence_score: 100
 outcome_confidence: 75
 score_complexity: 14
 score_test_coverage: 25
@@ -157,6 +157,35 @@ _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
 - Marker tokens (`IMPLEMENT_FAILED`, `LEARNING_GATE_BLOCKED`, `ENV_NOT_READY`, `GATE_FAILED_INFRA`) are hardcoded string literals at each Python `print(..., flush=True)` / YAML `echo` emission site — no shared constants module. `rn-remediate.yaml:913` keeps a manually-updated prose inventory comment listing all current tokens that would need a new `GATE_INFRA_FAILED` entry.
 - `rn-remediate.yaml`'s outcome-token routing (lines 945-1009) is a linear chain of single-pattern `output_contains` router states, most-specific-token-first, each `on_no` falling through to the next. `check_learning_gate` (`rn-remediate.yaml:603-619`) only greps for `LEARNING_GATE_BLOCKED` via the `ll_auto_learning_gate_check` fragment (`loops/lib/common.yaml:340`) — that fragment needs to recognize the new token before any router state can act on it. `rn-implement.yaml:754-1020` duplicates this routing chain independently and would need the same new state — there is no shared fragment for this specific chain today.
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/autodev.yaml` — a **third** routing chain beyond the two the plan names: its own `check_learning_gate` state (`:928-940`) consumes the shared `ll_auto_learning_gate_check` fragment. If the fragment is widened to also grep `GATE_INFRA_FAILED` while still emitting the single `GATE_BLOCKED` signal, autodev would route an infra failure to `mark_gate_blocked` (`:942-964`), which defers via `--reason gate_blocked` with the "unproven external-API deps / /ll:explore-api" message — the wrong reason/message for infra contention. Needs a distinct infra discriminator before the fragment is extended. [Agent 1 + Agent 2 finding]
+- Confirmed **not affected** (module-level `is_record_stale`/`format_nudge_message` imports, untouched by this change — do not edit): `scripts/little_loops/cli/ctx_stats.py:30`, `scripts/little_loops/cli/history_context.py:67`, `scripts/little_loops/cli/learning_tests.py:42`, `scripts/little_loops/learning_tests/release_gate.py:19`, `scripts/little_loops/hooks/install_learning_gate.py:31`, `scripts/little_loops/hooks/learning_tests_gate.py:28`, `scripts/little_loops/fsm/executor.py:1113`. [Agent 1 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_rn_implement.py:788-821` — `test_state_count_is_orchestrator_sized` asserts `state_count <= 46`; the new `route_rem_gate_infra_failed` router pushes it to 47 → **will break**; raise the ceiling (the docstring keeps a per-issue raise history). [Agent 3 finding]
+- `scripts/tests/test_rn_implement.py:1310-1318` — `test_route_rem_learning_gate_points_at_prove_state` asserts `router["on_no"] == "route_rem_gate_failed"`; inserting the infra router on that edge → **will break**. [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py:14360-14382` — `test_rn_implement_routes_learning_gate_before_failure` asserts the same `on_no == "route_rem_gate_failed"` edge → **will break**. [Agent 3 finding]
+- `scripts/tests/test_issue_manager.py` — `TestAutoManagerLearningGate` (`:4767-5026`) has no `infra_failed` case; add an AC 3 anti-fall-through test (model `test_impl_failed_gate_verdict_skips_implement_phase`, `:4889-4915`) and an AC 4 marker/reason test (model `:4917-4942`). [Agent 2 + Agent 3 finding]
+- `scripts/tests/test_rn_implement.py` — new `TestRouteRemGateInfraFailed`, mirroring `TestRouteRemGateFailed` (`:1789-1847`) — the AC 7 "token not silently swallowed by the generic bucket" router shape. [Agent 3 finding]
+- `scripts/tests/test_fsm_fragments.py` — add a `GATE_INFRA_FAILED` parallel of `test_learning_gate_check_still_detects_marker_amid_adversarial_output` (`:2576-2582`). [Agent 3 finding]
+- `scripts/tests/test_rn_remediate.py` — add a `GATE_INFRA_FAILED` emit-state test (model `test_record_gate_error_writes_gate_failed_infra_sidecar`, `:2157-2164`). [Agent 3 finding]
+- Anchor correction: AC 6's `test_scope_conflict_never_clearing_yields_impl_failed` lives at `test_learning_tests_gate.py:323-337` in the current working tree, not `:280-294` — the BUG-3085 rewrite shifted it. [Agent 3 finding]
+
+Conditional — only if the infra discriminator is wired through the shared fragment (adds a state):
+- `scripts/tests/test_builtin_loops.py:14323-14329` — `test_rn_remediate_check_learning_gate_falls_through_to_auth` asserts `check_learning_gate.on_yes/on_no`; those edges change if the discriminator lives on the fragment. [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py:233-240` — `test_autodev_topology` asserts exactly 79 autodev states; breaks only if autodev gains a state. [Agent 3 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/RECURSIVE_LOOPS_GUIDE.md:249-326` — outcome-token table lists `LEARNING_GATE_BLOCKED`; add a `GATE_INFRA_FAILED` row and update the fragment-screening prose. [Agent 2 finding]
+- `docs/guides/LOOPS_REFERENCE.md:3346` — `ll_auto_learning_gate_check` fragment table row ("greps ... for the `LEARNING_GATE_BLOCKED` marker ... emits `GATE_BLOCKED` or `OK`") goes stale once the fragment recognizes the new token. [Agent 2 finding]
+- Note: `rn-implement.yaml` has **no** parallel token-inventory comment (only `rn-remediate.yaml:913` does), so nothing to update there. [Agent 2 finding]
+
 ## Program Design
 
 ### Types
@@ -268,7 +297,17 @@ Two consequences for implementation:
    fragment (`loops/lib/common.yaml:340`) which greps only for `LEARNING_GATE_BLOCKED`
    today and must recognize the new token before any router state can act on it, plus the
    manually-maintained token inventory comment at `rn-remediate.yaml:913`.
+   > ⚠ Superseded — autodev.yaml is a third routing chain
 5. Tests: one per infra path, asserting the verdict and the emitted marker.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+- Route the token in **autodev.yaml** — a third chain (`check_learning_gate`, `:928-940`) beyond the two the plan names. Give it (and rn-remediate's `check_learning_gate`, `:603-619`) a distinct infra discriminator — a second fragment emitting `GATE_INFRA`, or a discriminator state after `check_learning_gate` — before widening the shared `ll_auto_learning_gate_check` fragment; a single `GATE_BLOCKED` output cannot carry both meanings and would mis-defer an infra failure as `gate_blocked` (wrong reason/message). [Agent 2 finding]
+- Insert `route_rem_gate_infra_failed` in rn-implement.yaml's `classify_remediation` chain (`:971-1009`) on `route_rem_learning_gate`'s `on_no` edge, ahead of `route_rem_gate_failed` → `record_failure` — `GATE_INFRA_FAILED` is not a substring of `GATE_FAILED`, so today it falls to the generic bucket (AC 7's failure mode). This edge churn breaks `test_rn_implement.py:1310-1318` and `test_builtin_loops.py:14360-14382`. [Agent 2 + Agent 3 finding]
+- Add a `GATE_INFRA_FAILED` emit state in rn-remediate.yaml (sibling to `emit_learning_gate_blocked`, `:1129-1138`) so infra writes its own sidecar, not a `LEARNING_GATE_BLOCKED` one (`:1136`). [Agent 2 finding]
+- Update the three breaking tests and add the four new test groups listed in Integration Map → Tests. [Agent 3 finding]
+- Update `docs/guides/RECURSIVE_LOOPS_GUIDE.md` and `docs/guides/LOOPS_REFERENCE.md` per Integration Map → Documentation. [Agent 2 finding]
 
 ## Acceptance Criteria
 
@@ -330,6 +369,8 @@ open
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-07T18:16:42 - `c3385b65-8008-4cbd-a89f-ad4cc3a58492.jsonl`
+- `/ll:wire-issue` - 2026-08-07T18:11:49 - `55969b1e-cf03-47ea-b399-a117b1306df5.jsonl`
 - `/ll:confidence-check` - 2026-08-06T18:14:17 - `2714e173-0113-42e1-b8e8-e7f650c61db7.jsonl`
 - `/ll:refine-issue` - 2026-08-06T17:41:21 - `bf1b7c6a-6d5b-4c22-84fe-40280423c7d4.jsonl`
 - `/ll:capture-issue` - 2026-08-06T16:20:22 - `ee676905-966c-42aa-ac9d-d7d4aaeea91d.jsonl`
