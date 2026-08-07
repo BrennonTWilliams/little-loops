@@ -1,0 +1,4 @@
+claim1 (replacement): rc=0 out=(False, None, False) err=
+claim2_3 (empty override): rc=0 out=(True, '', False) err=
+claim4 (None value): TypeError raised: expected str, bytes or os.PathLike object, not NoneType
+claim3b (absent-key inherit): rc=0 out=(False, None, False) err=

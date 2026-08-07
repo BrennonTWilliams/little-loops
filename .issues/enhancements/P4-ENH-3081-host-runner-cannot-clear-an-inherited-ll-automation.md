@@ -4,11 +4,12 @@ title: host_runner cannot clear an inherited LL_AUTOMATION, so an explicit opt-o
   is silently overridden
 type: ENH
 priority: P4
-status: open
+status: done
 testable: true
 discovered_by: run-forensics
 discovered_date: 2026-08-06
 captured_at: '2026-08-06T00:35:00Z'
+completed_at: '2026-08-07T00:22:43Z'
 relates_to:
 - ENH-2714
 - BUG-3080
@@ -18,12 +19,12 @@ labels:
 - automation
 - host-runner
 - hardening
-confidence_score: 95
-outcome_confidence: 86
-score_complexity: 18
+confidence_score: 100
+outcome_confidence: 88
+score_complexity: 20
 score_test_coverage: 25
-score_ambiguity: 25
-score_change_surface: 18
+score_ambiguity: 18
+score_change_surface: 25
 learning_tests_required:
 - subprocess
 ---
@@ -53,7 +54,7 @@ checked and found clean.
 ## Current Behavior
 
 Five sibling blocks in `scripts/little_loops/host_runner.py`, one per host class
-that implements `build_streaming` — `:351-353` (`ClaudeCodeRunner`), `:644-646`
+with a *working* `build_streaming` — `:351-353` (`ClaudeCodeRunner`), `:644-646`
 (`CodexRunner`), `:1036-1038` (`GeminiRunner`), `:1223-1225` (`OmpRunner`),
 `:1418-1420` (`KimiRunner`) — all read:
 
@@ -68,6 +69,12 @@ environment at four spawn sites — `subprocess_utils.py:412-425`
 (`os.environ.copy()` + `update`), `runner_spec.py:189`,
 `fsm/handoff_handler.py:131`, `session_store/lifecycle.py:157` — so an absent key
 means "inherit", never "clear".
+
+Note the two non-`build_streaming` merge sites cannot carry the signal at all:
+`handoff_handler.py:117` calls `build_detached(prompt=...)` and
+`lifecycle.py:154` calls `build_blocking_json(...)`, neither of which accepts
+`automation_profile`. They are merge sites for *other* keys; see Scope
+Boundaries for the residual.
 
 Confirmed absent tree-wide: `grep 'pop("LL_AUTOMATION"|LL_AUTOMATION"] = ""|delenv("LL_AUTOMATION"'`
 over `scripts/little_loops/` returns nothing.
@@ -97,7 +104,7 @@ else:
 Empty string is sufficient and is the lightest-touch option: both runtime
 consumers test truthiness, not presence —
 `hooks/session_start.py:110` (`bool(_os.environ.get("LL_AUTOMATION"))`) and
-`cli/history_context.py:198` (`if _os.environ.get("LL_AUTOMATION"):`). It also
+`cli/history_context.py:206` (`if _os.environ.get("LL_AUTOMATION"):`). It also
 avoids threading a "delete this key" convention through the four merge sites,
 which currently only understand `dict.update`.
 
@@ -150,6 +157,22 @@ five `host_runner` blocks; the `LL_AUTOMATION_PROFILE` comment or removal.
 - **Redesigning the signal** (depth counters, a scrub point at session
   boundaries, making it an invocation argument rather than an env var). The
   reachable surface does not justify it today.
+- **`OpenCodeRunner` / `PiRunner`.** Both declare the `automation_profile` kwarg
+  on `build_streaming` (`host_runner.py:808`, `:882`) but their bodies are
+  `raise HostNotConfigured(...)` stubs (`:811`, `:885`) — there is no env dict to
+  apply the helper to. Five, not seven, is correct; when either is wired it must
+  call `_apply_automation_env`. Stated so a reviewer does not re-flag the count.
+
+**Known residual (accepted, not fixed here):** the fix reaches only
+`build_streaming`. `build_detached` and `build_blocking_json` take no
+`automation_profile`, so they cannot express opt-out. An `ll-loop run` started
+*from inside* an automation-spawned session carries `LL_AUTOMATION=1` in the FSM
+executor process itself, and `handoff_handler.py:117-131` then spawns a detached
+continuation with `env={**os.environ, **invocation.env}` — inheriting it with no
+way to clear. This is narrower than the `ll-parallel` case (it needs a
+human-in-an-automation-session entry point) and widening the kwarg to the other
+two `build_*` methods is a larger change; file separately if it is ever
+observed.
 
 ## Program Design
 
@@ -179,7 +202,7 @@ five `host_runner` blocks; the `LL_AUTOMATION_PROFILE` comment or removal.
 `HostInvocation.env` → merged over `os.environ` at
 `subprocess_utils.py:412-425` (`os.environ.copy()` + `update`) →
 child process → read by `hooks/session_start.py:110` and
-`cli/history_context.py:198`, both via truthiness.
+`cli/history_context.py:206`, both via truthiness.
 
 The `""` value therefore survives the merge as a present-but-falsy key, which
 both consumers already treat as "not under automation". No consumer change is
@@ -306,28 +329,31 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _Added 2026-08-06 during pre-implementation review — this issue previously had none._
 
-- [ ] A single module-level `_apply_automation_env(env, automation_profile)` helper exists
+- [x] A single module-level `_apply_automation_env(env, automation_profile)` helper exists
       in `host_runner.py` and is called from all five `build_streaming` bodies
       (`ClaudeCodeRunner`, `CodexRunner`, `GeminiRunner`, `OmpRunner`, `KimiRunner`); none
       of the five retains its own inline `if automation_profile is not None:` block.
-- [ ] With `automation_profile=None`, `invocation.env["LL_AUTOMATION"] == ""` and
+- [x] With `automation_profile=None`, `invocation.env["LL_AUTOMATION"] == ""` and
       `invocation.env["LL_AUTOMATION_PROFILE"] == ""` — the keys are **present and empty**,
       not absent, since absence means "inherit" at every merge site.
-- [ ] With a non-`None` profile, behavior is unchanged: `"1"` and the profile string.
-- [ ] Both branches are tested for at least `ClaudeCodeRunner` and one non-Claude runner.
+- [x] With a non-`None` profile, behavior is unchanged: `"1"` and the profile string.
+- [x] Both branches are tested **parametrized over all five implemented runners**, not just
+      `ClaudeCodeRunner` plus one other. The whole point of the helper is that the five
+      stop drifting (BUG-3058 precedent); a table-driven test is the thing that enforces
+      it, and per-runner spot checks are what let the drift happen in the first place.
       Note the `None` branch is untested tree-wide today — the only existing assertion is
       `TestKimiRunner.test_automation_profile_env` (`test_host_runner.py:962-966`), which
       covers Kimi's non-`None` branch only.
-- [ ] A truthiness regression guard asserts both consumers treat `""` as "not under
+- [x] A truthiness regression guard asserts both consumers treat `""` as "not under
       automation" (`hooks/session_start.py:110`, `cli/history_context.py:~206`), so a later
       switch to a presence check (`"LL_AUTOMATION" in os.environ`) fails loudly instead of
       silently inverting the gate. This is the AC that matters most: the whole approach
       rests on an implicit contract that nothing currently asserts.
-- [ ] `LL_AUTOMATION_PROFILE` is either dropped or carries a comment at its assignment site
+- [x] `LL_AUTOMATION_PROFILE` is either dropped or carries a comment at its assignment site
       stating it has zero runtime readers and is informational only.
-- [ ] `docs/ARCHITECTURE.md:777` and `docs/guides/LOOPS_GUIDE.md:628-632` state the
+- [x] `docs/ARCHITECTURE.md:777` and `docs/guides/LOOPS_GUIDE.md:628-632` state the
       inheritance semantics and that `None` now clears.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `python -m pytest scripts/tests/` exits 0.
 
 ## Impact
 
@@ -342,6 +368,18 @@ _Added 2026-08-06 during pre-implementation review — this issue previously had
 
 ## Related Issues
 
+- **FEAT-3078 (open, P3) — sequencing conflict, implement ENH-3081 first.** It
+  injects `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` into *the same*
+  `if automation_profile is not None:` block, anchored on `host_runner.py:351`
+  and explicitly designed to "mirror the existing `LL_AUTOMATION` gate"
+  (FEAT-3078 Integration Map, `:85`, `:125`, `:128`). This issue's helper
+  refactor deletes those five anchors. Landing ENH-3081 first turns FEAT-3078
+  into a one-site change inside `_apply_automation_env` and gets it the same
+  five-way de-duplication for free. The helper's `else` branch must then clear
+  that var too — the same "absent means inherit" trap applies to it, and
+  FEAT-3078 already adds it to `conftest.py`'s `_CMD_RUN_ENV_VARS` for the same
+  leak reason. Landing them in the other order means rewriting FEAT-3078's work.
+  (FEAT-3060, which covered similar ground, is already `done`.)
 - ENH-2714 — introduced `automation_profile` and never specified opt-out
   semantics.
 - BUG-3080 — the other residual from the same investigation.
@@ -350,9 +388,38 @@ _Added 2026-08-06 during pre-implementation review — this issue previously had
 
 ## Status
 
-- [ ] Not started
+- [x] Completed
 
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-08-06
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/host_runner.py`: added module-level `_apply_automation_env(env, automation_profile)`; replaced the five inline `if automation_profile is not None:` blocks; `automation_profile=None` now sets `LL_AUTOMATION`/`LL_AUTOMATION_PROFILE` to `""` (present-but-falsy) instead of inheriting; aligned the `ClaudeCodeRunner.build_streaming` docstring.
+- `scripts/little_loops/subprocess_utils.py`: aligned `run_claude_command` docstring to the clear-on-`None` semantics.
+- `scripts/little_loops/config/features.py`: fixed `AutomationPruningConfig` docstring claim (gate only fires for a declared profile; non-profile invocations clear the var).
+- `scripts/tests/test_host_runner.py`: added `TestAutomationProfileEnvAcrossRunners` parametrized over all five implemented runners (None + non-None branches).
+- `scripts/tests/test_hook_session_start.py`: added `test_empty_automation_env_no_stay_in_turn_instruction` (truthiness contract guard).
+- `scripts/tests/test_history_context_cli.py`: added `test_empty_automation_env_produces_normal_output`.
+- `scripts/tests/test_subprocess_utils.py`: added `test_empty_ll_automation_beats_ambient_env` (empty string survives the `os.environ.copy()` + `update` merge).
+- `docs/ARCHITECTURE.md`, `docs/guides/LOOPS_GUIDE.md`: stated the inheritance semantics and that `None` now clears.
+- `.ll/learning-tests/subprocess.md` + `raw/subprocess.txt`: subprocess learning-test proofs (required by frontmatter).
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 18547 passed, 42 skipped)
+- Lint: PASS (`ruff check scripts/`)
+- Types: PASS (`python -m mypy scripts/little_loops/`)
+- Run: N/A (no run_cmd configured)
+- Integration: PASS
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-07T00:22:30 - `7c76dd26-508d-4cc0-8dc8-7d2ece77d79c.jsonl`
+- `/ll:ready-issue` - 2026-08-07T00:03:18 - `8fe5cd0c-ae9a-40c7-b66e-843cc40108ef.jsonl`
+- `/ll:confidence-check` - 2026-08-06T23:56:43 - `cd39e386-0e9d-4e2e-a5cb-0aa73d654b4e.jsonl`
+- `/ll:confidence-check` - 2026-08-06T23:47:43 - `9dddd4da-429b-461f-b860-d4714848c4b0.jsonl`
 - `/ll:wire-issue` - 2026-08-06T23:27:05 - `304efef5-84e8-4f90-bcb1-2c715d8e2940.jsonl`
 - `/ll:refine-issue` - 2026-08-06T17:43:47 - `dd5c238a-0e0c-4810-a3f6-b5d2f810c62d.jsonl`

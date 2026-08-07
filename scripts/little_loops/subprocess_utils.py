@@ -364,7 +364,9 @@ def run_claude_command(
         automation_profile: ENH-2714 opt-in automation-context static-prefix pruning
             profile name. When set, forwarded to ``build_streaming()`` so
             ``LL_AUTOMATION``/``LL_AUTOMATION_PROFILE`` are injected into the child
-            environment. ``None`` (default) preserves full unpruned behavior.
+            environment. ``None`` (default) is an active opt-out: it clears any
+            inherited ``LL_AUTOMATION`` to ``""`` (ENH-3081) rather than passing the
+            parent's value through.
         post_stream_close_grace_seconds: Grace period (seconds) to wait for the
             process to exit on its own after stdout/stderr streams close before
             force-killing the process group. Must accommodate synchronous

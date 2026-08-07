@@ -1038,10 +1038,12 @@ class AutomationPruningConfig:
     the ``LL_AUTOMATION=1`` env-signal gate in ``session_start.py``/
     ``ll-history-context`` is honored at all, not what content the digest
     itself contains. Default ``enabled=True`` matches the FSM runner's opt-in
-    posture: the env var is only ever set by a loop/state that explicitly
-    declares a ``pruning_profile``, so honoring it by default is safe — this
-    flag exists as an escape hatch to force full unpruned hook output even
-    under automation invocations (debugging, auditing).
+    posture: the gate only ever *fires* for a loop/state that explicitly
+    declares a ``pruning_profile``, and a non-profile invocation actively
+    clears an inherited ``LL_AUTOMATION`` to ``""`` (ENH-3081), so honoring it
+    by default is safe — this flag exists as an escape hatch to force full
+    unpruned hook output even under automation invocations (debugging,
+    auditing).
     """
 
     enabled: bool = True

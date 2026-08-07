@@ -66,6 +66,21 @@ class TestArgumentParsing:
         with patch("sys.argv", ["ll-history-context", "--db", str(db), "ENH-9999"]):
             assert main_history_context() == 0
 
+    def test_empty_automation_env_produces_normal_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # ENH-3081: host_runner clears an inherited LL_AUTOMATION with "" (a
+        # present-but-falsy value); the history-context gate must read it as
+        # "not under automation". A pruned call would return silent exit 0.
+        monkeypatch.setenv("LL_AUTOMATION", "")
+        db = tmp_path / "history.db"
+        record_correction(db, "sess-1", "Fix ENH-1708 by wiring corrections into refine", "user")
+        with patch("sys.argv", ["ll-history-context", "--db", str(db), "ENH-1708"]):
+            result = main_history_context()
+        out = capsys.readouterr().out
+        assert result == 0
+        assert "## Historical Context" in out
+
     def test_file_arg_is_optional(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
         ensure_db(db)

@@ -233,8 +233,10 @@ class HostRunner(Protocol):
         ``automation_profile`` (ENH-2714), when set, injects ``LL_AUTOMATION=1``
         and ``LL_AUTOMATION_PROFILE=<profile>`` into the child environment so
         automation-aware hooks (SessionStart digest, history-context CLI) can
-        suppress their static-prefix output. ``None`` (the default) preserves
-        full unpruned behavior.
+        suppress their static-prefix output. ``None`` (the default) is an active
+        opt-out: it clears any inherited ``LL_AUTOMATION`` to ``""`` (ENH-3081)
+        rather than passing the parent's value through, so a non-automation
+        invocation never silently carries the signal.
 
         ``workspace_root`` (FEAT-2878), when set, requests that tool access be
         confined to that directory for a trace-assertion eval run. Only
@@ -348,9 +350,7 @@ class ClaudeCodeRunner:
         }
         if workspace_root is None:
             env["DANGEROUSLY_SKIP_PERMISSIONS"] = "1"
-        if automation_profile is not None:
-            env["LL_AUTOMATION"] = "1"
-            env["LL_AUTOMATION_PROFILE"] = automation_profile
+        _apply_automation_env(env, automation_profile)
         if working_dir is not None:
             git_path = Path(working_dir) / ".git"
             if git_path.is_file():
@@ -641,9 +641,7 @@ class CodexRunner:
             "LL_NON_INTERACTIVE": "1",
             "DANGEROUSLY_SKIP_PERMISSIONS": "1",
         }
-        if automation_profile is not None:
-            env["LL_AUTOMATION"] = "1"
-            env["LL_AUTOMATION_PROFILE"] = automation_profile
+        _apply_automation_env(env, automation_profile)
         if working_dir is not None:
             git_path = Path(working_dir) / ".git"
             if git_path.is_file():
@@ -1033,9 +1031,7 @@ class GeminiRunner:
             "LL_NON_INTERACTIVE": "1",
             "DANGEROUSLY_SKIP_PERMISSIONS": "1",
         }
-        if automation_profile is not None:
-            env["LL_AUTOMATION"] = "1"
-            env["LL_AUTOMATION_PROFILE"] = automation_profile
+        _apply_automation_env(env, automation_profile)
         env.update(self._worktree_env(working_dir))
 
         return HostInvocation(
@@ -1220,9 +1216,7 @@ class OmpRunner:
             "LL_NON_INTERACTIVE": "1",
             "DANGEROUSLY_SKIP_PERMISSIONS": "1",
         }
-        if automation_profile is not None:
-            env["LL_AUTOMATION"] = "1"
-            env["LL_AUTOMATION_PROFILE"] = automation_profile
+        _apply_automation_env(env, automation_profile)
         env.update(GeminiRunner._worktree_env(working_dir))
 
         return HostInvocation(
@@ -1415,9 +1409,7 @@ class KimiRunner:
             "LL_NON_INTERACTIVE": "1",
             "DANGEROUSLY_SKIP_PERMISSIONS": "1",
         }
-        if automation_profile is not None:
-            env["LL_AUTOMATION"] = "1"
-            env["LL_AUTOMATION_PROFILE"] = automation_profile
+        _apply_automation_env(env, automation_profile)
         env.update(GeminiRunner._worktree_env(working_dir))
 
         return HostInvocation(
@@ -1550,6 +1542,26 @@ _PROBE_ORDER: list[tuple[str, str]] = [
     ("omp", "omp"),
     ("kimi-code", "kimi"),
 ]
+
+
+def _apply_automation_env(
+    env: dict[str, str], automation_profile: str | None
+) -> None:
+    """Set LL_AUTOMATION / LL_AUTOMATION_PROFILE on *env* (ENH-3081).
+
+    ``env`` is merged over ``os.environ`` at every spawn site, so an absent
+    key means "inherit the parent's value", never "clear". A ``None`` profile
+    is an explicit opt-out: neutralize any inherited value with ``""`` —
+    present-but-falsy, which the runtime consumers (``hooks/session_start.py``,
+    ``cli/history_context.py``) already treat as "not under automation".
+    ``LL_AUTOMATION_PROFILE`` has zero runtime readers; it is informational.
+    """
+    if automation_profile is not None:
+        env["LL_AUTOMATION"] = "1"
+        env["LL_AUTOMATION_PROFILE"] = automation_profile
+    else:
+        env["LL_AUTOMATION"] = ""
+        env["LL_AUTOMATION_PROFILE"] = ""
 
 
 def _remediation_hint() -> str:

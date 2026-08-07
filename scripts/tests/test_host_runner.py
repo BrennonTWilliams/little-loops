@@ -48,6 +48,40 @@ def isolated_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     yield
 
 
+@pytest.mark.parametrize(
+    "runner_cls",
+    [
+        ClaudeCodeRunner,
+        CodexRunner,
+        GeminiRunner,
+        OmpRunner,
+        KimiRunner,
+    ],
+)
+class TestAutomationProfileEnvAcrossRunners:
+    """ENH-3081: automation_profile=None clears an inherited LL_AUTOMATION.
+
+    The five *implemented* runners share one env helper; a table-driven test is
+    what keeps them from drifting apart again (BUG-3058 precedent). The ``None``
+    branch was untested tree-wide before this — the only prior assertion was
+    ``TestKimiRunner.test_automation_profile_env``, which covers Kimi's non-None
+    branch alone.
+    """
+
+    def test_none_profile_neutralizes_inherited_env(self, runner_cls: type[HostRunner]) -> None:
+        runner = runner_cls()
+        invocation = runner.build_streaming(prompt="hi", automation_profile=None)
+        # Present-but-empty, not absent: absence means "inherit" at every merge site.
+        assert invocation.env["LL_AUTOMATION"] == ""
+        assert invocation.env["LL_AUTOMATION_PROFILE"] == ""
+
+    def test_non_none_profile_injects_signal(self, runner_cls: type[HostRunner]) -> None:
+        runner = runner_cls()
+        invocation = runner.build_streaming(prompt="hi", automation_profile="autodev")
+        assert invocation.env["LL_AUTOMATION"] == "1"
+        assert invocation.env["LL_AUTOMATION_PROFILE"] == "autodev"
+
+
 class TestResolveHost:
     """Detection precedence: LL_HOST_CLI → LL_HOOK_HOST → binary probe → raise."""
 

@@ -2402,6 +2402,49 @@ class TestRunClaudeCommandHostRunner:
 
         assert captured_env["CONFLICT_KEY"] == "from_runner"
 
+    def test_empty_ll_automation_beats_ambient_env(self) -> None:
+        """ENH-3081: LL_AUTOMATION="" in invocation.env wins over an inherited value.
+
+        The child env is built as ``os.environ.copy()`` + ``env.update(invocation.env)``,
+        so a present-but-empty key replaces an inherited ``"1"``. This is the exact
+        contract ``_apply_automation_env`` relies on for ``automation_profile=None``;
+        no existing test asserts the empty-string semantics anywhere.
+        """
+        from little_loops.host_runner import HostInvocation
+
+        mock_invocation = HostInvocation(
+            binary="claude",
+            args=["-p", "test"],
+            env={"LL_AUTOMATION": "", "LL_AUTOMATION_PROFILE": ""},
+        )
+        mock_runner = Mock()
+        mock_runner.build_streaming.return_value = mock_invocation
+
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        captured_env: dict[str, str] = {}
+
+        def capture_popen(args: Any, **kwargs: Any) -> Mock:
+            captured_env.update(kwargs.get("env", {}))
+            return mock_process
+
+        with patch("little_loops.subprocess_utils.resolve_host", return_value=mock_runner):
+            with patch("subprocess.Popen", side_effect=capture_popen):
+                with patch("selectors.DefaultSelector") as mock_selector:
+                    _patch_selector_cm(mock_selector)
+                    mock_selector.return_value.get_map.return_value = {}
+                    with patch.dict(
+                        os.environ, {"LL_AUTOMATION": "1", "LL_AUTOMATION_PROFILE": "autodev"}
+                    ):
+                        run_claude_command("test")
+
+        assert captured_env["LL_AUTOMATION"] == ""
+        assert captured_env["LL_AUTOMATION_PROFILE"] == ""
+
     def test_host_not_configured_propagates(self) -> None:
         """HostNotConfigured from resolve_host() propagates through run_claude_command()."""
         from little_loops.host_runner import HostNotConfigured

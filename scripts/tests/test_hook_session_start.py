@@ -588,6 +588,26 @@ class TestAutomationPruningStayInTurn:
         assert result.stdout is not None
         assert "headlessly" not in result.stdout
 
+    def test_empty_automation_env_no_stay_in_turn_instruction(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # ENH-3081: host_runner clears an inherited LL_AUTOMATION by setting it
+        # to "" — a present-but-falsy value. The pruning gate must read that as
+        # "not under automation"; this guards the truthiness contract so a later
+        # switch to a presence check ("LL_AUTOMATION" in os.environ) fails
+        # loudly instead of silently re-enabling the gate.
+        (in_tmp / ".ll").mkdir(exist_ok=True)
+        (in_tmp / ".ll" / "ll-config.json").write_text(
+            json.dumps({"history": {"automation_pruning": {"enabled": True}}})
+        )
+        monkeypatch.setenv("LL_AUTOMATION", "")
+
+        result = handle(_event())
+
+        assert result.exit_code == 0
+        assert result.stdout is not None
+        assert "headlessly" not in result.stdout
+
 
 # Sentinel that marks the nested pytest spawned by the guard below, so that run
 # skips the guard instead of recursing into itself forever.
