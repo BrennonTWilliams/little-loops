@@ -16,6 +16,14 @@ relates_to:
 - BUG-3101
 - ENH-3073
 - FEAT-1813
+decision_needed: false
+verify_verdict: VALID
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 21
+score_test_coverage: 15
+score_ambiguity: 23
+score_change_surface: 23
 ---
 
 # BUG-3102: `migrate-sdk-version` queues only `status: stale` records, never age-stale ones
@@ -121,6 +129,70 @@ Consider also emitting the two forms distinctly in the queue file or the triage 
 `needs-upgrade` vs `still-valid` classification is more meaningful for a version bump than for a
 calendar expiry.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
+
+The codebase-analyzer and codebase-pattern-finder research passes surfaced a fork this
+issue's own snippet above does not resolve: `list_records()`/`LearnTestRecord` (attribute
+access) is not what the loop currently consumes. `list_stale`'s heredoc loads records via
+`subprocess.run(["ll-learning-tests", "list"])` -> JSON dict (`.get()` access) — the pattern
+shared by the *only other* loop-YAML state that reads this registry
+(`learning-tests-audit.yaml`'s `list_records` state, also subprocess+dict). No existing
+loop-YAML heredoc in this codebase imports `list_records()` in-process; every non-loop
+consumer of `is_record_stale` (`release_gate.py:55-59`, `cli/learning_tests.py:53`,
+`fsm/executor.py:1112-1140`) does import it in-process and uses dataclass attribute access.
+`is_record_stale()` itself requires a `LearnTestRecord` — it accesses `record.date` as an
+attribute, so a plain dict from the subprocess path cannot be passed to it directly without
+first reconstructing a dataclass.
+
+**Option A**: Switch `list_stale` to the in-process loader — `from little_loops.learning_tests import list_records`, drop the `ll-learning-tests list` subprocess call entirely, filter `LearnTestRecord` objects directly with `r.status == "stale" or (lt.enabled and is_record_stale(r, lt.stale_after_days))`. Matches the issue's own snippet above and every non-loop consumer's access pattern; removes a serialize/deserialize round-trip (`to_dict()` -> JSON -> `json.loads`) that exists only for this one call site's sake.
+
+> **Selected:** Option A — matches every non-loop consumer's in-process attribute-access convention and removes the serialize/deserialize round-trip; the loop-YAML CLI-subprocess convention it departs from is not shown to be load-bearing.
+
+**Option B**: Keep the subprocess `ll-learning-tests list` call (matching `learning-tests-audit.yaml`'s established loop-YAML convention), but reconstruct each dict back into a `LearnTestRecord` via `LearnTestRecord.from_dict(r)` before calling `is_record_stale(record, days)`. Preserves the loop's existing process boundary (CLI subprocess, not direct import of internals) at the cost of a redundant to-dict/from-dict conversion on every record.
+
+**Recommended**: Option A — the subprocess round-trip serves no purpose here (the loop already runs in-process Python inside the heredoc; there is no process-isolation reason to shell out), and reusing `list_records()`/`is_record_stale()` directly is exactly the "reuse the canonical predicate" principle this issue's own Proposed Solution already argues for. Option B is included because it matches the *only* existing loop-YAML precedent for this registry read, in case that subprocess boundary is deliberate for reasons not visible from research.
+
+### Decision Rationale
+
+**Selected: Option A** (in-process loader via `list_records()` + `is_record_stale()`, attribute access).
+
+Every non-loop consumer of `is_record_stale` — `release_gate.py:53-59`, `fsm/executor.py:1112-1163`, `cli/learning_tests.py:41,53`, `hooks/learning_tests_gate.py:28,134`, `hooks/install_learning_gate.py:31,122` — imports it in-process and calls it with `LearnTestRecord` attribute access. Option A is the only choice that matches that convention directly rather than through an extra `to_dict()`/`from_dict()` round-trip. The loop-YAML layer's competing convention (reading the registry via `ll-learning-tests list` subprocess/shell, as in `learning-tests-audit.yaml:22` and this file's own current `list_stale` heredoc) is real but not load-bearing: no process-isolation rationale for it exists anywhere in the codebase, and this same file's `apply_update` state (`migrate-sdk-version.yaml:174-184`) and `assumption-firewall.yaml:61,123,153` already import `little_loops` internals directly inside identical `python3 <<'PYEOF'` heredocs. Option A also removes a redundant serialize/deserialize hop that exists only to let a CLI-subprocess result be re-coerced into the dataclass `is_record_stale` requires.
+
+| Dimension | Option A | Option B |
+|---|---|---|
+| Consistency | 2 | 3 |
+| Simplicity | 3 | 1 |
+| Testability | 3 | 2 |
+| Risk | 3 | 2 |
+| **Total** | **11/12** | **8/12** |
+
+Key evidence: `release_gate.py:53-59` and `fsm/executor.py:1112-1163` both do `is_record_stale(record, stale_after_days)` on an in-process `LearnTestRecord`, the exact shape Option A produces; `LearnTestRecord.from_dict()` (`learning_tests/__init__.py:63-71`) exists and works but is needed only under Option B, purely to undo the `to_dict()` the CLI already performed.
+
+## Program Design
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
+
+### Types
+- `target: str` — one field of `LearnTestRecord` (`scripts/little_loops/learning_tests/__init__.py:44-81`); the dataclass also carries `date: str`, `status: Literal["proven","refuted","stale"]`, `assertions: list[Assertion]`, `raw_output_path: str | None`. `list_records()` returns instances of this (attribute access). The `ll-learning-tests list` CLI instead serializes via `to_dict()` into plain JSON dicts (`.get()` access) — two distinct shapes for the same registry; `list_stale`'s current heredoc consumes the dict shape via a subprocess round-trip.
+- `enabled: bool` — one field of `LearningTestsConfig` (`scripts/little_loops/config/features.py:480-501`); the dataclass also carries `stale_after_days: int = 30`.
+
+### Signatures
+- `is_record_stale(record: LearnTestRecord, stale_after_days: int) -> bool` — `scripts/little_loops/learning_tests/gate.py:45-63`. Takes the dataclass, not a dict (`record.date` attribute access). Clamps `stale_after_days` to a minimum of 1. Catches `(ValueError, TypeError, AttributeError)` around `date.fromisoformat(record.date)` and returns `False` on a missing/malformed date — an unparseable date is treated as fresh, not stale.
+- `list_records(*, base_dir: Path | None = None) -> list[LearnTestRecord]` — `scripts/little_loops/learning_tests/__init__.py:126-136`. In-process loader; the alternative to shelling out to `ll-learning-tests list`.
+- `BRConfig(project_root).learning_tests -> LearningTestsConfig` — `scripts/little_loops/config/core.py:331-334`. `.enabled` / `.stale_after_days` are the confirmed attribute names.
+
+### Call Path
+Current: `list_stale` heredoc -> `subprocess.run(["ll-learning-tests", "list"])` -> `cmd_list()` -> `list_records()` -> `[r.to_dict() for r in records]` JSON on stdout -> `json.loads` -> `list[dict]` -> `r.get("status") == "stale"` filter (status-only, the bug).
+
+Reconciled (matches `release_gate.py:55-59`, `cli/learning_tests.py:53`, `fsm/executor.py:1112-1140`): record -> `status == "stale" or (lt.enabled and is_record_stale(record, lt.stale_after_days))` -> queue file -> exit 0/1 -> `reprove_next` / `done_empty`. `stale_after_days` is read only after `enabled` is checked, matching every existing call site (`worker_pool.py:67`, `sprint/run.py:215`, `fsm/executor.py:1135-1140`, `release_gate.py:47-50`) — none reads it unconditionally.
+
+### Decision Rules
+N/A — no new gap kind, gate, or threshold is introduced; the fix reuses the existing `stale_after_days` threshold and `is_record_stale`'s existing comparison. See the loader-choice decision point folded into Proposed Solution below (Option A/B) — that is an implementation-route fork, not new decision logic within the running system.
+
 ## Impact
 
 - No bulk remediation path exists for age-stale records; N single-target sessions is the only
@@ -138,6 +210,28 @@ calendar expiry.
 - `scripts/little_loops/learning_tests/release_gate.py` — the consumer whose definition should match
 - `scripts/little_loops/config/features.py` — `stale_after_days`, `enabled`
 - `scripts/tests/test_builtin_loops.py` — existing built-in loop coverage
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
+
+### Tests
+- No existing loop-YAML fixture-registry test exists for `list_stale`. `scripts/tests/test_builtin_loops.py`'s `TestMigrateSdkVersionLoop` (~line 11911) is structural-only — it `yaml.safe_load`s the loop file and asserts on required states/keys, never executes the heredoc or exercises it against a real registry.
+- The established fixture-registry pattern for this kind of test lives in `scripts/tests/test_release_gate.py`: `_write_record_file(project_dir, target, status, date=None)` (line ~41-55, writes a `LearnTestRecord` via `write_record()`) paired with `_write_config(project_dir, enabled=..., stale_after_days=...)` (line ~18-38) and `_base_dir(project_dir)` (line ~64-65). AC 2/3's fixture tests (one age-stale `proven` record; empty/all-fresh registries) should follow this shape rather than inventing a new one.
+
+### Conventions in Force
+- Loop-YAML heredocs import `little_loops` modules directly (`from little_loops.X import Y`, no `sys.path` fixup) — established across 30+ states in `scripts/little_loops/loops/*.yaml`, e.g. `migrate-sdk-version.yaml:174-176` (`apply_update` state, same file) and `assumption-firewall.yaml:61,123,153`. Whichever loader Option A/B (Proposed Solution) lands on, the import itself follows this existing convention.
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/ARCHITECTURE.md` — `## Learning Test Registry` → `### CLI Surface` states "Once records are marked stale, run `ll-loop run migrate-sdk-version` to re-prove them ... Together these two loops form the two-step registry maintenance workflow." Goes stale once `list_stale` also queues age-stale records without a `mark-stale` pre-step; update to describe both trigger paths. [Agent 2 finding]
+- `scripts/little_loops/loops/README.md` — `## API Adoption` table, `migrate-sdk-version` row: "Run after `learning-tests-audit` marks records stale." Same stale sequencing claim; update to note age-staleness is queued directly. [Agent 2 finding]
+
+### Tests (execution harness)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- No test currently executes `list_stale`'s heredoc — `TestMigrateSdkVersionLoop` (`test_builtin_loops.py:11911`) is `yaml.safe_load`-only and has no execution helper of its own. The fixture-registry-execution test this issue's AC 2/3 require should combine `test_release_gate.py:18-65`'s `_write_config`/`_write_record_file`/`_base_dir` with `test_brainstorm.py:18-19`'s `_bash(script, cwd)` helper (runs a loop-YAML `action` string, `${...}` placeholders manually `.replace()`d first, via `bash -c` in a fixture project dir) — the only existing precedent in the suite for executing a loop-YAML heredoc end-to-end. `list_stale`'s action has two placeholders to substitute before invoking `_bash`: `${context.run_dir}` and `${context.targets}` (yaml lines 30, 35). [Agent 3 finding]
 
 ## Acceptance Criteria
 
@@ -168,4 +262,9 @@ BUG-3101: this bug limits the *scale* of remediation, those two prevent remediat
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-08T05:41:06 - `c085045c-d657-4355-b399-137e1eeb2bb5.jsonl`
+- `/ll:verify-issues` - 2026-08-08T05:38:58 - `2a0fa600-4e14-4188-af49-4750ba927fcc.jsonl`
+- `/ll:wire-issue` - 2026-08-08T05:37:30 - `1c4fe591-3df3-4261-b9e9-0c2500d76b1f.jsonl`
+- `/ll:decide-issue` - 2026-08-08T05:32:54 - `7d708d97-06b6-4fb5-b712-102008b71d42.jsonl`
+- `/ll:refine-issue` - 2026-08-08T05:28:28 - `d1bad67d-d6b8-487c-9858-33ef80a49710.jsonl`
 - `/ll:capture-issue` - 2026-08-08T04:47:04 - `0c442e3b-c3d8-4743-b597-7b3551a75ba6.jsonl`

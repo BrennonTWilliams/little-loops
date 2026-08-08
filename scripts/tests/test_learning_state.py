@@ -12,6 +12,8 @@ invoked, and a per-test learning-tests directory to control registry state.
 
 from __future__ import annotations
 
+import datetime
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -553,3 +555,104 @@ class TestLearningStateExploreApiDispatchMode:
 
         assert result.final_state == "planning"
         assert seen == [True], f"explore-api must dispatch in prompt mode, got {seen!r}"
+
+
+def _write_learning_tests_config(
+    project_dir: Path, *, enabled: bool = True, stale_after_days: int = 30
+) -> None:
+    """Write ``.ll/ll-config.json`` with a ``learning_tests`` block (ENH-2208 opt-in)."""
+    ll_dir = project_dir / ".ll"
+    ll_dir.mkdir(parents=True, exist_ok=True)
+    (ll_dir / "ll-config.json").write_text(
+        json.dumps({"learning_tests": {"enabled": enabled, "stale_after_days": stale_after_days}}),
+        encoding="utf-8",
+    )
+
+
+class TestLearningStateDateStaleRecheck:
+    """BUG-3101: the in-loop re-check must apply the same ENH-2208 date-staleness
+    definition as the pre-loop check, not raw ``check_learning_test``.
+    """
+
+    def test_no_op_remedy_exhausts_retries_not_on_yes(
+        self, temp_project_dir: Path, monkeypatch: Any
+    ) -> None:
+        monkeypatch.chdir(temp_project_dir)
+        _write_learning_tests_config(temp_project_dir, enabled=True, stale_after_days=30)
+        base = temp_project_dir / ".ll" / "learning-tests"
+        base.mkdir(parents=True)
+        write_record(
+            LearnTestRecord(
+                target="ruamel.yaml",
+                date="2026-01-01",  # far older than stale_after_days=30
+                status="proven",
+                assertions=[Assertion(claim="x", result="pass")],
+                raw_output_path=None,
+            ),
+            base_dir=base,
+        )
+
+        fsm = _learning_fsm(["ruamel.yaml"], on_blocked="blocked", max_retries=2)
+        # Remedy runs but never rewrites the record (mirrors BUG-3100's no-op).
+        runner = _MockRunner(base_dir=base, write_records=False)
+        events: list[dict] = []
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        result = executor.run()
+
+        assert result.final_state == "blocked"
+        explore_calls = [c for c in runner.calls if "/ll:explore-api" in c]
+        assert len(explore_calls) == 2, "remedy must be invoked max_retries times"
+        blocked = [e for e in events if e.get("event") == "learning_blocked"]
+        assert len(blocked) == 1
+        assert blocked[0]["reason"] == "retries_exhausted"
+        proven = [e for e in events if e.get("event") == "learning_target_proven"]
+        assert proven == [], "a date-stale proven record must never emit learning_target_proven"
+
+    def test_remedy_that_redates_record_still_routes_on_yes(
+        self, temp_project_dir: Path, monkeypatch: Any
+    ) -> None:
+        monkeypatch.chdir(temp_project_dir)
+        _write_learning_tests_config(temp_project_dir, enabled=True, stale_after_days=30)
+        base = temp_project_dir / ".ll" / "learning-tests"
+        base.mkdir(parents=True)
+        write_record(
+            LearnTestRecord(
+                target="ruamel.yaml",
+                date="2026-01-01",
+                status="proven",
+                assertions=[Assertion(claim="x", result="pass")],
+                raw_output_path=None,
+            ),
+            base_dir=base,
+        )
+
+        class _RedatingRunner(_MockRunner):
+            """Writes a proven record dated today, so the remedy genuinely re-proves."""
+
+            def run(self, action: str, timeout: int, is_slash_command: bool, **kwargs: Any):
+                target = action.removeprefix("/ll:explore-api ").strip()
+                write_record(
+                    LearnTestRecord(
+                        target=target,
+                        date=datetime.date.today().isoformat(),
+                        status="proven",
+                        assertions=[Assertion(claim="x", result="pass")],
+                        raw_output_path=None,
+                    ),
+                    base_dir=self.base_dir,
+                )
+                self.calls.append(action)
+                return ActionResult(output="", stderr="", exit_code=0, duration_ms=10)
+
+        fsm = _learning_fsm(["ruamel.yaml"], on_yes="planning", max_retries=2)
+        # Remedy genuinely re-proves: writes a fresh proven record.
+        runner = _RedatingRunner(base_dir=base)
+        events: list[dict] = []
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=events.append)
+        result = executor.run()
+
+        assert result.final_state == "planning"
+        explore_calls = [c for c in runner.calls if "/ll:explore-api" in c]
+        assert len(explore_calls) == 1
+        proven = [e for e in events if e.get("event") == "learning_target_proven"]
+        assert [e["target"] for e in proven] == ["ruamel.yaml"]

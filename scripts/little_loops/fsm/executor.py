@@ -1149,18 +1149,25 @@ class FSMExecutor:
             route = state.on_blocked or state.on_no
             return interpolate(route, ctx) if route else None
 
-        for target in targets:
-            record = check_learning_test(target)
-            # Treat a date-stale proven record as absent so the retry path
-            # re-proves it (ENH-2208). Guard behind enabled to avoid breaking
-            # tests and projects that haven't opted into learning_tests.
+        def _fresh_record(target: str):
+            """Read a record, treating a date-stale ``proven`` record as absent
+            so the retry path re-proves it (ENH-2208). Guard behind enabled to
+            avoid breaking tests and projects that haven't opted into
+            learning_tests. Used at both read sites so the pre-loop check and
+            the in-loop re-check (BUG-3101) apply the same staleness definition.
+            """
+            rec = check_learning_test(target)
             if (
                 _lt_staleness_enabled
-                and record is not None
-                and record.status == "proven"
-                and is_record_stale(record, _lt_stale_days)
+                and rec is not None
+                and rec.status == "proven"
+                and is_record_stale(rec, _lt_stale_days)
             ):
-                record = None
+                return None
+            return rec
+
+        for target in targets:
+            record = _fresh_record(target)
 
             attempts = 0
             while record is None or record.status == "stale":
@@ -1195,7 +1202,7 @@ class FSMExecutor:
                     ctx,
                 )
                 attempts += 1
-                record = check_learning_test(target)
+                record = _fresh_record(target)
 
             if record.status == "refuted":
                 self._emit(
