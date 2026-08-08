@@ -822,6 +822,23 @@ class TestConfigSchema:
         assert "sdk" in request_path["enum"]
         assert "batch" in request_path["enum"]
 
+    def test_advisor_host_enum_matches_orchestration_host_cli(self) -> None:
+        """advisor.host must be a string enum with the same 7 values as orchestration.host_cli.
+
+        No `$ref`/`$defs` support exists in this schema (FEAT-3043), so the
+        enum is deliberately duplicated rather than shared — this test pins
+        the two enums to stay in lockstep by content, not by reference.
+        """
+        data = json.loads(_load_schema_text())
+        assert "advisor" in data["properties"], "advisor key is not declared in config-schema.json"
+        advisor = data["properties"]["advisor"]
+        assert advisor["type"] == "object"
+        assert "host" in advisor["properties"], "advisor.host is not declared in config-schema.json"
+        advisor_host = advisor["properties"]["host"]
+        assert advisor_host["type"] == "string"
+        orch_host_cli = data["properties"]["orchestration"]["properties"]["host_cli"]
+        assert set(advisor_host["enum"]) == set(orch_host_cli["enum"])
+
     def test_orchestration_cluster_in_schema(self) -> None:
         """orchestration.cluster must be declared with its three properties in config-schema.json.
 

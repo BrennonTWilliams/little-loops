@@ -1271,6 +1271,27 @@ Settings for the `goal-cluster` multi-goal orchestration loop.
 | `enable_dedup` | `true` | When true, deduplicate issues with overlapping goals before batching. |
 | `propagate_context` | `true` | When true, pass accumulated context from completed issues to subsequent batches. |
 
+### `advisor`
+
+Advisor (FEAT-3037) settings: host, model, capability floor, and per-consult
+timeout. This block is config plumbing only (FEAT-3043) — the `advisor`
+block is absent from the config by default, which means the advisor is
+disabled; no consult logic, CLI, or `ll-doctor` check reads this block yet
+(that ships in FEAT-3044).
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `false` | Enable the advisor. Absent or `false` means disabled. |
+| `host` | `null` | Registry key for the host CLI the advisor consults: `"claude-code"`, `"codex"`, `"opencode"`, `"pi"`, `"gemini"`, `"omp"`, or `"kimi-code"` — the same enum as `orchestration.host_cli`, but may differ from it. |
+| `model` | `"opus"` | Model the advisor requests from the selected host. |
+| `min_tier` | `null` | Capability floor for the advisor's model; enforced within a host, warned across hosts. |
+| `timeout_seconds` | `180` | Per-consult timeout in seconds. Mandatory-with-a-default — a synchronous in-band consult with no timeout can hang a loop indefinitely. |
+| `triggers` | `[]` | Keywords identifying when the advisor is consulted, e.g. `confidence_gate`, `loop_stall`, `pre_done`. |
+
+`max_consults_per_task` is deliberately absent from this block — enforcement
+needs task identity, which arrives in a later slice (FEAT-3038); shipping an
+accepted-but-ignored key would be a footgun.
+
 ### `hooks`
 
 Settings for hook adapter selection.

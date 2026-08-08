@@ -149,6 +149,7 @@ BRConfig(project_root: Path)
 | `cli` | `CliConfig` | CLI output settings (color toggle and color overrides) |
 | `design_tokens` | `DesignTokensConfig` | Design system token settings |
 | `orchestration` | `OrchestrationConfig` | Orchestration settings (host CLI selection, composer config, cluster config) |
+| `advisor` | `AdvisorConfig` | Advisor settings (host, model, capability floor, per-consult timeout, triggers); config plumbing only, absent means disabled (FEAT-3043) |
 | `events` | `EventsConfig` | Event transport/emission settings |
 | `decisions` | `DecisionsConfig` | Decisions and rules log configuration |
 | `learning_tests` | `LearningTestsConfig` | Learning test registry settings |

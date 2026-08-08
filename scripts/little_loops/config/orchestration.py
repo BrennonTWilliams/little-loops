@@ -101,3 +101,37 @@ class OrchestrationConfig:
             composer=ComposerConfig.from_dict(data.get("composer", {})),
             cluster=ClusterConfig.from_dict(data.get("cluster", {})),
         )
+
+
+@dataclass
+class AdvisorConfig:
+    """Advisor (FEAT-3037) configuration: host, model, capability floor, and consult timeout.
+
+    ``host`` is a registry key and validates against the same enum as
+    ``orchestration.host_cli`` (``claude-code | codex | opencode | pi | gemini |
+    omp | kimi-code``), enforced structurally by ``config-schema.json`` — this
+    dataclass performs no enum validation itself, mirroring
+    :class:`OrchestrationConfig`'s division of labor.
+
+    This block is config plumbing only (FEAT-3043); no code reads
+    ``AdvisorConfig`` yet. The advisor core and CLI ship in FEAT-3044.
+    """
+
+    enabled: bool = False
+    host: str | None = None
+    model: str = "opus"
+    min_tier: str | None = None
+    timeout_seconds: int = 180
+    triggers: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> AdvisorConfig:
+        """Create AdvisorConfig from dictionary."""
+        return cls(
+            enabled=data.get("enabled", False),
+            host=data.get("host"),
+            model=data.get("model", "opus"),
+            min_tier=data.get("min_tier"),
+            timeout_seconds=data.get("timeout_seconds", 180),
+            triggers=list(data.get("triggers", [])),
+        )

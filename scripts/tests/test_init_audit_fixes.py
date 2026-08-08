@@ -738,6 +738,7 @@ _INIT_WRITTEN_SECTIONS = frozenset(
 # schema section must consciously land in one of these two sets (rec-17).
 _ALLOWED_UNTOUCHED_SECTIONS = frozenset(
     {
+        "advisor",
         "artifacts",
         "automation",
         "cache",
