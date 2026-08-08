@@ -13,9 +13,13 @@ labels:
 - gates
 testable: true
 learning_tests_required:
+- anthropic
+- fcntl
 - hypothesis
+- phoenix
 - pytest
 - questionary
+- ruamel.yaml
 decision_needed: false
 reconcile_attempted: true
 size: Small
@@ -31,17 +35,28 @@ score_change_surface: 18
 
 ## Summary
 
-Three learning-test records trip the pre-release audit on **age alone** and will keep
+Seven learning-test records trip the pre-release audit on **age alone** and will keep
 doing so on every future release, because nothing in the release path re-proves them:
 
-| Record | date | Age at 2026-08-05 |
+| Record | date | Age at 2026-08-07 |
 |---|---|---|
-| `.ll/learning-tests/hypothesis.md` | 2026-06-27 | 39d |
-| `.ll/learning-tests/pytest.md` | 2026-06-26 | 40d |
-| `.ll/learning-tests/questionary.md` | 2026-06-20 | 46d |
+| `.ll/learning-tests/ruamelyaml.md` (`target: ruamel.yaml`) | 2026-06-19 | 49d |
+| `.ll/learning-tests/questionary.md` | 2026-06-20 | 48d |
+| `.ll/learning-tests/pytest.md` | 2026-06-26 | 42d |
+| `.ll/learning-tests/hypothesis.md` | 2026-06-27 | 41d |
+| `.ll/learning-tests/phoenix.md` | 2026-07-05 | 33d |
+| `.ll/learning-tests/anthropic.md` | 2026-07-07 | 31d |
+| `.ll/learning-tests/fcntl.md` | 2026-07-07 | 31d |
 
-All three are `status: proven`; none is refuted. The gate runs in `warn` mode, prints the
-table, and continues. Next release: same table, three days older. A gate that can only
+> **Revised 2026-08-07.** This issue was written against a three-row table
+> (`hypothesis`, `pytest`, `questionary`). [[BUG-3089]] has since landed — `release_gate.py:67`
+> now reads `normalize_target(r.target) in imported_packages` — so the audit sees records it
+> previously skipped and the real table is seven rows. Verified by running the gate on
+> `main` at 2026-08-07. The pre-step cost below is therefore **seven** re-proofs, not three;
+> the sequencing note was originally calibrated on three.
+
+All seven are `status: proven`; none is refuted. The gate runs in `warn` mode, prints the
+table, and continues. Next release: same table, a few days older. A gate that can only
 ever print the same warning trains its reader to skip it — which is the failure mode that
 matters, given BUG-3072 shows the same table is where a real problem would appear.
 
@@ -56,10 +71,25 @@ matters, given BUG-3072 shows the same table is where a real problem would appea
 - `.ll/ll-config.json` sets only `"learning_tests": {"enabled": true}`, so both defaults
   (`30`, `warn`) are in force here.
 
-**No automatic refresh exists.** `ll-learning-tests prove <target>` (`cli/learning_tests.py:47`)
-can re-prove a record by running the `ready-to-implement-gate` loop, but nothing invokes
-it from the release gate, and the gate's own message ("fix or re-prove the above records")
-does not name that command. Clearing the warning is a manual, undocumented step.
+**Refresh machinery exists but is unreachable from the gate.** There are three separate
+remediation paths, and the audit's output names none of them:
+
+| Path | What it does | Status |
+|---|---|---|
+| `ll-learning-tests prove "<target>"` (`cli/learning_tests.py:47`) | re-proves **one** record via the `ready-to-implement-gate` loop | exists, unadvertised, unhardened |
+| `ll-loop run migrate-sdk-version` (`loops/migrate-sdk-version.yaml`) | iterates the **whole** stale set, re-runs `/ll:explore-api` per target, classifies each `still-valid` / `needs-upgrade` / `refuted`, rewrites `date`/`assertions`/`status` | shipped by [[FEAT-1813]] (`done`) |
+| `ll-loop run learning-tests-audit` (`loops/learning-tests-audit.yaml`) | detects + bulk `mark-stale`s, emits a triage report | shipped by [[FEAT-1739]] (`done`) |
+
+_Corrected 2026-08-07._ This section previously read "**No automatic refresh exists.**"
+That was wrong — `migrate-sdk-version` is exactly a bulk re-prove loop, and it is already
+in `scripts/little_loops/loops/`. The defect is narrower than originally stated: not that
+remediation is missing, but that **the gate's message ("fix or re-prove the above records")
+names none of the three paths**, so a reader has no way to get from the warning to any of
+them. Clearing the warning is undocumented, not unimplemented.
+
+This also changes the shape of the fix — see the bulk-vs-per-row note under Proposed
+Solution — and materially lowers Option B's cost, since `migrate-sdk-version` already
+performs installed-version comparison for arbitrary third-party targets.
 
 The claims themselves are stable API semantics — pytest fixture visibility, `monkeypatch`
 scoping, `questionary` prompt behavior, `hypothesis` strategy behavior. There is no reason
@@ -83,6 +113,18 @@ Options, to be decided:
 **Option A**: make re-proving reachable. Have the gate's output name the exact remediation
 command per row (`ll-learning-tests prove "<target>"`). Cheapest; removes the
 dead-end without changing policy.
+
+> **Bulk vs per-row — revised 2026-08-07.** With the table at seven rows and
+> `migrate-sdk-version` shipped (see Current Behavior), advertising seven separate
+> `ll-learning-tests prove` invocations is worse advice than one bulk command. Emit both,
+> selected on hit count:
+>
+> - `len(hits) == 1` → per-row `ll-learning-tests prove "<target>"` only.
+> - `len(hits) > 1` → per-row commands **plus** a single trailing line naming
+>   `ll-loop run migrate-sdk-version`, which handles the whole stale set in one pass.
+>
+> The per-row text still satisfies the invariant (every row names an action that clears
+> that row); the bulk line keeps the advice proportionate to the table's actual size.
 
 > **Selected:** Option A — `cmd_prove` and its `ll-loop run ready-to-implement-gate`
 > invocation already exist and are directly callable; wiring them in is incremental, not
@@ -109,39 +151,47 @@ existing records.
 **Recommended**: Option A now (small, unblocks the immediate noise) with Option B as the
 durable fix. Option C alone is not sufficient.
 
-### Sequencing: re-prove the three records **before** implementation starts
+### Sequencing: re-prove the seven records **before** implementation starts
 
-_Added 2026-08-06 during pre-implementation review._ This issue's frontmatter declares
-`learning_tests_required: [hypothesis, pytest, questionary]` — precisely the three stale
-records it is about. So `ll-auto` runs the learning gate on all three *before* it will
-implement anything here, and that gate run is the one that produced ENH-3084's worked
-example (`Learning gate impl-failed for ENH-3073`).
+_Added 2026-08-06 during pre-implementation review; revised 2026-08-07._ This issue's
+frontmatter declares `learning_tests_required` listing precisely the stale records it is
+about. So `ll-auto` runs the learning gate on all of them *before* it will implement
+anything here, and that gate run is the one that produced ENH-3084's worked example
+(`Learning gate impl-failed for ENH-3073`).
 
-**Consequence:** AC 4 ("the three records were re-proven via `ll-learning-tests prove`") is
-not an implementation step — it is a **pre-step**. Run the three `prove` invocations by
-hand first, confirm the records are re-dated, and only then start implementation.
-Attempting the reverse order gates the issue on itself.
+**Consequence:** AC 4 ("the flagged records were re-proven") is not an implementation step
+— it is a **pre-step**. Refresh the records first, confirm they are re-dated, and only then
+start implementation. Attempting the reverse order gates the issue on itself.
+
+**The list is now seven, not three** (`anthropic`, `fcntl`, `hypothesis`, `phoenix`,
+`pytest`, `questionary`, `ruamel.yaml`), because BUG-3089 widened what the audit sees.
+Seven sequential `ll-learning-tests prove` runs is seven LLM sessions; prefer the single
+`ll-loop run migrate-sdk-version` pass, which was built for exactly this set-wide refresh
+(FEAT-1813) and writes the same fields. Fall back to per-target `prove` only for targets
+that loop leaves unrefreshed.
 
 Two adjacent issues reduce the friction but are not prerequisites: BUG-3087 (scope the
 issue-lifecycle loops so they stop locking the repo root, removing the false conflict) and
 ENH-3084 (a verdict that distinguishes this infra failure from an implementation failure).
 Neither has to land first if the three records are proven up front.
 
-### Clearing the three current records
+### Clearing the seven current records
 
 Option A changes the gate's *output*, not `is_record_stale` — so it does not by itself
-clear any row. The three records must be refreshed separately, and there are only two
-ways to do it:
+clear any row. The records must be refreshed separately. Three ways, in preference order:
 
-1. Run `ll-learning-tests prove "<target>"` for each, which re-runs the
-   `ready-to-implement-gate` loop and rewrites `date:` on a successful proof.
-2. Hand-edit `date:` in the three files.
+1. **`ll-loop run migrate-sdk-version`** — one pass over the whole stale set, re-running
+   `/ll:explore-api` per target and rewriting `date`/`assertions`/`status`. Preferred:
+   one session instead of seven, and it classifies drift rather than just re-dating.
+2. `ll-learning-tests prove "<target>"` per target — the per-record fallback for anything
+   (1) leaves unrefreshed.
+3. Hand-edit `date:` in the files. **Rejected.**
 
-**Take (1).** Hand-editing the date is a false assertion in the registry: bumping
+**Never (3).** Hand-editing the date is a false assertion in the registry: bumping
 `.ll/learning-tests/pytest.md` from `2026-06-26` to today claims its six assertions were
 re-verified today when they were not, which corrupts the exact signal this issue is
 trying to protect. The claims are stable-API semantics and cheap to re-prove, so run the
-loop for all three (`pytest`, `hypothesis`, `questionary`) and let it write the dates.
+loop and let it write the dates.
 
 If a proof run genuinely fails, that record is a real finding — leave it flagged and note
 it, rather than re-dating around it.
@@ -152,6 +202,16 @@ Option B (stale on installed-version drift rather than calendar age) is deferred
 declined: at `stale_after_days: 30` the same dead-end returns 31 days after these records
 are re-proven. File a follow-up ENH capturing the version-stamp design so it does not
 vanish when this issue closes.
+
+> **Revised 2026-08-07 — Option B is cheaper than its 1/3 simplicity score implies.** That
+> score rested on "extending version-stamping to arbitrary third-party dependencies
+> requires a new generic version resolver," and on `_warn_adapter_staleness` being
+> hardcoded to little-loops' own version. But `loops/migrate-sdk-version.yaml` (FEAT-1813,
+> `done`) already resolves installed versions for arbitrary targets and classifies the
+> result as `still-valid` / `needs-upgrade` / `refuted`. The follow-up ENH should start
+> from that loop's resolver rather than from scratch, and should re-score Option B on that
+> basis. The `is_record_stale` signature-change caller list and the frontmatter migration
+> remain genuine costs; the version resolver does not.
 
 ### Decision Rationale
 
@@ -198,8 +258,17 @@ a supported path, and `cmd_prove` is not currently one:
   `returncode`, so a loop that fails to launch is indistinguishable from one that ran and
   left the record unchanged — the user sees the same stale record and no error.
 - `ll-loop` absent from `PATH` raises an uncaught `FileNotFoundError` traceback.
+- _Added 2026-08-07._ `capture_output=True` swallows all loop output. The command runs a
+  full LLM session; a user who runs the newly-advertised command sits through it with zero
+  feedback. Either stream (drop `capture_output`) or, at minimum, echo captured stderr
+  when the loop exits non-zero.
+- _Added 2026-08-07._ The `return 1` path conflates three distinct outcomes: the loop
+  failed to run, no record was found, and the record was legitimately re-proven as
+  `refuted`. Only the last is a real finding; the first two are infrastructure failures.
+  Give them distinct messages (distinct exit codes optional) so the advertised command's
+  failure mode is legible.
 
-Both must be handled before the gate points users at this command.
+All four must be handled before the gate points users at this command.
 
 **Out of scope**:
 
@@ -218,6 +287,16 @@ Both must be handled before the gate points users at this command.
 
 **Invariant.** Every row the release audit prints names an action that, when taken, makes
 that row disappear.
+
+**Print `record.target` verbatim, never the normalized form.** _Added 2026-08-07._
+`release_gate.py:67` compares `normalize_target(r.target)` against the import scan
+(`target.split()[0].lower()`), but the remediation command must embed the **raw**
+`record.target`, quoted. `cmd_prove` resolves its argument through
+`check_learning_test` → `slugify`, which is a different normalization: the record whose
+`target: ruamel.yaml` lives at `.ll/learning-tests/ruamelyaml.md`. Emitting
+`ll-learning-tests prove "ruamelyaml"` would not resolve. Reusing `normalize_target` to
+build the message is the specific mistake to avoid; the printed table already uses
+`record.target` correctly at `:80`.
 
 ### Types
 
@@ -247,31 +326,53 @@ def cmd_prove(args: argparse.Namespace) -> int:
 ## Acceptance Criteria
 
 - [ ] The audit's output names a concrete per-record remediation command
-      (`ll-learning-tests prove "<target>"`) for each printed row, in both `warn` and
-      `block` mode.
+      (`ll-learning-tests prove "<target>"`, embedding the raw `record.target`) for each
+      printed row, in both `warn` and `block` mode.
+- [ ] When the table has more than one row, the output additionally names the bulk path
+      `ll-loop run migrate-sdk-version` on a single trailing line. A one-row table prints
+      only the per-row command.
 - [ ] A test asserts the printed remediation text for a stale row references
       `ll-learning-tests prove` and the row's own target name, via `capsys` in
-      `scripts/tests/test_release_gate.py`.
+      `scripts/tests/test_release_gate.py`. A second test covers the multi-row case and
+      asserts the bulk line appears exactly once.
+- [ ] A test asserts a record with a dotted target (`ruamel.yaml`) is advertised as
+      `ll-learning-tests prove "ruamel.yaml"` — **not** the normalized or slugified form.
 - [ ] `cmd_prove` no longer discards the loop's exit status: a non-zero `ll-loop`
-      returncode is surfaced to the user, and a missing `ll-loop` binary produces a
-      readable error rather than a `FileNotFoundError` traceback. Both covered by tests
-      in `scripts/tests/test_cli_learning_tests.py`.
-- [ ] The three currently-stale records were re-proven by running
-      `ll-learning-tests prove` for `pytest`, `hypothesis`, and `questionary` — **not** by
-      hand-editing `date:`. Any target whose proof run fails is left flagged and called
-      out in this issue rather than re-dated.
-- [ ] The audit prints no table, verified by `python -c "from pathlib import Path; from
-      little_loops.learning_tests.release_gate import run_release_gate;
-      raise SystemExit(run_release_gate(Path.cwd()))"`.
+      returncode is surfaced to the user, a missing `ll-loop` binary produces a readable
+      error rather than a `FileNotFoundError` traceback, loop stderr reaches the user on
+      failure rather than being swallowed by `capture_output`, and "loop failed" /
+      "no record found" / "record is refuted" produce distinct messages instead of a bare
+      shared `return 1`. Covered by tests in `scripts/tests/test_cli_learning_tests.py`.
+- [ ] The seven currently-stale records (`anthropic`, `fcntl`, `hypothesis`, `phoenix`,
+      `pytest`, `questionary`, `ruamel.yaml`) were re-proven via
+      `ll-loop run migrate-sdk-version` — or per-target `ll-learning-tests prove` for any
+      it leaves unrefreshed — and **not** by hand-editing `date:`. Any target whose proof
+      run fails is left flagged and called out in this issue rather than re-dated.
+- [ ] Those seven targets no longer appear in the audit's table, verified by `python -c
+      "from pathlib import Path; from little_loops.learning_tests.release_gate import
+      run_release_gate; raise SystemExit(run_release_gate(Path.cwd()))"`.
+      **The table need not be empty** — see the note below.
 - [ ] `docs/guides/LEARNING_TESTS_GUIDE.md:387-416` example output block matches the new
-      remediation text, and its `<!-- TODO: ENH-2621 -->` drift note is resolved or
-      updated.
-- [ ] The two verbatim mirrors of the `manage-release` gate step —
+      remediation text, and the stale `<!-- TODO: ENH-2621 -->` comment at line 407 is
+      **removed** (ENH-2621 is `status: done`).
+- [ ] ~~The two verbatim mirrors of the `manage-release` gate step —
       `.kimi-code/skills/ll-manage-release/SKILL.md:317-318` and
-      `.gemini/commands/manage-release.toml:296-297` — are updated in lockstep if the
-      canonical invocation or its remediation text changed.
+      `.gemini/commands/manage-release.toml:296-297` — are updated in lockstep.~~
+      **N/A, confirmed 2026-08-07.** Both mirrors contain only the two-line
+      `run_release_gate` import + `sys.exit`; neither carries remediation text, and
+      Option A changes only `release_gate.py`'s print statements. No mirror edit is due.
 - [ ] A follow-up ENH is filed for Option B (version-stamped staleness) and linked from
-      Related Issues here.
+      Related Issues here. It must reference `loops/migrate-sdk-version.yaml`'s existing
+      version resolver as the starting point (see Follow-up for Option B).
+
+> **On "the audit prints no table" — revised 2026-08-07.** The original AC required an
+> empty table. That is not achievable and not a fair merge gate: at
+> `stale_after_days: 30` across 31 records, new rows cross the threshold continuously —
+> `opentelemetry` and `pytest-json-report` (both `2026-07-08`) hit exactly 30 days on
+> 2026-08-07, and `pyyaml` is at 28. Rows will appear between the re-prove pass and PR
+> review, failing the AC for reasons unrelated to this change — which is the same
+> signal-quality confusion this issue exists to fix. The AC is therefore scoped to the
+> seven named targets. Making the table durably empty is Option B's job, not Option A's.
 - [ ] `python -m pytest scripts/tests/` exits 0.
 
 ## Impact
@@ -292,8 +393,10 @@ false positive leaves a changelog commit with no tag.
 - `scripts/little_loops/config/features.py:486-499` — defaults
 - `scripts/little_loops/cli/learning_tests.py:47` — the unwired `prove` path
 - `commands/manage-release.md` — `Pre-Release: Learning Test Audit` step
-- `.ll/learning-tests/hypothesis.md`, `.ll/learning-tests/pytest.md`,
-  `.ll/learning-tests/questionary.md` — the three affected records
+- `scripts/little_loops/loops/migrate-sdk-version.yaml` — the bulk re-prove path the new
+  remediation text advertises; also the pre-step used to clear the seven records
+- `.ll/learning-tests/{anthropic,fcntl,hypothesis,phoenix,pytest,questionary,ruamelyaml}.md`
+  — the seven affected records (note `ruamelyaml.md` carries `target: ruamel.yaml`)
 
 ### Dependent Files (Callers/Importers)
 
@@ -382,7 +485,15 @@ _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
 - BUG-3072 — failing assertions invisible under `proven` status
 - BUG-3070 — release ordering; determines what a `block`-mode abort leaves behind
 - BUG-3089 — the audit's import-scan relevance filter misses most records; filed 2026-08-06
-  from this issue's adjacent-defect note, and a de facto prerequisite (see below)
+  from this issue's adjacent-defect note. **`status: done` as of 2026-08-07** — the
+  prerequisite has landed, and landing it is what took this issue's table from three rows
+  to seven (see Summary).
+- FEAT-1813 — `migrate-sdk-version` loop; the bulk re-prove path this issue should
+  advertise, and the source of Option B's version resolver (`status: done`)
+- FEAT-1739 — `learning-tests-audit` loop; stale detection + triage report over the same
+  records (`status: done`)
+- ENH-2621 — docs-guide audit fixes; `status: done`, but left a stale `TODO` marker in
+  `LEARNING_TESTS_GUIDE.md:407` that this issue removes
 - _(to file)_ Option B follow-up — version-stamped staleness instead of calendar age; carries
   the `is_record_stale` signature-change caller list and schema/migration work dropped above
 
@@ -395,17 +506,28 @@ function-local imports nor dotted module names. Four of this repo's own records
 (`anthropic`, `opentelemetry`, `concurrent.futures`, `ruamel.yaml`) are consequently invisible
 to the gate today.
 
-**This raises ENH-3073's sequencing.** Making remediation reachable does not help for rows
-that never print, and BUG-3089 is exactly why they do not print. BUG-3089 is P2 to this
-issue's P3 and should land first; ENH-3073's per-row remediation text then applies to an
-audit that actually flags what it should.
+**This raised ENH-3073's sequencing — now resolved.** Making remediation reachable does not
+help for rows that never print, and BUG-3089 was exactly why they did not print. BUG-3089
+landed (`status: done`); `release_gate.py:67` now normalizes both sides via
+`normalize_target`. ENH-3073's per-row remediation text will therefore apply to an audit
+that flags what it should — and the immediate consequence is that the flagged set grew
+from three records to seven.
 
 ## Status
 
 Open and ready to implement. Mechanism confirmed. Option A selected (see Decision
 Rationale); `--reprove` declined; Option B deferred to a follow-up ENH. Remaining work is
-the gate's per-row remediation text, `cmd_prove` hardening, and re-proving the three
-flagged records via `ll-learning-tests prove`.
+the gate's per-row remediation text plus a bulk line, `cmd_prove` hardening (four gaps),
+and re-proving the seven flagged records via `ll-loop run migrate-sdk-version`.
+
+**Pre-implementation review pass — 2026-08-07.** Re-verified against `main` at `4c78cbd6`.
+Seven corrections applied: the flagged set is seven records, not three (BUG-3089 landed);
+"no automatic refresh exists" was false (`migrate-sdk-version` and `learning-tests-audit`
+both ship); the empty-table AC was unachievable and is now scoped to the seven named
+targets; the kimi-code/gemini mirror AC is a confirmed no-op; the remediation string must
+use raw `record.target`, not `normalize_target`; `cmd_prove` has two hardening gaps beyond
+the two originally listed; and the ENH-2621 TODO marker should simply be removed. Option A
+remains the right call — none of these change the decision, only its scope and cost.
 
 
 ## Confidence Check Notes
