@@ -1,0 +1,12 @@
+{
+  "id": "8955a4e0-e667-4dea-8036-d960a4e11eb9",
+  "type": "decision",
+  "timestamp": "2026-08-08T05:32:49Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches every non-loop consumer's in-process attribute-access convention (release_gate.py, fsm/executor.py, cli/learning_tests.py); removes a needless serialize/deserialize round-trip. The loop-YAML CLI-subprocess convention it departs from is not load-bearing (no process-isolation rationale exists; this file's own apply_update state already imports little_loops internals directly).",
+  "rule": "Option A: in-process loader (list_records + is_record_stale, attribute access)",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: keep subprocess ll-learning-tests list call, reconstruct via LearnTestRecord.from_dict() before calling is_record_stale \u2014 matches the loop-YAML CLI convention but adds a redundant to-dict/from-dict round trip for no isolation benefit.",
+  "issue": "BUG-3102"
+}

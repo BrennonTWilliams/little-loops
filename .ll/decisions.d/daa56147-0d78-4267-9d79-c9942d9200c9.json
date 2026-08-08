@@ -1,0 +1,12 @@
+{
+  "id": "6205b1bf-fd50-4711-b2e1-a2ccead4dd20",
+  "type": "decision",
+  "timestamp": "2026-08-08T21:12:22Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Config-driven default-list extension matches the only established pattern for adding single files to worktree copies (.claude/settings.local.json, .env); avoids Option B's leak of ll.local.md into the verify-only worktree that deliberately passes copy_files=[].",
+  "rule": "Option A: extend default worktree_copy_files list to include .ll/ll.local.md",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: unconditional copy inside setup_worktree alongside the .claude/ copytree \u2014 bypasses copy_files entirely and would leak into verify_epic_branch_before_merge's transient worktree",
+  "issue": "ENH-3113"
+}

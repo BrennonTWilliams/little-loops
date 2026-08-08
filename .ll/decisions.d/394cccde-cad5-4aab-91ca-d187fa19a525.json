@@ -1,0 +1,12 @@
+{
+  "id": "a6744dfd-860e-4485-91b0-f09bf2d1e9d7",
+  "type": "decision",
+  "timestamp": "2026-08-08T21:25:10Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Directly reuses the adjacent .claude/ copytree pattern in setup_worktree; small self-contained change with isolated test impact. Option B has no precedent for filesystem checks at config-load time anywhere in config/, needs new plumbing to thread project_root into from_dict(), and introduces environment-dependent config validity.",
+  "rule": "Option A: support directories via shutil.copytree(dirs_exist_ok=True), mirroring the .claude/ path",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: validate and reject worktree_copy_files directory entries at config load time",
+  "issue": "ENH-3114"
+}

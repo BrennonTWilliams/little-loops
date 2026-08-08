@@ -5,7 +5,6 @@ type: FEAT
 parent: EPIC-3041
 priority: P3
 testable: true
-decision_needed: true
 discovered_date: 2026-08-03
 depends_on:
 - FEAT-3044

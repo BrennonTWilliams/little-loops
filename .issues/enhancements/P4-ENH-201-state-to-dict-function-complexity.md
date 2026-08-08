@@ -1,6 +1,12 @@
 ---
 status: done
-completed_at: 2026-02-01T00:00:00Z
+completed_at: 2026-02-01 00:00:00+00:00
+confidence_score: 96
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 # _state_to_dict Helper Function Has Repetitive Conditional Logic
 
@@ -89,3 +95,7 @@ None
 - Now includes additional `evaluate` fields like `negate`, `prompt`, `schema`, `min_confidence`, `uncertain_suffix`, `source`, `direction`
 - Now includes `route._error` key for error routing
 - Reduced code duplication - the canonical `StateConfig.to_dict()` is now the single source of truth
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-08T10:10:23 - `70da93c7-f4f5-4a9e-85c1-cf030ebd11cb.jsonl`

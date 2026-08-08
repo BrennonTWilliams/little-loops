@@ -3,7 +3,7 @@ id: BUG-3088
 type: BUG
 title: Audit unscoped loops and warn at validate time when `scope:` is missing
 priority: P3
-status: open
+status: done
 parent: BUG-3083
 captured_at: '2026-08-06T16:17:02Z'
 discovered_date: 2026-08-06
@@ -19,14 +19,15 @@ relates_to:
 - BUG-3087
 - BUG-3085
 verify_verdict: VALID
-confidence_score: 95
-outcome_confidence: 55
+confidence_score: 98
+outcome_confidence: 64
 score_complexity: 9
 score_test_coverage: 18
-score_ambiguity: 18
-score_change_surface: 10
-size: Medium
+score_ambiguity: 22
+score_change_surface: 15
+size: Very Large
 decision_needed: false
+completed_at: '2026-08-08T12:32:06Z'
 ---
 
 # BUG-3088: Audit unscoped loops and warn at validate time when `scope:` is missing
@@ -327,6 +328,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/loop/config_cmds.py` — `cmd_validate()` (line 12) is the `ll-loop validate` entry point; must reflect the new WARNING. [Agent 1 finding, confirmed via direct read]
 - `scripts/tests/test_cli_loop_queue.py` — mocks `little_loops.fsm.concurrency.LockManager` and exercises `cmd_run()`'s `--queue` path (e.g. `test_exits_when_scope_never_becomes_available` line 116, the no-`--queue` scope-conflict test at line 140, and further `LockManager` mocks at lines 568/598/626/650). Documented as a fourth call path through the `cmd_run()` fallback; **not break-risk under Option A** (the fallback is unchanged). [Agent 1 + Agent 3 findings, confirmed via grep]
 
+_Wiring pass added by `/ll:wire-issue` (2026-08-08, second pass):_
+- `scripts/little_loops/fsm/fsm-loop-schema.json:30-35` — the `scope` property's `description` ("Paths this loop operates on (for concurrency control)") does not mention the new validate-time nudge; not schema-required today and Deliverable 2 does not change that, but worth a one-line description update so the schema and the new lint message stay in sync. [Agent 2 finding, confirmed via direct read]
+
 ### Documentation
 
 - `docs/guides/LOOPS_GUIDE.md:786-816,848-849` — "Scope-Based Concurrency"
@@ -364,6 +368,15 @@ _Wiring pass added by `/ll:wire-issue`:_
   four templates and drop "Optional" from the comment, so scaffolded loops start
   lint-clean. [Agent 2 finding, confirmed via direct read]
 
+_Wiring pass added by `/ll:wire-issue` (2026-08-08, second pass):_
+- `skills/simplify-loop/reference.md:219` — the flow-collapse field-preservation
+  list already names `scope:` explicitly ("Preserve `initial:`, `import:`,
+  `from:`, `parameters:`, `context:`, `scope:`."). No text change needed, but
+  once Deliverable 1 gives most built-in loops an explicit `scope:`, verify
+  `simplify-loop`'s collapse output still round-trips it — a second
+  skill-authoring surface beyond `create-loop/*` that already treats `scope:`
+  as a first-class field. [Agent 2 finding, confirmed via direct read]
+
 ### Tests
 
 - `scripts/tests/test_fsm_validation_structural.py::TestRequiredInputsValidation`
@@ -380,17 +393,49 @@ _Wiring pass added by `/ll:wire-issue`:_
   (`if fsm.scope: config_parts.append(...)`). Add coverage only if the `info.py`
   update is done. [Agent 3 finding]
 
+_Wiring pass added by `/ll:wire-issue` (2026-08-08, second pass):_
+- `scripts/tests/test_ll_loop_commands.py::TestCmdValidate::test_validate_json_output_valid_loop`
+  (fixture `valid-loop.yaml` at lines 210-212, no `scope:`) — asserts
+  `data["violations"] == []`. This exact-equality assertion **will break** once
+  Deliverable 2's rule fires, independent of the 78-loop YAML sweep (this
+  fixture lives in a tmp dir, not `scripts/little_loops/loops/`). Update the
+  fixture to declare `scope:` or update the assertion. [Agent 3 finding,
+  confirmed via direct read]
+- `scripts/tests/test_builtin_loops.py::TestBuiltinLoopFiles::test_all_have_description_field`
+  (lines 100-118) — structural analog to follow for a new
+  `test_all_have_scope_field` test: iterate the `builtin_loops` fixture, call
+  `load_and_validate`, assert both `fsm.scope` truthy and no matching WARNING.
+  Same file/fixture as the ratchet enrollment already planned, but this is a
+  distinct assertion the ratchet alone does not add. [Agent 3 finding,
+  confirmed via direct read]
+
 _Superseded by the Option A decision_: the previously-listed break-risk tests
 (`test_cli_loop_background.py` ×3, `test_concurrency.py::test_empty_scope_defaults_to_project`)
 and the proposed `cmd_run()`-foreground-fallback test all target the runtime
 fallback, which Option A does not change. Retained in git history; see "Not
 applicable under Option A" above.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
+
+- **Line-number drift since 2026-08-06 refine** (confirmed via direct read 2026-08-08):
+  - `scripts/little_loops/cli/loop/run.py` — the `scope = resolve_scope(fsm.scope or ["."], fsm.context)` fallback site has moved from line 363 to **line 373** (PID-file registration code was added above it; a "Scope-based locking" comment now precedes it at lines 371-372). `_helpers.py:1552` and `concurrency.py:163-164` are unchanged.
+  - `scripts/tests/test_builtin_loops.py`'s warning ratchet has shifted ~232 lines downward (unrelated test classes were added above it): `TestValidatorWarningBudget` class now at **line 13464**; `CATEGORY_PATTERNS` dict (9 entries) at **13474-13484**; `ALLOWLIST` dict (currently 1 entry: `("generator-evaluator-cli", "unreachable")`) at **13497-13511**; `_classify()` at **13519-13523**; `_collect_findings()` at **13525-13537**; `test_deterministic_warning_categories_do_not_regrow` at **13539-13551**; `test_allowlist_entries_are_not_stale` at **13553**. The old cited line 13293 now falls inside an unrelated test (`TestCheckSubstrateOptionalState.test_harness_plan_file_documents_check_substrate`).
+  - `_validate_input_key_without_guard` itself is confirmed **unchanged** at `structural_rules.py:1195-1217`, still wired via `errors.extend(_validate_input_key_without_guard(fsm))` at `structural_rules.py:1063` inside a flat, unordered sequence of `errors.extend(_validate_*(fsm))` calls (1057-1109) — a new `_validate_missing_scope(fsm)` call can be appended anywhere in that sequence, no ordering constraint.
+  - Enrolling the new "no-scope" category in the ratchet requires only one new `"no-scope": "<substring>"` entry in `CATEGORY_PATTERNS` — no structural change to `_collect_findings`, the ratchet tests, or the `ALLOWLIST` type.
+
 ## Program Design
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
+
+_Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
+
+- **Call Path correction**: `cmd_run()`'s fallback site #1 (`resolve_scope(fsm.scope or ["."], fsm.context)`) is at `run.py:373`, not `run.py:363` as originally recorded — confirmed via direct read 2026-08-08. `_helpers.py:1552` and `concurrency.py:163-164` fallback sites are confirmed unchanged in location and shape.
+- **Additional pattern evidence for Deliverable 2** (from `codebase-pattern-finder`, 2026-08-08): the closest existing precedent for an FSM-*top-level* (not per-state) single-condition WARNING is inline in `validate_fsm()` itself at `structural_rules.py:936-943` (the missing-`description` check) — same guard-then-`ValidationError(severity=ValidationSeverity.WARNING)` shape as `_validate_input_key_without_guard`, but inlined rather than extracted to a helper. Either shape (inline or extracted helper) is consistent with existing convention; `_validate_input_key_without_guard` remains the better template since the issue already specifies wiring it as its own function.
+- **Wiring mechanics confirmed exhaustive** (3 sites only, no hidden registration): (1) `errors.extend(_validate_missing_scope(fsm))` appended into `validate_fsm()`'s flat call sequence; (2) function name added to the `from little_loops.fsm.validation.structural_rules import (...)` block in `fsm/validation/__init__.py:127-152`, alphabetically ordered; (3) same name added to `__all__` at `__init__.py:154-255`, also alphabetically ordered. `cmd_validate()` (`cli/loop/config_cmds.py`) requires no per-rule change — it iterates whatever `ValidationError`s `validate_fsm()` returns generically.
 
 ### Types
 - `FSMLoop.scope: list[str] = field(default_factory=list)` (`fsm/schema.py:1278`) — not `Optional`; defaults to `[]`, not `None`. The new lint rule must therefore test `if fsm.scope:` (empty-list falsy), not `is None`.
@@ -436,6 +481,15 @@ _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
 8. **Optional / splittable** — `cli/loop/info.py`'s effective-scope display plus
    a test for it.
 
+### Wiring Phase (added by `/ll:wire-issue`, 2026-08-08 second pass)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/tests/test_ll_loop_commands.py::TestCmdValidate::test_validate_json_output_valid_loop` — its `valid-loop.yaml` fixture has no `scope:` and asserts `violations == []`; this breaks once Deliverable 2's rule ships.
+- Add `test_all_have_scope_field` to `scripts/tests/test_builtin_loops.py::TestBuiltinLoopFiles`, modeled on `test_all_have_description_field` (lines 100-118).
+- Update `scripts/little_loops/fsm/fsm-loop-schema.json:30-35` — sync the `scope` property description with the new lint's guidance.
+- Verify `skills/simplify-loop/reference.md:219`'s collapse logic still round-trips an explicit `scope:` once built-in loops declare one.
+
 ## Impact
 
 - **Severity**: silent, non-deterministic loss of automated work for any
@@ -457,7 +511,25 @@ _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
 
 ## Status
 
-open
+done
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-08-08
+- **Reason**: Issue too large for single session (score 11/11, Very Large;
+  16+ distinct change sites spanning 78 YAML edits, new validation code, and
+  6 doc files)
+
+### Decomposed Into
+- BUG-3106: Apply explicit `scope:` to the 78 unscoped built-in loops per the
+  completed classification table (Deliverable 1)
+- BUG-3107: `ll-loop validate` should warn when a loop declares no `scope:`
+  (Deliverable 2 — depends on BUG-3106)
+- BUG-3108: Document the `scope:` authoring convention, the `["."]`
+  fallback, and the new no-scope lint (depends on BUG-3107)
+- BUG-3109: `cli/loop/info.py` should show the effective scope, not just
+  declared `scope:` (optional, independent of the above)
 
 
 ## Confidence Check Notes
@@ -511,7 +583,36 @@ _Added by `/ll:confidence-check` on 2026-08-06_
   or Implementation Steps so completeness is checkable before Deliverable 2
   ships.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-08_
+
+**Readiness Score**: 98/100 → PROCEED
+**Outcome Confidence**: 64/100 → MODERATE
+
+### Outcome Risk Factors
+- The 78-loop audit plus the lint rule, its tests, ratchet enrollment, and
+  4+ reference/skill docs remain 16+ distinct change sites (Criterion A
+  Breadth: 0/12); per-site depth is Local (9/13) since the audit judgment
+  call — not the one-line `scope:` edit itself — is what keeps this from
+  pure mechanical substitution. Mitigate by landing Deliverable 1 in
+  batches against `test_builtin_loops.py`'s ratchet rather than as one
+  large sweep.
+- The classification table is fully enumerated and an automated
+  completeness test (`test_all_have_scope_field`, plus ratchet enrollment)
+  is now specified in Implementation Steps — better than the prior run's
+  "no automated test" state — but the explicit verification grep
+  (`grep -L "^scope:" scripts/little_loops/loops/*.yaml`) that two prior
+  confidence-check passes recommended adding to Implementation Steps has
+  still not been added to the issue text itself (Criterion D: 15/25).
+  Add it as a literal step so completeness is checkable by hand before
+  the automated test lands.
+
 ## Session Log
+- `/ll:issue-size-review` - 2026-08-08T12:31:14 - `252cabd4-42b7-43f3-becc-2330b53bf3d0.jsonl`
+- `/ll:confidence-check` - 2026-08-08T12:27:25 - `20790bba-ffc4-4337-bfab-411818172442.jsonl`
+- `/ll:wire-issue` - 2026-08-08T12:22:12 - `783e4136-6f53-4a30-9bf6-f6f5c9ae06eb.jsonl`
+- `/ll:refine-issue` - 2026-08-08T12:15:22 - `482e3a70-4e15-4e42-ac7a-81bfc17de23c.jsonl`
 - `/ll:confidence-check` - 2026-08-06T20:12:06 - `2295520d-0eb9-4e41-987f-c967b29af520.jsonl`
 - `/ll:confidence-check` - 2026-08-06T20:06:54 - `b2fe9345-7f70-473b-93a8-546c18ea8b20.jsonl`
 - `/ll:confidence-check` - 2026-08-06T19:57:14 - `b2fe9345-7f70-473b-93a8-546c18ea8b20.jsonl`
@@ -523,3 +624,13 @@ _Added by `/ll:confidence-check` on 2026-08-06_
 - `/ll:wire-issue` - 2026-08-06T19:25:48 - `0ab6d6dc-88e6-4b36-8faa-d04b2587178f.jsonl`
 - `/ll:refine-issue` - 2026-08-06T19:19:39 - `babf35ec-8de3-454b-8555-f68113d877be.jsonl`
 - `/ll:issue-size-review` - 2026-08-06T16:59:24 - `23212449-a121-4dca-9bc5-bc0a0164c75f.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Closed**: 2026-08-08
+- **Decomposed into**: BUG-3106, BUG-3107, BUG-3108, BUG-3109
+
+Work for BUG-3088 is now carried by its child issues; this parent was closed by rn-decompose.
