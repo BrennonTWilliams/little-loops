@@ -9,6 +9,7 @@ allowed-tools:
   - Task
   - Bash(git:*, ll-issues:*)
   - Bash(ll-history-context:*)
+  - Bash(ll-code:*)
 arguments:
   - name: issue_id
     description: Issue ID to refine (e.g., BUG-071, FEAT-225, ENH-042)
@@ -207,7 +208,50 @@ Issue left unchanged.
 
 A refine that correctly does nothing must still be observable as having run, or a caller cannot distinguish "already enriched" from "refine failed silently".
 
+#### 3.05 Seed the agents from the code graph (ENH-3098)
+
+Before dispatching the agent wave, seed it from the `ll-code` query surface so the
+agents *confirm and extend* known structural facts instead of rediscovering them
+with open-ended Grep sweeps.
+
+**Read [`docs/guides/GRAPH_DISCOVERY_GUIDE.md`](../docs/guides/GRAPH_DISCOVERY_GUIDE.md)
+and follow its procedure, contract, three safety rules, and staleness policy.** The
+rules there are binding, not advisory — in particular, a hit is a lead until one
+targeted Grep confirms it at its `path:line`, and exit `1` ("no callers") is never
+trusted alone.
+
+Skip this step entirely when: Step 3.1 applied (nothing to seed), or the provider is
+unavailable (silent fallback — the agent wave runs exactly as it does today).
+
+**Targets** are the symbols and files the issue already names — its `## Integration Map`
+→ Files to Modify, Root Cause anchors, and any `path:line` references in the
+description. If the issue names no concrete target, skip this step; deriving targets
+is the locator's job, not this step's.
+
+**Which axes get seeds:**
+
+| Axis | Seeded with | Rationale |
+|---|---|---|
+| `locator` (Agent 1) | `importers-of`, `impact-of`, `defines` | Candidate file set to confirm and extend |
+| `analyzer` (Agent 2) | `callers-of`, `callees-of` | Concrete call chain to trace |
+| `pattern_finder` (Agent 3) | *nothing* | Needs semantic similarity ("how do we usually do X"), which graph edges do not express — leave unseeded |
+
+Seed only the agents Step 3.0 actually spawns. Querying for a covered axis spends
+the budget the triage exists to save.
+
+Record the provider and freshness that served the seeds (`ll-code --json status` →
+`provider`, `freshness`) on the Step 8 output report's `Graph seeds:` line — a later
+reader cannot otherwise tell an index-accelerated refine from a grep-fallback one,
+and the two are not equally trustworthy. Do **not** put this in the Step 6.5 Session
+Log: that line's format is parsed by `issue_design_timestamp()`
+(`scripts/little_loops/issues/program_design.py:406-427`) and extra text breaks the
+Program Design gate's arming.
+
 #### Agent 1: codebase-locator
+
+Insert the `CONFIRMED SEEDS` block only when Step 3.05 produced confirmed hits; omit
+the whole block otherwise (never pass an empty seed list — it reads as "there are
+none", which is the negative result the safety rules forbid trusting).
 
 ```
 Use Task tool with subagent_type="ll:codebase-locator"
@@ -216,6 +260,14 @@ Prompt: Find all files related to this issue:
 
 Issue: [ISSUE-ID] - [issue title]
 Key concepts: [extracted concepts from Step 2]
+
+CONFIRMED SEEDS (from the code graph, already verified at path:line — treat as
+established, do not re-derive; your job is to confirm coverage and find what
+these miss):
+- Importers of [target]: [path:line, ...]
+- Impact set for [target]: [path, ...]
+- Symbols defined in [target]: [symbol @ path:line, ...]
+This list is NOT exhaustive. Absence from it is not evidence of absence.
 
 Search for:
 - Files mentioned or implied in the issue description
@@ -240,6 +292,12 @@ Prompt: Analyze the current behavior related to this issue:
 
 Issue: [ISSUE-ID] - [issue title]
 Summary: [issue summary]
+
+CONFIRMED SEEDS (from the code graph, already verified at path:line — treat as
+established, do not re-derive; trace outward from these):
+- Callers of [symbol]: [path:line, ...]
+- Callees of [symbol]: [path:line, ...]
+This list is NOT exhaustive. Absence from it is not evidence of absence.
 
 Analyze:
 - Current behavior of the code described in the issue
@@ -944,6 +1002,7 @@ ISSUE REFINED: [ISSUE-ID]
 - Files discovered: [N]
 - Integration points identified: [N]
 - Similar patterns found: [N]
+- Graph seeds: [N confirmed via <provider>/<freshness>] — or: none (provider unavailable) / skipped (no concrete targets)
 - Key finding: [most important discovery]
 
 ## KNOWLEDGE GAPS IDENTIFIED

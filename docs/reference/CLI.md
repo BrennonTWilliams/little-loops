@@ -2576,6 +2576,12 @@ ll-code --provider codegraph status                # inspect the codegraph index
 ll-code impact-of little_loops/state.py --depth 3
 ```
 
+**Skill consumers:** `/ll:wire-issue` (Phase 3.6) and `/ll:refine-issue` (Step 3.05)
+seed their agent waves from these queries. The shared contract they follow — probe
+procedure, the three safety rules, staleness handling, and why the orchestrator
+queries instead of the `ll:codebase-*` agents — is
+[docs/guides/GRAPH_DISCOVERY_GUIDE.md](../guides/GRAPH_DISCOVERY_GUIDE.md).
+
 ---
 
 ## History & Analysis
