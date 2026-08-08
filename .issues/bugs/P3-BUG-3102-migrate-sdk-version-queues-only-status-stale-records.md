@@ -2,8 +2,9 @@
 id: BUG-3102
 priority: P3
 type: BUG
-status: open
+status: done
 captured_at: '2026-08-08T04:44:28Z'
+completed_at: '2026-08-08T07:15:21Z'
 discovered_date: '2026-08-08'
 discovered_by: capture-issue
 discovered_commit: 2371728a
@@ -18,12 +19,12 @@ relates_to:
 - FEAT-1813
 decision_needed: false
 verify_verdict: VALID
-confidence_score: 100
-outcome_confidence: 82
+confidence_score: 98
+outcome_confidence: 84
 score_complexity: 21
 score_test_coverage: 15
 score_ambiguity: 23
-score_change_surface: 23
+score_change_surface: 25
 ---
 
 # BUG-3102: `migrate-sdk-version` queues only `status: stale` records, never age-stale ones
@@ -46,6 +47,18 @@ But staleness has two independent forms in this system, and that filter sees onl
 
 The release gate, the `type: learning` FSM state, and `cmd_check` all use age staleness. The
 bulk loop built to remediate staleness is the one consumer that ignores it.
+
+## Steps to Reproduce
+
+1. In a repo with `learning_tests.enabled: true` and at least one `LearnTestRecord` whose
+   `status` is `proven` but whose `date` is older than `stale_after_days` (age-stale, no
+   `status: stale` record present).
+2. Run `ll-learning-tests list | python3 -c "import json,sys; from collections import Counter; print(Counter(r.get('status') for r in json.load(sys.stdin)))"` — confirm no record has
+   `status: stale`.
+3. Run `ll-loop run migrate-sdk-version`.
+4. Observe: the loop's `list_stale` state queues zero records, prints
+   `No stale records found.`, exits 1, and routes `done_empty`, even though the release gate
+   would flag the age-stale record(s).
 
 ## Current Behavior
 
@@ -215,6 +228,49 @@ N/A — no new gap kind, gate, or threshold is introduced; the fix reuses the ex
 
 _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
 
+_Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
+
+### Codebase Research Findings (pattern-finder pass)
+
+_Added by `/ll:refine-issue` — 2026-08-08 — based on codebase-pattern-finder analysis:_
+
+- **`BRConfig` import path convention diverges from this issue's own Proposed Solution
+  snippet and Program Design signature.** Every existing loop-YAML in-process import of
+  `BRConfig` uses the package-level path `from little_loops.config import BRConfig`
+  (`loops/rn-remediate.yaml:352`, `loops/auto-refine-and-implement.yaml:124,181,313,442,553`,
+  `loops/oracles/resolve-decision.yaml:116` — 6 call sites across 3 files), not
+  `little_loops.config.core`. `little_loops/config/__init__.py:33,87` re-exports `BRConfig`
+  from `.core`, so both paths resolve identically, but the shorter `little_loops.config`
+  path is the established heredoc convention; the longer `.core` path this issue's own
+  snippets use has no precedent among loop-YAML heredocs.
+- **Two disagreeing conventions exist for exercising loop-YAML action text in tests**, not
+  one: `test_brainstorm.py:18-19` (already cited in this issue) hand-`.replace()`s
+  `${...}` placeholders before calling a local `_bash()`. `test_rn_refine.py:40-43` instead
+  defines `_render()`, which builds an `InterpolationContext` and calls the real FSM
+  `interpolate()` (`fsm/interpolation.py:40,209`) to substitute placeholders the same way
+  the FSM runner does, before feeding the result to its own local `_bash()`
+  (`test_rn_refine.py:36-37`). A contested choice for AC 2/3's test, not a settled one.
+- `_bash(script, cwd)` is independently redefined per test module with no shared
+  `conftest.py` helper: also in `test_rn_refine.py:36-37`, `test_harness_optimize.py:16`,
+  `test_loops_recursive_refine.py:14`, beyond the `test_brainstorm.py` copy already cited.
+- Fixture-registry write helpers are likewise duplicated with a naming variant:
+  `test_install_learning_gate.py:33,50` implements `_write_config`/`_write_record` (not
+  `_write_record_file`) for the same shape as `test_release_gate.py`'s already-cited
+  helpers; `test_learning_tests.py` (~lines 145-300) instead calls `write_record()`
+  directly against a `sample_record` fixture with no wrapper at all — a third, more
+  minimal shape.
+- `learning-tests-audit.yaml`'s `list_records` state — the loop-YAML precedent this issue
+  cites for the subprocess/dict pattern — imports no `little_loops` modules at all (grep
+  for `from little_loops` returns nothing in that file); it is pure subprocess + `json.loads`,
+  reinforcing that it has zero in-process-import precedent of its own.
+- No existing consumer combines `status == "stale"` OR `is_record_stale()` in one
+  expression. 11 files reference `list_records`/`is_record_stale`
+  (`fsm/executor.py`, `cli/learning_tests.py`, `learning_tests/gate.py`, `cli/ctx_stats.py`,
+  `learning_tests/release_gate.py`, `hooks/learning_tests_gate.py`, `cli/history_context.py`,
+  `learning_tests/__init__.py`, `learning_tests/extractor.py`, `loops/learning-tests-audit.yaml`,
+  `hooks/install_learning_gate.py`); each checks one condition or the other, never the union
+  this issue's `_is_stale` proposes — there is no existing combined predicate to copy.
+
 ### Tests
 - No existing loop-YAML fixture-registry test exists for `list_stale`. `scripts/tests/test_builtin_loops.py`'s `TestMigrateSdkVersionLoop` (~line 11911) is structural-only — it `yaml.safe_load`s the loop file and asserts on required states/keys, never executes the heredoc or exercises it against a real registry.
 - The established fixture-registry pattern for this kind of test lives in `scripts/tests/test_release_gate.py`: `_write_record_file(project_dir, target, status, date=None)` (line ~41-55, writes a `LearnTestRecord` via `write_record()`) paired with `_write_config(project_dir, enabled=..., stale_after_days=...)` (line ~18-38) and `_base_dir(project_dir)` (line ~64-65). AC 2/3's fixture tests (one age-stale `proven` record; empty/all-fresh registries) should follow this shape rather than inventing a new one.
@@ -228,6 +284,15 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/ARCHITECTURE.md` — `## Learning Test Registry` → `### CLI Surface` states "Once records are marked stale, run `ll-loop run migrate-sdk-version` to re-prove them ... Together these two loops form the two-step registry maintenance workflow." Goes stale once `list_stale` also queues age-stale records without a `mark-stale` pre-step; update to describe both trigger paths. [Agent 2 finding]
 - `scripts/little_loops/loops/README.md` — `## API Adoption` table, `migrate-sdk-version` row: "Run after `learning-tests-audit` marks records stale." Same stale sequencing claim; update to note age-staleness is queued directly. [Agent 2 finding]
 
+_Wiring pass added by `/ll:wire-issue` (round 2):_
+- `CHANGELOG.md` (~line 2030, FEAT-1813 entry) — "Counterpart to `learning-tests-audit`: run after it marks records stale." Same stale-sequencing claim as `docs/ARCHITECTURE.md` and `loops/README.md` above, in a third location; update alongside them or note the historical entry is superseded by BUG-3102. [Agent 2 finding]
+- `.issues/epics/P2-EPIC-1694-built-in-fsm-loops-powered-by-learning-test-registry.md` (lines 70, 82) — line 82's planning note defers `migrate-sdk-version` "until `mark-stale` automation is more obviously needed"; already stale pre-FEAT-1813, doubly stale once this fix removes the `mark-stale` prerequisite for age-stale records. [Agent 2 finding]
+
+### Configuration
+
+_Wiring pass added by `/ll:wire-issue` (round 2):_
+- `scripts/little_loops/config-schema.json` (lines 1032-1051) declares `learning_tests.enabled` `"default": true`, but `scripts/little_loops/config/features.py`'s `LearningTestsConfig` dataclass (line 484) and `from_dict` (line 495) both default `enabled` to `False` — a pre-existing schema/dataclass mismatch, not introduced by this fix. Because the proposed `_is_stale` guards the age-stale branch on `lt.enabled` (the dataclass value), any consuming project with no explicit `learning_tests.enabled` key gets `False` from the dataclass despite the schema documenting `true` — silently disabling the new age-staleness branch for that project. This repo's own `.ll/ll-config.json` sets `enabled: true` explicitly (line 107-109) so it is unaffected, but the mismatch is worth flagging or fixing alongside this issue since it directly gates whether the fix's new clause ever fires elsewhere. [Agent 2 finding]
+
 ### Tests (execution harness)
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -235,15 +300,16 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Acceptance Criteria
 
-- [ ] `list_stale` queues records that are `status: stale` **or** age-stale per
+- [x] `list_stale` queues records that are `status: stale` **or** age-stale per
       `is_record_stale`, using the imported predicate rather than inline date arithmetic.
-- [ ] A test with a fixture registry containing one age-stale `proven` record and no
+- [x] A test with a fixture registry containing one age-stale `proven` record and no
       `status: stale` record asserts the queue file is non-empty and the state exits 0.
-- [ ] A test asserts an empty registry, and a registry of only fresh `proven` records, still
+- [x] A test asserts an empty registry, and a registry of only fresh `proven` records, still
       route `done_empty`.
-- [ ] The `targets` context filter continues to narrow the queue as before.
-- [ ] Running the loop in this repo queues the 7 currently age-stale targets.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] The `targets` context filter continues to narrow the queue as before.
+- [x] Running the loop in this repo queues the currently age-stale targets (10 today, up from
+      7 at capture time — more records have aged past `stale_after_days` since).
+- [x] `python -m pytest scripts/tests/` exits 0.
 
 ## Related Issues
 
@@ -256,12 +322,32 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Status
 
-Open. Mechanism confirmed by reading `list_stale` and by observing `Counter({'proven': 31})`
+Done. Fixed per the selected Option A: `list_stale`'s heredoc now imports `BRConfig`,
+`list_records`, and `is_record_stale` in-process and filters
+`r.status == "stale" or (lt.enabled and r.status == "proven" and is_record_stale(r, lt.stale_after_days))`,
+matching every non-loop consumer's convention. The subprocess `ll-learning-tests list` call and
+its dict/`to_dict()` round-trip are removed. `scripts/tests/test_builtin_loops.py` gained
+`TestMigrateSdkVersionListStaleExecution` (5 fixture-registry execution tests covering AC 2-4
+plus a status-stale regression guard), following `test_release_gate.py`'s
+config/record-fixture pattern and `test_brainstorm.py`'s `_bash()` heredoc-execution pattern.
+Confirmed against this repo's live registry: the fixed `list_stale` now queues 10 age-stale
+targets (grown from 7 at capture time). Full suite: `python -m pytest scripts/tests/` — 18596
+passed, 42 skipped.
+
+Note per Related Issues: BUG-3100 still blocks the re-prove step downstream of this fix, so
+the loop now queues correctly but cannot yet complete a full run against those targets.
+
+Mechanism confirmed by reading `list_stale` and by observing `Counter({'proven': 31})`
 against a release gate reporting 7 stale rows on `2371728a`. Lower priority than BUG-3100 and
 BUG-3101: this bug limits the *scale* of remediation, those two prevent remediation entirely.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-08T07:15:02 - `7a859367-c14a-4fd3-a922-8641a2898918.jsonl`
+- `/ll:ready-issue` - 2026-08-08T06:59:11 - `f8d57f60-ddbd-469d-b189-f70e9f190f98.jsonl`
+- `/ll:confidence-check` - 2026-08-08T06:56:36 - `76e75777-e8c3-4b78-afb0-8322fa052007.jsonl`
+- `/ll:wire-issue` - 2026-08-08T06:53:44 - `a11fe65c-9325-4f43-b9cc-3dbf59d34058.jsonl`
+- `/ll:refine-issue` - 2026-08-08T06:48:52 - `6065b497-9dee-4fda-92da-16ac8b384ce8.jsonl`
 - `/ll:confidence-check` - 2026-08-08T05:41:06 - `c085045c-d657-4355-b399-137e1eeb2bb5.jsonl`
 - `/ll:verify-issues` - 2026-08-08T05:38:58 - `2a0fa600-4e14-4188-af49-4750ba927fcc.jsonl`
 - `/ll:wire-issue` - 2026-08-08T05:37:30 - `1c4fe591-3df3-4261-b9e9-0c2500d76b1f.jsonl`

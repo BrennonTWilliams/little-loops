@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import re
@@ -15,6 +16,7 @@ import yaml
 
 from little_loops.fsm import is_runnable_loop
 from little_loops.fsm.fragments import resolve_fragments
+from little_loops.learning_tests import LearnTestRecord, write_record
 from little_loops.fsm.validation import (
     ValidationSeverity,
     _validate_generator_fix_discipline,
@@ -11996,6 +11998,109 @@ class TestMigrateSdkVersionLoop:
         """reprove_next must capture: reprove so classify_outcome can access old/new records."""
         state = data["states"].get("reprove_next", {})
         assert state.get("capture") == "reprove"
+
+
+def _write_lt_config(
+    project_dir: Path, *, enabled: bool = True, stale_after_days: int = 30
+) -> None:
+    ll_dir = project_dir / ".ll"
+    ll_dir.mkdir(parents=True, exist_ok=True)
+    (ll_dir / "ll-config.json").write_text(
+        json.dumps(
+            {"learning_tests": {"enabled": enabled, "stale_after_days": stale_after_days}}
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_lt_record(
+    project_dir: Path, target: str, status: str, date: str | None = None
+) -> None:
+    lt_dir = project_dir / ".ll" / "learning-tests"
+    lt_dir.mkdir(parents=True, exist_ok=True)
+    record_date = date if date is not None else datetime.date.today().isoformat()
+    record = LearnTestRecord(
+        target=target,
+        date=record_date,
+        status=status,  # type: ignore[arg-type]
+        assertions=[],
+        raw_output_path=None,
+    )
+    write_record(record, base_dir=lt_dir)
+
+
+def _bash(script: str, cwd: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["bash", "-c", script], cwd=cwd, capture_output=True, text=True)
+
+
+class TestMigrateSdkVersionListStaleExecution:
+    """Execution tests for list_stale's fixture-registry filtering (BUG-3102)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "migrate-sdk-version.yaml"
+
+    def _run_list_stale(self, project_dir: Path, targets: str = "") -> subprocess.CompletedProcess[str]:
+        data = yaml.safe_load(self.LOOP_FILE.read_text())
+        action = data["states"]["list_stale"]["action"]
+        run_dir = project_dir / "run"
+        action = action.replace("${context.run_dir}", str(run_dir))
+        action = action.replace("${context.targets}", targets)
+        return _bash(action, project_dir)
+
+    def test_age_stale_proven_record_is_queued(self, tmp_path: Path) -> None:
+        """An age-stale `proven` record with no `status: stale` record is queued (AC 2)."""
+        _write_lt_config(tmp_path, enabled=True, stale_after_days=30)
+        old_date = (datetime.date.today() - datetime.timedelta(days=45)).isoformat()
+        _write_lt_record(tmp_path, "widget", "proven", date=old_date)
+
+        result = self._run_list_stale(tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        queue_path = tmp_path / "run" / "migrate-sdk-version-queue.txt"
+        assert queue_path.exists()
+        assert queue_path.read_text().strip() == "widget"
+
+    def test_empty_registry_routes_done_empty(self, tmp_path: Path) -> None:
+        """An empty registry exits non-zero (routes done_empty) (AC 3)."""
+        _write_lt_config(tmp_path, enabled=True, stale_after_days=30)
+
+        result = self._run_list_stale(tmp_path)
+
+        assert result.returncode == 1, result.stderr
+        queue_path = tmp_path / "run" / "migrate-sdk-version-queue.txt"
+        assert queue_path.exists()
+        assert queue_path.read_text() == ""
+
+    def test_only_fresh_records_routes_done_empty(self, tmp_path: Path) -> None:
+        """A registry of only fresh `proven` records exits non-zero (routes done_empty) (AC 3)."""
+        _write_lt_config(tmp_path, enabled=True, stale_after_days=30)
+        _write_lt_record(tmp_path, "gadget", "proven")
+
+        result = self._run_list_stale(tmp_path)
+
+        assert result.returncode == 1, result.stderr
+
+    def test_status_stale_record_still_queued(self, tmp_path: Path) -> None:
+        """Pre-existing `status: stale` records remain queued (regression guard)."""
+        _write_lt_config(tmp_path, enabled=True, stale_after_days=30)
+        _write_lt_record(tmp_path, "sprocket", "stale")
+
+        result = self._run_list_stale(tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        queue_path = tmp_path / "run" / "migrate-sdk-version-queue.txt"
+        assert queue_path.read_text().strip() == "sprocket"
+
+    def test_targets_filter_narrows_queue(self, tmp_path: Path) -> None:
+        """The targets context filter continues to narrow the queue (AC 4)."""
+        _write_lt_config(tmp_path, enabled=True, stale_after_days=30)
+        _write_lt_record(tmp_path, "widget", "stale")
+        _write_lt_record(tmp_path, "gadget", "stale")
+
+        result = self._run_list_stale(tmp_path, targets="widget")
+
+        assert result.returncode == 0, result.stderr
+        queue_path = tmp_path / "run" / "migrate-sdk-version-queue.txt"
+        assert queue_path.read_text().strip() == "widget"
 
 
 class TestApplyResearchLoop:

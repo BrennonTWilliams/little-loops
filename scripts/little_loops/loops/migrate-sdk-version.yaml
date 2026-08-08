@@ -17,20 +17,27 @@ states:
     action_type: shell
     action: |
       python3 << 'PYEOF'
-      import json, subprocess, sys, os
+      import os, sys
+      from pathlib import Path
 
-      result = subprocess.run(["ll-learning-tests", "list"], capture_output=True, text=True)
-      if result.returncode != 0:
-          sys.stderr.write(result.stderr)
-          sys.exit(1)
+      from little_loops.config import BRConfig
+      from little_loops.learning_tests import list_records
+      from little_loops.learning_tests.gate import is_record_stale
 
-      records = json.loads(result.stdout)
-      stale = [r for r in records if r.get("status") == "stale"]
+      lt = BRConfig(Path.cwd()).learning_tests
+      records = list_records()
+
+      def _is_stale(r):
+          return r.status == "stale" or (
+              lt.enabled and r.status == "proven" and is_record_stale(r, lt.stale_after_days)
+          )
+
+      stale = [r for r in records if _is_stale(r)]
 
       targets_filter = "${context.targets}".strip()
       if targets_filter:
           filter_set = {t.strip() for t in targets_filter.split(",") if t.strip()}
-          stale = [r for r in stale if r.get("target") in filter_set]
+          stale = [r for r in stale if r.target in filter_set]
 
       run_dir = "${context.run_dir}"
       os.makedirs(run_dir, exist_ok=True)
@@ -39,7 +46,7 @@ states:
       if stale:
           with open(queue_path, "w") as f:
               for r in stale:
-                  f.write(r["target"] + "\n")
+                  f.write(r.target + "\n")
           print(f"Queued {len(stale)} stale record(s) to {queue_path}")
           sys.exit(0)
       else:
