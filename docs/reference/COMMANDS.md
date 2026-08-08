@@ -428,15 +428,14 @@ Analyze active issues to discover cross-issue dependencies based on file overlap
 **Trigger keywords:** "map dependencies", "dependency mapping", "find dependencies"
 
 ### `/ll:link-epics`
-Discover parentless open issues and either assign them to existing open EPICs (`--mode assign`, default) or cluster them by similarity into proposed new EPICs (`--mode synthesize`), using Jaccard similarity scoring on title and summary text. In `assign` mode, groups proposals into HIGH/MEDIUM/LOW confidence tiers and confirms interactively (or applies HIGH-tier links automatically in `--auto` mode).
+Discover parentless open issues and either assign them to existing open EPICs (`--mode assign`, default) or cluster them by similarity into proposed new EPICs (`--mode synthesize`). Scoring, tiering, and clustering are delegated to the `ll-issues link-epics` CLI (title word-overlap similarity); this skill presents the CLI's proposals and, in `synthesize` mode, names/creates the resulting EPIC files (EPIC creation is not yet part of the CLI itself).
 
 **Flags:**
 - `--mode assign|synthesize` — `assign` (default) links orphans to existing EPICs; `synthesize` clusters orphans and proposes new EPIC files
-- `--auto` — apply all proposals without prompting (HIGH-confidence tier in `assign` mode; all qualifying clusters in `synthesize` mode)
-- `--min-score <threshold>` — filter proposals to Jaccard similarity ≥ threshold (float, e.g. `0.5`); default in `assign` mode is `0.0` (show all) or `0.7` when `--auto`, default in `synthesize` mode is `0.3`
-- `--min-cluster <n>` — (`synthesize` mode only) minimum issues per cluster to become an EPIC proposal; default `2`
+- `--threshold <score>` — minimum similarity score (float, e.g. `0.5`) to include; default `config.issues.link_epics.min_score`
+- `--auto` — apply/create all proposals without prompting
 
-**Output:** In `assign` mode, writes `parent: <EPIC-NNN>` to each accepted child issue's frontmatter and appends it to the EPIC's `## Children` section. In `synthesize` mode, creates new EPIC files for accepted clusters and writes `parent:` back to each child.
+**Output:** In `assign` mode, writes `parent: <EPIC-NNN>` and `epic: <EPIC-NNN>` to each accepted child issue's frontmatter and appends it to the EPIC's `## Children` section (via `ll-issues link-epics --apply`). In `synthesize` mode, creates new EPIC files for accepted clusters and writes `parent:`/`epic:` back to each child.
 
 **Trigger keywords:** "link epics", "assign to epic", "parentless issues", "orphan issues", "cluster orphaned issues", "synthesize epics"
 

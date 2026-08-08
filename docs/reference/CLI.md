@@ -2250,6 +2250,35 @@ ll-issues link FEAT-110 --depends-on FEAT-050 --dry-run  # Preview only
 
 ---
 
+#### `ll-issues link-epics`
+
+Score orphan issues (open BUG/FEAT/ENH with no `parent:`/`epic:`) for EPIC
+assignment, or cluster them into new-EPIC proposals (FEAT-2942). Similarity
+comes from `text_utils.py`'s title word-overlap (Jaccard) — the same primitive
+`ll-issues find-similar` uses, but scored orphan-vs-EPIC (`assign`) or
+orphan-vs-orphan via union-find (`synthesize`) rather than `find-similar`'s
+single-corpus all-pairs scan. Distinct from `ll-issues clusters`, which
+visualizes existing *dependency-edge* relationships, not text similarity.
+
+| Argument/Flag | Description |
+|---------------|-------------|
+| `--mode assign\|synthesize` | `assign` (default) scores orphans against existing open EPICs; `synthesize` union-find clusters orphans against each other |
+| `--threshold <N>` | Minimum score to include; default `config.issues.link_epics.min_score` |
+| `--apply` | Write accepted `assign`-mode proposals (`parent:`/`epic:` frontmatter + EPIC `## Children` append); unsupported for `--mode synthesize` (exits 1) — EPIC creation from clusters is not implemented by this subcommand |
+| `--json` | Output as JSON: `{"proposals": [...], "applied": [...]}` (assign) or `{"clusters": [...], "applied": []}` (synthesize) |
+| `--config` | Path to project root |
+
+`--apply` is idempotent — re-running is a no-op on any pair already applied.
+
+**Examples:**
+```bash
+ll-issues link-epics --mode assign --json                    # proposals only
+ll-issues link-epics --mode assign --threshold 0.5 --apply   # apply proposals >= 0.5
+ll-issues link-epics --mode synthesize --json                # cluster proposals only
+```
+
+---
+
 #### `ll-issues epic-progress <epic_id>` / `ll-issues ep <epic_id>`
 
 Show a progress summary for an EPIC and all its child issues. Aggregates child statuses into a completion bar, counts by status, surfaces the oldest open child, and lists any blocked children with their `blocked_by` links.

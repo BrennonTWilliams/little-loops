@@ -156,6 +156,20 @@
           },
           "additionalProperties": false
         },
+        "link_epics": {
+          "type": "object",
+          "description": "Thresholds for `ll-issues link-epics` orphan-to-EPIC assignment and orphan-cluster scoring",
+          "properties": {
+            "min_score": {
+              "type": "number",
+              "description": "Minimum Jaccard word-overlap score for a link-epics proposal or cluster edge",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "default": 0.0
+            }
+          },
+          "additionalProperties": false
+        },
         "next_issue": {
           "type": "object",
           "description": "Selection behavior for ll-issues next-issue / next-issues commands",

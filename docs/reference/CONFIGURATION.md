@@ -333,6 +333,7 @@ Issue management settings:
 | `capture_template` | `"full"` | Default template style for captured issues (`"full"`, `"minimal"`, or `"legacy"`) |
 | `duplicate_detection.exact_threshold` | `0.8` | Jaccard similarity threshold for exact duplicates (0.0-1.0) |
 | `duplicate_detection.similar_threshold` | `0.5` | Jaccard similarity threshold for similar issues (0.0-1.0) |
+| `link_epics.min_score` | `0.0` | Minimum score for an `ll-issues link-epics` proposal or cluster edge (0.0-1.0). Separate from `duplicate_detection.similar_threshold` — different semantics (proposal-inclusion floor, not a dedup gate). |
 | `next_issue.strategy` | `"confidence_first"` | Selection order for `ll-issues next-issue` / `next-issues`. Named preset: `confidence_first` or `priority_first`. See [`issues.next_issue`](#issuesnext_issue). |
 | `next_issue.sort_keys` | `null` | Optional list of `{key, direction}` entries that overrides `strategy` with a custom sort order. |
 | `auto_commit` | `false` | When `true`, the `issue-auto-commit.sh` PostToolUse hook automatically commits issue file changes (Write/Edit) with no other staged files present. |

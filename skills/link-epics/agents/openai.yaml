@@ -1,3 +1,3 @@
 interface:
   display_name: "Link Epics"
-  short_description: "Assign orphans to EPICs, or synthesize new EPICs from them, via Jaccard similarity"
+  short_description: "Assign orphans to EPICs, or synthesize new EPICs from them, via ll-issues link-epics"

@@ -1,4 +1,4 @@
-"""Structural tests for the link-epics skill (ENH-1729)."""
+"""Structural tests for the link-epics skill (ENH-1729, delegated per FEAT-2942)."""
 
 from __future__ import annotations
 
@@ -14,84 +14,73 @@ class TestLinkEpicsSkillExists:
     def test_skill_file_exists(self) -> None:
         assert SKILL_FILE.exists(), "Skill file not found"
 
+    def test_apply_flag(self) -> None:
+        assert "--apply" in SKILL_FILE.read_text()
+
+    def test_threshold_flag(self) -> None:
+        assert "--threshold" in SKILL_FILE.read_text()
+
     def test_auto_flag(self) -> None:
-        assert SKILL_FILE.exists(), "Skill file not found"
         assert "--auto" in SKILL_FILE.read_text()
 
-    def test_min_score_flag(self) -> None:
-        assert SKILL_FILE.exists(), "Skill file not found"
-        assert "--min-score" in SKILL_FILE.read_text()
+    def test_min_score_and_min_cluster_flags_removed(self) -> None:
+        content = SKILL_FILE.read_text()
+        assert "--min-score" not in content
+        assert "--min-cluster" not in content
 
     def test_confidence_tiers(self) -> None:
-        assert SKILL_FILE.exists(), "Skill file not found"
         content = SKILL_FILE.read_text()
-        for tier in ("HIGH", "MEDIUM", "LOW"):
+        for tier in ("HIGH", "MEDIUM"):
             assert tier in content
 
     def test_parent_field_reference(self) -> None:
-        assert SKILL_FILE.exists(), "Skill file not found"
         assert "parent:" in SKILL_FILE.read_text()
 
-    def test_config_issues_base_dir(self) -> None:
-        assert SKILL_FILE.exists(), "Skill file not found"
-        assert "{{config.issues.base_dir}}" in SKILL_FILE.read_text()
-
     def test_name_field_in_frontmatter(self) -> None:
-        assert SKILL_FILE.exists(), "Skill file not found"
-        content = SKILL_FILE.read_text()
-        assert "name: link-epics" in content
+        assert "name: link-epics" in SKILL_FILE.read_text()
 
     def test_metadata_short_description(self) -> None:
-        assert SKILL_FILE.exists(), "Skill file not found"
-        content = SKILL_FILE.read_text()
-        assert "short-description:" in content
+        assert "short-description:" in SKILL_FILE.read_text()
 
     def test_disable_model_invocation(self) -> None:
-        assert SKILL_FILE.exists(), "Skill file not found"
         assert "disable-model-invocation: true" in SKILL_FILE.read_text()
 
-    def test_jaccard_scoring_documented(self) -> None:
-        assert SKILL_FILE.exists(), "Skill file not found"
+    def test_no_jaccard_scoring_algorithm_prose(self) -> None:
+        """Scoring/clustering algorithm prose must be gone — delegated to the CLI (AC #3)."""
         content = SKILL_FILE.read_text()
-        assert "Jaccard" in content
+        assert "Jaccard" not in content
+        assert "union-find" not in content.lower()
+        assert "words1 & words2" not in content
+        assert "intersection" not in content.lower()
 
-    def test_relates_to_not_used_for_child_wiring(self) -> None:
-        assert SKILL_FILE.exists(), "Skill file not found"
+    def test_delegates_to_cli(self) -> None:
         content = SKILL_FILE.read_text()
-        assert "6b. Update EPIC relates_to:" not in content, (
-            "Step 6b must be removed — children must not be wired into EPIC relates_to: (ENH-2330)"
-        )
-
-    def test_post_write_validation_referenced(self) -> None:
-        assert SKILL_FILE.exists(), "Skill file not found"
-        content = SKILL_FILE.read_text()
-        assert "Post-write consistency" in content, (
-            "Skill must include a post-write consistency check after wiring (ENH-2330)"
-        )
+        assert "ll-issues link-epics" in content
+        assert "--mode assign" in content
+        assert "--mode synthesize" in content
 
     def test_children_section_documented(self) -> None:
-        assert SKILL_FILE.exists(), "Skill file not found"
         assert "## Children" in SKILL_FILE.read_text()
 
     def test_mode_flag_documented(self) -> None:
-        assert SKILL_FILE.exists(), "Skill file not found"
         assert "--mode" in SKILL_FILE.read_text()
 
-    def test_assign_mode_section(self) -> None:
-        assert SKILL_FILE.exists(), "Skill file not found"
-        assert "## Mode: `--mode assign`" in SKILL_FILE.read_text()
-
-    def test_synthesize_mode_section(self) -> None:
-        assert SKILL_FILE.exists(), "Skill file not found"
-        assert "## Mode: `--mode synthesize`" in SKILL_FILE.read_text()
-
-    def test_min_cluster_flag(self) -> None:
-        assert SKILL_FILE.exists(), "Skill file not found"
-        assert "--min-cluster" in SKILL_FILE.read_text()
+    def test_distinguishes_from_ll_issues_clusters(self) -> None:
+        assert "ll-issues clusters" in SKILL_FILE.read_text()
 
     def test_create_epics_from_unparented_name_removed(self) -> None:
-        assert SKILL_FILE.exists(), "Skill file not found"
         assert "create-epics-from-unparented" not in SKILL_FILE.read_text()
+
+    def test_argument_hint_matches_cli_flags(self) -> None:
+        content = SKILL_FILE.read_text()
+        assert "argument-hint:" in content
+        hint_line = next(
+            line for line in content.splitlines() if line.strip().startswith("argument-hint:")
+        )
+        assert "--mode" in hint_line
+        assert "--threshold" in hint_line
+        assert "--min-score" not in hint_line
+        assert "--min-cluster" not in hint_line
 
 
 class TestUpdateFrontmatterRoundTrip:
@@ -152,7 +141,11 @@ class TestParentlessIssueDetection:
 
 
 class TestJaccardScoringBuckets:
-    """Verify Jaccard similarity calculation maps to correct confidence tiers."""
+    """Verify Jaccard similarity calculation maps to correct confidence tiers.
+
+    Exercises `text_utils.py` directly — the shared scoring layer `ll-issues
+    link-epics` is built on (see test_link_epics_cli.py for CLI-level coverage).
+    """
 
     def test_identical_word_sets_score_one(self) -> None:
         from little_loops.text_utils import calculate_word_overlap

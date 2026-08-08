@@ -123,6 +123,18 @@ class DuplicateDetectionConfig:
         )
 
 
+@dataclass
+class LinkEpicsConfig:
+    """Thresholds for ``ll-issues link-epics`` orphan/cluster scoring."""
+
+    min_score: float = 0.0
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> LinkEpicsConfig:
+        """Create LinkEpicsConfig from dictionary."""
+        return cls(min_score=data.get("min_score", 0.0))
+
+
 VALID_NEXT_ISSUE_STRATEGIES: frozenset[str] = frozenset({"confidence_first", "priority_first"})
 VALID_NEXT_ISSUE_SORT_KEYS: frozenset[str] = frozenset(
     {
@@ -201,6 +213,7 @@ class IssuesConfig:
     capture_template: str = "full"
     duplicate_detection: DuplicateDetectionConfig = field(default_factory=DuplicateDetectionConfig)
     next_issue: NextIssueConfig = field(default_factory=NextIssueConfig)
+    link_epics: LinkEpicsConfig = field(default_factory=LinkEpicsConfig)
     auto_commit: bool = False
     auto_commit_prefix: str = "chore(issues)"
 
@@ -238,6 +251,7 @@ class IssuesConfig:
                 data.get("duplicate_detection", {})
             ),
             next_issue=NextIssueConfig.from_dict(data.get("next_issue", {})),
+            link_epics=LinkEpicsConfig.from_dict(data.get("link_epics", {})),
             auto_commit=data.get("auto_commit", False),
             auto_commit_prefix=data.get("auto_commit_prefix", "chore(issues)"),
         )

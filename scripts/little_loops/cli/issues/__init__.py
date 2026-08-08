@@ -71,6 +71,7 @@ def main_issues() -> int:
         )
         from little_loops.cli.issues.impact_effort import cmd_impact_effort
         from little_loops.cli.issues.link import add_link_parser, cmd_link
+        from little_loops.cli.issues.link_epics import add_link_epics_parser, cmd_link_epics
         from little_loops.cli.issues.list_cmd import cmd_list
         from little_loops.cli.issues.locate_options import cmd_locate_options
         from little_loops.cli.issues.next_action import cmd_next_action
@@ -131,6 +132,7 @@ Sub-commands:
   set-flags        Write decision_needed/missing_artifacts/implementation_order_risk/spike_needed flags from confidence-check findings
   set-status       Transition an issue to a new status value
   link             Write or remove a dependency edge in issue frontmatter
+  link-epics       Score orphans for EPIC assignment, or cluster into new-EPIC proposals
   skip             Deprioritize an issue by bumping its priority prefix
   anchor-sweep     Rewrite file:line references in active issue files to anchor form
   research-triage  Report which of refine-issue's three research axes an issue already covers
@@ -858,6 +860,7 @@ Examples:
         add_config_arg(sst)
 
         add_link_parser(subs)
+        add_link_epics_parser(subs)
 
         asw = subs.add_parser(
             "anchor-sweep",
@@ -1020,6 +1023,8 @@ Examples:
             return cmd_set_status(config, args)
         if args.command == "link":
             return cmd_link(config, args)
+        if args.command == "link-epics":
+            return cmd_link_epics(config, args)
         if args.command == "anchor-sweep":
             return cmd_anchor_sweep(config, args)
         if args.command == "fingerprint":
