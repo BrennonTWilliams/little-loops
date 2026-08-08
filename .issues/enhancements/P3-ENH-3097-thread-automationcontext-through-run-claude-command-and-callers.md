@@ -115,6 +115,40 @@ logged).
    updated.
 6. `python -m pytest scripts/tests/` passes.
 
+## Program Design
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
+
+### Types
+- Imports `AutomationContext` from `host_runner.py` (defined by ENH-3095, not yet landed — this issue is `blocked_by: [ENH-3095]`).
+
+### Signatures
+Old — `run_claude_command()` (`subprocess_utils.py` and the `issue_manager.py` wrapper share this shape):
+`run_claude_command(command: str, timeout: int = 3600, working_dir: Path | None = None, idle_timeout: int = 0, automation_profile: str | None = None) -> subprocess.CompletedProcess[str]`
+
+New:
+`run_claude_command(command: str, timeout: int = 3600, working_dir: Path | None = None, automation: AutomationContext | None = None) -> subprocess.CompletedProcess[str]`
+
+- Current, each declaring an independent `automation_profile: str | None = None` / `idle_timeout: int = 0` (or `int` positional-equivalent) pair: `subprocess_utils.run_claude_command()` (`:320-341`); `issue_manager.run_claude_command()` wrapper (`:139-152`); `issue_manager.run_with_continuation()` (`:252-269`).
+- New — each becomes `automation: AutomationContext | None = None` in place of the pair.
+- `runner_spec.py`'s `_run_skill` reads `automation_profile` out of the untyped `spec.args: dict[str, Any]` (`:124-128`, `spec.args.get("automation_profile")`) — the only one of these sites where the value arrives via dict lookup rather than a named parameter; becomes reading/constructing an `AutomationContext` the same way. `idle_timeout` is not threaded through `runner_spec.py` today (no `spec.args.get("idle_timeout")` anywhere in `_run_skill`) and this issue does not add it.
+
+### Call Path
+- `subprocess_utils.py:402-411` — `automation_profile` forwarded to `runner.build_streaming(automation_profile=...)` becomes `build_streaming(automation=automation)`, consuming ENH-3095's boundary.
+- `subprocess_utils.py:478-487` — `idle_timeout` consumed locally by the selector loop (`if idle_timeout and (now - last_output_time) > idle_timeout: raise TimeoutExpired(..., output="idle_timeout")`), never reaches `build_streaming()`; the read becomes `automation.idle_timeout if automation else 0` at this same site, loop logic unchanged.
+- `issue_manager.py` wrapper (`:207-218`) forwards 1:1 to `_run_claude_base` (`subprocess_utils.run_claude_command`, imported alias) — becomes a 1:1 forward of `automation=automation`.
+- `issue_manager.run_with_continuation()` (`:340-350`) forwards to the wrapper on every continuation round — same collapse, same forwarding shape.
+- `runner_spec.py` three forwarding sites: trace mode (`:140-149`, calls `run_claude_command`), stream_callback mode (`:172-177`, calls `run_claude_command`), and blocking/default mode (`:182`, calls `resolve_host().build_streaming()` directly, bypassing `run_claude_command()` entirely) — each currently passes bare `automation_profile=automation_profile`; each becomes `automation=automation`.
+- `fsm/executor.py:2771-2778` baseline arm — currently passes only `idle_timeout=idle_timeout` (no `automation_profile` at all today) — becomes `automation=AutomationContext(idle_timeout=idle_timeout)`.
+- `worker_pool.py:924-934` `_run_claude_base` forward — currently passes only `idle_timeout=self.parallel_config.idle_timeout_per_issue` (no `automation_profile` today) — becomes `automation=AutomationContext(idle_timeout=self.parallel_config.idle_timeout_per_issue)`.
+
+### Decision Rules
+- Same shim pattern as ENH-3095/ENH-3096: legacy `automation_profile`/`idle_timeout` keywords still work, constructing an `AutomationContext` internally; explicit `automation` wins when both given; deprecation warning logged.
+- Explicitly out of scope, restated here so the shim isn't conflated with a fix: BUG-3093's `idle_timeout`-only asymmetry at `issue_manager.py:826,893,1089` (call sites passing `idle_timeout` but never `automation_profile`) — this issue changes only the *parameter shape* those sites use (`idle_timeout=` kwarg -> `automation=AutomationContext(idle_timeout=...)`); it does not add a missing `profile=` argument to close that asymmetry.
+- `AutomationContext.idle_timeout` is `float | None` (ENH-3095) versus the `int = 0` parameters across this issue's five call sites — the internal shim construction (`AutomationContext(idle_timeout=idle_timeout)`) must preserve `0` (explicitly disabled) as distinct from `None` (unset), not collapse `0` to `None` via a falsy check.
+
 ## Related Key Documentation
 
 | Document | Relevance |
@@ -125,4 +159,5 @@ logged).
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-07T22:51:22 - `596f76ed-c393-479b-9539-adbce5a6a72b.jsonl`
 - `/ll:issue-size-review` - 2026-08-07T22:09:44 - `dec986a1-15de-4376-b5dd-5868a8d3e188.jsonl`

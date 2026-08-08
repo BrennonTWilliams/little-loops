@@ -133,6 +133,35 @@ deprecated pass-throughs per the parent's Decision Rules (explicit
 5. `docs/reference/API.md` ActionRunner Protocol mirror updated.
 6. `python -m pytest scripts/tests/` passes.
 
+## Program Design
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
+
+### Types
+- Imports `AutomationContext` from `host_runner.py` (defined by ENH-3095, not yet landed — this issue is `blocked_by: [ENH-3095]`).
+
+### Signatures
+Old — `ActionRunner.run()` Protocol, `DefaultActionRunner.run()`, `SimulationActionRunner.run()`:
+`run(self, action: str, timeout: int, is_slash_command: bool, on_output_line: Callable[[str], None] | None = None, agent: str | None = None, tools: list[str] | None = None, on_usage: UsageCallback | None = None, on_usage_detailed: DetailedUsageCallback | None = None, model: str | None = None, working_dir: Path | None = None, automation_profile: str | None = None, idle_timeout: int = 0) -> ActionResult`
+
+New:
+`run(self, action: str, timeout: int, is_slash_command: bool, on_output_line: Callable[[str], None] | None = None, agent: str | None = None, tools: list[str] | None = None, on_usage: UsageCallback | None = None, on_usage_detailed: DetailedUsageCallback | None = None, model: str | None = None, working_dir: Path | None = None, automation: AutomationContext | None = None) -> ActionResult`
+
+- Current — `ActionRunner.run()` Protocol (`fsm/runners.py:39-53`) and its two implementations `DefaultActionRunner.run()` (`:98-112`) and `SimulationActionRunner.run()` (`:370-384`) share identical trailing parameters `automation_profile: str | None = None, idle_timeout: int = 0`.
+- New — replace that pair with `automation: AutomationContext | None = None`. Note the type widening this requires: `AutomationContext.idle_timeout` is `float | None` (ENH-3095's dataclass) versus the current `idle_timeout: int = 0` parameter — the shim's internal construction must map `0` (today's "disabled" default) to a value distinct from `None` (unset), not conflate the two.
+
+### Call Path
+- `fsm/executor.py:1883-1931` `extra_kwargs` assembly (today builds a kwarg-gated dict: `working_dir` if `self.working_dir is not None`; `automation_profile` if `action_mode == "prompt"` and a resolved, enabled pruning-profile config exists; `idle_timeout` if the resolved value is truthy) collapses into constructing one `AutomationContext(profile=..., idle_timeout=...)` and passing it as `automation=` — kept kwarg-gated (only added to `extra_kwargs` when non-default) so implementations without an `automation` parameter still work, per the existing pattern's own inline comments at `:1883-1885`, `1893-1895`, `1904-1907`.
+- Inside `DefaultActionRunner.run()`: `automation_profile`/`idle_timeout` forwarded to `run_claude_command(...)` (`runners.py:191-192`) becomes forwarding `automation=automation`. `idle_timeout` is additionally read directly by this method's own shell-command selector loop (`runners.py:287,313`) — those reads become `automation.idle_timeout if automation else 0` (or equivalent), since `automation_profile` has no effect on that branch today and none is being added.
+- Inside `SimulationActionRunner.run()`: extend the `del` no-op list at `:404` to include `automation` in place of the current `idle_timeout` entry — this both replaces and fixes the pre-existing asymmetry where `idle_timeout` is deleted but `automation_profile` (declared but never referenced) is not.
+
+### Decision Rules
+- Same shim pattern as ENH-3095: `automation_profile`/`idle_timeout` keywords stay as deprecated pass-throughs on `ActionRunner.run()` and both implementations; explicit `automation` wins when both are given; deprecation warning logged, per ENH-3095's shim.
+- Kwarg-gating must be preserved end to end: `extra_kwargs` only sets `automation` when at least one of profile/idle_timeout resolves non-default, so the ~11 inline test-fake `ActionRunner`s enumerated in this issue's Tests section (explicit `run()` signatures, no `**kwargs`, no `automation` parameter) keep working unmodified when automation context isn't in use. This is the exact contract `test_feat3033_idle_timeout.py:390-467`'s `test_idle_disabled_omits_kwarg_for_old_runners` already proves for the pre-collapse shape — the collapsed version must keep it green.
+- The `contributed`-action branch's separate, adjacent kwarg-gating in `fsm/executor.py:1860-1879` (its own `_contrib_extra` dict, `idle_timeout`-only, no `automation_profile` today) is out of this issue's stated scope (`ActionRunner.run()` and `:1886-1910` only) — do not fold it into this change.
+
 ## Related Key Documentation
 
 | Document | Relevance |
@@ -143,4 +172,5 @@ deprecated pass-throughs per the parent's Decision Rules (explicit
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-07T22:51:22 - `596f76ed-c393-479b-9539-adbce5a6a72b.jsonl`
 - `/ll:issue-size-review` - 2026-08-07T22:09:43 - `dec986a1-15de-4376-b5dd-5868a8d3e188.jsonl`
