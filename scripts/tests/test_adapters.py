@@ -87,10 +87,8 @@ class TestResolveEmitter:
     def test_codex_returns_codex_emitter(self) -> None:
         assert isinstance(resolve_emitter("codex"), CodexEmitter)
 
-    def test_omp_returns_emitter_that_raises(self) -> None:
-        emitter = resolve_emitter("omp")
-        with pytest.raises(AdapterError):
-            emitter.emit_skill({})
+    def test_omp_returns_omp_emitter(self) -> None:
+        assert isinstance(resolve_emitter("omp"), OmpEmitter)
 
     def test_unknown_host_raises_adapter_error(self) -> None:
         with pytest.raises(AdapterError, match="not registered"):
@@ -1360,14 +1358,144 @@ class TestOmpEmitterEmitAgent:
         OmpEmitter().emit_agent(meta)
         assert OmpEmitter().emit_agent(meta) == "skipped"
 
-    def test_emit_skill_still_raises(self) -> None:
-        """Only emit_agent is real (FEAT-3104) — skill/command await FEAT-3103/3105."""
-        with pytest.raises(AdapterError):
-            OmpEmitter().emit_skill({})
 
-    def test_emit_command_still_raises(self) -> None:
-        with pytest.raises(AdapterError):
-            OmpEmitter().emit_command({})
+# =============================================================================
+# OmpEmitter.emit_skill (FEAT-3105): native, mirrors KimiEmitter.emit_skill
+# =============================================================================
+
+
+class TestOmpEmitterEmitSkill:
+    def _meta(
+        self,
+        tmp_path: Path,
+        name: str,
+        apply: bool = True,
+        include_name: bool = False,
+        include_short_desc: bool = False,
+        description: str = "Use when user asks for tasks.",
+    ) -> dict:
+        skill_path = _make_skill_with_short_desc(
+            tmp_path,
+            name,
+            description=description,
+            include_name=include_name,
+            include_short_desc=include_short_desc,
+        )
+        content = skill_path.read_text()
+        fm = _read_frontmatter(content) or {}
+        return {
+            "skill_name": name,
+            "skill_path": skill_path,
+            "content": content,
+            "fm": fm,
+            "apply": apply,
+            "quiet": True,
+        }
+
+    def _out_path(self, tmp_path: Path, name: str) -> Path:
+        return tmp_path / ".omp" / "skills" / name / "SKILL.md"
+
+    def test_writes_to_omp_skills_dir(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill")
+        OmpEmitter().emit_skill(meta)
+        assert self._out_path(tmp_path, "my-skill").exists()
+
+    def test_injects_name_when_absent(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill", include_name=False)
+        OmpEmitter().emit_skill(meta)
+        content = self._out_path(tmp_path, "my-skill").read_text()
+        assert "name: my-skill" in content
+
+    def test_does_not_duplicate_name_when_present(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill", include_name=True)
+        OmpEmitter().emit_skill(meta)
+        content = self._out_path(tmp_path, "my-skill").read_text()
+        assert content.count("name: my-skill") == 1
+
+    def test_returns_adapted_on_first_run(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill")
+        assert OmpEmitter().emit_skill(meta) == "adapted"
+
+    def test_dry_run_does_not_write(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill", apply=False)
+        OmpEmitter().emit_skill(meta)
+        assert not self._out_path(tmp_path, "my-skill").exists()
+
+    def test_already_adapted_returns_skipped(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill")
+        OmpEmitter().emit_skill(meta)
+        assert OmpEmitter().emit_skill(meta) == "skipped"
+
+
+# =============================================================================
+# OmpEmitter.emit_command (FEAT-3105): flat .omp/commands/<stem>.md
+# =============================================================================
+
+
+class TestOmpEmitterEmitCommand:
+    def _meta(
+        self,
+        tmp_path: Path,
+        stem: str,
+        apply: bool = True,
+        description: str = "Run this command.",
+        body: str = "# My Command\n\nDo the thing with $ARGUMENTS.\n",
+    ) -> dict:
+        commands_dir = tmp_path / "commands"
+        commands_dir.mkdir(exist_ok=True)
+        cmd_md = commands_dir / f"{stem}.md"
+        cmd_md.write_text(f"---\ndescription: {description}\n---\n\n{body}")
+        content = cmd_md.read_text()
+        fm = _read_frontmatter(content) or {}
+        return {
+            "stem": stem,
+            "cmd_path": cmd_md,
+            "content": content,
+            "fm": fm,
+            "output_dir": tmp_path / "skills",  # ignored by OmpEmitter
+            "apply": apply,
+            "quiet": True,
+        }
+
+    def _out_path(self, tmp_path: Path, stem: str) -> Path:
+        return tmp_path / ".omp" / "commands" / f"{stem}.md"
+
+    def test_writes_flat_command_file(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd")
+        OmpEmitter().emit_command(meta)
+        assert self._out_path(tmp_path, "my-cmd").exists()
+
+    def test_body_passes_through_verbatim(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd", body="Do the thing with $ARGUMENTS.\n")
+        OmpEmitter().emit_command(meta)
+        content = self._out_path(tmp_path, "my-cmd").read_text()
+        assert "Do the thing with $ARGUMENTS." in content
+
+    def test_description_passes_through_verbatim(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd", description="A useful command.")
+        OmpEmitter().emit_command(meta)
+        content = self._out_path(tmp_path, "my-cmd").read_text()
+        assert "description: A useful command." in content
+
+    def test_returns_adapted_on_first_run(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd")
+        assert OmpEmitter().emit_command(meta) == "adapted"
+
+    def test_dry_run_does_not_write(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd", apply=False)
+        OmpEmitter().emit_command(meta)
+        assert not self._out_path(tmp_path, "my-cmd").exists()
+
+    def test_already_adapted_returns_skipped(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd")
+        OmpEmitter().emit_command(meta)
+        assert OmpEmitter().emit_command(meta) == "skipped"
+
+    def test_ignores_output_dir(self, tmp_path: Path) -> None:
+        """omp self-derives its path (Gemini shape) — output_dir must be unused."""
+        meta = self._meta(tmp_path, "my-cmd")
+        OmpEmitter().emit_command(meta)
+        assert not (tmp_path / "skills").exists()
 
 
 class TestResolveEmitterOmp:

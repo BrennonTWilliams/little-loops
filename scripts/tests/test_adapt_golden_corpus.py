@@ -11,11 +11,11 @@ it, following the golden-corpus pattern in
 
 **Named exclusions** (per ENH-2883's Acceptance Criteria — not silent):
 
-- ``omp`` — ``emit_skill``/``emit_command`` still raise ``AdapterError``
-  unconditionally (FEAT-3103/FEAT-3105 unblock those); there is no
-  skill/command output to snapshot. ``emit_agent`` is real (FEAT-3104) and
-  has its own coverage in ``test_adapters.py``/``TestOmpEmitterEmitAgent``,
-  not part of this golden-corpus claim.
+- ``omp`` — not part of this golden-corpus claim at all (it postdates the
+  ENH-2883 refactor this module snapshots). ``emit_skill``/``emit_command``
+  are real as of FEAT-3105 and ``emit_agent`` is real as of FEAT-3104; all
+  three have their own coverage in ``test_adapters.py`` (``TestOmpEmitterEmitSkill``/
+  ``TestOmpEmitterEmitCommand``/``TestOmpEmitterEmitAgent``).
 - Gemini agent emission — an intentional degraded-mode preview stub
   (ENH-2874), not part of this byte-identity claim. It has its own test
   coverage in ``test_adapters.py``/``TestProcessAgentsDegradedRouting``.
@@ -196,24 +196,16 @@ def test_corpus_is_non_trivial() -> None:
     assert any(any(t.startswith("mcp__") for t in ts) for ts in tool_sets)
 
 
-def test_omp_and_gemini_agent_excluded_from_byte_identity_claim() -> None:
-    """Documents the two named exclusions from AC #2 (not a silent gap).
+def test_gemini_agent_excluded_from_byte_identity_claim() -> None:
+    """Documents the named exclusion from AC #2 (not a silent gap).
 
-    omp: emit_skill/emit_command still raise AdapterError unconditionally,
-    so there is no skill/command output to snapshot (emit_agent is real as
-    of FEAT-3104, covered separately in test_adapters.py). Gemini agent
-    emission is an intentional degraded-mode preview stub (ENH-2874),
-    covered by its own tests, not part of this native-format byte-identity
-    claim.
+    Gemini agent emission is an intentional degraded-mode preview stub
+    (ENH-2874), covered by its own tests, not part of this native-format
+    byte-identity claim. (omp is entirely out of scope for this module —
+    it postdates the ENH-2883 refactor this golden corpus snapshots; its
+    emit_skill/emit_command/emit_agent all have their own coverage in
+    test_adapters.py.)
     """
-    import pytest
-
-    from little_loops.adapters.core import AdapterError
-    from little_loops.adapters.omp import OmpEmitter
-
-    with pytest.raises(AdapterError):
-        OmpEmitter().emit_skill({})
-
     # Gemini agent emission always routes to the shared degraded-mode
     # helper regardless of input — no native format to compare byte-for-byte.
     assert GeminiEmitter().emit_agent.__doc__ is not None

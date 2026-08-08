@@ -1,5 +1,5 @@
 {
-  "_comment": "Golden corpus for ENH-2883 pre-refactor baseline. codex agent (TOML) emission byte-identity. Gemini agent emission is excluded (degraded-mode preview stub, covered by ENH-2874 tests, not a native-format byte-identity claim). omp is excluded (emit_agent is real as of FEAT-3104 but covered separately in test_adapters.py, not this golden-corpus claim; emit_skill/emit_command still raise, nothing to snapshot there).",
+  "_comment": "Golden corpus for ENH-2883 pre-refactor baseline. codex agent (TOML) emission byte-identity. Gemini agent emission is excluded (degraded-mode preview stub, covered by ENH-2874 tests, not a native-format byte-identity claim). omp is excluded entirely (postdates the ENH-2883 refactor this module snapshots; emit_agent/emit_skill/emit_command are all real as of FEAT-3104/FEAT-3105 but covered separately in test_adapters.py, not this golden-corpus claim).",
   "cases": [
     {
       "name": "agent-readonly",

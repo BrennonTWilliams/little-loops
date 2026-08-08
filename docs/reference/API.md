@@ -9569,7 +9569,7 @@ class AdapterError(Exception): ...
 |-------|----------|--------|
 | `CodexEmitter` | `"codex"` | Implemented (FEAT-2391) — emits `.codex/` skill/command/agent files |
 | `GeminiEmitter` | `"gemini"` | Implemented (FEAT-2392) — emits `.gemini/` skill/command/agent files |
-| `OmpEmitter` | `"omp"` | Partial (FEAT-3104) — `emit_agent` writes native `.omp/agents/<name>.md` files; `emit_skill`/`emit_command` still raise `AdapterError` with a PR pointer |
+| `OmpEmitter` | `"omp"` | Implemented (FEAT-3104/FEAT-3105) — emits `.omp/skills/`, `.omp/commands/`, and `.omp/agents/` files |
 
 To add a host: create `scripts/little_loops/adapters/<host>.py` implementing `HostEmitter`, then register the class in `_EMITTER_REGISTRY` in `core.py`.
 

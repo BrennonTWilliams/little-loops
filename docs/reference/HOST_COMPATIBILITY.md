@@ -230,11 +230,16 @@ and the emitters' actual behavior — see its module docstring for the checks.
 | ------ | ---------- | --------------------------------------------- | ---------------------------------------- | ---------------------------- | --------- | ------ | -------- | ----- |
 | codex  | `.codex`   | SKILL.md + `agents/openai.yaml` sidecar (Codex Skills API) | bridged into `skills/ll-<stem>/`         | TOML (`.codex/agents/<name>.toml`) | native    | ✓      | ✓        | ✓     |
 | gemini | `.gemini`  | SKILL.md (name injected, `metadata.short-description` stripped) | TOML (`.gemini/commands/<stem>.toml`)    | Markdown, degraded mode (`.gemini/agents/<name>.md`) — authored body verbatim, prefixed with an inline-execution + one-line-disclosure preamble (ENH-2874) | none      | ✓      | ✓        | ✗     |
-| omp    | `.omp` (agent output only; skill/command still unimplemented) | N/A — unimplemented stub, raises `AdapterError` | N/A — unimplemented stub, raises `AdapterError` | Markdown, native task-agent file (`.omp/agents/<name>.md`) | native | ✓ | ✗ | ✗ |
+| omp    | `.omp` | SKILL.md (name injected when absent, `.omp/skills/<name>/SKILL.md`) | Markdown, flat file (`.omp/commands/<stem>.md`, self-derived path — no bridging into `skills/`) | Markdown, native task-agent file (`.omp/agents/<name>.md`) | native | ✓ | ✓ | ✗ |
 | kimi-code | `.kimi-code` | SKILL.md (name injected when absent, `metadata.short-description` stripped) | bridged into `.kimi-code/skills/ll-<stem>/` (SKILL.md) — no project-local commands surface outside plugins | Markdown, native Claude-style agent file (`.kimi-code/agents/<name>.md`) | native | ✓ | ✓ | ✓ |
 
 omp's emitter (`adapters/omp.py`) is tracked by **EPIC-2258**; `emit_skill`/
-`emit_command` still raise (FEAT-3103/FEAT-3105 unblock those).
+`emit_command` are real as of **FEAT-3105**, against the native discovery
+format **FEAT-3103**'s research spike documented in
+`thoughts/research/omp-skill-command-surface.md`: skills are one directory
+per skill (`.omp/skills/<name>/SKILL.md`, `description` required by omp's
+loader); commands are a flat, non-bridged `.omp/commands/<stem>.md` file
+(`description` optional, falls back to a truncated first body line).
 `emit_agent` is real (**FEAT-3104**): FEAT-2797 established that omp
 discovers agents via a native `.omp/agents/` scan dir (not a reused
 `.claude/agents`/`.codex/agents` path) with a frontmatter `output:` key for

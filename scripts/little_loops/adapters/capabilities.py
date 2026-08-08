@@ -101,19 +101,21 @@ HOST_CAPABILITIES: dict[str, HostCapabilityEntry] = {
     ),
     "omp": HostCapabilityEntry(
         host="omp",
-        # emit_skill/emit_command still raise AdapterError (FEAT-3103/
-        # FEAT-3105 unblock those). emit_agent is real (FEAT-3104): FEAT-2797
-        # established omp discovers agents via a native `.omp/agents/` scan
-        # dir and spawns real subagents from them, the same native shape as
-        # kimi-code — hence subagents="native" and a working
-        # agent_output_format, unlike gemini's degraded path.
+        # emit_skill/emit_command are real (FEAT-3105), against the native
+        # discovery format FEAT-3103's research spike documented in
+        # thoughts/research/omp-skill-command-surface.md. emit_agent is real
+        # (FEAT-3104): FEAT-2797 established omp discovers agents via a
+        # native `.omp/agents/` scan dir and spawns real subagents from
+        # them, the same native shape as kimi-code — hence
+        # subagents="native" and a working agent_output_format, unlike
+        # gemini's degraded path.
         config_dir=".omp",
-        skill_output_format=None,
-        command_output_format=None,
+        skill_output_format="SKILL.md (name injected when absent, .omp/skills/<name>/SKILL.md)",
+        command_output_format="Markdown, flat file (.omp/commands/<stem>.md, self-derived path)",
         agent_output_format="Markdown, native task-agent file (.omp/agents/<name>.md)",
         frontmatter_fields_read=("description", "name"),
         agents=True,
-        commands=False,
+        commands=True,
         hooks=False,
         subagents="native",
     ),

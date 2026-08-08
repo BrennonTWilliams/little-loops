@@ -18,7 +18,11 @@ Three checks, all against ``little_loops.adapters.capabilities.HOST_CAPABILITIES
    ``subagents == "native"`` with ``agents=False`` (a host that can spawn
    but is declared not to emit). ``omp`` declares ``agents=True`` /
    ``subagents="native"`` since FEAT-3104 (``OmpEmitter.emit_agent`` is a
-   real native emitter); ``commands`` stays ``False`` until FEAT-3105.
+   real native emitter). The same self-consistency shape applies to
+   ``commands``/``command_output_format`` (FEAT-3105): every entry declaring
+   ``commands=True`` must have a non-``None`` ``command_output_format``
+   (nothing for a "True" commands claim to point at otherwise), across all
+   hosts, not just ``omp``/``gemini`` by name.
 
 Exit codes:
     0 - all three checks pass
@@ -173,6 +177,18 @@ def _check_emitter_agreement() -> list[str]:
             )
         if omp_entry.subagents == "native" and not omp_entry.agents:
             errors.append("map entry 'omp' declares subagents='native' but agents=False")
+
+    # FEAT-3105: the `commands` half of the same self-consistency shape —
+    # declaring commands=True with no command_output_format leaves nothing
+    # for a "this host emits commands" claim to point at. Checked across
+    # every host entry (not name-hardcoded like the agents checks above),
+    # since this is a two-field consistency rule with no per-host nuance.
+    for host, entry in sorted(HOST_CAPABILITIES.items()):
+        if entry.commands and entry.command_output_format is None:
+            errors.append(
+                f"map entry '{host}' declares commands=True but command_output_format "
+                "is None — nothing for the commands claim to point at"
+            )
 
     return errors
 

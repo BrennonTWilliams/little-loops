@@ -34,12 +34,15 @@ class TestHostCapabilities:
     def test_omp_agents_true_matches_native_emission(self) -> None:
         # FEAT-3104: OmpEmitter.emit_agent is real (native, mirroring Kimi's
         # shape) — agents=True and subagents="native" now agree with the
-        # emitter's actual behavior. commands stays False (FEAT-3105).
+        # emitter's actual behavior. FEAT-3105: emit_skill/emit_command are
+        # also real now, so commands=True with a set command_output_format.
         entry = HOST_CAPABILITIES["omp"]
         assert entry.agents is True
         assert entry.subagents == "native"
         assert entry.agent_output_format is not None
-        assert entry.commands is False
+        assert entry.commands is True
+        assert entry.command_output_format is not None
+        assert entry.skill_output_format is not None
 
 
 class TestAdapterSectionHosts:
@@ -106,6 +109,24 @@ class TestCheckEmitterAgreement:
         with patch("little_loops.cli.verify_host_map.HOST_CAPABILITIES", bad_map):
             errors = _check_emitter_agreement()
         assert any("gemini" in e for e in errors)
+
+    def test_flags_commands_true_with_no_command_output_format(self) -> None:
+        # FEAT-3105: commands=True with no command_output_format leaves
+        # nothing for the claim to point at — checked across every host.
+        bad_map = dict(HOST_CAPABILITIES)
+        bad_map["gemini"] = HostCapabilityEntry(
+            host="gemini",
+            config_dir=".gemini",
+            skill_output_format="SKILL.md",
+            command_output_format=None,
+            agent_output_format="Markdown",
+            agents=True,
+            commands=True,
+            subagents="none",
+        )
+        with patch("little_loops.cli.verify_host_map.HOST_CAPABILITIES", bad_map):
+            errors = _check_emitter_agreement()
+        assert any("gemini" in e and "command_output_format" in e for e in errors)
 
 
 class TestRun:
