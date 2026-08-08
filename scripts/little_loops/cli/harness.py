@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import json
 import subprocess
 import sys
@@ -25,6 +26,7 @@ from little_loops.session_store import (
     connect,
     record_harness_event,
 )
+from little_loops.skill_expander import _find_plugin_root, _resolve_content_path
 
 __all__ = [
     "RunnerResult",
@@ -54,6 +56,68 @@ def _git_output(*args: str) -> str | None:
     return proc.stdout.strip() or None
 
 
+def _git_dirty() -> bool | None:
+    """Return whether the working tree has tracked modifications, or None on failure.
+
+    ENH-141: pairs with the v38 ``base_dirty`` column on ``orchestration_runs``
+    and ``_is_main_repo_dirty`` in parallel/worker_pool. Uses
+    ``git status --porcelain --untracked-files=no`` so untracked scratch files
+    don't pollute the result (mirroring the rationale at worker_pool.py). Returns
+    ``True`` if there are tracked modifications, ``False`` if clean, ``None``
+    when git is unavailable, the call times out, or the process returns non-zero
+    (not a repo, etc.). The NULL-means-unknown contract matches
+    ``issue_manager._resolve_base_state``.
+
+    Best-effort: any failure (including subprocess oddities under test mocks)
+    yields ``None`` so callers can pass it through without aborting.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except Exception:  # noqa: BLE001 — best-effort telemetry, never raises
+        return None
+    try:
+        if proc.returncode != 0:
+            return None
+        return bool(proc.stdout.strip())
+    except Exception:  # noqa: BLE001 — defensive against mocked return shapes
+        return None
+
+
+def _hash_bytes(data: bytes) -> str:
+    """Return the 16-char SHA-256 prefix of *data* — ENH-141 content fingerprint."""
+    return hashlib.sha256(data).hexdigest()[:16]
+
+
+def _hash_file(path: Path) -> str | None:
+    """Return the 16-char SHA-256 prefix of *path*'s bytes, or None on read failure.
+
+    ENH-141: used to populate ``target_content_hash`` for file-shaped runners
+    (skill, dsl-task). Returns None on OSError so callers can fall back to NULL
+    without affecting the harness exit code.
+    """
+    try:
+        return _hash_bytes(path.read_bytes())
+    except OSError:
+        return None
+
+
+def _resolve_skill_target_path(name: str) -> Path | None:
+    """Return the resolved path of skill *name*, or None if unresolvable.
+
+    ENH-141: thin wrapper over :func:`_resolve_content_path` so the harness
+    call sites don't need to know about the plugin-root convention.
+    """
+    try:
+        return _resolve_content_path(_find_plugin_root(), name)
+    except OSError:
+        return None
+
+
 def _record_harness_event(
     *,
     runner: str,
@@ -64,8 +128,16 @@ def _record_harness_event(
     timed_out: bool,
     duration_ms: int,
     parent_id: int | None = None,
+    target_content_hash: str | None = None,
+    target_path: str | None = None,
+    dirty: int | None = None,
 ) -> None:
-    """Best-effort write to ``harness_events`` — never affects the harness exit code."""
+    """Best-effort write to ``harness_events`` — never affects the harness exit code.
+
+    ENH-141 adds ``target_content_hash`` / ``target_path`` / ``dirty`` kwargs;
+    all three default to None so existing callers (v38 row shape) continue to
+    work unchanged.
+    """
     with contextlib.suppress(Exception):
         record_harness_event(
             DEFAULT_DB_PATH,
@@ -80,6 +152,9 @@ def _record_harness_event(
             head_sha=_git_output("rev-parse", "HEAD"),
             branch=_git_output("rev-parse", "--abbrev-ref", "HEAD"),
             parent_id=parent_id,
+            target_content_hash=target_content_hash,
+            target_path=target_path,
+            dirty=dirty,
         )
 
 
@@ -406,6 +481,11 @@ def cmd_skill(args: argparse.Namespace) -> int:
     result = run_action(spec)
     duration_ms = int((time.monotonic() - start) * 1000)
     rc, outcome = _evaluate_and_report(runner_label, result, args)
+    skill_path = _resolve_skill_target_path(args.target)
+    target_path_str = str(skill_path) if skill_path is not None else None
+    target_hash = _hash_file(skill_path) if skill_path is not None else None
+    dirty_val = _git_dirty()
+    dirty_int: int | None = None if dirty_val is None else int(dirty_val)
     _record_harness_event(
         runner="skill",
         target=args.target,
@@ -414,6 +494,9 @@ def cmd_skill(args: argparse.Namespace) -> int:
         semantic_passed=outcome.passed,
         timed_out=result.timed_out,
         duration_ms=duration_ms,
+        target_content_hash=target_hash,
+        target_path=target_path_str,
+        dirty=dirty_int,
     )
     return rc
 
@@ -431,6 +514,8 @@ def cmd_cmd(args: argparse.Namespace) -> int:
     result = run_action(spec)
     duration_ms = int((time.monotonic() - start) * 1000)
     rc, outcome = _evaluate_and_report(runner_label, result, args)
+    dirty_val = _git_dirty()
+    dirty_int: int | None = None if dirty_val is None else int(dirty_val)
     _record_harness_event(
         runner="cmd",
         target=args.target,
@@ -439,6 +524,7 @@ def cmd_cmd(args: argparse.Namespace) -> int:
         semantic_passed=outcome.passed,
         timed_out=result.timed_out,
         duration_ms=duration_ms,
+        dirty=dirty_int,
     )
     return rc
 
@@ -471,6 +557,8 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     result = run_action(spec)
     duration_ms = int((time.monotonic() - start) * 1000)
     rc, outcome = _evaluate_and_report(runner_label, result, args)
+    dirty_val = _git_dirty()
+    dirty_int: int | None = None if dirty_val is None else int(dirty_val)
     _record_harness_event(
         runner="mcp",
         target=args.target,
@@ -479,6 +567,7 @@ def cmd_mcp(args: argparse.Namespace) -> int:
         semantic_passed=outcome.passed,
         timed_out=result.timed_out,
         duration_ms=duration_ms,
+        dirty=dirty_int,
     )
     return rc
 
@@ -498,6 +587,8 @@ def cmd_prompt(args: argparse.Namespace) -> int:
     result = run_action(spec)
     duration_ms = int((time.monotonic() - start) * 1000)
     rc, outcome = _evaluate_and_report(runner_label, result, args)
+    dirty_val = _git_dirty()
+    dirty_int: int | None = None if dirty_val is None else int(dirty_val)
     _record_harness_event(
         runner="prompt",
         target=args.target,
@@ -506,6 +597,8 @@ def cmd_prompt(args: argparse.Namespace) -> int:
         semantic_passed=outcome.passed,
         timed_out=result.timed_out,
         duration_ms=duration_ms,
+        target_content_hash=_hash_bytes(args.target.encode("utf-8")),
+        dirty=dirty_int,
     )
     return rc
 
@@ -532,8 +625,20 @@ def cmd_dsl(args: argparse.Namespace) -> int:
 
     aggregate_ts = _now_iso()
     aggregate_id: int | None = None
+    dirty_val = _git_dirty()
+    dirty_int: int | None = None if dirty_val is None else int(dirty_val)
     with contextlib.suppress(Exception):
-        record_harness_event(DEFAULT_DB_PATH, ts=aggregate_ts, runner="dsl", target=str(path))
+        record_harness_event(
+            DEFAULT_DB_PATH,
+            ts=aggregate_ts,
+            runner="dsl",
+            target=str(path),
+            head_sha=_git_output("rev-parse", "HEAD"),
+            branch=_git_output("rev-parse", "--abbrev-ref", "HEAD"),
+            target_path=str(path),
+            target_content_hash=_hash_file(path),
+            dirty=dirty_int,
+        )
         conn = connect(DEFAULT_DB_PATH)
         try:
             row = conn.execute("SELECT id FROM harness_events ORDER BY id DESC LIMIT 1").fetchone()
@@ -575,6 +680,9 @@ def cmd_dsl(args: argparse.Namespace) -> int:
             timed_out=False,
             duration_ms=duration_ms,
             parent_id=aggregate_id,
+            target_path=str(task_file),
+            target_content_hash=_hash_file(task_file),
+            dirty=dirty_int,
         )
 
     lo, hi = wilson_ci(pass_count, total)

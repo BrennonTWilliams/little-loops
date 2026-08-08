@@ -18,7 +18,7 @@ from little_loops.session_store.db import DEFAULT_DB_PATH, _resolve_db_path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 38
+SCHEMA_VERSION = 39
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -931,6 +931,33 @@ _MIGRATIONS: list[str] = [
     """
     ALTER TABLE orchestration_runs ADD COLUMN base_sha TEXT;
     ALTER TABLE orchestration_runs ADD COLUMN base_dirty INTEGER;
+    """,
+    # (ENH-141): content-pinning the harness run. head_sha/branch already
+    # pin the whole tree at run time (v31/ENH-2739), but two runs at the
+    # same head_sha can still differ when the working tree was dirty, and a
+    # cross-commit comparison cannot tell whether the skill under test
+    # actually changed without diffing by hand. The new columns capture
+    # three more pieces of evidence alongside head_sha/branch:
+    #   * target_path — the absolute path of the resolved skill file (skill
+    #     runner), DSL task YAML (dsl-task runner), or NULL for non-file
+    #     runners (cmd/mcp).
+    #   * target_content_hash — a 16-char SHA-256 prefix of the resolved
+    #     file's bytes, or of the literal prompt text for the prompt
+    #     runner. NULL when unresolvable (cmd/mcp) or the file is
+    #     unreadable.
+    #   * dirty — 1 when `git status --porcelain --untracked-files=no`
+    #     returned non-empty at run time, 0 when clean, NULL when not in a
+    #     git repo, git is unavailable, or the call timed out.
+    # NULL means "not stamped": readers fall back to comparing by head_sha
+    # alone (the v31 contract). The new columns are populated
+    # best-effort inside the existing `contextlib.suppress(Exception)`
+    # wrapper at the call site (cli/harness.py), so a failing hash or
+    # unavailable git never changes the harness exit code. Fix-forward
+    # only: existing rows are not backfilled.
+    """
+    ALTER TABLE harness_events ADD COLUMN target_content_hash TEXT;
+    ALTER TABLE harness_events ADD COLUMN target_path TEXT;
+    ALTER TABLE harness_events ADD COLUMN dirty INTEGER;
     """,
 ]
 

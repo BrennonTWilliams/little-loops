@@ -2858,7 +2858,12 @@ def hook_latency_p95(
 
 @dataclass
 class HarnessEvent:
-    """A ``harness_events`` row — one ll-harness / eval run outcome (ENH-2741)."""
+    """A ``harness_events`` row — one ll-harness / eval run outcome (ENH-2741).
+
+    ENH-141 adds three content-pin fields (``target_content_hash``,
+    ``target_path``, ``dirty``) so consumers can compare runs across commits
+    without re-diffing the working tree by hand.
+    """
 
     ts: str
     runner: str | None
@@ -2876,12 +2881,16 @@ class HarnessEvent:
     semantic_reason: str | None
     semantic_evidence: str | None
     semantic_model: str | None
+    target_content_hash: str | None = None
+    target_path: str | None = None
+    dirty: int | None = None
 
 
 _HARNESS_EVENT_COLUMNS = (
     "ts, runner, target, exit_code, semantic_verdict, semantic_passed, timed_out, "
     "duration_ms, head_sha, branch, parent_id, semantic_prompt, semantic_confidence, "
-    "semantic_reason, semantic_evidence, semantic_model"
+    "semantic_reason, semantic_evidence, semantic_model, "
+    "target_content_hash, target_path, dirty"
 )
 
 

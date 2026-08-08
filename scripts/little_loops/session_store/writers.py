@@ -1030,6 +1030,9 @@ def record_harness_event(
     semantic_reason: str | None = None,
     semantic_evidence: str | None = None,
     semantic_model: str | None = None,
+    target_content_hash: str | None = None,
+    target_path: str | None = None,
+    dirty: int | None = None,
 ) -> None:
     """Write one row to ``harness_events`` and index it in ``search_index``.
 
@@ -1037,6 +1040,13 @@ def record_harness_event(
     (the ``ll-harness`` producer, ENH-2740) are responsible for wrapping calls
     in ``contextlib.suppress(Exception)`` if a failed write should not abort
     the run.
+
+    The ``target_content_hash`` / ``target_path`` / ``dirty`` kwargs are the
+    content-pin extension from ENH-141: the first two capture the resolved
+    skill/DSL file (or the inline prompt text for the ``prompt`` runner);
+    ``dirty`` is the 0/1/NULL result of ``git status --porcelain
+    --untracked-files=no`` at run time. All three are nullable, all default to
+    None — existing callers that don't pass them get the v38 row shape.
     """
     conn = _pkg.connect(db_path)
     try:
@@ -1045,8 +1055,9 @@ def record_harness_event(
             "ts, runner, target, exit_code, semantic_verdict, semantic_passed, "
             "timed_out, duration_ms, head_sha, branch, parent_id, "
             "semantic_prompt, semantic_confidence, semantic_reason, "
-            "semantic_evidence, semantic_model"
-            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "semantic_evidence, semantic_model, "
+            "target_content_hash, target_path, dirty"
+            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 ts,
                 runner,
@@ -1064,6 +1075,9 @@ def record_harness_event(
                 semantic_reason,
                 semantic_evidence,
                 semantic_model,
+                target_content_hash,
+                target_path,
+                None if dirty is None else int(dirty),
             ),
         )
         summary = f"{runner or 'harness'} {target or ''} exit={exit_code}".strip()
