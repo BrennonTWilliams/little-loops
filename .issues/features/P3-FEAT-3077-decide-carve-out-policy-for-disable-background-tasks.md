@@ -3,7 +3,8 @@ id: FEAT-3077
 title: Decide and document the smoke-test/go-no-go carve-out policy for CLAUDE_CODE_DISABLE_BACKGROUND_TASKS
 type: FEAT
 priority: P3
-status: open
+status: done
+completed_at: 2026-08-08
 testable: true
 parent: FEAT-3060
 depends_on:
@@ -22,6 +23,7 @@ score_complexity: 22
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 25
+size: Very Large
 ---
 
 # FEAT-3077: Decide and document the smoke-test/go-no-go carve-out policy for CLAUDE_CODE_DISABLE_BACKGROUND_TASKS
@@ -63,6 +65,48 @@ generated mirrors, one test). The `depends_on: FEAT-3077` edge on FEAT-3078 is
 ordering-only — the two issues touch disjoint files — so landing both in a
 single pass is fine, provided this one's SKILL.md edit precedes FEAT-3078's
 default-on flag.
+
+## Current Behavior
+
+`skills/manage-issue/SKILL.md:367,394-396` grants a blanket permission to
+background the smoke-test server via the `Bash` tool's `run_in_background`
+parameter, and `skills/go-no-go/SKILL.md:172-176,272-278` launches its two
+adversarial agents concurrently via the `Agent` tool's `run_in_background`
+parameter. Neither carve-out is documented against
+`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`, and no policy exists for which
+carve-outs survive once FEAT-3078 makes the flag default `true` in
+automation children.
+
+## Expected Behavior
+
+The recorded decision (`### Decision Rationale`, Option C) is applied:
+`skills/manage-issue/SKILL.md`'s smoke-test carve-out is retired at the tool
+level and restated as a shell-level `cmd & pid=$!; sleep N; kill $pid`
+pattern inside a single foreground `Bash` call (no capability lost);
+`skills/go-no-go/SKILL.md` is left byte-identical because its carve-out is
+not reachable under today's `automation_profile` gate and degrades to
+sequential-but-correct if it ever is; the host-adapter mirrors are
+regenerated to match; and a new test pins the carve-out inventory so future
+`run_in_background: true` additions don't silently invalidate this decision.
+
+## Impact
+
+- **Severity**: Medium - blocks FEAT-3078 from having a decided default for
+  `disable_background_tasks`, and leaves FEAT-3060's motivating failure
+  (`ll-auto` runs losing completed work to background-task confusion)
+  without a documented resolution path for the two affected skills.
+- **Effort**: Small - a ~20-line documentation edit across four files plus
+  one inventory-guard test; the decision itself is already made and
+  evidenced, so this issue is transcription, not deliberation.
+- **Risk**: Low - `go-no-go` is unchanged, and the `manage-issue` restatement
+  was verified empirically (`postmortems/feat-3077-verify/`) to preserve the
+  smoke-test's start/wait/terminate capability.
+
+## Status
+
+**Done** | Priority: P3
+
+---
 
 ## Parent Issue
 
@@ -225,6 +269,16 @@ _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 
 - **Shell-level start/stop-with-PID is already an established pattern here.** `scripts/little_loops/loops/oracles/code-run-gate.yaml:334-390` (`service_health` state) backgrounds a server and manages its PID entirely at the shell level inside one foreground call: `bash -c "$RUN_CMD" > service.log 2>&1 &` → `SERVICE_PID=$!` → PID written to `service.pid` → teardown/ensure `kill "$SERVICE_PID"` / `kill "$(cat ${run_dir}/service.pid)"` under `trap cleanup EXIT`. It polls via curl `--max-time` against a PID-file rather than `sleep N; kill $pid`, but it is the closest existing relative of the Option C pattern the manage-issue restatement proposes, and the documented consumer of the smoke-test config fields (`run_cmd`/`health_url` at `docs/reference/CONFIGURATION.md:304-305` and `docs/reference/loops.md:834-835`). Restating `skills/manage-issue/SKILL.md:367` in shell terms therefore aligns with an existing codebase idiom, not an invented one. [codebase-pattern-finder]
 
+## Use Case
+
+An `ll-auto` run drives `/ll:manage-issue` on a FEAT that needs a smoke test.
+With `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` set in the child (per
+FEAT-3078's default), the skill's smoke-test step still starts the server,
+waits briefly, hits it, and kills it — using `cmd & pid=$!; sleep N; kill
+$pid` inside one foreground `Bash` call instead of the disabled
+`run_in_background` tool parameter — so the automation path that motivated
+FEAT-3060 keeps its smoke-test capability instead of losing it.
+
 ## Acceptance Criteria
 
 > **The decision is already made and recorded** in `### Decision Rationale`
@@ -283,6 +337,18 @@ _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 - **`build_streaming()` signature drift.** `ClaudeCodeRunner.build_streaming` def is at `scripts/little_loops/host_runner.py:299` (not `:297`), `automation_profile: str | None = None` at `:308`, and the signature gained `workspace_root: Path | None = None` (FEAT-2878) — it is not the bare `(prompt, automation_profile=None)` the Signatures section implies; it still has no `disable_background_tasks` parameter. [codebase-analyzer]
 - **BUG-2408 literal anchors.** `scripts/tests/test_wiring_skills_and_commands.py:196-197` asserts the `"foreground-blocking"` / `"scheduled wakeup"` literals, which live in `skills/manage-issue/SKILL.md` at `:380-391` (immediately above the carve-out at `:394-396`) — this issue's "lines 389-393" phrasing refers to the SKILL file, not the test file. [codebase-analyzer]
 
+_Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
+
+- **Re-verification pass (2026-08-08, `--auto`) — carve-out sentence anchors and line counts still hold exactly.** `skills/manage-issue/SKILL.md` is 497 lines total; the backgrounding sentence sits at `:367` inside the "Run smoke test" comment block (`:355-372`), and the carve-out sentence at `:394-396` within the "Headless-Safe Final Test Run" section (`:376-398`). `skills/go-no-go/SKILL.md` is 481 lines total; the concurrent-launch carve-out is at `:174` (inside "Step 3b: Launch Adversarial Agents", `~172-189`) and the foreground-judge marker at `:278` (inside "Step 3d: Launch Judge Agent", `~276-289`) — note the issue's cited range "272-278" for the second site sits at the tail edge of that section's actual span (`276-289`); not a broken reference, but AC3's range is slightly narrower than the section it points into. No new `run_in_background: true` occurrence exists in `go-no-go/SKILL.md` beyond these two. [codebase-analyzer]
+- **No additional shell-level background/wait/kill idiom exists beyond the already-cited `code-run-gate.yaml`.** Searched the codebase for other examples of a single foreground `Bash` call backgrounding a process, waiting, then killing it (the pattern Option C proposes restating `manage-issue/SKILL.md:367` in terms of). `scripts/little_loops/loops/oracles/code-run-gate.yaml:334-390` (`service_health` state) remains the only match — it polls via `curl --max-time` against a PID file rather than a fixed `sleep N; kill $pid`, so the restatement is a simplification of that idiom, not a verbatim copy. `skills/go-no-go/SKILL.md:174` uses a structurally different mechanism (tool-level `Agent` `run_in_background: true`, not shell job control) and `skills/decide-issue/SKILL.md:335` is foreground-synchronous (`run_in_background: false`) — neither is a background/wait/kill example. [codebase-pattern-finder]
+- **AC7's inventory-guard test has no exact existing precedent; two structurally different antecedents exist.** No test in the repo currently does "grep a directory for a text pattern → assert the match-set equals an explicit allowlist" as a single operation — AC7 would be the first of that shape. The two closest antecedents: (a) `scripts/tests/test_verify_cli_allowlist.py::TestRun::test_clean_state_returns_zero` — a real product function (`little_loops.cli.verify_cli_allowlist._run`) computes an inventory-drift dict, test asserts it equals an all-clear expected dict; (b) `scripts/tests/test_enh494_skill_companions.py::TestSkillLineLimit::test_all_skills_within_limit` — inline `SKILLS_DIR.glob("*/SKILL.md")` + `.read_text()` loop building an `offenders` list, asserted empty (no separate named allowlist). Neither is a template to copy; they disagree on whether the check is one aggregate assertion or a parametrized per-item comparison against a named list — a shape decision AC7's implementer still needs to make. No existing utility parses skill-body `key: value` lines (like `run_in_background: true`); every precedent does whole-file substring search or frontmatter-only parsing (`little_loops.doc_counts.check_skill_budget`). [codebase-pattern-finder]
+- **FEAT-3078 (this issue's dependent) was substantially revised 2026-08-07T16:56 (UTC 21:56), after this issue's last refine pass (2026-08-07T20:05 UTC — refine ran first, FEAT-3078's edit landed after).** ENH-3081 (`bab8c1fc`) extracted the shared `_apply_automation_env()` helper described above; FEAT-3078's own file now carries a "⚠️ Superseding correction" subsection documenting the resulting design question (host-agnostic helper vs. Claude-only guard) and a revised AC2 (explicit neutralization, not mere absence). Two new sibling issues were also captured the same day: BUG-3093 (three `ll-auto` subprocess call sites omit `automation_profile`) and ENH-3094 (collapse per-call automation kwargs into an `AutomationContext` dataclass, sequenced after FEAT-3078). None of this changes FEAT-3077's own recorded decision (Option C, `disable_background_tasks` defaults `true`) or its Acceptance Criteria — FEAT-3077's scope is the skill-markdown edit and inventory test only — but a reader following the Dependent Files link to FEAT-3078 should expect a file that has moved since this issue's Program Design/Dependent Files prose was last synced to it. [codebase-locator, codebase-analyzer]
+
+_Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
+
+- **AC7 concrete scan target and match set (analyzer, 2026-08-08 re-verification).** The literal string `run_in_background: true` occurs exactly once under `skills/` today, at `skills/go-no-go/SKILL.md:174` (confirmed by direct grep). `skills/manage-issue/SKILL.md` never uses that literal — its carve-out is prose-only. So AC7's allowlist, if authored before AC2's edit lands, is `["skills/go-no-go/SKILL.md"]`; it stays that single entry after AC2 too, since the `manage-issue` restatement is shell-level, not the `run_in_background` tool parameter.
+- **AC7 has no drop-in extension point in this file; two structurally different antecedents exist, neither copy-paste ready.** `DOC_STRINGS_PRESENT` (`test_wiring_skills_and_commands.py:20+`) is a flat per-string presence-assertion list (the BUG-2408 rows at `:196-197`), not a set-equality/inventory check, so it is not where AC7 fits. The two closest antecedents disagree on where inventory logic should live: `test_enh494_skill_companions.py::TestSkillLineLimit.test_all_skills_within_limit` (`:74-84`) computes an `offenders` list inline in the test via `sorted(SKILLS_DIR.glob("*/SKILL.md"))` + `.read_text()`, asserted empty; `test_verify_cli_allowlist.py::TestRun.test_clean_state_returns_zero` instead asserts a real product function's (`little_loops.cli.verify_cli_allowlist._run`) computed inventory-drift dict against an all-clear expected dict, i.e. the inventory logic lives in application code, not the test. No existing utility in this codebase parses skill-body `key: value` lines — every existing check here does plain substring search over `.read_text()`, not YAML/markdown parsing. [codebase-analyzer]
+
 ### Files to Modify
 - `skills/manage-issue/SKILL.md:367,394-396` — smoke-test carve-out (Bash `run_in_background`). **Retire at the tool level; restate as shell-level backgrounding.**
 - `skills/go-no-go/SKILL.md:172-176,272-278` — concurrent adversarial-agent launch carve-out (Agent-tool `run_in_background`). **No change** (AC4); listed for the record only.
@@ -336,6 +402,10 @@ _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 
 - **Correction — `build_streaming()` signature anchor is `:299-310`, not `:297`.** `def build_streaming(` is at `scripts/little_loops/host_runner.py:299`, `automation_profile: str | None = None` at `:308`; `:297` is inside `detect()` (`return shutil.which("claude") is not None`). Verified 299-369: no `disable_background_tasks` parameter exists. The substantive Program Design claim (takes `automation_profile=None`, unmodified by this issue) is unchanged. FEAT-3078's Program Design carries the same `:297` drift and should be corrected there too. [codebase-analyzer]
 
+_Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
+
+- **Further correction — env injection now routes through a shared helper (ENH-3081, landed after the 2026-08-07T20:05 refine pass).** `ClaudeCodeRunner.build_streaming()` (confirmed at `host_runner.py:299`) no longer hand-rolls its env dict inline; at `:353` it calls `_apply_automation_env(env, automation_profile)`, a helper now shared by all five host runners' `build_streaming()` methods (`host_runner.py:353,644,1034,1219,1412`), defined at `host_runner.py:1547-1562`. The helper sets exactly two keys — `LL_AUTOMATION` and `LL_AUTOMATION_PROFILE` — nothing related to background-task disabling; it has no `disable_background_tasks`/`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` handling. This does not change this issue's own N/A Types/Call-Path conclusion (FEAT-3077 produces no code), but the `### Signatures`/`### Call Path` prose's mental model of "an inline env block at build_streaming()" is now the pre-refactor shape; a reader relying on it to orient in FEAT-3078 would be misled about where the eventual `disable_background_tasks` conditional would actually need to be added (inside or alongside `_apply_automation_env()`, not inline in `build_streaming()`). FEAT-3078's own issue file already documents this correction in full (its "⚠️ Superseding correction — ENH-3081" subsection) and records the open design question it creates (host-agnostic helper vs. Claude-only guard) — this issue's Program Design section need not re-litigate that, only stop citing the stale pre-refactor shape. [codebase-analyzer]
+
 ### Types
 N/A — this issue produces no new data types; it records a policy decision and edits two skill markdown files.
 
@@ -385,6 +455,10 @@ is auditable rather than re-litigated.
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-08T06:28:47 - `2986e885-ae67-452e-a892-b46a3bf892e5.jsonl`
+- `/ll:refine-issue` - 2026-08-08T06:23:37 - `7f658e61-564b-4210-ba49-e4bd14083c5a.jsonl`
+- `/ll:verify-issues` - 2026-08-08T06:20:42 - `910c2a44-1e61-4858-a98f-34a32f52b83f.jsonl`
+- `/ll:refine-issue` - 2026-08-08T06:13:34 - `c97ca0ac-ef75-4ebe-8deb-58c2e56b41af.jsonl`
 - `/ll:confidence-check` - 2026-08-07T20:21:09 - `88962bfb-2ed2-4d72-ace5-bef5a2160a60.jsonl`
 - `/ll:wire-issue` - 2026-08-07T20:17:00 - `23d10d83-6e93-491c-a17a-3b2dcb204ab4.jsonl`
 - `/ll:refine-issue` - 2026-08-07T20:05:20 - `cf7d98cd-deb3-45fb-9bdf-d58c491714ab.jsonl`

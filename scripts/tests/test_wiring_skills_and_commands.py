@@ -357,19 +357,47 @@ def _body_after_frontmatter(text: str) -> str:
 # ENH-2996: mirrors under .gemini/ and .kimi-code/ are git-tracked verbatim
 # body copies of the source skill, produced by `ll-adapt --host ... --apply`.
 # No prior test detected drift, so a skipped re-run after editing the source
-# would pass silently.
-WIRE_ISSUE_SKILL_MIRRORS = [
-    ".gemini/skills/wire-issue/SKILL.md",
-    ".kimi-code/skills/wire-issue/SKILL.md",
+# would pass silently. FEAT-3077 extends this to skills/manage-issue/SKILL.md
+# so the carve-out edit's mirror regeneration is test-enforced, not just instructed.
+SKILL_MIRRORS_MUST_MATCH_SOURCE = [
+    ("skills/wire-issue/SKILL.md", ".gemini/skills/wire-issue/SKILL.md"),
+    ("skills/wire-issue/SKILL.md", ".kimi-code/skills/wire-issue/SKILL.md"),
+    ("skills/manage-issue/SKILL.md", ".gemini/skills/manage-issue/SKILL.md"),
+    ("skills/manage-issue/SKILL.md", ".kimi-code/skills/manage-issue/SKILL.md"),
 ]
 
 
-@pytest.mark.parametrize("mirror_rel", WIRE_ISSUE_SKILL_MIRRORS)
-def test_wire_issue_skill_mirror_matches_source(project_root: Path, mirror_rel: str) -> None:
-    """Mirror bodies must match the source skill (ENH-2996)."""
-    source_body = _body_after_frontmatter((project_root / "skills/wire-issue/SKILL.md").read_text())
+@pytest.mark.parametrize("source_rel, mirror_rel", SKILL_MIRRORS_MUST_MATCH_SOURCE)
+def test_skill_mirror_matches_source(project_root: Path, source_rel: str, mirror_rel: str) -> None:
+    """Mirror bodies must match their source skill (ENH-2996, FEAT-3077)."""
+    source_body = _body_after_frontmatter((project_root / source_rel).read_text())
     mirror_body = _body_after_frontmatter((project_root / mirror_rel).read_text())
     assert source_body == mirror_body, (
-        f"{mirror_rel} is stale relative to skills/wire-issue/SKILL.md. Regenerate with: "
+        f"{mirror_rel} is stale relative to {source_rel}. Regenerate with: "
         "ll-adapt --host gemini --apply && ll-adapt --host kimi-code --apply"
+    )
+
+
+# FEAT-3077 AC7: pin the `run_in_background: true` carve-out inventory so a
+# future skill author can't silently add a new background-launch site without
+# updating the recorded decision (### Decision Rationale in FEAT-3077).
+SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST = {
+    "skills/go-no-go/SKILL.md",
+}
+
+
+def test_skill_run_in_background_true_inventory_pinned(project_root: Path) -> None:
+    """`run_in_background: true` in skills/ must match the recorded carve-out allowlist (FEAT-3077)."""
+    skills_dir = project_root / "skills"
+    offenders = {
+        str(path.relative_to(project_root))
+        for path in sorted(skills_dir.rglob("*.md"))
+        if "run_in_background: true" in path.read_text()
+    }
+    assert offenders == SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST, (
+        "skills/ run_in_background: true inventory drifted from the FEAT-3077 carve-out "
+        f"decision. Found: {sorted(offenders)}, expected: "
+        f"{sorted(SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST)}. If this is a deliberate new "
+        "carve-out, update the allowlist and record the decision per FEAT-3077's "
+        "### Decision Rationale precedent."
     )

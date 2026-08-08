@@ -363,8 +363,8 @@ Run each verification command if configured (non-null). Skip silently if not con
 # Run build if build_cmd is configured (non-null)
 {{config.project.build_cmd}}
 
-# Run smoke test if run_cmd is configured (non-null). For long-running processes (servers), start in background, wait briefly for startup, then terminate.
-{{config.project.run_cmd}}
+# Run smoke test if run_cmd is configured (non-null). For long-running processes (servers), start/wait/terminate at the shell level inside one foreground call: `cmd & pid=$!; sleep N; kill $pid`.
+{{config.project.run_cmd}} & pid=$!; sleep 3; kill $pid
 
 # Run custom verification (if configured)
 # {{config.commands.custom_verification}}
@@ -390,9 +390,11 @@ mkdir -p .loops/tmp/scratch && {{config.project.test_cmd}} > .loops/tmp/scratch/
   narrate waiting for a scheduled wakeup or completion notification and then end the
   turn. That signal never fires under `claude -p`, so the turn ends before Phase 5
   (set-status + commit) runs — leaving the work uncommitted and the issue still `open`.
-- This does **not** apply to the `run_cmd` smoke test above: its documented
-  start-in-background / wait-briefly / terminate pattern for long-running servers is
-  still correct. Only the result-blocking final test suite must be foreground.
+- This does **not** apply to the `run_cmd` smoke test above: its start/wait/terminate
+  pattern for long-running servers runs entirely at the shell level (`cmd & pid=$!;
+  sleep N; kill $pid`) inside one foreground `Bash` call — the `Bash` tool's
+  backgrounding parameter is never set, so `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`
+  does not affect it. Only the result-blocking final test suite must be foreground.
 - Once the final suite passes, continue **in the same turn** to Phase 5 to finalize
   (set `status: done`, then commit the scoped changes) — do not stop at the test run.
 
