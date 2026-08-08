@@ -14,13 +14,14 @@ relates_to:
 - ENH-2309
 - FEAT-1023
 blocked_by: []
-confidence_score: 90
-outcome_confidence: 76
-score_complexity: 10
-score_test_coverage: 5
-score_ambiguity: 15
-score_change_surface: 10
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 decision_needed: false
+verify_verdict: VALID
 ---
 
 # FEAT-2301: Visual builder for policy-router and rubric FSM loops (UX shell)
@@ -264,18 +265,20 @@ reading any documentation or hand-editing a `route:` map.
 
 ### Capability (functional — most delegated to FEAT-2390)
 
-- [ ] Loads over `file://` with no external dependency; mode switch (Rubric ⇄ Decision
+- [x] Loads over `file://` with no external dependency; mode switch (Rubric ⇄ Decision
   Table) renders without reload.
-- [ ] Downloaded YAML for either mode passes `ll-loop validate` with zero errors. (Engine:
+- [x] Downloaded YAML for either mode passes `ll-loop validate` with zero errors. (Engine:
   FEAT-2390.) **Automated round-trip gate:** a pytest test (in or alongside
   `test_policy_builder_node_gate.py`) has node call `serializeLoopYaml` on a sample
   model for **each mode**, writes the YAML to a temp file, and shells out to
   `ll-loop validate` asserting exit 0 / zero errors. This turns the never-actually-run
   ⚠️ from the 2026-07-25 re-baseline into a permanent regression gate (~30 lines);
   skip gracefully when node is absent, per the existing node-gate pattern.
-- [ ] Decision Table: dimension type (numeric/boolean) restricts the operator choices to
+  Implemented as `test_round_trip_yaml_validates_for_each_mode` in
+  `test_policy_builder_node_gate.py` (parametrized over both golden model fixtures).
+- [x] Decision Table: dimension type (numeric/boolean) restricts the operator choices to
   valid ops only. (Engine grammar: FEAT-2390.)
-- [ ] Skill dropdown for "run a skill" is populated from the emit-time-stamped project
+- [x] Skill dropdown for "run a skill" is populated from the emit-time-stamped project
   catalog. (Engine: FEAT-2390.)
 
 ### Usability — structurally gated (automated; add assertions to the node
@@ -312,41 +315,64 @@ false-positive on them.
 
 The assertions:
 
-- [ ] **No internal jargon in the UI:** denylist assertion — no `Axis A`, `Axis B`,
+- [x] **No internal jargon in the UI:** denylist assertion — no `Axis A`, `Axis B`,
   `context.subject`, `policy_rules`, `predicate`, or raw normalized identifiers appear
   in visible markup, per the extraction rule above (script/style/comments stripped
   first). *(Still present verbatim in the shipped template as on-screen labels —
   "Subject (context.subject)", "Action (Axis A)", "Then (Axis B)" — confirmed
-  2026-07-25.)*
-- [ ] **Catch-all is a pinned, non-deletable "Otherwise →" footer**, visually distinct
+  2026-07-25.)* Fixed: labels are now "What are you grading?" / "Do:" / "And then:".
+  Covered by `test_no_internal_jargon_in_visible_markup`
+  (`test_policy_builder_emit.py`).
+- [x] **Catch-all is a pinned, non-deletable "Otherwise →" footer**, visually distinct
   from rules — a structured element with no delete control and no free-text target
   input among the rule fields (target chosen from existing outcomes). *(Partially
   shipped: `.fallback-row` is non-deletable and visually distinct, but is still a
   free-text `<input>` — confirmed 2026-07-25.)* Assert: footer element exists, has no
-  remove button, no free-text `<input>` for the target.
-- [ ] **YAML is secondary:** raw YAML sits inside a `<details>` (or equivalent)
+  remove button, no free-text `<input>` for the target. Fixed: `#f-fallback` is now a
+  `<select>` populated from outcome names. Covered by
+  `test_fallback_footer_is_structured_not_free_text`.
+- [x] **YAML is secondary:** raw YAML sits inside a `<details>` (or equivalent)
   that is collapsed by default; the default view is the plain summary + Download.
   *(Still missing: shipped template shows raw `<pre>` YAML as the only/default view —
   confirmed 2026-07-25.)* Assert: YAML container collapsed on load; summary element
-  present.
-- [ ] **Theme honors config:** `initTheme()` resolution order is stored toggle →
+  present. Fixed: `<details id="yaml-details">` (no `open`) wraps `#yaml-preview`;
+  `#yaml-summary` is the default plain-text view. Covered by
+  `test_yaml_is_collapsed_behind_details`.
+- [x] **Theme honors config:** `initTheme()` resolution order is stored toggle →
   stamped `window.__ACTIVE_THEME__` → OS preference → light. *(Emit path already
   stamps `active_theme` (`artifact.py:105-112`); the gap is that `initTheme()`
   checks `prefers-color-scheme` first, so OS preference silently beats the config —
   confirmed 2026-07-25. Fix is a precedence reorder, not stamping.)* Assert: with a
-  stamped theme and no stored value, `data-theme` equals the stamped theme.
-- [ ] **Single mode control:** exactly one mode toggle in the DOM; no in-form
-  duplicate. *(Shipped — keep as a regression assertion.)*
-- [ ] **Seeded example** present on load; a "Start blank" control clears it. Assert:
+  stamped theme and no stored value, `data-theme` equals the stamped theme. Fixed:
+  branch order in `initTheme()` reordered to stored → `__ACTIVE_THEME__` → OS → light,
+  and the stale header comment corrected. Covered by
+  `test_theme_resolution_order_is_stored_stamped_os_light` (asserts branch order via
+  the emitted script text; no DOM execution is available to assert the resulting
+  `data-theme` attribute directly, per the no-jsdom constraint).
+- [x] **Single mode control:** exactly one mode toggle in the DOM; no in-form
+  duplicate. *(Shipped — keep as a regression assertion.)* Covered by
+  `test_single_mode_toggle`.
+- [x] **Seeded example** present on load; a "Start blank" control clears it. Assert:
   `seedExample()` returns a non-empty model and `blankModel()` an empty one
-  (pure-model shape); blank control exists in the markup (static shape).
-- [ ] **Rubric mode is grammar-faithful, not a DT clone:** in Rubric mode the DOM
+  (pure-model shape); blank control exists in the markup (static shape). Implemented
+  `seedExample()`/`blankModel()` in `policy_builder_core.mjs`; wired `#start-blank-btn`.
+  Covered by node-suite tests plus `test_seed_and_blank_wiring_present`.
+- [x] **Rubric mode is grammar-faithful, not a DT clone:** in Rubric mode the DOM
   contains no weight inputs, no add-rule/reorder/conjunction affordances, exactly two
   threshold fields and three fixed tiers. The UI never offers structure
   `lib/rubric-router.yaml` cannot emit. *(See Mode asymmetry.)* Assert on the
-  rubric-mode DOM.
+  rubric-mode DOM. Already shipped (unchanged by this pass); regression-asserted by
+  `test_rubric_mode_has_no_dt_only_affordances`.
 
 ### Usability — walkthrough gated (experiential; cannot be asserted by machine)
+
+**Not run in this pass** — this was an automated implementation session (no live
+browser, no second human/fresh-subagent reviewer). The mechanical halves of both
+ACs below are implemented and node-suite-tested (`moveRule` mutates order
+correctly including boundary no-ops; shadow messages already cite visible rule
+numbers). The pinned-protocol walkthrough itself (§ Verification) still needs a
+separate session per the issue's own instructions. Leaving both unchecked and
+`status: open` until that walkthrough runs.
 
 - [ ] **Task gate:** a fresh reviewer produces a valid Decision Table loop without
   docs — protocol pinned in § Verification.
@@ -453,6 +479,68 @@ Related issues: FEAT-2390 (the emit/validate engine this shell drives), ENH-2299
 builder), ENH-2309 (design-token theming the page consumes), FEAT-1023 (the
 original `ll-artifact` self-contained-HTML substrate).
 
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
+
+### Files to Modify
+- `scripts/little_loops/templates/policy-router-builder.html.tmpl` — reorderable rule list (currently rendered per-outcome per-predicate inside `renderOutcomes()`, lines 262-392, no ordinal numbering or move controls anywhere), the three jargon labels (`f-subject` label at line 124, `Action (Axis A)` at line 335, `Then (Axis B)` at line 365), the fallback footer (`.fallback-row`/`f-fallback` free-text input, lines 161-164), the YAML panel (`#yaml-preview` `<pre>`, always-expanded, lines 168-177), and `initTheme()`'s precedence order plus its stale header comment (lines 477-491).
+- `scripts/little_loops/templates/policy_builder_core.mjs` — add `moveRule(model, index, direction)` and `seedExample()`/`blankModel()`; none of the three exist today. `firstMatch` does **not** need to be added as a new export — the existing `evaluateRules(rules, scores)` (mjs:159) already returns the first-matching rule's target in array order and can serve directly as the "Try it" tester's underlying call.
+- `scripts/tests/js/policy_validator.test.mjs` (or a new sibling `*.test.mjs`) — new `node --test` assertions for any newly added pure functions and for the static-markup checks (jargon denylist, fallback-footer shape, collapsed-`<details>` on load). Its import statement (`policy_validator.test.mjs:9-17`) destructures a fixed export list and must add `moveRule`, `seedExample`, `blankModel` by name.
+- `scripts/tests/test_policy_builder_emit.py` — _Wiring pass added by `/ll:wire-issue`:_ `test_emit_writes_html` (lines 22-40) already has the `tmp_path` + `cmd_policy_builder` + `html = out.read_text()` fixture wired up and is the natural home for the new static-markup assertions (jargon denylist, fallback-footer shape, `<details>` collapsed-on-load) — this is Python-side, complementary to the JS-side pure-function tests above. No prior script/style-stripping helper exists in this codebase; one must be written from scratch here. [Agent 1/3 finding]
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/artifact.py` (`cmd_policy_builder()`, stamping around lines 105-116) — inlines `policy_builder_core.mjs` verbatim via the `/*__BUILDER_CORE_JS__*/` placeholder (`str.replace()`, fixed order, asserted no leftover `/*__` tokens by `test_emit_writes_html`). Any new exported core function becomes available in template module scope automatically — no additional wiring in `artifact.py` needed. `active_theme` is stamped via a separate single-shot literal replace of `data-theme="light"` (artifact.py:112), read back into `window.__ACTIVE_THEME__` by the template's own bootstrap script.
+- `scripts/tests/test_policy_builder_node_gate.py:59` — globs `scripts/tests/js/*.test.mjs` and asserts the glob is non-empty; new test files or new `test()` blocks inside the existing file are auto-discovered, no gate-file edit required.
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` (`ll-artifact policy-builder` section, ~lines 4041-4066) — describes the emitted page's "live YAML preview... Copy/Download" as always-visible; needs updating once YAML is demoted behind a collapsed `<details>` (usability AC 3). [Agent 2 finding]
+- `docs/guides/POLICY_ROUTER_GUIDE.md` (§ "Visual Builder (greenfield)", ~lines 197-219) — the fallback-row description ("non-deletable 'Everything else → `<action>`' fallback", ~lines 211-212) implies free text isn't shown today, which the current `<input id="f-fallback">` contradicts; update to describe the new structured picker (usability AC 2), and optionally note the new reorderable rule list and "Try it" panel as capabilities. [Agent 2 finding]
+
+### Conventions in Force
+- Pure logic lives in a DOM-free `.mjs` module whose exports mirror canonical Python semantics 1:1 (JSDoc notes which Python function each mirrors), with a browser-only conditional `window.PolicyBuilderCore` export guard (`typeof window !== "undefined"`) — evidence: `policy_builder_core.mjs:543-555`.
+- `node --test` imports the `.mjs` directly and exercises exports with plain-object fixtures; no jsdom, no DOM API usage anywhere in the JS test suite (project bans npm deps) — evidence: `scripts/tests/js/policy_validator.test.mjs`.
+- A shared JSON conformance corpus (`scripts/tests/fixtures/policy_builder/conformance_corpus.json`) pins JS evaluate/shadow-detection logic against Python canonical semantics, consumed independently by `test_policy_builder_corpus.py` (Python) and `policy_validator.test.mjs` (JS); a separate golden-YAML fixture pair (`sample-*.model.json` + `sample-*.yaml`) pins the serializer the same way across `test_policy_builder_emit.py` and the JS suite.
+- **No existing `<details>`/disclosure element anywhere in this codebase's shipped HTML.** The template currently toggles visibility via a `.hidden` attribute on fieldsets (e.g. `#threshold-fieldset`, `policy-router-builder.html.tmpl:435-436`), not `<details>`. This issue's collapsed-YAML AC would be the first `<details>` usage in the repo — no in-repo pattern to model it after.
+- **No existing drag-and-drop or ↑/↓ reorder UI in any `.html.tmpl`/`.mjs`.** List items (`renderDimensions`, `renderOutcomes`) only support append/delete via `splice(i, 1)`. This issue's reorder control is the first instance of this pattern in the codebase.
+- Only one `.html.tmpl` + `.mjs` pair currently exists under `scripts/little_loops/templates/` (this one) — there is no second self-contained-HTML-template precedent to compare conventions against.
+
+### Tests
+- `scripts/tests/js/policy_validator.test.mjs` — covers `evaluateRules`, `detectShadows`, `parseRuleTable`, `serializeLoopYaml` against the conformance corpus and golden fixtures; no coverage yet for reorder/seed/blank behavior or any DOM-structural (jargon denylist, fallback-footer shape, `<details>` collapsed-state) assertions.
+- `scripts/tests/test_policy_builder_node_gate.py` — wraps `node --test` in a pytest gate; skips gracefully if `node` is absent or major version `< 22`.
+- `scripts/tests/test_policy_builder_emit.py` — _Wiring pass added by `/ll:wire-issue`:_ correction — this file is **not** unaffected; `test_emit_writes_html` (lines 22-40) is the natural extension point for the new static-markup assertions (see Files to Modify above), since it already assembles the emitted HTML string. `scripts/tests/test_policy_builder_corpus.py` remains unaffected (rule-evaluation/serialization semantics only, no label/markup coverage). [Agent 3 finding]
+- _Wiring pass added by `/ll:wire-issue`:_ confirmed no existing test in `test_policy_builder_emit.py`, `test_policy_builder_node_gate.py`, or `policy_validator.test.mjs` currently asserts on `Axis A`/`Axis B`/`context.subject`/`f-fallback`/`yaml-preview`/`initTheme` — none of the planned label, footer, YAML-panel, or theme-order changes will break existing coverage; these are pure coverage gaps, not regressions. No headless-browser/jsdom/DOM-rendering test exists anywhere in this codebase for the policy-builder HTML, consistent with the issue's documented no-npm-deps constraint — reorder/footer/`<details>`/`initTheme()` interaction can only be indirectly covered via pure-function tests (`moveRule`, `evaluateRules`) plus static-markup regex checks, not true DOM interaction. [Agent 3 finding]
+
+## Program Design
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
+
+### Types
+- Rule (as consumed by `evaluateRules`/`detectShadows`/`serializeLoopYaml`): `{ predicates: [{dim, op, value}], target: string, isCatchall: boolean }` — `policy_builder_core.mjs:27-33`. The template's own `buildModel()` never sets `isCatchall: true` on any rule it constructs (`policy-router-builder.html.tmpl:212`); the catch-all is expressed separately via `model.fallback` and handled inside `_serializeRulesText()` (`mjs:314`).
+- Model (passed to `serializeLoopYaml`): `{mode, name, description, subject, maxSteps, thresholdHigh, thresholdMedium, dimensions[], rules[], fallback, outcomes[]}` — full shape documented at `policy_builder_core.mjs:16-49`.
+- Template-only `state` object carries UI fields not in the model contract: `state.outcomes[i].rules[]` (nested per-outcome), flattened into the model's flat `rules[]` by `buildModel()` at serialize time — these are two different arrays, not aliases.
+
+### Signatures
+- `evaluateRules(rules, scores) -> string|null` — `policy_builder_core.mjs:159`. Already returns the first-matching rule's `target`, iterating in array order. This already fulfills the "Try it" tester's `firstMatch` role described in the issue — no new core export is required for that AC; only new DOM wiring (an inline "Try it" panel calling this existing function) is needed.
+- `detectShadows(rules) -> {ruleNumber, target, reason}[]` — `policy_builder_core.mjs:173`. Already consumed by `renderMessages()` (`policy-router-builder.html.tmpl:401`) for the existing shadow-warning messages.
+- `buildModel() -> model` — `policy-router-builder.html.tmpl:207-233`. Flattens `state.outcomes[].rules[]` into `model.rules` in outcome-order-then-in-outcome-rule-order; this is exactly the ordering a reorder feature must mutate, since rule array order is what `evaluateRules`/`serializeLoopYaml` treat as precedence order.
+- **Not present today** (net-new, required by the AC's no-DOM/pure-function-core constraint): `moveRule(model, index, direction)`, `seedExample()`, `blankModel()`. None of these three exist yet in `policy_builder_core.mjs` or anywhere else in the template. The template's current bootstrap instead seeds an initial model inline (`policy-router-builder.html.tmpl:502-504`, pushing one `quality`/`numeric` dimension and one `done` outcome) rather than calling any core-module helper, and its `state` object literal (lines 191-203) is the closest existing analog to a "blank model" — not a function today.
+
+### Call Path
+- Reorder interaction -> `moveRule(model, index, direction)` [new, `policy_builder_core.mjs`] -> mutates the outcome/rule array order consumed by `buildModel()` -> `updatePreview()` (`policy-router-builder.html.tmpl:418-423`) -> `serializeLoopYaml(model)` + `detectShadows(model.rules)` -> `#yaml-preview` / `#messages` re-rendered.
+- "Try it" tester: user-entered sample values -> `evaluateRules(model.rules, scores)` [existing, `policy_builder_core.mjs:159`] -> highlight the matching rule row (new DOM wiring only; no new core function needed for this half).
+- The JS core these two calls exercise is not standalone: `evaluateRules` and `detectShadows` are JSDoc-annotated 1:1 mirrors of the Python canonical semantics — `evaluateRules` mirrors `evaluate_rules(rules: list[Rule], scores: dict[str, object]) -> str | None` (`scripts/little_loops/fsm/policy_rules.py:232`), and `detectShadows` mirrors `_detect_shadows(rules: list[Rule]) -> list[str]` (`scripts/little_loops/fsm/route_table.py:360`). Any Try-it/reorder behavior change must keep parity with these Python functions, since `conformance_corpus.json` pins both sides against each other.
+- Theme resolution: page load -> `initTheme()` (`policy-router-builder.html.tmpl:477-491`) currently branches on `window.matchMedia("(prefers-color-scheme: …)")` **before** falling back to `window.__ACTIVE_THEME__` (only consulted in the `else` branch, when the browser reports no OS preference at all) -> `localStorage` `stored` value always wins last, applied unconditionally after the if/else chain. The AC's required order (stored toggle → stamped `active_theme` → OS preference → light) means both the branch order and the header comment at line 477 (which currently documents the existing, to-be-changed order) need to change together.
+
+### Decision Rules
+N/A — no new gap kind, gate, exit-code condition, keyword/threshold, or classification rule is introduced. This issue's four fixes are UI/structural changes layered on the existing, already-fixed grammar and existing `evaluateRules`/`detectShadows` semantics; no new decision logic is added.
+
 ## Impact
 
 - **Priority**: P3 — authoring quality-of-life; the pattern already works via hand-authoring
@@ -474,11 +562,22 @@ original `ll-artifact` self-contained-HTML substrate).
 
 - `.claude/CLAUDE.md` — the node conformance gate this issue extends (`test_policy_builder_node_gate.py`) is documented in CLAUDE.md's Testing & CI Policy as the canonical example of wrapping a non-Python gate inside `python -m pytest scripts/tests/`.
 
+## Status
+
+**Open** | Created: 2026-06-26 | Priority: P3
+
 ## Labels
 
 `feature`, `loops`, `policy-router`, `design-tokens`, `html`, `tooling`, `ux`
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-08T09:30:37 - `d9b130b3-2564-4720-b2a4-787c2a5c793a.jsonl`
+- `/ll:ready-issue` - 2026-08-08T09:07:22 - `a1c34c8b-d233-449d-b4e9-f5388bbc6118.jsonl`
+- `/ll:ready-issue` - 2026-08-08T09:07:08 - `a1c34c8b-d233-449d-b4e9-f5388bbc6118.jsonl`
+- `/ll:confidence-check` - 2026-08-08T09:03:43 - `b4e520f8-a5e6-44f7-8e32-e8690abe7378.jsonl`
+- `/ll:verify-issues` - 2026-08-08T09:01:30 - `3117b7f3-36af-4784-8065-4f160ddd4198.jsonl`
+- `/ll:wire-issue` - 2026-08-08T08:59:57 - `10ed77ee-9d84-4a5d-b089-cfa90281826a.jsonl`
+- `/ll:refine-issue` - 2026-08-08T08:51:40 - `7af75809-1413-4f6f-9448-a9a660a3814b.jsonl`
 - `verification-mechanics hardening` - 2026-07-25 - Second review pass confirmed the
   AC re-baseline against the template, then closed four verification-mechanics gaps:
   (1) pinned the no-DOM testability constraint — no npm deps means no jsdom, so

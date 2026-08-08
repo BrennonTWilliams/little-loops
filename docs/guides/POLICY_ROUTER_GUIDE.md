@@ -207,21 +207,31 @@ ll-artifact policy-builder -o ~/tmp   # custom output directory
 Open the generated `policy-router-builder.html` in any browser (no install, no server — it
 works over `file://`). It presents a one-page form with two modes:
 
-- **Decision Table** — per-dimension conjunctive rules, grouped into action cards
-  ("`light_repair` happens when…") with a non-deletable "Everything else → `<action>`"
-  fallback. Dimensions are typed (numeric vs boolean), so the operator dropdown only offers
+- **Decision Table** — an ordered, numbered rule list that reads as plain-language sentences
+  ("When `quality ≥ 80` → **light-repair**"). The on-screen number *is* precedence
+  (first-match-wins, top to bottom); ↑/↓ buttons reorder rules, and reordering re-runs shadow
+  detection and the live preview immediately. A pinned "Otherwise → `<outcome>`" footer is a
+  structured dropdown over the outcomes you've named — not a free-text field, and it can't be
+  deleted. Dimensions are typed (numeric vs boolean), so the operator dropdown only offers
   valid operators and the numeric-coercion parse-error class is unrepresentable. Each outcome
-  card authors its full target state along two axes — **Does** (`action_type` + body: a prompt,
-  a skill/command from this project's stamped catalog, or nothing) and **Then** (transition:
-  re-score, go to another outcome, or finish) — so dead-end states (the MR-4 pitfall — see
-  the [Harness Optimization Guide](HARNESS_OPTIMIZATION_GUIDE.md)) cannot be expressed.
+  is named once and authors its action/transition in plain language — **Do:** (a prompt, a
+  skill/command from this project's stamped catalog, or nothing) and **And then:** (score
+  again, go to another outcome, or stop here) — so dead-end states (the MR-4 pitfall — see
+  the [Harness Optimization Guide](HARNESS_OPTIMIZATION_GUIDE.md)) cannot be expressed. A
+  "Try it" panel lets you enter sample values per dimension and highlights the rule that would
+  win, making the effect of reordering visible immediately.
 - **Rubric** — one aggregate score with two threshold sliders feeding a fixed high/medium/low
-  table (mirrors `lib/rubric-router.yaml`).
+  table (mirrors `lib/rubric-router.yaml`); none of the Decision Table's reorder/add-rule
+  affordances are shown, since the rubric grammar has no rule ordering to express.
 
-The page validates live (shadowed rules, zero-condition rules, and unknown actions are flagged
-in plain language) and emits downloadable loop YAML with a printed `ll-loop validate <name>`
-hint. Its grammar, design-token theme, and skill catalog are **stamped from this project at
-generation time**, so regenerate the file to pick up new skills or grammar changes.
+The page validates live (shadowed rules, unreachable outcomes, and unknown actions are flagged
+in plain language, referencing the visible rule numbers) and emits loop YAML behind a
+collapsed "View generated file" disclosure — the default view is a one-line plain summary plus
+Copy/Download and a printed `ll-loop validate <name>` hint. The page seeds with a small
+runnable example on load; "Start blank" clears it. Its grammar, design-token theme, and skill
+catalog are **stamped from this project at generation time** (including the project's
+configured `active_theme`, which the page honors ahead of OS light/dark preference), so
+regenerate the file to pick up new skills or grammar changes.
 
 **Builder vs. `edit-routes`:** the builder is *greenfield-only* — it composes a new loop and
 exports YAML. `ll-loop edit-routes` (below) is the round-trip editor for a loop that *already

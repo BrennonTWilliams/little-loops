@@ -4052,7 +4052,7 @@ Generate self-contained, human-facing HTML artifacts from project data. All proj
 
 #### ll-artifact policy-builder
 
-Emit `policy-router-builder.html` — a single self-contained page for visually authoring Decision Table and Rubric loop YAML. The page inlines three project-derived blobs: design-token CSS variables (light + dark, from `load_design_tokens` / `render_as_css_vars_themed`), the canonical predicate grammar (`policy_rules.grammar_spec()`), and the skill/command catalog (from `skills/*/SKILL.md` + `commands/*.md`). It renders a live YAML preview, shadow / zero-condition / unknown-action validation hints, Copy/Download, and a light/dark theme toggle.
+Emit `policy-router-builder.html` — a single self-contained page for visually authoring Decision Table and Rubric loop YAML. The page inlines three project-derived blobs: design-token CSS variables (light + dark, from `load_design_tokens` / `render_as_css_vars_themed`), the canonical predicate grammar (`policy_rules.grammar_spec()`), and the skill/command catalog (from `skills/*/SKILL.md` + `commands/*.md`). Decision Table mode presents an ordered, numbered rule list with ↑/↓ reorder controls (on-screen order is precedence order), a "Try it" panel that highlights the first-matching rule for sample values, and a pinned, non-deletable "Otherwise →" fallback picker (a structured dropdown over existing outcomes, not free text). The generated YAML is demoted behind a collapsed "View generated file" `<details>` disclosure; the default view is a plain one-line summary plus Copy/Download, shadow / unreachable-outcome / unknown-action validation hints, and a light/dark theme toggle that honors the project's configured `active_theme` before falling back to OS preference.
 
 **Flags:**
 

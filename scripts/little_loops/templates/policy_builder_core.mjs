@@ -205,6 +205,115 @@ export function detectShadows(rules) {
 }
 
 /**
+ * Move a rule one position up or down in precedence order. Pure: returns a
+ * new object (shallow-copied `rules` array); never mutates `model.rules` or
+ * the rule objects it contains. A no-op (returns an equivalent copy) at
+ * either boundary — moving the first rule up, or the last rule down.
+ *
+ * FEAT-2301: this is the reorder half of the "ordered, numbered rule list"
+ * UX model. The template calls it from ↑/↓ buttons and re-derives the
+ * flattened rule order from the returned `.rules` for `buildModel()`,
+ * `evaluateRules()`, and `detectShadows()` — reordering therefore changes
+ * both precedence and the live "Try it" winner.
+ *
+ * @param {{rules: Array}} model  any object carrying a `.rules` array (the
+ *   full builder model, or a minimal `{rules}` shape — only `.rules` is read)
+ * @param {number} index  0-based index of the rule to move
+ * @param {number|'up'|'down'} direction  -1/'up' moves the rule earlier
+ *   (higher precedence); 1/'down' moves it later
+ * @returns {{rules: Array}} a new object with the same own keys as `model`,
+ *   plus a new `rules` array reflecting the move (or the original order,
+ *   copied, if the move would go out of bounds)
+ */
+export function moveRule(model, index, direction) {
+  const rules = (model && model.rules ? model.rules : []).slice();
+  const delta = direction === "up" || direction === -1 ? -1 : 1;
+  const target = index + delta;
+  if (index < 0 || index >= rules.length || target < 0 || target >= rules.length) {
+    return { ...model, rules };
+  }
+  const tmp = rules[index];
+  rules[index] = rules[target];
+  rules[target] = tmp;
+  return { ...model, rules };
+}
+
+/**
+ * A small, runnable Decision Table example model — the "never a blank form"
+ * seed (UX model §6). Non-empty: two dimensions, two ordered rules
+ * demonstrating precedence, three outcomes, and a fallback.
+ * @returns {Object} a builder model (see file-header model-shape contract)
+ */
+export function seedExample() {
+  return {
+    mode: "decision_table",
+    name: "my-policy-loop",
+    description: "",
+    subject: "artifact.md",
+    maxSteps: 20,
+    thresholdHigh: 85,
+    thresholdMedium: 65,
+    dimensions: [
+      { name: "quality", type: "numeric" },
+      { name: "has-citations", type: "boolean" },
+    ],
+    rules: [
+      {
+        predicates: [
+          { dim: "quality", op: ">=", value: "95" },
+          { dim: "has-citations", op: "==true", value: "" },
+        ],
+        target: "done",
+        isCatchall: false,
+      },
+      {
+        predicates: [{ dim: "quality", op: ">=", value: "80" }],
+        target: "light-repair",
+        isCatchall: false,
+      },
+    ],
+    fallback: "deep-repair",
+    outcomes: [
+      { name: "done", actionType: "none", body: "", transition: { kind: "finish" } },
+      {
+        name: "light-repair",
+        actionType: "prompt",
+        body: "Re-prompt for the lowest-scoring dimension, then re-score.",
+        transition: { kind: "rescore" },
+      },
+      {
+        name: "deep-repair",
+        actionType: "prompt",
+        body: "Apply comprehensive repairs across every dimension, then re-score.",
+        transition: { kind: "rescore" },
+      },
+    ],
+  };
+}
+
+/**
+ * An empty builder model — the target of the "Start blank" control (UX
+ * model §6). Every collection is empty; `serializeLoopYaml` can still accept
+ * it (it degrades to a single catch-all/fallback), but it authors nothing.
+ * @returns {Object} a builder model (see file-header model-shape contract)
+ */
+export function blankModel() {
+  return {
+    mode: "decision_table",
+    name: "my-policy-loop",
+    description: "",
+    subject: "",
+    maxSteps: 20,
+    thresholdHigh: 85,
+    thresholdMedium: 65,
+    dimensions: [],
+    rules: [],
+    fallback: "",
+    outcomes: [],
+  };
+}
+
+/**
  * Parse one predicate string into {dim, op, value}. Mirrors _parse_predicate.
  * @param {string} text
  * @param {RegExp} re
@@ -551,5 +660,8 @@ if (typeof window !== "undefined") {
     compileBooleanPredicate,
     normalizeDimName,
     serializeLoopYaml,
+    moveRule,
+    seedExample,
+    blankModel,
   };
 }

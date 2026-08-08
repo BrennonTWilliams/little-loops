@@ -73,7 +73,25 @@ button.secondary {
 .row > button { flex: 0 0 auto; }
 .outcome-group { border: 1px dashed var(--color-border-default, #ccc); border-radius: 6px; padding: 0.6rem; margin-bottom: 0.75rem; }
 .rule-row { display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.35rem; flex-wrap: wrap; }
+.rule-card {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+  border: 1px solid var(--color-border-default, #ccc);
+  border-radius: 6px;
+  padding: 0.5rem;
+  margin-bottom: 0.4rem;
+  background: var(--color-surface-base, #fff);
+}
+.rule-card.rule-winner {
+  outline: 2px solid var(--color-action-primary, #2563eb);
+  background: var(--color-status-success-bg, #d4edda);
+}
+.rule-ord { font-weight: 700; min-width: 1.5rem; }
+.rule-move { flex: 0 0 auto; padding: 0.2rem 0.5rem; }
 .fallback-row { font-style: italic; opacity: 0.85; }
+.fallback-row select { max-width: 16rem; }
 pre {
   background: var(--color-surface-sunken, #1e1e1e);
   color: var(--color-text-on-sunken, #e0e0e0);
@@ -121,8 +139,8 @@ small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
         <legend>Identity</legend>
         <label for="f-name">Loop name</label>
         <input type="text" id="f-name" value="my-policy-loop" />
-        <label for="f-subject">Subject (context.subject)</label>
-        <input type="text" id="f-subject" value="artifact.md" />
+        <label for="f-subject">What are you grading?</label>
+        <input type="text" id="f-subject" value="artifact.md" placeholder="e.g. artifact.md" />
         <label for="f-maxsteps">Max steps</label>
         <input type="number" id="f-maxsteps" value="20" min="1" />
         <label for="f-desc">Description (optional)</label>
@@ -148,32 +166,52 @@ small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
           </select>
           <button id="add-dim" type="button">Add</button>
         </div>
-        <small class="help">Boolean dimensions are scored 100/0 and compiled to numeric predicates.</small>
+        <small class="help">Boolean dimensions are scored 100/0 and compiled to numeric conditions.</small>
       </fieldset>
 
-      <fieldset id="rules-fieldset">
-        <legend>Rules &amp; Outcomes (Decision Table)</legend>
+      <fieldset id="outcomes-fieldset">
+        <legend>Outcomes</legend>
         <div id="outcome-list"></div>
         <div class="row">
           <input type="text" id="outcome-name" placeholder="new outcome name" />
           <button id="add-outcome" type="button">Add outcome</button>
         </div>
-        <div class="row fallback-row">
-          <span>Everything else →</span>
-          <input type="text" id="f-fallback" value="deep_repair" />
+        <small class="help">Name each destination once; rules below route to these outcomes by name.</small>
+      </fieldset>
+
+      <fieldset id="rules-fieldset">
+        <legend>Rules (Decision Table)</legend>
+        <div id="rule-list"></div>
+        <div class="row">
+          <button id="add-rule" type="button">+ Rule</button>
         </div>
+        <div class="row fallback-row" id="fallback-row">
+          <span>Otherwise →</span>
+          <select id="f-fallback" aria-label="Fallback outcome" title="Fallback outcome"></select>
+        </div>
+      </fieldset>
+
+      <fieldset id="tryit-fieldset">
+        <legend>Try it</legend>
+        <div id="tryit-inputs"></div>
+        <small class="help">Enter sample values to see which rule wins — reordering rules above changes the winner live.</small>
       </fieldset>
     </section>
 
     <section class="panel">
-      <h2 style="margin-top:0;font-size:1rem;">Live YAML</h2>
+      <h2 style="margin-top:0;font-size:1rem;">Result</h2>
+      <p id="yaml-summary"></p>
       <ul class="messages" id="messages"></ul>
       <div class="row" style="margin-bottom:0.5rem;">
         <button id="copy-btn" type="button">Copy</button>
         <button id="download-btn" type="button">Download &lt;name&gt;.yaml</button>
+        <button id="start-blank-btn" type="button" class="secondary">Start blank</button>
       </div>
       <p class="hint" id="validate-hint"></p>
-      <pre id="yaml-preview"></pre>
+      <details id="yaml-details">
+        <summary>View generated file</summary>
+        <pre id="yaml-preview"></pre>
+      </details>
     </section>
   </main>
 
@@ -188,30 +226,15 @@ small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
 const GRAMMAR = window.__GRAMMAR_SPEC__ || { all_ops: ["==", "!=", ">=", "<=", "<", ">"], ordered_ops: [">=", "<=", "<", ">"] };
 const CATALOG = window.__SKILL_CATALOG__ || [];
 
-const state = {
-  mode: "decision_table",
-  name: "my-policy-loop",
-  description: "",
-  subject: "artifact.md",
-  maxSteps: 20,
-  thresholdHigh: 85,
-  thresholdMedium: 65,
-  dimensions: [],
-  // outcomes drive both the rule grouping and per-outcome state authoring.
-  outcomes: [],
-  fallback: "deep_repair",
-};
+// `state` is the template's own authoring model — same flat shape as the
+// serializer's model contract (see policy_builder_core.mjs header), so
+// buildModel() is close to identity and `seedExample()`/`blankModel()` can be
+// assigned to it directly (FEAT-2301). Rules are a single ordered array (not
+// nested per-outcome) so on-screen order *is* precedence order and moveRule()
+// can reorder it directly.
+let state = seedExample();
 
-// Each outcome carries its own rule rows (predicate lists). We flatten them
-// into model.rules (in outcome order) at serialize time.
 function buildModel() {
-  const rules = [];
-  for (const oc of state.outcomes) {
-    for (const r of oc.rules || []) {
-      if (!r.predicates.length) continue;
-      rules.push({ predicates: r.predicates, target: oc.name, isCatchall: false });
-    }
-  }
   return {
     mode: state.mode,
     name: state.name,
@@ -221,7 +244,7 @@ function buildModel() {
     thresholdHigh: state.thresholdHigh,
     thresholdMedium: state.thresholdMedium,
     dimensions: state.dimensions,
-    rules,
+    rules: state.rules.map((r) => ({ predicates: r.predicates, target: r.target, isCatchall: false })),
     fallback: state.fallback,
     outcomes: state.outcomes.map((o) => ({
       name: o.name,
@@ -230,6 +253,22 @@ function buildModel() {
       transition: o.transition,
     })),
   };
+}
+
+// One-line plain-language stand-in for the raw YAML (UX model §5 — the YAML
+// itself is demoted behind a collapsed <details>; this summary is the
+// default view).
+function computeSummary(model) {
+  const dims = (model.dimensions || []).length;
+  const subject = model.subject || "the artifact";
+  const steps = model.maxSteps != null ? model.maxSteps : 20;
+  if (model.mode === "rubric") {
+    return `Scores ${subject} on ${dims} signal${dims === 1 ? "" : "s"}, runs ≤${steps}×, routes to high/medium/low tiers.`;
+  }
+  const finishOutcome = (model.outcomes || []).find((o) => o.transition && o.transition.kind === "finish");
+  const firstOutcome = model.outcomes && model.outcomes[0];
+  const stopsAt = finishOutcome ? finishOutcome.name : model.fallback || (firstOutcome && firstOutcome.name) || "done";
+  return `Scores ${subject} on ${dims} signal${dims === 1 ? "" : "s"}, runs ≤${steps}×, stops at ${stopsAt}.`;
 }
 
 function opsForType(type) {
@@ -259,6 +298,29 @@ function renderDimensions() {
   });
 }
 
+// The pinned fallback footer: a structured, non-input picker (no free text)
+// over the current outcome names. Non-deletable — it always exists and has
+// no remove control.
+function renderFallback() {
+  const sel = $("f-fallback");
+  const prev = state.fallback;
+  sel.innerHTML = "";
+  state.outcomes.forEach((oc) => {
+    const o = document.createElement("option");
+    o.value = oc.name; o.textContent = oc.name;
+    if (oc.name === prev) o.selected = true;
+    sel.appendChild(o);
+  });
+  if (!state.outcomes.some((oc) => oc.name === prev)) {
+    state.fallback = state.outcomes.length ? state.outcomes[0].name : "";
+  }
+  sel.value = state.fallback;
+  sel.onchange = () => { state.fallback = sel.value; updatePreview(); };
+}
+
+// Per-outcome action authoring only ("Do:" / "And then:"), named once. Rule
+// editing (predicates + precedence) lives in renderRules(); outcomes here
+// are just the destinations rules point at.
 function renderOutcomes() {
   const host = $("outcome-list");
   host.innerHTML = "";
@@ -267,73 +329,24 @@ function renderOutcomes() {
     grp.className = "outcome-group";
     const title = document.createElement("div");
     title.className = "row";
-    title.innerHTML = `<strong>Outcome: ${oc.name}</strong>`;
+    title.innerHTML = `<strong>${oc.name}</strong>`;
     const delOc = document.createElement("button");
     delOc.className = "secondary del";
     delOc.textContent = "✕ outcome";
+    const inUse = state.fallback === oc.name || state.rules.some((r) => r.target === oc.name);
+    delOc.disabled = inUse;
+    delOc.title = inUse
+      ? "Can't remove: still used by a rule or the fallback"
+      : "Remove this outcome";
     delOc.onclick = () => { state.outcomes.splice(oi, 1); renderAll(); };
     title.appendChild(delOc);
     grp.appendChild(title);
 
-    // rule rows
-    (oc.rules || []).forEach((r, ri) => {
-      r.predicates.forEach((p, pi) => {
-        const row = document.createElement("div");
-        row.className = "rule-row";
-        const dimSel = document.createElement("select");
-        state.dimensions.forEach((d) => {
-          const o = document.createElement("option");
-          o.value = normalizeDimName(d.name);
-          o.textContent = normalizeDimName(d.name);
-          o.dataset.type = d.type;
-          if (o.value === p.dim) o.selected = true;
-          dimSel.appendChild(o);
-        });
-        const opSel = document.createElement("select");
-        const dimType = (state.dimensions.find((d) => normalizeDimName(d.name) === p.dim) || {}).type || "numeric";
-        opsForType(dimType).forEach((op) => {
-          const o = document.createElement("option");
-          o.value = op; o.textContent = op;
-          if (op === p.op) o.selected = true;
-          opSel.appendChild(o);
-        });
-        const valInput = document.createElement("input");
-        valInput.type = "text"; valInput.value = p.value; valInput.placeholder = "value";
-        if (p.op === "==true" || p.op === "==false") valInput.disabled = true;
-        dimSel.onchange = () => { p.dim = dimSel.value; renderAll(); };
-        opSel.onchange = () => { p.op = opSel.value; renderAll(); };
-        valInput.oninput = () => { p.value = valInput.value; updatePreview(); };
-        const del = document.createElement("button");
-        del.className = "secondary del"; del.textContent = "✕";
-        del.onclick = () => {
-          r.predicates.splice(pi, 1);
-          if (!r.predicates.length) oc.rules.splice(ri, 1);
-          renderAll();
-        };
-        row.append(dimSel, opSel, valInput, del);
-        grp.appendChild(row);
-      });
-    });
-
-    const addRow = document.createElement("div");
-    addRow.className = "row";
-    const addPred = document.createElement("button");
-    addPred.className = "secondary"; addPred.textContent = "+ condition";
-    addPred.onclick = () => {
-      const firstDim = state.dimensions[0];
-      const dim = firstDim ? normalizeDimName(firstDim.name) : "";
-      const op = firstDim && firstDim.type === "boolean" ? "==true" : (GRAMMAR.all_ops[0] || "==");
-      if (!oc.rules) oc.rules = [];
-      oc.rules.push({ predicates: [{ dim, op, value: "" }] });
-      renderAll();
-    };
-    addRow.appendChild(addPred);
-    grp.appendChild(addRow);
-
-    // Axis A + Axis B authoring
+    // "Do:" / "And then:" authoring — plain language, no internal axis names.
     const author = document.createElement("div");
-    author.innerHTML = `<label>Action (Axis A)</label>`;
+    author.innerHTML = `<label>Do:</label>`;
     const aSel = document.createElement("select");
+    aSel.setAttribute("aria-label", "Action");
     [["prompt", "Prompt"], ["slash_command", "Run a skill"], ["none", "Nothing"]].forEach(([v, t]) => {
       const o = document.createElement("option"); o.value = v; o.textContent = t;
       if (v === oc.actionType) o.selected = true; aSel.appendChild(o);
@@ -344,10 +357,12 @@ function renderOutcomes() {
       if (oc.actionType === "prompt") {
         const ta = document.createElement("textarea");
         ta.value = oc.body || "";
+        ta.setAttribute("aria-label", "Prompt text");
         ta.oninput = () => { oc.body = ta.value; updatePreview(); };
         bodyHost.appendChild(ta);
       } else if (oc.actionType === "slash_command") {
         const sel = document.createElement("select");
+        sel.setAttribute("aria-label", "Skill");
         const blank = document.createElement("option"); blank.value = ""; blank.textContent = "— choose skill —"; sel.appendChild(blank);
         CATALOG.forEach((s) => {
           const o = document.createElement("option");
@@ -362,13 +377,15 @@ function renderOutcomes() {
     author.appendChild(aSel);
     author.appendChild(bodyHost);
 
-    author.insertAdjacentHTML("beforeend", `<label>Then (Axis B)</label>`);
+    author.insertAdjacentHTML("beforeend", `<label>And then:</label>`);
     const bSel = document.createElement("select");
-    [["rescore", "Re-score"], ["goto", "Go to…"], ["finish", "Finish"]].forEach(([v, t]) => {
+    bSel.setAttribute("aria-label", "Follow-up");
+    [["rescore", "Score again"], ["goto", "Go to…"], ["finish", "Stop here"]].forEach(([v, t]) => {
       const o = document.createElement("option"); o.value = v; o.textContent = t;
       if (v === (oc.transition && oc.transition.kind)) o.selected = true; bSel.appendChild(o);
     });
     const gotoSel = document.createElement("select");
+    gotoSel.setAttribute("aria-label", "Go to outcome");
     function renderGoto() {
       gotoSel.innerHTML = "";
       state.outcomes.forEach((o2) => {
@@ -391,20 +408,183 @@ function renderOutcomes() {
   });
 }
 
+// The ordered, numbered rule list — the primary surface (UX model §1). Each
+// row reads "N. When <conditions> → <outcome>" with ↑/↓ precedence controls.
+// On-screen order IS precedence order (first match wins), so reordering
+// mutates state.rules via the pure moveRule() and re-renders everything,
+// including the shadow-detection messages and the "Try it" winner.
+function renderRules() {
+  const host = $("rule-list");
+  host.innerHTML = "";
+  state.rules.forEach((r, i) => {
+    const card = document.createElement("div");
+    card.className = "rule-card";
+    card.dataset.ruleIndex = String(i);
+
+    const ord = document.createElement("span");
+    ord.className = "rule-ord";
+    ord.textContent = `${i + 1}.`;
+    card.appendChild(ord);
+
+    const whenLabel = document.createElement("span");
+    whenLabel.textContent = "When";
+    card.appendChild(whenLabel);
+
+    r.predicates.forEach((p, pi) => {
+      if (pi > 0) {
+        const and = document.createElement("span");
+        and.textContent = "and";
+        card.appendChild(and);
+      }
+      const dimSel = document.createElement("select");
+      dimSel.setAttribute("aria-label", "Signal");
+      state.dimensions.forEach((d) => {
+        const o = document.createElement("option");
+        o.value = normalizeDimName(d.name);
+        o.textContent = normalizeDimName(d.name);
+        if (o.value === p.dim) o.selected = true;
+        dimSel.appendChild(o);
+      });
+      const opSel = document.createElement("select");
+      opSel.setAttribute("aria-label", "Comparison");
+      const dimType = (state.dimensions.find((d) => normalizeDimName(d.name) === p.dim) || {}).type || "numeric";
+      opsForType(dimType).forEach((op) => {
+        const o = document.createElement("option");
+        o.value = op; o.textContent = op;
+        if (op === p.op) o.selected = true;
+        opSel.appendChild(o);
+      });
+      const valInput = document.createElement("input");
+      valInput.type = "text"; valInput.value = p.value; valInput.placeholder = "value";
+      valInput.setAttribute("aria-label", "Value");
+      if (p.op === "==true" || p.op === "==false") valInput.disabled = true;
+      dimSel.onchange = () => { p.dim = dimSel.value; renderAll(); };
+      opSel.onchange = () => { p.op = opSel.value; renderAll(); };
+      valInput.oninput = () => { p.value = valInput.value; updatePreview(); };
+      card.append(dimSel, opSel, valInput);
+      if (r.predicates.length > 1) {
+        const delPred = document.createElement("button");
+        delPred.className = "secondary del"; delPred.textContent = "✕";
+        delPred.title = "Remove this condition";
+        delPred.onclick = () => { r.predicates.splice(pi, 1); renderAll(); };
+        card.appendChild(delPred);
+      }
+    });
+
+    const addPred = document.createElement("button");
+    addPred.className = "secondary"; addPred.textContent = "+ and";
+    addPred.title = "Add another condition to this rule";
+    addPred.onclick = () => {
+      const firstDim = state.dimensions[0];
+      const dim = firstDim ? normalizeDimName(firstDim.name) : "";
+      const op = firstDim && firstDim.type === "boolean" ? "==true" : (GRAMMAR.all_ops[0] || "==");
+      r.predicates.push({ dim, op, value: "" });
+      renderAll();
+    };
+    card.appendChild(addPred);
+
+    const arrow = document.createElement("span");
+    arrow.textContent = "→";
+    card.appendChild(arrow);
+
+    const targetSel = document.createElement("select");
+    targetSel.setAttribute("aria-label", "Outcome");
+    state.outcomes.forEach((oc) => {
+      const o = document.createElement("option"); o.value = oc.name; o.textContent = oc.name;
+      if (oc.name === r.target) o.selected = true;
+      targetSel.appendChild(o);
+    });
+    targetSel.onchange = () => { r.target = targetSel.value; updatePreview(); };
+    card.appendChild(targetSel);
+
+    const upBtn = document.createElement("button");
+    upBtn.className = "secondary rule-move"; upBtn.textContent = "↑";
+    upBtn.title = "Move rule up (higher precedence)";
+    upBtn.disabled = i === 0;
+    upBtn.onclick = () => { state.rules = moveRule({ rules: state.rules }, i, "up").rules; renderAll(); };
+    const downBtn = document.createElement("button");
+    downBtn.className = "secondary rule-move"; downBtn.textContent = "↓";
+    downBtn.title = "Move rule down (lower precedence)";
+    downBtn.disabled = i === state.rules.length - 1;
+    downBtn.onclick = () => { state.rules = moveRule({ rules: state.rules }, i, "down").rules; renderAll(); };
+    card.append(upBtn, downBtn);
+
+    const del = document.createElement("button");
+    del.className = "secondary del"; del.textContent = "✕"; del.title = "Delete this rule";
+    del.onclick = () => { state.rules.splice(i, 1); renderAll(); };
+    card.appendChild(del);
+
+    host.appendChild(card);
+  });
+}
+
+// "Try it" (UX model §8, Decision Table only): one input per dimension,
+// highlighting the first-matching rule row live via the existing
+// evaluateRules(). Highlight-the-winner only — no state execution.
+function renderTryIt() {
+  const host = $("tryit-inputs");
+  host.innerHTML = "";
+  if (state.mode !== "decision_table") return;
+  state.dimensions.forEach((d) => {
+    const dimKey = normalizeDimName(d.name);
+    const row = document.createElement("div");
+    row.className = "row";
+    const label = document.createElement("label");
+    label.textContent = dimKey;
+    label.style.margin = "0";
+    row.appendChild(label);
+    let input;
+    if (d.type === "boolean") {
+      input = document.createElement("select");
+      [["", "—"], ["true", "true"], ["false", "false"]].forEach(([v, t]) => {
+        const o = document.createElement("option"); o.value = v; o.textContent = t; input.appendChild(o);
+      });
+    } else {
+      input = document.createElement("input");
+      input.type = "number";
+    }
+    input.setAttribute("aria-label", `${dimKey} sample value`);
+    input.dataset.dim = dimKey;
+    input.oninput = updateTryIt;
+    input.onchange = updateTryIt;
+    row.appendChild(input);
+    host.appendChild(row);
+  });
+  updateTryIt();
+}
+
+function updateTryIt() {
+  document.querySelectorAll(".rule-card").forEach((el) => el.classList.remove("rule-winner"));
+  if (state.mode !== "decision_table") return;
+  const scores = {};
+  document.querySelectorAll("#tryit-inputs [data-dim]").forEach((el) => {
+    if (el.value === "") return;
+    scores[el.dataset.dim] = el.tagName === "SELECT" ? (el.value === "true" ? 100 : 0) : Number(el.value);
+  });
+  const model = buildModel();
+  const winnerTarget = evaluateRules(model.rules, scores);
+  if (winnerTarget == null) return;
+  const idx = model.rules.findIndex((r) => r.target === winnerTarget);
+  const row = idx >= 0 ? document.querySelector(`.rule-card[data-rule-index="${idx}"]`) : null;
+  if (row) row.classList.add("rule-winner");
+}
+
 function renderMessages(model) {
   const host = $("messages");
   host.innerHTML = "";
   const add = (cls, text) => {
     const li = document.createElement("li"); li.className = cls; li.textContent = text; host.appendChild(li);
   };
-  // Shadow detection (plain-language).
+  // Shadow detection (plain-language, tied to the visible rule numbers).
   const shadows = detectShadows(model.rules);
   shadows.forEach((s) => add("msg-warn", `Rule ${s.ruleNumber} (→ ${s.target}) never fires — an earlier rule already covers it.`));
-  // Zero-condition outcomes (an outcome with no rules and not the fallback).
-  state.outcomes.forEach((oc) => {
-    const hasRule = (oc.rules || []).some((r) => r.predicates.length);
-    if (!hasRule) add("msg-warn", `Outcome "${oc.name}" has no conditions — it can only be reached via "Go to".`);
-  });
+  if (state.mode === "decision_table") {
+    // Outcomes unreachable by any rule and not the fallback.
+    state.outcomes.forEach((oc) => {
+      const reached = model.rules.some((r) => r.target === oc.name) || model.fallback === oc.name;
+      if (!reached) add("msg-warn", `Outcome "${oc.name}" has no rule and isn't the fallback — it can only be reached via "Go to".`);
+    });
+  }
   // Unknown skill actions.
   const known = new Set(CATALOG.map((s) => "/ll:" + s.name));
   state.outcomes.forEach((oc) => {
@@ -418,22 +598,41 @@ function renderMessages(model) {
 function updatePreview() {
   const model = buildModel();
   $("yaml-preview").textContent = serializeLoopYaml(model);
+  $("yaml-summary").textContent = computeSummary(model);
   $("validate-hint").textContent = `Validate with:  ll-loop validate ${state.name}`;
   renderMessages(model);
+  updateTryIt();
 }
 
 function renderAll() {
   renderDimensions();
-  if (state.mode === "decision_table") renderOutcomes();
+  renderFallback();
+  if (state.mode === "decision_table") {
+    renderOutcomes();
+    renderRules();
+    renderTryIt();
+  } else {
+    // Rubric mode hides these fieldsets entirely (Mode asymmetry); clear
+    // stale DOM so a mode switch never leaves orphaned rows behind.
+    $("outcome-list").innerHTML = "";
+    $("rule-list").innerHTML = "";
+    $("tryit-inputs").innerHTML = "";
+  }
   updatePreview();
+}
+
+function applyModeVisibility() {
+  $("threshold-fieldset").hidden = state.mode !== "rubric";
+  $("outcomes-fieldset").hidden = state.mode === "rubric";
+  $("rules-fieldset").hidden = state.mode === "rubric";
+  $("tryit-fieldset").hidden = state.mode !== "decision_table";
 }
 
 // ---- event wiring --------------------------------------------------------
 $("mode-switch").value = state.mode;
 $("mode-switch").onchange = (e) => {
   state.mode = e.target.value;
-  $("threshold-fieldset").hidden = state.mode !== "rubric";
-  $("rules-fieldset").hidden = state.mode === "rubric";
+  applyModeVisibility();
   $("f-maxsteps").value = state.maxSteps = state.mode === "rubric" ? 10 : 20;
   renderAll();
 };
@@ -441,7 +640,6 @@ $("f-name").oninput = (e) => { state.name = e.target.value; updatePreview(); };
 $("f-subject").oninput = (e) => { state.subject = e.target.value; updatePreview(); };
 $("f-maxsteps").oninput = (e) => { state.maxSteps = Number(e.target.value) || 1; updatePreview(); };
 $("f-desc").oninput = (e) => { state.description = e.target.value; updatePreview(); };
-$("f-fallback").oninput = (e) => { state.fallback = e.target.value; updatePreview(); };
 $("f-thigh").oninput = (e) => { state.thresholdHigh = Number(e.target.value); $("thigh-val").textContent = e.target.value; updatePreview(); };
 $("f-tmed").oninput = (e) => { state.thresholdMedium = Number(e.target.value); $("tmed-val").textContent = e.target.value; updatePreview(); };
 
@@ -455,8 +653,16 @@ $("add-dim").onclick = () => {
 $("add-outcome").onclick = () => {
   const name = normalizeDimName($("outcome-name").value);
   if (!name) return;
-  state.outcomes.push({ name, rules: [], actionType: "prompt", body: "", transition: { kind: "rescore" } });
+  state.outcomes.push({ name, actionType: "prompt", body: "", transition: { kind: "rescore" } });
   $("outcome-name").value = "";
+  renderAll();
+};
+$("add-rule").onclick = () => {
+  if (!state.outcomes.length) return;
+  const firstDim = state.dimensions[0];
+  const dim = firstDim ? normalizeDimName(firstDim.name) : "";
+  const op = firstDim && firstDim.type === "boolean" ? "==true" : (GRAMMAR.all_ops[0] || "==");
+  state.rules.push({ predicates: [{ dim, op, value: "" }], target: state.outcomes[0].name });
   renderAll();
 };
 
@@ -473,19 +679,34 @@ $("download-btn").onclick = () => {
   a.click();
   URL.revokeObjectURL(a.href);
 };
+// "Never a blank form" (UX model §6): the page seeds with seedExample();
+// this clears it to blankModel() on demand.
+$("start-blank-btn").onclick = () => {
+  state = blankModel();
+  $("f-name").value = state.name;
+  $("f-subject").value = state.subject;
+  $("f-maxsteps").value = state.maxSteps;
+  $("f-desc").value = state.description;
+  $("mode-switch").value = state.mode;
+  applyModeVisibility();
+  renderAll();
+};
 
-// ---- theme toggle: prefers-color-scheme → config active_theme → localStorage
+// ---- theme resolution: stored toggle -> stamped active_theme -> OS preference -> light
 function initTheme() {
   const stored = (() => { try { return localStorage.getItem("ll-policy-builder-theme"); } catch (e) { return null; } })();
   let theme;
-  if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+  if (stored) {
+    theme = stored;
+  } else if (window.__ACTIVE_THEME__) {
+    theme = window.__ACTIVE_THEME__;
+  } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
     theme = "dark";
   } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) {
     theme = "light";
   } else {
-    theme = window.__ACTIVE_THEME__ || "light";
+    theme = "light";
   }
-  if (stored) theme = stored;
   document.documentElement.setAttribute("data-theme", theme);
   $("theme-toggle").textContent = theme === "dark" ? "☀️" : "🌙";
 }
@@ -499,11 +720,7 @@ $("theme-toggle").onclick = () => {
 
 // ---- bootstrap -----------------------------------------------------------
 initTheme();
-// seed with a representative starting point
-state.dimensions.push({ name: "quality", type: "numeric" });
-state.outcomes.push({ name: "done", rules: [], actionType: "none", body: "", transition: { kind: "finish" } });
-$("threshold-fieldset").hidden = true;
-$("rules-fieldset").hidden = false;
+applyModeVisibility();
 renderAll();
   </script>
 </body>
