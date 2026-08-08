@@ -4,10 +4,11 @@ type: BUG
 title: Three ll-auto subprocesses omit automation_profile and now explicitly declare
   themselves non-automation
 priority: P3
-status: open
+status: done
 discovered_date: 2026-08-07
 discovered_by: pre-implementation-review
 captured_at: '2026-08-07T00:00:00Z'
+completed_at: '2026-08-08T04:06:09Z'
 labels:
 - automation
 - host-runner
@@ -228,6 +229,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-08T04:05:46 - `82e4db23-6bde-48ef-bced-5deadb574d81.jsonl`
 - `/ll:confidence-check` - 2026-08-07T21:19:17 - `6d826167-8397-4056-a786-b172be706357.jsonl`
 - `/ll:verify-issues` - 2026-08-07T21:16:24 - `77f825ac-c931-4911-95a5-cc391c8d5be4.jsonl`
 - `/ll:wire-issue` - 2026-08-07T21:14:31 - `0c541e46-ca5a-4956-958d-0371db51651b.jsonl`

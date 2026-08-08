@@ -2637,6 +2637,7 @@ def run_claude_command(
     on_usage_detailed: Callable[[TokenUsage], None] | None = None,
     preview_full: bool = False,
     resume_session: bool = False,
+    automation_profile: str | None = None,
 ) -> subprocess.CompletedProcess[str]
 ```
 
@@ -2653,6 +2654,7 @@ Preview and invoke a Claude CLI command with output streaming. This is the `issu
 - `on_usage_detailed` - Optional callback invoked with a `TokenUsage` dataclass from the stream-json result event. `TokenUsage.model` carries the **resolved** model ID (e.g. `"claude-sonnet-5"`), unlike `on_model_detected` (BUG-2757).
 - `preview_full` - If `True`, display the full command without truncation (for `--verbose`)
 - `resume_session` - If `True`, passes `--continue` to the Claude CLI to continue the most recent conversation
+- `automation_profile` - Optional automation profile name (e.g. `"ll-auto"`) forwarded to the child env as `LL_AUTOMATION`/`LL_AUTOMATION_PROFILE`; `None` leaves those vars cleared rather than inherited (see `_apply_automation_env`, BUG-3093)
 
 **Returns:** `CompletedProcess` with stdout/stderr captured. When a `result` event with `is_error=True` is present in the stream-json output, `CompletedProcess.stderr` will include a `[result] <error>` line containing the error text from the result event's `error` field (falling back to the `result` field).
 

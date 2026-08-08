@@ -2215,6 +2215,9 @@ class TestReadyIssueErrorHandling:
                         )
 
         assert mock_run.call_args.kwargs["on_usage_detailed"] is on_usage_detailed
+        # BUG-3093: Phase 1's ready-issue subprocess must declare itself
+        # under automation like implement/finalize-retry already do.
+        assert mock_run.call_args.kwargs["automation_profile"] == "ll-auto"
 
     def test_fallback_ready_issue_failure_returns_error(
         self, mock_config: BRConfig, sample_issue: IssueInfo
@@ -2243,9 +2246,11 @@ READY
         fallback_result.stderr = "Fallback failed"
 
         call_count = [0]
+        captured_profiles: list[object] = []
 
         def mock_run(*args, **kwargs):
             call_count[0] += 1
+            captured_profiles.append(kwargs.get("automation_profile"))
             if call_count[0] == 1:
                 return first_result
             return fallback_result
@@ -2256,6 +2261,9 @@ READY
 
         assert not result.success
         assert "Fallback failed" in result.failure_reason
+        # BUG-3093: both the initial ready-issue call and the path-mismatch
+        # fallback retry must declare automation_profile="ll-auto".
+        assert captured_profiles == ["ll-auto", "ll-auto"]
 
     def test_persistent_path_mismatch_returns_error(
         self, mock_config: BRConfig, sample_issue: IssueInfo
@@ -4734,6 +4742,12 @@ class TestDecisionNeededGate:
         assert mock_cmd.call_count == 2
         all_cmds = [str(call.args[0]) for call in mock_cmd.call_args_list]
         assert any("decide-issue" in cmd for cmd in all_cmds)
+        # BUG-3093: both Phase 1 (ready-issue) and the decide-issue gate
+        # subprocesses must declare automation_profile="ll-auto".
+        assert all(
+            call.kwargs.get("automation_profile") == "ll-auto"
+            for call in mock_cmd.call_args_list
+        )
 
     def test_decide_issue_skipped_when_decision_not_needed(
         self, mock_config: BRConfig, issue_without_decision: IssueInfo

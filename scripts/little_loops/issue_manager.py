@@ -832,6 +832,11 @@ def process_issue_inplace(
                     on_model_detected=on_model_detected,
                     on_usage_detailed=on_usage_detailed,
                     preview_full=preview_full,
+                    # BUG-3093: this Phase 1 subprocess is as much "under
+                    # automation" as implement/finalize-retry; an omitted
+                    # profile now writes LL_AUTOMATION="" (ENH-3081), an
+                    # explicit false rather than "unspecified".
+                    automation_profile="ll-auto",
                 )
 
             # An UNKNOWN verdict means the model returned nothing verdict-shaped
@@ -899,6 +904,9 @@ def process_issue_inplace(
                                 on_model_detected=on_model_detected,
                                 on_usage_detailed=on_usage_detailed,
                                 preview_full=preview_full,
+                                # BUG-3093: same Phase 1 automation context as
+                                # _run_ready above.
+                                automation_profile="ll-auto",
                             )
 
                             if retry_result.returncode != 0:
@@ -1095,6 +1103,9 @@ def process_issue_inplace(
             on_model_detected=on_model_detected,
             on_usage_detailed=on_usage_detailed,
             preview_full=preview_full,
+            # BUG-3093: decide-issue is the same ll-auto run as implement /
+            # finalize-retry, which already declare this profile.
+            automation_profile="ll-auto",
         )
         if decide_result.returncode != 0:
             logger.warning("decide-issue command failed, continuing to implementation anyway...")
