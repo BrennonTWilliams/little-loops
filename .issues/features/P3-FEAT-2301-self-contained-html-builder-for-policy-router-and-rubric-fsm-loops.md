@@ -3,11 +3,12 @@ id: FEAT-2301
 title: Visual builder for policy-router and rubric FSM loops (UX shell)
 type: FEAT
 priority: P3
-status: open
+status: done
 discovered_date: 2026-06-26
 discovered_by: capture-issue
 parent: EPIC-2087
 captured_at: '2026-06-26T00:35:41Z'
+completed_at: '2026-08-08T09:35:17Z'
 relates_to:
 - FEAT-2390
 - ENH-2299
@@ -366,27 +367,35 @@ The assertions:
 
 ### Usability — walkthrough gated (experiential; cannot be asserted by machine)
 
-**Not run in this pass** — this was an automated implementation session (no live
-browser, no second human/fresh-subagent reviewer). The mechanical halves of both
-ACs below are implemented and node-suite-tested (`moveRule` mutates order
-correctly including boundary no-ops; shadow messages already cite visible rule
-numbers). The pinned-protocol walkthrough itself (§ Verification) still needs a
-separate session per the issue's own instructions. Leaving both unchecked and
-`status: open` until that walkthrough runs.
+**Run 2026-08-08 via the subagent-fallback protocol** — a freshly spawned subagent
+with no prior context, given only the emitted `policy-router-builder.html` (no
+docs, no issue file, no template source), performed the pinned task and reported
+PASS within 5 of the allotted 15 turns, with all five legibility checks confirmed
+by tracing the actual markup/JS. Per § Verification's evidence-strength caveat this
+is the acceptable fallback when no human/browser session is available; a live
+human walkthrough would be stronger evidence but is not required to close this
+issue. See the checked ACs below for verdict detail.
 
-- [ ] **Task gate:** a fresh reviewer produces a valid Decision Table loop without
-  docs — protocol pinned in § Verification.
-- [ ] **Precedence is visible and reorderable:** rules show an explicit top-to-bottom
+- [x] **Task gate:** a fresh reviewer produces a valid Decision Table loop without
+  docs — protocol pinned in § Verification. *(2026-08-08: fresh subagent given only
+  the emitted `policy-router-builder.html`, no docs — verdict PASS in 5/15 turns.
+  Subagent-fallback evidence per § Verification's evidence-strength caveat; no
+  human/browser session run. Weakest spot noted: the seeded example matched the
+  task scenario closely, so a genuinely blank-start attempt wasn't exercised.)*
+- [x] **Precedence is visible and reorderable:** rules show an explicit top-to-bottom
   number; reordering (drag or ↑/↓) changes which rule wins in the "Try it" tester
-  (UX model §8) for the same sample values, live. *(Still missing in the shipped
-  template: `Rule N` appears in warning text but there is no visible numbered rule
-  list or reorder control — confirmed 2026-07-25.)* The mechanical halves get
-  node-suite assertions in the pure-model shape (`moveRule` mutates rule order,
-  `firstMatch` returns the first matching rule for sample values); the walkthrough
-  judges whether it *feels* legible.
-- [ ] **Inline messages reference visible rule numbers** and update live — shadow
+  (UX model §8) for the same sample values, live. *(2026-08-08: shipped —
+  `renderRules()` numbers rows "N.", ↑/↓ buttons call `moveRule()`; walkthrough
+  subagent traced `moveRule → renderAll → updatePreview → updateTryIt →
+  evaluateRules` and confirmed reordering changes the highlighted winner for fixed
+  sample inputs.)* Mechanical halves covered by node-suite assertions (`moveRule`
+  mutates order, `evaluateRules` returns first match).
+- [x] **Inline messages reference visible rule numbers** and update live — shadow
   engine already returns numbered messages (`policy_builder_core.mjs:168-198`); this
-  AC is about surfacing them next to the rows they name.
+  AC is about surfacing them next to the rows they name. *(2026-08-08: confirmed —
+  `renderMessages()` (template line 580) emits "Rule ${s.ruleNumber} (→ ${s.target})
+  never fires..." and those numbers now correspond to the visible numbered rule list
+  added for the precedence AC, so "Rule N" is traceable to an on-screen row.)*
 
 ## Verification (the gate that can fail)
 
@@ -571,6 +580,7 @@ N/A — no new gap kind, gate, exit-code condition, keyword/threshold, or classi
 `feature`, `loops`, `policy-router`, `design-tokens`, `html`, `tooling`, `ux`
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-08T09:35:01 - `d9b130b3-2564-4720-b2a4-787c2a5c793a.jsonl`
 - `/ll:manage-issue` - 2026-08-08T09:30:37 - `d9b130b3-2564-4720-b2a4-787c2a5c793a.jsonl`
 - `/ll:ready-issue` - 2026-08-08T09:07:22 - `a1c34c8b-d233-449d-b4e9-f5388bbc6118.jsonl`
 - `/ll:ready-issue` - 2026-08-08T09:07:08 - `a1c34c8b-d233-449d-b4e9-f5388bbc6118.jsonl`
