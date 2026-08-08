@@ -208,7 +208,8 @@ states:
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         (loops_dir / "valid-loop.yaml").write_text(
-            "name: valid-loop\ndescription: Test\ninitial: check\nstates:\n  check:\n    terminal: true\n"
+            "name: valid-loop\ndescription: Test\ninitial: check\nscope:\n"
+            '  - "."\nstates:\n  check:\n    terminal: true\n'
         )
 
         logger = Logger(use_color=False)

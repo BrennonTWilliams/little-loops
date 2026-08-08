@@ -28,6 +28,7 @@ from little_loops.fsm.validation import (
     _validate_evaluator,
     _validate_failure_terminal_action,
     _validate_input_key_without_guard,
+    _validate_missing_scope,
     _validate_parameters,
     _validate_state_action,
     _validate_zero_retry_counter,
@@ -1590,6 +1591,56 @@ class TestRequiredInputsValidation:
             if e.severity == ValidationSeverity.WARNING and "required_inputs" in e.path
         ]
         assert guard_warnings == []
+
+
+class TestMissingScopeValidation:
+    """Tests for _validate_missing_scope (BUG-3107)."""
+
+    def _make_fsm(self, scope: list[str] | None = None) -> FSMLoop:
+        return FSMLoop(
+            name="test",
+            initial="start",
+            states={"start": make_state(terminal=True)},
+            scope=scope or [],
+        )
+
+    def test_warning_fires_when_scope_missing(self) -> None:
+        """WARNING emitted when a loop declares no scope: at all."""
+        fsm = self._make_fsm(scope=[])
+        errors = _validate_missing_scope(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+        assert errors[0].path == "scope"
+
+    def test_no_warning_when_scope_present(self) -> None:
+        """No WARNING when scope: names specific paths."""
+        fsm = self._make_fsm(scope=["src/"])
+        errors = _validate_missing_scope(fsm)
+        assert errors == []
+
+    def test_no_warning_for_explicit_repo_wide_scope(self) -> None:
+        """No WARNING when scope: [\".\"] is the explicit repo-wide opt-in."""
+        fsm = self._make_fsm(scope=["."])
+        errors = _validate_missing_scope(fsm)
+        assert errors == []
+
+    def test_warning_wired_into_validate_fsm(self) -> None:
+        """_validate_missing_scope is wired into validate_fsm."""
+        fsm = self._make_fsm(scope=[])
+        all_errors = validate_fsm(fsm)
+        scope_warnings = [
+            e for e in all_errors if e.severity == ValidationSeverity.WARNING and e.path == "scope"
+        ]
+        assert len(scope_warnings) == 1
+
+    def test_no_warning_when_scope_wired_into_validate_fsm(self) -> None:
+        """validate_fsm emits no scope WARNING when scope: is declared."""
+        fsm = self._make_fsm(scope=["src/"])
+        all_errors = validate_fsm(fsm)
+        scope_warnings = [
+            e for e in all_errors if e.severity == ValidationSeverity.WARNING and e.path == "scope"
+        ]
+        assert scope_warnings == []
 
 
 class TestValidateFragmentBindings:

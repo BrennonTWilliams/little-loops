@@ -117,6 +117,47 @@ class TestBuiltinLoopFiles:
                 f"{[str(w) for w in description_warnings]}"
             )
 
+    # BUG-3107: oracles/ sub-loops predate the scope backfill (BUG-3106
+    # covered only the top-level loops/*.yaml set) and are allowlisted in
+    # TestValidatorWarningBudget's "no-scope" category pending a follow-up
+    # to give each one a real per-file scope. Kept in sync with that
+    # ALLOWLIST so this test doesn't re-fail the same 12 files.
+    _SCOPE_EXEMPT_STEMS = {
+        "code-run-gate",
+        "enumerate-and-prove",
+        "generator-evaluator",
+        "generator-evaluator-cli",
+        "generator-evaluator-flux",
+        "integrate-node",
+        "oracle-capture-issue",
+        "plan-node-refine",
+        "plan-research-iteration",
+        "research-coverage",
+        "resolve-decision",
+        "verify-confidence-scores",
+    }
+
+    def test_all_have_scope_field(self, builtin_loops: list[Path]) -> None:
+        """All built-in loops (outside the BUG-3107 oracle exemption) declare scope:.
+
+        Regression guard for BUG-3107: an unscoped loop falls back to a
+        repo-root lock at run time and false-conflicts with every other
+        narrowly-scoped loop running concurrently.
+        """
+        for loop_file in builtin_loops:
+            if loop_file.stem in self._SCOPE_EXEMPT_STEMS:
+                continue
+            fsm, warnings = load_and_validate(loop_file)
+            assert fsm.scope, f"{loop_file.name}: missing top-level 'scope:' field"
+            scope_warnings = [
+                w
+                for w in warnings
+                if w.severity == ValidationSeverity.WARNING and w.path == "scope"
+            ]
+            assert not scope_warnings, (
+                f"{loop_file.name}: produced no-scope warning: {[str(w) for w in scope_warnings]}"
+            )
+
     def test_expected_loops_exist(self) -> None:
         """The expected set of built-in loops exists."""
         expected = {
@@ -13481,6 +13522,7 @@ class TestValidatorWarningBudget:
         "capture-ordering": "References ${captured.",
         "loop-reference": "does not resolve to any file",
         "unsafe-context-interp": "interpolates user-controlled context raw into a shell body",
+        "no-scope": "declares no 'scope:'",
     }
 
     # (loop stem, category) -> allowed warning paths.
@@ -13508,6 +13550,22 @@ class TestValidatorWarningBudget:
             "states.screenshot_abandoned_summary",
             "states.screenshot_abandoned",
         },
+        # BUG-3107: the 12 oracles/ sub-loops are visibility: internal and
+        # weren't in scope for BUG-3106's 78-loop scope backfill. Owned by a
+        # follow-up to give each oracle a real per-file scope; allowlisted
+        # here so the "no-scope" ratchet starts at ~0 instead of 12.
+        ("code-run-gate", "no-scope"): {"scope"},
+        ("enumerate-and-prove", "no-scope"): {"scope"},
+        ("generator-evaluator", "no-scope"): {"scope"},
+        ("generator-evaluator-cli", "no-scope"): {"scope"},
+        ("generator-evaluator-flux", "no-scope"): {"scope"},
+        ("integrate-node", "no-scope"): {"scope"},
+        ("oracle-capture-issue", "no-scope"): {"scope"},
+        ("plan-node-refine", "no-scope"): {"scope"},
+        ("plan-research-iteration", "no-scope"): {"scope"},
+        ("research-coverage", "no-scope"): {"scope"},
+        ("resolve-decision", "no-scope"): {"scope"},
+        ("verify-confidence-scores", "no-scope"): {"scope"},
     }
 
     @pytest.fixture

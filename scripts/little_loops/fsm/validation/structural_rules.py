@@ -1062,6 +1062,8 @@ def validate_fsm(
 
     errors.extend(_validate_input_key_without_guard(fsm))
 
+    errors.extend(_validate_missing_scope(fsm))
+
     errors.extend(_validate_artifact_isolation(fsm))
 
     errors.extend(_validate_harness_multimodal_evaluator_blind_spot(fsm))
@@ -1212,6 +1214,31 @@ def _validate_input_key_without_guard(fsm: FSMLoop) -> list[ValidationError]:
                 f"abort when no input is provided."
             ),
             path="required_inputs",
+            severity=ValidationSeverity.WARNING,
+        )
+    ]
+
+
+def _validate_missing_scope(fsm: FSMLoop) -> list[ValidationError]:
+    """Warn when a loop declares no `scope:` (BUG-3107).
+
+    An empty scope falls back to a repo-root lock at run time
+    (`resolve_scope(fsm.scope or ["."], fsm.context)` in cli/loop/run.py),
+    which false-conflicts with every other narrowly-scoped loop running
+    concurrently. Declaring scope explicitly shifts that gap to validate-time.
+    """
+    if fsm.scope:
+        return []
+    return [
+        ValidationError(
+            message=(
+                "Loop declares no 'scope:'. Without it, ll-loop run falls back "
+                "to a repo-root lock that false-conflicts with every other "
+                "concurrently running loop. Add 'scope: [\"path/\"]' naming the "
+                "paths this loop writes to, or 'scope: [\".\"]' as the explicit "
+                "repo-wide opt-in."
+            ),
+            path="scope",
             severity=ValidationSeverity.WARNING,
         )
     ]
