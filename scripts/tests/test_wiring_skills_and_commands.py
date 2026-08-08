@@ -364,6 +364,8 @@ SKILL_MIRRORS_MUST_MATCH_SOURCE = [
     ("skills/wire-issue/SKILL.md", ".kimi-code/skills/wire-issue/SKILL.md"),
     ("skills/manage-issue/SKILL.md", ".gemini/skills/manage-issue/SKILL.md"),
     ("skills/manage-issue/SKILL.md", ".kimi-code/skills/manage-issue/SKILL.md"),
+    ("skills/explore-api/SKILL.md", ".gemini/skills/explore-api/SKILL.md"),
+    ("skills/explore-api/SKILL.md", ".kimi-code/skills/explore-api/SKILL.md"),
 ]
 
 

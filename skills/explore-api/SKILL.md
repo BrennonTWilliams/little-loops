@@ -50,6 +50,7 @@ Parse the input as follows:
 ```
 TARGET = ""           # required positional, first non-flag token
 ASSUMED_CLAIMS = []   # repeatable, each --assume "<claim>" appends
+AUTO_MODE = false
 
 tokens = shell-tokenize($ARGUMENTS)
 i = 0
@@ -59,6 +60,9 @@ while i < len(tokens):
         i += 2
     elif tokens[i].startswith("--assume="):
         ASSUMED_CLAIMS.append(tokens[i].split("=", 1)[1])
+        i += 1
+    elif tokens[i] == "--auto" or tokens[i] == "--dangerously-skip-permissions":
+        AUTO_MODE = true
         i += 1
     elif TARGET == "":
         TARGET = tokens[i]
@@ -75,6 +79,14 @@ if TARGET == "":
 ```
 
 Repeatable-flag convention: each `--assume "<claim>"` token-pair contributes one pre-seeded claim. The first non-flag token (or all of them, joined) is the target description.
+
+**Auto-mode detection** (matches the convention in `skills/spike/SKILL.md`, `skills/decide-issue/SKILL.md`, and 8 other skills): set `AUTO_MODE=true` when ANY of the following hold, in addition to the explicit `--auto`/`--dangerously-skip-permissions` flags parsed above —
+
+```bash
+if [[ "$ARGUMENTS" == *"--dangerously-skip-permissions"* ]] || [[ -n "${LL_NON_INTERACTIVE:-}" ]] || [[ -n "${DANGEROUSLY_SKIP_PERMISSIONS:-}" ]]; then AUTO_MODE=true; fi
+```
+
+`LL_NON_INTERACTIVE` is set unconditionally by every host runner's `build_streaming` for slash-command invocations (`scripts/little_loops/host_runner.py`), so every FSM/loop/`ll-action invoke`-driven call to this skill is `AUTO_MODE=true` without any caller change.
 
 ## Compute Slug
 
@@ -109,7 +121,9 @@ Determine what is already known before generating new hypotheses.
    ll-learning-tests check "$TARGET"
    ```
 
-   - **Exit 0** (record exists): print the existing JSON record and ask whether to short-circuit and reuse it, or proceed with a fresh exploration (which will overwrite the prior file). If reusing, report the record and stop.
+   - **Exit 0** (record exists):
+     - **If `AUTO_MODE` is true**: do NOT ask a question. Print the existing record for context, then proceed directly to a fresh exploration (Phase 2 onward), overwriting the prior file in Phase 4. A record that already exists is the normal input to a re-prove, not an ambiguity requiring escalation — never use `AskUserQuestion` (or any interactive prompt) in this branch.
+     - **If `AUTO_MODE` is false** (interactive human use): print the existing JSON record and ask whether to short-circuit and reuse it, or proceed with a fresh exploration (which will overwrite the prior file). If reusing, report the record and stop.
    - **Exit 1** (no record): proceed.
 
 2. **Read relevant docs and code samples** — use `Read`, `Glob`, and `Grep` to gather:

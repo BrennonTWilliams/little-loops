@@ -64,7 +64,7 @@ Enable automatic discovery of unproven API assumptions as you write code by sett
 
 ### 1. Ingest
 
-The skill calls `ll-learning-tests check "<target>"`. If a record already exists, it prints it and asks whether to reuse it or overwrite with a fresh exploration. If no record exists, it reads any relevant docs (including any vendor docs previously mirrored into the project, e.g. via the `/scrape-docs` skill — invoked as the first state of the `adopt-third-party-api` loop, or run standalone), greps for existing in-project usage, and summarises what's already known in 3–5 sentences. That summary scopes the hypotheses.
+The skill calls `ll-learning-tests check "<target>"`. If a record already exists, behavior depends on whether the invocation is automated: under automation (`LL_NON_INTERACTIVE`, `DANGEROUSLY_SKIP_PERMISSIONS`, or `--auto`) it prints the record for context and proceeds straight to a fresh exploration that overwrites it — no question asked. In an interactive human session it prints the record and asks whether to reuse it or overwrite with a fresh exploration. If no record exists, it reads any relevant docs (including any vendor docs previously mirrored into the project, e.g. via the `/scrape-docs` skill — invoked as the first state of the `adopt-third-party-api` loop, or run standalone), greps for existing in-project usage, and summarises what's already known in 3–5 sentences. That summary scopes the hypotheses.
 
 ### 2. Hypothesize
 
@@ -269,7 +269,7 @@ The loop enumerates installed packages (pip + npm), uses the LLM to map record t
 
 **`/ll:explore-api` asks to overwrite a record I want to keep**
 
-Phase 1 (Ingest) prompts before overwriting. Answer "reuse" to short-circuit. To guard against this in scripts, run `ll-learning-tests check "<target>"` first and skip the skill call if exit code is 0.
+This only happens in an interactive human session — Phase 1 (Ingest) prompts before overwriting. Answer "reuse" to short-circuit. Automated callers (FSM loops, `ll-action invoke`, or any invocation with `LL_NON_INTERACTIVE`/`DANGEROUSLY_SKIP_PERMISSIONS`/`--auto` set) never see this prompt — they always get a fresh exploration, since a stale/proven record with nobody available to answer is the normal re-prove case, not an ambiguity. To reuse a record from a script instead, run `ll-learning-tests check "<target>"` first and skip the skill call if exit code is 0.
 
 > Loop-state troubleshooting (`type: learning` states that re-trigger, `No valid transition` errors) lives in [LOOPS_GUIDE.md → Troubleshooting](LOOPS_GUIDE.md#troubleshooting).
 

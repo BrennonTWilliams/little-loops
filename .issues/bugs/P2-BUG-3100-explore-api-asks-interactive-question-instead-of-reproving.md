@@ -2,7 +2,8 @@
 id: BUG-3100
 priority: P2
 type: BUG
-status: open
+status: done
+completed_at: '2026-08-08T07:56:35Z'
 captured_at: '2026-08-08T04:44:28Z'
 discovered_date: '2026-08-08'
 discovered_by: capture-issue
@@ -83,6 +84,19 @@ asked twice and asked a question both times. Record still `date: 2026-06-19`.
 | `ll-loop run migrate-sdk-version` | queues 0 records — separate cause, see [[BUG-3102]] |
 | `mark-stale` + either loop | explore-api asks → `blocked` |
 
+## Steps to Reproduce
+
+1. Ensure a learning-test record already exists for some target, e.g. `ruamel.yaml`
+   (`.ll/learning-tests/ruamelyaml.md`), in either `proven` or `status: stale` state.
+2. Run `ll-loop run ready-to-implement-gate --context "targets=ruamel.yaml"` (or any other
+   caller that invokes `/ll:explore-api <target>` non-interactively — see Consequence table
+   above for the full list).
+3. Observe: instead of performing a fresh exploration and rewriting the record, the skill
+   prints the existing record and asks the user to choose between reusing it or running a
+   fresh exploration — a question nobody in an automated run can answer, so the run reports
+   `done` (Case 1, record unchanged) or `blocked` (Case 2, record still stale) without ever
+   refreshing the record.
+
 ## Expected Behavior
 
 When invoked non-interactively, `/ll:explore-api <target>` performs a fresh exploration and
@@ -154,11 +168,22 @@ _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
 - **Recommendation, if Option A is selected**: key the detection on `LL_NON_INTERACTIVE` (+ `DANGEROUSLY_SKIP_PERMISSIONS`/`--dangerously-skip-permissions`), matching all 10 other skills, not `LL_AUTOMATION` as currently written — `LL_AUTOMATION` would make `/ll:explore-api` the only skill keyed off a signal that is neither guaranteed on its own call path nor checked by any other skill.
 - **Closest `--force`-style precedent** (relevant if Option B is preferred instead): `skills/spike/SKILL.md:69-104` and `skills/init/SKILL.md` use `--force` as the name for "ignore existing state, redo"; `skills/manage-issue/SKILL.md` uses the compound `--force-implement`. No `--fresh` flag exists anywhere in `skills/` today — Option B's proposed name would be a new convention, not a reuse of an existing one.
 
+_Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
+
+- **Scope correction (supersedes the executor/host_runner uncertainty above):** since `LL_NON_INTERACTIVE=1` is confirmed already present in the child skill's environment for every FSM-driven `/ll:explore-api {target}` invocation (see Program Design → Codebase Research Findings), Option A is implementable as a **skill-markdown-only** change — add the standard `AUTO_MODE` detection block (checking `LL_NON_INTERACTIVE`/`DANGEROUSLY_SKIP_PERMISSIONS`/`--dangerously-skip-permissions`/`--auto`, matching the existing convention) to `skills/explore-api/SKILL.md`, gate the exit-0 branch (`:112`) on it, and port the same change to `.kimi-code/skills/explore-api/SKILL.md` and `.gemini/skills/explore-api/SKILL.md` (both currently unmodified mirrors, off-by-one at line 111 due to header differences). No `_execute_learning_state`/`_run_action`/`host_runner.py` change is required.
+- **Two additional currently-broken call sites found, both headless and equally exposed:** `scripts/little_loops/loops/assumption-firewall.yaml:135` and `scripts/little_loops/loops/migrate-sdk-version.yaml:97` both invoke `subprocess.run(["ll-action", "invoke", "explore-api", "--args", ...])`, which resolves through `cli/action.py:cmd_invoke` (~line 455) → `resolve_host().build_streaming(...)` — the same `ClaudeCodeRunner.build_streaming` path confirmed above to set `LL_NON_INTERACTIVE=1`. These were not previously listed in Integration Map (only `commands/ready-issue.md:253-254` was, from the `/ll:wire-issue` pass); the Option A fix covers them automatically once the skill checks the env var, same as the FSM `type: learning` path — no separate per-caller change needed. Listed as additional evidence that a skill-level fix is the right altitude, not a fix wired into any one caller.
+- **AUTO_MODE-citing skill count correction:** re-verified against current code — 9 files use the local variable literally named `AUTO_MODE`: `skills/decide-issue/SKILL.md:67-76`, `skills/wire-issue/SKILL.md:65-72`, `skills/go-no-go/SKILL.md:61-68`, `skills/audit-issue-conflicts/SKILL.md:48-56`, `skills/format-issue/SKILL.md:70`, `skills/spike/SKILL.md:69-76`, `skills/map-dependencies/SKILL.md:56`, `skills/issue-size-review/SKILL.md:46-54`, `skills/confidence-check/SKILL.md:46-57`. Two more (`skills/debug-loop-run/SKILL.md:325`, `skills/audit-loop-run/SKILL.md:388`) implement the identical 4-trigger detection condition under a differently-named local concept ("Non-interactive mode"), not a variable literally called `AUTO_MODE`. So the citable set is 9 (exact `AUTO_MODE` name) to 11 (including the two "Non-interactive mode" variants) — not "10" as previously stated. Not load-bearing for the fix itself, only for precision of the convention citation.
+
 ## Program Design
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
+
+_Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
+
+- **Correction (post `c5e7303e`, re-verified against current code):** `_execute_learning_state` now spans `scripts/little_loops/fsm/executor.py:1088-1223` (was `1088-1216`); the `_fresh_record` closure (BUG-3101) lives at `:1152-1167`, called at the pre-loop read (`:1170`) and the in-loop re-check (`:1205`). The remedy invocation is now at `:1199-1203` (was `:1193`), still `self._run_action(f"/ll:explore-api {target}", _dc_replace(state, action_type="slash_command"), ctx)` — unconditional and flagless, unchanged in shape. `_execute_state`'s dispatch to `_execute_learning_state` is now at `:1474` (was `:1466-1467`). `_run_action`'s pruning-profile-gated env injection is now at `:1890-1926` (was `:1896-1902`).
+- **Major correction — `LL_NON_INTERACTIVE` IS reliably present on this call path, contrary to the "Conventions in Force" note below and the Proposed Solution findings' claim that it "is not set anywhere on this call path."** Traced the full call chain for the `/ll:explore-api {target}` remedy: `_run_action` → `DefaultActionRunner.run()` (`scripts/little_loops/fsm/runners.py:98`), which for `is_slash_command=True` (pinned via `action_type="slash_command"` at the remedy call site) invokes `run_claude_command()` (`scripts/little_loops/subprocess_utils.py:320`) → `resolve_host().build_streaming(...)` (`subprocess_utils.py:402`). `ClaudeCodeRunner.build_streaming` (`scripts/little_loops/host_runner.py:299-370`) unconditionally sets `env["LL_NON_INTERACTIVE"] = "1"` at line 349 — independent of `automation_profile`/pruning-profile gating (that only controls the separate `LL_AUTOMATION`/`LL_AUTOMATION_PROFILE` injection via `_apply_automation_env`, line 353). Confirmed the same unconditional `LL_NON_INTERACTIVE: "1"` injection exists in every other *implemented* host's `build_streaming`: `CodexRunner` (`:641`), `GeminiRunner` (`:1031`), `OmpRunner` (`:1216`), `KimiRunner` (`:1409`). `OpenCodeRunner`/`PiRunner` are unimplemented stubs (`raise HostNotConfigured`), not real gaps. **Implication: Option A requires no executor.py/host_runner.py change — the environment signal the 11-12-skill AUTO_MODE convention checks is already present for every FSM-driven `/ll:explore-api` invocation. The fix is confined to `skills/explore-api/SKILL.md` (plus its two host mirrors).**
 
 ### Types
 N/A — no new data types; the fix operates on existing `LearnTestRecord`/registry status values (`proven`, `stale`) and process env/args, not a new schema.
@@ -200,6 +225,12 @@ N/A — no new data types; the fix operates on existing `LearnTestRecord`/regist
 
 _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
 
+_Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
+
+- **New caller sites (not previously listed):** `scripts/little_loops/loops/assumption-firewall.yaml:110-142` (`record_untestable` shell action, `ll-action invoke explore-api ...`) and `scripts/little_loops/loops/migrate-sdk-version.yaml:80-100` (bulk re-prove action, same `ll-action invoke` shape) — both resolve through `scripts/little_loops/cli/action.py:399-462` (`cmd_invoke`) → `resolve_host().build_streaming(...)`, headless with no attached interactive terminal, equally exposed to the exit-0 question branch as the already-documented `commands/ready-issue.md:253-254` site.
+- **Anchor precision correction:** the interactive-question branch is a single line, `skills/explore-api/SKILL.md:112` (issue's original `:106-113` citation was the surrounding numbered-list range, not the branch itself — still a reasonable pointer, just less precise). The host mirrors `.kimi-code/skills/explore-api/SKILL.md` and `.gemini/skills/explore-api/SKILL.md` carry the identical branch at line 111 (off-by-one from canonical due to frontmatter/header differences) — both need the same fix applied, or a mirror-regeneration step (`ll-init --hosts kimi-code`/`gemini`) after the canonical skill changes.
+- **Citation correction (Tests subsection, added by `/ll:wire-issue`):** the existing "Tests" bullet names the model test class as `TestPhase3bInlineDecisionScan` in `scripts/tests/test_decide_issue_skill.py` — the actual class name in that file is `TestPhase3bInlineProvisionalScan` (added by commit `64d99161`, the BUG-1416 fix this issue cites as precedent). The structural pattern (bound-by-heading assertion on `SKILL_FILE.read_text()`, assert `AUTO_MODE`/`LL_NON_INTERACTIVE` present, assert `AskUserQuestion` absent from the auto-mode branch) is otherwise accurately described — only the class name is wrong.
+
 ### Additional Files (from research)
 - `scripts/little_loops/host_runner.py:1547-1562` — `_apply_automation_env`, canonical `LL_AUTOMATION`/`LL_AUTOMATION_PROFILE` setter; a `None` profile explicitly neutralizes to `""`. Documented readers are Python-layer only (`hooks/session_start.py`, `cli/history_context.py`), not skill markdown.
 - `scripts/little_loops/learning_tests/__init__.py:149` — `check_learning_test()`, the registry lookup the skill's `ll-learning-tests check` call wraps.
@@ -215,6 +246,7 @@ _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `commands/ready-issue.md:253` — a **second call site sharing the identical root-cause defect**: for `status: refuted` targets (exit 0 from `ll-learning-tests check`, same as `proven`/`stale`), it says "**Auto-invoke** `Skill('explore-api', '<target>')` to re-explore the assumption" — but the skill's exit-0 branch asks a question instead of re-exploring, so this auto-invoke currently also dead-ends. Not in the issue's original Integration Map. The Option A fix (env-based `LL_NON_INTERACTIVE` detection) covers this call site automatically without editing this file, but it's worth verifying post-fix since it's a second currently-broken caller of the same defect. `commands/ready-issue.md:254` has the same auto-invoke pattern for the "record not found" branch (unaffected by this bug, but same call shape).
+- `scripts/little_loops/loops/assumption-firewall.yaml:135` — a **third headless call site**, `ll-action invoke explore-api ...` (the `record_untestable`-adjacent shell action), resolving through `cli/action.py:cmd_invoke` → `resolve_host().build_streaming(...)` — the same `LL_NON_INTERACTIVE=1`-injecting path as the FSM `type: learning` remedy. This was **named explicitly** in a Program Design → Integration Map codebase-research finding above ("New caller sites (not previously listed)") but never actually landed in this Dependent Files subsection during the prior `/ll:wire-issue` pass — confirmed still present via direct grep in this pass. Covered automatically by the Option A skill-level fix; listed here so post-fix verification checks it alongside `commands/ready-issue.md` and `migrate-sdk-version.yaml`. [Agent 1 finding, re-confirmed via grep]
 
 ### Documentation
 
@@ -223,6 +255,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/guides/LEARNING_TESTS_GUIDE.md:270-272` — Troubleshooting entry titled "`/ll:explore-api` asks to overwrite a record I want to keep" documents the question as expected UX and tells scripted callers to work around it by pre-checking `ll-learning-tests check` themselves first — the exact workaround this fix makes unnecessary for automated callers. Needs rewriting to state that automation now gets a deterministic default and only interactive/human runs see the question.
 - `docs/guides/LEARNING_TESTS_GUIDE.md:314-318` — "Using Learning Tests in Issue Lifecycle Gates" section describes `/ll:ready-issue`'s refuted/missing auto-invoke of `/ll:explore-api` as already working; that claim is presently inaccurate for `refuted` (see `commands/ready-issue.md:253` above) and becomes accurate only once this fix lands.
 - `.kimi-code/skills/explore-api/SKILL.md` and `.gemini/skills/explore-api/SKILL.md` — auto-generated per-host mirrors of the canonical `skills/explore-api/SKILL.md` (regenerated via `ll-init --hosts kimi-code`/`gemini`). Both exist on disk today and currently lack any AUTO_MODE machinery; they will drift out of sync with the canonical skill once this fix lands there unless regenerated as part of the implementation.
+- `docs/reference/COMMANDS.md:16` — the `## Flag Conventions` table's `--auto` row lists every other AUTO_MODE-gated skill's command name (`commit`, `refine-issue`, `format-issue`, `confidence-check`, `spike`, `verify-issues`, `map-dependencies`, `issue-size-review`, `audit-issue-conflicts`, `link-epics`, `audit-loop-run`, `debug-loop-run`) but not `explore-api` — needs `explore-api` appended once the fix lands, for consistency with how every other AUTO_MODE-gated skill is catalogued here. [Agent 2 finding, confirmed]
+- `docs/reference/COMMANDS.md:115-134` — the `### /ll:explore-api` section's `**Arguments:**` list only documents `target` and `--assume`, unlike e.g. `### /ll:spike` (line 356: `**Flags:** --auto (non-interactive), --check ...`). Needs an analogous `**Flags:**` line describing the new AUTO_MODE/`--auto` behavior, or it will read as stale once the skill gains automation detection. [Agent 2 finding, confirmed]
 
 ### Tests
 
@@ -230,6 +264,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_explore_api_skill.py` — does not exist yet; new test file needed. Follow the structural markdown-assertion pattern from `scripts/tests/test_decide_issue_skill.py`'s `TestPhase3bInlineDecisionScan` class (added for BUG-1416's identical fix shape on `skills/decide-issue/SKILL.md`): bound the relevant section of `SKILL_FILE.read_text()` by heading, assert `AUTO_MODE`, `LL_NON_INTERACTIVE`, `DANGEROUSLY_SKIP_PERMISSIONS`, and `--auto` are documented, and assert the AUTO_MODE branch does not route through `AskUserQuestion`.
 - `scripts/tests/test_learning_state.py` — existing coverage of `_execute_learning_state`; confirmed **not** to need changes. All assertions on the remedy string (e.g. `TestLearningStateMissingRecord.test_invokes_explore_api_then_advances:159`, `TestLearningStateStaleRecord`) use substring checks (`"/ll:explore-api" in call`), not full-string equality, and Option A does not change the Python-built remedy string at `executor.py:1193` — only the skill markdown gains AUTO_MODE detection. No update needed; listed for confirmation.
 - `scripts/tests/test_builtin_loops.py:5747,14565` — asserts `"/ll:explore-api" in action` against literal strings embedded in `autodev.yaml`/`rn-implement.yaml`. Unrelated code path (different action strings, not the executor-built remedy); confirmed unaffected.
+- `scripts/tests/test_wiring_skills_and_commands.py:360-365` — `SKILL_MIRRORS_MUST_MATCH_SOURCE` (ENH-2996/FEAT-3077) is the only automated check that a host mirror body matches its canonical `skills/*/SKILL.md` source; it currently enumerates only `wire-issue` and `manage-issue`. `explore-api` is **not enrolled**, so nothing test-enforces that the `.kimi-code/skills/explore-api/SKILL.md` and `.gemini/skills/explore-api/SKILL.md` mirror-porting step (required by this fix, per the Documentation subsection above) was actually done — a missed or partial port would drift silently, same failure shape the comment at `test_wiring_skills_and_commands.py:355-359` calls out for other skills. Add both `("skills/explore-api/SKILL.md", ".gemini/skills/explore-api/SKILL.md")` and `("skills/explore-api/SKILL.md", ".kimi-code/skills/explore-api/SKILL.md")` tuples as part of this fix. [Agent 2 finding, confirmed]
+- `scripts/tests/test_wiring_skills_and_commands.py:130-135` — existing `DOC_STRINGS_PRESENT`-style assertions that `description:`, `argument-hint:`, `ll-learning-tests`, and `--assume` remain present somewhere in `skills/explore-api/SKILL.md`. Not touched by the fix, but the AUTO_MODE edit must preserve these substrings verbatim or this test breaks. [Agent 2 finding, confirmed — preservation constraint, not a new test]
 
 ## Acceptance Criteria
 
@@ -251,11 +287,21 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Status
 
-Open. Mechanism confirmed by direct reproduction on `2371728a`; both cases captured above
-verbatim from loop output. Fix shape not yet decided (A vs B).
+Done. Mechanism confirmed by direct reproduction on `2371728a`; both cases captured above
+verbatim from loop output. Fixed via Option A: `skills/explore-api/SKILL.md` (and its
+`.gemini`/`.kimi-code` mirrors) now detects `AUTO_MODE` from `--auto`,
+`--dangerously-skip-permissions`, `LL_NON_INTERACTIVE`, or `DANGEROUSLY_SKIP_PERMISSIONS`
+and skips the reuse-vs-fresh question under automation, proceeding straight to a fresh
+exploration that overwrites the record.
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-08T07:39:21 - `967925b2-04f1-477a-90a2-a7ee60a8e1aa.jsonl`
+- `/ll:verify-issues` - 2026-08-08T07:35:27 - `4026537a-e0c7-40ff-8d4c-d586bb604cf9.jsonl`
+- `/ll:refine-issue` - 2026-08-08T07:33:53 - `ff9a5234-366f-416f-a363-31fe5d67eb34.jsonl`
+- `/ll:verify-issues` - 2026-08-08T07:32:26 - `690ff33c-19f7-402c-9526-c2b9691a0ed2.jsonl`
+- `/ll:wire-issue` - 2026-08-08T07:31:21 - `78a0de05-70ab-46eb-9193-3d0ae0ba40df.jsonl`
+- `/ll:refine-issue` - 2026-08-08T07:23:40 - `ef7c968d-df03-42d2-8a91-d401130a4e7b.jsonl`
 - `/ll:confidence-check` - 2026-08-08T05:14:11 - `35849b94-1675-4028-a86c-d7bfb6f2fe94.jsonl`
 - `/ll:verify-issues` - 2026-08-08T05:10:09 - `e18a2b37-f311-483e-b2d7-2b0d5c897203.jsonl`
 - `/ll:refine-issue` - 2026-08-08T05:08:34 - `d195b08f-3364-4fc0-add5-7b412ca3d18c.jsonl`

@@ -13,7 +13,7 @@ Commands and skills support optional `--flag` modifiers passed after arguments. 
 | `--deep` | Increase thoroughness, accept longer execution | `scan-codebase`, `audit-architecture`, `handoff`, `ready-issue` |
 | `--focus [area]` | Narrow scope to a specific area | `scan-codebase` |
 | `--dry-run` | Show what would happen without making changes | `manage-issue`, `align-issues`, `refine-issue`, `format-issue`, `manage-release`, `audit-issue-conflicts` |
-| `--auto` | Non-interactive mode (no prompts). Also activated independently by the `LL_NON_INTERACTIVE` or `DANGEROUSLY_SKIP_PERMISSIONS` env var, or by `--dangerously-skip-permissions` | `commit`, `refine-issue`, `prioritize-issues`, `format-issue`, `confidence-check`, `spike`, `verify-issues`, `map-dependencies`, `issue-size-review`, `audit-issue-conflicts`, `link-epics`, `audit-loop-run`, `debug-loop-run` |
+| `--auto` | Non-interactive mode (no prompts). Also activated independently by the `LL_NON_INTERACTIVE` or `DANGEROUSLY_SKIP_PERMISSIONS` env var, or by `--dangerously-skip-permissions` | `commit`, `refine-issue`, `prioritize-issues`, `format-issue`, `confidence-check`, `spike`, `verify-issues`, `map-dependencies`, `issue-size-review`, `audit-issue-conflicts`, `link-epics`, `audit-loop-run`, `debug-loop-run`, `explore-api` |
 | `--gap-analysis` | Additive-only enrichment: fill gaps, never remove content; exempt from `max_refine_count` | `refine-issue` |
 | `--full-rewrite` | Full-rewrite mode (legacy): overwrites sections with research findings | `refine-issue` |
 | `--check` | Check-only mode for FSM loop evaluators: run scoring/validation without writes, exit 1 if any fail | `ready-issue`, `verify-issues`, `confidence-check`, `issue-size-review`, `go-no-go`, `spike` |
@@ -120,6 +120,8 @@ Use before writing production code that depends on a third-party system: verifyi
 **Arguments:**
 - `target` (required): Free-text description of the system (e.g., `"Anthropic SDK streaming"`)
 - `--assume "<claim>"` (repeatable): Pre-seed a claim as assumed-true without running a proof
+
+**Flags:** `--auto` (non-interactive) — also activated independently by `LL_NON_INTERACTIVE`/`DANGEROUSLY_SKIP_PERMISSIONS`/`--dangerously-skip-permissions`. When a prior record already exists for the target, an interactive session asks whether to reuse it or run a fresh exploration; under `--auto` (or the env-var equivalents, which every FSM/loop-driven invocation sets automatically) it always proceeds straight to a fresh exploration that overwrites the record — no prompt.
 
 **Outputs:** `.ll/learning-tests/<slug>.md` (YAML frontmatter record) and `.ll/learning-tests/raw/<slug>.txt` (proof script output)
 
