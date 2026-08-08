@@ -239,9 +239,19 @@ def cmd_run(
     # --context / loop YAML context: values (already applied above) take precedence.
     seed_confidence_thresholds(fsm.context, _config)
 
-    if not fsm.context.get("design_tokens_context"):
+    # Per-loop design-token opt-out: a loop can set context.use_design_tokens=false
+    # (YAML boolean or `--context use_design_tokens=false`) to skip token injection
+    # entirely. Defaults to True for backward compatibility with all existing loops.
+    _use_tokens = fsm.context.get("use_design_tokens", True)
+    if isinstance(_use_tokens, str):
+        _use_tokens = _use_tokens.strip().lower() not in ("", "0", "false", "no", "off")
+    if _use_tokens and not fsm.context.get("design_tokens_context"):
         _tokens = load_design_tokens(_config)
         fsm.context["design_tokens_context"] = render_as_prompt_context(_tokens) if _tokens else ""
+    else:
+        # Ensure the key exists ("" when excluded) so `${context.design_tokens_context}`
+        # interpolates without error in prompts that reference it.
+        fsm.context.setdefault("design_tokens_context", "")
 
     _edge_label_colors = _config.cli.colors.fsm_edge_labels.to_dict()
     _highlight_color = _config.cli.colors.fsm_active_state
