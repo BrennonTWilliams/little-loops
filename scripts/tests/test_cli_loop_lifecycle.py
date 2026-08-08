@@ -1391,6 +1391,97 @@ class TestCmdRunHandoffThreshold:
             cmd_run("test-loop", self._make_args(handoff_threshold=101), loops_dir, logger)
 
 
+class TestCmdRunDesignTokensOptOut:
+    """Tests for context.use_design_tokens opt-out in cmd_run (ENH-3099)."""
+
+    def _make_loop(self, tmp_path: Path, context_block: str = "") -> Path:
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "test-loop.yaml").write_text(
+            f"name: test-loop\ninitial: done\n{context_block}states:\n  done:\n    terminal: true\n"
+        )
+        return loops_dir
+
+    def _make_args(self, **kwargs: object) -> argparse.Namespace:
+        defaults = {
+            "input": None,
+            "context": [],
+            "max_steps": None,
+            "max_iterations": None,
+            "delay": None,
+            "no_llm": False,
+            "llm_model": None,
+            "dry_run": True,
+            "background": False,
+            "foreground_internal": False,
+            "quiet": False,
+            "verbose": False,
+            "follow": False,
+            "show_diagrams": None,
+            "diagram_edge_labels": None,
+            "diagram_state_detail": None,
+            "diagram_scope": None,
+            "clear": False,
+            "queue": False,
+            "handoff_threshold": None,
+            "program_md": None,
+        }
+        defaults.update(kwargs)
+        return argparse.Namespace(**defaults)
+
+    def test_default_loads_design_tokens(self, tmp_path: Path) -> None:
+        """Without use_design_tokens, tokens are loaded (backward-compatible default)."""
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        loops_dir = self._make_loop(tmp_path)
+        logger = Logger(use_color=False)
+
+        with patch("little_loops.design_tokens.load_design_tokens", return_value=None) as mock_load:
+            result = cmd_run("test-loop", self._make_args(), loops_dir, logger)
+
+        assert result == 0
+        mock_load.assert_called_once()
+
+    def test_use_design_tokens_false_skips_loading(self, tmp_path: Path) -> None:
+        """context.use_design_tokens: false skips load_design_tokens entirely."""
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        loops_dir = self._make_loop(
+            tmp_path, context_block="context:\n  use_design_tokens: false\n"
+        )
+        logger = Logger(use_color=False)
+
+        with patch("little_loops.design_tokens.load_design_tokens", return_value=None) as mock_load:
+            result = cmd_run("test-loop", self._make_args(), loops_dir, logger)
+
+        assert result == 0
+        mock_load.assert_not_called()
+
+    @pytest.mark.parametrize("falsy", ["false", "False", "no", "off", "0", ""])
+    def test_use_design_tokens_string_falsy_values_skip_loading(
+        self, tmp_path: Path, falsy: str
+    ) -> None:
+        """String falsy values from --context are case-insensitively honored."""
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        loops_dir = self._make_loop(tmp_path)
+        logger = Logger(use_color=False)
+
+        with patch("little_loops.design_tokens.load_design_tokens", return_value=None) as mock_load:
+            result = cmd_run(
+                "test-loop",
+                self._make_args(context=[f"use_design_tokens={falsy}"]),
+                loops_dir,
+                logger,
+            )
+
+        assert result == 0
+        mock_load.assert_not_called()
+
+
 class TestCmdRunYAMLConfigOverrides:
     """Tests for YAML config block override in cmd_run (FEAT-862)."""
 
