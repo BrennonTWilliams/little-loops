@@ -4745,8 +4745,7 @@ class TestDecisionNeededGate:
         # BUG-3093: both Phase 1 (ready-issue) and the decide-issue gate
         # subprocesses must declare automation_profile="ll-auto".
         assert all(
-            call.kwargs.get("automation_profile") == "ll-auto"
-            for call in mock_cmd.call_args_list
+            call.kwargs.get("automation_profile") == "ll-auto" for call in mock_cmd.call_args_list
         )
 
     def test_decide_issue_skipped_when_decision_not_needed(

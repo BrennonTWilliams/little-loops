@@ -26,8 +26,7 @@ def cmd_check(args: argparse.Namespace) -> int:
 
     if failing:
         print(
-            f"⚠ {len(failing)} failing assertion(s) in {args.target!r} "
-            f"(status={record.status}):",
+            f"⚠ {len(failing)} failing assertion(s) in {args.target!r} (status={record.status}):",
             file=sys.stderr,
         )
         for claim in failing:

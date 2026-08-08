@@ -215,9 +215,7 @@ def _write_config(repo: Path, staleness: str = "warn", src_dir: str | None = Non
 
     ll_dir = repo / ".ll"
     ll_dir.mkdir(exist_ok=True)
-    config: dict[str, object] = {
-        "code_query": {"provider": "codegraph", "staleness": staleness}
-    }
+    config: dict[str, object] = {"code_query": {"provider": "codegraph", "staleness": staleness}}
     if src_dir is not None:
         config["project"] = {"src_dir": src_dir}
     (ll_dir / "ll-config.json").write_text(json.dumps(config), encoding="utf-8")
@@ -717,17 +715,14 @@ class TestImportersOfSrcDir:
         try:
             _create_schema(conn)
             conn.execute(
-                "INSERT INTO schema_versions (version, applied_at, description) "
-                "VALUES (4, 0, 'x')"
+                "INSERT INTO schema_versions (version, applied_at, description) VALUES (4, 0, 'x')"
             )
             # Importer file lives under src_dir; its import node's qname is
             # src-relative (no "scripts." prefix).
             _insert_node(
                 conn, "file:scripts/pkg/a.py", "file", "a.py", "a.py", "scripts/pkg/a.py", 1
             )
-            _insert_node(
-                conn, "import:pkg.b", "import", "b", "pkg.b", "scripts/pkg/a.py", 1
-            )
+            _insert_node(conn, "import:pkg.b", "import", "b", "pkg.b", "scripts/pkg/a.py", 1)
             _insert_edge(conn, "file:scripts/pkg/a.py", "import:pkg.b", "imports", line=1)
             _insert_file(conn, "scripts/pkg/a.py", 0)
             _insert_file(conn, "scripts/pkg/b.py", 0)

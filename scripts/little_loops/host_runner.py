@@ -1544,9 +1544,7 @@ _PROBE_ORDER: list[tuple[str, str]] = [
 ]
 
 
-def _apply_automation_env(
-    env: dict[str, str], automation_profile: str | None
-) -> None:
+def _apply_automation_env(env: dict[str, str], automation_profile: str | None) -> None:
     """Set LL_AUTOMATION / LL_AUTOMATION_PROFILE on *env* (ENH-3081).
 
     ``env`` is merged over ``os.environ`` at every spawn site, so an absent

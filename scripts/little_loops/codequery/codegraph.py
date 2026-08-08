@@ -213,7 +213,7 @@ def _dotted_candidates(file_guess: str, src_dir: str) -> list[str]:
         dotted = dotted[: -len(".__init__")]
     prefix = src_dir.rstrip("/") + "/"
     if prefix != "/" and file_guess.startswith(prefix):
-        stripped = file_guess[len(prefix):]
+        stripped = file_guess[len(prefix) :]
         stripped_dotted = stripped[: -len(".py")].replace("/", ".")
         if stripped.endswith("__init__.py"):
             stripped_dotted = stripped_dotted[: -len(".__init__")]

@@ -298,9 +298,7 @@ class TestRunLearningGateForIssueDirectInvocation:
         assert cmd[cmd.index("--queue-timeout") + 1] == "86400"
         assert mock_sub.call_args.kwargs["timeout"] == 86400 + 60
 
-    def test_invocation_forwards_custom_configured_queue_wait_budget(
-        self, tmp_path: Path
-    ) -> None:
+    def test_invocation_forwards_custom_configured_queue_wait_budget(self, tmp_path: Path) -> None:
         """BUG-3085: a non-default loops.queue_wait_timeout_seconds must flow
         through to --queue-timeout and the outer subprocess.run timeout,
         proving the value is read from config rather than hard-coded."""

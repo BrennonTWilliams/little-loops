@@ -966,9 +966,7 @@ class TestAssertDecisionClearedStructural:
             f"(ENH-3075: assert_decision_cleared deleted), got {state.get('on_yes')!r}"
         )
 
-    def test_assert_decision_cleared_absent_from_autodev_states(
-        self, data: dict[str, Any]
-    ) -> None:
+    def test_assert_decision_cleared_absent_from_autodev_states(self, data: dict[str, Any]) -> None:
         """ENH-3075: assert_decision_cleared moved into
         oracles/resolve-decision.yaml and must leave no dangling reference or
         stale definition behind in autodev.yaml's own states block."""

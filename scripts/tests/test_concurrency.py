@@ -774,12 +774,10 @@ class TestMultiInstanceSameName:
         t2.join()
 
         assert results.count(True) == 1, (
-            f"Both instances share .issues/ in scope, so exactly one should "
-            f"acquire; got: {results}"
+            f"Both instances share .issues/ in scope, so exactly one should acquire; got: {results}"
         )
         assert results.count(False) == 1, (
-            f"Both instances share .issues/ in scope, so exactly one should "
-            f"fail; got: {results}"
+            f"Both instances share .issues/ in scope, so exactly one should fail; got: {results}"
         )
 
     def test_refine_to_ready_issue_with_dot_scope_still_conflicts(

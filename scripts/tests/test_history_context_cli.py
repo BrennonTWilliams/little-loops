@@ -23,9 +23,7 @@ class TestArgumentParsing:
                 main_history_context()
         assert exc_info.value.code == 2
 
-    def test_missing_issue_id_exits_under_automation(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_missing_issue_id_exits_under_automation(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # BUG-3080: the ENH-2714 automation-pruning gate must not suppress
         # argument-validation errors, even under LL_AUTOMATION=1.
         monkeypatch.setenv("LL_AUTOMATION", "1")

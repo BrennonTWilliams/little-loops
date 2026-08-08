@@ -1244,9 +1244,7 @@ class TestIssueRefinementSubLoop:
         loops (BUG-3087).
         """
         scope = data.get("scope")
-        assert scope is not None, (
-            "issue-refinement.yaml must declare a 'scope' field (BUG-3087)."
-        )
+        assert scope is not None, "issue-refinement.yaml must declare a 'scope' field (BUG-3087)."
         assert isinstance(scope, list), f"scope must be a list, got {type(scope).__name__}"
         assert ".issues/" in scope, f"scope must contain '.issues/', got {scope!r}"
         assert "${context.run_dir}" in scope, (
@@ -2004,9 +2002,7 @@ class TestRefineToReadyIssueSubLoop:
                 f"must run before this loop exits (BUG-3065)"
             )
 
-    def test_three_decision_gates_call_states_use_resolve_decision_oracle(
-        self, data: dict
-    ) -> None:
+    def test_three_decision_gates_call_states_use_resolve_decision_oracle(self, data: dict) -> None:
         """Each of the three decision-resolution call states must delegate to the
         oracles/resolve-decision sub-loop with issue_id bound, mirroring the
         confidence_check -> oracles/verify-confidence-scores shape (BUG-3065)."""
@@ -2017,8 +2013,7 @@ class TestRefineToReadyIssueSubLoop:
         ):
             state = data["states"].get(state_name, {})
             assert state.get("loop") == "oracles/resolve-decision", (
-                f"{state_name}.loop should be 'oracles/resolve-decision', "
-                f"got {state.get('loop')!r}"
+                f"{state_name}.loop should be 'oracles/resolve-decision', got {state.get('loop')!r}"
             )
             assert state.get("with", {}).get("issue_id") == "${captured.issue_id.output}", (
                 f"{state_name}.with.issue_id should bind the captured issue id, "
@@ -2053,9 +2048,7 @@ class TestRefineToReadyIssueSubLoop:
             f"got {state.get('on_success')!r}"
         )
 
-    def test_resolve_decision_mid_wire_on_success_resumes_verify_issue(
-        self, data: dict
-    ) -> None:
+    def test_resolve_decision_mid_wire_on_success_resumes_verify_issue(self, data: dict) -> None:
         """resolve_decision_mid_wire.on_success must resume the chain at
         verify_issue — the same target check_decision_mid_wire.on_no uses."""
         state = data["states"].get("resolve_decision_mid_wire", {})
@@ -2383,9 +2376,7 @@ class TestResolveDecisionOracle:
                 f"interpolating ${{context.issue_id}}, got {action!r}"
             )
 
-    def test_check_open_question_progress_declares_per_issue_history_file(
-        self, data: dict
-    ) -> None:
+    def test_check_open_question_progress_declares_per_issue_history_file(self, data: dict) -> None:
         """check_open_question_progress must declare evaluate.history_file
         interpolating ${context.issue_id}, matching its write path — otherwise the
         evaluator falls back to a flat default path nothing writes and the gate is
@@ -2520,8 +2511,7 @@ class TestResolveDecisionOracle:
             f"mark_decide_rate_limited.next should be 'failed', got {state.get('next')!r}"
         )
         assert state.get("on_error") == "failed", (
-            f"mark_decide_rate_limited.on_error should be 'failed', "
-            f"got {state.get('on_error')!r}"
+            f"mark_decide_rate_limited.on_error should be 'failed', got {state.get('on_error')!r}"
         )
 
 
@@ -4750,9 +4740,7 @@ class TestAutodevLoop:
             f"check_decision_at_dequeue (BUG-2513); chain stalled at {node!r}"
         )
 
-    def test_check_decision_at_dequeue_on_yes_routes_to_resolve_decision(
-        self, data: dict
-    ) -> None:
+    def test_check_decision_at_dequeue_on_yes_routes_to_resolve_decision(self, data: dict) -> None:
         """ENH-3075 (was BUG-2605): check_decision_at_dequeue.on_yes (decision_needed=true)
         must route into the shared resolve_decision sub-loop call state, not directly
         to a local run_decide, so a fresh dequeue gets the deposit_options detour
@@ -6769,8 +6757,7 @@ class TestAutodevLoop:
         TestResolveDecisionOracle for their coverage."""
         state = data["states"].get("decide_current", {})
         assert state.get("on_yes") == "resolve_decision", (
-            f"decide_current.on_yes should be 'resolve_decision', got "
-            f"{state.get('on_yes')!r}"
+            f"decide_current.on_yes should be 'resolve_decision', got {state.get('on_yes')!r}"
         )
 
     def test_dequeue_next_clears_decide_options_deposited_marker(self, data: dict) -> None:
@@ -6809,8 +6796,7 @@ class TestAutodevLoop:
         for state_name in ("resolve_decision", "resolve_decision_direct"):
             state = data["states"].get(state_name, {})
             assert state.get("loop") == "oracles/resolve-decision", (
-                f"{state_name}.loop should be 'oracles/resolve-decision', got "
-                f"{state.get('loop')!r}"
+                f"{state_name}.loop should be 'oracles/resolve-decision', got {state.get('loop')!r}"
             )
             assert state.get("on_success") == "mark_decide_ran", (
                 f"{state_name}.on_success should be 'mark_decide_ran', got "
@@ -7653,9 +7639,7 @@ class TestRecursiveRefineLoop:
         so it no longer locks the repo root against unrelated concurrent
         loops (BUG-3087)."""
         scope = data.get("scope")
-        assert scope is not None, (
-            "recursive-refine.yaml must declare a 'scope' field (BUG-3087)."
-        )
+        assert scope is not None, "recursive-refine.yaml must declare a 'scope' field (BUG-3087)."
         assert isinstance(scope, list), f"scope must be a list, got {type(scope).__name__}"
         assert ".issues/" in scope, f"scope must contain '.issues/', got {scope!r}"
         assert "${context.run_dir}" in scope, (
@@ -14481,7 +14465,9 @@ class TestLearningGateConsistency:
         assert gate["on_yes"] == "emit_learning_gate_blocked"
         assert gate["on_no"] == "check_learning_gate_infra"
 
-    def test_rn_remediate_check_learning_gate_infra_routes_to_emit(self, rn_remediate: dict) -> None:
+    def test_rn_remediate_check_learning_gate_infra_routes_to_emit(
+        self, rn_remediate: dict
+    ) -> None:
         """The infra discriminator (ENH-3084) tells GATE_INFRA apart from OK and routes
         to emit_gate_infra_failed; on_no/on_error degrade to the auth check."""
         gate = rn_remediate["states"]["check_learning_gate_infra"]

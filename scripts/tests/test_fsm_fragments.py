@@ -2592,7 +2592,9 @@ class TestLlAutoFragmentsAdversarialOutput:
         assert result.returncode == 0
         assert result.stdout.strip() == "GATE_INFRA"
 
-    def test_learning_gate_check_prefers_infra_over_block(self, fragments: dict, tmp_path: Path) -> None:
+    def test_learning_gate_check_prefers_infra_over_block(
+        self, fragments: dict, tmp_path: Path
+    ) -> None:
         """If both markers are present, GATE_INFRA_FAILED wins (a gate that could not
         run is the more severe signal — it preempts the explore-api block remedy)."""
         output = self.ADVERSARIAL_OUTPUT + "\nGATE_INFRA_FAILED\nLEARNING_GATE_BLOCKED\n"
