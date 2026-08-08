@@ -95,6 +95,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.transport` | EventBus transport abstraction (`Transport` Protocol + `send`/`close`) with built-in `JsonlTransport`, `UnixSocketTransport`, and `OTelTransport` sinks. |
 | `little_loops.worktree_utils` | Shared worktree setup/cleanup utilities used by `ll-parallel`, `ll-sprint`, and `ll-loop`. |
 | `little_loops.mcp_call` | Thin CLI wrapper for direct MCP tool invocation via JSON-RPC |
+| `little_loops.advisor` | Capability-rank comparison for the advisor consult path (FEAT-3108) — `MODEL_RANKS`, `rank_model`, `check_floor`. |
 
 ---
 
@@ -10331,6 +10332,47 @@ def check_version(installed: str, latest: str) -> InstallStatus
 ```
 
 Compares an installed version string against the latest available version using semver-aware tuple comparison. Returns `InstallStatus.UpToDate` when `installed >= latest` (including when the local build is newer than PyPI), `InstallStatus.OutOfDate` when `installed < latest`. Does not perform network I/O; call `fetch_latest_pypi` / `fetch_latest_plugin` first.
+
+## little_loops.advisor
+
+Capability-rank comparison used to gate an advisor consult on model strength (FEAT-3108). Pure logic, no transport dependency — `consult()`/`AdvisorVerdict` land here in a later commit (FEAT-3109).
+
+### FloorResult
+
+```python
+@dataclass(frozen=True)
+class FloorResult:
+    status: Literal["ok", "violation", "advisory", "unknown"]
+    detail: str
+```
+
+Outcome of comparing an advisor model's rank against the main model's. `"ok"` — advisor ranks at or above main, same host. `"violation"` — same host, advisor ranks below main. `"advisory"` — cross-host; capability ranks aren't comparable across hosts, so this is returned before either model's rank is even looked up. `"unknown"` — same host, but either model is unrankable; never a silent pass.
+
+### MODEL_RANKS
+
+```python
+MODEL_RANKS: dict[str, dict[str, int]]
+```
+
+Per-host capability rank, keyed on the concrete model ID that `resolve_model_alias()` normalizes aliases to. Only `claude-code` is populated today (`claude-haiku-4-5` < `claude-sonnet-5` < `claude-opus-5` < `claude-fable-5`); every other canonical host (`codex`, `opencode`, `pi`, `gemini`, `omp`, `kimi-code`) carries an empty table until a follow-up issue supplies real capability data.
+
+### rank_model
+
+```python
+def rank_model(host: str, model: str) -> int | None
+```
+
+Capability rank of `model` within `host`; `None` when unrankable. Normalizes `model` through `resolve_model_alias()` before lookup, so an alias (`"opus"`) and its concrete ID (`"claude-opus-5"`) rank the same.
+
+### check_floor
+
+```python
+def check_floor(
+    advisor_host: str, advisor_model: str, main_host: str, main_model: str
+) -> FloorResult
+```
+
+Classifies an advisor/main model pairing against the capability floor. The cross-host check runs before rank lookup, so a host mismatch always returns `"advisory"` regardless of whether either model is individually rankable. `check_floor("claude-code", "haiku", "claude-code", "opus")` returns `"violation"`.
 
 ---
 

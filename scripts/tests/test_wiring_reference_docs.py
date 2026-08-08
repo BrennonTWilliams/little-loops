@@ -178,6 +178,10 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/reference/API.md", "#### DesignTokensConfig", "FEAT-1758"),
     ("docs/reference/API.md", "DesignTokensConfig", "FEAT-1758"),
     ("docs/reference/API.md", "effort: str | None = None", "ENH-2869"),
+    ("docs/reference/API.md", "little_loops.advisor", "FEAT-3108"),
+    ("docs/reference/API.md", "FloorResult", "FEAT-3108"),
+    ("docs/reference/API.md", "check_floor", "FEAT-3108"),
+    ("docs/reference/API.md", "rank_model", "FEAT-3108"),
 ]
 
 
