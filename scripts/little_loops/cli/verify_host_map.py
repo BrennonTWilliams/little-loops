@@ -16,9 +16,9 @@ Three checks, all against ``little_loops.adapters.capabilities.HOST_CAPABILITIES
    ``agents=True`` with ``subagents == "none"`` but no ``agent_output_format``
    set (nothing for the degraded path to point at), or
    ``subagents == "native"`` with ``agents=False`` (a host that can spawn
-   but is declared not to emit). ``omp`` must stay ``False``/``False`` to
-   match its all-stub emitter, which has no degraded path either
-   (``agent_output_format`` is ``None``).
+   but is declared not to emit). ``omp`` declares ``agents=True`` /
+   ``subagents="native"`` since FEAT-3104 (``OmpEmitter.emit_agent`` is a
+   real native emitter); ``commands`` stays ``False`` until FEAT-3105.
 
 Exit codes:
     0 - all three checks pass
@@ -161,11 +161,18 @@ def _check_emitter_agreement() -> list[str]:
             errors.append("map entry 'gemini' declares subagents='native' but agents=False")
 
     omp_entry = HOST_CAPABILITIES.get("omp")
-    if omp_entry is not None and (omp_entry.agents or omp_entry.commands):
-        errors.append(
-            "map entry 'omp' declares working agents/commands support but OmpEmitter "
-            "is an all-stub emitter (all emit_* raise AdapterError)"
-        )
+    if omp_entry is not None:
+        if (
+            omp_entry.agents
+            and omp_entry.subagents == "none"
+            and omp_entry.agent_output_format is None
+        ):
+            errors.append(
+                "map entry 'omp' declares agents=True with subagents='none' but no "
+                "agent_output_format is set — degraded emission has nowhere to write"
+            )
+        if omp_entry.subagents == "native" and not omp_entry.agents:
+            errors.append("map entry 'omp' declares subagents='native' but agents=False")
 
     return errors
 

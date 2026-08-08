@@ -230,14 +230,19 @@ and the emitters' actual behavior — see its module docstring for the checks.
 | ------ | ---------- | --------------------------------------------- | ---------------------------------------- | ---------------------------- | --------- | ------ | -------- | ----- |
 | codex  | `.codex`   | SKILL.md + `agents/openai.yaml` sidecar (Codex Skills API) | bridged into `skills/ll-<stem>/`         | TOML (`.codex/agents/<name>.toml`) | native    | ✓      | ✓        | ✓     |
 | gemini | `.gemini`  | SKILL.md (name injected, `metadata.short-description` stripped) | TOML (`.gemini/commands/<stem>.toml`)    | Markdown, degraded mode (`.gemini/agents/<name>.md`) — authored body verbatim, prefixed with an inline-execution + one-line-disclosure preamble (ENH-2874) | none      | ✓      | ✓        | ✗     |
-| omp    | N/A        | N/A — unimplemented stub, raises `AdapterError` | N/A — unimplemented stub, raises `AdapterError` | N/A — unimplemented stub, raises `AdapterError` | none      | ✗      | ✗        | ✗     |
+| omp    | `.omp` (agent output only; skill/command still unimplemented) | N/A — unimplemented stub, raises `AdapterError` | N/A — unimplemented stub, raises `AdapterError` | Markdown, native task-agent file (`.omp/agents/<name>.md`) | native | ✓ | ✗ | ✗ |
 | kimi-code | `.kimi-code` | SKILL.md (name injected when absent, `metadata.short-description` stripped) | bridged into `.kimi-code/skills/ll-<stem>/` (SKILL.md) — no project-local commands surface outside plugins | Markdown, native Claude-style agent file (`.kimi-code/agents/<name>.md`) | native | ✓ | ✓ | ✓ |
 
-omp's emitter (`adapters/omp.py`) is a 28-line placeholder tracked by
-**EPIC-2258**; every `emit_*` method raises, including for agents — it has no
-degraded-mode fallback (`agent_output_format` is `None`), which is why it is
-explicitly excluded from ENH-2874's degraded-emission coverage rather than
-included with `agents: ✗`.
+omp's emitter (`adapters/omp.py`) is tracked by **EPIC-2258**; `emit_skill`/
+`emit_command` still raise (FEAT-3103/FEAT-3105 unblock those).
+`emit_agent` is real (**FEAT-3104**): FEAT-2797 established that omp
+discovers agents via a native `.omp/agents/` scan dir (not a reused
+`.claude/agents`/`.codex/agents` path) with a frontmatter `output:` key for
+an optional per-agent output schema, and spawns real subagents from these
+files — the same native shape as `kimi-code`'s emitter, hence
+`subagents: native` and a real `agent_output_format`. It is explicitly
+excluded from ENH-2874's degraded-emission coverage because it never needed
+that path — it emits natively, not via the degraded fallback.
 
 Gemini has no native subagent-spawning support (`subagents: none`), so
 `GeminiEmitter.emit_agent` produces the degraded-mode file described above

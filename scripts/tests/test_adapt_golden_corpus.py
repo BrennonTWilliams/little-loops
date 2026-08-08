@@ -11,8 +11,11 @@ it, following the golden-corpus pattern in
 
 **Named exclusions** (per ENH-2883's Acceptance Criteria — not silent):
 
-- ``omp`` — every ``emit_*`` method raises ``AdapterError`` unconditionally
-  (a 28-line stub). There is no output to snapshot.
+- ``omp`` — ``emit_skill``/``emit_command`` still raise ``AdapterError``
+  unconditionally (FEAT-3103/FEAT-3105 unblock those); there is no
+  skill/command output to snapshot. ``emit_agent`` is real (FEAT-3104) and
+  has its own coverage in ``test_adapters.py``/``TestOmpEmitterEmitAgent``,
+  not part of this golden-corpus claim.
 - Gemini agent emission — an intentional degraded-mode preview stub
   (ENH-2874), not part of this byte-identity claim. It has its own test
   coverage in ``test_adapters.py``/``TestProcessAgentsDegradedRouting``.
@@ -196,10 +199,12 @@ def test_corpus_is_non_trivial() -> None:
 def test_omp_and_gemini_agent_excluded_from_byte_identity_claim() -> None:
     """Documents the two named exclusions from AC #2 (not a silent gap).
 
-    omp: every emit_* method raises AdapterError unconditionally, so there
-    is no output to snapshot. Gemini agent emission is an intentional
-    degraded-mode preview stub (ENH-2874), covered by its own tests, not
-    part of this native-format byte-identity claim.
+    omp: emit_skill/emit_command still raise AdapterError unconditionally,
+    so there is no skill/command output to snapshot (emit_agent is real as
+    of FEAT-3104, covered separately in test_adapters.py). Gemini agent
+    emission is an intentional degraded-mode preview stub (ENH-2874),
+    covered by its own tests, not part of this native-format byte-identity
+    claim.
     """
     import pytest
 

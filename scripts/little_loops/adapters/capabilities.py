@@ -101,20 +101,21 @@ HOST_CAPABILITIES: dict[str, HostCapabilityEntry] = {
     ),
     "omp": HostCapabilityEntry(
         host="omp",
-        # All three emit_* methods raise AdapterError(_REMEDIATION) — omp.py
-        # is a 28-line stub (EPIC-2258). This entry describes it as fully
-        # unimplemented, per ENH-2873's Scope Boundaries. Unlike gemini, omp
-        # has no working agent emitter at all (agent_output_format stays
-        # None), so it is excluded from ENH-2874's degraded-emission path.
-        config_dir=None,
+        # emit_skill/emit_command still raise AdapterError (FEAT-3103/
+        # FEAT-3105 unblock those). emit_agent is real (FEAT-3104): FEAT-2797
+        # established omp discovers agents via a native `.omp/agents/` scan
+        # dir and spawns real subagents from them, the same native shape as
+        # kimi-code — hence subagents="native" and a working
+        # agent_output_format, unlike gemini's degraded path.
+        config_dir=".omp",
         skill_output_format=None,
         command_output_format=None,
-        agent_output_format=None,
-        frontmatter_fields_read=(),
-        agents=False,
+        agent_output_format="Markdown, native task-agent file (.omp/agents/<name>.md)",
+        frontmatter_fields_read=("description", "name"),
+        agents=True,
         commands=False,
         hooks=False,
-        subagents="none",
+        subagents="native",
     ),
     "kimi-code": HostCapabilityEntry(
         host="kimi-code",

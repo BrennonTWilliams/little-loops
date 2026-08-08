@@ -21,6 +21,7 @@ from little_loops.adapters.core import (
 )
 from little_loops.adapters.gemini import GeminiEmitter
 from little_loops.adapters.kimi import KimiEmitter
+from little_loops.adapters.omp import OmpEmitter
 
 # =============================================================================
 # Fixture helpers
@@ -937,10 +938,10 @@ class TestProcessAgentsDegradedRouting:
 class TestRealAgentsDegradedCoverageGuard:
     """After ll-adapt --host gemini --apply, every agents/*.md has a degraded file.
 
-    ``omp`` is explicitly excluded — its emitter is an all-stub (all
-    ``emit_*`` raise) with no ``agent_output_format``, so ENH-2874's
-    degraded path never selects it; there is no ``.omp/agents/`` coverage
-    guard to add here.
+    ``omp`` is explicitly excluded — its ``subagents="native"`` (FEAT-3104)
+    means ENH-2874's degraded path never selects it; ``OmpEmitter.emit_agent``
+    is a native emitter, not a degraded one, so there is no ``.omp/agents/``
+    coverage guard to add here.
     """
 
     def test_all_real_agents_have_gemini_degraded_files(self) -> None:
@@ -1303,6 +1304,85 @@ class TestResolveEmitterKimi:
         out_dir = tmp_path / ".kimi-code" / "agents"
         adapted, skipped, errors = process_agents(
             KimiEmitter(), tmp_path / "agents", out_dir, True, True
+        )
+        assert (adapted, skipped, errors) == (1, 0, 0)
+        assert "degraded mode" not in (out_dir / "agent-a.md").read_text()
+
+
+# =============================================================================
+# OmpEmitter.emit_agent (FEAT-3104): native, mirrors KimiEmitter.emit_agent
+# =============================================================================
+
+
+class TestOmpEmitterEmitAgent:
+    def _meta(self, tmp_path: Path, name: str, apply: bool = True, **kwargs: object) -> dict:
+        agent_md = _make_agent(tmp_path, name, **kwargs)  # type: ignore[arg-type]
+        return {
+            "agent_name": name,
+            "agent_path": agent_md,
+            "content": agent_md.read_text(),
+            "fm": {},
+            "output_dir": tmp_path / ".omp" / "agents",
+            "apply": apply,
+            "quiet": True,
+        }
+
+    def _out_path(self, tmp_path: Path, name: str) -> Path:
+        return tmp_path / ".omp" / "agents" / f"{name}.md"
+
+    def test_writes_native_agent_file(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-agent", body="Do the thing.")
+        OmpEmitter().emit_agent(meta)
+        content = self._out_path(tmp_path, "my-agent").read_text()
+        assert "Do the thing." in content
+
+    def test_not_degraded_no_inline_preamble(self, tmp_path: Path) -> None:
+        """omp spawns real subagents — output must NOT carry the ENH-2874 degraded preamble."""
+        meta = self._meta(tmp_path, "my-agent")
+        OmpEmitter().emit_agent(meta)
+        content = self._out_path(tmp_path, "my-agent").read_text()
+        assert "degraded mode" not in content
+        assert "inline" not in content.lower()
+
+    def test_frontmatter_preserved(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-agent")
+        OmpEmitter().emit_agent(meta)
+        content = self._out_path(tmp_path, "my-agent").read_text()
+        assert content.startswith("---\nname: my-agent")
+
+    def test_dry_run_does_not_write(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-agent", apply=False)
+        OmpEmitter().emit_agent(meta)
+        assert not self._out_path(tmp_path, "my-agent").exists()
+
+    def test_rerun_with_apply_skips_unchanged(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-agent")
+        OmpEmitter().emit_agent(meta)
+        assert OmpEmitter().emit_agent(meta) == "skipped"
+
+    def test_emit_skill_still_raises(self) -> None:
+        """Only emit_agent is real (FEAT-3104) — skill/command await FEAT-3103/3105."""
+        with pytest.raises(AdapterError):
+            OmpEmitter().emit_skill({})
+
+    def test_emit_command_still_raises(self) -> None:
+        with pytest.raises(AdapterError):
+            OmpEmitter().emit_command({})
+
+
+class TestResolveEmitterOmp:
+    def test_omp_returns_omp_emitter(self) -> None:
+        assert isinstance(resolve_emitter("omp"), OmpEmitter)
+
+    def test_omp_emitter_satisfies_protocol(self) -> None:
+        assert isinstance(resolve_emitter("omp"), HostEmitter)
+
+    def test_process_agents_does_not_route_omp_to_degraded(self, tmp_path: Path) -> None:
+        """subagents="native" → process_agents calls emit_agent directly."""
+        _make_agent(tmp_path, "agent-a")
+        out_dir = tmp_path / ".omp" / "agents"
+        adapted, skipped, errors = process_agents(
+            OmpEmitter(), tmp_path / "agents", out_dir, True, True
         )
         assert (adapted, skipped, errors) == (1, 0, 0)
         assert "degraded mode" not in (out_dir / "agent-a.md").read_text()

@@ -31,9 +31,14 @@ class TestHostCapabilities:
         assert entry.subagents == "none"
         assert entry.agent_output_format is not None
 
-    def test_omp_fully_unimplemented(self) -> None:
+    def test_omp_agents_true_matches_native_emission(self) -> None:
+        # FEAT-3104: OmpEmitter.emit_agent is real (native, mirroring Kimi's
+        # shape) — agents=True and subagents="native" now agree with the
+        # emitter's actual behavior. commands stays False (FEAT-3105).
         entry = HOST_CAPABILITIES["omp"]
-        assert entry.agents is False
+        assert entry.agents is True
+        assert entry.subagents == "native"
+        assert entry.agent_output_format is not None
         assert entry.commands is False
 
 
