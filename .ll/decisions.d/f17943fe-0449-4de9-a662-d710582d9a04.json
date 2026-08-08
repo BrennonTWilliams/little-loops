@@ -1,0 +1,11 @@
+{
+  "id": "22f9d5f3-6d09-4481-8b8d-51724bea1b98",
+  "type": "decision",
+  "timestamp": "2026-08-08T20:35:59Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "See EPIC-3111 \u2014 worktree copy semantics for machine-local state and documentation.",
+  "rule": "Captured: ENH-3114 (child of EPIC-3111, worktree state inheritance)",
+  "scope": "issue",
+  "issue": "ENH-3114"
+}

@@ -53,6 +53,15 @@ description: |
   epic branch, so their commits also land on epic/<EPIC-ID>-<slug> instead of
   bypassing it. Non-EPIC scopes keep the single upfront resolution.
 initial: init
+# BUG-3110: bind the positional CLI arg to `scope`, not the FSM default `input`.
+# Without this, `ll-loop run auto-refine-and-implement EPIC-3041` parked the id
+# in an unread `context.input` (cli/loop/run.py:175), left `scope` empty, and
+# silently fell through resolve_set's else-branch to the priority-ranked
+# backlog — accepting an EPIC id and then working unrelated issues. Mirrors
+# sprint-refine-and-implement.yaml's `input_key: sprint_name`. Deliberately NO
+# `required_inputs`: an empty scope is a supported mode (rank the backlog), so
+# a bare `ll-loop run auto-refine-and-implement` must keep working.
+input_key: scope
 scope:
   - ".issues/"
   - "${context.run_dir}"

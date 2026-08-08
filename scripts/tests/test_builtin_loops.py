@@ -4094,6 +4094,28 @@ class TestAutoRefineAndImplementLoop:
             f"scope must contain '${{context.run_dir}}' template, got {scope!r}"
         )
 
+    def test_input_key_binds_positional_arg_to_scope(self, data: dict) -> None:
+        """BUG-3110: the positional CLI arg must bind to `context.scope`.
+
+        Without `input_key`, the FSM default is "input" (fsm/schema.py), so
+        `ll-loop run auto-refine-and-implement EPIC-3041` parked the id in an
+        unread `context.input` and left `scope` empty — silently falling
+        through resolve_set's else-branch to the ranked backlog and working
+        unrelated issues. `required_inputs` must stay unset: an empty scope is
+        a supported mode (rank the backlog).
+        """
+        assert data.get("input_key") == "scope", (
+            "auto-refine-and-implement.yaml must declare 'input_key: scope' so the "
+            "positional CLI arg binds to the scope knob (BUG-3110)."
+        )
+        assert "scope" in data.get("context", {}), (
+            "input_key must name a key declared under 'context:'"
+        )
+        assert not data.get("required_inputs"), (
+            "auto-refine-and-implement must NOT declare required_inputs — a bare "
+            "invocation with no scope is the supported backlog-ranking mode (BUG-3110)."
+        )
+
 
 class TestSprintRefineAndImplementLoop:
     """Structural tests for the sprint-refine-and-implement alias loop (ENH-2138)."""
@@ -13566,6 +13588,14 @@ class TestValidatorWarningBudget:
         ("research-coverage", "no-scope"): {"scope"},
         ("resolve-decision", "no-scope"): {"scope"},
         ("verify-confidence-scores", "no-scope"): {"scope"},
+        # BUG-3110: auto-refine-and-implement declares `input_key: scope` so the
+        # positional CLI arg binds to its scope knob. The MR rule
+        # (_validate_input_key_without_required_inputs, structural_rules.py:1198)
+        # then suggests required_inputs — correctly declined here: an empty scope
+        # is a supported mode (rank the backlog), so making it mandatory would
+        # break the bare `ll-loop run auto-refine-and-implement` invocation. The
+        # rule has no in-YAML suppress flag, hence the allowlist.
+        ("auto-refine-and-implement", "required-inputs"): {"required_inputs"},
     }
 
     @pytest.fixture

@@ -1,0 +1,11 @@
+{
+  "id": "7cf26969-56dc-46ca-911d-446c33dd9c86",
+  "type": "decision",
+  "timestamp": "2026-08-08T20:35:59Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Auto-created worktrees inherit only tracked files, .claude/, and parallel.worktree_copy_files; gitignored .ll/ state (history.db, ll.local.md) does not cross, causing silent history loss and config divergence.",
+  "rule": "Captured: Worktree state inheritance \u2014 machine-local state, history, and docs",
+  "scope": "issue",
+  "issue": "EPIC-3111"
+}
