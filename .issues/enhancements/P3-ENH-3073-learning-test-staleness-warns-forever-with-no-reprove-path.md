@@ -22,6 +22,13 @@ learning_tests_required:
 - ruamel.yaml
 decision_needed: false
 reconcile_attempted: true
+blocked_by:
+- BUG-3100
+- BUG-3101
+relates_to:
+- BUG-3100
+- BUG-3101
+- BUG-3102
 size: Small
 confidence_score: 95
 outcome_confidence: 77
@@ -77,8 +84,13 @@ remediation paths, and the audit's output names none of them:
 | Path | What it does | Status |
 |---|---|---|
 | `ll-learning-tests prove "<target>"` (`cli/learning_tests.py:47`) | re-proves **one** record via the `ready-to-implement-gate` loop | exists, unadvertised, unhardened |
-| `ll-loop run migrate-sdk-version` (`loops/migrate-sdk-version.yaml`) | iterates the **whole** stale set, re-runs `/ll:explore-api` per target, classifies each `still-valid` / `needs-upgrade` / `refuted`, rewrites `date`/`assertions`/`status` | shipped by [[FEAT-1813]] (`done`) |
+| `ll-loop run migrate-sdk-version` (`loops/migrate-sdk-version.yaml`) | *intends* to iterate the stale set and re-prove each; in fact queues only `status: stale` records, so it sees **none** of the seven — [[BUG-3102]] | shipped by [[FEAT-1813]] (`done`), but non-functional for age staleness |
 | `ll-loop run learning-tests-audit` (`loops/learning-tests-audit.yaml`) | detects + bulk `mark-stale`s, emits a triage report | shipped by [[FEAT-1739]] (`done`) |
+
+> **Superseded 2026-08-08.** The row above originally read "iterates the **whole** stale set."
+> That was inferred from FEAT-1813's description, not verified. Execution showed all three
+> paths are non-functional — see the BLOCKED note in `## Status`. The corrected claim is that
+> the machinery *exists* but none of it works on an age-stale record.
 
 _Corrected 2026-08-07._ This section previously read "**No automatic refresh exists.**"
 That was wrong — `migrate-sdk-version` is exactly a bulk re-prove loop, and it is already
@@ -484,6 +496,16 @@ _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
 - ENH-2214 — release gate blocking on stale/refuted records (introduced this gate)
 - BUG-3072 — failing assertions invisible under `proven` status
 - BUG-3070 — release ordering; determines what a `block`-mode abort leaves behind
+- **BUG-3100 — blocker.** `/ll:explore-api` asks an interactive question instead of re-proving
+  when a record already exists, so no automated re-prove path can refresh a record. Option A's
+  advertised `ll-learning-tests prove "<target>"` provably cannot clear the row it is printed
+  next to (verified 2026-08-08 at `2371728a`).
+- **BUG-3101 — blocker.** The learning state's in-loop re-check omits the date-staleness nulling
+  applied before the loop, so a no-op remedy is scored `learning_target_proven` and
+  `ready-to-implement-gate` returns a false `done`. This is what made BUG-3100 invisible.
+- BUG-3102 — `migrate-sdk-version` filters `status == "stale"` and so queues none of the
+  age-stale records; not a blocker for Option A's output change, but it is why the bulk
+  remediation line this issue adds has nothing to act on until it lands
 - BUG-3089 — the audit's import-scan relevance filter misses most records; filed 2026-08-06
   from this issue's adjacent-defect note. **`status: done` as of 2026-08-07** — the
   prerequisite has landed, and landing it is what took this issue's table from three rows
@@ -520,6 +542,29 @@ Rationale); `--reprove` declined; Option B deferred to a follow-up ENH. Remainin
 the gate's per-row remediation text plus a bulk line, `cmd_prove` hardening (four gaps),
 and re-proving the seven flagged records via `ll-loop run migrate-sdk-version`.
 
+**BLOCKED as of 2026-08-08 — `blocked_by: [BUG-3100, BUG-3101]`.** An attempt to execute this
+issue's pre-step (re-proving the seven flagged records) established that **no working re-prove
+path exists**. Every route terminates in `/ll:explore-api` asking an unanswerable interactive
+question (BUG-3100), and the false `done` verdict that hides it (BUG-3101). Verified by direct
+reproduction at `2371728a`:
+
+| Path | Result |
+|---|---|
+| `ll-learning-tests prove "ruamel.yaml"` | exit 0, `date` unchanged |
+| `ll-loop run ready-to-implement-gate` | explore-api asked a question → false `done`, 1 iteration |
+| `ll-loop run migrate-sdk-version` | queues 0 records (BUG-3102) |
+| `mark-stale` + gate loop | asked twice → `blocked`, `date` unchanged (reverted) |
+
+**Consequence for Option A.** Its invariant is "every row the audit prints names an action that,
+when taken, makes that row disappear." The action it selected does not make the row disappear —
+it exits 0 and changes nothing. Shipping as specified would replace a dead-end warning with a
+warning naming a command that silently lies, which is strictly worse. The `cmd_prove` hardening
+already in scope catches the *silence* but not the underlying no-op.
+
+Option A remains the right destination; it is not implementable until BUG-3100 and BUG-3101 land.
+The seven records cannot be cleared before then by any means short of hand-editing `date:`, which
+this issue explicitly rejects.
+
 **Pre-implementation review pass — 2026-08-07.** Re-verified against `main` at `4c78cbd6`.
 Seven corrections applied: the flagged set is seven records, not three (BUG-3089 landed);
 "no automatic refresh exists" was false (`migrate-sdk-version` and `learning-tests-audit`
@@ -554,6 +599,7 @@ advertise (hardening now in scope); Option B had no successor issue (now an AC);
 LEARNING_TESTS_GUIDE / kimi-code / gemini mirror updates had no AC (now added)._
 
 ## Session Log
+- `/ll:capture-issue` - 2026-08-08T04:47:47 - `0c442e3b-c3d8-4743-b597-7b3551a75ba6.jsonl`
 - `/ll:confidence-check` - 2026-08-06T18:14:18 - `2714e173-0113-42e1-b8e8-e7f650c61db7.jsonl`
 - `/ll:ready-issue` - 2026-08-06T06:18:23 - `947fa9b7-8ab1-44ef-9fcd-dc534fce8613.jsonl`
 - `/ll:confidence-check` - 2026-08-06T04:30:52 - `be4424fb-bd22-4a4d-8f91-9e0d0eb44d1c.jsonl`
