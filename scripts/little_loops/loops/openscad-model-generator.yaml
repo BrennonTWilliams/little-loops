@@ -18,6 +18,8 @@ description: |
   System dependency: openscad CLI (https://openscad.org/downloads.html).
 
 initial: init
+scope:
+  - "${context.run_dir}"
 max_steps: 20
 on_handoff: spawn
 timeout: 7200

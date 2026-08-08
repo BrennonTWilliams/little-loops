@@ -27,6 +27,8 @@ description: |
       quality_target: ${context.quality_target}
       design_tokens_context: ${context.design_tokens_context}
 initial: rank_components
+scope:
+  - "${context.run_dir}"
 context:
   run_dir: ""                    # required: absolute path to directory containing output.html
   animation_plan: ""             # required: from parent's captured.animation_plan

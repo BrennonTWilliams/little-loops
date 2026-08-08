@@ -8,6 +8,10 @@ description: >
 input_key: target
 required_inputs: ["target"]
 initial: scan_existing_usage
+scope:
+  - "${context.scaffold_dir}"
+  - ".ll/learning-tests/"
+  - ".loops/runs/integrate-sdk/"
 max_steps: 150
 timeout: 7200
 on_handoff: spawn

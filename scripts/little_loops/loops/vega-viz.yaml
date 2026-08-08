@@ -33,6 +33,8 @@ initial: init
 # A single scored iteration averages ~1.5 repair cycles because generate keeps
 # re-introducing the panel-level params anti-pattern (guarded against below), so
 # 20 steps preempted a completed repair before it could re-validate/score.
+scope:
+  - "${context.run_dir}"
 max_steps: 30
 on_max_steps: max_steps_summary
 on_handoff: spawn

@@ -26,6 +26,9 @@ description: |
   HITL-gated behind `auto_promote` (default off) — a run without auto_promote
   stops at `await_confirmation` and reports the validated draft's path.
 initial: init
+scope:
+  - "${context.run_dir}"
+  - "${context.loops_dir}"
 max_steps: 30
 timeout: 5400
 

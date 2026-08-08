@@ -9,6 +9,8 @@ input_key: sprint_name
 required_inputs: ["sprint_name"]
 initial: delegate
 on_handoff: spawn
+scope:
+  - "."
 context:
   sprint_name: ""   # sprint name (.sprints/<name>.yaml) or an EPIC-NNN id
   # Learning-gate skip knob: parity with `ll-auto --skip-learning-gate`. Forwarded

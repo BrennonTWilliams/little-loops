@@ -12,6 +12,10 @@ description: |
   modifications) via lookup_session_metadata(), filter with four opt-in quality
   predicates, track rejections, and publish a quality-gated SFT training corpus.
 initial: stage
+scope:
+  - "data/"
+  - "${context.run_dir}"
+  - "sft-corpus.last_harvested"
 max_steps: 40
 timeout: 3600               # 1-hour wall clock limit
 on_handoff: spawn

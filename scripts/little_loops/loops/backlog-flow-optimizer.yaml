@@ -7,6 +7,8 @@ description: |
   splits large ones, or promotes quick wins. Loops until backlog is healthy.
 initial: measure
 on_handoff: spawn
+scope:
+  - ".issues/"
 context:
   target_active_max: 20
   target_weekly_completion: 5

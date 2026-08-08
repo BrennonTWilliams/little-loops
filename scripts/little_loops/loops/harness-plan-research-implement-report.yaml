@@ -22,6 +22,8 @@ description: |
   quality gates (stall detection, concrete test gate, LLM quality judge, diff size invariant).
   Adapt by replacing the plan/research/implement actions with your task-specific skills or prompts.
 initial: plan
+scope:
+  - "."
 max_steps: 50              # higher budget for multi-phase tasks
 timeout: 7200                   # 2-hour wall clock limit (seconds)
 import:

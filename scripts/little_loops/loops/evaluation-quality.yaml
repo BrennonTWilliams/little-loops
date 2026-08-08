@@ -13,6 +13,8 @@ initial: sample
 # prepare_report -> report), so 8 counted states covers every branch. 15
 # leaves headroom for the on_max_steps summary state plus retry slack
 # (BUG-2815).
+scope:
+  - "."
 max_steps: 15
 timeout: 3600
 on_handoff: spawn

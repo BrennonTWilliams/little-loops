@@ -20,6 +20,8 @@ description: |
     on_yes: dequeue_next
     on_no: run_decomposition
 initial: ensure_formatted
+scope:
+  - "."
 max_steps: 100
 timeout: 14400
 on_handoff: spawn

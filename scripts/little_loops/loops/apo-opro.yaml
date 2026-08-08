@@ -7,6 +7,8 @@ description: |
   is reached or max_iterations is exceeded. History accumulates across iterations
   to guide proposals away from known failure modes.
 initial: init_history
+scope:
+  - "${context.prompt_file}"
 max_steps: 25
 timeout: 3600
 on_handoff: spawn

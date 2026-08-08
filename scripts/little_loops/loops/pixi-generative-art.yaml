@@ -17,6 +17,8 @@ description: |
 
 # HARNESS: Context variables control quality threshold and frame sampling.
 # Mirrors p5js-sketch-generator but targets Pixi-specific GPU features.
+scope:
+  - "${context.run_dir}"
 context:
   framework: pixi
   sample_frames: "0,90,240"   # comma-separated __loopFrame values to screenshot

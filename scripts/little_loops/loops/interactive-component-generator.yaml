@@ -20,6 +20,8 @@ description: |
                  where each build delegates to oracles/generator-evaluator unchanged.
     back end   → best-of-N select -> compose -> re-verify the merged file.
 initial: init
+scope:
+  - "${context.run_dir}"
 max_steps: 120
 timeout: 14400
 

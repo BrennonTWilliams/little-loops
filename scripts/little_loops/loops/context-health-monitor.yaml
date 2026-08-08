@@ -4,6 +4,9 @@ description: |
   Monitor context health via scratch file accumulation and session log size.
   Compact scratch files and archive stale outputs when pressure is detected.
 initial: assess_context
+scope:
+  - "${context.scratch_dir}"
+  - ".loops/archive/"
 context:
   scratch_size_kb_warn: 500
   log_age_days_warn: 7

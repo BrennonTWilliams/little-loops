@@ -14,6 +14,8 @@ category: orchestration
 input_key: goal
 required_inputs: ["goal"]
 initial: discover_loops
+scope:
+  - "${context.run_dir}"
 max_steps: 200
 timeout: 345600
 on_handoff: spawn

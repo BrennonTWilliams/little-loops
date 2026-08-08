@@ -33,6 +33,8 @@ description: |
 initial: init
 # 40 (was 30, FEAT-2414): the acceptance phase adds up to 5 states to the happy path
 # and a second bounded remediation cycle back through cluster_execute.
+scope:
+  - "."
 max_steps: 40
 timeout: 86400
 on_handoff: spawn

@@ -7,6 +7,8 @@ category: routing
 input_key: goal
 required_inputs: ["goal"]
 initial: discover_loops
+scope:
+  - "."
 max_steps: 50
 timeout: 345600
 on_handoff: spawn

@@ -9,6 +9,8 @@ description: |
   parallelized waves. Pass an existing sprint name to skip creation:
     ll-loop run sprint-build-and-validate [sprint-name]
 initial: route_input
+scope:
+  - "."
 context:
   max_issues: 8
   sprint_name: ""

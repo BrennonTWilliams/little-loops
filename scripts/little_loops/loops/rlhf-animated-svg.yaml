@@ -16,6 +16,8 @@ description: |
   accessibility support: role="img", aria-labelledby, and
   prefers-reduced-motion detection.
 initial: init
+scope:
+  - "${context.run_dir}"
 max_steps: 30
 timeout: 7200
 artifact_versioning: true

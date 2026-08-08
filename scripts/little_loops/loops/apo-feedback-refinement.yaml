@@ -7,6 +7,8 @@ description: |
   is reached. The prompt file is updated in-place at each refinement step.
   Inherits common APO context defaults from lib/apo-shape-a (ENH-2161).
 initial: generate_candidate
+scope:
+  - "${context.prompt_file}"
 context:
   quality_threshold: 85
 states:

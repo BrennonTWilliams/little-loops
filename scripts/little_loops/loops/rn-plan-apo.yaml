@@ -20,6 +20,9 @@ description: |
   computed over structured plan-quality signals extracted from rn-plan's
   output directory shape (plan.md + plan-rubric.md per task).
 initial: run_planner
+scope:
+  - "${context.run_dir}"
+  - ".ll/prompts/"
 import:
   - lib/score-plan-quality.yaml
 context:

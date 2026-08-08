@@ -6,6 +6,9 @@ description: >
   release-date comparison), bulk-marks stale records via ll-learning-tests mark-stale, and
   produces a four-section triage report (newly stale, already stale, refuted, open TODOs).
 initial: list_records
+scope:
+  - ".ll/learning-tests/"
+  - "${context.run_dir}"
 max_steps: 30
 timeout: 3600
 on_handoff: spawn

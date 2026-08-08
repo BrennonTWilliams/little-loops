@@ -13,6 +13,10 @@ description: |
   variable — merge and diversify overwrite it in place so publish always has a valid
   corpus regardless of which path was taken.
 initial: harvest
+scope:
+  - "${context.examples_file}"
+  - "${context.corpus_state_file}"
+  - "${context.prompt_file}"
 max_steps: 20
 timeout: 7200
 on_handoff: spawn

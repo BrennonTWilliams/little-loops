@@ -2,6 +2,8 @@ name: "general-task"
 description: "General-purpose task loop: writes a Definition of Done, decomposes the task into steps, executes one step at a time, and loops until all DoD criteria are verified."
 category: harness
 initial: check_baseline_tests
+scope:
+  - "."
 max_steps: 500
 default_timeout: 14400
 on_handoff: spawn

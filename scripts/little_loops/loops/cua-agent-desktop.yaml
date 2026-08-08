@@ -13,6 +13,8 @@ description: |
   ACTION_FAILED. Produces a summary artifact with the full action evidence
   chain in the run directory.
 initial: init
+scope:
+  - "${context.run_dir}"
 max_steps: 50
 on_max_steps: max_steps_summary
 artifact_versioning: true

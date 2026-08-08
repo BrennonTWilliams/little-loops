@@ -10,6 +10,10 @@ description: |
   sink=issue or sink=decision is explicitly set. Run as:
   ll-loop run brainstorm "your brief"
 initial: init
+scope:
+  - "${context.run_dir}"
+  - ".issues/"
+  - "${context.output_path}"
 max_steps: 60
 timeout: 3600
 on_handoff: spawn   # autonomous loop (no human-in-the-loop states) — auto-continue on context handoff

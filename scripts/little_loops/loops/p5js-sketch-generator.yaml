@@ -16,6 +16,8 @@ description: |
   Anthropic's harness design article, adapted for time-based generative work.
   Delegates to generative-art base loop (ENH-2161).
 
+scope:
+  - "${context.run_dir}"
 context:
   framework: p5js
 

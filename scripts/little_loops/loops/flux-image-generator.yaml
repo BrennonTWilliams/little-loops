@@ -21,6 +21,8 @@ initial: init
 # leaves headroom for both without silently truncating the vision rounds the
 # loop's own code already budgets for (note: the child oracle's own step
 # budget is separate — see oracles/generator-evaluator-flux.yaml max_steps).
+scope:
+  - "${context.run_dir}"
 max_steps: 24
 timeout: 7200
 

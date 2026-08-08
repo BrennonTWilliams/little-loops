@@ -15,6 +15,8 @@ description: |
   Use ll-loop run generative-art, or the named variants p5js-sketch-generator /
   pixi-generative-art which inherit this loop and override framework-specific states.
 initial: init
+scope:
+  - "${context.run_dir}"
 max_steps: 20
 on_handoff: spawn
 timeout: 7200

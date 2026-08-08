@@ -5,6 +5,9 @@ description: |
   against expected results, compare to baseline, flag regressions, and
   optionally trigger an APO sub-loop for repair.
 initial: run_suite
+scope:
+  - "prompts/"
+  - ".loops/tmp/prompt-baseline.json"
 max_steps: 10
 timeout: 3600
 on_handoff: spawn

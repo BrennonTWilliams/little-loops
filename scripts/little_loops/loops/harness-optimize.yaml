@@ -10,6 +10,8 @@ description: |
   init_run mints and captures as traj_path); state mode writes to
   ${context.run_dir}/states/<state>/trajectory.jsonl.
 initial: init_run
+scope:
+  - "."
 max_steps: 30
 timeout: 7200
 on_handoff: spawn

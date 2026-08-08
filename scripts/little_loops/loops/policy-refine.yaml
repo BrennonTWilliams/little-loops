@@ -5,6 +5,8 @@ description: |
   Demonstrates lib/policy-router.yaml multi-axis decision-table routing with
   conjunctive predicates and a configurable policy_rules table.
 visibility: public
+scope:
+  - "${context.subject}"
 max_steps: 20
 
 import:

@@ -9,6 +9,8 @@ description: |
   A gradients.md log accumulates gradient history so compute_gradient can detect repeated
   failure patterns and escalate the gradient strength accordingly.
 initial: init
+scope:
+  - "${context.run_dir}"
 max_steps: 40
 on_handoff: pause
 timeout: 7200

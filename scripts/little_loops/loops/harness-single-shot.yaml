@@ -20,6 +20,8 @@ description: |
   an LLM quality judge, and a diff size invariant check.
   Adapt by replacing the execute action with your own skill or prompt.
 initial: execute
+scope:
+  - "."
 max_steps: 5         # total attempts before giving up
 timeout: 3600             # 1-hour wall clock limit (seconds)
 import:

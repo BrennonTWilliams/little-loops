@@ -6,6 +6,8 @@ description: |
   Replace act/observe/score actions with your environment interactions and
   policy update logic.
 initial: act
+scope:
+  - "."
 context:
   reward_target: 0.85
 import:

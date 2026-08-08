@@ -6,6 +6,9 @@ description: |
   until quality target is reached. Composite: outer policy iteration
   with inner evaluation scoring.
 initial: run_eval
+scope:
+  - "evals/"
+  - "${context.agent_config}"
 max_steps: 30
 timeout: 7200
 on_handoff: spawn

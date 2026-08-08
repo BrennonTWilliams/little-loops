@@ -20,6 +20,9 @@ description: |
     on_no: skip_issue
     on_error: skip_issue
 initial: snap_for_size_review
+scope:
+  - "${context.run_dir}"
+  - ".issues/"
 max_steps: 100
 timeout: 3600
 on_handoff: spawn

@@ -6,6 +6,8 @@ description: |
   Replace generate/refine actions with your content generation logic and
   the score action with your quality assessment command.
 initial: generate
+scope:
+  - "."
 context:
   quality_dimension: "correctness, clarity, and completeness"
 states:

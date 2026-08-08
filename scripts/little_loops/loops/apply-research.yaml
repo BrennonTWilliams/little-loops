@@ -11,6 +11,9 @@ description: |
     ll-loop run apply-research "paper.pdf notes.md rfc.txt"
   Requires pandoc >= 2.x on PATH for PDF conversion (optional; .txt/.md read directly).
 initial: init
+scope:
+  - "${context.run_dir}"
+  - ".issues/"
 max_steps: 200
 timeout: 7200
 on_handoff: spawn

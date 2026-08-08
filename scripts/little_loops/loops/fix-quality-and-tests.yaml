@@ -6,6 +6,8 @@ description: |
   a dedicated investigation pass. After fixing test failures, loops back to
   check-quality to catch regressions.
 initial: check-quality
+scope:
+  - "."
 import:
   - lib/common.yaml
 states:

@@ -18,6 +18,8 @@ description: |
 # Usage: ll-loop run adversarial-redesign 'concept="how a transformer attends"'
 
 initial: init
+scope:
+  - "${context.run_dir}"
 max_steps: 5
 timeout: 1800
 artifact_versioning: true

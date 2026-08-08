@@ -7,6 +7,8 @@ description: |
   actions with your strategy logic; each must print a reward score (0.0–1.0)
   as its last line of output.
 initial: explore
+scope:
+  - "."
 context:
   reward_target: 0.8
   epsilon: 0.1

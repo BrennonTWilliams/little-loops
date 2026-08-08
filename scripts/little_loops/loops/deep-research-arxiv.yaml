@@ -11,6 +11,8 @@ description: |
   recency scoring, arxiv ID dedup, and BibTeX output. Invoke directly:
   ll-loop run deep-research-arxiv "your research topic"
 
+scope:
+  - "${context.run_dir}"
 context:
   source_filter: "site:arxiv.org"
   academic_mode: true

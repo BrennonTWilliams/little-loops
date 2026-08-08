@@ -8,6 +8,8 @@ description: |
   Upgrade path: when FEAT-659 (Hierarchical FSM Loops) lands, replace the refine
   state's shell subprocess with a native `loop: rl-rlhf` sub-loop state.
 initial: act
+scope:
+  - "."
 context:
   reward_target: 0.85      # Convergence threshold for composite reward (0.0–1.0)
   quality_threshold: 7     # Min quality score for rl-rlhf inner loop (0–10)

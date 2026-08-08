@@ -10,6 +10,8 @@ description: |
   with the parent orchestrator's iteration count. Produces output.html in
   run_dir on success (done) or terminates at plan_failed on retry exhaustion.
 initial: plan_animation
+scope:
+  - "${context.run_dir}"
 context:
   input: ""
   run_dir: ""

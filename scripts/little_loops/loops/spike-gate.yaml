@@ -2,6 +2,8 @@ name: spike-gate
 category: gate
 description: Opt-in wrapper that gates any implementation loop on /ll:spike --check — proves an issue's unproven internal mechanism before delegating to a caller-specified impl loop. When no issue_id is given, or the issue does not carry spike_needed (or already carries spike_completed), it skips the gate and runs the impl loop directly. On a failing check it runs /ll:spike --auto once and re-checks before blocking.
 initial: check_issue_file
+scope:
+  - "."
 max_steps: 150
 timeout: 7200
 on_handoff: spawn

@@ -16,6 +16,8 @@ description: |
       smoke_bypass_threshold: ${context.smoke_bypass_threshold}
       exploit_cutoff: ${context.exploit_cutoff}
 initial: smoke_test
+scope:
+  - "${context.run_dir}"
 context:
   run_dir: ""                  # required: absolute path to directory containing output.html
   quality_target: 8            # pass-through from parent context

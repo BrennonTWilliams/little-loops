@@ -8,6 +8,8 @@ description: |
   prompt, and repeats until the pass rate exceeds the target or max_iterations
   is reached. Requires examples_file containing labeled input/output pairs.
 initial: test_on_examples
+scope:
+  - "${context.prompt_file}"
 context:
   examples_file: examples.json
   target_pass_rate: 90
