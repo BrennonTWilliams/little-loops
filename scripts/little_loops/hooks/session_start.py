@@ -36,9 +36,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import yaml
-
-from little_loops.config.core import deep_merge, resolve_config_path
+from little_loops.config.core import (
+    deep_merge,
+    parse_local_override_frontmatter,
+    resolve_config_path,
+)
 from little_loops.hooks.types import LLHookEvent, LLHookResult
 
 logger = logging.getLogger(__name__)
@@ -57,30 +59,6 @@ _STAY_IN_TURN_INSTRUCTION = (
     "your turn while spawned agents/tasks are still running — wait for them "
     "synchronously within the turn."
 )
-
-
-def _parse_frontmatter(content: str) -> dict[str, Any]:
-    """Extract YAML frontmatter (arbitrary nested shapes) from a markdown doc.
-
-    Mirrors the bash version's behaviour: returns ``{}`` for any malformed or
-    missing frontmatter, and uses ``yaml.safe_load`` so nested dicts / lists /
-    explicit nulls survive. Not interchangeable with
-    ``little_loops.frontmatter.parse_frontmatter`` (which is a key:value subset
-    parser) — local-override frontmatter needs full YAML.
-    """
-    if not content or not content.startswith("---"):
-        return {}
-    parts = content.split("---", 2)
-    if len(parts) < 3:
-        return {}
-    text = parts[1].strip()
-    if not text:
-        return {}
-    try:
-        loaded = yaml.safe_load(text)
-    except yaml.YAMLError:
-        return {}
-    return loaded if isinstance(loaded, dict) else {}
 
 
 def handle(event: LLHookEvent) -> LLHookResult:
@@ -141,7 +119,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
             override_text = local_file.read_text(encoding="utf-8")
         except OSError:
             override_text = ""
-        local_overrides = _parse_frontmatter(override_text)
+        local_overrides = parse_local_override_frontmatter(override_text)
         if local_overrides:
             merged_config = deep_merge(base_config, local_overrides)
             overrides_applied = True

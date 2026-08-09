@@ -1306,6 +1306,42 @@ class TestBRConfig:
         assert config.resolve_variable("project.type_cmd") is None
 
 
+class TestBRConfigLocalOverrides:
+    """BUG-3123: BRConfig._load_config() must merge .ll/ll.local.md overrides."""
+
+    def _write_local(self, root: Path, frontmatter: str) -> None:
+        (root / ".ll").mkdir(exist_ok=True)
+        (root / ".ll" / "ll.local.md").write_text(f"---\n{frontmatter}\n---\n\n# notes\n")
+
+    def test_local_override_applies_to_brconfig(self, temp_project_dir: Path) -> None:
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps({"project": {"test_cmd": "pytest"}}))
+        self._write_local(temp_project_dir, 'project:\n  test_cmd: "echo overridden"\n')
+
+        config = BRConfig(temp_project_dir)
+
+        assert config.project.test_cmd == "echo overridden"
+
+    def test_no_local_override_file_is_noop(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+
+        assert config.project.name == "test-project"
+
+    def test_local_override_null_removes_key(self, temp_project_dir: Path) -> None:
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps({"project": {"build_cmd": "make build"}}))
+        self._write_local(temp_project_dir, "project:\n  build_cmd: null\n")
+
+        config = BRConfig(temp_project_dir)
+
+        assert config.project.build_cmd is None
+
+
 class TestResolveConfigPath:
     """Tests for resolve_config_path (Python port of bash ll_resolve_config — FEAT-1454)."""
 

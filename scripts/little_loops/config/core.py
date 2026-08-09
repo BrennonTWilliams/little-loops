@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
+import yaml
+
 from little_loops.config.automation import (
     AutomationConfig,
     CommandsConfig,
@@ -52,6 +54,34 @@ CODEX_CONFIG_DIR = ".codex"
 GEMINI_CONFIG_DIR = ".gemini"
 OMP_CONFIG_DIR = ".omp"
 KIMI_CONFIG_DIR = ".kimi-code"
+LOCAL_OVERRIDE_FILENAME = "ll.local.md"
+
+
+def parse_local_override_frontmatter(content: str) -> dict[str, Any]:
+    """Extract YAML frontmatter (arbitrary nested shapes) from a markdown doc.
+
+    Returns ``{}`` for any malformed or missing frontmatter, and uses
+    ``yaml.safe_load`` so nested dicts / lists / explicit nulls survive. Not
+    interchangeable with ``little_loops.frontmatter.parse_frontmatter`` (which
+    is a key:value subset parser) — ``.ll/ll.local.md`` needs full YAML.
+
+    Extracted from ``hooks/session_start.py`` (BUG-3123) so both the
+    SessionStart hook and :class:`BRConfig` share one implementation instead
+    of drifting; ``session_start.py`` imports this back.
+    """
+    if not content or not content.startswith("---"):
+        return {}
+    parts = content.split("---", 2)
+    if len(parts) < 3:
+        return {}
+    text = parts[1].strip()
+    if not text:
+        return {}
+    try:
+        loaded = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
 
 
 def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -227,17 +257,35 @@ class BRConfig:
         self._parse_config()
 
     def _load_config(self) -> dict[str, Any]:
-        """Load configuration from file.
+        """Load configuration from file, merged with local overrides.
 
         Uses :func:`resolve_config_path` which checks ``.ll/ll-config.json``
         first then falls back to a root-level ``ll-config.json`` (parity with
         ``hooks/scripts/lib/common.sh:ll_resolve_config``).
+
+        If ``.ll/ll.local.md`` exists, its YAML frontmatter is deep-merged on
+        top of the base config (BUG-3123) — the same override mechanism the
+        SessionStart hook has always applied, but previously scoped to that
+        hook's own process-local ``merged_config`` and never reaching
+        ``BRConfig``.
         """
+        config: dict[str, Any] = {}
         config_path = resolve_config_path(self.project_root)
         if config_path is not None:
             with open(config_path, encoding="utf-8") as f:
-                return cast(dict[str, Any], json.load(f))
-        return {}
+                config = cast(dict[str, Any], json.load(f))
+
+        local_file = self.project_root / CONFIG_DIR / LOCAL_OVERRIDE_FILENAME
+        if local_file.is_file():
+            try:
+                override_text = local_file.read_text(encoding="utf-8")
+            except OSError:
+                override_text = ""
+            local_overrides = parse_local_override_frontmatter(override_text)
+            if local_overrides:
+                config = deep_merge(config, local_overrides)
+
+        return config
 
     def _parse_config(self) -> None:
         """Parse raw config into typed dataclasses."""

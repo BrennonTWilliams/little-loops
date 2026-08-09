@@ -3,8 +3,9 @@ id: BUG-3123
 title: BRConfig never reads .ll/ll.local.md overrides
 type: BUG
 priority: P3
-status: open
+status: done
 captured_at: '2026-08-08T21:48:47Z'
+completed_at: '2026-08-09T03:53:44Z'
 discovered_date: 2026-08-08
 discovered_by: capture-issue
 labels:
@@ -383,6 +384,7 @@ _Added by `/ll:confidence-check` on 2026-08-08_
 - Unresolved placement decision could cause a mid-implementation restructure if the wrong option is picked first — resolve it as step 1, not as an afterthought.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-09T03:53:01 - `078e9245-e490-4404-8597-4895b11b1e76.jsonl`
 - `/ll:ready-issue` - 2026-08-09T03:23:41 - `1b248fa0-ec2f-43a2-97f2-7795d1aeb0be.jsonl`
 - `/ll:confidence-check` - 2026-08-09T02:47:35 - `ba54c669-39c9-4544-b754-1dcbde6e3ea5.jsonl`
 - `/ll:confidence-check` - 2026-08-09T02:01:26 - `f1785c27-b4f6-4573-8ba2-1d0ff00ab817.jsonl`
@@ -393,6 +395,32 @@ _Added by `/ll:confidence-check` on 2026-08-08_
 - `/ll:wire-issue` - 2026-08-09T01:30:20 - `a82c515c-11f6-4fe3-8daf-17998535585d.jsonl`
 - `/ll:refine-issue` - 2026-08-09T01:20:30 - `b89152fd-e021-4e4a-82d7-aab9fcc70ffc.jsonl`
 - `/ll:capture-issue` - 2026-08-08T21:49:28 - `d7b6c474-eeb6-4901-9ffd-be8f7cc9a06c.jsonl`
+
+## Resolution
+
+Implemented Option A exactly as decided: extracted the YAML-frontmatter
+parser out of `hooks/session_start.py` into
+`little_loops.config.core.parse_local_override_frontmatter()`, alongside the
+existing `deep_merge()`/`resolve_config_path()` promotions it was named to
+match. `BRConfig._load_config()` (`scripts/little_loops/config/core.py`) now
+reads `.ll/ll.local.md` after loading the base config JSON and applies
+`deep_merge(base, overrides)` before returning — so every `ll-*` CLI entry
+point (36+ construction sites) picks up local overrides, not just the
+SessionStart hook. `hooks/session_start.py::handle()` now imports and calls
+the shared function instead of its own inline copy; its own merge/feedback
+behavior is otherwise unchanged.
+
+Added `TestBRConfigLocalOverrides` in `scripts/tests/test_config.py`
+(override applies, no-file no-op, `None` removes a key), modeled on
+`test_env_file.py::TestBRConfigWiring` per the issue's Wiring Phase note.
+`test_hook_session_start.py::TestSessionStartLocalOverrides` continues to
+pass unchanged, confirming the hook's own behavior wasn't disturbed.
+
+Full suite: 18692 passed, 42 skipped, 1 pre-existing failure
+(`test_prose_dep_sweep_gate.py::test_no_prose_dependency_drift_in_repo`,
+confirmed failing identically on `main` before this change via `git stash`
+— unrelated `.issues/` prose-dependency drift, not touched by this fix).
+`ruff check` and `mypy` clean on both modified source files.
 
 ---
 
