@@ -105,6 +105,16 @@ widens.
 - `docs/reference/CLI.md` — extend the `ll-mcp` section (added by
   FEAT-3135) with the resource surface's `ll://` scheme and examples.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-09 — based on codebase analysis:_
+
+- No MCP server-side code exists yet anywhere in the repo — the only MCP protocol code is the client-side `mcp_call.py` (NDJSON framing, old-style `initialize` handshake), used by `runner_spec.py:_run_mcp` and `cli/harness.py:cmd_mcp`. There is nothing server-side to extend beyond what FEAT-3135 (currently `status: deferred`, not yet implemented) would add.
+- FEAT-3135's own Program Design leaves module placement and handler-registration mechanism as an explicitly open, unresolved decision (two disagreeing precedents cited: the three-touch `cli/` pattern vs. `mcp_call.py`-style direct entry-point wiring) — FEAT-3136 cannot cite a concrete registration call site until that decision lands.
+- `docs/` (170+ files across subdirs, no frontmatter convention) has no existing enumeration/walk helper anywhere in `scripts/little_loops/` — `tool_catalog.py` walks `skills/`/`commands/`/`agents/` but not `docs/`. The `ll://docs/...` discovery-time enumeration must be built from scratch, unlike the issues/goals resources which have reusable read primitives.
+- Metadata-field precedent for `ttlMs`/`cacheScope`: `hooks/types.py:LLHookEvent.to_dict()` (line 47-64) and `tool_catalog.py:to_anthropic_tools()` (line 158-183) both omit unset fields entirely from the serialized dict rather than emitting `null` — the closest structural precedent in this codebase for how `resources/list` entries should attach caching metadata. No `ttlMs`/`cacheScope`-named field exists anywhere in the codebase today.
+- Reusable per-issue read primitive for `ll://issues/<ID>`: `cli/issues/show.py::_parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]` (lines 154-194) already separates "resolve one path → parse its full content" — FEAT-3135's own Program Design already flags this same function as the reusable non-argparse surface for its sibling `issue_get` tool.
+
 ## Program Design
 
 ### Types
@@ -114,6 +124,12 @@ widens.
   markdown, usable directly as the body of an `ll://goals` resource. No
   caller in this module resolves the default `.ll/ll-goals.md` path — the
   resource handler must construct it itself.
+
+### Signatures
+- `ProductGoals.from_file(path: Path) -> ProductGoals | None` — `goals_parser.py:92`; every existing call site is a test (`test_goals_parser.py`), no production caller constructs the default `.ll/ll-goals.md` path today
+- `ProductGoals.from_content(content: str) -> ProductGoals | None` — `goals_parser.py:111`; both classmethods return `None` on every malformed-input case (missing file, unreadable, absent/empty/malformed frontmatter) rather than raising
+- `_resolve_issue_id(config, user_input: str) -> Path | None` — `cli/issues/show.py:40`; already resolves `"518"`/`"FEAT-518"`/`"P3-FEAT-518"` shapes against category dirs, the reusable primitive for `ll://issues/<ID>`
+- `gather_all_issue_ids(issues_dir: Path, config: BRConfig | None = None) -> set[str]` — `dependency_mapper/operations.py:362`; filename-only scan across category dirs, the closest existing "build a set once, check membership" analog in this codebase, though invoked per-CLI-call rather than at a long-lived server's startup
 
 ### Call Path
 - `ll://goals` resource → `little_loops.goals_parser.ProductGoals.from_file()`
@@ -146,4 +162,5 @@ N/A — no new gap kind, gate, keyword list, or threshold.
 - `python -m pytest scripts/tests/` passes.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-09T13:51:06 - `f453a70a-3ede-4be0-a10b-493541f0278e.jsonl`
 - `/ll:issue-size-review` - 2026-08-09T07:40:09 - `153550d2-faf1-4350-b263-1aaa047c80e3.jsonl`

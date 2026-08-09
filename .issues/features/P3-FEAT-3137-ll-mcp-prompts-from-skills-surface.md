@@ -141,12 +141,24 @@ widens.
 - `docs/reference/CLI.md` — extend the `ll-mcp` section (added by
   FEAT-3135) with the prompts-from-skills surface.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-09 — based on codebase analysis:_
+
+- Recursive-walk idiom confirmed: every genuinely-recursive discovery site in this codebase uses `sorted(dir.rglob(pattern))` (e.g. `recursive_finalize.py:50`, `session_store/writers.py:2188,2262`, `cli/doctor.py:419`, `cli/verify_package_data.py:139`) — there is no `os.walk` usage anywhere in `scripts/little_loops`. The flat `glob("*/SKILL.md")` used by 13+ skill-catalog call sites is documented in `.issues/enhancements/P4-ENH-1038-ll-verify-docs-should-track-fsm-loop-counts.md:135` as "the unanimously established pattern across 4+ sites," with a prior `rglob` walk in `doc_counts.count_files()` explicitly called out there as the outlier it corrected — switching this new walk to `rglob` diverges from a documented prior decision, not just current majority practice.
+- Skill-name derivation is `skill_md.parent.name` at every site except one: `cli/verify_triggers.py:350` tries frontmatter `name` first, directory name as fallback — the sole exception to the "always directory name, never frontmatter" rule already noted in this issue.
+- No nested `SKILL.md` exists anywhere under `skills/` today — a glob for `skills/*/*/SKILL.md` returns zero matches across all ~69 skill directories, every one exactly one level deep. The "nested SKILL.md = separate skill" requirement is a forward-looking design constraint with no reproducible fixture in this repo, consistent with this issue's own Tests section noting no existing nested-skill fixture.
+- Frontmatter `args` today are free-text strings only — 11 `SKILL.md` files declare a top-level `args:` key (e.g. `skills/ll-refine-issue/SKILL.md:4: args: "ISSUE_ID [--auto] [--dry-run] [--gap-analysis] [--full-rewrite]"`), all untyped display hints, confirmed by `tool_catalog.py`'s own docstring (lines 11-14: "no type information"). Contrast: `fsm/schema.py:265` `ParameterSpec` dataclass (`type`, `required`, `default`, `description`, `values` fields) is the only *typed* parameter precedent in this codebase — used by FSM loop fragments, not skills or commands.
+
 ## Program Design
 
 ### Signatures
 - `little_loops.frontmatter.parse_skill_frontmatter(text) -> dict[str,
   str]` — `frontmatter.py:371`; the canonical frontmatter parser,
   prompts-from-skills should reuse this rather than reimplement parsing.
+
+- `_skill_entries(skills_dir: Path) -> list[ToolDefinition]` — `tool_catalog.py:95`; its `glob("*/SKILL.md")` matches exactly one path segment by construction, not an incidental limitation — a recursive replacement needs `rglob("**/SKILL.md")` or an explicit walk with pruning so a found `SKILL.md`'s own subdirectories are never re-descended as if they were plain supporting files
+- `_is_model_invocation_disabled(fm: dict) -> bool` — `adapters/core.py:183`; `None` → `False`, native `bool` returned as-is, anything else stringified/trimmed/lowercased and checked against `{"true", "yes", "1"}`; applied by `process_skills()`/`process_commands()`/`cli/help.py:190` but not universally (`cli/verify_triggers.py`'s loader makes it opt-in via a `model_invocable_only` param)
 
 ### Call Path
 - prompts-from-skills discovery → new recursive `SKILL.md` walk (not
@@ -180,4 +192,5 @@ existing decision-rule logic.
 - `python -m pytest scripts/tests/` passes.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-09T13:51:06 - `f453a70a-3ede-4be0-a10b-493541f0278e.jsonl`
 - `/ll:issue-size-review` - 2026-08-09T07:40:09 - `153550d2-faf1-4350-b263-1aaa047c80e3.jsonl`
