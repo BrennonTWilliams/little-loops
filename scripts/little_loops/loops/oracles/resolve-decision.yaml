@@ -10,6 +10,12 @@ description: |
 initial: route_entry
 max_steps: 20
 timeout: 3600
+# Writes decide-options-deposited/decide-rate-limited markers under run_dir and,
+# via /ll:refine-issue and /ll:decide-issue, mutates the target issue under
+# .issues/ — matches refine-to-ready-issue.yaml's scope.
+scope:
+  - ".issues/"
+  - "${context.run_dir}"
 parameters:
   issue_id:
     type: string

@@ -133,7 +133,6 @@ class TestBuiltinLoopFiles:
         "plan-node-refine",
         "plan-research-iteration",
         "research-coverage",
-        "resolve-decision",
         "verify-confidence-scores",
     }
 
@@ -13572,10 +13571,13 @@ class TestValidatorWarningBudget:
             "states.screenshot_abandoned_summary",
             "states.screenshot_abandoned",
         },
-        # BUG-3107: the 12 oracles/ sub-loops are visibility: internal and
-        # weren't in scope for BUG-3106's 78-loop scope backfill. Owned by a
-        # follow-up to give each oracle a real per-file scope; allowlisted
-        # here so the "no-scope" ratchet starts at ~0 instead of 12.
+        # BUG-3107: the remaining oracles/ sub-loops are visibility: internal
+        # and weren't in scope for BUG-3106's 78-loop scope backfill. Owned by
+        # a follow-up to give each oracle a real per-file scope; allowlisted
+        # here so the "no-scope" ratchet starts at ~0. resolve-decision was
+        # backfilled directly (its no-scope warning fired twice per validate
+        # of sprint-refine-and-implement, once per `loop:`+`with:` call site
+        # in autodev.yaml) and removed from this list.
         ("code-run-gate", "no-scope"): {"scope"},
         ("enumerate-and-prove", "no-scope"): {"scope"},
         ("generator-evaluator", "no-scope"): {"scope"},
@@ -13586,7 +13588,6 @@ class TestValidatorWarningBudget:
         ("plan-node-refine", "no-scope"): {"scope"},
         ("plan-research-iteration", "no-scope"): {"scope"},
         ("research-coverage", "no-scope"): {"scope"},
-        ("resolve-decision", "no-scope"): {"scope"},
         ("verify-confidence-scores", "no-scope"): {"scope"},
         # BUG-3110: auto-refine-and-implement declares `input_key: scope` so the
         # positional CLI arg binds to its scope knob. The MR rule
