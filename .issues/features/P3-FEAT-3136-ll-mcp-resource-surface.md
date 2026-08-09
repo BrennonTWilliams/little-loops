@@ -115,6 +115,16 @@ _Added by `/ll:refine-issue` — 2026-08-09 — based on codebase analysis:_
 - Metadata-field precedent for `ttlMs`/`cacheScope`: `hooks/types.py:LLHookEvent.to_dict()` (line 47-64) and `tool_catalog.py:to_anthropic_tools()` (line 158-183) both omit unset fields entirely from the serialized dict rather than emitting `null` — the closest structural precedent in this codebase for how `resources/list` entries should attach caching metadata. No `ttlMs`/`cacheScope`-named field exists anywhere in the codebase today.
 - Reusable per-issue read primitive for `ll://issues/<ID>`: `cli/issues/show.py::_parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]` (lines 154-194) already separates "resolve one path → parse its full content" — FEAT-3135's own Program Design already flags this same function as the reusable non-argparse surface for its sibling `issue_get` tool.
 
+_Added by `/ll:refine-issue` — 2026-08-09 — based on codebase analysis:_
+
+- `_resolve_issue_id()` -> `_parse_card_fields()` is the existing two-call sequence `cmd_show` runs (`cli/issues/show.py:869,875`) that a `ll://issues/<ID>` resource handler should mirror; but `_parse_card_fields()` calls `path.read_text()` with no try/except (`show.py:166`) — a handler chaining these two functions inherits an unguarded `OSError` window if the file is deleted/permission-denied between resolution and read, and needs its own guard to return a clean MCP error instead of an uncaught exception.
+- `gather_all_issue_ids()` (`dependency_mapper/operations.py:362-394`) returns only a `set[str]` of IDs, discarding the `Path` it globbed (`operations.py:390-393`) — reusing it for a discovery-time `(id, path)` enumeration needs either a per-ID `_resolve_issue_id()` call or a reimplemented walk that retains the path. It also excludes `config.legacy_issue_dirs()` (the BUG-2733 completed/deferred dirs), unlike `_resolve_issue_id()`, so it under-covers relative to what `ll://issues/<ID>` must resolve.
+- Closest existing precedent for the discovery-time enumeration mechanics: `tool_catalog.py::assemble_tool_catalog()` (145-155) and its `_skill_entries`/`_command_entries`/`_agent_entries` helpers (95-142) — a plain `Path.glob()` walk executed at call time, tolerant of missing dirs, with no caching layer and no import-time/startup build anywhere in this codebase. This issue's "build once at startup" framing has no existing precedent to model — new territory in the walk mechanics, not only in the allowlist-rejection mechanics already on file.
+- No `<scheme>://` URI parsing/construction precedent exists anywhere in `scripts/little_loops/` — a grep for `://` turns up only ordinary URLs; the only place `ll://` appears today is prose inside issue files. The nearest analog, `mcp_call.py`'s spec parser (`main()`, 365-373), splits `server/tool-name` on `/` — a different, non-scheme delimiter convention with no reusable parsing logic for `ll://issues/<ID>` vs `ll://docs/...` vs `ll://goals`.
+- Boundary/rejection precedent for "reject a path outside an allowed set": `verify_private_refs.py::scan_paths()` (393-400) and `cli/loop/_helpers.py::_display_loop_path()`/`_relativize_to_cwd()` (1218-1253) both use `Path.resolve().relative_to(base)` wrapped in `try/except (ValueError[, OSError])`, never string-prefix comparison — but both uses are for *display formatting*, not *access control*. `verify_package_data.py::run_escape_lint()` (~136) is the only existing allowlist-of-known-good-entries concept in the repo, and it's a build-time source lint, not a runtime request validator. FEAT-3136's runtime allowlist rejection has no existing access-control precedent, only display-formatting code sharing the same underlying `relative_to` primitive.
+- Test-naming convention for the new rejection tests: class-per-function-under-test with `test_<condition>_<outcome>` methods — evidence: `test_mcp_call.py::TestLoadMcpConfig` (`test_loads_valid_file`, `test_missing_file_raises`, `test_invalid_json_raises`), `test_cli_surface.py` (`test_rejects_unknown_flag`, `test_rejects_unknown_subcommand`).
+- Two-phase "list metadata cheaply, fetch body on demand" precedent: `tool_catalog.py`'s `_skill_entries()`/etc. read full file text but extract only `description`/`args` via `parse_skill_frontmatter()` for list-shaped output, deferring body content to a separate step. Two frontmatter parsers already coexist by design in `frontmatter.py`: `parse_skill_frontmatter()` (YAML-first with permissive line-scan fallback, the canonical SKILL.md parser, line 371) vs. the general `parse_frontmatter()` (line 255) — `resources/list`'s frontmatter-only pass and `resources/read`'s full-body pass can draw on this existing split rather than inventing a new one.
+
 ## Program Design
 
 ### Types
@@ -141,6 +151,14 @@ _Added by `/ll:refine-issue` — 2026-08-09 — based on codebase analysis:_
 ### Decision Rules
 N/A — no new gap kind, gate, keyword list, or threshold.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-09 — based on codebase analysis:_
+
+- `_resolve_issue_id(config, user_input) -> Path | None` (`cli/issues/show.py:40-151`) never raises: unparseable input, zero candidates, or an unreadable candidate during disambiguation (its nested `_frontmatter_id()` closure swallows `OSError` per-candidate, `show.py:113-121`) all collapse to `None`, safe to branch on directly. `_parse_card_fields(path, config) -> dict[str, str | None]` (`show.py:154-289+`) is the one seam without that guarantee — its `path.read_text()` (`show.py:166`) has no surrounding try/except, so a resource handler chaining `_resolve_issue_id -> _parse_card_fields` must add its own guard at that seam to avoid an unhandled exception reaching the MCP dispatch loop.
+- `ProductGoals.from_file`/`from_content` (`goals_parser.py:92-160`) are fully null-safe end to end (missing file, unreadable/undecodable file, missing/malformed frontmatter delimiters, invalid YAML, non-dict YAML root all return `None`) — no exception path exists there to guard against, unlike the `_parse_card_fields` seam above.
+- `gather_all_issue_ids(issues_dir, config) -> set[str]` (`dependency_mapper/operations.py:362-394`) is IDs-only, not path-bearing, and excludes `config.legacy_issue_dirs()` — its one production caller, `cmd_next_issue` (`cli/issues/next_issue.py:69-74`), uses it only as graph-construction input inside a defensive `try/except Exception: pass`, not as a listing/display surface. It is not a drop-in enumerator for `resources/list`; the discovery-time enumeration needs its own walk that retains `(id, path)` pairs and includes the legacy dirs `_resolve_issue_id` searches.
+
 ## Implementation Steps
 
 1. The `ll://` resource surface's discovery-time enumeration (issue files,
@@ -162,5 +180,6 @@ N/A — no new gap kind, gate, keyword list, or threshold.
 - `python -m pytest scripts/tests/` passes.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-09T14:35:10 - `1870f2e0-e809-4665-982e-242cc0be4d41.jsonl`
 - `/ll:refine-issue` - 2026-08-09T13:51:06 - `f453a70a-3ede-4be0-a10b-493541f0278e.jsonl`
 - `/ll:issue-size-review` - 2026-08-09T07:40:09 - `153550d2-faf1-4350-b263-1aaa047c80e3.jsonl`
