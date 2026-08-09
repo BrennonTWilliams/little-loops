@@ -10,6 +10,7 @@ captured_at: '2026-08-06T18:10:00Z'
 depends_on:
 - ENH-3075
 verify_verdict: VALID
+reconcile_attempted: true
 relates_to:
 - BUG-3065
 - ENH-3075
@@ -25,12 +26,12 @@ labels:
 - refactor
 testable: true
 decision_needed: false
-confidence_score: 95
-outcome_confidence: 70
-score_complexity: 14
+confidence_score: 100
+outcome_confidence: 71
+score_complexity: 10
 score_test_coverage: 18
 score_ambiguity: 18
-score_change_surface: 20
+score_change_surface: 25
 ---
 
 # ENH-3090: Convert `rn-remediate`'s inline decision cluster to the shared decision sub-loop
@@ -205,8 +206,11 @@ cross-reference comment left in `autodev.yaml` by ENH-3075.
 3. The options-deposited marker literal is renamed at every site, and the old
    literal appears nowhere in `scripts/little_loops/` or `scripts/tests/`.
    Grep-enforceable.
-4. Any per-iteration marker clear uses the correct current-issue shell variable,
-   not the stale `${captured.input.output}`, with a test asserting the exact form.
+4. No per-iteration marker clear is added: `rn-remediate` is invoked fresh per
+   issue by its caller (`rn-implement.yaml:757-764`), so file-scoping — not a
+   clear step — prevents cross-issue marker bleed (per Codebase Research
+   Finding). The `${captured.input.output}`-vs-current-issue-ID trap ENH-3075
+   hit does not apply here for the same reason.
 5. The rate-limit marker handshake established by ENH-3075 is wired caller-side,
    with both branches (marker present → terminate; absent → normal failure route)
    covered by tests.
@@ -215,9 +219,8 @@ cross-reference comment left in `autodev.yaml` by ENH-3075.
 7. Existing `rn-remediate` decision-cluster test assertions are **rewritten** to
    target the sub-loop, not deleted to make the suite pass.
 8. `ll-loop validate` passes for `rn-remediate.yaml`.
-9. `autodev.yaml`'s stale "parity insertion mirroring rn-remediate" comment is
-   removed.
-   > ⚠ Superseded — phrase not found verbatim in autodev.yaml
+9. `autodev.yaml`'s stale rn-remediate cross-reference comment (headers at
+   `autodev.yaml:539,561,577` per Codebase Research Findings) is removed.
 10. `docs/guides/LOOPS_REFERENCE.md`'s `rn-remediate` cluster prose is updated.
 11. A manual `ll-loop run rn-remediate` completes at least one issue end to end —
     there is no automated end-to-end coverage for this loop either.
@@ -535,6 +538,8 @@ line is `:281`).
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-09T05:41:34 - `a1a40f76-712a-495e-8ebe-c8e78f895d3d.jsonl`
+- `/ll:reconcile-issue` - 2026-08-09T05:15:22 - `59d277e8-60ea-41a5-9db0-8ecec35c3bd1.jsonl`
 - `/ll:confidence-check` - 2026-08-09T05:09:39 - `b7457e6e-9654-45e5-a9bd-43e1bcddbd28.jsonl`
 - `/ll:verify-issues` - 2026-08-09T05:07:12 - `1a0323b3-fb2f-47b3-b5e2-6334cdd695e1.jsonl`
 - `/ll:refine-issue` - 2026-08-09T05:01:09 - `5d39a81f-e4c2-4c4f-b723-9102112bb63c.jsonl`
