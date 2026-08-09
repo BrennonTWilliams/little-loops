@@ -1509,6 +1509,8 @@ scope:
 | Explicit paths | Loop claims those paths |
 | No scope | Treated as `["."]` (whole project) |
 
+`["."]` conflicts with every other running loop, scoped or not, so an unscoped loop causes false conflicts with unrelated work. `ll-loop validate` emits a WARNING when a loop declares no `scope:` for exactly this reason — always declare `scope:` naming the paths a loop actually writes to, or use `scope: ["."]` as an explicit repo-wide opt-in.
+
 ### Overlap Rules
 
 | Scenario | Behavior |

@@ -565,14 +565,14 @@ states:
 
 #### scope (Optional)
 
-The `scope` field declares which files or directories a loop operates on. It is a **loop-level** field (not per-state) used by `ll-parallel` to prevent concurrent loops from conflicting over the same resources.
+The `scope` field declares which files or directories a loop operates on. It is a **loop-level** field (not per-state) used by `ll-loop run` (including its background/detached pre-flight check) to prevent concurrent loops from conflicting over the same resources.
 
 **Type:** `list[str]` — file or directory paths relative to the project root
 
 **How it works:**
-- When `ll-parallel` starts a loop, it acquires a lock for the declared scope paths
+- When `ll-loop run` starts a loop, it acquires a lock for the declared scope paths
 - If another loop's scope overlaps, the second loop waits until the first releases its lock
-- An empty `scope` (or omitting it) is treated as the whole project — it will conflict with any other scoped loop
+- An empty `scope` (or omitting it) falls back to `["."]` — the whole project — which conflicts with any other running loop, scoped or not. `ll-loop validate` emits a WARNING when a loop declares no `scope:`, since this repo-root fallback causes false conflicts; always declare `scope:` explicitly, using `scope: ["."]` only when a loop genuinely needs repo-wide access.
 - Paths are compared by prefix overlap, so `scope: ["src/"]` conflicts with `scope: ["src/utils/"]`
 - Scope paths support `${context.<var>}` template variables that are resolved at runtime against the loop's context. This enables file-level locking: two instances of the same loop with different context values (e.g., different `plan_file` paths) produce disjoint scopes and can run concurrently.
 
@@ -628,7 +628,7 @@ states:
     terminal: true
 ```
 
-**Most users can omit this field** — it is only needed when running loops in parallel via `ll-parallel`. Single-loop use cases do not require scope declaration.
+**Always declare this field.** Omitting `scope:` falls back to a repo-root lock (`["."]`) that false-conflicts with every other concurrently running loop, and `ll-loop validate` warns on it. Declare the paths the loop actually writes to, or `scope: ["."]` as an explicit repo-wide opt-in.
 
 #### import (Optional)
 

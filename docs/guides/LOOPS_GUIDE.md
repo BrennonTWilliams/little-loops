@@ -795,6 +795,8 @@ scope:
 
 If a conflicting loop is already running, `ll-loop run` errors. Use `--queue` to wait instead — the maximum wait is `loops.queue_wait_timeout_seconds` in `.ll/ll-config.json` (default 24 h), overridable per-run with `--queue-timeout SECONDS`, and queued loops acquire the lock in arrival order.
 
+An empty `scope` (or omitting the field) falls back to `["."]` — the whole project — which conflicts with every other running loop, scoped or not. `ll-loop validate` emits a WARNING when a loop declares no `scope:`, since this repo-root fallback is a frequent source of false conflicts between otherwise-unrelated loops. Always declare `scope:` naming the paths a loop actually writes to, or use `scope: ["."]` as an explicit repo-wide opt-in.
+
 ### Singleton (one-instance-per-name)
 
 Set `singleton: true` on a loop YAML to force a loop-name conflict regardless of scope overlap:
@@ -846,7 +848,7 @@ ll-loop resume my-scan --background  # continue a paused loop, detached
 ### Notes
 
 - `--background --queue` works, but queue-waiting happens inside the detached child — the parent returns immediately. Check progress with `ll-loop status`.
-- Loops with non-overlapping scopes run concurrently; overlapping scopes conflict (add `--queue` to wait).
+- Loops with non-overlapping, explicitly-declared scopes run concurrently; overlapping scopes conflict (add `--queue` to wait). A loop with no `scope:` falls back to a repo-root lock (`["."]`) and so conflicts with *every* other running loop, not just ones that overlap it.
 - `maintain: true` (YAML) and `--background` (CLI) are orthogonal: `maintain` makes a loop restart itself after reaching a terminal state; `--background` detaches the process. Combine them for a long-lived self-restarting daemon.
 
 ## Stop, Resume, and Exit Reasons

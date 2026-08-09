@@ -156,7 +156,7 @@ If "Less than threshold" or "Greater than threshold" selected, ask for target va
 name: "<loop-name>"
 initial: evaluate
 max_steps: <selected-max>
-# scope: ["src/"]          # Optional: declare paths for ll-parallel concurrency control
+scope: ["src/"]          # Declare paths for ll-loop run concurrency control
 states:
   evaluate:
     action: "<check-command>"
@@ -271,7 +271,7 @@ For each constraint `{name}` in order, generate a check/fix pair of states. The 
 name: "<loop-name>"
 initial: check_<name1>
 max_steps: 50
-# scope: ["src/"]            # Optional: declare paths for ll-parallel concurrency control
+scope: ["src/"]            # Declare paths for ll-loop run concurrency control
 states:
   check_<name1>:
     action: "<check-1-command>"
@@ -385,7 +385,7 @@ questions:
 name: "<loop-name>"
 initial: measure
 max_steps: 50
-# scope: ["src/"]  # Optional: declare paths for ll-parallel concurrency control
+scope: ["src/"]  # Declare paths for ll-loop run concurrency control
 states:
   measure:
     action: "<metric-command>"
@@ -495,7 +495,7 @@ name: "<loop-name>"
 initial: step_0
 max_steps: 50
 backoff: 2
-# scope: ["src/"]            # Optional: declare paths for ll-parallel concurrency control
+scope: ["src/"]            # Declare paths for ll-loop run concurrency control
 states:
   step_0:
     action: "<step-1>"

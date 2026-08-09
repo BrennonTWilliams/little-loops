@@ -29,7 +29,7 @@
     },
     "scope": {
       "type": "array",
-      "description": "Paths this loop operates on (for concurrency control)",
+      "description": "Paths this loop operates on (for concurrency control). Always declare explicitly: an omitted or empty scope falls back to [\".\"] (whole-repo lock) and `ll-loop validate` emits a WARNING for it, since the fallback false-conflicts with every other running loop.",
       "items": {
         "type": "string"
       }

@@ -826,6 +826,8 @@ ll-loop run <name> ...       # now unblocked
 ```
 If `ll-loop stop` still reports "not running" (e.g. lock file is missing but scope conflict persists), check `ll-loop status <name> --json` for `pid_source` details and inspect `.loops/.running/` directly.
 
+**Cause 2: unscoped loop holding a repo-root lock**: A loop with no `scope:` declared falls back to `["."]` (the whole project), so it conflicts with *every* other running loop, not just ones that touch the same files. This shows up as a scope conflict against a loop that is legitimately still running (not stale) and doesn't overlap in files at all. `ll-loop validate` emits a WARNING for any loop lacking `scope:` for exactly this reason. **Solution**: add an explicit `scope:` to the offending loop naming the paths it actually writes to, or `scope: ["."]` if it genuinely needs repo-wide access and should keep serializing against everything else.
+
 ---
 
 ### Built-in loops not found after pip install

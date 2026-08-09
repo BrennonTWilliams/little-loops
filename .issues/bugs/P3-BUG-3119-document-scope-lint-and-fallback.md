@@ -4,9 +4,10 @@ type: BUG
 title: Document the `scope:` authoring convention, the `["."]` fallback, and the new
   no-scope lint
 priority: P3
-status: open
+status: done
 parent: BUG-3088
 captured_at: '2026-08-08T00:00:00Z'
+completed_at: '2026-08-09T01:28:50Z'
 discovered_date: 2026-08-08
 discovered_by: issue-size-review
 reconcile_attempted: true
@@ -219,6 +220,8 @@ open
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-09T01:28:27 - `0f59425f-0ac5-4217-8289-a0d784491017.jsonl`
+- `/ll:ready-issue` - 2026-08-09T01:15:35 - `6b0345ae-87e2-4e19-a995-c57268029219.jsonl`
 - `/ll:confidence-check` - 2026-08-09T01:13:17 - `eeecc6ba-9974-499a-9170-e14e1eca9ada.jsonl`
 - `/ll:format-issue` - 2026-08-09T00:59:28 - `5be1007f-942a-471a-9b64-8ac54ca01d23.jsonl`
 - `/ll:refine-issue` - 2026-08-09T00:32:48 - `cb84e626-21da-4bd4-af5e-f30f4430fc4e.jsonl`
