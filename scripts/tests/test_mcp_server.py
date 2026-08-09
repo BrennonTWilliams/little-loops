@@ -21,6 +21,7 @@ import pytest
 pytest.importorskip("mcp")
 
 from mcp.client import Client  # noqa: E402
+from mcp.shared.exceptions import MCPError  # noqa: E402
 
 from little_loops.mcp_server.server import build_server  # noqa: E402
 
@@ -94,9 +95,10 @@ def test_tools_list_ordering_is_stable_across_calls(tmp_path, monkeypatch) -> No
     anyio.run(run)
 
 
-def test_discover_advertises_tools_only(tmp_path, monkeypatch) -> None:
+def test_discover_advertises_tools_and_resources_only(tmp_path, monkeypatch) -> None:
     """No custom `server/discover` handler is registered; the SDK's default auto-derives
-    capabilities from registered handlers, so no Roots/Sampling/Logging appear."""
+    capabilities from registered handlers, so no Prompts/Sampling/Logging appear.
+    Resources ARE registered (FEAT-3136), so `caps.resources` is non-`None`."""
     _make_project(tmp_path, monkeypatch)
 
     async def run() -> None:
@@ -105,7 +107,7 @@ def test_discover_advertises_tools_only(tmp_path, monkeypatch) -> None:
             caps = client.session.server_capabilities
             assert caps is not None
             assert caps.tools is not None
-            assert caps.resources is None
+            assert caps.resources is not None
             assert caps.prompts is None
             assert caps.logging is None
             assert getattr(caps, "sampling", None) is None
@@ -298,5 +300,113 @@ def test_repeated_and_reordered_calls_are_identical(tmp_path, monkeypatch) -> No
 
             assert first_a.content[0].text == second_a.content[0].text
             assert first_b.content[0].text == second_b.content[0].text
+
+    anyio.run(run)
+
+
+GOALS_BODY = """---
+version: '1.0'
+persona:
+  id: dev
+  name: Developer
+  role: Builds things
+priorities:
+- id: p1
+  name: Ship it
+---
+
+# Product Goals
+"""
+
+
+def test_list_resources_returns_issues_goals_and_docs_with_cache_metadata(
+    tmp_path, monkeypatch
+) -> None:
+    _make_project(tmp_path, monkeypatch)
+    _write_issue(tmp_path, "features", "P2-FEAT-3135-sample.md", ISSUE_BODY)
+    (tmp_path / ".ll").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".ll" / "ll-goals.md").write_text(GOALS_BODY, encoding="utf-8")
+    (tmp_path / "docs").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "docs" / "ARCHITECTURE.md").write_text("# Architecture\n", encoding="utf-8")
+
+    async def run() -> None:
+        server = build_server()
+        async with Client(server) as client:
+            result = await client.list_resources()
+            uris = {r.uri for r in result.resources}
+            assert uris == {
+                "ll://issues/FEAT-3135",
+                "ll://goals",
+                "ll://docs/ARCHITECTURE.md",
+            }
+            issue_entry = next(r for r in result.resources if r.uri == "ll://issues/FEAT-3135")
+            assert issue_entry.description == "Sample issue"
+            # SDK-supplied per SEP-2549 — not something a handler sets by hand.
+            assert result.ttl_ms > 0
+            assert result.cache_scope == "public"
+
+    anyio.run(run)
+
+
+def test_read_resource_issue_returns_card_fields(tmp_path, monkeypatch) -> None:
+    _make_project(tmp_path, monkeypatch)
+    _write_issue(tmp_path, "features", "P2-FEAT-3135-sample.md", ISSUE_BODY)
+
+    async def run() -> None:
+        server = build_server()
+        async with Client(server) as client:
+            result = await client.read_resource("ll://issues/FEAT-3135")
+            payload = json.loads(result.contents[0].text)
+            assert payload["issue_id"] == "FEAT-3135"
+            assert result.ttl_ms > 0
+            assert result.cache_scope == "public"
+
+    anyio.run(run)
+
+
+def test_read_resource_goals_returns_raw_markdown(tmp_path, monkeypatch) -> None:
+    _make_project(tmp_path, monkeypatch)
+    (tmp_path / ".ll").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".ll" / "ll-goals.md").write_text(GOALS_BODY, encoding="utf-8")
+
+    async def run() -> None:
+        server = build_server()
+        async with Client(server) as client:
+            result = await client.read_resource("ll://goals")
+            assert result.contents[0].text == GOALS_BODY
+
+    anyio.run(run)
+
+
+def test_read_resource_docs_returns_file_text(tmp_path, monkeypatch) -> None:
+    _make_project(tmp_path, monkeypatch)
+    (tmp_path / "docs").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "docs" / "ARCHITECTURE.md").write_text("# Architecture\n", encoding="utf-8")
+
+    async def run() -> None:
+        server = build_server()
+        async with Client(server) as client:
+            result = await client.read_resource("ll://docs/ARCHITECTURE.md")
+            assert result.contents[0].text == "# Architecture\n"
+
+    anyio.run(run)
+
+
+def test_read_resource_outside_enumeration_is_rejected(tmp_path, monkeypatch) -> None:
+    """A `uri` never enumerated at startup (including path-traversal attempts) is rejected
+    without any filesystem read — dict membership in the discovery-time enumeration is the
+    entire access-control boundary."""
+    _make_project(tmp_path, monkeypatch)
+
+    async def run() -> None:
+        server = build_server()
+        async with Client(server) as client:
+            for bad_uri in (
+                "ll://issues/FEAT-999999",
+                "ll://docs/../../etc/passwd",
+                "ll://not-a-real-scheme",
+            ):
+                with pytest.raises(MCPError):
+                    await client.read_resource(bad_uri)
 
     anyio.run(run)

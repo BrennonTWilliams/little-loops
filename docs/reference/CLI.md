@@ -4221,6 +4221,18 @@ CLIs, no orchestration (`ll-auto`/`ll-parallel`/`ll-loop`/`ll-action invoke` are
 off the tool surface). No request handler depends on state from a prior request: each
 `tools/call` resolves entirely from its own arguments plus the filesystem/SQLite.
 
+Also advertises a `resources` capability (FEAT-3136): issue files, `.ll/ll-goals.md`, and
+`docs/**/*.md` are listed and readable under an `ll://` scheme (`ll://issues/<ID>`,
+`ll://goals`, `ll://docs/<relative-path>`). Unlike the tools, the resource surface is *not*
+fully stateless — the exact set of readable `ll://` URIs is enumerated once when the server
+starts (a "discovery-time enumeration"), and `resources/read` only ever serves a `uri`
+already present in that enumeration; a request for any other `uri` is rejected without a
+filesystem read. `resources/list` returns name/description from frontmatter only (no full
+bodies); `resources/read` returns a resource's full body — the same summary-card field dict
+`issue_get` returns for issues, `ProductGoals.raw_content` for `ll://goals`, and raw file
+text for docs. Both `resources/list` and `resources/read` responses carry `ttlMs`/
+`cacheScope` per SEP-2549.
+
 **Arguments:** none — `ll-mcp` parses no flags; it is a protocol server, not a CLI.
 
 **Exit codes:** `0` = clean EOF/shutdown, `2` = missing the `mcp` extra, or a usage error
