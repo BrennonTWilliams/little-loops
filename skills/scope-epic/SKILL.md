@@ -281,139 +281,112 @@ questions:
 
 ---
 
-### Phase 4: ID Allocation and File Writes
+### Phase 4: Create EPIC + Children
 
-Write the EPIC first, then each child in order. Call `ll-issues next-id` **immediately before each Write** — do NOT batch-allocate IDs upfront.
+`ll-issues create` / `ll-issues scaffold-epic` (FEAT-2947) atomically handle ID allocation,
+slugification, type-directory selection, template assembly, `parent:` frontmatter, and the
+EPIC's `## Children` bullet — no prose ID/slug/filename templating is done by this skill
+anymore.
 
-**EPIC directory**: `{{config.issues.base_dir}}/epics/`
-**Child directories**: `{{config.issues.base_dir}}/features/` for FEAT, `{{config.issues.base_dir}}/enhancements/` for ENH, `{{config.issues.base_dir}}/bugs/` for BUG
+#### Step 1: No learning tests (`LT_PROPOSALS` is empty) — one atomic call
 
-#### Step 1: Write the EPIC file
+Compose the full children array from Phase 2's selections and scaffold everything — EPIC plus
+every implementation child — in a single, all-or-nothing call:
 
-1. **Get next ID:**
+```bash
+ll-issues scaffold-epic --title "[EPIC title]" --priority [PRIORITY] --stage --json \
+  --children '[
+    {"type": "FEAT", "title": "[child 1 title]", "priority": "P2", "summary": "[child 1 one-sentence summary]"},
+    {"type": "ENH",  "title": "[child 2 title]", "priority": "P3", "summary": "[child 2 one-sentence summary]"}
+  ]'
+```
+
+Parse the JSON result: `{"epic": {"id", "path"}, "children": [{"id", "path"}, ...]}` (children
+in the same order given). `--stage` runs the equivalent of `git add` on the EPIC and every child
+file in one call — no separate staging step. If any child write fails mid-call, `scaffold-epic`
+unlinks every file it created in this call and re-raises — nothing partial is left behind.
+
+Skip to Step 3 (Session Log) once this call succeeds.
+
+#### Step 2: Learning tests needed (`LT_PROPOSALS` is non-empty) — sequential creates
+
+Learning test sub-issue IDs must exist before implementation children can `depends_on` them, so
+this path cannot use one atomic `scaffold-epic` call — create the EPIC, then each learning test
+sub-issue, then each implementation child, each via `ll-issues create --parent EPIC_ID --stage`.
+
+1. **Create the EPIC alone:**
    ```bash
-   ll-issues next-id
+   ll-issues create --type EPIC --title "[EPIC title]" --priority [PRIORITY] \
+     --variant full --stage --json
    ```
-   Store as `EPIC_NNN` (e.g., `071` → `EPIC-071`).
+   Store `EPIC_ID`/`EPIC_PATH` from the JSON `{"id", "path"}` result.
 
-2. **Generate filename**: `P[PRIORITY]-EPIC-[NNN]-[slugified-epic-title].md`
-   Slugify: lowercase, replace spaces/special chars with hyphens.
-
-3. **Build EPIC content** using the full template:
-   - Run `ll-issues sections epic` to get section definitions.
-   - Use `variant="full"` with `scripts/little_loops/issue_template.py:assemble_issue_markdown()`.
-   - Frontmatter must include: `id: EPIC-NNN`, `type: EPIC`, `priority: [PRIORITY]`, `status: open`, `captured_at` (ISO 8601 UTC via `date -u +"%Y-%m-%dT%H:%M:%SZ"`), `discovered_date` (date-only), `discovered_by: scope-epic`, `relates_to: []`.
-   - An EPIC may optionally declare a `base_branch:` (alias `target_branch:`) frontmatter field to fork its integration branch from a ref other than the global `parallel.base_branch`; `ll-sprint` dispatch validates it and hard-stops if the declared base does not exist (FEAT-2652). Omit it unless a non-default base is needed.
-   - `## Summary`: the EPIC summary from decomposition.
-   - `## Children`: placeholder section (will be populated in Phase 5).
-
-   The EPIC template includes: Summary, Motivation, Goal, Scope, Children, Success Metrics, Integration Map, Impact, Labels, Status.
-
-4. **Write the file:**
+2. **For each proposal in `LT_PROPOSALS` (in order)**, create a learning test sub-issue wired to
+   the EPIC — `--parent` writes `parent: EPIC_ID` and appends the EPIC's `## Children` bullet in
+   the same call:
    ```bash
-   Write to {{config.issues.base_dir}}/epics/[filename]
-   ```
+   ll-issues create --type ENH \
+     --title "Explore and prove [package] API behavior" \
+     --priority [EPIC_PRIORITY] --parent EPIC_ID --labels learning-tests \
+     --body-file - --stage --json <<'EOF'
+   Explore and prove `[package]` API behavior before implementing dependent epic children.
 
-5. **Append session log entry** to the EPIC file using the Bash tool:
+   Run `/ll:explore-api "[package]"` to build a proven record of this API surface.
+   EOF
+   ```
+   `create`'s frontmatter surface doesn't cover `learning_tests_required` — use `Edit` to add
+   `learning_tests_required: ["[package]"]` to the new file's frontmatter, then re-stage:
+   `git add "[lt_path]"`. Store `LT_IDS[package] = ENH_ID` for step 3.
+
+3. **For each selected implementation child (in order):**
    ```bash
-   ll-issues append-log <path-to-epic-file> /ll:scope-epic
+   ll-issues create --type [TYPE] --title "[child title]" --priority [priority] \
+     --parent EPIC_ID --body-file - --stage --json <<'EOF'
+   [child one-sentence summary]
+   EOF
    ```
-   If `ll-issues` is not available, fall back to manually appending with **exactly** this format (backticks required):
-   ```
-   - `/ll:scope-epic` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
-   ```
+   When `LT_IDS` is non-empty, use `Edit` to add `learning_tests_required: [<pkg1>, <pkg2>, ...]`
+   (all packages in `UNPROVEN_PACKAGES`) and `depends_on: [ENH-NNN, ...]` (all learning test IDs
+   from `LT_IDS`) to the child's frontmatter, then re-stage: `git add "[child_path]"`.
 
-> **Duplicate-ID recovery**: If the PostToolUse hook reports the file was deleted (duplicate integer ID), call `ll-issues next-id` again, generate a new filename, and retry.
+#### Step 3: Append session log entries
 
-#### Step 2a: Write learning test sub-issues (when LT_PROPOSALS is non-empty)
+For the EPIC and every created child (learning test sub-issues and implementation children
+alike):
 
-**Skip if `LT_PROPOSALS` is empty.**
+```bash
+ll-issues append-log <path-to-file> /ll:scope-epic
+```
 
-For each proposal in `LT_PROPOSALS` (in order), write a learning test sub-issue **before** writing implementation children, so their IDs are known for `depends_on` wiring:
+If `ll-issues` is not available, fall back to manually appending with **exactly** this format
+(backticks required):
+```
+- `/ll:scope-epic` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
+```
 
-1. **Get next ID:**
-   ```bash
-   ll-issues next-id
-   ```
-   Store as `LT_NNN` → e.g., `073` → `ENH-073`.
+#### Step 4: Re-stage after the session-log append
 
-2. **Generate filename**: `P[EPIC_PRIORITY]-ENH-[NNN]-explore-and-prove-[slugified-package]-api-behavior.md`
+`--stage` staged each file as it was created, but the Step 3 append-log edits land afterwards.
+Re-stage every created path so the staged content matches the final file:
 
-3. **Build content** using the minimal ENH template:
-   - Frontmatter must include: `id: ENH-NNN`, `type: ENH`, `priority: [EPIC_PRIORITY]`, `status: open`, `captured_at` (ISO 8601 UTC), `discovered_date` (date-only), `discovered_by: scope-epic`, `parent: EPIC-NNN`, `learning_tests_required: ["<package>"]` (the single package this issue proves), `labels: learning-tests`.
-   - `## Summary`: `Explore and prove \`<package>\` API behavior before implementing dependent epic children.`
-   - `## Implementation`: `Run \`/ll:explore-api "<package>"\` to build a proven record of this API surface.`
-
-4. **Write the file** to `{{config.issues.base_dir}}/enhancements/`.
-
-5. **Append session log entry** to the file (same pattern as EPIC).
-
-6. **Store mapping**: `LT_IDS[package] = ENH-NNN` for use in implementation child wiring below.
-
-> **Duplicate-ID recovery**: Re-allocate and retry on ID collision.
-
-#### Step 2b: Write each implementation child file
-
-For each selected **implementation** child in order (the children from Phase 2, not learning test proposals):
-
-1. **Get next ID:**
-   ```bash
-   ll-issues next-id
-   ```
-   Store as `CHILD_NNN` → e.g., `072` with type `FEAT` → `FEAT-072`.
-
-2. **Generate filename**: `P[priority]-[TYPE]-[NNN]-[slugified-title].md`
-
-3. **Build child content** using the minimal template:
-   - Run `ll-issues sections {type}` for the child's type.
-   - Use `variant="minimal"` with `assemble_issue_markdown()`.
-   - Frontmatter must include: `id: TYPE-NNN`, `type: [TYPE]`, `priority: [priority]`, `status: open`, `captured_at` (ISO 8601 UTC), `discovered_date` (date-only), `discovered_by: scope-epic`, `parent: EPIC-NNN`.
-   - When `LT_IDS` is non-empty, also include:
-     - `learning_tests_required: [<pkg1>, <pkg2>, ...]` — all packages in `UNPROVEN_PACKAGES`
-     - `depends_on: [ENH-NNN, ...]` — all learning test sub-issue IDs from `LT_IDS`
-   - `## Summary`: the child's one-sentence summary.
-
-4. **Write the file** to the appropriate type directory.
-
-5. **Append session log entry** to the child file (same pattern as EPIC).
-
-6. **Store child info** for Phase 5 wiring: `{id, title, type, priority, summary}`.
-
-> **Duplicate-ID recovery**: Same as above — re-allocate and retry.
+```bash
+git add "{{config.issues.base_dir}}/epics/[epic_filename]"
+git add "{{config.issues.base_dir}}/enhancements/[lt_filename]"  # repeat for each learning test sub-issue
+git add "{{config.issues.base_dir}}/[category]/[child_filename]"  # repeat for each implementation child
+```
 
 ---
 
-### Phase 5: Wire EPIC ↔ Children
+### Phase 5: Post-write Consistency Check
 
-Include learning test sub-issues (from Step 2a) alongside implementation children in all wiring below. Learning test sub-issues are full children of the EPIC and appear in the `## Children` section just like implementation children.
+`create`/`scaffold-epic` already guarantee `parent:` frontmatter and the EPIC's `## Children`
+bullet for every child (Phase 4) — no manual wiring step is needed. This phase only re-verifies
+after any Step 2 learning-test-path `Edit` (`learning_tests_required`/`depends_on` additions),
+since those touch frontmatter outside the atomic create call:
 
-For each child (learning test sub-issues first, then implementation children) that was successfully written:
-
-#### 5a: Append child to EPIC `## Children` section
-
-If the EPIC body already contains a `## Children` section (created from the template in Phase 4), append a new bullet using the canonical rendered shape:
-
-```markdown
-- **CHILD_ID** — [one-sentence child title] (open)
-```
-
-The trailing `(open)` reflects the child's current status at write time. The bullet format mirrors what `ll-issues epic-progress EPIC-NNN --format markdown` emits under `- **Children**` (single home for child membership in the rendered form per ENH-162 AC #2).
-
-Use `Edit` to append the bullet line after the last existing bullet in that section.
-
-If no `## Children` section exists (should not happen with the full EPIC template, but handle defensively), insert one before `## Status`:
-
-```markdown
-## Children
-
-- **CHILD_ID** — [one-sentence child title] (open)
-```
-
-#### 5b: Verify `parent:` and post-write consistency
-
-Each child was written with `parent: EPIC-NNN` in its frontmatter during Phase 4. If any child is missing this field (e.g., due to a template issue), add it via `Edit`: insert `parent: EPIC-NNN` before the closing `---` of the child's frontmatter block.
-
-After verifying `parent:`, also confirm the child ID appears exactly once in the EPIC's `## Children` section. If either check fails, emit a non-blocking warning (do not halt):
+For each child written via the learning-test path, confirm `parent:` and the child ID's presence
+in the EPIC's `## Children` section are both still intact after the `Edit`. If either check
+fails, emit a non-blocking warning (do not halt):
 
 ```
 ⚠ Post-write consistency check failed for CHILD_ID: parent: missing or child absent from ## Children
@@ -425,19 +398,7 @@ This inline validation substitutes for `ll-issues epic-consistency` until FEAT-2
 
 ---
 
-### Phase 6: Git Stage
-
-Stage the EPIC file, all learning test sub-issue files, and all implementation child files:
-
-```bash
-git add "{{config.issues.base_dir}}/epics/[epic_filename]"
-git add "{{config.issues.base_dir}}/enhancements/[lt_filename]"  # repeat for each learning test sub-issue
-git add "{{config.issues.base_dir}}/[category]/[child_filename]"  # repeat for each implementation child
-```
-
----
-
-### Phase 7: Output Report
+### Phase 6: Output Report
 
 ```
 ================================================================================

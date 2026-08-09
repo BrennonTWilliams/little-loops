@@ -70,10 +70,15 @@ class TestScopeEpicSkillExists:
             "Skill must reference ## Children section wiring"
         )
 
-    def test_ll_issues_next_id_referenced(self) -> None:
+    def test_ll_issues_scaffold_epic_referenced(self) -> None:
         content = SKILL_FILE.read_text()
-        assert "ll-issues next-id" in content or "next-id" in content, (
-            "Skill must reference ll-issues next-id for ID allocation"
+        # FEAT-2947: ID allocation is now atomic via `ll-issues create` /
+        # `ll-issues scaffold-epic`, not prose `next-id` calls.
+        assert "ll-issues scaffold-epic" in content, (
+            "Skill must reference ll-issues scaffold-epic for atomic EPIC+children creation"
+        )
+        assert "ll-issues create" in content, (
+            "Skill must reference ll-issues create for the learning-test sequential path"
         )
 
     def test_parent_frontmatter_referenced(self) -> None:
@@ -84,7 +89,11 @@ class TestScopeEpicSkillExists:
 
     def test_git_staging_referenced(self) -> None:
         content = SKILL_FILE.read_text()
-        assert "git add" in content, "Skill must reference git add for staging created files"
+        # FEAT-2947: staging is now the `--stage` flag on create/scaffold-epic
+        # (which runs `git add` internally) rather than a separate prose step.
+        assert "--stage" in content or "git add" in content, (
+            "Skill must reference --stage (or git add) for staging created files"
+        )
 
     def test_from_doc_flag_referenced(self) -> None:
         content = SKILL_FILE.read_text()

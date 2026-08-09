@@ -3,7 +3,7 @@ id: FEAT-2947
 title: 'll-issues create and scaffold-epic: atomic issue/epic creation'
 type: FEAT
 priority: P2
-status: open
+status: done
 discovered_by: skill-audit
 discovered_date: 2026-07-31
 parent: EPIC-2938
@@ -21,6 +21,7 @@ score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
 size: Large
+completed_at: '2026-08-09T22:27:05Z'
 ---
 
 # FEAT-2947: `ll-issues create` + `scaffold-epic` — atomic issue/epic creation

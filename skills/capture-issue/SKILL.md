@@ -219,51 +219,33 @@ Proceed directly to issue creation without user confirmation.
 
 #### Action: Create New Issue
 
-1. **Get next globally unique issue number:**
+1. **Determine template style:**
 
-   ```bash
-   ll-issues next-id
+   ```
+   IF QUICK_MODE is true:
+     TEMPLATE_STYLE = "minimal"
+   ELSE IF config.issues.capture_template is set:
+     TEMPLATE_STYLE = {{config.issues.capture_template}}
+   ELSE:
+     TEMPLATE_STYLE = "full"
    ```
 
-   This prints the next available issue number as 3 digits (e.g., 071).
-
-2. **Determine target directory based on type:**
-   - BUG -> `{{config.issues.base_dir}}/bugs/`
-   - FEAT -> `{{config.issues.base_dir}}/features/`
-   - ENH -> `{{config.issues.base_dir}}/enhancements/`
-   - EPIC -> `{{config.issues.base_dir}}/epics/`
-
-3. **Generate filename:**
-   - Slugify the title: lowercase, replace spaces/special chars with hyphens
-   - Format: `P[priority]-[TYPE]-[NNN]-[slug].md`
-   - Example: `P3-BUG-071-login-button-unresponsive.md`
-
-4. **Create issue file:**
-
-**Determine template style:**
-
-```
-IF QUICK_MODE is true:
-  TEMPLATE_STYLE = "minimal"
-ELSE IF config.issues.capture_template is set:
-  TEMPLATE_STYLE = {{config.issues.capture_template}}
-ELSE:
-  TEMPLATE_STYLE = "full"
-```
-
-**Build issue from shared template:**
-
-1. Run `ll-issues sections {type}` to get the per-type template where `{type}` is `bug`, `feat`, `enh`, or `epic` based on the issue type (v2.0 - optimized for AI implementation)
-2. Look up `creation_variants.[TEMPLATE_STYLE]` to determine which sections to include
-3. For each section name in `include_common`, use `common_sections.[name].creation_template` as placeholder content
-4. If `include_type_sections` is true, also include sections from `type_sections` that have a `creation_template`
-5. Always include YAML frontmatter with `captured_at` (ISO 8601 UTC timestamp, e.g. `"2026-04-18T14:32:07Z"` — use shell `date -u +"%Y-%m-%dT%H:%M:%SZ"` format), `discovered_date` (date-only, same day), and `discovered_by: capture-issue`. If `PARENT_ID` is set, also include `parent: [PARENT_ID]` in the frontmatter.
-6. **Infer `testable: false`** — after building the frontmatter, scan the issue title and description for doc-only signal keywords:
+2. **Infer `testable: false`** — scan the issue title and description for doc-only signal keywords before creating the file:
    - **Signal keywords**: "doc", "docs", "documentation", "broken link", "broken anchor", "readme", "changelog", "spelling", "typo", "guide", "fix link"
    - **Threshold**: 2+ keyword matches (case-insensitive) in the combined title + description text
-   - If threshold met: add `testable: false` to frontmatter and log `ℹ️ Set testable: false (inferred: documentation-only issue)`
-   - If threshold not met: omit `testable` from frontmatter (absence means testable)
-   - This field is never added when < 2 signals match, to avoid false positives on issues that merely mention a guide or doc in passing
+   - If threshold met: after `ll-issues create` writes the file (step 3), use `Edit` to add `testable: false` to its frontmatter and log `ℹ️ Set testable: false (inferred: documentation-only issue)`
+   - If threshold not met: leave `testable` unset (absence means testable)
+
+3. **Create the issue file atomically** (FEAT-2947 — this single call replaces the old next-id/sections/slugify/Write dance, and wires `parent:` both directions when `PARENT_ID` is set):
+
+   ```bash
+   ll-issues create --type "$ISSUE_TYPE" --title "$ISSUE_TITLE" \
+     --priority "$PRIORITY" --variant "$TEMPLATE_STYLE" \
+     --body-file - --json \
+     ${PARENT_ID:+--parent "$PARENT_ID"} <<< "$ISSUE_SUMMARY"
+   ```
+
+   Parse the JSON result for `{"id": ..., "path": ...}`. Note `--stage` is deliberately **not** passed here: later steps still mutate the file (the `testable: false` edit of step 2, the session-log append of step 4), so staging happens once at step 5 after those edits.
 
 **New sections in v2.0** (auto-included based on template variant):
 - **Motivation**: Why this matters (replaces Current Pain Point for ENH)
@@ -274,7 +256,7 @@ ELSE:
 
 See [templates.md](templates.md) for the complete issue file template structure.
 
-5. **Append session log entry** to the newly created issue file. Use the Bash tool:
+4. **Append session log entry** to the newly created issue file. Use the Bash tool:
 
 ```bash
 ll-issues append-log <path-to-issue-file> /ll:capture-issue
@@ -301,12 +283,18 @@ If `ll-issues` is not available, fall back to manually appending with **exactly*
    fi
    ```
 
-6. **Stage the new file:**
+5. **Stage the new file** (last, so every edit above is included in the staged content):
+
 ```bash
 git add "{{config.issues.base_dir}}/[category]/[filename]"
 ```
 
-> **Duplicate-ID recovery**: If the PostToolUse hook reports that the just-written file was deleted (duplicate integer ID detected), the `Write` call will have returned success but the file no longer exists. Re-allocate a fresh ID by calling `ll-issues next-id` again, generate a new filename with the new number, and repeat from step 3. Do not reuse the original ID.
+   If `PARENT_ID` was set, also stage the parent EPIC — `ll-issues create --parent` appended its
+   `## Children` bullet but, without `--stage`, left it unstaged:
+
+```bash
+git add "PARENT_EPIC_PATH"
+```
 
 ### Phase 4b: Link Relevant Documents (if documents.enabled)
 
@@ -321,6 +309,11 @@ See [templates.md](templates.md) for the complete document linking process inclu
 - OR no documents are configured in `documents.categories`
 
 ### Phase 4c: Wire Parent EPIC (if `--parent` was given)
+
+**Skip this phase for the Create New Issue action** — `ll-issues create --parent` (Phase 4,
+step 3) already writes `parent:` on the child and appends its `## Children` bullet on the EPIC,
+both staged together (FEAT-2947). This phase applies only when reopening/updating an existing
+issue under `PARENT_ID` outside the `create` path.
 
 **Skip this phase if `PARENT_ID` is empty.**
 

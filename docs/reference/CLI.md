@@ -1563,6 +1563,61 @@ ll-issues sec enh                     # Alias: sec
 ll-issues sections epic --path        # Resolved path to epic-sections.json
 ```
 
+---
+
+#### `ll-issues create`
+
+Atomically allocate a globally unique ID and write a new issue file (FEAT-2947). Replaces the
+prose ID-allocation / slugify / template-assembly dance previously restated in every
+issue-creating skill (`capture-issue`, `scope-epic`): under a single file lock, allocates the
+next issue number (retrying on a filesystem collision), slugs the title, selects the type
+directory from config, and writes frontmatter + template body. If `--parent` is given, writes
+`parent:` in the new issue's frontmatter and — if the parent has a `## Children` section (EPICs
+only) — appends a wired bullet there too.
+
+| Argument/Flag | Default | Description |
+|---------------|---------|--------------|
+| `--type` / `-T` | *(required)* | `BUG`, `FEAT`, `ENH`, or `EPIC` |
+| `--title` | *(required)* | Issue title |
+| `--priority` / `-p` | `P2` | `P0`-`P5` |
+| `--body-file PATH\|-` | — | File (or `-` for stdin) whose contents become the `## Summary` body |
+| `--parent EPIC-N` | — | Parent to wire both directions |
+| `--labels a,b` | — | Comma-separated labels |
+| `--variant` | `minimal` | Template variant: `minimal`, `full`, or `legacy` |
+| `--stage` | `false` | `git add` the created file (and any rewired parent) |
+| `--json` / `-j` | `false` | Print `{"id", "path"}` instead of `ID PATH` |
+
+**Examples:**
+```bash
+ll-issues create --type BUG --title "Login button unresponsive" --stage --json
+ll-issues create --type FEAT --title "Add X" --parent EPIC-071 --body-file - --json
+```
+
+---
+
+#### `ll-issues scaffold-epic`
+
+Compose `create` into an atomic EPIC + pre-wired child stubs (FEAT-2947). Assembles every file's
+content in memory first, then writes them all; on any failure, unlinks every path this call
+created and re-raises — every file it touches is one it just created, so this is a complete
+undo, not transactional rollback machinery.
+
+| Argument/Flag | Default | Description |
+|---------------|---------|--------------|
+| `--title` | *(required)* | EPIC title |
+| `--children` | *(required)* | JSON array of `{type,title,priority,summary}` objects, or `@file` (or `@-` for stdin) |
+| `--priority` / `-p` | `P2` | EPIC priority |
+| `--stage` | `false` | `git add` every created file in one call on success |
+| `--json` / `-j` | `false` | Print `{"epic": {...}, "children": [...]}` instead of text |
+
+**Examples:**
+```bash
+ll-issues scaffold-epic --title "Ship X" --children '[{"type":"FEAT","title":"Do A","priority":"P2"}]' --json
+ll-issues scaffold-epic --title "Ship X" --children @children.json --stage
+```
+
+---
+
 **Examples:**
 ```bash
 ll-issues next-id
@@ -2136,8 +2191,8 @@ ll-issues size --sprint my-sprint --write  # score + stamp size: for a sprint's 
 ```
 
 **Scope note**: this CLI covers Phases 1-3 only (scoring + frontmatter write-back). Phase 6's
-child-issue creation mechanics (ID/filename templating) remain in the skill pending
-`ll-issues create` (FEAT-2947) — deliberately left unconverted rather than half-migrated.
+child-issue creation mechanics now go through `ll-issues create` / `ll-issues scaffold-epic`
+(FEAT-2947) rather than restating ID/filename templating in the skill.
 
 ---
 

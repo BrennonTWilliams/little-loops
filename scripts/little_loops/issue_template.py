@@ -107,6 +107,49 @@ def assemble_issue_markdown(
     Returns:
         Complete markdown string with frontmatter, heading, and sections.
     """
+    body = assemble_issue_body(sections_data, issue_type, variant, issue_id, title, content)
+
+    parts: list[str] = []
+
+    # YAML frontmatter
+    parts.append("---")
+    for key, value in frontmatter.items():
+        parts.append(f"{key}: {value}")
+    parts.append("---")
+    parts.append("")
+    parts.append(body)
+
+    return "\n".join(parts)
+
+
+def assemble_issue_body(
+    sections_data: dict[str, Any],
+    issue_type: str,
+    variant: str,
+    issue_id: str,
+    title: str,
+    content: dict[str, str] | None = None,
+) -> str:
+    """Assemble the heading + sections body, without a frontmatter block.
+
+    Extracted from :func:`assemble_issue_markdown` (FEAT-2947) so callers that
+    build frontmatter via :func:`little_loops.frontmatter.update_frontmatter`
+    (which YAML-serializes correctly, unlike this module's hand-built
+    ``key: value`` loop) can compose it with a correctly-serialized
+    frontmatter block instead.
+
+    Args:
+        sections_data: Parsed per-type sections data.
+        issue_type: Issue type prefix (BUG, FEAT, ENH, EPIC).
+        variant: Creation variant name (full, minimal, legacy).
+        issue_id: Issue identifier (e.g. "ENH-517").
+        title: Issue title text.
+        content: Optional mapping of section name to content string.
+            Sections not in this dict get their creation_template placeholder.
+
+    Returns:
+        Markdown string with the title heading and sections, no frontmatter.
+    """
     content = content or {}
     variant_config = sections_data.get("creation_variants", {}).get(variant)
     if variant_config is None:
@@ -119,13 +162,6 @@ def assemble_issue_markdown(
     include_type = variant_config.get("include_type_sections", False)
 
     parts: list[str] = []
-
-    # YAML frontmatter
-    parts.append("---")
-    for key, value in frontmatter.items():
-        parts.append(f"{key}: {value}")
-    parts.append("---")
-    parts.append("")
 
     # Title heading
     parts.append(f"# {issue_id}: {title}")

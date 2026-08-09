@@ -39,6 +39,7 @@ def main_issues() -> int:
         )
         from little_loops.cli.issues.clusters import cmd_clusters
         from little_loops.cli.issues.count_cmd import cmd_count
+        from little_loops.cli.issues.create import add_create_parser, cmd_create
         from little_loops.cli.issues.decisions import (
             add_decisions_parser,
             cmd_decisions,
@@ -92,6 +93,10 @@ def main_issues() -> int:
             add_research_triage_parser,
             cmd_research_triage,
         )
+        from little_loops.cli.issues.scaffold_epic import (
+            add_scaffold_epic_parser,
+            cmd_scaffold_epic,
+        )
         from little_loops.cli.issues.search import cmd_search
         from little_loops.cli.issues.sequence import cmd_sequence
         from little_loops.cli.issues.set_flags import add_set_flags_parser, cmd_set_flags
@@ -110,6 +115,8 @@ def main_issues() -> int:
             epilog="""
 Sub-commands:
   next-id        Print next globally unique issue number
+  create         Atomically allocate an ID and write a new issue file
+  scaffold-epic  Create an EPIC and pre-wired child stubs atomically
   list           List active issues with optional filters
   search         Search issues with filters and sorting
   count          Count active issues (total or filtered)
@@ -202,6 +209,10 @@ Examples:
   %(prog)s prioritize --check
   %(prog)s prioritize --apply -
   %(prog)s research-triage ENH-2971 --json
+  %(prog)s create --type BUG --title "Login button unresponsive" --stage --json
+  %(prog)s create --type FEAT --title "Add X" --parent EPIC-071 --body-file - --json
+  %(prog)s scaffold-epic --title "Ship X" --children '[{"type":"FEAT","title":"Do A","priority":"P2"}]' --json
+  %(prog)s scaffold-epic --title "Ship X" --children @children.json --stage
 """,
         )
 
@@ -957,6 +968,8 @@ Examples:
         add_prioritize_parser(subs)
         add_research_triage_parser(subs)
         add_fold_findings_parser(subs)
+        add_create_parser(subs)
+        add_scaffold_epic_parser(subs)
 
         args = parser.parse_args()
 
@@ -1055,6 +1068,10 @@ Examples:
             return cmd_fold_findings(config, args)
         if args.command == "finalize-decomposition":
             return cmd_finalize_decomposition(config, args)
+        if args.command == "create":
+            return cmd_create(config, args)
+        if args.command == "scaffold-epic":
+            return cmd_scaffold_epic(config, args)
         if args.command == "sections":
             from little_loops.cli.issues.sections import cmd_sections
 
