@@ -1,0 +1,12 @@
+{
+  "id": "d3d856a6-3655-46ed-ab01-e31ed493a7c9",
+  "type": "decision",
+  "timestamp": "2026-08-09T10:04:24Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses existing plugin_root/config_dir -> meta[output_dir] threading with zero HostCapabilityEntry schema changes; no emitter in the codebase reads HostCapabilityEntry fields directly (all read meta), so Option B's bypass field has no precedent. Scored 10/12 vs Option B's 6/12.",
+  "rule": "Option A - config_dir=\".\" reusing meta[output_dir] threading",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: new mcp_config_path field on HostCapabilityEntry read directly by the emitter, bypassing meta[output_dir]",
+  "issue": "FEAT-3139"
+}

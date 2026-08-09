@@ -8,6 +8,12 @@ discovered_date: '2026-08-09'
 labels:
 - multi-host
 - mcp
+relates_to:
+- FEAT-3133
+- FEAT-3134
+- FEAT-3135
+- FEAT-3136
+- FEAT-3137
 ---
 
 ## Summary
