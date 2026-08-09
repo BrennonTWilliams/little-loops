@@ -16,6 +16,7 @@ from little_loops.adapters.core import (
     _read_frontmatter,
     process_agents,
     process_commands,
+    process_mcp_config,
     process_skills,
     resolve_emitter,
 )
@@ -179,6 +180,7 @@ class _MockEmitter:
         self.skill_calls: list[dict] = []
         self.command_calls: list[dict] = []
         self.agent_calls: list[dict] = []
+        self.mcp_config_calls: list[dict] = []
         self._return_value = return_value
 
     def emit_skill(self, meta: dict) -> str:
@@ -191,6 +193,10 @@ class _MockEmitter:
 
     def emit_agent(self, meta: dict) -> str:
         self.agent_calls.append(meta)
+        return self._return_value
+
+    def emit_mcp_config(self, meta: dict) -> str:
+        self.mcp_config_calls.append(meta)
         return self._return_value
 
 
@@ -330,6 +336,45 @@ class TestProcessAgentsTraversal:
         )
         assert errors == 1
         assert adapted == 0
+
+
+# =============================================================================
+# process_mcp_config traversal
+# =============================================================================
+
+
+class TestProcessMcpConfigTraversal:
+    def test_calls_emitter_once(self, tmp_path: Path) -> None:
+        emitter = _MockEmitter()
+        process_mcp_config(emitter, tmp_path / ".codex", False, True)
+        assert len(emitter.mcp_config_calls) == 1
+
+    def test_meta_has_required_keys(self, tmp_path: Path) -> None:
+        emitter = _MockEmitter()
+        process_mcp_config(emitter, tmp_path / ".codex", True, True)
+        meta = emitter.mcp_config_calls[0]
+        for key in ("output_dir", "apply", "quiet"):
+            assert key in meta
+
+    def test_adapter_error_from_emit_mcp_config_counted_as_error(self, tmp_path: Path) -> None:
+        class _RaisingEmitter(_MockEmitter):
+            def emit_mcp_config(self, meta: dict) -> str:
+                raise AdapterError("preview feature")
+
+        emitter = _RaisingEmitter()
+        adapted, skipped, errors = process_mcp_config(emitter, tmp_path / ".codex", False, True)
+        assert (adapted, skipped, errors) == (0, 0, 1)
+
+    def test_apply_and_dry_run_passthrough(self, tmp_path: Path) -> None:
+        emitter = _MockEmitter()
+        process_mcp_config(emitter, tmp_path / ".codex", True, False)
+        assert emitter.mcp_config_calls[0]["apply"] is True
+        assert emitter.mcp_config_calls[0]["quiet"] is False
+
+    def test_buckets_result_string(self, tmp_path: Path) -> None:
+        emitter = _MockEmitter(return_value="skipped")
+        adapted, skipped, errors = process_mcp_config(emitter, tmp_path / ".codex", False, True)
+        assert (adapted, skipped, errors) == (0, 1, 0)
 
 
 # =============================================================================
@@ -600,6 +645,66 @@ class TestCodexEmitterEmitAgent:
         meta = self._meta(tmp_path, "plain", tools=["Read", "WebSearch"])
         CodexEmitter().emit_agent(meta)
         assert "mcp_servers" not in (meta["output_dir"] / "plain.toml").read_text()
+
+
+# =============================================================================
+# CodexEmitter.emit_mcp_config
+# =============================================================================
+
+
+class TestCodexEmitterEmitMcpConfig:
+    def _meta(self, tmp_path: Path, apply: bool = True) -> dict:
+        return {
+            "output_dir": tmp_path / ".codex",
+            "apply": apply,
+            "quiet": True,
+        }
+
+    def test_creates_toml_file(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path)
+        CodexEmitter().emit_mcp_config(meta)
+        assert (meta["output_dir"] / "ll-mcp.toml").exists()
+
+    def test_toml_starts_with_marker(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path)
+        CodexEmitter().emit_mcp_config(meta)
+        assert (meta["output_dir"] / "ll-mcp.toml").read_text().startswith(_MARKER)
+
+    def test_toml_references_ll_mcp(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path)
+        CodexEmitter().emit_mcp_config(meta)
+        content = (meta["output_dir"] / "ll-mcp.toml").read_text()
+        assert 'mcp_servers = ["ll-mcp"]' in content
+
+    def test_dry_run_does_not_write(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, apply=False)
+        CodexEmitter().emit_mcp_config(meta)
+        assert not (meta["output_dir"] / "ll-mcp.toml").exists()
+
+    def test_returns_adapted_on_first_run(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path)
+        assert CodexEmitter().emit_mcp_config(meta) == "adapted"
+
+    def test_user_authored_file_not_overwritten(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path)
+        out_toml = meta["output_dir"] / "ll-mcp.toml"
+        out_toml.parent.mkdir(parents=True, exist_ok=True)
+        user_content = "# user authored\nmcp_servers = []\n"
+        out_toml.write_text(user_content)
+        assert CodexEmitter().emit_mcp_config(meta) == "skipped"
+        assert out_toml.read_text() == user_content
+
+    def test_up_to_date_returns_skipped(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path)
+        CodexEmitter().emit_mcp_config(meta)
+        assert CodexEmitter().emit_mcp_config(meta) == "skipped"
+
+    def test_idempotent(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path)
+        CodexEmitter().emit_mcp_config(meta)
+        content1 = (meta["output_dir"] / "ll-mcp.toml").read_text()
+        CodexEmitter().emit_mcp_config(meta)
+        assert (meta["output_dir"] / "ll-mcp.toml").read_text() == content1
 
 
 # =============================================================================
@@ -884,6 +989,12 @@ class TestResolveEmitterGemini:
 
     def test_gemini_emitter_satisfies_protocol(self) -> None:
         assert isinstance(resolve_emitter("gemini"), HostEmitter)
+
+
+class TestGeminiEmitterEmitMcpConfig:
+    def test_returns_skipped(self, tmp_path: Path) -> None:
+        meta = {"output_dir": tmp_path / ".gemini", "apply": True, "quiet": True}
+        assert GeminiEmitter().emit_mcp_config(meta) == "skipped"
 
 
 # =============================================================================
@@ -1307,6 +1418,12 @@ class TestResolveEmitterKimi:
         assert "degraded mode" not in (out_dir / "agent-a.md").read_text()
 
 
+class TestKimiEmitterEmitMcpConfig:
+    def test_returns_skipped(self, tmp_path: Path) -> None:
+        meta = {"output_dir": tmp_path / ".kimi-code", "apply": True, "quiet": True}
+        assert KimiEmitter().emit_mcp_config(meta) == "skipped"
+
+
 # =============================================================================
 # OmpEmitter.emit_agent (FEAT-3104): native, mirrors KimiEmitter.emit_agent
 # =============================================================================
@@ -1514,3 +1631,9 @@ class TestResolveEmitterOmp:
         )
         assert (adapted, skipped, errors) == (1, 0, 0)
         assert "degraded mode" not in (out_dir / "agent-a.md").read_text()
+
+
+class TestOmpEmitterEmitMcpConfig:
+    def test_returns_skipped(self, tmp_path: Path) -> None:
+        meta = {"output_dir": tmp_path / ".omp", "apply": True, "quiet": True}
+        assert OmpEmitter().emit_mcp_config(meta) == "skipped"

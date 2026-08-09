@@ -40,6 +40,7 @@ class HostEmitter(Protocol):
     def emit_skill(self, skill_meta: dict) -> str: ...
     def emit_command(self, cmd_meta: dict) -> str: ...
     def emit_agent(self, agent_meta: dict) -> str: ...
+    def emit_mcp_config(self, meta: dict) -> str: ...
 
 
 # Lazy-import registry: host name → (module_path, class_name).
@@ -482,3 +483,43 @@ def process_agents(
             errors += 1
 
     return adapted, skipped, errors
+
+
+def process_mcp_config(
+    emitter: HostEmitter,
+    output_dir: Path,
+    apply: bool,
+    quiet: bool,
+) -> tuple[int, int, int]:
+    """Call ``emitter.emit_mcp_config`` once to register the ``ll-mcp`` server.
+
+    Unlike ``process_skills``/``process_commands``/``process_agents``, there is
+    no per-source-file glob to traverse — MCP config emission produces a
+    single artifact per host.
+
+    Args:
+        output_dir: Host-specific destination for the emitted MCP config
+            artefact (e.g. ``.codex/`` for Codex).
+
+    Returns:
+        ``(adapted, skipped, errors)`` counts (each 0 or 1).
+    """
+    meta = {
+        "output_dir": output_dir,
+        "apply": apply,
+        "quiet": quiet,
+    }
+
+    try:
+        result = emitter.emit_mcp_config(meta)
+    except AdapterError as exc:
+        if not quiet:
+            print(f"  ERROR  mcp-config: {exc}", file=sys.stderr)
+        return 0, 0, 1
+
+    if result == "adapted":
+        return 1, 0, 0
+    elif result == "skipped":
+        return 0, 1, 0
+    else:
+        return 0, 0, 1

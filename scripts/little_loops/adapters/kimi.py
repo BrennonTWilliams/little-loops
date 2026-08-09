@@ -156,3 +156,7 @@ class KimiEmitter:
                 print(f"  DRY    {agent_name}: native agent file")
 
         return "adapted"
+
+    def emit_mcp_config(self, meta: dict) -> str:
+        """No native MCP config emission for kimi-code yet; stub keeps ``HostEmitter`` satisfiable."""
+        return "skipped"

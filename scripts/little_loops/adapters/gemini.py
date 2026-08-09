@@ -155,3 +155,7 @@ class GeminiEmitter:
         emitting a native format. See :func:`little_loops.adapters.core._emit_degraded_agent`.
         """
         return _emit_degraded_agent(agent_meta)
+
+    def emit_mcp_config(self, meta: dict) -> str:
+        """No native MCP config emission for Gemini yet; stub keeps ``HostEmitter`` satisfiable."""
+        return "skipped"

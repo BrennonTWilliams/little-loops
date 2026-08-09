@@ -4,7 +4,7 @@ Provides command-line interfaces for automated issue management:
 - ll-harness: One-shot runner evaluation (skill, cmd, mcp, prompt, dsl) with exit-code and semantic criteria
 - ll-action: Invoke ll skills as one-shot commands with JSON-structured output
 - ll-artifact: Generate self-contained human-facing HTML artifacts (policy-builder: file://-safe policy-router/rubric loop builder)
-- ll-adapt: Unified host-parameterized skill/command/agent adapter (--host codex|omp|...)
+- ll-adapt: Unified host-parameterized skill/command/agent/mcp-config adapter (--host codex|omp|...)
 - ll-adapt-agents-for-codex: Add Codex subagent TOML files to .codex/agents/ (alias for ll-adapt --host codex)
 - ll-adapt-skills-for-codex: Add Codex Skills API frontmatter to ll skill SKILL.md files (alias for ll-adapt --host codex)
 - ll-auto: Process all backlog issues sequentially in priority order

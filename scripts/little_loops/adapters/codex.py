@@ -371,3 +371,34 @@ class CodexEmitter:
                 print(f"  DRY    {agent_name}: {short_desc[:50]}")
 
         return "adapted"
+
+    def emit_mcp_config(self, meta: dict) -> str:
+        """Emit ``<output_dir>/ll-mcp.toml`` registering the ``ll-mcp`` server."""
+        output_dir: Path = meta["output_dir"]
+        apply: bool = meta["apply"]
+        quiet: bool = meta["quiet"]
+
+        new_content = f'{_MARKER}\nmcp_servers = ["ll-mcp"]\n'
+        out_toml = output_dir / "ll-mcp.toml"
+
+        if out_toml.exists():
+            existing = out_toml.read_text()
+            if not any(existing.startswith(m) for m in _LL_GENERATED_MARKERS):
+                if not quiet:
+                    print("  SKIP   mcp-config: user-authored file (no marker)")
+                return "skipped"
+            if existing == new_content:
+                if not quiet:
+                    print("  SKIP   mcp-config: already up to date")
+                return "skipped"
+
+        if apply:
+            output_dir.mkdir(parents=True, exist_ok=True)
+            out_toml.write_text(new_content)
+            if not quiet:
+                print("  APPLY  mcp-config: ll-mcp")
+        else:
+            if not quiet:
+                print("  DRY    mcp-config: ll-mcp")
+
+        return "adapted"

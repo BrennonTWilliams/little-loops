@@ -14,6 +14,7 @@ from little_loops.adapters.core import (
     AdapterError,
     process_agents,
     process_commands,
+    process_mcp_config,
     process_skills,
     resolve_emitter,
 )
@@ -117,14 +118,15 @@ Examples:
         total_skipped += c_skipped
         total_errors += c_errors
 
+        # Output dir is host-parameterized via the capability map's
+        # config_dir (e.g. ".codex" -> .codex/agents/, ".gemini" ->
+        # .gemini/agents/); falls back to ".codex" for an unregistered
+        # host so existing behaviour is unchanged.
+        capability_entry = HOST_CAPABILITIES.get(args.host)
+        config_dir = (capability_entry.config_dir if capability_entry else None) or ".codex"
+
         # Agents
         if agents_dir.exists():
-            # Output dir is host-parameterized via the capability map's
-            # config_dir (e.g. ".codex" -> .codex/agents/, ".gemini" ->
-            # .gemini/agents/); falls back to ".codex" for an unregistered
-            # host so existing behaviour is unchanged.
-            capability_entry = HOST_CAPABILITIES.get(args.host)
-            config_dir = (capability_entry.config_dir if capability_entry else None) or ".codex"
             agent_output_dir = plugin_root / config_dir / "agents"
             a_adapted, a_skipped, a_errors = process_agents(
                 emitter, agents_dir, agent_output_dir, apply, args.quiet, args.only
@@ -132,6 +134,15 @@ Examples:
             total_adapted += a_adapted
             total_skipped += a_skipped
             total_errors += a_errors
+
+        # MCP config
+        mcp_output_dir = plugin_root / config_dir
+        m_adapted, m_skipped, m_errors = process_mcp_config(
+            emitter, mcp_output_dir, apply, args.quiet
+        )
+        total_adapted += m_adapted
+        total_skipped += m_skipped
+        total_errors += m_errors
 
         print(f"\nDone: {total_adapted} adapted, {total_skipped} skipped, {total_errors} errors")
         return 0 if total_errors == 0 else 1

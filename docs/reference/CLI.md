@@ -4125,7 +4125,7 @@ ll-generate-skill-descriptions --quiet       # Suppress per-skill output
 
 ### ll-adapt
 
-Unified host-parameterized adapter. Dispatches to a host-specific emitter via `--host <host>` and generates all skill, command, and agent artefacts for that host in one pass.
+Unified host-parameterized adapter. Dispatches to a host-specific emitter via `--host <host>` and generates all skill, command, agent, and MCP config artefacts for that host in one pass. Codex additionally emits a TOML MCP config snippet (`.codex/ll-mcp.toml`) registering the `ll-mcp` server (FEAT-3138); other hosts skip this artefact until their own emitter is implemented.
 
 **Flags:**
 

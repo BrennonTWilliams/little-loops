@@ -9580,7 +9580,7 @@ class AdapterError(Exception): ...
 | `GeminiEmitter` | `"gemini"` | Implemented (FEAT-2392) — emits `.gemini/` skill/command/agent files |
 | `OmpEmitter` | `"omp"` | Implemented (FEAT-3104/FEAT-3105) — emits `.omp/skills/`, `.omp/commands/`, and `.omp/agents/` files |
 
-To add a host: create `scripts/little_loops/adapters/<host>.py` implementing `HostEmitter`, then register the class in `_EMITTER_REGISTRY` in `core.py`.
+To add a host: create `scripts/little_loops/adapters/<host>.py` implementing `HostEmitter`, then register the class in `_EMITTER_MAP` in `core.py`.
 
 ---
 

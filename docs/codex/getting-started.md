@@ -85,13 +85,13 @@ cp .ll/ll-config.json .codex/ll-config.json
 
 ## Skill and command discovery
 
-Run `ll-adapt --host codex --apply` once after install to bridge all little-loops skills, commands, and agent personas into Codex:
+Run `ll-adapt --host codex --apply` once after install to bridge all little-loops skills, commands, and agent personas into Codex, and to register the `ll-mcp` server:
 
 ```bash
 ll-adapt --host codex --apply
 ```
 
-After this step, typing `/ll:` in the Codex TUI will show the full list of available commands (e.g., `/ll:manage-issue`, `/ll:scan-codebase`, `/ll:prioritize-issues`). It also writes `.codex/agents/*.toml` so you can select ll agents via `--agent <name>` (e.g., `--agent codebase-analyzer`).
+After this step, typing `/ll:` in the Codex TUI will show the full list of available commands (e.g., `/ll:manage-issue`, `/ll:scan-codebase`, `/ll:prioritize-issues`). It also writes `.codex/agents/*.toml` so you can select ll agents via `--agent <name>` (e.g., `--agent codebase-analyzer`), and `.codex/ll-mcp.toml` registering the `ll-mcp` server.
 
 Re-run this command after upgrading little-loops or adding new skills/agents to pick up any changes.
 

@@ -143,3 +143,7 @@ class OmpEmitter:
                 print(f"  DRY    {agent_name}: native agent file")
 
         return "adapted"
+
+    def emit_mcp_config(self, meta: dict) -> str:
+        """No native MCP config emission for omp yet; stub keeps ``HostEmitter`` satisfiable."""
+        return "skipped"
