@@ -1,0 +1,157 @@
+---
+id: 3127
+title: 'll-mcp: MCP server as little-loops'' host-agnostic serving layer'
+type: EPIC
+priority: P3
+status: open
+discovered_date: '2026-08-09'
+labels:
+- multi-host
+- mcp
+---
+
+## Summary
+
+Ship `ll-mcp`, a stdio MCP server in the `scripts` package — a thin facade that
+imports the same `little_loops` library functions the CLIs use, never a second
+implementation. MCP's three primitives map almost one-to-one onto structure the
+project already has, so the server mostly formalizes it rather than inventing
+anything:
+
+| MCP primitive | little-loops equivalent |
+|---|---|
+| Tools | CLI commands (`ll-issues`, `ll-deps`, `ll-history`, …) |
+| Resources | Files (issue files, `ll-goals.md`, research reports, design docs) |
+| Prompts | Skills (`SKILL.md` — named, parameterized prompt templates) |
+
+`ll-mcp` becomes a new console entry point sibling to `ll-action`. No shelling
+out and no daemon: the host spawns it per session like any stdio server.
+`ll-adapt --host <x>` grows the ability to emit that host's MCP config snippet
+(`.mcp.json` for Claude Code, TOML for Codex), so per-host artefact generation
+shifts from "generate per-host skill/agent files" toward "register one server."
+
+This EPIC exists to keep the tiers landing in dependency order, to keep the
+server a facade over library code, and to hold the job-API tier behind an
+evidence gate.
+
+## The three surfaces
+
+### Tools ← CLIs
+
+**Anti-goal:** mirroring all ~40 `ll-issues` subcommands as ~40 tools — a
+context-budget disaster (`ll-ctx-stats` exists to catch exactly this). Instead a
+coarse surface of ~8–12 tools:
+
+- **Read-only:** `issues_query` (list / search / show / next-issue / sequence
+  behind one parameterized tool), `issue_get` (full body + sections),
+  `history_search`, `deps_check`, `capabilities` (the existing
+  `CapabilityReport`).
+- **Mutating:** `issue_capture`, `issue_set_status`, `issue_link`,
+  `issue_append_log`, `route`. Each returns the same JSON the CLI emits today;
+  the JSON Schemas from `ll-generate-schemas` become tool output schemas nearly
+  for free.
+
+**Not tools:** `ll-auto`, `ll-parallel`, `ll-loop`, `ll-action invoke` — anything
+that spawns an agent or runs for minutes. Orchestration stays on the CLI; if it
+is ever exposed, it belongs behind the job-API tier and its evidence gate.
+
+### Resources ← files
+
+Issue files, `ll-goals.md`, research reports, and design docs served as MCP
+resources under an `ll://` scheme (`ll://issues/FEAT-042`,
+`ll://docs/…`).
+
+### Prompts ← skills
+
+MCP prompts are named, parameterized prompt templates — exactly what a
+`SKILL.md` is. `ll-mcp` serves every skill as an MCP prompt mechanically (name,
+description, and args read from frontmatter). This is the biggest strategic
+payoff: skills become invocable from any MCP host with zero per-host adaptation,
+making `ll-adapt-skills-for-codex` largely obsolete rather than another artefact
+family to maintain.
+
+## Tiers and dependency ordering
+
+1. **Read-only serving.** Issue queries + resources + prompts-from-skills. No
+   write path. Proves the facade pattern and establishes the context-cost
+   profile.
+2. **Guarded mutations.** The write tools listed above, behind a dry-run-by-
+   default convention plus per-method transport policy.
+3. **Job API (evidence-gated).** Long-running orchestration, built only if real
+   usage of the first two tiers shows hosts wanting to *drive* runs rather than
+   plan them.
+
+The ordering is strict:
+
+- **Tier 1 blocks tier 2.** The mutation tools extend the tier-1 facade,
+  output-schema reuse, and resource surface; there is nothing to guard until the
+  read-only server exists and its context cost is measured.
+- **Tier 2 blocks tier 3, and tier 3 is additionally evidence-gated.** Until
+  that evidence exists, anything that spawns an agent or runs for minutes stays
+  off the tool surface by design.
+
+## Spec target: MCP 2026-07-28
+
+The design was drafted one day after the 2026-07-28 spec release — the largest
+protocol revision since launch. The core architecture is unchanged by it, and in
+several places is strengthened:
+
+- **Statelessness.** Per-instance state is explicit (handles passed in
+  arguments) rather than implicit (a session-id cookie). This reinforces the
+  facade-not-second-implementation argument.
+- **Mutation guarding gets a transport-layer hook.** Header-based routing via
+  `Mcp-Method` / `Mcp-Name` (SEP-2243) lets `ll-mcp` enforce per-method policy
+  *before* JSON-RPC body parsing. This pairs with the dry-run-by-default
+  convention rather than replacing it.
+- **The job tier should wrap the Tasks extension, not invent a protocol.** A
+  proposed `job_start` / `job_status` / `job_cancel` shape maps 1:1 onto
+  `tasks/get` / `tasks/cancel` plus final-result retrieval from the formalized
+  `io.modelcontextprotocol/tasks` extension (SEP-2663). Progress events feed the
+  `subscriptions/listen` change-notification stream. Inventing a parallel job
+  primitive would put `ll-mcp` out of step with every other
+  2026-07-28-compatible server and forfeit the standard notification channel.
+- **Multi Round-Trip Requests (MRTR) replace server-initiated
+  `elicitation/create`.** Any mutation tool needing interactive confirmation
+  should be designed around `resultType: "input_required"` plus the client
+  retrying the original call with `inputResponses`.
+
+Also load-bearing across all tiers:
+
+- **Stdio transport is unchanged**, so the stdio-only entry point is unaffected.
+  The HTTP transport now requires `Mcp-Method` and `Mcp-Name` headers for
+  routing; pin the SDK version shipping that behavior if an HTTP entry point is
+  ever added.
+- **Roots, Sampling, and Logging were deprecated** (12-month minimum window).
+  `ll-mcp` must not advertise or consume any of them — it ships as a clean-slate
+  consumer.
+- **No `initialize` handshake.** Protocol version and capabilities arrive
+  per-request in `_meta`. Pin the Python SDK version that implements this.
+- **Prefer CIMD over DCR** wherever `ll-adapt --host` emits config snippets
+  containing OAuth hints; Dynamic Client Registration was formally deprecated
+  (and keeps working during the 12-month window).
+
+## Open questions
+
+1. **Context cost measurement.** Even 10 tool schemas run ~2–4k tokens on hosts
+   without deferred loading, and the prompts-from-skills list could be large.
+   `ll-ctx-stats` should learn to measure the MCP surface *before* the first
+   tier ships, so the coarse-vs-fine tool granularity decision is made on data.
+   Partially closed by the spec: `tools/list`, `resources/list`, `prompts/list`,
+   and `resources/read` now return `ttlMs` and `cacheScope` (SEP-2549) with
+   guaranteed stable tool ordering, so hosts with prompt caching can reuse list
+   responses per the declared TTL. `ll-ctx-stats` should consume those
+   protocol-level fields rather than re-measuring transport bytes.
+2. **SDK dependency posture.** The official Python `mcp` package would be a real
+   runtime dependency — acceptable for an opt-in entry point, given the
+   project's stdlib-leaning posture?
+3. **Prompt fidelity.** Skills assume host affordances (Bash, file edits).
+   Serving them as MCP prompts to a host lacking equivalent tools may degrade.
+   Does the prompt surface need a capability filter keyed on the host's
+   advertised tools? The mechanism (host advertises what it supports, server
+   filters accordingly) survives the spec change intact, now via per-request
+   `_meta` rather than a handshake.
+4. **Should `ll-mcp` advertise the Tasks extension in its capabilities
+   response?** If the job tier ships, declaring `io.modelcontextprotocol/tasks`
+   tells hosts to use the extension-aware flow rather than ad-hoc polling. A
+   one-line declaration, but decide it when that tier is actually built, not
+   pre-emptively.
