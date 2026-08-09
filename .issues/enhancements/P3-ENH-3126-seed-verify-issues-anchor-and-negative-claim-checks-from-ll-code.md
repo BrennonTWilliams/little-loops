@@ -7,6 +7,8 @@ status: open
 captured_at: "2026-08-09T05:08:55Z"
 discovered_date: 2026-08-09
 discovered_by: capture-issue
+program_design_not_applicable: true
+testable: true
 ---
 
 # Use ll-code graph queries in verify-issues for anchor drift and negative-claim checks
@@ -129,22 +131,6 @@ ll-code --json references <symbol>       # negative-claim corroboration
 # NOT permitted: callees-of, importers-of, impact-of
 ```
 
-### Scope Boundaries
-
-**In scope**: `defines` for anchor drift; `callers-of`/`references` for negative-claim
-corroboration; `allowed-tools` change; the verdict-origination prohibition; provider and
-freshness reporting.
-
-**Out of scope**:
-
-- `impact-of` in regression detection (Process step 2D). The git-history path (fix commit
-  → files changed since) is already deterministic evidence; a transitive-closure guess on
-  top only widens the blast radius of a wrong `REGRESSION` verdict.
-- Any agent-seeding structure. verify-issues spawns no sub-agents, so the per-axis seeding
-  table in `graph-discovery-layer.md` does not transfer.
-- Changing `ll-code` itself, or any provider/index work.
-- The dependency-reference (2E) and decisions-rule checks — unrelated corpora.
-
 ### Backwards Compatibility
 
 Fully backward compatible. With no provider available the command behaves exactly as it
@@ -199,6 +185,22 @@ from graph output.
    refuted; run both again with the provider forced unavailable and confirm output is
    identical to today's; run `python -m pytest scripts/tests/`.
 
+## Scope Boundaries
+
+**In scope**: `defines` for anchor drift; `callers-of`/`references` for negative-claim
+corroboration; `allowed-tools` change; the verdict-origination prohibition; provider and
+freshness reporting.
+
+**Out of scope**:
+
+- `impact-of` in regression detection (Process step 2D). The git-history path (fix commit
+  → files changed since) is already deterministic evidence; a transitive-closure guess on
+  top only widens the blast radius of a wrong `REGRESSION` verdict.
+- Any agent-seeding structure. verify-issues spawns no sub-agents, so the per-axis seeding
+  table in `graph-discovery-layer.md` does not transfer.
+- Changing `ll-code` itself, or any provider/index work.
+- The dependency-reference (2E) and decisions-rule checks — unrelated corpora.
+
 ## Impact
 
 - **Priority**: P3 - Correctness improvement on a real but bounded failure class; no active
@@ -214,6 +216,8 @@ from graph output.
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-09T20:34:00 - `20730683-2565-4a26-b2cc-54e8c3853f7b.jsonl`
+- `/ll:format-issue` - 2026-08-09T20:26:10 - `094e7212-923b-4b82-873b-48d193f4afe0.jsonl`
 - `/ll:capture-issue` - 2026-08-09T05:10:04 - `b7457e6e-9654-45e5-a9bd-43e1bcddbd28.jsonl`
 
 ---
