@@ -3,21 +3,22 @@ id: BUG-3112
 title: Worktree sessions write session history to a throwaway .ll/history.db
 type: BUG
 priority: P2
-status: open
+status: done
 parent: EPIC-3111
 captured_at: '2026-08-08T20:32:03Z'
+completed_at: '2026-08-09T14:42:44Z'
 discovered_date: 2026-08-08
 discovered_by: capture-issue
 labels:
 - worktree
 - history
 - data-loss
-confidence_score: 100
-outcome_confidence: 94
-score_complexity: 24
-score_test_coverage: 23
+confidence_score: 96
+outcome_confidence: 92
+score_complexity: 22
+score_test_coverage: 22
 score_ambiguity: 24
-score_change_surface: 23
+score_change_surface: 24
 decision_needed: false
 reconcile_attempted: true
 testable: true
@@ -128,7 +129,7 @@ resolves. For every child it is the fix.
 ### Why this layer and not the host-runner boundary
 
 Every process-spawn path in this codebase composes its child environment from
-`os.environ.copy()` (`subprocess_utils.py:414-415`;
+`os.environ.copy()` (`subprocess_utils.py:421-422`;
 `worktree_utils.py:461`; `fsm/executor.py:2132-2137`'s bare `subprocess.Popen`).
 Exporting once in the parent therefore reaches **all** of them, including paths
 an env-parameter thread cannot reach without bespoke per-site edits:
@@ -231,7 +232,7 @@ propagation into an existing resolution chain.
 in the **orchestrator** process → every descendant inherits it, via each spawn
 site's existing `os.environ.copy()`:
 
-- `subprocess_utils.py:414-415` (`env = os.environ.copy(); env.update(invocation.env)`)
+- `subprocess_utils.py:421-422` (`env = os.environ.copy(); env.update(invocation.env)`)
   → host-CLI sessions, `cwd=worktree_path`
 - `fsm/executor.py:2132-2137` (`subprocess.Popen(..., cwd=self.working_dir)`,
   no env argument → full inherit) → FSM shell actions
@@ -315,7 +316,7 @@ helper, no `runner_spec.py`/`issue_manager.py`/`worker_pool.py` edits.
 ### Dependent Files (behavior changes, no edit required)
 - `scripts/little_loops/session_store/db.py` — `_resolve_db_path` /
   `resolve_history_db`; the env branch (`:96`) stops being dead code
-- `scripts/little_loops/subprocess_utils.py:414-415` — `env = os.environ.copy();
+- `scripts/little_loops/subprocess_utils.py:421-422` — `env = os.environ.copy();
   env.update(invocation.env)` now carries `LL_HISTORY_DB` for free
 - `scripts/little_loops/fsm/executor.py:2132-2137` — bare `subprocess.Popen`
   with `cwd=self.working_dir`; inherits for free
@@ -402,6 +403,9 @@ positive: the prose reference is to the dotted config key
 claim that the symbol lives in `cli/parallel.py`. No action needed.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-09T14:42:44 - `bacf1d76-e8f9-4555-b27d-df46b16e970f.jsonl`
+- `/ll:confidence-check` - 2026-08-09T14:12:20 - `bacf1d76-e8f9-4555-b27d-df46b16e970f.jsonl`
+- `/ll:ready-issue` - 2026-08-09T14:10:44 - `c110f8a2-c732-4564-9242-5bf38137cbf8.jsonl`
 - `/ll:confidence-check` - 2026-08-09T14:03:48 - `6b3b04d3-25c9-43d2-bf5f-32a183518c55.jsonl`
 - `/ll:confidence-check` - 2026-08-09T03:38:18 - `a586a544-6525-4902-8718-867d3dbb4200.jsonl`
 - `/ll:reconcile-issue` - 2026-08-09T03:30:04 - `83bf90ea-254d-4998-aaa3-1f6e622ec8d9.jsonl`
@@ -416,6 +420,33 @@ claim that the symbol lives in `cli/parallel.py`. No action needed.
 - `/ll:wire-issue` - 2026-08-08T21:17:27 - `5955cc74-6f18-496f-9ff9-59d7e836977d.jsonl`
 - `/ll:refine-issue` - 2026-08-08T21:04:30 - `29dcd8e6-5691-426f-91c4-b6457c12fffb.jsonl`
 - `/ll:capture-issue` - 2026-08-08T20:35:50 - `cf0cb0be-6bdf-436b-b626-68fabe345e75.jsonl`
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-08-09
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/worktree_utils.py:setup_worktree()`: added
+  `os.environ.setdefault("LL_HISTORY_DB", str(resolve_history_db()))` before
+  worktree creation, so every descendant process (host-CLI sessions, FSM shell
+  actions, hooks, pytest runs) inherits the main repo's `history.db` instead of
+  resolving a throwaway `<worktree>/.ll/history.db` that teardown deletes.
+- `docs/reference/HOST_COMPATIBILITY.md`: documented the worktree-child
+  inheritance behavior in the `LL_HISTORY_DB` env-var table row.
+- `scripts/tests/test_worktree_utils.py`: added `TestSetupWorktreeHistoryDbExport`
+  covering AC-1, AC-2, AC-3, AC-5, and AC-6.
+- `scripts/tests/test_fsm_executor.py`: added
+  `test_shell_action_in_worktree_resolves_main_repo_history_db` covering AC-4.
+
+### Verification Results
+- Tests: PASS (18747 passed, 43 skipped; 1 pre-existing failure in
+  `test_prose_dep_sweep_gate.py::test_no_prose_dependency_drift_in_repo`,
+  confirmed present on `main` before this change and unrelated to this issue's
+  scope — unrelated issues ENH-3095/FEAT-3122)
+- Lint: PASS (`ruff check` on changed files)
+- Type check: PASS (`mypy` on `worktree_utils.py`)
 
 ---
 

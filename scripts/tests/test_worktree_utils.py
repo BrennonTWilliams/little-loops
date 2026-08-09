@@ -7,6 +7,7 @@ exercised against actual git, not mocks.
 
 from __future__ import annotations
 
+import os
 import shlex
 import subprocess
 from pathlib import Path
@@ -196,6 +197,252 @@ class TestSetupWorktreeCheckoutExisting:
         branches = _git(repo, "branch", "--list", "epic/existing").stdout
         assert "epic/existing" in branches
         assert not worktree_path.exists()
+
+
+class TestSetupWorktreeHistoryDbExport:
+    """BUG-3112: setup_worktree() exports LL_HISTORY_DB so worktree-scoped
+    processes share the main repo's history.db instead of creating a
+    throwaway one that teardown deletes."""
+
+    def _repo_with_ll_dir(self, tmp_path: Path) -> Path:
+        repo = _init_repo(tmp_path / "repo")
+        (repo / ".ll").mkdir()
+        return repo
+
+    def test_exports_main_repo_db_when_unset(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AC-5: resolved against the main repo when cwd is the repo root."""
+        repo = self._repo_with_ll_dir(tmp_path)
+        monkeypatch.delenv("LL_HISTORY_DB", raising=False)
+        monkeypatch.chdir(repo)
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        setup_worktree(
+            repo_path=repo,
+            worktree_path=tmp_path / "wt",
+            branch_name="feature/x",
+            copy_files=[],
+            logger=logger,
+            git_lock=git_lock,
+        )
+
+        assert os.environ["LL_HISTORY_DB"] == str(repo / ".ll" / "history.db")
+
+    def test_exports_main_repo_db_from_subdirectory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AC-5: resolved against the main repo when cwd is a repo subdirectory."""
+        repo = self._repo_with_ll_dir(tmp_path)
+        subdir = repo / "scripts"
+        subdir.mkdir()
+        monkeypatch.delenv("LL_HISTORY_DB", raising=False)
+        monkeypatch.chdir(subdir)
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        setup_worktree(
+            repo_path=repo,
+            worktree_path=tmp_path / "wt",
+            branch_name="feature/x",
+            copy_files=[],
+            logger=logger,
+            git_lock=git_lock,
+        )
+
+        assert os.environ["LL_HISTORY_DB"] == str(repo / ".ll" / "history.db")
+
+    def test_preserves_explicit_override(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AC-5: an already-set LL_HISTORY_DB (nested worktree, explicit override,
+        or test fixture) always wins over re-resolution."""
+        repo = self._repo_with_ll_dir(tmp_path)
+        override = tmp_path / "outer" / "history.db"
+        monkeypatch.setenv("LL_HISTORY_DB", str(override))
+        monkeypatch.chdir(repo)
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        setup_worktree(
+            repo_path=repo,
+            worktree_path=tmp_path / "wt",
+            branch_name="feature/x",
+            copy_files=[],
+            logger=logger,
+            git_lock=git_lock,
+        )
+
+        assert os.environ["LL_HISTORY_DB"] == str(override)
+
+    def test_child_process_resolves_main_repo_db(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AC-2: a subprocess spawned with cwd=<worktree> and the inherited
+        environment resolves resolve_history_db() to the main repo's DB."""
+        repo = self._repo_with_ll_dir(tmp_path)
+        monkeypatch.delenv("LL_HISTORY_DB", raising=False)
+        monkeypatch.chdir(repo)
+        worktree_path = tmp_path / "wt"
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        setup_worktree(
+            repo_path=repo,
+            worktree_path=worktree_path,
+            branch_name="feature/x",
+            copy_files=[],
+            logger=logger,
+            git_lock=git_lock,
+        )
+
+        expected_db = str(repo / ".ll" / "history.db")
+        check = (
+            "import sys; from little_loops.session_store import resolve_history_db; "
+            f"sys.exit(0 if str(resolve_history_db()) == {expected_db!r} else 1)"
+        )
+        result = subprocess.run(
+            ["python3", "-c", check],
+            cwd=worktree_path,
+            env=os.environ,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert result.returncode == 0, result.stderr
+
+    def test_no_worktree_local_db_is_created(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AC-1: a session write from inside the worktree never creates
+        <worktree>/.ll/history.db."""
+        repo = self._repo_with_ll_dir(tmp_path)
+        monkeypatch.delenv("LL_HISTORY_DB", raising=False)
+        monkeypatch.chdir(repo)
+        worktree_path = tmp_path / "wt"
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        setup_worktree(
+            repo_path=repo,
+            worktree_path=worktree_path,
+            branch_name="feature/x",
+            copy_files=[],
+            logger=logger,
+            git_lock=git_lock,
+        )
+
+        write = (
+            "from little_loops.session_store import ensure_db, resolve_history_db; "
+            "ensure_db(resolve_history_db())"
+        )
+        result = subprocess.run(
+            ["python3", "-c", write],
+            cwd=worktree_path,
+            env=os.environ,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert result.returncode == 0, result.stderr
+        assert not (worktree_path / ".ll" / "history.db").exists()
+        assert (repo / ".ll" / "history.db").exists()
+
+    def test_rows_survive_worktree_teardown(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AC-3: a row written from a process running inside the worktree is
+        still queryable from the main repo's DB after cleanup_worktree."""
+        repo = self._repo_with_ll_dir(tmp_path)
+        monkeypatch.delenv("LL_HISTORY_DB", raising=False)
+        monkeypatch.chdir(repo)
+        worktree_path = tmp_path / "wt"
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        setup_worktree(
+            repo_path=repo,
+            worktree_path=worktree_path,
+            branch_name="feature/x",
+            copy_files=[],
+            logger=logger,
+            git_lock=git_lock,
+        )
+
+        write = (
+            "from little_loops.session_store import record_session_lifecycle_event, "
+            "resolve_history_db; "
+            "record_session_lifecycle_event(resolve_history_db(), "
+            "session_id='bug-3112-sess', event='handoff_needed')"
+        )
+        result = subprocess.run(
+            ["python3", "-c", write],
+            cwd=worktree_path,
+            env=os.environ,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert result.returncode == 0, result.stderr
+
+        cleanup_worktree(worktree_path, repo, logger, git_lock)
+        assert not worktree_path.exists()
+
+        from little_loops.history_reader import recent_lifecycle_events
+
+        rows = recent_lifecycle_events(event="handoff_needed", db=repo / ".ll" / "history.db")
+        assert any(r.session_id == "bug-3112-sess" for r in rows)
+
+    def test_concurrent_writers_share_one_db_without_locking_errors(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AC-6: N>=4 concurrent writer processes against the shared worktree-
+        inherited DB complete with zero 'database is locked' errors."""
+        repo = self._repo_with_ll_dir(tmp_path)
+        monkeypatch.delenv("LL_HISTORY_DB", raising=False)
+        monkeypatch.chdir(repo)
+        worktree_path = tmp_path / "wt"
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        setup_worktree(
+            repo_path=repo,
+            worktree_path=worktree_path,
+            branch_name="feature/x",
+            copy_files=[],
+            logger=logger,
+            git_lock=git_lock,
+        )
+
+        write_tpl = (
+            "from little_loops.session_store import record_session_lifecycle_event, "
+            "resolve_history_db; "
+            "record_session_lifecycle_event(resolve_history_db(), "
+            "session_id='concurrent-{i}', event='handoff_needed')"
+        )
+        procs = [
+            subprocess.Popen(
+                ["python3", "-c", write_tpl.format(i=i)],
+                cwd=worktree_path,
+                env=os.environ,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            for i in range(4)
+        ]
+        results = [(p.wait(timeout=15), p.stderr.read()) for p in procs]
+
+        for returncode, stderr in results:
+            assert returncode == 0, stderr
+            assert "locked" not in stderr.lower()
+
+        from little_loops.history_reader import recent_lifecycle_events
+
+        rows = recent_lifecycle_events(event="handoff_needed", db=repo / ".ll" / "history.db")
+        session_ids = {r.session_id for r in rows}
+        assert session_ids >= {f"concurrent-{i}" for i in range(4)}
 
 
 class TestMergeEpicBranchToBase:

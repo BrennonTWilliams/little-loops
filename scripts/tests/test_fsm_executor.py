@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -5542,6 +5543,42 @@ class TestExecutorWorkingDir:
         )
         FSMExecutor(fsm, action_runner=runner, working_dir=tmp_path).run()
         assert runner.working_dirs == [tmp_path]
+
+    def test_shell_action_in_worktree_resolves_main_repo_history_db(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BUG-3112 AC-4: a shell action run with working_dir=<worktree> resolves
+        the main repo's history.db via the inherited LL_HISTORY_DB env var, not a
+        throwaway <worktree>/.ll/history.db. FSM shell actions run via a bare
+        ``subprocess.Popen`` with no HostInvocation, so this is coverage the
+        host-runner-only approach would have missed."""
+        main_db = tmp_path / "main-repo" / ".ll" / "history.db"
+        monkeypatch.setenv("LL_HISTORY_DB", str(main_db))
+        worktree_path = tmp_path / "wt"
+        worktree_path.mkdir()
+
+        probe = (
+            "import sys; from little_loops.session_store import resolve_history_db; "
+            f"sys.exit(0 if str(resolve_history_db()) == {str(main_db)!r} else 1)"
+        )
+        fsm = FSMLoop(
+            name="t",
+            initial="s",
+            states={
+                "s": StateConfig(
+                    action=f"python3 -c {shlex.quote(probe)}",
+                    action_type="shell",
+                    on_yes="d",
+                    on_no="fail",
+                ),
+                "d": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+            },
+        )
+        result = FSMExecutor(fsm, working_dir=worktree_path).run()
+
+        assert result.final_state == "d"
+        assert not (worktree_path / ".ll" / "history.db").exists()
 
 
 class TestSubLoopExecution:

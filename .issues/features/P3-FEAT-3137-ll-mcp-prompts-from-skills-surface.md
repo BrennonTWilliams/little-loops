@@ -84,6 +84,20 @@ widens.
 - Depends on the server/dispatch-loop scaffolding registered by FEAT-3135;
   no other existing callers.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/help.py:181-209` (`_skill_entries()`) — a THIRD
+  independent non-recursive `glob("*/SKILL.md")` skill-walk site not named
+  in this issue's "Conventions in Force" (which cites only `tool_catalog.py`
+  and `adapters/core.py`). Calls `parse_skill_frontmatter()` and
+  `_is_model_invocation_disabled()` with narrower bridge-stub-only filtering
+  (see Conventions in Force addition below). Feeds `collect_entries()`
+  (`:212`), shared with `cli/action.py::_load_skills()` (`action.py:194-210`,
+  which delegates to `collect_entries()` rather than walking independently —
+  not itself a fourth site).
+- `scripts/little_loops/cli/generate_skill_descriptions.py` — imports
+  `parse_skill_frontmatter()` and applies the same skill-walk/filter pattern
+  conceptually; aware-of, not modified by this issue.
+
 ### Conventions in Force
 - Skill/command/agent discovery already has one canonical
   frontmatter-parsing utility built explicitly to prevent reimplementation —
@@ -123,6 +137,29 @@ widens.
 - CLI tests import CLI module internals directly (not via subprocess) and
   isolate fixtures under `tmp_path` — evidence: `test_cli_ctx_stats.py`.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `cli/help.py::_skill_entries()` (`:181-209`) applies
+  `_is_model_invocation_disabled()` more narrowly than
+  `adapters/core.py::process_skills()` — it only skips a disabled skill when
+  it also shares a name with an existing command (bridge-stub de-dup,
+  comment at `:190-196`); a disabled skill with no command counterpart is
+  still listed. This is a THIRD distinct filter behavior alongside
+  `adapters/core.py`'s blanket skip and `cli/verify_triggers.py`'s opt-in
+  `model_invocable_only` (default unfiltered) — confirms this issue's own
+  framing that no single existing site's behavior can be assumed by
+  default. For an MCP `prompts/list` surface (external, untrusted client),
+  `adapters/core.py::process_skills()`'s blanket-skip is the closest
+  behavioral match in intent (a skill author's `disable-model-invocation:
+  true` should suppress advertisement to any external auto-invoker), not
+  `cli/help.py`'s narrower dedup logic (solves a docs-listing problem
+  irrelevant to MCP) or `verify_triggers.py`'s default-unfiltered stance
+  (built for internal trigger analysis).
+- `.issues/bugs/P4-BUG-1627-two-skill-md-parsers-have-block-scalar-defect.md`
+  — prior art documenting that multiple independent `SKILL.md` parse/walk
+  sites is a known recurring defect source in this codebase; supports
+  reusing `parse_skill_frontmatter()` exactly in the new recursive walker
+  rather than reimplementing parsing.
+
 ### Tests
 - New tests for recursive `SKILL.md` discovery — no existing fixture for
   nested skill directories anywhere in `scripts/tests/`; author from
@@ -136,6 +173,26 @@ widens.
   including an unreadable-file-degrades pattern at lines 107-121.
 - `test_adapters.py:102-126,202-235` (`_is_model_invocation_disabled`
   truthy-string matrix, `TestProcessSkillsTraversal` emitter-call pattern).
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_help.py:13-76` (`TestCollectEntries`) — existing
+  coverage of `cli/help.py`'s own skill-walk site (see Dependent Files
+  above); no nested-`SKILL.md` fixture exists here either, consistent with
+  this issue's "no existing nested-skill fixture" note — a second place to
+  mirror the new nested-directory fixture, alongside `test_tool_catalog.py`.
+- `scripts/tests/test_help.py:142-156`
+  (`TestCatalogDriftGate.test_collect_entries_covers_real_plugin_root`) —
+  asserts a subset (`<=`), not exact equality, against the real `skills/`
+  tree; confirms a recursive walker surfacing new nested skills won't break
+  this gate.
+- `scripts/tests/test_verify_triggers.py:305-345`
+  (`TestLoadSkillDescriptions`) — closest `tmp_path` skill-fixture pattern
+  to extend for a nested-`SKILL.md` case; note its three existing fixtures
+  never distinguish frontmatter `name:` from the directory name, so
+  `verify_triggers.py:350`'s `fm.get("name") or skill_md.parent.name`
+  fallback branch is itself untested today — relevant precedent, not itself
+  in this issue's scope, when the new walker decides its own
+  name-derivation rule.
 
 ### Documentation
 - `docs/reference/CLI.md` — extend the `ll-mcp` section (added by
@@ -183,6 +240,21 @@ existing decision-rule logic.
 2. `python -m pytest scripts/tests/` passes, including new coverage for the
    nested-`SKILL.md`-discovery walk.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Be aware of `cli/help.py::_skill_entries()` (`:181-209`) as a third
+  existing non-recursive skill-walk site (not modified by this issue, but
+  its narrower `disable-model-invocation` filtering differs from
+  `adapters/core.py`'s blanket skip — see Conventions in Force)
+- When deciding whether the new recursive walker honors
+  `disable-model-invocation`, prefer matching
+  `adapters/core.py::process_skills()`'s blanket-skip behavior (closest in
+  intent to an external MCP `prompts/list` surface) over `cli/help.py`'s
+  bridge-stub-only dedup or `cli/verify_triggers.py`'s default-unfiltered
+  stance
+
 ## Acceptance criteria
 
 - Every discovered `SKILL.md` is advertised as an MCP prompt with its name,
@@ -192,5 +264,6 @@ existing decision-rule logic.
 - `python -m pytest scripts/tests/` passes.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-08-09T14:08:49 - `5aa8ca8f-e752-4f8d-9df6-b510a835085e.jsonl`
 - `/ll:refine-issue` - 2026-08-09T13:51:06 - `f453a70a-3ede-4be0-a10b-493541f0278e.jsonl`
 - `/ll:issue-size-review` - 2026-08-09T07:40:09 - `153550d2-faf1-4350-b263-1aaa047c80e3.jsonl`

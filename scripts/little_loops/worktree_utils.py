@@ -195,6 +195,16 @@ def setup_worktree(
     if checkout_existing and base_branch is not None:
         raise ValueError("base_branch and checkout_existing are mutually exclusive")
 
+    # BUG-3112: resolve the MAIN repo's history DB while cwd is still the main
+    # repo, and export it so every descendant of this orchestrator — host-CLI
+    # sessions, FSM shell actions, hooks, pytest runs — resolves the shared DB
+    # instead of creating a throwaway <worktree>/.ll/history.db that teardown
+    # deletes. setdefault: an explicit caller/test override always wins, and a
+    # nested worktree inherits the outermost repo's DB rather than re-resolving.
+    from little_loops.session_store.db import resolve_history_db
+
+    os.environ.setdefault("LL_HISTORY_DB", str(resolve_history_db()))
+
     if worktree_path.exists():
         cleanup_worktree(
             worktree_path, repo_path, logger, git_lock, delete_branch=not checkout_existing
