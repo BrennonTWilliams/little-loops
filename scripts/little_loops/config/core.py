@@ -846,6 +846,7 @@ class BRConfig:
                     "enable_dedup": self._orchestration.cluster.enable_dedup,
                     "propagate_context": self._orchestration.cluster.propagate_context,
                 },
+                "disable_background_tasks": self._orchestration.disable_background_tasks,
             },
             # --- never-modelled sections: raw passthrough, no BRConfig dataclass (BUG-3012) ---
             **{

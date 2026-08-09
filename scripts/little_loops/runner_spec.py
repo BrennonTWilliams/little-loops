@@ -127,6 +127,10 @@ def _run_skill(spec: ActionSpec) -> RunnerResult:
     # preserves full unpruned behavior.
     automation_profile: str | None = spec.args.get("automation_profile")
 
+    # FEAT-3078: opt-in hard-disable of tool-level background tasks, threaded
+    # through the same args-dict origination as automation_profile above.
+    disable_background_tasks: bool = bool(spec.args.get("disable_background_tasks", False))
+
     if trace_mode:
         from little_loops.subprocess_utils import ToolCall, run_claude_command
 
@@ -143,6 +147,7 @@ def _run_skill(spec: ActionSpec) -> RunnerResult:
                 working_dir=workspace_root,
                 stream_callback=stream_callback,
                 automation_profile=automation_profile,
+                disable_background_tasks=disable_background_tasks,
                 tools=spec.args.get("tools"),
                 on_tool_call=trace.append,
                 workspace_root=workspace_root,
@@ -174,12 +179,17 @@ def _run_skill(spec: ActionSpec) -> RunnerResult:
                 timeout=spec.timeout,
                 stream_callback=stream_callback,
                 automation_profile=automation_profile,
+                disable_background_tasks=disable_background_tasks,
             )
             return RunnerResult(stdout="", stderr="", exit_code=proc.returncode)
         except subprocess.TimeoutExpired:
             return RunnerResult(stdout="", stderr="", exit_code=124, timed_out=True)
 
-    inv = resolve_host().build_streaming(prompt=prompt, automation_profile=automation_profile)
+    inv = resolve_host().build_streaming(
+        prompt=prompt,
+        automation_profile=automation_profile,
+        disable_background_tasks=disable_background_tasks,
+    )
     try:
         proc = subprocess.run(
             [inv.binary, *inv.args],

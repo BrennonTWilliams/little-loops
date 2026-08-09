@@ -1908,6 +1908,20 @@ class FSMExecutor:
             ):
                 extra_kwargs["automation_profile"] = _pruning_profile_cfg.name
 
+            # FEAT-3078: disable_background_tasks is sourced from
+            # OrchestrationConfig (a global config object), a structurally
+            # different origin than automation_profile above (per-loop
+            # PruningProfileConfig) — read via the memoized _get_br_config()
+            # already used elsewhere in this method, not a copy of the
+            # PruningProfileConfig pattern. Kwarg-gated (only passed when
+            # True), same as working_dir/automation_profile above, so
+            # ActionRunner implementations predating this change keep working.
+            if (
+                action_mode == "prompt"
+                and self._get_br_config().orchestration.disable_background_tasks
+            ):
+                extra_kwargs["disable_background_tasks"] = True
+
             # FEAT-3033: kwarg-gated, same pattern as working_dir/
             # automation_profile above — omitted when disabled so
             # ActionRunner implementations predating this change keep

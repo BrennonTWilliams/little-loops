@@ -91,6 +91,7 @@ class OrchestrationConfig:
     request_path: str = "cli"
     composer: ComposerConfig = field(default_factory=ComposerConfig)
     cluster: ClusterConfig = field(default_factory=ClusterConfig)
+    disable_background_tasks: bool = True
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> OrchestrationConfig:
@@ -100,4 +101,5 @@ class OrchestrationConfig:
             request_path=data.get("request_path", "cli"),
             composer=ComposerConfig.from_dict(data.get("composer", {})),
             cluster=ClusterConfig.from_dict(data.get("cluster", {})),
+            disable_background_tasks=data.get("disable_background_tasks", True),
         )

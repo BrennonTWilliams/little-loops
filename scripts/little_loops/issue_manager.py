@@ -149,6 +149,7 @@ def run_claude_command(
     resume_session: bool = False,
     on_result_seen: ResultSeenCallback | None = None,
     automation_profile: str | None = None,
+    disable_background_tasks: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke Claude CLI command with real-time output streaming.
 
@@ -174,6 +175,8 @@ def run_claude_command(
             BUG-3058: without it the SessionStart hook's headless "stay in turn"
             contract is never injected, so a subagent can end its turn awaiting a
             background task that will never report.
+        disable_background_tasks: FEAT-3078 opt-in to hard-disable tool-level
+            background tasks in the spawned child, forwarded to the host runner.
 
     Returns:
         CompletedProcess with stdout/stderr captured
@@ -215,6 +218,7 @@ def run_claude_command(
         resume_session=resume_session,
         on_result_seen=on_result_seen,
         automation_profile=automation_profile,
+        disable_background_tasks=disable_background_tasks,
     )
 
 
@@ -266,6 +270,7 @@ def run_with_continuation(
     sprint_context: SprintWorkerContext | None = None,
     on_result_seen: ResultSeenCallback | None = None,
     automation_profile: str | None = None,
+    disable_background_tasks: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     """Run a Claude command with automatic continuation on context handoff.
 
@@ -300,6 +305,8 @@ def run_with_continuation(
         automation_profile: ENH-2714 pruning profile name forwarded to every
             round's subprocess (BUG-3058), so the headless "stay in turn"
             contract is injected on continuations too, not just the first round.
+        disable_background_tasks: FEAT-3078 opt-in to hard-disable tool-level
+            background tasks, forwarded to every round's subprocess.
 
     Returns:
         Final CompletedProcess result
@@ -347,6 +354,7 @@ def run_with_continuation(
             preview_full=preview_full,
             on_result_seen=_tracking_result_seen,
             automation_profile=automation_profile,
+            disable_background_tasks=disable_background_tasks,
         )
 
         all_stdout.append(result.stdout)
@@ -528,6 +536,7 @@ def run_with_continuation(
                 resume_session=True,
                 on_result_seen=_tracking_result_seen,
                 automation_profile=automation_profile,
+                disable_background_tasks=disable_background_tasks,
             )
             all_stdout.append(result.stdout)
             all_stderr.append(result.stderr)
@@ -837,6 +846,7 @@ def process_issue_inplace(
                     # profile now writes LL_AUTOMATION="" (ENH-3081), an
                     # explicit false rather than "unspecified".
                     automation_profile="ll-auto",
+                    disable_background_tasks=config.orchestration.disable_background_tasks,
                 )
 
             # An UNKNOWN verdict means the model returned nothing verdict-shaped
@@ -907,6 +917,7 @@ def process_issue_inplace(
                                 # BUG-3093: same Phase 1 automation context as
                                 # _run_ready above.
                                 automation_profile="ll-auto",
+                                disable_background_tasks=config.orchestration.disable_background_tasks,
                             )
 
                             if retry_result.returncode != 0:
@@ -1106,6 +1117,7 @@ def process_issue_inplace(
             # BUG-3093: decide-issue is the same ll-auto run as implement /
             # finalize-retry, which already declare this profile.
             automation_profile="ll-auto",
+            disable_background_tasks=config.orchestration.disable_background_tasks,
         )
         if decide_result.returncode != 0:
             logger.warning("decide-issue command failed, continuing to implementation anyway...")
@@ -1246,6 +1258,7 @@ def process_issue_inplace(
                 # notification that cannot fire under `claude -p`, and Phase 5
                 # (status flip + commit) never ran.
                 automation_profile="ll-auto",
+                disable_background_tasks=config.orchestration.disable_background_tasks,
             )
         else:
             logger.info(f"Would run: /ll:manage-issue {info.issue_type} {action} {info.issue_id}")
@@ -1434,6 +1447,7 @@ def process_issue_inplace(
                         idle_timeout=config.automation.idle_timeout_seconds,
                         preview_full=preview_full,
                         automation_profile="ll-auto",
+                        disable_background_tasks=config.orchestration.disable_background_tasks,
                     )
                     if _finalize_result.returncode == 0:
                         verified = verify_issue_completed(info, config, logger)

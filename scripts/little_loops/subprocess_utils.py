@@ -333,6 +333,7 @@ def run_claude_command(
     resume_session: bool = False,
     model: str | None = None,
     automation_profile: str | None = None,
+    disable_background_tasks: bool = False,
     post_stream_close_grace_seconds: int = 300,
     on_result_seen: ResultSeenCallback | None = None,
     on_session_id_detected: SessionIdCallback | None = None,
@@ -367,6 +368,11 @@ def run_claude_command(
             environment. ``None`` (default) is an active opt-out: it clears any
             inherited ``LL_AUTOMATION`` to ``""`` (ENH-3081) rather than passing the
             parent's value through.
+        disable_background_tasks: FEAT-3078 opt-in to hard-disable tool-level
+            background tasks in the spawned child. When True and
+            automation_profile is set, forwarded to ``build_streaming()`` so
+            ``CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`` is injected; otherwise
+            the variable is explicitly neutralized to ``""``.
         post_stream_close_grace_seconds: Grace period (seconds) to wait for the
             process to exit on its own after stdout/stderr streams close before
             force-killing the process group. Must accommodate synchronous
@@ -407,6 +413,7 @@ def run_claude_command(
         tools=tools,
         model=model,
         automation_profile=automation_profile,
+        disable_background_tasks=disable_background_tasks,
         workspace_root=workspace_root,
     )
     cmd_args = [invocation.binary, *invocation.args]

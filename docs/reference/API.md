@@ -2639,6 +2639,7 @@ def run_claude_command(
     preview_full: bool = False,
     resume_session: bool = False,
     automation_profile: str | None = None,
+    disable_background_tasks: bool = False,
 ) -> subprocess.CompletedProcess[str]
 ```
 
@@ -2656,6 +2657,7 @@ Preview and invoke a Claude CLI command with output streaming. This is the `issu
 - `preview_full` - If `True`, display the full command without truncation (for `--verbose`)
 - `resume_session` - If `True`, passes `--continue` to the Claude CLI to continue the most recent conversation
 - `automation_profile` - Optional automation profile name (e.g. `"ll-auto"`) forwarded to the child env as `LL_AUTOMATION`/`LL_AUTOMATION_PROFILE`; `None` leaves those vars cleared rather than inherited (see `_apply_automation_env`, BUG-3093)
+- `disable_background_tasks` (FEAT-3078) - When `True` and `automation_profile` is set, forwarded to the child env as `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, hard-disabling tool-level background tasks (e.g. `Bash run_in_background: true`); otherwise the variable is explicitly neutralized to `""`
 
 **Returns:** `CompletedProcess` with stdout/stderr captured. When a `result` event with `is_error=True` is present in the stream-json output, `CompletedProcess.stderr` will include a `[result] <error>` line containing the error text from the result event's `error` field (falling back to the `result` field).
 
@@ -5783,6 +5785,7 @@ class ActionRunner(Protocol):
         model: str | None = None,
         working_dir: Path | None = None,
         automation_profile: str | None = None,
+        disable_background_tasks: bool = False,  # Hard-disable tool-level background tasks (FEAT-3078)
         idle_timeout: int = 0,  # Kill if no output for this many seconds; 0 disables (FEAT-3033)
     ) -> ActionResult: ...
 ```
@@ -5790,6 +5793,8 @@ class ActionRunner(Protocol):
 Implement this protocol to customize action execution (useful for testing). In the extension system, `ActionRunner` is also the contributed-actions runtime dispatch interface — extension plugins register runners against custom `action_type` strings via `ActionProviderExtension.provided_actions()`, and `FSMExecutor` dispatches to them through the `_contributed_actions` registry at runtime.
 
 `idle_timeout` is kwarg-gated at every executor call site (like `working_dir`/`automation_profile`): it's only passed when resolved to a non-zero value, so `ActionRunner` implementations predating FEAT-3033 keep working unchanged as long as idle detection isn't configured for the states they run.
+
+`disable_background_tasks` (FEAT-3078) is likewise kwarg-gated: it's only passed (as `True`) when `orchestration.disable_background_tasks` is enabled in config (the default), so `ActionRunner` implementations predating this change keep working unless they read `**kwargs`. Only meaningful in prompt mode (host CLI invocations); `SimulationActionRunner` accepts and ignores it.
 
 **Idle vs. wall-clock timeout.** `stateConfig.idle_timeout` / loop-level `default_idle_timeout` add a silence sensor alongside the existing wall-clock `timeout` / `default_timeout`, resolved with the same precedence (`state.idle_timeout or fsm.default_idle_timeout or 0`). `0` disables idle detection (the default) — a healthy long-running state that keeps producing output is never killed by it, however long it runs; only sustained silence trips it. On any timeout kill (`exit_code=124`), `ActionResult.timeout_kind` is `"idle"` or `"wall"`; the exit code stays `124` for both so BUG-1640/BUG-1815 error-routing is unaffected. The value flows into the interpolation context as `${prev.timeout_kind}` / `${captured.<name>.timeout_kind}` — read with `:default=` since checkpoints written before this field existed lack the key — so a downstream `shell_exit`-style classifier state can route a wedged process differently from a wall-clock kill. Shell and mcp states enforce idle via `last_output_at` tracking in their selector loops; prompt and baseline (sdk/batch) states pass through to `run_claude_command`'s existing `idle_timeout` implementation. Known boundary: `readline()`-based reads in the shell/mcp selector loops block until a newline or EOF, so a child that writes a partial line and then truly wedges mid-line is not caught by either sensor until it completes the line or exits — pre-existing behavior for the wall-clock sensor too, not introduced by idle detection. `_dispatch_live` (sdk/batch request paths with no subprocess) has no idle sensor and isn't in scope.
 
@@ -9182,6 +9187,7 @@ class HostRunner(Protocol):
                         tools: list[str] | None = None,
                         model: str | None = None,
                         automation_profile: str | None = None,
+                        disable_background_tasks: bool = False,
                         workspace_root: Path | None = None) -> HostInvocation: ...
     def build_blocking_json(self, *, prompt: str, model: str | None = None,
                             json_schema: dict | None = None) -> HostInvocation: ...
@@ -9191,6 +9197,8 @@ class HostRunner(Protocol):
 ```
 
 `sandbox_mode` is **not** part of the Protocol — it is a `CodexRunner`-only extension parameter on that class's `build_streaming` / `build_blocking_json` / `build_detached`. Code written against `HostRunner` must not pass it. `CodexRunner` likewise accepts `workspace_root` for signature compatibility but warns and ignores it.
+
+`disable_background_tasks` (FEAT-3078) is Claude-Code-only: when `True` and `automation_profile` is set, `ClaudeCodeRunner.build_streaming()` injects `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`; when `automation_profile` is `None`, the variable is explicitly neutralized to `""` (same leak-prevention pattern as `LL_AUTOMATION`, see `_apply_automation_env`). The other five runners accept and silently ignore the parameter — see `docs/reference/HOST_COMPATIBILITY.md`.
 
 **Methods:**
 - `detect()` — return `True` if this host is available in the current environment (typically `shutil.which("<binary>") is not None`).

@@ -1640,6 +1640,11 @@
             }
           },
           "additionalProperties": false
+        },
+        "disable_background_tasks": {
+          "type": "boolean",
+          "default": true,
+          "description": "FEAT-3078/FEAT-3060: defaults to true. When true and a Claude Code child is spawned with automation_profile set (ll-auto, FSM loops), CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 is injected into its environment, hard-disabling tool-level background tasks (e.g. Bash run_in_background: true) so completed work can never be silently discarded because the parent session ended before a background task's result was retrieved. Set to false to restore pre-FEAT-3078 behavior (background tasks allowed). Claude-Code-only and inert for the other five host CLIs. Shell-level backgrounding (a trailing '&') is outside this flag's reach; project.run_cmd smoke-test steps relying on that pattern are unaffected, but a shell-agnostic run_cmd step that itself relies on tool-level backgrounding loses that capability on upgrade."
         }
       },
       "additionalProperties": false

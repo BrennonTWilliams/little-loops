@@ -61,6 +61,7 @@ class MockActionRunner:
         model: str | None = None,
         working_dir: Any = None,
         automation_profile: str | None = None,
+        disable_background_tasks: bool = False,
         idle_timeout: int = 0,
     ) -> ActionResult:
         """Return configured result for action."""
@@ -74,6 +75,7 @@ class MockActionRunner:
             on_usage_detailed,
             model,
             automation_profile,
+            disable_background_tasks,
         )
         self.working_dirs.append(working_dir)
         self.idle_timeouts.append(idle_timeout)
@@ -2526,6 +2528,7 @@ class TestErrorHandling:
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
                 model: str | None = None,
+                **kwargs: Any,
             ) -> ActionResult:
                 del (
                     action,
@@ -2572,6 +2575,7 @@ class TestErrorHandling:
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
                 model: str | None = None,
+                **kwargs: Any,
             ) -> ActionResult:
                 del (
                     action,
@@ -3359,6 +3363,7 @@ class TestSignalHandling:
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
                 model: str | None = None,
+                **kwargs: Any,
             ) -> ActionResult:
                 del (
                     timeout,
@@ -3454,6 +3459,7 @@ class TestSignalHandling:
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
                 model: str | None = None,
+                **kwargs: Any,
             ) -> ActionResult:
                 del (
                     timeout,
@@ -3689,6 +3695,7 @@ class TestActionExceptionRouting:
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
                 model: str | None = None,
+                **kwargs: Any,
             ) -> ActionResult:
                 del (
                     action,
@@ -5269,6 +5276,7 @@ class TestDefaultTimeout:
             on_usage: Any = None,
             on_usage_detailed: Any = None,
             model: str | None = None,
+            **kwargs: Any,
         ) -> ActionResult:
             del model
             self.captured_timeouts.append(timeout)
@@ -6381,6 +6389,7 @@ class TestAgentToolsPassThrough:
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
                 model: str | None = None,
+                **kwargs: Any,
             ) -> ActionResult:
                 captured.append({"agent": agent, "tools": tools})
                 del model
@@ -6423,6 +6432,7 @@ class TestAgentToolsPassThrough:
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
                 model: str | None = None,
+                **kwargs: Any,
             ) -> ActionResult:
                 captured.append({"agent": agent, "tools": tools})
                 del model
@@ -9109,6 +9119,7 @@ class TestStallDetector:
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
                 model: str | None = None,
+                **kwargs: Any,
             ) -> ActionResult:
                 del (
                     timeout,
@@ -9226,6 +9237,7 @@ class TestStallDetector:
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
                 model: str | None = None,
+                **kwargs: Any,
             ) -> ActionResult:
                 del (
                     timeout,
@@ -10964,6 +10976,7 @@ class TestSessionModeContinuity:
             model: str | None = None,
             working_dir: Any = None,
             automation_profile: str | None = None,
+            **kwargs: Any,
         ) -> ActionResult:
             del (
                 timeout,
@@ -11202,6 +11215,7 @@ class TestTamperGuardExecutorHook:
             model: str | None = None,
             working_dir: Any = None,
             automation_profile: str | None = None,
+            **kwargs: Any,
         ) -> ActionResult:
             del (
                 timeout,

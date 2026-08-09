@@ -82,6 +82,81 @@ class TestAutomationProfileEnvAcrossRunners:
         assert invocation.env["LL_AUTOMATION_PROFILE"] == "autodev"
 
 
+class TestDisableBackgroundTasksEnv:
+    """FEAT-3078: CLAUDE_CODE_DISABLE_BACKGROUND_TASKS gating on ClaudeCodeRunner.
+
+    Claude-Code-only (AC3): the other five runners accept and ignore the
+    parameter, asserted separately in TestDisableBackgroundTasksNoOpOnOtherRunners.
+    """
+
+    def test_enabled_and_automation_profile_set_injects_one(self) -> None:
+        runner = ClaudeCodeRunner()
+        invocation = runner.build_streaming(
+            prompt="hi",
+            automation_profile="autodev",
+            disable_background_tasks=True,
+        )
+        assert invocation.env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == "1"
+
+    def test_disabled_flag_does_not_inject_even_with_automation_profile(self) -> None:
+        runner = ClaudeCodeRunner()
+        invocation = runner.build_streaming(
+            prompt="hi",
+            automation_profile="autodev",
+            disable_background_tasks=False,
+        )
+        assert invocation.env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == ""
+
+    def test_automation_profile_none_neutralizes_even_when_flag_enabled(self) -> None:
+        """AC2: absence would mean 'inherit'; must be explicitly cleared to ''."""
+        runner = ClaudeCodeRunner()
+        invocation = runner.build_streaming(
+            prompt="hi",
+            automation_profile=None,
+            disable_background_tasks=True,
+        )
+        assert invocation.env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == ""
+
+    def test_default_disable_background_tasks_is_false(self) -> None:
+        """The build_streaming() default (False) must not inject the var."""
+        runner = ClaudeCodeRunner()
+        invocation = runner.build_streaming(prompt="hi", automation_profile="autodev")
+        assert invocation.env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == ""
+
+
+@pytest.mark.parametrize(
+    "runner_cls",
+    [
+        ClaudeCodeRunner,
+        CodexRunner,
+        GeminiRunner,
+        OmpRunner,
+        KimiRunner,
+        OpenCodeRunner,
+        PiRunner,
+    ],
+)
+class TestDisableBackgroundTasksNoOpOnOtherRunners:
+    """AC3: the five non-Claude runners accept disable_background_tasks and ignore it."""
+
+    def test_no_op_on_other_runners(self, runner_cls: type[HostRunner]) -> None:
+        if runner_cls is ClaudeCodeRunner:
+            pytest.skip("ClaudeCodeRunner is the only runner that honors this flag")
+        runner = runner_cls()
+        try:
+            invocation = runner.build_streaming(
+                prompt="hi",
+                automation_profile="autodev",
+                disable_background_tasks=True,
+            )
+        except HostNotConfigured:
+            # OpenCodeRunner/PiRunner stubs raise before building any env — the
+            # parameter is still accepted (no TypeError), which is what this
+            # test guards against.
+            return
+        assert "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS" not in invocation.env
+
+
 class TestResolveHost:
     """Detection precedence: LL_HOST_CLI → LL_HOOK_HOST → binary probe → raise."""
 

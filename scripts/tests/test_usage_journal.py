@@ -33,6 +33,7 @@ class MockActionRunner:
         on_usage: Any = None,
         on_usage_detailed: Any = None,
         model: str | None = None,
+        **kwargs: Any,
     ) -> ActionResult:
         del (
             timeout,

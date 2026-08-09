@@ -223,6 +223,7 @@ class HostRunner(Protocol):
         tools: list[str] | None = None,
         model: str | None = None,
         automation_profile: str | None = None,
+        disable_background_tasks: bool = False,
         workspace_root: Path | None = None,
     ) -> HostInvocation:
         """Build an invocation that streams structured output.
@@ -237,6 +238,17 @@ class HostRunner(Protocol):
         opt-out: it clears any inherited ``LL_AUTOMATION`` to ``""`` (ENH-3081)
         rather than passing the parent's value through, so a non-automation
         invocation never silently carries the signal.
+
+        ``disable_background_tasks`` (FEAT-3078), when True and
+        ``automation_profile`` is set, injects
+        ``CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`` into the child environment
+        so a spawned Claude Code child cannot silently discard completed work
+        via tool-level backgrounding (``Bash run_in_background: true``) whose
+        result the parent never retrieves. When ``automation_profile`` is
+        ``None``, the variable is explicitly neutralized to ``""`` rather than
+        omitted, for the same leak reason as ``automation_profile`` above.
+        Claude-Code-only: the other five runners accept and ignore this
+        parameter (no-op).
 
         ``workspace_root`` (FEAT-2878), when set, requests that tool access be
         confined to that directory for a trace-assertion eval run. Only
@@ -306,6 +318,7 @@ class ClaudeCodeRunner:
         tools: list[str] | None = None,
         model: str | None = None,
         automation_profile: str | None = None,
+        disable_background_tasks: bool = False,
         workspace_root: Path | None = None,
     ) -> HostInvocation:
         if workspace_root is not None:
@@ -351,6 +364,16 @@ class ClaudeCodeRunner:
         if workspace_root is None:
             env["DANGEROUSLY_SKIP_PERMISSIONS"] = "1"
         _apply_automation_env(env, automation_profile)
+        # FEAT-3078: host-scoped (claude CLI only), so this lives directly in
+        # ClaudeCodeRunner rather than _apply_automation_env() — mirrors the
+        # CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR precedent above. Neutralize
+        # with "" (not omit) on the non-automation path so an inherited value
+        # never leaks into an interactive/non-automation child (AC2); "" was
+        # empirically confirmed to restore backgrounding (postmortems/feat-3078-verify/).
+        if disable_background_tasks and automation_profile is not None:
+            env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] = "1"
+        else:
+            env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] = ""
         if working_dir is not None:
             git_path = Path(working_dir) / ".git"
             if git_path.is_file():
@@ -598,9 +621,11 @@ class CodexRunner:
         sandbox_mode: str | None = None,
         model: str | None = None,
         automation_profile: str | None = None,
+        disable_background_tasks: bool = False,
         workspace_root: Path | None = None,
     ) -> HostInvocation:
         del model  # codex does not support --model in streaming mode
+        del disable_background_tasks  # FEAT-3078: CLAUDE_CODE_* var, no-op on non-Claude hosts
         if workspace_root is not None:
             warnings.warn(
                 "codex host_runner has no workspace-sandboxing implementation "
@@ -804,6 +829,7 @@ class OpenCodeRunner:
         tools: list[str] | None = None,
         model: str | None = None,
         automation_profile: str | None = None,
+        disable_background_tasks: bool = False,
         workspace_root: Path | None = None,
     ) -> HostInvocation:
         raise HostNotConfigured(
@@ -878,6 +904,7 @@ class PiRunner:
         tools: list[str] | None = None,
         model: str | None = None,
         automation_profile: str | None = None,
+        disable_background_tasks: bool = False,
         workspace_root: Path | None = None,
     ) -> HostInvocation:
         raise HostNotConfigured(
@@ -989,8 +1016,10 @@ class GeminiRunner:
         tools: list[str] | None = None,
         model: str | None = None,
         automation_profile: str | None = None,
+        disable_background_tasks: bool = False,
         workspace_root: Path | None = None,
     ) -> HostInvocation:
+        del disable_background_tasks  # FEAT-3078: CLAUDE_CODE_* var, no-op on non-Claude hosts
         if agent:
             warnings.warn(
                 "gemini has no CLI-flag agent selection; skills activate "
@@ -1184,8 +1213,10 @@ class OmpRunner:
         tools: list[str] | None = None,
         model: str | None = None,
         automation_profile: str | None = None,
+        disable_background_tasks: bool = False,
         workspace_root: Path | None = None,
     ) -> HostInvocation:
+        del disable_background_tasks  # FEAT-3078: CLAUDE_CODE_* var, no-op on non-Claude hosts
         if agent:
             warnings.warn(
                 "omp has no CLI-flag agent selection; subagents are spawned "
@@ -1370,8 +1401,10 @@ class KimiRunner:
         tools: list[str] | None = None,
         model: str | None = None,
         automation_profile: str | None = None,
+        disable_background_tasks: bool = False,
         workspace_root: Path | None = None,
     ) -> HostInvocation:
+        del disable_background_tasks  # FEAT-3078: CLAUDE_CODE_* var, no-op on non-Claude hosts
         if tools:
             warnings.warn(
                 "kimi has no tool-allowlist CLI flag; tool policy lives in "

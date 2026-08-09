@@ -782,6 +782,7 @@ class MockActionRunner:
         on_usage: Any = None,
         on_usage_detailed: Any = None,
         model: str | None = None,
+        **kwargs: Any,
     ) -> ActionResult:
         del on_output_line, agent, tools, on_usage, on_usage_detailed, model
         self.calls.append(action)
@@ -2259,6 +2260,7 @@ class TestSignalHandlingPersistence:
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
                 model: str | None = None,
+                **kwargs: Any,
             ) -> ActionResult:
                 del (
                     timeout,
@@ -2330,6 +2332,7 @@ class TestSignalHandlingPersistence:
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
                 model: str | None = None,
+                **kwargs: Any,
             ) -> ActionResult:
                 del (
                     timeout,
@@ -2426,6 +2429,7 @@ class TestSignalHandlingPersistence:
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
                 model: str | None = None,
+                **kwargs: Any,
             ) -> ActionResult:
                 del (
                     timeout,
@@ -2494,6 +2498,7 @@ class TestSignalHandlingPersistence:
                 on_usage: Any = None,
                 on_usage_detailed: Any = None,
                 model: str | None = None,
+                **kwargs: Any,
             ) -> ActionResult:
                 del (
                     timeout,

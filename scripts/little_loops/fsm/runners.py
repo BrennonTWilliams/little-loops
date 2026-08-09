@@ -49,6 +49,7 @@ class ActionRunner(Protocol):
         model: str | None = None,
         working_dir: Path | None = None,
         automation_profile: str | None = None,
+        disable_background_tasks: bool = False,
         idle_timeout: int = 0,
     ) -> ActionResult:
         """Execute an action and return the result.
@@ -67,6 +68,10 @@ class ActionRunner(Protocol):
             automation_profile: ENH-2714 opt-in automation-context static-prefix
                 pruning profile name (prompt-mode only). None preserves full
                 unpruned behavior.
+            disable_background_tasks: FEAT-3078 opt-in to hard-disable
+                tool-level background tasks in the spawned child (prompt-mode
+                only). Forwarded to run_claude_command() when
+                automation_profile is also set.
             idle_timeout: FEAT-3033 — kill the action if it emits no output for
                 this many seconds (0 disables idle detection, the default).
 
@@ -108,6 +113,7 @@ class DefaultActionRunner:
         model: str | None = None,
         working_dir: Path | None = None,
         automation_profile: str | None = None,
+        disable_background_tasks: bool = False,
         idle_timeout: int = 0,
     ) -> ActionResult:
         """Execute action and return result, streaming output line by line.
@@ -127,6 +133,10 @@ class DefaultActionRunner:
             automation_profile: ENH-2714 opt-in automation-context static-prefix
                 pruning profile name (prompt-mode only). None preserves full
                 unpruned behavior.
+            disable_background_tasks: FEAT-3078 opt-in to hard-disable
+                tool-level background tasks in the spawned child (prompt-mode
+                only). Forwarded to run_claude_command() when
+                automation_profile is also set.
             idle_timeout: FEAT-3033 — kill the action if it emits no output for
                 this many seconds (0 disables idle detection, the default).
 
@@ -189,6 +199,7 @@ class DefaultActionRunner:
                     model=model,
                     working_dir=working_dir,
                     automation_profile=automation_profile,
+                    disable_background_tasks=disable_background_tasks,
                     idle_timeout=idle_timeout,
                     on_result_seen=_on_result_seen,
                     on_session_id_detected=_on_session_id,
@@ -380,6 +391,7 @@ class SimulationActionRunner:
         model: str | None = None,
         working_dir: Path | None = None,
         automation_profile: str | None = None,
+        disable_background_tasks: bool = False,
         idle_timeout: int = 0,
     ) -> ActionResult:
         """Prompt user for simulated result instead of executing.
@@ -396,12 +408,24 @@ class SimulationActionRunner:
             model: Ignored in simulation
             working_dir: Ignored in simulation
             automation_profile: Ignored in simulation
+            disable_background_tasks: Ignored in simulation
 
         Returns:
             ActionResult with simulated exit code
         """
         # unused in simulation
-        del timeout, on_output_line, agent, tools, on_usage, model, working_dir, idle_timeout
+        del (
+            timeout,
+            on_output_line,
+            agent,
+            tools,
+            on_usage,
+            model,
+            working_dir,
+            idle_timeout,
+            automation_profile,
+            disable_background_tasks,
+        )
         self.calls.append(action)
         self.call_count += 1
 

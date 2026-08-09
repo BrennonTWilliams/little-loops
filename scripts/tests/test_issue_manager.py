@@ -1411,6 +1411,57 @@ class TestRunWithContinuation:
 
         assert captured == ["ll-auto"]
 
+    def test_forwards_disable_background_tasks_to_subprocess(self, temp_project_dir: Path) -> None:
+        """FEAT-3078: disable_background_tasks must reach every round's subprocess."""
+        from little_loops.issue_manager import run_with_continuation
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "Normal output"
+        mock_result.stderr = ""
+
+        captured: list[object] = []
+
+        def fake_run_claude_command(*args: object, **kwargs: object) -> MagicMock:
+            captured.append(kwargs.get("disable_background_tasks"))
+            return mock_result
+
+        with patch(
+            "little_loops.issue_manager.run_claude_command", side_effect=fake_run_claude_command
+        ):
+            with patch("little_loops.issue_manager.detect_context_handoff", return_value=False):
+                run_with_continuation(
+                    "test command",
+                    MagicMock(),
+                    automation_profile="ll-auto",
+                    disable_background_tasks=True,
+                )
+
+        assert captured == [True]
+
+    def test_disable_background_tasks_defaults_to_false(self, temp_project_dir: Path) -> None:
+        """Unset means unset -- callers that never opted in are unaffected."""
+        from little_loops.issue_manager import run_with_continuation
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "Normal output"
+        mock_result.stderr = ""
+
+        captured: list[object] = []
+
+        def fake_run_claude_command(*args: object, **kwargs: object) -> MagicMock:
+            captured.append(kwargs.get("disable_background_tasks"))
+            return mock_result
+
+        with patch(
+            "little_loops.issue_manager.run_claude_command", side_effect=fake_run_claude_command
+        ):
+            with patch("little_loops.issue_manager.detect_context_handoff", return_value=False):
+                run_with_continuation("test command", MagicMock())
+
+        assert captured == [False]
+
     def test_automation_profile_defaults_to_none(self, temp_project_dir: Path) -> None:
         """Unset means unset -- callers that never opted in are unaffected."""
         from little_loops.issue_manager import run_with_continuation

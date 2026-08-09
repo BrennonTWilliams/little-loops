@@ -1046,6 +1046,7 @@ class TestBRConfig:
         assert result["orchestration"]["host_cli"] is None
         assert result["orchestration"]["request_path"] == "cli"
         assert result["orchestration"]["cluster"]["max_batch_size"] == 5
+        assert result["orchestration"]["disable_background_tasks"] is True
 
     def test_to_dict_never_modelled_sections_raw_passthrough(
         self, temp_project_dir: Path, sample_config: dict[str, Any]
@@ -3508,6 +3509,15 @@ class TestOrchestrationConfig:
         config = OrchestrationConfig.from_dict({"request_path": "batch"})
         assert config.request_path == "batch"
 
+    def test_from_dict_disable_background_tasks_defaults_true(self) -> None:
+        """FEAT-3078/FEAT-3077: defaults to True when unset."""
+        config = OrchestrationConfig.from_dict({})
+        assert config.disable_background_tasks is True
+
+    def test_from_dict_disable_background_tasks_explicit_false(self) -> None:
+        config = OrchestrationConfig.from_dict({"disable_background_tasks": False})
+        assert config.disable_background_tasks is False
+
 
 class TestBRConfigOrchestration:
     """Extend TestBRConfig with orchestration property coverage."""
@@ -3561,6 +3571,24 @@ class TestBRConfigOrchestration:
         assert config.orchestration.cluster.max_batch_size == 2
         assert config.orchestration.cluster.enable_dedup is False
         assert config.orchestration.cluster.propagate_context is True
+
+    def test_orchestration_disable_background_tasks_from_file(self, temp_project_dir: Path) -> None:
+        """BRConfig.orchestration.disable_background_tasks is read from ll-config.json."""
+        cfg = {"orchestration": {"disable_background_tasks": False}}
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(cfg))
+
+        config = BRConfig(temp_project_dir)
+        assert config.orchestration.disable_background_tasks is False
+
+    def test_orchestration_disable_background_tasks_defaults_true_when_absent(
+        self, temp_project_dir: Path
+    ) -> None:
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text("{}")
+
+        config = BRConfig(temp_project_dir)
+        assert config.orchestration.disable_background_tasks is True
 
 
 class TestBRConfigAnalyticsCaptureIntegration:

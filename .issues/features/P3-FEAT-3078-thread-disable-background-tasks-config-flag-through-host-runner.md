@@ -4,8 +4,9 @@ title: Thread a disable_background_tasks config flag through host_runner and all
   sites
 type: FEAT
 priority: P3
-status: open
+status: done
 testable: true
+completed_at: '2026-08-09T05:35:08Z'
 parent: FEAT-3060
 depends_on:
 - FEAT-3077
@@ -37,6 +38,33 @@ to inject `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` into the child environment
 whenever `automation_profile` is set, mirroring the existing
 `automation_profile`-threading pattern (Pattern A) used for
 `LL_AUTOMATION`/`LL_AUTOMATION_PROFILE`.
+
+## Current Behavior
+
+`ClaudeCodeRunner.build_streaming()` (`host_runner.py:299`) has no mechanism to
+disable Claude Code's background-task capability. Automation sessions
+(`ll-auto`, FSM loops) that spawn a `claude` child can have that child launch
+tool-level background work (e.g. `Bash run_in_background: true`), which can
+silently discard completed work if the parent session ends before the
+background task's result is retrieved — see `## Impact` below for a concrete
+recurrence.
+
+## Expected Behavior
+
+A new `orchestration.disable_background_tasks` config flag (defaulting to
+`true` per FEAT-3077's resolved carve-out decision) threads through
+`build_streaming()` and all its callers. When enabled and `automation_profile`
+is set, the child environment carries `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`;
+when `automation_profile` is unset, the variable is explicitly neutralized
+rather than merely omitted. See `## Acceptance Criteria` for the full
+contract.
+
+## Use Case
+
+As an automation pipeline (`ll-auto`, FSM loops) operator, I want spawned
+Claude Code children to have background-task capability hard-disabled by
+default so that completed work is never silently discarded because a
+background task's result was never retrieved before the parent session ended.
 
 ## Parent Issue
 
@@ -492,6 +520,12 @@ sprint.
 | `docs/reference/HOST_COMPATIBILITY.md` | Whether non-Claude hosts have an equivalent |
 
 
+## Status
+
+Open. All design decisions resolved (AC2 neutralizing value, AC3 helper vs.
+direct-write placement); dependencies `FEAT-3077` and `BUG-3093` are `done`.
+Ready for implementation.
+
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-08-08_
@@ -522,6 +556,8 @@ _Added by `/ll:confidence-check` on 2026-08-08_
   off/`None` rather than failing loudly.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-09T05:34:24 - `b7457e6e-9654-45e5-a9bd-43e1bcddbd28.jsonl`
+- `/ll:ready-issue` - 2026-08-09T04:35:11 - `1a82e4d3-075a-4637-833a-bd558746e44f.jsonl`
 - `/ll:confidence-check` - 2026-08-09T03:38:13 - `078e9245-e490-4404-8597-4895b11b1e76.jsonl`
 - `/ll:decide-issue` - 2026-08-09T03:30:22 - `83bf90ea-254d-4998-aaa3-1f6e622ec8d9.jsonl`
 - `/ll:confidence-check` - 2026-08-09T03:04:16 - `3f55b9b9-4ca3-4793-ac1c-ac23bd73138c.jsonl`

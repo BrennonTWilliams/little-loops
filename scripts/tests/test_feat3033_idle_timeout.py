@@ -446,6 +446,7 @@ class TestIdleTimeoutPrecedence:
                 model=None,
                 working_dir=None,
                 automation_profile=None,
+                **kwargs,
             ) -> ActionResult:
                 self.calls.append(action)
                 return ActionResult(output="", stderr="", exit_code=0, duration_ms=1)

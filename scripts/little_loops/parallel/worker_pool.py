@@ -889,6 +889,7 @@ class WorkerPool:
         issue_id: str | None = None,
         on_usage: Callable[[int, int], None] | None = None,
         resume_session: bool = False,
+        disable_background_tasks: bool = False,
     ) -> subprocess.CompletedProcess[str]:
         """Run a Claude CLI command with real-time output streaming.
 
@@ -898,6 +899,10 @@ class WorkerPool:
             issue_id: Optional issue ID for subprocess tracking
             on_usage: Optional usage callback for token tracking
             resume_session: If True, passes --continue to the Claude CLI
+            disable_background_tasks: FEAT-3078 opt-in to hard-disable
+                tool-level background tasks in the spawned child. Forwarded
+                to run_claude_command() for parity with the issue_manager.py
+                and FSM paths.
 
         Returns:
             CompletedProcess with stdout and stderr
@@ -931,6 +936,7 @@ class WorkerPool:
             idle_timeout=self.parallel_config.idle_timeout_per_issue,
             on_usage=on_usage,
             resume_session=resume_session,
+            disable_background_tasks=disable_background_tasks,
         )
 
     def _check_issue_already_done(self, issue_id: str | None, working_dir: Path) -> bool:

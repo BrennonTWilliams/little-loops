@@ -154,6 +154,9 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
 | `json_schema`    | ✓[^schema]  | ✗        | partial (file-mediated)[^schema]   | ✗[^gemini]                         | ✗[^omp]                            | ✗[^kimi] |
 | `structured_output` | ✓        | ✗        | ✗[^struct]                         | ✗[^struct]                         | ✗[^struct]                         | ✗[^struct] — no single-blob JSON mode; blocking consumers take the final assistant stream event[^kimi] |
 | Token reporting  | ✓           | ✗[^tok]  | ✗[^tok]                            | ✗[^gemini]                         | ✗[^omp]                            | ✗ — no usage events in stream-json (0.30.0)[^kimi] |
+| `disable_background_tasks` | ✓ (`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`)[^bgtasks] | ✗ (no-op) | ✗ (no-op) | ✗ (no-op) | ✗ (no-op) | ✗ (no-op) |
+
+[^bgtasks]: **FEAT-3078/FEAT-3060, Claude-Code-only.** When `orchestration.disable_background_tasks` is `true` (default) and `automation_profile` is set, `ClaudeCodeRunner.build_streaming()` injects `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, hard-disabling tool-level background tasks (`Bash run_in_background: true`) in the child so completed work can't be silently discarded because the parent session ended before a background task's result was retrieved. The other five runners accept the `disable_background_tasks` parameter for `HostRunner` Protocol conformance but ignore it — no equivalent capability exists for those CLIs. Shell-level backgrounding (a trailing `&`) is outside this flag's reach on every host.
 
 [^omp]: oh-my-pi (`omp` binary, Bun package `@oh-my-pi/pi-coding-agent`) support
     is tracked by **EPIC-2258**. The runner core (`OmpRunner`, FEAT-1850) and the

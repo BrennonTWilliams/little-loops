@@ -465,6 +465,13 @@ class PruningProfileConfig:
        ``claude_md_suppression`` as supported — the claude CLI has no flag to
        skip CLAUDE.md. Treat both fields as forward-declarations.
 
+    A second, unconditional env var shares this profile's ``automation_profile
+    is not None`` gate but has a distinct config origin: ``CLAUDE_CODE_DISABLE_BACKGROUND_TASKS``
+    (FEAT-3078) is sourced from the global ``orchestration.disable_background_tasks``
+    config (default ``True``), not from this dataclass or any per-loop/per-state
+    field. It hard-disables tool-level background tasks in the spawned Claude
+    Code child; see ``host_runner.py``'s ``ClaudeCodeRunner.build_streaming()``.
+
     Attributes:
         enabled: Master switch. When False, the profile is inert even if
             other fields are set (mirrors ``PromptSizeGuardConfig.enabled``).

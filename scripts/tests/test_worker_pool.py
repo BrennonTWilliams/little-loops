@@ -2840,6 +2840,7 @@ class TestWorkerPoolRunClaudeCommand:
             idle_timeout: int = 0,
             on_usage: Any = None,
             resume_session: bool = False,
+            disable_background_tasks: bool = False,
         ) -> subprocess.CompletedProcess[str]:
             mock_proc = Mock(spec=subprocess.Popen)
             if on_process_start:

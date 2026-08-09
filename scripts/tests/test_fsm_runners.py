@@ -110,6 +110,12 @@ class TestSimulationActionRunnerScenarios:
             result = runner.run("echo hi", 30, False)
             assert result.exit_code == 0
 
+    def test_disable_background_tasks_is_no_op(self) -> None:
+        """FEAT-3078: SimulationActionRunner accepts and ignores the kwarg."""
+        runner = self._make_runner("all-pass")
+        result = runner.run("echo hi", 30, False, disable_background_tasks=True)
+        assert result.exit_code == 0
+
     def test_all_fail_always_returns_one(self) -> None:
         runner = self._make_runner("all-fail")
         for _ in range(3):
@@ -596,6 +602,27 @@ class TestDefaultActionRunnerSlashPath:
             runner.run("/ll:skill", 60, True, working_dir=tmp_path)
 
         assert captured_kwargs.get("working_dir") == tmp_path
+
+    def test_disable_background_tasks_kwarg_forwarded(self) -> None:
+        """FEAT-3078: disable_background_tasks threads through to run_claude_command."""
+        runner = DefaultActionRunner()
+        completed = self._make_completed_process()
+        captured_kwargs: dict = {}
+
+        def capture(**kwargs: object) -> subprocess.CompletedProcess[str]:
+            captured_kwargs.update(kwargs)
+            return completed
+
+        with patch("little_loops.fsm.runners.run_claude_command", side_effect=capture):
+            runner.run(
+                "/ll:skill",
+                60,
+                True,
+                automation_profile="ll-auto",
+                disable_background_tasks=True,
+            )
+
+        assert captured_kwargs.get("disable_background_tasks") is True
 
 
 class TestDefaultActionRunnerWorkingDir:
