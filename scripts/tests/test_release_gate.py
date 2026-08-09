@@ -6,6 +6,8 @@ import datetime
 import json
 from pathlib import Path
 
+import pytest
+
 from little_loops.learning_tests import LearnTestRecord, write_record
 from little_loops.learning_tests.import_scan import get_imported_packages, normalize_target
 from little_loops.learning_tests.release_gate import run_release_gate
@@ -291,3 +293,54 @@ class TestReleaseGateBlockMode:
         result = run_release_gate(tmp_path, base_dir=_base_dir(tmp_path))
         # "requests" is not imported in lib/, so gate passes
         assert result == 0
+
+
+class TestReleaseGateRemediationText:
+    """ENH-3073: every printed row must name a remediation command that clears it."""
+
+    def test_single_row_prints_per_row_prove_command(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _write_config(tmp_path, enabled=True, release_gate="warn")
+        _write_record_file(tmp_path, "requests", "proven", date="2020-01-01")
+        _write_source_file(tmp_path, "scripts/main.py", "import requests\n")
+        run_release_gate(tmp_path, base_dir=_base_dir(tmp_path))
+        out = capsys.readouterr().out
+        assert 'll-learning-tests prove "requests"' in out
+        assert "migrate-sdk-version" not in out
+
+    def test_dotted_target_advertised_raw_not_normalized(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _write_config(tmp_path, enabled=True, release_gate="warn")
+        _write_record_file(tmp_path, "ruamel.yaml", "proven", date="2020-01-01")
+        _write_source_file(tmp_path, "scripts/main.py", "import ruamel.yaml\n")
+        run_release_gate(tmp_path, base_dir=_base_dir(tmp_path))
+        out = capsys.readouterr().out
+        assert 'll-learning-tests prove "ruamel.yaml"' in out
+        assert "ruamelyaml" not in out
+
+    def test_multi_row_prints_bulk_line_exactly_once(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _write_config(tmp_path, enabled=True, release_gate="warn")
+        _write_record_file(tmp_path, "requests", "proven", date="2020-01-01")
+        _write_record_file(tmp_path, "anthropic", "proven", date="2020-01-01")
+        _write_source_file(
+            tmp_path, "scripts/main.py", "import requests\nimport anthropic\n"
+        )
+        run_release_gate(tmp_path, base_dir=_base_dir(tmp_path))
+        out = capsys.readouterr().out
+        assert 'll-learning-tests prove "requests"' in out
+        assert 'll-learning-tests prove "anthropic"' in out
+        assert out.count("ll-loop run migrate-sdk-version") == 1
+
+    def test_remediation_text_also_printed_in_block_mode(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _write_config(tmp_path, enabled=True, release_gate="block")
+        _write_record_file(tmp_path, "requests", "proven", date="2020-01-01")
+        _write_source_file(tmp_path, "scripts/main.py", "import requests\n")
+        run_release_gate(tmp_path, base_dir=_base_dir(tmp_path))
+        out = capsys.readouterr().out
+        assert 'll-learning-tests prove "requests"' in out

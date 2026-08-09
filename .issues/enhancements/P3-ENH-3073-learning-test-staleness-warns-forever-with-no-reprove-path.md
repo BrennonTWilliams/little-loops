@@ -2,11 +2,12 @@
 id: ENH-3073
 priority: P3
 type: ENH
-status: open
+status: done
 discovered_commit: 5d0a711f
 discovered_branch: main
 discovered_date: 2026-08-05
 discovered_by: manual-investigation
+completed_at: '2026-08-09T03:14:18Z'
 labels:
 - learning-tests
 - release
@@ -402,34 +403,34 @@ _Added by `/ll:refine-issue` — 2026-08-09 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] The audit's output names a concrete per-record remediation command
+- [x] The audit's output names a concrete per-record remediation command
       (`ll-learning-tests prove "<target>"`, embedding the raw `record.target`) for each
       printed row, in both `warn` and `block` mode.
-- [ ] When the table has more than one row, the output additionally names the bulk path
+- [x] When the table has more than one row, the output additionally names the bulk path
       `ll-loop run migrate-sdk-version` on a single trailing line. A one-row table prints
       only the per-row command.
-- [ ] A test asserts the printed remediation text for a stale row references
+- [x] A test asserts the printed remediation text for a stale row references
       `ll-learning-tests prove` and the row's own target name, via `capsys` in
       `scripts/tests/test_release_gate.py`. A second test covers the multi-row case and
       asserts the bulk line appears exactly once.
-- [ ] A test asserts a record with a dotted target (`ruamel.yaml`) is advertised as
+- [x] A test asserts a record with a dotted target (`ruamel.yaml`) is advertised as
       `ll-learning-tests prove "ruamel.yaml"` — **not** the normalized or slugified form.
-- [ ] `cmd_prove` no longer discards the loop's exit status: a non-zero `ll-loop`
+- [x] `cmd_prove` no longer discards the loop's exit status: a non-zero `ll-loop`
       returncode is surfaced to the user, a missing `ll-loop` binary produces a readable
       error rather than a `FileNotFoundError` traceback, loop stderr reaches the user on
       failure rather than being swallowed by `capture_output`, and "loop failed" /
       "no record found" / "record is refuted" produce distinct messages instead of a bare
       shared `return 1`. Covered by tests in `scripts/tests/test_cli_learning_tests.py`.
-- [ ] The seven currently-stale records (`anthropic`, `fcntl`, `hypothesis`, `phoenix`,
+- [x] The seven currently-stale records (`anthropic`, `fcntl`, `hypothesis`, `phoenix`,
       `pytest`, `questionary`, `ruamel.yaml`) were re-proven via
       `ll-loop run migrate-sdk-version` — or per-target `ll-learning-tests prove` for any
       it leaves unrefreshed — and **not** by hand-editing `date:`. Any target whose proof
       run fails is left flagged and called out in this issue rather than re-dated.
-- [ ] Those seven targets no longer appear in the audit's table, verified by `python -c
+- [x] Those seven targets no longer appear in the audit's table, verified by `python -c
       "from pathlib import Path; from little_loops.learning_tests.release_gate import
       run_release_gate; raise SystemExit(run_release_gate(Path.cwd()))"`.
       **The table need not be empty** — see the note below.
-- [ ] `docs/guides/LEARNING_TESTS_GUIDE.md:387-416` example output block matches the new
+- [x] `docs/guides/LEARNING_TESTS_GUIDE.md:387-416` example output block matches the new
       remediation text, and the stale `<!-- TODO: ENH-2621 -->` comment at line 407 is
       **removed** (ENH-2621 is `status: done`).
 - [ ] ~~The two verbatim mirrors of the `manage-release` gate step —
@@ -438,7 +439,7 @@ _Added by `/ll:refine-issue` — 2026-08-09 — based on codebase analysis:_
       **N/A, confirmed 2026-08-07.** Both mirrors contain only the two-line
       `run_release_gate` import + `sys.exit`; neither carries remediation text, and
       Option A changes only `release_gate.py`'s print statements. No mirror edit is due.
-- [ ] A follow-up ENH is filed for Option B (version-stamped staleness) and linked from
+- [x] A follow-up ENH is filed for Option B (version-stamped staleness) and linked from
       Related Issues here. It must reference `loops/migrate-sdk-version.yaml`'s existing
       version resolver as the starting point (see Follow-up for Option B).
 
@@ -450,7 +451,10 @@ _Added by `/ll:refine-issue` — 2026-08-09 — based on codebase analysis:_
 > review, failing the AC for reasons unrelated to this change — which is the same
 > signal-quality confusion this issue exists to fix. The AC is therefore scoped to the
 > seven named targets. Making the table durably empty is Option B's job, not Option A's.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `python -m pytest scripts/tests/` exits 0. (18689 passed, 42 skipped; the sole
+      failure, `test_prose_dep_sweep_gate.py::test_no_prose_dependency_drift_in_repo`
+      flagging `FEAT-3122`/`FEAT-3108`, reproduces identically on a clean `main` with
+      this branch's changes stashed out — pre-existing, unrelated to this issue.)
 
 ## Impact
 
@@ -581,8 +585,9 @@ _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
   records (`status: done`)
 - ENH-2621 — docs-guide audit fixes; `status: done`, but left a stale `TODO` marker in
   `LEARNING_TESTS_GUIDE.md:407` that this issue removes
-- _(to file)_ Option B follow-up — version-stamped staleness instead of calendar age; carries
-  the `is_record_stale` signature-change caller list and schema/migration work dropped above
+- ENH-3125 — Option B follow-up — version-stamped staleness instead of calendar age;
+  carries the `is_record_stale` signature-change caller list and schema/migration work
+  dropped above
 
 **Adjacent defect — now filed as [[BUG-3089]] (P2).** This note originally read: "`run_release_gate`
 matches `r.target in imported_packages` raw (`release_gate.py:67`), while `cmd_orphans`
@@ -706,6 +711,8 @@ advertise (hardening now in scope); Option B had no successor issue (now an AC);
 LEARNING_TESTS_GUIDE / kimi-code / gemini mirror updates had no AC (now added)._
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-09T03:13:57 - `22627c09-0751-4099-b0ef-c7f8a29bb6da.jsonl`
+- `/ll:ready-issue` - 2026-08-09T02:56:47 - `52983fa2-ed01-4eba-b607-fbf29a9ba940.jsonl`
 - `/ll:confidence-check` - 2026-08-09T01:49:26 - `73167daf-0cd3-4366-a111-f709ff0d9f68.jsonl`
 - `/ll:refine-issue` - 2026-08-09T01:44:31 - `5225f24f-a1c9-4f87-82aa-5db111f5149d.jsonl`
 - `/ll:capture-issue` - 2026-08-08T04:47:47 - `0c442e3b-c3d8-4743-b597-7b3551a75ba6.jsonl`

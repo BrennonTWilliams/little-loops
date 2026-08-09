@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -367,7 +367,7 @@ class TestMainLearningTestsProve:
         record = self._make_record(status="proven")
         with (
             patch("sys.argv", ["ll-learning-tests", "prove", "requests"]),
-            patch("subprocess.run") as mock_run,
+            patch("subprocess.run", return_value=Mock(returncode=0)) as mock_run,
             patch("little_loops.learning_tests.check_learning_test", return_value=record),
         ):
             result = main_learning_tests()
@@ -381,7 +381,7 @@ class TestMainLearningTestsProve:
         record = self._make_record(status="proven")
         with (
             patch("sys.argv", ["ll-learning-tests", "prove", "requests"]),
-            patch("subprocess.run") as mock_run,
+            patch("subprocess.run", return_value=Mock(returncode=0)) as mock_run,
             patch("little_loops.learning_tests.check_learning_test", return_value=record),
         ):
             main_learning_tests()
@@ -398,13 +398,15 @@ class TestMainLearningTestsProve:
         record = self._make_record(status="refuted")
         with (
             patch("sys.argv", ["ll-learning-tests", "prove", "requests"]),
-            patch("subprocess.run"),
+            patch("subprocess.run", return_value=Mock(returncode=0)),
             patch("little_loops.learning_tests.check_learning_test", return_value=record),
         ):
             result = main_learning_tests()
         assert result == 1
-        data = json.loads(capsys.readouterr().out)
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
         assert data["status"] == "refuted"
+        assert "refuted" in captured.err
 
     def test_prove_invokes_learning_test_event_mirror(
         self, capsys: pytest.CaptureFixture[str]
@@ -413,7 +415,7 @@ class TestMainLearningTestsProve:
         record = self._make_record(status="proven")
         with (
             patch("sys.argv", ["ll-learning-tests", "prove", "requests"]),
-            patch("subprocess.run"),
+            patch("subprocess.run", return_value=Mock(returncode=0)),
             patch("little_loops.learning_tests.check_learning_test", return_value=record),
             patch("little_loops.session_store.record_learning_test_event") as mock_record,
         ):
@@ -427,7 +429,7 @@ class TestMainLearningTestsProve:
         record = self._make_record(status="proven")
         with (
             patch("sys.argv", ["ll-learning-tests", "prove", "requests"]),
-            patch("subprocess.run"),
+            patch("subprocess.run", return_value=Mock(returncode=0)),
             patch("little_loops.learning_tests.check_learning_test", return_value=record),
             patch(
                 "little_loops.session_store.record_learning_test_event",
@@ -442,7 +444,7 @@ class TestMainLearningTestsProve:
     ) -> None:
         with (
             patch("sys.argv", ["ll-learning-tests", "prove", "nonexistent target"]),
-            patch("subprocess.run"),
+            patch("subprocess.run", return_value=Mock(returncode=0)),
             patch("little_loops.learning_tests.check_learning_test", return_value=None),
         ):
             result = main_learning_tests()
@@ -451,6 +453,38 @@ class TestMainLearningTestsProve:
         assert captured.out == ""
         assert "Error" in captured.err
         assert "nonexistent target" in captured.err
+
+    def test_prove_nonzero_loop_exit_surfaced(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """ENH-3073: a failed ll-loop launch must not be silently treated as success."""
+        with (
+            patch("sys.argv", ["ll-learning-tests", "prove", "requests"]),
+            patch("subprocess.run", return_value=Mock(returncode=1)),
+            patch("little_loops.learning_tests.check_learning_test") as mock_check,
+        ):
+            result = main_learning_tests()
+        assert result == 1
+        mock_check.assert_not_called()
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "exited 1" in captured.err
+        assert "requests" in captured.err
+
+    def test_prove_missing_ll_loop_binary_readable_error(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """ENH-3073: a missing ll-loop binary must not raise a raw FileNotFoundError."""
+        with (
+            patch("sys.argv", ["ll-learning-tests", "prove", "requests"]),
+            patch("subprocess.run", side_effect=FileNotFoundError("ll-loop")),
+            patch("little_loops.learning_tests.check_learning_test") as mock_check,
+        ):
+            result = main_learning_tests()
+        assert result == 1
+        mock_check.assert_not_called()
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "not found" in captured.err
+        assert "ll-loop" in captured.err
 
 
 class TestMainLearningTestsOrphans:

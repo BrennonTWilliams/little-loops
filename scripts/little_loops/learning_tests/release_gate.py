@@ -84,6 +84,12 @@ def run_release_gate(cwd: Path, *, base_dir: Path | None = None) -> int:
         print(f"{record.target:<30} {status:<10} {record.date:<14} {age}")
     print("")
 
+    for record in hits:
+        print(f'  ll-learning-tests prove "{record.target}"')
+    if len(hits) > 1:
+        print("  ll-loop run migrate-sdk-version")
+    print("")
+
     if lt_config.release_gate == "block":
         print(
             "✗ Release blocked: fix or re-prove the above records, "

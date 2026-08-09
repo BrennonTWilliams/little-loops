@@ -406,7 +406,6 @@ When `learning_tests.enabled` is `true`, `/ll:manage-release` runs a pre-release
 | `"block"` | Prints warning table, aborts with exit 1 |
 
 **Example output (block mode, `stale_after_days: 30`, run on 2026-07-12):**
-<!-- TODO: ENH-2621 - day-counts are computed as (today - record.date) at run time (release_gate.py:81); pin these to a documented "as of" date or regenerate the example on each guide refresh so they don't silently drift out of sync. -->
 ```
 ⚠ Learning Test Pre-Release Audit
 Package                        Status     Record Date    Days Since Proven
@@ -414,8 +413,18 @@ Package                        Status     Record Date    Days Since Proven
 anthropic                      stale      2026-06-01     41
 requests                       refuted    2026-05-20     53
 
+  ll-learning-tests prove "anthropic"
+  ll-learning-tests prove "requests"
+  ll-loop run migrate-sdk-version
+
 ✗ Release blocked: fix or re-prove the above records, or set release_gate: warn to proceed.
 ```
+
+Every row names a concrete remediation: a per-row `ll-learning-tests prove "<target>"`
+command (using the record's raw `target`, not a normalized or slugified form), plus —
+when more than one row is printed — a single trailing `ll-loop run migrate-sdk-version`
+line that re-proves the whole stale set in one pass. This text is printed in both `warn`
+and `block` mode.
 
 For emergency releases, set `release_gate: "warn"` in `.ll/ll-config.json` temporarily — `/ll:manage-release` has no `--skip-learning-gate` flag.
 

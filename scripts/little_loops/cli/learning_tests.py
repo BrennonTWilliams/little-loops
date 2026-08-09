@@ -62,17 +62,27 @@ def cmd_prove(args: argparse.Namespace) -> int:
     from little_loops.cli.output import print_json
     from little_loops.learning_tests import check_learning_test
 
-    subprocess.run(
-        [
-            "ll-loop",
-            "run",
-            "ready-to-implement-gate",
-            "--context",
-            f"targets={args.target}",
-        ],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "ll-loop",
+                "run",
+                "ready-to-implement-gate",
+                "--context",
+                f"targets={args.target}",
+            ],
+        )
+    except FileNotFoundError:
+        print("Error: 'll-loop' not found on PATH — is little-loops installed?", file=sys.stderr)
+        return 1
+
+    if result.returncode != 0:
+        print(
+            f"Error: 'll-loop run ready-to-implement-gate' exited {result.returncode} "
+            f"for {args.target!r}",
+            file=sys.stderr,
+        )
+        return 1
 
     record = check_learning_test(args.target)
     if record is None:
@@ -82,7 +92,10 @@ def cmd_prove(args: argparse.Namespace) -> int:
     _record_learning_test_mirror(args.target)
 
     print_json(record.to_dict())
-    return 0 if record.status == "proven" else 1
+    if record.status != "proven":
+        print(f"Error: {args.target!r} re-proven as {record.status}", file=sys.stderr)
+        return 1
+    return 0
 
 
 def _record_learning_test_mirror(target: str) -> None:
