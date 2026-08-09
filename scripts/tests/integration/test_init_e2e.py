@@ -20,6 +20,7 @@ from unittest.mock import patch
 
 import pytest
 
+from little_loops.init.core import SCHEMA_URL
 from little_loops.logo import get_logo, print_logo
 
 pytestmark = pytest.mark.integration
@@ -66,8 +67,9 @@ class TestInitHeadlessEndToEnd:
         assert config_path.exists(), "apply must write .ll/ll-config.json"
 
         config = json.loads(config_path.read_text())
-        # Schema pointer is always emitted.
-        assert config["$schema"].endswith("config-schema.json")
+        # Schema pointer is always emitted (exact URL A; was a weak endswith
+        # assertion that could not distinguish URL A from URL B — ENH-206 Gap 3).
+        assert config["$schema"] == SCHEMA_URL
         # Project name is derived from the target directory name.
         assert config["project"]["name"] == "demo_project"
         # CLAUDE.md guarantees init "always writes loops.run_defaults" — pin the

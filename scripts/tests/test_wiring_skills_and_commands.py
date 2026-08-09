@@ -6,6 +6,7 @@ All original assertions from 31 source files preserved as parametrized cases.
 
 from __future__ import annotations
 
+import importlib.resources
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,11 @@ import pytest
 # =============================================================================
 # Shared paths (resolved from project_root fixture)
 # =============================================================================
+
+# Resolve via importlib.resources so tests work in both editable installs and
+# non-editable wheel installs (the schema now ships inside the package, not at
+# the repo root). Precedent: test_config_schema.py:16.
+CONFIG_SCHEMA_PATH = importlib.resources.files("little_loops").joinpath("config-schema.json")
 
 
 # -- 149 string-presence assertions -------------------------------
@@ -89,8 +95,8 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/generalized-fsm-loop.md", "MCP", "ENH-1639"),
     ("docs/guides/AUTOMATIC_HARNESSING_GUIDE.md", "MCP", "ENH-1639"),
     ("docs/guides/AUTOMATIC_HARNESSING_GUIDE.md", "1500", "ENH-1639"),
-    ("scripts/little_loops/config-schema.json", "issue.completed", "ENH-1734"),
-    ("scripts/little_loops/config-schema.json", "AutoManager", "ENH-1734"),
+    (str(CONFIG_SCHEMA_PATH), "issue.completed", "ENH-1734"),
+    (str(CONFIG_SCHEMA_PATH), "AutoManager", "ENH-1734"),
     ("commands/review-sprint.md", "3f: EPIC Context", "ENH-1859"),
     ("commands/review-sprint.md", "ll-sprint show EPIC-", "ENH-1859"),
     ("commands/review-sprint.md", "ll-deps tree", "ENH-1859"),

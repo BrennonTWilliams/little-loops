@@ -425,6 +425,27 @@ class TestPlanMergeParity:
         # Detected architecture docs must NOT replace the existing section.
         assert plan["proposed_config"]["documents"] == existing_docs
 
+    def test_plan_url_a_overrides_url_b_in_existing_config(self, tmp_path: Path) -> None:
+        """URL A (SCHEMA_URL) wins on merge when the existing config has URL B.
+
+        Regression guard for ENH-206 Gap 4: if `build_config` (init/core.py:158,161)
+        ever drops the $schema key, this assertion fails; if `deep_merge` ever
+        changes string-replacement semantics, this also fails. Behavior is
+        already correct today — see ENH-206 ## Codebase Research Findings.
+        """
+        from little_loops.init.core import SCHEMA_URL
+
+        URL_B = "https://example.invalid/old-config-schema.json"
+        project = tmp_path / "proj"
+        (project / ".ll").mkdir(parents=True)
+        (project / ".ll" / "ll-config.json").write_text(
+            json.dumps({"$schema": URL_B, "my_custom_section": {"k": 1}})
+        )
+        plan = _plan_for(project)
+        assert plan["proposed_config"]["$schema"] == SCHEMA_URL
+        # Hand-edited unmodeled section must still survive the merge.
+        assert plan["proposed_config"]["my_custom_section"] == {"k": 1}
+
 
 # ===========================================================================
 # M-7: apply --dry-run + requested_upgrade honored

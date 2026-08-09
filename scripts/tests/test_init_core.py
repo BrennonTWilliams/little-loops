@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from little_loops.init.cli import _plugin_root
-from little_loops.init.core import SCHEMA_URL, build_config, schema_default
+from little_loops.init.core import SCHEMA_URL, build_config, schema_default, schema_enum
 from little_loops.init.detect import (
     TemplateMatch,
     _find_templates_dir,
@@ -3454,4 +3454,24 @@ class TestSchemaLoaderInWheelInstall:
         assert value is True, (
             f"schema_default('learning_tests.enabled') returned {value!r}; "
             f"bundled schema default is True"
+        )
+
+    def test_schema_enum_returns_real_enum(self) -> None:
+        """schema_enum() returns the JSON-Schema-declared enum for a known path.
+
+        Today the only production caller is init/cli.py:319
+        `if primary in schema_enum("hooks.host"):` (ENH-206 Gap 5). This
+        direct test pins the function so a future refactor that drops the
+        `enum` declaration or changes the dotted-walk shape fails loud.
+        """
+        from little_loops.init import core as core_mod
+
+        core_mod._load_schema.cache_clear()
+        try:
+            values = schema_enum("hooks.host")
+        finally:
+            core_mod._load_schema.cache_clear()
+        assert values == ["claude-code", "opencode", "codex"], (
+            f"schema_enum('hooks.host') returned {values!r}; "
+            f"bundled schema enum is ['claude-code', 'opencode', 'codex']"
         )

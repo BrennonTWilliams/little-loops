@@ -396,11 +396,10 @@ class TestAutomationConfigKnob:
         assert cfg.ready_issue_unknown_retries == 0
 
     def test_schema_documents_the_knob(self) -> None:
+        import importlib.resources
         import json
 
-        import little_loops
-
-        schema_path = Path(little_loops.__file__).parent / "config-schema.json"
+        schema_path = importlib.resources.files("little_loops").joinpath("config-schema.json")
         schema = json.loads(schema_path.read_text())
         knob = schema["properties"]["automation"]["properties"]["ready_issue_unknown_retries"]
 
