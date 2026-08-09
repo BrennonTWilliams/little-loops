@@ -1,0 +1,12 @@
+{
+  "id": "5b741b77-e04d-4ec3-88c6-4d585f3079a1",
+  "type": "decision",
+  "timestamp": "2026-08-09T01:58:06Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Dependency-free pure function; matches existing deep_merge/resolve_config_path promotion precedent and the one-directional hooks-import-from-config.core convention. Option B (dedicated resolve_effective_config helper) would mostly be glue around already-existing pieces.",
+  "rule": "Extract _parse_frontmatter() into config/core.py (Option A)",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: dedicated shared helper (resolve_effective_config())",
+  "issue": "BUG-3123"
+}

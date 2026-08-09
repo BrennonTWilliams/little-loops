@@ -1,0 +1,12 @@
+{
+  "id": "6f0ce3ae-b5d3-452b-b337-6757cc47242d",
+  "type": "decision",
+  "timestamp": "2026-08-09T02:03:52Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "verify_epic_branch_before_merge() already builds child env additively (os.environ.copy() + overlay); no codebase precedent excludes an inherited env var for isolation, and LL_VERIFY_GATE's only consumer is a test self-quarantine flag, not a side-effect suppressor. Sharing fixes the same data-loss failure mode for verify-gate's test_run_events rows that BUG-3112 fixes for sessions.",
+  "rule": "Verify-gate worktree: share LL_HISTORY_DB, no special case (Option A)",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: keep verify-gate isolated from shared history DB (do not set LL_HISTORY_DB when LL_VERIFY_GATE=1) \u2014 scored 6/12 vs Option A's 10/12; would be a first-of-its-kind conditional exclusion with no precedent.",
+  "issue": "BUG-3112"
+}

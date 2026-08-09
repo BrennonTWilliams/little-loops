@@ -18,7 +18,7 @@ relates_to:
 - ENH-3094
 - ENH-3081
 verify_verdict: VALID
-confidence_score: 90
+confidence_score: 85
 outcome_confidence: 70
 score_complexity: 9
 score_test_coverage: 25
@@ -221,6 +221,43 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Added by `/ll:refine-issue` — 2026-08-06 — based on codebase analysis:_
 
+_Added by `/ll:refine-issue` — 2026-08-09 — based on codebase analysis:_
+
+### Sequencing vs. ENH-3094/3095/3096/3097 — confirmed, not a conflict
+
+Verified against current code and all four issue files: no `AutomationContext`
+class exists anywhere in `scripts/little_loops/` (`grep -r "class AutomationContext"`
+returns zero matches). `ENH-3094` (the AutomationContext-collapse proposal) is
+`status: done`/`Decomposed` into three children — `ENH-3095` (add the dataclass,
+thread through `HostRunner.build_streaming()`), `ENH-3096` (thread through
+`ActionRunner.run()`, `blocked_by: [ENH-3095]`), `ENH-3097` (thread through
+`run_claude_command()` and callers, `blocked_by: [ENH-3095]`) — all three still
+`open`, none implemented. `ENH-3095`'s proposed `AutomationContext` dataclass
+already carries a `disable_background_tasks: bool = False` field, pre-designed
+to absorb this issue's output once it lands — confirming this issue's
+raw-parameter approach (Pattern A, mirroring `automation_profile`) is the
+correct, currently-conventional route and the ENH-309x collapse is a genuine
+second pass, not rework this issue should preempt.
+
+**Risk this surfaces, not this issue's to fix**: the "FEAT-3078 lands first"
+ordering exists only as prose (this issue's own text, and each ENH-309x
+issue's `## Parent Issue` section) — none of `ENH-3095`/`3096`/`3097` carries
+`blocked_by: [FEAT-3078]` in frontmatter. Nothing in the current issue graph
+would stop an automation pipeline that only respects `blocked_by`/`depends_on`
+edges from picking up `ENH-3095` before this issue lands.
+
+### Documentation edit contention — docs/ARCHITECTURE.md:777
+
+Both this issue (AC5/AC6, adding a `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` note)
+and `ENH-3095` (renaming the cited kwarg form from `automation_profile=...` to
+`automation=...` once `AutomationContext` lands) target the identical
+`PruningProfileConfig` row at `docs/ARCHITECTURE.md:777`. Current verbatim
+content at that line still reads `automation_profile=...` (confirms no drift
+since this issue's last refine pass). Whichever issue lands first will change
+what the other needs to edit at that line — not a blocker, but the implementer
+of whichever lands second should re-read the line rather than trust this
+issue's own quoted wording.
+
 ### Open Questions Raised During Decision Review (2026-08-06)
 
 Neither is resolved; both should be settled before or during implementation.
@@ -331,7 +368,43 @@ sprint.
 | `docs/reference/HOST_COMPATIBILITY.md` | Whether non-Claude hosts have an equivalent |
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-08_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 70/100 → MODERATE
+
+### Concerns
+- Open Question (blocking AC2) is still unresolved: the neutralizing value for
+  `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` when `automation_profile is None`
+  (`""`, `"0"`, or key omission) is unverified — the host reads this var, not
+  our own code, so truthiness handling is unknown. The issue's own proposed
+  fix is a cheap fourth probe against the FEAT-3076/3077 harness
+  (`postmortems/feat-3078-verify/`, not yet created); run it before
+  implementing AC2 rather than guessing.
+- The AC3 design decision (var added directly in
+  `ClaudeCodeRunner.build_streaming()` vs. a host-guarded extension to
+  `_apply_automation_env()`) has a clear recommendation (option i) but is not
+  yet a recorded decision — confirm it before touching the five sibling
+  runners.
+- Wide mechanical fanout: 7 runner signatures (`HostRunner` Protocol + 6
+  implementations) plus 3 `ActionRunner` implementations plus ~15 dependent
+  call sites plus ~10 test files with hand-written explicit-signature mocks
+  that will `TypeError` if missed (the issue's own Tests section already
+  flags this risk for `MockActionRunner` and its `test_feat3033_idle_timeout.py`
+  import).
+
+### Outcome Risk Factors
+- Breadth dominates outcome risk (16+ change sites; Complexity scores 9/25 —
+  Breadth 0/12, Depth 9/13) even though each site's edit is mechanical
+  parameter-threading. Missing or mis-forwarding the parameter at even one of
+  the ~15 dependent call sites silently reduces to a no-op (defaults to
+  `False`/`None`) rather than a loud failure.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-09T02:44:03 - `949315da-0b72-4a22-a42d-0493ed4f18c1.jsonl`
+- `/ll:refine-issue` - 2026-08-09T02:04:44 - `e39c0eb4-7919-44f8-957b-3516c6ae853a.jsonl`
 - `/ll:confidence-check` - 2026-08-06T20:25:34 - `70105668-3d2b-42b6-9a2d-3321c9e583d9.jsonl`
 - `/ll:confidence-check` - 2026-08-06T20:05:56 - `6c2620d2-aa67-44ea-8afe-5abae5a9b234.jsonl`
 - `/ll:verify-issues` - 2026-08-06T20:02:48 - `de53cd9d-a131-4b06-884e-b0b516bc04e2.jsonl`

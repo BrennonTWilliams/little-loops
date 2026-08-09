@@ -18,6 +18,12 @@ relates_to:
 - FEAT-3078
 - FEAT-3033
 - ENH-2714
+confidence_score: 100
+outcome_confidence: 89
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3095: Add AutomationContext dataclass and thread it through HostRunner.build_streaming()
@@ -137,6 +143,11 @@ _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 - `scripts/little_loops/config/automation.py` already defines an unrelated `AutomationConfig` (and `ParallelAutomationConfig`) dataclass family for project-level automation settings. The new `AutomationContext` in `host_runner.py` is a distinct, per-call runtime value with no relation to those — worth a docstring note on `AutomationContext` to prevent readers conflating the two similarly-named types.
 - `scripts/tests/conformance/test_host_conformance.py` exercises `resolve_host()` + `build_streaming()` producing a valid `HostInvocation` across runners — check this still passes under the new `automation=` parameter shape even though it isn't in the issue's enumerated Tests list.
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/runner_spec.py:182` — `resolve_host().build_streaming(prompt=prompt, automation_profile=automation_profile)`. A second direct caller of `build_streaming()`'s `automation_profile` kwarg, distinct from the out-of-scope `run_claude_command()` path (ENH-3097) — this one calls the Protocol method directly. Passes only the bare `automation_profile` kwarg (never paired with `automation=`), so it resolves through the deprecated shim without triggering the new `DeprecationWarning`; no signature break. No dedicated test exercises this line against a real runner — `scripts/tests/test_runner_spec.py` (already in Tests below) always patches `resolve_host` to return `FakeRunner.build_streaming(**_: object)`, a catch-all that stays resilient. No code or test change required here; recorded for wiring completeness only.
+
 ## Program Design
 
 ### Codebase Research Findings
@@ -177,5 +188,7 @@ New:
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-09T01:59:07 - `9b3b8077-be68-4765-a354-0d51ab3b4859.jsonl`
+- `/ll:wire-issue` - 2026-08-09T01:55:13 - `963d0bbe-3f49-4745-8100-971274145bbd.jsonl`
 - `/ll:refine-issue` - 2026-08-07T22:51:21 - `596f76ed-c393-479b-9539-adbce5a6a72b.jsonl`
 - `/ll:issue-size-review` - 2026-08-07T22:09:43 - `dec986a1-15de-4376-b5dd-5868a8d3e188.jsonl`

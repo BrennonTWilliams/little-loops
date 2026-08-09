@@ -31,11 +31,11 @@ relates_to:
 - BUG-3102
 size: Small
 confidence_score: 95
-outcome_confidence: 77
-score_complexity: 14
+outcome_confidence: 93
+score_complexity: 18
 score_test_coverage: 25
-score_ambiguity: 20
-score_change_surface: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3073: Learning-test staleness warns on every release forever, with no path that clears it
@@ -106,6 +106,28 @@ performs installed-version comparison for arbitrary third-party targets.
 The claims themselves are stable API semantics — pytest fixture visibility, `monkeypatch`
 scoping, `questionary` prompt behavior, `hypothesis` strategy behavior. There is no reason
 to expect drift in 30 days, and the gate has no signal that any occurred; only the calendar.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-09 — based on codebase analysis:_
+
+- **Anchor drift confirmed 2026-08-08.** `is_record_stale` now spans
+  `scripts/little_loops/learning_tests/gate.py:45-63` (not `:40` as previously cited) —
+  signature unchanged (`is_record_stale(record: LearnTestRecord, stale_after_days: int) ->
+  bool`), clamps `threshold = max(1, stale_after_days)`, and treats an unparseable
+  `record.date` as fresh (`False`), not stale.
+- `run_release_gate` (`release_gate.py:36`) line citation is unchanged; the `warn`/`block`
+  remediation text at `:87-92` remains the single generic line ("fix or re-prove the above
+  records..."), printed **only in `block` mode** — confirms the AC's requirement that
+  per-row text must appear in both `warn` and `block` mode is a real gap, not already met.
+- `cmd_prove` now spans `scripts/little_loops/cli/learning_tests.py:59-85` (not `:47-76`).
+  All four hardening gaps this issue lists are confirmed still present at that location:
+  `subprocess.run` (`:65-75`) passes no `check=` and discards `returncode`; no
+  `try/except FileNotFoundError` around the call; `capture_output=True` (`:73`) swallows
+  stdout/stderr; the final `return 0 if record.status == "proven" else 1` (`:85`) still
+  conflates "loop failed to run" with "record re-proven as refuted" (the `record is None`
+  branch at `:78-80` does already get its own distinct message, so this gap is partial, not
+  three-way undifferentiated as the original wording implied).
 
 ## Expected Behavior
 
@@ -258,6 +280,34 @@ call sites plus a full existing test class, and no existing migration mechanism 
   `little-loops`'s own version and `is_record_stale`'s 2-arg signature has 7 production
   call sites plus a dedicated 6-test class that would need updating.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-09 — based on codebase analysis:_
+
+- **Per-row remediation precedent confirmed, anchor drifted.** The "name the exact fix-it
+  command per row" shape's real precedent is `_print_findings()` in
+  `scripts/little_loops/cli/issues/normalize.py` (now `:477-499`, not `:491` — the cited
+  line now lands inside the `duplicate_id` branch, one branch short of the exact command
+  line, but the loop-and-branch shape is intact): one `print()` per finding inside a
+  `for f in findings:` loop, keyed on `f.kind`, where the text is either a backtick-quoted
+  exact command (`` run `ll-migrate` ``) or a computed inline target — i.e. the rule is
+  "the row names whatever action clears that specific row," matching this issue's
+  Program Design invariant.
+- `rn-implement.yaml`'s `auto_prove_learning_gate` precedent has moved to
+  `:46-51,576-596,1044-1085` (not `:1658`). Confirmed this is a **3-tier config-resolution**
+  precedent (explicit context override → `.ll/ll-config.json` `learning_tests.auto_prove` →
+  hardcoded default) for whether to *automatically shell out to* `prove`, not a
+  print-per-row precedent — the exact `ll-learning-tests prove <target>` string there is a
+  comment, not printed output. Distinguishes it from the `normalize.py` precedent above,
+  which the per-row print text should actually follow.
+- No shared "build a remediation message" helper exists in the codebase today — every
+  remediation-string site found (`normalize.py`, `host_runner.py:568`,
+  `user_messages.py:914`, `format_check.py:359`) constructs its message inline at the print
+  site. No count-gated (single-vs-bulk) precedent combines a per-row loop with one trailing
+  conditional line elsewhere in the codebase; the closest structural precedent for "loop
+  prints N rows, then one extra line" is `release_gate.py` itself (`:77-94`, the existing
+  unconditional-on-row-count `block`-mode line after the table loop).
+
 ## Scope Boundaries
 
 **In scope**: the audit's output and remediation affordance, re-proving the three
@@ -334,6 +384,21 @@ def cmd_prove(args: argparse.Namespace) -> int:
 - `run_release_gate` → `get_imported_packages` (`learning_tests/import_scan.py`)
 - Remediation path, currently unwired: `cmd_prove` (`cli/learning_tests.py:47`) →
   `ll-loop run ready-to-implement-gate`
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-09 — based on codebase analysis:_
+
+- **Anchor drift confirmed 2026-08-08** (same drift noted under Current Behavior):
+  `is_record_stale` signature is unchanged but now lives at `gate.py:45-63`; `cmd_prove`
+  now lives at `learning_tests.py:59-85`. The Call Path's step-by-step chain itself is
+  unchanged in shape.
+- `test_release_gate.py` confirmed to still have **zero** `capsys` usage anywhere in the
+  file (grep-confirmed); every existing test builds a temp project via `_write_config`,
+  `_write_record_file`, `_write_source_file`, `_base_dir` (`:18-65`) and asserts only the
+  integer return value of `run_release_gate(tmp_path, base_dir=...)`. A new capsys-based
+  test class is genuinely the first of its kind in this file, matching the issue's Tests
+  wiring note.
 
 ## Acceptance Criteria
 
@@ -535,6 +600,15 @@ landed (`status: done`); `release_gate.py:67` now normalizes both sides via
 that flags what it should — and the immediate consequence is that the flagged set grew
 from three records to seven.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-09 — based on codebase analysis:_
+
+- **BUG-3100, BUG-3101, BUG-3102 all `status: done` as of 2026-08-08** (completed
+  07:56:35Z, 06:06:03Z, 07:15:21Z). Fixes confirmed present in code by direct inspection
+  (see Status section update) — the re-prove path this issue depends on for its pre-step
+  should now be functional, pending re-verification by actually running it.
+
 ## Status
 
 Open and ready to implement. Mechanism confirmed. Option A selected (see Decision
@@ -574,6 +648,39 @@ use raw `record.target`, not `normalize_target`; `cmd_prove` has two hardening g
 the two originally listed; and the ENH-2621 TODO marker should simply be removed. Option A
 remains the right call — none of these change the decision, only its scope and cost.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-09 — based on codebase analysis:_
+
+- **Blocker note is now stale (verified 2026-08-08).** `BUG-3100`, `BUG-3101`, and `BUG-3102`
+  all now show `status: done` (`completed_at` 2026-08-08T07:56:35Z, 06:06:03Z, 07:15:21Z
+  respectively). Direct code inspection confirms each fix is actually present, not just
+  marked done:
+  - BUG-3100: `skills/explore-api/SKILL.md:53,65,86,89,125-126` — `AUTO_MODE` is now derived
+    from `LL_NON_INTERACTIVE`/`--dangerously-skip-permissions`/`--auto`, and every host
+    runner's `build_streaming` sets `LL_NON_INTERACTIVE` for slash-command calls, so a
+    loop-driven `/ll:explore-api` invocation skips the reuse-vs-fresh question and re-explores
+    directly.
+  - BUG-3101: `scripts/little_loops/fsm/executor.py`'s `_execute_learning_state`
+    (`:1088-1223`) now reads records through a shared `_fresh_record(target)` closure
+    (`:1152-1167`) at **both** the pre-loop site (`:1170`) and the in-loop re-check site
+    (`:1205`) — the in-loop site previously called `check_learning_test` directly with no
+    staleness nulling, which is what let a no-op remedy score a false
+    `learning_target_proven`.
+  - BUG-3102: `scripts/little_loops/loops/migrate-sdk-version.yaml`'s `list_stale` state
+    (`:27-35`) now filters `r.status == "stale" or (r.status == "proven" and
+    is_record_stale(r, lt.stale_after_days))` in-process, so age-stale `proven` records are
+    queued alongside `stale`-status ones.
+  - The re-prove path chain (`ll-learning-tests prove` → `ll-loop run
+    ready-to-implement-gate` → `/ll:explore-api` → registry rewrite) and the bulk path
+    (`ll-loop run migrate-sdk-version`) both appear functional based on this code reading.
+  - **Not yet done**: the seven (now likely more, since staleness accrues daily) records
+    have not been re-proven since these fixes landed — `.ll/learning-tests/ruamelyaml.md`
+    still reads `date: '2026-06-19'`, `status: proven`. The pre-step (re-prove, confirm
+    re-dated, then implement) still needs to be executed; only the mechanism that blocked it
+    has changed. ENH-3073's own deliverable (per-row remediation text in
+    `release_gate.py`, `cmd_prove` hardening) has **not** been implemented — the blockers
+    clearing does not mean this issue's own work is done.
 
 ## Confidence Check Notes
 
@@ -599,6 +706,8 @@ advertise (hardening now in scope); Option B had no successor issue (now an AC);
 LEARNING_TESTS_GUIDE / kimi-code / gemini mirror updates had no AC (now added)._
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-09T01:49:26 - `73167daf-0cd3-4366-a111-f709ff0d9f68.jsonl`
+- `/ll:refine-issue` - 2026-08-09T01:44:31 - `5225f24f-a1c9-4f87-82aa-5db111f5149d.jsonl`
 - `/ll:capture-issue` - 2026-08-08T04:47:47 - `0c442e3b-c3d8-4743-b597-7b3551a75ba6.jsonl`
 - `/ll:confidence-check` - 2026-08-06T18:14:18 - `2714e173-0113-42e1-b8e8-e7f650c61db7.jsonl`
 - `/ll:ready-issue` - 2026-08-06T06:18:23 - `947fa9b7-8ab1-44ef-9fcd-dc534fce8613.jsonl`

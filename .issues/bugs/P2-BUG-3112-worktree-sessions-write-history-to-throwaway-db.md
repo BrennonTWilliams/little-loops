@@ -12,11 +12,11 @@ labels:
 - worktree
 - history
 - data-loss
-confidence_score: 88
-outcome_confidence: 57
-score_complexity: 12
-score_test_coverage: 20
-score_ambiguity: 15
+confidence_score: 95
+outcome_confidence: 62
+score_complexity: 14
+score_test_coverage: 19
+score_ambiguity: 19
 score_change_surface: 10
 decision_needed: true
 ---
@@ -98,26 +98,83 @@ ll-parallel many processes contend at once."
 Set `LL_HISTORY_DB=<main repo>/.ll/history.db` in the environment handed to
 worktree-scoped sessions. Decide between:
 
-### Option A
+### Approach A — Env Injection (Selected)
+
+> **Selected:** Option A — env-injection at the host-runner/`run_claude_command`
+> boundary matches the codebase's existing `_apply_automation_env`/
+> `LL_VERIFY_GATE` idiom and slots directly into existing table-driven and
+> per-runner test shapes; Option B introduces a wholly new marker-file
+> resolution mechanism with no precedent and higher regression risk against
+> the shared `_resolve_db_path` chain.
 
 Injecting it at the three worktree-creating call sites (`fsm/executor.py:942`,
 `cli/loop/run.py:484`, `parallel/worker_pool.py:774`).
 
 **Preferred** — the smaller, more explicit change.
 
-### Option B
+### Approach B — Origin Marker File (Rejected)
 
 Having `setup_worktree` record the origin repo path in the worktree (e.g.
 alongside the `.ll-session-<pid>` marker) and resolving from there in
 `_resolve_db_path`.
 
-Note the verify-gate worktree (`worktree_utils.py:445`) deliberately runs with
-`LL_VERIFY_GATE=1` and `copy_files=[]`; confirm whether it should share the DB
-or stay isolated.
+The verify-gate worktree's DB-sharing behavior was a separate decision,
+resolved below — see **Verify-Gate Worktree Decision**.
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
+
+_Added by `/ll:refine-issue` — 2026-08-09 — based on codebase analysis:_
+
+`codebase-pattern-finder` traced how this codebase has previously threaded a new
+env-var marker through `HostInvocation.env`/`build_streaming()`/`run_claude_command()`
+— the same boundary `LL_HISTORY_DB` must cross:
+
+- **Shared-helper convention exists for one marker, is contested for another.**
+  `LL_AUTOMATION`/`LL_AUTOMATION_PROFILE` go through one shared function,
+  `_apply_automation_env(env, automation_profile)` (`host_runner.py:1547-1562`),
+  called once from each of the 5 concrete `build_streaming()` implementations
+  (`ClaudeCodeRunner` :353, `CodexRunner` :644, `GeminiRunner` :1034, `OmpRunner`
+  :1219, `KimiRunner` :1412). `GIT_DIR`/`GIT_WORK_TREE`, by contrast, is
+  inconsistently sourced: `GeminiRunner._worktree_env()` (`host_runner.py:963-980`)
+  is called cross-class by `OmpRunner` and `KimiRunner`, while `ClaudeCodeRunner`
+  and `CodexRunner` inline the identical parse logic in their own
+  `build_streaming()` bodies instead of calling it. Both shapes — one shared
+  helper called everywhere, and one helper called by some runners while others
+  duplicate the logic — coexist today; which shape `LL_HISTORY_DB` follows is
+  an open choice, not settled by precedent.
+- **`run_claude_command()` has no env-passthrough parameter.** It builds
+  `env = os.environ.copy(); env.update(invocation.env)` internally
+  (`subprocess_utils.py:414-415`). The only way a new var reaches the spawned
+  process through this path is by making it appear inside `HostInvocation.env`,
+  i.e. inside a `build_streaming()` implementation — there is no shortcut at
+  the `run_claude_command()` call sites themselves.
+- **A same-function, build-and-consume-locally marker also exists as precedent**,
+  separate from the `HostInvocation.env` path: `verify_epic_branch_before_merge()`
+  (`worktree_utils.py:455-473`) does `env = os.environ.copy(); env["LL_VERIFY_GATE"] = "1"`
+  directly ahead of its own `subprocess.run(...)`, bypassing `run_claude_command()`
+  entirely. Its inline comment explicitly names this as mirroring the
+  `LL_NON_INTERACTIVE` marker idiom.
+- **Test shape precedent — table-driven vs. per-class.** `TestAutomationProfileEnvAcrossRunners`
+  (`test_host_runner.py:51-82`) is `@pytest.mark.parametrize` across all 5 concrete
+  runner classes, asserting one env-var contract holds uniformly — the docstring
+  states this shape exists specifically to keep the 5 runners "from drifting apart
+  again (BUG-3058 precedent)." `test_build_streaming_worktree_env`, by contrast,
+  is repeated independently per runner class (`:810`, `:975`, `:1129`). Both
+  shapes are established in this file; a table-driven test is the shape this
+  codebase uses when it wants drift across runners to fail loudly.
+- **Inject → subprocess writes → read-back-from-file is an existing test shape
+  for `LL_HISTORY_DB` specifically**: `test_writes_lifecycle_row_on_threshold_crossing`
+  (`test_hooks_integration.py:300-338`) sets `env["LL_HISTORY_DB"] = str(db_path)`,
+  runs a real subprocess, then queries rows back out of that DB file — the
+  closest existing analogue to the AC-level integration test this issue's
+  Implementation Steps already call out as missing.
+- **No existing shared helper composes the `os.environ.copy()` base itself** —
+  every concrete `build_streaming()` and `verify_epic_branch_before_merge()`
+  builds its own base `env` dict inline; `subprocess_utils.py:414-415` is the
+  one place that composes `HostInvocation.env` onto the ambient environment for
+  host-CLI spawns specifically.
 
 ### Codebase Research Findings — correction to injection-point choice
 
@@ -153,6 +210,120 @@ left in the worktree; every existing analogous case (`LL_VERIFY_GATE`,
 `LL_NON_INTERACTIVE`, `LL_AUTOMATION`) uses an env-var marker, consistent
 with option (a)'s general approach — only the specific three line numbers
 cited need correction, not the approach itself.
+
+### Decision Rationale
+
+**Selected: Option A** — thread `LL_HISTORY_DB` into the environment at the
+host-runner/`run_claude_command` boundary (per the corrected call-site
+analysis above: `HostInvocation.env` inside each `build_streaming()`, plus
+`worker_pool.py:812-814` and `runner_spec.py`'s direct-call path), rather
+than having `setup_worktree()` write an origin-repo marker file for
+`_resolve_db_path` to read back (Option B).
+
+Option A matches two established idioms in this codebase — the shared
+`_apply_automation_env` helper called identically across all 5
+`build_streaming()` implementations, and the single-function
+`env["LL_VERIFY_GATE"] = "1"` pattern in `verify_epic_branch_before_merge()`
+— and slots directly into existing test shapes (`TestAutomationProfileEnvAcrossRunners`'s
+table-driven cross-runner assertions, the per-runner `test_build_streaming_worktree_env`
+template, and the inject-subprocess-read-back shape in
+`test_writes_lifecycle_row_on_threshold_crossing`). Option B would introduce
+a wholly new marker-file resolution mechanism with zero precedent in this
+codebase (every existing analogous marker — `LL_VERIFY_GATE`,
+`LL_NON_INTERACTIVE`, `LL_AUTOMATION` — is an env var, not a file), requires
+more edit sites (writer + reader + verify-gate branch decision) than Option
+A's single injection point, and risks destabilizing the shared, heavily-used
+`_resolve_db_path` precedence chain that the `conftest.py` history-DB
+isolation fixtures already depend on.
+
+| Dimension | Option A | Option B |
+|---|---|---|
+| Consistency | 2 | 0 |
+| Simplicity | 2 | 1 |
+| Testability | 3 | 1 |
+| Risk | 1 | 0 |
+| **Total** | **8/12** | **2/12** |
+
+Key evidence: `_apply_automation_env` (`host_runner.py:1547-1562`, called at
+5 sites) and `LL_VERIFY_GATE` (`worktree_utils.py:455-473`) are the only
+existing precedents for a worktree/host-scoped env-var marker, both env-based;
+no existing code resolves parent-repo identity via a marker file left in a
+worktree. Option A's residual risk is coordination with in-flight
+ENH-3095/ENH-3097 (same `subprocess_utils.py`/`host_runner.py` line ranges
+via a competing `AutomationContext` mechanism) — already flagged in this
+issue's wiring section, not a new concern raised by this decision.
+
+### Verify-Gate Worktree Decision
+
+The verify-gate worktree (`worktree_utils.py:445`) deliberately runs with
+`LL_VERIFY_GATE=1` and `copy_files=[]` — isolated from a normal worktree's
+setup. Whether it should also share the main repo's `LL_HISTORY_DB` (per
+Approach A above) or keep writing to its own throwaway DB is still an open
+decision, unresolved.
+
+### Option A
+
+> **Selected:** Option A — `verify_epic_branch_before_merge` already builds
+> its child env via `env = os.environ.copy()` and only *adds* keys
+> (`LL_VERIFY_GATE`, `PYTHONPATH`, xdist/fuzz vars); there is zero precedent
+> anywhere in this codebase for popping/excluding an inherited env var, so
+> sharing requires no new code, while excluding would introduce a
+> first-of-its-kind conditional read of `LL_VERIFY_GATE` to suppress
+> propagation.
+
+Share the main repo's `LL_HISTORY_DB` with the verify-gate worktree too, same
+as every other worktree-scoped process under this issue's fix — one env-var
+rule, no special case.
+
+### Option B
+
+Keep the verify-gate worktree isolated from the shared history DB — do not
+set `LL_HISTORY_DB` when `LL_VERIFY_GATE=1`, preserving its current
+deliberately-sandboxed behavior.
+
+### Decision Rationale — Verify-Gate Worktree Decision
+
+**Selected: Option A** — share `LL_HISTORY_DB` with the verify-gate worktree,
+no special case.
+
+`verify_epic_branch_before_merge()` (`worktree_utils.py:461`) already builds
+its child env as `env = os.environ.copy()` and only overlays additive keys
+(`LL_VERIFY_GATE`, `PYTHONPATH`, xdist/fuzz vars) — there is no existing
+`env.pop(...)`/exclusion idiom anywhere in `scripts/little_loops` to borrow
+for an isolation carve-out. `LL_VERIFY_GATE`'s only established consumer
+(`test_wiring_skills_and_commands.py`, per BUG-2649) uses it purely as a test
+self-quarantine marker, never to gate env-var propagation, so Option B would
+be a first-of-its-kind use of that flag. The verify-gate's own `test_cmd`
+pytest run already writes into `resolve_history_db()` via
+`pytest_history_plugin.py`'s `LLHistoryPlugin._record()` — the exact chain
+this issue fixes — and is silently discarded today; the plugin's
+`_infer_env_label()` already anticipates and labels `"worktree"`-origin runs
+rather than excluding them, so sharing fixes the same data-loss failure mode
+BUG-3112 documents for sessions, for verify-gate's `test_run_events` rows too.
+`setup_worktree()` also already forwards git identity and `.claude/` into the
+verify-gate worktree unconditionally, independent of `copy_files=[]` — "fully
+isolated except for `copy_files`" is not how the verify-gate worktree
+actually behaves today, so a DB-sharing carve-out would be inconsistent with
+its existing partial-inheritance shape.
+
+| Dimension | Option A | Option B |
+|---|---|---|
+| Consistency | 3 | 1 |
+| Simplicity | 3 | 1 |
+| Testability | 2 | 2 |
+| Risk | 2 | 2 |
+| **Total** | **10/12** | **6/12** |
+
+Key evidence: no codebase precedent excludes an inherited env var for
+isolation; `LL_VERIFY_GATE` has one production consumer and it is a test
+self-quarantine flag, not a side-effect suppressor; the general
+`copy_files`-based worktree setup already excludes `history.db*`/`queue.db*`
+from the *copy* mechanism (a separate concern from *sharing* via env var,
+which this fix relies on instead of copying). Residual risk: verify-gate runs
+may write more `test_run_events` rows into the shared DB than a normal
+session (repeated merge-gate attempts), a volume consideration rather than a
+correctness one — WAL + `busy_timeout` (`schema.py:978-979`) is already
+designed for concurrent writers.
 
 ## Program Design
 
@@ -365,42 +536,51 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` — 2026-08-08:_
+_Added by `/ll:confidence-check` — 2026-08-09:_
 
-**Readiness: 88/100** — PROCEED. **Outcome Confidence: 57/100** — below the
+**Readiness: 95/100** — PROCEED. **Outcome Confidence: 62/100** — below the
 configured `outcome_threshold` (65).
 
 ### Outcome Risk Factors
 
-- **Wide, cross-cutting fanout (Complexity: 12/25)**: the fix touches 7+ files
-  spanning distinct subsystems — `subprocess_utils.py` (new env-passthrough
-  on `run_claude_command`), `host_runner.py` (per-host `build_streaming()`
-  changes across multiple runner classes), `worker_pool.py` (two independent
-  env-build paths), `runner_spec.py`, `fsm/runners.py`, `issue_manager.py`,
-  and `worktree_utils.py`. Each site is locally mechanical (thread one env
-  key through), but the number of independently-editable call paths raises
-  the chance of a missed site.
-- **Two open decisions gate the start of work (Ambiguity: 15/25)**: Step 1
-  ("Choose the injection strategy: env at call sites vs. origin-marker
-  resolution") and Step 4 ("Decide and document the verify-gate worktree's
-  behavior") are unresolved judgment calls, though the issue leans toward
-  option (a) and flags the verify-gate question explicitly rather than
-  silently picking one.
+- **Wide, cross-cutting fanout (Complexity: 14/25 — Breadth 5/12, Depth
+  9/13)**: the fix touches ~9-10 distinct sites spanning subsystems —
+  `subprocess_utils.py` (new env-passthrough on `run_claude_command`),
+  `host_runner.py` (per-host `build_streaming()` changes across multiple
+  runner classes), `worker_pool.py` (two independent env-build paths),
+  `runner_spec.py`, `fsm/runners.py`, `issue_manager.py`, and
+  `worktree_utils.py`. Each site is a contained, local logic change (not
+  purely mechanical — `run_claude_command`'s signature itself changes), but
+  the number of independently-editable call paths raises the chance of a
+  missed site.
+- **Residual ambiguity, narrower than before (Ambiguity: 19/25)**:
+  `/ll:decide-issue` has resolved both open decisions previously flagged here
+  — the injection-strategy choice (Option A, verified against the actual
+  `run_claude_command`/`HostInvocation.env` call chain) and the verify-gate
+  worktree's DB-sharing behavior (Option A: share, no special case). No
+  undocumented judgment calls remain in the issue body; the residual risk is
+  purely implementation care in applying an already-decided approach across
+  many sites, not unresolved design.
 - **Non-mechanical change surface with a live sequencing risk (Change
   Surface: 10/25)**: this is per-site behavioral work, not a uniform
   substitution — `run_claude_command`'s signature change and each host
-  runner's `build_streaming()` need separate, non-identical edits. The issue
-  itself flags that ENH-3095 and ENH-3097 (both still `open`) touch the exact
-  same `subprocess_utils.py`/`host_runner.py` line ranges via a competing
+  runner's `build_streaming()` need separate, non-identical edits. ENH-3095
+  and ENH-3097 (confirmed still `open` as of 2026-08-09) touch the exact same
+  `subprocess_utils.py`/`host_runner.py` line ranges via a competing
   `AutomationContext` mechanism — landing order affects merge-conflict risk,
   though no hard `blocked_by` is declared.
 
-Test coverage is strong (20/25) — six existing tests are named as direct
-templates and the one missing integration test (worktree lifecycle →
-history persists after cleanup) is explicitly called out as new AC-level
-coverage to add.
+Test coverage is solid (19/25) — six existing tests are named as direct
+templates covering most touched modules, and the one missing integration
+test (worktree lifecycle → history persists after cleanup) is explicitly
+called out as new AC-level coverage to add.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-09T02:44:06 - `949315da-0b72-4a22-a42d-0493ed4f18c1.jsonl`
+- `/ll:decide-issue` - 2026-08-09T02:03:57 - `b7a1eb33-0bc6-4bb9-a60c-0e95c4863a8d.jsonl`
+- `/ll:confidence-check` - 2026-08-09T01:52:31 - `4bfd9abe-af89-4c06-a44b-8c4385814986.jsonl`
+- `/ll:decide-issue` - 2026-08-09T01:48:32 - `e99fadf0-4a73-439a-8b6e-81b9493d2612.jsonl`
+- `/ll:refine-issue` - 2026-08-09T01:44:04 - `5225f24f-a1c9-4f87-82aa-5db111f5149d.jsonl`
 - `/ll:confidence-check` - 2026-08-08T21:32:45 - `3b85ed9c-ef3f-4ce0-b887-f5737d6ea801.jsonl`
 - `/ll:wire-issue` - 2026-08-08T21:17:27 - `5955cc74-6f18-496f-9ff9-59d7e836977d.jsonl`
 - `/ll:refine-issue` - 2026-08-08T21:04:30 - `29dcd8e6-5691-426f-91c4-b6457c12fffb.jsonl`

@@ -1,0 +1,12 @@
+{
+  "id": "fb056ed4-1212-484d-b7bd-ea3999fb83fa",
+  "type": "decision",
+  "timestamp": "2026-08-09T01:48:25Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches existing _apply_automation_env/LL_VERIFY_GATE idioms and slots into existing test shapes; Option B's marker-file resolution has no precedent and risks the shared _resolve_db_path chain.",
+  "rule": "Env-injection at host-runner/run_claude_command boundary (Option A)",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: origin-repo marker file written by setup_worktree, resolved in _resolve_db_path",
+  "issue": "BUG-3112"
+}
