@@ -18,12 +18,12 @@ relates_to:
 - ENH-3094
 - ENH-3081
 verify_verdict: VALID
-confidence_score: 88
-outcome_confidence: 70
-score_complexity: 9
+confidence_score: 99
+outcome_confidence: 80
+score_complexity: 10
 score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 18
+score_ambiguity: 25
+score_change_surface: 20
 decision_needed: false
 ---
 
@@ -496,45 +496,33 @@ sprint.
 
 _Added by `/ll:confidence-check` on 2026-08-08_
 
-**Readiness Score**: 88/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 70/100 → MODERATE
-
-### Concerns
-- Open Question (blocking AC2) is still unresolved: the neutralizing value for
-  `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` when `automation_profile is None`
-  (`""`, `"0"`, or key omission) is unverified — the host reads this var, not
-  our own code, so truthiness handling is unknown. Run the issue's own
-  prescribed fourth probe against a real `claude -p` child
-  (`postmortems/feat-3078-verify/`) before implementing AC2 rather than
-  guessing.
-- The AC3 design decision (add the var directly in
-  `ClaudeCodeRunner.build_streaming()` vs. a host-guarded extension to
-  `_apply_automation_env()`) still has only a recommendation (option i), not
-  a recorded decision — confirm it before touching the five sibling runners.
-- Wide mechanical fanout remains unchanged: re-verified against current code
-  that `_apply_automation_env()` (`host_runner.py:1547`) and its five callers
-  (`:353,644,1034,1219,1412`) exist exactly as described, `OrchestrationConfig`
-  still lacks the field, and no `disable_background_tasks`/
-  `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` reference exists anywhere in
-  `scripts/` yet — the issue's line citations and no-duplicate claim both
-  hold.
-
-### Outcome Risk Factors
-- Breadth still dominates outcome risk (16+ change sites; Complexity scores
-  9/25 — Breadth 0/12, Depth 9/13) even though each site's edit is mechanical
-  parameter-threading. Missing or mis-forwarding the parameter at even one of
-  the ~15 dependent call sites silently reduces to a no-op (defaults to
-  `False`/`None`) rather than a loud failure.
+**Readiness Score**: 99/100 → PROCEED
+**Outcome Confidence**: 80/100 → HIGH
 
 ### Since Last Check
-- `depends_on: FEAT-3077` (frontmatter) now shows `status: Completed`.
-  BUG-3093, referenced elsewhere in this issue's prose as a related item that
-  "should land with or before this issue," is separately `Completed` too.
-  Readiness moved 85 → 88 to reflect this; the tier is unchanged
-  (PROCEED WITH CAUTION) because the two open design decisions above are
-  still the actual blockers to a clean implementation start.
+- Both open design decisions flagged in the prior check are now resolved and
+  recorded in the issue text: the AC2 neutralizing-value question resolved to
+  Option A (`""`), confirmed by a real fourth probe against `claude -p`
+  (verified on disk: `postmortems/feat-3078-verify/d1_empty_string.jsonl`,
+  `d2_zero_string.jsonl`); the AC3 design decision (direct write in
+  `ClaudeCodeRunner` vs. host-guarded helper) resolved to Option A via
+  `/ll:decide-issue` (2026-08-08), scored 12/12 against Option B's 7/12.
+- Dependencies now fully clear: `depends_on: FEAT-3077` and the related
+  `BUG-3093` both show `status: Completed`.
+- Re-verified against current code: no `disable_background_tasks`/
+  `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` reference exists anywhere in
+  `scripts/` yet (no duplicate work), and `_apply_automation_env()`
+  (`host_runner.py:1547`) with its five callers (`:353,644,1034,1219,1412`)
+  match the issue's line citations exactly.
+- Remaining risk is unchanged in kind: this is a wide mechanical fanout
+  (~34 file:line citations across runners, config, FSM plumbing, and ~15 test
+  files). Each site is a uniform parameter-threading edit with a named test
+  template, but there is no single automated completeness check tying all
+  dependent call sites together — a missed site silently defaults to
+  off/`None` rather than failing loudly.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-09T03:38:13 - `078e9245-e490-4404-8597-4895b11b1e76.jsonl`
 - `/ll:decide-issue` - 2026-08-09T03:30:22 - `83bf90ea-254d-4998-aaa3-1f6e622ec8d9.jsonl`
 - `/ll:confidence-check` - 2026-08-09T03:04:16 - `3f55b9b9-4ca3-4793-ac1c-ac23bd73138c.jsonl`
 - `/ll:wire-issue` - 2026-08-09T03:00:45 - `d6eb2d4e-2ab1-4ee2-9817-a4e5989f03cb.jsonl`

@@ -1,0 +1,12 @@
+{
+  "id": "7b3f1ed5-e949-4ed7-b47e-a2e496ed290e",
+  "type": "decision",
+  "timestamp": "2026-08-09T03:30:16Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Mirrors the already-shipped CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR precedent (host_runner.py:348); single-line addition, zero blast radius on the other 4 runners; keeps _apply_automation_env() host-agnostic.",
+  "rule": "AC3 design decision: add CLAUDE_CODE_DISABLE_BACKGROUND_TASKS directly in ClaudeCodeRunner.build_streaming(), not via a host-guarded _apply_automation_env()",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: extend _apply_automation_env() with a runner_kind host guard \u2014 touches all 5 call sites plus the helper, inverts its single-purpose contract, no existing precedent for host branching inside a shared helper.",
+  "issue": "FEAT-3078"
+}

@@ -702,7 +702,43 @@ false positive: the issue's prose reference is to the dotted config key
 `parallel.worktree_copy_files` (present in `config-schema.json:360`), not a
 claim that the symbol lives in `cli/parallel.py`. No action needed.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-09_
+
+**Readiness Score**: 94/100 → PROCEED
+**Outcome Confidence**: 62/100 → MODERATE
+
+### Outcome Risk Factors
+- **Wide, cross-cutting fanout (Complexity: 14/25)**: re-verified directly —
+  `run_claude_command()` (`subprocess_utils.py:320-341`) still has no `env`
+  passthrough parameter and still builds `env = os.environ.copy();
+  env.update(invocation.env)` at line 414-415; all 5 `build_streaming()`
+  implementations (`host_runner.py:353,644,1034,1219,1412`) still call only
+  `_apply_automation_env`, with no `LL_HISTORY_DB` counterpart yet. The fix
+  still spans ~9-10 distinct sites across `subprocess_utils.py`,
+  `host_runner.py`, `worker_pool.py` (two independent env-build paths),
+  `runner_spec.py`, `fsm/runners.py`, `issue_manager.py`, and
+  `worktree_utils.py`.
+- **Non-mechanical change surface with a live sequencing risk (Change
+  Surface: 10/25)**: ENH-3095 and ENH-3097 are both still `open` as of
+  2026-08-09 (re-checked via `ll-issues show --json`), and continue to touch
+  the identical `subprocess_utils.py`/`host_runner.py` line ranges via a
+  competing `AutomationContext` mechanism. No hard `blocked_by` is declared,
+  but landing order still affects merge-conflict risk.
+- **Residual ambiguity (Ambiguity: 19/25)**: unchanged from the prior pass —
+  the injection-strategy and verify-gate DB-sharing decisions made by
+  `/ll:decide-issue` remain settled; no new undocumented judgment calls found.
+
+### Note
+`ll-issues format-check` still flags `mislocated_symbol_ref:
+worktree_copy_files (claimed in scripts/little_loops/cli/parallel.py)` —
+confirmed unchanged linter false positive (the issue's prose references the
+dotted config key `parallel.worktree_copy_files`, not a symbol claimed to
+live in `cli/parallel.py`). No action needed.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-09T03:38:18 - `a586a544-6525-4902-8718-867d3dbb4200.jsonl`
 - `/ll:reconcile-issue` - 2026-08-09T03:30:04 - `83bf90ea-254d-4998-aaa3-1f6e622ec8d9.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-09T03:26:27 - `39a3fd52-4ea1-4f7e-83e9-1871820dfe65.jsonl`
 - `/ll:confidence-check` - 2026-08-09T02:54:13 - `d6eb2d4e-2ab1-4ee2-9817-a4e5989f03cb.jsonl`
