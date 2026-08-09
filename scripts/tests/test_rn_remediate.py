@@ -171,12 +171,15 @@ class TestReadinessAndDecisionGates:
         assert "ll-issues check-flag" in cdn["action"]
         assert "decision_needed" in cdn["action"]
 
-    def test_check_decision_needed_routes_yes_to_decide(self) -> None:
-        """check_decision_needed routes to check_decision_decidable when flag is true
-        (ENH-2443: a validation gate now sits between check_decision_needed and decide)."""
+    def test_check_decision_needed_routes_yes_to_resolve_decision(self) -> None:
+        """check_decision_needed routes to the shared resolve_decision sub-loop call
+        state (ENH-3090), which owns the decidability probe and deposit-options
+        detour that used to live inline (mirrors
+        test_check_decision_at_dequeue_on_yes_routes_to_resolve_decision in
+        test_autodev_decision_gate.py)."""
         data = _load_loop()
         cdn = data["states"]["check_decision_needed"]
-        assert cdn["on_yes"] == "check_decision_decidable"
+        assert cdn["on_yes"] == "resolve_decision"
 
     def test_check_decision_needed_routes_no_to_diagnose(self) -> None:
         """check_decision_needed routes to diagnose when flag is false."""
@@ -186,156 +189,133 @@ class TestReadinessAndDecisionGates:
 
 
 # ---------------------------------------------------------------------------
-# TestCheckDecisionDecidableState — State: check_decision_decidable (ENH-2443)
+# TestDecisionClusterDeletedStructural — ENH-3090: the inline decision cluster
+# (check_decision_decidable, deposit_options, record_options_deposited,
+# check_open_question_progress, decide) moved into
+# oracles/resolve-decision.yaml (see TestResolveDecisionOracle in
+# test_builtin_loops.py for their coverage there) and must leave no dangling
+# reference or stale definition behind here. Mirrors
+# TestAssertDecisionClearedStructural in test_autodev_decision_gate.py.
 # ---------------------------------------------------------------------------
 
 
-class TestCheckDecisionDecidableState:
-    """check_decision_decidable validates before decide (ENH-2443)."""
+class TestDecisionClusterDeletedStructural:
+    """ENH-3090: structural assertions that the five inline cluster states are
+    gone and unreferenced, replaced by the resolve_decision /
+    resolve_decision_direct / check_decide_rate_limited call states."""
 
-    def test_state_exists_and_uses_shell_exit(self) -> None:
-        data = _load_loop()
-        cdd = data["states"]["check_decision_decidable"]
-        assert cdd.get("fragment") == "shell_exit"
+    _DELETED_STATES = (
+        "check_decision_decidable",
+        "deposit_options",
+        "record_options_deposited",
+        "check_open_question_progress",
+        "decide",
+    )
 
-    def test_action_calls_check_decidable_cli(self) -> None:
-        """Uses the deterministic ll-issues check-decidable companion CLI, not the
-        LLM skill directly — shell states cannot dispatch slash commands."""
-        data = _load_loop()
-        cdd = data["states"]["check_decision_decidable"]
-        assert "ll-issues check-decidable" in cdd["action"]
-
-    def test_routes_yes_to_decide(self) -> None:
-        data = _load_loop()
-        cdd = data["states"]["check_decision_decidable"]
-        assert cdd["on_yes"] == "decide"
-
-    def test_routes_no_to_deposit_options(self) -> None:
-        data = _load_loop()
-        cdd = data["states"]["check_decision_decidable"]
-        assert cdd["on_no"] == "deposit_options"
-
-    def test_fail_open_on_error(self) -> None:
-        """A validation-tooling error still routes to decide (fail-open, mirrors
-        check_decision_needed_post)."""
-        data = _load_loop()
-        cdd = data["states"]["check_decision_decidable"]
-        assert cdd["on_error"] == "decide"
-
-    def test_marker_bounded_second_pass_short_circuits(self) -> None:
-        """The marker check comes before invoking the CLI, so a second pass through
-        this state skips re-validation entirely once deposit_options has run."""
-        data = _load_loop()
-        action = data["states"]["check_decision_decidable"]["action"]
-        assert "decide_options_deposited_${context.issue_id}.txt" in action
-        assert action.index("if [") < action.index("ll-issues check-decidable")
-
-
-# ---------------------------------------------------------------------------
-# TestDepositOptionsState — States: deposit_options, record_options_deposited
-#   (ENH-2443)
-# ---------------------------------------------------------------------------
-
-
-class TestDepositOptionsState:
-    """deposit_options runs /ll:refine-issue --auto to deposit options (ENH-2443)."""
-
-    def test_uses_with_rate_limit_handling(self) -> None:
-        data = _load_loop()
-        do = data["states"]["deposit_options"]
-        assert do.get("fragment") == "with_rate_limit_handling"
-
-    def test_action_is_refine_issue_auto_no_full_rewrite(self) -> None:
-        data = _load_loop()
-        do = data["states"]["deposit_options"]
-        assert do["action_type"] == "slash_command"
-        assert "/ll:refine-issue" in do["action"]
-        assert "--auto" in do["action"]
-        assert "--full-rewrite" not in do["action"]
-
-    def test_routes_yes_and_partial_to_record_marker(self) -> None:
-        data = _load_loop()
-        do = data["states"]["deposit_options"]
-        assert do["on_yes"] == "record_options_deposited"
-        assert do["on_partial"] == "record_options_deposited"
-
-    def test_routes_no_and_error_to_decide(self) -> None:
-        """Falls through to decide with no enumerable options if refine also can't
-        deposit — check_convergence still escalates, now with a distinguishable token."""
-        data = _load_loop()
-        do = data["states"]["deposit_options"]
-        assert do["on_no"] == "decide"
-        assert do["on_error"] == "decide"
-
-    def test_rate_limit_exhausted_routes_to_diagnostic(self) -> None:
-        data = _load_loop()
-        do = data["states"]["deposit_options"]
-        assert do["on_rate_limit_exhausted"] == "rate_limit_diagnostic"
-
-
-class TestRecordOptionsDepositedState:
-    """record_options_deposited writes the write-once marker (ENH-2443)."""
-
-    def test_writes_per_issue_marker(self) -> None:
-        data = _load_loop()
-        rod = data["states"]["record_options_deposited"]
-        assert rod["action_type"] == "shell"
-        assert "decide_options_deposited_${context.issue_id}.txt" in rod["action"]
-
-    def test_routes_to_open_question_progress(self) -> None:
-        """ENH-2446: record_options_deposited -> check_open_question_progress (progress gate),
-        not directly back to check_decision_decidable. The progress gate decides
-        whether to retry (on_yes -> check_decision_decidable) or fall through to
-        decide (on_no / on_error).
-        """
-        data = _load_loop()
-        rod = data["states"]["record_options_deposited"]
-        assert rod["next"] == "check_open_question_progress"
-
-    def test_open_question_progress_state_exists(self) -> None:
-        """ENH-2446: new check_open_question_progress state sits between
-        record_options_deposited and check_decision_decidable, gates re-fire
-        on the open_question_stall evaluator.
-        """
-        data = _load_loop()
-        cop = data["states"]["check_open_question_progress"]
-        assert cop.get("fragment") == "open_question_stall_gate"
-        assert cop["on_yes"] == "check_decision_decidable"
-        assert cop["on_no"] == "decide"
-        assert cop["on_error"] == "decide"
-
-
-class TestDecisionDecidableFlow:
-    """State-flow walk: check_decision_needed -> check_decision_decidable (no) ->
-    deposit_options -> record_options_deposited -> check_open_question_progress (yes) ->
-    check_decision_decidable (yes) -> decide (ENH-2443 + ENH-2446)."""
-
-    def test_full_retry_loop_reaches_decide(self) -> None:
+    def test_deleted_states_absent_from_states_block(self) -> None:
         data = _load_loop()
         states = data["states"]
+        for name in self._DELETED_STATES:
+            assert name not in states, (
+                f"{name} must be deleted from rn-remediate.yaml's states block — "
+                "it now lives in oracles/resolve-decision.yaml (ENH-3090)"
+            )
 
-        assert states["check_decision_needed"]["on_yes"] == "check_decision_decidable"
-        assert states["check_decision_decidable"]["on_no"] == "deposit_options"
-        assert states["deposit_options"]["on_yes"] == "record_options_deposited"
-        assert states["record_options_deposited"]["next"] == "check_open_question_progress"
-        # ENH-2446: progress gate routes on_yes back to check_decision_decidable,
-        # which on the second pass short-circuits via marker file -> decide.
-        assert states["check_open_question_progress"]["on_yes"] == "check_decision_decidable"
-        assert states["check_decision_decidable"]["on_yes"] == "decide"
-
-
-class TestCheckDecisionDecidableCoverageAware:
-    """ENH-2446: check_decision_decidable chains the coverage-aware
-    check-open-questions probe before the ENH-2443 check-decidable fallback."""
-
-    def test_chains_check_open_questions_first(self) -> None:
+    def test_deleted_states_unreferenced_by_any_edge(self) -> None:
         data = _load_loop()
-        action = data["states"]["check_decision_decidable"]["action"]
-        assert "check-open-questions" in action
-        # The chained probe runs BEFORE check-decidable — coverage gap detection
-        # takes precedence so the mixed case (resolved options + open questions)
-        # routes to deposit_options instead of straight to decide.
-        assert action.index("check-open-questions") < action.index("check-decidable")
+        states = data["states"]
+        for name, state in states.items():
+            for edge in ("on_yes", "on_no", "on_partial", "on_error", "on_success", "on_failure",
+                         "next", "on_rate_limit_exhausted"):
+                target = state.get(edge)
+                assert target not in self._DELETED_STATES, (
+                    f"{name}.{edge} still references deleted state {target!r} (ENH-3090)"
+                )
+            route = state.get("route")
+            if route:
+                for verdict, target in route.items():
+                    assert target not in self._DELETED_STATES, (
+                        f"{name}.route[{verdict!r}] still references deleted state "
+                        f"{target!r} (ENH-3090)"
+                    )
+
+
+class TestResolveDecisionCallStates:
+    """ENH-3090: call-state routing-shape tests for the two entry points into
+    oracles/resolve-decision, mirroring
+    test_check_decision_at_dequeue_on_yes_routes_to_resolve_decision /
+    test_check_decision_before_size_review_on_yes_routes_to_resolve_decision
+    in test_autodev_decision_gate.py."""
+
+    def test_resolve_decision_is_a_sub_loop_call_state(self) -> None:
+        data = _load_loop()
+        rd = data["states"]["resolve_decision"]
+        assert rd["loop"] == "oracles/resolve-decision"
+        assert rd["with"] == {"issue_id": "${context.issue_id}"}
+
+    def test_resolve_decision_routes_success_to_re_assess(self) -> None:
+        """on_success mirrors the old inline decide.on_yes/on_partial target."""
+        data = _load_loop()
+        rd = data["states"]["resolve_decision"]
+        assert rd["on_success"] == "re_assess"
+
+    def test_resolve_decision_routes_failure_and_error_to_rate_limit_gate(self) -> None:
+        data = _load_loop()
+        rd = data["states"]["resolve_decision"]
+        assert rd["on_failure"] == "check_decide_rate_limited"
+        assert rd["on_error"] == "check_decide_rate_limited"
+
+    def test_resolve_decision_direct_binds_skip_probe_true(self) -> None:
+        """The two direct entry points (check_decision_needed_post, diagnose's
+        DECIDE route) already know a decision is needed and skip the
+        decidability probe, mirroring autodev's resolve_decision_direct."""
+        data = _load_loop()
+        rdd = data["states"]["resolve_decision_direct"]
+        assert rdd["loop"] == "oracles/resolve-decision"
+        assert rdd["with"] == {
+            "issue_id": "${context.issue_id}",
+            "skip_probe": "true",
+        }
+        assert rdd["on_success"] == "re_assess"
+        assert rdd["on_failure"] == "check_decide_rate_limited"
+        assert rdd["on_error"] == "check_decide_rate_limited"
+
+    def test_check_decision_needed_post_on_yes_routes_to_resolve_decision_direct(self) -> None:
+        data = _load_loop()
+        cdnp = data["states"]["check_decision_needed_post"]
+        assert cdnp["on_yes"] == "resolve_decision_direct"
+
+    def test_diagnose_decide_route_targets_resolve_decision_direct(self) -> None:
+        data = _load_loop()
+        assert data["states"]["diagnose"]["route"]["DECIDE"] == "resolve_decision_direct"
+
+
+class TestCheckDecideRateLimited:
+    """ENH-3090 / ENH-3075 Option A: the caller-side gate on
+    oracles/resolve-decision's rate-limit-exhaustion marker, reached from both
+    call states' on_failure/on_error."""
+
+    def test_uses_shell_exit_and_checks_marker_file(self) -> None:
+        data = _load_loop()
+        gate = data["states"]["check_decide_rate_limited"]
+        assert gate.get("fragment") == "shell_exit"
+        assert "decide-rate-limited-${context.issue_id}" in gate["action"]
+
+    def test_on_yes_routes_to_rate_limit_diagnostic(self) -> None:
+        """Present marker (429 budget exhausted) terminates gracefully via this
+        loop's own rate-limit-exhaustion convention — rate_limit_diagnostic
+        writes RATE_LIMITED and exits `failed`."""
+        data = _load_loop()
+        gate = data["states"]["check_decide_rate_limited"]
+        assert gate["on_yes"] == "rate_limit_diagnostic"
+
+    def test_on_no_and_on_error_route_to_emit_needs_manual_review(self) -> None:
+        """Absent marker: decide genuinely didn't resolve the flag — falls
+        through to the same target the old inline decide.on_no used."""
+        data = _load_loop()
+        gate = data["states"]["check_decide_rate_limited"]
+        assert gate["on_no"] == "emit_needs_manual_review"
+        assert gate["on_error"] == "emit_needs_manual_review"
 
 
 class TestManualReviewRecommendedToken:
@@ -343,9 +323,11 @@ class TestManualReviewRecommendedToken:
     MANUAL_REVIEW_NEEDED via the deposit-options marker (ENH-2443)."""
 
     def test_checks_marker_file(self) -> None:
+        """ENH-3090: reads oracles/resolve-decision.yaml's own marker literal
+        (hyphenated, no extension) — the sub-loop now owns writing it."""
         data = _load_loop()
         action = data["states"]["emit_needs_manual_review"]["action"]
-        assert "decide_options_deposited_${context.issue_id}.txt" in action
+        assert "decide-options-deposited-${context.issue_id}" in action
 
     def test_emits_both_tokens(self) -> None:
         data = _load_loop()
@@ -446,7 +428,10 @@ class TestDiagnoseRouting:
         route = data["states"]["diagnose"]["route"]
         # IMPLEMENT goes through the marker-gate
         assert route["IMPLEMENT"] == "gate_implement"
-        assert route["DECIDE"] == "decide"
+        # ENH-3090: DECIDE routes into the shared decision sub-loop's direct
+        # entry (skip_probe: "true" — the dimensional classification already
+        # found decision_needed: true, so the probe/deposit detour is skipped).
+        assert route["DECIDE"] == "resolve_decision_direct"
         assert route["WIRE"] == "wire"
         assert route["REFINE"] == "refine"
         assert route["REFINE_LIGHT"] == "refine_light"
@@ -497,43 +482,11 @@ class TestRemediationActions:
         assert impl["on_no"] == "check_learning_gate"
         assert impl["on_error"] == "check_learning_gate"
 
-    def test_decide_is_slash_command_with_auto(self) -> None:
-        """decide invokes /ll:decide-issue --auto as a slash_command."""
-        data = _load_loop()
-        dec = data["states"]["decide"]
-        assert dec["action_type"] == "slash_command"
-        assert "/ll:decide-issue" in dec["action"]
-        assert "--auto" in dec["action"]
-
-    def test_decide_wraps_with_rate_limit_handling(self) -> None:
-        """decide uses with_rate_limit_handling fragment."""
-        data = _load_loop()
-        dec = data["states"]["decide"]
-        assert dec.get("fragment") == "with_rate_limit_handling"
-
-    def test_decide_routes_to_re_assess_on_yes(self) -> None:
-        """decide routes to re_assess on yes (decision recorded → re-evaluate scores).
-
-        BUG-2169: decide/wire/refine use on_yes/on_no/on_partial (slash_command routing),
-        not on_success/on_error (sub-loop delegation routing).
-        ENH-2307: on_yes stays re_assess; on_no/on_error route to emit_implement_failed.
-        """
-        data = _load_loop()
-        dec = data["states"]["decide"]
-        assert dec["on_yes"] == "re_assess"
-        assert dec["on_partial"] == "re_assess"
-
-    def test_decide_failure_routes_to_emit_implement_failed(self) -> None:
-        """decide routes on_no → emit_needs_manual_review, on_error → emit_implement_failed (BUG-2396).
-
-        When /ll:decide-issue --auto cannot auto-resolve (author-gated decision), the loop
-        classifies the outcome as MANUAL_REVIEW_NEEDED, not an implementation failure.
-        on_error (genuine infra crash) still routes to emit_implement_failed.
-        """
-        data = _load_loop()
-        dec = data["states"]["decide"]
-        assert dec["on_no"] == "emit_needs_manual_review"
-        assert dec["on_error"] == "emit_implement_failed"
+    # ENH-3090: the inline `decide` state (and its four routing tests
+    # previously here) is deleted — /ll:decide-issue now runs inside
+    # oracles/resolve-decision.yaml's run_decide state. See
+    # TestResolveDecisionCallStates / TestCheckDecideRateLimited above and
+    # TestResolveDecisionOracle in test_builtin_loops.py for its coverage.
 
     def test_wire_is_slash_command_with_auto(self) -> None:
         """wire invokes /ll:wire-issue --auto as a slash_command."""
@@ -1204,7 +1157,11 @@ class TestFSMHealth:
             "check_readiness": "exit_code",
             "check_outcome": "exit_code",
             "check_decision_needed": "exit_code",
-            "check_decision_decidable": "exit_code",
+            # ENH-3090: check_decision_decidable moved into
+            # oracles/resolve-decision.yaml; the resolve_decision /
+            # resolve_decision_direct call states that replaced it are
+            # sub-loop delegations, not shell_exit evaluators, so they are
+            # not MR-1 dict members here.
         }
         for state_name, _expected_eval_type in mr1_states.items():
             state = data["states"].get(state_name)

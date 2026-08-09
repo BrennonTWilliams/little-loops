@@ -261,3 +261,34 @@ class TestAutodevSmoke:
         for dyn in topo["dynamic_edges"]:
             assert dyn["from"] is None or dyn["from"] in state_ids, dyn
             assert "${" in dyn["expr"], dyn
+
+
+class TestRnRemediateSmoke:
+    def test_rn_remediate_topology(self) -> None:
+        path = LOOPS_DIR / "rn-remediate.yaml"
+        topo = topology_dict(load_fsm(path))
+
+        state_ids = {s["id"] for s in topo["states"]}
+        # ENH-3090 converted rn-remediate's inline decision cluster to the
+        # shared oracles/resolve-decision sub-loop (mirrors ENH-3075's
+        # autodev.yaml conversion): removed check_decision_decidable,
+        # deposit_options, record_options_deposited,
+        # check_open_question_progress, decide (-5); added resolve_decision,
+        # resolve_decision_direct, check_decide_rate_limited (+3), a net -2
+        # from the pre-conversion 50, landing at 48.
+        assert len(topo["states"]) == 48
+
+        # Every edge endpoint is a known state id, or the target of a
+        # declared sub-loop (`loop:`) cross-graph edge. `from` may be null
+        # only on loop-level limit edges.
+        sub_loop_names = {s["sub_loop"] for s in topo["states"] if s["sub_loop"]}
+        for edge in topo["edges"]:
+            if edge["from"] is not None:
+                assert edge["from"] in state_ids, edge
+            else:
+                assert edge["kind"] in ("on_max_steps", "on_max_iterations"), edge
+            assert edge["to"] in state_ids or edge["to"] in sub_loop_names, edge
+
+        for dyn in topo["dynamic_edges"]:
+            assert dyn["from"] is None or dyn["from"] in state_ids, dyn
+            assert "${" in dyn["expr"], dyn

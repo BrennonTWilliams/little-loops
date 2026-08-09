@@ -1848,7 +1848,7 @@ ll-issues check-decidable FEAT-398   # Exit 1 (OPTIONS_MISSING) — no enumerabl
 ll-issues check-decidable ENH-277    # Exit 0 — 2+ options found
 ```
 
-**FSM loop use**: The `check_decision_decidable` gate in `rn-remediate.yaml` (and its parity insertion in `autodev.yaml`) calls this as a shell action with `evaluate: {type: exit_code}`, routing to a bounded `/ll:refine-issue --auto` deposit-options retry on exit 1 rather than letting `decide` run with nothing to score.
+**FSM loop use**: The `check_decision_decidable` gate lives in the shared `oracles/resolve-decision.yaml` sub-loop (extracted from `autodev.yaml` by BUG-3065/ENH-3075; adopted by `rn-remediate.yaml` via ENH-3090) and calls this as a shell action with `evaluate: {type: exit_code}`, routing to a bounded `/ll:refine-issue --auto` deposit-options retry on exit 1 rather than letting `run_decide` run with nothing to score.
 
 ---
 
@@ -1908,7 +1908,7 @@ ll-issues check-open-questions FEAT-2339  # Exit 1 (mixed: 0 unresolved options 
 ll-issues check-open-questions ENH-2446   # Exit 0 — no unresolved decision surface
 ```
 
-**FSM loop use**: The `check_decision_decidable` gate in `rn-remediate.yaml:263` (and its parity insertion in `autodev.yaml:211`) chains this probe BEFORE `check-decidable` (`check-open-questions || check-decidable`) so the coverage gap is caught before the count-based fallback runs. Pair with the `open_question_stall` evaluator (`open_question_stall_gate` fragment in `lib/common.yaml`) for progress-gated re-fire.
+**FSM loop use**: The `check_decision_decidable` gate in `oracles/resolve-decision.yaml` (the shared sub-loop `rn-remediate.yaml` and `autodev.yaml` both call into, per ENH-3090/ENH-3075) chains this probe BEFORE `check-decidable` (`check-open-questions || check-decidable`) so the coverage gap is caught before the count-based fallback runs. Pair with the `open_question_stall` evaluator (`open_question_stall_gate` fragment in `lib/common.yaml`) for progress-gated re-fire.
 
 ---
 

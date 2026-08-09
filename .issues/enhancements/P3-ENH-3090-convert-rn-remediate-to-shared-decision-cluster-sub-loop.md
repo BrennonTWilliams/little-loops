@@ -3,10 +3,11 @@ id: ENH-3090
 type: ENH
 title: Convert rn-remediate's inline decision cluster to the shared decision sub-loop
 priority: P3
-status: open
+status: done
 discovered_date: 2026-08-06
 discovered_by: pre-implementation-review
 captured_at: '2026-08-06T18:10:00Z'
+completed_at: '2026-08-09T07:16:15Z'
 depends_on:
 - ENH-3075
 verify_verdict: VALID
@@ -503,9 +504,25 @@ _Added by `/ll:refine-issue` — 2026-08-09 — based on codebase analysis:_
 
 ## Status
 
-- [ ] Not started — **needs a `/ll:refine-issue` pass**. Line ranges, entry
-      points, marker literals, and the test surface are all unverified;
-      this issue was filed to hold the scope, not to be implemented as written.
+- [x] Implemented 2026-08-09 via `/ll:manage-issue`. `rn-remediate.yaml`'s
+      inline decision cluster (`check_decision_decidable`, `deposit_options`,
+      `record_options_deposited`, `check_open_question_progress`, `decide`)
+      was removed and replaced with `resolve_decision` / `resolve_decision_direct`
+      call states into `oracles/resolve-decision`, plus a caller-side
+      `check_decide_rate_limited` gate (state count 50→48). Options-deposited
+      marker renamed to the sub-loop's own `decide-options-deposited-${issue_id}`
+      literal at all remaining reader sites. `autodev.yaml`'s stale parity
+      comment (AC9) was already gone by the time this landed — no change needed
+      there. `ll-loop validate` passes on `rn-remediate.yaml`; all
+      ENH-3090-scoped tests pass (1868/1868 across `test_rn_remediate.py`,
+      `test_builtin_loops.py`, `test_fsm_topology.py`,
+      `test_autodev_decision_gate.py`, `test_rn_implement.py`). Full suite:
+      pre-existing, unrelated failure only
+      (`test_prose_dep_sweep_gate.py::test_no_prose_dependency_drift_in_repo`,
+      flags drift in ENH-3095/FEAT-3078 and FEAT-3122/FEAT-3108 — files this
+      issue never touched). AC11 (manual `ll-loop run rn-remediate`
+      end-to-end) skipped: no automated e2e coverage exists for this loop
+      (matches precedent), and a real run would mutate live issue state.
 
 ## Verification Notes
 
@@ -538,6 +555,7 @@ line is `:281`).
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-09T07:15:45 - `feb8af26-69bd-43d0-b261-f9adac94bb99.jsonl`
 - `/ll:confidence-check` - 2026-08-09T05:41:34 - `a1a40f76-712a-495e-8ebe-c8e78f895d3d.jsonl`
 - `/ll:reconcile-issue` - 2026-08-09T05:15:22 - `59d277e8-60ea-41a5-9db0-8ecec35c3bd1.jsonl`
 - `/ll:confidence-check` - 2026-08-09T05:09:39 - `b7457e6e-9654-45e5-a9bd-43e1bcddbd28.jsonl`

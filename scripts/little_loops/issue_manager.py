@@ -1155,7 +1155,7 @@ def process_issue_inplace(
                 # registry check passed — this is an ordinary implementation
                 # failure, not an unproven external-API dependency. Route it
                 # through the generic-failure marker (reusing the existing
-                # IMPLEMENT_FAILED outcome token, rn-remediate.yaml:907) so
+                # IMPLEMENT_FAILED outcome token, rn-remediate.yaml:1089) so
                 # autodev does not defer with deferred_reason: gate_blocked.
                 logger.warning(
                     f"Learning gate impl-failed for {info.issue_id}: implementation failed"

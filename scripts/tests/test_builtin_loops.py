@@ -13124,34 +13124,63 @@ class TestRnRemediateAssessRouting:
             f"assess.on_no should be 'refine_first', got {state.get('on_no')!r}"
         )
 
-    # decide state tests (BUG-2169)
+    # ENH-3090: the inline `decide` state (BUG-2169's on_yes/on_no/on_error/
+    # on_partial routing tests previously here) is deleted — /ll:decide-issue
+    # now runs inside oracles/resolve-decision.yaml's run_decide state, reached
+    # via the resolve_decision / resolve_decision_direct call states below.
 
-    def test_decide_on_yes_routes_to_re_assess(self, data: dict) -> None:
-        """decide.on_yes must route to re_assess (successful decision → re-evaluate scores)."""
-        state = data["states"].get("decide", {})
-        assert state.get("on_yes") == "re_assess", (
-            f"decide.on_yes should be 're_assess', got {state.get('on_yes')!r}"
+    def test_resolve_decision_on_success_routes_to_re_assess(self, data: dict) -> None:
+        """resolve_decision.on_success must route to re_assess — the same target
+        the deleted decide.on_yes/on_partial used."""
+        state = data["states"].get("resolve_decision", {})
+        assert state.get("on_success") == "re_assess", (
+            f"resolve_decision.on_success should be 're_assess', got {state.get('on_success')!r}"
         )
 
-    def test_decide_on_no_routes_to_emit_needs_manual_review(self, data: dict) -> None:
-        """decide.on_no must route to emit_needs_manual_review (BUG-2396: un-auto-resolvable decision ≠ implement failure)."""
-        state = data["states"].get("decide", {})
+    def test_resolve_decision_direct_on_success_routes_to_re_assess(self, data: dict) -> None:
+        state = data["states"].get("resolve_decision_direct", {})
+        assert state.get("on_success") == "re_assess", (
+            f"resolve_decision_direct.on_success should be 're_assess', "
+            f"got {state.get('on_success')!r}"
+        )
+
+    def test_resolve_decision_failure_and_error_route_to_rate_limit_gate(self, data: dict) -> None:
+        for state_name in ("resolve_decision", "resolve_decision_direct"):
+            state = data["states"].get(state_name, {})
+            assert state.get("on_failure") == "check_decide_rate_limited", (
+                f"{state_name}.on_failure should be 'check_decide_rate_limited', "
+                f"got {state.get('on_failure')!r}"
+            )
+            assert state.get("on_error") == "check_decide_rate_limited", (
+                f"{state_name}.on_error should be 'check_decide_rate_limited', "
+                f"got {state.get('on_error')!r}"
+            )
+
+    def test_check_decide_rate_limited_on_no_routes_to_emit_needs_manual_review(
+        self, data: dict
+    ) -> None:
+        """check_decide_rate_limited.on_no must route to emit_needs_manual_review
+        (BUG-2396: un-auto-resolvable decision ≠ implement failure) — the same
+        target the deleted decide.on_no used."""
+        state = data["states"].get("check_decide_rate_limited", {})
         assert state.get("on_no") == "emit_needs_manual_review", (
-            f"decide.on_no should be 'emit_needs_manual_review', got {state.get('on_no')!r}"
+            f"check_decide_rate_limited.on_no should be 'emit_needs_manual_review', "
+            f"got {state.get('on_no')!r}"
+        )
+        assert state.get("on_error") == "emit_needs_manual_review", (
+            f"check_decide_rate_limited.on_error should be 'emit_needs_manual_review', "
+            f"got {state.get('on_error')!r}"
         )
 
-    def test_decide_on_error_routes_to_emit_implement_failed(self, data: dict) -> None:
-        """decide.on_error must route to emit_implement_failed (ENH-2307: mirrors assess pattern)."""
-        state = data["states"].get("decide", {})
-        assert state.get("on_error") == "emit_implement_failed", (
-            f"decide.on_error should be 'emit_implement_failed', got {state.get('on_error')!r}"
-        )
-
-    def test_decide_on_partial_routes_to_re_assess(self, data: dict) -> None:
-        """decide.on_partial must route to re_assess (partial decision → re-evaluate, don't crash)."""
-        state = data["states"].get("decide", {})
-        assert state.get("on_partial") == "re_assess", (
-            f"decide.on_partial should be 're_assess', got {state.get('on_partial')!r}"
+    def test_check_decide_rate_limited_on_yes_routes_to_rate_limit_diagnostic(
+        self, data: dict
+    ) -> None:
+        """Present marker (429 budget exhausted) terminates gracefully via this
+        loop's rate-limit-exhaustion convention."""
+        state = data["states"].get("check_decide_rate_limited", {})
+        assert state.get("on_yes") == "rate_limit_diagnostic", (
+            f"check_decide_rate_limited.on_yes should be 'rate_limit_diagnostic', "
+            f"got {state.get('on_yes')!r}"
         )
 
     # wire state tests (BUG-2169)

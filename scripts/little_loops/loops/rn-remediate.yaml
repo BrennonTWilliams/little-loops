@@ -274,103 +274,69 @@ states:
   check_decision_needed:
     fragment: shell_exit
     action: "ll-issues check-flag ${context.issue_id} decision_needed"
-    on_yes: check_decision_decidable
+    on_yes: resolve_decision
     on_no: diagnose
     on_error: diagnose
 
-  check_decision_decidable:
-    # ENH-2443: validate before decide. Catches issues with decision_needed: true
-    # but no enumerable options in ## Proposed Solution. Without this gate,
-    # decide's silent pass-through on no options lets check_convergence escalate
-    # to NEEDS_MANUAL_REVIEW even when the underlying case is "deposit options
-    # first and try again". Mirrors check_decision_needed_post's failure philosophy
-    # (fail-open: a validation-tooling error still routes to decide).
-    # ll-issues check-decidable is the deterministic (non-LLM) companion to
-    # /ll:decide-issue --validate-only — same Patterns 1-4 counting logic, callable
-    # from a shell state (mirrors ensure_formatted -> ll-issues format-check).
-    # Marker-bounded: once deposit_options has run once for this issue, skip
-    # re-validation and go straight to decide (bounds the detour to one retry).
-    # ENH-2446: chain check-open-questions first — coverage-aware probe that
-    # catches the mixed case (resolved options + free-form open questions). The
-    # check-decidable fallback keeps the ENH-2443 behavior for issues that lack
-    # even one option block. Fail-open on_error: decide is preserved.
+  resolve_decision:
+    # ENH-3090: shared decision-cluster sub-loop (BUG-3065's
+    # oracles/resolve-decision.yaml, adopted here mirroring ENH-3075's
+    # autodev.yaml conversion). Probes decidability (ENH-2443/ENH-2446),
+    # deposits competing options via /ll:refine-issue --auto if needed, runs
+    # /ll:decide-issue --auto, and re-verifies decision_needed cleared
+    # (BUG-2595). Entered from check_decision_needed.on_yes, binding issue_id
+    # only and relying on the sub-loop's skip_probe: "false" default — the
+    # full probe/deposit/decide chain. on_success routes to re_assess, the
+    # same target the old inline decide.on_yes/on_partial used. on_failure/
+    # on_error route through check_decide_rate_limited so a 429-exhausted
+    # decide can terminate the run instead of being misclassified as a
+    # genuine unresolved decision. See oracles/resolve-decision.yaml for the
+    # extracted cluster's own contract.
+    loop: oracles/resolve-decision
+    with:
+      issue_id: "${context.issue_id}"
+    capture: resolve_decision
+    on_success: re_assess
+    on_failure: check_decide_rate_limited
+    on_error: check_decide_rate_limited
+
+  resolve_decision_direct:
+    # Same sub-loop as resolve_decision, but entered directly with
+    # skip_probe: "true" from the two entry points that already know a
+    # decision is needed and should skip the decidability probe/deposit
+    # detour: check_decision_needed_post.on_yes (post-refine/wire re-check)
+    # and diagnose's DECIDE route (dimensional classification already found
+    # decision_needed: true). Mirrors autodev's resolve_decision_direct
+    # (entered from triage_outcome_failure.on_yes).
+    loop: oracles/resolve-decision
+    with:
+      issue_id: "${context.issue_id}"
+      skip_probe: "true"
+    capture: resolve_decision_direct
+    on_success: re_assess
+    on_failure: check_decide_rate_limited
+    on_error: check_decide_rate_limited
+
+  check_decide_rate_limited:
+    # ENH-3075 Option A, reused here: a `loop:` call state can never observe
+    # oracles/resolve-decision's rate-limit-exhaustion terminal directly —
+    # _execute_sub_loop routes only on terminated_by/failure_terminal (a
+    # bool, not a terminal name), so the 429 interception in the executor can
+    # never see a child. The sub-loop's mark_decide_rate_limited writes a
+    # marker before exiting `failed`; this gate — reached from both call
+    # states' on_failure AND on_error — reads it. Present: the 429 budget is
+    # exhausted; route to rate_limit_diagnostic, this loop's own
+    # rate-limit-exhaustion terminal convention (writes RATE_LIMITED and
+    # exits `failed`), rather than deferring this issue and immediately
+    # re-hitting the same exhaustion downstream. Absent: decide genuinely
+    # didn't resolve the flag (or errored for an unrelated reason); fall
+    # through to emit_needs_manual_review — the same target the old inline
+    # decide.on_no used.
+    action: "[ -f ${context.run_dir}/decide-rate-limited-${context.issue_id} ]"
     fragment: shell_exit
-    action: |
-      if [ -f "${context.run_dir}/decide_options_deposited_${context.issue_id}.txt" ]; then
-        exit 0
-      fi
-      ll-issues check-open-questions "${context.issue_id}" || \
-        ll-issues check-decidable "${context.issue_id}"
-    on_yes: decide
-    on_no: deposit_options
-    on_error: decide
-
-  deposit_options:
-    # Bounded retry: refine --auto may deposit Option A/B/C blocks that decide can
-    # then score. Write-once marker (mirrors refined_<ID>/wired_<ID>) prevents
-    # infinite loops if refine also can't deposit options — falls through to decide
-    # with no enumerable options; check_convergence then escalates to
-    # MANUAL_REVIEW_NEEDED/MANUAL_REVIEW_RECOMMENDED with the diagnostic now visible.
-    fragment: with_rate_limit_handling
-    action_type: slash_command
-    action: "/ll:refine-issue ${context.issue_id} --auto"
-    on_yes: record_options_deposited
-    on_no: decide
-    on_partial: record_options_deposited
-    on_error: decide
-    on_rate_limit_exhausted: rate_limit_diagnostic
-
-  record_options_deposited:
-    # Marker ensures the deposit_options detour runs at most once per issue —
-    # subsequent cycles of check_convergence -> check_decision_decidable skip
-    # deposit_options and fall through to decide (which will properly escalate
-    # to NEEDS_MANUAL_REVIEW after one cycle).
-    action_type: shell
-    action: |
-      echo "1" > "${context.run_dir}/decide_options_deposited_${context.issue_id}.txt"
-    next: check_open_question_progress
-
-  # ENH-2446: progress-gated deposit_options re-fire. The write-once marker above
-  # is the "tried at least once" anchor (preserved for MANUAL_REVIEW_RECOMMENDED
-  # semantics); this state lets deposit_options run more than once when it is
-  # *demonstrably still making progress* — i.e. the open-question count keeps
-  # strictly decreasing. The open_question_stall evaluator (max_stall: 2, mirrors
-  # score_stall) is self-bounding: once the count plateaus for two consecutive
-  # rounds, on_no routes to decide (let NEEDS_MANUAL_REVIEW fire) so the loop
-  # cannot infinite-loop on a stuck issue. The outer check_remediation_budget
-  # cap (max_remediation_passes: 3) bounds total iterations.
-  check_open_question_progress:
-    action_type: shell
-    action: |
-      ID="${context.issue_id}"
-      RUN_DIR="${context.run_dir}"
-      HISTORY_FILE="$${RUN_DIR}/.open_questions_$${ID}.history"
-
-      # Snapshot the current unresolved-question count from the deterministic probe
-      # (same probe ll-issues check-open-questions uses, but in-process via
-      # python instead of a subprocess for shell-state efficiency).
-      COUNT=$(python3 -c "
-      from little_loops.cli.issues.show import _resolve_issue_id
-      from little_loops.config import BRConfig
-      from little_loops.issue_parser import (
-          count_open_questions_in_sections,
-          count_unresolved_options,
-      )
-      cfg = BRConfig('.')
-      path = _resolve_issue_id(cfg, '$ID')
-      if path is None:
-          print(0)
-      else:
-          c = path.read_text()
-          print(count_unresolved_options(c) + count_open_questions_in_sections(c))
-      " 2>/dev/null || echo 0)
-
-      echo "$${COUNT}"
-      echo "$${COUNT}" >> "$${HISTORY_FILE}"
-    fragment: open_question_stall_gate
-    on_yes: check_decision_decidable
-    on_no: decide
-    on_error: decide
+    on_yes: rate_limit_diagnostic
+    on_no: emit_needs_manual_review
+    on_error: emit_needs_manual_review
 
   # =========================================================================
   # Phase 2: Dimensional Diagnosis & Token Routing
@@ -439,7 +405,7 @@ states:
       type: classify
     route:
       IMPLEMENT:    gate_implement
-      DECIDE:       decide
+      DECIDE:       resolve_decision_direct
       WIRE:         wire
       REFINE:       refine
       REFINE_LIGHT: refine_light
@@ -645,16 +611,6 @@ states:
     on_no: emit_implement_failed
     on_error: emit_implement_failed
 
-  decide:
-    fragment: with_rate_limit_handling
-    action: "/ll:decide-issue ${context.issue_id} --auto"
-    action_type: slash_command
-    on_yes: re_assess
-    on_no: emit_needs_manual_review
-    on_partial: re_assess
-    on_error: emit_implement_failed
-    on_rate_limit_exhausted: rate_limit_diagnostic
-
   wire:
     fragment: with_rate_limit_handling
     action: "/ll:wire-issue ${context.issue_id} --auto"
@@ -753,7 +709,7 @@ states:
     # confidence check then blocks for manual review instead.
     fragment: shell_exit
     action: "ll-issues check-flag ${context.issue_id} decision_needed"
-    on_yes: decide
+    on_yes: resolve_decision_direct
     on_no: re_assess
     on_error: re_assess
 
@@ -971,22 +927,28 @@ states:
   emit_needs_manual_review:
     # ENH-2443: distinguish "already tried deposit_options and still nothing to
     # decide" (MANUAL_REVIEW_RECOMMENDED) from a genuine human-required decision
-    # (MANUAL_REVIEW_NEEDED). Sink for both decide.on_no and check_convergence's
+    # (MANUAL_REVIEW_NEEDED). Sink for both check_decide_rate_limited.on_no
+    # (ENH-3090: replaces decide.on_no) and check_convergence's
     # NEEDS_MANUAL_REVIEW route, so the marker check covers both paths.
+    # ENH-3090: reads oracles/resolve-decision.yaml's own marker literal
+    # directly (decide-options-deposited-<ID>, hyphenated, no extension) —
+    # the sub-loop now owns writing it since deposit_options/
+    # record_options_deposited moved into the cluster. Same run_dir + issue_id
+    # scoping as before, so the file is still visible here.
     #
     # ENH-2530: additionally write manual_review_handoff_<ID>.md under
     # ${context.run_dir}/ — a per-issue diagnostic that captures the specific
     # reason (outcome vs threshold, convergence delta, remediation pass count),
     # verbatim decision_context frontmatter when present (fallback to a generic
     # sentence otherwise), and a recommended next action branched on the
-    # decide_options_deposited marker. Token write above is byte-preserved —
+    # decide-options-deposited marker. Token write above is byte-preserved —
     # the parent's longest-prefix-first routing chain at rn-implement.yaml
     # depends on MANUAL_REVIEW_RECOMMENDED / MANUAL_REVIEW_NEEDED exactly.
     # Heredoc uses quoted delimiter to prevent shell expansion of dynamic
     # markdown contents (mirrors cua-agent-desktop.yaml quoted-heredoc pattern).
     action_type: shell
     action: |
-      if [ -f "${context.run_dir}/decide_options_deposited_${context.issue_id}.txt" ]; then
+      if [ -f "${context.run_dir}/decide-options-deposited-${context.issue_id}" ]; then
         echo "MANUAL_REVIEW_RECOMMENDED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
       else
         echo "MANUAL_REVIEW_NEEDED" > "${context.run_dir}/subloop_outcome_${context.issue_id}.txt"
@@ -1071,7 +1033,7 @@ states:
           except Exception:
               pass
 
-      marker_path = os.path.join(RUN_DIR, f"decide_options_deposited_{ISSUE_ID}.txt")
+      marker_path = os.path.join(RUN_DIR, f"decide-options-deposited-{ISSUE_ID}")
       recommended = os.path.exists(marker_path)
       token = "MANUAL_REVIEW_RECOMMENDED" if recommended else "MANUAL_REVIEW_NEEDED"
       if recommended:
