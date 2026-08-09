@@ -1,6 +1,10 @@
-Warning: Input is not a terminal (fd=0).
-CLAIM5 isinstance(Separator(), Choice): True
-CLAIM1 select_ask: OTHER OSError: [Errno 22] Invalid argument
-CLAIM2 checkbox_ask: OTHER OSError: [Errno 22] Invalid argument
-CLAIM3 prompt_batch: OTHER OSError: [Errno 22] Invalid argument
-CLAIM4 checkbox_value_vs_title: untested (no input-simulation harness available in this proof)
+? pick (Use arrow keys)                       ? pick (Use arrow keys)
+? pick (Use arrow keys to move, <space> to select, <a> to toggle, <i> to invert                                                                               )
+ select().ask() on empty stdin -> EOFError()
+? pick (Use arrow keys to move, <space> to select, <a> to toggle, <i> to invert                                                                               )
+ 
+? pick (Use arrow keys)                       checkbox().ask() on empty stdin -> EOFError()
+? pick (Use arrow keys)
+prompt([...]) on empty stdin -> EOFError()
+isinstance(Separator(), Choice) -> True
+Choice(title=T, value=V).value -> V title -> T

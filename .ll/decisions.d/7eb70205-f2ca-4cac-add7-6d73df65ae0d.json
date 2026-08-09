@@ -1,0 +1,12 @@
+{
+  "id": "98fae9bb-d37d-4f9c-a4cf-487d5b342e7f",
+  "type": "decision",
+  "timestamp": "2026-08-09T02:53:33Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Mirrors the only existing internal precedent (LL_AUTOMATION=\"\" in _apply_automation_env()) for this exact leak scenario; Option B (\"0\") has no supporting precedent; Option C (pop key) actively violates AC2's explicit-neutralization requirement. Empirical probe against the real claude host still required before AC2 closes.",
+  "rule": "Neutralize CLAUDE_CODE_DISABLE_BACKGROUND_TASKS with empty string (Option A) on the automation_profile is None path",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=\"0\" (no precedent, unverified); Option C: pop the key entirely (fails AC2 - leaks via os.environ inheritance)",
+  "issue": "FEAT-3078"
+}

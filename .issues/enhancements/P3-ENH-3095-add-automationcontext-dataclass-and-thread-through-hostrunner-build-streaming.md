@@ -5,6 +5,8 @@ title: Add AutomationContext dataclass and thread it through HostRunner.build_st
 priority: P3
 status: open
 parent: ENH-3094
+blocked_by:
+- FEAT-3078
 discovered_date: 2026-08-07
 discovered_by: /ll:issue-size-review
 labels:
@@ -41,6 +43,43 @@ kwargs into a single `AutomationContext`). This child introduces the
 This child must land before ENH-3096 (ActionRunner boundary) and ENH-3097
 (run_claude_command / caller boundary) — both need to import the
 `AutomationContext` type this child defines.
+
+## Current Behavior
+
+`HostRunner.build_streaming()`'s Protocol and all 7 concrete implementations
+(`ClaudeCodeRunner`, `CodexRunner`, `OpenCodeRunner`, `PiRunner`,
+`GeminiRunner`, `OmpRunner`, `KimiRunner`) accept a bare
+`automation_profile: str | None = None` trailing keyword, and
+`_apply_automation_env()` reads that bare string directly to set
+`LL_AUTOMATION`/`LL_AUTOMATION_PROFILE`.
+
+## Expected Behavior
+
+`HostRunner.build_streaming()`'s Protocol and all 7 concrete implementations
+accept `automation: AutomationContext | None = None` in place of
+`automation_profile`; `_apply_automation_env()` reads `AutomationContext`
+fields. `automation_profile` remains a deprecated keyword that constructs an
+`AutomationContext` internally, with a `DeprecationWarning` emitted when both
+are supplied and the explicit `automation` context wins.
+
+## Impact
+
+Without this change, each new per-call automation knob (already two today,
+`automation_profile` and the pending `idle_timeout`/`disable_background_tasks`
+knobs FEAT-3078 introduces) keeps paying the fixed toll of touching all 7
+`build_streaming()` signatures plus the Protocol individually. This child
+unblocks ENH-3096 (`ActionRunner` boundary) and ENH-3097
+(`run_claude_command()` / caller boundary), which both need to import the
+`AutomationContext` type defined here.
+
+## Status
+
+Open — blocked on FEAT-3078 landing. Per the parent ENH-3094's recorded
+decision (Option A, `/ll:decide-issue`, `.ll/decisions.d/cd87607d-e3b2-4588-a697-466559bab1d3.json`),
+this collapse is deliberately sequenced after FEAT-3078 so the deprecated
+`automation_profile` pass-through shim is validated against the real
+third-knob consumer (`disable_background_tasks`) rather than a hypothetical
+one. FEAT-3078 is currently `status: open`.
 
 ## Parent Issue
 
@@ -188,6 +227,7 @@ New:
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-09T02:52:47 - `6431dd81-8b40-4678-a555-981e5457f142.jsonl`
 - `/ll:confidence-check` - 2026-08-09T01:59:07 - `9b3b8077-be68-4765-a354-0d51ab3b4859.jsonl`
 - `/ll:wire-issue` - 2026-08-09T01:55:13 - `963d0bbe-3f49-4745-8100-971274145bbd.jsonl`
 - `/ll:refine-issue` - 2026-08-07T22:51:21 - `596f76ed-c393-479b-9539-adbce5a6a72b.jsonl`

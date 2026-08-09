@@ -12,7 +12,7 @@ labels:
 - worktree
 - history
 - data-loss
-confidence_score: 95
+confidence_score: 94
 outcome_confidence: 62
 score_complexity: 14
 score_test_coverage: 19
@@ -575,7 +575,42 @@ templates covering most touched modules, and the one missing integration
 test (worktree lifecycle → history persists after cleanup) is explicitly
 called out as new AC-level coverage to add.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-08_
+
+**Readiness Score**: 94/100 → PROCEED
+**Outcome Confidence**: 62/100 → MODERATE
+
+### Outcome Risk Factors
+- **Wide, cross-cutting fanout (Complexity: 14/25)**: verified unchanged since
+  the prior pass — the fix still touches ~9-10 distinct sites across
+  `subprocess_utils.py`, `host_runner.py` (per-runner `build_streaming()`),
+  `worker_pool.py` (two independent env-build paths), `runner_spec.py`,
+  `fsm/runners.py`, `issue_manager.py`, and `worktree_utils.py`. Re-verified
+  directly: `run_claude_command()` (`subprocess_utils.py:320-341`) still has
+  no `env` passthrough parameter and builds `env = os.environ.copy();
+  env.update(invocation.env)` at lines 414-415, confirming the issue's Call
+  Path claims.
+- **Non-mechanical change surface with a live sequencing risk (Change
+  Surface: 10/25)**: ENH-3095 and ENH-3097 are both still `open` as of
+  2026-08-08 (re-checked directly via `ll-issues show`), and continue to
+  touch the same `subprocess_utils.py`/`host_runner.py` line ranges via a
+  competing `AutomationContext` mechanism. No hard `blocked_by` is declared,
+  but landing order still affects merge-conflict risk.
+- **Residual ambiguity (Ambiguity: 19/25)**: the injection-strategy and
+  verify-gate DB-sharing decisions made by `/ll:decide-issue` remain settled;
+  no new undocumented judgment calls were found on this pass.
+
+### Note
+`ll-issues format-check` flags `mislocated_symbol_ref: worktree_copy_files
+(claimed in scripts/little_loops/cli/parallel.py)` — verified as a linter
+false positive: the issue's prose reference is to the dotted config key
+`parallel.worktree_copy_files` (present in `config-schema.json:360`), not a
+claim that the symbol lives in `cli/parallel.py`. No action needed.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-09T02:54:13 - `d6eb2d4e-2ab1-4ee2-9817-a4e5989f03cb.jsonl`
 - `/ll:confidence-check` - 2026-08-09T02:44:06 - `949315da-0b72-4a22-a42d-0493ed4f18c1.jsonl`
 - `/ll:decide-issue` - 2026-08-09T02:03:57 - `b7a1eb33-0bc6-4bb9-a60c-0e95c4863a8d.jsonl`
 - `/ll:confidence-check` - 2026-08-09T01:52:31 - `4bfd9abe-af89-4c06-a44b-8c4385814986.jsonl`

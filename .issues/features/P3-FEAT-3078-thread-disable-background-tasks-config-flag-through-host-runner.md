@@ -18,12 +18,13 @@ relates_to:
 - ENH-3094
 - ENH-3081
 verify_verdict: VALID
-confidence_score: 85
+confidence_score: 88
 outcome_confidence: 70
 score_complexity: 9
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
+decision_needed: false
 ---
 
 # FEAT-3078: Thread a disable_background_tasks config flag through host_runner and all call sites
@@ -141,14 +142,78 @@ flag and lose backgrounding, with no way to tell why. **AC2 must become
 `LL_AUTOMATION=""` works as an off-switch because *our own* readers
 (`hooks/session_start.py:110`, `cli/history_context.py:206`) test truthiness of
 the string. `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` is read by the **host**, not
-by us, and its falsy-value handling is unverified. `""`, `"0"`, and
-popping the key are three different behaviors and only one is right.
+by us, and its falsy-value handling is unverified — three candidate
+neutralizing values, decision needed before implementing AC2:
+
+**Option A**: Set `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=""` (empty string) on
+the `automation_profile is None` path — mirrors the `LL_AUTOMATION=""`
+neutralization `_apply_automation_env()` already uses, so the two vars stay
+symmetric.
+
+> **Selected:** Option A — mirrors the codebase's only existing precedent for
+> this exact leak concern (`LL_AUTOMATION=""`); Options B and C have no
+> supporting precedent and C actively violates AC2. See Decision Rationale
+> below — the empirical probe against the real `claude` host remains required
+> before implementation closes out AC2.
+
+**Option B**: Set `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS="0"` on that path —
+only correct if the host's flag parser treats the literal string `"0"` (not
+merely absence/emptiness) as its off value.
+
+**Option C**: Pop the key from `env` entirely on that path, restoring pure
+inheritance from the parent process rather than asserting an explicit falsy
+value — the only option that does NOT mirror the `LL_AUTOMATION` precedent.
 
 Resolve with a fourth probe using the FEAT-3076/3077 harness (real `claude -p`
 child, stream-json capture, record under `postmortems/feat-3078-verify/`):
 spawn with `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=""` and again with `="0"`, and
 check whether a `Bash run_in_background: true` call succeeds. Cheap, and AC2's
 correctness depends on the answer.
+
+### Decision Rationale
+
+**Selected: Option A** — set `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=""` on the
+`automation_profile is None` path.
+
+Scoring (0–3 per dimension, evidence gathered by parallel codebase-pattern
+agents against `host_runner.py`, `docs/claude-code/settings.md`, and this
+issue's own text):
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|---|---|---|---|---|---|
+| A (`""`) | 2 | 3 | 3 | 2 | **10/12** |
+| B (`"0"`) | 0 | 3 | 3 | 1 | 7/12 |
+| C (pop key) | 0 | 3 | 2 | 0 | 5/12 |
+
+- **Option A** is the only candidate with internal precedent:
+  `_apply_automation_env()` (`host_runner.py:1547-1562`) already neutralizes
+  `LL_AUTOMATION`/`LL_AUTOMATION_PROFILE` with `""` for the identical
+  "inherited-value would leak" scenario this issue's AC2 describes, keeping
+  the two vars symmetric.
+- **Option B** (`"0"`) has zero supporting precedent — no other env var in
+  this codebase is turned off via literal `"0"`, and `docs/claude-code/settings.md:772`
+  documents only `"1"` for this specific flag (the sibling
+  `CLAUDE_CODE_DISABLE_AUTO_MEMORY` row does define a `"0"` meaning, but a
+  distinct one — "force on" — showing `"0"` semantics are flag-specific and
+  don't transfer).
+- **Option C** (pop the key) is disqualified on correctness, not just
+  convention: `_apply_automation_env()`'s own docstring states an absent key
+  means "inherit the parent's value," never "clear" — exactly the leak AC2
+  was written to rule out ("explicitly neutralized... not merely omitted").
+  Automation sessions do spawn nested `claude` children, so this is a live
+  leak path, not a hypothetical one.
+
+**Residual risk carried forward, not resolved by this scoring pass**: neither
+internal codebase evidence nor `docs/claude-code/settings.md` confirms how the
+external `claude` host binary actually parses an empty-string value for
+`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` — that boundary is outside this
+codebase's visibility. The issue's own prescribed fourth probe (spawn a real
+`claude -p` child with `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=""` and check
+whether `Bash run_in_background: true` succeeds, recorded under
+`postmortems/feat-3078-verify/`) is still required during implementation to
+confirm Option A's off-value is correct before AC2 can be marked satisfied. If
+the probe shows `""` does not disable the flag, fall back to whichever value
+(`"0"` or another) the probe demonstrates works, and update this rationale.
 
 ### Files to Modify
 - `scripts/little_loops/host_runner.py` — `ClaudeCodeRunner.build_streaming()` env block at lines 345-362; the new `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` conditional inserts here.
@@ -173,6 +238,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/conftest.py:725-742` (`_CMD_RUN_ENV_VARS`, `_restore_cmd_run_env_vars`) — the autouse fixture scrubs `LL_AUTOMATION`/`LL_AUTOMATION_PROFILE` specifically because they leak into descendant `pytest` processes when a test run is itself launched from inside an `ll-auto`/FSM-loop session (documented at `:713-724`, historically broke 48 tests). `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` is injected in the identical `if automation_profile is not None:` block per this issue's own gate, so it is subject to the same leak vector and must be added to `_CMD_RUN_ENV_VARS`.
 - `scripts/little_loops/fsm/executor.py:1886-1910` (`_execute_action` `extra_kwargs` assembly) — correction to the existing Call Path claim: `extra_kwargs["automation_profile"]` at `:1902` is sourced from `PruningProfileConfig` (a per-loop/per-state declarative field via `state.pruning_profile or self.fsm.pruning_profile`), not from `OrchestrationConfig`. `disable_background_tasks` lives on `OrchestrationConfig` (a global config object), a structurally different source with no existing per-call read in this block — the memoized `FSMExecutor._get_br_config()` (`:2063-2073`, already used elsewhere for `cache`/`deferred_tools`/`learning_tests` dispatch) is the accessor to consult here, not a copy of the `PruningProfileConfig` pattern.
+
+_Wiring pass added by `/ll:wire-issue` — 2026-08-08:_
+- `scripts/little_loops/parallel/worker_pool.py:885-934` (`WorkerPool._run_claude_command()`) — a **third** un-listed local wrapper around `run_claude_command` (imported `as _run_claude_base` at `:40`), alongside the `issue_manager.py:139-218` wrapper. Confirmed via read: its call to `_run_claude_base()` at `:924-933` does not forward `automation_profile` at all today, so it needs the same `disable_background_tasks` parameter added to its own signature (`:885-891`) and threaded into the `_run_claude_base(...)` call for `ll-parallel`/`ll-sprint` worker sessions to get parity with the `issue_manager.py` and FSM paths.
 
 ### Conventions in Force
 - Config sections are `@dataclass`es with a `from_dict(cls, data)` classmethod using `.get(key, default)` (lenient), mirrored by a `config-schema.json` object entry that is `additionalProperties: false` with a documented `default` — evidence: `scripts/little_loops/config/orchestration.py:63-103`, `scripts/little_loops/config-schema.json:1554-1631`.
@@ -208,6 +276,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_fsm_runners.py:101-171` (`TestSimulationActionRunnerScenarios`) and `scripts/tests/test_fsm_executor.py:3850+` (`TestSimulationActionRunner`) — neither currently passes or asserts `automation_profile`/`idle_timeout` no-op behavior; genuine gap, add a case asserting `SimulationActionRunner.run(..., disable_background_tasks=True)` still returns the scenario-driven `ActionResult` unchanged.
 - `scripts/tests/conformance/test_host_conformance.py:70-89` (`test_golden_path_invocation`, `isolated_env` fixture) — the `isolated_env` fixture clears `LL_HOST_CLI`/`LL_HOOK_HOST` but not `LL_AUTOMATION`-style vars; consider whether `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` needs a golden-path case per host for conformance coverage.
 
+_Wiring pass added by `/ll:wire-issue` — 2026-08-08:_
+- `scripts/tests/test_fsm_runners.py:445-598` (`TestDefaultActionRunnerSlashCommands`, e.g. `test_working_dir_kwarg_forwarded` at `:585`, `test_agent_kwarg_forwarded` at `:517`) — established one-test-per-forwarded-kwarg pattern for `DefaultActionRunner.run()`; add `test_disable_background_tasks_kwarg_forwarded` following this template. No such test exists today (confirmed: zero matches for `disable_background_tasks`/`background_tasks` anywhere under `scripts/`).
+- Additional explicit-signature `ActionRunner`/`run()` fakes without a `**kwargs` catch-all that will `TypeError` once `disable_background_tasks` is added, beyond the `MockActionRunner` instances already cited above — confirmed via read of surrounding context: `scripts/tests/test_fsm_executor.py:2518,2564,3351,3446,3681,5261,6373,6415,9101,9218`; `scripts/tests/test_fsm_persistence.py:2251,2322,2418,2486`; `scripts/tests/test_learning_state.py:48` (class-level fake, params end at `model: str | None = None` with no `**kwargs`). Contrast — already-safe `**kwargs`-tolerant fakes needing no change: `test_fsm_persistence.py:2667,2726`, `test_host_guard.py:62`, `test_autodev_decision_gate.py:49`, `test_learning_state.py:547,632`, `test_action.py:37`, `test_fsm_executor.py:11113,11349,11454`.
+- `scripts/tests/test_config.py:1012-1048` (`test_to_dict_orchestration`, `test_to_dict_orchestration_defaults_when_unset`) — `BRConfig.to_dict()` round-trip coverage for the `orchestration` block; asserts individual keys (won't break from a new field) but is the natural place to add a `disable_background_tasks` default-value assertion, not currently present.
+
 ### Documentation
 - `docs/reference/API.md` (~5769-5789 `ActionRunner` Protocol block, ~9173-9198 `HostRunner` Protocol block) — hand-maintained signature mirrors; both need the new parameter added, matching the pattern used when `idle_timeout` (FEAT-3033) was added.
 - `docs/guides/LOOPS_GUIDE.md:604-636` — line 632 states "This env-signal path is the only part that is implemented," describing the `automation_profile` gate; needs updating now that a second unconditional env var shares the gate.
@@ -216,6 +289,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/fsm/schema.py:439-466` (`PruningProfileConfig` docstring, esp. the `.. warning::` block at `:455-466`) — a second, source-level (not `docs/*.md`) description of the env-injection mechanism; its "**Only the env-signal path is implemented**" claim becomes stale once a second, unconditional env var (`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`, sourced from `OrchestrationConfig` rather than `PruningProfileConfig`) shares the same gate. Needs a note distinguishing the two env vars' distinct config origins.
+
+_Wiring pass added by `/ll:wire-issue` — 2026-08-08:_
+- `skills/manage-issue/SKILL.md:~376-401` ("Headless-Safe Final Test Run") — confirmed via read: line 397 already names `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` explicitly, explaining why the shell-level `cmd & pid=$!; sleep N; kill $pid` `run_cmd` smoke-test pattern is exempt (the `Bash` tool's own backgrounding parameter is never set for it). This is the shipped explanation of the FEAT-3077 carve-out this issue's own Dependency section refers to as "restated in shell terms" — re-verify it still reads correctly once the flag defaults to `true`.
+- `skills/go-no-go/SKILL.md:~172-176` ("Step 3b: Launch Adversarial Agents") — instructs launching two `Agent` tool calls with `run_in_background: true`; this is the "go-no-go carve-out" the Decision Rationale calls "not reachable under the `automation_profile` gate today." Confirmed via grep across `scripts/little_loops/loops/` that `go-no-go` is invoked from `oracles/resolve-decision.yaml`, `auto-refine-and-implement.yaml`, `rn-remediate.yaml`, `hitl-compare.yaml`, `brainstorm.yaml`, `autodev.yaml`, `recursive-refine.yaml`, `refine-to-ready-issue.yaml` — several of which could run under `automation_profile`, so this carve-out is dormant but real, not hypothetical.
 
 ### Codebase Research Findings
 
@@ -372,37 +449,48 @@ sprint.
 
 _Added by `/ll:confidence-check` on 2026-08-08_
 
-**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Readiness Score**: 88/100 → PROCEED WITH CAUTION
 **Outcome Confidence**: 70/100 → MODERATE
 
 ### Concerns
 - Open Question (blocking AC2) is still unresolved: the neutralizing value for
   `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` when `automation_profile is None`
   (`""`, `"0"`, or key omission) is unverified — the host reads this var, not
-  our own code, so truthiness handling is unknown. The issue's own proposed
-  fix is a cheap fourth probe against the FEAT-3076/3077 harness
-  (`postmortems/feat-3078-verify/`, not yet created); run it before
-  implementing AC2 rather than guessing.
-- The AC3 design decision (var added directly in
+  our own code, so truthiness handling is unknown. Run the issue's own
+  prescribed fourth probe against a real `claude -p` child
+  (`postmortems/feat-3078-verify/`) before implementing AC2 rather than
+  guessing.
+- The AC3 design decision (add the var directly in
   `ClaudeCodeRunner.build_streaming()` vs. a host-guarded extension to
-  `_apply_automation_env()`) has a clear recommendation (option i) but is not
-  yet a recorded decision — confirm it before touching the five sibling
-  runners.
-- Wide mechanical fanout: 7 runner signatures (`HostRunner` Protocol + 6
-  implementations) plus 3 `ActionRunner` implementations plus ~15 dependent
-  call sites plus ~10 test files with hand-written explicit-signature mocks
-  that will `TypeError` if missed (the issue's own Tests section already
-  flags this risk for `MockActionRunner` and its `test_feat3033_idle_timeout.py`
-  import).
+  `_apply_automation_env()`) still has only a recommendation (option i), not
+  a recorded decision — confirm it before touching the five sibling runners.
+- Wide mechanical fanout remains unchanged: re-verified against current code
+  that `_apply_automation_env()` (`host_runner.py:1547`) and its five callers
+  (`:353,644,1034,1219,1412`) exist exactly as described, `OrchestrationConfig`
+  still lacks the field, and no `disable_background_tasks`/
+  `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` reference exists anywhere in
+  `scripts/` yet — the issue's line citations and no-duplicate claim both
+  hold.
 
 ### Outcome Risk Factors
-- Breadth dominates outcome risk (16+ change sites; Complexity scores 9/25 —
-  Breadth 0/12, Depth 9/13) even though each site's edit is mechanical
+- Breadth still dominates outcome risk (16+ change sites; Complexity scores
+  9/25 — Breadth 0/12, Depth 9/13) even though each site's edit is mechanical
   parameter-threading. Missing or mis-forwarding the parameter at even one of
   the ~15 dependent call sites silently reduces to a no-op (defaults to
   `False`/`None`) rather than a loud failure.
 
+### Since Last Check
+- Both frontmatter/prose dependencies this issue names are now resolved:
+  `depends_on: FEAT-3077` shows `status: Completed`, and the soft dependency
+  BUG-3093 ("should land with or before this issue") is also `Completed`.
+  Readiness moved 85 → 88 to reflect this; the tier is unchanged
+  (PROCEED WITH CAUTION) because the two open design decisions above are
+  still the actual blockers to a clean implementation start.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-09T03:04:16 - `3f55b9b9-4ca3-4793-ac1c-ac23bd73138c.jsonl`
+- `/ll:wire-issue` - 2026-08-09T03:00:45 - `d6eb2d4e-2ab1-4ee2-9817-a4e5989f03cb.jsonl`
+- `/ll:decide-issue` - 2026-08-09T02:53:38 - `6431dd81-8b40-4678-a555-981e5457f142.jsonl`
 - `/ll:confidence-check` - 2026-08-09T02:44:03 - `949315da-0b72-4a22-a42d-0493ed4f18c1.jsonl`
 - `/ll:refine-issue` - 2026-08-09T02:04:44 - `e39c0eb4-7919-44f8-957b-3516c6ae853a.jsonl`
 - `/ll:confidence-check` - 2026-08-06T20:25:34 - `70105668-3d2b-42b6-9a2d-3321c9e583d9.jsonl`

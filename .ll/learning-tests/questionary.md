@@ -1,12 +1,12 @@
 ---
 target: questionary
 date: '2026-08-08'
-status: refuted
+status: proven
 assertions:
 - claim: select().ask() raises EOFError (not returns default) when stdin is exhausted/non-interactive
-  result: fail
+  result: pass
 - claim: checkbox().ask() raises EOFError (not returns default) when stdin is exhausted/non-interactive
-  result: fail
+  result: pass
 - claim: questionary.prompt([...]) returns partial answers (not raising) when a question's
     .ask() would EOF
   result: fail
