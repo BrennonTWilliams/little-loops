@@ -1,17 +1,16 @@
-[PASS] claim 1: import anthropic exposes anthropic.Anthropic client class
-        anthropic.Anthropic = <class 'anthropic.Anthropic'>
-[PASS] claim 2: anthropic.Anthropic() instantiable with zero arguments
-        type(client) = Anthropic
-[PASS] claim 3: constructed client exposes .messages and .beta namespaced resources
-        hasattr(.messages)=True, hasattr(.beta)=True
-[PASS] claim 4: anthropic exports APIError + AuthenticationError; AuthenticationError subclasses APIError
-        APIError=<class 'anthropic.APIError'>, AuthenticationError=<class 'anthropic.AuthenticationError'>, issubclass=True
-[PASS] claim 5: anthropic.__version__ is a non-empty string parseable by packaging.version.Version
-        __version__ = '0.104.1'
-[PASS] claim 7: tools=[...] dict accepts a cache_control key on an individual tool-definition block alongside name/description/input_schema
-        tool dict keys = ['cache_control', 'description', 'input_schema', 'name'], cache_control round-trips = True
-[PASS] claim 8: building request kwargs (model/messages/tools with cache_control on the tool block) via the SDK client does not raise client-side before dispatch
-        client=Anthropic, tools param accepted into kwargs, tool[0].cache_control={'type': 'ephemeral'}
-[UNTESTED] claim 9: live messages.create() call with cache_control on a tool block (actual cache-hit/API-acceptance round-trip) cannot be exercised in this environment (no ANTHROPIC_API_KEY available; acknowledged constraint, not a runtime claim)
-
-SUMMARY: 7/9 passed, 0 failed, 2 untested
+=== claim 1: flat + nested cache fields coexist on Usage ===
+has cache_creation_input_tokens attr: True
+has cache_read_input_tokens attr: True
+has cache_creation attr: True
+=== claim 2: cache_creation defaults to None when absent ===
+u.cache_creation is None: True
+u.cache_creation_input_tokens is None: True
+getattr(u, 'cache_read_input_tokens', None) or 0 == 0
+=== claim 3: CacheCreation nested fields ===
+ephemeral_5m_input_tokens: 100
+ephemeral_1h_input_tokens: 50
+u2.cache_creation.ephemeral_5m_input_tokens: 100
+=== claim 4: cache_control dict on system block accepted client-side ===
+client constructed and system param with cache_control accepted (no client-side raise)
+=== claim 5: Usage model allows extra fields (additionalProperties) ===
+extra field tolerated, some_future_field present: True

@@ -18,7 +18,7 @@ score_complexity: 14
 score_test_coverage: 19
 score_ambiguity: 19
 score_change_surface: 10
-decision_needed: true
+decision_needed: false
 ---
 
 # BUG-3112: Worktree sessions write session history to a throwaway `.ll/history.db`

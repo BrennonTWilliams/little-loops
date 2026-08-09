@@ -1,27 +1,25 @@
-[claim1] rt loads CommentedMap: True
-  type = CommentedMap
-[claim2] yaml.load(Path) OK: True
-[claim3] LiteralScalarString forces '|': True
-[claim4] rt preserves comments: True
-[claim5] safe loads plain dict: True
-  type = dict
-[claim6] dump to StringIO produces str: True
-  type = str
-[claim7] sibling key unchanged after modification: True
-  first action = 'echo hello\necho world\n'
-  second action = 'replaced\n'
+CLAIM1 seq comments preserved: True
+items:
+- a    # comment a
+- b    # comment b
 
---- Full dump output (claim3 data) ---
-# top-level comment
-name: my-loop
-states:
-  first:
-    action: |
-      echo hello
-      echo world
-  second:
-    action: |
-      line one
-      line two
-terminal: false
+CLAIM2 default output: 'items:\n- a\n- b\n'
+CLAIM2 custom output: 'items:\n    - a\n    - b\n'
+CLAIM2 indent() changes sequence indentation: True
+CLAIM3 output:
+a: 1
+b: 2
+c: 3
 
+CLAIM3 b inserted between a and c: True
+CLAIM4 output:
+a: "double"
+b: 'single'
+c: plain
+
+CLAIM4 preserves quote styles: True
+CLAIM5 output:
+a:
+  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+CLAIM5 wrapped (multiple lines for value): True

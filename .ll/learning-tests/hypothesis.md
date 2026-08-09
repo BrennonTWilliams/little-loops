@@ -1,22 +1,23 @@
 ---
 target: hypothesis
-date: '2026-06-27'
+date: '2026-08-08'
 status: proven
 assertions:
-- claim: '@given(st.text()) feeds random strings to the test function on each call'
+- claim: '@example(x) forces a specific value to be tried in addition to generated
+    ones'
   result: pass
-- claim: '@settings(max_examples=N) controls the number of generated examples per test'
+- claim: assume(condition) skips an example when condition is False, without failing
+    the test
   result: pass
-- claim: st.sampled_from(sequence) produces only values from the supplied sequence
+- claim: st.composite allows building custom strategies via a draw function
   result: pass
-- claim: st.from_regex(pattern, fullmatch=True) generates strings that fully match
-    the pattern
+- claim: Hypothesis shrinks a failing example to a minimal counterexample before
+    reporting
   result: pass
-- claim: st.lists(st.text(), max_size=N) generates lists with at most N elements
+- claim: st.integers(min_value=, max_value=) only produces values within the given
+    bounds
   result: pass
-- claim: suppress_health_check=list(HealthCheck) is a valid @settings argument
-  result: pass
-- claim: st.one_of(st.none(), st.text()) generates either None or a string
+- claim: settings(deadline=None) disables the per-example time limit
   result: pass
 raw_output_path: .ll/learning-tests/raw/hypothesis.txt
 ---

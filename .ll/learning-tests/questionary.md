@@ -1,19 +1,20 @@
 ---
 target: questionary
-date: '2026-06-20'
-status: proven
+date: '2026-08-08'
+status: refuted
 assertions:
-- claim: Choice(title='Foo').value equals 'Foo' when value is not specified (defaults to title)
-  result: pass
-- claim: Choice(title='Foo', value='bar').value equals 'bar' (explicit value wins over title)
-  result: pass
-- claim: Choice(title='X', checked=True).checked equals True
-  result: pass
-- claim: Choice(title='X', disabled='Coming soon').disabled equals 'Coming soon'
-  result: pass
-- claim: text().ask() raises EOFError (not returns default) when stdin is exhausted/non-interactive
-  result: pass
-- claim: confirm().ask() raises EOFError (not returns default=True) when stdin is exhausted/non-interactive
-  result: pass
+- claim: select().ask() raises EOFError (not returns default) when stdin is exhausted/non-interactive
+  result: fail
+- claim: checkbox().ask() raises EOFError (not returns default) when stdin is exhausted/non-interactive
+  result: fail
+- claim: questionary.prompt([...]) returns partial answers (not raising) when a question's
+    .ask() would EOF
+  result: fail
+- claim: checkbox() choices built from Choice(title=..., value=...) yield .value (not
+    .title) in the answer dict
+  result: untested
+- claim: Separator() is not a valid instance of Choice (isinstance(Separator(), Choice)
+    is False)
+  result: fail
 raw_output_path: .ll/learning-tests/raw/questionary.txt
 ---

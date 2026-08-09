@@ -1,22 +1,20 @@
 ---
 target: pytest
-date: '2026-06-26'
+date: '2026-08-08'
 status: proven
 assertions:
-- claim: pytest.mark.parametrize iterates a test function once per parameter value
+- claim: pytest.raises(ExcType) as a context manager captures the raised exception
+    in .value
   result: pass
-- claim: monkeypatch.setenv changes os.environ within test scope and restores it after
+- claim: a session-scoped fixture is instantiated only once even when used by multiple
+    test functions in the same file
   result: pass
-- claim: using an unregistered marker with --strict-markers active causes collection
-    error (exit non-zero)
+- claim: tmp_path fixture yields a unique pathlib.Path per test invocation
   result: pass
-- claim: pytest.mark.skipif(True, reason=...) skips the test without failing the suite
+- claim: pytest.mark.xfail(strict=True) causes an unexpectedly-passing test to fail
+    the suite (XPASS(strict) counts as failure)
   result: pass
-- claim: a fixture defined in conftest.py is visible to tests in subdirectories of
-    the same package
-  result: pass
-- claim: a fixture defined in a non-conftest test file is NOT visible to tests in
-    sibling test files
+- claim: capsys.readouterr() captures stdout printed during the test body
   result: pass
 raw_output_path: .ll/learning-tests/raw/pytest.txt
 ---

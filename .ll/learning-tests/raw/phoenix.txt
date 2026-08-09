@@ -1,85 +1,10 @@
-=== openinference SpanAttributes: token-count related ===
-LLM_TOKEN_COUNT_COMPLETION = 'llm.token_count.completion'
-LLM_TOKEN_COUNT_COMPLETION_DETAILS_AUDIO = 'llm.token_count.completion_details.audio'
-LLM_TOKEN_COUNT_COMPLETION_DETAILS_REASONING = 'llm.token_count.completion_details.reasoning'
-LLM_TOKEN_COUNT_PROMPT = 'llm.token_count.prompt'
-LLM_TOKEN_COUNT_PROMPT_DETAILS = 'llm.token_count.prompt_details'
-LLM_TOKEN_COUNT_PROMPT_DETAILS_AUDIO = 'llm.token_count.prompt_details.audio'
-LLM_TOKEN_COUNT_PROMPT_DETAILS_CACHE_INPUT = 'llm.token_count.prompt_details.cache_input'
+OPENINFERENCE_SPAN_KIND = 'openinference.span.kind'
+OpenInferenceSpanKindValues.LLM.value = 'LLM'
+LLM_PROVIDER = 'llm.provider'
+LLM_SYSTEM = 'llm.system'
 LLM_TOKEN_COUNT_PROMPT_DETAILS_CACHE_READ = 'llm.token_count.prompt_details.cache_read'
-LLM_TOKEN_COUNT_PROMPT_DETAILS_CACHE_WRITE = 'llm.token_count.prompt_details.cache_write'
-LLM_TOKEN_COUNT_TOTAL = 'llm.token_count.total'
-
-=== Claim 2: canonical prompt/completion/total constants ===
-LLM_TOKEN_COUNT_PROMPT = 'llm.token_count.prompt'
-LLM_TOKEN_COUNT_COMPLETION = 'llm.token_count.completion'
-LLM_TOKEN_COUNT_TOTAL = 'llm.token_count.total'
-
-=== Claim 3: cache-read style attribute anywhere in the schema ===
-LLM_COST_PROMPT_DETAILS_CACHE_INPUT = 'llm.cost.prompt_details.cache_input'
-LLM_COST_PROMPT_DETAILS_CACHE_READ = 'llm.cost.prompt_details.cache_read'
-LLM_COST_PROMPT_DETAILS_CACHE_WRITE = 'llm.cost.prompt_details.cache_write'
-LLM_TOKEN_COUNT_PROMPT_DETAILS_CACHE_INPUT = 'llm.token_count.prompt_details.cache_input'
-LLM_TOKEN_COUNT_PROMPT_DETAILS_CACHE_READ = 'llm.token_count.prompt_details.cache_read'
-LLM_TOKEN_COUNT_PROMPT_DETAILS_CACHE_WRITE = 'llm.token_count.prompt_details.cache_write'
-
-=== Claim 1: is there ANY gen_ai.* attribute in openinference? ===
-gen_ai.* attributes found: []
-arize-phoenix
-phoenix
-phoenix CLI present
-
-=== phoenix --help (first lines) ===
-usage: phoenix
-=== phoenix serve --help (subcommand exists?) ===
-usage: phoenix serve [-h] [--with-trace-fixtures WITH_TRACE_FIXTURES]
-                     [--with-projects WITH_PROJECTS]
-                     [--force-fixture-ingestion] [--scaffold-datasets]
-
-options:
-  -h, --help            show this help message and exit
-  --with-trace-fixtures WITH_TRACE_FIXTURES
-                        Comma separated list of tracing fixture names (spaces
-phoenix serve exit: 0
-
-=== Claim 5 (live): does phoenix serve normalize raw gen_ai.usage.* ? ===
-phoenix version: 17.18.0 (arize-phoenix)
-Sent 2 LLM spans via OTLP HTTP -> http://localhost:6006/v1/traces
-TREATMENT span emitted ONLY: gen_ai.usage.input_tokens=111, gen_ai.usage.output_tokens=222, gen_ai.system=anthropic
-Phoenix stored, for the treatment span:
-  attributes.llm.token_count.prompt     = 111   (<- from gen_ai.usage.input_tokens)
-  attributes.llm.token_count.completion = 222   (<- from gen_ai.usage.output_tokens)
-  attributes.llm.token_count.total      = 333   (derived)
-CONTROL (OpenInference llm.token_count.prompt=333) stored identically.
-VERDICT: CLAIM5 = PASS on Phoenix 17.18.0 — built-in OTel-GenAI normalization,
-no OpenInference shim required. (Version-sensitive: older Phoenix may lack this.)
-
-================================================================
-=== FOLLOW-UP (2026-07-05): cache-row naming + version bisect ===
-================================================================
-
---- Cache-row naming (LIVE, phoenix serve 17.18.0) ---
-Sent two spans; observed Phoenix-extracted OI token counts:
-  span 'feat2478_underscore'  gen_ai.usage.cache_read_input_tokens=55  -> cache_read=None  (NOT extracted)
-                              gen_ai.usage.cache_creation_input_tokens=77 -> cache_write=None (NOT extracted)
-  span 'otel_dotted'          gen_ai.usage.cache_read.input_tokens=55   -> cache_read=55.0 (extracted)
-                              gen_ai.usage.cache_creation.input_tokens=77 -> cache_write=77.0 (extracted)
-  (both spans: prompt=111, completion=222 extracted fine)
-
-ROOT CAUSE: OTel semconv constant values (opentelemetry-semantic-conventions):
-  GEN_AI_USAGE_INPUT_TOKENS                = gen_ai.usage.input_tokens          (matches issue)
-  GEN_AI_USAGE_OUTPUT_TOKENS               = gen_ai.usage.output_tokens         (matches issue)
-  GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS     = gen_ai.usage.cache_read.input_tokens      (DOT, not underscore)
-  GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS = gen_ai.usage.cache_creation.input_tokens  (DOT, not underscore)
-FEAT-2478 specifies underscore names (Anthropic API field spelling); Phoenix's
-get_openinference_usage_attributes() looks up the DOTTED OTel constants -> cache miss.
-
---- Version bisect: when did phoenix add gen_ai->OpenInference normalization? ---
-phoenix/trace/gen_ai/conversion.py file presence (dep-independent, pip --no-deps swap):
-  15.9.0  : MISSING
-  15.10.0 : EXISTS   <-- module first shipped here
-  16.0.0, 17.18.0 : EXISTS
-Functional normalization (pure fn + live OTLP server) CONFIRMED on 17.18.0.
-Floor 15.10.0 not functionally re-runnable today: old arize-phoenix has an unpinned
-pydantic-ai transitive dep that resolves to an incompatible version (upstream packaging
-issue, unrelated to the normalization logic). Safe guard floor: arize-phoenix >= 15.10.0.
+AnthropicInstrumentor instantiated: <openinference.instrumentation.anthropic.AnthropicInstrumentor object at 0x106183d10>
+--- searching wrappers source for cache_read ---
+--- live extraction test ---
+extracted attrs: {'llm.token_count.prompt': 20, 'llm.token_count.completion': 5, 'llm.token_count.prompt_details.cache_read': 7, 'llm.token_count.prompt_details.cache_write': 3, 'llm.token_count.total': 25}
+claim4 PASS: cache_read_input_tokens (underscore SDK field) -> llm.token_count.prompt_details.cache_read (dotted OpenInference attr)

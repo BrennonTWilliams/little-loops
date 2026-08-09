@@ -1,6 +1,6 @@
 ---
 target: pytest-json-report
-date: '2026-07-08'
+date: '2026-08-08'
 status: proven
 assertions:
 - claim: '--json-report-file=PATH writes a JSON file at PATH after pytest runs'

@@ -1,8 +1,30 @@
-[PASS] claim1_parametrize_iterates_once_per_value: PASSED count=3, expected 3
-[PASS] claim2_monkeypatch_setenv_restores_after_test: rc=0 PASSED=2
-[PASS] claim3_strict_markers_blocks_unregistered: rc=2 has_error=True (corrected 2026-08-06: original probe read rc=0 due to a harness bug swallowing the collection-error exit code; verified directly with `python -m pytest --strict-markers` against an unregistered marker, which exits 2, not 0 — see BUG-3072)
-[PASS] claim4_skipif_true_skips_not_fails: rc=0 SKIPPED=True FAILED=False
-[PASS] claim5_conftest_fixture_visible_to_subdirs: rc=0 PASSED=True
-[PASS] claim6_non_conftest_fixture_invisible_to_siblings: rc=1 fixture_error=True
+============================= test session starts ==============================
+# ll-private-ok: captured test output with system paths
+platform darwin -- Python 3.12.10, pytest-9.0.1, pluggy-1.5.0 -- /Users/brennon/miniforge3/bin/python
+cachedir: .pytest_cache
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+metadata: {'Python': '3.12.10', 'Platform': 'macOS-26.5.1-arm64-arm-64bit', 'Packages': {'pytest': '9.0.1', 'pluggy': '1.5.0'}, 'Plugins': {'benchmark': '5.2.3', 'little-loops': '1.153.0', 'mock': '3.15.1', 'anyio': '4.11.0', 'doctestplus': '1.6.0', 'html': '4.1.1', 'xdist': '3.8.0', 'json-report': '1.5.0', 'devtools': '0.12.2', 'timeout': '2.4.0', 'metadata': '3.1.1', 'locust': '2.42.6', 'hypothesis': '6.151.4', 'Faker': '38.2.0', 'asyncio': '1.3.0', 'syrupy': '5.3.1', 'typeguard': '4.4.4', 'cov': '7.0.0'}}
+hypothesis profile 'default'
+rootdir: /private/var/folders/dg/j0h3vvbj20n6gd7077j8v5qr0000gn/T/tmp.Xwc49Zwx1y
+plugins: benchmark-5.2.3, little-loops-1.153.0, mock-3.15.1, anyio-4.11.0, doctestplus-1.6.0, html-4.1.1, xdist-3.8.0, json-report-1.5.0, devtools-0.12.2, timeout-2.4.0, metadata-3.1.1, locust-2.42.6, hypothesis-6.151.4, Faker-38.2.0, asyncio-1.3.0, syrupy-5.3.1, typeguard-4.4.4, cov-7.0.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 6 items
 
-Results: 6/6 claims proven
+tests/test_proof.py::test_raises_value CLAIM1: pass, value captured = boom
+PASSED
+tests/test_proof.py::test_session_fixture_reused_a PASSED
+tests/test_proof.py::test_session_fixture_reused_b CLAIM2: session fixture call count = 1
+PASSED
+tests/test_proof.py::test_tmp_path_unique CLAIM3: tmp_path = /private/var/folders/dg/j0h3vvbj20n6gd7077j8v5qr0000gn/T/pytest-of-brennon/pytest-31/test_tmp_path_unique0 exists = True
+PASSED
+tests/test_proof.py::test_xfail_strict_but_passes FAILED
+tests/test_proof.py::test_capsys CLAIM5: captured.out repr = 'hello from test\n'
+PASSED
+
+=================================== FAILURES ===================================
+_________________________ test_xfail_strict_but_passes _________________________
+[XPASS(strict)] 
+=========================== short test summary info ============================
+FAILED tests/test_proof.py::test_xfail_strict_but_passes - [XPASS(strict)] 
+========================= 1 failed, 5 passed in 0.08s ==========================
+exit: 1

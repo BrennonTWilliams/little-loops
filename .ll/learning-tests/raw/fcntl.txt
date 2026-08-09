@@ -1,7 +1,22 @@
-# tmpdir=/var/folders/dg/j0h3vvbj20n6gd7077j8v5qr0000gn/T/fcntl_proof_il2ripbm
-CLAIM 1: PASS: LOCK_EX on fresh fd returned without exception
-CLAIM 2: PASS: second LOCK_EX on same fd returned silently
-CLAIM 3: PASS: BlockingIOError raised with errno=35 (EAGAIN)
-CLAIM 4: PASS: after proc_a released, fresh acquire returned rc=0
-CLAIM 5: FAIL: same-process two-opens: fd_y NB-raised BlockingIOError errno=35 — would imply per-inode semantics for the same process
-# summary: PASS=4 FAIL=1 of 5 exercised
+=== Claim 1: per-open-file-description, two opens in same process ===
+fd_a locked LOCK_EX: ok
+fd_b LOCK_EX|LOCK_NB from SAME process on separate fd: RAISED BlockingIOError errno=35
+
+=== Claim 2: flock auto-released on close (verified via child process) ===
+parent acquired LOCK_EX after child exited without LOCK_UN: SUCCEEDED (lock auto-released)
+
+=== Claim 3: F_GETFL returns access-mode bits ===
+F_GETFL flags=0, flags & O_ACCMODE=0, os.O_RDONLY=0
+matches O_RDONLY: True
+
+=== Claim 4: O_NONBLOCK on pipe read end raises BlockingIOError on empty read ===
+read on empty nonblocking pipe raised BlockingIOError errno=35
+
+=== Claim 5: LOCK_EX (blocking) waits for holder to release, held by CHILD process ===
+parent blocking LOCK_EX acquired after 0.396s (child held ~0.5s)
+blocked_as_expected: True
+
+=== Claim 6: child inherits parent's lock on the SAME fd (same open-file-description) ===
+
+DONE
+child re-locking SAME inherited fd: SUCCEEDED (no-op, same OFD)

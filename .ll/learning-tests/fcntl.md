@@ -1,19 +1,19 @@
 ---
 target: fcntl
-date: '2026-07-07'
+date: '2026-08-08'
 status: proven
 assertions:
-- claim: fcntl.flock(fd, fcntl.LOCK_EX) on an unlocked fd acquires an exclusive lock without raising
-  result: pass
-- claim: re-acquiring fcntl.flock(fd, fcntl.LOCK_EX) on the SAME fd (same open-file-description) from the same process is idempotent and returns silently
-  result: pass
-- claim: fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB) on an fd held by another PROCESS raises BlockingIOError (subclass of OSError) with errno in {EAGAIN, EACCES}
-  result: pass
-- claim: after LOCK_UN on the holding fd, a competing process can acquire LOCK_EX on the same path without raising
-  result: pass
 - claim: 'flock is per-open-file-description: two SEPARATE open() calls of the same path within the SAME process each acquire LOCK_EX independently (no contention)'
   result: fail
 - claim: flock is automatically released when the fd is closed (no need for explicit LOCK_UN before close())
-  result: untested
+  result: pass
+- claim: fcntl.fcntl(fd, fcntl.F_GETFL) returns an int bitmask whose low bits (masked by os.O_ACCMODE) match the file's access mode (os.O_RDONLY/O_WRONLY/O_RDWR)
+  result: pass
+- claim: setting O_NONBLOCK via fcntl.fcntl(fd, F_SETFL, flags | os.O_NONBLOCK) on a pipe's read end causes a read on an empty pipe to raise BlockingIOError instead of blocking
+  result: pass
+- claim: fcntl.flock(fd, LOCK_EX) without LOCK_NB, held by another process, blocks the caller until the holder releases it (rather than failing immediately)
+  result: pass
+- claim: a child process created via os.fork() shares the parent's open-file-description, so re-locking the SAME inherited fd with LOCK_EX|LOCK_NB succeeds as a no-op (not a contention failure)
+  result: pass
 raw_output_path: .ll/learning-tests/raw/fcntl.txt
 ---
