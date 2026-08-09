@@ -3966,6 +3966,83 @@ class TestAutoManagerRun:
         assert "BUG-001" in manager.state_manager.state.failed_issues
         assert "timeout after 60s" in manager.state_manager.state.failed_issues["BUG-001"]
 
+    def test_timeout_after_finalization_records_success(self, full_project: Path) -> None:
+        """BUG-3128: a kill that lands after the agent finalized records success.
+
+        The wall-clock kill is a SIGKILL at an arbitrary instant and can fire
+        after the agent already set `status: done` and committed. The pre-fix
+        handler fabricated a failure without consulting the issue file, so the
+        run summary reported 0 processed / 1 failed for work that had landed,
+        and a --resume run would reprocess it.
+        """
+        import subprocess
+
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        issue_path = full_project / ".issues" / "bugs" / "P1-BUG-001-test-issue.md"
+        config = BRConfig(full_project)
+
+        def side_effect(info: Any, *args: Any, **kwargs: Any) -> Any:
+            # The agent finalizes the lifecycle, then the wall-clock kill fires
+            # before its turn ends -- the exact FEAT-3078 sequence.
+            issue_path.write_text(
+                "---\nstatus: done\n---\n\n# BUG-001: Test\n\n## Summary\nFinalized\n"
+            )
+            raise subprocess.TimeoutExpired(cmd="claude", timeout=60)
+
+        with patch("little_loops.issue_manager.process_issue_inplace", side_effect=side_effect):
+            with patch("little_loops.issue_manager.check_git_status", return_value=False):
+                manager = AutoManager(
+                    config,
+                    dry_run=False,
+                    db_path=config.project_root / ".ll" / "history.db",
+                )
+                exit_code = manager.run()
+
+        assert exit_code == 0
+        assert manager.processed_count == 1
+        assert "BUG-001" not in manager.state_manager.state.failed_issues
+        assert "BUG-001" in manager.state_manager.state.completed_issues
+
+    def test_timeout_without_finalization_still_fails(self, full_project: Path) -> None:
+        """BUG-3128: the verification is authoritative, not permissive.
+
+        An issue still `open` when the kill fires must stay failed -- the
+        handler must not fall back to completing it from a dirty working tree,
+        because a killed agent's half-written implementation is
+        indistinguishable from a finished one.
+        """
+        import subprocess
+
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        issue_path = full_project / ".issues" / "bugs" / "P1-BUG-001-test-issue.md"
+        issue_path.write_text(
+            "---\nstatus: open\n---\n\n# BUG-001: Test\n\n## Summary\nKilled mid-implementation\n"
+        )
+
+        config = BRConfig(full_project)
+
+        def side_effect(info: Any, *args: Any, **kwargs: Any) -> Any:
+            raise subprocess.TimeoutExpired(cmd="claude", timeout=60)
+
+        with patch("little_loops.issue_manager.process_issue_inplace", side_effect=side_effect):
+            with patch("little_loops.issue_manager.check_git_status", return_value=False):
+                # Dirty tree: the fallback must still refuse to auto-complete.
+                with patch("little_loops.issue_manager.verify_work_was_done", return_value=True):
+                    manager = AutoManager(
+                        config,
+                        dry_run=False,
+                        db_path=config.project_root / ".ll" / "history.db",
+                    )
+                    manager.run()
+
+        assert manager.processed_count == 0
+        assert "BUG-001" in manager.state_manager.state.failed_issues
+        assert "timeout after 60s" in manager.state_manager.state.failed_issues["BUG-001"]
+
     def test_run_preserves_state_file_after_fatal_exception(self, full_project: Path) -> None:
         """BUG-2976: a fatal (non-timeout) exception must not delete resume state.
 

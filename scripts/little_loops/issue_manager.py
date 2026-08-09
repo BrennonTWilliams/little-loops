@@ -2031,12 +2031,45 @@ class AutoManager:
             kind = "idle timeout" if exc.output == "idle_timeout" else "timeout"
             reason = f"{kind} after {exc.timeout:.0f}s"
             self.logger.error(f"{info.issue_id}: {reason}")
-            result = IssueProcessingResult(
-                success=False,
-                duration=exc.timeout or 0.0,
-                issue_id=info.issue_id,
-                failure_reason=reason,
-            )
+            # BUG-3128: the kill is a SIGKILL to the process group at an
+            # arbitrary instant, which can land *after* the agent finished the
+            # lifecycle and committed but before its turn ended. Recording an
+            # unconditional failure here bypasses every recovery path the
+            # normal (returncode) route has, and leaves the state manager
+            # claiming an issue failed when it is already `done` on the branch
+            # -- so a resumed run reprocesses completed work.
+            #
+            # Deliberately narrow: only the *authoritative* frontmatter check
+            # runs. The evidence fallback (complete_issue_lifecycle on a dirty
+            # tree) is NOT invoked, because a killed agent's half-written
+            # implementation is indistinguishable from a finished one -- the
+            # returncode-0 path can trust a clean turn-end as corroboration, a
+            # timeout kill has no such signal. Uncommitted work is reported
+            # for the operator, never auto-completed.
+            timeout_verified = verify_issue_completed(info, self.config, self.logger)
+            if timeout_verified:
+                self.logger.success(
+                    f"{info.issue_id} was already finalized before the {kind} kill "
+                    "- recording success despite the timeout"
+                )
+                result = IssueProcessingResult(
+                    success=True,
+                    duration=exc.timeout or 0.0,
+                    issue_id=info.issue_id,
+                )
+            else:
+                if verify_work_was_done(self.logger, config=None):
+                    self.logger.warning(
+                        f"{info.issue_id}: uncommitted changes are present after the "
+                        f"{kind} kill. They were left in place and the issue was NOT "
+                        "auto-completed - review the working tree before re-running."
+                    )
+                result = IssueProcessingResult(
+                    success=False,
+                    duration=exc.timeout or 0.0,
+                    issue_id=info.issue_id,
+                    failure_reason=reason,
+                )
 
         # Fallback: if no result event ever fired (e.g., the subprocess failed
         # before completion) but we did capture the requested alias, use that
