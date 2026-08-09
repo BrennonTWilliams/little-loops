@@ -1,0 +1,11 @@
+{
+  "id": "e8d06992-2141-4b83-aaa2-9e6ae95a1d48",
+  "type": "decision",
+  "timestamp": "2026-08-09T06:00:40Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "automation.timeout_seconds is per-invocation, not per-issue; a ceiling is required before raising the default is safe",
+  "rule": "Captured: Add a per-issue wall-clock ceiling to ll-auto and raise the timeout default",
+  "scope": "issue",
+  "issue": "ENH-3129"
+}

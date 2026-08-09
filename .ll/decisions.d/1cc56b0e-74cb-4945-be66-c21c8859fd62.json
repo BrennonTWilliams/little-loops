@@ -1,0 +1,11 @@
+{
+  "id": "d6eaedcd-31ca-4465-a8ea-15f3442e5098",
+  "type": "decision",
+  "timestamp": "2026-08-09T06:00:40Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Timeout kill is an immediate SIGKILL with no wind-down, risking loss of nearly-finished work",
+  "rule": "Captured: SIGTERM finalize grace before SIGKILL on automation timeout",
+  "scope": "issue",
+  "issue": "ENH-3130"
+}

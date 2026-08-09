@@ -3967,7 +3967,7 @@ class TestAutoManagerRun:
         assert "timeout after 60s" in manager.state_manager.state.failed_issues["BUG-001"]
 
     def test_timeout_after_finalization_records_success(self, full_project: Path) -> None:
-        """BUG-3128: a kill that lands after the agent finalized records success.
+        """BUG-3131: a kill that lands after the agent finalized records success.
 
         The wall-clock kill is a SIGKILL at an arbitrary instant and can fire
         after the agent already set `status: done` and committed. The pre-fix
@@ -4006,7 +4006,7 @@ class TestAutoManagerRun:
         assert "BUG-001" in manager.state_manager.state.completed_issues
 
     def test_timeout_without_finalization_still_fails(self, full_project: Path) -> None:
-        """BUG-3128: the verification is authoritative, not permissive.
+        """BUG-3131: the verification is authoritative, not permissive.
 
         An issue still `open` when the kill fires must stay failed -- the
         handler must not fall back to completing it from a dirty working tree,

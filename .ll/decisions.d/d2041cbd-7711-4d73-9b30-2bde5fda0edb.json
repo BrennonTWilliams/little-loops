@@ -1,0 +1,14 @@
+{
+  "id": "aa17bff6-d3a2-48f0-b098-f8e318ab817c",
+  "type": "rule",
+  "timestamp": "2026-08-09T06:02:45Z",
+  "category": "architecture",
+  "labels": [
+    "extracted",
+    "global"
+  ],
+  "rationale": "The TimeoutExpired handler set success=False unconditionally; a SIGKILL can land after the work already finished and committed, so the exception type alone doesn't indicate failure.",
+  "rule": "Before recording a failure in an exception/timeout handler, verify authoritative state (e.g. issue frontmatter status) r",
+  "enforcement": "advisory",
+  "issue": "BUG-3131"
+}

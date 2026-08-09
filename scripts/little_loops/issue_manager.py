@@ -2031,7 +2031,7 @@ class AutoManager:
             kind = "idle timeout" if exc.output == "idle_timeout" else "timeout"
             reason = f"{kind} after {exc.timeout:.0f}s"
             self.logger.error(f"{info.issue_id}: {reason}")
-            # BUG-3128: the kill is a SIGKILL to the process group at an
+            # BUG-3131: the kill is a SIGKILL to the process group at an
             # arbitrary instant, which can land *after* the agent finished the
             # lifecycle and committed but before its turn ended. Recording an
             # unconditional failure here bypasses every recovery path the
