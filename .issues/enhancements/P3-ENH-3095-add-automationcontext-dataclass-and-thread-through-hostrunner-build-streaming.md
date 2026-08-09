@@ -7,6 +7,7 @@ status: open
 parent: ENH-3094
 blocked_by:
 - FEAT-3078
+- BUG-3112
 discovered_date: 2026-08-07
 discovered_by: /ll:issue-size-review
 labels:
@@ -227,6 +228,7 @@ New:
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-09T03:26:27 - `39a3fd52-4ea1-4f7e-83e9-1871820dfe65.jsonl`
 - `/ll:ready-issue` - 2026-08-09T02:52:47 - `6431dd81-8b40-4678-a555-981e5457f142.jsonl`
 - `/ll:confidence-check` - 2026-08-09T01:59:07 - `9b3b8077-be68-4765-a354-0d51ab3b4859.jsonl`
 - `/ll:wire-issue` - 2026-08-09T01:55:13 - `963d0bbe-3f49-4745-8100-971274145bbd.jsonl`

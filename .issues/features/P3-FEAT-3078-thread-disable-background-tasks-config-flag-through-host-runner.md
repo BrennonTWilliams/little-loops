@@ -110,18 +110,69 @@ Consequences:
 - **AC3's survey shrinks to one function** — but this *inverts the default*.
   Adding the var inside the helper injects it for Codex/Gemini/Omp/Kimi too,
   contradicting AC6's "Claude-Code-only and inert for the other five runners."
-  **A design decision must be recorded before implementing**: either (i) add
-  the var in `ClaudeCodeRunner.build_streaming()` only, adjacent to the
-  `_apply_automation_env()` call, keeping the helper host-agnostic; or (ii)
-  extend the helper with a host guard. Option (i) matches the existing
-  precedent for host-scoped vars — `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR`
-  is written directly into `ClaudeCodeRunner`'s dict literal
-  (`host_runner.py:347-350`) and was deliberately left out of the ENH-3081
-  extraction. Recommend (i).
 - `scripts/tests/test_host_runner.py:62-82` (ENH-3081's own presence/absence
   test for the clear branch) is a closer template for AC4 than the
   `:962-966` `test_automation_profile_env()` this issue currently cites, and
   is the natural place to extend.
+
+### Design Decision (AC3) — where does the new var get added?
+
+**RESOLVED (`/ll:decide-issue`, 2026-08-08) — see Decision Rationale below.**
+The helper extraction above inverted AC3's default: injecting inside
+`_apply_automation_env()` unconditionally would have leaked the var to the
+four non-Claude runners it currently doesn't touch.
+
+**Option A**: Add the var directly in `ClaudeCodeRunner.build_streaming()`,
+adjacent to the `_apply_automation_env()` call, keeping the helper
+host-agnostic. Matches the existing precedent for host-scoped vars —
+`CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR` is written directly into
+`ClaudeCodeRunner`'s dict literal (`host_runner.py:347-350`) and was
+deliberately left out of the ENH-3081 extraction.
+
+> **Selected:** Option A — a one-line addition to the existing
+> `ClaudeCodeRunner` dict literal, mirroring the already-precedented
+> `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR` pattern, with zero blast radius
+> on the other four runners.
+
+**Option B**: Extend `_apply_automation_env()` (`host_runner.py:1547`) with a
+host guard (e.g. a `runner_kind` parameter) so the helper stays the single
+env-construction site named by AC3, but conditionally skips the new var for
+non-Claude runners.
+
+### Decision Rationale (AC3 design decision)
+
+**Selected: Option A** — add `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` directly
+in `ClaudeCodeRunner.build_streaming()`'s env dict literal, leaving
+`_apply_automation_env()` untouched.
+
+Scoring (0–3 per dimension, evidence gathered by parallel codebase-pattern
+agents against `host_runner.py`):
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|---|---|---|---|---|---|
+| A (direct in `ClaudeCodeRunner`) | 3 | 3 | 3 | 3 | **12/12** |
+| B (host-guarded helper) | 2 | 2 | 2 | 1 | 7/12 |
+
+- **Option A** matches an exact, already-shipped precedent:
+  `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR` (`host_runner.py:348`) is
+  written directly into `ClaudeCodeRunner`'s dict literal and was
+  deliberately excluded from the ENH-3081 `_apply_automation_env()`
+  extraction — the exact same shape as this new var (a `CLAUDE_CODE_*`
+  var meaningful only to the `claude` CLI). It requires a single-line
+  addition, no signature changes anywhere, and zero blast radius on the
+  four non-Claude runners (`CodexRunner`, `GeminiRunner`, `OmpRunner`,
+  `KimiRunner`).
+- **Option B** would require adding a `runner_kind` (or similar) parameter
+  to `_apply_automation_env()` and updating all 5 call sites
+  (`host_runner.py:353,644,1034,1219,1412`), plus a conditional branch
+  inside a helper whose docstring and current 5x identical usage establish
+  it as strictly host-agnostic (`LL_AUTOMATION`/`LL_AUTOMATION_PROFILE`
+  only). No existing precedent for a host/runner conditional branch inside
+  a shared helper was found anywhere in `host_runner.py` — host-specific
+  behavior currently lives in per-class methods, not branches inside a
+  shared function. Viable, but it inverts the helper's single-purpose
+  contract for one host-scoped var, and touches more surface for no
+  functional gain over Option A.
 
 **(b) AC2's "the variable is absent" is now the wrong contract.**
 `_apply_automation_env()`'s docstring states the semantics explicitly:
@@ -203,17 +254,13 @@ issue's own text):
   Automation sessions do spawn nested `claude` children, so this is a live
   leak path, not a hypothetical one.
 
-**Residual risk carried forward, not resolved by this scoring pass**: neither
-internal codebase evidence nor `docs/claude-code/settings.md` confirms how the
-external `claude` host binary actually parses an empty-string value for
-`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` — that boundary is outside this
-codebase's visibility. The issue's own prescribed fourth probe (spawn a real
-`claude -p` child with `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=""` and check
-whether `Bash run_in_background: true` succeeds, recorded under
-`postmortems/feat-3078-verify/`) is still required during implementation to
-confirm Option A's off-value is correct before AC2 can be marked satisfied. If
-the probe shows `""` does not disable the flag, fall back to whichever value
-(`"0"` or another) the probe demonstrates works, and update this rationale.
+**✅ RESOLVED (2026-08-08)** — the fourth probe has been run against a real
+`claude -p` child (`claude --version` 2.1.219), recorded under
+`postmortems/feat-3078-verify/`: both `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=""`
+and `="0"` restore `Bash run_in_background: true` to genuine async-launch
+behavior, matching the unset-var control from `postmortems/feat-3076-verify/`.
+Option A's off-value (`""`) is confirmed correct — no fallback needed. AC2 can
+be marked satisfied on this point once implemented.
 
 ### Files to Modify
 - `scripts/little_loops/host_runner.py` — `ClaudeCodeRunner.build_streaming()` env block at lines 345-362; the new `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` conditional inserts here.
@@ -480,14 +527,15 @@ _Added by `/ll:confidence-check` on 2026-08-08_
   `False`/`None`) rather than a loud failure.
 
 ### Since Last Check
-- Both frontmatter/prose dependencies this issue names are now resolved:
-  `depends_on: FEAT-3077` shows `status: Completed`, and the soft dependency
-  BUG-3093 ("should land with or before this issue") is also `Completed`.
+- `depends_on: FEAT-3077` (frontmatter) now shows `status: Completed`.
+  BUG-3093, referenced elsewhere in this issue's prose as a related item that
+  "should land with or before this issue," is separately `Completed` too.
   Readiness moved 85 → 88 to reflect this; the tier is unchanged
   (PROCEED WITH CAUTION) because the two open design decisions above are
   still the actual blockers to a clean implementation start.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-08-09T03:30:22 - `83bf90ea-254d-4998-aaa3-1f6e622ec8d9.jsonl`
 - `/ll:confidence-check` - 2026-08-09T03:04:16 - `3f55b9b9-4ca3-4793-ac1c-ac23bd73138c.jsonl`
 - `/ll:wire-issue` - 2026-08-09T03:00:45 - `d6eb2d4e-2ab1-4ee2-9817-a4e5989f03cb.jsonl`
 - `/ll:decide-issue` - 2026-08-09T02:53:38 - `6431dd81-8b40-4678-a555-981e5457f142.jsonl`

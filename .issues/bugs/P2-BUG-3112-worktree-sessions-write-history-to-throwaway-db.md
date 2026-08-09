@@ -19,6 +19,7 @@ score_test_coverage: 19
 score_ambiguity: 19
 score_change_surface: 10
 decision_needed: false
+reconcile_attempted: true
 ---
 
 # BUG-3112: Worktree sessions write session history to a throwaway `.ll/history.db`
@@ -97,6 +98,50 @@ ll-parallel many processes contend at once."
 
 Set `LL_HISTORY_DB=<main repo>/.ll/history.db` in the environment handed to
 worktree-scoped sessions. Decide between:
+
+### Injection Shape — Shared Helper (Selected)
+
+> **Selected:** a single shared helper, `_apply_history_db_env(env, history_db)`
+> in `host_runner.py`, called identically from all 5 `build_streaming()`
+> implementations — mirroring `_apply_automation_env`'s exact shape
+> (`host_runner.py:1547-1562`, called once each from `ClaudeCodeRunner` :353,
+> `CodexRunner` :644, `GeminiRunner` :1034, `OmpRunner` :1219, `KimiRunner`
+> :1412) — rather than 5 independent per-runner env-build edits.
+
+```python
+def _apply_history_db_env(env: dict[str, str], history_db: Path | str | None) -> None:
+    """Set LL_HISTORY_DB on *env* so worktree-scoped child processes share the
+    main repo's history DB (BUG-3112).
+
+    Mirrors _apply_automation_env's shape: env is merged over os.environ at
+    every spawn site, so history_db=None means "inherit whatever the parent
+    process already has" — callers pass a value only when redirecting a
+    worktree-scoped child at a specific main-repo DB.
+    """
+    if history_db is not None:
+        env["LL_HISTORY_DB"] = str(history_db)
+```
+
+Each `build_streaming()` gains one new keyword parameter,
+`history_db: Path | str | None = None`, and one new call site
+(`_apply_history_db_env(env, history_db)`), placed immediately after that
+runner's existing `_apply_automation_env(env, automation_profile)` line.
+`run_claude_command()` gains the same `history_db` parameter and forwards it
+into `build_streaming(..., history_db=history_db)`. This collapses the
+fanout from "9-10 distinct per-site local-logic edits" (one per runner class
+plus each call chain) to **1 new helper function + N one-line call sites**
+that all follow one established shape — the same reduction
+`_apply_automation_env` already achieved for `LL_AUTOMATION`/
+`LL_AUTOMATION_PROFILE` (ENH-2714) rather than repeating that env-merge logic
+per runner.
+
+`worker_pool.py:812-814`'s second, independent env-build path
+(`_detect_worktree_model_via_api`) calls `build_blocking_json()`, not
+`build_streaming()` — `build_blocking_json()` has no env-parameter surface at
+all today (`host_runner.py:250-259`), so this site cannot reach the shared
+helper through the `build_streaming()` parameter and still needs its own
+explicit `env["LL_HISTORY_DB"] = str(history_db)` line, same as documented
+in the Wiring Phase below.
 
 ### Approach A — Env Injection (Selected)
 
@@ -338,11 +383,12 @@ N/A — no new data shape; this is `os.environ`-style `dict[str, str]` env-var p
 - `setup_worktree(repo_path: Path, worktree_path: Path, branch_name: str, copy_files: list[str], logger: Logger, git_lock: GitLock, base_branch: str | None = None, checkout_existing: bool = False) -> None` — `worktree_utils.py:157-166`. Returns `None`; cannot carry an origin-repo path back to its caller. `repo_path` is already held by each of the three call sites before they call it.
 - `_resolve_db_path(path: Path | str | None = None) -> Path` — `session_store/db.py:68-107`. For a default-shaped path, precedence is `os.environ.get("LL_HISTORY_DB")` (line 96, wins immediately if truthy) → `history.db_path` config key via `_config_db_path()` (lines 99-101) → `resolve_ll_dir()`-anchored default (lines 102-107). `resolve_ll_dir()` (`paths.py:45-83`) defaults `start=Path.cwd()`, so with subprocess `cwd` set to the worktree, an unset `LL_HISTORY_DB` resolves to the worktree's own `.ll/history.db`.
 - `resolve_history_db() -> Path` — `session_store/db.py:110-118`, thin public wrapper over `_resolve_db_path`.
-- `run_claude_command(...)` — `subprocess_utils.py:320-341`. **No `env`/`env_overrides` parameter.** Internally builds `env = os.environ.copy(); env.update(invocation.env)` (lines 414-415) — no caller can inject an additional var through this function's current public signature.
+- `run_claude_command(...)` — `subprocess_utils.py:320-341`. **No `env`/`env_overrides` parameter.** Internally builds `env = os.environ.copy(); env.update(invocation.env)` (lines 414-415) — no caller can inject an additional var through this function's current public signature. Gains a new `history_db: Path | str | None = None` parameter, forwarded into `build_streaming(..., history_db=history_db)`.
 - `HostInvocation.env: dict[str, str]` — `host_runner.py:162` (`field(default_factory=dict)`), populated per-host inside each runner's `build_streaming()` (e.g. `ClaudeCodeRunner.build_streaming()` ~line 347).
+- `_apply_history_db_env(env: dict[str, str], history_db: Path | str | None) -> None` — **new**, `host_runner.py`, placed next to `_apply_automation_env` (~line 1547). Mirrors that function's exact shape: sets `env["LL_HISTORY_DB"] = str(history_db)` when `history_db` is not `None`, else leaves `env` untouched (inherit-parent semantics). Called once from each of the 5 `build_streaming()` implementations, immediately after each runner's existing `_apply_automation_env(env, automation_profile)` line (`ClaudeCodeRunner` :353, `CodexRunner` :644, `GeminiRunner` :1034, `OmpRunner` :1219, `KimiRunner` :1412) — see **Injection Shape — Shared Helper** under Proposed Solution. Each `build_streaming()` gains the matching `history_db: Path | str | None = None` keyword parameter.
 
 ### Call Path
-`fsm/executor.py:942 setup_worktree()` (creates the worktree only; builds no env) → `FSMExecutor(working_dir=worktree_path)` (lines 1001-1012) → child executor's subprocess actions → `run_claude_command()` (`subprocess_utils.py:320`) → `env = os.environ.copy(); env.update(invocation.env)` (`subprocess_utils.py:414-415`) → spawned CLI process, `cwd=worktree_path`, `LL_HISTORY_DB` absent → `_resolve_db_path()` falls through to the worktree-local `.ll/history.db`.
+`fsm/executor.py:942 setup_worktree()` (creates the worktree only; builds no env) → `FSMExecutor(working_dir=worktree_path)` (lines 1001-1012) → child executor's subprocess actions → `run_claude_command(..., history_db=<main repo>/.ll/history.db)` (`subprocess_utils.py:320`) → `build_streaming(..., history_db=history_db)` → `_apply_history_db_env(env, history_db)` sets `env["LL_HISTORY_DB"]` → `env = os.environ.copy(); env.update(invocation.env)` (`subprocess_utils.py:414-415`) → spawned CLI process, `cwd=worktree_path`, `LL_HISTORY_DB` present → `_resolve_db_path()` resolves the main repo's `.ll/history.db`. (Today, with `history_db` absent, `LL_HISTORY_DB` is absent and `_resolve_db_path()` falls through to the worktree-local `.ll/history.db` — the bug.)
 
 `cli/loop/run.py:484 setup_worktree()` → loop runs via the same FSM executor with `working_dir=_worktree_path` → identical downstream env-build gap.
 
@@ -353,17 +399,48 @@ N/A — no new gap kind, gate, or threshold; this is env-variable propagation in
 
 ## Implementation Steps
 
-1. Choose the injection strategy (env at call sites vs. origin-marker resolution).
-2. Thread `LL_HISTORY_DB` into the environment for worktree-scoped child
-   processes, ensuring it survives into host CLI invocations via
-   `subprocess_utils`.
-3. Confirm concurrent-writer behavior under ll-parallel with multiple worktrees
+1. Add an `env`/`env_overrides` passthrough to `run_claude_command()`
+   (`subprocess_utils.py:320-341`) so a caller can inject `LL_HISTORY_DB`
+   into the `env = os.environ.copy(); env.update(invocation.env)` build at
+   lines 414-415 — this is the actual downstream env-assembly point; the
+   three `setup_worktree()` call sites (`fsm/executor.py:942`,
+   `cli/loop/run.py:484`, `worker_pool.py:774`) build no env of their own
+   and cannot inject directly (Codebase Research Findings — correction to
+   injection-point choice).
+2. Add `_apply_history_db_env(env: dict[str, str], history_db: Path | str | None) -> None`
+   to `host_runner.py`, next to `_apply_automation_env` (~line 1547),
+   mirroring its exact shape. Add a matching `history_db: Path | str | None = None`
+   keyword parameter to each of the 5 `HostRunner.build_streaming()`
+   implementations, and one call to the new helper immediately after each
+   runner's existing `_apply_automation_env(env, automation_profile)` line
+   (`ClaudeCodeRunner` :353, `CodexRunner` :644, `GeminiRunner` :1034,
+   `OmpRunner` :1219, `KimiRunner` :1412) — this is **1 new helper +
+   5 one-line call sites**, not 5 independent env-build edits. Plumb
+   `repo_path` — already held by each of the three worktree-creating call
+   sites — down to `run_claude_command(..., history_db=...)` and from there
+   into `build_streaming(..., history_db=...)`. Also cover the two paths
+   that bypass this chain and cannot reach the helper through
+   `build_streaming()`'s new parameter: `runner_spec.py`'s blocking/
+   default-mode path (calls `resolve_host().build_streaming()` directly —
+   *can* pass `history_db` through the same parameter) and
+   `worker_pool.py:812-814`'s `_detect_worktree_model_via_api`, which calls
+   `build_blocking_json()` (no env-parameter surface at all) and needs its
+   own explicit `env["LL_HISTORY_DB"] = str(history_db)` line.
+3. Set `LL_HISTORY_DB` for the verify-gate worktree too, with no special
+   case: `verify_epic_branch_before_merge()` (`worktree_utils.py:455-473`)
+   already builds its own child env inline (`env = os.environ.copy()`) —
+   add `env["LL_HISTORY_DB"]` there the same way it adds `LL_VERIFY_GATE`
+   (Decision Rationale — Verify-Gate Worktree Decision: Option A selected).
+4. Confirm concurrent-writer behavior under ll-parallel with multiple worktrees
    sharing one DB (WAL + `busy_timeout` should cover it; verify no
    `database is locked` under realistic worker counts).
-4. Decide and document the verify-gate worktree's behavior.
 5. Test: assert that a session run with cwd inside a worktree resolves the main
    repo's DB path and that rows written there are visible from the main tree
-   after `cleanup_worktree`.
+   after `cleanup_worktree` — no existing test combines "worktree" and
+   `LL_HISTORY_DB` (confirmed via repo-wide grep); use the inject →
+   subprocess writes → read-back-from-file shape from
+   `test_writes_lifecycle_row_on_threshold_crossing`
+   (`test_hooks_integration.py:300-338`) as the closest analogue.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -398,17 +475,32 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/fsm/executor.py` (:942)
-- `scripts/little_loops/cli/loop/run.py` (:484)
-- `scripts/little_loops/parallel/worker_pool.py` (:774, and :812-814 for the
-  second, independent env-build path in `_detect_worktree_model_via_api`)
-- `scripts/little_loops/worktree_utils.py` (:157, and :445 for the verify gate)
 - `scripts/little_loops/subprocess_utils.py` (`run_claude_command`, :320-341,
-  :414-415 env build) — this is the actual downstream env-assembly point per
-  the Proposed Solution correction above, not `setup_worktree()` itself
-  _[Wiring pass added by `/ll:wire-issue`]_
-- `scripts/little_loops/host_runner.py` (`HostInvocation.env`,
-  `_apply_automation_env` ~:1547, and each `HostRunner.build_streaming()`)
+  :414-415 env build) — the actual downstream env-assembly point; add the
+  new `env`/`env_overrides` passthrough parameter here
+- `scripts/little_loops/host_runner.py` — add the new shared
+  `_apply_history_db_env(env, history_db)` helper next to
+  `_apply_automation_env` (~:1547), add a `history_db` keyword parameter to
+  each of the 5 `HostRunner.build_streaming()` implementations, and call the
+  helper once from each, immediately after that runner's existing
+  `_apply_automation_env(env, automation_profile)` line (:353, :644, :1034,
+  :1219, :1412)
+- `scripts/little_loops/fsm/executor.py` and `scripts/little_loops/cli/loop/run.py`
+  — not at the `setup_worktree()` call lines themselves (`:942`/`:484` create
+  the worktree only and build no env), but wherever each threads `repo_path`
+  down to the `FSMExecutor`/`run_claude_command` chain so the new
+  passthrough parameter can carry `LL_HISTORY_DB`
+- `scripts/little_loops/parallel/worker_pool.py` (same correction as above
+  for `:774`'s `_setup_worktree()` call, plus `:812-814`'s
+  `_detect_worktree_model_via_api`, a second, independent env-build path
+  that needs `LL_HISTORY_DB` added directly)
+- `scripts/little_loops/worktree_utils.py` (:455-473,
+  `verify_epic_branch_before_merge`) — a genuine same-function env-build
+  site; add `env["LL_HISTORY_DB"]` alongside the existing
+  `env["LL_VERIFY_GATE"] = "1"` (Decision: share, no special case)
+- `scripts/little_loops/runner_spec.py` — blocking/default-mode path calls
+  `resolve_host().build_streaming()` directly, bypassing
+  `run_claude_command()`, so it needs its own `LL_HISTORY_DB` handling
   _[Wiring pass added by `/ll:wire-issue`]_
 
 ### Dependent Files (Callers/Importers)
@@ -515,7 +607,8 @@ has a second, independent env-build path at `_detect_worktree_model_via_api`
 code path can run inside a worktree.
 
 - `scripts/little_loops/subprocess_utils.py` (`:320-341` `run_claude_command`, `:414-415` env build) — no existing env-merge helper to reuse; env construction is inline
-- `scripts/little_loops/host_runner.py` (`:347` `ClaudeCodeRunner.build_streaming`, `:963-980` `GeminiRunner._worktree_env`, `:1547-1562` `_apply_automation_env`) — the one existing shared env-building helper (`_apply_automation_env`) sets `LL_AUTOMATION`/`LL_AUTOMATION_PROFILE`; no equivalent shared helper exists for a general worktree-scoped env base, so the "extract a helper" convention exists but is applied inconsistently across host-runner classes
+- `scripts/little_loops/host_runner.py` (`:347` `ClaudeCodeRunner.build_streaming`, `:963-980` `GeminiRunner._worktree_env`, `:1547-1562` `_apply_automation_env`) — the one existing shared env-building helper (`_apply_automation_env`) sets `LL_AUTOMATION`/`LL_AUTOMATION_PROFILE`; no equivalent shared helper exists for a general worktree-scoped env base, so the "extract a helper" convention exists but is applied inconsistently across host-runner classes.
+  **Resolved** — this issue follows the `_apply_automation_env` shape rather than the inconsistent `GIT_DIR`/`GIT_WORK_TREE` shape: a new `_apply_history_db_env` helper, called identically from all 5 `build_streaming()` implementations, per **Injection Shape — Shared Helper** under Proposed Solution and the updated Signatures/Call Path above.
 
 ### Tests (additional precedent, not currently worktree+history_db specific)
 - `scripts/tests/test_worktree_utils.py::test_verify_gate_marker_set_in_child_env` (`:556-577`) — asserts env-var presence via a `python3 -c "...os.environ.get(...)..."` subprocess `test_cmd`
@@ -610,6 +703,8 @@ false positive: the issue's prose reference is to the dotted config key
 claim that the symbol lives in `cli/parallel.py`. No action needed.
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-08-09T03:30:04 - `83bf90ea-254d-4998-aaa3-1f6e622ec8d9.jsonl`
+- `/ll:audit-issue-conflicts` - 2026-08-09T03:26:27 - `39a3fd52-4ea1-4f7e-83e9-1871820dfe65.jsonl`
 - `/ll:confidence-check` - 2026-08-09T02:54:13 - `d6eb2d4e-2ab1-4ee2-9817-a4e5989f03cb.jsonl`
 - `/ll:confidence-check` - 2026-08-09T02:44:06 - `949315da-0b72-4a22-a42d-0493ed4f18c1.jsonl`
 - `/ll:decide-issue` - 2026-08-09T02:03:57 - `b7a1eb33-0bc6-4bb9-a60c-0e95c4863a8d.jsonl`

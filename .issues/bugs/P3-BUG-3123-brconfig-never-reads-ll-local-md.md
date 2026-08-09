@@ -32,6 +32,25 @@ only ever merged inside the SessionStart hook process. `BRConfig`, which every
 declared in `ll.local.md` silently does not apply to actual command execution,
 in the main tree as well as in a worktree.
 
+## Steps to Reproduce
+
+1. In a project with little-loops installed, create `.ll/ll.local.md` with:
+   ```markdown
+   ---
+   project:
+     test_cmd: "echo overridden"
+   ---
+   ```
+2. Run any `ll-*` CLI command that reads `project.test_cmd` via `BRConfig`
+   (e.g. `ll-issues sections bug`, or inspect
+   `BRConfig(project_root).project.test_cmd` directly in a Python shell).
+3. Observe: the command uses the base `.ll/ll-config.json` value for
+   `test_cmd`, not `"echo overridden"` — the override is silently ignored.
+4. Compare with a fresh Claude Code session start in the same project: the
+   SessionStart hook's own printed context (via its private, process-local
+   merge) *does* show the overridden value, confirming the override logic
+   itself is correct — it just never reaches `BRConfig`.
+
 ## Current Behavior
 
 `SessionStart` (`scripts/little_loops/hooks/session_start.py:136-147`) is the
@@ -364,6 +383,7 @@ _Added by `/ll:confidence-check` on 2026-08-08_
 - Unresolved placement decision could cause a mid-implementation restructure if the wrong option is picked first — resolve it as step 1, not as an afterthought.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-09T03:23:41 - `1b248fa0-ec2f-43a2-97f2-7795d1aeb0be.jsonl`
 - `/ll:confidence-check` - 2026-08-09T02:47:35 - `ba54c669-39c9-4544-b754-1dcbde6e3ea5.jsonl`
 - `/ll:confidence-check` - 2026-08-09T02:01:26 - `f1785c27-b4f6-4573-8ba2-1d0ff00ab817.jsonl`
 - `/ll:decide-issue` - 2026-08-09T01:58:12 - `840d159c-6706-4ca5-b9a4-0207d99c09e6.jsonl`

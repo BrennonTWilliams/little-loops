@@ -7,6 +7,7 @@ status: open
 parent: ENH-3094
 blocked_by:
 - ENH-3095
+- BUG-3112
 discovered_date: 2026-08-07
 discovered_by: /ll:issue-size-review
 labels:
@@ -159,5 +160,6 @@ New:
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-09T03:26:27 - `39a3fd52-4ea1-4f7e-83e9-1871820dfe65.jsonl`
 - `/ll:refine-issue` - 2026-08-07T22:51:22 - `596f76ed-c393-479b-9539-adbce5a6a72b.jsonl`
 - `/ll:issue-size-review` - 2026-08-07T22:09:44 - `dec986a1-15de-4376-b5dd-5868a8d3e188.jsonl`
