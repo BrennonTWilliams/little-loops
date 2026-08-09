@@ -171,9 +171,15 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
     priority_match = re.match(r"^(P\d)-", filename)
     priority = priority_match.group(1) if priority_match else None
 
-    # Extract type and ID from filename (e.g., FEAT-518)
-    type_id_match = re.search(r"(BUG|FEAT|ENH|EPIC)-(\d+)", filename)
-    issue_id = f"{type_id_match.group(1)}-{type_id_match.group(2)}" if type_id_match else None
+    # Extract type and ID from filename (e.g., FEAT-518).
+    # Case-insensitive: the ENH-194 decomposition flow (2026-08-08) produced
+    # `p3-enh-203-…md` style filenames that the prior case-sensitive form missed,
+    # leaving the card header as `???: <title>`. Uppercase the captured groups
+    # so downstream coloring (`issue_id.split("-")[0]`) sees a known prefix.
+    type_id_match = re.search(r"(BUG|FEAT|ENH|EPIC)-(\d+)", filename, re.IGNORECASE)
+    issue_id = (
+        f"{type_id_match.group(1).upper()}-{type_id_match.group(2)}" if type_id_match else None
+    )
 
     # Extract title from content
     title: str | None = None
