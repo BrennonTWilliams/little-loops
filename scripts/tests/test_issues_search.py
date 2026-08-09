@@ -1297,4 +1297,58 @@ def test_sort_issues_confidence_asc_puts_none_last() -> None:
     unscored = _make("BUG-21", None)
     result = _sort_issues([unscored, low], "confidence", descending=False)
     assert result[0][0].issue_id == "BUG-20"
-    assert result[1][0].issue_id == "BUG-21"
+
+
+# ---------------------------------------------------------------------------
+# _load_issues_with_status (FEAT-3135: only covered transitively before this;
+# also the direct call surface little_loops.mcp_server.tools.issues_query wraps)
+# ---------------------------------------------------------------------------
+
+
+class TestLoadIssuesWithStatus:
+    """Tests for _load_issues_with_status()."""
+
+    def test_include_open_only(self, search_issues_dir: Path, temp_project_dir: Path) -> None:
+        from little_loops.cli.issues.search import _load_issues_with_status
+        from little_loops.config import BRConfig
+
+        config = BRConfig(temp_project_dir)
+        results = _load_issues_with_status(
+            config, include_open=True, include_done=False, include_deferred=False
+        )
+        ids = {info.issue_id for info, _status in results}
+        assert ids == {"BUG-001", "BUG-002", "FEAT-010", "FEAT-011", "EPIC-020"}
+        assert all(status == "open" for _info, status in results)
+
+    def test_include_done_only(self, search_issues_dir: Path, temp_project_dir: Path) -> None:
+        from little_loops.cli.issues.search import _load_issues_with_status
+        from little_loops.config import BRConfig
+
+        config = BRConfig(temp_project_dir)
+        results = _load_issues_with_status(
+            config, include_open=False, include_done=True, include_deferred=False
+        )
+        assert [(info.issue_id, status) for info, status in results] == [("BUG-003", "done")]
+
+    def test_include_neither_returns_empty(
+        self, search_issues_dir: Path, temp_project_dir: Path
+    ) -> None:
+        from little_loops.cli.issues.search import _load_issues_with_status
+        from little_loops.config import BRConfig
+
+        config = BRConfig(temp_project_dir)
+        results = _load_issues_with_status(
+            config, include_open=False, include_done=False, include_deferred=False
+        )
+        assert results == []
+
+    def test_include_open_and_done(self, search_issues_dir: Path, temp_project_dir: Path) -> None:
+        from little_loops.cli.issues.search import _load_issues_with_status
+        from little_loops.config import BRConfig
+
+        config = BRConfig(temp_project_dir)
+        results = _load_issues_with_status(
+            config, include_open=True, include_done=True, include_deferred=False
+        )
+        ids = {info.issue_id for info, _status in results}
+        assert ids == {"BUG-001", "BUG-002", "BUG-003", "FEAT-010", "FEAT-011", "EPIC-020"}

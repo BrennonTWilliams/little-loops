@@ -95,6 +95,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.transport` | EventBus transport abstraction (`Transport` Protocol + `send`/`close`) with built-in `JsonlTransport`, `UnixSocketTransport`, and `OTelTransport` sinks. |
 | `little_loops.worktree_utils` | Shared worktree setup/cleanup utilities used by `ll-parallel`, `ll-sprint`, and `ll-loop`. |
 | `little_loops.mcp_call` | Thin CLI wrapper for direct MCP tool invocation via JSON-RPC |
+| `little_loops.mcp_server` | `ll-mcp` stdio MCP server (2026-07-28 spec, FEAT-3135) — `main_mcp` entry point plus the five read-only tools (`issues_query`, `issue_get`, `history_search`, `deps_check`, `capabilities`). |
 | `little_loops.advisor` | Capability-rank comparison for the advisor consult path (FEAT-3108) — `MODEL_RANKS`, `rank_model`, `check_floor`. |
 
 ---

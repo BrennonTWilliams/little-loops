@@ -90,7 +90,7 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
         "${context.run_dir}/states/<state-name>/trajectory.jsonl",
         "ENH-1557",
     ),
-    ("README.md", "47 typed CLI tools", "FEAT-1045"),
+    ("README.md", "48 typed CLI tools", "FEAT-1045"),
     ("CONTRIBUTING.md", "mcp-call", "ENH-1093"),
     ("CONTRIBUTING.md", "action.py", "FEAT-1229"),
     ("CONTRIBUTING.md", "New Skill Checklist", "ENH-1395"),

@@ -152,6 +152,7 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
         "Distinct from [`ll-queue`](#ll-queue), which persists general-purpose",
         "FEAT-2684",
     ),
+    ("docs/reference/CLI.md", "ll-mcp", "FEAT-3135"),
 ]
 
 

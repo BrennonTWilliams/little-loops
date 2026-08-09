@@ -104,6 +104,7 @@ _LL_PERMISSIONS: tuple[str, ...] = (
     "Bash(ll-learning-tests:*)",
     "Bash(ll-logs:*)",
     "Bash(ll-loop:*)",
+    "Bash(ll-mcp:*)",
     "Bash(ll-messages:*)",
     "Bash(ll-migrate:*)",
     "Bash(ll-migrate-labels:*)",

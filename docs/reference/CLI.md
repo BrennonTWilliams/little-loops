@@ -4207,6 +4207,31 @@ ll-adapt-agents-for-codex --force --apply  # Regenerate all files (including up-
 
 ---
 
+### ll-mcp
+
+Stdio MCP server (2026-07-28 spec) exposing five coarse, read-only tools over the
+`little_loops` library: `issues_query`, `issue_get`, `history_search`, `deps_check`,
+`capabilities`. Started by an MCP-capable host (Claude Code, Codex, ...) from the config
+`ll-adapt --host <host> --apply` emits (`.mcp.json`, `ll-mcp.toml`) — not run directly by a
+human. Requires the `mcp` optional extra (`pip install "little-loops[mcp]"`); without it,
+exits `2` with an actionable message instead of an `ImportError`.
+
+Every tool wraps an existing library call directly — no subprocess invocation of the `ll-*`
+CLIs, no orchestration (`ll-auto`/`ll-parallel`/`ll-loop`/`ll-action invoke` are intentionally
+off the tool surface). No request handler depends on state from a prior request: each
+`tools/call` resolves entirely from its own arguments plus the filesystem/SQLite.
+
+**Arguments:** none — `ll-mcp` parses no flags; it is a protocol server, not a CLI.
+
+**Exit codes:** `0` = clean EOF/shutdown, `2` = missing the `mcp` extra, or a usage error
+
+**Examples:**
+```bash
+ll-mcp   # normally launched by an MCP host, not invoked directly
+```
+
+---
+
 ### mcp-call
 
 Thin CLI wrapper for direct MCP tool invocation via JSON-RPC. Reads `.mcp.json` from the current directory, spawns the MCP server subprocess, performs the JSON-RPC initialize handshake, calls `tools/call`, and writes the MCP response envelope to stdout.

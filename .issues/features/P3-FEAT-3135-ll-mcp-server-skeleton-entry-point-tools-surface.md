@@ -3,7 +3,8 @@ id: 3135
 title: 'll-mcp: server skeleton, entry point, and tools surface'
 type: FEAT
 priority: P3
-status: open
+status: done
+completed_at: '2026-08-09T17:14:26Z'
 labels:
 - multi-host
 - mcp
@@ -40,6 +41,40 @@ framing, method routing, `ttlMs`/`cacheScope` attachment, or `server/discover`
 — all four are SDK-provided (proven in `.ll/learning-tests/mcp.md`). The work
 here is: the entry point, the async wiring, five handler functions over
 existing library calls, and the permission/doc plumbing.
+
+## Current Behavior
+
+No `ll-mcp` binary exists. `ll-adapt --host claude-code --apply` and the
+Codex adapter already emit configs that name an `ll-mcp` command
+(`adapters/claude_code.py:58`, `adapters/codex.py:376-382`), but nothing on
+the machine can start it — those configs are inert.
+
+## Expected Behavior
+
+`ll-mcp` is a registered console entry point that runs as a stdio MCP server
+implementing the 2026-07-28 spec, exposing the five coarse read-only tools
+described below (`issues_query`, `issue_get`, `history_search`, `deps_check`,
+`capabilities`). Starting it via a host's emitted config (`.mcp.json`,
+`ll-mcp.toml`) successfully connects a client to a running server.
+
+## Use Case
+
+An AI coding assistant (Claude Code, Codex, or any MCP-capable host) needs
+read-only access to `little-loops` issue data, dependency graphs, and
+history search without shelling out to the CLI or duplicating its logic.
+`ll-mcp` gives it that access over the standard MCP protocol.
+
+## Impact
+
+Without this, the `ll-mcp` entries already emitted into host configs
+(commits `b2947a60`/`0dda61ce`) are dead references — hosts can declare the
+server but never actually launch it. This issue is also the blocking
+dependency for FEAT-3136 (resources) and FEAT-3137 (prompts), both of which
+register handlers on the `Server` instance this issue creates.
+
+## Status
+
+Open — not yet implemented.
 
 ## Parent Issue
 
@@ -280,8 +315,8 @@ mirroring how `anthropic` is imported inline at each call site
   `CONTRIBUTING.md` § "Documentation wiring for new CLI tools" —
   `docs/reference/CLI.md` section, `README.md` count-only bump,
   `pyproject.toml` entry point, and both permission presets.
-  `ll-verify-cli-allowlist` gates only the last three; the README/CLI.md
-  items are gated separately by `test_readme_structure.py` and
+  `ll-verify-cli-allowlist` gates only the last three; the README.md and
+  CLI.md items are gated separately by `test_readme_structure.py` and
   `test_wiring_cli_registry.py::DOC_STRINGS_PRESENT`.
 
 ### Tests
@@ -572,7 +607,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
   and `::TestMainVerifyCliAllowlist::test_clean_state_returns_zero` pass —
   not just one of the two end-to-end variants
 
-## Acceptance criteria
+## Acceptance Criteria
 
 - `ll-mcp` is registered as a console entry point in the `scripts` package
   and runs as a stdio MCP server against the 2026-07-28 spec.
@@ -644,6 +679,8 @@ protocol layer._
   `ttlMs`/`cacheScope`.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-09T17:14:26 - `5cec8d00-e9ba-4e06-920e-e50aefa3a848.jsonl`
+- `/ll:ready-issue` - 2026-08-09T16:29:14 - `ee2e6b0e-4727-4c10-bbba-40e796d0ae78.jsonl`
 - `/ll:confidence-check` - 2026-08-09T16:15:33 - `3f9246b7-015e-4acf-9b7b-68090c38b52c.jsonl`
 - `/ll:reconcile-issue` - 2026-08-09T16:04:28 - `8e9641aa-06e4-4fab-8c0d-99d66c829c87.jsonl`
 - `/ll:confidence-check` - 2026-08-09T15:12:44 - `ebf47ba1-366c-4c95-8300-0a2317f943ab.jsonl`

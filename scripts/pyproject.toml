@@ -116,6 +116,7 @@ ll-verify-host-map = "little_loops.cli:main_verify_host_map"
 ll-verify-private-refs = "little_loops.cli:main_verify_private_refs"
 ll-adapt-agents-for-codex = "little_loops.cli:main_adapt_agents_for_codex"
 ll-init = "little_loops.cli:main_init"
+ll-mcp = "little_loops.mcp_server:main_mcp"
 mcp-call = "little_loops.mcp_call:main"
 
 [project.entry-points."little_loops.extensions"]
@@ -148,6 +149,18 @@ dev = [
     "pre-commit>=3.0",
 ]
 llm = []
+# FEAT-3135: exact pin, not a range. The 1.x line does not implement the
+# 2026-07-28 no-`initialize`-handshake behavior `ll-mcp` is built on
+# (proven: .ll/learning-tests/mcp.md, installed 1.21.0 rejects it), and
+# 2.0.0 is the first and only 2.x release — there is no 2.x track record to
+# justify an open upper bound. Optional rather than base because mcp==2.0.0
+# pulls 16 mandatory transitive deps including a full HTTP server stack
+# (starlette, uvicorn, sse-starlette, httpx2), pyjwt[crypto],
+# opentelemetry-api, python-multipart, and jsonschema — none of which a
+# stdio-only server uses, and all of which would otherwise land on every
+# `pip install little-loops`. Per CLAUDE.md § Code Style (minimize
+# third-party dependencies).
+mcp = ["mcp==2.0.0"]
 otel = [
     "opentelemetry-sdk>=1.20.0",
     "opentelemetry-exporter-otlp-grpc>=1.20.0",
