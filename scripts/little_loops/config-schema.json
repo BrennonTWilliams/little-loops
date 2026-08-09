@@ -1091,6 +1091,17 @@
           "items": {"type": "string"},
           "default": ["scripts/"],
           "description": "Source directories to scan for Python imports during the pre-release audit (ENH-2214) and orphaned record detection (ENH-2216)."
+        },
+        "version_aware_staleness": {
+          "type": "boolean",
+          "description": "Treat installed-version drift as staleness rather than calendar age alone (ENH-3125). A record whose captured proven_version differs from the currently installed version is stale immediately; one whose version still matches is only stale past the version_match_backstop_multiplier backstop. Records with no captured version keep pure age-based behavior either way. Set false to restore pre-ENH-3125 behavior for all records.",
+          "default": true
+        },
+        "version_match_backstop_multiplier": {
+          "type": "integer",
+          "description": "Multiplier applied to stale_after_days for records whose captured version still matches the installed one (ENH-3125). Default 12 means such a record ages out at 30 x 12 days (~1 year) instead of never — proof also decays when our own usage of an API changes, and a hard-pinned dependency would otherwise never be re-verified.",
+          "default": 12,
+          "minimum": 1
         }
       },
       "additionalProperties": false

@@ -223,6 +223,7 @@ Diff expected vs actual and emit the registry record.
    ---
    ```
 
+   - Two further optional keys, `proven_package` and `proven_version`, are part of the format (ENH-3125) but are **not yours to write**: `ll-learning-tests prove` stamps them deterministically from `importlib.metadata` after this skill returns. Omit them — a typed-from-memory version would silently poison version-drift staleness toward "not stale".
    - File body is **empty** — frontmatter fences only, then a single trailing newline.
    - Use single-quoted ISO date (`'2026-05-11'`) to match `yaml.dump` output.
    - `target` is the original free-text string, not the slug.

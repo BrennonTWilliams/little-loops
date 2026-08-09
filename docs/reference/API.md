@@ -6635,9 +6635,13 @@ class LearnTestRecord:
     status: Literal["proven", "refuted", "stale"]
     assertions: list[Assertion]
     raw_output_path: str | None    # Path to raw test output, if captured
+    proven_package: str | None = None   # Resolved distribution the proof ran against
+    proven_version: str | None = None   # Its installed version at prove time
 ```
 
 A record capturing what is known about a target API or library. Records are stored at `.ll/learning-tests/<slugified-target>.md`.
+
+`proven_package`/`proven_version` (ENH-3125) drive version-drift staleness: a record whose distribution has moved is stale immediately, one whose version still matches is only stale past `stale_after_days * version_match_backstop_multiplier`. Both are stamped deterministically in Python by `ll-learning-tests prove` (and retroactively by `ll-learning-tests backfill-versions`) — never by the skill that authors the record. They stay `None` for stdlib and free-text targets, which keep pure age-based staleness.
 
 **File format** (`.ll/learning-tests/<slug>.md`):
 
@@ -6650,6 +6654,8 @@ assertions:
   - claim: "streaming events are dicts with a `type` key"
     result: pass
 raw_output_path: ".ll/learning-tests/raw/anthropic-sdk-streaming.txt"
+proven_package: anthropic
+proven_version: "0.42.1"
 ---
 ```
 
@@ -6662,6 +6668,9 @@ raw_output_path: ".ll/learning-tests/raw/anthropic-sdk-streaming.txt"
 | `list_records` | Return all records in the registry directory |
 | `mark_stale` | Set `status: stale` on an existing record, preserving other fields |
 | `check_learning_test` | Look up a record by target name (slugified); returns `None` if not found |
+| `gate.resolve_target_version` | Resolve a target to `(distribution, installed_version)`, or `None` for stdlib/unresolvable targets; never raises — ENH-3125 |
+| `gate.is_record_stale` | `version_drift OR age > threshold` staleness predicate — ENH-3125 |
+| `gate.describe_staleness` | Short reason a record is stale (version transition or age), or `None` if fresh — ENH-3125 |
 | `resolve_learning_targets` | Return targets for an issue (field-first, JIT extraction fallback) — ENH-2319 |
 | `run_learning_gate_for_issue` | Determine the learning-gate verdict for an issue and return `"passed"`, `"blocked"`, `"impl_failed"`, or `"skipped"` — ENH-2319, BUG-2833, ENH-2834 |
 

@@ -974,9 +974,10 @@ Then execute the chosen sub-command.
 ```
 Current Learning Tests Configuration
 -------------------------------------
-  enabled:               {{config.learning_tests.enabled}}
-  stale_after_days:      {{config.learning_tests.stale_after_days}}
-  discoverability.mode:  {{config.learning_tests.discoverability.mode}}
+  enabled:                  {{config.learning_tests.enabled}}
+  stale_after_days:         {{config.learning_tests.stale_after_days}}
+  version_aware_staleness:  {{config.learning_tests.version_aware_staleness}}
+  discoverability.mode:     {{config.learning_tests.discoverability.mode}}
 ```
 
 ### Round 1
@@ -995,7 +996,7 @@ questions:
     multiSelect: false
 
   - header: "Stale Days"
-    question: "How many days before a learning test record is considered stale? (current: {{config.learning_tests.stale_after_days}})"
+    question: "How many days before a learning test record is considered stale on age alone? (current: {{config.learning_tests.stale_after_days}}) — note that a record whose dependency version has drifted goes stale immediately regardless of this threshold, unless version-aware staleness is off"
     options:
       - label: "7 (aggressive)"
         description: "Mark tests stale after one week — tight CI feedback"
@@ -1004,6 +1005,17 @@ questions:
       - label: "90 (relaxed)"
         description: "Mark tests stale after three months — long-lived proofs"
       - label: "Keep {{config.learning_tests.stale_after_days}}"
+        description: "No change"
+    multiSelect: false
+
+  - header: "Version Drift"
+    question: "Gate staleness on installed-version drift as well as age? (current: {{config.learning_tests.version_aware_staleness}})"
+    options:
+      - label: "Yes (default)"
+        description: "A record whose dependency version moved is stale immediately; one whose version still matches gets a ~1-year backstop instead of the day threshold. Records with no captured version keep pure age-based behavior"
+      - label: "No — age only"
+        description: "Restore pure calendar-age staleness for every record"
+      - label: "Keep current ({{config.learning_tests.version_aware_staleness}})"
         description: "No change"
     multiSelect: false
 
@@ -1029,6 +1041,7 @@ Based on selections, update `.ll/ll-config.json`:
 - If "Disable" selected: set `learning_tests.enabled: false`
 - If "Keep current" selected: preserve existing `enabled` value
 - Map "Stale Days" choice to `learning_tests.stale_after_days` (omit if default 30)
+- Map "Version Drift" choice to `learning_tests.version_aware_staleness` (omit if default `true`). When set to `false`, mention that `version_match_backstop_multiplier` becomes inert
 - Map "Discoverability" choice to `learning_tests.discoverability.mode` (omit if default `warn`)
 
 ---

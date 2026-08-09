@@ -7,9 +7,12 @@ assertions:
   result: pass
 - claim: psutil.Process(pid).create_time() returns a float epoch timestamp
   result: pass
-- claim: psutil.Process(pid) or its .cmdline() raises psutil.NoSuchProcess for a dead/recycled pid
+- claim: psutil.Process(pid) or its .cmdline() raises psutil.NoSuchProcess for a dead/recycled
+    pid
   result: pass
 - claim: psutil.Process(pid).is_running() reflects current liveness
   result: pass
 raw_output_path: .ll/learning-tests/raw/psutil.txt
+proven_package: psutil
+proven_version: 5.9.8
 ---

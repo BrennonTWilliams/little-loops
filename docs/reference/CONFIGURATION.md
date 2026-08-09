@@ -894,7 +894,9 @@ Master switch for the learning test registry feature. When enabled, skills and l
 |-----|------|---------|-------------|
 | `enabled` | `bool` | `false` | Enable the learning test registry and `ll-learning-tests` CLI. When disabled, `ll-learning-tests` exits with a message and skills skip proof checks. |
 | `auto_prove` | `bool` | `true` | When `enabled`, `rn-implement`'s learning gates (pre-dequeue `check_learning_ready` **and** the remediation-path `prove_rem_learning_gate`) make one `ll-learning-tests prove <target>` attempt before parking an issue on an unproven external-API target. Set `false` to keep the gates check-only for budget-conscious runs. Overridable per-run via the `auto_prove_learning_gate` context flag (ENH-2487). |
-| `stale_after_days` | `int` | `30` | Days after which a record is considered stale and should be re-validated. |
+| `stale_after_days` | `int` | `30` | Days after which a record is considered stale and should be re-validated. Since ENH-3125 this is the age half of a two-part predicate — see `version_aware_staleness`. |
+| `version_aware_staleness` | `bool` | `true` | Treat installed-version drift as staleness, not calendar age alone (ENH-3125). A record carrying a `proven_version` that differs from the currently installed version of `proven_package` is stale **immediately** (same day it was proven); one whose version still matches is stale only past the `version_match_backstop_multiplier` backstop. Records with no captured version — stdlib targets, free-text targets, and anything not yet run through `ll-learning-tests backfill-versions` — keep pure `stale_after_days` behavior either way. Set `false` to restore pre-ENH-3125 behavior for all records. |
+| `version_match_backstop_multiplier` | `int` | `12` | Multiplier applied to `stale_after_days` for records whose captured version still matches (ENH-3125). Default `12` means such a record ages out at 30 × 12 days (~1 year) rather than never: proof also decays when *your own* usage of an API changes, and a hard-pinned dependency would otherwise never be re-verified. |
 | `discoverability.mode` | `str` | `"warn"` | How learning-test gaps are surfaced: `"off"` — silent; `"warn"` — emits a one-line hint and allows the tool call; `"block"` — injects feedback into model context and blocks the `Write`/`Edit`. **Hook behavior**: the `PreToolUse` gate (active for Claude Code; opt-in for Codex/OpenCode) fires on every `Write` or `Edit` call, detects unknown external imports, and consults the registry. |
 | `discoverability.skip_packages` | `list[str]` | `["std", "typing", "os", "sys"]` | Packages whose imports are never flagged by the `PreToolUse` gate. Add internal packages or well-known stdlib re-exports here to suppress false positives. |
 | `release_gate` | `str` | `"warn"` | Pre-release audit behavior when stale/refuted records are found for imported packages: `"block"` aborts with exit 1; `"warn"` (default) continues with a visible warning. |
@@ -906,6 +908,8 @@ Master switch for the learning test registry feature. When enabled, skills and l
     "enabled": false,
     "auto_prove": true,
     "stale_after_days": 30,
+    "version_aware_staleness": true,
+    "version_match_backstop_multiplier": 12,
     "discoverability": {
       "mode": "warn",
       "skip_packages": ["std", "typing", "os", "sys"]

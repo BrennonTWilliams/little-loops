@@ -119,7 +119,12 @@ def gate(event: LLHookEvent) -> LLHookResult:
     record = check_learning_test(pkg, base_dir=base_dir)
 
     if record is not None and record.status == "proven":
-        if is_record_stale(record, lt_config.stale_after_days):
+        if is_record_stale(
+            record,
+            lt_config.stale_after_days,
+            version_aware=lt_config.version_aware_staleness,
+            backstop_multiplier=lt_config.version_match_backstop_multiplier,
+        ):
             _SESSION_CACHE[pkg] = False
             return LLHookResult(exit_code=0, feedback=format_nudge_message(pkg, stale=True))
         _SESSION_CACHE[pkg] = True

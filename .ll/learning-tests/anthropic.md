@@ -7,8 +7,8 @@ assertions:
     fields and a nested cache_creation object
   result: pass
 - claim: Usage.cache_creation and Usage.cache_creation_input_tokens default to None
-    when absent from the response, so getattr(usage, "...", None) or 0 remains
-    the correct defensive read pattern
+    when absent from the response, so getattr(usage, "...", None) or 0 remains the
+    correct defensive read pattern
   result: pass
 - claim: the nested CacheCreation type exposes ephemeral_5m_input_tokens and ephemeral_1h_input_tokens
     (extended-TTL cache breakdown)
@@ -20,4 +20,6 @@ assertions:
     allowed) without raising
   result: pass
 raw_output_path: .ll/learning-tests/raw/anthropic.txt
+proven_package: anthropic
+proven_version: 0.104.1
 ---

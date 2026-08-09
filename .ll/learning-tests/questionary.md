@@ -17,4 +17,6 @@ assertions:
     is False)
   result: fail
 raw_output_path: .ll/learning-tests/raw/questionary.txt
+proven_package: questionary
+proven_version: 2.1.1
 ---

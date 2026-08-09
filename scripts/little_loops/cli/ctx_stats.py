@@ -677,7 +677,13 @@ def _compute_learning_tests_stats(
         if record.status == "refuted":
             refuted += 1
         elif record.status == "stale" or (
-            record.status == "proven" and is_record_stale(record, lt_config.stale_after_days)
+            record.status == "proven"
+            and is_record_stale(
+                record,
+                lt_config.stale_after_days,
+                version_aware=lt_config.version_aware_staleness,
+                backstop_multiplier=lt_config.version_match_backstop_multiplier,
+            )
         ):
             stale += 1
         else:

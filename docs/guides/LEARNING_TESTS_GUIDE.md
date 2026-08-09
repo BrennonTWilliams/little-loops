@@ -7,6 +7,7 @@
 - [The Four-Phase Workflow](#the-four-phase-workflow)
 - [Record Status: proven, refuted, stale](#record-status-proven-refuted-stale)
 - [The Record Format](#the-record-format)
+- [What Makes a Record Stale](#what-makes-a-record-stale)
 - [CLI Reference](#cli-reference)
 - [Pre-Seeding Assumptions with `--assume`](#pre-seeding-assumptions-with---assume)
 - [Using Learning Tests in Loops](#using-learning-tests-in-loops)
@@ -137,6 +138,33 @@ raw_output_path: .ll/learning-tests/raw/anthropic-sdk-streaming.txt
 | `status` | `proven` \| `refuted` \| `stale` | See [Record Status](#record-status-proven-refuted-stale). |
 | `assertions` | `list` of `{claim, result}` | `result` is `pass` / `fail` / `untested`. |
 | `raw_output_path` | `str \| None` | Relative path to the captured proof output, or `null` when the proof script crashed before producing any output. |
+| `proven_package` | `str \| None` | Distribution the proof ran against, resolved from `target` at prove time. `null` for stdlib and free-text targets (ENH-3125). |
+| `proven_version` | `str \| None` | Installed version of `proven_package` at prove time. `null` when no distribution resolved (ENH-3125). |
+
+## What Makes a Record Stale
+
+Staleness is **version drift OR age past a threshold** — not calendar age alone (ENH-3125). Age was only ever a proxy for "the API may have moved"; when the dependency's installed version is observable, drift is the real signal.
+
+| Record state | Stale? |
+|---|---|
+| `proven_version` captured and **differs** from the installed version | Yes — immediately, even on the day it was proven |
+| `proven_version` captured and **matches** | Only past `stale_after_days × version_match_backstop_multiplier` (default 30 × 12 ≈ 1 year) |
+| No comparable version — nothing captured, package no longer resolves, stdlib target | `age > stale_after_days` (the pre-ENH-3125 behavior) |
+| `status: stale` from `mark-stale` | Yes — a matching version never rescues a manually staled record |
+
+Two consequences worth knowing:
+
+- **A matching version buys a longer leash, not an unlimited one.** Proof also decays when *your own* usage of an API changes, and a hard-pinned dependency would otherwise never be re-verified. That is what the backstop multiplier is for.
+- **Stdlib targets never resolve a version on purpose.** `importlib.metadata.version("asyncio")` returns an abandoned PyPI backport whose version has nothing to do with stdlib `asyncio` — binding to it would produce a version that never drifts. The resolver checks `sys.stdlib_module_names` first and routes stdlib targets to the age-based path.
+
+Records written before ENH-3125 have no captured version and stay on the age path until you backfill them:
+
+```bash
+ll-learning-tests backfill-versions --dry-run   # preview
+ll-learning-tests backfill-versions             # stamp
+```
+
+To turn the whole mechanism off, set `learning_tests.version_aware_staleness: false` — staleness reverts to pure `stale_after_days` for every record.
 
 ## CLI Reference
 
@@ -144,11 +172,12 @@ raw_output_path: .ll/learning-tests/raw/anthropic-sdk-streaming.txt
 
 | Subcommand | Purpose | Exit |
 |---|---|---|
-| `check "<target>" [--stale-aware]` | Print the matching record as JSON. With `--stale-aware`, exits `1` if the record is missing, has a non-proven status (`refuted` or `stale`), or is proven but age exceeds `learning_tests.stale_after_days`. Exits `0` only when status is `proven` and within the threshold. Used by gates that treat non-proven or aged records as "needs re-proof". | `0` if found and not stale, `1` if missing, non-proven, or date-stale |
+| `check "<target>" [--stale-aware]` | Print the matching record as JSON. With `--stale-aware`, exits `1` if the record is missing, has a non-proven status (`refuted` or `stale`), or is proven but stale (version drift or age — see [What Makes a Record Stale](#what-makes-a-record-stale)). Exits `0` only when status is `proven` and not stale. Used by gates that treat non-proven or aged records as "needs re-proof". | `0` if found and not stale, `1` if missing, non-proven, or stale |
 | `list` | Print every record as a JSON array | always `0` |
 | `mark-stale "<target>"` | Set `status: stale` on an existing record | `0` on success, `1` if not found |
 | `orphans [--mark-stale] [--scope DIRS]` | List records whose target package is not imported by any project file. Orphaned records accumulate when you remove a dependency or rename an integration. With `--mark-stale`, atomically sets `status: stale` on all orphans. `--scope DIRS` overrides the default import-scan directories (comma-separated; defaults to `learning_tests.scan_dirs` config key or `scripts/`). | `0` if no orphans found, or with `--mark-stale`; `1` if orphans exist |
-| `prove "<target>"` | Target-addressed proving (ENH-2430) — no issue file required. Shells to `ll-loop run ready-to-implement-gate --context targets=<target>` (see [Using Learning Tests in Loops](#using-learning-tests-in-loops)), then prints the refreshed record. | `0` if the target ends `proven`, `1` if `refuted` or still missing |
+| `prove "<target>"` | Target-addressed proving (ENH-2430) — no issue file required. Shells to `ll-loop run ready-to-implement-gate --context targets=<target>` (see [Using Learning Tests in Loops](#using-learning-tests-in-loops)), then stamps `proven_package`/`proven_version` (ENH-3125) and prints the refreshed record. | `0` if the target ends `proven`, `1` if `refuted` or still missing |
+| `backfill-versions [--dry-run]` | Stamp `proven_package`/`proven_version` onto existing records so they participate in version-drift staleness (ENH-3125). Stdlib and unresolvable targets are left untouched. Idempotent. | always `0` |
 
 ```bash
 ll-learning-tests check "Anthropic SDK streaming"
@@ -395,7 +424,7 @@ When `learning_tests.enabled` is `true`, `/ll:manage-release` runs a pre-release
 | Record state | Gate signal |
 |---|---|
 | `proven` and not stale | pass (no output) |
-| `proven` but age > `stale_after_days` | stale — warn or block |
+| `proven` but stale — version drift, or age past the applicable threshold (see [What Makes a Record Stale](#what-makes-a-record-stale)) | stale — warn or block |
 | `refuted` | refuted — warn or block |
 
 **Gate behavior** (`learning_tests.release_gate` in `.ll/ll-config.json`):

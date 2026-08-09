@@ -1131,6 +1131,8 @@ class FSMExecutor:
         # Staleness check is only active when learning_tests.enabled is True.
         _lt_staleness_enabled = False
         _lt_stale_days = 30
+        _lt_version_aware = True
+        _lt_backstop = 12
         try:
             from little_loops.config.core import BRConfig as _BRConfig
 
@@ -1138,6 +1140,8 @@ class FSMExecutor:
             if _lt_cfg.enabled:
                 _lt_staleness_enabled = True
                 _lt_stale_days = _lt_cfg.stale_after_days
+                _lt_version_aware = _lt_cfg.version_aware_staleness
+                _lt_backstop = _lt_cfg.version_match_backstop_multiplier
         except Exception:
             pass
 
@@ -1150,7 +1154,7 @@ class FSMExecutor:
             return interpolate(route, ctx) if route else None
 
         def _fresh_record(target: str):
-            """Read a record, treating a date-stale ``proven`` record as absent
+            """Read a record, treating a stale ``proven`` record as absent
             so the retry path re-proves it (ENH-2208). Guard behind enabled to
             avoid breaking tests and projects that haven't opted into
             learning_tests. Used at both read sites so the pre-loop check and
@@ -1161,7 +1165,12 @@ class FSMExecutor:
                 _lt_staleness_enabled
                 and rec is not None
                 and rec.status == "proven"
-                and is_record_stale(rec, _lt_stale_days)
+                and is_record_stale(
+                    rec,
+                    _lt_stale_days,
+                    version_aware=_lt_version_aware,
+                    backstop_multiplier=_lt_backstop,
+                )
             ):
                 return None
             return rec

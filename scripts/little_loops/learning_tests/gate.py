@@ -14,6 +14,7 @@ from __future__ import annotations
 import datetime
 import logging
 import subprocess
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -42,25 +43,166 @@ def format_nudge_message(pkg: str, stale: bool = False) -> str:
     return f'[ll: new dependency] {body} Consider: /ll:explore-api "{pkg}"'
 
 
-def is_record_stale(record: LearnTestRecord, stale_after_days: int) -> bool:
-    """Return True if the record's proof date exceeds the staleness threshold.
+def resolve_target_version(target: str) -> tuple[str, str] | None:
+    """Resolve *target* to an ``(distribution_name, installed_version)`` pair.
+
+    Returns ``None`` — meaning "no comparable version, use the age-based
+    path" — for every case that is not an installed third-party distribution:
+
+    - stdlib targets, checked against :data:`sys.stdlib_module_names`
+      **before** any ``importlib.metadata`` call. This ordering is load-bearing
+      (ENH-3125): ``importlib.metadata.version("asyncio")`` resolves to an
+      abandoned PyPI backport whose version has nothing to do with stdlib
+      ``asyncio``, which would pin the record to a version that never drifts.
+    - targets that are not installed distributions (``PackageNotFoundError``) —
+      the common case, since ``LearnTestRecord.target`` is free text
+      ("Anthropic SDK streaming", "Python pathlib") rather than an installable
+      identifier.
+
+    Never raises: any unexpected ``importlib.metadata`` failure degrades to
+    ``None`` so a resolver problem falls back to today's age-based staleness
+    rather than breaking a gate.
+    """
+    try:
+        # Same first-token reduction normalize_target() uses, so both sides of
+        # every "which package is this?" question share one convention.
+        parts = target.split() if target else []
+        if not parts:
+            return None
+        name = parts[0].lower()
+        if name.split(".")[0] in sys.stdlib_module_names:
+            return None
+
+        from little_loops.init.install_check import installed_package_version
+
+        version = installed_package_version(name)
+    except Exception:  # noqa: BLE001 — resolver failure must degrade, never propagate
+        logger.debug("version resolution failed for target %r", target, exc_info=True)
+        return None
+    if version is None:
+        return None
+    return name, version
+
+
+def _installed_version_for(record: LearnTestRecord, installed_version: str | None) -> str | None:
+    """Return the version to compare *record* against, or None if incomparable."""
+    if installed_version is not None:
+        return installed_version
+    if not record.proven_package:
+        return None
+    resolved = resolve_target_version(record.proven_package)
+    return resolved[1] if resolved else None
+
+
+def is_record_stale(
+    record: LearnTestRecord,
+    stale_after_days: int,
+    *,
+    installed_version: str | None = None,
+    version_aware: bool = True,
+    backstop_multiplier: int = 12,
+) -> bool:
+    """Return True if the record's proof is stale.
+
+    Staleness is **version drift OR age past a threshold** (ENH-3125), not age
+    alone. Concretely, True when any of:
+
+    - a version was captured for the record and the currently installed version
+      of the same distribution differs (**drift** — fires regardless of age, so
+      a record can go stale the day after it was proven);
+    - no comparable version is available (nothing captured, the package no
+      longer resolves, or the target is stdlib/not a distribution) **and**
+      ``age_days > stale_after_days`` — the pre-ENH-3125 behavior, and the path
+      every un-backfilled record still takes;
+    - a version was captured and **matches**, and ``age_days >
+      stale_after_days * backstop_multiplier``. A matching version buys a
+      longer leash, not an unlimited one: proof also decays when *our* usage of
+      an API changes, and a hard-pinned dependency would otherwise never be
+      re-verified.
 
     Args:
         record: A LearnTestRecord with a ``date`` field (ISO 8601: YYYY-MM-DD).
         stale_after_days: Age threshold in days. Clamped to minimum 1 to
             prevent ``stale_after_days=0`` from being a footgun that passes
             all records whose date is exactly today.
+        installed_version: Pre-resolved installed version, for callers that
+            already have one (and for tests). When omitted, this resolves
+            ``record.proven_package`` itself — callers that loop over many
+            records would otherwise each duplicate that resolution.
+        version_aware: When False, restores pure age-based staleness exactly as
+            it behaved before ENH-3125 (``learning_tests.version_aware_staleness``).
+        backstop_multiplier: Multiplier applied to ``stale_after_days`` for the
+            version-matches case (``learning_tests.version_match_backstop_multiplier``).
 
     Returns:
-        True if age in days exceeds the threshold; False if fresh or unparseable.
+        True if the record is stale; False if fresh or the date is unparseable
+        and no drift was detected.
     """
+    # A manual `ll-learning-tests mark-stale` outranks everything (ENH-3125
+    # AC-6): a matching installed version must never rescue a record an
+    # operator explicitly staled. Call sites that already OR on
+    # ``status == "stale"`` are unaffected; this closes the sites that don't.
+    if record.status == "stale":
+        return True
+
     threshold = max(1, stale_after_days)
+
+    if version_aware and record.proven_version:
+        current = _installed_version_for(record, installed_version)
+        if current is not None:
+            if current != record.proven_version:
+                # Drift short-circuits: it is independent of age, so it must be
+                # decided before the date parse (which returns False on a
+                # malformed date).
+                return True
+            threshold = threshold * max(1, backstop_multiplier)
+
     try:
         record_date = datetime.date.fromisoformat(record.date)
     except (ValueError, TypeError, AttributeError):
         return False
     age_days = (datetime.date.today() - record_date).days
     return age_days > threshold
+
+
+def describe_staleness(
+    record: LearnTestRecord,
+    stale_after_days: int,
+    *,
+    installed_version: str | None = None,
+    version_aware: bool = True,
+    backstop_multiplier: int = 12,
+) -> str | None:
+    """Return a short reason a record is stale, or None if it is fresh.
+
+    Keeps nudge text truthful about *why* a record went stale (ENH-3125 AC-8):
+    a record staled by version drift on the day it was proven must not render
+    as ``"stale: 0 days old"``. Argument semantics match
+    :func:`is_record_stale`.
+    """
+    if record.status == "stale":
+        return "stale: marked stale"
+
+    if version_aware and record.proven_version:
+        current = _installed_version_for(record, installed_version)
+        if current is not None and current != record.proven_version:
+            pkg = record.proven_package or record.target
+            return f"stale: {pkg} {record.proven_version} → {current}"
+
+    if not is_record_stale(
+        record,
+        stale_after_days,
+        installed_version=installed_version,
+        version_aware=version_aware,
+        backstop_multiplier=backstop_multiplier,
+    ):
+        return None
+
+    try:
+        age = (datetime.date.today() - datetime.date.fromisoformat(record.date)).days
+    except (ValueError, TypeError, AttributeError):
+        return "stale"
+    return f"stale: {age} days old"
 
 
 def run_learning_gate_for_issue(

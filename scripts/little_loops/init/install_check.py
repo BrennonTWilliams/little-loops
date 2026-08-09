@@ -20,16 +20,21 @@ class InstallStatus(Enum):
     Unknown = "unknown"
 
 
-def installed_package_version() -> str | None:
-    """Return the installed little-loops package version, or None if not installed.
+def installed_package_version(pkg_name: str = "little-loops") -> str | None:
+    """Return the installed version of *pkg_name*, or None if not installed.
 
     Thin wrapper over :func:`importlib.metadata.version` used as the single
     source of truth for the adapter gen-version stamp (write side in
-    ``install_codex_adapter``) and the warn-only staleness comparison
-    (``cli._warn_adapter_staleness``).
+    ``install_codex_adapter``), the warn-only staleness comparison
+    (``cli._warn_adapter_staleness``), and — since ENH-3125 — version-drift
+    detection for learning-test records
+    (``learning_tests.gate.resolve_target_version``).
+
+    The ``"little-loops"`` default is load-bearing: three call sites
+    (``init/writers.py``, ``init/cli.py``) invoke this with no arguments.
     """
     try:
-        return importlib.metadata.version("little-loops")
+        return importlib.metadata.version(pkg_name)
     except importlib.metadata.PackageNotFoundError:
         return None
 

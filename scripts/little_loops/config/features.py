@@ -501,6 +501,17 @@ class LearningTestsConfig:
     discoverability: DiscoverabilityConfig = field(default_factory=DiscoverabilityConfig)
     release_gate: str = "warn"
     scan_dirs: list[str] = field(default_factory=lambda: ["scripts/"])
+    version_aware_staleness: bool = True
+    """Treat installed-version drift as staleness, not calendar age alone (ENH-3125).
+
+    Set False to restore pure age-based staleness.
+    """
+    version_match_backstop_multiplier: int = 12
+    """Age backstop for records whose captured version still matches (ENH-3125).
+
+    Such a record ages out at ``stale_after_days * multiplier`` (default
+    30 × 12 ≈ one year) instead of never.
+    """
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> LearningTestsConfig:
@@ -512,6 +523,8 @@ class LearningTestsConfig:
             discoverability=DiscoverabilityConfig.from_dict(data.get("discoverability", {})),
             release_gate=data.get("release_gate", "warn"),
             scan_dirs=data.get("scan_dirs", ["scripts/"]),
+            version_aware_staleness=data.get("version_aware_staleness", True),
+            version_match_backstop_multiplier=data.get("version_match_backstop_multiplier", 12),
         )
 
 

@@ -118,7 +118,7 @@ Map argument names to config sections:
 | `allowed-tools` | `permissions.allow` in `.claude/settings.json` or `.claude/settings.local.json` | ll- CLI tool allow entries (Note: writes to Claude Code settings files, not ll-config.json) |
 | `hooks` | `hooks` in `.claude/settings.json` or `.claude/settings.local.json` | ll- lifecycle hook configuration (Note: writes to Claude Code settings files, not ll-config.json) |
 | `design-tokens` | `design_tokens` | Design system token settings |
-| `learning-tests` | `learning_tests` | Learning test registry: enabled, stale_after_days, discoverability mode |
+| `learning-tests` | `learning_tests` | Learning test registry: enabled, stale_after_days, version-drift staleness, discoverability mode |
 | `decisions` | `decisions` | Decisions log: enabled, log_path, auto_generate |
 | `analytics` | `analytics` | Analytics capture: enabled, skills, corrections, file_events |
 | `history` | `history` | History.db consumer tuning |
@@ -151,7 +151,7 @@ Configuration Areas
   allowed-tools [DEFAULT]     ll- CLI tool allow entries in settings.json/settings.local.json
   hooks         [DEFAULT]     ll- hook configuration in settings.json/settings.local.json
   design-tokens [DEFAULT]     Design system token settings
-  learning-tests [DEFAULT]    Learning test registry: enabled, stale_after_days, discoverability
+  learning-tests [DEFAULT]    Learning test registry: enabled, stale_after_days, version drift, discoverability
   decisions      [DEFAULT]    Decisions log: enabled, log_path, auto_generate
   analytics      [DEFAULT]     Analytics capture: enabled, skills, corrections, file_events
   history              [DEFAULT]     History.db consumer tuning
@@ -306,7 +306,7 @@ questions:
     multiSelect: false
     options:
       - label: "learning-tests"
-        description: "Learning test registry: enabled, stale_after_days, discoverability"
+        description: "Learning test registry: enabled, stale_after_days, version drift, discoverability"
       - label: "decisions"
         description: "Decisions log: enabled, log_path, auto_generate"
       - label: "More areas..."
@@ -395,7 +395,7 @@ $ARGUMENTS
   - `hooks` - ll- lifecycle hook configuration in settings.json/settings.local.json
   - `design-tokens` - Design system token settings
   - `analytics` - Analytics capture: enabled, skills, corrections, file_events
-  - `learning-tests` - Learning test registry: enabled, stale_after_days, discoverability
+  - `learning-tests` - Learning test registry: enabled, stale_after_days, version drift, discoverability
   - `decisions` - Decisions log: enabled, log_path, auto_generate
   - `history` - History.db consumer tuning
 

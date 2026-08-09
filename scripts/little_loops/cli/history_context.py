@@ -60,6 +60,8 @@ def _render_learning_test_section(
     targets: list[str],
     *,
     stale_after_days: int = 30,
+    version_aware: bool = True,
+    backstop_multiplier: int = 12,
     base_dir: Path | None = None,
 ) -> str | None:
     """Build a ## Learning Test Evidence markdown table, or None if no records exist."""
@@ -71,7 +73,13 @@ def _render_learning_test_section(
         record = check_learning_test(target, base_dir=base_dir)
         if record is None:
             continue
-        effective_status = "stale" if is_record_stale(record, stale_after_days) else record.status
+        stale = is_record_stale(
+            record,
+            stale_after_days,
+            version_aware=version_aware,
+            backstop_multiplier=backstop_multiplier,
+        )
+        effective_status = "stale" if stale else record.status
         passes = sum(1 for a in record.assertions if a.result == "pass")
         fails = sum(1 for a in record.assertions if a.result == "fail")
         untested = sum(1 for a in record.assertions if a.result == "untested")
@@ -342,6 +350,8 @@ def main_history_context() -> int:
                     lt_section = _render_learning_test_section(
                         targets,
                         stale_after_days=cfg.learning_tests.stale_after_days,
+                        version_aware=cfg.learning_tests.version_aware_staleness,
+                        backstop_multiplier=(cfg.learning_tests.version_match_backstop_multiplier),
                         base_dir=lt_dir,
                     )
         except Exception:

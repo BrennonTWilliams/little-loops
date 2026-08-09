@@ -3,6 +3,15 @@ category: api-adoption
 description: >
   Re-proves stale learning-test records after a dependency bump, classifying
   each as still-valid, needs-upgrade, or refuted, and producing a triage report.
+  Since ENH-3125 the queue is version-aware: a record whose captured
+  proven_version still matches the installed one is no longer queued by the
+  ordinary 30-day threshold (only past the much longer backstop), while a
+  record whose dependency actually moved is queued the same day. Expect a
+  smaller, better-targeted queue than the pre-ENH-3125 calendar-age one — that
+  is the intended win, not a missed record. Records with no captured version
+  (stdlib, free-text, or not-yet-backfilled targets — run
+  `ll-learning-tests backfill-versions`) keep pure age-based queuing, and a
+  manual `ll-learning-tests mark-stale` always queues regardless of version.
 initial: list_stale
 scope:
   - ".ll/learning-tests/"

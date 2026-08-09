@@ -50,6 +50,17 @@ class LearnTestRecord:
     status: Literal["proven", "refuted", "stale"]
     assertions: list[Assertion]
     raw_output_path: str | None
+    proven_package: str | None = None
+    """Resolved distribution name the proof was captured against (ENH-3125).
+
+    Stored alongside the version so readers never re-derive the package name
+    from the free-text ``target``: a change to that heuristic — or an edit to
+    ``target`` — would otherwise silently compare two different distributions.
+    ``None`` for records that predate ENH-3125 and for targets that are not
+    resolvable non-stdlib distributions; those stay on the age-based path.
+    """
+    proven_version: str | None = None
+    """Installed version of ``proven_package`` at prove time (ENH-3125)."""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -58,6 +69,8 @@ class LearnTestRecord:
             "status": self.status,
             "assertions": [a.to_dict() for a in self.assertions],
             "raw_output_path": self.raw_output_path,
+            "proven_package": self.proven_package,
+            "proven_version": self.proven_version,
         }
 
     @classmethod
@@ -68,6 +81,8 @@ class LearnTestRecord:
             status=data.get("status", "proven"),
             assertions=[Assertion.from_dict(a) for a in (data.get("assertions") or [])],
             raw_output_path=data.get("raw_output_path"),
+            proven_package=data.get("proven_package"),
+            proven_version=data.get("proven_version"),
         )
 
     def failing_claims(self) -> list[str]:

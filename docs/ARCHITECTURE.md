@@ -1564,8 +1564,11 @@ mirroring `.ll/learning-tests/` and `.ll/decisions.d/` (ENH-2655).
 | `check "<target>"` | Print JSON record by target name | `0` if found, `1` if missing |
 | `list` | Print JSON array of all records | always `0` |
 | `mark-stale "<target>"` | Set `status: stale` on an existing record | `0` |
+| `backfill-versions [--dry-run]` | Stamp `proven_package`/`proven_version` onto existing records (ENH-3125) | `0` |
 
 There is no `write`/`add` subcommand. Record creation is owned by `/ll:explore-api` (and any future skill variants) so the prompt context — claims, reasoning, proof script — is captured alongside the result, not just the result alone. Skills emit the on-disk YAML directly via the `Write` tool to match the format that `write_record()` produces.
+
+**Record *creation* is still skill-owned; record *enrichment* is not (ENH-3125).** After the skill writes the record, `cmd_prove` re-reads it and stamps `proven_package`/`proven_version` from `importlib.metadata` via `update_frontmatter`. That split is deliberate: the version is the one field that must be deterministic — an LLM-typed version could hallucinate a match and silently poison version-drift staleness toward "not stale". The skill template documents the two keys as optional, but nothing depends on the skill emitting them.
 
 For automated bulk staleness detection across all records, use `ll-loop run learning-tests-audit` — a built-in FSM loop that compares record dates against PyPI/npm registry release timelines and batch-marks stale records. Once records are marked stale, run `ll-loop run migrate-sdk-version` to re-prove them: it iterates the stale queue, re-runs `/ll:explore-api` for each target, classifies each result as `still-valid`, `needs-upgrade`, or `refuted`, and produces a triage report. Together these two loops form the two-step registry maintenance workflow. See `docs/guides/LOOPS_REFERENCE.md` → API Adoption.
 

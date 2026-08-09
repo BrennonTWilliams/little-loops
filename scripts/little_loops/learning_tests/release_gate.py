@@ -55,7 +55,13 @@ def run_release_gate(cwd: Path, *, base_dir: Path | None = None) -> int:
     problem_records = [
         r
         for r in records
-        if r.status == "refuted" or is_record_stale(r, lt_config.stale_after_days)
+        if r.status == "refuted"
+        or is_record_stale(
+            r,
+            lt_config.stale_after_days,
+            version_aware=lt_config.version_aware_staleness,
+            backstop_multiplier=lt_config.version_match_backstop_multiplier,
+        )
     ]
 
     if not problem_records:

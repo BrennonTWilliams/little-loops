@@ -11,8 +11,7 @@ assertions:
   result: pass
 - claim: st.composite allows building custom strategies via a draw function
   result: pass
-- claim: Hypothesis shrinks a failing example to a minimal counterexample before
-    reporting
+- claim: Hypothesis shrinks a failing example to a minimal counterexample before reporting
   result: pass
 - claim: st.integers(min_value=, max_value=) only produces values within the given
     bounds
@@ -20,4 +19,6 @@ assertions:
 - claim: settings(deadline=None) disables the per-example time limit
   result: pass
 raw_output_path: .ll/learning-tests/raw/hypothesis.txt
+proven_package: hypothesis
+proven_version: 6.151.4
 ---

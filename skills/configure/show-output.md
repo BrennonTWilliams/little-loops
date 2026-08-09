@@ -205,9 +205,10 @@ Edit: /ll:configure design-tokens
 
 Learning Tests Configuration
 ------------------------------
-  enabled:               {{config.learning_tests.enabled}}               (default: false)
-  stale_after_days:      {{config.learning_tests.stale_after_days}}      (default: 30)
-  discoverability.mode:  {{config.learning_tests.discoverability.mode}}  (default: warn)
+  enabled:                  {{config.learning_tests.enabled}}                  (default: false)
+  stale_after_days:         {{config.learning_tests.stale_after_days}}         (default: 30)
+  version_aware_staleness:  {{config.learning_tests.version_aware_staleness}}  (default: true)
+  discoverability.mode:     {{config.learning_tests.discoverability.mode}}     (default: warn)
 
 Edit: /ll:configure learning-tests
 ```

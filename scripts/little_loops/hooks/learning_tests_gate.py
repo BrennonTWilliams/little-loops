@@ -16,7 +16,6 @@ Config keys read from ``.ll/ll-config.json``:
 
 from __future__ import annotations
 
-import datetime
 import json
 import re
 from pathlib import Path
@@ -25,7 +24,7 @@ from little_loops.config.core import resolve_config_path
 from little_loops.config.features import LearningTestsConfig
 from little_loops.hooks.types import LLHookEvent, LLHookResult
 from little_loops.learning_tests import check_learning_test
-from little_loops.learning_tests.gate import is_record_stale
+from little_loops.learning_tests.gate import describe_staleness, is_record_stale
 
 # Scans an in-flight Write/Edit tool call's content/new_string fragment, which is
 # frequently not independently parseable Python — an ast-based scan is not a safe
@@ -121,7 +120,11 @@ def gate(event: LLHookEvent) -> LLHookResult:
     base_dir = cwd / ".ll" / "learning-tests"
 
     missing: list[str] = []
-    stale_ages: dict[str, int] = {}  # pkg -> age in days, for stale proven records
+    # pkg -> why it is stale ("stale: 45 days old", "stale: requests 1.0 → 2.0").
+    # ENH-3125: a record staled by version drift can be zero days old, so the
+    # reason is rendered from the same predicate that decided staleness rather
+    # than recomputed as an age here.
+    stale_reasons: dict[str, str] = {}
     for pkg in packages:
         if pkg in skip:
             continue
@@ -131,13 +134,21 @@ def gate(event: LLHookEvent) -> LLHookResult:
             continue
         record = check_learning_test(pkg, base_dir=base_dir)
         if record is not None and record.status == "proven":
-            if is_record_stale(record, lt_config.stale_after_days):
+            if is_record_stale(
+                record,
+                lt_config.stale_after_days,
+                version_aware=lt_config.version_aware_staleness,
+                backstop_multiplier=lt_config.version_match_backstop_multiplier,
+            ):
                 _SESSION_CACHE[pkg] = False
-                try:
-                    age = (datetime.date.today() - datetime.date.fromisoformat(record.date)).days
-                    stale_ages[pkg] = age
-                except (ValueError, TypeError):
-                    pass
+                reason = describe_staleness(
+                    record,
+                    lt_config.stale_after_days,
+                    version_aware=lt_config.version_aware_staleness,
+                    backstop_multiplier=lt_config.version_match_backstop_multiplier,
+                )
+                if reason:
+                    stale_reasons[pkg] = reason
                 missing.append(pkg)
             else:
                 _SESSION_CACHE[pkg] = True
@@ -152,8 +163,8 @@ def gate(event: LLHookEvent) -> LLHookResult:
 
     parts = []
     for pkg in missing:
-        if pkg in stale_ages:
-            parts.append(f'"{pkg}" (stale: {stale_ages[pkg]} days old)')
+        if pkg in stale_reasons:
+            parts.append(f'"{pkg}" ({stale_reasons[pkg]})')
         else:
             parts.append(f'"{pkg}"')
     pkg_list = ", ".join(parts)

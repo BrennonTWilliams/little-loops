@@ -3,9 +3,10 @@ id: ENH-3125
 type: ENH
 title: Gate learning-test staleness on installed-version drift, not calendar age
 priority: P3
-status: open
+status: done
 discovered_date: 2026-08-08
 discovered_by: ENH-3073
+completed_at: '2026-08-09T23:53:14Z'
 labels:
 - learning-tests
 - release
@@ -85,7 +86,9 @@ Record the resolved package name and version in the learning-test record at prov
 treat a record as stale on version drift, with age as the fallback and as a backstop (see
 Expected Behavior for the exact predicate).
 
-**Superseded framing — do not start from `loops/migrate-sdk-version.yaml`.** An earlier
+**Outdated framing in an earlier draft of this issue — do not start from
+`scripts/little_loops/loops/migrate-sdk-version.yaml`.** (That loop is not modified by this
+issue beyond a docs note; see the Wiring Phase addenda.) An earlier
 draft of this section said that loop (FEAT-1813) already contains a reusable version
 resolver. It does not; see § Codebase Research Findings below, which found the loop
 re-proves via an LLM skill invocation and classifies via an LLM prompt, with no
@@ -138,7 +141,7 @@ documented as *permitted* to emit the fields (harmless if correct, overwritten b
 
 _Added by `/ll:refine-issue` — 2026-08-09 — based on codebase analysis:_
 
-**Claim-grounding**: `loops/migrate-sdk-version.yaml` (FEAT-1813) does **not** contain a
+**Claim-grounding**: `scripts/little_loops/loops/migrate-sdk-version.yaml` (FEAT-1813) does **not** contain a
 deterministic version resolver, contrary to this section's framing. Its 8 states
 (`list_stale`, `reprove_next`, `classify_outcome`, `apply_update`, `advance_queue`,
 `prepare_report_path`, `build_report`, `done`) re-prove a target by shelling out to
@@ -342,7 +345,7 @@ copy for them, without either one ever specifying a knob.
 
 `hooks/learning_tests_gate.py`, `hooks/install_learning_gate.py`, `fsm/executor.py`,
 `cli/ctx_stats.py`, `cli/history_context.py`, `cli/learning_tests.py`,
-`learning_tests/release_gate.py`, `loops/migrate-sdk-version.yaml` -> `is_record_stale()`
+`learning_tests/release_gate.py`, `scripts/little_loops/loops/migrate-sdk-version.yaml` -> `is_record_stale()`
 -> `resolve_target_version()` -> `installed_package_version(pkg_name)`
 
 Write path (new): `/ll:explore-api` writes the record -> `cmd_prove`
@@ -378,7 +381,7 @@ _Added by `/ll:refine-issue` — 2026-08-09 — based on codebase analysis:_
   134) · `hooks/install_learning_gate.py:88-129` (`gate()`, call at 122) ·
   `cli/ctx_stats.py:660-684` (records-summary stale bucket) ·
   `cli/history_context.py:59-90` (`_render_learning_test_section`) ·
-  `loops/migrate-sdk-version.yaml:35` (Python-heredoc in the `list_stale` state — an FSM
+  `scripts/little_loops/loops/migrate-sdk-version.yaml:35` (Python-heredoc in the `list_stale` state — an FSM
   YAML caller, not updatable by a Python signature change alone).
 - All 8 currently call with exactly `(record, stale_after_days)`; none pass version info
   today, consistent with an optional third parameter.
@@ -491,10 +494,51 @@ _Added by review pass, 2026-08-09 — the issue previously had no AC section._
   should build on
 - ENH-2214 — introduced the release gate and `stale_after_days`
 
+## Resolution
+
+_Implemented 2026-08-09 via `/ll:manage-issue`._
+
+Staleness is now `version_drift OR age > threshold` as specified. All 11 acceptance
+criteria are met.
+
+**Core** — `resolve_target_version()` and a widened `is_record_stale(record,
+stale_after_days, *, installed_version=None, version_aware=True,
+backstop_multiplier=12)` in `learning_tests/gate.py`, plus a new
+`describe_staleness()` that renders the stale *reason* (version transition vs. age)
+so nudge text stays truthful (AC-8). Drift is decided **before** the date parse, so a
+drifted record with a malformed date is still stale (AC-2). `status == "stale"`
+short-circuits to True inside the predicate rather than relying on each call site's
+own OR (AC-6) — this closed sites like `release_gate` that had no such OR.
+`installed_package_version()` generalized to `(pkg_name: str = "little-loops")`; the
+default is load-bearing for its 3 zero-arg call sites.
+
+**Capture** — `cmd_prove` stamps `proven_package`/`proven_version` via
+`update_frontmatter` after the record re-read (AC-1), and a new
+`ll-learning-tests backfill-versions [--dry-run]` retro-stamps existing records (AC-7).
+`skills/explore-api/SKILL.md` documents the two keys as *not the skill's to write*;
+both adapter mirrors regenerated via `ll-adapt`, never hand-edited.
+
+**Config** — `version_aware_staleness` (default `true`, AC-9 escape hatch) and
+`version_match_backstop_multiplier` (default `12`) threaded through all 7 Python call
+sites; the `migrate-sdk-version.yaml` heredoc keeps its own manual-stale OR and gained
+a docs note about the intended queue shrink.
+
+**Verified on this repo's real registry**: `backfill-versions` stamped exactly 13 of
+33 records — matching AC-7's prediction — and is idempotent (a second run changes 0).
+The stdlib guard held: `asyncio` was correctly left unstamped despite
+`importlib.metadata.version("asyncio")` resolving to the `4.0.0` PyPI shim (AC-5).
+The oldest record now sits exactly at the 30-day threshold; the version-matched ones
+will no longer cross it on calendar age alone, which was the issue's whole motivation.
+
+**AC-4 confirmed unmodified**: the 6 pre-existing `TestIsRecordStale` tests pass with
+no edits. 42 new tests added; `python -m pytest scripts/tests/` passes (18,839) apart
+from one pre-existing unrelated failure, `test_prose_dep_sweep_gate.py`
+(ENH-3095/FEAT-3122 prose drift), reproduced identically on a clean `HEAD` worktree.
+`ruff check` and `mypy` clean on changed files.
+
 ## Status
 
-Open. Filed per ENH-3073's Acceptance Criteria requiring a follow-up ENH for Option B
-before that issue closes.
+Done.
 
 Researched and reviewed: two `/ll:refine-issue` passes, one `/ll:wire-issue` pass, and a
 2026-08-09 review pass that resolved the replace-vs-OR ambiguity in Expected Behavior,
@@ -532,6 +576,8 @@ OUTCOME CONFIDENCE: 62/100 → LOW
   verification target, which substantially de-risks the fanout despite its size.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-09T23:53:00 - `820fc7ed-ebfc-4af2-85a2-967115231b8b.jsonl`
+- `/ll:ready-issue` - 2026-08-09T23:22:32 - `891b620b-ae3d-4b8c-9afc-c8976c4719f9.jsonl`
 - `/ll:confidence-check` - 2026-08-09T23:16:29 - `f96a5ae5-3aa8-4182-9112-8fe8af4976c7.jsonl`
 - `/ll:wire-issue` - 2026-08-09T21:21:29 - `1928eea5-898a-4b0e-9f83-1704fa8dc30a.jsonl`
 - `/ll:refine-issue` - 2026-08-09T20:43:47 - `e57311a1-9572-4b11-8e58-6e191d80f1ea.jsonl`

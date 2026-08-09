@@ -3,7 +3,8 @@ target: playwright
 date: '2026-07-24'
 status: proven
 assertions:
-- claim: page.on('pageerror', e) always delivers an object where e instanceof Error is true
+- claim: page.on('pageerror', e) always delivers an object where e instanceof Error
+    is true
   result: pass
 - claim: e.message on a pageerror event is always a string, even when the page throws
     a non-Error value (string, number, undefined, null, plain object, DOMException)
@@ -19,4 +20,6 @@ assertions:
     to strings before the listener fires
   result: pass
 raw_output_path: .ll/learning-tests/raw/playwright.txt
+proven_package: playwright
+proven_version: 1.57.0
 ---

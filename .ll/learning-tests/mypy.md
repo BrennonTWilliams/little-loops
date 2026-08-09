@@ -25,4 +25,6 @@ assertions:
     stub" errors for a missing module
   result: pass
 raw_output_path: .ll/learning-tests/raw/mypy.txt
+proven_package: mypy
+proven_version: 1.10.1
 ---

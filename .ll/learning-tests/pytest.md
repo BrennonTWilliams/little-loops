@@ -17,4 +17,6 @@ assertions:
 - claim: capsys.readouterr() captures stdout printed during the test body
   result: pass
 raw_output_path: .ll/learning-tests/raw/pytest.txt
+proven_package: pytest
+proven_version: 9.0.1
 ---

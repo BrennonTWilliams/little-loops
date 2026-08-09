@@ -50,7 +50,12 @@ def cmd_check(args: argparse.Namespace) -> int:
             except (OSError, _json.JSONDecodeError):
                 pass
 
-        if record.status != "proven" or is_record_stale(record, lt_config.stale_after_days):
+        if record.status != "proven" or is_record_stale(
+            record,
+            lt_config.stale_after_days,
+            version_aware=lt_config.version_aware_staleness,
+            backstop_multiplier=lt_config.version_match_backstop_multiplier,
+        ):
             return 1
 
     return 0
@@ -89,12 +94,95 @@ def cmd_prove(args: argparse.Namespace) -> int:
         print(f"Error: no record found for {args.target!r}", file=sys.stderr)
         return 1
 
+    _stamp_proven_version(args.target, record)
     _record_learning_test_mirror(args.target)
 
     print_json(record.to_dict())
     if record.status != "proven":
         print(f"Error: {args.target!r} re-proven as {record.status}", file=sys.stderr)
         return 1
+    return 0
+
+
+def _write_version_fields(target: str, pkg: str, version: str) -> bool:
+    """Stamp ``proven_package``/``proven_version`` onto a record on disk.
+
+    Returns True if the file was written. Records are authored as YAML by
+    ``/ll:explore-api`` (never by ``write_record()``), so this enriches the
+    file in place rather than rewriting it (ENH-3125).
+    """
+    from pathlib import Path
+
+    from little_loops.frontmatter import update_frontmatter
+    from little_loops.issue_parser import slugify
+
+    path = Path.cwd() / ".ll" / "learning-tests" / f"{slugify(target)}.md"
+    if not path.exists():
+        return False
+    updated = update_frontmatter(
+        path.read_text(), {"proven_package": pkg, "proven_version": version}
+    )
+    path.write_text(updated)
+    return True
+
+
+def _stamp_proven_version(target: str, record: object) -> None:
+    """Capture the installed version the target was just proven against (ENH-3125).
+
+    This is the *only* mechanism the version-drift staleness check depends on
+    for populating the fields: record creation is owned by ``/ll:explore-api``,
+    and an LLM-typed version would be non-deterministic and could silently
+    poison the comparison toward "not stale". Best-effort — a resolution or
+    write failure leaves the record on the age-based path.
+    """
+    try:
+        from little_loops.learning_tests.gate import resolve_target_version
+
+        resolved = resolve_target_version(target)
+        if resolved is None:
+            return
+        pkg, version = resolved
+        if (
+            getattr(record, "proven_package", None) == pkg
+            and getattr(record, "proven_version", None) == version
+        ):
+            return
+        if _write_version_fields(target, pkg, version):
+            record.proven_package = pkg  # type: ignore[attr-defined]
+            record.proven_version = version  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+
+def cmd_backfill_versions(args: argparse.Namespace) -> int:
+    """Stamp proven_package/proven_version onto pre-ENH-3125 records."""
+    from little_loops.learning_tests import list_records
+    from little_loops.learning_tests.gate import resolve_target_version
+
+    changed = 0
+    skipped = 0
+    for record in list_records():
+        resolved = resolve_target_version(record.target)
+        if resolved is None:
+            # Stdlib, unresolvable, or free-text target — stays on the
+            # age-based path by design, not a failure.
+            skipped += 1
+            continue
+        pkg, version = resolved
+        if record.proven_package == pkg and record.proven_version == version:
+            skipped += 1
+            continue
+        if args.dry_run:
+            print(f"would stamp {record.target}  →  {pkg} {version}")
+            changed += 1
+        elif _write_version_fields(record.target, pkg, version):
+            print(f"stamped {record.target}  →  {pkg} {version}")
+            changed += 1
+        else:
+            skipped += 1
+
+    verb = "would stamp" if args.dry_run else "stamped"
+    print(f"\n{verb} {changed} record(s); left {skipped} unchanged.")
     return 0
 
 
@@ -269,6 +357,25 @@ Examples:
         )
         prove_parser.add_argument("target", help="Target name (e.g. 'Anthropic SDK streaming')")
 
+        backfill_parser = subparsers.add_parser(
+            "backfill-versions",
+            help="Stamp proven_package/proven_version onto existing records",
+            description=(
+                "Resolve each record's target to an installed distribution and stamp "
+                "proven_package/proven_version onto its frontmatter (ENH-3125), enabling "
+                "version-drift staleness for records proven before the fields existed. "
+                "Stdlib and non-distribution targets are left untouched and keep "
+                "age-based staleness. Idempotent."
+            ),
+        )
+        backfill_parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            default=False,
+            dest="dry_run",
+            help="Print what would be stamped without writing any record",
+        )
+
         parsed = parser.parse_args()
 
         if parsed.command == "check":
@@ -281,6 +388,8 @@ Examples:
             return cmd_orphans(parsed)
         elif parsed.command == "prove":
             return cmd_prove(parsed)
+        elif parsed.command == "backfill-versions":
+            return cmd_backfill_versions(parsed)
         else:
             parser.print_help()
             return 1
