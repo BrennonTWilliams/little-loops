@@ -16,7 +16,8 @@ labels:
 relates_to:
 - BUG-3088
 - BUG-3107
-confidence_score: 95
+confidence_score: 100
+testable: false
 outcome_confidence: 82
 score_complexity: 22
 score_test_coverage: 25
@@ -34,6 +35,42 @@ directly contradicting the new lint added in [[BUG-3107]] — and no doc
 explains the `["."]` runtime fallback that makes the lint worth having.
 Depends on [[BUG-3107]] landing first, since these docs describe that rule's
 behavior and remedy message.
+
+## Current Behavior
+
+`skills/create-loop/reference.md:631` tells authors "Most users can omit
+this field... Single-loop use cases do not require scope declaration," and
+`skills/create-loop/loop-types.md`'s four template scaffolds ship `scope:`
+commented out. This directly contradicts the `_validate_missing_scope()`
+WARNING lint added in [[BUG-3107]], which fires on any loop with a falsy
+`scope`. `docs/guides/LOOPS_GUIDE.md`'s "Scope-Based Concurrency" section and
+`docs/guides/LOOPS_REFERENCE.md`'s "Scope Declaration" section describe the
+`["."]` runtime fallback's shape but never mention that omitting `scope:` now
+also emits a validate-time WARNING, and `LOOPS_GUIDE.md`'s Notes bullet
+("Loops with non-overlapping scopes run concurrently") is inaccurate for any
+unscoped loop, which effectively holds a repo-root lock.
+
+## Expected Behavior
+
+Every doc that mentions `scope:` (`skills/create-loop/reference.md`,
+`skills/create-loop/loop-types.md`'s scaffolds, `docs/guides/LOOPS_GUIDE.md`,
+`docs/guides/LOOPS_REFERENCE.md`, `docs/development/TROUBLESHOOTING.md`, and
+the `fsm-loop-schema.json` `scope` property description) consistently tells
+authors to declare `scope:` explicitly (using `["."]` for genuinely
+repo-wide loops), correctly attributes the mechanism to `ll-loop run` (not
+`ll-parallel`), and explains both the `["."]` fallback and the no-scope
+WARNING lint it now triggers — so a new loop author reading any one of these
+docs gets the same, lint-compliant guidance.
+
+## Steps to Reproduce
+
+1. Read `skills/create-loop/reference.md:631` ("Most users can omit this
+   field...").
+2. Run `ll-loop validate` against any loop lacking `scope:` (e.g. one of the
+   11 `oracles/*.yaml` sub-loops) and observe the `_validate_missing_scope()`
+   WARNING.
+3. Observe the contradiction: the doc says omitting `scope:` is fine; the
+   validator warns that omitting it causes false lock conflicts.
 
 ## Parent Issue
 
@@ -81,6 +118,16 @@ Audit unscoped loops and warn at validate time when `scope:` is missing.
 
 _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
 
+_Added by `/ll:refine-issue` — 2026-08-09 — based on codebase analysis:_
+
+### Second-pass corrections (from `/ll:refine-issue` re-run)
+- `skills/create-loop/reference.md:568` — currently attributes the `scope:` mechanism to `ll-parallel` ("used by `ll-parallel` to prevent concurrent loops from conflicting"); the actual consumer is `ll-loop run` (`cli/loop/run.py:373`) and its background pre-flight (`cli/loop/_helpers.py:1552`) — `scripts/little_loops/cli/parallel.py` (`main_parallel()`) and `scripts/little_loops/parallel/worker_pool.py` contain no references to `scope`, `LockManager`, or `resolve_scope`. This misattribution needs correcting alongside line 631.
+- `skills/create-loop/reference.md:575` — the "an empty `scope` (or omitting it) is treated as the whole project" sentence is accurate about the `["."]` fallback but is scoped by surrounding prose as an `ll-parallel` behavior; needs re-scoping to `ll-loop run`, not new content.
+- `docs/guides/LOOPS_REFERENCE.md:1486-1518` (`## Concurrency and Locking` → `### Scope Declaration`) — a file not in the original Files-to-Modify list. Its fallback table (line 1510: `| No scope | Treated as ["."] (whole project) |`) is already accurate but says nothing about the new validate-time WARNING — the same gap as `LOOPS_GUIDE.md`, in a second file.
+- `LockManager.find_conflict()` (`concurrency.py:212-291`) does NOT itself apply the `["."]` fallback — only `.acquire()` does (`concurrency.py:162-164`, before it internally calls `find_conflict()`). Both `cli/loop/run.py:373` and `cli/loop/_helpers.py:1552` call `find_conflict()` directly (not via `acquire()`) and pre-apply `fsm.scope or ["."]` themselves before the call. `wait_for_scope()` (`concurrency.py:343`) calls `find_conflict()` without pre-applying the fallback, so an empty scope passed there stays empty rather than widening to repo-root.
+- Verbatim current `scope` description string in `fsm-loop-schema.json:32`: `"Paths this loop operates on (for concurrency control)"` — says nothing about the WARNING or the fallback.
+- `docs/reference/API.md:5182` (not 5181 — drifted one further line since the last refine pass) — `scope: list[str] = []` — matches the dataclass default; still no change needed.
+
 ### Files to Modify
 - `skills/create-loop/reference.md:631` — rewrite "Most users can omit this field..." guidance to require declaring `scope:` explicitly
 - `skills/create-loop/loop-types.md:159,274,388,498` — un-comment `# scope: ["src/"]` template lines, drop "Optional" wording
@@ -111,6 +158,14 @@ _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
+
+_Added by `/ll:refine-issue` — 2026-08-09 — based on codebase analysis:_
+
+### Second-pass additions
+- Exact WARNING message emitted by `_validate_missing_scope()` (`structural_rules.py:1222-1244`), for docs to quote verbatim: `Loop declares no 'scope:'. Without it, ll-loop run falls back to a repo-root lock that false-conflicts with every other concurrently running loop. Add 'scope: ["path/"]' naming the paths this loop writes to, or 'scope: ["."]' as the explicit repo-wide opt-in.`
+- The lint fires recursively into sub-loops: `load_and_validate()` recurses into every child loop reachable via a `loop:`+`with:` state (`structural_rules.py:280`) and prints each WARNING via `logger.warning()` independent of the deduped return list (`:1678-1679`) — a parent loop that calls the same scope-less child from two call sites prints the same WARNING twice (confirmed live by BUG-3124; still true today for the 11 other `oracles/*.yaml` sub-loops that lack scope). Docs describing the lint should mention this doubling, not just the single-loop case.
+- No suppression flag exists in the validator (`_validate_missing_scope` takes none, unlike most MR-N rules which take a `<flag>: true`). The only exemption mechanism is test-side bookkeeping (`scripts/tests/test_builtin_loops.py:125-138` `_SCOPE_EXEMPT_STEMS`, currently 11 entries) that suppresses the test suite's own re-failure — it does nothing to suppress the WARNING an end user sees running `ll-loop validate`.
+- `docs/reference/CLI.md:790-814` documents lint rules as a flat bulleted list (`- **<Rule> (SEVERITY)**: <trigger>. <rationale>. <blocking behavior>.`), not a table — Implementation Step 6's "same format" phrasing should read as "same bullet shape," since no table exists in this section.
 
 ### Types
 N/A — no new data types; this is a documentation-only issue.
@@ -164,6 +219,9 @@ open
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-09T01:13:17 - `eeecc6ba-9974-499a-9170-e14e1eca9ada.jsonl`
+- `/ll:format-issue` - 2026-08-09T00:59:28 - `5be1007f-942a-471a-9b64-8ac54ca01d23.jsonl`
+- `/ll:refine-issue` - 2026-08-09T00:32:48 - `cb84e626-21da-4bd4-af5e-f30f4430fc4e.jsonl`
 - `/ll:confidence-check` - 2026-08-08T18:16:36 - `47f42065-4220-4c09-974b-7fd99cd15eb2.jsonl`
 - `/ll:confidence-check` - 2026-08-08T17:37:15 - `102c803e-68ba-4b70-826e-9d87622f3b54.jsonl`
 - `/ll:reconcile-issue` - 2026-08-08T17:34:58 - `fb850fdf-cc95-448f-b74b-37536665ad19.jsonl`
