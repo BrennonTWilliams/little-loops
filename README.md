@@ -78,6 +78,8 @@ ll-init
 
 **Using Kimi Code CLI?** Run `ll-init --hosts kimi-code` and `ll-adapt --host kimi-code --apply`, then install the plugin for the `/ll:*` slash-command surface and lifecycle hooks (`/plugins install https://github.com/BrennonTWilliams/little-loops` in the kimi TUI — installs are per-user, not per-project). Set `LL_HOST_CLI=kimi-code` to drive `ll-auto`/`ll-loop` with kimi. See [docs/kimi/getting-started.md](docs/kimi/getting-started.md).
 
+**Registering the `ll-mcp` server for Claude Code?** Run `ll-adapt --host claude-code --apply` to merge an `ll-mcp` entry into `.mcp.json` at the project root, without clobbering any existing `mcpServers` content.
+
 <details>
 <summary>Alternative install methods</summary>
 

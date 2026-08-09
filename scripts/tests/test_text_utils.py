@@ -369,6 +369,17 @@ class TestMirrorTieBreak:
         # `.claude/` is source, not a generated mirror — it must never be excluded.
         assert ".claude/" not in _mirror_prefixes()
 
+    def test_mirror_prefixes_includes_inert_dot_slash_for_claude_code(self) -> None:
+        """claude-code's config_dir="." (FEAT-3139) yields an inert "./" prefix.
+
+        No tracked repo-relative path (from `git ls-files -z`) carries a
+        leading "./" segment, so this entry never excludes a real match in
+        `suffix_match_candidates()`.
+        """
+        assert "./" in _mirror_prefixes()
+        index = RefIndex(by_basename={"SKILL.md": ["skills/commit/SKILL.md"]})
+        assert suffix_match_candidates("SKILL.md", index) == ["skills/commit/SKILL.md"]
+
 
 class TestClassifyIssueRefs:
     """Tests for classify_issue_refs() over a whole issue body."""

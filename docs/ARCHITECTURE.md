@@ -1310,9 +1310,9 @@ The merge coordinator is a sophisticated git operations state machine that handl
 `adapters/capabilities.py` (ENH-2873/ENH-2874) is a declarative per-host
 capability map for `ll-adapt`'s build-time artifact generation: one
 `HostCapabilityEntry` per adapter host (`codex`, `gemini`, `omp`,
-`kimi-code`) in `adapters/core.py`'s `_EMITTER_MAP`, replacing knowledge
-that was previously scattered as conditional code across
-`codex.py`/`gemini.py`/`omp.py`/`kimi.py`. Each
+`kimi-code`, `claude-code`) in `adapters/core.py`'s `_EMITTER_MAP`, replacing
+knowledge that was previously scattered as conditional code across
+`codex.py`/`gemini.py`/`omp.py`/`kimi.py`/`claude_code.py`. Each
 entry's `SubagentSupport` field (`"native"` vs `"none"`, ENH-2874) drives
 whether `core.py` emits a real subagent file for a role or falls back to a
 degraded inline-role file (`0af1e555`) when the target host can't spawn

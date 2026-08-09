@@ -1,11 +1,12 @@
 """Declarative per-host capability map for adapter hosts (ENH-2873).
 
 One :class:`HostCapabilityEntry` per host in ``adapters/core.py``'s
-``_EMITTER_MAP`` (``"codex"``, ``"gemini"``, ``"omp"``). This module is the
-single place adapter-host knowledge is written down as data; today the same
-knowledge is scattered as code across ``codex.py``, ``gemini.py``, and
-``omp.py`` (which fields a host reads, whether it takes agents, how tools map
-to a sandbox mode). ``ENH-2883`` will drive ``core.py``'s dispatch from these
+``_EMITTER_MAP`` (``"codex"``, ``"gemini"``, ``"omp"``, ``"kimi-code"``,
+``"claude-code"``). This module is the single place adapter-host knowledge is
+written down as data; today the same knowledge is scattered as code across
+``codex.py``, ``gemini.py``, ``omp.py``, ``kimi.py``, and ``claude_code.py``
+(which fields a host reads, whether it takes agents, how tools map to a
+sandbox mode). ``ENH-2883`` will drive ``core.py``'s dispatch from these
 entries; this module is additive only — it does not change emission
 behavior.
 
@@ -13,13 +14,15 @@ behavior.
 2026-07-28):** this map is a distinct **build-time** surface — "what does
 `ll-adapt` write for this host" — cross-referenced by docstring only, with no
 inheritance from `host_runner.HostCapabilities` (a **runtime** invocation
-surface: "what can this host's CLI do when it's running"). The two key sets
-are not congruent (this module: ``codex``/``gemini``/``omp``; `host_runner`
-adds ``claude-code``/``opencode``/``pi``), which makes an "extends"
-relationship structurally awkward for hosts on only one side. Precedent:
-``cli/doctor.py``'s ``CheckResult`` mirrors `host_runner.CapabilityEntry`'s
-shape in its docstring without subclassing it. See
-`host_runner.HostCapabilities` for the runtime-side surface and
+surface: "what can this host's CLI do when it's running"). Historically the
+two key sets were not congruent (this module lacked ``claude-code``, which
+`host_runner` already had); FEAT-3139 added a ``"claude-code"`` entry here
+too (MCP-config emission only — no skill/command/agent adaptation), so the
+sets now overlap on that one key while ``opencode``/``pi`` remain
+`host_runner`-only, keeping an "extends" relationship structurally awkward.
+Precedent: ``cli/doctor.py``'s ``CheckResult`` mirrors
+`host_runner.CapabilityEntry`'s shape in its docstring without subclassing
+it. See `host_runner.HostCapabilities` for the runtime-side surface and
 ``docs/reference/HOST_COMPATIBILITY.md`` for the authoritative parity matrix
 both sides are checked against.
 """
@@ -137,5 +140,23 @@ HOST_CAPABILITIES: dict[str, HostCapabilityEntry] = {
         commands=True,
         hooks=True,
         subagents="native",
+    ),
+    "claude-code": HostCapabilityEntry(
+        host="claude-code",
+        # "." (project root), not a dotted subdirectory like the other four
+        # hosts — .mcp.json must live at the project root, and skills/
+        # commands/agents need no adapter-side output at all (the plugin
+        # marketplace serves them natively). See FEAT-3139's Proposed
+        # Solution Option A for why this reuses meta["output_dir"] instead
+        # of adding a new HostCapabilityEntry field.
+        config_dir=".",
+        skill_output_format=None,
+        command_output_format=None,
+        agent_output_format=None,
+        frontmatter_fields_read=(),
+        agents=False,
+        commands=False,
+        hooks=False,
+        subagents="none",
     ),
 }

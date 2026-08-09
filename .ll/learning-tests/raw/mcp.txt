@@ -1,0 +1,7 @@
+mcp package file: /var/folders/dg/j0h3vvbj20n6gd7077j8v5qr0000gn/T/tmp.T93JQNLilU/venv/lib/python3.12/site-packages/mcp/__init__.py
+CLAIM installed-version-is-2.0.0: True (actual: 2.0.0 )
+CLAIM stdio-is-ndjson-not-content-length: True
+CLAIM modern-connection-rejects-initialize: True
+CLAIM server-caching-module-has-ttl-and-cachescope: True
+CLAIM lowlevel-server-mentions-ttl-cache-fill: True
+CLAIM lowlevel-server-docstring-shows-handler-registration: True

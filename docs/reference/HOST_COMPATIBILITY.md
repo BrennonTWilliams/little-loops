@@ -217,17 +217,22 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
 ## Adapter Host Capabilities
 
 Build-time capabilities of `ll-adapt`'s per-host output emitters
-(`scripts/little_loops/adapters/{codex,gemini,omp,kimi}.py`), authored in
-`scripts/little_loops/adapters/capabilities.py`'s `HOST_CAPABILITIES` map
-(ENH-2873). This is a **distinct surface from "Runner Capabilities" above**:
-this table describes what `ll-adapt` writes to disk for a host (build-time
-emission); the Runner Capabilities table above describes what a host's CLI
-can do when it is invoked (runtime invocation). The two host key sets are
-not congruent — `claude-code`/`opencode`/`pi` have no adapter-side entry at
-all, since `ll-adapt` only emits for hosts that need frontmatter translated
-into a different discovery format. `ll-verify-host-map` (`ll-doctor --full`)
-mechanically checks this table against the map, `host_runner.HostCapabilities`,
-and the emitters' actual behavior — see its module docstring for the checks.
+(`scripts/little_loops/adapters/{codex,gemini,omp,kimi,claude_code}.py`),
+authored in `scripts/little_loops/adapters/capabilities.py`'s
+`HOST_CAPABILITIES` map (ENH-2873). This is a **distinct surface from
+"Runner Capabilities" above**: this table describes what `ll-adapt` writes to
+disk for a host (build-time emission); the Runner Capabilities table above
+describes what a host's CLI can do when it is invoked (runtime invocation).
+The two host key sets are not fully congruent — `opencode`/`pi` have no
+adapter-side entry at all, since `ll-adapt` only emits for hosts that need
+frontmatter translated into a different discovery format or an MCP config
+written. `claude-code` is the one host present on both sides: its
+adapter-side entry (FEAT-3139) emits only `.mcp.json` at the project root
+(`config_dir="."`) — skills/commands/agents need no adapter-side output since
+the plugin marketplace serves them natively. `ll-verify-host-map`
+(`ll-doctor --full`) mechanically checks this table against the map,
+`host_runner.HostCapabilities`, and the emitters' actual behavior — see its
+module docstring for the checks.
 
 | Host   | Config dir | Skill output                                 | Command output                          | Agent output                | Subagents | Agents | Commands | Hooks |
 | ------ | ---------- | --------------------------------------------- | ---------------------------------------- | ---------------------------- | --------- | ------ | -------- | ----- |
@@ -235,6 +240,12 @@ and the emitters' actual behavior — see its module docstring for the checks.
 | gemini | `.gemini`  | SKILL.md (name injected, `metadata.short-description` stripped) | TOML (`.gemini/commands/<stem>.toml`)    | Markdown, degraded mode (`.gemini/agents/<name>.md`) — authored body verbatim, prefixed with an inline-execution + one-line-disclosure preamble (ENH-2874) | none      | ✓      | ✓        | ✗     |
 | omp    | `.omp` | SKILL.md (name injected when absent, `.omp/skills/<name>/SKILL.md`) | Markdown, flat file (`.omp/commands/<stem>.md`, self-derived path — no bridging into `skills/`) | Markdown, native task-agent file (`.omp/agents/<name>.md`) | native | ✓ | ✓ | ✗ |
 | kimi-code | `.kimi-code` | SKILL.md (name injected when absent, `metadata.short-description` stripped) | bridged into `.kimi-code/skills/ll-<stem>/` (SKILL.md) — no project-local commands surface outside plugins | Markdown, native Claude-style agent file (`.kimi-code/agents/<name>.md`) | native | ✓ | ✓ | ✓ |
+| claude-code | `.` (project root) | none — plugin marketplace serves skills natively | none — plugin marketplace serves commands natively | none — plugin marketplace serves agents natively | none | ✗ | ✗ | ✗ |
+
+`claude-code`'s only real emission is `emit_mcp_config`, writing/merging the
+`ll-mcp` server entry into `.mcp.json` at the project root (not a `Config
+dir` row column since MCP config isn't captured in this table — see
+`emit_mcp_config` in `ClaudeCodeEmitter`, `adapters/claude_code.py`).
 
 omp's emitter (`adapters/omp.py`) is tracked by **EPIC-2258**; `emit_skill`/
 `emit_command` are real as of **FEAT-3105**, against the native discovery

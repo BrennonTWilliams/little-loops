@@ -45,13 +45,14 @@ Examples:
   ll-adapt --host codex --apply        # Write Codex artefacts
   ll-adapt --host codex --only codebase-analyzer --apply  # Single agent
   ll-adapt --host codex --quiet        # Suppress per-entry output
+  ll-adapt --host claude-code --apply  # Merge ll-mcp into .mcp.json
 """,
         )
         parser.add_argument(
             "--host",
             required=True,
             metavar="HOST",
-            help="Target host (e.g. codex, omp, kimi-code)",
+            help="Target host (e.g. codex, omp, kimi-code, claude-code)",
         )
         parser.add_argument(
             "--apply",

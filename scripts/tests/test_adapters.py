@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from little_loops.adapters.claude_code import ClaudeCodeEmitter
 from little_loops.adapters.codex import _MARKER, CodexEmitter
 from little_loops.adapters.core import (
     AdapterError,
@@ -1637,3 +1638,99 @@ class TestOmpEmitterEmitMcpConfig:
     def test_returns_skipped(self, tmp_path: Path) -> None:
         meta = {"output_dir": tmp_path / ".omp", "apply": True, "quiet": True}
         assert OmpEmitter().emit_mcp_config(meta) == "skipped"
+
+
+# =============================================================================
+# ClaudeCodeEmitter (FEAT-3139)
+# =============================================================================
+
+
+class TestResolveEmitterClaudeCode:
+    def test_claude_code_returns_claude_code_emitter(self) -> None:
+        assert isinstance(resolve_emitter("claude-code"), ClaudeCodeEmitter)
+
+    def test_claude_code_emitter_satisfies_protocol(self) -> None:
+        assert isinstance(resolve_emitter("claude-code"), HostEmitter)
+
+
+class TestClaudeCodeEmitterStubs:
+    def test_emit_skill_returns_skipped(self) -> None:
+        assert ClaudeCodeEmitter().emit_skill({}) == "skipped"
+
+    def test_emit_command_returns_skipped(self) -> None:
+        assert ClaudeCodeEmitter().emit_command({}) == "skipped"
+
+    def test_emit_agent_returns_skipped(self) -> None:
+        assert ClaudeCodeEmitter().emit_agent({}) == "skipped"
+
+
+class TestClaudeCodeEmitterEmitMcpConfig:
+    def _meta(self, tmp_path: Path, apply: bool = True) -> dict:
+        return {
+            "output_dir": tmp_path,
+            "apply": apply,
+            "quiet": True,
+        }
+
+    def _mcp_path(self, tmp_path: Path) -> Path:
+        return tmp_path / ".mcp.json"
+
+    def test_creates_file_when_absent(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path)
+        ClaudeCodeEmitter().emit_mcp_config(meta)
+        assert self._mcp_path(tmp_path).exists()
+
+    def test_written_entry_references_ll_mcp(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path)
+        ClaudeCodeEmitter().emit_mcp_config(meta)
+        data = json.loads(self._mcp_path(tmp_path).read_text())
+        assert data["mcpServers"]["ll-mcp"] == {"command": "ll-mcp"}
+
+    def test_dry_run_does_not_write(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, apply=False)
+        ClaudeCodeEmitter().emit_mcp_config(meta)
+        assert not self._mcp_path(tmp_path).exists()
+
+    def test_returns_adapted_on_first_run(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path)
+        assert ClaudeCodeEmitter().emit_mcp_config(meta) == "adapted"
+
+    def test_up_to_date_returns_skipped(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path)
+        ClaudeCodeEmitter().emit_mcp_config(meta)
+        assert ClaudeCodeEmitter().emit_mcp_config(meta) == "skipped"
+
+    def test_idempotent(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path)
+        ClaudeCodeEmitter().emit_mcp_config(meta)
+        content1 = self._mcp_path(tmp_path).read_text()
+        ClaudeCodeEmitter().emit_mcp_config(meta)
+        assert self._mcp_path(tmp_path).read_text() == content1
+
+    def test_merges_into_existing_sibling_entry(self, tmp_path: Path) -> None:
+        mcp_path = self._mcp_path(tmp_path)
+        mcp_path.write_text(json.dumps({"mcpServers": {"other-server": {"command": "foo"}}}))
+        meta = self._meta(tmp_path)
+        ClaudeCodeEmitter().emit_mcp_config(meta)
+        data = json.loads(mcp_path.read_text())
+        assert data["mcpServers"]["other-server"] == {"command": "foo"}
+        assert data["mcpServers"]["ll-mcp"] == {"command": "ll-mcp"}
+
+    def test_overwrites_stale_ll_mcp_entry(self, tmp_path: Path) -> None:
+        mcp_path = self._mcp_path(tmp_path)
+        mcp_path.write_text(
+            json.dumps({"mcpServers": {"ll-mcp": {"command": "old-ll-mcp-path"}}})
+        )
+        meta = self._meta(tmp_path)
+        result = ClaudeCodeEmitter().emit_mcp_config(meta)
+        assert result == "adapted"
+        data = json.loads(mcp_path.read_text())
+        assert data["mcpServers"]["ll-mcp"] == {"command": "ll-mcp"}
+
+    def test_tolerates_malformed_existing_json(self, tmp_path: Path) -> None:
+        mcp_path = self._mcp_path(tmp_path)
+        mcp_path.write_text("not valid json")
+        meta = self._meta(tmp_path)
+        assert ClaudeCodeEmitter().emit_mcp_config(meta) == "adapted"
+        data = json.loads(mcp_path.read_text())
+        assert data["mcpServers"]["ll-mcp"] == {"command": "ll-mcp"}

@@ -54,6 +54,7 @@ _EMITTER_MAP: dict[str, tuple[str, str]] = {
     "gemini": ("little_loops.adapters.gemini", "GeminiEmitter"),
     "omp": ("little_loops.adapters.omp", "OmpEmitter"),
     "kimi-code": ("little_loops.adapters.kimi", "KimiEmitter"),
+    "claude-code": ("little_loops.adapters.claude_code", "ClaudeCodeEmitter"),
 }
 
 
@@ -61,7 +62,8 @@ def resolve_emitter(host: str) -> HostEmitter:
     """Return a :class:`HostEmitter` instance for *host*.
 
     Args:
-        host: One of ``"codex"``, ``"gemini"``, ``"omp"``, ``"kimi-code"``.
+        host: One of ``"codex"``, ``"gemini"``, ``"omp"``, ``"kimi-code"``,
+            ``"claude-code"``.
 
     Returns:
         A :class:`HostEmitter` ready to emit skills, commands, and agents.
