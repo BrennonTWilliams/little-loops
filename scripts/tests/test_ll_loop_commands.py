@@ -4114,6 +4114,97 @@ class TestCmdShow:
         out = capsys.readouterr().out
         assert "min_confidence" not in out
 
+    def test_show_scope_absent_shows_default_fallback(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """No declared scope: shows the effective ["."] fallback with a (default) marker."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            '    action: "echo hello"\n'
+            "    on_yes: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "scope: . (default)" in out
+
+    def test_show_scope_explicit_repo_root_no_default_marker(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Explicit scope: ["."] is shown without the (default) marker."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "initial: check\n"
+            'scope: ["."]\n'
+            "states:\n"
+            "  check:\n"
+            '    action: "echo hello"\n'
+            "    on_yes: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "scope: ." in out
+        assert "(default)" not in out
+
+    def test_show_scope_explicit_named_path_no_default_marker(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Explicit named scope path is shown without the (default) marker."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "initial: check\n"
+            'scope: ["src/"]\n'
+            "states:\n"
+            "  check:\n"
+            '    action: "echo hello"\n'
+            "    on_yes: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "scope: src/" in out
+        assert "(default)" not in out
+
     def test_show_evaluate_operator_and_target(
         self,
         tmp_path: Path,

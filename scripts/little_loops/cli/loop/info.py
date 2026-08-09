@@ -44,6 +44,7 @@ from little_loops.cli.output import (
     terminal_width,
 )
 from little_loops.fsm import is_runnable_loop
+from little_loops.fsm.concurrency import resolve_scope
 from little_loops.fsm.fragments import resolve_inheritance
 from little_loops.fsm.schema import FSMLoop, StateConfig
 from little_loops.fsm.validation import load_and_validate
@@ -1537,8 +1538,11 @@ def cmd_show(
         config_parts.append("maintain: yes")
     if fsm.context:
         config_parts.append(f"context: {', '.join(fsm.context.keys())}")
+    effective_scope = resolve_scope(fsm.scope or ["."], fsm.context)
     if fsm.scope:
-        config_parts.append(f"scope: {', '.join(fsm.scope)}")
+        config_parts.append(f"scope: {', '.join(effective_scope)}")
+    else:
+        config_parts.append(f"scope: {', '.join(effective_scope)} (default)")
     llm = fsm.llm
     llm_parts = []
     if llm.model != "sonnet":

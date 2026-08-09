@@ -4,9 +4,10 @@ type: BUG
 title: '`cli/loop/info.py` should show the effective scope (including the `["."]`
   fallback), not just declared `scope:`'
 priority: P4
-status: open
+status: done
 parent: BUG-3088
 captured_at: '2026-08-08T00:00:00Z'
+completed_at: '2026-08-09T00:38:59Z'
 discovered_date: 2026-08-08
 discovered_by: issue-size-review
 labels:
@@ -141,6 +142,7 @@ open
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-09T00:38:54 - `1fa224d3-2269-48ed-8b1a-1babb060f94c.jsonl`
 - `/ll:confidence-check` - 2026-08-08T18:48:39 - `1b4ff01b-24fc-4de9-98e5-949ef8d76b00.jsonl`
 - `/ll:wire-issue` - 2026-08-08T17:50:42 - `2f6d65a1-cd0b-4c54-a567-95d199d69f4e.jsonl`
 - `/ll:format-issue` - 2026-08-08T17:35:07 - `293687b4-b50e-40d1-8c8a-ec8456bd972c.jsonl`
