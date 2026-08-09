@@ -1,4 +1,4 @@
-"""Builds and runs the `ll-mcp` stdio server (FEAT-3135, FEAT-3136).
+"""Builds and runs the `ll-mcp` stdio server (FEAT-3135, FEAT-3136, FEAT-3137).
 
 No Roots, Sampling, or Logging handlers are registered — all three were deprecated in the
 2026-07-28 spec with a 12-month minimum window — and no MRTR (multi round-trip) request shape
@@ -6,7 +6,8 @@ is issued or handled: every tool resolves from its own params in a single round 
 `server/discover` is the SDK's default handler (no custom handler registered here), and it
 auto-derives capabilities from whatever handlers this module registers, so "advertises no
 Roots/Sampling/Logging" is satisfied structurally rather than needing its own assertion target.
-Resources ARE registered (FEAT-3136), so `caps.resources` is non-`None`.
+Resources ARE registered (FEAT-3136), so `caps.resources` is non-`None`. Prompts ARE registered
+(FEAT-3137, every discovered `SKILL.md`), so `caps.prompts` is non-`None`.
 """
 
 from __future__ import annotations
@@ -27,26 +28,33 @@ def _server_version() -> str:
 
 
 def build_server() -> Server:
-    """Construct the `ll-mcp` lowlevel `Server`: five read-only tools plus the `ll://`
-    resource surface.
+    """Construct the `ll-mcp` lowlevel `Server`: five read-only tools, the `ll://` resource
+    surface, and the prompts-from-skills surface.
 
-    The resource enumeration is built fresh here, once per `Server` instance — this function
-    is called once per stdio session (`run_stdio`) and once per test — rather than at module
-    import time, so it never leaks state across servers/tests.
+    The resource/prompt enumerations are built fresh here, once per `Server` instance — this
+    function is called once per stdio session (`run_stdio`) and once per test — rather than at
+    module import time, so they never leak state across servers/tests.
     """
     from mcp.server.caching import CacheHint
     from mcp.server.lowlevel import Server
 
     from little_loops.config import BRConfig
+    from little_loops.mcp_server.prompts import (
+        build_prompt_index,
+        make_get_prompt_handler,
+        make_list_prompts_handler,
+    )
     from little_loops.mcp_server.resources import (
         build_resource_index,
         make_list_resources_handler,
         make_read_resource_handler,
     )
     from little_loops.mcp_server.tools import handle_call_tool, handle_list_tools
+    from little_loops.skill_expander import _find_plugin_root
 
     config = BRConfig(Path.cwd())
     resource_index = build_resource_index(config)
+    prompt_index = build_prompt_index(_find_plugin_root() / "skills")
 
     return Server(
         "ll-mcp",
@@ -55,16 +63,19 @@ def build_server() -> Server:
         on_call_tool=handle_call_tool,
         on_list_resources=make_list_resources_handler(resource_index),
         on_read_resource=make_read_resource_handler(resource_index, config),
-        # tools/list, resources/list, and resources/read are the SEP-2549 cacheable methods
-        # this tier registers handlers for. The tool catalog and resource enumeration only
-        # change on an `ll-mcp` upgrade or restart, so a 5-minute, cross-client ("public")
-        # freshness window is safe for all three. This is the SDK auto-filling
-        # ttlMs/cacheScope from a server-wide hint, not something a handler sets by hand —
-        # see `mcp.server.caching.apply_cache_hint`.
+        on_list_prompts=make_list_prompts_handler(prompt_index),
+        on_get_prompt=make_get_prompt_handler(prompt_index),
+        # tools/list, resources/list, resources/read, and prompts/list are the SEP-2549
+        # cacheable methods this tier registers handlers for. The tool catalog, resource
+        # enumeration, and skill catalog only change on an `ll-mcp` upgrade or restart, so a
+        # 5-minute, cross-client ("public") freshness window is safe for all four. This is the
+        # SDK auto-filling ttlMs/cacheScope from a server-wide hint, not something a handler
+        # sets by hand — see `mcp.server.caching.apply_cache_hint`.
         cache_hints={
             "tools/list": CacheHint(ttl_ms=300_000, scope="public"),
             "resources/list": CacheHint(ttl_ms=300_000, scope="public"),
             "resources/read": CacheHint(ttl_ms=300_000, scope="public"),
+            "prompts/list": CacheHint(ttl_ms=300_000, scope="public"),
         },
     )
 

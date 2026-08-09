@@ -4233,6 +4233,17 @@ bodies); `resources/read` returns a resource's full body — the same summary-ca
 text for docs. Both `resources/list` and `resources/read` responses carry `ttlMs`/
 `cacheScope` per SEP-2549.
 
+Also advertises a `prompts` capability (FEAT-3137): every discovered `SKILL.md` — walked
+recursively so a nested `SKILL.md` registers as its own independent prompt rather than being
+absorbed as a parent skill's supporting file — is listed as an MCP prompt, with name (the
+containing directory name), description, and args read from frontmatter. A skill with
+`disable-model-invocation: true` is skipped. Like the resource surface, prompt names are
+enumerated once at server startup; `prompts/get` only ever serves a `name` already present in
+that enumeration, rejecting anything else without a filesystem read. `prompts/list` returns
+name/description/args from frontmatter only; `prompts/get` returns the skill's full body
+(frontmatter stripped) as a single user-role prompt message. `prompts/list` responses carry
+`ttlMs`/`cacheScope` per SEP-2549.
+
 **Arguments:** none — `ll-mcp` parses no flags; it is a protocol server, not a CLI.
 
 **Exit codes:** `0` = clean EOF/shutdown, `2` = missing the `mcp` extra, or a usage error

@@ -95,10 +95,11 @@ def test_tools_list_ordering_is_stable_across_calls(tmp_path, monkeypatch) -> No
     anyio.run(run)
 
 
-def test_discover_advertises_tools_and_resources_only(tmp_path, monkeypatch) -> None:
+def test_discover_advertises_tools_resources_and_prompts_only(tmp_path, monkeypatch) -> None:
     """No custom `server/discover` handler is registered; the SDK's default auto-derives
-    capabilities from registered handlers, so no Prompts/Sampling/Logging appear.
-    Resources ARE registered (FEAT-3136), so `caps.resources` is non-`None`."""
+    capabilities from registered handlers, so no Sampling/Logging appear.
+    Resources ARE registered (FEAT-3136) and Prompts ARE registered (FEAT-3137), so
+    `caps.resources`/`caps.prompts` are non-`None`."""
     _make_project(tmp_path, monkeypatch)
 
     async def run() -> None:
@@ -108,7 +109,7 @@ def test_discover_advertises_tools_and_resources_only(tmp_path, monkeypatch) -> 
             assert caps is not None
             assert caps.tools is not None
             assert caps.resources is not None
-            assert caps.prompts is None
+            assert caps.prompts is not None
             assert caps.logging is None
             assert getattr(caps, "sampling", None) is None
             assert getattr(caps, "roots", None) is None
@@ -408,5 +409,132 @@ def test_read_resource_outside_enumeration_is_rejected(tmp_path, monkeypatch) ->
             ):
                 with pytest.raises(MCPError):
                     await client.read_resource(bad_uri)
+
+    anyio.run(run)
+
+
+# ---------------------------------------------------------------------------
+# Prompts-from-skills (FEAT-3137)
+# ---------------------------------------------------------------------------
+
+
+def _make_skill(
+    plugin_root: Path,
+    rel_dir: str,
+    description: str = "Use when the user asks for stuff.",
+    args_hint: str | None = None,
+    disable_model_invocation: bool = False,
+    body: str = "# My Skill\n\nDoes stuff.",
+) -> Path:
+    skill_dir = plugin_root / "skills" / rel_dir
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    skill_md = skill_dir / "SKILL.md"
+    fm = f"description: {description}\n"
+    if args_hint is not None:
+        fm += f"args: {args_hint}\n"
+    if disable_model_invocation:
+        fm += "disable-model-invocation: true\n"
+    skill_md.write_text(f"---\n{fm}---\n\n{body}", encoding="utf-8")
+    return skill_md
+
+
+def _use_plugin_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path))
+    return tmp_path
+
+
+def test_list_prompts_returns_skills_with_frontmatter_and_cache_metadata(
+    tmp_path, monkeypatch
+) -> None:
+    _make_project(tmp_path, monkeypatch)
+    plugin_root = _use_plugin_root(tmp_path, monkeypatch)
+    _make_skill(plugin_root, "my-skill", description="Do the thing.", args_hint="ID [--force]")
+
+    async def run() -> None:
+        server = build_server()
+        async with Client(server) as client:
+            result = await client.list_prompts()
+            assert len(result.prompts) == 1
+            prompt = result.prompts[0]
+            assert prompt.name == "my-skill"
+            assert prompt.description == "Do the thing."
+            assert prompt.arguments is not None
+            assert prompt.arguments[0].name == "args"
+            assert prompt.arguments[0].description == "ID [--force]"
+            # SDK-supplied per SEP-2549 — not something a handler sets by hand.
+            assert result.ttl_ms > 0
+            assert result.cache_scope == "public"
+
+    anyio.run(run)
+
+
+def test_list_prompts_registers_nested_skill_md_as_own_prompt(tmp_path, monkeypatch) -> None:
+    _make_project(tmp_path, monkeypatch)
+    plugin_root = _use_plugin_root(tmp_path, monkeypatch)
+    _make_skill(plugin_root, "parent-skill", description="Parent.")
+    _make_skill(plugin_root, "parent-skill/nested-skill", description="Nested.")
+
+    async def run() -> None:
+        server = build_server()
+        async with Client(server) as client:
+            result = await client.list_prompts()
+            names = {p.name for p in result.prompts}
+            assert names == {"parent-skill", "nested-skill"}
+
+    anyio.run(run)
+
+
+def test_list_prompts_skips_disable_model_invocation_skills(tmp_path, monkeypatch) -> None:
+    _make_project(tmp_path, monkeypatch)
+    plugin_root = _use_plugin_root(tmp_path, monkeypatch)
+    _make_skill(plugin_root, "visible-skill", description="Visible.")
+    _make_skill(
+        plugin_root,
+        "hidden-skill",
+        description="Hidden.",
+        disable_model_invocation=True,
+    )
+
+    async def run() -> None:
+        server = build_server()
+        async with Client(server) as client:
+            result = await client.list_prompts()
+            names = {p.name for p in result.prompts}
+            assert names == {"visible-skill"}
+
+    anyio.run(run)
+
+
+def test_get_prompt_returns_skill_body_without_frontmatter(tmp_path, monkeypatch) -> None:
+    _make_project(tmp_path, monkeypatch)
+    plugin_root = _use_plugin_root(tmp_path, monkeypatch)
+    _make_skill(plugin_root, "my-skill", body="# My Skill\n\nDoes stuff.")
+
+    async def run() -> None:
+        server = build_server()
+        async with Client(server) as client:
+            result = await client.get_prompt("my-skill")
+            assert len(result.messages) == 1
+            message = result.messages[0]
+            assert message.role == "user"
+            assert message.content.text.strip() == "# My Skill\n\nDoes stuff."
+
+    anyio.run(run)
+
+
+def test_get_prompt_unknown_name_is_rejected(tmp_path, monkeypatch) -> None:
+    """A `name` never enumerated at startup is rejected without any filesystem read — dict
+    membership in the discovery-time enumeration is the entire access-control boundary."""
+    _make_project(tmp_path, monkeypatch)
+    _use_plugin_root(tmp_path, monkeypatch)
+    _make_skill(tmp_path, "my-skill")
+
+    async def run() -> None:
+        server = build_server()
+        async with Client(server) as client:
+            with pytest.raises(MCPError):
+                await client.get_prompt("../../etc/passwd")
+            with pytest.raises(MCPError):
+                await client.get_prompt("not-a-real-skill")
 
     anyio.run(run)
