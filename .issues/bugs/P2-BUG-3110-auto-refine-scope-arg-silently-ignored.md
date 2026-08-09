@@ -4,8 +4,9 @@ type: BUG
 title: '`auto-refine-and-implement` silently ignores its positional scope arg and
   works the whole backlog instead'
 priority: P2
-status: open
+status: done
 captured_at: '2026-08-08T00:00:00Z'
+completed_at: '2026-08-09T01:11:46Z'
 discovered_date: 2026-08-08
 discovered_by: loop-run-review
 testable: true
@@ -227,6 +228,7 @@ open
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-09T01:11:39 - `2c1d7c76-6c59-4873-a2b3-cbd3c6d7ab5a.jsonl`
 - `/ll:confidence-check` - 2026-08-08T17:26:47 - `0746a600-67e0-4eeb-88c7-015609fa694e.jsonl`
 - `/ll:wire-issue` - 2026-08-08T17:19:22 - `422e30b6-5b50-4f9d-ab32-5ca05586e8ad.jsonl`
 - `/ll:refine-issue` - 2026-08-08T17:11:15 - `73ca0bfa-eade-4557-92e6-107ab4dcd85a.jsonl`

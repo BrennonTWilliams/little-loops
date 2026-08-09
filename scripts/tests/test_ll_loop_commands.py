@@ -5202,6 +5202,34 @@ states:
         # Guard should not abort (exit 1 with guard message) — dry-run returns 0
         assert result == 0
 
+    def test_auto_refine_and_implement_positional_arg_binds_to_scope(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """BUG-3110 end-to-end: the real CLI positional arg reaches context.scope.
+
+        Exercises the actual built-in auto-refine-and-implement.yaml through
+        main_loop's argv parsing and injection path, not a synthetic fixture
+        loop — the structural test in test_builtin_loops.py only asserts the
+        YAML declares input_key: scope, it doesn't prove the CLI wiring
+        actually binds a positional arg to that key.
+        """
+        monkeypatch.chdir(tmp_path)
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-loop", "run", "--dry-run", "auto-refine-and-implement", "EPIC-3041"],
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "scope: 'EPIC-3041'" in out
+
 
 class TestCmdStatusJson:
     """Tests for ll-loop status --json."""

@@ -938,12 +938,16 @@ delegate (sub-loop: auto-refine-and-implement, scope=<sprint_name>)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `scope` | `""` (empty) | Sprint name or `EPIC-NNN` id (populated from positional CLI arg via input_key: scope); empty ranks the full backlog |
 | `max_issues` | `100` | Maximum number of issues to process before exiting |
 
 **Invocation**:
 ```bash
 # Process entire backlog
 ll-loop run auto-refine-and-implement
+
+# Scope to a sprint or EPIC (BUG-3110: positional arg binds to context.scope)
+ll-loop run auto-refine-and-implement EPIC-3041
 
 # Limit to first 10 issues
 ll-loop run auto-refine-and-implement --context max_issues=10
