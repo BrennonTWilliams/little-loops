@@ -317,7 +317,13 @@ async def handle_call_tool(
             is_error=True,
         )
 
+    # `structuredContent` is an arbitrary JSON value only on 2026-07-28; every earlier
+    # protocol version restricts it to a JSON *object*, and `mcp==2.0.0` negotiates down to
+    # 2025-11-25 even when a client asks for 2026-07-28. Attaching a list payload (the
+    # `issues_query`/`history_search` shape) therefore fails wire-level validation with
+    # -32603 for every real client. Send it only when it is a dict; the full payload — list
+    # or dict — always travels in `content[0].text` regardless.
     return types.CallToolResult(
         content=[types.TextContent(text=json.dumps(payload))],
-        structured_content=payload,
+        structured_content=payload if isinstance(payload, dict) else None,
     )

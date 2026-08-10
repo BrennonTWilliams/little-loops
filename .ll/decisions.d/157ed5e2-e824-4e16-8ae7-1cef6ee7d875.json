@@ -1,0 +1,14 @@
+{
+  "id": "7a20df60-5f6b-44e4-9299-162a836633f7",
+  "type": "rule",
+  "timestamp": "2026-08-10T01:40:18Z",
+  "category": "testing",
+  "labels": [
+    "extracted",
+    "global"
+  ],
+  "rationale": "The in-memory Client dispatches in-process and never serializes results, so it cannot catch encode-time/wire-level validation failures; 22 existing tests stayed green while two tools were completely broken for every real client.",
+  "rule": "For MCP server tools, add at least one test that drives a real stdio subprocess transport, not only the SDK's in-memory ",
+  "enforcement": "advisory",
+  "issue": "BUG-3140"
+}

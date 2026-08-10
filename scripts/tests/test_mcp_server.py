@@ -538,3 +538,79 @@ def test_get_prompt_unknown_name_is_rejected(tmp_path, monkeypatch) -> None:
                 await client.get_prompt("not-a-real-skill")
 
     anyio.run(run)
+
+
+def _stdio_call(tmp_path: Path, protocol_version: str, tool: str, arguments: dict) -> dict:
+    """Drive `ll-mcp` over a real stdin/stdout JSON-RPC exchange and return the response.
+
+    Unlike every other test here, this crosses the wire: it spawns the server as a
+    subprocess and speaks framed JSON-RPC at it. The in-memory `Client` skips result
+    serialization entirely, so it cannot observe validation failures that only occur on
+    encode — which is how the `structuredContent` regression below reached a release.
+    """
+    import subprocess
+    import sys
+
+    requests = [
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": protocol_version,
+                "capabilities": {},
+                "clientInfo": {"name": "pytest", "version": "1"},
+            },
+        },
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {"name": tool, "arguments": arguments},
+        },
+    ]
+    proc = subprocess.run(
+        [sys.executable, "-c", "from little_loops.mcp_server import main_mcp; main_mcp()"],
+        input="".join(json.dumps(r) + "\n" for r in requests),
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        timeout=60,
+    )
+    for line in proc.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            message = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if message.get("id") == 2:
+            return message
+    raise AssertionError(f"no tools/call response; stdout={proc.stdout!r} stderr={proc.stderr!r}")
+
+
+@pytest.mark.parametrize("protocol_version", ["2024-11-05", "2025-06-18", "2026-07-28"])
+@pytest.mark.parametrize("tool", ["issues_query", "history_search"])
+def test_list_returning_tools_serialize_over_stdio(
+    tmp_path, monkeypatch, tool: str, protocol_version: str
+) -> None:
+    """`issues_query`/`history_search` return a JSON *list*, and `structuredContent` is an
+    arbitrary JSON value only on 2026-07-28 — every earlier version restricts it to an
+    object, and `mcp==2.0.0` negotiates down to 2025-11-25 even when the client asks for
+    2026-07-28. Attaching the list unconditionally failed encode validation with -32603
+    ("Handler returned an invalid result") for every real client while the in-memory tests
+    stayed green. The payload must always arrive intact via `content[0].text`.
+    """
+    _make_project(tmp_path, monkeypatch)
+    _write_issue(tmp_path, "features", "P2-FEAT-3135-sample.md", ISSUE_BODY)
+
+    arguments = {"query": "sample", "limit": 1} if tool == "history_search" else {"limit": 5}
+    message = _stdio_call(tmp_path, protocol_version, tool, arguments)
+
+    assert "error" not in message, message.get("error")
+    result = message["result"]
+    assert not result.get("isError"), result
+    assert "structuredContent" not in result  # a list payload is never attached
+    assert isinstance(json.loads(result["content"][0]["text"]), list)
