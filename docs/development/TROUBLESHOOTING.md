@@ -318,6 +318,33 @@ that behavior, you're on a version predating the fix.)
    }
    ```
 
+### Timeout kill destroys in-flight work (mid-commit, mid-write)
+
+**Symptom**: A wall-clock or idle timeout fires while the agent is seconds
+from finishing (e.g. mid-`git commit` or mid-lifecycle-write), and the run
+comes back with a corrupted or incomplete working tree instead of the
+completed work.
+
+**Cause**: Before ENH-3130, a timeout sent an immediate `SIGKILL` to the
+process group with no chance for the child to wind down.
+
+**How it's handled**: `automation.timeout_kill_grace_seconds` (default `30`)
+sends `SIGTERM` first and gives the process group that long to exit cleanly
+before escalating to `SIGKILL`. Increase it if your runs routinely need more
+time to land a commit after a timeout fires:
+```json
+{
+  "automation": {
+    "timeout_kill_grace_seconds": 60
+  }
+}
+```
+Set it to `0` to restore the pre-ENH-3130 immediate-`SIGKILL` behavior. This
+only changes *how* a timeout kill happens, not *whether* one fires —
+`subprocess.TimeoutExpired` is still raised either way, so
+`automation.timeout_seconds`/`idle_timeout_seconds` still control when a run
+is considered timed out.
+
 ### Permission denied errors
 
 **Symptom**: Claude refuses to execute commands

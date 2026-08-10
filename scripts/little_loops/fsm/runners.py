@@ -51,6 +51,7 @@ class ActionRunner(Protocol):
         automation_profile: str | None = None,
         disable_background_tasks: bool = False,
         idle_timeout: int = 0,
+        timeout_kill_grace_seconds: float = 0.0,
     ) -> ActionResult:
         """Execute an action and return the result.
 
@@ -74,6 +75,10 @@ class ActionRunner(Protocol):
                 automation_profile is also set.
             idle_timeout: FEAT-3033 — kill the action if it emits no output for
                 this many seconds (0 disables idle detection, the default).
+            timeout_kill_grace_seconds: ENH-3130 — grace period (seconds)
+                given to the process group after a timeout fires before
+                escalating SIGTERM to SIGKILL. 0 (default) preserves the
+                historical immediate-SIGKILL behavior.
 
         Returns:
             ActionResult with output, stderr, exit_code, duration_ms
@@ -115,6 +120,7 @@ class DefaultActionRunner:
         automation_profile: str | None = None,
         disable_background_tasks: bool = False,
         idle_timeout: int = 0,
+        timeout_kill_grace_seconds: float = 0.0,
     ) -> ActionResult:
         """Execute action and return result, streaming output line by line.
 
@@ -139,6 +145,10 @@ class DefaultActionRunner:
                 automation_profile is also set.
             idle_timeout: FEAT-3033 — kill the action if it emits no output for
                 this many seconds (0 disables idle detection, the default).
+            timeout_kill_grace_seconds: ENH-3130 — grace period (seconds)
+                given to the process group after a timeout fires before
+                escalating SIGTERM to SIGKILL. 0 (default) preserves the
+                historical immediate-SIGKILL behavior.
 
         Returns:
             ActionResult with execution details
@@ -203,6 +213,7 @@ class DefaultActionRunner:
                     idle_timeout=idle_timeout,
                     on_result_seen=_on_result_seen,
                     on_session_id_detected=_on_session_id,
+                    timeout_kill_grace_seconds=timeout_kill_grace_seconds,
                 )
             except subprocess.TimeoutExpired as exc:
                 # FEAT-3033: run_claude_command sets output="idle_timeout" on an

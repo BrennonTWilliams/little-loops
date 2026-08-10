@@ -51,6 +51,25 @@ class TestConfigSchema:
         assert obs_props["streaming_parity"]["properties"]["check"]["type"] == "boolean"
         assert obs_props["streaming_parity"].get("additionalProperties") is False
 
+    def test_automation_timeout_kill_grace_seconds_in_schema(self) -> None:
+        """automation.timeout_kill_grace_seconds is declared (ENH-3130).
+
+        The automation block has additionalProperties: false, so a config
+        carrying automation.timeout_kill_grace_seconds would otherwise be
+        silently rejected.
+        """
+        data = json.loads(_load_schema_text())
+        automation = data["properties"]["automation"]
+        assert automation.get("additionalProperties") is False
+        assert "timeout_kill_grace_seconds" in automation["properties"], (
+            "timeout_kill_grace_seconds missing from automation properties — "
+            "additionalProperties: false would reject it"
+        )
+        field = automation["properties"]["timeout_kill_grace_seconds"]
+        assert field["type"] == "integer"
+        assert field["default"] == 30
+        assert field["minimum"] == 0
+
     def test_extensions_in_properties(self) -> None:
         """extensions key must be inside the properties block."""
         data = json.loads(_load_schema_text())

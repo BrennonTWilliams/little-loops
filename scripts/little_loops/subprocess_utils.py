@@ -304,13 +304,36 @@ def _list_scratch_files() -> str:
         return "None"
 
 
-def _kill_process_group(process: subprocess.Popen) -> None:
-    """Send SIGKILL to the process group; fall back to single-PID kill on error.
+def _kill_process_group(process: subprocess.Popen, grace_seconds: float = 0.0) -> None:
+    """SIGTERM the process group, then SIGKILL after grace_seconds if still alive.
+
+    grace_seconds=0 (default) preserves the historical immediate-SIGKILL
+    behavior for callers that need it. A positive grace_seconds sends SIGTERM
+    first and gives the group that long to wind down (e.g. finish a commit or
+    lifecycle write, ENH-3130) before escalating to SIGKILL.
 
     Uses os.getpgid / os.killpg (POSIX) so background Workflow/Task children
     launched by the session are reaped together with the main process.
     AttributeError catches platforms where os.killpg is absent (Windows).
     """
+    if grace_seconds <= 0:
+        try:
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError, AttributeError):
+            process.kill()
+        return
+
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+    except (ProcessLookupError, PermissionError, AttributeError):
+        process.terminate()
+
+    try:
+        process.wait(timeout=grace_seconds)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+
     try:
         os.killpg(os.getpgid(process.pid), signal.SIGKILL)
     except (ProcessLookupError, PermissionError, AttributeError):
@@ -335,6 +358,7 @@ def run_claude_command(
     automation_profile: str | None = None,
     disable_background_tasks: bool = False,
     post_stream_close_grace_seconds: int = 300,
+    timeout_kill_grace_seconds: float = 0.0,
     on_result_seen: ResultSeenCallback | None = None,
     on_session_id_detected: SessionIdCallback | None = None,
     on_tool_call: ToolCallCallback | None = None,
@@ -378,6 +402,11 @@ def run_claude_command(
             force-killing the process group. Must accommodate synchronous
             parallel Agent tool calls (`run_in_background: false`) that can
             still be running when the parent's own streams close (BUG-2718).
+        timeout_kill_grace_seconds: Grace period (seconds) given to the process
+            group after a wall-clock or idle timeout fires: SIGTERM is sent
+            first, and SIGKILL only follows if the group is still alive after
+            this many seconds. 0 (default) preserves the historical immediate
+            SIGKILL behavior (ENH-3130).
         on_result_seen: Optional callback invoked once, right before return,
             with whether a stream-json "result" event was observed (BUG-2731).
             Lets callers distinguish an exit-143-after-result infra teardown
@@ -472,7 +501,7 @@ def run_claude_command(
             while sel.get_map():
                 now = time.time()
                 if timeout and (now - start_time) > timeout:
-                    _kill_process_group(process)
+                    _kill_process_group(process, grace_seconds=timeout_kill_grace_seconds)
                     try:
                         process.wait(timeout=10)
                     except subprocess.TimeoutExpired:
@@ -483,7 +512,7 @@ def run_claude_command(
                     raise subprocess.TimeoutExpired(cmd_args, timeout)
 
                 if idle_timeout and (now - last_output_time) > idle_timeout:
-                    _kill_process_group(process)
+                    _kill_process_group(process, grace_seconds=timeout_kill_grace_seconds)
                     try:
                         process.wait(timeout=10)
                     except subprocess.TimeoutExpired:

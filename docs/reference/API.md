@@ -502,6 +502,7 @@ class AutomationConfig:
     timeout_seconds: int = 3600
     idle_timeout_seconds: int = 0  # Kill if no output for N seconds (0 to disable)
     post_stream_close_grace_seconds: int = 300  # Grace before force-kill after streams close
+    timeout_kill_grace_seconds: float = 30  # SIGTERM grace before SIGKILL on timeout (ENH-3130)
     state_file: str = ".auto-manage-state.json"
     worktree_base: str = ".worktrees"
     max_workers: int = 2
@@ -2818,6 +2819,7 @@ def run_claude_command(
     resume_session: bool = False,
     automation_profile: str | None = None,
     disable_background_tasks: bool = False,
+    timeout_kill_grace_seconds: float = 0.0,
 ) -> subprocess.CompletedProcess[str]
 ```
 
@@ -2836,12 +2838,13 @@ Preview and invoke a Claude CLI command with output streaming. This is the `issu
 - `resume_session` - If `True`, passes `--continue` to the Claude CLI to continue the most recent conversation
 - `automation_profile` - Optional automation profile name (e.g. `"ll-auto"`) forwarded to the child env as `LL_AUTOMATION`/`LL_AUTOMATION_PROFILE`; `None` leaves those vars cleared rather than inherited (see `_apply_automation_env`, BUG-3093)
 - `disable_background_tasks` (FEAT-3078) - When `True` and `automation_profile` is set, forwarded to the child env as `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, hard-disabling tool-level background tasks (e.g. `Bash run_in_background: true`); otherwise the variable is explicitly neutralized to `""`
+- `timeout_kill_grace_seconds` (ENH-3130) - Grace period (seconds) given to the process group after a wall-clock or idle timeout fires before escalating from `SIGTERM` to `SIGKILL`. `0` (default) preserves the historical immediate-`SIGKILL` behavior.
 
 **Returns:** `CompletedProcess` with stdout/stderr captured. When a `result` event with `is_error=True` is present in the stream-json output, `CompletedProcess.stderr` will include a `[result] <error>` line containing the error text from the result event's `error` field (falling back to the `result` field).
 
 **Turn-end detection**: The reader breaks on the stream-json `result` event rather than waiting for pipe EOF. This is necessary because background `Workflow`/`Task` child processes spawned by the headless `claude -p` session inherit the stdout/stderr write-ends; a pipe only reports EOF when the *last* writer closes it, so EOF may never arrive even after the turn completes, causing the reader to hang until the wall-clock timeout fires. Stopping on `result` bounds read latency to the actual turn duration regardless of whether background children are still running.
 
-**Process-group cleanup**: On timeout or idle-timeout, cleanup sends `SIGKILL` to the entire process group via `os.killpg(os.getpgid(pid), SIGKILL)` rather than just the direct child PID. The subprocess is started with `start_new_session=True` so it leads its own isolated process group. This ensures background `Workflow`/`Task` children spawned during the session are reaped together with the main process; otherwise they would linger as orphans holding pipe write-ends open. Falls back to `process.kill()` on platforms where `os.killpg` is absent (Windows). (ENH-1999)
+**Process-group cleanup**: On timeout or idle-timeout, cleanup sends `SIGTERM` to the entire process group via `os.killpg(os.getpgid(pid), SIGTERM)` first, waits up to `timeout_kill_grace_seconds` for the group to exit on its own, and only then escalates to `SIGKILL` if it is still alive (ENH-3130) — `timeout_kill_grace_seconds=0` (the function default) skips straight to `SIGKILL`, preserving the pre-ENH-3130 behavior. The subprocess is started with `start_new_session=True` so it leads its own isolated process group, so both signals reach background `Workflow`/`Task` children spawned during the session, not just the direct child PID; otherwise they would linger as orphans holding pipe write-ends open. Falls back to `process.terminate()`/`process.kill()` on platforms where `os.killpg` is absent (Windows). (ENH-1999, ENH-3130)
 
 #### verify_issue_completed
 

@@ -131,6 +131,11 @@ def _run_skill(spec: ActionSpec) -> RunnerResult:
     # through the same args-dict origination as automation_profile above.
     disable_background_tasks: bool = bool(spec.args.get("disable_background_tasks", False))
 
+    # ENH-3130: grace period before escalating a timeout SIGTERM to SIGKILL,
+    # threaded through the same args-dict origination as automation_profile
+    # above. 0 (default) preserves the historical immediate-SIGKILL behavior.
+    timeout_kill_grace_seconds: float = float(spec.args.get("timeout_kill_grace_seconds", 0.0))
+
     if trace_mode:
         from little_loops.subprocess_utils import ToolCall, run_claude_command
 
@@ -151,6 +156,7 @@ def _run_skill(spec: ActionSpec) -> RunnerResult:
                 tools=spec.args.get("tools"),
                 on_tool_call=trace.append,
                 workspace_root=workspace_root,
+                timeout_kill_grace_seconds=timeout_kill_grace_seconds,
             )
             return RunnerResult(
                 stdout="",
@@ -180,6 +186,7 @@ def _run_skill(spec: ActionSpec) -> RunnerResult:
                 stream_callback=stream_callback,
                 automation_profile=automation_profile,
                 disable_background_tasks=disable_background_tasks,
+                timeout_kill_grace_seconds=timeout_kill_grace_seconds,
             )
             return RunnerResult(stdout="", stderr="", exit_code=proc.returncode)
         except subprocess.TimeoutExpired:

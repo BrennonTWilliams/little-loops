@@ -150,6 +150,7 @@ def run_claude_command(
     on_result_seen: ResultSeenCallback | None = None,
     automation_profile: str | None = None,
     disable_background_tasks: bool = False,
+    timeout_kill_grace_seconds: float = 0.0,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke Claude CLI command with real-time output streaming.
 
@@ -177,6 +178,8 @@ def run_claude_command(
             background task that will never report.
         disable_background_tasks: FEAT-3078 opt-in to hard-disable tool-level
             background tasks in the spawned child, forwarded to the host runner.
+        timeout_kill_grace_seconds: Grace period (seconds) before escalating a
+            timeout SIGTERM to SIGKILL, forwarded to the host runner (ENH-3130).
 
     Returns:
         CompletedProcess with stdout/stderr captured
@@ -219,6 +222,7 @@ def run_claude_command(
         on_result_seen=on_result_seen,
         automation_profile=automation_profile,
         disable_background_tasks=disable_background_tasks,
+        timeout_kill_grace_seconds=timeout_kill_grace_seconds,
     )
 
 
@@ -271,6 +275,7 @@ def run_with_continuation(
     on_result_seen: ResultSeenCallback | None = None,
     automation_profile: str | None = None,
     disable_background_tasks: bool = False,
+    timeout_kill_grace_seconds: float = 0.0,
 ) -> subprocess.CompletedProcess[str]:
     """Run a Claude command with automatic continuation on context handoff.
 
@@ -307,6 +312,9 @@ def run_with_continuation(
             contract is injected on continuations too, not just the first round.
         disable_background_tasks: FEAT-3078 opt-in to hard-disable tool-level
             background tasks, forwarded to every round's subprocess.
+        timeout_kill_grace_seconds: Grace period (seconds) before escalating a
+            timeout SIGTERM to SIGKILL, forwarded to every round's subprocess
+            (ENH-3130).
 
     Returns:
         Final CompletedProcess result
@@ -355,6 +363,7 @@ def run_with_continuation(
             on_result_seen=_tracking_result_seen,
             automation_profile=automation_profile,
             disable_background_tasks=disable_background_tasks,
+            timeout_kill_grace_seconds=timeout_kill_grace_seconds,
         )
 
         all_stdout.append(result.stdout)
@@ -537,6 +546,7 @@ def run_with_continuation(
                 on_result_seen=_tracking_result_seen,
                 automation_profile=automation_profile,
                 disable_background_tasks=disable_background_tasks,
+                timeout_kill_grace_seconds=timeout_kill_grace_seconds,
             )
             all_stdout.append(result.stdout)
             all_stderr.append(result.stderr)
@@ -847,6 +857,7 @@ def process_issue_inplace(
                     # explicit false rather than "unspecified".
                     automation_profile="ll-auto",
                     disable_background_tasks=config.orchestration.disable_background_tasks,
+                    timeout_kill_grace_seconds=config.automation.timeout_kill_grace_seconds,
                 )
 
             # An UNKNOWN verdict means the model returned nothing verdict-shaped
@@ -918,6 +929,7 @@ def process_issue_inplace(
                                 # _run_ready above.
                                 automation_profile="ll-auto",
                                 disable_background_tasks=config.orchestration.disable_background_tasks,
+                                timeout_kill_grace_seconds=config.automation.timeout_kill_grace_seconds,
                             )
 
                             if retry_result.returncode != 0:
@@ -1118,6 +1130,7 @@ def process_issue_inplace(
             # finalize-retry, which already declare this profile.
             automation_profile="ll-auto",
             disable_background_tasks=config.orchestration.disable_background_tasks,
+            timeout_kill_grace_seconds=config.automation.timeout_kill_grace_seconds,
         )
         if decide_result.returncode != 0:
             logger.warning("decide-issue command failed, continuing to implementation anyway...")
@@ -1259,6 +1272,7 @@ def process_issue_inplace(
                 # (status flip + commit) never ran.
                 automation_profile="ll-auto",
                 disable_background_tasks=config.orchestration.disable_background_tasks,
+                timeout_kill_grace_seconds=config.automation.timeout_kill_grace_seconds,
             )
         else:
             logger.info(f"Would run: /ll:manage-issue {info.issue_type} {action} {info.issue_id}")
@@ -1448,6 +1462,7 @@ def process_issue_inplace(
                         preview_full=preview_full,
                         automation_profile="ll-auto",
                         disable_background_tasks=config.orchestration.disable_background_tasks,
+                        timeout_kill_grace_seconds=config.automation.timeout_kill_grace_seconds,
                     )
                     if _finalize_result.returncode == 0:
                         verified = verify_issue_completed(info, config, logger)

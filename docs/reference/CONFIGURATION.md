@@ -45,6 +45,7 @@ For interactive editing, use `/ll:configure`.
     "timeout_seconds": 3600,
     "idle_timeout_seconds": 0,
     "post_stream_close_grace_seconds": 300,
+    "timeout_kill_grace_seconds": 30,
     "state_file": ".auto-manage-state.json",
     "worktree_base": ".worktrees",
     "max_workers": 2,
@@ -363,6 +364,7 @@ Sequential automation settings (ll-auto):
 | `timeout_seconds` | `3600` | Per-issue timeout. A breach fails only that issue (`mark_failed` + `record_orchestration_run(status="failed")`) — `ll-auto`/`ll-sprint` continue to the next eligible issue rather than aborting the whole run (BUG-2976) |
 | `idle_timeout_seconds` | `0` | Seconds of idle inactivity before automation considers the session idle (0 to disable) |
 | `post_stream_close_grace_seconds` | `300` | Grace period after stdout/stderr streams close before force-killing the process group; must accommodate synchronous parallel Agent tool calls still in flight (BUG-2718) |
+| `timeout_kill_grace_seconds` | `30` | Grace period given to the process group after a wall-clock or idle timeout fires: `SIGTERM` is sent first, and `SIGKILL` only follows if the group is still alive after this many seconds — lets an in-flight commit or lifecycle write finish instead of being cut off (ENH-3130) |
 | `state_file` | `.auto-manage-state.json` | State persistence |
 | `worktree_base` | `.worktrees` | Git worktree directory |
 | `max_workers` | `2` | Parallel workers |

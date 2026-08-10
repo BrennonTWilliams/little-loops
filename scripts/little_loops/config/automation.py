@@ -20,6 +20,9 @@ class AutomationConfig:
     # process group (BUG-2718). Must accommodate synchronous parallel Agent
     # tool calls that can still be running after the parent's own streams close.
     post_stream_close_grace_seconds: int = 300
+    # Grace period after a wall-clock/idle timeout fires: SIGTERM first, SIGKILL
+    # only if the group is still alive after this many seconds (ENH-3130).
+    timeout_kill_grace_seconds: float = 30
     state_file: str = ".auto-manage-state.json"
     worktree_base: str = ".worktrees"
     max_workers: int = 2
@@ -37,6 +40,7 @@ class AutomationConfig:
             timeout_seconds=data.get("timeout_seconds", 3600),
             idle_timeout_seconds=data.get("idle_timeout_seconds", 0),
             post_stream_close_grace_seconds=data.get("post_stream_close_grace_seconds", 300),
+            timeout_kill_grace_seconds=data.get("timeout_kill_grace_seconds", 30),
             state_file=data.get("state_file", ".auto-manage-state.json"),
             worktree_base=data.get("worktree_base", ".worktrees"),
             max_workers=data.get("max_workers", 2),
@@ -116,6 +120,7 @@ class ParallelAutomationConfig:
             worktree_base=data.get("worktree_base", ".worktrees"),
             max_workers=data.get("max_workers", 2),
             stream_output=data.get("stream_subprocess_output", data.get("stream_output", False)),
+            timeout_kill_grace_seconds=data.get("timeout_kill_grace_seconds", 30),
         )
         return cls(
             base=base,

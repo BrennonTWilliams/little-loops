@@ -392,6 +392,10 @@ class ParallelConfig:
     timeout_per_issue: int = 3600
     idle_timeout_per_issue: int = 0  # Kill if no output for N seconds (0 to disable)
     orchestrator_timeout: int = 0  # 0 = use timeout_per_issue * max_workers
+    # Grace period given to the process group after a wall-clock/idle timeout
+    # fires: SIGTERM first, SIGKILL only if still alive after this many
+    # seconds (ENH-3130). 0 preserves the historical immediate-SIGKILL behavior.
+    timeout_kill_grace_seconds: float = 30
     stream_subprocess_output: bool = False
     show_model: bool = False  # Make API call to verify model on worktree setup
     # Configurable command templates
@@ -500,6 +504,7 @@ class ParallelConfig:
             "timeout_per_issue": self.timeout_per_issue,
             "idle_timeout_per_issue": self.idle_timeout_per_issue,
             "orchestrator_timeout": self.orchestrator_timeout,
+            "timeout_kill_grace_seconds": self.timeout_kill_grace_seconds,
             "stream_subprocess_output": self.stream_subprocess_output,
             "show_model": self.show_model,
             "command_prefix": self.command_prefix,
@@ -551,6 +556,7 @@ class ParallelConfig:
             timeout_per_issue=data.get("timeout_per_issue", 7200),
             idle_timeout_per_issue=data.get("idle_timeout_per_issue", 0),
             orchestrator_timeout=data.get("orchestrator_timeout", 0),
+            timeout_kill_grace_seconds=data.get("timeout_kill_grace_seconds", 30),
             stream_subprocess_output=data.get("stream_subprocess_output", False),
             show_model=data.get("show_model", False),
             command_prefix=data.get("command_prefix", "/ll:"),

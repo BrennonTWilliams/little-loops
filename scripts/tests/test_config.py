@@ -327,6 +327,7 @@ class TestAutomationConfig:
             "stream_output": False,
             "idle_timeout_seconds": 30,
             "post_stream_close_grace_seconds": 600,
+            "timeout_kill_grace_seconds": 45,
             "max_continuations": 5,
         }
         config = AutomationConfig.from_dict(data)
@@ -338,6 +339,7 @@ class TestAutomationConfig:
         assert config.stream_output is False
         assert config.idle_timeout_seconds == 30
         assert config.post_stream_close_grace_seconds == 600
+        assert config.timeout_kill_grace_seconds == 45
         assert config.max_continuations == 5
 
     def test_from_dict_with_defaults(self) -> None:
@@ -351,6 +353,7 @@ class TestAutomationConfig:
         assert config.stream_output is True
         assert config.idle_timeout_seconds == 0
         assert config.post_stream_close_grace_seconds == 300
+        assert config.timeout_kill_grace_seconds == 30
         assert config.max_continuations == 3
 
 
@@ -404,6 +407,16 @@ class TestParallelAutomationConfig:
             ".ll/ll.local.md",
         ]
         assert config.require_code_changes is True
+
+    def test_forwards_timeout_kill_grace_seconds_to_base(self) -> None:
+        """ParallelAutomationConfig.from_dict forwards timeout_kill_grace_seconds into base (ENH-3130)."""
+        config = ParallelAutomationConfig.from_dict({"timeout_kill_grace_seconds": 45})
+        assert config.base.timeout_kill_grace_seconds == 45
+
+    def test_timeout_kill_grace_seconds_default_forwarded_to_base(self) -> None:
+        """Default timeout_kill_grace_seconds is forwarded, not silently dropped (ENH-3130)."""
+        config = ParallelAutomationConfig.from_dict({})
+        assert config.base.timeout_kill_grace_seconds == 30
 
     def test_timeout_per_issue_key_is_respected(self) -> None:
         """Test that the documented timeout_per_issue key sets the per-issue timeout."""
@@ -932,6 +945,19 @@ class TestBRConfig:
 
         assert "post_stream_close_grace_seconds" in result["automation"]
         assert result["automation"]["post_stream_close_grace_seconds"] == 300
+
+    def test_to_dict_automation_timeout_kill_grace_seconds(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test to_dict exports timeout_kill_grace_seconds (ENH-3130)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        assert "timeout_kill_grace_seconds" in result["automation"]
+        assert result["automation"]["timeout_kill_grace_seconds"] == 30
 
     def test_resolve_variable(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
         """Test resolve_variable resolves config paths."""

@@ -278,6 +278,12 @@
           "default": 300,
           "minimum": 30
         },
+        "timeout_kill_grace_seconds": {
+          "type": "integer",
+          "description": "Grace period given to the process group after a wall-clock or idle timeout fires: SIGTERM is sent first, and SIGKILL only follows if the group is still alive after this many seconds. Lets an agent finish an in-flight commit or lifecycle write instead of losing it to an immediate SIGKILL (ENH-3130).",
+          "default": 30,
+          "minimum": 0
+        },
         "max_continuations": {
           "type": "integer",
           "description": "Maximum number of continuation prompts before automation stops.",

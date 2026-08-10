@@ -30,6 +30,7 @@ from little_loops.subprocess_utils import (
     CONTEXT_HANDOFF_PATTERN,
     CONTINUATION_PROMPT_PATH,
     ToolCall,
+    _kill_process_group,
     detect_context_handoff,
     read_continuation_prompt,
     run_claude_command,
@@ -2806,3 +2807,100 @@ class TestProcessGroupKill:
                             run_claude_command("test", timeout=1)
 
         mock_process.kill.assert_called_once()
+
+
+class TestKillProcessGroupGraceEscalation:
+    """Tests for _kill_process_group's SIGTERM-then-SIGKILL escalation (ENH-3130)."""
+
+    def _make_mock_process(self, pid: int = 90001) -> Mock:
+        mock_process = Mock()
+        mock_process.pid = pid
+        mock_process.kill = Mock()
+        mock_process.terminate = Mock()
+        return mock_process
+
+    def test_grace_seconds_zero_sends_immediate_sigkill(self) -> None:
+        """grace_seconds=0 (the default) preserves the historical immediate SIGKILL."""
+        mock_process = self._make_mock_process()
+
+        with patch("os.getpgid", return_value=42) as mock_getpgid:
+            with patch("os.killpg") as mock_killpg:
+                _kill_process_group(mock_process)
+
+        mock_getpgid.assert_called_once_with(90001)
+        mock_killpg.assert_called_once_with(42, signal.SIGKILL)
+        mock_process.wait.assert_not_called()
+
+    def test_grace_seconds_positive_sends_sigterm_then_waits(self) -> None:
+        """A positive grace_seconds sends SIGTERM first and waits for clean exit."""
+        mock_process = self._make_mock_process()
+        mock_process.wait.return_value = None
+
+        with patch("os.getpgid", return_value=42):
+            with patch("os.killpg") as mock_killpg:
+                _kill_process_group(mock_process, grace_seconds=30)
+
+        mock_killpg.assert_called_once_with(42, signal.SIGTERM)
+        mock_process.wait.assert_called_once_with(timeout=30)
+        mock_process.kill.assert_not_called()
+
+    def test_escalates_to_sigkill_when_sigterm_ignored(self) -> None:
+        """If the group is still alive after grace_seconds, escalate to SIGKILL."""
+        mock_process = self._make_mock_process()
+        mock_process.wait.side_effect = subprocess.TimeoutExpired("cmd", 5)
+
+        with patch("os.getpgid", return_value=42):
+            with patch("os.killpg") as mock_killpg:
+                _kill_process_group(mock_process, grace_seconds=5)
+
+        assert mock_killpg.call_args_list == [
+            ((42, signal.SIGTERM),),
+            ((42, signal.SIGKILL),),
+        ]
+
+    def test_sigterm_falls_back_to_terminate_on_process_lookup_error(self) -> None:
+        """SIGTERM stage falls back to process.terminate() when killpg raises."""
+        mock_process = self._make_mock_process()
+        mock_process.wait.return_value = None
+
+        with patch("os.getpgid", side_effect=ProcessLookupError("no such process")):
+            _kill_process_group(mock_process, grace_seconds=5)
+
+        mock_process.terminate.assert_called_once()
+        mock_process.wait.assert_called_once_with(timeout=5)
+        mock_process.kill.assert_not_called()
+
+    def test_wall_clock_timeout_forwards_configured_grace(self) -> None:
+        """The wall-clock timeout branch forwards timeout_kill_grace_seconds to escalation."""
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = None
+        mock_process.wait.return_value = None
+        mock_process.kill = Mock()
+        mock_process.pid = 90002
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {"stdout": True}
+                mock_selector.return_value.select.return_value = []
+                mock_selector.return_value.register = Mock()
+                mock_selector.return_value.unregister = Mock()
+
+                start_time = 1000.0
+                time_values = [start_time, start_time + 2.0]
+                time_index = [0]
+
+                def mock_time() -> float:
+                    val = time_values[min(time_index[0], len(time_values) - 1)]
+                    time_index[0] += 1
+                    return val
+
+                with patch("time.time", side_effect=mock_time):
+                    with patch("os.getpgid", return_value=99):
+                        with patch("os.killpg") as mock_killpg:
+                            with pytest.raises(subprocess.TimeoutExpired):
+                                run_claude_command("test", timeout=1, timeout_kill_grace_seconds=15)
+
+        mock_killpg.assert_called_once_with(99, signal.SIGTERM)
