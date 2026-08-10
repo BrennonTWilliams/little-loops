@@ -3,7 +3,7 @@ id: EPIC-3111
 title: Worktree state inheritance — machine-local state, history, and docs
 type: EPIC
 priority: P2
-status: open
+status: done
 captured_at: '2026-08-08T20:32:03Z'
 discovered_date: 2026-08-08
 discovered_by: capture-issue
@@ -119,11 +119,16 @@ directory that is about to be `rmtree`d. Nothing surfaces a warning.
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Verification Notes
+
+- Verified 2026-08-10 via /ll:verify-issues: all child issues confirmed done — closing epic.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:25:23 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:capture-issue` - 2026-08-08T20:35:49 - `cf0cb0be-6bdf-436b-b626-68fabe345e75.jsonl`
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-08-08 | Priority: P2
+**Done** | Created: 2026-08-08 | Priority: P2

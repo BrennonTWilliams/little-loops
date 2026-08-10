@@ -307,6 +307,8 @@ _Audit 2026-07-06:_ 16 children in `relates_to` match the 16 child files on disk
 
 _Audit 2026-07-08:_ 28 children in `relates_to` (was 25; added ENH-2580, ENH-2581, ENH-2582). 4 done / 24 open. ENH-2581 is the structural prerequisite for ENH-2580 and ENH-2582 — recommended sequencing: ENH-2581 → ENH-2580 + ENH-2582 in either order. Architecture is documented in the new `thoughts/history-db-raw-events-architecture.md` design doc.
 
+_Verified 2026-08-10:_ verification notes were badly stale (previously said '4/24 done'). Current state: of 28 children, 20 done, 5 cancelled (ENH-2494/2496/2508/2510/2582), 3 deferred (ENH-2464/2465/2580, non-terminal). Epic stays open due to the 3 deferred items; consider tracking those separately if the epic should otherwise close.
+
 ## Sources
 
 - `thoughts/history-db-expand-wiring.md` — the source findings report this epic is derived from
@@ -324,6 +326,7 @@ _Audit 2026-07-08:_ 28 children in `relates_to` (was 25; added ENH-2580, ENH-258
 - `.claude/CLAUDE.md` — documents the `ll-session` CLI (`search --fts`, `recent --kind`, `backfill`, `rebuild`, `compact`) that surfaces each new event kind this epic's children add.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:25:08 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:47 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`
 - fourth-pass expansion - 2026-07-08 - Added 3 children (ENH-2580, ENH-2581, ENH-2582) following the raw-events architecture discussion. ENH-2581 is the structural prerequisite; design doc at `thoughts/history-db-raw-events-architecture.md` (mirrors the relationship between `thoughts/history-db-expand-wiring.md` and this epic).
 - audit - 2026-07-06 - Reconciled child counts (9 → 25) in closure criterion, Children note, Success Metrics, and Impact; marked done children in Sequencing; added 2026-07-06 verification-notes entry (4 done / 21 open, schema v18 verified in code).

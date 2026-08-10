@@ -211,6 +211,18 @@ confidence-per-effort items in the set.
 - `CONTRIBUTING.md` — documents the test-running and mutation-testing
   workflow this epic's verification-integrity children extend.
 
+## Verification Notes
+
+- 2026-08-10: Verified 2026-08-10: 12/13 children done; only FEAT-2855 (maintainability trend) remains, status deferred (non-terminal). Epic is near-complete but not yet closable.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-10T18:52:51 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
+- `/ll:verify-issues` - 2026-08-10T16:25:07 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:46 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-07-27T19:42:09 - `e2303183-4e52-4649-af90-4b53254bbda4.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This epic's FEAT-2878 ("Trace-level assertions in the eval harness, with optional multi-host divergence runs") and EPIC-2938's FEAT-2948 ("ll-loop scaffold-eval / scaffold-verify") both modify eval-harness templates/scaffolding. Whichever lands second should confirm its changes are additive to the other's, consistent with the coordination already recorded for the EPIC-2412/ENH-2415 overlap.

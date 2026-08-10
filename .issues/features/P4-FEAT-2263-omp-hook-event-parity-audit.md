@@ -180,7 +180,14 @@ _Added by `/ll:refine-issue` — concrete steps grounded in actual file referenc
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue and FEAT-2797 both specify content requirements for the same `HOST_COMPATIBILITY.md` `[^omp]` footnote — this issue wants it to carry hook-intent tracking info (epic/research-spike/artifact path/gating statement); FEAT-2797 wants it to state why `json_schema`/`structured_output` are `✗` and describe the frontmatter `output:` path. The footnote is a single shared definition — whichever issue lands first must extend it, not overwrite it, to preserve both requirements.
 
+## Verification Notes
+
+### 2026-08-10 (`/ll:verify-issues`)
+
+Verified 2026-08-10: core claim still true (`HOST_COMPATIBILITY.md`'s hook-intents table has no omp column, `hooks/adapters/omp/README.md` doesn't exist). However the "Dependency/Blocker" section's claim that `OmpRunner` is "not yet registered" in `_HOST_RUNNER_REGISTRY` is now FALSE — `OmpRunner` is registered (`host_runner.py:1561`) since its listed dependency FEAT-1850 landed (`status: done`). The blocker has cleared; update the Dependency/Blocker section to reflect this — issue is otherwise still open/valid.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:25:25 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:44 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`
 - `/ll:refine-issue` - 2026-06-26T23:06:47 - `66288c91-3410-40d5-8af7-af4d0cb1a3f8.jsonl`
 - `/ll:format-issue` - 2026-06-26T22:57:21 - `ae5ff08e-cca8-4e62-8e12-44cfb2069975.jsonl`

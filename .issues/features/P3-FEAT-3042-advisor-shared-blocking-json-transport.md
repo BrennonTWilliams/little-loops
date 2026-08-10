@@ -6,10 +6,16 @@ parent: FEAT-3037
 priority: P3
 status: open
 testable: true
-decision_needed: true
+decision_needed: false
 discovered_date: 2026-08-04
 labels:
 - planning-hub
+confidence_score: 100
+outcome_confidence: 79
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # FEAT-3042: Advisor transport - shared run_blocking_json helper
@@ -133,11 +139,27 @@ their own schema.
 
 _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 
+> **Selected:** Option A — matches the codebase's only existing execution convention (host_runner.py builds `HostInvocation`, callers execute) and leaves all 16 test patch sites untouched.
+
 **Option A**: `run_blocking_json()` bottoms out at a patchable `evaluators.subprocess.run` call — `fsm/evaluators.py` keeps the actual `subprocess.run` (module-level `import subprocess` at `fsm/evaluators.py:32`) and `run_blocking_json` receives the already-completed subprocess result. `test_fsm_evaluators.py` patches `little_loops.fsm.evaluators.subprocess.run` at 16 sites (lines 873, 934, 1271, 1367, 1516, 2024, 2102, 2211, 2227, 2260, 2271, 2298, 2331, 2408, 2431, 2457); `host_runner.py` has zero `subprocess.run`/`Popen` calls today.
 
 **Option B**: `host_runner.py` owns the subprocess call and the evaluator tests are updated to patch `host_runner.subprocess.run` instead — requires `host_runner.py` to add `import subprocess` and re-target the 16 existing `patch("little_loops.fsm.evaluators.subprocess.run")` sites.
 
 **Recommended**: Option A — smallest test churn (the 16 existing patch sites stay untouched) and keeps the refactor behavior-preserving, consistent with AC #5's "existing FSM evaluator tests pass" branch and the issue's Impact mitigation ("gated on existing evaluator tests").
+
+### Decision Rationale
+
+**Selected: Option A** — `evaluate_llm_structured` keeps the actual `subprocess.run` call in `fsm/evaluators.py` (module already does `import subprocess`), and `run_blocking_json` in `host_runner.py` receives the already-completed subprocess result rather than executing it internally.
+
+Two parallel codebase-pattern-finder passes confirmed `host_runner.py` has zero `subprocess.run`/`Popen` calls anywhere today — every `build_*` method across all seven host runners only constructs and returns a `HostInvocation` value object (per the explicit contract in its docstring, `host_runner.py:150-153`: "Call sites pass `binary` + `args` to `subprocess`..."). All five other `build_blocking_json` callers (`runner_spec.py:307`, `parallel/worker_pool.py:805`, `cli/issues/decisions.py:797`, `learning_tests/extractor.py:132`, `session_store/lifecycle.py:154`) execute the subprocess themselves in their own module immediately after calling the builder — with no exception found anywhere in the codebase. Option B would introduce the first subprocess execution point ever placed inside `host_runner.py`, requiring it to newly import `subprocess` and duplicate/relocate the timeout, exit-code, empty-stdout-guard, and JSON-envelope-parsing logic currently inlined in `evaluate_llm_structured` (`fsm/evaluators.py:1083-1268`) with no existing single execution point to extend from.
+
+| Dimension | Option A | Option B |
+|---|---|---|
+| Consistency | 3 — matches the sole existing build/execute split, no exceptions anywhere | 0 — breaks the only convention in the codebase |
+| Simplicity | 3 — no new `subprocess` import or duplicated parsing logic in `host_runner.py` | 1 — requires relocating/duplicating substantial execution+parsing logic |
+| Testability | 3 — all 16 existing `patch("little_loops.fsm.evaluators.subprocess.run")` sites stay untouched | 1 — all 16 sites need retargeting to `host_runner.subprocess.run` |
+| Risk | 3 — behavior-preserving, contained scope | 1 — new execution point, higher regression risk against the check-order requirement |
+| **Total** | **12/12** | **3/12** |
 
 ## API/Interface
 
@@ -169,6 +191,24 @@ def run_blocking_json(
   `_extract_tagged_structured_output` (`evaluators.py:159`, `:111`) move or
   are imported by the helper — both are currently module-private and unused
   elsewhere, so relocating is a clean move with no other dependents.
+   > ⚠ Superseded — `_structured_output_args` has 2 other call sites, not 0
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/evaluators.py` — `_structured_output_args`
+  (`evaluators.py:159`) is called at three sites, not one:
+  `evaluate_llm_structured` (~line 1124, in scope), `evaluate_blind_comparator`
+  (~line 1318, explicitly out of scope), and `evaluate_contract` (~line 1569,
+  explicitly out of scope). If it relocates into `host_runner.py`, those two
+  out-of-scope call sites need `from little_loops.host_runner import
+  _structured_output_args` — a cross-module import of a `_`-prefixed name
+  (unconventional but not circular: `evaluators.py` already imports from
+  `host_runner.py`; the reverse import does not exist and must not be added).
+  Confirm during implementation whether `_structured_output_args`/
+  `_extract_tagged_structured_output` actually need to relocate at all under
+  Option A (evaluators.py keeps the real `subprocess.run` call) — if
+  `run_blocking_json` only receives an already-completed subprocess result,
+  these two helpers may be able to stay in `evaluators.py` unmoved, which
+  sidesteps the cross-module-import question entirely.
 
 ### Dependent Files (Callers/Importers, unaffected)
 
@@ -205,10 +245,31 @@ def run_blocking_json(
   either keep working unmodified or be deliberately updated per the decision
   above.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_evaluators.py` — `TestBlindComparator` (class at
+  ~line 1993, patches at 2024/2102/2211/2227/2260/2271/2298) and
+  `TestContractEvaluator` (class at ~line 2310, patches at
+  2330/2408/2431/2457/2517) cover `evaluate_blind_comparator` and
+  `evaluate_contract` independently of `evaluate_llm_structured` — these serve
+  as the regression backstop confirming `_structured_output_args` still works
+  for the two out-of-scope callers if it relocates. [Agent 3 finding]
+
 ### Documentation
 
 - `docs/reference/API.md` — `little_loops.host_runner` new exports
   (`resolve_host_named`, `run_blocking_json`).
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md:5335,5820-5831` — prose documents
+  `evaluate_llm_structured`'s dispatch path as
+  `host_runner.resolve_host().build_blocking_json()`; update to describe the
+  `run_blocking_json` handoff. [Agent 2 finding]
+- `docs/reference/API.md:9308-9312` — fenced block listing `host_runner.py`'s
+  `__all__` verbatim; regenerate once `resolve_host_named`/`run_blocking_json`
+  are added. [Agent 2 finding]
+- `docs/reference/API.md:9396` — documents `build_blocking_json()`'s purpose
+  ("Used by FSM structured evaluators"); update to reference the new helper
+  as the actual consumer. [Agent 2 finding]
 
 ### Codebase Research Findings
 
@@ -218,6 +279,26 @@ _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 - ENH-1530's Codex `--output-schema`/`cleanup_paths` tests live at `test_host_runner.py:382`, `:395`, `:417` (issue cites ~348/361/383): `test_build_blocking_json_json_schema_writes_temp_file`, `..._returns_cleanup_paths`, `..._no_schema_cleanup_paths_empty`. Extend that block rather than duplicating.
 - `test_fsm_evaluators.py` patches `little_loops.fsm.evaluators.subprocess.run` at 16 sites, not ~15 (lines 873, 934, 1271, 1367, 1516, 2024, 2102, 2211, 2227, 2260, 2271, 2298, 2331, 2408, 2431, 2457).
 - `CodexRunner.build_blocking_json` also accepts a `sandbox_mode: str | None = None` keyword beyond the `HostRunner` Protocol surface (`host_runner.py:662-669`) — `run_blocking_json` need not expose it, but the build call must tolerate the widened signature.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Resolve the `_structured_output_args`/`_extract_tagged_structured_output`
+  relocation question explicitly before touching `evaluators.py`: either (a)
+  they stay in `evaluators.py` unmoved and `run_blocking_json` never calls
+  them directly (consistent with Option A, where `evaluators.py` still owns
+  the actual `subprocess.run`), or (b) they relocate to `host_runner.py` and
+  `evaluate_blind_comparator`/`evaluate_contract` (evaluators.py:1318,1569)
+  gain a `from little_loops.host_runner import _structured_output_args,
+  _extract_tagged_structured_output` line. Do not silently drop either
+  out-of-scope call site.
+- Update `docs/reference/API.md` at the three anchors above (5335/5820-5831,
+  9308-9312, 9396) alongside the code change, not as a follow-up.
+- Add `TestBlindComparator`/`TestContractEvaluator` (test_fsm_evaluators.py
+  ~1993/~2310) to the regression run explicitly called out in AC #5's
+  verification, since they're the only coverage for the two out-of-scope
+  callers of `_structured_output_args`.
 
 ## Acceptance Criteria
 
@@ -297,5 +378,8 @@ _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-10T19:50:59 - `20931a62-9bcb-46af-ab62-ab96842c221d.jsonl`
+- `/ll:wire-issue` - 2026-08-10T18:45:17 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
+- `/ll:decide-issue` - 2026-08-10T18:35:39 - `03ae87f5-7478-45c5-b006-43cc9c6c1023.jsonl`
 - `/ll:refine-issue` - 2026-08-07T01:13:05 - `dbaeb448-e0d3-4927-896a-a00b59910595.jsonl`
 - `/ll:issue-size-review` - 2026-08-04T20:47:20 - `b57cebec-46d2-436b-b650-9a1afa94ec18.jsonl`

@@ -158,6 +158,7 @@ resolved path in the section.
 | `.issues/enhancements/P3-ENH-2971-*.md` § Threshold Validation | The corpus measurement this issue exists to supersede for the live case |
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-10T18:52:52 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
 - `/ll:capture-issue` - 2026-08-02T05:15:40 - `3204c464-5212-4b68-a6a3-d963db2a8337.jsonl`
 
 ---
@@ -165,3 +166,9 @@ resolved path in the section.
 ## Status
 
 **Open** | Created: 2026-08-02 | Priority: P3
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue's reason-code taxonomy for `AxisCoverage` (distinguishing `stale` from coverage-side rejections) and ENH-3000's new `untracked_by_design` verdict/denominator status both touch coverage/denominator accounting in `scripts/little_loops/issues/research_triage.py`. When implementing, reconcile both into one consistent enum rather than two independently-evolving classification schemes in the same module.

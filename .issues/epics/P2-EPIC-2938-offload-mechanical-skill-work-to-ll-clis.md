@@ -149,3 +149,22 @@ In scope: the 15 children listed above — CLI subcommand additions/extensions i
 - `.claude/CLAUDE.md` — the `ll-issues`/`ll-loop` CLI catalog this epic extends with new subcommands, and the "Prefer Skills over Agents" development preference the conversions embody.
 - `CONTRIBUTING.md` — governs the markdown slimming of skills/commands and the 500-line skill-file limit the children must stay under while shrinking prose.
 - `docs/reference/API.md` — module reference for `cli/issues/*`, `cli/loop/*`, and `text_utils` that each child extends or consolidates into.
+
+## Verification Notes
+
+- 2026-08-10: Verified 2026-08-10: most children done; ENH-2979 and ENH-2943 remain open. ENH-2952 is narrated in-body as resolved/dropped from epic scope (Option C) but its frontmatter still shows status: open — reconcile that issue's own status separately; does not block this epic's overall progress tracking.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-10T18:52:51 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
+- `/ll:verify-issues` - 2026-08-10T16:25:07 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This epic's new subcommands (ENH-2943, FEAT-2948, ENH-2949) land in `scripts/little_loops/cli/loop/`, the same directory EPIC-2789's ENH-2776 restructures ("Dissolve `cli/loop/_helpers.py` grab-bag into named modules"). Sequence ENH-2776 before this epic's `cli/loop/*` additions, or rebase whichever lands second onto the other's resulting module layout.
+
+**Note** (added by `/ll:audit-issue-conflicts`): This epic's `.claude/CLAUDE.md` CLI-catalog edits (new `ll-issues`/`ll-loop` subcommands) target the same CLI Tools section EPIC-1867 also edits (its ENH-1903/FEAT-2002 children). Whichever epic's edits land second should rebase against the other's changes rather than editing independently.
+
+**Note** (added by `/ll:audit-issue-conflicts`): This epic's FEAT-2948 ("ll-loop scaffold-eval / scaffold-verify") and EPIC-2856's FEAT-2878 ("Trace-level assertions in the eval harness, with optional multi-host divergence runs") both modify eval-harness templates/scaffolding. Whichever lands second should confirm its changes are additive to the other's.

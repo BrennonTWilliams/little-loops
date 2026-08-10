@@ -9,7 +9,6 @@ discovered_by: capture-issue
 discovered_date: 2026-08-05
 captured_at: '2026-08-05T16:06:39Z'
 relates_to:
-- ENH-2996
 - ENH-3046
 - FEAT-2274
 labels:
@@ -178,7 +177,20 @@ but the fix is small and the detection machinery already exists unused.
 
 ENH-2968 independently found the same gap (no test asserts committed `.gemini`/`.kimi-code`/`.codex` mirrors match `ll-adapt` output) and additionally documented a real defect: `CodexEmitter.emit_command`'s skip check (`adapters/codex.py:307`) and `emit_skill`'s sidecar check (`codex.py:260`) are presence-only, not content comparisons, unlike Gemini/Kimi's `out_path.exists() and out_path.read_text() == new_content` pattern. Fix these two content-comparison checks as part of implementing this issue's gate, so a fully-drifted Codex tree can't report false success.
 
+## Verification Notes
+
+**2026-08-10** (`/ll:verify-issues`): Verified 2026-08-10: core gap still
+real — no test invokes `ll-adapt --dry-run`; codex.py presence-only checks
+confirmed near lines 258-260/307-309, closely matching prior citations.
+However: (1) the hardcoded-pair test has grown from 2 to 6 entries and was
+renamed to SKILL_MIRRORS_MUST_MATCH_SOURCE (from WIRE_ISSUE_SKILL_MIRRORS),
+now around line 368, not 355-371; (2) this issue's `relates_to: ENH-2996` was
+a BROKEN/MISLINKED reference — ENH-2996 actually resolves to an unrelated P4
+issue about wire-issue phase numbering. Removed that `relates_to` entry from
+the frontmatter.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:26:28 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-06T05:57:00 - `b806aadf-1033-4656-b34d-bd948c43350c.jsonl`
 - `/ll:capture-issue` - 2026-08-05T16:14:07 - `fb7ca535-1f06-49a2-8ac3-7943736f7215.jsonl`
 

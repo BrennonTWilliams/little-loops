@@ -246,7 +246,10 @@ remaining: the live end-to-end smoke (`LL_HOST_CLI=kimi-code ll-auto`,
 inert). Minor drift: Integration Map promises a README under
 `hooks/adapters/kimi/`; only the 8 shims + `hooks.toml` are present.
 
+2026-08-10 (`/ll:verify-issues`): Verified 2026-08-10: all 10 children including BUG-2921 are now status: done. Only remaining item is an untracked manual smoke-test step mentioned in the epic body — not blocked by any open issue. Strong candidate for closure once that manual check is confirmed.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:25:52 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:verify-issues` - 2026-07-29T20:51:41 - `7dce485a-c75c-400c-ac56-53fcf2521623.jsonl`
 - `/ll:capture-issue` - 2026-07-29T15:55:00Z - kimi-code host adapter planning session
 

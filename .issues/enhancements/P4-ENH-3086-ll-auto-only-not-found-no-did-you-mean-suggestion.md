@@ -119,6 +119,14 @@ Purely diagnostic. No behavior change to which issues are processed.
 
 open
 
+## Verification Notes
+
+**2026-08-10** (`/ll:verify-issues`): Verified 2026-08-10: `_id_matches()`
+confirmed in cli_args.py:380 matching description. `_unreachable_reason()`'s
+`not_found` branch confirmed in issue_manager.py, but now around line 1806,
+not the previously cited :1743/:1730-1748. Logic and shape unchanged, only
+line numbers drifted.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:26:28 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:capture-issue` - 2026-08-06T16:20:22 - `ee676905-966c-42aa-ac9d-d7d4aaeea91d.jsonl`

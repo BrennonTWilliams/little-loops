@@ -64,15 +64,21 @@ Delivery order suggestion:
 
 ## Acceptance Criteria
 
-- [ ] All six child issues are resolved
-- [ ] `ll-loop validate` enforces MR-6 with suppression flag
-- [ ] `ll-loop run --baseline` reports Wilson 95% CI alongside point estimates
-- [ ] `ll-loop run --baseline` supports `--cross-host` validation
+- [x] All six child issues are resolved
+- [x] `ll-loop validate` enforces MR-6 with suppression flag
+- [x] `ll-loop run --baseline` reports Wilson 95% CI alongside point estimates
+- [x] `ll-loop run --baseline` supports `--cross-host` validation
 - [x] Shallow-iteration failure mode detection — delivered by ENH-2082 as a step in the `/ll:audit-loop-run` skill (fixture `assess-shallow-iteration.yaml` + skill step), not as an `ll-loop audit` CLI subcommand; AC wording updated 2026-06-12 to match the shipped surface
-- [ ] DSL-native eval task generation is available for ll config formats
-- [ ] Retry-budget calibration guidance is documented
+- [x] DSL-native eval task generation is available for ll config formats
+- [x] Retry-budget calibration guidance is documented
+
+## Verification Notes
+
+- 2026-08-10: Verified 2026-08-10: original 6-item AC checklist (ENH-2079/80/81/82/84/86, BUG-2482) is fully done but checkboxes remained unchecked in the AC section — checked off. Two later children (FEAT-3036, ENH-3035, added 2026-08-04) are legitimately still open, so the epic correctly stays open pending those.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:25:08 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
+<!-- ll-private-ok: repo-relative project slug for the local session-store path, not a private absolute path -->
 - `/ll:capture-issue` - 2026-06-10T18:37:38Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ef92cf80-1078-41c4-8aca-bc4d37e1afbb.jsonl`
 
 ---

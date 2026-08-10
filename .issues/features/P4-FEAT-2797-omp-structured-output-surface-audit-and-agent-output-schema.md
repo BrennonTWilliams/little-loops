@@ -154,6 +154,12 @@ discovery after writing the emitter means rewriting it.
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue and FEAT-2263 both specify content requirements for the same `HOST_COMPATIBILITY.md` `[^omp]` footnote — FEAT-2263 wants it to carry hook-intent tracking info (epic/research-spike/artifact path/gating statement); this issue wants it to state why `json_schema`/`structured_output` are `✗` and describe the frontmatter `output:` path. The footnote is a single shared definition — whichever issue lands first must extend it, not overwrite it, to preserve both requirements.
 
+## Verification Notes
+
+### 2026-08-10 (`/ll:verify-issues`)
+
+Verified 2026-08-10: this issue's core acceptance criterion (`emit_agent` writing to `.omp/agents/` instead of `.claude/agents`) is ALREADY IMPLEMENTED — see `scripts/little_loops/adapters/omp.py`, commit `efc6a6c0`, part of the now-done FEAT-3104/FEAT-2787 work. Cited line `host_runner.py:1071-1075` is stale (content now at 1196-1201, unchanged). Remaining real gaps: the `[^omp]` footnote still doesn't explain why `json_schema`/`structured_output` show ✗; `omp-headless-flags.md` still has no "Structured output" section; `OmpRunner.capabilities` still omits an explicit `structured_output=False`; and omp's `frontmatter_fields_read` tuple is `('description','name')` which doesn't literally include `'output'`, contradicting the `omp.py` docstring's claim that `output:` is carried through unmodified — worth a follow-up bug/enh split off from this issue's narrower remaining scope.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:25:25 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:45 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`

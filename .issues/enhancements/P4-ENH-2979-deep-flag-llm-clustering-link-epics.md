@@ -10,6 +10,7 @@ discovered_by: capture-issue
 parent: EPIC-2938
 blocked_by:
 - FEAT-2942
+verify_verdict: NON_VALID
 ---
 
 # ENH-2979: --deep flag: LLM-adjudicated clustering for link-epics synthesize mode
@@ -164,11 +165,25 @@ acknowledged tradeoff against EPIC-2938 §Motivation point 2, not an implicit
 one. The `--deep` opt-in gate (default path stays deterministic Jaccard) is
 the mitigation already designed into this issue.
 
+## Verification Notes
+
+**2026-08-10** (`/ll:verify-issues`): OUTDATED as of 2026-08-10: blocking
+dependency FEAT-2942 has landed (status: done), and as a result the Jaccard
+clustering logic this issue targets has moved out of
+skills/link-epics/SKILL.md prose entirely into
+scripts/little_loops/text_utils.py and
+scripts/little_loops/cli/issues/link_epics.py (now a Python CLI: `ll-issues
+link-epics --mode synthesize`). The issue's Current Behavior/Proposed
+Solution describe modifying skill prose (Step 3, S1 scoring) that no longer
+contains the scoring logic — needs rework to target the CLI code instead of
+skill markdown.
+
 ## Status
 
 **Open** | Created: 2026-08-01 | Priority: P4
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:26:29 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:46 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`
 - `/ll:capture-issue` - 2026-08-01T21:04:44 - `2cabd1bc-5bca-411b-af7d-d8f7d41a247b.jsonl`

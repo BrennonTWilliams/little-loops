@@ -61,5 +61,14 @@ call sites. Pure refactor; existing parser tests cover behavior.
 
 `open` — discovered by `/ll:scan-codebase`.
 
+## Verification Notes
+
+**2026-08-10** (`/ll:verify-issues`): Verified 2026-08-10: duplicated
+coercion logic (8+ isdigit()-guarded int coercions, 5 isinstance(str)
+tri-state bool coercions) still present, no helpers extracted yet. Cited line
+numbers are stale — code is now around lines 1879-1958, not 756-832 (file has
+grown substantially). Core claim accurate.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:26:28 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:scan-codebase` - 2026-07-24T22:41:56 - `16c799a6-5ff5-423f-b842-dcdb0fc751f1.jsonl`

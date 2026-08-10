@@ -161,3 +161,11 @@ Also load-bearing across all tiers:
    tells hosts to use the extension-aware flow rather than ad-hoc polling. A
    one-line declaration, but decide it when that tier is actually built, not
    pre-emptively.
+
+## Verification Notes
+
+2026-08-10 (`/ll:verify-issues`): Verified 2026-08-10: Tier-1 (read-only serving) work has essentially shipped — 4 of 5 related FEATs (FEAT-3133, FEAT-3135, FEAT-3136, FEAT-3137) are status: done; only FEAT-3134 remains, status deferred. Document reads as fully speculative but should be updated to reflect landed Tier-1 scope.
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:25:52 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`

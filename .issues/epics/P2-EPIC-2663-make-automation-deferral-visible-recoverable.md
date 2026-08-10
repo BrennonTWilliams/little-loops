@@ -2,7 +2,7 @@
 id: EPIC-2663
 type: EPIC
 priority: P2
-status: open
+status: done
 captured_at: '2026-07-18T02:50:02Z'
 discovered_date: '2026-07-18'
 discovered_by: capture-issue
@@ -106,9 +106,6 @@ irreversible in practice. Two root problems:
 - A single command/report lists all automation-deferred issues with reasons across runs.
 - A run that defers issues surfaces them to the human; no silent drop of the ENH-2464 class.
 
-## Session Log
-- `/ll:capture-issue` - 2026-07-18T02:50:02Z
-
 ## Related Key Documentation
 
 - `.claude/CLAUDE.md` — the Issue File Format section already documents the
@@ -118,9 +115,17 @@ irreversible in practice. Two root problems:
   filtering) and `sprint` (`_ACTIVE_STATUSES`), both named in the
   Integration Map as files this EPIC modifies.
 
+## Verification Notes
+
+- Verified 2026-08-10 via /ll:verify-issues: all child issues confirmed done — closing epic.
+
 ---
 
 ## Status
 
-- **Current**: open
-- **Last Updated**: 2026-07-18
+- **Current**: done
+- **Last Updated**: 2026-08-10
+
+## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:25:23 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
+- `/ll:capture-issue` - 2026-07-18T02:50:02Z

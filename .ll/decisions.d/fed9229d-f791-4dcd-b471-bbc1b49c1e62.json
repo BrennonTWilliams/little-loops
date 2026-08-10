@@ -1,0 +1,12 @@
+{
+  "id": "a064b85e-c9a2-4149-b4da-fd0dfbb8ef2d",
+  "type": "decision",
+  "timestamp": "2026-08-10T18:35:32Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "host_runner.py has zero subprocess execution anywhere today; every build_blocking_json caller executes the subprocess itself per the HostInvocation docstring contract. Option A preserves this convention and leaves all 16 existing evaluators.subprocess.run test patches untouched. Option B would introduce the first subprocess execution point inside host_runner.py, duplicating parsing logic with no precedent.",
+  "rule": "run_blocking_json: evaluators.py keeps subprocess.run (Option A)",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: host_runner.py owns subprocess.run internally, requiring re-targeting 16 test patch sites",
+  "issue": "FEAT-3042"
+}

@@ -60,4 +60,11 @@ correctly resolve to `EPIC-3041`.
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-10T18:52:53 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
 - `/ll:verify-issues` - 2026-08-04T21:29:47 - `e72897bf-a708-4dcd-aeaa-907564ef9e34.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This epic's FEAT-3039 (advisor FSM stall escalation with routable verdicts) and FEAT-3038 (per-task budget, `max_consults_per_task`) add a budget/stall-triggered FSM routing primitive. EPIC-3022's ENH-3020 independently adds a per-state/iteration token/wall-clock budget config and routing hook to the same `fsm/executor.py` / `fsm-loop-schema.json` surface. Before implementing FEAT-3039, confirm whether its stall-escalation route reuses ENH-3020's budget-hook mechanism/route naming convention or is a genuinely separate FSM extension point.

@@ -158,8 +158,17 @@ New:
 | `.issues/enhancements/P3-ENH-3095-add-automationcontext-dataclass-and-thread-through-hostrunner-build-streaming.md` | Dependency — defines `AutomationContext` |
 | `.issues/bugs/*BUG-3093*` (if present) | Related asymmetry at `issue_manager.py:826,893,1089` — explicitly out of scope here |
 
+## Verification Notes
+
+**2026-08-10** (`/ll:verify-issues`): Verified 2026-08-10: AutomationContext
+still absent (ENH-3095 not landed) — dependency correct. Call-site line
+numbers drifted ~20-60 lines (e.g. fsm/executor.py call now ~2801 not
+2771-2774; worker_pool.py forward now ~929-936 not 924-934;
+subprocess_utils.run_claude_command now at :343 not :320-341).
+Structure/shape of the refactor is unchanged.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:26:27 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-09T03:26:27 - `39a3fd52-4ea1-4f7e-83e9-1871820dfe65.jsonl`
 - `/ll:refine-issue` - 2026-08-07T22:51:22 - `596f76ed-c393-479b-9539-adbce5a6a72b.jsonl`
 - `/ll:issue-size-review` - 2026-08-07T22:09:44 - `dec986a1-15de-4376-b5dd-5868a8d3e188.jsonl`

@@ -3,7 +3,7 @@ id: EPIC-2412
 title: "Make end-to-end greenfield project development a first-class capability"
 type: EPIC
 priority: P2
-status: open
+status: done
 captured_at: '2026-06-30T00:00:00Z'
 discovered_date: 2026-06-30
 discovered_by: capture-issue
@@ -102,6 +102,10 @@ When this epic is done:
 - `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` (`ll-loop run --baseline` validation)
 - Prior family EPIC-1811 (rn-build capstone, closed)
 
+## Verification Notes
+
+- Verified 2026-08-10 via /ll:verify-issues: 5/6 children done, FEAT-2416 (project archetypes) remains deferred; closing epic's core scope (verification gap) as resolved — FEAT-2416 can be re-parented or tracked standalone if resumed.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:25:22 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:46 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`

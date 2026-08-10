@@ -3,7 +3,7 @@ id: 2872
 title: Self-describing drift and deprecation signals
 type: EPIC
 priority: P2
-status: open
+status: done
 discovered_date: 2026-07-27
 labels:
 - hygiene
@@ -49,3 +49,11 @@ Independent of each other; either can ship first.
 
 - `.claude/CLAUDE.md` — documents the `ll-doctor`/`ll-verify-docs`/`ll-check-links` CLI surface and the issue frontmatter/status-value conventions this epic's deprecation-reason mandate extends.
 - `docs/reference/API.md` — covers `issue_parser` (home of `parent_issue`, the deprecated-alias example cited in the Summary) module-by-module.
+
+## Verification Notes
+
+- Verified 2026-08-10 via /ll:verify-issues: all child issues confirmed done — closing epic.
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:25:23 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`

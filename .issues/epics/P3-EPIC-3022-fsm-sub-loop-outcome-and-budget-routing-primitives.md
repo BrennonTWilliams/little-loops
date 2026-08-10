@@ -114,3 +114,18 @@ branches, and the context/counter plumbing each needs. Out of scope: changing
   compatible with.
 - `scripts/little_loops/fsm/host_guard.py` — the reference shape ENH-3020's
   routing hook follows.
+
+## Verification Notes
+
+2026-08-10 (`/ll:verify-issues`): Verified 2026-08-10: body previously listed ENH-3019 as an open child — it is actually status: done. Only ENH-3020 remains open. Epic correctly stays open; update any body prose that still lists ENH-3019 as pending.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-10T18:52:53 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
+- `/ll:verify-issues` - 2026-08-10T16:25:52 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This epic's ENH-3020 adds a per-state/iteration token/wall-clock budget config and routing hook (analogous to `host_guard.py`'s `on_budget_exceeded`) directly in `fsm/executor.py` and `fsm-loop-schema.json`. EPIC-3041's FEAT-3039 (advisor FSM stall escalation with routable verdicts) and FEAT-3038 (per-task budget, `max_consults_per_task`) independently add a second, differently-shaped budget/stall-triggered routing primitive to the same FSM layer. Before implementing, confirm whether FEAT-3039's stall-escalation route reuses ENH-3020's budget-hook mechanism/route naming convention or is a genuinely separate FSM extension point, so `fsm-loop-schema.json` doesn't end up with two divergent "route on running out of X" schemas.

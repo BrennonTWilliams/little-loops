@@ -54,5 +54,12 @@ cli/loop/_helpers.py grab-bag into named modules).
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-10T18:52:50 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-05T00:25:07 - `2f3f7bc8-367e-4fba-936b-eaf8049da3c4.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:44 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This epic's ENH-2776 ("Dissolve `cli/loop/_helpers.py` grab-bag into named modules") restructures `scripts/little_loops/cli/loop/`. EPIC-2938 lands new subcommands (ENH-2943, FEAT-2948, ENH-2949) into the same directory. Sequence ENH-2776 before EPIC-2938's `cli/loop/*` additions, or have whichever lands second rebase onto the other's resulting module layout, to avoid divergent restructurings of the same package.

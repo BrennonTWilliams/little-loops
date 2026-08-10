@@ -160,7 +160,12 @@ evidence that proves it.
 - Code references accurate: `on_usage_detailed` callback in `subprocess_utils.py:289/446`, `CodexRunner` at `host_runner.py:351`, `OpenCodeRunner` at `:626` — all confirmed present.
 - The `[^tok]` footnote referencing EPIC-1744 is stale; EPIC-1744 is an unrelated completed epic. Verify that `HOST_COMPATIBILITY.md` footnote still links to this ID and update or remove.
 
+### 2026-08-10 (`/ll:verify-issues`)
+
+Verified 2026-08-10: core gap still real — `on_usage_detailed` (`subprocess_utils.py:353`) still only fires for the claude runner; `CodexRunner`/`OpenCodeRunner` exist in `host_runner.py` without it. However, the issue's claim that the `[^tok]` footnote in `HOST_COMPATIBILITY.md:177` is an orphaned dead-link to EPIC-1744 is now stale — that footnote already correctly self-cites FEAT-2123. Update or drop that part of the Summary.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:25:24 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - backlog-grooming - 2026-07-03T00:00:00Z - Consolidated the token-telemetry workstream: sequenced after ENH-2461 (`depends_on: [ENH-2461]` — the Claude-host persistence path lands first via the existing `on_usage_detailed` callback, then this issue extends the same contract to Codex/OpenCode). Decoupled from FEAT-2122 (P4 spawn-model research) — the usage-parsing research here does not depend on spawn-model behavior; FEAT-2122 moved to `relates_to`. Also linked to EPIC-2456 (F5/F6 cost-telemetry features share this callback surface).
 - `/ll:audit-issue-conflicts` - 2026-06-25T21:25:33 - `91915c5b-d793-486c-a140-be4dd3d8ca1f.jsonl`
 - `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`

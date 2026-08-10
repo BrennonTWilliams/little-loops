@@ -3,7 +3,7 @@ id: EPIC-2455
 title: fsm.host_guard — protect FSM loops from host pressure
 type: EPIC
 priority: P2
-status: open
+status: done
 relates_to:
 - ENH-2452
 - ENH-2453
@@ -127,8 +127,13 @@ On 2026-07-02 at ~20:43 local time, a 12-minute `ll-loop run brainstorm` (13 seq
 
 ## Status
 
-**Open** | Created: 2026-07-02 | Priority: P2
+**Done** | Created: 2026-07-02 | Priority: P2
+
+## Verification Notes
+
+- Verified 2026-08-10 via /ll:verify-issues: all child issues confirmed done — closing epic.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:25:22 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 
 - `/ll:capture-issue` - 2026-07-03T02:05:57Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ff12421-1849-4d8d-abe4-d955b4becd84.jsonl`

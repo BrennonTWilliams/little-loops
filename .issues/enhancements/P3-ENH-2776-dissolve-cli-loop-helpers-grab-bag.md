@@ -75,6 +75,16 @@ moving to `fsm/` per ENH-2773 — run inspection, output formatting), leaving
 - `docs/reference/API.md` — catalogs `cli/*` entry points module-by-module; splitting `_helpers.py` into named modules changes what that catalog should list.
 - `docs/ARCHITECTURE.md` — covers module placement/decomposition questions directly; this issue is exactly that kind of "where should this code live" call.
 
+## Verification Notes
+
+**2026-08-10** (`/ll:verify-issues`): Verified 2026-08-10: `_helpers.py` still
+exists at ~2,183 lines (grown from 2,156). `resolve_loop_path` has already
+moved to fsm/loop_paths.py per ENH-2773 (status: done) — that specific
+sub-step is complete; remaining decomposition work is still open.
+
+## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:26:27 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
+
 ---
 
 ## Status

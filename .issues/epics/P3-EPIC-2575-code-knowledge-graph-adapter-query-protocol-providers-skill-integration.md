@@ -69,3 +69,11 @@ The main risk is staleness, not integration: loops mutate the codebase continuou
 - `docs/reference/API.md` — already documents the `adapters` and `codequery` modules this epic's `CodeQueryProvider` protocol and registry are built into.
 - `docs/ARCHITECTURE.md` — the `HostEmitter` protocol + lazy registry in `adapters/core.py` this epic explicitly models its provider registry after.
 - `.claude/CLAUDE.md` — catalogs the `ll-code` CLI (`status`/`callers-of`/`callees-of`/`importers-of`/`defines`/`references`/`impact-of`) this epic introduces.
+
+## Verification Notes
+
+- 2026-08-10: Verified 2026-08-10: all 4 children (FEAT-2576, ENH-2577, ENH-2578, ENH-2863) are status: done. Epic is a strong candidate for closure — consider setting status: done in a follow-up pass.
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:25:08 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`

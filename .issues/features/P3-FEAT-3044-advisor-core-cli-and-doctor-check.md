@@ -7,6 +7,7 @@ priority: P3
 status: open
 testable: true
 discovered_date: 2026-08-04
+reconcile_attempted: true
 depends_on:
 - FEAT-3042
 - FEAT-3043
@@ -261,20 +262,16 @@ _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 
 ### Files to Modify
 
-- `scripts/little_loops/cli/doctor.py` — `_advisor_check`.
-- `scripts/pyproject.toml` — `ll-advise = "little_loops.cli:main_advise"`.
-- `scripts/little_loops/cli/__init__.py` — `main_advise` entry point.
-- `skills/configure/areas.md` — add `ll-advise` to the "All ll- commands"
-  preset-tools list.
-- `scripts/little_loops/init/writers.py` — add `"Bash(ll-advise:*)"` to
-  `_LL_PERMISSIONS` (line ~61-115) and add `ll-advise` to `_LL_COMMANDS`
-  (lines 137-199, renders the "little-loops" section of *consuming projects'*
-  generated `CLAUDE.md`/`AGENTS.md`). **`_LL_PERMISSIONS` is test-enforced**:
-  `ll-verify-cli-allowlist` (BUG-2764) fails
-  `scripts/tests/test_verify_cli_allowlist.py::TestRun::test_clean_state_returns_zero`
-  if any `pyproject.toml` `[project.scripts]` entry is missing from either
-  this tuple or `areas.md`.
-- `.claude/CLAUDE.md` — add `/ll:advise` to the command list.
+Superseded by the 2026-08-10 decomposition (see Acceptance Criteria and
+Verification Notes) — this issue no longer owns direct file changes. Each
+listed file is now tracked under its own child's Integration Map instead:
+
+- `scripts/little_loops/cli/doctor.py` (`_advisor_check`) — FEAT-3122.
+- `scripts/pyproject.toml`, `scripts/little_loops/cli/__init__.py`
+  (`ll-advise` entry point) — FEAT-3120.
+- `skills/configure/areas.md`, `scripts/little_loops/init/writers.py`
+  (`_LL_PERMISSIONS`, `_LL_COMMANDS`) — FEAT-3120.
+- `.claude/CLAUDE.md` — FEAT-3121.
 
 ### New Files
 
@@ -344,33 +341,20 @@ _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-1. `ll-advise --signal user_requested --question "..."` returns exit 0 and
-   prints JSON with exactly the keys `recommendation`, `risks`, `confidence`,
-   `dissent`, `signal`, `host`, `model`.
-2. Omitting `--signal` exits non-zero with a usage error. No code path
-   performs a consult without a recorded signal.
-3. With `advisor.host` differing from `orchestration.host_cli`, the consult
-   invokes the advisor host's binary and the ambient `LL_HOST_CLI` /
-   `orchestration.host_cli` is unchanged after the call (asserted, not
-   assumed).
-4. `advisor.host: "opencode"` or `"pi"` produces a non-zero exit with a
-   message naming the unwired host — no traceback, no partial output.
-5. `check_floor("claude-code", "haiku", "claude-code", "opus")` returns
-   `violation`; `ll-advise` refuses the consult. The same mismatch across
-   hosts returns `advisory` and the consult proceeds with a warning on
-   stderr.
-6. `rank_model` returns the same rank for `"opus"` and its concrete ID from
-   `MODEL_ALIASES`; an unknown/dated model returns `None` and `check_floor`
-   returns `unknown` (warn, proceed) — never a silent pass.
-7. `ll-doctor` reports advisor host reachability and emits a warning (not an
-   error) when the floor is `advisory` or `unknown`; exit code is unaffected
-   by an advisory-only finding.
-8. Advisor consults are excluded from FSM resume/replay input hashing and are
-   never cache-marked (satisfied by construction per the Proposed Solution;
-   verified by a test asserting `consult()` never calls
-   `dispatch_anthropic_request` or touches `derive_input_hash`).
-9. `python -m pytest scripts/tests/`, `ruff check scripts/`, and
-   `python -m mypy scripts/little_loops/` all pass.
+Per the 2026-08-10 `/ll:verify-issues` finding under Verification Notes, this
+issue's scope has been re-decomposed into four child issues (all
+`parent: FEAT-3044`), each carrying its own acceptance criteria covering the
+sub-slice of what was originally listed here:
+
+- **FEAT-3108** — capability floor (`MODEL_RANKS`, `rank_model`,
+  `check_floor`) — `status: done`.
+- **FEAT-3120** — `consult()` core and the `ll-advise` CLI — `status: open`.
+- **FEAT-3121** — `/ll:advise` skill wrapping the `ll-advise` CLI —
+  `status: open`.
+- **FEAT-3122** — `ll-doctor` advisor-reachability check — `status: open`.
+
+FEAT-3044 itself is satisfied when all four children reach `done`; it carries
+no independent acceptance criteria of its own beyond that roll-up.
 
 ## Why not subagents / detached sessions?
 
@@ -426,7 +410,15 @@ Also unresolved and deferred:
 
 **Open** | Created: 2026-08-04 | Priority: P3
 
+## Verification Notes
+
+### 2026-08-10 (`/ll:verify-issues`)
+
+Verified 2026-08-10: scope has been re-decomposed since this issue was written. FEAT-3108 (capability floor: `MODEL_RANKS`/`rank_model`/`check_floor`) already shipped as `status: done`, sourced under `scripts/little_loops/advisor.py` (112 lines) instead of this issue. FEAT-3120/3121/3122 (consult core, `/ll:advise` skill, doctor check) now cover the remaining scope as open children. FEAT-3044 itself is still `status: open` with no `depends_on`/parent update reflecting this decomposition. Recommend running `/ll:reconcile-issue` on this issue, or closing it in favor of its children (FEAT-3108 done; FEAT-3120/3121/3122 open) to avoid duplicated acceptance criteria.
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-08-10T18:23:28 - `19363ee8-c8d6-48d5-8b4b-21cba59c01cd.jsonl`
+- `/ll:reconcile-issue` - 2026-08-10T16:32:50 - `8f3abfd3-6623-4955-b89f-579e5adefbdd.jsonl`
+- `/ll:verify-issues` - 2026-08-10T16:25:24 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:refine-issue` - 2026-08-07T01:31:56 - `122ea141-1333-4987-8849-731d61382a3b.jsonl`
 - `/ll:issue-size-review` - 2026-08-04T20:47:21 - `b57cebec-46d2-436b-b650-9a1afa94ec18.jsonl`

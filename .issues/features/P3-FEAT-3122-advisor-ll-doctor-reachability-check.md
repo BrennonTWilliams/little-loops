@@ -105,6 +105,30 @@ _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
 - A second, independent "warn but don't fail" vocabulary exists outside doctor.py: `ValidationSeverity` (`fsm/validation/_base.py:15-34`, `ERROR`/`WARNING` enum members on `ValidationError`), aggregated by an equality filter at `structural_rules.py:1667` (`error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]`) — structurally analogous to `_exit_code_for`'s `severity == "error" and status == "unsupported"` filter (`doctor.py:124-127`), but a separate closed vocabulary with no shared type or helper between the two modules. Not a reusable dependency for `_advisor_check`, but confirms the "warn but don't fail via an explicit severity filter" shape is an established codebase idiom, not a one-off.
 - The tree-wide enumeration of zero-argument `resolve_host()` production call sites is larger than previously recorded: in addition to `doctor.py:1051`, `init/cli.py:172`, `init/install_check.py:77,143`, and `cli/action.py:338`, there are also `runner_spec.py:182,290`, `subprocess_utils.py:401`, `session_store/lifecycle.py:154,757`, `fsm/evaluators.py:1120,1314,1566`, `parallel/worker_pool.py:805`, `fsm/handoff_handler.py:117`, `cli/loop/_helpers.py:2072`, `cli/issues/decisions.py:797`, and `learning_tests/extractor.py:132`. All of them, without exception, call `resolve_host()` with zero arguments — none passes an explicit `env` dict. This strengthens rather than changes the issue's existing claim: there is no production precedent anywhere in the tree for resolving a second, independent `HostRunner`.
 
+_Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
+
+- **Dependency-chain re-check (2026-08-10 refine pass) — resolves the open
+  Verification Notes concern below**: this issue's `depends_on: [FEAT-3108,
+  FEAT-3120]` is now confirmed **accurate**, not stale. `FEAT-3120`
+  (`.issues/features/P3-FEAT-3120-advisor-consult-core-and-ll-advise-cli.md`)
+  is a real, currently `open` issue titled "Advisor consult() core and
+  ll-advise CLI" — it matches the scope this issue's Parent Issue section
+  describes (consult(), the ll-advise CLI, the host-resolution-isolation
+  convention). `FEAT-3120` itself carries `depends_on: [FEAT-3042, FEAT-3043,
+  FEAT-3108]`, and both `FEAT-3042`
+  (`.issues/features/P3-FEAT-3042-advisor-shared-blocking-json-transport.md`)
+  and `FEAT-3043`
+  (`.issues/features/P3-FEAT-3043-advisor-config-block.md`) are real, open
+  issues in the tracker (not the unrelated FEAT-3120/FEAT-3121
+  worktree-state-inheritance IDs the earlier Verification Notes confused
+  them with). `consult()`/`AdvisorVerdict`/the `ll-advise` CLI/`AdvisorConfig`
+  still do not exist in `scripts/little_loops/advisor.py` (113 lines,
+  unchanged) or `config-schema.json`/`config/core.py`/`config/orchestration.py`
+  — the dependency is real and currently unsatisfied (FEAT-3120 is `open`,
+  not `done`), but the frontmatter `depends_on` edge itself needs **no
+  repointing**. The prior "Recommended action: repoint depends_on" notes
+  below are now moot.
+
 ## Expected Behavior
 
 - `ll-doctor` reports advisor host reachability.
@@ -226,6 +250,32 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
+
+_Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
+
+- **Stale line reference (2026-08-10 refine pass)**: the `describe_capabilities`
+  section in `docs/reference/API.md` has moved — it is now at approximately
+  lines 9454-9462, not ~line 9266 as the prior wiring-pass note above states.
+  Still has zero `little_loops.advisor` module reference.
+- **Sharper framing of the status-translation gap (2026-08-10 refine pass)**:
+  `_capability_check_results()` (`doctor.py:98-113`) is not actually an
+  example of remapping one status vocabulary into another — it copies
+  `CapabilityEntry.status` straight through into `CheckResult.status`
+  unchanged, and only derives the separate `severity` field via a
+  set-membership check against `_ADVISORY_CAPABILITIES` (`doctor.py:95,110`).
+  There is no existing dict-mapping or dispatch convention anywhere in the
+  codebase that translates between two disjoint closed `Literal` status
+  types — `_advisor_check` mapping `FloorResult.status` onto
+  `CheckResult.status` would be a genuinely new pattern, not an application
+  of an existing one.
+- **No `side_effect=[...]` precedent for dual-host mocking exists anywhere in
+  the suite (2026-08-10 refine pass, confirms prior wiring note)**: a
+  suite-wide grep for `side_effect=[` returns exactly one hit,
+  `test_issue_manager.py:403`, and it is an unrelated retry-flow mock, not a
+  `resolve_host` mock. Every `resolve_host` patch across the entire test
+  suite (not just `test_cli_doctor.py`) uses a single `return_value=`. A test
+  asserting `_advisor_check` resolves an independent advisor host would be
+  introducing this pattern for the first time in the codebase.
 
 ### Conventions in Force
 
@@ -502,6 +552,10 @@ _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
 
 - Confirmed via `codebase-locator`: `EPIC-3041`'s actual decomposition traces `FEAT-3037` (host-agnostic advisor) → `FEAT-3042` (`.issues/features/P3-FEAT-3042-advisor-shared-blocking-json-transport.md`, shared blocking-JSON transport / `resolve_host_named`) + `FEAT-3043` (`.issues/features/P3-FEAT-3043-advisor-config-block.md`, `AdvisorConfig` schema block) + `FEAT-3044` (`.issues/features/P3-FEAT-3044-advisor-core-cli-and-doctor-check.md`) → `FEAT-3044` further decomposed into `FEAT-3108` (done) + `FEAT-3120` (never filed) + this issue (`FEAT-3122`). This corroborates the existing recommendation below: if `_advisor_check` needs a config surface or a second-host resolution primitive, those are `FEAT-3043` and `FEAT-3042` respectively — not `FEAT-3120`, and not the unrelated `FEAT-3120`/`FEAT-3121` IDs.
 
+### 2026-08-10 (`/ll:verify-issues`)
+
+Verified 2026-08-10: doctor.py confirmed to have exactly 5 `@register_check` checks (matches CLI.md), no advisor check exists yet — core claim valid. However this issue's own `depends_on: [FEAT-3108, FEAT-3120]` is stale/contested per its extensive internal Verification Notes, which already flag it needs a fresh `/ll:refine-issue` pass to repoint dependencies to FEAT-3042/FEAT-3043. Re-running that refine pass is recommended before implementation.
+
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-08-08_
@@ -554,6 +608,9 @@ _Added by `/ll:confidence-check` on 2026-08-08_
   no canonical one chosen; implementer will need to pick one under judgment.
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-08-10T18:26:44 - `7405995b-78ac-4bf8-8825-45f100c3421d.jsonl`
+- `/ll:refine-issue` - 2026-08-10T16:35:42 - `8f3abfd3-6623-4955-b89f-579e5adefbdd.jsonl`
+- `/ll:verify-issues` - 2026-08-10T16:25:25 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:confidence-check` - 2026-08-08T21:00:42 - `33a02969-b861-45a0-9dfa-bda36f49c2f3.jsonl`
 - `/ll:reconcile-issue` - 2026-08-08T20:57:33 - `4da796c5-b40f-4549-8b2d-ec7d06d66491.jsonl`
 - `/ll:verify-issues` - 2026-08-08T20:55:22 - `cf0cb0be-6bdf-436b-b626-68fabe345e75.jsonl`

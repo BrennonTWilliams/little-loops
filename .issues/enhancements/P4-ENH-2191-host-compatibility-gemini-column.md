@@ -116,6 +116,14 @@ This issue should be updated incrementally as children land. Final pass:
 
 - **2026-06-30** (dependency hygiene): Removed cancelled `FEAT-2188` and `FEAT-2189` from `depends_on` (both cancelled 2026-06-25, superseded by `FEAT-2260` generic skill+command adapter, now `done`). Added `FEAT-2259` (generic conformance harness, `done`) and `FEAT-2260` to `depends_on` to reflect the real prerequisites. Repointed the Cell Update Map "Depends on" column for skills/commands/conformance cells from the cancelled bespoke issues (FEAT-2188/2189/2192) to the generic components. `ll-deps validate` does not flag depends-on-cancelled, so this was a latent stall risk for dependency-ordered runners.
 
+- **2026-08-10** (`/ll:verify-issues`): Verified 2026-08-10: dependency chain
+  (FEAT-2179, ENH-2184, ENH-2185, ENH-2187, FEAT-2259, FEAT-2260) all
+  confirmed done; FEAT-2186 and FEAT-2190 remain open. The issue's Cell
+  Update Map table is stale relative to its own 2026-07-03 session-log
+  notes — needs reconciliation, but underlying tracking work
+  (HOST_COMPATIBILITY.md Gemini column state) is still accurately gapped.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:26:28 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:verify-issues` - 2026-06-20T00:34:45 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
 - `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`

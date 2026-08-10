@@ -33,3 +33,11 @@ every issue file's frontmatter twice).
 ## Related Key Documentation
 
 - `docs/reference/API.md` — documents `issue_parser` and `session_store`, the two modules whose redundant-parsing paths this epic's children fix.
+
+## Verification Notes
+
+2026-08-10 (`/ll:verify-issues`): Verified 2026-08-10: all 3 children (ENH-2780, ENH-2781, ENH-2782) are status: done. Epic is a strong candidate for closure — consider setting status: done in a follow-up pass.
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:25:51 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`

@@ -28,3 +28,11 @@ Group of 3 related issues improving the `ll-issues clusters` subcommand output q
 ## Related Key Documentation
 
 - `.claude/CLAUDE.md` — lists `ll-issues` (including `clusters`-adjacent subcommands) in the CLI Tools catalog that documents this surface's flags.
+
+## Verification Notes
+
+- 2026-08-10: Verified 2026-08-10: all 3 children (ENH-2335, ENH-2336, FEAT-2337) are status: done. Epic is a strong candidate for closure — consider setting status: done in a follow-up pass.
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:25:08 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`

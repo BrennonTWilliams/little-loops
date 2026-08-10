@@ -9,6 +9,8 @@ testable: true
 discovered_date: 2026-08-08
 depends_on:
 - FEAT-3044
+- FEAT-3120
+- FEAT-3043
 labels:
 - planning-hub
 ---
@@ -172,4 +174,5 @@ Implement in `scripts/little_loops/advisor.py`:
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-10T18:51:42 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
 - `/ll:issue-size-review` - 2026-08-08T21:18:49 - `5955cc74-6f18-496f-9ff9-59d7e836977d.jsonl`

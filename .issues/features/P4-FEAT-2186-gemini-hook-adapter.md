@@ -10,6 +10,7 @@ depends_on:
 - ENH-2184
 decision_needed: false
 decision_ref: ARCHITECTURE-046
+verify_verdict: NON_VALID
 captured_at: "2026-06-15T00:00:00Z"
 discovered_date: 2026-06-15
 discovered_by: capture-issue
@@ -194,8 +195,11 @@ _Run `/ll:normalize-issues` to discover and link additional relevant docs._
 
 - **2026-06-26** (/ll:verify-issues): Corrected Current Behavior — added `hooks/adapters/opencode/` to the list of existing adapter subdirs (previously omitted, only codex and claude-code were listed); the central claim that `hooks/adapters/gemini/` is absent remains accurate.
 
+- **2026-08-10** (`/ll:verify-issues`): OUTDATED as of 2026-08-10: `hooks/adapters/gemini/` is still absent — the core implementation gap is real. But both blocking dependencies (FEAT-2179, ENH-2184) are now `status: done` — this issue is actually UNBLOCKED and ready to implement, not blocked as its `blocked_by`/`depends_on` fields may currently suggest. Update the blocking-dependency fields/status accordingly.
+
 **Open** | Created: 2026-06-15 | Priority: P4
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:25:25 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:format-issue` - 2026-06-26T23:20:04 - `9c24a548-31d7-49d9-b376-2665d69b3ab4.jsonl`

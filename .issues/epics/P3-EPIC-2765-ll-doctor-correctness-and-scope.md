@@ -183,7 +183,13 @@ into one invocation and gives `ll-init` a natural post-install verification step
 | `docs/ARCHITECTURE.md` | `CapabilityReport` row (~line 875); where a check registry would sit |
 | `.claude/CLAUDE.md` | Canonical CLI tool inventory |
 
+## Verification Notes
+
+2026-08-10 (`/ll:verify-issues`): Verified 2026-08-10: all children done — the 7 listed in the body (BUG-2759/2760, ENH-2761/2762/2836, FEAT-2763, BUG-2764) plus the 4 frontmatter-only decomposition children (FEAT-2793/2794/2795/2796) are all status: done. Epic is a strong candidate for closure — consider setting status: done in a follow-up pass.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:25:51 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
+<!-- ll-private-ok: pre-existing session-log capture path, not newly introduced -->
 - `/ll:capture-issue` - 2026-07-24T19:36:28Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00041c0b-3526-41ec-b743-a686380c429a.jsonl`
 
 ---

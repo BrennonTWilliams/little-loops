@@ -227,8 +227,18 @@ New:
 | `scripts/little_loops/host_runner.py:1547-1564` | `_apply_automation_env()`, the existing env-side consolidation |
 | `scripts/tests/test_feat3033_idle_timeout.py:390-467` | Kwarg-gating compatibility template |
 
+## Verification Notes
+
+**2026-08-10** (`/ll:verify-issues`): Verified 2026-08-10: AutomationContext
+still doesn't exist in host_runner.py; core claim holds. Cited line numbers
+are off by ~15-35 lines from newer commits (e.g. Protocol block now near line
+225, not 216-227; _apply_automation_env now near 1580, not 1547) — refresh
+anchors when implementing. Also note: parent ENH-3094's frontmatter says
+status: done but its own body '## Status' section still says open — a stale
+self-contradiction on the parent, doesn't affect this issue's validity.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:26:27 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-09T03:26:27 - `39a3fd52-4ea1-4f7e-83e9-1871820dfe65.jsonl`
 - `/ll:ready-issue` - 2026-08-09T02:52:47 - `6431dd81-8b40-4678-a555-981e5457f142.jsonl`
 - `/ll:confidence-check` - 2026-08-09T01:59:07 - `9b3b8077-be68-4765-a354-0d51ab3b4859.jsonl`

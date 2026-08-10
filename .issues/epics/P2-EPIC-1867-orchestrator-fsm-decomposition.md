@@ -164,6 +164,7 @@ _Added by `/ll:verify-issues` on 2026-06-09_
 2026-06-19 — **NEEDS_UPDATE applied**: ENH-2106 completed 2026-06-13; references to it as a blocking dependency on FEAT-2000/FEAT-1899 were stale and have been corrected above. All other claims verified accurate: `loops/ll-auto.yaml` absent (expected), FEAT-1902 cancelled, all remaining children open/blocked with correct priorities and statuses, decomposition plan doc present.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-10T18:52:51 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
 - `/ll:verify-issues` - 2026-06-19T21:00:32 - `c40a6bfb-b2f9-4c35-89ae-2adc49a46c37.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:57 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:verify-issues` - 2026-06-09T14:24:45 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`
@@ -197,3 +198,9 @@ Rationale (5-week stalemate check, 2026-07-07): 0 of 4 layers delivered since EP
 3. A user-visible orchestrator failure is reported that the FSM decomposition would have prevented.
 
 The EPIC itself stays `open` as the index of intent; only the children carry the `deferred` status.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This epic's CLAUDE.md CLI Tools section edits (from ENH-1903/FEAT-2002) target the same catalog section EPIC-2938 also edits when documenting its new `ll-issues`/`ll-loop` subcommands. Whichever epic's edits land second should rebase against the other's changes rather than editing independently.

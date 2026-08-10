@@ -162,7 +162,10 @@ open
 
 2026-06-19 (OUTDATED): ENH-2130/2131/2132/2133/2134 confirmed `status: done`; only ENH-2070/2071/2072 remain (correctly marked deferred). "Remaining open work" section updated to remove the 5 completed children.
 
+- 2026-08-10: Verified 2026-08-10: the epic's 'Implementation Status' section (last updated 2026-06-19/20) predates three later-parented children — ENH-2923, ENH-2926, FEAT-2379 — which are still open. Epic is not closable; Implementation Status section needs a refresh to include these.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:25:07 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:verify-issues` - 2026-06-20T00:34:45 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
 - `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`

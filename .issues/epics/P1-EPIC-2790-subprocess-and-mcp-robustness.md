@@ -3,7 +3,7 @@ id: EPIC-2790
 title: Subprocess and MCP Robustness
 type: EPIC
 priority: P1
-status: open
+status: done
 captured_at: "2026-07-25T02:35:31Z"
 discovered_date: 2026-07-25
 discovered_by: create-epics-from-unparented
@@ -35,3 +35,11 @@ without a follow-up `wait()`).
 - `docs/reference/API.md` — documents the transport/subprocess-invocation
   layer (`_run_cmd`, `_send_jsonrpc`, `call_mcp_tool`) these three children
   fix the lifecycle correctness of.
+
+## Verification Notes
+
+- 2026-08-10: Verified 2026-08-10 via /ll:verify-issues: all child issues confirmed done — closing epic.
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-08-10T16:25:22 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
