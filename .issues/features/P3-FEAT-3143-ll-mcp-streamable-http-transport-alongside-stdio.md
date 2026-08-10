@@ -14,6 +14,12 @@ learning_tests_required:
 - mcp HTTP transport
 relates_to:
 - FEAT-3135
+confidence_score: 98
+outcome_confidence: 86
+score_complexity: 21
+score_test_coverage: 20
+score_ambiguity: 23
+score_change_surface: 22
 ---
 
 # FEAT-3143: ll-mcp: streamable HTTP transport alongside stdio
@@ -131,6 +137,112 @@ EPIC-3127 — `ll-mcp`: MCP server as little-loops' host-agnostic serving layer.
 This is transport plumbing under the tier-1 facade, not a new tool surface, so it
 does not cross the tier-2 or tier-3 boundaries.
 
+## Program Design
+
+### Types
+
+- `TransportSecuritySettings` (`mcp.server.transport_security`, pydantic
+  model) — `enable_dns_rebinding_protection: bool = True` (kept at its
+  default), `allowed_hosts: list[str] = []`, `allowed_origins: list[str] = []`.
+  Constructed with no overrides; the learning test's `enable_dns_rebinding_protection=False`
+  was proof-only and must not appear in `run_http()`.
+- No new little-loops types. `run_http()` composes only SDK/Starlette/uvicorn
+  types below plus the existing `Server` from `build_server()`.
+
+### Signatures
+
+- `async def run_http(host: str = "127.0.0.1", port: int = 8765) -> None`
+  (new, `scripts/little_loops/mcp_server/server.py`, alongside `run_stdio()`)
+  — entry coroutine for the HTTP transport, run under `anyio.run()` exactly
+  like `run_stdio()`. Binds loopback by default per Decision 1; no parameter
+  defaults to `0.0.0.0`.
+- `StreamableHTTPSessionManager.__init__(self, app: Server, event_store: EventStore | None = None, json_response: bool = False, stateless: bool = False, security_settings: TransportSecuritySettings | None = None, ...) -> None`
+  (`mcp.server.streamable_http_manager`, unchanged SDK class) — constructed
+  inside `run_http()` as `StreamableHTTPSessionManager(app=build_server(), json_response=True, stateless=True, security_settings=TransportSecuritySettings())`
+  per Decision 2 (the exact combination the learning test proved).
+- `StreamableHTTPSessionManager.run(self) -> AsyncContextManager[None]`
+  (`@asynccontextmanager`, unchanged SDK method) — must be entered
+  (`async with session_manager.run():`) before any request is served; owns
+  the manager's background task group for the process lifetime, mirroring
+  how `stdio_server()` is entered in `run_stdio()`.
+- `StreamableHTTPSessionManager.handle_request(self, scope: Scope, receive: Receive, send: Send) -> None`
+  (unchanged SDK method) — the ASGI entrypoint; `run_http()` wires it as a
+  `Starlette` route (`Mount` or a single `Route` catching all methods on the
+  MCP path) rather than calling it directly.
+- `uvicorn.Config.__init__(self, app: ASGIApplication, host: str, port: int, ...) -> None`
+  and `uvicorn.Server.serve(self, sockets=None) -> None` (unchanged, already
+  a transitive dep of the `mcp` extra) — `run_http()` builds
+  `uvicorn.Config(starlette_app, host=host, port=port)`, wraps it in
+  `uvicorn.Server(config)`, and awaits `.serve()` from inside the
+  `session_manager.run()` context — this replaces `anyio.run(uvicorn.run, ...)`,
+  which is sync-only and cannot be awaited alongside the manager's context.
+- `main_mcp(argv: list[str] | None = None) -> int` (existing,
+  `scripts/little_loops/mcp_server/__init__.py`) — signature is unchanged;
+  the transport-selection branch reads inside the function body, not a new
+  parameter (console-script entry points take no argv from `pyproject.toml`,
+  so a flag has to come from `argv`/env, not a new function signature).
+
+### Transport-selection branch (`main_mcp`)
+
+```python
+def main_mcp(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    ...  # existing mcp-extra ImportError check, unchanged
+
+    import anyio
+
+    from little_loops.mcp_server.server import run_http, run_stdio
+
+    if "--http" in argv or os.environ.get("LL_MCP_TRANSPORT") == "http":
+        anyio.run(run_http)
+    else:
+        anyio.run(run_stdio)
+    return 0
+```
+
+`argv` is read here (not parsed with `argparse`) to keep `main_mcp`'s existing
+"protocol server, not a CLI" framing (`__init__.py` module docstring) — one
+boolean flag check plus one env var fallback, no help text or subcommands.
+`LL_MCP_TRANSPORT=http` exists for host configs that invoke `ll-mcp` with no
+args (env var is the only lever available when the caller can't pass flags).
+Default with neither `--http` nor the env var set is unchanged: `run_stdio()`,
+satisfying Acceptance Criterion 1.
+
+### Call Path
+
+`main_mcp()` → (flag/env check) → `anyio.run(run_http)` → `run_http()` builds
+`server = build_server()` (unmodified) → constructs
+`StreamableHTTPSessionManager(app=server, json_response=True, stateless=True, security_settings=TransportSecuritySettings())`
+→ wraps `session_manager.handle_request` in a `Starlette` app → `async with
+session_manager.run():` → `uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port)).serve()`.
+Each inbound request flows `Starlette` route → `handle_request(scope, receive, send)`
+→ SDK's existing header/envelope validation (`Mcp-Method`, `Mcp-Name`,
+`params._meta`, proven by the learning test's claims 1-4) → the same
+`on_list_tools`/`on_call_tool`/`on_read_resource`/etc. handlers `build_server()`
+already registers.
+
+### Decision Rules
+
+N/A — no new gap kind, gate, or threshold. The three open questions this
+issue faced (bind interface, `json_response`/`stateless`, flag-vs-entry-point)
+are already resolved in `## Decisions (settled)` above with direct learning-test
+evidence; this section only makes those decisions concrete in code.
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-10_
+
+**Readiness Score**: 98/100 → PROCEED
+**Outcome Confidence**: 86/100 → HIGH
+
+`## Program Design` section added 2026-08-10 with concrete `run_http()` and
+`StreamableHTTPSessionManager`/uvicorn signatures and the `main_mcp()`
+transport-selection branch; `ll-issues check-design FEAT-3143` now passes.
+
 ## Status
 
 **Open** | Created: 2026-08-10 | Priority: P3
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-10T21:19:52 - `c399e98c-b001-4568-9896-227421406281.jsonl`

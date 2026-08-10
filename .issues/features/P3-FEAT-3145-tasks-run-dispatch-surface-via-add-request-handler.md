@@ -1,6 +1,7 @@
 ---
 id: 3145
-title: 'll-mcp: tasks/* run-dispatch surface via Server.add_request_handler (tier-3, evidence-gated)'
+title: 'll-mcp: tasks/* run-dispatch surface via Server.add_request_handler (tier-3,
+  evidence-gated)'
 type: FEAT
 priority: P3
 status: open
@@ -17,6 +18,13 @@ depends_on:
 - ENH-3144
 relates_to:
 - FEAT-3143
+confidence_score: 53
+outcome_confidence: 43
+score_complexity: 13
+score_test_coverage: 10
+score_ambiguity: 5
+score_change_surface: 15
+missing_artifacts: true
 ---
 
 # FEAT-3145: ll-mcp: tasks/* run-dispatch surface via Server.add_request_handler
@@ -108,6 +116,31 @@ even though nothing enforces that today.
 EPIC-3127 — `ll-mcp`: MCP server as little-loops' host-agnostic serving layer.
 Tier 3 (job API), evidence-gated.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-10_
+
+**Readiness Score**: 53/100 → STOP — ADDRESS GAPS
+**Outcome Confidence**: 43/100 → LOW
+
+### Concerns
+- The issue itself states it is gated: "do not implement before the tier-3 evidence gate opens." The tier-3 evidence trigger (hosts wanting to *drive* runs, not just plan them) has not been observed yet, per EPIC-3127.
+- `depends_on: FEAT-3143` is still `open` — the HTTP transport this surface is "most useful over" per the Dependencies section does not exist yet.
+- Acceptance Criteria are explicitly marked "(To be settled when the gate opens — captured now only as intent.)" — not testable as written.
+
+### Gaps to Address
+- `## Program Design` section is missing entirely (Program Design gate fails: `ll-issues check-design FEAT-3145` exits 1). Populate it with concrete types/signatures/call path once the gate opens, or set `program_design_not_applicable: true` if this stays a captured-intent placeholder until then.
+- Resolve `FEAT-3143` (HTTP transport) before implementation — it is the more load-bearing of the two `depends_on` entries.
+- Acceptance Criteria need to be settled with real, testable statements once the tier-3 evidence gate opens.
+
+### Outcome Risk Factors
+- High ambiguity: method/result shapes must track SEP-2663 "even though nothing enforces that today" — no automated check ties the implementation to the spec.
+- No test coverage yet for the `tasks/*` handlers themselves (only the underlying mechanism is covered, via the proven learning test).
+
 ## Status
 
 **Open (gated)** | Created: 2026-08-10 | Priority: P3
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-10T21:19:52 - `c399e98c-b001-4568-9896-227421406281.jsonl`
