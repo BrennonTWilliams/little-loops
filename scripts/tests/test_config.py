@@ -398,7 +398,11 @@ class TestParallelAutomationConfig:
         # Parallel-specific defaults
         assert config.p0_sequential is True
         assert config.command_prefix == "/ll:"
-        assert config.worktree_copy_files == [".claude/settings.local.json", ".env"]
+        assert config.worktree_copy_files == [
+            ".claude/settings.local.json",
+            ".env",
+            ".ll/ll.local.md",
+        ]
         assert config.require_code_changes is True
 
     def test_timeout_per_issue_key_is_respected(self) -> None:

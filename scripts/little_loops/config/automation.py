@@ -89,7 +89,7 @@ class ParallelAutomationConfig:
     manage_command: str = "manage-issue {{issue_type}} {{action}} {{issue_id}}"
     decide_command: str = "decide-issue {{issue_id}}"
     worktree_copy_files: list[str] = field(
-        default_factory=lambda: [".claude/settings.local.json", ".env"]
+        default_factory=lambda: [".claude/settings.local.json", ".env", ".ll/ll.local.md"]
     )
     require_code_changes: bool = True
     use_feature_branches: bool = False
@@ -128,7 +128,7 @@ class ParallelAutomationConfig:
             ),
             decide_command=data.get("decide_command", "decide-issue {{issue_id}}"),
             worktree_copy_files=data.get(
-                "worktree_copy_files", [".claude/settings.local.json", ".env"]
+                "worktree_copy_files", [".claude/settings.local.json", ".env", ".ll/ll.local.md"]
             ),
             require_code_changes=data.get("require_code_changes", True),
             use_feature_branches=data.get("use_feature_branches", False),

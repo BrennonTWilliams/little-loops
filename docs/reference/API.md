@@ -525,7 +525,7 @@ class ParallelAutomationConfig:
     ready_command: str = "ready-issue {{issue_id}}"
     manage_command: str = "manage-issue {{issue_type}} {{action}} {{issue_id}}"
     decide_command: str = "decide-issue {{issue_id}}"
-    worktree_copy_files: list[str] = field(default_factory=lambda: [".claude/settings.local.json", ".env"])
+    worktree_copy_files: list[str] = field(default_factory=lambda: [".claude/settings.local.json", ".env", ".ll/ll.local.md"])
     require_code_changes: bool = True
     use_feature_branches: bool = False
     push_feature_branches: bool = False
@@ -3773,7 +3773,7 @@ class ParallelConfig:
     use_feature_branches: bool = False
     push_feature_branches: bool = False
     open_pr_for_feature_branches: bool = False
-    worktree_copy_files: list[str] = field(default_factory=lambda: [".claude/settings.local.json", ".env"])
+    worktree_copy_files: list[str] = field(default_factory=lambda: [".claude/settings.local.json", ".env", ".ll/ll.local.md"])
     merge_pending: bool = False
     clean_start: bool = False
     ignore_pending: bool = False

@@ -182,16 +182,23 @@ git worktree list
 
 ### Worktree not inheriting settings
 
-**Symptom**: Claude uses wrong model or settings in worktree
+**Symptom**: Claude uses wrong model or settings in worktree; or a worktree
+session runs with a different `test_cmd` / other local override than the
+main tree, or is missing the `## Active Rules` section
 
-**Cause**: `.claude/settings.local.json` not present or not copied
+**Cause**: `.claude/settings.local.json` not present or not copied; or
+`.ll/ll.local.md` (gitignored, machine-local overrides and Active Rules) not
+present or not copied
 
 **Solution**:
-1. Ensure main repo has `.claude/settings.local.json`
-2. The worktree should inherit this automatically
+1. Ensure main repo has `.claude/settings.local.json` and, if used,
+   `.ll/ll.local.md`
+2. Both are copied automatically via the default `worktree_copy_files` list
+   (`[".claude/settings.local.json", ".env", ".ll/ll.local.md"]`)
 3. Check worktree has access:
    ```bash
    cat .worktrees/worker-1/.claude/settings.local.json
+   cat .worktrees/worker-1/.ll/ll.local.md
    ```
 
 ### Git commands fail inside worktree sessions

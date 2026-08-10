@@ -165,6 +165,40 @@ class TestSetupWorktree:
 
         assert any(".env" in str(src) for src, _ in copy2_calls)
 
+    def test_copies_ll_local_md(self, tmp_path: Path) -> None:
+        """setup_worktree() copies .ll/ll.local.md when present in copy_files (ENH-3113)."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        ll_dir = repo / ".ll"
+        ll_dir.mkdir()
+        local_md = ll_dir / "ll.local.md"
+        local_md.write_text("---\nproject:\n  test_cmd: custom\n---\n")
+        wt = tmp_path / "wt"
+        wt.mkdir()
+        logger = MagicMock()
+        git_lock = _make_git_lock(logger)
+
+        copy2_calls: list[tuple[Path, Path]] = []
+
+        def _mock_copy2(src: object, dst: object) -> None:
+            copy2_calls.append((Path(str(src)), Path(str(dst))))
+
+        with patch.object(git_lock, "run", return_value=subprocess.CompletedProcess([], 0, "", "")):
+            with patch("subprocess.run", return_value=_ok()):
+                with patch("shutil.copytree"):
+                    with patch("shutil.copy2", side_effect=_mock_copy2):
+                        setup_worktree(
+                            repo_path=repo,
+                            worktree_path=wt,
+                            branch_name="branch",
+                            copy_files=[".ll/ll.local.md"],
+                            logger=logger,
+                            git_lock=git_lock,
+                        )
+
+        assert any(str(src).endswith(".ll/ll.local.md") for src, _ in copy2_calls)
+        assert any(str(dst).endswith(".ll/ll.local.md") for _, dst in copy2_calls)
+
     def test_skips_claude_prefixed_copy_files(self, tmp_path: Path) -> None:
         """.claude/ prefixed copy_files are not re-copied (already in copytree)."""
         repo = tmp_path / "repo"
