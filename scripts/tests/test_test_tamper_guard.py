@@ -319,6 +319,42 @@ class TestTamperGuardChangedFiles:
         assert tamper_guard_changed_files(repo) == []
 
 
+class TestTamperGuardScopeExcludesPrepatchWorktree:
+    """ENH-3141 AC4: a pre-patch worktree's own scratch state must never register
+    as a tamper finding — its content sits under a gitignored ``.worktrees/``
+    directory, which ``--exclude-standard`` already excludes from both scans."""
+
+    def test_prepatch_worktree_content_excluded_from_candidate_and_changed_paths(
+        self, tmp_path: Path
+    ) -> None:
+        from little_loops.logger import Logger
+        from little_loops.parallel.git_lock import GitLock
+        from little_loops.worktree_utils import cleanup_worktree, setup_prepatch_worktree
+
+        repo = _init_repo(tmp_path / "repo")
+        (repo / ".gitignore").write_text(".worktrees/\n")
+        _git(repo, "add", ".gitignore")
+        _git(repo, "commit", "-m", "gitignore worktrees")
+
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+        worktree_path = setup_prepatch_worktree(
+            repo_path=repo,
+            worktree_base=".worktrees",
+            base_ref="HEAD",
+            test_files={"tests/test_prepatch.py": "def test_x(): assert True\n"},
+            logger=logger,
+            git_lock=git_lock,
+        )
+        try:
+            candidate_paths = tamper_guard_candidate_paths(repo)
+            changed = tamper_guard_changed_files(repo)
+            assert not any(".worktrees" in p for p in candidate_paths)
+            assert not any(".worktrees" in p for p in changed)
+        finally:
+            cleanup_worktree(worktree_path, repo, logger, git_lock, delete_branch=True)
+
+
 class TestApplyTamperPolicy:
     def test_no_findings_always_passes(self, tmp_path: Path) -> None:
         for policy in ("revert", "fail", "allow"):

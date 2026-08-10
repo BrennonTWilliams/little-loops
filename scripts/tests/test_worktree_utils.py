@@ -25,6 +25,7 @@ from little_loops.worktree_utils import (
     open_pr_for_epic_branch,
     resolve_epic_base,
     resolve_epic_branch_name,
+    setup_prepatch_worktree,
     setup_worktree,
     verify_epic_branch_before_merge,
 )
@@ -443,6 +444,167 @@ class TestSetupWorktreeHistoryDbExport:
         rows = recent_lifecycle_events(event="handoff_needed", db=repo / ".ll" / "history.db")
         session_ids = {r.session_id for r in rows}
         assert session_ids >= {f"concurrent-{i}" for i in range(4)}
+
+
+class TestSetupPrepatchWorktree:
+    """setup_prepatch_worktree() (ENH-3141): forks a worktree at a base ref and
+    content-writes caller-supplied test-file content into it, distinct from
+    setup_worktree()'s copy_files (which only copies existing on-disk files)."""
+
+    def _repo_with_prepatch_history(self, tmp_path: Path) -> tuple[Path, str]:
+        """A repo with a pre-patch commit (base_sha) and a later commit that adds
+        a module only present post-patch, for import-isolation assertions."""
+        repo = _init_repo(tmp_path / "repo")
+        pkg_dir = repo / "scripts" / "pkg"
+        pkg_dir.mkdir(parents=True)
+        (pkg_dir / "__init__.py").write_text("")
+        _git(repo, "add", "scripts/pkg/__init__.py")
+        _git(repo, "commit", "-m", "add pkg")
+        base_sha = _git(repo, "rev-parse", "HEAD").stdout.strip()
+
+        (pkg_dir / "postpatch_only.py").write_text("VALUE = 1\n")
+        _git(repo, "add", "scripts/pkg/postpatch_only.py")
+        _git(repo, "commit", "-m", "add post-patch-only module")
+        return repo, base_sha
+
+    def test_forks_worktree_and_content_writes_test_files(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        worktree_path = setup_prepatch_worktree(
+            repo_path=repo,
+            worktree_base=".worktrees",
+            base_ref="HEAD",
+            test_files={"scripts/tests/test_new.py": "def test_x():\n    assert True\n"},
+            logger=logger,
+            git_lock=git_lock,
+        )
+        try:
+            assert worktree_path.exists()
+            assert (worktree_path / "scripts/tests/test_new.py").read_text() == (
+                "def test_x():\n    assert True\n"
+            )
+        finally:
+            cleanup_worktree(worktree_path, repo, logger, git_lock, delete_branch=True)
+
+    def test_conftest_content_is_written_when_present(self, tmp_path: Path) -> None:
+        """conftest.py entries in test_files are applied automatically — no
+        separate glob list is re-derived by setup_prepatch_worktree() itself."""
+        repo = _init_repo(tmp_path / "repo")
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        worktree_path = setup_prepatch_worktree(
+            repo_path=repo,
+            worktree_base=".worktrees",
+            base_ref="HEAD",
+            test_files={"scripts/tests/conftest.py": "# pre-patch conftest\n"},
+            logger=logger,
+            git_lock=git_lock,
+        )
+        try:
+            assert (worktree_path / "scripts/tests/conftest.py").read_text() == (
+                "# pre-patch conftest\n"
+            )
+        finally:
+            cleanup_worktree(worktree_path, repo, logger, git_lock, delete_branch=True)
+
+    def test_src_dir_first_on_pythonpath_isolates_from_postpatch_only_module(
+        self, tmp_path: Path
+    ) -> None:
+        """A module that exists only in the post-patch tree is unimportable from
+        the pre-patch worktree, even with the main tree's src dir later on
+        PYTHONPATH (simulating an editable install) — proving import isolation."""
+        repo, base_sha = self._repo_with_prepatch_history(tmp_path)
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        worktree_path = setup_prepatch_worktree(
+            repo_path=repo,
+            worktree_base=".worktrees",
+            base_ref=base_sha,
+            test_files={},
+            logger=logger,
+            git_lock=git_lock,
+            src_dir="scripts",
+        )
+        try:
+            env = os.environ.copy()
+            env["PYTHONPATH"] = os.pathsep.join(
+                [str(worktree_path / "scripts"), str(repo / "scripts")]
+            )
+            result = subprocess.run(
+                ["python3", "-c", "import pkg.postpatch_only"],
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            assert result.returncode != 0
+            assert "postpatch_only" in (result.stderr or "")
+        finally:
+            cleanup_worktree(worktree_path, repo, logger, git_lock, delete_branch=True)
+
+    def test_missing_src_dir_raises_and_tears_down_worktree(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        with pytest.raises(RuntimeError, match="src_dir"):
+            setup_prepatch_worktree(
+                repo_path=repo,
+                worktree_base=".worktrees",
+                base_ref="HEAD",
+                test_files={},
+                logger=logger,
+                git_lock=git_lock,
+                src_dir="does-not-exist",
+            )
+
+        assert list((repo / ".worktrees").glob("*")) == []
+
+    def test_working_tree_unchanged_after_setup_and_cleanup(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        worktree_path = setup_prepatch_worktree(
+            repo_path=repo,
+            worktree_base=".worktrees",
+            base_ref="HEAD",
+            test_files={"scripts/tests/test_new.py": "x = 1\n"},
+            logger=logger,
+            git_lock=git_lock,
+        )
+        cleanup_worktree(worktree_path, repo, logger, git_lock, delete_branch=True)
+
+        status = _git(repo, "status", "--porcelain")
+        assert status.stdout.strip() == ""
+
+    def test_exception_after_fork_still_tears_down_worktree(self, tmp_path: Path) -> None:
+        """A failure mid-materialization (here: bad src_dir) must not leave the
+        forked worktree or its branch behind — mirrors the create ->
+        materialize -> teardown-on-failure shape used by
+        verify_epic_branch_before_merge()."""
+        repo = _init_repo(tmp_path / "repo")
+        logger = Logger(verbose=False)
+        git_lock = GitLock(logger)
+
+        branches_before = _git(repo, "branch", "--list").stdout
+
+        with pytest.raises(RuntimeError):
+            setup_prepatch_worktree(
+                repo_path=repo,
+                worktree_base=".worktrees",
+                base_ref="HEAD",
+                test_files={"scripts/tests/test_new.py": "x = 1\n"},
+                logger=logger,
+                git_lock=git_lock,
+                src_dir="does-not-exist",
+            )
+
+        branches_after = _git(repo, "branch", "--list").stdout
+        assert branches_after == branches_before
 
 
 class TestMergeEpicBranchToBase:

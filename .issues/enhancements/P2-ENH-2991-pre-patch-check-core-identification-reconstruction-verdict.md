@@ -4,7 +4,7 @@ title: "Pre-patch check core \u2014 candidate identification, tree reconstructio
   \ and verdict"
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: 2026-08-02
 epic: EPIC-2856
 parent: ENH-2853
@@ -14,7 +14,9 @@ labels:
 testable: true
 learning_tests_required:
 - pytest
-size: Large
+size: Very Large
+verify_verdict: NON_VALID
+completed_at: '2026-08-10T07:24:28Z'
 ---
 
 # ENH-2991: Pre-patch check core — candidate identification, tree reconstruction, and verdict
@@ -180,8 +182,15 @@ afterwards, including on failure paths.
   into the fork. `setup_worktree()` / `cleanup_worktree()` signatures **unchanged**
   — `fsm/executor.py` (~927), `cli/loop/run.py` (~472), and
   `parallel/orchestrator.py` all call them directly.
+  > ⚠ Superseded — real caller is worker_pool.py, not orchestrator.py
 - `scripts/little_loops/history_reader.py` — additive `base_dirty` reader
   alongside `read_base_sha()` (`:1816`), which returns the SHA only.
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/parallel/worker_pool.py` — `_setup_worktree()` (`:762-834`, calls `setup_worktree()` at `:774`) and `_cleanup_worktree()` (`:834-865+`, calls `cleanup_worktree()` at `:865`) are the real caller the Files-to-Modify note above misattributes to `parallel/orchestrator.py`; `orchestrator.py` has zero references to either function (confirmed by grep — zero matches) [Agent 1 finding].
+- `scripts/little_loops/worktree_utils.py` — `verify_epic_branch_before_merge()` itself calls `setup_worktree(..., copy_files=[])` as a same-module fourth consumer of the contract `setup_prepatch_worktree()` joins [Agent 2 finding].
 
 ### Similar Patterns to Follow
 
@@ -221,6 +230,27 @@ afterwards, including on failure paths.
   `scripts/tests/test_cli_loop_worktree.py` covers `ll-loop run --worktree` —
   both must keep passing, which the additive-signature constraint guarantees.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_worker_pool.py` — `TestWorkerPoolWorktreeManagement` (`:634-1052`) exercises the real `_setup_worktree()`/`_cleanup_worktree()` bodies (not mocked) and asserts on captured git argv; higher scrutiny than `test_orchestrator.py`'s wholesale-mocked patches — any change to `setup_worktree()`'s internal git-command construction would be caught here, not just signature drift. Not previously listed in this section [Agent 1 + Agent 3 finding].
+- `scripts/tests/test_history_reader.py::TestReadBaseSha` (`:2907`) and its `_stamp()` helper are the template for a new sibling `TestReadBaseDirty` class once the `base_dirty` reader exists [Agent 3 finding].
+- `scripts/tests/test_issue_manager.py::TestDequeueTimeBaseStateStamp` (`:5229`) and `scripts/tests/test_worker_pool.py::TestWorkerPoolBaseStateStamp` (`:4008`) — establish the `base_sha`/`base_dirty` stamping convention (`git status --porcelain --untracked-files=no`; tracked-dirty → `True`; git failure → `None`, never guessed clean) this issue's reader must read back consistently with [Agent 3 finding].
+- `scripts/tests/test_learning_tests.py::TestLearnTestRecord` (`:43`) and `scripts/tests/test_issue_history_advanced_analytics.py::TestGap` (`:959`) — two-directional (`to_dict`/`from_dict`) vs. one-directional (`to_dict`-only) dataclass test templates; pick based on whether `PrePatchEvidence` needs to be read back from disk [Agent 3 finding].
+- No existing precedent for pytest-nodeid argv construction, timeout-handling, or retry-once/flaky-reclassification tests — these must be written from scratch, with no in-repo test shape to imitate beyond the general "mock subprocess with a side_effect, assert graceful non-raising fallback" pattern (`test_worker_pool.py::test_is_main_repo_dirty_none_when_git_fails` `:4040`) [Agent 3 finding].
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` — needs a new Module Overview table row for `little_loops.prepatch_check`, a new `## little_loops.prepatch_check` section documenting `run_prepatch_check()`, `collect_candidate_nodeids()`, `PrePatchTestOutcome`, `PrePatchEvidence`, and a `### base_dirty` subsection peer to the existing `### read_base_sha` (`:9062`) under `## little_loops.history_reader` [Agent 2 finding].
+- `docs/reference/WORKTREES.md` — the "Related" list (`:40`) currently names only `setup_worktree()`/`verify_epic_branch_before_merge()`; add `setup_prepatch_worktree()` as a third named function [Agent 2 finding].
+- `docs/reference/CONFIGURATION.md` — needs a table row and prose entry for the new pre-patch-check off-switch config key, peer to the existing `confidence_gate.enabled` row (`~:429`) and prose (`~:449`) [Agent 2 finding].
+
+### Configuration
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/config-schema.json` — add the off-switch's schema entry as a peer to the `"confidence_gate"` block (`:457-477`: `type: object`, `properties.enabled` `type: boolean`, `default: false`, plus `description`) [Agent 2 finding].
+- `scripts/little_loops/config/automation.py` — add a `PrePatchCheckConfig`-style dataclass (`enabled: bool = False` plus `from_dict()`) nested under a parent config section, following `ConfidenceGateConfig`'s nesting inside `CommandsConfig` (`:223`, `:235`) — the parent section (`automation`, `commands`, or a new top-level section) is not yet decided in Program Design and should be pinned during implementation [Agent 2 finding].
+- `scripts/tests/test_config.py::TestConfidenceGateConfig` (`:486`) — template for a new `TestPrePatchCheckConfig`-style class asserting `from_dict()` with full/default/legacy-key values [Agent 2 finding].
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — based on codebase analysis:_
@@ -232,6 +262,29 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **No existing precedent for two design decisions this issue specifies**: (1) a "run once, retry on pass, reclassify pass-then-fail as flaky" loop — a repo-wide grep for `flaky`/`retry.*once`/`re-run.*once` returns only unrelated test-fixture/doc hits; (2) a subprocess pytest invocation targeting a *subset* of node IDs — both existing pytest-invocation patterns in the repo (`pytest_history_plugin.py`'s in-process `pytest11` plugin, and `code-run-gate.yaml`'s `run_test` state via `pytest --json-report`) run whatever `test_cmd` names, which is normally the full suite. Both are new logic with no in-repo template to follow, not oversights in this research pass.
 - **Off-switch convention disagreement in the codebase** — two shapes exist: `verify_epic_branch_before_merge()`'s `verify_before_merge: bool` param short-circuits to a silent `(True, None, None)` with no recorded reason (`worktree_utils.py:434-435`); `run_learning_gate_for_issue()`'s `skip: bool` param and `code-run-gate.yaml`'s `run_test`/`run_build` states instead short-circuit to an explicitly named skip state (`"skipped"` / `"SKIP test_cmd=null"` written to output). This issue's `skipped_reason: str | None` field matches the second, explicit-record convention, not the first. For the `BRConfig`-backed boolean itself, the dominant idiom is a plain `enabled: bool` dataclass field with a `from_dict(data.get("enabled", default))` reader (e.g. `ConfidenceGateConfig` in `config/automation.py:143-159`), distinct from the FSM-level "presence of a key marks it active" convention `StateConfig.tamper_guard` uses (`fsm/schema.py:690`) — the two are not interchangeable, and this issue's off-switch is a `BRConfig` concern, not an FSM one.
 
+_Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
+
+- **Line-number drift, round 2** (verified against current code as of 2026-08-10; the prior refine pass's corrections above are still accurate for `read_paths_at_ref` and `tamper_guard_changed_files` but the rest have since drifted further, likely from BUG-3054's conditional-skip-counting insertion): in `test_tamper_guard.py`, `measure_test_strength()` is now at `:287-342` (not `:235`); `_test_functions()` is now at `:369-380` (not `:311-321`); `filter_weakening_findings()` is now at `:392` onward (not `:333`); the `_git()` helper is now at `:572-586` (not `:508-522`). In `worktree_utils.py`, `verify_epic_branch_before_merge()` now spans `:380-510` (not `:371-501`), and the `src_dir` PYTHONPATH-injection block itself is now at `:483-489` (not `:474-480`). Call sites drifted too: `fsm/executor.py`'s `setup_worktree()` call is now at `:942` (not `~927`); `cli/loop/run.py`'s is now at `:484` (not `~472`). `fsm/schema.py`'s `StateConfig.tamper_guard` field is now at `:698` (not `:690`) and pairs with a `tamper_guard_ok: bool = False` suppression-flag companion at `:1325` used to silence a validator warning — not previously noted. `code-run-gate.yaml`'s `run_test` state block itself starts at `:224` (the issue's `:201-249` range's `201` is the end of the *preceding* state, not this one). Re-verify all of these at implementation time rather than trusting either correction pass, given how quickly this file's line numbers have moved.
+- **Correction, not just drift — `code-run-gate.yaml`'s json-report usage is aggregate-only, not per-test.** The Similar Patterns section currently groups `pytest_history_plugin.py`'s `LLHistoryPlugin` and `code-run-gate.yaml`'s `run_test` state together as "per-test pass/fail/error classification" precedent. They are not equivalent: `LLHistoryPlugin.pytest_runtest_logreport()` (`pytest_history_plugin.py:81-144`) does per-test, per-node-ID classification by hooking `report.when`/`report.passed` directly. `run_test`'s `pytest --json-report` usage (`code-run-gate.yaml:224-275`) reads only the aggregate `summary` block (`total`, `passed`) to compute one `pass_rate` float across the whole run, with a coarser exit-code fallback when `pytest.json` is absent — it has no per-test breakdown to draw on. If `PrePatchTestOutcome` needs per-test node-ID-level results (it does, per Program Design), `LLHistoryPlugin`'s hook mechanism is the applicable precedent; the `code-run-gate.yaml` citation should be read as "alternative exit-signal parsing for the overall run," not as an alternative source of per-test outcomes.
+- **A third config off-switch convention exists, not captured in Design Notes' two-convention comparison**: a plain environment-variable opt-out, unrelated to any config-file field — `PYTEST_DISABLE_PLUGIN_LL_HISTORY` (`pytest_history_plugin.py:35,43-44`) and `LL_DOC_DRIFT_DISABLE` (`hooks/drift_check.py:119`), both checked via bare `os.environ.get(...)` truthiness with no `BRConfig` involvement. Neither of the two conventions already documented (`enabled: bool` dataclass field vs. FSM presence-marks-active) covers this shape.
+- **Worktree teardown-in-finally is one of three coexisting lifetime conventions, not the only one** — relevant because Similar Patterns cites only `verify_epic_branch_before_merge()`'s strict same-scope `try:`/`finally: cleanup_worktree(...)`. That shape applies specifically when the calling function owns the entire worktree lifetime, which matches this issue's use case, so the existing citation is still the right template. But `cli/loop/run.py`'s `--worktree` path instead registers cleanup via `atexit.register(...)` (`:572`) because the worktree must outlive the function, and `parallel/worker_pool.py._setup_worktree()` registers into `self._active_worktrees` (`:427`) for teardown elsewhere — both are deferred-teardown variants used when lifetime extends past the creating function, not evidence against the strict try/finally shape this issue should follow.
+- **A second `to_dict()`-dataclass precedent exists, more recent than `Gap`/`GapAnalysis`**: `LearnTestRecord` (`scripts/little_loops/learning_tests/__init__.py:26-95`) follows the same hand-built `to_dict()` shape but additionally pairs it with a `@classmethod from_dict(cls, data)` for round-tripping, since those records are persisted as YAML frontmatter and read back. `Gap`/`GapAnalysis` remain the closer match for `PrePatchEvidence` as currently scoped (write-only output, never deserialized) — but if a future consumer (ENH-2997/ENH-2998) needs to re-read a persisted `PrePatchEvidence`, `LearnTestRecord` is the precedent for adding `from_dict`, not `Gap`/`GapAnalysis`.
+- `.ll/learning-tests/pytest-json-report.md` was updated 2026-08-08/09 (after this issue's 2026-08-02 refine) but the proven contract this issue relies on (`summary.passed + summary.failed + summary.skipped == summary.total`) is unchanged — the update does not affect this issue's design.
+
+_Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
+
+- **Verification Notes' `:380-590` span for `verify_epic_branch_before_merge()` is itself wrong, not just drifted.** Direct `grep -n "^def "` against current `worktree_utils.py` shows the function spans `:380-510` (the `finally: cleanup_worktree(...)` teardown line is `:510`; the next top-level `def merge_epic_branch_to_base(` starts at `:513`). The `:590` endpoint claimed in the most recent Verification Notes entry actually falls inside `merge_epic_branch_to_base` (`:513` onward) — a different function — not this one.
+- **`setup_worktree()`'s current full signature** (`worktree_utils.py:157-166`): `setup_worktree(repo_path: Path, worktree_path: Path, branch_name: str, copy_files: list[str], logger: Logger, git_lock: GitLock, base_branch: str | None = None, checkout_existing: bool = False) -> None`. Body order relevant to a `setup_prepatch_worktree()` wrapper: mutual-exclusivity check on `base_branch`/`checkout_existing` (`:195-196`) → `base_branch` resolved via `git rev-parse --verify`, raising `RuntimeError` if unresolvable (`:213-220`) → `git worktree add` (`:222-235`) → git-config copy (`:238-244`) → `.claude/` copytree (`:246-253`) → `copy_files` loop (`:256-271`, whole on-disk files only, `shutil.copy2`/`copytree`) → session marker write (`:276-278`). `cleanup_worktree()`'s current signature (`:281-286`): `cleanup_worktree(worktree_path: Path, repo_path: Path, logger: Logger, git_lock: GitLock, delete_branch: bool = True) -> None`.
+- **`verify_epic_branch_before_merge()`'s environment construction** (`:470-482`, wrapping the `src_dir` PYTHONPATH injection at `:483-489`) always sets `env["LL_VERIFY_GATE"] = "1"` (BUG-2649, unconditional on `src_dir`) plus `setdefault` defaults for `PYTEST_XDIST_AUTO_NUM_WORKERS` and `LL_FUZZ` — env vars beyond the `PYTHONPATH` injection this issue already cites. Not yet reflected in this issue's Program Design as a question of whether `run_prepatch_check()`'s own subprocess env needs equivalents.
+- **`tamper_guard_changed_files(repo_root: Path) -> list[str]`** (`test_tamper_guard.py:175-190`) is a pure function of its `repo_root` argument — it unions `git diff --name-only HEAD` and `git ls-files --others --exclude-standard`, both run with `cwd=repo_root`. It has no ambient/global repo-root state. Consequence for this issue's "worktree must sit outside the guarded scope" requirement: safety depends entirely on what `repo_root` value the *caller* (FSM/`work_verification` adapter) passes into the tamper-guard check, not on any property internal to this function — a pre-patch worktree placed inside whatever tree that argument points at is not protected by anything in `tamper_guard_changed_files()` itself, since `git diff`/`git ls-files` recurse the whole working tree from `cwd` regardless of nested-worktree boundaries.
+- **`base_dirty` write-side shape** (`session_store/writers.py::record_orchestration_run()`, params `:1264-1281`): `base_dirty: bool | None` is coerced to `int | None` before storage (`:1312`, `None if base_dirty is None else int(base_dirty)`) — the DB column and the `OrchestrationRun` dataclass field (`history_reader.py:236`) both store `0`/`1`/`NULL`, not a Python bool. Both `base_sha` and `base_dirty` are write-once via `COALESCE(excluded.x, x)` in the upsert (`:1336-1337`), so a later terminal-status upsert can't null them out. A new reader modeled on `read_base_sha()`'s exact query pattern (`history_reader.py:1816-1869`: `run_id`-present vs. most-recent-non-null-row branching) must convert the stored int back to `bool | None` at the return boundary — the write side's `int(base_dirty)` coercion, reversed.
+- **`pytest_history_plugin.py::LLHistoryPlugin.pytest_runtest_logreport()`** (`:101-116`) is the applicable model for `PrePatchTestOutcome.category` derivation: `report.when == "call"` classifies `passed`/`failed`/`skipped`; `report.when in ("setup", "teardown")` with `report.failed` classifies as an **error** (fixture/collection failure), distinct from a call-phase failure — matching this issue's error-vs-fail distinction. Only the in-process hook dispatch logic is reusable as a model; nothing about its storage shape is, since it persists only aggregate counts (`passed`/`failed`/`errored`/`skipped`) plus a capped `failing_names` list, never a per-node-ID category — and it has no `timeout`/`flaky` categories at all, both of which are new to this issue.
+- **Host-agnostic core-module convention**: `test_tamper_guard.py`'s own module docstring states the exact contract this issue's module should mirror — *"Deterministic only -- no LLM calls, no FSM or CLI-orchestrator knowledge. Adapters ... own step timing and call into this module; this module never calls into either adapter."* (`test_tamper_guard.py:1-9`). Both `test_tamper_guard.py` and `ready_issue.py` implement this as plain module-level functions plus `@dataclass` result types — never a class with instance state — tested by calling the functions directly with constructed inputs, no host spun up.
+- **Retry-shape convention is contested, not singular** — two shapes coexist for "run once, conditionally retry": `ready_issue.py::run_ready_issue_with_retry()` (`:83-127`) retries only on one named condition (`result.returncode == 0 and parsed["verdict"] == "UNKNOWN"`, `:115`) and returns a *differentiated* second attempt (built via `build_retry_command()`), with an explicit comment that a non-zero return code is never retried — the closer structural match to this issue's "pass → retry-once → pass-then-fail reclassified as flaky" policy. `parallel/git_lock.py::_run_with_retry()` (`:110-165`) instead loops up to `max_retries` with exponential backoff, re-running the *same* command each time on a specific detected condition (index-lock error or `TimeoutExpired`) — a uniform re-roll, not a differentiated retry. Neither is a full match; picking between them (or writing new logic, per this issue's own prior finding that no exact precedent exists) is an implementer decision.
+- **Config off-switch: a closer single-purpose analog than `ConfidenceGateConfig` exists.** `LearningTestsConfig` (`config/automation.py:498`) and `DecisionsConfig` (`config/automation.py:531-552`) each gate their entire feature with a lone `enabled: bool = False` field with no other threshold/knob sharing that flag — unlike `ConfidenceGateConfig`, whose `enabled` sits alongside two unrelated numeric thresholds. `LearningTestsConfig`'s test class (`test_config.py:3001`, with `test_enabled_defaults_to_false()` at `:3015` and `test_enabled_from_dict()` at `:3020`) is the template for a single-purpose off-switch test, closer to this issue's own off-switch than `TestConfidenceGateConfig` (already cited). Does not resolve the still-open question of which parent config section houses it.
+- **Additional write-only `to_dict()`-without-`from_dict` precedent**, beyond `Gap`/`GapAnalysis` (already cited): `ObservabilityConfig.to_dict()` (`config/features.py:973-978`) and `LoopsGlyphsConfig.to_dict()` (`config/features.py:698-709`) — same hand-built-dict, no-round-trip shape, for config serialization rather than evidence reporting.
+- **No subprocess-pytest node-ID-targeting precedent found anywhere in the codebase**, confirming (not just repeating) the prior refine pass's finding: a repo-wide grep for `nodeid`/`node_id` across all subprocess-construction code returns zero hits outside DB/session-store contexts (`history_reader.py`, `session_store/schema.py`, `codequery/codegraph.py`). `learning_tests/gate.py::run_learning_gate_for_issue()` (`:208`) is the closest analog for "subprocess result mapped to a distinct outcome category" (`TimeoutExpired` vs. `FileNotFoundError` vs. non-zero-non-failure returncode → `"infra_failed"`/`"blocked"`/`"impl_failed"`/`"skipped"`), though it is not pytest-specific and does not target node IDs.
+
 ### Related Issues
 
 - `ENH-2997` (dependent) — hosts this core on the FSM executor's guarded window.
@@ -242,6 +295,19 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
   `base_dirty` companion flag, and `read_base_sha()`.
 - `ENH-2854` (peer, landed 2026-07-31) — supplies the AST and ref-reading
   primitives this core consumes.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Correct the caller claim in Files to Modify / Create: the third `setup_worktree()`/`cleanup_worktree()` caller is `scripts/little_loops/parallel/worker_pool.py` (`_setup_worktree()`/`_cleanup_worktree()`), not `parallel/orchestrator.py`.
+- Pin the off-switch config's parent section (`automation`, `commands`, or a new top-level section) and dataclass name, then add the `scripts/little_loops/config-schema.json` entry and the `scripts/little_loops/config/automation.py` dataclass.
+- Add a `TestPrePatchCheckConfig`-style test class in `scripts/tests/test_config.py`, modeled on `TestConfidenceGateConfig` (`:486`).
+- Add a `TestReadBaseDirty` test class in `scripts/tests/test_history_reader.py`, modeled on `TestReadBaseSha` (`:2907`) and its `_stamp()` helper.
+- Update `docs/reference/API.md` — Module Overview row, new `## little_loops.prepatch_check` section, and a `### base_dirty` subsection under `## little_loops.history_reader`.
+- Update `docs/reference/WORKTREES.md`'s "Related" list (`:40`) to name `setup_prepatch_worktree()`.
+- Update `docs/reference/CONFIGURATION.md` with the new off-switch's table row and prose.
+- Confirm `scripts/tests/test_worker_pool.py::TestWorkerPoolWorktreeManagement` (`:634-1052`) keeps passing — it exercises the real `setup_worktree()`/`cleanup_worktree()` git-argv construction, not just the signature.
 
 ## Program Design
 
@@ -343,12 +409,64 @@ by the host (ENH-2997 / ENH-2998).
 
 ## Status
 
-**Open** | Created: 2026-08-02 | Priority: P2
+**Done** | Created: 2026-08-02 | Priority: P2
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-08-10
+- **Reason**: Issue too large for single session (size score 9/11, Very Large)
+
+### Decomposed Into
+- ENH-3141: setup_prepatch_worktree() — pre-patch worktree fork with content-write and import isolation
+- ENH-3142: prepatch_check.py core — candidate identification, execution, verdict, and base_dirty-aware reporting
+
+## Verification Notes
+
+`/ll:verify-issues` (2026-08-10): Core premise still holds —
+`scripts/little_loops/prepatch_check.py` does not exist yet, and
+`history_reader.py` has no `base_dirty` reader alongside `read_base_sha()`
+(only a `base_dirty` field on the dequeue-stamp dataclass/DB column). All
+related-issue statuses and dependency framing (ENH-2973/2866/2854 done,
+ENH-2997/2998 open dependents, parent ENH-2853) checked out. No active
+required decision-log rules apply. Three citations have drifted since the
+last refine pass and should be corrected during implementation rather than
+trusted as-is:
+
+- `worktree_utils.py::verify_epic_branch_before_merge()` now spans
+  `:380-590`, not `:380-510`.
+- `pytest_history_plugin.py`'s `pytest_runtest_logreport()` method itself is
+  at `:101-116`; `:81` is the enclosing `LLHistoryPlugin` class, not the
+  method.
+- `learning_tests/__init__.py::LearnTestRecord` starts at `:45`, not `:26`
+  (`:26` is the unrelated `Assertion` class).
+
+Everything else checked (test_tamper_guard.py line numbers, worktree_utils.py
+setup/cleanup, call sites in fsm/executor.py and cli/loop/run.py,
+parallel/orchestrator.py non-involvement, fsm/schema.py tamper_guard fields,
+code-run-gate.yaml, Gap/GapAnalysis, TestWorkerPoolWorktreeManagement)
+matches current code.
 
 ## Session Log
+- `/ll:issue-size-review` - 2026-08-10T07:23:33 - `7e0f8f7e-cdcf-448e-8ae7-22d89c36b63b.jsonl`
+- `/ll:verify-issues` - 2026-08-10T07:19:16 - `54a9f6b0-ec17-4088-82a2-2245a11767ee.jsonl`
+- `/ll:refine-issue` - 2026-08-10T07:16:34 - `1939c1f2-45be-4e4b-95e2-13c92ad18871.jsonl`
+- `/ll:verify-issues` - 2026-08-10T07:10:19 - `cb83a8f4-c42a-45a5-acd2-c218e5ef5174.jsonl`
+- `/ll:wire-issue` - 2026-08-10T07:06:25 - `85643765-bc55-4c95-90ee-2b36f52cf5bb.jsonl`
+- `/ll:refine-issue` - 2026-08-10T06:57:54 - `27ac941b-8805-4429-8411-d716d550ac93.jsonl`
 - `/ll:refine-issue` - 2026-08-02T15:16:50 - `2231e95c-29bd-4ab8-9d98-d3859068eb51.jsonl`
 - `/ll:issue-size-review` - 2026-08-02T13:48:43 - `14957793-c5a3-42c3-8c4e-e15ef7fbe208.jsonl`
 
 ## Related Key Documentation
 
 - `docs/reference/API.md` — documents `history_reader` (`read_base_sha()`, consumed here) and `work_verification`; this issue's new `prepatch_check.py` module and `worktree_utils.setup_prepatch_worktree()` addition sit directly alongside those documented modules.
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Closed**: 2026-08-10
+- **Decomposed into**: ENH-3141, ENH-3142
+
+Work for ENH-2991 is now carried by its child issues; this parent was closed by rn-decompose.

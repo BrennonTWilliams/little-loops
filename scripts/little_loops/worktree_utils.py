@@ -326,6 +326,93 @@ def cleanup_worktree(
         logger.info(f"Deleted branch {branch_name}")
 
 
+def setup_prepatch_worktree(
+    repo_path: Path,
+    worktree_base: str | Path,
+    base_ref: str,
+    test_files: dict[str, str],
+    logger: Logger,
+    git_lock: GitLock,
+    src_dir: str | None = None,
+) -> Path:
+    """Fork a worktree at ``base_ref`` and write pre-patch test content into it (ENH-3141).
+
+    Additive sibling of :func:`setup_worktree` for ENH-2991's pre-patch check
+    core: forks a worktree at an arbitrary base ref via ``setup_worktree()``'s
+    existing ``base_branch`` param, then materializes caller-supplied
+    *test-file content* directly into the fork — content-write via
+    ``Path.write_text()``, not ``git apply``. There is no patch-parsing,
+    3-way-merge, or reject-hunk handling; ``test_files`` is the literal content
+    to place at each path.
+
+    Args:
+        repo_path: Path to the main repository.
+        worktree_base: Directory (relative to ``repo_path``) to create the
+            scratch worktree under. Pass a gitignored path (e.g.
+            ``".worktrees"``) so the fork sits outside
+            ``tamper_guard_changed_files()``'s repo-root scan scope — that scan
+            unions ``git diff --name-only HEAD`` with ``git ls-files --others
+            --exclude-standard``, and ``--exclude-standard`` respects
+            ``.gitignore``.
+        base_ref: Commit-ish to fork the pre-patch worktree from.
+        test_files: Repo-relative path -> content, written directly into the
+            fork after it is created. Same shape as
+            ``read_paths_at_ref()``'s return value.
+        logger: Logger instance.
+        git_lock: Thread-safe git lock for serializing repo operations.
+        src_dir: When provided, validated to exist in the forked worktree so
+            callers can safely prepend ``<worktree_path>/<src_dir>`` onto
+            ``PYTHONPATH`` (mirroring ``verify_epic_branch_before_merge()``'s
+            ``src_dir`` injection, BUG-2629) before running tests in the
+            worktree — that subprocess/env construction is caller-side; this
+            function only forks and materializes content.
+
+    Returns:
+        Path to the created pre-patch worktree.
+
+    Raises:
+        RuntimeError: If worktree creation fails, ``base_ref`` does not
+            resolve, or ``src_dir`` is given but absent from the forked tree.
+            The worktree (if created) is torn down before the error propagates
+            — the main repository's working tree is never touched by this
+            function, since ``git worktree add``/``remove`` never mutates
+            ``repo_path`` in place.
+    """
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    branch_name = f"prepatch-{timestamp}"
+    worktree_path = repo_path / worktree_base / branch_name
+
+    setup_worktree(
+        repo_path=repo_path,
+        worktree_path=worktree_path,
+        branch_name=branch_name,
+        copy_files=[],
+        logger=logger,
+        git_lock=git_lock,
+        base_branch=base_ref,
+    )
+
+    try:
+        for rel_path, content in test_files.items():
+            dest = worktree_path / rel_path
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(content)
+
+        if src_dir and not (worktree_path / src_dir).exists():
+            raise RuntimeError(
+                f"src_dir '{src_dir}' not found in pre-patch worktree forked at '{base_ref}'"
+            )
+    except Exception:
+        cleanup_worktree(worktree_path, repo_path, logger, git_lock, delete_branch=True)
+        raise
+
+    logger.info(
+        f"Materialized {len(test_files)} pre-patch test file(s) into {worktree_path} "
+        f"(forked at {base_ref})"
+    )
+    return worktree_path
+
+
 def _is_ll_worktree(name: str) -> bool:
     """Return True if the directory name matches an ll-managed worktree naming pattern.
 

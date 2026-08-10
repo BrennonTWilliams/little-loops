@@ -37,4 +37,4 @@ That worktree still gets `.claude/`, git identity, and the shared
 - [CONFIGURATION.md](CONFIGURATION.md#parallel) — `worktree_copy_files` config key
 - [HOST_COMPATIBILITY.md](HOST_COMPATIBILITY.md) — `LL_HISTORY_DB` environment variable
 - [TROUBLESHOOTING.md](../development/TROUBLESHOOTING.md#worktree-not-inheriting-settings) — symptom/fix for a missing `.claude/settings.local.json` or `.ll/ll.local.md`
-- `scripts/little_loops/worktree_utils.py` — `setup_worktree()`, `verify_epic_branch_before_merge()`
+- `scripts/little_loops/worktree_utils.py` — `setup_worktree()`, `verify_epic_branch_before_merge()`, `setup_prepatch_worktree()`
