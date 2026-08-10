@@ -42,6 +42,7 @@ Documentation for using little-loops in your projects.
 - [Decisions Log Guide](guides/DECISIONS_LOG_GUIDE.md) - Record decisions and required rules, generate them from history, and sync active rules into `ll.local.md`
 - [History & Session Guide](guides/HISTORY_SESSION_GUIDE.md) - Long-term observability via `.ll/history.db`: what ran, what changed, what was corrected
 - [Built-in Hooks Guide](guides/BUILTIN_HOOKS_GUIDE.md) - Every hook little-loops ships, what it does automatically, and the config keys that turn each on or off
+- [MCP Server Guide](guides/MCP_SERVER_GUIDE.md) - Install, register, verify, and troubleshoot the read-only `ll-mcp` server for Claude Code, Codex, and other MCP clients
 - [Issue Template Guide](reference/ISSUE_TEMPLATE.md) - Issue file structure, sections, and template v2.0 reference
 
 ## Developer Documentation

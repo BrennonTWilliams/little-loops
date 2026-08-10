@@ -4325,6 +4325,10 @@ name/description/args from frontmatter only; `prompts/get` returns the skill's f
 ll-mcp   # normally launched by an MCP host, not invoked directly
 ```
 
+For host registration (including clients `ll-adapt` has no emitter for), the
+working-directory requirement, `mcp-call` verification recipes, and troubleshooting, see
+the [MCP Server Guide](../guides/MCP_SERVER_GUIDE.md).
+
 ---
 
 ### mcp-call

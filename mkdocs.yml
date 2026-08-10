@@ -79,6 +79,7 @@ nav:
     - Learning Tests: guides/LEARNING_TESTS_GUIDE.md
     - History & Sessions: guides/HISTORY_SESSION_GUIDE.md
     - Built-in Hooks: guides/BUILTIN_HOOKS_GUIDE.md
+    - MCP Server: guides/MCP_SERVER_GUIDE.md
   - Reference:
     - CLI Tools: reference/CLI.md
     - Commands: reference/COMMANDS.md
