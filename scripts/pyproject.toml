@@ -156,10 +156,13 @@ llm = []
 # justify an open upper bound. Optional rather than base because mcp==2.0.0
 # pulls 16 mandatory transitive deps including a full HTTP server stack
 # (starlette, uvicorn, sse-starlette, httpx2), pyjwt[crypto],
-# opentelemetry-api, python-multipart, and jsonschema — none of which a
-# stdio-only server uses, and all of which would otherwise land on every
-# `pip install little-loops`. Per CLAUDE.md § Code Style (minimize
-# third-party dependencies).
+# opentelemetry-api, python-multipart, and jsonschema. `ll-mcp` now uses the
+# HTTP server stack directly for its streamable-HTTP transport (FEAT-3143,
+# `run_http()`), so those pieces are no longer merely transitive baggage —
+# but they still land on every `pip install little-loops[mcp]` regardless of
+# whether a given install ever runs `ll-mcp --http`, which is why this stays
+# an optional extra rather than a base dependency. Per CLAUDE.md § Code Style
+# (minimize third-party dependencies).
 mcp = ["mcp==2.0.0"]
 otel = [
     "opentelemetry-sdk>=1.20.0",

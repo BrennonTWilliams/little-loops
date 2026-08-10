@@ -93,3 +93,27 @@ async def run_stdio() -> None:
     server = build_server()
     async with stdio_transport.stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, server.create_initialization_options())
+
+
+async def run_http(host: str = "127.0.0.1", port: int = 8765) -> None:
+    """Entry coroutine: serve the same `build_server()` `Server` over streamable HTTP.
+
+    Built on `Server.streamable_http_app()` (the SDK's own Starlette-app builder for this
+    transport) rather than hand-constructing a `StreamableHTTPSessionManager` and wiring a
+    `Starlette` route directly — see the "Deviations" note under FEAT-3143's Program Design
+    for why: `streamable_http_app()` already enters `session_manager.run()` via Starlette's
+    `lifespan`, and for a loopback `host` it auto-fills `TransportSecuritySettings` with a
+    working `allowed_hosts`/`allowed_origins` pair. A bare `TransportSecuritySettings()` has
+    empty allow-lists, which — with DNS-rebinding protection on by default — rejects every
+    request's `Host`/`Origin` header, including legitimate ones.
+
+    Binds loopback by default (Decision 1 in FEAT-3143): no parameter here defaults to
+    `0.0.0.0`. `json_response=True, stateless=True` is Decision 2, the exact combination
+    proven by `.ll/learning-tests/mcp-http-transport.md`.
+    """
+    import uvicorn
+
+    server = build_server()
+    app = server.streamable_http_app(json_response=True, stateless_http=True, host=host)
+    config = uvicorn.Config(app, host=host, port=port)
+    await uvicorn.Server(config).serve()

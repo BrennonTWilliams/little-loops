@@ -1,11 +1,13 @@
 ---
-id: 3143
+id: FEAT-3143
 title: 'll-mcp: streamable HTTP transport alongside stdio'
 type: FEAT
 priority: P3
-status: open
+status: done
 discovered_date: '2026-08-10'
 discovered_by: learning-test
+completed_at: '2026-08-10T22:10:45Z'
+testable: true
 labels:
 - multi-host
 - mcp
@@ -139,6 +141,31 @@ does not cross the tier-2 or tier-3 boundaries.
 
 ## Program Design
 
+### Deviations
+
+_2026-08-10, implementation:_ `run_http()` calls `Server.streamable_http_app()`
+(`mcp.server.lowlevel.Server`, unchanged SDK method) instead of hand-constructing
+`StreamableHTTPSessionManager` + a `Starlette` `Route` + `async with
+session_manager.run():` as the Signatures/Call Path sections below describe. Two reasons:
+
+1. **Correctness.** `session_manager` bare-constructed with `security_settings=
+   TransportSecuritySettings()` (empty `allowed_hosts`/`allowed_origins`, `enable_dns_rebinding_protection=True`)
+   rejects *every* request's `Host`/`Origin` header with 421/403 — `allowed_hosts=[]` matches
+   nothing, so DNS-rebinding protection becomes deny-all, not "kept at its default" as Decision 1
+   intended. `streamable_http_app()` auto-fills a working `allowed_hosts=["127.0.0.1:*",
+   "localhost:*", "[::1]:*"]`/`allowed_origins` pair whenever `host` is loopback, which is what
+   the SDK's own `run_streamable_http_async()` helper (`mcp.server.mcpserver.server`) relies on
+   too — so this is the SDK's own documented path for loopback, not a bespoke shortcut.
+2. **Correct lifespan entry.** `streamable_http_app()` wires `session_manager.run()` via
+   Starlette's `lifespan=` hook, which `uvicorn.Server.serve()` drives automatically. The
+   manual `async with session_manager.run():` the Call Path describes would need to wrap the
+   `await uvicorn.Server(...).serve()` call in the same coroutine — extra sequencing the SDK's
+   own builder already gets right.
+
+`json_response=True, stateless_http=True` (Decision 2) and the loopback-default `host`
+(Decision 1) are unchanged from the design; only the construction path for the Starlette
+app changed. `build_server()` remains untouched.
+
 ### Types
 
 - `TransportSecuritySettings` (`mcp.server.transport_security`, pydantic
@@ -245,4 +272,6 @@ transport-selection branch; `ll-issues check-design FEAT-3143` now passes.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-10T22:10:17 - `95a2ffbd-8fe6-4696-85b1-3e0eb81cea65.jsonl`
+- `/ll:ready-issue` - 2026-08-10T21:51:16 - `36db716f-7499-4b8a-97d1-bf0e7c247e11.jsonl`
 - `/ll:confidence-check` - 2026-08-10T21:19:52 - `c399e98c-b001-4568-9896-227421406281.jsonl`
