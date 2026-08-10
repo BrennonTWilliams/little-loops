@@ -116,10 +116,10 @@ into `LLHookEvent` payloads.
 
 ## Slash-command and skill discovery
 
-| Surface                  | Claude Code               | OpenCode                  | Codex CLI                 | Gemini CLI                | Kimi Code |
-| ------------------------ | ------------------------- | ------------------------- | ------------------------- | ------------------------- | --------- |
-| Slash-command discovery  | ✓ `.claude/commands/*.md` | ✓ via plugin registration | ✓ — `commands/*.md` bridged to `skills/ll-<name>/SKILL.md` by `ll-adapt --host codex` (FEAT-1493)[^cmds] | (deferred)[^gemini] — `.gemini/commands/*.toml`; TOML format; bridge script needed | ✓ — `kimi.plugin.json` (plugin id `ll`) registers `commands/*.md` as `/ll:<name>` (confirmed working on 0.30.0; plugin **hooks** are inert — separate issue)[^kimiplugin]; project-local bridged skills via `ll-adapt --host kimi-code --apply` (FEAT-2916)[^kimi] |
-| Skill discovery          | ✓ `.claude/skills/*/SKILL.md` | ✓ via plugin registration | ✓ — `~/.codex/skills/<name>/SKILL.md`; all ll skills adapted by `ll-adapt --host codex` (FEAT-1486)[^cmds] | (deferred)[^gemini] — `.gemini/skills/<name>/SKILL.md`; compatible format; minor adaptation (add `name:`) | ✓ — `.kimi-code/skills/` is a native scan dir; SKILL.md near-1:1 (extra frontmatter keys tolerated)[^kimi] |
+| Surface                  | Claude Code               | OpenCode                  | Codex CLI                 | Gemini CLI                | omp                       | Kimi Code |
+| ------------------------ | ------------------------- | ------------------------- | ------------------------- | ------------------------- | -------------------------- | --------- |
+| Slash-command discovery  | ✓ `.claude/commands/*.md` | ✓ via plugin registration | ✓ — `commands/*.md` bridged to `skills/ll-<name>/SKILL.md` by `ll-adapt --host codex` (FEAT-1493)[^cmds] | (deferred)[^gemini] — `.gemini/commands/*.toml`; TOML format; bridge script needed | ✓ — flat `.omp/commands/<stem>.md`; no directory wrapper or skill-bridging (unlike Codex/Kimi); content passes through verbatim; emitted by `ll-adapt --host omp` (FEAT-3105)[^omp-cmds] | ✓ — `kimi.plugin.json` (plugin id `ll`) registers `commands/*.md` as `/ll:<name>` (confirmed working on 0.30.0; plugin **hooks** are inert — separate issue)[^kimiplugin]; project-local bridged skills via `ll-adapt --host kimi-code --apply` (FEAT-2916)[^kimi] |
+| Skill discovery          | ✓ `.claude/skills/*/SKILL.md` | ✓ via plugin registration | ✓ — `~/.codex/skills/<name>/SKILL.md`; all ll skills adapted by `ll-adapt --host codex` (FEAT-1486)[^cmds] | (deferred)[^gemini] — `.gemini/skills/<name>/SKILL.md`; compatible format; minor adaptation (add `name:`) | ✓ — `.omp/skills/<name>/SKILL.md`, one directory per skill; `name:` injected into frontmatter when absent; emitted by `ll-adapt --host omp` (FEAT-3105)[^omp-cmds] | ✓ — `.kimi-code/skills/` is a native scan dir; SKILL.md near-1:1 (extra frontmatter keys tolerated)[^kimi] |
 
 [^cmds]: Codex has no `.codex/prompts/` slash-command path (that reference in
     prior footnotes was speculative — no such surface exists in the current
@@ -140,6 +140,13 @@ into `LLHookEvent` payloads.
     Codex. The flag governs two other tools only:
     `ll-generate-skill-descriptions` (skips for token-budget compliance)
     and Claude Code's auto-invocation gate. See ENH-1497.
+
+[^omp-cmds]: FEAT-3103 (research spike) + FEAT-3105 (`OmpEmitter.emit_skill`/
+    `emit_command`). omp's command discovery is flat and unrelated to its
+    skills tree — no bridging into `skills/ll-<name>/` the way Codex does.
+    Native discovery scans `<cwd>/.omp/commands/*.md` and
+    `<agentDir>/commands/*.md` (profile-scoped user dir), non-recursively.
+    Research findings: `thoughts/research/omp-skill-command-surface.md`.
 
 ## Runner Capabilities
 

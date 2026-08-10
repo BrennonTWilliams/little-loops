@@ -64,6 +64,9 @@ pip install -e "./scripts[dev]"
 | `little_loops.cli_args` | CLI argument parsing utilities |
 | `little_loops.sprint` | Sprint planning and execution |
 | `little_loops.issue_template` | Issue template assembly for sync pull (v2.0-compliant markdown from per-type section files) |
+| `little_loops.cli.issues.create` | Atomic single-issue creation (`ll-issues create`) |
+| `little_loops.cli.issues.scaffold_epic` | EPIC + pre-wired child stub creation (`ll-issues scaffold-epic`) |
+| `little_loops.cli.issues.link_epics` | Orphan-to-EPIC assignment and clustering proposals (`ll-issues link-epics`) |
 | `little_loops.output_parsing` | Claude CLI output parsing utilities used by `issue_manager` and `parallel` |
 | `little_loops.ready_issue` | Runs `/ll:ready-issue` with a retry on an `UNKNOWN` (non-compliant, unparseable) verdict |
 | `little_loops.output.parse` | Stop-sequence / prefill JSON output helpers (`extract_between_tags`, `parse_prefilled_json`) that bound LLM output-token cost |
@@ -1249,6 +1252,180 @@ def load_issue_sections(issue_type: str, templates_dir: Path | None = None) -> d
 **Returns:** `dict[str, Any]` — parsed JSON template data
 
 **Raises:** `FileNotFoundError` if the per-type sections file does not exist.
+
+---
+
+## little_loops.cli.issues.create
+
+Atomic single-issue creation (`ll-issues create`) — allocates a globally unique ID and writes the file under a lock, exclusive-create only.
+
+```python
+@dataclass
+class IssueSpec:
+    type: str
+    title: str
+    priority: str = "P2"
+    body: str | None = None
+    parent: str | None = None
+    labels: list[str] = field(default_factory=list)
+    stage: bool = False
+    variant: str = "minimal"
+```
+
+```python
+@dataclass
+class CreatedIssue:
+    id: str
+    path: Path
+
+    def to_dict(self) -> dict[str, str]: ...
+```
+
+### create_issue
+
+```python
+def create_issue(config: BRConfig, spec: IssueSpec, now: datetime | None = None) -> CreatedIssue
+```
+
+Allocates the next globally unique issue number under a single `acquire_lock` hold (retrying on filesystem collision), slugs the title, selects the type directory from `spec.type`, and writes frontmatter + template body via exclusive-create (`open(path, "x")`) so a racer that bypasses the lock fails loudly instead of clobbering an existing file. If `spec.parent` is set, the child's frontmatter always gets `parent:`, and a bullet is appended to the parent's `## Children` section if one exists (silently skipped for non-EPIC parents).
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `config` | `BRConfig` | Project configuration |
+| `spec` | `IssueSpec` | Issue fields to create from |
+| `now` | `datetime \| None` | Injectable current time; defaults to `datetime.now(UTC)` |
+
+**Returns:** `CreatedIssue` — the new issue's ID and path
+
+**Raises:** `ValueError` if `spec.type` has no configured category; `FileExistsError` if 5 collision retries are exhausted.
+
+---
+
+## little_loops.cli.issues.scaffold_epic
+
+Creates an EPIC and its pre-wired child stubs atomically (`ll-issues scaffold-epic`).
+
+```python
+@dataclass
+class ChildSpec:
+    type: str
+    title: str
+    priority: str
+    summary: str = ""
+```
+
+### scaffold_epic
+
+```python
+def scaffold_epic(
+    config: BRConfig,
+    title: str,
+    children: list[ChildSpec],
+    priority: str = "P2",
+    stage: bool = False,
+    now: datetime | None = None,
+) -> tuple[CreatedIssue, list[CreatedIssue]]
+```
+
+Assembles every child and EPIC file's content in memory first, then writes them all. Each child is wired with `parent: EPIC-N` and a bullet in the EPIC's `## Children` section; children inherit `priority` unless overridden per-child. If `stage` is `True`, every created file is `git add`ed in one call on success. On any failure, every path this call created is unlinked and the exception re-raised — since every touched file was just created, `Path.unlink()` is a complete undo.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `config` | `BRConfig` | Project configuration |
+| `title` | `str` | EPIC title |
+| `children` | `list[ChildSpec]` | Child issues to scaffold under the EPIC |
+| `priority` | `str` | Applied to the EPIC; inherited by children unless overridden |
+| `stage` | `bool` | If `True`, stage every created file with `git add` |
+| `now` | `datetime \| None` | Injectable current time |
+
+**Returns:** `tuple[CreatedIssue, list[CreatedIssue]]` — the created EPIC and its created children, in the order given
+
+**Raises:** `ValueError` if any child's type has no configured category.
+
+---
+
+## little_loops.cli.issues.link_epics
+
+Proposal-only orphan-to-EPIC assignment and orphan clustering (`ll-issues link-epics --mode assign|synthesize`). An "orphan" is an open BUG/FEAT/ENH issue with both `parent:` and `epic:` unset.
+
+```python
+@dataclass
+class EpicProposal:
+    orphan_id: str
+    epic_id: str
+    score: float
+    tier: str
+
+    def to_dict(self) -> dict: ...  # rounds score to 3 decimals
+```
+
+```python
+@dataclass
+class ClusterProposal:
+    member_ids: list[str]
+    placeholder_title: str
+    modal_priority: str
+    pairwise_min_score: float
+
+    def to_dict(self) -> dict: ...  # sorts member_ids, rounds pairwise_min_score to 3 decimals
+```
+
+### propose_assignments
+
+```python
+def propose_assignments(
+    orphans: list[IssueInfo], epics: list[IssueInfo], threshold: float
+) -> list[EpicProposal]
+```
+
+Scores every orphan × EPIC pair via title word-overlap (`little_loops.text_utils.calculate_word_overlap`/`extract_words`), filtered by `threshold`.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `orphans` | `list[IssueInfo]` | Candidate orphan issues |
+| `epics` | `list[IssueInfo]` | Candidate open EPIC issues |
+| `threshold` | `float` | Minimum score for a proposal to be included |
+
+**Returns:** `list[EpicProposal]` sorted by score descending, then `orphan_id`, then `epic_id` (deterministic tiebreak for equal-score pairs).
+
+### synthesize_clusters
+
+```python
+def synthesize_clusters(orphans: list[IssueInfo], min_score: float) -> list[ClusterProposal]
+```
+
+Union-find clusters orphans on pairwise title word-overlap ≥ `min_score`.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `orphans` | `list[IssueInfo]` | Candidate orphan issues |
+| `min_score` | `float` | Minimum pairwise score for an edge to union two orphans |
+
+**Returns:** `list[ClusterProposal]` for clusters with 2+ members (singletons not proposed), sorted by member count descending then first `member_id`.
+
+### apply_assignment
+
+```python
+def apply_assignment(proposal: EpicProposal, *, orphan_path: Path, epic_path: Path) -> None
+```
+
+Writes the orphan-side frontmatter (both `parent:` and `epic:` — the corpus convention is both fields, not `parent:` alone) and appends to the EPIC-side `## Children` section. Idempotent: re-running with the same proposal is a no-op on the EPIC body if the child is already listed. `--apply` is unsupported for `synthesize` mode — EPIC creation belongs to `scaffold_epic`, not this subcommand.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `proposal` | `EpicProposal` | Accepted assignment |
+| `orphan_path` | `Path` | Path to the orphan issue file |
+| `epic_path` | `Path` | Path to the EPIC issue file |
 
 ---
 
@@ -9542,7 +9719,7 @@ Serializes catalog entries into the literal Anthropic Messages API `tools` array
 
 ## little_loops.adapters
 
-> `CodexEmitter` and `GeminiEmitter` are fully implemented (FEAT-2391/2392). Use `ll-adapt --host codex --apply` or `ll-adapt --host gemini --apply` to emit artifacts for a given host.
+> `CodexEmitter`, `GeminiEmitter`, `OmpEmitter`, `KimiEmitter`, and `ClaudeCodeEmitter` are all registered (FEAT-2391/2392/3104/3105/3139). Use `ll-adapt --host <host> --apply` to emit artifacts for a given host.
 
 Host-parameterised adapter layer that converts ll skill/command/agent metadata into each target host's discovery format. Parallel to `little_loops.host_runner` (which handles *invoking* the host CLI); this module handles *emitting* ll artifacts *to* a host.
 
@@ -9552,7 +9729,7 @@ from little_loops.adapters import HostEmitter, resolve_emitter, AdapterError
 
 ### HostEmitter
 
-`@runtime_checkable` structural Protocol. Any class exposing `name: str` and the three `emit_*` methods satisfies it without explicit subclassing; `isinstance(obj, HostEmitter)` works at runtime.
+`@runtime_checkable` structural Protocol. Any class exposing `name: str` and the four `emit_*` methods satisfies it without explicit subclassing; `isinstance(obj, HostEmitter)` works at runtime.
 
 ```python
 class HostEmitter(Protocol):
@@ -9560,7 +9737,10 @@ class HostEmitter(Protocol):
     def emit_skill(self, skill_meta: dict) -> str: ...
     def emit_command(self, cmd_meta: dict) -> str: ...
     def emit_agent(self, agent_meta: dict) -> str: ...
+    def emit_mcp_config(self, meta: dict) -> str: ...
 ```
+
+`emit_mcp_config` (FEAT-3138/FEAT-3139) wires an `ll-mcp` server entry into the host's MCP config format. Only `ClaudeCodeEmitter` and `CodexEmitter` write a real file; the other three emitters implement it as a stub returning `"skipped"` (no native MCP config surface yet for that host).
 
 ### resolve_emitter
 
@@ -9571,7 +9751,7 @@ emitter = resolve_emitter("codex")
 output = emitter.emit_skill({"name": "my-skill", ...})
 ```
 
-**Args:** `host` — one of `"codex"`, `"gemini"`, `"omp"`.  
+**Args:** `host` — one of `"codex"`, `"gemini"`, `"omp"`, `"kimi-code"`, `"claude-code"`.  
 **Raises:** `AdapterError` if the host is not registered.
 
 ### AdapterError
@@ -9586,9 +9766,11 @@ class AdapterError(Exception): ...
 
 | Class | Host key | Status |
 |-------|----------|--------|
-| `CodexEmitter` | `"codex"` | Implemented (FEAT-2391) — emits `.codex/` skill/command/agent files |
-| `GeminiEmitter` | `"gemini"` | Implemented (FEAT-2392) — emits `.gemini/` skill/command/agent files |
-| `OmpEmitter` | `"omp"` | Implemented (FEAT-3104/FEAT-3105) — emits `.omp/skills/`, `.omp/commands/`, and `.omp/agents/` files |
+| `CodexEmitter` | `"codex"` | Implemented (FEAT-2391) — emits `.codex/` skill/command/agent files; `emit_mcp_config` writes `ll-mcp.toml` (`mcp_servers = ["ll-mcp"]`) |
+| `GeminiEmitter` | `"gemini"` | Implemented (FEAT-2392) — emits `.gemini/` skill/command/agent files; `emit_mcp_config` is a stub (no native MCP config yet) |
+| `OmpEmitter` | `"omp"` | Implemented (FEAT-3104/FEAT-3105) — emits `.omp/skills/`, flat `.omp/commands/`, and `.omp/agents/` files; `emit_mcp_config` is a stub |
+| `KimiEmitter` | `"kimi-code"` | Implemented (EPIC-2910) — emits skill/command/agent files for Kimi Code; `emit_mcp_config` is a stub. Host key is `"kimi-code"`, not `"kimi"`, to match its `host_runner` registry key. |
+| `ClaudeCodeEmitter` | `"claude-code"` | Implemented (FEAT-3139) — `emit_skill`/`emit_command`/`emit_agent` are stubs (Claude Code's plugin marketplace serves these natively); `emit_mcp_config` merges `{"mcpServers": {"ll-mcp": {"command": "ll-mcp"}}}` into `.mcp.json` at the project root |
 
 To add a host: create `scripts/little_loops/adapters/<host>.py` implementing `HostEmitter`, then register the class in `_EMITTER_MAP` in `core.py`.
 

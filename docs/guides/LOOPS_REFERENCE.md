@@ -13,6 +13,7 @@ Run any loop with `ll-loop run <name>`. Copy one into your project to customize 
 
 - [Built-in Loops](#built-in-loops) — the full catalog, grouped by purpose
   - [Routing](#routing) · [General-Purpose](#general-purpose) · [API Adoption](#api-adoption) · [Research & Knowledge](#research--knowledge) · [Issue Management](#issue-management) · [Code Quality](#code-quality) · [Evaluation](#evaluation) · [Reinforcement Learning (RL)](#reinforcement-learning-rl) · [APO](#automatic-prompt-optimization-apo) · [Harness Examples](#harness-examples)
+- [Concurrency and Locking](#concurrency-and-locking) — the `scope:` field and file-based locking
 - [Cluster vs. Composer vs. Router](#cluster-vs-composer-vs-router) — picking an orchestrator
 - [Prompt Optimization Loops (APO)](#prompt-optimization-loops-apo)
 - [Evaluation Loops](#evaluation-loops)
@@ -2609,6 +2610,24 @@ ll-loop run workflow-generator "triage a new bug report: read it, grep for the o
 ```
 
 **v1 scope**: FSM-YAML output only (a Workflow-JS output target is a follow-on, gated by a lint-grade validator + execution shim); prose-brief input only (mining `.ll/history.db` session traces is a follow-on).
+
+## Concurrency and Locking
+
+### Scope Declaration
+
+The `scope:` field on a loop declares which paths it operates on. The engine uses file-based locking so two loops never modify the same files at once:
+
+```yaml
+scope:
+  - "src/"
+  - "tests/"
+```
+
+If a conflicting loop is already running, `ll-loop run` errors. Use `--queue` to wait instead — the maximum wait is `loops.queue_wait_timeout_seconds` in `.ll/ll-config.json` (default 24h), overridable per-run with `--queue-timeout SECONDS`, and queued loops acquire the lock in arrival order.
+
+An empty `scope` (or omitting the field entirely) falls back to `["."]` — the whole project — which conflicts with every other running loop, scoped or not. `ll-loop validate` emits a WARNING when a loop declares no `scope:`, since this repo-root fallback is a frequent source of false conflicts between otherwise-unrelated loops (BUG-3106/BUG-3107). Always declare `scope:` naming the paths a loop actually writes to, or use `scope: ["."]` as an explicit repo-wide opt-in.
+
+Loops with non-overlapping, explicitly-declared scopes run concurrently; overlapping scopes conflict (add `--queue` to wait). `ll-loop show <name>` displays the resolved effective scope, marking a fallback with `(default)` so it's clear the loop never declared one explicitly (BUG-3109). See the [Loops Guide's Scope-Based Concurrency section](LOOPS_GUIDE.md#scope-based-concurrency) for the full walkthrough and the [Troubleshooting guide](../development/TROUBLESHOOTING.md) for diagnosing repo-root lock conflicts.
 
 ## Cluster vs. Composer vs. Router
 

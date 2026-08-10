@@ -4276,6 +4276,23 @@ CLIs, no orchestration (`ll-auto`/`ll-parallel`/`ll-loop`/`ll-action invoke` are
 off the tool surface). No request handler depends on state from a prior request: each
 `tools/call` resolves entirely from its own arguments plus the filesystem/SQLite.
 
+**Tool parameters** (all schemas use `additionalProperties: false`):
+
+| Tool | Parameter | Type | Required | Description |
+|------|-----------|------|----------|-------------|
+| `issues_query` | `status` | `open`\|`done`\|`deferred`\|`all` | no (default `open`) | Status bucket to include |
+| | `issue_type` | `BUG`\|`FEAT`\|`ENH`\|`EPIC` | no | Restrict to one issue type |
+| | `priority` | `P[0-5]` | no | Restrict to one priority level, e.g. `P1` |
+| | `limit` | integer ≥ 1 | no | Maximum number of issues to return |
+| `issue_get` | `issue_id` | string | **yes** | Issue ID in any of: `3135`, `FEAT-3135`, `P3-FEAT-3135` |
+| `history_search` | `query` | string | **yes** | FTS5 phrase to search `.ll/history.db` for |
+| | `kind` | `tool`\|`file`\|`issue`\|`loop`\|`correction`\|`message` | no | Restrict results to one event kind |
+| | `limit` | integer ≥ 1 | no (default `10`) | Maximum number of results |
+| `deps_check` | — | — | — | No parameters; validates the cross-issue dependency graph |
+| `capabilities` | — | — | — | No parameters; reports the resolved AI-host CLI's capability surface |
+
+`issues_query` returns a list of `{id, priority, type, title, path, status, parent, labels}` dicts. `issue_get` returns the same summary-card field set `ll-issues show` uses, or a tool-level error if `issue_id` doesn't resolve. `history_search` returns a list of `SearchResult` dicts. `deps_check` returns `{has_issues, broken_refs, missing_backlinks, cycles, stale_completed_refs, broken_depends_on_refs, broken_relates_to_refs}`. `capabilities` returns `{host, binary, version, capabilities}`.
+
 Also advertises a `resources` capability (FEAT-3136): issue files, `.ll/ll-goals.md`, and
 `docs/**/*.md` are listed and readable under an `ll://` scheme (`ll://issues/<ID>`,
 `ll://goals`, `ll://docs/<relative-path>`). Unlike the tools, the resource surface is *not*
