@@ -1,0 +1,20 @@
+anthropic version: 0.104.1
+
+--- Claim 1: construction with no credentials raises immediately ---
+RESULT: no exception raised at construction
+
+--- Claim 2: AuthenticationError subclass of APIError ---
+RESULT: True
+
+--- Claim 3: APIConnectionError subclass of APIError ---
+RESULT: True
+
+--- Claim 4: RateLimitError subclass of APIError ---
+RESULT: True
+
+--- Claim 5: auth_token + default_headers construction ---
+RESULT: constructed OK, type=Anthropic
+auth headers present: True
+
+--- Claim 6: both api_key and auth_token ---
+RESULT: constructed OK, type=Anthropic

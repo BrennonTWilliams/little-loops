@@ -1,0 +1,75 @@
+======================================================================
+ENVIRONMENT
+======================================================================
+  mcp            2.0.0
+  httpx          0.28.1
+  little-loops   1.154.0
+
+======================================================================
+CLAIM 1: MethodBinding accepts non-spec 'tasks/get' and rejects spec
+         'tools/list' with ValueError (additive-only)
+======================================================================
+  MethodBinding(method='tasks/get') -> OK: 'tasks/get'
+  MethodBinding(method='tools/list') -> ValueError: MethodBinding cannot bind spec method 'tools/list'; extension methods are additive — use Extension.intercept_tool_call o
+  CLAIM 1: PASS
+
+======================================================================
+CLAIM 2: no io.modelcontextprotocol/tasks extension ships in 2.0.0;
+         only EXTENSION_ID is io.modelcontextprotocol/ui; no tasks/* in spec
+======================================================================
+  EXTENSION_ID definitions found in the installed package:
+    server/apps.py:43  EXTENSION_ID = "io.modelcontextprotocol/ui"
+  EXTENSION_ID mentioning 'tasks': []
+  tasks/* in SPEC_CLIENT_METHODS: []
+  total spec client methods: 15
+  modules with 'task' in name: []
+  CLAIM 2: PASS
+
+======================================================================
+CLAIM 3: Extension attaches via MCPServer(extensions=[...]), not the
+         lowlevel Server used by build_server()
+======================================================================
+  MCPServer.__init__ has 'extensions': True
+  lowlevel Server.__init__ has 'extensions': False
+  lowlevel Server params: ['self', 'name', 'version', 'title', 'description', 'instructions', 'website_url', 'icons', 'cache_hints', 'lifespan', 'on_list_tools', 'on_call_tool', 'on_list_resources', 'on_list_resource_templates', 'on_read_resource', 'on_subscribe_resource', 'on_unsubscribe_resource', 'on_subscriptions_listen', 'on_list_prompts', 'on_get_prompt', 'on_completion', 'on_set_logging_level', 'on_ping', 'on_roots_list_changed', 'on_progress']
+  Extension docstring mentions MCPServer: True
+  CLAIM 3: PASS
+
+======================================================================
+CLAIM 5: MethodBinding.protocol_versions gates by wire version; empty
+         set raises ValueError
+======================================================================
+  protocol_versions=frozenset({'2026-07-28'}) -> OK: frozenset({'2026-07-28'})
+  protocol_versions=frozenset() -> ValueError: MethodBinding for 'tasks/get' has an empty protocol_versions set, so it could never be served; use None to admit every v
+  CLAIM 5: PASS
+
+======================================================================
+CLAIM 6: INPUT_REQUIRED_METHODS / is_input_required implement the MRTR
+         input_required resultType
+======================================================================
+  INPUT_REQUIRED_METHODS = ['prompts/get', 'resources/read', 'tools/call']
+  is_input_required signature: (result: 'object') -> 'TypeGuard[types.InputRequiredResult | dict[str, Any]]'
+  is_input_required doc: True when `result` is an `input_required` interim result, typed or wire-shaped.
+  client-side module present: mcp.client._input_required -> ['Awaitable', 'Callable', 'DEFAULT_INPUT_REQUIRED_MAX_ROUNDS', 'ErrorData', 'InputRequest', 'InputRequiredResult', 'InputRequiredRoundsExceededError', 'InputResponse']
+  CLAIM 6: PASS
+
+======================================================================
+CLAIM 4: Server.add_request_handler registers a custom tasks/get on the
+         unmodified build_server() Server and dispatches it over HTTP
+======================================================================
+  build_server() -> Server name='ll-mcp'
+  registered custom method 'tasks/get' via add_request_handler
+  HTTP status: 200
+  raw body: {"jsonrpc":"2.0","id":7,"result":{"taskId":"t-42","status":"completed","servedBy":"add_request_handler","resultType":"complete","_meta":{"io.modelcontextprotocol/serverInfo":{"name":"ll-mcp","version":"1.154.0"}}}}
+  result: {'taskId': 't-42', 'status': 'completed', 'servedBy': 'add_request_handler', 'resultType': 'complete', '_meta': {'io.modelcontextprotocol/serverInfo': {'name': 'll-mcp', 'version': '1.154.0'}}}
+  CLAIM 4: PASS
+
+======================================================================
+SUMMARY
+======================================================================
+  CLAIM 1: PASS
+  CLAIM 2: PASS
+  CLAIM 3: PASS
+  CLAIM 4: PASS
+  CLAIM 5: PASS
+  CLAIM 6: PASS

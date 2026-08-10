@@ -14,6 +14,9 @@ relates_to:
 - FEAT-3135
 - FEAT-3136
 - FEAT-3137
+- FEAT-3143
+- ENH-3144
+- FEAT-3145
 ---
 
 ## Summary
@@ -109,13 +112,20 @@ several places is strengthened:
   `Mcp-Method` / `Mcp-Name` (SEP-2243) lets `ll-mcp` enforce per-method policy
   *before* JSON-RPC body parsing. This pairs with the dry-run-by-default
   convention rather than replacing it.
-- **The job tier should wrap the Tasks extension, not invent a protocol.** A
-  proposed `job_start` / `job_status` / `job_cancel` shape maps 1:1 onto
-  `tasks/get` / `tasks/cancel` plus final-result retrieval from the formalized
-  `io.modelcontextprotocol/tasks` extension (SEP-2663). Progress events feed the
-  `subscriptions/listen` change-notification stream. Inventing a parallel job
-  primitive would put `ll-mcp` out of step with every other
-  2026-07-28-compatible server and forfeit the standard notification channel.
+- **The job tier must build its own `tasks/*` surface, shaped to SEP-2663, not
+  wrap an extension the pinned SDK doesn't ship.** `mcp==2.0.0` implements no
+  `io.modelcontextprotocol/tasks` extension — confirmed by learning test
+  `.ll/learning-tests/mcp-extension-mechanism.md` (`proven`, mcp 2.0.0, 6/6).
+  The formal `Extension` API only attaches via `MCPServer(extensions=[...])`,
+  and the lowlevel `Server` that `build_server()` uses has no `extensions`
+  parameter, so even the extension mechanism itself is unreachable as built.
+  The real, proven path is `Server.add_request_handler("tasks/get", ...)` on
+  the unmodified lowlevel server. A proposed `job_start` / `job_status` /
+  `job_cancel` shape should track SEP-2663's `tasks/get` / `tasks/cancel` /
+  final-result-retrieval shape line-by-line so swapping to the official
+  extension later is a registration change, not a client-visible protocol
+  change. Progress events feed the `subscriptions/listen` change-notification
+  stream regardless.
 - **Multi Round-Trip Requests (MRTR) replace server-initiated
   `elicitation/create`.** Any mutation tool needing interactive confirmation
   should be designed around `resultType: "input_required"` plus the client
@@ -157,10 +167,12 @@ Also load-bearing across all tiers:
    filters accordingly) survives the spec change intact, now via per-request
    `_meta` rather than a handshake.
 4. **Should `ll-mcp` advertise the Tasks extension in its capabilities
-   response?** If the job tier ships, declaring `io.modelcontextprotocol/tasks`
-   tells hosts to use the extension-aware flow rather than ad-hoc polling. A
-   one-line declaration, but decide it when that tier is actually built, not
-   pre-emptively.
+   response?** No — not until an SDK actually ships
+   `io.modelcontextprotocol/tasks`. `mcp==2.0.0` implements no such extension
+   (see the "Spec target" section above), so declaring it would claim a
+   capability the server only implements privately via
+   `Server.add_request_handler`. Revisit this only when a pinned SDK version
+   ships the real extension.
 
 ## Verification Notes
 

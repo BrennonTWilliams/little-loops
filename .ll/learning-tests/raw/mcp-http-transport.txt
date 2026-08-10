@@ -1,0 +1,86 @@
+======================================================================
+ENVIRONMENT
+======================================================================
+  mcp            2.0.0
+  httpx          0.28.1
+  starlette      0.50.0
+  little-loops   1.154.0
+  cwd            <repo-root>/little-loops
+
+======================================================================
+CLAIM 1: NAME_BEARING_METHODS maps exactly tools/call->name,
+         prompts/get->name, resources/read->uri
+======================================================================
+  MCP_METHOD_HEADER = 'mcp-method'
+  MCP_NAME_HEADER   = 'mcp-name'
+  actual   = {'tools/call': 'name', 'prompts/get': 'name', 'resources/read': 'uri'}
+  expected = {'tools/call': 'name', 'prompts/get': 'name', 'resources/read': 'uri'}
+  CLAIM 1: PASS
+
+======================================================================
+CLAIM 2: body method=tools/list with NO Mcp-Method header is rejected
+         with HEADER_MISMATCH (-32020)
+======================================================================
+  headers sent: {'mcp-protocol-version': '2026-07-28'}
+  -> rejected code=-32020 (HEADER_MISMATCH)
+  -> message: mcp-method header does not match the request body's method
+  control (header present): accepted code=None 
+  CLAIM 2: PASS
+
+======================================================================
+CLAIM 3: envelope rung runs BEFORE header rung — body missing
+         params._meta envelope keys fails -32602 even with correct headers
+======================================================================
+  headers sent (all correct): {'mcp-protocol-version': '2026-07-28', 'mcp-method': 'tools/list'}
+  params: {}  (no _meta)
+  -> rejected code=-32602 (INVALID_PARAMS)
+  -> message: params._meta must be an object carrying the required 'io.modelcontextprotocol/protocolVersion' and 'io.modelcontextprotocol/clientCapabilities' envelope keys
+  CLAIM 3: PASS
+
+======================================================================
+CLAIM 4: tools/call with Mcp-Name disagreeing with params.name is
+         rejected -32020; matching pair passes
+======================================================================
+  params.name = 'issues_query'
+  Mcp-Name='history_search' -> rejected code=-32020: mcp-name header does not match the request body's 'name' parameter
+  Mcp-Name='issues_query'   -> accepted code=None 
+  CLAIM 4: PASS
+
+======================================================================
+CLAIM 6: subscriptions/listen served by ListenHandler; response IS
+         the event stream
+======================================================================
+  ListenHandler = <class 'mcp.server.subscriptions.ListenHandler'>
+  SubscriptionsListenResult = <class 'mcp_types._types.SubscriptionsListenResult'>
+  transport special-cases in _streamable_http_modern.py:
+    if req.method == "subscriptions/listen" and not has_sse:
+    if json_response and req.method != "subscriptions/listen":
+  module docstring (first 4 lines):
+    Server-side `subscriptions/listen` support (2026-07-28, SEP-2575).
+    
+    On the 2026-07-28 wire there is no standing GET stream: a client opts in to
+    server events by sending a `subscriptions/listen` request whose response IS
+  CLAIM 6: PASS
+
+======================================================================
+CLAIM 5: unmodified build_server() Server serves tools/list over
+         streamable HTTP; catalog matches the stdio path
+======================================================================
+  stdio-path handler tools (5): ['capabilities', 'deps_check', 'history_search', 'issue_get', 'issues_query']
+  build_server() -> Server name='ll-mcp'
+  HTTP status: 200
+  response content-type: application/json
+  raw body (first 300 chars): {"jsonrpc":"2.0","id":1,"result":{"cacheScope":"public","resultType":"complete","tools":[{"description":"List little-loops issues (bugs/features/enhancements/epics), tagged with frontmatter status, filtered by status/type/priority and sorted by priority.","inputSchema":{"type":"object","properties":
+  HTTP-path tools (5): ['capabilities', 'deps_check', 'history_search', 'issue_get', 'issues_query']
+  catalogs identical: True
+  CLAIM 5: PASS
+
+======================================================================
+SUMMARY
+======================================================================
+  CLAIM 1: PASS
+  CLAIM 2: PASS
+  CLAIM 3: PASS
+  CLAIM 4: PASS
+  CLAIM 5: PASS
+  CLAIM 6: PASS
