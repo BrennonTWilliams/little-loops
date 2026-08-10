@@ -387,7 +387,7 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 | `ready_command` | `ready-issue {{issue_id}}` | Ready command template |
 | `manage_command` | `manage-issue {{issue_type}} {{action}} {{issue_id}}` | Manage command template |
 | `decide_command` | `decide-issue {{issue_id}}` | Command template for the decide-issue step when `decision_needed: true`. `{{issue_id}}` is substituted at runtime. |
-| `worktree_copy_files` | `[".claude/settings.local.json", ".env", ".ll/ll.local.md"]` | Files to copy to worktrees |
+| `worktree_copy_files` | `[".claude/settings.local.json", ".env", ".ll/ll.local.md"]` | Files or directories to copy to worktrees. See [WORKTREES.md](WORKTREES.md) for the full copy contract. |
 | `require_code_changes` | `true` | Require worktree to produce code changes before merging. Skips no-op runs. |
 | `use_feature_branches` | `false` | Create a `feature/<id>-<slug>` branch per issue instead of `parallel/<id>-<timestamp>`. When `true`, auto-merge is skipped and branches survive as PR-ready. Use for PR-based CI/CD workflows. |
 | `push_feature_branches` | `false` | Push the feature branch to `remote_name` after worker success using `git push --force-with-lease`. Requires `use_feature_branches: true`. |

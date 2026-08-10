@@ -96,7 +96,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.test_file_patterns` | Test-file classification shared across gates — `is_test_file(path, config=None)` and `filter_test_files(paths, config=None)`. |
 | `little_loops.test_tamper_guard` | Test-weakening detection core (ENH-2933) — `snapshot_test_paths()` / `snapshot_test_paths_at_ref()`, `compare_snapshots()`, `measure_test_strength()`, `is_weakening()`, `filter_weakening_findings()`, with `TamperFinding` / `TamperReport` / `TestStrength` / `ConfigTarget` dataclasses. |
 | `little_loops.transport` | EventBus transport abstraction (`Transport` Protocol + `send`/`close`) with built-in `JsonlTransport`, `UnixSocketTransport`, and `OTelTransport` sinks. |
-| `little_loops.worktree_utils` | Shared worktree setup/cleanup utilities used by `ll-parallel`, `ll-sprint`, and `ll-loop`. |
+| `little_loops.worktree_utils` | Shared worktree setup/cleanup utilities used by `ll-parallel`, `ll-sprint`, and `ll-loop`. See [WORKTREES.md](WORKTREES.md) for the file-copy contract. |
 | `little_loops.mcp_call` | Thin CLI wrapper for direct MCP tool invocation via JSON-RPC |
 | `little_loops.mcp_server` | `ll-mcp` stdio MCP server (2026-07-28 spec, FEAT-3135) — `main_mcp` entry point plus the five read-only tools (`issues_query`, `issue_get`, `history_search`, `deps_check`, `capabilities`), the `ll://` resource surface (FEAT-3136): issue files, `.ll/ll-goals.md`, and `docs/` served under `ll://issues/<ID>`, `ll://goals`, `ll://docs/<relative-path>`, and the prompts-from-skills surface (FEAT-3137): every discovered `SKILL.md` advertised as an MCP prompt (name/description/args from frontmatter), all resolved against discovery-time enumerations. |
 | `little_loops.advisor` | Capability-rank comparison for the advisor consult path (FEAT-3108) — `MODEL_RANKS`, `rank_model`, `check_floor`. |
@@ -536,7 +536,7 @@ class ParallelAutomationConfig:
 
 **Fields:**
 - `decide_command` - Command template for automated decision resolution
-- `worktree_copy_files` - Files copied from main repo to each worktree
+- `worktree_copy_files` - Files copied from main repo to each worktree. See [WORKTREES.md](WORKTREES.md) for the full copy contract (directory recursion, `.claude/` handling, `history.db` sharing).
 - `require_code_changes` - Fail issues that don't produce code changes
 - `use_feature_branches` - Create `feature/<id>-<slug>` branches instead of auto-merged worktree branches; skips auto-merge, leaving branches as PR-ready
 - `push_feature_branches` - Push feature branches to remote after creation

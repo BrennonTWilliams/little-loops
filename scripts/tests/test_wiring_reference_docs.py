@@ -182,6 +182,9 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/reference/API.md", "FloorResult", "FEAT-3108"),
     ("docs/reference/API.md", "check_floor", "FEAT-3108"),
     ("docs/reference/API.md", "rank_model", "FEAT-3108"),
+    ("docs/reference/WORKTREES.md", ".ll/ll.local.md", "ENH-3115"),
+    ("docs/reference/WORKTREES.md", "LL_HISTORY_DB", "ENH-3115"),
+    ("docs/reference/WORKTREES.md", "copy_files=[]", "ENH-3115"),
 ]
 
 
@@ -248,6 +251,7 @@ DOC_FILES_MUST_EXIST: list[tuple[str, str]] = [
     ("docs/guides/ISSUE_MANAGEMENT_GUIDE.md", "ENH-1401"),
     ("docs/reference/CONFIGURATION.md", "ENH-1401"),
     ("docs/reference/COMMANDS.md", "ENH-1859"),
+    ("docs/reference/WORKTREES.md", "ENH-3115"),
 ]
 
 

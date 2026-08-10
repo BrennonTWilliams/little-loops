@@ -201,6 +201,10 @@ present or not copied
    cat .worktrees/worker-1/.ll/ll.local.md
    ```
 
+See [WORKTREES.md](../reference/WORKTREES.md) for the full copy contract —
+what crosses into a worktree, what doesn't, and why (e.g. `history.db` is
+shared by reference rather than copied).
+
 ### Git commands fail inside worktree sessions
 
 **Symptom**: `git status` / `git log` errors or wrong repo inside an `ll-parallel` / `ll-loop` subprocess spawned in a worktree
