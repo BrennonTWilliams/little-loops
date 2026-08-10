@@ -75,12 +75,13 @@ unblocks ENH-3096 (`ActionRunner` boundary) and ENH-3097
 
 ## Status
 
-Open — blocked on FEAT-3078 landing. Per the parent ENH-3094's recorded
+Open — unblocked. FEAT-3078 and BUG-3112 have both landed (`status: done`),
+satisfying this issue's `blocked_by`. Per the parent ENH-3094's recorded
 decision (Option A, `/ll:decide-issue`, `.ll/decisions.d/cd87607d-e3b2-4588-a697-466559bab1d3.json`),
-this collapse is deliberately sequenced after FEAT-3078 so the deprecated
-`automation_profile` pass-through shim is validated against the real
+this collapse was deliberately sequenced after FEAT-3078 so the deprecated
+`automation_profile` pass-through shim would be validated against the real
 third-knob consumer (`disable_background_tasks`) rather than a hypothetical
-one. FEAT-3078 is currently `status: open`.
+one. Ready to implement.
 
 ## Parent Issue
 

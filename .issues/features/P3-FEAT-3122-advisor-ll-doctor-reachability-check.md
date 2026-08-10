@@ -35,7 +35,7 @@ concern of FEAT-3044's "ll-doctor check" subsection.
 ## Parent Issue
 
 Decomposed from FEAT-3044: Advisor core - `ll-advise` CLI, capability
-floor, and `ll-doctor` check. Depends on FEAT-3108 (`check_floor`,
+floor, and `ll-doctor` check. Builds on FEAT-3108 (done; `check_floor`,
 `rank_model`) for the floor classification and FEAT-3120 (`consult`, the
 advisor host-resolution/isolation pattern, and the CLI registration
 lockstep surfaces this issue's own doc wiring follows) for the
