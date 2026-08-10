@@ -5,6 +5,161 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.155.0] - 2026-08-09
+
+An integration-and-isolation release: little-loops now speaks **MCP** as a
+first-class surface, the **`omp` host adapter** is fully implemented, every
+built-in loop declares an explicit **`scope:`** so concurrent runs stop
+false-conflicting on the repo root, and background tasks are **hard-disabled**
+in headless automation rather than merely discouraged. 80 issues closed (22
+features, 36 bug fixes, 22 enhancements) across 108 commits. No breaking
+changes.
+
+### Added
+
+**`ll-mcp` — a read-only MCP server.** little-loops now exposes its own state
+to any MCP client. The stdio server skeleton ships with five read-only tools
+(FEAT-3135), an `ll://` resource surface for addressable project state
+(FEAT-3136), and a prompts-from-skills surface that projects the skill catalog
+as MCP prompts (FEAT-3137) — assembled under the core read-only server
+(FEAT-3132, FEAT-3128). `ll-adapt --host` now emits the matching client config
+for you: `.mcp.json` on `claude-code` (FEAT-3139) and a TOML snippet on `codex`
+(FEAT-3138, FEAT-3133).
+
+**The `omp` (oh-my-pi) host adapter.** Every `OmpEmitter` method previously
+raised; all of them are now implemented (FEAT-2787) — `emit_agent` against the
+`.omp/agents/` contract (FEAT-3104) and `emit_skill`/`emit_command` against the
+native discovery format, which a research spike pinned down first (FEAT-3103,
+FEAT-3105).
+
+**Atomic issue and epic creation.** `ll-issues create` and `ll-issues
+scaffold-epic` replace hand-rolled file writes with a single atomic operation
+(FEAT-2947), and `ll-issues link-epics` clusters orphan issues to propose EPIC
+assignment or synthesis (FEAT-2942).
+
+**Advisor gains signals and a floor.** Signal-gated auto-consults with a
+per-task budget (FEAT-3038), plus a capability floor — `MODEL_RANKS`,
+`rank_model`, `check_floor` — so a task can refuse to run beneath the model
+tier it needs (FEAT-3108).
+
+**Visual policy builder.** A UX shell for authoring policy-router and rubric
+FSM loops, with reorderable rules, collapsed YAML, and de-jargoned copy
+(FEAT-2301).
+
+**Claim verification in issue bodies.** Symbol and CLI-flag claims are now
+checked against the codebase and folded into the prose-claim gap taxonomy
+(FEAT-3048).
+
+### Fixed
+
+**Loop scoping — concurrent runs stop colliding.** Unscoped issue-management
+loops were locking the entire repo, false-conflicting every narrowly-scoped
+loop (BUG-3083). All 78 unscoped built-in loops now declare explicit `scope:`
+(BUG-3106) after a classification audit (BUG-3088), the issue-lifecycle loops
+are scoped off the repo root (BUG-3087), `ll-loop validate` warns when `scope:`
+is absent (BUG-3107), `ll-loop show` displays the *effective* scope including
+the `["."]` fallback (BUG-3109), `auto-refine-and-implement` actually binds its
+positional scope argument instead of silently working the whole backlog
+(BUG-3110), `oracles/resolve-decision.yaml` gained its missing scope
+(BUG-3124), and the whole convention is documented (BUG-3119).
+
+**Learning-test staleness now has an exit.** Staleness previously warned on
+every release forever with no path that cleared it (ENH-3073); it is now gated
+on installed-version drift rather than calendar age (ENH-3125). The release
+gate's import scan missed function-local and dotted imports, so most records
+could never be flagged (BUG-3089); the scan moved to `ast` with unified target
+normalization. A `result: fail` assertion was invisible to every consumer once
+a record was `proven` (BUG-3072), the in-loop learning-state re-check omitted
+staleness nulling and produced false `proven` verdicts (BUG-3101),
+`migrate-sdk-version` queued only `status: stale` records and never age-stale
+ones (BUG-3102), `/ll:explore-api` asked an interactive question instead of
+re-proving under automation (BUG-3100), the 900s subprocess timeout preempted
+the configured 86400s queue-wait budget (BUG-3085), and the gate gained an
+`infra_failed` verdict that distinguishes infra contention from genuine
+implementation failure (ENH-3084).
+
+**Background tasks are disabled, not discouraged.** Headless automation now
+hard-disables background tasks instead of instructing against them (FEAT-3060),
+after verifying `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`'s real scope with a live
+host invocation (FEAT-3076) and settling the smoke-test/go-no-go carve-out
+policy (FEAT-3077). A `disable_background_tasks` config flag threads through
+`host_runner` and every call site (FEAT-3078). Relatedly, ambient
+`LL_AUTOMATION` was inherited by every descendant process and made 48 tests
+fail inside automation runs — falsely reddening every loop-run verification
+gate (BUG-3082); `host_runner` can now clear it explicitly (ENH-3081), three
+`ll-auto` subprocesses that omitted `automation_profile` were fixed (BUG-3093),
+and the per-call automation kwargs collapsed into a single `AutomationContext`
+dataclass (ENH-3094).
+
+**Issue gates stop firing on their own documentation.** `prose_dep_drift`
+charged another issue's dependency phrase to the host issue (BUG-3057),
+`stale_symbol_ref` fired on forward-looking design claims across 46% of active
+issues (BUG-3063), `program_design_nonspecific` named `Types/Signatures` — a
+heading its own parser rejects (BUG-3071), the prose-dep gate flagged example
+prose in the issues documenting the extractor itself (ENH-3061), inline-backtick
+IDs are now suppressed, and the `type_mismatch` heuristic no longer
+false-positives on the EPIC keyword or scans closed issues (ENH-3053).
+`format-check` also stopped reporting every subcommand of a metavar-using CLI
+as "no such subcommand" (BUG-3074), and dependency-entry shape is validated so
+a bare-numeric ID no longer silently drops the graph edge (BUG-3059).
+
+**Decision gates resolve instead of dead-ending.** `refine-to-ready-issue`
+dead-ended on `decision_needed` rather than resolving it inline (BUG-3065);
+`autodev` (ENH-3075) and `rn-remediate` (ENH-3090) now use the shared decision
+sub-loop, and `confidence-check` gained a hard override for an unresolved
+`blocked_by` dependency (BUG-3051).
+
+**Release and changelog mechanics.** `/ll:manage-release` created the tag
+before the changelog commit, so every tag omitted its own changelog entry
+(BUG-3070) — the changelog is now committed first.
+
+**Observability and code graph.** OTel loop spans never closed `ERROR` because
+`loop_complete` carried no outcome (BUG-3066); status is now derived from
+`map_final_status`. `CodegraphProvider.importers_of`/`impact_of` could not
+resolve paths nested under `project.src_dir` (BUG-3091), and `impact_of` now
+walks `imports` edges transitively to depth (ENH-3092).
+
+**Worktree and config correctness.** Worktree sessions wrote session history to
+a throwaway `.ll/history.db` instead of sharing the main repo's (BUG-3112),
+`BRConfig` never read `.ll/ll.local.md` overrides (BUG-3123), the issue-ID
+regex is case-insensitive for card display, and `ll-history-context` pruned
+before validating its arguments, so malformed invocations exited 0 silently
+under automation (BUG-3080).
+
+**Automation reliability.** `ll-auto` Phase 2 never received the headless
+stay-in-turn contract and had no recovery when a turn ended unfinalized
+(BUG-3058), and the timeout handler reported already-completed work as failed
+(BUG-3131). `ll-mcp` list-returning tools (`issues_query`, `history_search`)
+failed wire-level validation (BUG-3140).
+
+**Test-suite health.** The tamper guard counted conditional `pytest.skip()`
+guards as test weakening (BUG-3054), work-verification diagnostics printed a
+full count beside a silently truncated list (BUG-3055), and
+`TestCorpusBaseline` sat at the 120s per-test timeout ceiling and failed serial
+runs (BUG-3056).
+
+### Changed
+
+**Issue refinement gets sharper inputs.** `/ll:refine-issue`'s research agents
+are now seeded from the `ll-code` code graph (ENH-3098). Replacement parity and
+a negative-claim doctrine landed across `/ll:wire-issue` and `/ll:refine-issue`
+(ENH-3045), with a `soft_dep_hard_edge` gap kind plus an AC-vs-design pass
+(ENH-3046), unverified-claim and missing-parity gaps consumed as
+`confidence-check` Criterion 4 deductions (ENH-3047), a contradiction-marking
+channel that ports the Superseded marker into wire (ENH-3049), and a Decision
+Rules slot in Program Design alongside gate-consumer and conditional-branch
+wiring categories (ENH-3050).
+
+**Loop and command ergonomics.** Loops gained a per-loop design-token opt-out
+(ENH-3099), `/ll:commit` is pinned to Haiku via `model:` frontmatter
+(ENH-3052), `refine-to-ready-issue`'s `breakdown_issue` state got a resolvable
+`pruning_profile` (ENH-3069), and inert `on_rate_limit_exhausted` config on
+`recursive-refine`'s sub-loop call state is documented (ENH-3079).
+
+**Init and adapter hygiene.** `ll-init` audit findings — defects, wiring, UX,
+and output layer — are remediated (ENH-3068), and a test now asserts that
+committed `ll-adapt` host mirrors are current (ENH-2968).
+
 ## [1.154.0] - 2026-08-05
 
 A large consolidation release: a new **test tamper guard** subsystem, the
@@ -741,6 +896,7 @@ beside a silently truncated list (BUG-3055).
 - ENH-2655: Standardize a .ll/ artifact directory for /ll:spike plan docs
 - refactor(runners): extract shared RunnerType/ActionSpec dispatch abstraction (c835911a)
 
+[1.155.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.154.0...v1.155.0
 [1.154.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.153.0...v1.154.0
 [1.153.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.152.0...v1.153.0
 [1.152.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.151.1...v1.152.0
