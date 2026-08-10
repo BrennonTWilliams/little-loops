@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -112,10 +113,10 @@ class TestSetupWorktree:
         logger = MagicMock()
         git_lock = _make_git_lock(logger)
 
-        copytree_calls: list[tuple[Path, Path]] = []
+        copytree_calls: list[tuple[Path, Path, dict[str, object]]] = []
 
         def _mock_copytree(src: Path, dst: Path, **kw: object) -> Path:
-            copytree_calls.append((Path(src), Path(dst)))
+            copytree_calls.append((Path(src), Path(dst), kw))
             return Path(dst)
 
         with patch.object(git_lock, "run", return_value=subprocess.CompletedProcess([], 0, "", "")):
@@ -130,9 +131,10 @@ class TestSetupWorktree:
                         git_lock=git_lock,
                     )
 
-        assert any(".claude" in str(src) for src, _ in copytree_calls), (
-            "Expected .claude/ to be copied"
-        )
+        claude_calls = [c for c in copytree_calls if ".claude" in str(c[0])]
+        assert claude_calls, "Expected .claude/ to be copied"
+        # .claude/ keeps the rmtree-then-copytree replace strategy, not dirs_exist_ok merge
+        assert "dirs_exist_ok" not in claude_calls[0][2]
 
     def test_copies_configured_files(self, tmp_path: Path) -> None:
         """setup_worktree() copies non-.claude/ files from copy_files list."""
@@ -348,8 +350,8 @@ class TestSetupWorktree:
                     base_branch="nonexistent-branch",
                 )
 
-    def test_copy_files_directory_skipped_with_warning(self, tmp_path: Path) -> None:
-        """A directory listed in copy_files logs a warning and is skipped (not copied)."""
+    def test_copy_files_directory_copied_via_copytree(self, tmp_path: Path) -> None:
+        """A directory listed in copy_files is copied via copytree(dirs_exist_ok=True)."""
         repo = tmp_path / "repo"
         repo.mkdir()
         some_dir = repo / "subdir"
@@ -359,6 +361,12 @@ class TestSetupWorktree:
         logger = MagicMock()
         git_lock = _make_git_lock(logger)
 
+        copytree_calls: list[tuple[Path, Path, dict[str, object]]] = []
+
+        def _mock_copytree(src: object, dst: object, **kw: object) -> Path:
+            copytree_calls.append((Path(str(src)), Path(str(dst)), kw))
+            return Path(str(dst))
+
         copy2_calls: list[str] = []
 
         def _mock_copy2(src: object, dst: object) -> None:
@@ -366,7 +374,7 @@ class TestSetupWorktree:
 
         with patch.object(git_lock, "run", return_value=subprocess.CompletedProcess([], 0, "", "")):
             with patch("subprocess.run", return_value=_ok()):
-                with patch("shutil.copytree"):
+                with patch("shutil.copytree", side_effect=_mock_copytree):
                     with patch("shutil.rmtree"):
                         with patch("shutil.copy2", side_effect=_mock_copy2):
                             setup_worktree(
@@ -381,9 +389,39 @@ class TestSetupWorktree:
         assert not any("subdir" in c for c in copy2_calls), (
             "Directory in copy_files should not be copied via copy2"
         )
-        logger.warning.assert_called()
-        warning_msg = logger.warning.call_args[0][0]
-        assert "subdir" in warning_msg or "directory" in warning_msg.lower()
+        subdir_calls = [c for c in copytree_calls if "subdir" in str(c[0])]
+        assert subdir_calls, "Expected subdir/ to be copied via copytree"
+        assert subdir_calls[0][2].get("dirs_exist_ok") is True
+        logger.warning.assert_not_called()
+
+    def test_copy_files_directory_nested_contents_land_on_disk(self, tmp_path: Path) -> None:
+        """A directory entry's nested contents are actually copied (no shutil mocking)."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        some_dir = repo / "subdir"
+        nested = some_dir / "nested"
+        nested.mkdir(parents=True)
+        (nested / "file.txt").write_text("hello")
+        wt = tmp_path / "wt"
+        wt.mkdir()
+        logger = MagicMock()
+        git_lock = _make_git_lock(logger)
+
+        with patch.object(git_lock, "run", return_value=subprocess.CompletedProcess([], 0, "", "")):
+            with patch("subprocess.run", return_value=_ok()):
+                with patch("shutil.copytree", wraps=shutil.copytree):
+                    setup_worktree(
+                        repo_path=repo,
+                        worktree_path=wt,
+                        branch_name="branch",
+                        copy_files=["subdir"],
+                        logger=logger,
+                        git_lock=git_lock,
+                    )
+
+        copied_file = wt / "subdir" / "nested" / "file.txt"
+        assert copied_file.exists()
+        assert copied_file.read_text() == "hello"
 
 
 # ---------------------------------------------------------------------------

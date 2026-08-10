@@ -913,13 +913,13 @@ class TestWorkerPoolWorktreeManagement:
         assert "20260101-000000-my-loop" in cleaned_names
         assert "other-dir" not in cleaned_names
 
-    def test_setup_worktree_skips_directory_entries(
+    def test_setup_worktree_copies_directory_entries(
         self,
         worker_pool: WorkerPool,
         temp_repo_with_config: Path,
         mock_logger: MagicMock,
     ) -> None:
-        """_setup_worktree() skips directory entries in worktree_copy_files (BUG-438)."""
+        """_setup_worktree() copies directory entries in worktree_copy_files via copytree (ENH-3114)."""
         worktree_path = temp_repo_with_config / ".worktrees" / "worker-bug-438"
         branch_name = "parallel/bug-438"
 
@@ -940,6 +940,12 @@ class TestWorkerPoolWorktreeManagement:
         def mock_copy2(src: Path, dest: Path) -> None:
             copied_files.append((Path(src), Path(dest)))
 
+        copytree_calls: list[tuple[Path, Path, dict[str, object]]] = []
+
+        def mock_copytree(src: object, dest: object, **kw: object) -> Path:
+            copytree_calls.append((Path(str(src)), Path(str(dest)), kw))
+            return Path(str(dest))
+
         def mock_git_run(
             args: list[str], cwd: Path, **kwargs: Any
         ) -> subprocess.CompletedProcess[str]:
@@ -949,17 +955,22 @@ class TestWorkerPoolWorktreeManagement:
             with patch("subprocess.run") as mock_subprocess:
                 mock_subprocess.return_value = subprocess.CompletedProcess([], 0, "", "")
                 with patch("shutil.copy2", side_effect=mock_copy2):
-                    with patch("shutil.copytree"):
+                    with patch("shutil.copytree", side_effect=mock_copytree):
                         worker_pool._setup_worktree(worktree_path, branch_name)
 
-        # Directory should be skipped, file should be copied
+        # File entry still copied via copy2
         copied_names = [src.name for src, _ in copied_files]
-        assert "node_modules" not in copied_names
         assert ".env" in copied_names
+        assert "node_modules" not in copied_names
 
-        # Warning should be logged for directory entry
+        # Directory entry copied via copytree(dirs_exist_ok=True)
+        node_modules_calls = [c for c in copytree_calls if c[0].name == "node_modules"]
+        assert node_modules_calls, "Expected node_modules/ to be copied via copytree"
+        assert node_modules_calls[0][2].get("dirs_exist_ok") is True
+
+        # No warning for the directory entry anymore
         warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
-        assert any("node_modules" in w and "directory" in w.lower() for w in warning_calls)
+        assert not any("node_modules" in w for w in warning_calls)
 
     def test_setup_worktree_passes_base_branch_in_feature_mode(
         self,

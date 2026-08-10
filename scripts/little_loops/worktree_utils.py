@@ -258,13 +258,12 @@ def setup_worktree(
             continue  # already covered by the copytree above
         src = repo_path / file_path
         if src.exists():
-            if src.is_dir():
-                logger.warning(
-                    f"Skipping '{file_path}' in copy_files: "
-                    "is a directory (use symlinks or copytree for directories)"
-                )
-                continue
             dest = worktree_path / file_path
+            if src.is_dir():
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(src, dest, dirs_exist_ok=True)
+                logger.info(f"Copied {file_path}/ directory to worktree")
+                continue
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dest)
             logger.info(f"Copied {file_path} to worktree")

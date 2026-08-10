@@ -4,9 +4,10 @@ title: worktree_copy_files silently skips directory entries while .claude/ gets 
   full copytree
 type: ENH
 priority: P4
-status: open
+status: done
 parent: EPIC-3111
 captured_at: '2026-08-08T20:32:03Z'
+completed_at: '2026-08-10T05:03:40Z'
 discovered_date: 2026-08-08
 discovered_by: capture-issue
 labels:
@@ -16,6 +17,7 @@ labels:
 decision_needed: false
 confidence_score: 96
 outcome_confidence: 89
+verify_verdict: VALID
 score_complexity: 23
 score_test_coverage: 25
 score_ambiguity: 18
@@ -174,6 +176,41 @@ asymmetry unresolved, only documented.
 
 _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
 
+_Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
+
+Re-confirmed post-`e90dd5f6` (2026-08-09) — that commit touched only config defaults/schema/docs, not `worktree_utils.py`'s copy logic itself, so the design below is unchanged in substance; only line numbers shifted.
+
+**Current implementation (re-verified):**
+- `.claude/` copytree, `worktree_utils.py:246-253` — dest-exists strategy is still `shutil.rmtree(dest)` then plain `shutil.copytree(src, dest)` (replace, not merge) — `dirs_exist_ok=True` is still unused anywhere in this file.
+- `copy_files` loop, `worktree_utils.py:255-272`; `is_dir()` warn-and-skip branch at `:261-266`, unchanged logic.
+- `dirs_exist_ok=True` precedent re-confirmed still at `scripts/tests/helpers.py:68`; no other production use anywhere in `scripts/little_loops/`.
+
+**Call sites re-confirmed accurate** (all pass user-configured `worktree_copy_files` through to `setup_worktree`'s `copy_files` param, so all are exposed to whichever fix path is chosen):
+- `scripts/little_loops/fsm/executor.py:942,946`
+- `scripts/little_loops/cli/loop/run.py:455,459,484,488`
+- `scripts/little_loops/parallel/worker_pool.py:402,762,774,778`
+- `scripts/little_loops/worktree_utils.py:381,451,455` (`verify_epic_branch_before_merge`) — always passes `copy_files=[]`, unaffected regardless of fix path.
+
+**Risk-profile note**: `e90dd5f6` added `.ll/ll.local.md` as a third default `worktree_copy_files` entry. It is a file in every reference (`config/automation.py`, `parallel/types.py`, `config-schema.json`), so it goes through the existing `shutil.copy2` file branch and does not itself trigger the directory-skip bug. It does not change this issue's urgency directly, but it is evidence the config surface is actively growing, and it points users toward `.ll/` as a directory they may plausibly want to reference wholesale in future entries.
+
+_Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
+
+Re-confirmed 2026-08-09 (post-`e90dd5f6`): current line numbers verified unchanged —
+`.claude/` copytree block `worktree_utils.py:246-253`, `copy_files` loop `:255-272`,
+`is_dir()` warn-and-skip branch `:261-266`. `dirs_exist_ok=True` is confirmed unused
+anywhere in `worktree_utils.py` (grep returns zero matches); the `.claude/` dest-exists
+strategy is `rmtree` then plain `copytree`, not merge-via-`dirs_exist_ok`.
+
+Newly confirmed edge cases not previously documented, relevant to Implementation Steps:
+- Neither the `.claude/` block nor the `copy_files` loop wraps `shutil.copytree`/`copy2`
+  in a try/except — a permissions error during either copy raises uncaught.
+- Neither block special-cases symlinks beyond Python's normal path-resolution semantics.
+- A `copy_files` entry whose `src` does not exist at all is skipped silently at `logger.debug`
+  level (`worktree_utils.py:270-272`), distinct from the `is_dir()` case's `logger.warning`.
+  Whichever fix path is chosen should decide whether the new directory-copy branch should
+  raise, warn, or stay silent on these same failure modes, since today's file-only path
+  is silent on missing-src and unguarded on permissions/symlinks.
+
 ### Types
 N/A — no new data types; this changes control flow inside the existing
 `copy_files` loop, not any data shape.
@@ -264,6 +301,29 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/API.md` (:535) and `docs/reference/CONFIGURATION.md` (:390) — both describe `worktree_copy_files` with generic "files" phrasing. Not factually broken by this change (no files-only claim to invalidate) and not test-gated, but optionally broaden to "files and directories" for completeness.
 
+_Wiring pass added by `/ll:wire-issue` — 2026-08-09:_
+- `scripts/little_loops/init/summary.py` (:83-85) — `/ll:init` summary row labels `worktree_copy_files` as `"Worktree files"`; once directories are supported the label is slightly imprecise. Cosmetic only, not test-gated, optional.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
+
+Post-`e90dd5f6` (2026-08-09, "improve(worktree): copy .ll/ll.local.md into worktrees by default") line-number refresh — that commit did not touch `worktree_utils.py`'s copy logic, only config defaults/schema/docs, but shifted `worktree_utils.py` line numbers by ~+10:
+- `.claude/` copytree block: now `worktree_utils.py:246-253` (was `:236-243`)
+- `copy_files` loop: now `worktree_utils.py:255-272` (was `:246-262`)
+- `is_dir()` warn-and-skip branch: now `worktree_utils.py:261-266` (was `:251-256`)
+- `worktree_copy_files` schema entry: now `config-schema.json:360-367` (was `:360`); description now also mentions `.ll/ll.local.md`, still does not state a files-only constraint
+- `config/automation.py`: field default `:91-93`, `from_dict()` fallback `:130-132` (both now default to `[".claude/settings.local.json", ".env", ".ll/ll.local.md"]`)
+- `parallel/types.py`: field default `:416-418` (same three-entry default)
+- Test line numbers: `test_cli_loop_worktree.py::test_copy_files_directory_skipped_with_warning` now `:351-386`; `test_worker_pool.py::test_setup_worktree_skips_directory_entries` now `:916-962`
+
+Additional documentation sites not previously listed, now referencing `worktree_copy_files` post-`e90dd5f6` (none state a files-only constraint; all use generic "files" phrasing, so none are factually broken by either fix path):
+- `docs/reference/API.md:528` (`ParallelAutomationConfig` field list), `:539` ("Files copied from main repo to each worktree"), `:3776` (`ParallelConfig` field list)
+- `docs/reference/CONFIGURATION.md:66` (JSON example showing the three-entry default), `:390` (table entry, "Files to copy to worktrees")
+- `docs/development/TROUBLESHOOTING.md:196` (references the default list including `.ll/ll.local.md`)
+
+`.ll/ll.local.md` (the new default entry added by `e90dd5f6`) is a plain file in every reference — it goes through the existing `shutil.copy2` file branch and does not itself trigger the directory-skip bug this issue is about.
+
 ## Impact
 
 - **Priority**: P4 - Papercut; affects only users who configure a directory entry
@@ -275,7 +335,37 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Scope Boundaries
+
+**In scope:**
+- The `copy_files` loop's `is_dir()` branch in `setup_worktree`
+  (`worktree_utils.py:255-272`) — either add `copytree` support or reject
+  directory entries at config-load time (per the selected Option A: support
+  directories).
+- `config-schema.json:360-367`'s `worktree_copy_files` description.
+- The two existing tests that encode today's warn-and-skip contract
+  (`test_cli_loop_worktree.py::test_copy_files_directory_skipped_with_warning`,
+  `test_worker_pool.py::test_setup_worktree_skips_directory_entries`).
+
+**Out of scope:**
+- The `.claude/` directory copytree block (`worktree_utils.py:246-253`) —
+  its `rmtree`-then-`copytree` dest-exists strategy stays as-is; this issue
+  does not unify it with the new directory branch's `dirs_exist_ok=True`
+  merge strategy.
+- Building `worktree_link_dirs` (BUG-438's shelved symlink-based full
+  feature) — Option A supersedes that path rather than reviving it.
+- Adding filesystem-existence validation to `ParallelAutomationConfig` or
+  any other config dataclass at load time (that's Option B, not selected).
+- Worktree copy-semantics documentation (tracked separately as ENH-3115).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-08-10T05:03:20 - `0192a3f1-7768-4f04-9f28-d474919e03bf.jsonl`
+- `/ll:ready-issue` - 2026-08-10T04:31:04 - `ef98cf35-0321-4be1-97c0-fcc88f4d772b.jsonl`
+- `/ll:verify-issues` - 2026-08-10T04:26:05 - `898e24f1-f69b-4320-9ba3-5b57835c1c33.jsonl`
+- `/ll:refine-issue` - 2026-08-10T04:23:54 - `ad74f91d-1816-4298-b5e5-53e59f11f056.jsonl`
+- `/ll:verify-issues` - 2026-08-10T04:21:36 - `de51be75-90fc-46e3-9aed-637c7a015ced.jsonl`
+- `/ll:wire-issue` - 2026-08-10T04:20:02 - `2b006bc7-530a-4604-8aa0-09cba0da2cd4.jsonl`
+- `/ll:refine-issue` - 2026-08-10T04:14:14 - `90bbe8a8-e8eb-4150-97fe-093aad8f50fe.jsonl`
 - `/ll:confidence-check` - 2026-08-08T22:20:09 - `a2db820a-06be-4e62-8550-037413f4d50e.jsonl`
 - `/ll:wire-issue` - 2026-08-08T21:41:53 - `5c29eabe-8674-4e2a-8f5b-4edb546e0270.jsonl`
 - `/ll:decide-issue` - 2026-08-08T21:25:16 - `b38ce9a8-ea1d-4784-ba74-81f9cf6e4c56.jsonl`
