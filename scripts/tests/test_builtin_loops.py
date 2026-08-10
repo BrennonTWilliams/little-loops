@@ -16,7 +16,6 @@ import yaml
 
 from little_loops.fsm import is_runnable_loop
 from little_loops.fsm.fragments import resolve_fragments
-from little_loops.learning_tests import LearnTestRecord, write_record
 from little_loops.fsm.validation import (
     ValidationSeverity,
     _validate_generator_fix_discipline,
@@ -24,6 +23,7 @@ from little_loops.fsm.validation import (
     load_and_validate,
     validate_fsm,
 )
+from little_loops.learning_tests import LearnTestRecord, write_record
 
 BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "little_loops" / "loops"
 
@@ -12068,16 +12068,12 @@ def _write_lt_config(
     ll_dir = project_dir / ".ll"
     ll_dir.mkdir(parents=True, exist_ok=True)
     (ll_dir / "ll-config.json").write_text(
-        json.dumps(
-            {"learning_tests": {"enabled": enabled, "stale_after_days": stale_after_days}}
-        ),
+        json.dumps({"learning_tests": {"enabled": enabled, "stale_after_days": stale_after_days}}),
         encoding="utf-8",
     )
 
 
-def _write_lt_record(
-    project_dir: Path, target: str, status: str, date: str | None = None
-) -> None:
+def _write_lt_record(project_dir: Path, target: str, status: str, date: str | None = None) -> None:
     lt_dir = project_dir / ".ll" / "learning-tests"
     lt_dir.mkdir(parents=True, exist_ok=True)
     record_date = date if date is not None else datetime.date.today().isoformat()
@@ -12100,7 +12096,9 @@ class TestMigrateSdkVersionListStaleExecution:
 
     LOOP_FILE = BUILTIN_LOOPS_DIR / "migrate-sdk-version.yaml"
 
-    def _run_list_stale(self, project_dir: Path, targets: str = "") -> subprocess.CompletedProcess[str]:
+    def _run_list_stale(
+        self, project_dir: Path, targets: str = ""
+    ) -> subprocess.CompletedProcess[str]:
         data = yaml.safe_load(self.LOOP_FILE.read_text())
         action = data["states"]["list_stale"]["action"]
         run_dir = project_dir / "run"
