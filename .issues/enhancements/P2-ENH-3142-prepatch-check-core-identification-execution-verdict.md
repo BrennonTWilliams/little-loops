@@ -44,7 +44,7 @@ arrives as arguments. Hosting is ENH-2997 (FSM executor) and ENH-2998
 Decomposed from ENH-2991: Pre-patch check core — candidate identification, tree
 reconstruction, and verdict. Covers Proposed Change steps 1, 3, 4, and 6
 (identify, run, verdict, report), the `base_dirty` reader, and the config
-off-switch. Depends on ENH-3141's `setup_prepatch_worktree()` for tree
+off-switch. Consumes ENH-3141's (done) `setup_prepatch_worktree()` for tree
 reconstruction (step 2, out of scope here).
 
 ## Current Behavior
@@ -331,7 +331,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Related Issues
 
-- `ENH-3141` (blocking) — supplies `setup_prepatch_worktree()`, the tree
+- `ENH-3141` (done) — supplies `setup_prepatch_worktree()`, the tree
   this issue runs tests in.
 - `ENH-2991` (parent) — the original undecomposed issue.
 - `ENH-2997` (dependent) — hosts this core on the FSM executor's guarded
@@ -403,6 +403,12 @@ _Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
 
 - `test_tamper_guard._test_functions(source)` (`test_tamper_guard.py:369-380`) only sees **top-level** `FunctionDef`/`AsyncFunctionDef` nodes (`tree.body`, not `ast.walk`) — it does not see class-method tests (`class TestFoo: def test_bar(self): ...`) or nested test functions. A hunk inside a class-based test (this codebase's own suite uses `TestX::test_y` node IDs throughout) will not resolve via `_test_functions()` and must go through the "ambiguous attribution" fallback to the touched file's full node-ID set already specified in this issue's Design Notes.
 - `pytest_history_plugin.LLHistoryPlugin.pytest_runtest_logreport()` (`pytest_history_plugin.py:101-116`) is the exact four-category dispatch model for `PrePatchTestOutcome.category`: `report.when == "call"` branches to `passed`/`failed`/`skipped`; `report.when in ("setup", "teardown")` with `report.failed` counts as **error** (matching this issue's error-vs-fail distinction), but only `report.when == "setup" and report.skipped` counts as skipped — a teardown-phase skip is not counted at all.
+
+_Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
+
+- `setup_prepatch_worktree()`'s actual signature (`worktree_utils.py:329-335`) is `setup_prepatch_worktree(repo_path: Path, worktree_base: str | Path, base_ref: str, test_files: dict[str, str], logger: Logger, git_lock: GitLock, src_dir: str | None = None) -> Path` — wider than this issue's own Program Design signature list (`base_ref, test_files, src_dir` only). `repo_path`, `worktree_base`, `logger`, and `git_lock` have no defaults and are required; `run_prepatch_check()`'s own signature per this issue's design takes none of them, so the caller (this module's `run_prepatch_check()`, or the host per ENH-2997/ENH-2998) must supply them from context. State explicitly in the implementation how `run_prepatch_check()` obtains these four values, since the current Program Design signature is not directly callable against the real function.
+- Nested-dataclass `to_dict()` serialization in this codebase consistently uses a list comprehension calling each item's own `to_dict()` — `GapAnalysis.to_dict()` (`issue_history/models.py:294-302`) returns `"gaps": [g.to_dict() for g in self.gaps]`; same shape at `learning_tests/__init__.py:65-74` (`LearnTestRecord.to_dict()`), `analytics/variance.py:71`, `issue_history/rework.py:123`. No alternate pattern (e.g. `dataclasses.asdict()`) appears anywhere in this role. `PrePatchEvidence.to_dict()`'s `outcomes` field should follow this exact shape: `[o.to_dict() for o in self.outcomes]`.
+- `OrchestrationRun` (`history_reader.py:220-236`) already carries `base_dirty: int | None = None` as a plain unconverted int field alongside `base_sha: str | None = None`; the general `list_orchestration_runs`-style query at `history_reader.py:1738` selects both columns inline with no bool conversion. The int→bool conversion this issue's new `base_dirty` reader needs is unique to the point-lookup reader contract being added — it does not exist anywhere else in `history_reader.py` today.
 
 ## Scope Boundaries
 
@@ -476,7 +482,7 @@ _Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
   reclassification, and node-ID-targeted subprocess invocation are all new
   logic with no in-repo template.
 - **Risk**: Low-Medium — isolated to a new module plus a small additive
-  reader; depends on ENH-3141 landing first for the worktree primitive.
+  reader; consumes ENH-3141's (done) worktree primitive.
 - **Breaking Change**: No — new module and additive reader/config only.
 
 ## Status
@@ -485,6 +491,7 @@ _Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-10T20:19:53 - `1dd56f24-b781-4e16-84f6-d8ee895776d1.jsonl`
 - `/ll:confidence-check` - 2026-08-10T09:17:36 - `df55e709-f5ba-4a76-ad27-3b49b1787402.jsonl`
 - `/ll:verify-issues` - 2026-08-10T09:13:39 - `975b1509-c74d-48b1-aa22-7b2aab82c1b8.jsonl`
 - `/ll:wire-issue` - 2026-08-10T09:09:22 - `c2aaebfe-05da-42f3-a4a2-a8cfac3be710.jsonl`

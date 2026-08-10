@@ -394,6 +394,11 @@ _Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
 - **`KNOWN_TOP_LEVEL_KEYS` membership testing has two co-existing, non-superseding shapes**: (a) a bare `assert "key" in KNOWN_TOP_LEVEL_KEYS` (`test_feat3033_idle_timeout.py:60-61`) — confirmed as the only membership-assert example in the suite, and already the lightest possible form; (b) a fuller pair for `tamper_guard` specifically — a YAML-round-trip test asserting no unknown-key warning fires (`test_tamper_guard_recognized_as_top_level_key`, `test_fsm_validation_evaluator_rules.py:1318-1338`) plus a JSON-schema-dict-membership assertion (`test_schema_json_declares_state_and_loop_level_tamper_guard`, `test_fsm_schema.py:4571-4579`). No test performs full set-equality on `KNOWN_TOP_LEVEL_KEYS`.
 - **Spec-only forward reference to `run_prepatch_check()` has no in-repo staging precedent** — a repo-wide grep for `run_prepatch_check` returns zero hits under `scripts/` (issue-file mentions only). No stub function, `NotImplementedError` placeholder, or feature flag precedent exists anywhere in `fsm/`, `scripts/little_loops/`, or `scripts/tests/` for building an executor hook against a not-yet-existing function. This issue chain's own answer, already encoded in its frontmatter, is hard `blocked_by` sequencing rather than any code-level staging artifact — consistent with keeping this issue blocked on ENH-3142 rather than landing partial/stubbed code ahead of it.
 
+_Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
+
+- **Stale line citation, minor**: `KNOWN_TOP_LEVEL_KEYS` entries for `"tamper_guard"`/`"tamper_guard_ok"` are now at `fsm/validation/_base.py:122-123` (verified 2026-08-10), not `:121-122` as an earlier refine pass cited (line 322-327 above). The containing block range `:79-134` cited elsewhere in this issue is still accurate.
+- **JSON-schema property requirement is precedented, not just mirrored**: ENH-2934's own decision rationale (`.issues/enhancements/P2-ENH-2934-tamper-guard-fsm-adapter.md:181-244`, "Option A vs Option B") establishes the actual rule this codebase applies for whether a new guard key needs an explicit `fsm-loop-schema.json` property — not every loop-level key gets one. `session_mode` has zero entries in `fsm-loop-schema.json` (confirmed by grep) because its validator only checks inheritance shape; `tamper_guard` and `pruning_profile` both got explicit schema properties (loop + state level, with an `"enum"` constraint) because each pairs with a dedicated enum-validity WARNING validator. Since this issue's Proposed Change item 6 specs a `prepatch_check` lint rule that mirrors `tamper_guard`'s value-validity check (not a `session_mode`-style inheritance-shape check), it falls in the "needs an explicit schema property" bucket — this confirms, rather than changes, the Wiring Phase's existing `fsm-loop-schema.json` requirement.
+
 ## Program Design
 
 ### Call Path
@@ -500,6 +505,7 @@ _Added by `/ll:confidence-check` on 2026-08-10_
 **Open** | Created: 2026-08-02 | Priority: P2
 
 ## Session Log
+- `/ll:refine-issue` - 2026-08-10T20:11:46 - `023c1f3c-d026-451b-8c6a-4b2383d7380c.jsonl`
 - `/ll:confidence-check` - 2026-08-10T09:57:39 - `40b2e08b-9835-4e53-8675-e53c294cbfce.jsonl`
 - `/ll:reconcile-issue` - 2026-08-10T09:55:49 - `b5382982-7500-4b49-9d05-5f4f4a33c4aa.jsonl`
 - `/ll:confidence-check` - 2026-08-10T09:51:48 - `de80fea3-8c54-460f-b1ea-12e8ab77b5be.jsonl`
