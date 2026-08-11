@@ -3,7 +3,7 @@ id: BUG-3150
 type: BUG
 title: issue-file mutators write unlocked and non-atomically (set-status, link, append-log)
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-11'
 captured_at: '2026-08-11T18:29:27Z'
@@ -15,6 +15,7 @@ relates_to:
 - EPIC-3127
 size: Small
 testable: true
+completed_at: '2026-08-11T19:07:32Z'
 ---
 
 # BUG-3150: issue-file mutators write unlocked and non-atomically (set-status, link, append-log)
