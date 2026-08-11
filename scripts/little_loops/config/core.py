@@ -36,6 +36,7 @@ from little_loops.config.features import (
     IssuesConfig,
     LearningTestsConfig,
     LoopsConfig,
+    McpConfig,
     ObservabilityConfig,
     QueueConfig,
     ScanConfig,
@@ -303,6 +304,7 @@ class BRConfig:
         self._learning_tests = LearningTestsConfig.from_dict(
             self._raw_config.get("learning_tests", {})
         )
+        self._mcp = McpConfig.from_dict(self._raw_config.get("mcp", {}))
         self._decisions = DecisionsConfig.from_dict(self._raw_config.get("decisions", {}))
         self._compression = CompressionConfig.from_dict(self._raw_config.get("compression", {}))
         self._cache = CacheConfig.from_dict(self._raw_config.get("cache", {}))
@@ -380,6 +382,11 @@ class BRConfig:
     def learning_tests(self) -> LearningTestsConfig:
         """Get learning tests configuration."""
         return self._learning_tests
+
+    @property
+    def mcp(self) -> McpConfig:
+        """Get `ll-mcp` server configuration (FEAT-3149)."""
+        return self._mcp
 
     @property
     def decisions(self) -> DecisionsConfig:
@@ -805,6 +812,7 @@ class BRConfig:
                 "stale_after_days": self._learning_tests.stale_after_days,
                 "discoverability": self._learning_tests.discoverability.to_dict(),
             },
+            "mcp": self._mcp.to_dict(),
             "decisions": {
                 "enabled": self._decisions.enabled,
                 "log_path": self._decisions.log_path,

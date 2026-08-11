@@ -529,6 +529,66 @@ class LearningTestsConfig:
 
 
 @dataclass
+class McpTransportPolicyConfig:
+    """Per-transport mutation policy for the `ll-mcp` server (FEAT-3149).
+
+    Deny-by-default on HTTP is deliberate: FEAT-3143 landed the streamable HTTP
+    transport with no authentication, so the safe posture is that the transport a
+    remote host can reach stays read-only until someone opts in. stdio is a
+    same-machine, same-user channel, so it defaults open. This is the "deployment
+    switch without two server builds" EPIC-3127's Guard 2 asks for.
+
+    Unknown transport names fall back to ``False`` — a policy question this config
+    has no answer for is answered by refusing, not by allowing.
+    """
+
+    http_allow_mutations: bool = False
+    stdio_allow_mutations: bool = True
+
+    def allows_mutations(self, transport: str) -> bool:
+        """Whether mutating tools may run over ``transport`` ('http' or 'stdio')."""
+        return {
+            "http": self.http_allow_mutations,
+            "stdio": self.stdio_allow_mutations,
+        }.get(transport, False)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> McpTransportPolicyConfig:
+        """Create McpTransportPolicyConfig from dictionary. Lenient: ignores unknown keys."""
+        http = data.get("http") or {}
+        stdio = data.get("stdio") or {}
+        return cls(
+            http_allow_mutations=bool(http.get("allow_mutations", False)),
+            stdio_allow_mutations=bool(stdio.get("allow_mutations", True)),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize McpTransportPolicyConfig to dictionary."""
+        return {
+            "http": {"allow_mutations": self.http_allow_mutations},
+            "stdio": {"allow_mutations": self.stdio_allow_mutations},
+        }
+
+
+@dataclass
+class McpConfig:
+    """`ll-mcp` server configuration (FEAT-3149)."""
+
+    transport_policy: McpTransportPolicyConfig = field(default_factory=McpTransportPolicyConfig)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> McpConfig:
+        """Create McpConfig from dictionary. Lenient: ignores unknown keys."""
+        return cls(
+            transport_policy=McpTransportPolicyConfig.from_dict(data.get("transport_policy", {})),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize McpConfig to dictionary."""
+        return {"transport_policy": self.transport_policy.to_dict()}
+
+
+@dataclass
 class DecisionsConfig:
     """Decisions and rules log configuration."""
 

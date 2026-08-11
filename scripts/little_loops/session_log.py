@@ -194,6 +194,33 @@ def read_latest_effort_from_session_jsonl(session_jsonl: Path) -> str | None:
     return latest
 
 
+def format_session_log_entry(command: str, session_jsonl: Path | None = None) -> str | None:
+    """Render the session-log bullet for ``command``, or None if no session resolves.
+
+    Extracted from :func:`append_session_log_entry` (FEAT-3149) so the MCP
+    ``issue_append_log`` tool's dry-run can show the exact line it would insert
+    without duplicating — and therefore drifting from — this format.
+
+    Args:
+        command: Command name (e.g., ``/ll:manage-issue``).
+        session_jsonl: Path to session JSONL file. If None, auto-detected.
+
+    Returns:
+        The formatted bullet, or None when the current session cannot be resolved.
+    """
+    if session_jsonl is None:
+        session_jsonl = get_current_session_jsonl()
+    if session_jsonl is None:
+        return None
+
+    timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S")
+    # Record only the session JSONL filename (the session id), not the absolute
+    # path: the home-directory prefix is machine-specific and leaks the user's
+    # local layout into committed issue files. The session id maps back to a
+    # full path via .ll/history.db when needed.
+    return f"- `{command}` - {timestamp} - `{session_jsonl.name}`"
+
+
 def append_session_log_entry(
     issue_path: Path,
     command: str,
@@ -213,17 +240,9 @@ def append_session_log_entry(
     Returns:
         True if entry was appended, False if session could not be resolved.
     """
-    if session_jsonl is None:
-        session_jsonl = get_current_session_jsonl()
-    if session_jsonl is None:
+    entry = format_session_log_entry(command, session_jsonl)
+    if entry is None:
         return False
-
-    timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S")
-    # Record only the session JSONL filename (the session id), not the absolute
-    # path: the home-directory prefix is machine-specific and leaks the user's
-    # local layout into committed issue files. The session id maps back to a
-    # full path via .ll/history.db when needed.
-    entry = f"- `{command}` - {timestamp} - `{session_jsonl.name}`"
 
     # BUG-3150: the read and the write are one read-modify-write and must be
     # atomic against a concurrent `ll-issues set-status`/`link` or another

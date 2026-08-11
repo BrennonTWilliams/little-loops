@@ -770,6 +770,10 @@ _ALLOWED_UNTOUCHED_SECTIONS = frozenset(
         "dependency_mapping",
         "events",
         "extensions",
+        # FEAT-3149: the ll-mcp transport policy's defaults (HTTP denies mutations, stdio
+        # allows them) are the correct posture for a fresh project, so init has nothing to
+        # write — a project only needs this section to *loosen* the default.
+        "mcp",
         "observability",
         "queue",
         "refine_status",

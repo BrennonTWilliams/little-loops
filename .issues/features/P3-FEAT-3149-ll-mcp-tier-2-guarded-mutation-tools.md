@@ -4,8 +4,9 @@ title: 'll-mcp: tier-2 guarded mutation tools (dry-run default + per-method tran
   policy)'
 type: FEAT
 priority: P3
-status: open
+status: done
 discovered_date: '2026-08-11'
+completed_at: '2026-08-11T21:40:28Z'
 discovered_by: issue-review
 labels:
 - multi-host
@@ -21,6 +22,12 @@ relates_to:
 - FEAT-3134
 size: Medium
 testable: true
+confidence_score: 100
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 22
+score_ambiguity: 20
+score_change_surface: 19
 ---
 
 # FEAT-3149: ll-mcp: tier-2 guarded mutation tools
@@ -177,7 +184,9 @@ intended change," not "return the resulting record."
 ### Decision 2 — the concurrency defect is fixed in BUG-3150, not here
 
 FEAT-3149 `depends_on` **BUG-3150**, which wraps `set-status`, `link`, and
-`append-log` in `acquire_lock` and converts them to `atomic_write`.
+`append-log` in `acquire_lock` and converts them to `atomic_write`. **BUG-3150
+shipped 2026-08-11 (`e05b87d2`); the substrate is now safe and this dependency
+is satisfied** — see Open Question 5 for the verified post-fix state.
 
 **Rationale:** the defect predates MCP and affects every consumer of the CLI —
 it is not introduced by this issue, only made reachable by it, because exposing
@@ -242,7 +251,9 @@ with no reinstall step.
    command or tool name appears anywhere in `scripts/little_loops/`. The epic's
    sole mention is the tier-2 tool list itself (EPIC-3127 line 60) — nothing
    defines it. **It was aspirational.** It stays excluded from this issue's tool
-   table, and EPIC-3127's tier-2 list should drop it (see Follow-ups).
+   table. EPIC-3127's tier-2 list has already been corrected to drop it — see the
+   "Corrected 2026-08-11 (FEAT-3149 OQ2/OQ3)" block in the epic's tool-surface
+   section. No follow-up action remains.
 
 3. **Is the epic's output-schema claim true? — RESOLVED: no** (2026-08-11).
    `ll-generate-schemas --help` states verbatim: "Generate JSON Schema files for
@@ -253,8 +264,9 @@ with no reinstall step.
 
    **Consequence:** tool output schemas are hand-written work, not free. This
    raises the effort estimate — budget for four hand-authored output schemas plus
-   their drift risk against the CLI's actual JSON. EPIC-3127's claim should be
-   corrected (see Follow-ups).
+   their drift risk against the CLI's actual JSON. EPIC-3127's claim has already
+   been corrected in the same "Corrected 2026-08-11 (FEAT-3149 OQ2/OQ3)" block.
+   No follow-up action remains.
 4. **Does dry-run compose with `ll-issues create`? — RESOLVED: yes, and the
    dry-run returns no ID** (2026-08-11). See Decision 1.
 
@@ -271,21 +283,35 @@ with no reinstall step.
 5. **Concurrency — RESOLVED: it is a real pre-existing CLI defect, split out as
    BUG-3150** (2026-08-11). See Decision 2.
 
-   Investigation found the gap is worse than "no lock," and is not uniform:
+   **Status update 2026-08-11: BUG-3150 is `done` (commit `e05b87d2`), so the
+   substrate hazard described below is fixed and this dependency no longer
+   blocks.** Verified on `main`: `set_status.py` takes
+   `acquire_lock(issue_lock_path(...))` at `:130` and writes via `atomic_write`
+   (`:134`, cascade at `:218`); `link.py` locks at `:127` and writes via
+   `atomic_write` (`:163`, `:186`, target backlink `:221`);
+   `little_loops/session_log.py::append_session_log_entry` locks at `:239` and
+   writes via `atomic_write` at `:257`. No `write_text` call remains on any of
+   the three paths.
+
+   The original investigation, recorded as the state **before** BUG-3150 (do not
+   read this table as current code):
 
    | Command | Lock | Atomic write | Worst case |
    | --- | --- | --- | --- |
    | `create` (`create.py:202`) | yes | `open(path,"x")` | safe |
    | `scaffold-epic` (`scaffold_epic.py:83`) | yes | — | safe |
-   | `set-status` (`set_status.py:127`, `:209`) | **no** | **no** (`write_text`) | torn / empty file |
-   | `link` (`link.py:149`, `:170`, `:202`) | **no** | **no** (`write_text`) | torn file; half-linked graph |
-   | `append-log` (`session_log.py:245`) | **no** | yes (`atomic_write`) | lost update only |
+   | `set-status` | **no** | **no** (`write_text`) | torn / empty file |
+   | `link` | **no** | **no** (`write_text`) | torn file; half-linked graph |
+   | `append-log` | **no** | yes (`atomic_write`) | lost update only |
 
-   `write_text` truncates before writing, so `set-status` and `link` risk **file
-   corruption**, not merely a lost update — a correctness bug rather than a
-   concurrency policy choice. `link` additionally writes source and target as two
-   independent unprotected writes, so an interruption between them leaves the
-   source claiming a link the target has no backlink for.
+   `write_text` truncated before writing, so `set-status` and `link` risked
+   **file corruption**, not merely a lost update — a correctness bug rather than
+   a concurrency policy choice. `link` additionally wrote source and target as
+   two independent unprotected writes, so an interruption between them left the
+   source claiming a link the target had no backlink for. Note the original table
+   cited `session_log.py:245` as if it lived under `cli/issues/`; the module is
+   `scripts/little_loops/session_log.py` (`cli/issues/append_log.py` is a thin
+   wrapper that delegates to it).
 
 ## Anti-goals
 
@@ -398,8 +424,9 @@ with no reinstall step.
 - `docs/reference/CLI.md` — `### ll-mcp`: "exposing five coarse, read-only tools"
   goes stale.
 - `docs/index.md` — line 45 calls it "the read-only `ll-mcp` server."
-- `.issues/epics/P3-EPIC-3127-ll-mcp-mcp-server-as-little-loops-host-agnostic-serving-layer.md` — add FEAT-3149 to `relates_to` (the
-  omission is what let this gap go unnoticed).
+- ~~`.issues/epics/P3-EPIC-3127-…md` — add FEAT-3149 to `relates_to`.~~ **Done
+  2026-08-11** — verified present in the epic's `relates_to` list. (The original
+  omission is what let the tier-2 gap go unnoticed.)
 
 ### Configuration
 - **RESOLVED** (see Open Questions item 1). There is no `mcp` key in
@@ -472,6 +499,120 @@ header (new, pre-parse) -> SDK JSON-RPC dispatch -> `handle_call_tool`
   registry — one list, consulted by both the dry-run guard and transport policy,
   so the two guards cannot disagree about what counts as a write.
 
+### Deviations
+
+**2026-08-11 — implementation departed from the design in three places.**
+
+1. **The four handlers wrap newly-extracted library functions, not the `cmd_*` functions.**
+   The Call Path says `_TOOL_HANDLERS[name] -> little_loops.cli.issues.<subcommand>
+   backing function`. `cmd_set_status` and `cmd_link` **print to stdout**, and on the
+   stdio transport stdout *is* the JSON-RPC frame — calling them from a tool handler would
+   corrupt the protocol. Rather than reimplement their logic in the MCP layer (the drift
+   the tier-1 module docstring calls a bug), the locked read-modify-write was extracted
+   out of each into a non-printing library function that returns a result object, with the
+   `cmd_*` function keeping argparse validation and all printing:
+   `set_status.py::apply_status_transition` + `status_frontmatter_updates`,
+   `link.py::apply_link`, `create.py::render_issue_preview`,
+   `session_log.py::format_session_log_entry`. Net effect matches the design's intent —
+   one implementation of each mutation, shared by CLI and MCP — via a slightly wider
+   change than "add four handlers".
+
+2. **`issue_set_status` does not expose `--cascade`.** The design does not mention
+   cascade either way; it is excluded deliberately. Cascading multiplies blast radius
+   across an entire EPIC subtree and its dry-run would require a descendant walk, against
+   an issue whose brief is "four tools, coarse and parameterized".
+   `apply_status_transition` keeps a `cascade_to` parameter, so the CLI is unchanged and a
+   later tier can expose it without another refactor.
+
+3. **AC 6 could not be satisfied literally, and was satisfied in substance.** AC 6 asks
+   that `test_mcp_server.py` pass "unchanged", but AC 1 requires four new entries in
+   `tools/list`, and two tier-1 tests asserted the exact five-name catalog
+   (`test_list_tools_returns_five_tools_with_cache_metadata`,
+   `test_no_mutating_tool_is_advertised`). Both cannot hold. Resolution: tier-1 *behavior
+   and output shapes* are unchanged (the anti-goal — verified by a new test asserting the
+   five tier-1 entries still lead the catalog in source order and carry no annotations),
+   and the two count assertions were rewritten to assert what they were actually
+   protecting. `test_no_mutating_tool_is_advertised` became
+   `test_no_unguarded_mutating_tool_is_advertised`, a strictly stronger check: any tool
+   outside the tier-1 five must be registered in `policy.MUTATING_TOOLS` and declare
+   `apply`, so a tool added to `_TOOLS` but forgotten in the registry now fails.
+   `test_build_server_signature_unchanged` passes unmodified.
+
+## Resolution
+
+Implemented 2026-08-11. All seven acceptance criteria met.
+
+**New surface.** Four mutating tools registered alongside the tier-1 five in
+`mcp_server/tools.py`'s `_TOOL_HANDLERS`/`_TOOLS`, each carrying
+`types.ToolAnnotations(read_only_hint=False, …)`. Tier-1 entries keep
+`annotations=None` — annotating them would change tier-1's `tools/list` output
+shape, which the anti-goals forbid — so `readOnlyHint: false` being *present* is
+what distinguishes the two groups (AC 1).
+
+**Guard 1 (dry-run).** Implemented as a wrapper in `handle_call_tool`, not
+per-handler. Mutating handlers take `apply` as a **required keyword**, so a
+future mutating tool whose author forgets dry-run raises `TypeError` at dispatch
+rather than silently writing. The guard fails closed: only the literal boolean
+`True` opts in — `"true"`, `1`, `null`, and a missing key are all dry-runs (AC 2,
+proven per tool by byte-level before/after comparison of every issue file). The
+`applied`/`tool` keys are stamped after the handler payload so the guard's
+account of whether a write happened always wins.
+
+**Guard 2 (transport policy).** `mcp_server/policy.py` is new and owns both the
+`MUTATING_TOOLS` registry — one list, consulted by both guards, so they cannot
+disagree about what counts as a write — and `check_tool_call`, the decision
+function. `TransportPolicyMiddleware` invokes it from the raw ASGI
+`scope["headers"]` and answers a denial with a JSON-RPC error (`-32001`) and HTTP
+403 **without ever awaiting `receive()`**, asserted by an instrumented-`receive`
+test. `build_http_app()` composes it around `streamable_http_app()`;
+`build_server()`'s signature is untouched (AC 5, AC 6).
+
+The header-only decision is sound against spoofing because the SDK independently
+rejects any request whose `Mcp-Method`/`Mcp-Name` disagree with its body
+(`HEADER_MISMATCH`, `-32020`) — and, verified against the pinned `mcp==2.0.0`,
+**both** headers are mandatory for `tools/call` on the modern HTTP path. A
+request cannot reach a mutating handler while hiding its identity from the guard.
+
+**Substrate.** Rather than duplicate write logic in the MCP layer, the locked
+read-modify-write was extracted out of the two *printing* CLI commands into
+non-printing library functions the tools and the CLI now share — see Deviation 1
+for why calling `cmd_*` from a tool handler is unsound on the stdio transport.
+
+**Config.** New top-level `mcp.transport_policy` section (`http.allow_mutations:
+false`, `stdio.allow_mutations: true`), added to `config-schema.json` — mandatory
+there, since the top-level object is `additionalProperties: false`.
+
+### Files changed
+
+- `scripts/little_loops/mcp_server/policy.py` — **new**: `MUTATING_TOOLS`,
+  `check_tool_call`, `TransportPolicyMiddleware`
+- `scripts/little_loops/mcp_server/tools.py` — four handlers, four catalog
+  entries, the dry-run wrapper in `handle_call_tool`
+- `scripts/little_loops/mcp_server/server.py` — `build_http_app()`; `run_http()`
+  routes through it
+- `scripts/little_loops/mcp_server/__init__.py` — docstring no longer claims
+  read-only
+- `scripts/little_loops/cli/issues/set_status.py` — `status_frontmatter_updates`,
+  `apply_status_transition`, `StatusTransition`
+- `scripts/little_loops/cli/issues/link.py` — `apply_link`, `LinkResult`
+- `scripts/little_loops/cli/issues/create.py` — `render_issue_preview`,
+  `ID_PLACEHOLDER`
+- `scripts/little_loops/session_log.py` — `format_session_log_entry`
+- `scripts/little_loops/config/features.py`, `config/core.py`, `config/__init__.py`,
+  `config-schema.json` — the `mcp` section
+- `scripts/tests/test_feat_3149_mcp_mutation_tools.py`,
+  `scripts/tests/test_feat_3149_transport_policy.py` — **new**, 30 tests
+- `scripts/tests/test_mcp_server.py`, `scripts/tests/test_init_audit_fixes.py` —
+  see Deviation 3
+- `docs/guides/MCP_SERVER_GUIDE.md`, `docs/reference/CLI.md`, `docs/index.md`
+
+### Verification
+
+`python -m pytest scripts/tests/` → **18930 passed, 43 skipped, 0 failed** (AC 7).
+`ruff check scripts/` clean. `python -m mypy scripts/little_loops/` introduces no
+new errors (the one reported error, `cli/loop/testing.py:263`, pre-exists on
+`main` — confirmed by stashing this branch's changes).
+
 ## Parent Issue
 
 EPIC-3127 — `ll-mcp`: MCP server as little-loops' host-agnostic serving layer.
@@ -480,3 +621,9 @@ Tier 2 (guarded mutations).
 ## Status
 
 **Open** | Created: 2026-08-11 | Priority: P3
+
+
+## Session Log
+- `/ll:manage-issue` - 2026-08-11T21:39:39 - `616b9b18-41fd-4dc1-8d43-a769b5ee51fe.jsonl`
+- `/ll:confidence-check` - 2026-08-11T21:07:53 - `616b9b18-41fd-4dc1-8d43-a769b5ee51fe.jsonl`
+- `/ll:ready-issue` - 2026-08-11T20:13:49 - `89cdcca5-7e70-4bcd-8cc4-370c11cfdb7a.jsonl`

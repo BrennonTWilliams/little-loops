@@ -15,7 +15,7 @@
 - [Registering the Server](#registering-the-server)
 - [Verifying with `mcp-call`](#verifying-with-mcp-call)
 - [Resources and Prompts in Practice](#resources-and-prompts-in-practice)
-- [Read-Only by Design](#read-only-by-design)
+- [The Mutation Surface and Its Guards](#the-mutation-surface-and-its-guards)
 - [Troubleshooting](#troubleshooting)
 - [See Also](#see-also)
 
@@ -23,12 +23,13 @@
 
 ## What `ll-mcp` Is
 
-`ll-mcp` is a stdio MCP server that exposes a little-loops project read-only over the
-Model Context Protocol. It advertises three surfaces:
+`ll-mcp` is an MCP server (stdio by default, streamable HTTP with `--http`) that exposes
+a little-loops project over the Model Context Protocol. It advertises three surfaces:
 
 | Surface | What it gives a client |
 |---------|------------------------|
-| **Tools** | `issues_query`, `issue_get`, `history_search`, `deps_check`, `capabilities` |
+| **Tools (read)** | `issues_query`, `issue_get`, `history_search`, `deps_check`, `capabilities` |
+| **Tools (write)** | `issue_capture`, `issue_set_status`, `issue_link`, `issue_append_log` — dry-run by default, see [below](#the-mutation-surface-and-its-guards) |
 | **Resources** | Issue files, `.ll/ll-goals.md`, and `docs/**/*.md` under an `ll://` scheme |
 | **Prompts** | Every discovered `SKILL.md`, listed as an invocable MCP prompt |
 
@@ -293,20 +294,89 @@ so a well-behaved client will not re-enumerate on every request.
 
 ---
 
-## Read-Only by Design
+## The Mutation Surface and Its Guards
 
-There is no `issue_create`, no `issue_update`, and no way to start `ll-auto`,
-`ll-parallel`, `ll-loop`, or `ll-action invoke` through this server. That is a boundary,
-not a backlog item: the MCP surface exists so an external client can *read* your project's
-state, while anything that writes files or spawns work stays behind the CLI and the
-skills, where it is visible and reviewable.
+Four tools write: `issue_capture`, `issue_set_status`, `issue_link`, and
+`issue_append_log`. Each wraps the same library function the equivalent `ll-issues`
+subcommand calls, so a tool call and a CLI invocation produce the same file state.
 
-To create an issue, use the paths built for it:
+Orchestration is still off the surface entirely — there is no way to start `ll-auto`,
+`ll-parallel`, `ll-loop`, or `ll-action invoke` through this server. That boundary has not
+moved.
 
-```bash
-ll-issues create --type FEAT --title "..."   # direct
-/ll:capture-issue                            # from conversation context
+Two guards sit in front of the four.
+
+### Guard 1 — dry-run by default
+
+Every mutating tool takes an `apply` parameter that defaults to `false`. Called without
+it, the tool returns the change it *would* make and writes nothing:
+
+```jsonc
+// tools/call issue_set_status {"issue_id": "FEAT-3149", "status": "deferred"}
+{
+  "applied": false,
+  "tool": "issue_set_status",
+  "target": { "issue_id": "FEAT-3149", "path": ".issues/features/P3-FEAT-3149-….md" },
+  "changes": [ { "field": "status", "from": "open", "to": "deferred" } ]
+}
 ```
+
+Re-call with `"apply": true` to perform it. The default is a **refusal to mutate**, not an
+opt-out flag: a host that omits the parameter entirely does not write, and the check is
+fail-closed — only the literal boolean `true` opts in. `"true"`, `1`, and `null` are all
+dry-runs.
+
+One shape differs. A dry-run `issue_capture` returns **no issue ID**, not even a predicted
+one — it reports the type, priority, slug, target directory, and rendered body instead.
+The ID is allocated inside `create_issue`'s lock hold at write time, so any ID named
+before apply is a guess that is wrong precisely when it matters: when something else
+allocated concurrently. The apply response carries the real one.
+
+### Guard 2 — per-transport policy
+
+Whether the mutating tools may run at all is a deployment choice, set per transport in
+`.ll/ll-config.json`:
+
+```json
+{
+  "mcp": {
+    "transport_policy": {
+      "http":  { "allow_mutations": false },
+      "stdio": { "allow_mutations": true }
+    }
+  }
+}
+```
+
+Those are the defaults. HTTP denies mutations because that transport ships without
+authentication, so the posture for a transport a remote host can reach is read-only until
+someone opts in; stdio is a same-machine, same-user channel and defaults open. One server
+build serves both.
+
+A denied call is refused at the transport layer, before the JSON-RPC body is parsed —
+ASGI middleware reads the SEP-2243 `Mcp-Method` / `Mcp-Name` routing headers off the raw
+request and answers with a JSON-RPC error and HTTP 403. Reads on the same server are
+unaffected:
+
+```
+$ # with http.allow_mutations = false
+$ mcp-call ll-mcp tools/call issue_set_status '{"issue_id":"FEAT-1","status":"done"}'
+{"jsonrpc":"2.0","id":null,"error":{"code":-32001,"message":"policy denied tools/call/issue_set_status: …"}}
+
+$ mcp-call ll-mcp tools/call issues_query '{}'
+[ … works fine … ]
+```
+
+This is sound against a spoofed header even though the middleware never sees the body: the
+SDK independently rejects any request whose `Mcp-Method`/`Mcp-Name` disagree with its body
+(`HEADER_MISMATCH`, `-32020`), and both headers are mandatory for `tools/call`. A request
+cannot reach a mutating handler while hiding its identity from the guard.
+
+### Distinguishing the two groups from a client
+
+The four mutating tools carry a `readOnlyHint: false` annotation in `tools/list`; the five
+read-only tools carry no annotations at all. A host can key presentation — a confirmation
+prompt, a different icon — off that.
 
 ---
 

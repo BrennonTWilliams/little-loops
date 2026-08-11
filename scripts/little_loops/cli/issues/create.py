@@ -155,6 +155,52 @@ def _render_issue_content(
     return update_frontmatter("", frontmatter) + "\n" + body
 
 
+#: Stand-in for the issue ID in a dry-run render. Deliberately not a *predicted* ID:
+#: allocation happens inside :func:`create_issue`'s lock hold, so any ID produced before
+#: apply is a guess with no binding force (FEAT-3149 Decision 1).
+ID_PLACEHOLDER = "<assigned-at-apply>"
+
+
+def render_issue_preview(
+    config: BRConfig, spec: IssueSpec, now: datetime | None = None
+) -> dict[str, str]:
+    """Describe the file :func:`create_issue` *would* write, without writing it.
+
+    Added for FEAT-3149's dry-run-by-default guard. Per Decision 1 the return value
+    carries **no issue ID**, not even a predicted one — the ID does not exist until
+    apply allocates it under the lock, and a host that echoed a predicted ID would be
+    wrong exactly when it matters (when something else allocated concurrently).
+
+    Args:
+        config: Project configuration.
+        spec: The issue that would be created.
+        now: Injectable current time for tests; defaults to ``datetime.now(UTC)``.
+
+    Returns:
+        The resolved ``type``, ``priority``, ``slug``, target ``directory``, and the
+        ``rendered_body`` with :data:`ID_PLACEHOLDER` standing in for the ID.
+
+    Raises:
+        ValueError: if ``spec.type`` is not a valid issue type or has no configured
+            category — the same failures :func:`create_issue` raises, so a dry-run
+            surfaces them before apply rather than after.
+    """
+    from little_loops.issue_parser import slugify
+
+    if spec.type not in _VALID_TYPES:
+        raise ValueError(f"Unknown issue type: {spec.type!r}")
+
+    now = now or datetime.now(UTC)
+    category_key = _category_key_for_type(config, spec.type)
+    return {
+        "type": spec.type,
+        "priority": spec.priority,
+        "slug": slugify(spec.title),
+        "directory": str(config.get_issue_dir(category_key)),
+        "rendered_body": _render_issue_content(config, spec, ID_PLACEHOLDER, now),
+    }
+
+
 def create_issue(config: BRConfig, spec: IssueSpec, now: datetime | None = None) -> CreatedIssue:
     """Atomically allocate an ID and write a new issue file.
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from little_loops.cli.output import print_json
@@ -12,6 +13,32 @@ if TYPE_CHECKING:
     from little_loops.config import BRConfig
 
 _FIELD_FLAGS = ("blocked_by", "depends_on", "relates_to")
+
+
+@dataclass
+class LinkResult:
+    """Outcome of :func:`apply_link` — the report payload, unrendered.
+
+    Returned rather than printed so non-CLI callers (the FEAT-3149 ``issue_link``
+    MCP tool) can reuse the same write path. ``ll-mcp`` speaks JSON-RPC over stdout on
+    the stdio transport, where a stray ``print()`` corrupts the protocol frame.
+
+    ``status`` is one of ``unchanged``/``linked``/``unlinked``/``would_link``/
+    ``would_unlink`` — the same vocabulary ``--json`` already emits.
+    """
+
+    issue_id: str
+    field: str
+    target_id: str
+    status: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "issue_id": self.issue_id,
+            "field": self.field,
+            "target_id": self.target_id,
+            "status": self.status,
+        }
 
 
 def add_link_parser(subs: argparse._SubParsersAction) -> None:
@@ -89,34 +116,58 @@ def add_link_parser(subs: argparse._SubParsersAction) -> None:
     add_config_arg(lk)
 
 
-def cmd_link(config: BRConfig, args: argparse.Namespace) -> int:
+def apply_link(
+    config: BRConfig,
+    *,
+    issue_id: str,
+    field: str,
+    target: str,
+    unlink: bool = False,
+    reciprocal: bool = False,
+    force: bool = False,
+    dry_run: bool = False,
+) -> LinkResult:
     """Add or remove a dependency edge in an issue's frontmatter.
+
+    The non-printing core of :func:`cmd_link`, extracted (FEAT-3149) so the MCP
+    ``issue_link`` tool can perform exactly the mutation the CLI performs instead of
+    reimplementing it.
 
     Idempotent (re-running an add/remove is a no-op reporting ``unchanged``),
     list-aware (creates the key when absent, appends when present), and
     validating (the target must resolve to an existing issue unless
-    ``--force``). A ``blocked_by``/``depends_on`` edge that would introduce a
+    ``force``). A ``blocked_by``/``depends_on`` edge that would introduce a
     cycle in the blocking graph is refused.
 
     Args:
-        config: Project configuration
-        args: Parsed arguments with .issue_id, one of .blocked_by/.depends_on/
-            .relates_to, .unlink, .reciprocal, .force, .json_output, .dry_run
+        config: Project configuration.
+        issue_id: Source issue ID in any resolvable form.
+        field: One of ``blocked_by``/``depends_on``/``relates_to``.
+        target: Target issue ID.
+        unlink: Remove the edge instead of adding it.
+        reciprocal: Also write the matching reverse edge on the target.
+        force: Skip target-existence validation.
+        dry_run: Report what would change without writing.
 
     Returns:
-        Exit code (0 = success, 1 = error)
+        A :class:`LinkResult` describing the outcome.
+
+    Raises:
+        ValueError: for the conditions :func:`cmd_link` reports as errors —
+            unknown ``field``, unresolvable source or target, or a refused cycle.
     """
     from little_loops.cli.issues.show import _resolve_issue_id
     from little_loops.file_utils import acquire_lock, atomic_write, issue_lock_path
     from little_loops.frontmatter import parse_frontmatter, update_frontmatter
 
-    field = next(name for name in _FIELD_FLAGS if getattr(args, name, None))
-    target_input: str = getattr(args, field)
+    if field not in _FIELD_FLAGS:
+        raise ValueError(
+            f"Unknown link field: {field!r} (expected one of {', '.join(_FIELD_FLAGS)})"
+        )
 
-    source_path = _resolve_issue_id(config, args.issue_id)
+    source_path = _resolve_issue_id(config, issue_id)
     if source_path is None:
-        print(f"Error: Issue '{args.issue_id}' not found.", file=sys.stderr)
-        return 1
+        raise ValueError(f"Issue '{issue_id}' not found.")
 
     # BUG-3150: the source read, the cycle check, the source write and the
     # reciprocal target write are one read-modify-write and share a single lock
@@ -127,14 +178,13 @@ def cmd_link(config: BRConfig, args: argparse.Namespace) -> int:
     with acquire_lock(issue_lock_path(source_path, config.issues.base_dir)):
         source_content = source_path.read_text()
         source_fm = parse_frontmatter(source_content)
-        source_id = source_fm.get("id", args.issue_id).upper()
+        source_id = source_fm.get("id", issue_id).upper()
 
-        target_path = _resolve_issue_id(config, target_input)
-        if target_path is None and not args.force:
-            print(f"Error: Target issue '{target_input}' not found.", file=sys.stderr)
-            return 1
+        target_path = _resolve_issue_id(config, target)
+        if target_path is None and not force:
+            raise ValueError(f"Target issue '{target}' not found.")
 
-        target_id = target_input.upper()
+        target_id = target.upper()
         if target_path is not None:
             target_fm = parse_frontmatter(target_path.read_text())
             target_id = target_fm.get("id", target_id).upper()
@@ -143,53 +193,78 @@ def cmd_link(config: BRConfig, args: argparse.Namespace) -> int:
         if not isinstance(existing, list):
             existing = [existing]
 
-        if args.unlink:
+        def _result(status: str) -> LinkResult:
+            return LinkResult(issue_id=source_id, field=field, target_id=target_id, status=status)
+
+        if unlink:
             if target_id not in existing:
-                _report(
-                    args, source_id=source_id, field=field, target_id=target_id, status="unchanged"
-                )
-                return 0
+                return _result("unchanged")
+            if dry_run:
+                return _result("would_unlink")
             new_list = [item for item in existing if item != target_id]
-            if args.dry_run:
-                _report(
-                    args,
-                    source_id=source_id,
-                    field=field,
-                    target_id=target_id,
-                    status="would_unlink",
-                )
-                return 0
-            new_content = update_frontmatter(source_content, {field: new_list})
-            atomic_write(source_path, new_content)
-            _report(args, source_id=source_id, field=field, target_id=target_id, status="unlinked")
-            return 0
+            atomic_write(source_path, update_frontmatter(source_content, {field: new_list}))
+            return _result("unlinked")
 
         if target_id in existing:
-            _report(args, source_id=source_id, field=field, target_id=target_id, status="unchanged")
-            return 0
+            return _result("unchanged")
 
         if field in ("blocked_by", "depends_on"):
             cycle_error = _check_cycle(config, source_id, target_id, field)
             if cycle_error is not None:
-                print(f"Error: refusing edge — {cycle_error}", file=sys.stderr)
-                return 1
+                raise ValueError(f"refusing edge — {cycle_error}")
+
+        if dry_run:
+            return _result("would_link")
 
         new_list = [*existing, target_id]
+        atomic_write(source_path, update_frontmatter(source_content, {field: new_list}))
 
-        if args.dry_run:
-            _report(
-                args, source_id=source_id, field=field, target_id=target_id, status="would_link"
-            )
-            return 0
-
-        new_content = update_frontmatter(source_content, {field: new_list})
-        atomic_write(source_path, new_content)
-
-        if args.reciprocal and target_path is not None:
+        if reciprocal and target_path is not None:
             _write_reciprocal(target_path, field, source_id)
 
-        _report(args, source_id=source_id, field=field, target_id=target_id, status="linked")
-        return 0
+        return _result("linked")
+
+
+def cmd_link(config: BRConfig, args: argparse.Namespace) -> int:
+    """Add or remove a dependency edge in an issue's frontmatter.
+
+    Argparse/printing shell around :func:`apply_link`, which owns the locked
+    read-modify-write and is shared with the MCP ``issue_link`` tool (FEAT-3149).
+
+    Args:
+        config: Project configuration
+        args: Parsed arguments with .issue_id, one of .blocked_by/.depends_on/
+            .relates_to, .unlink, .reciprocal, .force, .json_output, .dry_run
+
+    Returns:
+        Exit code (0 = success, 1 = error)
+    """
+    field = next(name for name in _FIELD_FLAGS if getattr(args, name, None))
+    target_input: str = getattr(args, field)
+
+    try:
+        result = apply_link(
+            config,
+            issue_id=args.issue_id,
+            field=field,
+            target=target_input,
+            unlink=args.unlink,
+            reciprocal=args.reciprocal,
+            force=args.force,
+            dry_run=args.dry_run,
+        )
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    _report(
+        args,
+        source_id=result.issue_id,
+        field=result.field,
+        target_id=result.target_id,
+        status=result.status,
+    )
+    return 0
 
 
 def _write_reciprocal(target_path, field: str, source_id: str) -> None:

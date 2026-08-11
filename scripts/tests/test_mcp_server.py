@@ -54,7 +54,16 @@ def _write_issue(tmp_path: Path, category: str, filename: str, body: str = ISSUE
     return path
 
 
-def test_list_tools_returns_five_tools_with_cache_metadata(tmp_path, monkeypatch) -> None:
+def test_list_tools_returns_the_five_read_tools_first_with_cache_metadata(
+    tmp_path, monkeypatch
+) -> None:
+    """The tier-1 five are unchanged and still lead the catalog, in source order.
+
+    FEAT-3149 appended four mutating tools, so this no longer asserts an exact five-name
+    catalog — but the tier-1 contract it was written to protect (these five names, this
+    order, SDK-supplied cache metadata) is asserted unchanged. The tier-2 additions have
+    their own coverage in `test_feat_3149_mcp_mutation_tools.py`.
+    """
     _make_project(tmp_path, monkeypatch)
 
     async def run() -> None:
@@ -62,7 +71,7 @@ def test_list_tools_returns_five_tools_with_cache_metadata(tmp_path, monkeypatch
         async with Client(server) as client:
             result = await client.list_tools()
             names = [t.name for t in result.tools]
-            assert names == [
+            assert names[:5] == [
                 "issues_query",
                 "issue_get",
                 "history_search",
@@ -264,21 +273,40 @@ def test_call_unknown_tool_returns_error_not_exception(tmp_path, monkeypatch) ->
     anyio.run(run)
 
 
-def test_no_mutating_tool_is_advertised(tmp_path, monkeypatch) -> None:
+def test_no_unguarded_mutating_tool_is_advertised(tmp_path, monkeypatch) -> None:
+    """Nothing can write without announcing itself and taking the dry-run guard.
+
+    Tier 2 (FEAT-3149) moved this boundary deliberately, so the assertion is no longer
+    "the catalog contains only these five names". The invariant that actually mattered
+    survives, and is now stronger: any tool outside the tier-1 five must be registered in
+    `policy.MUTATING_TOOLS` — which is what subjects it to the dry-run wrapper and the
+    per-transport policy — and must declare the `apply` opt-in in its schema. A new tool
+    added to `_TOOLS` but forgotten in the registry fails here.
+    """
+    from little_loops.mcp_server.policy import MUTATING_TOOLS
+
     _make_project(tmp_path, monkeypatch)
+
+    read_only = {
+        "issues_query",
+        "issue_get",
+        "history_search",
+        "deps_check",
+        "capabilities",
+    }
 
     async def run() -> None:
         server = build_server()
         async with Client(server) as client:
             result = await client.list_tools()
-            names = {t.name for t in result.tools}
-            assert names == {
-                "issues_query",
-                "issue_get",
-                "history_search",
-                "deps_check",
-                "capabilities",
-            }
+            for tool in result.tools:
+                if tool.name in read_only:
+                    continue
+                assert tool.name in MUTATING_TOOLS, (
+                    f"{tool.name} is advertised but is neither a tier-1 read tool nor "
+                    "registered in policy.MUTATING_TOOLS — it would bypass both guards"
+                )
+                assert tool.input_schema["properties"]["apply"]["default"] is False
 
     anyio.run(run)
 

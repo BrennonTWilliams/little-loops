@@ -1,4 +1,5 @@
-"""ll-mcp's five coarse read-only tools (FEAT-3135).
+"""ll-mcp's tool surface: five coarse read-only tools (FEAT-3135) plus four guarded
+mutation tools (FEAT-3149).
 
 Each tool wraps an existing `little_loops` library function or helper directly — no CLI
 subprocess invocation, and no second implementation of behavior the CLI already has. Any
@@ -6,9 +7,15 @@ divergence between a tool's output and its CLI equivalent is a bug in this modul
 design choice.
 
 The tool surface is deliberately coarse (anti-goal: do not mirror all ~40 `ll-issues`
-subcommands as tools — that is a context-budget disaster) and read-only (anti-goal: no
-orchestration tool — `ll-auto`/`ll-parallel`/`ll-loop`/`ll-action invoke` stay off the
-surface entirely).
+subcommands as tools — that is a context-budget disaster). Orchestration stays off it
+entirely (`ll-auto`/`ll-parallel`/`ll-loop`/`ll-action invoke` are tier 3, separately
+evidence-gated).
+
+The four mutating tools are dry-run **by default**: an `apply` parameter that is absent or
+anything other than the literal `True` produces a description of the intended change and
+writes nothing. This is a refusal-to-mutate default, not an opt-out flag — see
+`handle_call_tool` for the wrapper that enforces it, and `policy.py` for the registry of
+which tools count as mutating and the per-transport policy that gates them.
 
 Every handler resolves entirely from its own `arguments` dict plus the filesystem/SQLite —
 none reads or writes state established by a prior request or cached across calls (the
@@ -32,6 +39,8 @@ from typing import Any
 
 import mcp_types as types
 from mcp.server.context import ServerRequestContext
+
+from little_loops.mcp_server.policy import MUTATING_TOOLS
 
 
 def _project_root() -> Path:
@@ -179,12 +188,263 @@ def _tool_capabilities(_arguments: dict[str, Any]) -> Any:
     }
 
 
-_TOOL_HANDLERS: dict[str, Callable[[dict[str, Any]], Any]] = {
+# ---------------------------------------------------------------------------------------
+# Tier 2 (FEAT-3149): guarded mutation tools.
+#
+# Each of the four wraps the same non-printing library function the equivalent `ll-issues`
+# subcommand calls — never the `cmd_*` function itself. That is not a style preference:
+# `cmd_set_status`/`cmd_link` write their results to stdout, and on the stdio transport
+# stdout *is* the JSON-RPC frame, so calling them here would corrupt the protocol.
+# FEAT-3149 extracted `apply_status_transition`/`apply_link`/`render_issue_preview`/
+# `format_session_log_entry` for exactly this reason, so there is still one implementation
+# of each mutation rather than a second one living in the MCP layer.
+#
+# Every handler takes `apply` as a REQUIRED keyword. That is the enforcement mechanism for
+# Guard 1: a future mutating tool whose author forgets to think about dry-run cannot
+# silently write, because dispatch passes `apply=` and a handler that does not accept it
+# raises TypeError. The wrapper in `handle_call_tool` owns reading the flag, failing
+# closed, and stamping the response — one place to audit.
+# ---------------------------------------------------------------------------------------
+
+
+def _tool_issue_capture(arguments: dict[str, Any], *, apply: bool) -> Any:
+    """Create a new issue file (`ll-issues create`).
+
+    Wraps `cli.issues.create.create_issue` for apply and `render_issue_preview` for
+    dry-run. Per FEAT-3149 Decision 1 the dry-run response carries **no issue ID**, not
+    even a predicted one: allocation happens inside `create_issue`'s lock hold, so any ID
+    produced beforehand is a guess that is wrong exactly when it matters — when something
+    else allocated concurrently. The apply response carries the real allocated ID, which
+    is the only value that was ever true.
+    """
+    from little_loops.cli.issues.create import IssueSpec, create_issue, render_issue_preview
+    from little_loops.config import BRConfig
+
+    config = BRConfig(_project_root())
+
+    title = str(arguments.get("title") or "").strip()
+    if not title:
+        raise ValueError("issue_capture requires a non-empty title")
+
+    labels = arguments.get("labels") or []
+    if not isinstance(labels, list):
+        raise ValueError("issue_capture 'labels' must be a list of strings")
+
+    spec = IssueSpec(
+        type=str(arguments.get("type") or "").upper(),
+        title=title,
+        priority=str(arguments.get("priority") or "P2").upper(),
+        body=arguments.get("body"),
+        parent=arguments.get("parent"),
+        labels=[str(label) for label in labels],
+    )
+
+    if not apply:
+        preview = render_issue_preview(config, spec)
+        return {
+            "target": {
+                "type": preview["type"],
+                "priority": preview["priority"],
+                "slug": preview["slug"],
+                "directory": preview["directory"],
+            },
+            "rendered_body": preview["rendered_body"],
+            "id_allocation": (
+                "The issue ID is allocated at apply time, under the .issues/.id-alloc.lock "
+                "hold — it does not exist yet and is deliberately not predicted here."
+            ),
+            "changes": [
+                {
+                    "field": "file",
+                    "from": None,
+                    "to": f"{preview['directory']}/{preview['priority']}-{preview['type']}"
+                    f"-<id>-{preview['slug']}.md",
+                }
+            ],
+        }
+
+    created = create_issue(config, spec)
+    return {
+        "target": {"issue_id": created.id, "path": str(created.path)},
+        "changes": [{"field": "file", "from": None, "to": str(created.path)}],
+    }
+
+
+def _tool_issue_set_status(arguments: dict[str, Any], *, apply: bool) -> Any:
+    """Transition an issue's frontmatter status (`ll-issues set-status`).
+
+    Wraps `cli.issues.set_status.apply_status_transition`; the dry-run preview comes from
+    `status_frontmatter_updates`, the same function that computes the real write, so the
+    preview cannot drift from what apply does. `--cascade` is deliberately not exposed:
+    cascading multiplies the blast radius across a whole EPIC subtree, and tier 2's brief
+    is four coarse tools, not a full mirror of the CLI's flag surface.
+    """
+    from little_loops.cli.issues.set_status import (
+        apply_status_transition,
+        status_frontmatter_updates,
+    )
+    from little_loops.cli.issues.show import _resolve_issue_id
+    from little_loops.config import BRConfig
+    from little_loops.frontmatter import parse_frontmatter
+    from little_loops.issue_progress import _ALL_STATUSES
+
+    config = BRConfig(_project_root())
+
+    issue_id = str(arguments.get("issue_id") or "")
+    status = str(arguments.get("status") or "")
+    if status not in _ALL_STATUSES:
+        raise ValueError(
+            f"Invalid status: {status!r} (expected one of {', '.join(sorted(_ALL_STATUSES))})"
+        )
+
+    path = _resolve_issue_id(config, issue_id)
+    if path is None:
+        raise ValueError(f"Issue not found: {issue_id!r}")
+
+    reason = arguments.get("reason")
+    by = arguments.get("by")
+    current = parse_frontmatter(path.read_text())
+    target = {"issue_id": issue_id, "path": str(path)}
+
+    if not apply:
+        updates = status_frontmatter_updates(status, reason=reason, by=by)
+        return {
+            "target": target,
+            "changes": [
+                {"field": key, "from": current.get(key), "to": value}
+                for key, value in updates.items()
+            ],
+        }
+
+    result = apply_status_transition(config, path, issue_id, status, reason=reason, by=by)
+    return {
+        "target": target,
+        "changes": [
+            {"field": key, "from": current.get(key), "to": value}
+            for key, value in result.updates.items()
+        ],
+    }
+
+
+def _tool_issue_link(arguments: dict[str, Any], *, apply: bool) -> Any:
+    """Write or remove a cross-issue dependency edge (`ll-issues link`).
+
+    Wraps `cli.issues.link.apply_link`, which already had a `dry_run` mode — so here the
+    guard's `apply` flag maps straight onto it rather than onto a second preview path.
+    """
+    from little_loops.cli.issues.link import apply_link
+    from little_loops.cli.issues.show import _resolve_issue_id
+    from little_loops.config import BRConfig
+    from little_loops.frontmatter import parse_frontmatter
+
+    config = BRConfig(_project_root())
+
+    issue_id = str(arguments.get("issue_id") or "")
+    field = str(arguments.get("field") or "")
+    target_input = str(arguments.get("target") or "")
+    unlink = arguments.get("unlink") is True
+
+    path = _resolve_issue_id(config, issue_id)
+    before: list[Any] = []
+    if path is not None:
+        existing = parse_frontmatter(path.read_text()).get(field) or []
+        before = existing if isinstance(existing, list) else [existing]
+
+    result = apply_link(
+        config,
+        issue_id=issue_id,
+        field=field,
+        target=target_input,
+        unlink=unlink,
+        reciprocal=arguments.get("reciprocal") is True,
+        force=arguments.get("force") is True,
+        dry_run=not apply,
+    )
+
+    if result.status in ("linked", "would_link"):
+        after = [*before, result.target_id]
+    elif result.status in ("unlinked", "would_unlink"):
+        after = [item for item in before if item != result.target_id]
+    else:  # unchanged
+        after = before
+
+    return {
+        "target": {"issue_id": result.issue_id, "path": str(path) if path else None},
+        "changes": [
+            {"field": result.field, "from": before, "to": after, "operation": result.status}
+        ],
+    }
+
+
+def _tool_issue_append_log(arguments: dict[str, Any], *, apply: bool) -> Any:
+    """Append a session-log entry to an issue (`ll-issues append-log`).
+
+    Wraps `session_log.append_session_log_entry`; the dry-run renders the exact bullet via
+    the shared `format_session_log_entry`. A dry-run whose session cannot be resolved still
+    succeeds and says so, rather than erroring — the caller asked what *would* happen, and
+    "this would fail, here is why" is a better answer to that question than an error.
+    Apply, by contrast, raises: there is nothing to write.
+    """
+    from little_loops.cli.issues.show import _resolve_issue_id
+    from little_loops.config import BRConfig
+    from little_loops.session_log import append_session_log_entry, format_session_log_entry
+
+    config = BRConfig(_project_root())
+
+    issue_id = str(arguments.get("issue_id") or "")
+    command = str(arguments.get("command") or "").strip()
+    if not command:
+        raise ValueError("issue_append_log requires a non-empty command")
+
+    path = _resolve_issue_id(config, issue_id)
+    if path is None:
+        raise ValueError(f"Issue not found: {issue_id!r}")
+
+    target = {"issue_id": issue_id, "path": str(path)}
+    entry = format_session_log_entry(command)
+
+    if not apply:
+        payload: dict[str, Any] = {
+            "target": target,
+            "changes": [
+                {
+                    "field": "Session Log",
+                    "from": None,
+                    "to": entry or f"- `{command}` - <timestamp> - `<current session id>`",
+                }
+            ],
+        }
+        if entry is None:
+            payload["note"] = (
+                "The current session JSONL could not be resolved, so applying this call "
+                "would fail. The entry above shows the shape it would take."
+            )
+        return payload
+
+    if not append_session_log_entry(path, command):
+        raise ValueError(
+            "Could not resolve the current session JSONL; no session-log entry was written."
+        )
+    return {
+        "target": target,
+        "changes": [{"field": "Session Log", "from": None, "to": entry}],
+    }
+
+
+_TOOL_HANDLERS: dict[str, Callable[..., Any]] = {
     "issues_query": _tool_issues_query,
     "issue_get": _tool_issue_get,
     "history_search": _tool_history_search,
     "deps_check": _tool_deps_check,
     "capabilities": _tool_capabilities,
+    # Tier 2 (FEAT-3149) — these take an extra required `apply` keyword, which is why the
+    # value type is `Callable[..., Any]` rather than `Callable[[dict], Any]`. The split is
+    # by `policy.MUTATING_TOOLS`, not by a second registry, so there is exactly one list
+    # defining what counts as a write.
+    "issue_capture": _tool_issue_capture,
+    "issue_set_status": _tool_issue_set_status,
+    "issue_link": _tool_issue_link,
+    "issue_append_log": _tool_issue_append_log,
 }
 
 # Source-order literal: `list_tools` returns this list as-is, and list order is the entirety
@@ -276,6 +536,183 @@ _TOOLS: list[types.Tool] = [
         description="Report the resolved AI-host CLI's capability surface (streaming, tool allowlist, etc).",
         input_schema={"type": "object", "properties": {}, "additionalProperties": False},
     ),
+    # --- Tier 2: mutating tools (FEAT-3149) ---------------------------------------------
+    # `annotations` is set ONLY on these four. The five tier-1 entries above deliberately
+    # keep `annotations=None`: annotating them would change tier-1's `tools/list` output
+    # shape, which this issue's anti-goals forbid. A host distinguishes the two groups by
+    # `readOnlyHint == false` being present, which is exactly AC 1's requirement.
+    types.Tool(
+        name="issue_capture",
+        description=(
+            "Create a new little-loops issue file. Dry-run by default: without "
+            "`apply: true` this returns the type/priority/slug/directory and rendered body "
+            "it would write, and no issue ID (the ID is allocated at apply time)."
+        ),
+        annotations=types.ToolAnnotations(
+            read_only_hint=False,
+            # Creates a new file; never overwrites or deletes an existing one.
+            destructive_hint=False,
+            # Two identical calls create two issues.
+            idempotent_hint=False,
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "enum": ["BUG", "FEAT", "ENH", "EPIC"],
+                    "description": "Issue type.",
+                },
+                "title": {"type": "string", "description": "Issue title."},
+                "priority": {
+                    "type": "string",
+                    "pattern": "^P[0-5]$",
+                    "description": "Priority level. Default: P2.",
+                },
+                "body": {"type": "string", "description": "Summary section body."},
+                "parent": {"type": "string", "description": "Parent EPIC ID to wire."},
+                "labels": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Labels to set in frontmatter.",
+                },
+                "apply": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Set true to actually create the issue. Omitted or "
+                    "anything other than true means dry-run: nothing is written.",
+                },
+            },
+            "required": ["type", "title"],
+            "additionalProperties": False,
+        },
+    ),
+    types.Tool(
+        name="issue_set_status",
+        description=(
+            "Transition an issue's frontmatter status. Dry-run by default: without "
+            "`apply: true` this returns the frontmatter fields it would change, old value "
+            "to new value, and writes nothing."
+        ),
+        annotations=types.ToolAnnotations(
+            read_only_hint=False,
+            # Overwrites an existing frontmatter value.
+            destructive_hint=True,
+            idempotent_hint=True,
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "issue_id": {
+                    "type": "string",
+                    "description": "Issue ID in any of: '3149', 'FEAT-3149', 'P3-FEAT-3149'.",
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["open", "in_progress", "blocked", "deferred", "done", "cancelled"],
+                    "description": "Target status value.",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Deferral or closure reason code, per the target status.",
+                },
+                "by": {
+                    "type": "string",
+                    "description": "Actor recorded as `deferred_by` on a deferral. Default: human.",
+                },
+                "apply": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Set true to actually write the transition. Omitted or "
+                    "anything other than true means dry-run: nothing is written.",
+                },
+            },
+            "required": ["issue_id", "status"],
+            "additionalProperties": False,
+        },
+    ),
+    types.Tool(
+        name="issue_link",
+        description=(
+            "Write or remove a cross-issue dependency edge (blocked_by/depends_on/"
+            "relates_to). Dry-run by default: without `apply: true` this reports the list "
+            "the field would hold and writes nothing."
+        ),
+        annotations=types.ToolAnnotations(
+            read_only_hint=False,
+            # `unlink: true` removes an existing edge.
+            destructive_hint=True,
+            idempotent_hint=True,
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "issue_id": {"type": "string", "description": "Source issue ID."},
+                "field": {
+                    "type": "string",
+                    "enum": ["blocked_by", "depends_on", "relates_to"],
+                    "description": "Which edge type to write.",
+                },
+                "target": {"type": "string", "description": "Target issue ID."},
+                "unlink": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Remove the edge instead of adding it.",
+                },
+                "reciprocal": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Also write the matching reverse edge on the target.",
+                },
+                "force": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Skip target-existence validation.",
+                },
+                "apply": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Set true to actually write the edge. Omitted or "
+                    "anything other than true means dry-run: nothing is written.",
+                },
+            },
+            "required": ["issue_id", "field", "target"],
+            "additionalProperties": False,
+        },
+    ),
+    types.Tool(
+        name="issue_append_log",
+        description=(
+            "Append a session-log entry to an issue's `## Session Log` section. Dry-run by "
+            "default: without `apply: true` this returns the exact bullet it would insert "
+            "and writes nothing."
+        ),
+        annotations=types.ToolAnnotations(
+            read_only_hint=False,
+            # Purely additive: appends a bullet, never rewrites existing ones.
+            destructive_hint=False,
+            # Two identical calls append two entries.
+            idempotent_hint=False,
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "issue_id": {"type": "string", "description": "Issue ID to append to."},
+                "command": {
+                    "type": "string",
+                    "description": "Command name to record, e.g. '/ll:manage-issue'.",
+                },
+                "apply": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Set true to actually append the entry. Omitted or "
+                    "anything other than true means dry-run: nothing is written.",
+                },
+            },
+            "required": ["issue_id", "command"],
+            "additionalProperties": False,
+        },
+    ),
 ]
 
 
@@ -283,7 +720,10 @@ async def handle_list_tools(
     _ctx: ServerRequestContext[Any],
     _params: types.PaginatedRequestParams | None,
 ) -> types.ListToolsResult:
-    """`tools/list` handler: returns the fixed five-tool catalog in source order.
+    """`tools/list` handler: returns the fixed nine-tool catalog in source order.
+
+    The five tier-1 read-only tools come first, then the four tier-2 mutating tools; only
+    the latter carry `annotations`, which is how a host tells the two groups apart.
 
     `ttlMs`/`cacheScope` are left unset here — the `Server(cache_hints=...)` passed in
     `little_loops.mcp_server.server.build_server` fills them, per SEP-2549.
@@ -301,6 +741,16 @@ async def handle_call_tool(
     configured, ...) becomes a tool-level error result (`is_error=True`) rather than an
     uncaught exception reaching the SDK's dispatch loop — MCP's contract for a tool that
     failed on its own terms, as opposed to a transport/protocol fault.
+
+    Guard 1 of FEAT-3149 lives here, as a wrapper rather than per-handler, so there is one
+    place to audit and no way to forget it on a new tool. It **fails closed**: `apply` opts
+    in only on the literal boolean `True`. A missing key, `null`, `"true"`, `1`, or any
+    other truthy-looking value is a dry-run. That asymmetry is deliberate — the cost of
+    misreading an opt-in is an unintended write to a user's issue tree, and the cost of
+    misreading an opt-out is one wasted round trip.
+
+    The `applied`/`tool` keys are stamped **after** the handler's payload, so the guard's
+    account of whether a write happened always wins over the handler's.
     """
     handler = _TOOL_HANDLERS.get(params.name)
     if handler is None:
@@ -309,8 +759,18 @@ async def handle_call_tool(
             is_error=True,
         )
 
+    arguments = dict(params.arguments or {})
+
     try:
-        payload = handler(params.arguments or {})
+        if params.name in MUTATING_TOOLS:
+            apply = arguments.pop("apply", False) is True
+            payload = {
+                **handler(arguments, apply=apply),
+                "applied": apply,
+                "tool": params.name,
+            }
+        else:
+            payload = handler(arguments)
     except Exception as exc:
         return types.CallToolResult(
             content=[types.TextContent(text=str(exc))],

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import importlib.metadata
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from mcp.server.lowlevel import Server
@@ -27,9 +27,31 @@ def _server_version() -> str:
         return "0.0.0"
 
 
+def build_http_app(host: str = "127.0.0.1") -> Any:
+    """Build the streamable-HTTP ASGI app with the FEAT-3149 transport policy wrapped around it.
+
+    Split out of :func:`run_http` so tests can drive the composed app through Starlette's
+    `TestClient` without binding a socket, and so the policy wrapper cannot be applied on
+    one path and forgotten on the other.
+
+    The wrapper is outermost on purpose: :class:`TransportPolicyMiddleware` must reach its
+    deny decision from the SEP-2243 routing headers *before* the SDK app parses the
+    JSON-RPC body, which it can only do if nothing downstream has consumed the request yet.
+
+    Note this is the HTTP path only — stdio has no headers to route on. The policy
+    *decision* therefore lives in `policy.check_tool_call`, which the middleware invokes;
+    encoding the rules inside the middleware would make them silently absent over stdio.
+    """
+    from little_loops.mcp_server.policy import TransportPolicyMiddleware
+
+    server = build_server()
+    app = server.streamable_http_app(json_response=True, stateless_http=True, host=host)
+    return TransportPolicyMiddleware(app, transport="http")
+
+
 def build_server() -> Server:
-    """Construct the `ll-mcp` lowlevel `Server`: five read-only tools, the `ll://` resource
-    surface, and the prompts-from-skills surface.
+    """Construct the `ll-mcp` lowlevel `Server`: the read-only and guarded-mutation tool
+    surface, the `ll://` resource surface, and the prompts-from-skills surface.
 
     The resource/prompt enumerations are built fresh here, once per `Server` instance — this
     function is called once per stdio session (`run_stdio`) and once per test — rather than at
@@ -110,10 +132,11 @@ async def run_http(host: str = "127.0.0.1", port: int = 8765) -> None:
     Binds loopback by default (Decision 1 in FEAT-3143): no parameter here defaults to
     `0.0.0.0`. `json_response=True, stateless=True` is Decision 2, the exact combination
     proven by `.ll/learning-tests/mcp-http-transport.md`.
+
+    App construction moved to `build_http_app()` (FEAT-3149) so the mutation-policy
+    middleware is applied on exactly one code path.
     """
     import uvicorn
 
-    server = build_server()
-    app = server.streamable_http_app(json_response=True, stateless_http=True, host=host)
-    config = uvicorn.Config(app, host=host, port=port)
+    config = uvicorn.Config(build_http_app(host), host=host, port=port)
     await uvicorn.Server(config).serve()

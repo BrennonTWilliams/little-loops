@@ -557,6 +557,44 @@
       },
       "additionalProperties": false
     },
+    "mcp": {
+      "type": "object",
+      "description": "ll-mcp server configuration (FEAT-3149).",
+      "properties": {
+        "transport_policy": {
+          "type": "object",
+          "description": "Per-transport policy governing whether ll-mcp's mutating tools (issue_capture, issue_set_status, issue_link, issue_append_log) may run. Enforced for HTTP in ASGI middleware, from the Mcp-Method/Mcp-Name routing headers, before the JSON-RPC body is parsed.",
+          "properties": {
+            "http": {
+              "type": "object",
+              "description": "Policy for the streamable HTTP transport (FEAT-3143).",
+              "properties": {
+                "allow_mutations": {
+                  "type": "boolean",
+                  "description": "When false (default), mutating tool calls over HTTP are refused with a JSON-RPC error. Deny-by-default because the HTTP transport ships without authentication.",
+                  "default": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "stdio": {
+              "type": "object",
+              "description": "Policy for the stdio transport.",
+              "properties": {
+                "allow_mutations": {
+                  "type": "boolean",
+                  "description": "When true (default), mutating tool calls over stdio are permitted. stdio is a same-machine, same-user channel, so it defaults open.",
+                  "default": true
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "decisions": {
       "type": "object",
       "description": "Decisions and rules log configuration",

@@ -1,13 +1,22 @@
 """ll-mcp: MCP server (stdio, and streamable HTTP per FEAT-3143) exposing five coarse
-read-only tools over the little_loops library.
+read-only tools plus four guarded mutation tools (FEAT-3149) over the little_loops library.
 
 Implements the 2026-07-28 MCP spec via the official `mcp` SDK (pinned exactly to 2.0.0 — see
 the `[project.optional-dependencies].mcp` comment in `scripts/pyproject.toml`). The SDK owns
 the protocol: JSON-RPC framing, method routing, `ttlMs`/`cacheScope` attachment, and
 `server/discover` are all SDK-provided (FEAT-3135). This package wires the entry point
-(`main_mcp`) and the five tool handlers registered in `little_loops.mcp_server.tools`;
+(`main_mcp`) and the tool handlers registered in `little_loops.mcp_server.tools`;
 `little_loops.mcp_server.server` builds the `Server` instance FEAT-3136 (resources) and
 FEAT-3137 (prompts) register their own handlers onto.
+
+The write half of the surface is guarded twice (FEAT-3149). Every mutating tool is
+**dry-run by default** — it writes only on an explicit `apply: true`, and treats a missing
+or non-`True` value as a refusal to mutate — and every mutating tool can additionally be
+refused at the transport layer per deployment, via `mcp.transport_policy` in
+`.ll/ll-config.json`. HTTP denies mutations by default (that transport ships without
+authentication); stdio, a same-machine channel, allows them. Both guards read the same
+`little_loops.mcp_server.policy.MUTATING_TOOLS` registry, so they cannot disagree about
+what counts as a write.
 
 No `cli_event_context()` wrapper is used: that convention measures a single CLI invocation's
 duration, but a stdio server's process lifetime spans arbitrarily many requests — wrapping the
@@ -18,7 +27,7 @@ SIGINT/SIGTERM handlers: it has no in-flight child to kill and no queue to drain
 stdin (the normal MCP shutdown signal) is handled inside the SDK's transport, and
 `anyio.run()` unwinds cleanly on either signal by default.
 
-Blocking library calls inside the five tool handlers (SQLite FTS5, `.issues/` filesystem
+Blocking library calls inside the tool handlers (SQLite FTS5, `.issues/` filesystem
 parsing) run inline on the event loop thread rather than being offloaded via
 `anyio.to_thread.run_sync`. Under stdio this is a non-issue: exactly one client, no
 concurrent in-flight requests, so there is no responsiveness to protect. The HTTP transport

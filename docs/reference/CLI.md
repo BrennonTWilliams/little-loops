@@ -4264,9 +4264,11 @@ ll-adapt-agents-for-codex --force --apply  # Regenerate all files (including up-
 
 ### ll-mcp
 
-Stdio MCP server (2026-07-28 spec) exposing five coarse, read-only tools over the
-`little_loops` library: `issues_query`, `issue_get`, `history_search`, `deps_check`,
-`capabilities`. Started by an MCP-capable host (Claude Code, Codex, ...) from the config
+MCP server (2026-07-28 spec) — stdio by default, streamable HTTP with `--http` — exposing
+nine coarse tools over the `little_loops` library. Five read: `issues_query`, `issue_get`,
+`history_search`, `deps_check`, `capabilities`. Four write, dry-run by default:
+`issue_capture`, `issue_set_status`, `issue_link`, `issue_append_log` (FEAT-3149).
+Started by an MCP-capable host (Claude Code, Codex, ...) from the config
 `ll-adapt --host <host> --apply` emits (`.mcp.json`, `ll-mcp.toml`) — not run directly by a
 human. Requires the `mcp` optional extra (`pip install "little-loops[mcp]"`); without it,
 exits `2` with an actionable message instead of an `ImportError`.
@@ -4275,6 +4277,23 @@ Every tool wraps an existing library call directly — no subprocess invocation 
 CLIs, no orchestration (`ll-auto`/`ll-parallel`/`ll-loop`/`ll-action invoke` are intentionally
 off the tool surface). No request handler depends on state from a prior request: each
 `tools/call` resolves entirely from its own arguments plus the filesystem/SQLite.
+
+The four mutating tools are guarded twice. **Dry-run by default:** each takes an `apply`
+boolean defaulting to `false`; without an explicit `true` the tool returns the change it
+would make (`{"applied": false, "tool": …, "target": …, "changes": […]}`) and writes
+nothing. The check is fail-closed — only the literal boolean `true` opts in. **Per-transport
+policy:** `mcp.transport_policy.<http|stdio>.allow_mutations` in `.ll/ll-config.json`
+governs whether they may run at all, defaulting to `false` for HTTP (which ships without
+authentication) and `true` for stdio. A denied call is refused in ASGI middleware from the
+SEP-2243 `Mcp-Method`/`Mcp-Name` headers, before the JSON-RPC body is parsed, with a
+JSON-RPC error (`-32001`) and HTTP 403; reads on the same server are unaffected. The four
+carry a `readOnlyHint: false` annotation in `tools/list`; the five read-only tools carry no
+annotations, which is how a host tells the groups apart.
+
+A dry-run `issue_capture` returns **no issue ID** — not even a predicted one. It reports the
+resolved type, priority, slug, target directory, and rendered body, because the ID is
+allocated inside `create_issue`'s lock hold at write time; the apply response carries the
+real one.
 
 **Tool parameters** (all schemas use `additionalProperties: false`):
 
@@ -4290,8 +4309,32 @@ off the tool surface). No request handler depends on state from a prior request:
 | | `limit` | integer ≥ 1 | no (default `10`) | Maximum number of results |
 | `deps_check` | — | — | — | No parameters; validates the cross-issue dependency graph |
 | `capabilities` | — | — | — | No parameters; reports the resolved AI-host CLI's capability surface |
+| `issue_capture` | `type` | `BUG`\|`FEAT`\|`ENH`\|`EPIC` | **yes** | Issue type |
+| | `title` | string | **yes** | Issue title |
+| | `priority` | `P[0-5]` | no (default `P2`) | Priority level |
+| | `body` | string | no | Summary section body |
+| | `parent` | string | no | Parent EPIC ID to wire |
+| | `labels` | string[] | no | Labels to set in frontmatter |
+| | `apply` | boolean | no (default `false`) | Set `true` to actually create the issue |
+| `issue_set_status` | `issue_id` | string | **yes** | Issue ID in any resolvable form |
+| | `status` | `open`\|`in_progress`\|`blocked`\|`deferred`\|`done`\|`cancelled` | **yes** | Target status |
+| | `reason` | string | no | Deferral or closure reason code, per the target status |
+| | `by` | string | no (default `human`) | Actor recorded as `deferred_by` on a deferral |
+| | `apply` | boolean | no (default `false`) | Set `true` to actually write the transition |
+| `issue_link` | `issue_id` | string | **yes** | Source issue ID |
+| | `field` | `blocked_by`\|`depends_on`\|`relates_to` | **yes** | Which edge type to write |
+| | `target` | string | **yes** | Target issue ID |
+| | `unlink` | boolean | no (default `false`) | Remove the edge instead of adding it |
+| | `reciprocal` | boolean | no (default `false`) | Also write the matching reverse edge |
+| | `force` | boolean | no (default `false`) | Skip target-existence validation |
+| | `apply` | boolean | no (default `false`) | Set `true` to actually write the edge |
+| `issue_append_log` | `issue_id` | string | **yes** | Issue to append to |
+| | `command` | string | **yes** | Command name to record, e.g. `/ll:manage-issue` |
+| | `apply` | boolean | no (default `false`) | Set `true` to actually append the entry |
 
-`issues_query` returns a list of `{id, priority, type, title, path, status, parent, labels}` dicts. `issue_get` returns the same summary-card field set `ll-issues show` uses, or a tool-level error if `issue_id` doesn't resolve. `history_search` returns a list of `SearchResult` dicts. `deps_check` returns `{has_issues, broken_refs, missing_backlinks, cycles, stale_completed_refs, broken_depends_on_refs, broken_relates_to_refs}`. `capabilities` returns `{host, binary, version, capabilities}`.
+`issues_query` returns a list of `{id, priority, type, title, path, status, parent, labels}` dicts. `issue_get` returns the same summary-card field set `ll-issues show` uses, or a tool-level error if `issue_id` doesn't resolve. `history_search` returns a list of `SearchResult` dicts. `deps_check` returns `{has_issues, broken_refs, missing_backlinks, cycles, stale_completed_refs, broken_depends_on_refs, broken_relates_to_refs}`. `capabilities` returns `{host, binary, version, capabilities}`. Each mutating tool returns
+`{applied, tool, target, changes}`; `issue_capture`'s `target` is `{type, priority, slug,
+directory}` plus a `rendered_body` on a dry-run and `{issue_id, path}` on apply.
 
 Also advertises a `resources` capability (FEAT-3136): issue files, `.ll/ll-goals.md`, and
 `docs/**/*.md` are listed and readable under an `ll://` scheme (`ll://issues/<ID>`,
@@ -4316,7 +4359,9 @@ name/description/args from frontmatter only; `prompts/get` returns the skill's f
 (frontmatter stripped) as a single user-role prompt message. `prompts/list` responses carry
 `ttlMs`/`cacheScope` per SEP-2549.
 
-**Arguments:** none — `ll-mcp` parses no flags; it is a protocol server, not a CLI.
+**Arguments:** `--http` selects the streamable HTTP transport instead of stdio (the
+`LL_MCP_TRANSPORT=http` env var is the equivalent for hosts that invoke `ll-mcp` with no
+args). There are no other flags; it is a protocol server, not a CLI.
 
 **Exit codes:** `0` = clean EOF/shutdown, `2` = missing the `mcp` extra, or a usage error
 
