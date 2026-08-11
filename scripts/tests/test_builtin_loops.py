@@ -5226,12 +5226,44 @@ class TestAutodevLoop:
         )
 
     def test_check_blockers_at_dequeue_routing(self, data: dict) -> None:
-        """ENH-2909: BLOCKED -> skip_blocked; otherwise continue to refine_current.
-        on_error must fail open (process, never block the queue)."""
+        """ENH-2909/ENH-3148: BLOCKED -> skip_blocked; otherwise continue to
+        check_gate_at_dequeue (inserted between it and refine_current by
+        ENH-3148). on_error must fail open (process, never block the queue)."""
         state = data["states"].get("check_blockers_at_dequeue", {})
         assert state, "check_blockers_at_dequeue state must exist (ENH-2909)"
         assert state.get("action_type") == "shell"
         assert state.get("on_yes") == "skip_blocked"
+        assert state.get("on_no") == "check_gate_at_dequeue"
+        assert state.get("on_error") == "check_gate_at_dequeue", (
+            "on_error must fail open to check_gate_at_dequeue so a gate error "
+            f"never blocks the queue, got {state.get('on_error')!r}"
+        )
+        evaluate = state.get("evaluate", {})
+        assert evaluate.get("type") == "output_contains"
+        assert evaluate.get("pattern") == "BLOCKED"
+
+    # ---------------------------------------------------------------
+    # ENH-3148: explicitly-gated pre-dequeue check
+    # ---------------------------------------------------------------
+
+    def test_check_blockers_at_dequeue_routes_to_check_gate_at_dequeue(
+        self, data: dict
+    ) -> None:
+        """ENH-3148: check_blockers_at_dequeue's on_no/on_error must route to
+        the new check_gate_at_dequeue gate (inserted between it and
+        refine_current), not directly to refine_current."""
+        state = data["states"].get("check_blockers_at_dequeue", {})
+        assert state.get("on_no") == "check_gate_at_dequeue"
+        assert state.get("on_error") == "check_gate_at_dequeue"
+
+    def test_check_gate_at_dequeue_routing(self, data: dict) -> None:
+        """ENH-3148: GATE_YES -> defer_gated; otherwise continue to
+        refine_current. on_error must fail open (a gate error never blocks
+        the queue)."""
+        state = data["states"].get("check_gate_at_dequeue", {})
+        assert state, "check_gate_at_dequeue state must exist (ENH-3148)"
+        assert state.get("action_type") == "shell"
+        assert state.get("on_yes") == "defer_gated"
         assert state.get("on_no") == "refine_current"
         assert state.get("on_error") == "refine_current", (
             "on_error must fail open to refine_current so a gate error never "
@@ -5239,7 +5271,31 @@ class TestAutodevLoop:
         )
         evaluate = state.get("evaluate", {})
         assert evaluate.get("type") == "output_contains"
-        assert evaluate.get("pattern") == "BLOCKED"
+        assert evaluate.get("pattern") == "GATE_YES"
+
+    def test_defer_gated_advances_queue_without_failing(self, data: dict) -> None:
+        """ENH-3148: defer_gated clears autodev-inflight and routes back to
+        dequeue_next on both success and error, mirroring mark_gate_blocked."""
+        state = data["states"].get("defer_gated", {})
+        assert state, "defer_gated state must exist (ENH-3148)"
+        assert state.get("next") == "dequeue_next"
+        assert state.get("on_error") == "dequeue_next"
+        action = state.get("action", "")
+        assert "autodev-inflight" in action
+
+    def test_defer_gated_defers_via_set_status(self, data: dict) -> None:
+        """ENH-3148: defer_gated writes deferred status with the distinct
+        blocked_by_gate reason code, guarded by the BUG-2729 postmortem
+        status-recheck."""
+        state = data["states"].get("defer_gated", {})
+        action = state.get("action", "")
+        assert "ll-issues set-status" in action
+        assert "deferred" in action
+        assert "--reason blocked_by_gate" in action
+        assert "done" in action and "cancelled" in action, (
+            "must include the BUG-2729 postmortem guard against re-deferring "
+            "an already-resolved issue"
+        )
 
     def test_skip_blocked_ledgers_stem_and_clears_inflight(self, data: dict) -> None:
         """ENH-2909: skip_blocked writes 'ID  blocked_by_unmet', clears

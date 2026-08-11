@@ -681,6 +681,25 @@ def _run_pre_deferral_remedy_selector(
     return result.stdout.strip()
 
 
+class TestCheckGateAtDequeueMarkerLiterals:
+    """ENH-3148: check_gate_at_dequeue reuses GATE_MARKER's phrase list
+    verbatim (BUG-3147's inline-matcher precedent), not a shared helper."""
+
+    def test_marker_literals_present_in_action(self) -> None:
+        action = _load_autodev_yaml()["states"]["check_gate_at_dequeue"]["action"]
+        for literal in (
+            "do not start otherwise",
+            "measurement \\(gate\\)",
+            "pre-implementation measurement",
+            "⚠ Gated",
+            "do not implement before",
+            "evidence gate",
+            "gate opens",
+            "is explicitly gated",
+        ):
+            assert literal in action
+
+
 class TestRecheckAfterSizeReviewMeasurementGateBranch:
     """ENH-2978: an explicit unresolved measurement/proof gate in the issue
     body forces the BUG-2803 pre-deferral remedy to spike, independent of

@@ -23,6 +23,7 @@ mechanism itself (`deferred_by`/`deferred_reason`/`deferred_date`, and why
 | `oversized_atomic` | `autodev.yaml`'s `remediate_oversized_atomic` fallback | `issue-size-review --auto` scored the issue Very Large (8-11) but decomposition was deliberately declined (strictly sequential / shared-infra children), and one-shot remediation still failed outcome risk (BUG-2734). |
 | `readiness_stagnated` | `autodev.yaml`'s post-remedy revisit (`recheck_after_size_review`) | ≥2 repair-class attempts ran this cycle (refine/wire/size-review/spike/reconcile/refine-for-design) and readiness is no better than the dequeue-time snapshot — every remedy including reconcile was attempted (FEAT-2751). |
 | `design_gate_failed` | `autodev.yaml`'s `regate_after_atomic_remediation` / `recheck_after_size_review` | The deterministic `## Program Design` gate failed even after the one-shot `refine_for_design` remedy (`/ll:refine-issue --auto --gap-analysis`, BUG-3002) — retargeted from `reconcile_current`, whose contract excludes that section. |
+| `blocked_by_gate` | `autodev.yaml`'s `defer_gated` state | The issue is explicitly gated by policy (prose gate language and/or a placeholder Acceptance Criteria section) — caught by the pre-dequeue `check_gate_at_dequeue` state before the remediation ladder runs, since no refine/wire/confidence-check cycle can unblock an external evidence gate (ENH-3148). Distinct from `gate_blocked`, which is a different, post-implementation learning-gate condition. |
 
 ## Related
 

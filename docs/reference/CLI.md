@@ -2384,8 +2384,8 @@ codes and `autodev.yaml`'s not-ready exits (ENH-2666) — not a general deferred
 
 Rank order (highest first): `remediation_stalled`, `blocked_by_unmet`, `gate_blocked`,
 `decision_unresolved`, `oversized_atomic`, `readiness_stagnated`, `design_gate_failed`
-(ENH-2870), `low_readiness`, then any other (unranked) code; within each group, the oldest
-issue is listed first.
+(ENH-2870), `blocked_by_gate` (ENH-3148), `low_readiness`, then any other (unranked) code;
+within each group, the oldest issue is listed first.
 
 | Argument/Flag | Short | Default | Description |
 |---------------|-------|---------|-------------|

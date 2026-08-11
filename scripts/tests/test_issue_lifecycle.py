@@ -1992,6 +1992,19 @@ class TestDeferReasonEnum:
         assert _DEFERRAL_REASON_CODES == frozenset(r.value for r in DeferReason)
         assert "design_gate_failed" in _DEFERRAL_REASON_CODES
 
+    def test_blocked_by_gate_member_exists_with_expected_value(self) -> None:
+        """ENH-3148: BLOCKED_BY_GATE is a member of DeferReason."""
+        from little_loops.issue_lifecycle import DeferReason
+
+        assert DeferReason.BLOCKED_BY_GATE.value == "blocked_by_gate"
+
+    def test_blocked_by_gate_is_derived_into_set_status_reason_codes(self) -> None:
+        from little_loops.cli.issues.set_status import _DEFERRAL_REASON_CODES
+        from little_loops.issue_lifecycle import DeferReason
+
+        assert _DEFERRAL_REASON_CODES == frozenset(r.value for r in DeferReason)
+        assert "blocked_by_gate" in _DEFERRAL_REASON_CODES
+
 
 class TestClosureReasonEnum:
     """ENH-2969: ClosureReason mirrors DeferReason's enum-derivation shape."""

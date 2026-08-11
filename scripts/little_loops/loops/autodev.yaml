@@ -354,8 +354,8 @@ states:
       pattern: "BLOCKED"
     capture: blockers_status
     on_yes: skip_blocked
-    on_no: refine_current
-    on_error: refine_current
+    on_no: check_gate_at_dequeue
+    on_error: check_gate_at_dequeue
 
   skip_blocked:
     # ENH-2909: ledger a pre-flight blocker skip and advance the queue. Uses
@@ -369,6 +369,95 @@ states:
       rm -f ${context.run_dir}/autodev-inflight
       echo "[SKIP-BLOCKED] ${captured.input.output} has unmet blocked_by deps; no refinement attempted"
     fragment: queue_track
+    action_type: shell
+    next: dequeue_next
+    on_error: dequeue_next
+
+  check_gate_at_dequeue:
+    # ENH-3148: recognize an issue that is explicitly gated by policy BEFORE
+    # spending refine_current's format -> refine -> wire -> confidence-check
+    # cycle on an issue that cycle cannot unblock (measured cost: $4.48 /
+    # 38m37s / 36 iterations on one FEAT-3145 run, per this issue's Summary).
+    # Detection signals, in preference order per the issue's Proposed
+    # Solution: (1) structural frontmatter gate field -- does not exist
+    # anywhere in the schema yet, out of scope here; (2) prose gate-phrase
+    # matching, reusing GATE_MARKER's regex verbatim from
+    # recheck_after_size_review below (BUG-3147 kept it inline rather than
+    # extracted, and named this issue's landing as the trigger point for
+    # extraction -- not a prerequisite already done, so it stays duplicated
+    # here); (3) a placeholder Acceptance Criteria section (no checkbox
+    # items, and its prose reads as a deferral note) is independently
+    # disqualifying since the gate cannot be verified either way.
+    #
+    # Fail-open: unresolved issue file or parse error yields GATE_NO ->
+    # refine_current, matching check_blockers_at_dequeue's posture -- a gate
+    # error never blocks the queue.
+    action_type: shell
+    action: |
+      ID="${captured.input.output}"
+      ISSUE_FILE=$(ll-issues path "$ID" 2>/dev/null || echo "")
+      GATED="false"
+      if [ -n "$ISSUE_FILE" ] && [ -f "$ISSUE_FILE" ]; then
+        if grep -qiE 'do not start otherwise|measurement \(gate\)|pre-implementation measurement|⚠ Gated|do not implement before|evidence gate|gate opens|is explicitly gated' "$ISSUE_FILE" 2>/dev/null; then
+          GATED="true"
+        fi
+        if [ "$GATED" = "false" ]; then
+          PLACEHOLDER=$(ISSUE_FILE="$ISSUE_FILE" python3 << 'PYEOF'
+      import os, re, sys
+      from pathlib import Path
+      path = Path(os.environ.get("ISSUE_FILE", ""))
+      try:
+          text = path.read_text()
+      except Exception:
+          sys.exit(0)
+      m = re.search(r'(?ims)^##\s*Acceptance Criteria\s*\n(.*?)(?=\n##\s|\Z)', text)
+      if not m:
+          sys.exit(0)
+      body = m.group(1).strip()
+      if not body or re.search(r'^\s*-\s*\[[ xX]\]', body, re.MULTILINE):
+          sys.exit(0)  # real checkbox criteria present -> not a placeholder
+      if re.search(r'to be settled|to be determined|\bTBD\b', body, re.IGNORECASE):
+          print("PLACEHOLDER")
+      PYEOF
+          )
+          if [ "$PLACEHOLDER" = "PLACEHOLDER" ]; then
+            GATED="true"
+          fi
+        fi
+      fi
+      if [ "$GATED" = "true" ]; then
+        echo "[GATE-CHECK] $ID is explicitly gated; skipping remediation ladder"
+        echo "GATE_YES"
+      else
+        echo "GATE_NO"
+      fi
+    evaluate:
+      type: output_contains
+      pattern: "GATE_YES"
+    capture: gate_status
+    on_yes: defer_gated
+    on_no: refine_current
+    on_error: refine_current
+
+  defer_gated:
+    # ENH-3148: gated issue deferred with a distinct, honest reason code
+    # (blocked_by_gate) instead of low_readiness -- the remediation ladder
+    # never ran, so "needs more refinement" would be misleading. Mirrors
+    # mark_gate_blocked's deferral-write idiom, including the BUG-2729
+    # postmortem guard: never flip an already-resolved issue to deferred.
+    action: |
+      ID="${captured.input.output}"
+      echo "$ID  blocked_by_gate" >> ${context.run_dir}/autodev-skipped.txt
+      rm -f ${context.run_dir}/autodev-inflight
+      STATUS=$(ll-issues show "$ID" --json 2>/dev/null \
+        | python3 -c "import json,sys; print((json.load(sys.stdin).get('status') or '').lower())" \
+        2>/dev/null || echo "")
+      if [ "$STATUS" = "done" ] || [ "$STATUS" = "completed" ] || [ "$STATUS" = "cancelled" ]; then
+        echo "[SKIP-DEFER] $ID already $STATUS; leaving status untouched"
+      else
+        ll-issues set-status "$ID" deferred --by automation --reason blocked_by_gate 2>/dev/null || true
+        echo "[GATE-DEFER] $ID is explicitly gated by policy; deferred (blocked_by_gate)"
+      fi
     action_type: shell
     next: dequeue_next
     on_error: dequeue_next

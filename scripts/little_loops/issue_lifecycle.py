@@ -86,6 +86,11 @@ class DeferReason(Enum):
     READINESS_STAGNATED = "readiness_stagnated"
     # ENH-2852/ENH-2870: program-design stage failed verification
     DESIGN_GATE_FAILED = "design_gate_failed"
+    # ENH-3148: autodev's pre-dequeue gate check — issue is explicitly gated
+    # by policy (prose gate language and/or placeholder Acceptance Criteria),
+    # not by missing information. Distinct from GATE_BLOCKED, which denotes a
+    # different, post-implementation learning-gate condition.
+    BLOCKED_BY_GATE = "blocked_by_gate"
 
 
 class ClosureReason(Enum):

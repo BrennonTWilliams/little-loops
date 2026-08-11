@@ -31,9 +31,14 @@ _REASON_RANK = {
     # actionable signal (missing/nonspecific design section) ranked above
     # generic low_readiness.
     "design_gate_failed": 6,
-    "low_readiness": 7,
+    # ENH-3148: caught by autodev's pre-dequeue gate check before the
+    # remediation ladder ever runs — like blocked_by_unmet, no repair attempt
+    # could have changed the outcome, so it ranks above the generic
+    # low_readiness catch-all.
+    "blocked_by_gate": 7,
+    "low_readiness": 8,
 }
-_DEFAULT_REASON_RANK = 8
+_DEFAULT_REASON_RANK = 9
 
 
 def add_deferred_triage_parser(subs: argparse._SubParsersAction) -> argparse.ArgumentParser:

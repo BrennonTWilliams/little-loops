@@ -342,6 +342,7 @@ class TestIssuesCLISetStatus:
             "oversized_atomic",
             "readiness_stagnated",
             "design_gate_failed",
+            "blocked_by_gate",
         ],
     )
     def test_set_status_deferred_stamps_autodev_reason_codes(

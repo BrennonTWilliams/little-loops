@@ -4283,7 +4283,9 @@ atomic issue's outcome risk failed even after Pattern-B rescoring), above `readi
 (FEAT-2751: every repair remedy including reconcile was attempted and Readiness never moved),
 above `design_gate_failed` (ENH-2870: the deterministic `## Program Design` gate failed even
 after the one-shot `refine_for_design` remedy — BUG-3002: retargeted from reconcile, whose
-contract excludes that section), above `low_readiness`; ties break oldest-first. This
+contract excludes that section), above `blocked_by_gate` (ENH-3148: caught by autodev's
+pre-dequeue `check_gate_at_dequeue` state before the remediation ladder ever runs), above
+`low_readiness`; ties break oldest-first. This
 closes the cross-run resurfacing gap FEAT-2665 targets: `re_enqueue_unblocked` only
 re-surfaces within a single run.
 
