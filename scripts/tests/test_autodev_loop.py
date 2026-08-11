@@ -692,6 +692,11 @@ class TestRecheckAfterSizeReviewMeasurementGateBranch:
             "do not start otherwise",
             "measurement \\(gate\\)",
             "pre-implementation measurement",
+            "⚠ Gated",
+            "do not implement before",
+            "evidence gate",
+            "gate opens",
+            "is explicitly gated",
         ):
             assert literal in action
 

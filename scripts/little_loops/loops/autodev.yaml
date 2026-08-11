@@ -2057,7 +2057,7 @@ states:
         if [ ! -f "$FIRED" ]; then
           ISSUE_FILE=$(ll-issues path "$ID" 2>/dev/null || echo "")
           GATE_MARKER="false"
-          if [ -n "$ISSUE_FILE" ] && grep -qiE 'do not start otherwise|measurement \(gate\)|pre-implementation measurement' "$ISSUE_FILE" 2>/dev/null; then
+          if [ -n "$ISSUE_FILE" ] && grep -qiE 'do not start otherwise|measurement \(gate\)|pre-implementation measurement|⚠ Gated|do not implement before|evidence gate|gate opens|is explicitly gated' "$ISSUE_FILE" 2>/dev/null; then
             GATE_MARKER="true"
           fi
           CONTRA_ONLY="false"

@@ -6411,6 +6411,11 @@ class TestAutodevLoop:
         assert "do not start otherwise" in action
         assert "measurement \\(gate\\)" in action
         assert "pre-implementation measurement" in action
+        assert "⚠ Gated" in action
+        assert "do not implement before" in action
+        assert "evidence gate" in action
+        assert "gate opens" in action
+        assert "is explicitly gated" in action
         assert action.index("GATE_MARKER") < action.index("amb = int(d.get('score_ambiguity')"), (
             "the measurement-gate check must run before the ambiguity-subscore fallback"
         )
