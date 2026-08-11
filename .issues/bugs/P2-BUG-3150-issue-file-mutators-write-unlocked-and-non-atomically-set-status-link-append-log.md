@@ -7,6 +7,14 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-08-11'
 captured_at: '2026-08-11T18:29:27Z'
+labels:
+- issues-cli
+- concurrency
+relates_to:
+- FEAT-3149
+- EPIC-3127
+size: Small
+testable: true
 ---
 
 # BUG-3150: issue-file mutators write unlocked and non-atomically (set-status, link, append-log)
@@ -29,7 +37,7 @@ is not merely a lost update — an interleaved or interrupted write can leave a
 | `create` (`cli/issues/create.py:202`) | yes (`.issues/.id-alloc.lock`) | exclusive-create `open(path,"x")` | safe |
 | `scaffold-epic` (`cli/issues/scaffold_epic.py:83`) | yes | — | safe |
 | `set-status` (`cli/issues/set_status.py:127`, `:209`) | **no** | **no** (`write_text`) | torn / empty file |
-| `link` (`cli/issues/link.py:149`, `:170`, `:202`) | **no** | **no** (`write_text`) | torn / empty file; half-linked graph |
+| `link` (`cli/issues/link.py:149`, `:170`, `:202`) | **no** | **no** (`write_text`) | torn file; half-linked graph |
 | `append-log` (via `session_log.py:245`) | **no** | yes (`atomic_write`) | lost update only |
 
 Two distinct defects:
@@ -44,6 +52,38 @@ Two distinct defects:
 writes (`:149`/`:170` then `:202`), so an interruption between them leaves the
 source claiming a link the target has no backlink for.
 
+## Steps to Reproduce
+
+Both defects are races, so reproduction is probabilistic rather than
+deterministic; the concurrency test in AC 4 is the reliable form.
+
+1. Pick any issue, e.g. `ENH-3148`.
+2. Run many concurrent status flips against it:
+   ```bash
+   for i in $(seq 1 50); do
+     ll-issues set-status ENH-3148 open &
+     ll-issues set-status ENH-3148 deferred &
+   done; wait
+   ```
+3. Inspect the file. Expected: a valid file with one of the two statuses.
+   Observed (intermittently): a truncated or empty file, or a file whose
+   frontmatter fails to parse.
+
+For the `link` half-write, interrupt the process between its source and target
+writes (`link.py:170` and `:202`) and observe that `ll-deps validate` reports a
+missing backlink for the pair.
+
+## Root Cause
+
+- **Files**: `scripts/little_loops/cli/issues/set_status.py` (lines 127, 209),
+  `scripts/little_loops/cli/issues/link.py` (lines 149, 170, 202),
+  `scripts/little_loops/session_log.py` (line 245).
+- `set_status.py` and `link.py` call `Path.write_text()` directly instead of
+  `little_loops.file_utils.atomic_write()`, and none of the three mutation paths
+  takes `little_loops.file_utils.acquire_lock()` around its read-modify-write.
+- `create.py:202` demonstrates the correct pattern already in use in this
+  codebase.
+
 ## Why it surfaces now
 
 Tier 1 of EPIC-3127 was read-only, so this never came up. The CLI's implicit
@@ -54,7 +94,7 @@ hosts can call concurrently, and any of them can race a local `ll-auto` /
 against a direct CLI invocation — so the fix belongs here, at the CLI layer.
 
 This is a pre-existing defect independent of MCP; FEAT-3149 only makes it
-reachable in normal use.
+reachable in normal use. FEAT-3149 `depends_on` this issue.
 
 ## Expected Behavior
 
@@ -62,6 +102,76 @@ reachable in normal use.
   under `acquire_lock`, and write via `atomic_write` rather than `write_text`.
 - `link`'s source and target updates happen under a single lock hold so the
   backlink invariant cannot be broken by an interruption between them.
+
+## Proposed Solution
+
+Reuse the existing primitives exactly as `create.py` does — do not introduce a
+new locking mechanism.
+
+1. Replace `write_text` with `atomic_write` in `set_status.py` and `link.py`.
+2. Wrap each mutator's read-modify-write in `acquire_lock`.
+3. Hoist `link`'s two writes into one lock hold.
+
+Lock granularity is settled as a **single `.issues/`-wide lock**, matching the
+existing `.id-alloc.lock` convention: these are sub-millisecond writes, so the
+concurrency a per-file lock would buy is not worth a second locking scheme to
+audit.
+
+## Program Design
+
+### Types
+
+No new types. The change is confined to the write path of three existing
+commands.
+
+### Signatures
+
+- `little_loops.file_utils.acquire_lock(path: Path, timeout: float = 10.0)` —
+  existing context manager, reused unchanged.
+- `little_loops.file_utils.atomic_write(path: Path, content: str, encoding: str = "utf-8") -> None`
+  — existing, reused unchanged.
+
+### Lock file
+
+`.issues/.mutate.lock`, a sibling of the existing `.issues/.id-alloc.lock`. Kept
+distinct from `.id-alloc.lock` so a long `scaffold-epic` allocation does not
+serialize unrelated status flips, and so neither lock's contention profile
+changes the other's.
+
+### Call Path
+
+`ll-issues set-status` →
+`little_loops.cli.issues.set_status.cmd_set_status()` →
+`little_loops.file_utils.acquire_lock()` (new) →
+`little_loops.file_utils.atomic_write()` (replaces `Path.write_text`)
+
+`ll-issues link` →
+`little_loops.cli.issues.link.cmd_link()` →
+`little_loops.file_utils.acquire_lock()` (new, one hold spanning source+target) →
+`little_loops.file_utils.atomic_write()` ×2
+
+`ll-issues append-log` →
+`little_loops.cli.issues.append_log.cmd_append_log()` →
+`little_loops.session_log.append_session_log_entry()` →
+`little_loops.file_utils.acquire_lock()` (new) →
+`little_loops.file_utils.atomic_write()` (already present)
+
+Reference implementation of the same pattern:
+`little_loops.cli.issues.create.create_issue()`.
+
+### Call sites changed
+
+- `cli/issues/set_status.py:127` and `:209` — the second is the child-issue
+  write in the same command and must sit inside the same lock hold as the first,
+  or a partially-applied cascade is possible.
+- `cli/issues/link.py:149`, `:170`, `:202` — all three under one hold.
+- `session_log.py:245` — already `atomic_write`; add the lock only.
+
+### Ordering constraint
+
+`link` mutates two files under one lock. Because the lock is `.issues/`-wide
+rather than per-file, there is no lock-ordering hazard and no deadlock risk
+between concurrent `link` invocations.
 
 ## Acceptance Criteria
 
@@ -76,104 +186,16 @@ reachable in normal use.
    interrupted between its two writes.
 6. `python -m pytest scripts/tests/` exits 0.
 
-## Notes
-
-Blast radius is wide: every project on this machine is `local-editable` against
-this checkout, so these mutators are live everywhere with no reinstall step.
-Prefer reusing `acquire_lock`/`atomic_write` exactly as `create.py` does over
-introducing a new locking primitive.
-
-Lock granularity is a design choice worth settling during implementation: a
-single `.issues/` -wide lock is simplest and matches `.id-alloc.lock`, while a
-per-file lock permits more concurrency. Given these are sub-millisecond writes,
-the simpler whole-directory lock is likely correct.
-
-
-## Current Behavior
-
-[If applicable - describe what currently happens]
-
-## Expected Behavior
-
-[What should happen instead]
-
-## Motivation
-
-[Why this issue matters - business value, user impact, technical debt cost]
-
-## Proposed Solution
-
-TBD - requires investigation
-
-## Integration Map
-
-### Files to Modify
-- TBD - requires codebase analysis
-
-### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
-
-### Similar Patterns
-- TBD - search for consistency
-
-### Tests
-- TBD - identify test files to update
-
-### Documentation
-- TBD - docs that need updates
-
-### Configuration
-- N/A or list config files
-
-## Implementation Steps
-
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
-
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
-
-## Related Key Documentation
-
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+- **Priority**: P2 — data loss (corrupted issue files) is possible today, but
+  requires concurrent writers, which is currently rare in practice.
+- **Blast radius is wide**: every project on this machine is `local-editable`
+  against this checkout, so these mutators go live everywhere with no reinstall
+  step. Changes here need the full suite green before landing.
+- **Blocks FEAT-3149**: shipping guarded mutation tools onto a substrate that can
+  produce torn issue files is unsound.
 
 ## Status
 
-**Open** | Created: [YYYY-MM-DD] | Priority: [P0-P5]
-
-## Steps to Reproduce
-
-1. [Step 1]
-2. [Step 2]
-3. [Observe: description of the bug]
-
-## Root Cause
-
-- **File**: `path/to/file.py`
-- **Anchor**: `in function buggy_func()`
-- **Cause**: [Explanation of why bug happens]
-
-## Error Messages
-
-## Environment
-
-## Frequency
-
-## Location
-
-- **File**: `path/to/file`
-- **Line(s)**: [lines] (at scan commit: [COMMIT_HASH_SHORT])
-- **Anchor**: `in function name()`
-- **Code**:
-```
-# Relevant code snippet
-```
-
-## Reproduction Steps
-
-## Proposed Fix
+open

@@ -17,6 +17,7 @@ relates_to:
 - FEAT-3143
 - ENH-3144
 - FEAT-3145
+- FEAT-3149
 ---
 
 ## Summary
@@ -56,9 +57,18 @@ coarse surface of ~8–12 tools:
   `history_search`, `deps_check`, `capabilities` (the existing
   `CapabilityReport`).
 - **Mutating:** `issue_capture`, `issue_set_status`, `issue_link`,
-  `issue_append_log`, `route`. Each returns the same JSON the CLI emits today;
-  the JSON Schemas from `ll-generate-schemas` become tool output schemas nearly
-  for free.
+  `issue_append_log`. Each returns the same JSON the CLI emits today; tool output
+  schemas are hand-written per tool.
+
+  > **Corrected 2026-08-11 (FEAT-3149 OQ2/OQ3).** Two claims in the original text
+  > were wrong. (1) A fifth mutating tool, `route`, was listed; no `ll-route`
+  > entry point exists and no `route` command or tool appears anywhere in
+  > `scripts/little_loops/` — it was aspirational and has been dropped.
+  > (2) The text claimed "the JSON Schemas from `ll-generate-schemas` become tool
+  > output schemas nearly for free." `ll-generate-schemas` emits schemas for
+  > **LLEvent types** only — the telemetry event vocabulary, a surface disjoint
+  > from these tools' return JSON. Output schemas are hand-written work, and
+  > FEAT-3149's effort estimate accounts for it.
 
 **Not tools:** `ll-auto`, `ll-parallel`, `ll-loop`, `ll-action invoke` — anything
 that spawns an agent or runs for minutes. Orchestration stays on the CLI; if it
@@ -112,15 +122,40 @@ several places is strengthened:
   `Mcp-Method` / `Mcp-Name` (SEP-2243) lets `ll-mcp` enforce per-method policy
   *before* JSON-RPC body parsing. This pairs with the dry-run-by-default
   convention rather than replacing it.
+
+  > **Qualified 2026-08-11 (FEAT-3149 OQ1), learning test
+  > `.ll/learning-tests/mcp-header-routing.md`.** The conclusion holds but the
+  > mechanism does not: `mcp==2.0.0` ships **no pre-parse hook**.
+  > `classify_inbound_request` requires the *decoded body* and uses headers only
+  > to cross-check it, and `handle_modern_request` parses the body before
+  > validating headers — the SDK's only use of these headers is a mismatch
+  > rejection (`-32020`), never dispatch. Per-method policy before body parsing
+  > is still achievable, and is proven working, via **ASGI middleware wrapped
+  > around `streamable_http_app()`** reading the raw `scope["headers"]`. Note the
+  > guard then exists on the HTTP path only — stdio has no headers.
 - **The job tier must build its own `tasks/*` surface, shaped to SEP-2663, not
   wrap an extension the pinned SDK doesn't ship.** `mcp==2.0.0` implements no
   `io.modelcontextprotocol/tasks` extension — confirmed by learning test
   `.ll/learning-tests/mcp-extension-mechanism.md` (`proven`, mcp 2.0.0, 6/6).
   The formal `Extension` API only attaches via `MCPServer(extensions=[...])`,
   and the lowlevel `Server` that `build_server()` uses has no `extensions`
-  parameter, so even the extension mechanism itself is unreachable as built.
-  The real, proven path is `Server.add_request_handler("tasks/get", ...)` on
-  the unmodified lowlevel server. A proposed `job_start` / `job_status` /
+  parameter. The real, proven path is
+  `Server.add_request_handler("tasks/get", params_type, handler)` on the
+  unmodified lowlevel server.
+
+  > **Qualified 2026-08-11 (FEAT-3145 OQ1), learning test
+  > `.ll/learning-tests/mcp-tasks-start-path.md` (11/11).** "Even the extension
+  > mechanism itself is unreachable as built" was too strong. The *absent
+  > `extensions=` parameter* is real, but `compose_tool_call_handler(extensions,
+  > handler)` is a **free function** that folds any `Extension`'s
+  > `intercept_tool_call` around a `tools/call` handler on the lowlevel `Server`
+  > — proven working end-to-end. This matters because SEP-2663's **start** path
+  > is not a method at all: it is an ordinary `tools/call` whose response carries
+  > `CreateTaskResult` (`resultType: "task"`) instead of a `CallToolResult`, and
+  > `runner._serialize` passes non-core `resultType` shapes through unsieved by
+  > design. So the line-by-line SEP-2663 fidelity this bullet asks for is
+  > achievable, and the additive-only `MethodBinding` rule is never engaged
+  > (nothing re-registers `tools/call`). A proposed `job_start` / `job_status` /
   `job_cancel` shape should track SEP-2663's `tasks/get` / `tasks/cancel` /
   final-result-retrieval shape line-by-line so swapping to the official
   extension later is a registration change, not a client-visible protocol
