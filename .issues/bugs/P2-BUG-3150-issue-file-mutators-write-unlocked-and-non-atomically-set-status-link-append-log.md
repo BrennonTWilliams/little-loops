@@ -182,9 +182,36 @@ between concurrent `link` invocations.
 4. A concurrency test asserts that N concurrent `set-status` invocations against
    one issue leave a valid, parseable file with exactly one winning status (no
    torn or empty file).
-5. A test asserts `link` cannot leave a source-without-target backlink state when
-   interrupted between its two writes.
+5. A test asserts `link` takes the mutation lock **exactly once** and writes both
+   source and target inside that single hold.
+
+   **Revised during implementation (2026-08-11).** This AC originally read: "a
+   test asserts `link` cannot leave a source-without-target backlink state when
+   interrupted between its two writes." That is **not achievable with a lock**
+   and the original wording was wrong. An advisory `flock` is released when the
+   holding process dies, so a process killed between the source write and the
+   reciprocal write still leaves a half-linked pair. A lock provides mutual
+   exclusion, not crash atomicity across two files.
+
+   What the fix does deliver, and what AC 5 now asserts: no *other* lock-taking
+   writer can observe or interleave with the intermediate state, and the two
+   writes cannot be separated by a concurrent mutation.
 6. `python -m pytest scripts/tests/` exits 0.
+
+## Known limitation — crash atomicity across `link`'s two files
+
+Out of scope here, stated so it is not mistaken for fixed: `link --reciprocal`
+mutates two files, and a hard crash (SIGKILL, power loss) between the two
+`os.replace` calls still leaves the source claiming an edge the target has no
+backlink for. Each individual write is atomic; the *pair* is not.
+
+Closing that needs a write-ahead journal or a two-phase commit over the pair —
+materially more machinery than this P2 warrants, and a different shape of change
+than "reuse the primitives that already exist." `ll-deps validate` already
+reports missing backlinks, so the inconsistency is detectable and repairable
+after the fact, which is the pragmatic mitigation.
+
+File a follow-up if crash-atomic multi-file edits ever become a requirement.
 
 ## Impact
 

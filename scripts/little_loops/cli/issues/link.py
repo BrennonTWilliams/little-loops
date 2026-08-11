@@ -107,6 +107,7 @@ def cmd_link(config: BRConfig, args: argparse.Namespace) -> int:
         Exit code (0 = success, 1 = error)
     """
     from little_loops.cli.issues.show import _resolve_issue_id
+    from little_loops.file_utils import acquire_lock, atomic_write, issue_lock_path
     from little_loops.frontmatter import parse_frontmatter, update_frontmatter
 
     field = next(name for name in _FIELD_FLAGS if getattr(args, name, None))
@@ -117,63 +118,78 @@ def cmd_link(config: BRConfig, args: argparse.Namespace) -> int:
         print(f"Error: Issue '{args.issue_id}' not found.", file=sys.stderr)
         return 1
 
-    source_content = source_path.read_text()
-    source_fm = parse_frontmatter(source_content)
-    source_id = source_fm.get("id", args.issue_id).upper()
+    # BUG-3150: the source read, the cycle check, the source write and the
+    # reciprocal target write are one read-modify-write and share a single lock
+    # hold. Releasing between the source and reciprocal writes is exactly what
+    # leaves a source claiming an edge the target has no backlink for. Writes go
+    # through `atomic_write`; `write_text` truncates first and could leave a torn
+    # or empty issue file.
+    with acquire_lock(issue_lock_path(source_path, config.issues.base_dir)):
+        source_content = source_path.read_text()
+        source_fm = parse_frontmatter(source_content)
+        source_id = source_fm.get("id", args.issue_id).upper()
 
-    target_path = _resolve_issue_id(config, target_input)
-    if target_path is None and not args.force:
-        print(f"Error: Target issue '{target_input}' not found.", file=sys.stderr)
-        return 1
-
-    target_id = target_input.upper()
-    if target_path is not None:
-        target_fm = parse_frontmatter(target_path.read_text())
-        target_id = target_fm.get("id", target_id).upper()
-
-    existing = source_fm.get(field) or []
-    if not isinstance(existing, list):
-        existing = [existing]
-
-    if args.unlink:
-        if target_id not in existing:
-            _report(args, source_id=source_id, field=field, target_id=target_id, status="unchanged")
-            return 0
-        new_list = [item for item in existing if item != target_id]
-        if args.dry_run:
-            _report(
-                args, source_id=source_id, field=field, target_id=target_id, status="would_unlink"
-            )
-            return 0
-        new_content = update_frontmatter(source_content, {field: new_list})
-        source_path.write_text(new_content)
-        _report(args, source_id=source_id, field=field, target_id=target_id, status="unlinked")
-        return 0
-
-    if target_id in existing:
-        _report(args, source_id=source_id, field=field, target_id=target_id, status="unchanged")
-        return 0
-
-    if field in ("blocked_by", "depends_on"):
-        cycle_error = _check_cycle(config, source_id, target_id, field)
-        if cycle_error is not None:
-            print(f"Error: refusing edge — {cycle_error}", file=sys.stderr)
+        target_path = _resolve_issue_id(config, target_input)
+        if target_path is None and not args.force:
+            print(f"Error: Target issue '{target_input}' not found.", file=sys.stderr)
             return 1
 
-    new_list = [*existing, target_id]
+        target_id = target_input.upper()
+        if target_path is not None:
+            target_fm = parse_frontmatter(target_path.read_text())
+            target_id = target_fm.get("id", target_id).upper()
 
-    if args.dry_run:
-        _report(args, source_id=source_id, field=field, target_id=target_id, status="would_link")
+        existing = source_fm.get(field) or []
+        if not isinstance(existing, list):
+            existing = [existing]
+
+        if args.unlink:
+            if target_id not in existing:
+                _report(
+                    args, source_id=source_id, field=field, target_id=target_id, status="unchanged"
+                )
+                return 0
+            new_list = [item for item in existing if item != target_id]
+            if args.dry_run:
+                _report(
+                    args,
+                    source_id=source_id,
+                    field=field,
+                    target_id=target_id,
+                    status="would_unlink",
+                )
+                return 0
+            new_content = update_frontmatter(source_content, {field: new_list})
+            atomic_write(source_path, new_content)
+            _report(args, source_id=source_id, field=field, target_id=target_id, status="unlinked")
+            return 0
+
+        if target_id in existing:
+            _report(args, source_id=source_id, field=field, target_id=target_id, status="unchanged")
+            return 0
+
+        if field in ("blocked_by", "depends_on"):
+            cycle_error = _check_cycle(config, source_id, target_id, field)
+            if cycle_error is not None:
+                print(f"Error: refusing edge — {cycle_error}", file=sys.stderr)
+                return 1
+
+        new_list = [*existing, target_id]
+
+        if args.dry_run:
+            _report(
+                args, source_id=source_id, field=field, target_id=target_id, status="would_link"
+            )
+            return 0
+
+        new_content = update_frontmatter(source_content, {field: new_list})
+        atomic_write(source_path, new_content)
+
+        if args.reciprocal and target_path is not None:
+            _write_reciprocal(target_path, field, source_id)
+
+        _report(args, source_id=source_id, field=field, target_id=target_id, status="linked")
         return 0
-
-    new_content = update_frontmatter(source_content, {field: new_list})
-    source_path.write_text(new_content)
-
-    if args.reciprocal and target_path is not None:
-        _write_reciprocal(target_path, field, source_id)
-
-    _report(args, source_id=source_id, field=field, target_id=target_id, status="linked")
-    return 0
 
 
 def _write_reciprocal(target_path, field: str, source_id: str) -> None:
@@ -185,6 +201,7 @@ def _write_reciprocal(target_path, field: str, source_id: str) -> None:
     already used by ``dependency_mapper/operations.py``). ``depends_on`` has
     no reciprocal field — it is one-directional by convention.
     """
+    from little_loops.file_utils import atomic_write
     from little_loops.frontmatter import parse_frontmatter, update_frontmatter
 
     reciprocal_field = {"blocked_by": "blocks", "relates_to": "relates_to"}.get(field)
@@ -199,7 +216,9 @@ def _write_reciprocal(target_path, field: str, source_id: str) -> None:
     if source_id in existing:
         return
     new_content = update_frontmatter(content, {reciprocal_field: [*existing, source_id]})
-    target_path.write_text(new_content)
+    # BUG-3150: caller (`cmd_link`) already holds the issue-tree mutation lock —
+    # do not acquire it here, flock contends within a single process.
+    atomic_write(target_path, new_content)
 
 
 def _check_cycle(config: BRConfig, source_id: str, target_id: str, field: str) -> str | None:

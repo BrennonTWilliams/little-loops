@@ -43,6 +43,7 @@ def cmd_set_status(config: BRConfig, args: argparse.Namespace) -> int:
         Exit code (0 = success, 1 = error); exit 1 if any child update fails.
     """
     from little_loops.cli.issues.show import _resolve_issue_id
+    from little_loops.file_utils import acquire_lock, atomic_write, issue_lock_path
     from little_loops.frontmatter import parse_frontmatter, update_frontmatter
     from little_loops.issue_lifecycle import _completed_at_now
     from little_loops.issue_progress import _OPEN_STATUSES, _TERMINAL_STATUSES
@@ -121,101 +122,109 @@ def cmd_set_status(config: BRConfig, args: argparse.Namespace) -> int:
             )
             return 1
 
-    content = path.read_text()
-    old_status = parse_frontmatter(content).get("status", "unknown")
-    new_content = update_frontmatter(content, _status_updates(args.status))
-    path.write_text(new_content)
-    print(f"{args.issue_id}: {old_status} → {args.status}")
+    # BUG-3150: read-modify-write under one lock, written atomically. The
+    # cascade below shares this hold — releasing between the parent write and
+    # the child writes would let a concurrent writer observe (or interleave
+    # with) a half-applied cascade. `atomic_write` replaces `write_text`, whose
+    # truncate-then-write could leave a torn or empty issue file.
+    with acquire_lock(issue_lock_path(path, config.issues.base_dir)):
+        content = path.read_text()
+        old_status = parse_frontmatter(content).get("status", "unknown")
+        new_content = update_frontmatter(content, _status_updates(args.status))
+        atomic_write(path, new_content)
+        print(f"{args.issue_id}: {old_status} → {args.status}")
 
-    # Capture content snapshot on status transition (Decision 2: Option C — direct call,
-    # same pattern as user_prompt_submit.py calling record_correction() without EventBus).
-    try:
-        from little_loops.session_store import (
-            record_issue_event,
-            record_issue_snapshot,
-            resolve_history_db,
-        )
+        # Capture content snapshot on status transition (Decision 2: Option C — direct call,
+        # same pattern as user_prompt_submit.py calling record_correction() without EventBus).
+        try:
+            from little_loops.session_store import (
+                record_issue_event,
+                record_issue_snapshot,
+                resolve_history_db,
+            )
 
-        db_path = resolve_history_db()
-        record_issue_snapshot(db_path, args.issue_id, args.status, str(path))
+            db_path = resolve_history_db()
+            record_issue_snapshot(db_path, args.issue_id, args.status, str(path))
 
-        # Also write the issue_events row (BUG-2770): record_issue_snapshot alone
-        # left issue_sessions/issue_effort() with no rows to join against, since
-        # both are rooted in issue_events, which was previously written only by
-        # the EventBus SQLiteTransport path (not exercised by set-status).
-        from little_loops.issue_lifecycle import _session_id_or_none
+            # Also write the issue_events row (BUG-2770): record_issue_snapshot alone
+            # left issue_sessions/issue_effort() with no rows to join against, since
+            # both are rooted in issue_events, which was previously written only by
+            # the EventBus SQLiteTransport path (not exercised by set-status).
+            from little_loops.issue_lifecycle import _session_id_or_none
 
-        fm = parse_frontmatter(new_content)
-        record_issue_event(
-            db_path,
-            args.issue_id,
-            args.status,
-            session_id=_session_id_or_none(),
-            issue_type=fm.get("type"),
-            priority=fm.get("priority"),
-            discovered_by=fm.get("discovered_by"),
-            captured_at=fm.get("captured_at"),
-            completed_at=fm.get("completed_at"),
-        )
-    except (sqlite3.Error, ImportError, OSError):
-        logger.warning(
-            "%s: failed to record issue_events/issue_snapshots row for status %s",
-            args.issue_id,
-            args.status,
-            exc_info=True,
-        )
+            fm = parse_frontmatter(new_content)
+            record_issue_event(
+                db_path,
+                args.issue_id,
+                args.status,
+                session_id=_session_id_or_none(),
+                issue_type=fm.get("type"),
+                priority=fm.get("priority"),
+                discovered_by=fm.get("discovered_by"),
+                captured_at=fm.get("captured_at"),
+                completed_at=fm.get("completed_at"),
+            )
+        except (sqlite3.Error, ImportError, OSError):
+            logger.warning(
+                "%s: failed to record issue_events/issue_snapshots row for status %s",
+                args.issue_id,
+                args.status,
+                exc_info=True,
+            )
 
-    # Cascade to children
-    if getattr(args, "cascade", False):
-        fm = parse_frontmatter(content)
-        epic_id = fm.get("id", args.issue_id).upper()
+        # Cascade to children
+        if getattr(args, "cascade", False):
+            fm = parse_frontmatter(content)
+            epic_id = fm.get("id", args.issue_id).upper()
 
-        from little_loops.issue_parser import find_issues
+            from little_loops.issue_parser import find_issues
 
-        all_issues = find_issues(config)
+            all_issues = find_issues(config)
 
-        # Cascade follows parent: → child edges ONLY, transitively. relates_to:
-        # and blocked_by: are non-hierarchical association edges; cascading
-        # through them silently flipped the status of unrelated issues —
-        # including sibling epics — during routine epic closure (BUG-2265).
-        children_by_parent: dict[str, list] = {}
-        for i in all_issues:
-            if i.parent:
-                children_by_parent.setdefault(i.parent.upper(), []).append(i)
+            # Cascade follows parent: → child edges ONLY, transitively. relates_to:
+            # and blocked_by: are non-hierarchical association edges; cascading
+            # through them silently flipped the status of unrelated issues —
+            # including sibling epics — during routine epic closure (BUG-2265).
+            children_by_parent: dict[str, list] = {}
+            for i in all_issues:
+                if i.parent:
+                    children_by_parent.setdefault(i.parent.upper(), []).append(i)
 
-        # Transitive closure over parent edges, breadth-first from the epic.
-        descendants: list = []
-        seen: set[str] = {epic_id}
-        queue = list(children_by_parent.get(epic_id, []))
-        while queue:
-            child = queue.pop(0)
-            cid = child.issue_id.upper()
-            if cid in seen:
-                continue
-            seen.add(cid)
-            descendants.append(child)
-            queue.extend(children_by_parent.get(cid, []))
+            # Transitive closure over parent edges, breadth-first from the epic.
+            descendants: list = []
+            seen: set[str] = {epic_id}
+            queue = list(children_by_parent.get(epic_id, []))
+            while queue:
+                child = queue.pop(0)
+                cid = child.issue_id.upper()
+                if cid in seen:
+                    continue
+                seen.add(cid)
+                descendants.append(child)
+                queue.extend(children_by_parent.get(cid, []))
 
-        active = [c for c in descendants if c.status in _OPEN_STATUSES]
-        skipped = [c for c in descendants if c not in active]
+            active = [c for c in descendants if c.status in _OPEN_STATUSES]
+            skipped = [c for c in descendants if c not in active]
 
-        print(f"  Cascading to {len(active)} active parent-children (default: {args.cascade_to}):")
+            print(
+                f"  Cascading to {len(active)} active parent-children (default: {args.cascade_to}):"
+            )
 
-        failures = 0
-        for child in active:
-            try:
-                child_content = child.path.read_text()
-                child_new = update_frontmatter(child_content, _status_updates(args.cascade_to))
-                child.path.write_text(child_new)
-                print(f"    {child.issue_id} → {args.cascade_to}")
-            except OSError as exc:
-                print(f"    {child.issue_id}: FAILED ({exc})", file=sys.stderr)
-                failures += 1
+            failures = 0
+            for child in active:
+                try:
+                    child_content = child.path.read_text()
+                    child_new = update_frontmatter(child_content, _status_updates(args.cascade_to))
+                    atomic_write(child.path, child_new)
+                    print(f"    {child.issue_id} → {args.cascade_to}")
+                except OSError as exc:
+                    print(f"    {child.issue_id}: FAILED ({exc})", file=sys.stderr)
+                    failures += 1
 
-        if skipped:
-            print(f"  ({len(skipped)} children already terminal/other — unchanged)")
+            if skipped:
+                print(f"  ({len(skipped)} children already terminal/other — unchanged)")
 
-        if failures:
-            return 1
+            if failures:
+                return 1
 
     return 0

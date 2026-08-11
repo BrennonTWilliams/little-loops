@@ -57,6 +57,32 @@ def atomic_write_json(path: Path, data: Any) -> None:
     atomic_write(path, payload)
 
 
+def issue_lock_path(issue_path: Path, base_dir: str = ".issues") -> Path:
+    """Path of the issue-tree mutation lock guarding *issue_path* (BUG-3150).
+
+    Issue files live at ``<base_dir>/<type>/<file>.md``, so the lock belongs on
+    the nearest ancestor named *base_dir* — one lock for the whole tree. Every
+    mutator derives it the same way, so callers that only have a path
+    (``session_log``) and callers that have the full config (``set-status``,
+    ``link``) provably agree: a per-type-directory lock would let a
+    ``set-status`` cascade run concurrently with a ``link`` on the same issue.
+
+    When no *base_dir* ancestor exists — a bare path in a scratch directory,
+    which is how several tests call ``append_session_log_entry`` — the lock falls
+    back to the file's own directory. Deriving it positionally (``parent.parent``)
+    would put the lock *outside* that directory, so unrelated callers under a
+    shared parent would contend on one lock file.
+
+    Deliberately distinct from ``.id-alloc.lock`` (``cli/issues/create.py``): ID
+    allocation and issue mutation should not serialize against each other.
+    """
+    resolved = issue_path.resolve()
+    for parent in resolved.parents:
+        if parent.name == base_dir:
+            return parent / ".mutate.lock"
+    return resolved.parent / ".mutate.lock"
+
+
 @contextmanager
 def acquire_lock(path: Path, timeout: float = 10.0) -> Generator[None, None, None]:
     """Acquire an exclusive advisory lock on *path*, polled up to *timeout* seconds.

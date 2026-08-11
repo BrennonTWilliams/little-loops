@@ -10,7 +10,7 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 
-from little_loops.file_utils import atomic_write
+from little_loops.file_utils import acquire_lock, atomic_write, issue_lock_path
 from little_loops.user_messages import get_project_folder
 
 # Regex to isolate the ## Session Log section content
@@ -225,22 +225,34 @@ def append_session_log_entry(
     # full path via .ll/history.db when needed.
     entry = f"- `{command}` - {timestamp} - `{session_jsonl.name}`"
 
-    content = issue_path.read_text()
+    # BUG-3150: the read and the write are one read-modify-write and must be
+    # atomic against a concurrent `ll-issues set-status`/`link` or another
+    # append. The write was already atomic (no torn file), but two concurrent
+    # appends could each read the pre-entry content and one entry would be lost.
+    # Locking here rather than in `cmd_append_log` covers the ll-auto
+    # (issue_lifecycle.py) and ll-parallel (parallel/orchestrator.py) callers
+    # too, which is where concurrent appends actually happen.
+    #
+    # flock contends within a single process as well as across processes, so no
+    # caller may hold this same lock when calling in. `set-status` and `link`
+    # (the other holders) do not call this function.
+    with acquire_lock(issue_lock_path(issue_path)):
+        content = issue_path.read_text()
 
-    if "## Session Log" in content:
-        # Insert entry after the last ## Session Log header (real section, not a fake in code block)
-        idx = content.rfind("## Session Log\n")
-        insert_pos = idx + len("## Session Log\n")
-        content = content[:insert_pos] + entry + "\n" + content[insert_pos:]
-    else:
-        # Add new section before --- Status footer if present, else at end
-        if "\n---\n\n## Status" in content:
-            content = content.replace(
-                "\n---\n\n## Status",
-                f"\n## Session Log\n{entry}\n\n---\n\n## Status",
-            )
+        if "## Session Log" in content:
+            # Insert entry after the last ## Session Log header (real section, not a fake in code block)
+            idx = content.rfind("## Session Log\n")
+            insert_pos = idx + len("## Session Log\n")
+            content = content[:insert_pos] + entry + "\n" + content[insert_pos:]
         else:
-            content += f"\n\n## Session Log\n{entry}\n"
+            # Add new section before --- Status footer if present, else at end
+            if "\n---\n\n## Status" in content:
+                content = content.replace(
+                    "\n---\n\n## Status",
+                    f"\n## Session Log\n{entry}\n\n---\n\n## Status",
+                )
+            else:
+                content += f"\n\n## Session Log\n{entry}\n"
 
-    atomic_write(issue_path, content)
+        atomic_write(issue_path, content)
     return True
