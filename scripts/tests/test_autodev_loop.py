@@ -746,6 +746,22 @@ class TestRecheckAfterSizeReviewMeasurementGateBranch:
         )
         assert remedy == ""
 
+    def test_marker_absent_and_ambiguity_ties_weakest_falls_back_to_reconcile_regression(
+        self,
+    ) -> None:
+        """BUG-3146: the `amb == min(others)` tie boundary. Decided Option A —
+        a real (not "unmeasured") sibling score of `0`/tied-weakest legitimately
+        outranks ambiguity, since the comparison requires ambiguity to be
+        *strictly* weakest, not merely tied."""
+        remedy = _run_pre_deferral_remedy_selector(
+            gate_marker="false",
+            score_ambiguity=14,
+            score_complexity=14,
+            score_test_coverage=25,
+            score_change_surface=25,
+        )
+        assert remedy == "reconcile"
+
 
 class TestRecheckAfterSizeReviewDecisionUnresolvedBranch:
     """ENH-2936: the score-failing deferral cascade must re-check decision_needed
