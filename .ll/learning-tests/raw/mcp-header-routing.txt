@@ -1,0 +1,51 @@
+======================================================================
+ENVIRONMENT
+======================================================================
+  mcp            2.0.0
+  httpx          0.28.1
+  starlette      0.50.0
+  little-loops   1.154.0
+  protocol       2026-07-28
+
+Spike source: scratchpad/spike_sep2663_sep2243.py
+Driven over Server.streamable_http_app(json_response=True, stateless_http=True)
+via starlette.testclient.TestClient (drives the ASGI lifespan).
+
+mcp version: 2.0.0  |  protocol: 2026-07-28
+==============================================================================
+
+[PASS] C3 MethodBinding rejects tools/call
+       ValueError: MethodBinding cannot bind spec method 'tools/call'; extension methods are additive — use Extension.intercept_tool_call or Server.middleware to wrap core behaviour
+
+[PASS] C3b MethodBinding accepts tasks/get
+       constructed cleanly
+
+[PASS] C4a classify_inbound_request REQUIRES the decoded body (headers alone insufficient)
+       signature: (body: collections.abc.Mapping[str, typing.Any], *, headers: collections.abc.Mapping[str, str] | None = None, supported_modern_versions: collections.abc.Sequence[str] = ('2026-07-28',)) -> mcp.shared.inbound.InboundModernRoute | mcp.shared.inbound.InboundLadderRejection
+
+[PASS] C4b body is parsed BEFORE headers are validated (no pre-parse policy hook)
+       json.loads at line 343; classify_inbound_request at line 381
+
+[PASS] C1 tools/call returns SEP-2663 CreateTaskResult unsieved over the wire
+       {"jsonrpc": "2.0", "id": 1, "result": {"resultType": "task", "taskId": "786512e2-9e0d-44bd-8f29-789f320fe840", "status": "working", "statusMessage": "The operation is now in progress.", "createdAt": "2026-08-11T10:30:00Z", "lastUpdatedAt": "2026-08-11T10:30:00Z", "ttlMs": 60000, "pollIntervalMs": 5000, "_meta": {"io.modelcontextprotocol/serverInfo": {"name": "spike", "version": "0.0.0"}}}}
+
+[PASS] C2 tasks/get registers and dispatches
+       {"jsonrpc": "2.0", "id": 1, "result": {"resultType": "complete", "taskId": "786512e2-9e0d-44bd-8f29-789f320fe840", "status": "completed", "_meta": {"io.modelcontextprotocol/serverInfo": {"name": "spike", "version": "0.0.0"}}}}
+
+[PASS] C2 tasks/update registers and dispatches
+       {"jsonrpc": "2.0", "id": 1, "result": {"resultType": "complete", "taskId": "786512e2-9e0d-44bd-8f29-789f320fe840", "status": "working", "_meta": {"io.modelcontextprotocol/serverInfo": {"name": "spike", "version": "0.0.0"}}}}
+
+[PASS] C2 tasks/cancel registers and dispatches
+       {"jsonrpc": "2.0", "id": 1, "result": {"resultType": "complete", "taskId": "786512e2-9e0d-44bd-8f29-789f320fe840", "status": "cancelled", "_meta": {"io.modelcontextprotocol/serverInfo": {"name": "spike", "version": "0.0.0"}}}}
+
+[PASS] C5 ASGI middleware denies on Mcp-Method/Mcp-Name pre-parse
+       status=403 body={"jsonrpc": "2.0", "id": null, "error": {"code": -32001, "message": "policy denied tools/call/forbidden_tool"}}
+
+[PASS] C5b middleware observed routing headers without reading the body
+       observed: [{'method': 'tools/call', 'name': 'start_run'}, {'method': 'tasks/get', 'name': None}, {'method': 'tasks/update', 'name': None}, {'method': 'tasks/cancel', 'name': None}, {'method': 'tools/call', 'name': 'forbidden_tool'}]
+
+[PASS] C6 Extension.intercept_tool_call short-circuits tools/call with CreateTaskResult on the LOWLEVEL Server via compose_tool_call_handler
+       {"jsonrpc": "2.0", "id": 1, "result": {"resultType": "task", "taskId": "786512e2-9e0d-44bd-8f29-789f320fe840", "status": "working", "statusMessage": "The operation is now in progress.", "createdAt": "2026-08-11T10:30:00Z", "lastUpdatedAt": "2026-08-11T10:30:00Z", "ttlMs": 60000, "pollIntervalMs": 5000, "_meta": {"io.modelcontextprotocol/serverInfo": {"name": "spike2", "version": "0.0.0"}}}}
+
+==============================================================================
+11/11 claims passed
