@@ -18,6 +18,7 @@ relates_to:
 - ENH-3144
 - FEAT-3145
 - FEAT-3149
+- FEAT-3151
 ---
 
 ## Summary
@@ -108,6 +109,26 @@ The ordering is strict:
 - **Tier 2 blocks tier 3, and tier 3 is additionally evidence-gated.** Until
   that evidence exists, anything that spawns an agent or runs for minutes stays
   off the tool surface by design.
+
+  > **Tier-3 split 2026-08-11.** Tier 2 shipped (FEAT-3149, commit `24e2c0c8`),
+  > so the *ordering* half of this rule is now satisfied. The *evidence* half is
+  > not, and this epic has not been amended to say otherwise.
+  >
+  > Tier 3 is now two issues, split along exactly the line this rule draws:
+  >
+  > - **FEAT-3145** — `tasks/get` + `tasks/cancel` + the transport policy gate.
+  >   Spawns nothing; `tasks/cancel` signals an already-running process. This
+  >   sits *inside* the sentence above rather than across it, and is a plausible
+  >   way to **generate** the tier-3 evidence rather than assume it: a host that
+  >   polls runs from a second machine is the observable "wants to drive runs"
+  >   behavior this gate is waiting for.
+  > - **FEAT-3151** — the SEP-2663 start path. This is the part that spawns an
+  >   agent, and is what the gate holds back.
+  >
+  > **Opening the gate is a decision to record here, not in the child issues.**
+  > If FEAT-3151 is implemented, amend this bullet to state that the gate opened
+  > and on what evidence — otherwise the children permanently contradict their
+  > parent and every automation pass re-derives "gated, do not implement."
 
 ## Spec target: MCP 2026-07-28
 
