@@ -18,12 +18,13 @@ testable: true
 learning_tests_required:
 - pytest
 verify_verdict: VALID
-confidence_score: 90
-outcome_confidence: 75
-score_complexity: 14
-score_test_coverage: 18
-score_ambiguity: 18
+confidence_score: 100
+outcome_confidence: 85
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 25
 score_change_surface: 25
+reconcile_attempted: true
 ---
 
 # ENH-3142: prepatch_check.py core — candidate identification, execution, verdict, and base_dirty-aware reporting
@@ -321,7 +322,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
   `collect_candidates()`, and the `PrePatchCandidate` / `PrePatchTestOutcome` /
   `PrePatchEvidence` dataclasses per § Program Design. Consumes ENH-2973's
   `test_file_patterns` module, `test_tamper_guard`'s AST/ref primitives
-  (`read_paths_at_ref` and the promoted `test_functions` — **not**
+  (`read_paths_at_ref` and the now-public `extract_test_functions()`,
+  landed by ENH-3152 at `test_tamper_guard.py:369-380` — **not**
   `filter_weakening_findings`, see Design Notes), and ENH-3141's
   `setup_prepatch_worktree()`. **No** FSM, CLI, or database imports.
 - `scripts/little_loops/test_tamper_guard.py` — **not modified here.** The
@@ -331,22 +333,23 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `scripts/little_loops/history_reader.py` — additive `base_dirty` reader
   alongside `read_base_sha()` (`:1816`), which returns the SHA only.
 - `scripts/little_loops/config-schema.json` — add the off-switch's schema
-  entry as a peer to the `"confidence_gate"` block (`:457-477`).
+  entry as a **top-level** `properties.prepatch_check` block, peer to
+  `properties.decisions` (`:560`) and `properties.learning_tests` (`:1052`) —
+  not nested under `properties.commands` like `confidence_gate` (`:457-477`),
+  which is a sub-config under a different, non-peer pattern.
 - `scripts/little_loops/config/features.py` — add `PrePatchCheckConfig`
   (`enabled: bool = False`, `timeout_s: int = 300`,
   `modified_hard: bool = False`, plus `from_dict()`), following
-  `LearningTestsConfig`'s shape (`:495-530`).
-  > ⚠ Superseded — the original directive named the wrong module and the
-  > wrong shape. The peer dataclasses live in `config/features.py`, not
-  > `config/automation.py`, and this config is not a lone `enabled` flag
-  > (see Design Notes).
+  `LearningTestsConfig`'s shape (`:494-529`).
 - `scripts/little_loops/config/core.py` — wire `PrePatchCheckConfig` into
   `BRConfig` at the three touchpoints `LearningTestsConfig`/`DecisionsConfig`
-  use: construction (`_parse_config()`, `:302-306`), a `@property
-  prepatch_check` (`:379-386`, adjacent to `learning_tests`/`decisions`), and
-  `to_dict()` serialization (`:802-812`). Not in the issue's original Files to
-  Modify list; required because `test_config_schema.py::TestToDictSchemaParity`
-  (`:1099-1146`) diffs `config-schema.json`'s top-level `properties` against
+  use: construction (`_parse_config()`, `:304-306`), a `@property
+  prepatch_check` (adjacent to `learning_tests` `:382-384` and `decisions`
+  `:392-394`), and `to_dict()` serialization (adjacent to the `learning_tests`
+  block `:809-814` and `decisions` block `:816-820`). Not in the issue's
+  original Files to Modify list; required because
+  `test_config_schema.py::TestToDictSchemaParity` (`:1099-1146`) diffs
+  `config-schema.json`'s top-level `properties` against
   `BRConfig.to_dict().keys()` and fails if the schema entry lands without this
   wiring. [`/ll:wire-issue` finding]
 
@@ -494,6 +497,16 @@ _Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
 - The `confidence_gate` schema block cited as a sibling-peer target (`config-schema.json:457-477`) is nested at `properties.commands.properties.confidence_gate` — under the `commands` section, not top-level. `decisions` and `learning_tests` (the dataclasses this issue's config actually mirrors) are top-level schema entries (`properties.decisions` at `:560`, `properties.learning_tests` at `:1052`). The still-open parent-section choice should track the dataclass's `features.py` peers (top-level) unless there's a specific reason to nest it under `commands` instead.
 - A concrete precedent exists for testing a `subprocess.TimeoutExpired` side effect against a timeout-bounded subprocess call: `scripts/tests/test_learning_tests_gate.py:336` mocks `side_effect=subprocess.TimeoutExpired(cmd="ll-loop", timeout=86400 + 60)` against `learning_tests/gate.py::run_learning_gate_for_issue()`, whose own `subprocess.run(..., timeout=...)` call is wrapped in `try/except subprocess.TimeoutExpired` (`gate.py:293-313`) returning a value distinct from its returncode-failure path — the same shape this issue's own timeout test can model.
 
+_Added by `/ll:refine-issue` — 2026-08-12 — based on codebase analysis:_
+
+- **ENH-3152 has landed** (status `done`, completed 2026-08-12T05:21:13Z, after this issue's last refine on 2026-08-10). `extract_test_functions()` is now public at `test_tamper_guard.py:369-380`, confirmed unchanged in shape from what this issue's Program Design assumes (walks `tree.body` only — top-level `FunctionDef`/`AsyncFunctionDef` starting with `test`, `None` on `SyntaxError`). Its scope limitation (class-method tests excluded, falling back to file-level attribution per this issue's Design Notes) is now test-locked at `scripts/tests/test_test_tamper_guard.py:845-850` (`TestExtractTestFunctions.test_class_method_tests_are_not_returned`), whose docstring states verbatim: "Documented scope limitation: walks tree.body, not ast.walk." Both `depends_on` entries (ENH-3141, ENH-3152) are now `done`; this issue is unblocked.
+- **Line-anchor drift** since last refine, caused by an unrelated commit (`3ca8415a`, 2026-08-11) inserting a new `McpTransportPolicyConfig` dataclass into `config/features.py` between `LearningTestsConfig` and `DecisionsConfig`:
+  - `config/features.py` `DecisionsConfig`: cited `:532-551`, now `:611-632`.
+  - `config/core.py` `learning_tests` `@property`: cited `:379-386`, now `:382-384`; `decisions` `@property` now `:392-394`.
+  - `config/core.py` `to_dict()` learning_tests block: cited `:802-812`, now `:809-814`; decisions block now `:816-820`.
+  - `docs/reference/API.md` `BRConfig` Properties table: `decisions`/`learning_tests` rows cited `:158-159`, now `:159-160`.
+  - Confirmed still accurate (no drift): `LearningTestsConfig` (`:494-529`, off by ~1 line from the `:495-530` citation), `config/core.py` construction block (`:304-306`), `config-schema.json` `confidence_gate` block (`:457-482`), `test_config.py`'s `TestLearningTestsConfig`/`test_enabled_defaults_to_false`/`test_enabled_from_dict`/`TestBRConfigLearningTestsIntegration` (`:3001`, `:3015`, `:3020`, `:3075-3107`), `test_config_schema.py`'s `test_learning_tests_in_schema`/`TestToDictSchemaParity` (`:247`, `:1099-1146`), `docs/reference/CONFIGURATION.md`'s `learning_tests` header/`confidence_gate.enabled` row (`:891`, `:429-431`), `docs/reference/API.md`'s `history_reader` module row (`:54`).
+
 ## Program Design
 
 ### Types
@@ -632,6 +645,13 @@ _Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
 - Nested-dataclass `to_dict()` serialization in this codebase consistently uses a list comprehension calling each item's own `to_dict()` — `GapAnalysis.to_dict()` (`issue_history/models.py:294-302`) returns `"gaps": [g.to_dict() for g in self.gaps]`; same shape at `learning_tests/__init__.py:65-74` (`LearnTestRecord.to_dict()`), `analytics/variance.py:71`, `issue_history/rework.py:123`. No alternate pattern (e.g. `dataclasses.asdict()`) appears anywhere in this role. `PrePatchEvidence.to_dict()`'s `outcomes` field should follow this exact shape: `[o.to_dict() for o in self.outcomes]`.
 - `OrchestrationRun` (`history_reader.py:220-236`) already carries `base_dirty: int | None = None` as a plain unconverted int field alongside `base_sha: str | None = None`; the general `list_orchestration_runs`-style query at `history_reader.py:1738` selects both columns inline with no bool conversion. The int→bool conversion this issue's new `base_dirty` reader needs is unique to the point-lookup reader contract being added — it does not exist anywhere else in `history_reader.py` today.
 
+_Added by `/ll:refine-issue` — 2026-08-12 — based on codebase analysis:_
+
+- Re-confirmed unchanged since last refine: `read_paths_at_ref()` (`test_tamper_guard.py:112`, `{path: _git(repo_root, "show", f"{ref}:{path}") for path in paths}`, missing-at-ref paths map to `None`), `read_base_sha()` (`history_reader.py:1816-1821`, query dispatch at `:1849-1861` — `run_id`-present does an exact `run_id + issue_id` lookup, `run_id`-absent does `WHERE issue_id = ? AND base_sha IS NOT NULL ORDER BY id DESC LIMIT 1`, never raises), `setup_prepatch_worktree()` (`worktree_utils.py:329-337`, exact signature match), and `pytest_history_plugin.LLHistoryPlugin.pytest_runtest_logreport()` (`:101-116`, category dispatch unchanged).
+- `OrchestrationRun.base_dirty` (`history_reader.py:236`) is confirmed still `int | None = None` with no existing point-lookup reader — the only existing reader touching the column is `recent_orchestration_runs()` (`:1722-1762`, a list/filter query that happens to select the column as part of the full row shape, not a single-value keyed lookup). The additive `base_dirty` reader this issue must add remains genuinely net-new.
+- No JUnit-XML parsing (`xml.etree.ElementTree` against `--junit-xml` output) and no subprocess-pytest node-ID-targeting precedent exists anywhere in `scripts/little_loops/` as of this refine pass — re-confirmed after ENH-3141 and ENH-3152 landed; neither touched pytest invocation. `scripts/little_loops/prepatch_check.py` remains entirely greenfield.
+- Nested-dataclass `to_dict()` convention re-confirmed as list-comprehension-of-child-`.to_dict()` (e.g. `GapAnalysis.to_dict()`, `issue_history/models.py:294-302`, now at class line `:285`). `dataclasses.asdict()` exists elsewhere (`mcp_server/tools.py:134`, `cli/history.py:392,410,457`) but only for flat records with no nested-dataclass-list fields — that specific "bundle with mixed dataclass-list + scalar fields, each item self-serializing" shape has no `asdict()` precedent anywhere in the codebase, confirming the hand-rolled `to_dict()` choice for `PrePatchEvidence`.
+
 ## Scope Boundaries
 
 - **Not this issue**: the pre-patch worktree fork itself, content-write, or
@@ -746,6 +766,9 @@ _Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-12T18:15:01 - `7cde9f76-e1e6-4fcf-9dfe-5de92f713a63.jsonl`
+- `/ll:reconcile-issue` - 2026-08-12T18:12:36 - `b3e9a0eb-04f5-44c7-86be-e2fecad3a581.jsonl`
+- `/ll:refine-issue` - 2026-08-12T18:08:00 - `48d1933d-4a37-43f5-a750-25c3548e0b10.jsonl`
 - pre-implementation review - 2026-08-11 - resolved 4 blocking gaps (`test_files`
   post-patch contract, missing verdict/`flag` fields, JUnit-XML result
   extraction, uncallable `run_prepatch_check()` signature) and corrected 4
