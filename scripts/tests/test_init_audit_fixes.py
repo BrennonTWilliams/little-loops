@@ -776,6 +776,9 @@ _ALLOWED_UNTOUCHED_SECTIONS = frozenset(
         "mcp",
         "observability",
         "queue",
+        # ENH-3142: off by default (enabled: bool = False); a project only needs this
+        # section to opt in, same posture as tamper_guard below.
+        "prepatch_check",
         "refine_status",
         "skill_budget",
         "sprints",

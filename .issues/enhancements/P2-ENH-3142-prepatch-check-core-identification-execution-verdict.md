@@ -4,8 +4,9 @@ title: "prepatch_check.py core \u2014 candidate identification, execution, verdi
   \ and base_dirty-aware reporting"
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: 2026-08-10
+completed_at: '2026-08-12T19:04:23Z'
 epic: EPIC-2856
 parent: ENH-2991
 depends_on:
@@ -760,12 +761,27 @@ _Added by `/ll:refine-issue` — 2026-08-12 — based on codebase analysis:_
   reader; consumes ENH-3141's (done) worktree primitive.
 - **Breaking Change**: No — new module and additive reader/config only.
 
+## Resolution
+
+Implemented `scripts/little_loops/prepatch_check.py` (`run_prepatch_check()`,
+`collect_candidates()`, `PrePatchCandidate`/`PrePatchTestOutcome`/`PrePatchEvidence`),
+the additive `read_base_dirty()` reader in `history_reader.py`, and the
+top-level `prepatch_check` config block (`PrePatchCheckConfig` in
+`config/features.py`, wired into `BRConfig`, schema, and `ll-init`'s untouched-
+section allowlist). 36 new tests in `test_prepatch_check.py` plus sibling
+classes in `test_history_reader.py`/`test_config.py`/`test_config_schema.py`;
+docs updated in `API.md` and `CONFIGURATION.md`. Full suite green
+(19019 passed), `ruff check`/`ruff format` clean, `mypy` clean on all changed
+files.
+
 ## Status
 
-**Open** | Created: 2026-08-10 | Priority: P2
+**Done** | Created: 2026-08-10 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-12T19:03:28 - `436ddeaa-1886-42d9-b97f-73e55dd913c6.jsonl`
+- `/ll:ready-issue` - 2026-08-12T18:17:41 - `95710935-6e8e-48bc-b7d6-f9447ab6f33d.jsonl`
 - `/ll:confidence-check` - 2026-08-12T18:15:01 - `7cde9f76-e1e6-4fcf-9dfe-5de92f713a63.jsonl`
 - `/ll:reconcile-issue` - 2026-08-12T18:12:36 - `b3e9a0eb-04f5-44c7-86be-e2fecad3a581.jsonl`
 - `/ll:refine-issue` - 2026-08-12T18:08:00 - `48d1933d-4a37-43f5-a750-25c3548e0b10.jsonl`

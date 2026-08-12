@@ -288,6 +288,34 @@ class TestConfigSchema:
         assert "skip_packages" in disc_props
         assert disc_props["skip_packages"]["type"] == "array"
 
+    def test_prepatch_check_in_schema(self) -> None:
+        """prepatch_check must be declared in config-schema.json (ENH-3142).
+
+        The top-level properties block has additionalProperties: false, so a
+        config containing prepatch_check will be rejected unless the property
+        is declared here.
+        """
+        data = json.loads(_load_schema_text())
+        assert "prepatch_check" in data["properties"], (
+            "prepatch_check is not declared in config-schema.json; configs using it will be "
+            "rejected by additionalProperties: false"
+        )
+        pp_props = data["properties"]["prepatch_check"]["properties"]
+
+        assert "enabled" in pp_props
+        assert pp_props["enabled"]["type"] == "boolean"
+        assert pp_props["enabled"].get("default") is False
+
+        assert "timeout_s" in pp_props
+        assert pp_props["timeout_s"]["type"] == "integer"
+        assert pp_props["timeout_s"].get("default") == 300
+
+        assert "modified_hard" in pp_props
+        assert pp_props["modified_hard"]["type"] == "boolean"
+        assert pp_props["modified_hard"].get("default") is False
+
+        assert data["properties"]["prepatch_check"].get("additionalProperties") is False
+
     def test_decisions_in_schema(self) -> None:
         """decisions must be declared in config-schema.json.
 

@@ -924,6 +924,26 @@ Run `/ll:configure learning-tests` to enable and set up the registry directory.
 
 See [LEARNING_TESTS_GUIDE.md](../guides/LEARNING_TESTS_GUIDE.md) for the full workflow.
 
+### `prepatch_check`
+
+Pre-patch check configuration (ENH-3142). When enabled, candidate tests added or modified by a verification step's diff are run against a worktree forked at the pre-patch base — a test that passes without the change it claims to demonstrate is flagged rather than silently accepted as evidence.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | `bool` | `false` | Master switch. When disabled, `little_loops.prepatch_check.run_prepatch_check()` records the skip via `skipped_reason` rather than omitting the section. |
+| `timeout_s` | `int` | `300` | Per-invocation time box (seconds) for the pre-patch pytest subprocess. A candidate test that hangs pre-patch (waiting on a fixture or port that only exists post-patch) is killed at this limit; every candidate with no reported result from that invocation is categorized `timeout`. |
+| `modified_hard` | `bool` | `false` | Escalate a modified-and-passes-pre-patch outcome from `soft` to `hard`. A newly *added* test that passes pre-patch is always `hard`-flagged; a modified test is `soft` by default since legitimate assertion-strengthening routinely passes pre-patch too. |
+
+```json
+{
+  "prepatch_check": {
+    "enabled": false,
+    "timeout_s": 300,
+    "modified_hard": false
+  }
+}
+```
+
 ### `loops`
 
 FSM loop settings:

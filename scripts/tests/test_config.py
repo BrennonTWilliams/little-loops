@@ -51,6 +51,7 @@ from little_loops.config import (
     OTelEventsConfig,
     ParallelAutomationConfig,
     PreCompactRubricConfig,
+    PrePatchCheckConfig,
     ProjectConfig,
     QueueConfig,
     RateLimitsConfig,
@@ -4026,3 +4027,79 @@ class TestPreCompactRubricConfig:
         """from_dict({}) returns a valid default instance without raising."""
         config = PreCompactRubricConfig.from_dict({})
         assert isinstance(config, PreCompactRubricConfig)
+
+
+class TestPrePatchCheckConfig:
+    """Tests for PrePatchCheckConfig dataclass (ENH-3142)."""
+
+    def test_enabled_defaults_to_false(self) -> None:
+        """enabled defaults to False when absent."""
+        config = PrePatchCheckConfig.from_dict({})
+        assert config.enabled is False
+
+    def test_enabled_from_dict(self) -> None:
+        """enabled is read from config dict."""
+        config = PrePatchCheckConfig.from_dict({"enabled": True})
+        assert config.enabled is True
+
+    def test_timeout_s_defaults_to_300(self) -> None:
+        """timeout_s defaults to 300 when absent."""
+        config = PrePatchCheckConfig.from_dict({})
+        assert config.timeout_s == 300
+
+    def test_timeout_s_from_dict(self) -> None:
+        """timeout_s is read from config dict."""
+        config = PrePatchCheckConfig.from_dict({"timeout_s": 60})
+        assert config.timeout_s == 60
+
+    def test_modified_hard_defaults_to_false(self) -> None:
+        """modified_hard defaults to False when absent."""
+        config = PrePatchCheckConfig.from_dict({})
+        assert config.modified_hard is False
+
+    def test_modified_hard_from_dict(self) -> None:
+        """modified_hard is read from config dict."""
+        config = PrePatchCheckConfig.from_dict({"modified_hard": True})
+        assert config.modified_hard is True
+
+    def test_to_dict_round_trips(self) -> None:
+        """to_dict() emits every field, round-trippable via from_dict()."""
+        config = PrePatchCheckConfig(enabled=True, timeout_s=60, modified_hard=True)
+        d = config.to_dict()
+        assert d == {"enabled": True, "timeout_s": 60, "modified_hard": True}
+        assert PrePatchCheckConfig.from_dict(d) == config
+
+
+class TestBRConfigPrePatchCheckIntegration:
+    """Tests for BRConfig.prepatch_check integration (ENH-3142)."""
+
+    def test_prepatch_check_defaults_when_absent(self, temp_project_dir: Path) -> None:
+        """BRConfig.prepatch_check returns defaults when key is absent."""
+        config = BRConfig(temp_project_dir)
+        assert config.prepatch_check.enabled is False
+        assert config.prepatch_check.timeout_s == 300
+        assert config.prepatch_check.modified_hard is False
+
+    def test_prepatch_check_override_from_config(self, temp_project_dir: Path) -> None:
+        """Custom prepatch_check values are loaded from config file."""
+        sample_config: dict[str, Any] = {
+            "prepatch_check": {"enabled": True, "timeout_s": 120, "modified_hard": True}
+        }
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        assert config.prepatch_check.enabled is True
+        assert config.prepatch_check.timeout_s == 120
+        assert config.prepatch_check.modified_hard is True
+
+    def test_prepatch_check_round_trip_to_dict(self, temp_project_dir: Path) -> None:
+        """prepatch_check key appears in to_dict() with correct structure."""
+        config = BRConfig(temp_project_dir)
+        d = config.to_dict()
+        assert "prepatch_check" in d
+        assert d["prepatch_check"] == {
+            "enabled": False,
+            "timeout_s": 300,
+            "modified_hard": False,
+        }

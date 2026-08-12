@@ -1869,6 +1869,55 @@ def read_base_sha(
     return row["base_sha"] or None
 
 
+def read_base_dirty(
+    issue_id: str,
+    *,
+    run_id: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> bool | None:
+    """Resolve the dequeue-time ``base_dirty`` flag stamped for *issue_id* (ENH-3142).
+
+    Additive sibling of :func:`read_base_sha`, mirroring its query dispatch
+    exactly (``run_id``-present does an exact ``run_id + issue_id`` lookup;
+    ``run_id``-absent takes the most recent *stamped* row). ``base_dirty`` is
+    stored as ``int | None`` (SQLite has no native bool); this reader converts
+    at the return boundary.
+
+    Returns:
+        ``True``/``False`` when a stamped row is found with a non-NULL
+        ``base_dirty``, ``None`` when the database is missing or unreadable,
+        no matching row exists, or the row's ``base_dirty`` is NULL. Never
+        raises.
+    """
+    if not issue_id:
+        return None
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return None
+    try:
+        if run_id is not None:
+            row = conn.execute(
+                "SELECT base_dirty FROM orchestration_runs WHERE run_id = ? AND issue_id = ?",
+                (run_id, issue_id),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT base_dirty FROM orchestration_runs "
+                "WHERE issue_id = ? AND base_dirty IS NOT NULL "
+                "ORDER BY id DESC LIMIT 1",
+                (issue_id,),
+            ).fetchone()
+    except sqlite3.Error:
+        logger.warning("history_reader: read_base_dirty query failed", exc_info=True)
+        return None
+    finally:
+        conn.close()
+    if row is None or row["base_dirty"] is None:
+        return None
+    return bool(row["base_dirty"])
+
+
 _LOOP_RUN_COLUMNS = (
     "run_id, loop_name, started_at, ended_at, final_state, iterations, "
     "terminated_by, error, evaluator_score, diagnostics_path, head_sha, branch"

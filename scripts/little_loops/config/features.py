@@ -1059,6 +1059,32 @@ class ObservabilityConfig:
 
 
 @dataclass
+class PrePatchCheckConfig:
+    """Pre-patch check config (ENH-3142) — off-switch, time box, modified-test severity."""
+
+    enabled: bool = False
+    timeout_s: int = 300
+    modified_hard: bool = False
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> PrePatchCheckConfig:
+        """Create PrePatchCheckConfig from dictionary."""
+        return cls(
+            enabled=data.get("enabled", False),
+            timeout_s=data.get("timeout_s", 300),
+            modified_hard=data.get("modified_hard", False),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize back to the config dict shape (round-trips ll init/configure)."""
+        return {
+            "enabled": self.enabled,
+            "timeout_s": self.timeout_s,
+            "modified_hard": self.modified_hard,
+        }
+
+
+@dataclass
 class WebhookEventsConfig:
     """WebhookTransport configuration."""
 

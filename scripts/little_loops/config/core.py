@@ -38,6 +38,7 @@ from little_loops.config.features import (
     LoopsConfig,
     McpConfig,
     ObservabilityConfig,
+    PrePatchCheckConfig,
     QueueConfig,
     ScanConfig,
     SprintsConfig,
@@ -337,6 +338,9 @@ class BRConfig:
         self._history = HistoryConfig.from_dict(self._raw_config.get("history", {}))
         self._queue = QueueConfig.from_dict(self._raw_config.get("queue", {}))
         self._tamper_guard = TamperGuardConfig.from_dict(self._raw_config.get("tamper_guard", {}))
+        self._prepatch_check = PrePatchCheckConfig.from_dict(
+            self._raw_config.get("prepatch_check", {})
+        )
 
     @property
     def project(self) -> ProjectConfig:
@@ -477,6 +481,11 @@ class BRConfig:
     def queue(self) -> QueueConfig:
         """Get ll-queue persistence configuration."""
         return self._queue
+
+    @property
+    def prepatch_check(self) -> PrePatchCheckConfig:
+        """Get pre-patch check configuration (ENH-3142)."""
+        return self._prepatch_check
 
     @property
     def extensions(self) -> list[str]:
@@ -945,6 +954,7 @@ class BRConfig:
             "queue": {
                 "db_path": self._queue.db_path,
             },
+            "prepatch_check": self._prepatch_check.to_dict(),
             "sync": {
                 "enabled": self._sync.enabled,
                 "provider": self._sync.provider,

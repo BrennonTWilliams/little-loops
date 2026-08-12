@@ -2020,6 +2020,29 @@
       },
       "additionalProperties": false
     },
+    "prepatch_check": {
+      "type": "object",
+      "description": "Pre-patch check configuration (ENH-3142): candidate tests are run against the pre-patch worktree to detect evidence that passes without the change it claims to demonstrate.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Master switch for the pre-patch check. When false, the bundle records the skip via skipped_reason rather than omitting the section.",
+          "default": false
+        },
+        "timeout_s": {
+          "type": "integer",
+          "description": "Per-invocation time box (seconds) for the pre-patch pytest subprocess.",
+          "default": 300,
+          "minimum": 1
+        },
+        "modified_hard": {
+          "type": "boolean",
+          "description": "Escalate a modified-and-passes-pre-patch outcome from soft to hard flag.",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    },
     "skill_budget": {
       "type": "object",
       "description": "Skill file token-budget enforcement, consumed by ll-verify-skill-budget / ll-doctor's skill-budget check (cli/docs.py, cli/doctor.py:536-555). Precedence: --threshold CLI flag > skill_budget.threshold_tokens here > built-in default.",

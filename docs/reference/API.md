@@ -51,7 +51,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.user_messages` | User message extraction from Claude logs |
 | `little_loops.workflow_sequence` | Workflow sequence analysis for multi-step patterns |
 | `little_loops.goals_parser` | Product goals file parsing |
-| `little_loops.history_reader` | Typed read-only query module for `.ll/history.db`. Exports event dataclasses including `UserCorrection`, `FileEvent`, `SearchResult`, `IssueEvent`, `SessionRef` (ENH-1711), `OrchestrationRun` (ENH-2492), `LoopRun` (ENH-2463), `LearningTestEvent` (ENH-2466), and `LifecycleEvent` (ENH-2495); query functions include `find_user_corrections()`, `recent_file_events()`, `search()`, `related_issue_events()`, `sessions_for_issue()`, effort/velocity/session metadata helpers, conversation and compaction readers, skill/commit/test/usage readers, plus `recent_orchestration_runs()` / `aggregate_orchestration_runs()` (ENH-2492), `recent_loop_runs()` / `find_loop_run()` / `aggregate_loop_runs()` (ENH-2463), `waste_attribution()` (ENH-2722, per-loop tokens-wasted rollup joined on `run_id`), `recent_learning_tests()` / `find_learning_test()` (ENH-2466), and `recent_lifecycle_events()` / `handoff_frequency()` (ENH-2495). All functions return empty lists or `None` on missing/corrupt DB. |
+| `little_loops.history_reader` | Typed read-only query module for `.ll/history.db`. Exports event dataclasses including `UserCorrection`, `FileEvent`, `SearchResult`, `IssueEvent`, `SessionRef` (ENH-1711), `OrchestrationRun` (ENH-2492), `LoopRun` (ENH-2463), `LearningTestEvent` (ENH-2466), and `LifecycleEvent` (ENH-2495); query functions include `find_user_corrections()`, `recent_file_events()`, `search()`, `related_issue_events()`, `sessions_for_issue()`, effort/velocity/session metadata helpers, conversation and compaction readers, skill/commit/test/usage readers, plus `recent_orchestration_runs()` / `aggregate_orchestration_runs()` (ENH-2492), `read_base_sha()` / `read_base_dirty()` (ENH-2866 / ENH-3142, dequeue-time base-commit and dirty-tree readers), `recent_loop_runs()` / `find_loop_run()` / `aggregate_loop_runs()` (ENH-2463), `waste_attribution()` (ENH-2722, per-loop tokens-wasted rollup joined on `run_id`), `recent_learning_tests()` / `find_learning_test()` (ENH-2466), and `recent_lifecycle_events()` / `handoff_frequency()` (ENH-2495). All functions return empty lists or `None` on missing/corrupt DB. |
 | `little_loops.sync` | GitHub Issues bidirectional sync |
 | `little_loops.session_log` | Session log linking for issue files |
 | `little_loops.file_utils` | Shared file I/O utilities (atomic writes) |
@@ -98,6 +98,7 @@ pip install -e "./scripts[dev]"
 `extract_test_functions()`, with `TamperFinding` / `TamperReport` / `TestStrength` / `ConfigTarget` dataclasses. |
 | `little_loops.transport` | EventBus transport abstraction (`Transport` Protocol + `send`/`close`) with built-in `JsonlTransport`, `UnixSocketTransport`, and `OTelTransport` sinks. |
 | `little_loops.worktree_utils` | Shared worktree setup/cleanup utilities used by `ll-parallel`, `ll-sprint`, and `ll-loop`. See [WORKTREES.md](WORKTREES.md) for the file-copy contract. |
+| `little_loops.prepatch_check` | Pre-patch check core (ENH-3142) — `run_prepatch_check()`, `collect_candidates()`, and the `PrePatchCandidate` / `PrePatchTestOutcome` / `PrePatchEvidence` dataclasses. Deterministic, no LLM/FSM/CLI/database access; runs candidate tests from a step diff against the pre-patch worktree ENH-3141's `setup_prepatch_worktree()` produces to flag evidence that passes without the change it claims to demonstrate. |
 | `little_loops.mcp_call` | Thin CLI wrapper for direct MCP tool invocation via JSON-RPC |
 | `little_loops.mcp_server` | `ll-mcp` MCP server (2026-07-28 spec, FEAT-3135) — `main_mcp` entry point plus the five read-only tools (`issues_query`, `issue_get`, `history_search`, `deps_check`, `capabilities`), the `ll://` resource surface (FEAT-3136): issue files, `.ll/ll-goals.md`, and `docs/` served under `ll://issues/<ID>`, `ll://goals`, `ll://docs/<relative-path>`, and the prompts-from-skills surface (FEAT-3137): every discovered `SKILL.md` advertised as an MCP prompt (name/description/args from frontmatter), all resolved against discovery-time enumerations. Serves over stdio by default; `ll-mcp --http` or `LL_MCP_TRANSPORT=http` switches to streamable HTTP on loopback (FEAT-3143), same server, same tool/resource/prompt surfaces. |
 | `little_loops.advisor` | Capability-rank comparison for the advisor consult path (FEAT-3108) — `MODEL_RANKS`, `rank_model`, `check_floor`. |
@@ -158,6 +159,7 @@ BRConfig(project_root: Path)
 | `events` | `EventsConfig` | Event transport/emission settings |
 | `decisions` | `DecisionsConfig` | Decisions and rules log configuration |
 | `learning_tests` | `LearningTestsConfig` | Learning test registry settings |
+| `prepatch_check` | `PrePatchCheckConfig` | Pre-patch check configuration (ENH-3142) |
 | `analytics_capture` | `AnalyticsCaptureConfig` | Analytics capture sub-settings (see [CONFIGURATION.md#analytics](CONFIGURATION.md#analytics)) |
 | `history` | `HistoryConfig` | History.db consumer tuning (see [CONFIGURATION.md#history](CONFIGURATION.md#history)) |
 | `extensions` | `list[str]` | Extension module paths to load |
@@ -8502,6 +8504,42 @@ Read-side API for `context_pressure_events` rows (ENH-2507's schema, written by 
 
 **CLI:** `ll-session recent --kind context_pressure` and `ll-session search --fts "<session_id>" --kind context_pressure` work automatically via the generic `VALID_KINDS`/`_KIND_TABLE` dispatch. `ll-ctx-stats` additionally renders an aggregate "Context pressure curve" block (peak/avg pct and level-crossing counts across all sessions) via `cli/ctx_stats.py::_aggregate_context_pressure()`.
 
+## little_loops.prepatch_check
+
+Pre-patch check core (ENH-3142): identifies candidate tests from a step diff, runs them against the pre-patch worktree ENH-3141's `setup_prepatch_worktree()` produces, and returns a `PrePatchEvidence` bundle. Deterministic only — no LLM calls, no FSM/CLI-orchestrator knowledge, no database access; `base_sha`/`base_dirty` arrive as caller-supplied arguments (see `history_reader.read_base_sha()` / `read_base_dirty()` above).
+
+```python
+def run_prepatch_check(
+    *,
+    step_diff: str,
+    repo_root: Path,
+    worktree_base: str | Path,
+    base_sha: str | None,
+    base_dirty: bool | None,
+    base_branch: str,
+    logger: Logger,
+    git_lock: GitLock,
+    config: BRConfig | None = None,
+) -> PrePatchEvidence
+
+def collect_candidates(
+    step_diff: str,
+    repo_root: Path,
+    base_ref: str,
+    config: BRConfig | None = None,
+) -> list[PrePatchCandidate]
+```
+
+`run_prepatch_check()` resolves the base ref itself — the dequeue-time SHA when `base_sha` is given, else a `git merge-base` with `base_branch` — then, when `config.prepatch_check.enabled` is true and at least one candidate is identified, materializes the post-patch (working-tree) content of every touched test file (including a touched `conftest.py`, for fixture-added-in-conftest coverage) into the pre-patch worktree, runs the candidate node IDs under `pytest --junit-xml=...` with `<worktree>/<src_dir>` prepended to `PYTHONPATH` (so an editable install can't resolve `little_loops` back to the post-patch main tree), retries only the node IDs that passed, and assigns each outcome a `flag`.
+
+`collect_candidates()` attributes hunks to top-level `test*` functions via `test_tamper_guard.extract_test_functions()` (post-patch) and `read_paths_at_ref()` (pre-patch), splitting `set(after) - set(before)` into added vs. modified. When a touched line falls outside every top-level test function's range (class-based tests, module-level edits), attribution is ambiguous and the whole file becomes one file-fallback candidate — the file path itself, never an enumerated node-ID set and never the full suite.
+
+Flag policy: a newly added test that passes pre-patch is `hard`-flagged; a modified test that passes is `soft` by default (escalates to `hard` when `config.prepatch_check.modified_hard` is true); a pass not confirmed on retry is `flaky` + `soft`; any `hard` flag is downgraded to `soft` when `base_dirty` is true (the worktree is missing the caller's uncommitted work, so a pre-patch failure there is not trustworthy evidence). `PrePatchEvidence.verdict` is `flagged` when any outcome is `hard`, `skipped` when the check is disabled or zero candidates were found, else `clean`.
+
+### PrePatchCandidate / PrePatchTestOutcome / PrePatchEvidence
+
+Plain `@dataclass`es (no instance state, no methods beyond `to_dict()`), following the `Gap`/`GapAnalysis` convention. `PrePatchCandidate` — `nodeid`, `file`, `added`, `attribution` (`"function"` | `"file-fallback"`). `PrePatchTestOutcome` — `nodeid`, `file`, `added`, `category` (`pass | fail | error | timeout | flaky`), `error_kind` (`"collection" | "infrastructure" | None`), `flag` (`hard | soft | none`), `flag_reason`. `PrePatchEvidence` — `base_ref`, `base_source` (`"dequeue-stamp" | "merge-base"`), `base_dirty`, `outcomes: list[PrePatchTestOutcome]`, `verdict` (`clean | flagged | skipped`), `skipped_reason`.
+
 ## little_loops.compaction
 
 Session-memory compaction: StreamingLLM eviction + 6-section schema (FEAT-2598). Extends the LCM compaction surface in `session_store` with two complementary passes: instant structural eviction (no LLM cost, always-on) and 6-section semantic summarization (gated on `history.compaction.enabled`, fires in a background thread at the soft token threshold).
@@ -9078,6 +9116,19 @@ Resolve the dequeue-time base commit SHA stamped for `issue_id` (ENH-2866). The 
 `run_id` is optional and that is load-bearing: it is a process-local `uuid4().hex` never exported to env, run-dir, or subprocess argv, so an out-of-process consumer cannot supply one. When omitted, the most recent *stamped* row for the issue wins (`WHERE issue_id = ? AND base_sha IS NOT NULL ORDER BY id DESC LIMIT 1`) — the NOT NULL filter keeps a later unstamped row from shadowing an earlier stamped one.
 
 Never raises. Returns `None` when the database is missing or unreadable, no matching row exists, or `base_sha` is NULL; the stamp is advisory, and a consumer that gets `None` should fall back to merge-base and say which base it used.
+
+### read_base_dirty
+
+```python
+def read_base_dirty(
+    issue_id: str,
+    *,
+    run_id: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> bool | None
+```
+
+Additive sibling of `read_base_sha()` (ENH-3142), mirroring its query dispatch exactly but against the `base_dirty` column. Converts the stored `int | None` to `bool | None` at the return boundary. Never raises. Returns `None` when the database is missing or unreadable, no matching row exists, or the row's `base_dirty` is NULL.
 
 ### record_loop_run_summary / update_loop_run_diagnostics
 
