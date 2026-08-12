@@ -366,7 +366,7 @@ def is_weakening(before_src: str, after_src: str, path: str) -> bool:
     return _weakened(before, after)
 
 
-def _test_functions(source: str) -> dict[str, ast.AST] | None:
+def extract_test_functions(source: str) -> dict[str, ast.AST] | None:
     """Top-level ``test*`` function nodes by name; None when unparseable."""
     try:
         tree = ast.parse(source)
@@ -421,7 +421,7 @@ def filter_weakening_findings(
 
     relocated: set[str] = set()
     for path in added_paths:
-        names = _test_functions(added_texts[path])
+        names = extract_test_functions(added_texts[path])
         if names is not None:
             relocated.update(names)
     for path in modified_paths:
@@ -429,8 +429,8 @@ def filter_weakening_findings(
         after_src = after_texts.get(path)
         if before_src is None or after_src is None:
             continue
-        before_names = _test_functions(before_src)
-        after_names = _test_functions(after_src)
+        before_names = extract_test_functions(before_src)
+        after_names = extract_test_functions(after_src)
         if before_names is None or after_names is None:
             continue
         relocated.update(set(after_names) - set(before_names))
@@ -452,7 +452,7 @@ def filter_weakening_findings(
             continue
 
         before_strength = measure_test_strength(before_src, finding.path)
-        before_names = _test_functions(before_src)
+        before_names = extract_test_functions(before_src)
         after_strength = measure_test_strength(after_src, finding.path)
         if (
             before_strength is None

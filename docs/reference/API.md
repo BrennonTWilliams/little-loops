@@ -94,7 +94,8 @@ pip install -e "./scripts[dev]"
 | `little_loops.skill_expander` | Pre-expand skill/command Markdown content for subprocess prompts (replaces ToolSearch → Skill deferred-tool dependency in `ll-auto`). |
 | `little_loops.stats` | Statistical utilities — Wilson 95% binomial confidence intervals for honest uncertainty reporting at small sample sizes. |
 | `little_loops.test_file_patterns` | Test-file classification shared across gates — `is_test_file(path, config=None)` and `filter_test_files(paths, config=None)`. |
-| `little_loops.test_tamper_guard` | Test-weakening detection core (ENH-2933) — `snapshot_test_paths()` / `snapshot_test_paths_at_ref()`, `compare_snapshots()`, `measure_test_strength()`, `is_weakening()`, `filter_weakening_findings()`, with `TamperFinding` / `TamperReport` / `TestStrength` / `ConfigTarget` dataclasses. |
+| `little_loops.test_tamper_guard` | Test-weakening detection core (ENH-2933) — `snapshot_test_paths()` / `snapshot_test_paths_at_ref()`, `compare_snapshots()`, `measure_test_strength()`, `is_weakening()`, `filter_weakening_findings()`,
+`extract_test_functions()`, with `TamperFinding` / `TamperReport` / `TestStrength` / `ConfigTarget` dataclasses. |
 | `little_loops.transport` | EventBus transport abstraction (`Transport` Protocol + `send`/`close`) with built-in `JsonlTransport`, `UnixSocketTransport`, and `OTelTransport` sinks. |
 | `little_loops.worktree_utils` | Shared worktree setup/cleanup utilities used by `ll-parallel`, `ll-sprint`, and `ll-loop`. See [WORKTREES.md](WORKTREES.md) for the file-copy contract. |
 | `little_loops.mcp_call` | Thin CLI wrapper for direct MCP tool invocation via JSON-RPC |

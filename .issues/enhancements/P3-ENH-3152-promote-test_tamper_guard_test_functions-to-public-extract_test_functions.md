@@ -3,10 +3,11 @@ id: ENH-3152
 type: ENH
 title: Promote test_tamper_guard._test_functions() to public extract_test_functions()
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-12'
 captured_at: '2026-08-12T03:58:18Z'
+completed_at: '2026-08-12T05:21:13Z'
 labels:
 - refactor
 - verification
@@ -267,6 +268,7 @@ def extract_test_functions(source: str) -> dict[str, ast.AST] | None:
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-12T05:20:45 - `24233ed8-add1-4f91-84fe-249d6a4eeec0.jsonl`
 - `/ll:confidence-check` - 2026-08-12T04:40:26 - `6123ce5e-bc6e-4e80-90ab-493b5ce9d5af.jsonl`
 - `/ll:verify-issues` - 2026-08-12T04:38:54 - `2f10bf43-e173-4f04-b3b3-7611badc016e.jsonl`
 - `/ll:refine-issue` - 2026-08-12T04:34:46 - `2fe474ad-a1fb-413e-a9e7-4a989092ad08.jsonl`

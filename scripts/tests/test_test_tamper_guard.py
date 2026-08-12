@@ -32,6 +32,7 @@ from little_loops.test_tamper_guard import (
     TestStrength,
     apply_tamper_policy,
     compare_snapshots,
+    extract_test_functions,
     filter_weakening_findings,
     hash_config_target,
     is_weakening,
@@ -821,6 +822,32 @@ class TestReadPathsAtRef:
 
         texts = read_paths_at_ref(repo, "HEAD", ["test_new.py"])
         assert texts["test_new.py"] is None
+
+
+class TestExtractTestFunctions:
+    """ENH-3152: promoted from private _test_functions()."""
+
+    def test_returns_top_level_test_functions_by_name(self) -> None:
+        source = "def test_a():\n    pass\n\ndef test_b():\n    pass\n"
+        names = extract_test_functions(source)
+        assert names is not None
+        assert set(names) == {"test_a", "test_b"}
+
+    def test_excludes_non_test_functions(self) -> None:
+        source = "def helper():\n    pass\n\ndef test_a():\n    pass\n"
+        names = extract_test_functions(source)
+        assert names is not None
+        assert set(names) == {"test_a"}
+
+    def test_unparseable_source_returns_none(self) -> None:
+        assert extract_test_functions("def test_a(:\n    pass\n") is None
+
+    def test_class_method_tests_are_not_returned(self) -> None:
+        """Documented scope limitation: walks tree.body, not ast.walk."""
+        source = "class T:\n    def test_a(self):\n        pass\n"
+        names = extract_test_functions(source)
+        assert names is not None
+        assert names == {}
 
 
 class TestFilterWeakeningFindings:
