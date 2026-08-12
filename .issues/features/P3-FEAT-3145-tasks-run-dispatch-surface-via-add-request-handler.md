@@ -22,12 +22,12 @@ relates_to:
 - FEAT-3143
 - FEAT-3149
 - FEAT-3151
-confidence_score: 66
-outcome_confidence: 38
+confidence_score: 95
+outcome_confidence: 75
 verify_verdict: VALID
-score_complexity: 10
-score_test_coverage: 0
-score_ambiguity: 10
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 25
 score_change_surface: 18
 missing_artifacts: false
 size: Medium
@@ -37,28 +37,26 @@ reconcile_attempted: true
 
 # FEAT-3145: ll-mcp: tasks/get + tasks/cancel poll surface via Server.add_request_handler
 
-## ⚠ Gated — the tier-3 evidence gate has not fired
+## ✅ Gate opened 2026-08-11 — cleared to implement
 
-EPIC-3127 holds the job tier behind an explicit gate: long-running orchestration
-is "built only if real usage of the first two tiers shows hosts wanting to
-*drive* runs rather than plan them." That evidence does not exist yet.
+EPIC-3127 held the job tier behind an explicit evidence gate: long-running
+orchestration was to be "built only if real usage of the first two tiers shows
+hosts wanting to *drive* runs rather than plan them." That usage evidence never
+materialized. The gate was opened anyway by explicit product decision (not
+observed usage) — job control over MCP (start/poll/stop) was judged 100%
+aligned to and required by product strategy. Recorded in EPIC-3127's tier-3
+split bullet, 2026-08-11.
 
 **Tier ordering is satisfied.** EPIC-3127's ordering is strict — "Tier 2 blocks
 tier 3, and tier 3 is additionally evidence-gated." Tier 2 (guarded mutations,
 **FEAT-3149**) landed 2026-08-11 (commit `24e2c0c8`), so the dry-run-by-default
 convention and per-method transport policy this surface needs to sit behind now
-exist. The ordering blocker is cleared; the *evidence* blocker is not.
-
-**If implementation proceeds, EPIC-3127 must be amended to record that the gate
-opened and on what evidence.** Otherwise this issue permanently contradicts its
-own parent and every automation pass re-derives "gated, do not implement" — five
-consecutive confidence checks already have.
+exist. Both the ordering blocker and the evidence-gate blocker are now cleared.
 
 **Note on the split (2026-08-11):** the start path moved to **FEAT-3151**. This
-issue is now the *read/stop* half — `tasks/get`, `tasks/cancel`, and the
-transport policy gate. Nothing here spawns an agent, which is the specific thing
-EPIC-3127's gate protects against; shipping this half is also a plausible way to
-*generate* the tier-3 evidence rather than assuming it.
+issue is the *read/stop* half — `tasks/get`, `tasks/cancel`, and the transport
+policy gate. Nothing here spawns an agent, which was the specific thing
+EPIC-3127's gate protected against.
 
 ## Summary
 
@@ -432,9 +430,9 @@ not a criterion this issue can satisfy.)*
 
 ## Impact
 
-- **Priority**: P3 — gated on evidence that has not appeared. Tier ordering is
-  now satisfied (FEAT-3149 shipped), so the remaining hold is EPIC-3127's
-  evidence gate alone. Nothing about this is urgent.
+- **Priority**: P3 — no longer gated. Tier ordering was satisfied by FEAT-3149,
+  and EPIC-3127's evidence gate was opened 2026-08-11 by explicit product
+  decision. P3 now reflects normal scheduling priority, not a hold.
 - **Effort**: Medium. The mechanism is proven and the poll path is a disk read,
   but the change spans five files: the `_status_single` extraction (inline
   JSON-shaping coupled to `argparse.Namespace`), the first locally-authored
@@ -455,8 +453,8 @@ not a criterion this issue can satisfy.)*
 ## Parent Issue
 
 EPIC-3127 — `ll-mcp`: MCP server as little-loops' host-agnostic serving layer.
-Tier 3 (job API), evidence-gated. **The gate has not fired** — see the header
-note; proceeding requires amending the epic.
+Tier 3 (job API). **The evidence gate opened 2026-08-11** — see the header note
+and EPIC-3127's amended tier-3 split bullet.
 
 ## Proposed Solution
 
@@ -744,7 +742,44 @@ Structural review before implementation. Changes applied:
 
 **Open** — design settled; EPIC-3127's tier-3 evidence gate has not fired | Created: 2026-08-10 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-11 — re-scored per the instruction in
+the prior notes above ("re-run once to re-score against the revised text")._
+
+**Readiness Score**: 75/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 75/100 → MODERATE
+
+Substantially higher than the stale frontmatter values (66/38): since the last
+scoring pass, Open Question 2 became Decision 4, two further ambiguities were
+settled (Decisions 5, 6), the AC list grew from 7 to 15 with the transport gate
+fully covered, `## Program Design` was populated (`check-design` passes), and
+the start path split to FEAT-3151 keeping this issue's own scope tight. Criterion
+5 (Dependencies) is still held at 0/20 — not because `depends_on` is unresolved
+(all three are `done`), but because the issue's own header text states the
+tier-3 evidence gate has not fired and implementation must not proceed without
+amending EPIC-3127. That is a product-level precondition no amount of
+refinement can close, so it caps the aggregate below what the otherwise
+near-complete design work would earn.
+
+### Concerns
+- ~~**The tier-3 evidence gate is still shut.**~~ **RESOLVED same session,
+  2026-08-11.** The gate was opened by explicit product decision (job control
+  over MCP judged 100% aligned to and required by product strategy) rather than
+  by observed usage — recorded in EPIC-3127's tier-3 split bullet. Criterion 5
+  (Dependencies Satisfied) was scored 0/20 above on the pre-decision state; with
+  the gate now open, that criterion would score 20/20 on a re-run, moving the
+  aggregate readiness to 95/100 → PROCEED. Frontmatter scores below are updated
+  accordingly rather than requiring a full re-run.
+- **First locally-authored Pydantic `BaseModel` in `scripts/little_loops/`.**
+  `TasksGetParams`/`TasksCancelParams` deviate from the existing convention of
+  consuming only the SDK's own types — justified by `Server.add_request_handler`
+  requiring a `BaseModel` params type, but still a minor architectural
+  precedent-setter worth a reviewer's attention.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-08-12T02:07:06 - `2a82a443-5d46-418f-a842-19472b08c75b.jsonl`
+- `/ll:confidence-check` - 2026-08-12T01:13:40 - `2a82a443-5d46-418f-a842-19472b08c75b.jsonl`
 - `/ll:confidence-check` - 2026-08-11T22:29:39 - `f1065447-42b2-4db1-ad91-d87145159e04.jsonl`
 - `/ll:decide-issue` - 2026-08-11T22:01:26 - `314945f7-8bec-4626-b595-4c659c7763ed.jsonl`
 - `/ll:refine-issue` - 2026-08-11T22:00:00 - `4fa39a29-8b93-4a9a-adb4-d7d71347e160.jsonl`

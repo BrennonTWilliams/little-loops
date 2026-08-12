@@ -130,6 +130,19 @@ The ordering is strict:
   > and on what evidence — otherwise the children permanently contradict their
   > parent and every automation pass re-derives "gated, do not implement."
 
+  > **Gate opened 2026-08-11, by product decision, not observed usage.** The
+  > original plan was to wait for real tier-1/tier-2 usage to show hosts wanting
+  > to *drive* runs rather than plan them; that usage evidence never
+  > materialized. The gate is opened anyway on an explicit call: job control over
+  > MCP (start/poll/stop) is 100% aligned to and required by product strategy, so
+  > the epic proceeds on strategic commitment rather than waiting on the
+  > usage-evidence signal it originally specified. Both FEAT-3145 (poll/cancel)
+  > and FEAT-3151 (start path) are cleared to implement. This does not relax any
+  > other constraint in this epic — FEAT-3151 still owes the client-capability
+  > gate on task materialization (its own carried-over TODO(L56) caveat), and
+  > FEAT-3145's transport-policy gate (Decision 4) still applies regardless of
+  > this decision.
+
 ## Spec target: MCP 2026-07-28
 
 The design was drafted one day after the 2026-07-28 spec release — the largest
@@ -236,4 +249,5 @@ Also load-bearing across all tiers:
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-12T02:07:06 - `2a82a443-5d46-418f-a842-19472b08c75b.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:52 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
