@@ -2662,7 +2662,8 @@ ll-code impact-of little_loops/state.py --depth 3
 ```
 
 **Skill consumers:** `/ll:wire-issue` (Phase 3.6) and `/ll:refine-issue` (Step 3.05)
-seed their agent waves from these queries. The shared contract they follow — probe
+seed their agent waves from these queries; `/ll:verify-issues` (§2B.0) uses them to
+corroborate or correct verdicts. The shared contract they follow — probe
 procedure, the three safety rules, staleness handling, and why the orchestrator
 queries instead of the `ll:codebase-*` agents — is
 [docs/guides/GRAPH_DISCOVERY_GUIDE.md](../guides/GRAPH_DISCOVERY_GUIDE.md).

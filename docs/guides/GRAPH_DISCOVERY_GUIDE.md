@@ -15,6 +15,16 @@ moves.
 |---|---|---|
 | `/ll:wire-issue` | Phase 3.6 | [`skills/wire-issue/graph-discovery-layer.md`](../../skills/wire-issue/graph-discovery-layer.md) |
 | `/ll:refine-issue` | Step 3.05 | [`commands/refine-issue.md`](../../commands/refine-issue.md) § 3.05 |
+| `/ll:verify-issues` | §2B.0 | [`commands/verify-issues.md`](../../commands/verify-issues.md) § B.0 |
+
+`/ll:verify-issues` follows the same procedure and safety rules as the other two
+consumers, but under a stricter local rule: it mutates issue state (verdicts,
+`status`), so a graph result there may only corroborate or correct a verdict, never
+originate one. `callers-of`/`references` exiting `1` ("no callers") is never
+sufficient by itself to reach `RESOLVED` or `INVALID` — see § B.0 in the consumer
+doc for the full statement. It also queries `defines`/`callers-of`/`references`
+only; `impact-of` is out of scope there because regression detection already has a
+deterministic git-history signal.
 
 ## Why the orchestrator queries, not the agents
 

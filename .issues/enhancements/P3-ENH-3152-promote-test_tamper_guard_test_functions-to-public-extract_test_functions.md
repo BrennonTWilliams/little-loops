@@ -11,6 +11,13 @@ labels:
 - refactor
 - verification
 testable: true
+verify_verdict: VALID
+confidence_score: 100
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3152: Promote test_tamper_guard._test_functions() to public extract_test_functions()
@@ -111,6 +118,16 @@ No back-compat alias is needed: the name is private, has zero external callers
 ### Configuration
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-12 — based on codebase analysis:_
+
+- Test-class naming convention confirmed against `scripts/tests/test_test_tamper_guard.py`: per-function test classes are named `Test<FunctionNameInPascalCase>` (e.g. `TestReadPathsAtRef`, `TestMeasureTestStrength`), so the new class should be `TestExtractTestFunctions`. Convention (not required, but consistently followed): an optional class-level docstring citing the originating issue ID in parens, e.g. `"""ENH-3152: promoted from private _test_functions()."""`. No `@pytest.fixture` usage in this file beyond built-in `tmp_path`; module-local helpers are plain functions above the classes.
+- Edge-case skeleton this file uses for parse-then-extract functions (see `TestMeasureTestStrength`): happy path, then the documented `None`/empty-input boundary, then any documented scope-limitation case as its own test method — maps directly onto this issue's four planned cases (top-level `test*` returned / non-`test*` excluded / unparseable → `None` / class-method not returned).
+- `docs/reference/API.md:97`'s `little_loops.test_tamper_guard` row currently reads exactly:
+  `| \`little_loops.test_tamper_guard\` | Test-weakening detection core (ENH-2933) — \`snapshot_test_paths()\` / \`snapshot_test_paths_at_ref()\`, \`compare_snapshots()\`, \`measure_test_strength()\`, \`is_weakening()\`, \`filter_weakening_findings()\`, with \`TamperFinding\` / \`TamperReport\` / \`TestStrength\` / \`ConfigTarget\` dataclasses. |`
+  Note this row's function list is already partial/illustrative, not exhaustive — several other public functions in the module (`read_paths_at_ref`, `apply_tamper_policy`, `run_tamper_guard`, etc.) are not listed there either. Adding `extract_test_functions()` follows the row's existing style but is not enforced by any completeness convention in this table.
+
 ## Program Design
 
 ### Types
@@ -138,6 +155,40 @@ this lands)
 
 No new call paths, no new imports in `test_tamper_guard.py`, and no change to
 which nodes are returned — the rename is behavior-preserving by construction.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-12 — based on codebase analysis:_
+
+- Exact current body confirmed at `test_tamper_guard.py:369-380`:
+  ```python
+  def _test_functions(source: str) -> dict[str, ast.AST] | None:
+      """Top-level ``test*`` function nodes by name; None when unparseable."""
+      try:
+          tree = ast.parse(source)
+      except SyntaxError:
+          return None
+      return {
+          node.name: node
+          for node in tree.body
+          if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+          and node.name.startswith("test")
+      }
+  ```
+  No callees (confirmed by code-graph `callees-of` query returning empty and by
+  reading the body — only stdlib `ast.parse` is called).
+- The 4 call sites do not all use the return value the same way, which matters
+  for confirming "identical behavior" after the rename: `:424`, `:432`, `:433`
+  use only the dict's **keys** (`set(names)` / `.update(names)`); `:455` uses
+  both the keys (membership test against `relocated`) and the **values**
+  (`ast.unparse(node)` to re-measure strength of relocated test bodies via
+  `measure_test_strength`). A rename that changes iteration order or key
+  identity would affect `:455` differently from the other three sites — it
+  does not here, since this is a pure rename with no logic change, but the
+  distinction is why `:455` needs its own attention when verifying parity.
+- `"test*"` matching in the body is a plain `str.startswith("test")` check, not
+  a regex or pytest-style `test_` separator check — `testfoo` (no underscore)
+  would also match. This is existing behavior, unchanged by the rename.
 
 ## Implementation Steps
 
@@ -213,3 +264,9 @@ def extract_test_functions(source: str) -> dict[str, ast.AST] | None:
 - `ENH-2854` (origin) — landed `test_tamper_guard.py` and `_test_functions()`.
 - `ENH-2964` (context) — the cross-file relocation logic that is
   `_test_functions()`'s current sole consumer.
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-12T04:40:26 - `6123ce5e-bc6e-4e80-90ab-493b5ce9d5af.jsonl`
+- `/ll:verify-issues` - 2026-08-12T04:38:54 - `2f10bf43-e173-4f04-b3b3-7611badc016e.jsonl`
+- `/ll:refine-issue` - 2026-08-12T04:34:46 - `2fe474ad-a1fb-413e-a9e7-4a989092ad08.jsonl`

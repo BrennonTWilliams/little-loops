@@ -242,6 +242,9 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("skills/wire-issue/SKILL.md", "gate_consumers", "ENH-3050"),
     ("skills/wire-issue/SKILL.md", "conditional_branches", "ENH-3050"),
     ("docs/reference/COMMANDS.md", "gate_consumers", "ENH-3050"),
+    # ENH-3126: verify-issues gains graph-assisted anchor drift and
+    # negative-claim checks, gated behind Bash(ll-code:*).
+    ("commands/verify-issues.md", "Bash(ll-code:*)", "ENH-3126"),
 ]
 
 

@@ -55,6 +55,58 @@ fi
 - Identify code snippets quoted
 - Note expected vs. actual behavior claims
 
+#### B.0 Graph-assisted checks (ENH-3126)
+
+Active only when the issue names concrete symbols/files and `ll-code --json status`
+reports `available: true`. **Read
+[`docs/guides/GRAPH_DISCOVERY_GUIDE.md`](../docs/guides/GRAPH_DISCOVERY_GUIDE.md) and
+follow its procedure, contract, and three safety rules** — this section states only
+what is specific to verify-issues, not the shared contract.
+
+Permitted query surface (verify-issues only):
+
+```bash
+ll-code --json status
+ll-code --json defines <file>            # anchor relocation
+ll-code --json callers-of <symbol>       # negative-claim corroboration
+ll-code --json references <symbol>       # negative-claim corroboration
+# NOT permitted: callees-of, importers-of, impact-of
+```
+
+`impact-of` is excluded — regression detection (2D) already has a deterministic
+signal in git history (fix commit → files changed since), and a transitive-closure
+guess on top only widens the blast radius of a wrong `REGRESSION` verdict.
+
+**Verdict-origination prohibition (stricter than the other two consumers):** A
+graph result may corroborate or correct a verdict. It may never originate one. In
+particular, `callers-of` (or `references`) exiting `1` ("no callers") must never by
+itself produce `RESOLVED` or `INVALID`; the exploratory Grep pass in 2B still runs
+and decides. A result showing callers/references, by contrast, safely **refutes** a
+"never called"/"dead" claim on its own — presence is easy to prove, absence is not.
+
+Provider absent, `status.available: false`, or a query exiting `2` → silent
+fallback to today's flow, zero behavior change. If `status.freshness` is `stale`,
+demote every graph result to a lead only — confirm each positive hit with one
+targeted Grep at its `path:line` before it informs a verdict.
+
+Wire the results into the checks below:
+- **Anchor relocation**: on a `path:line` mismatch in check 2B.2, one `ll-code
+  defines <file>` call locates the named symbol's current line; the verdict becomes
+  `OUTDATED` with the corrected line written back, instead of an unresolved "not
+  found at line N".
+- **Negative claims**: for issue text asserting "X is never called"/"no caller
+  handles this"/"this path is dead", run `ll-code callers-of`/`references` on the
+  named symbol before falling back to Grep-only reasoning. A hit refutes the claim
+  outright; a miss is a lead that the normal exploratory pass must still confirm.
+
+Record the provider and freshness that served each graph-assisted check (`ll-code
+--json status` → `provider`, `freshness`) on the Section 5 output report — a later
+reader cannot otherwise tell an index-accelerated verification from a grep-fallback
+one, and the two are not equally trustworthy. Do **not** put this in the Session Log
+entry (Section 4.5): that line's format is parsed by `issue_design_timestamp()`
+(`scripts/little_loops/issues/program_design.py:406-427`) and extra text breaks the
+Program Design gate's arming.
+
 #### B. Verify Against Codebase
 1. **Check files exist**: Do referenced files still exist?
 2. **Verify line numbers**: Has the code moved or changed?
@@ -205,6 +257,7 @@ If `ll-issues` is not available, fall back to manually appending with **exactly*
 # Issue Verification Report
 
 ## Summary
+- **Graph**: provider=`<provider>` freshness=`<freshness>` (omit this line entirely if the provider was unavailable and §2B.0 fell back silently)
 - **Issues checked**: X
 - **Valid**: N
 - **Outdated**: N

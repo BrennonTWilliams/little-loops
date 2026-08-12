@@ -4,8 +4,9 @@ title: Use ll-code graph queries in verify-issues for anchor drift and negative-
   checks
 type: ENH
 priority: P3
-status: open
+status: done
 captured_at: '2026-08-09T05:08:55Z'
+completed_at: '2026-08-12T04:49:34Z'
 discovered_date: 2026-08-09
 discovered_by: capture-issue
 program_design_not_applicable: true
@@ -319,6 +320,7 @@ freshness reporting.
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-12T04:48:58 - `73de23eb-c385-4cfc-aa6e-73fd02188199.jsonl`
 - `/ll:confidence-check` - 2026-08-12T04:21:31 - `5df644f7-db35-4699-9e26-c26f5863985c.jsonl`
 - `/ll:decide-issue` - 2026-08-12T03:53:22 - `22039bd3-8110-4496-8778-17b575764718.jsonl`
 - `/ll:refine-issue` - 2026-08-12T03:52:43 - `22039bd3-8110-4496-8778-17b575764718.jsonl`
@@ -329,6 +331,26 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:capture-issue` - 2026-08-09T05:10:04 - `b7457e6e-9654-45e5-a9bd-43e1bcddbd28.jsonl`
 
 ---
+
+## Resolution
+
+Implemented per the plan: `commands/verify-issues.md` gains `Bash(ll-code:*)` in
+`allowed-tools` and a new `#### B.0 Graph-assisted checks` step (before the manual
+sweep) that queries `defines`/`callers-of`/`references` only, delegates the shared
+procedure/safety-rules to `docs/guides/GRAPH_DISCOVERY_GUIDE.md`, states the
+verdict-origination prohibition verbatim, and records provider/freshness on the
+Section 5 output report (not the Session Log). `skills/ll-verify-issues/SKILL.md`
+now mirrors the `Bash(ll-code:*)` grant, matching the `ll-refine-issue` bridge
+precedent. `GRAPH_DISCOVERY_GUIDE.md` and `docs/reference/CLI.md` both list
+`/ll:verify-issues` as a consumer. Host-adapter mirrors regenerated
+(`ll-adapt --host gemini --apply`, `ll-adapt --host kimi-code --apply`).
+
+Test coverage: `scripts/tests/test_enh3126_verify_issues_graph_seeding.py` (new,
+modeled on `test_enh3098_refine_issue_graph_seeding.py`) plus a
+`DOC_STRINGS_PRESENT` entry in `test_wiring_skills_and_commands.py`. Full suite:
+`python -m pytest scripts/tests/` — 18959 passed, 43 skipped, 1 unrelated
+pre-existing xdist flake (`test_mcp_server.py::test_list_returning_tools_serialize_over_stdio[history_search-2026-07-28]`,
+confirmed passing in isolation, untouched by this change).
 
 ## Status
 
