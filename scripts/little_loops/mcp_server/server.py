@@ -71,6 +71,12 @@ def build_server() -> Server:
         make_list_resources_handler,
         make_read_resource_handler,
     )
+    from little_loops.mcp_server.tasks import (
+        TasksCancelParams,
+        TasksGetParams,
+        handle_tasks_cancel,
+        handle_tasks_get,
+    )
     from little_loops.mcp_server.tools import handle_call_tool, handle_list_tools
     from little_loops.skill_expander import _find_plugin_root
 
@@ -78,7 +84,7 @@ def build_server() -> Server:
     resource_index = build_resource_index(config)
     prompt_index = build_prompt_index(_find_plugin_root() / "skills")
 
-    return Server(
+    server = Server(
         "ll-mcp",
         version=_server_version(),
         on_list_tools=handle_list_tools,
@@ -100,6 +106,15 @@ def build_server() -> Server:
             "prompts/list": CacheHint(ttl_ms=300_000, scope="public"),
         },
     )
+
+    # FEAT-3145: tasks/get + tasks/cancel poll surface. Additive method names (neither
+    # collides with a spec method), registered via add_request_handler rather than the
+    # SDK's MCPServer(extensions=[...]) API, which the lowlevel Server has no parameter
+    # for. Gated by the transport policy in policy.py, not here — see build_http_app().
+    server.add_request_handler("tasks/get", TasksGetParams, handle_tasks_get)
+    server.add_request_handler("tasks/cancel", TasksCancelParams, handle_tasks_cancel)
+
+    return server
 
 
 async def run_stdio() -> None:

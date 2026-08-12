@@ -31,7 +31,11 @@ PROTOCOL_VERSION = "2026-07-28"
 
 
 def _make_project(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, allow_http_mutations: bool | None = None
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    allow_http_mutations: bool | None = None,
+    allow_http_tasks: bool | None = None,
 ) -> Path:
     monkeypatch.chdir(tmp_path)
     for category in ("bugs", "features", "enhancements", "epics"):
@@ -43,10 +47,31 @@ def _make_project(
     )
     (tmp_path / ".ll").mkdir(exist_ok=True)
     config: dict = {"project": {"name": "fixture"}}
+    http_policy: dict = {}
     if allow_http_mutations is not None:
-        config["mcp"] = {"transport_policy": {"http": {"allow_mutations": allow_http_mutations}}}
+        http_policy["allow_mutations"] = allow_http_mutations
+    if allow_http_tasks is not None:
+        http_policy["allow_tasks"] = allow_http_tasks
+    if http_policy:
+        config["mcp"] = {"transport_policy": {"http": http_policy}}
     (tmp_path / ".ll" / "ll-config.json").write_text(json.dumps(config), encoding="utf-8")
     return tmp_path
+
+
+def _post_method(client: TestClient, method: str, params: dict):
+    headers = {
+        "content-type": "application/json",
+        "accept": "application/json, text/event-stream",
+        "mcp-protocol-version": PROTOCOL_VERSION,
+        "mcp-method": method,
+    }
+    body = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": method,
+        "params": {**params, **_envelope()},
+    }
+    return client.post("/mcp", json=body, headers=headers)
 
 
 def _envelope() -> dict:
@@ -207,3 +232,116 @@ def test_ac5_stdio_transport_defaults_to_allowing_mutations(tmp_path, monkeypatc
     assert check_tool_call("stdio", "tools/call", "issue_set_status", config=config).allowed
     assert not check_tool_call("http", "tools/call", "issue_set_status", config=config).allowed
     assert check_tool_call("http", "tools/call", "issues_query", config=config).allowed
+
+
+# FEAT-3145 ACs 5-9: tasks/* gets the same deny-by-default-on-HTTP treatment as mutating
+# tools, but as an independently-expressible grant (Decision 6).
+
+
+def test_ac5_tasks_denied_over_http_by_default(tmp_path, monkeypatch) -> None:
+    """AC 5: tasks/get over HTTP is denied by default with -32001 / HTTP 403."""
+    _make_project(tmp_path, monkeypatch, allow_http_tasks=None)
+
+    with TestClient(build_http_app(), base_url="http://127.0.0.1:8765") as client:
+        response = _post_method(client, "tasks/get", {"taskId": "nonexistent"})
+        assert response.status_code == 403
+        payload = response.json()
+        assert payload["error"]["code"] == -32001
+        assert "result" not in payload
+
+
+def test_ac6_tasks_allowed_over_http_when_configured_and_over_stdio_by_default(
+    tmp_path, monkeypatch
+) -> None:
+    """AC 6: allow_tasks=true unblocks HTTP; stdio's default already permits it."""
+    _make_project(tmp_path, monkeypatch, allow_http_tasks=True)
+
+    with TestClient(build_http_app(), base_url="http://127.0.0.1:8765") as client:
+        response = _post_method(client, "tasks/get", {"taskId": "nonexistent"})
+        assert response.status_code == 200
+        payload = response.json()
+        # Reaches the handler (past the gate); not-found is a distinct -32002, not a 403.
+        assert payload["error"]["code"] != -32001
+
+    from little_loops.config import BRConfig
+    from little_loops.mcp_server.policy import check_tool_call
+
+    _make_project(tmp_path, monkeypatch, allow_http_tasks=None)
+    config = BRConfig(tmp_path)
+    assert check_tool_call("stdio", "tasks/get", None, config=config).allowed
+
+
+def test_ac7_tasks_denial_never_awaits_the_request_body(tmp_path, monkeypatch) -> None:
+    """AC 7: the tasks/* deny decision never awaits `receive()`, same as mutations (AC5)."""
+    _make_project(tmp_path, monkeypatch, allow_http_tasks=False)
+
+    import anyio
+
+    received: list[str] = []
+    sent: list[dict] = []
+
+    async def receive() -> dict:
+        received.append("awaited")
+        return {"type": "http.request", "body": b"{}", "more_body": False}
+
+    async def send(message: dict) -> None:
+        sent.append(message)
+
+    async def inner_app(scope, receive_, send_):  # pragma: no cover - must not be reached
+        raise AssertionError("denied request reached the wrapped MCP app")
+
+    from little_loops.mcp_server.policy import TransportPolicyMiddleware
+
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/mcp",
+        "headers": [
+            (b"content-type", b"application/json"),
+            (b"mcp-method", b"tasks/get"),
+        ],
+    }
+
+    anyio.run(lambda: TransportPolicyMiddleware(inner_app)(scope, receive, send))
+
+    assert received == [], "the policy guard awaited the request body before deciding"
+    start = next(m for m in sent if m["type"] == "http.response.start")
+    assert start["status"] == 403
+
+
+@pytest.mark.parametrize(
+    ("allow_mutations", "allow_tasks"),
+    [(False, False), (True, False), (False, True), (True, True)],
+)
+def test_ac8_mutations_and_tasks_grants_are_independent(
+    tmp_path, monkeypatch, allow_mutations, allow_tasks
+) -> None:
+    """AC 8: enabling one grant alone must not enable the other."""
+    _make_project(
+        tmp_path,
+        monkeypatch,
+        allow_http_mutations=allow_mutations,
+        allow_http_tasks=allow_tasks,
+    )
+
+    from little_loops.config import BRConfig
+    from little_loops.mcp_server.policy import check_tool_call
+
+    config = BRConfig(tmp_path)
+    assert (
+        check_tool_call("http", "tools/call", "issue_set_status", config=config).allowed
+        is allow_mutations
+    )
+    assert check_tool_call("http", "tasks/get", None, config=config).allowed is allow_tasks
+
+
+def test_ac9_tasks_denial_reports_itself_not_as_a_tools_call_denial(tmp_path, monkeypatch) -> None:
+    """AC 9: a denied tasks/get names itself in the reason, not tools/call/<tool>."""
+    _make_project(tmp_path, monkeypatch, allow_http_tasks=False)
+
+    with TestClient(build_http_app(), base_url="http://127.0.0.1:8765") as client:
+        response = _post_method(client, "tasks/get", {"taskId": "nonexistent"})
+        assert response.status_code == 403
+        message = response.json()["error"]["message"]
+        assert "tasks/get" in message
+        assert "tools/call" not in message

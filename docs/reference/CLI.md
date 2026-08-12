@@ -4275,7 +4275,9 @@ exits `2` with an actionable message instead of an `ImportError`.
 
 Every tool wraps an existing library call directly — no subprocess invocation of the `ll-*`
 CLIs, no orchestration (`ll-auto`/`ll-parallel`/`ll-loop`/`ll-action invoke` are intentionally
-off the tool surface). No request handler depends on state from a prior request: each
+off the tool surface, and no method registered anywhere in this package *starts* one —
+see `tasks/*` below for the one control operation that exists, over an already-running
+`ll-loop` instance). No request handler depends on state from a prior request: each
 `tools/call` resolves entirely from its own arguments plus the filesystem/SQLite.
 
 The four mutating tools are guarded twice. **Dry-run by default:** each takes an `apply`
@@ -4335,6 +4337,36 @@ real one.
 `issues_query` returns a list of `{id, priority, type, title, path, status, parent, labels}` dicts. `issue_get` returns the same summary-card field set `ll-issues show` uses, or a tool-level error if `issue_id` doesn't resolve. `history_search` returns a list of `SearchResult` dicts. `deps_check` returns `{has_issues, broken_refs, missing_backlinks, cycles, stale_completed_refs, broken_depends_on_refs, broken_relates_to_refs}`. `capabilities` returns `{host, binary, version, capabilities}`. Each mutating tool returns
 `{applied, tool, target, changes}`; `issue_capture`'s `target` is `{type, priority, slug,
 directory}` plus a `rendered_body` on a dry-run and `{issue_id, path}` on apply.
+
+**`tasks/get` / `tasks/cancel`** (FEAT-3145): not tools — custom JSON-RPC methods,
+registered directly on the server via `Server.add_request_handler`, shaped to track the
+(unshipped) `io.modelcontextprotocol/tasks` extension so a later swap is a registration
+change, not a client-visible one. Poll or stop an `ll-loop` run started by existing means
+(`ll-loop run`); `ll-queue` is out of scope, and neither method spawns a process — starting
+a run over MCP is a separate, more heavily-gated capability. `initialize`'s capabilities
+never advertise the extension itself.
+
+| Method | Param | Type | Required | Description |
+|--------|-------|------|----------|-------------|
+| `tasks/get` | `taskId` | string | **yes** | The `ll-loop` `instance_id` verbatim (same string `ll-loop status` prints) |
+| `tasks/cancel` | `taskId` | string | **yes** | Same semantics as `tasks/get`'s `taskId` |
+
+`tasks/get` returns `{taskId, status, runStatus, …}` — `status` reconciles PID liveness
+before ever reporting `"working"` (a run whose process died without updating its state
+file is reported not-running), and once terminal the result also carries the
+`ExecutionResult` field set (`final_state`, `iterations`, `terminated_by`, `duration_ms`,
+`captured`). An unresolvable `taskId` is a distinct JSON-RPC error (`-32002`), never a
+default `"working"` shape. `tasks/cancel` returns `{taskId, status: "cancelled",
+resumable, runStatus}` — never bare `"cancelled"`: neither backend has a genuinely
+terminal cancelled state, so `resumable` and the backend's raw status always ride
+alongside (e.g. `{"status": "cancelled", "resumable": true, "runStatus":
+"user_stopped"}`).
+
+Gated by the same deny-by-default-on-HTTP transport policy as the mutating tools, but as
+an independent grant: `mcp.transport_policy.<http|stdio>.allow_tasks` (default `false` /
+`true`), separate from `allow_mutations` — consenting to issue-file writes over HTTP does
+not imply consenting to stopping a running agent. A denied `tasks/get` reports itself as a
+`tasks/get` denial, not a `tools/call` one.
 
 Also advertises a `resources` capability (FEAT-3136): issue files, `.ll/ll-goals.md`, and
 `docs/**/*.md` are listed and readable under an `ll://` scheme (`ll://issues/<ID>`,

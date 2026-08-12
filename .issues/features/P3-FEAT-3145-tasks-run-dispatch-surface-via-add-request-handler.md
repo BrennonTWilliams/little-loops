@@ -4,9 +4,10 @@ title: 'll-mcp: tasks/get + tasks/cancel poll surface via Server.add_request_han
   (tier-3, evidence-gated)'
 type: FEAT
 priority: P3
-status: open
+status: done
 discovered_date: '2026-08-10'
 discovered_by: learning-test
+completed_at: '2026-08-12T02:56:32Z'
 labels:
 - multi-host
 - mcp
@@ -777,7 +778,36 @@ near-complete design work would earn.
   requiring a `BaseModel` params type, but still a minor architectural
   precedent-setter worth a reviewer's attention.
 
+## Resolution
+
+Implemented as designed (Decisions 1-6):
+
+- `mcp_server/tasks.py` (new) — `TasksGetParams`/`TasksCancelParams`, `handle_tasks_get`,
+  `handle_tasks_cancel`, registered in `build_server()` via `Server.add_request_handler`.
+- `cli/loop/lifecycle.py` — extracted `read_run_status(instance_id, loops_dir)` and
+  `_build_status_dict()` from `_status_single()` (AC 14: `cmd_status --json` now calls the
+  same shared helper, verified byte-identical against a fresh baseline in
+  `TestFeat3145ReadRunStatusExtraction`); added `cancel_run(instance_id, loops_dir, logger)`
+  and `_stop_instance()` (extracted from `cmd_stop`'s per-instance loop, which now calls it
+  too, so the two paths cannot drift).
+- `mcp_server/policy.py` — `check_tool_call()` widened to gate `tasks/*` via a separate
+  `is_task_call` branch; denial `reason` no longer hardcodes `tools/call/{tool_name}` for
+  non-tool methods (AC 9).
+- `config/features.py` / `config-schema.json` — `McpTransportPolicyConfig` gained
+  `http_allow_tasks` / `stdio_allow_tasks` + `allows_tasks()`, independent of
+  `allow_mutations` (Decision 6).
+- `mcp_server/__init__.py`, `docs/guides/MCP_SERVER_GUIDE.md`,
+  `docs/reference/CLI.md` — updated for the new surface.
+- Tests: `test_feat_3145_mcp_tasks.py` (new, ACs 1-4, 10, 12), `test_feat_3149_transport_policy.py`
+  (extended, ACs 5-9), `test_cli_loop_lifecycle.py` (extended: AC 14 regression baseline,
+  `cancel_run` unit tests).
+
+`python -m pytest scripts/tests/` — 18948 passed, 43 skipped. `ruff check`/`ruff format`/`mypy`
+clean on all touched files. `ll-issues check-design FEAT-3145` passes.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-08-12T02:55:35 - `14cb4c24-64bd-43a6-8688-8ab965692645.jsonl`
+- `/ll:ready-issue` - 2026-08-12T02:21:00 - `cf0aa985-f852-406d-9dc3-cedf7d1842e2.jsonl`
 - `/ll:confidence-check` - 2026-08-12T02:18:15 - `00c7bfcb-b7ee-42bb-8916-37a730c6620e.jsonl`
 - `/ll:confidence-check` - 2026-08-12T02:07:06 - `2a82a443-5d46-418f-a842-19472b08c75b.jsonl`
 - `/ll:confidence-check` - 2026-08-12T01:13:40 - `2a82a443-5d46-418f-a842-19472b08c75b.jsonl`

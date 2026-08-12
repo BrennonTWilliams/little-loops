@@ -10,6 +10,7 @@ import signal
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from little_loops.cli.loop._helpers import (
     load_loop,
@@ -128,18 +129,34 @@ def _signal_process_group(pgid: int, pid: int, sig: int, label: str) -> None:
         pass  # Group already gone or no permission — not actionable
 
 
-def _status_single(
-    instance_id: str | None,
-    state: LoopState,
-    loop_name: str,
-    running_dir: Path,
-    args: argparse.Namespace | None,
-) -> int:
-    """Render status for one instance (human-readable or JSON)."""
-    from little_loops.cli.output import print_json
+def read_run_status(instance_id: str, loops_dir: Path) -> dict[str, Any] | None:
+    """Disk-read status shape for one run, keyed by ``instance_id`` alone.
 
-    stem = instance_id or loop_name
-    persistence = StatePersistence(loop_name, running_dir.parent, instance_id=instance_id)
+    This is the FEAT-3145 ``tasks/get`` entry point: `StatePersistence` resolves its
+    state-file path from `instance_id` regardless of `loop_name` (`stem = instance_id or
+    loop_name`), so the caller does not need to know which loop produced the run. Returns
+    ``None`` when no state file exists for `instance_id` — Decision 5 requires this be
+    distinguishable from a live run, never a default "running" shape.
+
+    Reuses the same reconciliation and field-shaping logic as ``ll-loop status --json``
+    (Decision 1: PID-liveness reconciliation via `_reconcile_stale_running`), so the two
+    surfaces cannot silently drift.
+    """
+    running_dir = loops_dir / ".running"
+    persistence = StatePersistence(instance_id, loops_dir, instance_id=instance_id)
+    state = persistence.load_state()
+    if state is None:
+        return None
+    return _build_status_dict(instance_id, state, running_dir, persistence)
+
+
+def _build_status_dict(
+    stem: str,
+    state: LoopState,
+    running_dir: Path,
+    persistence: StatePersistence,
+) -> dict[str, Any]:
+    """Reconcile ``state`` and shape it into the JSON dict `cmd_status --json` emits."""
     state = _reconcile_stale_running(state, persistence, running_dir, stem)
 
     pid_file = running_dir / f"{stem}.pid"
@@ -173,18 +190,66 @@ def _status_single(
         except OSError:
             last_event = None
 
-    events_file_str, events_detail_line = _get_events_info(running_dir, stem)
+    events_file_str, _events_detail_line = _get_events_info(running_dir, stem)
+
+    d = state.to_dict()
+    d["pid"] = pid
+    d["pid_source"] = pid_source
+    d["log_file"] = log_file_str
+    d["log_updated_ago"] = log_updated_ago
+    d["last_event"] = last_event
+    d["events_file"] = events_file_str
+    return d
+
+
+def _status_single(
+    instance_id: str | None,
+    state: LoopState,
+    loop_name: str,
+    running_dir: Path,
+    args: argparse.Namespace | None,
+) -> int:
+    """Render status for one instance (human-readable or JSON)."""
+    from little_loops.cli.output import print_json
+
+    stem = instance_id or loop_name
+    persistence = StatePersistence(loop_name, running_dir.parent, instance_id=instance_id)
 
     if getattr(args, "json", False):
-        d = state.to_dict()
-        d["pid"] = pid
-        d["pid_source"] = pid_source
-        d["log_file"] = log_file_str
-        d["log_updated_ago"] = log_updated_ago
-        d["last_event"] = last_event
-        d["events_file"] = events_file_str
-        print_json(d)
+        print_json(_build_status_dict(stem, state, running_dir, persistence))
         return 0
+
+    state = _reconcile_stale_running(state, persistence, running_dir, stem)
+
+    pid_file = running_dir / f"{stem}.pid"
+    pid = _read_pid_file(pid_file)
+
+    if pid is None:
+        lock_file_path = running_dir / f"{stem}.lock"
+        if lock_file_path.exists():
+            try:
+                with open(lock_file_path) as _lf:
+                    lock_data = json.load(_lf)
+                pid = lock_data.get("pid")
+            except (json.JSONDecodeError, KeyError, OSError):
+                pass
+
+    log_file = running_dir / f"{stem}.log"
+    log_file_str: str | None = None
+    log_updated_ago: str | None = None
+    last_event: str | None = None
+    if log_file.exists():
+        log_file_str = str(log_file)
+        age_seconds = time.time() - log_file.stat().st_mtime
+        log_updated_ago = _format_relative_time(age_seconds)
+        try:
+            lines = log_file.read_text().splitlines()
+            non_empty = [ln for ln in lines if ln.strip()]
+            last_event = non_empty[-1] if non_empty else None
+        except OSError:
+            last_event = None
+
+    _events_file_str, events_detail_line = _get_events_info(running_dir, stem)
 
     print(f"Loop: {state.loop_name}")
     print(f"Status: {state.status}")
@@ -365,46 +430,81 @@ def cmd_stop(
 
     for instance_id, state in running_instances:
         persistence = StatePersistence(loop_name, loops_dir, instance_id=instance_id)
-        stem = instance_id or loop_name
-        pid_file = running_dir / f"{stem}.pid"
-        pid = _read_pid_file(pid_file)
-
-        # ENH-2522: write user-stop.marker *before* signalling so the runner can
-        # distinguish user-initiated stop from kernel/OOM kill even if SIGKILL races.
-        marker_path = running_dir / "user-stop.marker"
-        try:
-            requested_by = (
-                os.getlogin()
-                if hasattr(os, "getlogin") and os.getlogin() is not None
-                else "unknown"
-            )
-        except OSError:
-            requested_by = "unknown"
-        try:
-            marker_path.write_text(
-                f"requested_by={requested_by}\nrequested_at={datetime.now(UTC).isoformat()}\n"
-            )
-        except OSError as marker_err:
-            logger.warning(f"Could not write user-stop.marker for {stem}: {marker_err}")
-
-        if pid is not None:
-            if _process_alive(pid):
-                _kill_with_timeout(pid, stem, logger)
-                state.status = "user_stopped"
-                persistence.save_state(state)
-                pid_file.unlink(missing_ok=True)
-                logger.success(f"Stopped {stem} (PID: {pid})")
-            else:
-                # Process already exited: preserve its final status, only clean up PID file
-                logger.info(f"Process {pid} not running, cleaning up PID file")
-                pid_file.unlink(missing_ok=True)
-        else:
-            # No PID file: no background process tracked, update state only
-            state.status = "user_stopped"
-            persistence.save_state(state)
-            logger.success(f"Marked {stem} as user_stopped")
+        _stop_instance(instance_id or loop_name, state, persistence, running_dir, logger)
 
     return 0
+
+
+def _stop_instance(
+    stem: str,
+    state: LoopState,
+    persistence: StatePersistence,
+    running_dir: Path,
+    logger: Logger,
+) -> None:
+    """Signal and mark one already-`running` instance stopped. Mutates ``state`` in place."""
+    pid_file = running_dir / f"{stem}.pid"
+    pid = _read_pid_file(pid_file)
+
+    # ENH-2522: write user-stop.marker *before* signalling so the runner can
+    # distinguish user-initiated stop from kernel/OOM kill even if SIGKILL races.
+    marker_path = running_dir / "user-stop.marker"
+    try:
+        requested_by = (
+            os.getlogin() if hasattr(os, "getlogin") and os.getlogin() is not None else "unknown"
+        )
+    except OSError:
+        requested_by = "unknown"
+    try:
+        marker_path.write_text(
+            f"requested_by={requested_by}\nrequested_at={datetime.now(UTC).isoformat()}\n"
+        )
+    except OSError as marker_err:
+        logger.warning(f"Could not write user-stop.marker for {stem}: {marker_err}")
+
+    if pid is not None:
+        if _process_alive(pid):
+            _kill_with_timeout(pid, stem, logger)
+            state.status = "user_stopped"
+            persistence.save_state(state)
+            pid_file.unlink(missing_ok=True)
+            logger.success(f"Stopped {stem} (PID: {pid})")
+        else:
+            # Process already exited: preserve its final status, only clean up PID file
+            logger.info(f"Process {pid} not running, cleaning up PID file")
+            pid_file.unlink(missing_ok=True)
+    else:
+        # No PID file: no background process tracked, update state only
+        state.status = "user_stopped"
+        persistence.save_state(state)
+        logger.success(f"Marked {stem} as user_stopped")
+
+
+def cancel_run(instance_id: str, loops_dir: Path, logger: Logger) -> dict[str, Any] | None:
+    """FEAT-3145 ``tasks/cancel`` entry point: stop the run named ``instance_id`` directly.
+
+    Unlike `cmd_stop`, this never resolves through a loop name — `instance_id` is the
+    `taskId` verbatim (Decision 5), so it addresses exactly one run's state file
+    regardless of how many other instances share its logical loop name.
+
+    Returns ``None`` when no state file exists for `instance_id` (not-found, same
+    contract as `read_run_status`). Otherwise returns the backend's raw status after the
+    stop attempt — `"user_stopped"` on success, or whatever status the run already had
+    if it was not `"running"` (stopping a non-running run is a no-op, not an error).
+    """
+    running_dir = loops_dir / ".running"
+    persistence = StatePersistence(instance_id, loops_dir, instance_id=instance_id)
+    state = persistence.load_state()
+    if state is None:
+        return None
+
+    # Deliberately no PID-liveness reconciliation here, matching `cmd_stop`'s own
+    # convention exactly: a "running" status is what gates whether to signal at all, and
+    # `_stop_instance` independently handles the case where the PID has already died.
+    if state.status == "running":
+        _stop_instance(instance_id, state, persistence, running_dir, logger)
+
+    return {"run_status": state.status}
 
 
 def cmd_resume(

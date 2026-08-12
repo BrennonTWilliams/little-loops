@@ -544,12 +544,24 @@ class McpTransportPolicyConfig:
 
     http_allow_mutations: bool = False
     stdio_allow_mutations: bool = True
+    #: FEAT-3145 Decision 6: `tasks/*` (stop a running agent) is a separate grant
+    #: from mutating an issue file — an operator must be able to give one without
+    #: the other, so it gets its own field rather than riding `allow_mutations`.
+    http_allow_tasks: bool = False
+    stdio_allow_tasks: bool = True
 
     def allows_mutations(self, transport: str) -> bool:
         """Whether mutating tools may run over ``transport`` ('http' or 'stdio')."""
         return {
             "http": self.http_allow_mutations,
             "stdio": self.stdio_allow_mutations,
+        }.get(transport, False)
+
+    def allows_tasks(self, transport: str) -> bool:
+        """Whether `tasks/*` methods may run over ``transport`` ('http' or 'stdio')."""
+        return {
+            "http": self.http_allow_tasks,
+            "stdio": self.stdio_allow_tasks,
         }.get(transport, False)
 
     @classmethod
@@ -560,13 +572,21 @@ class McpTransportPolicyConfig:
         return cls(
             http_allow_mutations=bool(http.get("allow_mutations", False)),
             stdio_allow_mutations=bool(stdio.get("allow_mutations", True)),
+            http_allow_tasks=bool(http.get("allow_tasks", False)),
+            stdio_allow_tasks=bool(stdio.get("allow_tasks", True)),
         )
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize McpTransportPolicyConfig to dictionary."""
         return {
-            "http": {"allow_mutations": self.http_allow_mutations},
-            "stdio": {"allow_mutations": self.stdio_allow_mutations},
+            "http": {
+                "allow_mutations": self.http_allow_mutations,
+                "allow_tasks": self.http_allow_tasks,
+            },
+            "stdio": {
+                "allow_mutations": self.stdio_allow_mutations,
+                "allow_tasks": self.stdio_allow_tasks,
+            },
         }
 
 

@@ -573,6 +573,11 @@
                   "type": "boolean",
                   "description": "When false (default), mutating tool calls over HTTP are refused with a JSON-RPC error. Deny-by-default because the HTTP transport ships without authentication.",
                   "default": false
+                },
+                "allow_tasks": {
+                  "type": "boolean",
+                  "description": "When false (default), tasks/* requests (poll/cancel an ll-loop run) over HTTP are refused with a JSON-RPC error. Deny-by-default and independent of allow_mutations (FEAT-3145 Decision 6): consenting to issue-file writes does not imply consenting to stopping a running agent.",
+                  "default": false
                 }
               },
               "additionalProperties": false
@@ -584,6 +589,11 @@
                 "allow_mutations": {
                   "type": "boolean",
                   "description": "When true (default), mutating tool calls over stdio are permitted. stdio is a same-machine, same-user channel, so it defaults open.",
+                  "default": true
+                },
+                "allow_tasks": {
+                  "type": "boolean",
+                  "description": "When true (default), tasks/* requests over stdio are permitted. stdio is a same-machine, same-user channel, so it defaults open.",
                   "default": true
                 }
               },

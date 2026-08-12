@@ -16,6 +16,7 @@
 - [Verifying with `mcp-call`](#verifying-with-mcp-call)
 - [Resources and Prompts in Practice](#resources-and-prompts-in-practice)
 - [The Mutation Surface and Its Guards](#the-mutation-surface-and-its-guards)
+- [Polling and Stopping a Run: `tasks/*`](#polling-and-stopping-a-run-tasks)
 - [Troubleshooting](#troubleshooting)
 - [See Also](#see-also)
 
@@ -32,6 +33,7 @@ a little-loops project over the Model Context Protocol. It advertises three surf
 | **Tools (write)** | `issue_capture`, `issue_set_status`, `issue_link`, `issue_append_log` — dry-run by default, see [below](#the-mutation-surface-and-its-guards) |
 | **Resources** | Issue files, `.ll/ll-goals.md`, and `docs/**/*.md` under an `ll://` scheme |
 | **Prompts** | Every discovered `SKILL.md`, listed as an invocable MCP prompt |
+| **Tasks** | `tasks/get` / `tasks/cancel` — poll or stop an in-flight `ll-loop` run, see [below](#polling-and-stopping-a-run-tasks) |
 
 It is launched *by a host*, never by hand — it speaks JSON-RPC on stdin/stdout and prints
 nothing useful to a terminal. Each tool wraps a `little_loops` library call directly: no
@@ -300,9 +302,10 @@ Four tools write: `issue_capture`, `issue_set_status`, `issue_link`, and
 `issue_append_log`. Each wraps the same library function the equivalent `ll-issues`
 subcommand calls, so a tool call and a CLI invocation produce the same file state.
 
-Orchestration is still off the surface entirely — there is no way to start `ll-auto`,
+Orchestration is still off the surface entirely — there is no way to *start* `ll-auto`,
 `ll-parallel`, `ll-loop`, or `ll-action invoke` through this server. That boundary has not
-moved.
+moved. `tasks/cancel` (below) is a control operation over a run that is already going —
+signalling an existing PID, never spawning one.
 
 Two guards sit in front of the four.
 
@@ -377,6 +380,76 @@ cannot reach a mutating handler while hiding its identity from the guard.
 The four mutating tools carry a `readOnlyHint: false` annotation in `tools/list`; the five
 read-only tools carry no annotations at all. A host can key presentation — a confirmation
 prompt, a different icon — off that.
+
+---
+
+## Polling and Stopping a Run: `tasks/*`
+
+`tasks/get` and `tasks/cancel` let a host poll or stop an `ll-loop` run started by
+existing means (`ll-loop run` on the workstation) — no start path exists here; kicking a
+run off over MCP is a separate, more heavily-gated capability. `ll-queue` is out of scope:
+only `ll-loop` runs are reachable this way.
+
+These are not tools — they are custom JSON-RPC methods registered directly on the server,
+shaped to track the (not-yet-shipped) `io.modelcontextprotocol/tasks` extension so a
+future swap to the official mechanism is a registration change, not a client-visible one.
+`initialize`'s capabilities never advertise the extension itself — the server does not
+claim a capability it only implements privately.
+
+`taskId` is the `ll-loop` `instance_id` verbatim — the same string `ll-loop status`
+already prints — not a handle minted by the server:
+
+```
+$ mcp-call ll-mcp tasks/get '{"taskId": "rn-refine-20260811T140000"}'
+{"taskId": "rn-refine-20260811T140000", "status": "working", "runStatus": "running"}
+```
+
+The `status` field reconciles PID liveness before ever reporting `"working"` — a run whose
+process died (OOM, kernel kill) without updating its state file is reported not-running,
+not left `"working"` forever. Once the run is terminal, the result also carries the
+`ExecutionResult` fields (`final_state`, `iterations`, `terminated_by`, `duration_ms`,
+`captured`):
+
+```
+$ mcp-call ll-mcp tasks/get '{"taskId": "rn-refine-20260811T140000"}'
+{"taskId": "…", "status": "completed", "runStatus": "completed", "final_state": "done", "iterations": 12, "terminated_by": "completed", "duration_ms": 483000, "captured": { … }}
+```
+
+An unknown `taskId` is a distinct JSON-RPC error, never a default `"working"` shape:
+
+```
+$ mcp-call ll-mcp tasks/get '{"taskId": "no-such-run"}'
+{"jsonrpc":"2.0","id":null,"error":{"code":-32002,"message":"no run found for taskId 'no-such-run'"}}
+```
+
+`tasks/cancel` stops a running instance the same way `ll-loop stop` does — `SIGTERM`, then
+`SIGKILL` after a 10s grace period. Neither backend has a genuinely terminal "cancelled"
+status, so the result never reports `"cancelled"` bare: `resumable` and the backend's raw
+status ride alongside, so a host cannot mistake a resumable stop for an irreversible one:
+
+```
+$ mcp-call ll-mcp tasks/cancel '{"taskId": "rn-refine-20260811T140000"}'
+{"taskId": "…", "status": "cancelled", "resumable": true, "runStatus": "user_stopped"}
+```
+
+`tasks/*` gets the same deny-by-default-on-HTTP treatment as the mutating tools (Guard 2
+above), but as its own grant — `allow_tasks`, not `allow_mutations`. Consenting to
+issue-file writes over HTTP does not imply consenting to stopping a running agent:
+
+```json
+{
+  "mcp": {
+    "transport_policy": {
+      "http":  { "allow_mutations": false, "allow_tasks": false },
+      "stdio": { "allow_mutations": true,  "allow_tasks": true }
+    }
+  }
+}
+```
+
+Those are the defaults — both closed on HTTP, both open on stdio. A denied `tasks/get`
+reports itself as a `tasks/get` denial, not a `tools/call` one, since the underlying guard
+is shared with Guard 2 but the two methods are gated independently.
 
 ---
 

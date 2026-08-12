@@ -1,5 +1,6 @@
 """ll-mcp: MCP server (stdio, and streamable HTTP per FEAT-3143) exposing five coarse
-read-only tools plus four guarded mutation tools (FEAT-3149) over the little_loops library.
+read-only tools, four guarded mutation tools (FEAT-3149), and a `tasks/get` +
+`tasks/cancel` poll surface for `ll-loop` runs (FEAT-3145) over the little_loops library.
 
 Implements the 2026-07-28 MCP spec via the official `mcp` SDK (pinned exactly to 2.0.0 — see
 the `[project.optional-dependencies].mcp` comment in `scripts/pyproject.toml`). The SDK owns
@@ -17,6 +18,15 @@ refused at the transport layer per deployment, via `mcp.transport_policy` in
 authentication); stdio, a same-machine channel, allows them. Both guards read the same
 `little_loops.mcp_server.policy.MUTATING_TOOLS` registry, so they cannot disagree about
 what counts as a write.
+
+`little_loops.mcp_server.tasks` (FEAT-3145) registers `tasks/get`/`tasks/cancel` directly
+on the `Server` via `add_request_handler` rather than as tools — polling or stopping a run
+does not fit the tools primitive, but is also not read-only, so it gets the same
+deny-by-default-on-HTTP transport-policy treatment as mutations, via its own
+`mcp.transport_policy.*.allow_tasks` grant (independently expressible from
+`allow_mutations` — stopping a running agent and writing an issue file are different
+consents). No start path exists here or anywhere in this package: starting a run is
+FEAT-3151's territory.
 
 No `cli_event_context()` wrapper is used: that convention measures a single CLI invocation's
 duration, but a stdio server's process lifetime spans arbitrarily many requests — wrapping the

@@ -15,12 +15,14 @@ import pytest
 
 from little_loops.cli.loop.lifecycle import (
     _format_relative_time,
+    cancel_run,
     cmd_monitor,
     cmd_resume,
     cmd_status,
     cmd_stop,
+    read_run_status,
 )
-from little_loops.fsm.persistence import LoopState
+from little_loops.fsm.persistence import LoopState, StatePersistence
 
 
 class TestCmdStatus:
@@ -2982,3 +2984,109 @@ class TestCmdMonitor:
         assert result == 0
         output = " ".join(str(c) for c in mock_print.call_args_list)
         assert "evaluate" in output
+
+
+class TestFeat3145ReadRunStatusExtraction:
+    """FEAT-3145 AC 14: `cmd_status --json` output is byte-identical around the
+    `read_run_status()` extraction — this is the regression baseline for that guarantee.
+    """
+
+    def _seed(self, loops_dir: Path, instance_id: str) -> None:
+        running_dir = loops_dir / ".running"
+        running_dir.mkdir(parents=True, exist_ok=True)
+        persistence = StatePersistence("sample-loop", loops_dir, instance_id=instance_id)
+        state = LoopState(
+            loop_name="sample-loop",
+            current_state="check",
+            iteration=3,
+            captured={"a": {"output": "b"}},
+            prev_result=None,
+            last_result=None,
+            started_at="2026-08-11T10:00:00Z",
+            updated_at="2026-08-11T10:05:00Z",
+            status="completed",
+        )
+        persistence.save_state(state)
+
+    def test_cmd_status_json_matches_read_run_status(self, tmp_path: Path) -> None:
+        """Same disk fixture, same shape, through both entry points."""
+        loops_dir = tmp_path
+        self._seed(loops_dir, "sample-loop")
+        logger = MagicMock()
+        args = argparse.Namespace(json=True)
+
+        with patch("builtins.print") as mock_print:
+            result = cmd_status("sample-loop", loops_dir, logger, args)
+
+        assert result == 0
+        via_cmd_status = json.loads(mock_print.call_args_list[0][0][0])
+        via_read_run_status = read_run_status("sample-loop", loops_dir)
+
+        assert via_cmd_status == via_read_run_status
+        assert via_cmd_status["loop_name"] == "sample-loop"
+        assert via_cmd_status["status"] == "completed"
+        assert via_cmd_status["current_state"] == "check"
+        assert via_cmd_status["iteration"] == 3
+        assert via_cmd_status["captured"] == {"a": {"output": "b"}}
+
+
+class TestFeat3145CancelRun:
+    """FEAT-3145 AC 4 / Decision 3: `cancel_run()` is the `tasks/cancel` entry point."""
+
+    def test_cancel_run_unknown_instance_returns_none(self, tmp_path: Path) -> None:
+        logger = MagicMock()
+        assert cancel_run("does-not-exist", tmp_path, logger) is None
+
+    def test_cancel_run_stops_a_running_instance(self, tmp_path: Path) -> None:
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir(parents=True)
+        persistence = StatePersistence("sample-loop", tmp_path, instance_id="run-9")
+        persistence.save_state(
+            LoopState(
+                loop_name="sample-loop",
+                current_state="run",
+                iteration=1,
+                captured={},
+                prev_result=None,
+                last_result=None,
+                started_at="2026-08-11T10:00:00Z",
+                updated_at="2026-08-11T10:00:00Z",
+                status="running",
+            )
+        )
+        (running_dir / "run-9.pid").write_text("99999999")
+        logger = MagicMock()
+
+        # Alive on the initial check, dead on the first _kill_with_timeout poll.
+        with (
+            patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=[True, False]),
+            patch("little_loops.cli.loop.lifecycle.os.getpgid", return_value=77),
+            patch("little_loops.cli.loop.lifecycle.os.killpg"),
+            patch("little_loops.cli.loop.lifecycle.time.sleep"),
+        ):
+            outcome = cancel_run("run-9", tmp_path, logger)
+
+        assert outcome == {"run_status": "user_stopped"}
+        assert persistence.load_state().status == "user_stopped"
+
+    def test_cancel_run_on_non_running_instance_is_a_noop(self, tmp_path: Path) -> None:
+        (tmp_path / ".running").mkdir(parents=True, exist_ok=True)
+        persistence = StatePersistence("sample-loop", tmp_path, instance_id="run-10")
+        persistence.save_state(
+            LoopState(
+                loop_name="sample-loop",
+                current_state="done",
+                iteration=1,
+                captured={},
+                prev_result=None,
+                last_result=None,
+                started_at="2026-08-11T10:00:00Z",
+                updated_at="2026-08-11T10:00:00Z",
+                status="completed",
+            )
+        )
+        logger = MagicMock()
+
+        outcome = cancel_run("run-10", tmp_path, logger)
+
+        assert outcome == {"run_status": "completed"}

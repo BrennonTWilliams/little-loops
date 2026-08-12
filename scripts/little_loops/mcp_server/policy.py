@@ -84,10 +84,16 @@ def check_tool_call(
 ) -> PolicyDecision:
     """Decide whether ``method``/``tool_name`` may run over ``transport``.
 
-    Only `tools/call` naming a tool in :data:`MUTATING_TOOLS` is ever gated; every other
-    method (`tools/list`, `resources/read`, the tier-1 read tools, …) passes through
-    untouched, which is what keeps a deny-configured HTTP transport fully useful for
-    reads.
+    Two independent grants are checked, and every other method (`tools/list`,
+    `resources/read`, the tier-1 read tools, …) passes through untouched, which is
+    what keeps a deny-configured HTTP transport fully useful for reads:
+
+    - `tools/call` naming a tool in :data:`MUTATING_TOOLS` is gated by
+      ``allows_mutations()``.
+    - Any `tasks/*` method (FEAT-3145: `tasks/get`, `tasks/cancel`) is gated by
+      ``allows_tasks()``. This is a *separate* grant from mutations (Decision 6) —
+      an operator who allows issue-file writes over HTTP has not thereby consented
+      to stopping a running agent.
 
     Args:
         transport: ``"http"`` or ``"stdio"``.
@@ -99,13 +105,28 @@ def check_tool_call(
     Returns:
         A :class:`PolicyDecision`.
     """
-    if method != "tools/call" or tool_name not in MUTATING_TOOLS:
+    is_mutating_call = method == "tools/call" and tool_name in MUTATING_TOOLS
+    is_task_call = method is not None and method.startswith("tasks/")
+
+    if not is_mutating_call and not is_task_call:
         return PolicyDecision(allowed=True)
 
     if config is None:
         from little_loops.config import BRConfig
 
         config = BRConfig(Path.cwd())
+
+    if is_task_call:
+        if config.mcp.transport_policy.allows_tasks(transport):
+            return PolicyDecision(allowed=True)
+        return PolicyDecision(
+            allowed=False,
+            reason=(
+                f"policy denied {method}: tasks/* requests are disabled on the "
+                f"{transport} transport (set mcp.transport_policy.{transport}.allow_tasks "
+                "to true in .ll/ll-config.json to permit them)"
+            ),
+        )
 
     if config.mcp.transport_policy.allows_mutations(transport):
         return PolicyDecision(allowed=True)
