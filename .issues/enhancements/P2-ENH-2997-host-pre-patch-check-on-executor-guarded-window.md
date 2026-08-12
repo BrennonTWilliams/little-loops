@@ -28,8 +28,10 @@ reconcile_attempted: true
 
 Make ENH-2991's pre-patch check reachable from every green-suite transition in
 the `rn-*` loop family by hosting it on the FSM executor's guarded-window
-mechanism — the same entry/exit bracket ENH-2854 established for `tamper_guard` —
-rather than as a state inside `oracles/code-run-gate.yaml`.
+mechanism — the same policy-key-plus-exit-hook shape ENH-2854 established for
+`tamper_guard`, minus the entry snapshot, which this check has no use for (see
+§ Design Notes → "No entry snapshot is needed") — rather than as a state inside
+`oracles/code-run-gate.yaml`.
 
 ## Parent Issue
 
@@ -113,18 +115,27 @@ _Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
 1. Add the pre-patch-check key to `fsm/schema.py` at both loop level (near
    `:1323,1325`, alongside `tamper_guard`/`tamper_guard_ok`) and state level
    (near `:698`), following `tamper_guard`'s declaration shape.
-2. In `fsm/executor.py`, extend the guarded-window mechanism (resolver
-   `:1344-1361`, entry snapshot `:1499-1507`, exit-compare/checker
-   `:1385-1455`, invoked from both call sites `:1534-1538` and `:1587-1591`)
-   so a guarded state's exit hook resolves `(base_sha, base_dirty)` via
-   `history_reader.read_base_sha(issue_id)` /
-   `history_reader.read_base_dirty(issue_id)`, **produces the cumulative patch
-   diff via a new `_prepatch_step_diff(repo_root, base_ref) -> str` helper**
-   (see § Design Notes → "The check's input is the cumulative patch diff"), and
-   calls `run_prepatch_check()` — supplying the six further arguments the
-   shipped signature requires (see § Design Notes → "Host-supplied arguments").
-   The call is wrapped in `try/finally` so the pre-patch worktree is torn down
-   (see § Design Notes → "Worktree lifetime is the host's").
+2. In `fsm/executor.py`, extend the guarded-window mechanism — mirroring the
+   `tamper_guard` resolver (`:1344-1361`) and exit-compare/checker (`:1385-1455`,
+   invoked from both call sites `:1534-1538` and `:1587-1591`) — **with a
+   resolver and an exit hook only; no entry snapshot is added** (see § Design
+   Notes → "No entry snapshot is needed"). The exit hook fires only on the green
+   path (see § Design Notes → "The check runs only on the green path"), resolves
+   `(base_sha, base_dirty)` via `history_reader.read_base_sha(issue_id)` /
+   `history_reader.read_base_dirty(issue_id)`, resolves `base_ref` via the newly
+   public `prepatch_check.resolve_base_ref()`, **produces the cumulative patch
+   diff via a new `_prepatch_step_diff(repo_root, base_ref) -> str` helper that
+   unions tracked changes with untracked non-ignored files** (see § Design Notes
+   → "The check's input is the cumulative patch diff" and "`git diff <base_ref>`
+   alone drops untracked files"), and calls `run_prepatch_check()` — supplying
+   the six further arguments the shipped signature requires (see § Design Notes
+   → "Host-supplied arguments"). The call is wrapped in `try/finally` so the
+   pre-patch worktree is torn down (see § Design Notes → "Worktree lifetime is
+   the host's").
+2c. **Promote `resolve_base_ref()` to public in `prepatch_check.py`** and route
+   both the core and the host through it, so the ref the diff is computed
+   against and the ref the core forks at cannot diverge (see § Design Notes →
+   "The host cannot obtain the resolved `base_ref` today").
 2a. **Pin the ordering against `tamper_guard` in code, at both exit call
    sites** — the prepatch checker must run before `_check_tamper_guard`, with
    an explicit precedence rule when both want to route (see § Design Notes →
@@ -225,11 +236,74 @@ _These touchpoints were identified by wiring analysis and must be included in th
   whole patch under evaluation, including the working tree. Add a
   `_prepatch_step_diff(repo_root: Path, base_ref: str) -> str` helper on the
   executor (a thin `_git(repo_root, "diff", base_ref)` wrapper following
-  `_tamper_guard_changed_files`'s delegation shape). Note this means the core
-  re-resolves `base_ref` internally from the same `base_sha`/`base_branch` the
-  host passes, so host and core agree by construction — but a divergence here
-  would silently mis-scope the diff, so the helper must take the resolved ref,
-  not re-derive it independently.
+  `_tamper_guard_changed_files`'s delegation shape).
+- **`git diff <base_ref>` alone drops untracked files, which re-opens the inert
+  gate one layer down (blocking, found 2026-08-12 pre-implementation review).**
+  `git diff <ref>` reports tracked modifications only; a brand-new test file is
+  untracked until something commits it. Since `_parse_diff`
+  (`prepatch_check.py:100-134`) discovers files **exclusively** through `+++ b/`
+  headers, an untracked new test never appears in `touched`, never reaches
+  `filter_test_files`, and `collect_candidates()` returns `[]` → the core
+  short-circuits to `verdict="skipped"` (`prepatch_check.py:416-424`). That is
+  the same silently-inert gate the resolution above was written to close, and
+  "a newly added test that also passes pre-patch" is precisely the highest-value
+  case this whole check exists to catch.
+
+  The sibling guard already solves this and documents why:
+  `tamper_guard_changed_files` (`test_tamper_guard.py:175-190`) unions `git diff
+  --name-only HEAD` with `git ls-files --others --exclude-standard` explicitly
+  "so a newly-added test file is visible to `run_tamper_guard` even though it
+  couldn't have been in the entry snapshot."
+
+  **Rule:** `_prepatch_step_diff` returns `git diff <base_ref>` **concatenated
+  with**, for each untracked non-ignored path from `git ls-files --others
+  --exclude-standard`, a `git diff --no-index -- /dev/null <path>` fragment
+  (which emits a well-formed `+++ b/<path>` header plus `@@` hunks, exactly what
+  `_parse_diff` consumes). Use `--no-index` rather than `git add -N`: the latter
+  mutates the index of the live repository under a shared `GitLock` and would be
+  visible to every concurrent worker. The anti-inert-gate AC must exercise an
+  **untracked** added test file, not merely a committed one — a committed-file
+  test passes without this rule and would leave the hole open.
+- **The host cannot obtain the resolved `base_ref` today; a public resolver must
+  be promoted (blocking, found 2026-08-12 pre-implementation review).** The host
+  needs the resolved ref *before* the call, to compute `step_diff`. The core
+  resolves it *internally* (`prepatch_check.py:398-403`) via the private
+  `_merge_base` (`:240`) and only surfaces the result on the returned
+  `PrePatchEvidence.base_ref` — after the call, too late. `prepatch_check.py`
+  declares no `__all__` and every other helper is underscore-private, so an
+  implementer's only options are to duplicate `_merge_base`'s logic (the exact
+  host/core divergence that would silently mis-scope the diff) or import a
+  private name.
+
+  **Rule:** promote a public
+  `resolve_base_ref(repo_root: Path, base_sha: str | None, base_branch: str) ->
+  tuple[str, str]` (returning `(base_ref, base_source)`) in `prepatch_check.py`,
+  and have **both** `run_prepatch_check()` and the executor host call it, so
+  host and core agree by construction rather than by parallel maintenance. This
+  is the same private→public promotion this repo applied in `3a70ba56`
+  (`_test_functions` → `extract_test_functions`) for the same reason: a second
+  caller outside the module needed the helper.
+- **The check runs only on the green path (found 2026-08-12 pre-implementation
+  review).** § Summary scopes this to "every green-suite transition," but no
+  earlier revision gated invocation on the guarded state having passed. As
+  specced the exit hook fires on red runs too — forking a worktree and running
+  pytest up to twice inside a 300s box to produce a verdict that is then
+  discarded, because a red suite routes to remediation regardless of what the
+  pre-patch check found. Combined with the per-iteration multiplication below,
+  that roughly doubles the wasted runtime for zero decisions changed. **Rule:**
+  invoke the core only when the guarded state's action succeeded (the `on_yes` /
+  zero-exit-code path); otherwise record a skip in `ctx.context` with a
+  `skipped_reason` and route nothing. A pre-patch verdict is only meaningful
+  about a suite that just went green.
+- **No entry snapshot is needed, and one must not be wired.** Unlike
+  `tamper_guard`, this check consults no before-state: its entire input is
+  `git diff <base_ref>` computed at exit. § Proposed Change and the first
+  Acceptance Criterion both enumerate the entry snapshot (`fsm/executor.py:1499-1507`)
+  when describing the mechanism to mirror, which reads as an instruction to add
+  one; taken literally it would hash every candidate path on every guarded entry
+  for no consumer. **Rule:** `prepatch_check` registers a policy resolver and an
+  exit hook only. The entry snapshot stays `tamper_guard`-exclusive, and the
+  entry-site condition at `:1499-1507` is left keyed on `_tamper_policy` alone.
 - **The `.ll/history.db` surface must be built, not reused (new scope,
   2026-08-12).** An AC requires persisting the bundle to `.ll/history.db`, and
   ENH-2998's `run_dir`-less `cli/harness.py` consumer can discover it by no
@@ -261,10 +335,16 @@ _These touchpoints were identified by wiring analysis and must be included in th
     The bundle-write path needs the same guard: no `run_dir` means skip the
     run-dir file and rely on the `history.db` row, never a crash and never a
     gate failure.
-  - **`base_branch` has no source.** It is required with no default and drives
-    the merge-base fallback. **Rule:** resolve from `parallel.base_branch` in
-    `.ll/ll-config.json` (the same global default `issue_parser.py:1698-1700`
-    documents as the fallback for per-issue `base_branch:`).
+  - **`base_branch` has no source, and the config field is nullable.** It is
+    required with no default and drives the merge-base fallback. **Rule:**
+    resolve from `parallel.base_branch` in `.ll/ll-config.json` (the same global
+    default `issue_parser.py:1698-1700` documents as the fallback for per-issue
+    `base_branch:`) — **falling back to `"main"` when unset**, since the config
+    field is `base_branch: str | None = None`
+    (`config/automation.py:104,142`) while the core's parameter is a required
+    `str`. The `or "main"` fallback is already the codebase's own convention for
+    this exact field: `self._parallel.base_branch or "main"`
+    (`config/core.py:674`, mirrored at `:773`).
 - **Evidence-bundle transport follows the host.** With the check hosted by the
   executor rather than `ll-harness`, `PrePatchEvidence` cannot ride a
   harness-local `HarnessEvalOutcome`. It reaches the parent through the existing
@@ -278,16 +358,28 @@ _These touchpoints were identified by wiring analysis and must be included in th
   ambiguity is resolved in favor of writing both.
 - **Host-supplied arguments.** The shipped `run_prepatch_check()` is
   keyword-only and requires six arguments beyond `(step_diff, base_sha,
-  base_dirty)`. The host must supply: `repo_root`; `worktree_base` — pass a
-  gitignored directory, `.worktrees/` (already gitignored at `.gitignore:71`),
-  **not** `run_dir`, so the fork stays outside
-  `tamper_guard_changed_files()`'s scan scope per ENH-3141's docstring;
-  `base_branch` for the merge-base fallback when `base_sha` is unstamped;
-  `logger`; and a `GitLock` — `fsm/executor.py:930` already constructs one
-  (`from little_loops.parallel.git_lock import GitLock`), so the import is
-  precedented, but whether that instance is in scope at the guarded-window call
-  site must be confirmed during implementation rather than assumed. `config` is
-  optional and defaults to `BRConfig(repo_root)`.
+  base_dirty)`. The host must supply: `repo_root`; `worktree_base` — **resolve
+  it as `BRConfig(repo_root).get_worktree_base()`** (`config/core.py:568-570`),
+  **not** a hardcoded `.worktrees/` and **not** `run_dir`. The directory is a
+  configurable setting (`automation.worktree_base`, default `".worktrees"`,
+  `config/automation.py:27,45`), the executor already uses this exact accessor
+  for its own sub-loop worktrees (`fsm/executor.py:938`), and keeping the fork
+  out of `run_dir` is what keeps it outside `tamper_guard_changed_files()`'s
+  scan scope per ENH-3141's docstring. Note the earlier "already gitignored at
+  `.gitignore:71`" rationale holds **only in this source repo**: `.worktrees/`
+  is absent from `ll-init`'s `_GITIGNORE_ENTRIES` (`init/writers.py:59-73`), so
+  in a consuming project the fork may be untracked-and-visible — one more reason
+  the untracked-file union in `_prepatch_step_diff` must respect
+  `--exclude-standard` and the worktree base must come from config, where a
+  project can move it. Also: `base_branch` for the merge-base fallback when
+  `base_sha` is unstamped; `logger`; and a `GitLock` — **construct both locally
+  at the call site as `Logger(verbose=False)` / `GitLock(wt_logger)`.** This is
+  no longer an open question: `fsm/executor.py:929-940` already does exactly
+  this, in this same file, for the sub-loop worktree path, and `GitLock`'s
+  constructor takes an optional logger and nothing else
+  (`parallel/git_lock.py:44-48`). `config` is optional and defaults to
+  `BRConfig(repo_root)` — pass the host's own instance so `get_worktree_base()`
+  and `prepatch_check.enabled` are read from one object.
 - **Worktree lifetime is the host's.** `run_prepatch_check()` does not clean up
   after itself: `setup_prepatch_worktree()` creates
   `<repo>/<worktree_base>/prepatch-<timestamp>` plus a same-named branch, and
@@ -300,7 +392,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
   `_is_ll_branch()` (`worktree_utils.py:415-431`) both reject the
   `prepatch-<timestamp>` naming (verified — both return `False`), so
   `/ll:cleanup-worktrees` skips them. Widening those two predicates to accept
-  the `prepatch-` prefix is in scope here.
+  the `prepatch-` naming is in scope here. **Widen with an anchored pattern —
+  `^prepatch-\d{8}-\d{6}-\d{6}$`, matching `setup_prepatch_worktree`'s actual
+  format string (`worktree_utils.py:381-383`, `"%Y%m%d-%H%M%S-%f"`) — not a bare
+  `startswith("prepatch-")`.** `_is_ll_branch` gates *auto-deletion*, and its
+  docstring's stated contract is to accept only ll-managed names; a loose prefix
+  test would make a hand-created branch called `prepatch-experiment` reapable by
+  `/ll:cleanup-worktrees`. The two existing predicates are already anchored
+  (`re.match(r"^\d{8}-\d{6}-", name)`), so this follows their shape.
 - **Policy values and verdict mapping.** The key's enum is `fail | warn |
   allow` — deliberately *not* `tamper_guard`'s `revert | fail | allow`, since
   `revert` has no meaning for a read-only pre-patch observation. The enum must
@@ -355,11 +454,16 @@ _These touchpoints were identified by wiring analysis and must be included in th
   under a 300s box. `run_test` inside `code-run-gate` is reached on *every*
   iteration of the outer `rn-refine`/`rn-remediate` loop, not once per run, so
   the cost is multiplied by iteration count. **In scope:** memoize on the
-  `step_diff` hash — when the diff is byte-identical to the previous guarded
+  **`(step_diff hash, base_ref)` pair** — when both match the previous guarded
   exit in the same run, reuse the prior verdict and record it with a
-  `"memoized": true` marker rather than re-forking. This is cheap (a hash in
-  `ctx.context`) and converts the worst case from O(iterations) worktree forks
-  to O(distinct patches).
+  `"memoized": true` marker rather than re-forking. The `base_ref` component is
+  load-bearing and not optional: a byte-identical diff evaluated against a
+  different base is a different check, and `base_ref` legitimately moves within
+  one run (an unstamped `issue_id` takes the merge-base path, which tracks
+  `HEAD`). Keying on the diff hash alone would serve a stale verdict after a
+  rebase or a new commit. This is cheap (a tuple in `ctx.context`) and converts
+  the worst case from O(iterations) worktree forks to O(distinct patches).
+  Combined with the green-path gate above, red iterations cost nothing at all.
 
 ### Codebase Research Findings
 
@@ -416,16 +520,27 @@ _Added by `/ll:refine-issue` — 2026-08-12 — based on codebase analysis:_
   the cost-preferred placement per § Design Notes), alongside the existing
   `tamper_guard: fail` at `:50`. This is the opt-in that makes the reachability
   AC satisfiable; see § Design Notes → "Opting `code-run-gate.yaml` in."
-- `scripts/little_loops/worktree_utils.py` — `_is_ll_worktree()` /
-  `_is_ll_branch()` (`:415-431`) widened to accept the `prepatch-<timestamp>`
-  naming so `/ll:cleanup-worktrees` can reap crash leftovers.
+- `scripts/little_loops/worktree_utils.py` — `_is_ll_worktree()` (`:416-422`) /
+  `_is_ll_branch()` (`:425-435`) widened with an anchored
+  `^prepatch-\d{8}-\d{6}-\d{6}$` so `/ll:cleanup-worktrees` can reap crash
+  leftovers without making arbitrary `prepatch-*` branches auto-deletable.
 
 _Added 2026-08-12 — previously-missing files for the `step_diff` producer and
 the `history.db` surface (see § Design Notes):_
 - `scripts/little_loops/fsm/executor.py` — also gains
   `_prepatch_step_diff(repo_root, base_ref) -> str`, the diff producer the
   core's `step_diff` argument requires. Nothing in the codebase produces one
-  today; the guarded-window bracket produces a name list, not a diff.
+  today; the guarded-window bracket produces a name list, not a diff. It must
+  union `git diff <base_ref>` with per-file `git diff --no-index -- /dev/null
+  <path>` fragments for untracked non-ignored paths, or newly added test files
+  are invisible to `_parse_diff`.
+- `scripts/little_loops/prepatch_check.py` — **promote the private base-ref
+  resolution at `:398-403` (which calls the private `_merge_base`, `:240`) into
+  a public `resolve_base_ref(repo_root, base_sha, base_branch) -> tuple[str,
+  str]`**, called by both `run_prepatch_check()` and the executor host. Without
+  it the host has no way to learn the ref the core will fork at before the call
+  it must compute `step_diff` for. Follow the `_test_functions` →
+  `extract_test_functions` promotion in `3a70ba56`.
 - `scripts/little_loops/session_store/schema.py` — new `prepatch_evidence`
   table via the additive-migration pattern the `base_sha`/`base_dirty` columns
   use (`:919-932`).
@@ -480,7 +595,27 @@ _Added 2026-08-12 — coverage for the gaps found in pre-implementation review:_
 - **The anti-inert-gate test (highest value in this list).** A guarded run whose
   patch added a test file must produce a non-empty `step_diff` and at least one
   candidate. Without it, every other test here passes green over a gate that
-  returns `verdict="skipped"` on every invocation.
+  returns `verdict="skipped"` on every invocation. **The added test file must be
+  left untracked** — a committed-file variant passes even with the
+  untracked-blind `git diff <base_ref>` producer and would certify an inert gate.
+  Pair it with a tracked-modification variant so both discovery paths are covered.
+
+_Added 2026-08-12 — third pre-implementation review pass:_
+- A test asserting the live repo's index is unchanged after `_prepatch_step_diff`
+  runs (guards the `--no-index` choice against a regression to `git add -N`).
+- A test asserting host and core resolve the same `base_ref` — the host's
+  `resolve_base_ref()` return equals the invocation's
+  `PrePatchEvidence.base_ref`, on both the `dequeue-stamp` and `merge-base` paths.
+- A test asserting a guarded state whose action *failed* forks no worktree and
+  records a skip (green-path gating).
+- A test asserting no entry snapshot is taken for a `prepatch_check`-guarded
+  state that does not also set `tamper_guard`.
+- Tests for `base_branch` unset → `"main"`, and for a non-default
+  `automation.worktree_base` being honored.
+- A memo-invalidation test: identical `step_diff` against a changed `base_ref`
+  must re-run rather than reuse.
+- A reaper-predicate negative test: `prepatch-experiment` is still rejected by
+  `_is_ll_worktree()` / `_is_ll_branch()`.
 - A test asserting the `prepatch_evidence` row is written and readable by
   `read_prepatch_evidence(issue_id)`, plus the never-raises contract on a
   missing DB / unknown ID.
@@ -713,6 +848,13 @@ _Updated 2026-08-12 — supersedes this issue's earlier 4-argument spec citation
 - `run_prepatch_check(*, step_diff: str, repo_root: Path, worktree_base: str | Path, base_sha: str | None, base_dirty: bool | None, base_branch: str, logger: Logger, git_lock: GitLock, config: BRConfig | None = None) -> PrePatchEvidence`
 
   Shipped at `prepatch_check.py:376-387` — **keyword-only, nine parameters.** Earlier revisions of this issue cited `(step_diff, base_sha, base_dirty, timeout_s)`, which is not callable against the shipped function: `timeout_s` is not a parameter (it comes from `config.prepatch_check.timeout_s`), and `repo_root`/`worktree_base`/`base_branch`/`logger`/`git_lock` are required with no defaults. See § Design Notes → "Host-supplied arguments" for where each value comes from at the guarded-window call site.
+- `resolve_base_ref(repo_root: Path, base_sha: str | None, base_branch: str) -> tuple[str, str]`
+  — **to be created by this issue** by promoting the inline resolution at
+  `prepatch_check.py:398-403` (`base_sha` → `("<sha>", "dequeue-stamp")`, else
+  `(_merge_base(repo_root, base_branch) or base_branch, "merge-base")`). No
+  public equivalent exists: `prepatch_check.py` declares no `__all__` and
+  `_merge_base` (`:240`) is private, so the host currently has no supported way
+  to learn the ref before calling the core. See § Design Notes.
 - `setup_prepatch_worktree(repo_path, worktree_base, base_ref, test_files, logger, git_lock, src_dir=None) -> Path` (`worktree_utils.py:329-337`) — called transitively by the core; relevant to the host only because it is what leaks a worktree and branch absent host-side cleanup.
 - `history_reader.read_base_dirty(issue_id: str, *, run_id: str | None = None, db: Path | str = DEFAULT_DB_PATH) -> bool | None` (`history_reader.py:1872-1918`) — **now exists** (shipped with ENH-3142); the additive sibling of `read_base_sha` this issue's earlier revisions listed as unimplemented. Same never-raises contract, returns `None` when the DB is missing/unreadable, no row matches, or the column is NULL; converts the stored int to `bool`.
 - `history_reader.read_base_sha(issue_id: str, *, run_id: str | None = None, db: Path | str = DEFAULT_DB_PATH) -> str | None` (`scripts/little_loops/history_reader.py:1816-1869`) — current and verified. Never raises (DB-open failure or `sqlite3.Error` both caught, return `None`); returns `None` when unstamped; implements no merge-base fallback (docstring assigns that to the consumer).
@@ -767,7 +909,9 @@ keyword list, or threshold — the thresholds live in the ENH-3142 core.
 
 ## Acceptance Criteria
 
-- [ ] The check is hosted on the executor's guarded-window mechanism (the shape ENH-2854 established in `fsm/executor.py`: resolver `:1344-1361`, entry snapshot `:1499-1507`, exit-compare/checker `:1385-1455`, invoked from call sites `:1534-1538` and `:1587-1591`), not as a state inside `oracles/code-run-gate.yaml` and not inside `cli/harness.py`.
+- [ ] The check is hosted on the executor's guarded-window mechanism (the shape ENH-2854 established in `fsm/executor.py`: resolver `:1344-1361`, exit-compare/checker `:1385-1455`, invoked from call sites `:1534-1538` and `:1587-1591`), not as a state inside `oracles/code-run-gate.yaml` and not inside `cli/harness.py`. **A resolver and an exit hook only — no entry snapshot is added for `prepatch_check`**; the entry site (`:1499-1507`) stays keyed on `_tamper_policy` alone, and a test asserts a guarded `prepatch_check` state takes no entry snapshot.
+- [ ] The exit hook invokes the core **only on the green path** (the guarded state's action succeeded / routes to `on_yes`); on a failed action it records a skip and routes nothing. A test asserts a red guarded state forks no worktree.
+- [ ] `prepatch_check.resolve_base_ref(repo_root, base_sha, base_branch)` is public, and **both** `run_prepatch_check()` and the executor host resolve `base_ref` through it; a test asserts the ref the host computes `step_diff` against equals `PrePatchEvidence.base_ref` returned by the same invocation, on both the `dequeue-stamp` and `merge-base` paths.
 - [ ] No *state* is added to `oracles/code-run-gate.yaml`; a test asserts its state set is unchanged. The file gains exactly one `prepatch_check:` key line (loop level, or state level on `run_test`).
 - [ ] A first-class FSM key is settable at loop level and state level, mirroring `tamper_guard`'s declaration in `fsm/schema.py`, with the enum `fail | warn | allow` declared in `fsm-loop-schema.json`.
 - [ ] The check is reachable from the `rn-*` family's green-suite transitions; a test asserts a guarded loop (`rn-implement` / `rn-remediate` / `rn-refine`, transitively via `code-run-gate`) actually runs the check.
@@ -775,17 +919,19 @@ keyword list, or threshold — the thresholds live in the ENH-3142 core.
 - [ ] The host records its verdict in `ctx.context` following ENH-2854's `_tamper_guard` record shape, accumulating findings across guarded states.
 - [ ] The full `PrePatchEvidence` bundle is written to `${context.run_dir}/prepatch_evidence_<issue_id>.json` (MR-3) **and** persisted to `.ll/history.db` — the latter is the only surface ENH-2998's `run_dir`-less `cli/harness.py` consumer can discover — and is exposed through the existing parent↔sub-loop token channel.
 - [ ] The `step_diff` passed to `run_prepatch_check()` is the cumulative patch diff (`git diff <base_ref>`), not the guarded state's entry→exit delta; a test asserts that for a run whose patch added a test file, the diff reaching the core is non-empty and `collect_candidates()` returns at least one candidate. (Guards against the inert-gate failure mode in § Design Notes.)
+- [ ] `step_diff` includes **untracked** non-ignored files (`git ls-files --others --exclude-standard`, emitted as `git diff --no-index -- /dev/null <path>` fragments), so a newly added, not-yet-committed test file becomes a candidate. **The anti-inert-gate test above must use an untracked added test file** — a committed-file variant passes without this rule and leaves the hole open. A second test asserts the live repository's index is unmodified by diff production (no `git add -N`).
 - [ ] A `prepatch_evidence` table, its writer, and `history_reader.read_prepatch_evidence(issue_id)` exist; a test asserts a guarded-state exit writes a readable row, and that the reader returns `None` (never raises) on a missing DB or unknown issue ID.
 - [ ] When `issue_id` is absent from the FSM context, the check still runs against the merge-base fallback (`base_source == "merge-base"`) rather than skipping; a test covers it.
 - [ ] When `run_dir` is absent or empty, the run-dir bundle write is skipped without crashing and without failing the gate — the `history.db` row is still written; a test covers it.
-- [ ] `base_branch` is resolved from `parallel.base_branch` in `.ll/ll-config.json`; a test asserts the resolved value reaches the core.
+- [ ] `base_branch` is resolved from `parallel.base_branch` in `.ll/ll-config.json`, **falling back to `"main"` when the field is null/unset** (matching `config/core.py:674`); tests cover both the configured and the unset case, asserting the resolved value reaches the core.
+- [ ] `worktree_base` is resolved via `BRConfig.get_worktree_base()` rather than a hardcoded `.worktrees/`; a test asserts a non-default `automation.worktree_base` is honored and that the fork lands outside `run_dir`.
 - [ ] The prepatch checker runs before `_check_tamper_guard` at **both** exit call sites, both checkers record their `ctx.context` entry before either routes, and when both want to route the tamper-guard target wins; tests cover the ordering and the precedence rule.
-- [ ] Repeated guarded exits within one run whose `step_diff` is byte-identical reuse the prior verdict (recorded with `"memoized": true`) instead of re-forking a worktree; a test asserts only one worktree is created across two identical-diff exits.
+- [ ] Repeated guarded exits within one run whose **`(step_diff hash, base_ref)` pair** is identical reuse the prior verdict (recorded with `"memoized": true`) instead of re-forking a worktree; a test asserts only one worktree is created across two identical-diff exits, and a second test asserts an identical diff against a *changed* `base_ref` does **not** hit the memo.
 - [ ] The pre-patch worktree and its branch are torn down on both the success and exception paths (`try/finally` + `cleanup_worktree(..., delete_branch=True)`); a test asserts neither survives a guarded-state exit.
-- [ ] `_is_ll_worktree()` / `_is_ll_branch()` accept the `prepatch-<timestamp>` naming so `/ll:cleanup-worktrees` reaps crash leftovers; a test asserts both.
+- [ ] `_is_ll_worktree()` / `_is_ll_branch()` accept the `prepatch-<timestamp>` naming via an **anchored** `^prepatch-\d{8}-\d{6}-\d{6}$` so `/ll:cleanup-worktrees` reaps crash leftovers; tests assert both accept a real `setup_prepatch_worktree()` name and both still **reject** a hand-made `prepatch-experiment`.
 - [ ] When the check's key is absent (no state override, no loop default), the guarded window short-circuits to SKIP rather than failing the gate; a test covers it.
 - [ ] When the key is present but `prepatch_check.enabled` is `false` (the config default), the run is recorded as a skip with the core's `skipped_reason` and never fails the gate; a test covers it.
-- [ ] The host resolves the base via `history_reader.read_base_sha(issue_id)` / `read_base_dirty(issue_id)` and passes both in as arguments, along with `repo_root`, a gitignored `worktree_base`, `base_branch`, `logger`, and a `GitLock`; a test asserts the core still performs no database access on this path.
+- [ ] The host resolves the base via `history_reader.read_base_sha(issue_id)` / `read_base_dirty(issue_id)` and passes both in as arguments, along with `repo_root`, the config-resolved `worktree_base`, `base_branch`, a locally constructed `Logger(verbose=False)`, and a locally constructed `GitLock` (per `fsm/executor.py:929-940`); a test asserts every one of the core's nine keyword-only parameters is supplied explicitly by the host — i.e. the core is never left to discover `base_sha`/`base_dirty` itself. (Replaces an earlier, untestable "the core performs no database access" phrasing; the core's DB-free property is ENH-3142's to guarantee, not this issue's to re-assert.)
 - [ ] A `ll-loop validate` lint rule mirroring ENH-2854's catches misuse of the new key.
 - [ ] ENH-2854's tamper-guard `revert` policy runs after this check has read the step's diff when both are active on the same window.
 
@@ -803,12 +949,21 @@ keyword list, or threshold — the thresholds live in the ENH-3142 core.
 - **Risk**: Medium — touches the FSM executor's guarded-window path, which
   `tamper_guard` shares. The SKIP-when-absent convention plus the `enabled:
   false` config default are what keep existing loops unaffected. Two non-obvious
-  risks: (a) **a silently inert gate** — if `step_diff` is sourced from the
-  guarded state's own delta rather than the cumulative patch diff, every
+  risks: (a) **a silently inert gate**, which has *two* distinct causes — if
+  `step_diff` is sourced from the guarded state's own delta rather than the
+  cumulative patch diff, **or** if it is sourced from a bare `git diff
+  <base_ref>` that cannot see untracked new test files — either way every
   invocation returns `verdict="skipped"` while all reachability tests pass
   green; (b) **runtime cost** — each invocation forks a worktree and runs pytest
   up to twice under a 300s box, multiplied by outer-loop iteration count, which
-  the `step_diff`-hash memo is scoped to contain.
+  the `(step_diff hash, base_ref)` memo and the green-path gate are jointly
+  scoped to contain.
+- **Scope note (2026-08-12, third review pass)**: this issue grew again. The
+  `.ll/history.db` persistence surface (table + writer + reader) is the cleanest
+  severable piece — it has no dependency on the guarded-window work and ENH-2998
+  is its only other stakeholder — and splitting it into a separate issue that
+  both ENH-2997 and ENH-2998 depend on would return this one to a reviewable
+  size. Not yet decided; recorded here so the option isn't lost.
 - **Breaking Change**: No — new optional key, absent means unguarded.
 
 ## Confidence Check Notes
@@ -854,6 +1009,47 @@ Verified against shipped code; both were unowned by any issue.
   ENH-2997 owns it as the first producer (table + writer + reader now in the
   Integration Map); **ENH-2998 should be updated to consume the reader rather
   than imply it owns the write.**
+### 2026-08-12 Third Review Pass — three blocking gaps, resolved in-place
+All three verified against shipped code before being written up.
+- **`git diff <base_ref>` cannot see untracked files (blocking).** The second
+  pass fixed the *scope* of `step_diff` (cumulative patch, not step delta) but
+  left the *producer* untracked-blind. `_parse_diff` discovers files only via
+  `+++ b/` headers (`prepatch_check.py:100-134`), so a newly added, not-yet-
+  committed test file — the single highest-value input to a pre-patch check —
+  yields no candidate and the core returns `verdict="skipped"`. This re-opens
+  the exact inert-gate failure mode the second pass closed, one layer down, and
+  the second pass's own anti-inert-gate AC would have certified it green if
+  written with a committed file. `tamper_guard_changed_files` already unions
+  `git ls-files --others --exclude-standard` for this documented reason
+  (`test_tamper_guard.py:175-190`). Resolved: the producer unions untracked
+  non-ignored paths as `git diff --no-index` fragments (never `git add -N`,
+  which would mutate a shared index), with the AC tightened to require an
+  untracked file.
+- **No public base-ref resolver exists, making the second pass's own rule
+  unimplementable (blocking).** That pass required the diff helper to "take the
+  resolved ref, not re-derive it independently," but nothing exposes one: the
+  core resolves internally (`prepatch_check.py:398-403`) via the private
+  `_merge_base` (`:240`), there is no `__all__`, and the resolved value appears
+  only on the returned `PrePatchEvidence.base_ref` — after the call the host
+  needs it for. Resolved: promote a public `resolve_base_ref()` used by both
+  sides, following the `3a70ba56` promotion precedent.
+- **Invocation was never gated on the green path (blocking on cost).** § Summary
+  scopes the check to "green-suite transitions," but no AC restricted it, so the
+  exit hook would fire on red runs too — a worktree fork plus up to two pytest
+  runs whose verdict is discarded, since a red suite routes to remediation
+  regardless. Resolved: green-path-only invocation, with an AC and a
+  no-worktree-on-red test.
+- Also tightened, non-blocking (third pass): `worktree_base` now resolves via
+  `BRConfig.get_worktree_base()` rather than a hardcoded `.worktrees/` (it is
+  configurable, and is *not* in `ll-init`'s `_GITIGNORE_ENTRIES`, so the
+  "already gitignored" rationale was source-repo-only); `base_branch` gains the
+  `or "main"` fallback the nullable config field requires; the `GitLock`
+  open question is closed by the construct-locally precedent at
+  `fsm/executor.py:929-940`; an explicit "no entry snapshot" rule prevents
+  wiring a consumerless entry hook; the memo key becomes `(diff hash, base_ref)`;
+  the reaper predicates are anchored so `prepatch-experiment` stays unreapable;
+  and the untestable "core performs no database access" AC is reframed as
+  host-supplies-all-arguments.
 - Also tightened, non-blocking: `issue_id` / `run_dir` / `base_branch` now have
   explicit degrade-don't-fail rules with ACs; tamper-guard ordering is pinned in
   code at both exit call sites with a stated precedence rule instead of deferred
