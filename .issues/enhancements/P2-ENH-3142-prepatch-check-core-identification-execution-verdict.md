@@ -10,6 +10,7 @@ epic: EPIC-2856
 parent: ENH-2991
 depends_on:
 - ENH-3141
+- ENH-3152
 labels:
 - rework
 - verification
@@ -75,13 +76,46 @@ pre-patch is soft-flagged by default.
    list.
 2. **Run the candidate tests** in the worktree ENH-3141's
    `setup_prepatch_worktree()` produces, targeting only the identified node
-   IDs, and record per-test pass/fail/error/timeout.
+   IDs, and record per-test pass/fail/error/timeout. `setup_prepatch_worktree()`'s
+   `test_files` argument is the **post-patch** test content (see § The
+   `test_files` Contract) — the whole check is new tests against old source.
 3. **Verdict** — added-and-passes-pre-patch is a hard flag; modified-and-passes-
    pre-patch is soft by default (configurable to hard). A pass is re-run once
    before hard-flagging; pass-then-fail is recorded as `flaky` and
    soft-flagged.
 4. **Report** — populate `PrePatchEvidence` with per-test outcomes, the base
    actually used (`base_source`), `base_dirty`, and any `skipped_reason`.
+
+### The `test_files` Contract
+
+`setup_prepatch_worktree(repo_path, worktree_base, base_ref, test_files,
+logger, git_lock, src_dir)` (`worktree_utils.py:329-335`) forks a worktree at
+`base_ref` and then **writes `test_files` over it** via `Path.write_text()`.
+The value passed must therefore be the **post-patch** content of each touched
+test file — new/modified tests laid onto the old source tree. That is the
+entire mechanism of the check.
+
+ENH-3141's docstring describes `test_files` as "same shape as
+`read_paths_at_ref()`'s return value" — **shape only**. Passing
+`read_paths_at_ref()`'s actual output would re-materialize the *base* content
+over a tree that already has it, making every candidate trivially
+fail-or-error and the check a no-op that always reports "clean". Implementation
+must not read the base content into `test_files`.
+
+Pin during implementation:
+
+- **Source of the post-patch content**: the live working tree
+  (`(repo_root / path).read_text()`) for each touched test path, which is what
+  `filter_weakening_findings()` already does for its `after` texts
+  (`test_tamper_guard.py` `_read_text(repo_root / path)`). Reconstructing
+  content by applying `step_diff` is *not* required and should not be built.
+- **Which paths get materialized**: every touched path for which
+  `is_test_file()` is True — which by ENH-2973's default patterns includes
+  `conftest.py`. Materializing the post-patch `conftest.py` is required, not
+  incidental: it is what closes the fixture-added-in-conftest false negative
+  described in § Design Notes.
+- Non-test files are never materialized. That asymmetry is the intended
+  semantics and the source of the import-error caveat in § Design Notes.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -92,8 +126,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
   `to_dict()` serialization (`:802-812`) — in the same commit as the
   `config-schema.json` entry, or `test_config_schema.py::TestToDictSchemaParity`
   fails.
-- Add `test_pre_patch_check_in_schema` to `test_config_schema.py`, modeled on
-  `test_learning_tests_in_schema` (`:247`).
+- Add `test_prepatch_check_in_schema` to `test_config_schema.py`, modeled on
+  `test_learning_tests_in_schema` (`:247`). (Naming pinned to `prepatch_check`
+  — see Design Notes; the `pre_patch_check` spelling used elsewhere in this
+  wiring section is a typo.)
 - Add `TestBRConfigPrePatchCheckIntegration` to `test_config.py`, modeled on
   `TestBRConfigLearningTestsIntegration` (`:3075-3107`), covering the
   `BRConfig`-level round-trip (not just the dataclass in isolation).
@@ -107,15 +143,36 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Design Notes
 
-- **Hunk→nodeid mapping has existing machinery.** `test_tamper_guard._test_functions(source)`
-  (`:369-380`) extracts enclosing test definitions from source;
-  `measure_test_strength()` (`:287-342`) and `filter_weakening_findings()`
-  (`:392` onward) perform before/after per-test AST comparison — exactly the
-  discriminator the added-vs-modified split needs. Consume these rather than
-  re-deriving an AST layer or a `--collect-only` diff. When function-level
+- **Hunk→nodeid mapping has existing machinery — but not the one originally
+  cited.** The reusable pair is `test_tamper_guard._test_functions(source)`
+  (`:369-380`), which returns `{name: ast_node}` for top-level `test*`
+  functions, and the **public** `read_paths_at_ref(repo_root, ref, paths)`
+  (`test_tamper_guard.py:112-120`), which supplies the base-ref text to diff
+  those names against. Added-vs-modified is then
+  `set(after_names) - set(before_names)` — the same computation
+  `filter_weakening_findings()` performs inline for its `relocated` set.
+  > ⚠ Correction: `filter_weakening_findings()` (`:392` onward) is **not** the
+  > added-vs-modified discriminator. It filters `TamperFinding` objects by
+  > *strength regression* and explicitly **drops every `added` finding**
+  > ("a new test file cannot weaken the suite"), so it can never surface the
+  > added candidates this issue's hard flag is defined over. Do not consume it;
+  > consume `_test_functions` + `read_paths_at_ref`. `measure_test_strength()`
+  > is likewise a strength metric, not an identity diff.
+- **`_test_functions` is private — promoted by ENH-3152, not here.** Reaching
+  across modules into an underscore-prefixed name is not acceptable, so the
+  rename to a public `extract_test_functions()` was split out as ENH-3152
+  (`depends_on`) to keep this issue's diff to the new module plus its additive
+  reader/config. Consume the public name; do not import `_test_functions`, and
+  do not carry the rename in this issue's commit.
+- Do not re-derive an AST layer or a `--collect-only` diff. When function-level
   attribution is ambiguous (hunks outside any function body, conftest changes,
-  shared fixtures), fall back to all test node IDs of the touched *files* —
-  never the full suite.
+  shared fixtures, **class-based tests** — see Codebase Research Findings), fall
+  back to the touched *files* — never the full suite. Mechanically, the
+  fallback target is the **file path itself** passed to pytest
+  (`pytest scripts/tests/test_foo.py`), not an enumerated node-ID set; this is
+  what keeps the `--collect-only` ban and the fallback compatible. Per-test
+  attribution for the fallback comes back out of the run report, not out of a
+  pre-run collection.
 - **Added vs. modified carry different contracts.** A newly added test must
   fail pre-patch — that is the clean "demonstrates the change" contract. A
   modified test routinely passes pre-patch legitimately (an assertion added, a
@@ -146,6 +203,38 @@ _These touchpoints were identified by wiring analysis and must be included in th
   post-patch. The invocation must be time-bounded (a fixed per-invocation
   timeout, configurable alongside the off-switch), and a timeout is its own
   outcome category, distinct from both fail and error.
+- **Per-node-ID results come from `--junit-xml`, not from the history plugin.**
+  `pytest_history_plugin.LLHistoryPlugin.pytest_runtest_logreport()` models the
+  *category dispatch* correctly but is an **in-process hook that writes to the
+  history DB** — it cannot observe a subprocess running in another worktree, and
+  wiring it in would violate this module's no-database contract. Run with
+  `--junit-xml=<run_dir>/prepatch.xml` and parse it with stdlib
+  `xml.etree.ElementTree`: JUnit XML distinguishes `<failure>` from `<error>`
+  natively, which *is* the error-vs-fail split this issue needs, and it adds no
+  third-party dependency (`pytest-json-report` is not in `scripts/pyproject.toml`
+  and must not be added — see CLAUDE.md § Code Style). Parsing `-q` stdout is
+  not acceptable; it is format-unstable and loses the failure/error distinction.
+- **Timeout has no per-test resolution.** When the invocation is killed at
+  `timeout_s`, pytest never writes the JUnit XML, so there is no way to know
+  *which* candidate hung. Policy: every candidate with no reported result from
+  that invocation is categorized `timeout`. Do not attempt per-node-ID
+  invocations to narrow it — that multiplies the cost this issue explicitly
+  prices down.
+- **The retry-once pass is a second, narrower invocation.** Only the node IDs
+  that reported `pass` in invocation 1 are re-run; everything else is already
+  settled. A node that passes twice keeps `pass`; pass-then-fail (or
+  pass-then-error) is reclassified `flaky`. A timeout on the retry invocation
+  leaves the first pass standing — retry is confirmation, and an inconclusive
+  retry must not manufacture evidence in either direction.
+- **PYTHONPATH must point at the pre-patch worktree.** With an editable install
+  (`pip install -e`), `little_loops` resolves to the **main tree's** absolute
+  path, so tests running in the fork would import *post-patch* source and the
+  check silently inverts: a genuine new test passes pre-patch and gets
+  hard-flagged. The subprocess env must prepend `<worktree_path>/<src_dir>` to
+  `PYTHONPATH` (the same injection `verify_epic_branch_before_merge()` does for
+  BUG-2629). ENH-3141 only *validates* that `src_dir` exists in the fork; env
+  construction is explicitly caller-side, i.e. this issue's. This is a
+  correctness requirement, not a nicety — see Acceptance Criteria.
 - **Define the base state explicitly, but resolve it in the host.**
   "Pre-patch" means the tree at the SHA recorded when the issue was dequeued,
   falling back to merge-base with the base branch when no dequeue SHA is
@@ -196,35 +285,61 @@ _These touchpoints were identified by wiring analysis and must be included in th
   contexts. `learning_tests/gate.py::run_learning_gate_for_issue()` (`:208`)
   is the closest analog for "subprocess result mapped to a distinct outcome
   category," though it is not pytest-specific and does not target node IDs.
-- **Config off-switch convention**: `LearningTestsConfig` (`config/automation.py:498`)
-  and `DecisionsConfig` (`config/automation.py:531-552`) each gate their
-  entire feature with a lone `enabled: bool = False` field with no other
-  threshold/knob sharing that flag — the closer analog than
-  `ConfidenceGateConfig` for this issue's single-purpose off-switch.
-  `LearningTestsConfig`'s test class (`test_config.py:3001`,
+- **Config off-switch convention**: `LearningTestsConfig`
+  (`config/features.py:495-530`) is the structural template — dataclass with
+  `enabled: bool = False` first, plus a `from_dict()` classmethod reading each
+  field with an explicit default. Its test class (`test_config.py:3001`,
   `test_enabled_defaults_to_false()` at `:3015`,
-  `test_enabled_from_dict()` at `:3020`) is the template. The parent config
-  section (`automation`, `commands`, or a new top-level section) is not yet
-  decided and should be pinned during implementation.
+  `test_enabled_from_dict()` at `:3020`) is the test template.
+  > ⚠ Correction: `LearningTestsConfig` is **not** a "lone `enabled` flag"
+  > dataclass — it carries 8 fields (`auto_prove`, `stale_after_days`,
+  > `discoverability`, `release_gate`, `scan_dirs`,
+  > `version_aware_staleness`, `version_match_backstop_multiplier`). The
+  > single-purpose-flag framing was wrong and is misleading here, because
+  > `PrePatchCheckConfig` is likewise **not** a lone flag. It needs at minimum:
+  > - `enabled: bool = False` — the off-switch (§ Design Notes, `skipped_reason`)
+  > - `timeout_s: int = 300` — the per-invocation time box, which the issue
+  >   already requires be "configurable alongside the off-switch"
+  > - `modified_hard: bool = False` — escalates modified-and-passes-pre-patch
+  >   from soft to hard, required by an existing Acceptance Criterion
+  >
+  > Section placement is **top-level** (`properties.prepatch_check`), matching
+  > its `features.py` peers `decisions` (`config-schema.json:560`) and
+  > `learning_tests` (`:1052`) — not nested under `commands` like
+  > `confidence_gate`.
+- **Naming is pinned to `prepatch_check`** — module `prepatch_check.py`, config
+  key `prepatch_check`, dataclass `PrePatchCheckConfig`, matching ENH-3141's
+  `setup_prepatch_worktree()`. The `pre_patch_check` spelling appearing in some
+  wiring-pass test names below is a typo, not an alternative; the schema key and
+  every test name must use `prepatch_check`.
 
 ## Integration Map
 
-### Files to Modify / Create
+### Files to Modify
 
 - `scripts/little_loops/prepatch_check.py` (new) — `run_prepatch_check()`,
-  `collect_candidate_nodeids()`, and the `PrePatchTestOutcome` /
+  `collect_candidates()`, and the `PrePatchCandidate` / `PrePatchTestOutcome` /
   `PrePatchEvidence` dataclasses per § Program Design. Consumes ENH-2973's
-  `test_file_patterns` module, `test_tamper_guard`'s AST primitives
-  (`_test_functions`, `filter_weakening_findings`), and ENH-3141's
+  `test_file_patterns` module, `test_tamper_guard`'s AST/ref primitives
+  (`read_paths_at_ref` and the promoted `test_functions` — **not**
+  `filter_weakening_findings`, see Design Notes), and ENH-3141's
   `setup_prepatch_worktree()`. **No** FSM, CLI, or database imports.
+- `scripts/little_loops/test_tamper_guard.py` — **not modified here.** The
+  promotion of `_test_functions()` to a public `extract_test_functions()` is
+  ENH-3152 (`depends_on`). This issue consumes the public name and must not
+  import the underscore-prefixed one.
 - `scripts/little_loops/history_reader.py` — additive `base_dirty` reader
   alongside `read_base_sha()` (`:1816`), which returns the SHA only.
 - `scripts/little_loops/config-schema.json` — add the off-switch's schema
   entry as a peer to the `"confidence_gate"` block (`:457-477`).
-- `scripts/little_loops/config/automation.py` — add a `PrePatchCheckConfig`-
-  style dataclass (`enabled: bool = False` plus `from_dict()`), following
-  `LearningTestsConfig`'s single-purpose-flag shape (`:498`).
-  > ⚠ Superseded — belongs in `config/features.py`, not `automation.py` (see Codebase Research Findings below)
+- `scripts/little_loops/config/features.py` — add `PrePatchCheckConfig`
+  (`enabled: bool = False`, `timeout_s: int = 300`,
+  `modified_hard: bool = False`, plus `from_dict()`), following
+  `LearningTestsConfig`'s shape (`:495-530`).
+  > ⚠ Superseded — the original directive named the wrong module and the
+  > wrong shape. The peer dataclasses live in `config/features.py`, not
+  > `config/automation.py`, and this config is not a lone `enabled` flag
+  > (see Design Notes).
 - `scripts/little_loops/config/core.py` — wire `PrePatchCheckConfig` into
   `BRConfig` at the three touchpoints `LearningTestsConfig`/`DecisionsConfig`
   use: construction (`_parse_config()`, `:302-306`), a `@property
@@ -279,6 +394,26 @@ _Wiring pass added by `/ll:wire-issue`:_
   the general "mock subprocess with a side_effect, assert graceful
   non-raising fallback" pattern (`test_worker_pool.py::test_is_main_repo_dirty_none_when_git_fails`
   `:4040`).
+- **Argv/env construction tests** (no real pytest run needed — assert on the
+  captured `subprocess.run` call):
+  - the command targets only candidate node IDs (or, in the fallback case, the
+    touched file paths) and never the suite root;
+  - `--junit-xml` is present and points inside the run dir;
+  - `timeout=` is passed and equals `config.prepatch_check.timeout_s`;
+  - `env["PYTHONPATH"]` **starts with** the pre-patch worktree's `src_dir`, not
+    the main tree's — the editable-install false-negative guard.
+- **`test_files` contract test**: assert the dict handed to
+  `setup_prepatch_worktree()` holds the **post-patch** (working-tree) content
+  for each touched test path, and that a touched `conftest.py` is included. A
+  regression here silently turns the whole check into a no-op that always
+  reports clean, so it needs a dedicated test rather than incidental coverage.
+- **JUnit-XML parse tests**: `<failure>` → `fail`, `<error>` → `error`, a
+  passing case → `pass`, and a missing/truncated XML (invocation killed) → all
+  candidates `timeout`.
+- **Flag-assignment tests**, separate from category tests: added+pass → `hard`;
+  modified+pass → `soft`; modified+pass with `modified_hard=True` → `hard`;
+  pass-then-fail on retry → `flaky` + `soft`; any hard flag with
+  `base_dirty=True` → downgraded to `soft` with a non-empty `flag_reason`.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_config.py::TestBRConfigLearningTestsIntegration`
@@ -290,9 +425,11 @@ _Wiring pass added by `/ll:wire-issue`:_
   in isolation. [Agent 3 finding]
 - `scripts/tests/test_config_schema.py::TestConfigSchema.test_learning_tests_in_schema`
   (`:247`) and sibling `test_<block>_in_schema` methods — new
-  `test_pre_patch_check_in_schema` needed, asserting `"pre_patch_check" in
+  `test_prepatch_check_in_schema` needed, asserting `"prepatch_check" in
   data["properties"]`, `additionalProperties is False`, and per-field
-  `type`/`default`. [Agent 3 finding]
+  `type`/`default` for all three fields (`enabled`, `timeout_s`,
+  `modified_hard`). [Agent 3 finding; key name corrected from
+  `pre_patch_check`]
 - `scripts/tests/test_config_schema.py::TestToDictSchemaParity`
   (`:1099-1146`) — pre-existing schema/`to_dict()` exact-set-diff guard, not a
   test to write, but a live gate: fails if the `config-schema.json` entry and
@@ -303,10 +440,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 - `docs/reference/API.md` — new Module Overview table row for
   `little_loops.prepatch_check`, a new `## little_loops.prepatch_check`
-  section documenting `run_prepatch_check()`, `collect_candidate_nodeids()`,
-  `PrePatchTestOutcome`, `PrePatchEvidence`, and a `### base_dirty` subsection
-  peer to the existing `### read_base_sha` under
-  `## little_loops.history_reader`.
+  section documenting `run_prepatch_check()`, `collect_candidates()`,
+  `PrePatchCandidate`, `PrePatchTestOutcome`, `PrePatchEvidence`, and a
+  `### base_dirty` subsection peer to the existing `### read_base_sha` under
+  `## little_loops.history_reader`. Also update the
+  `little_loops.test_tamper_guard` section for the promoted
+  `extract_test_functions()`.
 - `docs/reference/CONFIGURATION.md` — table row and prose entry for the new
   pre-patch-check off-switch config key, peer to the existing
   `confidence_gate.enabled` row.
@@ -333,6 +472,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 - `ENH-3141` (done) — supplies `setup_prepatch_worktree()`, the tree
   this issue runs tests in.
+- `ENH-3152` (blocking) — promotes `test_tamper_guard._test_functions()` to a
+  public `extract_test_functions()`. Split out of this issue so its diff stays
+  within the new module plus the additive reader/config.
 - `ENH-2991` (parent) — the original undecomposed issue.
 - `ENH-2997` (dependent) — hosts this core on the FSM executor's guarded
   window.
@@ -356,29 +498,100 @@ _Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
 
 ### Types
 
+- `PrePatchCandidate` — one identified candidate before it is run:
+  `nodeid: str`, `file: str`, `added: bool`, `attribution: str`
+  (`function` | `file-fallback`)
 - `PrePatchTestOutcome` — one candidate test's result: `nodeid: str`,
-  `file: str`, `added: bool`, `pre_patch: str`, `category: str`,
-  `error_kind: str | None`
+  `file: str`, `added: bool`, `category: str`, `error_kind: str | None`,
+  `flag: str`, `flag_reason: str | None`
 - `PrePatchEvidence` — the per-step bundle: `base_ref: str`,
   `base_source: str`, `base_dirty: bool | None`,
-  `outcomes: list[PrePatchTestOutcome]`, `skipped_reason: str | None`,
-  `to_dict() -> dict`
+  `outcomes: list[PrePatchTestOutcome]`, `verdict: str`,
+  `skipped_reason: str | None`, `to_dict() -> dict`
 
-Both are new plain-field `@dataclass`es with `to_dict()` in
+All three are new plain-field `@dataclass`es with `to_dict()` in
 `scripts/little_loops/prepatch_check.py`, following the `Gap`/`GapAnalysis`
-convention. `category` is one of `pass | fail | error | timeout | flaky`;
-`error_kind` distinguishes a collection/import error naming a post-patch
-module from any other infrastructure error. `base_source` is `dequeue-stamp`
-or `merge-base`. `base_dirty` `True` means the stamped tree had tracked
-modifications at dequeue; `None` means unknown. `skipped_reason` is set when
-the config off-switch disables the check.
+convention; `PrePatchEvidence.to_dict()` serializes `outcomes` as
+`[o.to_dict() for o in self.outcomes]` per the codebase-wide nested-dataclass
+convention.
+
+- `category` is one of `pass | fail | error | timeout | flaky`.
+- `flag` is one of `hard | soft | none` and is **the verdict this issue
+  exists to produce** — the original type list had no field to hold it, leaving
+  four Acceptance Criteria (added-passes ⇒ hard, modified-passes ⇒ soft,
+  flaky ⇒ soft, dirty-base ⇒ downgrade) with nowhere to land. `flag_reason`
+  carries the human-readable why, and is **required** whenever a dirty base
+  downgrades a hard flag to soft.
+- `verdict` is the bundle-level rollup: `clean | flagged | skipped`
+  (`flagged` when any outcome is `hard`; `skipped` covers both the config
+  off-switch and — distinctly, via `skipped_reason` text — the
+  zero-candidate case).
+- The original `pre_patch: str` field is **dropped**: it duplicated `category`
+  with no defined distinct meaning. There is one outcome field.
+- `error_kind` distinguishes a collection/import error naming a post-patch
+  module from any other infrastructure error. `base_source` is `dequeue-stamp`
+  or `merge-base`. `base_dirty` `True` means the stamped tree had tracked
+  modifications at dequeue; `None` means unknown.
+- `skipped_reason` is set when the config off-switch disables the check **and**
+  when zero candidate tests were identified — the two cases carry different
+  reason strings so the zero-candidate case is explicit rather than
+  indistinguishable from a clean pass.
 
 ### Signatures
 
-- `run_prepatch_check(step_diff: str, base_sha: str | None, base_dirty: bool | None, timeout_s: int) -> PrePatchEvidence`
-- `collect_candidate_nodeids(step_diff: str, repo_root: Path) -> list[str]`
+```python
+def run_prepatch_check(
+    *,
+    step_diff: str,
+    repo_root: Path,
+    worktree_base: str | Path,
+    base_sha: str | None,
+    base_dirty: bool | None,
+    base_branch: str,
+    logger: Logger,
+    git_lock: GitLock,
+    config: BRConfig | None = None,
+) -> PrePatchEvidence: ...
+
+def collect_candidates(step_diff: str, repo_root: Path, base_ref: str,
+                       config: BRConfig | None = None) -> list[PrePatchCandidate]: ...
+```
+
+> ⚠ The previous signature
+> (`run_prepatch_check(step_diff, base_sha, base_dirty, timeout_s)`) was not
+> callable and could not satisfy its own Acceptance Criteria. Changes:
+>
+> - **`repo_root`, `worktree_base`, `logger`, `git_lock` added** —
+>   `setup_prepatch_worktree()` (`worktree_utils.py:329-335`) requires all four
+>   with no defaults. The refine pass flagged this and left it unresolved; it is
+>   now resolved by threading them through, since the host (ENH-2997/ENH-2998)
+>   already holds them. Pass a gitignored `worktree_base` (e.g. `".worktrees"`),
+>   per ENH-3141's docstring, so the fork stays outside
+>   `tamper_guard_changed_files()`'s scan scope.
+> - **`base_branch` added** — this issue owns the merge-base fallback when
+>   `base_sha` is `None`. That fallback is a `git merge-base` call, which needs
+>   both a repo and a branch to compute against. Neither was in the signature.
+> - **`config` added, `timeout_s` removed** — `timeout_s` is one field of
+>   `PrePatchCheckConfig`, and the core also needs `enabled` (it is the code
+>   that writes `skipped_reason`), `modified_hard`, and the `project.test_patterns`
+>   that `is_test_file()` reads. Taking a `BRConfig` supplies all four through
+>   one already-established parameter convention; a bare `timeout_s` cannot.
+>   This does not violate the host-resolves-state rule — that rule is about the
+>   **database** (`base_sha`/`base_dirty` still arrive as arguments and the module
+>   still performs no DB access). Config is a file read, exactly as
+>   `is_test_file(path, config=None)` already does internally.
+> - **`collect_candidate_nodeids() -> list[str]` replaced by
+>   `collect_candidates() -> list[PrePatchCandidate]`** — a bare list of node-ID
+>   strings discards the `added` bit, and added-vs-modified is the discriminator
+>   the entire hard/soft verdict is defined over. It also gains `base_ref`, needed
+>   to fetch the before-text via `read_paths_at_ref()` for the
+>   `set(after) - set(before)` split.
+
 - `is_test_file(path: str, config: BRConfig | None) -> bool` (existing,
   ENH-2973)
+- `read_paths_at_ref(repo_root: Path, ref: str, paths: list[str]) -> dict[str, str | None]`
+  (existing, ENH-2854, `test_tamper_guard.py:112`) — supplies the base-ref
+  before-text for the added-vs-modified split
 - `read_base_sha(issue_id: str, *, run_id: str | None, db: Path | str) -> str | None`
   (existing, ENH-2866)
 - `setup_prepatch_worktree(base_ref: str, test_files: dict[str, str], src_dir: str | None) -> Path`
@@ -390,12 +603,21 @@ most-recent-stamped-row path.
 
 ### Call Path
 
-`run_prepatch_check` -> `collect_candidate_nodeids` -> `filter_test_files`
+`run_prepatch_check` -> `collect_candidates` -> `filter_test_files`,
+`read_paths_at_ref`, `_test_functions` (promoted; see Design Notes)
 
-`run_prepatch_check` -> `setup_prepatch_worktree` (ENH-3141)
+`run_prepatch_check` -> (post-patch test content from the working tree) ->
+`setup_prepatch_worktree` (ENH-3141)
+
+`run_prepatch_check` -> `subprocess.run(pytest <targets> --junit-xml=...,
+timeout=config.prepatch_check.timeout_s, env=PYTHONPATH-injected)` ->
+JUnit-XML parse -> per-node categories -> retry-once over the passing node IDs
+-> flag assignment (incl. dirty-base downgrade) -> `PrePatchEvidence`
 
 The core is database-free; `(base_sha, base_dirty)` arrive as arguments,
-resolved by the host (ENH-2997 / ENH-2998).
+resolved by the host (ENH-2997 / ENH-2998). It does perform git and filesystem
+reads (merge-base fallback, working-tree test content, worktree fork) — only
+the *database* is out of bounds.
 
 ### Codebase Research Findings
 
@@ -426,6 +648,9 @@ _Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
   criteria — this check is additive alongside them, never a substitute.
 - **Not this issue**: running the full test suite pre-patch.
 - **Not this issue**: `ENH-2854`'s tamper-guard `revert` policy.
+- **Not this issue**: the `_test_functions()` → `extract_test_functions()`
+  promotion in `test_tamper_guard.py` — that is ENH-3152, a blocking
+  dependency. This issue touches no file in `test_tamper_guard.py`.
 
 ## Acceptance Criteria
 
@@ -469,10 +694,40 @@ _Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
       downgrade.
 - [ ] `run_prepatch_check()` performs no database access; a test asserts it.
 - [ ] Hunk→test-function attribution and the added-vs-modified split consume
-      `test_tamper_guard`'s existing AST helpers rather than a new AST layer
-      or a `--collect-only` diff.
+      `test_tamper_guard`'s existing AST/ref helpers — the promoted
+      `extract_test_functions()` (promoted by ENH-3152) plus
+      `read_paths_at_ref()` — rather than a new AST layer or a
+      `--collect-only` diff, and without importing `_test_functions`. (**Not**
+      `filter_weakening_findings()`, which drops all `added` findings and
+      cannot produce the added-vs-modified split; see Design Notes.)
 - [ ] Tests cover: a fake test that passes pre-patch, a genuine test that
       fails pre-patch, a test that errors pre-patch, and the zero-test case.
+- [ ] The content written into the pre-patch worktree via
+      `setup_prepatch_worktree()`'s `test_files` is the **post-patch** content
+      of each touched test path (including a touched `conftest.py`), never the
+      base-ref content; a dedicated test asserts this.
+- [ ] The pre-patch pytest subprocess runs with `<worktree>/<src_dir>`
+      prepended to `PYTHONPATH`, so an editable install cannot resolve
+      `little_loops` to the post-patch main tree; a test asserts the
+      constructed env.
+- [ ] Per-node-ID outcomes are parsed from `--junit-xml` with stdlib
+      `xml.etree`, distinguishing `<failure>` from `<error>`; no new
+      third-party dependency is added and stdout is not parsed.
+- [ ] When the invocation is killed at `timeout_s` and no JUnit XML is
+      produced, every unreported candidate is categorized `timeout`; a test
+      covers it.
+- [ ] The retry-once pass is a second invocation targeting only the node IDs
+      that passed in the first; a test asserts the narrowed target set.
+- [ ] Each outcome carries an explicit `flag` (`hard | soft | none`) and the
+      bundle carries a rollup `verdict`; a dirty-base downgrade sets a
+      non-empty `flag_reason`.
+- [ ] The config block is top-level `prepatch_check` with `enabled`,
+      `timeout_s`, and `modified_hard`; the schema key, dataclass, module, and
+      every test name use the `prepatch_check` spelling (never
+      `pre_patch_check`).
+- [ ] `run_prepatch_check()` resolves the merge-base fallback itself from
+      `repo_root` + `base_branch` when `base_sha` is `None` — both are
+      parameters, and a test covers the fallback without any DB access.
 
 ## Impact
 
@@ -491,6 +746,14 @@ _Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
 
 
 ## Session Log
+- pre-implementation review - 2026-08-11 - resolved 4 blocking gaps (`test_files`
+  post-patch contract, missing verdict/`flag` fields, JUnit-XML result
+  extraction, uncallable `run_prepatch_check()` signature) and corrected 4
+  factual claims (`filter_weakening_findings` is not the added-vs-modified
+  discriminator; `LearningTestsConfig` is not a lone-flag dataclass;
+  `prepatch_check` naming pinned; file-path fallback reconciles the
+  `--collect-only` ban). Added a PYTHONPATH-injection AC for the
+  editable-install false negative.
 - `/ll:refine-issue` - 2026-08-10T20:19:53 - `1dd56f24-b781-4e16-84f6-d8ee895776d1.jsonl`
 - `/ll:confidence-check` - 2026-08-10T09:17:36 - `df55e709-f5ba-4a76-ad27-3b49b1787402.jsonl`
 - `/ll:verify-issues` - 2026-08-10T09:13:39 - `975b1509-c74d-48b1-aa22-7b2aab82c1b8.jsonl`
