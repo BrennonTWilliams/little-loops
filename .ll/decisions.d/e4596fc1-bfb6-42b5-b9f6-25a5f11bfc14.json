@@ -1,0 +1,11 @@
+{
+  "id": "77e1d477-5e23-4421-9d7f-bffa62d451aa",
+  "type": "decision",
+  "timestamp": "2026-08-10T23:10:20Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "autodev run 20260810T171140 spent ~$4.48/38m refining FEAT-3145, an issue explicitly gated by EPIC-3127's tier-3 evidence gate with placeholder ACs. Deterministic pre-dequeue gate detection should defer with a distinct reason code instead of running the remediation ladder.",
+  "rule": "Captured: autodev should skip explicitly gated issues before spending refine cycles",
+  "scope": "issue",
+  "issue": "ENH-3148"
+}

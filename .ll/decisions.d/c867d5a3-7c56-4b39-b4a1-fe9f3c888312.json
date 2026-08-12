@@ -1,0 +1,12 @@
+{
+  "id": "c4da8733-03cb-43a0-b4f6-0c07cc9a39d6",
+  "type": "decision",
+  "timestamp": "2026-08-11T22:01:26Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses already-generic middleware plumbing and existing test scaffolding; matches the codebase's deny-by-default-on-HTTP idiom. Option B (stdio-only) has no precedent anywhere in the codebase and contradicts the issue's own HTTP-dependency rationale.",
+  "rule": "Option A \u2014 extend the tier-2 policy gate (check_tool_call/TransportPolicyMiddleware) to cover tasks/*",
+  "scope": "issue",
+  "alternatives_rejected": "Option B \u2014 restrict tasks/* to stdio only until real auth exists",
+  "issue": "FEAT-3145"
+}

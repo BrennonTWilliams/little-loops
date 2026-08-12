@@ -1,0 +1,12 @@
+{
+  "id": "d8255198-1041-4cd2-81d3-23cc157988de",
+  "type": "decision",
+  "timestamp": "2026-08-11T04:57:46Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches an idiom established at 7+ call sites across five loop YAMLs, reaffirming ENH-2978's own 12/12-vs-5/12 scoring for this exact code path. The extraction precedent (design_gate_failed/check_design.py) exists but its trigger condition (a second concrete, committed caller) is not yet met \u2014 ENH-3148 is undesigned and its preferred detection signal is structural, not prose.",
+  "rule": "Widen the inline grep -qiE alternation in place at autodev.yaml:2059-2062 (Option A); do not extract the gate-phrase list to a shared Python helper/CLI subcommand at this time",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: extract pattern list to a shared, tested Python helper wrapped by a new CLI subcommand (check_design.py shape), consumed by autodev.yaml and, if ENH-3148 lands, its pre-dequeue check",
+  "issue": "BUG-3147"
+}

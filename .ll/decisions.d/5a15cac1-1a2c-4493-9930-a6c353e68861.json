@@ -1,0 +1,12 @@
+{
+  "id": "c445e321-3f21-4ff7-a95a-5e70e9de0c92",
+  "type": "decision",
+  "timestamp": "2026-08-11T04:13:43Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "rubric.md documents 0 as an intentional worst-case score for every score_* criterion, not a not-measured sentinel; no autodev.yaml precedent exists for excluding/loosening a min() comparison on a real 0",
+  "rule": "Option A \u2014 treat current 0-scored-sibling behavior as correct; no code change to autodev.yaml remedy dispatcher",
+  "scope": "issue",
+  "alternatives_rejected": "Option B \u2014 loosen amb < min(others) to a tie-break comparison; rejected as an unconfirmed remedy-selection intent change with no codebase precedent",
+  "issue": "BUG-3146"
+}
