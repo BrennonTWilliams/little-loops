@@ -8,7 +8,6 @@ discovered_date: 2026-08-02
 epic: EPIC-2856
 parent: ENH-2853
 blocked_by:
-- ENH-2991
 - ENH-2997
 labels:
 - rework
@@ -22,11 +21,14 @@ size: Large
 ## Summary
 
 Give the pre-patch check coverage on the non-FSM orchestration paths
-(`ll-auto`, `ll-parallel`) via a thin adapter in `work_verification.py`, and make
+(`ll-auto`, `ll-parallel`) via an adapter in `work_verification.py`, and make
 the evidence readable where humans and hand-run tooling look for it —
 `cli/harness.py` and `skills/verify-issue-loop/`.
 
-Both consumers read the persisted bundle; neither re-implements the check.
+Both consumers read the persisted bundle; neither re-implements the check. The
+adapter adds no check logic either, but it is not a one-liner: it requires a
+`verify_work_was_done()` signature change and new `GitLock` plumbing (§ Design
+Notes → "The adapter is not thin").
 
 ## Parent Issue
 
@@ -36,7 +38,8 @@ Integration Map Layer 3 plus the `work_verification.py` half of Layer 2.
 
 ## Current Behavior
 
-After ENH-2991 and ENH-2997, the check runs only inside FSM loops. `ll-auto` and
+After ENH-3142 (the core, shipped) and ENH-2997 (the FSM host), the check runs
+only inside FSM loops. `ll-auto` and
 `ll-parallel` reach verification through `work_verification.verify_work_was_done`,
 which has no knowledge of it. `ll-harness` reports only a single-check
 `HarnessEvalOutcome`, and `/ll:verify-issue-loop` generates only LLM-judged
@@ -69,16 +72,27 @@ without re-running it.
    `scripts/little_loops/work_verification.py`, resolving `(base_sha, base_dirty)`
    the same way ENH-2997's FSM host does and calling `run_prepatch_check()`.
    Wire it from `issue_manager.py` and `parallel/worker_pool.py`, mirroring
-   ENH-2854's existing wiring in those files.
+   ENH-2854's existing wiring in those files. **This is not a one-line
+   addition** — see § Design Notes → "The adapter is not thin": the shipped
+   core needs a `GitLock`, a `worktree_base`, and a `base_branch` that
+   `verify_work_was_done()` does not currently have, and its `-> bool` return
+   cannot carry a `PrePatchEvidence` out.
 2. **Harness consumer** — `cli/harness.py` reads the persisted bundle and reports
-   it alongside `HarnessEvalOutcome` (`:242-248`) in `_evaluate_and_report()`
-   (`:251-317`). It does **not** call `run_prepatch_check()` itself. The bundle is
-   an additive key set in `_evaluate_and_report()` (`:283-294`) and `_report()`
-   (`:320-339`); mention it in the `--help` epilog (`:117-128`).
-3. **Skill documentation** — `skills/verify-issue-loop/SKILL.md` (~L150-165) and
-   `templates.md` document only `llm_structured` verify/probe states today. Add a
-   bullet describing when the deterministic pre-patch check applies and a
-   state-template example showing the guard key. This is additive documentation,
+   it alongside `HarnessEvalOutcome` in `_evaluate_and_report()`. It does **not**
+   call `run_prepatch_check()` itself. The bundle is an additive key set in
+   `_evaluate_and_report()`'s JSON branch; mention it in the `--help` epilog.
+   Re-locate all four sites by name at implementation time — the line numbers
+   this issue originally cited are stale (see § Design Notes). **It reads the
+   `.ll/history.db` row, not the run-dir file**: `ll-harness` is hand-run and
+   has no `run_dir`, so the database is the only surface it can discover by
+   issue ID. ENH-2997 writes both.
+3. **Skill documentation** — `skills/verify-issue-loop/SKILL.md` (~L150-165)
+   documents only `llm_structured` verify/probe states today. Add a bullet
+   describing when the deterministic pre-patch check applies. The
+   state-template example goes in `scripts/little_loops/cli/loop/scaffold_verify.py`
+   (the generator), **not** `templates.md` — that file is now a stub redirecting
+   to `ll-loop scaffold-verify` per FEAT-2948 and holds no hand-written
+   templates to extend. This is additive documentation,
    not editing a prohibition: the "no deterministic state type" boundary text the
    original wiring pass cited at SKILL.md lines 211-219 no longer exists after
    the skill's restructuring (verified 2026-07-29; the skill is now 212 lines with
@@ -104,10 +118,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis (2026-08-02):_
   `:591`, `self._get_worktree_head_sha(worktree_path)` at `:1639`) currently
   calls `history_reader.read_base_sha()`. `read_base_sha(issue_id, *, run_id=None,
   db=DEFAULT_DB_PATH) -> str | None` exists at `history_reader.py:1816-1821` and
-  never raises, but no `base_dirty` reader exists yet alongside it — the
-  `orchestration_runs` table already has a `base_dirty` column (`history_reader.py:1738`
-  area), so a mirroring reader is straightforward but is new plumbing, not
-  something to reuse as-is.
+  never raises. ~~No `base_dirty` reader exists yet alongside it~~ — **stale as
+  of 2026-08-12**: `read_base_dirty(issue_id, *, run_id=None, db=DEFAULT_DB_PATH)
+  -> bool | None` shipped with ENH-3142 (`history_reader.py:1872-1918`), same
+  never-raises contract, int→bool converted. Both readers are ready to use
+  as-is; only the *call* from the non-FSM path is new.
 - **The established FSM-vs-non-FSM split for this check's sibling (tamper
   guard) is: FSM hosts its own adapter directly; the two non-FSM orchestrators
   share one.** `fsm/executor.py:1336`'s `_check_tamper_guard` calls
@@ -148,15 +163,14 @@ _Added by `/ll:refine-issue` — based on codebase analysis (2026-08-02):_
   `action_complete` event (`:1879-1917`), which does `if <condition>:
   payload["<key>"] = <value>` per optional field with an inline comment noting
   "additive field — existing consumers ... are unaffected" (ENH-2469 pattern).
-- **Off-switch shape for the new check is a contested convention, not settled
-  by precedent** (inherited from ENH-2991's own research): this codebase has
-  at least three incompatible existing shapes — a silent bare `bool` short-circuit
-  (`worktree_utils.py`'s `verify_before_merge` param, `:434-435`), an explicit
-  skip-reason string recorded in output (`run_learning_gate_for_issue`'s
-  `skip` param), and a `BRConfig`-layer `enabled: bool` dataclass field
-  (`config/automation.py:143-159`). Whichever shape the adapter's off-switch
-  takes (if any) is an implementation decision, not dictated by one
-  established pattern.
+- ~~**Off-switch shape for the new check is a contested convention**~~ —
+  **settled as of ENH-3142 (2026-08-12).** The check ships a `BRConfig`-layer
+  off-switch: `config.prepatch_check.enabled` (`config/features.py:1062-1076`,
+  default **`False`**), and the core itself honors it by returning
+  `PrePatchEvidence(verdict="skipped", skipped_reason=...)` rather than
+  omitting the section (`prepatch_check.py:407-414`). The adapter **must not
+  add a second off-switch** — it reuses this one, and the default means the
+  non-FSM path is inert until a project opts in.
 - **Shared skip-flag precedent orders config-gate before override-flag.** The
   learning-gate pattern this issue's Integration Map cites checks
   `if not <config>.enabled: return` first, then the CLI override flag second,
@@ -171,9 +185,33 @@ _Added by `/ll:refine-issue` — based on codebase analysis (2026-08-02):_
 - **`_record_harness_event()`** (`harness.py:57-83`) persists a flat single-row
   event, not a multi-test table. The per-test bundle is new structure alongside
   it, not an extension of it.
-- **The adapter is thin.** It resolves the base and calls the core. Any logic
-  that belongs to the check itself belongs in ENH-2991's `prepatch_check.py`,
-  where both hosts get it.
+- **The adapter adds no check logic** — it resolves the base and calls the core.
+  Any logic belonging to the check itself belongs in `prepatch_check.py`
+  (ENH-3142), where both hosts get it.
+- **The adapter is not thin, though (revised 2026-08-12).** Verified against the
+  shipped core, `verify_work_was_done()` cannot host this without a signature
+  change. Its current shape is `verify_work_was_done(logger, changed_files=None,
+  baseline_sha=None, config=None, repo_root=None, pre_step_snapshot=None) ->
+  bool` (`work_verification.py:158-165`). Three gaps:
+  - **No `GitLock`.** `run_prepatch_check()` requires one (and passes it to
+    `setup_prepatch_worktree()`). `git_lock` appears **zero** times in both
+    `work_verification.py` and `issue_manager.py` — `worker_pool.py` has one to
+    thread through, but the `ll-auto` path would have to construct one. Decide
+    and state which: threaded param vs. locally constructed.
+  - **No `worktree_base` / `base_branch`.** Both are required by the core with
+    no defaults. `worktree_base` must be a gitignored dir (`.worktrees/`);
+    `base_branch` drives the merge-base fallback when `base_sha` is unstamped.
+  - **The `-> bool` return cannot carry `PrePatchEvidence` out.** The tamper
+    guard folds into the bool because its result *is* pass/fail; this check
+    produces a bundle that must reach `.ll/history.db` for ENH-2998's own
+    harness consumer to find it. Either widen the return type or have the
+    adapter persist the bundle itself before returning. State which.
+  This is why the Impact section's effort/risk was revised upward below.
+- **Worktree teardown is ENH-2997's, and applies here too.** The core does not
+  clean up its fork on the success path. ENH-2997 owns the `try/finally` +
+  `cleanup_worktree(..., delete_branch=True)` contract and the reaper-predicate
+  widening; this adapter must follow the same contract rather than inventing a
+  second one, or `ll-auto`/`ll-parallel` runs leak a worktree per verification.
 - **`docs/reference/API.md`** — `:88`'s module table entry for
   `little_loops.worktree_utils` names only ll-parallel/ll-sprint/ll-loop as
   consumers and does not mention the FSM executor as a fourth direct caller;
@@ -199,12 +237,17 @@ _Added by `/ll:refine-issue` — based on codebase analysis (2026-08-02):_
   — call sites for the adapter, following ENH-2854's existing wiring in the same
   files.
 - `scripts/little_loops/cli/harness.py` — surface the pre-patch evidence
-  alongside `HarnessEvalOutcome` (`:242`) / `_evaluate_and_report()` (`:251`) by
-  reading the persisted bundle; additive JSON keys at `:283-294` and `:320-339`;
-  `--help` epilog at `:117-128`.
-- `skills/verify-issue-loop/SKILL.md` (~L150-165) and
-  `skills/verify-issue-loop/templates.md` — document the deterministic check and
-  add a state-template example.
+  alongside `HarnessEvalOutcome` / `_evaluate_and_report()` by reading the
+  persisted `.ll/history.db` row; additive JSON keys in the JSON-print branch;
+  `--help` epilog. **Locate all sites by name, not by line number** — every
+  numeric citation this issue originally carried for this file is stale (see
+  § Design Notes).
+- `skills/verify-issue-loop/SKILL.md` (~L150-165) — document the deterministic
+  check.
+- `scripts/little_loops/cli/loop/scaffold_verify.py` — the state-template
+  example, since `templates.md` is a redirect stub (FEAT-2948). The existing
+  deterministic-alongside-`llm_structured` precedent to mirror is the
+  adversarial mode's `count_probes` state (`scaffold_verify.py:130-145`).
 - `docs/reference/API.md` (`:88`, `:3455-3473`) — cross-reference the pre-patch
   worktree variant and the FSM executor as a `worktree_utils` consumer.
 
@@ -223,27 +266,44 @@ _Added by `/ll:refine-issue` — based on codebase analysis (2026-08-02):_
 ### Tests
 
 - `scripts/tests/test_cli_harness.py` — extend for the new evidence bundle;
-  assert `cli/harness.py` does **not** call `run_prepatch_check()` directly.
+  assert `cli/harness.py` does **not** call `run_prepatch_check()` directly, and
+  that its output is unchanged when no row exists for the issue.
 - `scripts/tests/test_verify_issue_loop.py` — extend for the documented check.
 - Non-FSM adapter coverage from `issue_manager.py` and `worker_pool.py`,
   following ENH-2854's existing tests for the same call sites.
+- A test asserting the adapter reuses `config.prepatch_check.enabled` and adds
+  no second off-switch, and that with the default `enabled: false` the non-FSM
+  path is a recorded skip rather than a failure.
+- A test asserting the adapter leaves no pre-patch worktree or branch behind.
 
 ### Related Issues
 
-- `ENH-2991` (blocking) — the gate core this adapter calls.
-- `ENH-2997` (blocking) — writes the bundle `cli/harness.py` reads.
+- `ENH-3142` (done) — the gate core this adapter calls; supersedes ENH-2991,
+  which was decomposed and shipped no code.
+- `ENH-3141` (done) — `setup_prepatch_worktree()`, called transitively.
+- `ENH-2997` (blocking) — writes the bundle `cli/harness.py` reads, and owns the
+  worktree-teardown contract this adapter follows.
 - `ENH-2854` (peer) — the adapter shape and call sites this mirrors.
 
 ## Program Design
 
 ### Call Path
 
-Non-FSM host: `work_verification.verify_work_was_done` -> `read_base_sha` -> `run_prepatch_check` -> `collect_candidate_nodeids` -> `filter_test_files`
+Non-FSM host: `work_verification.verify_work_was_done` -> `read_base_sha` /
+`read_base_dirty` -> `run_prepatch_check` -> `collect_candidates` ->
+`setup_prepatch_worktree` -> pytest (x2, initial + flake retry)
 
 The adapter resolves `(base_sha, base_dirty)` and passes them in; the core is
-database-free. `_evaluate_and_report()` in `cli/harness.py` reads the persisted
-bundle and surfaces it alongside the existing `HarnessEvalOutcome` — it does not
-call `run_prepatch_check()` itself.
+database-free. It must also supply `repo_root`, a gitignored `worktree_base`,
+`base_branch`, `logger`, and a `GitLock` — the shipped signature is keyword-only
+with nine parameters and takes no `timeout_s` (the box comes from
+`config.prepatch_check.timeout_s`). `_evaluate_and_report()` in `cli/harness.py`
+reads the persisted bundle from `.ll/history.db` and surfaces it alongside the
+existing `HarnessEvalOutcome` — it does not call `run_prepatch_check()` itself.
+
+`PrePatchEvidence.to_dict()` (`prepatch_check.py:88-97`) already exists and
+follows this codebase's nested-list-comprehension convention, so the harness
+JSON surfacing needs no new serializer.
 
 ## Scope Boundaries
 
@@ -262,21 +322,31 @@ call `run_prepatch_check()` itself.
 
 ## Acceptance Criteria
 
-- [ ] A non-FSM adapter in `work_verification.py` reaches ENH-2991's core from `ll-auto` / `ll-parallel`, mirroring ENH-2854's `issue_manager.py` / `worker_pool.py` wiring.
-- [ ] The adapter resolves `(base_sha, base_dirty)` and passes them in; it does not duplicate any check logic that belongs in `prepatch_check.py`.
-- [ ] `cli/harness.py` surfaces the pre-patch evidence by reading the persisted bundle; a test asserts it does not call `run_prepatch_check()` and does not re-implement the check.
-- [ ] The evidence appears as an additive key set in `_evaluate_and_report()` / `_report()` JSON output, and the `--help` epilog mentions it.
-- [ ] `skills/verify-issue-loop/SKILL.md` documents when the deterministic pre-patch check applies, and `templates.md` gains a state-template example showing the guard key.
+- [ ] A non-FSM adapter in `work_verification.py` reaches ENH-3142's core from `ll-auto` / `ll-parallel`, mirroring ENH-2854's `issue_manager.py` / `worker_pool.py` wiring.
+- [ ] The adapter resolves `(base_sha, base_dirty)` via `read_base_sha` / `read_base_dirty` and supplies the core's six further required arguments (`repo_root`, gitignored `worktree_base`, `base_branch`, `logger`, `GitLock`, `config`); it does not duplicate any check logic that belongs in `prepatch_check.py`.
+- [ ] The `GitLock` sourcing decision (threaded from the caller vs. constructed in the adapter) is made explicitly and applied consistently at both the `issue_manager.py` and `worker_pool.py` call sites.
+- [ ] The `PrePatchEvidence` bundle escapes `verify_work_was_done()`'s `-> bool` return — either via a widened return type or by the adapter persisting to `.ll/history.db` before returning — so ENH-2998's own harness consumer can find it.
+- [ ] The adapter reuses `config.prepatch_check.enabled` as its only off-switch; with the `false` default the non-FSM path is a recorded skip, not a failure. A test asserts no second off-switch was added.
+- [ ] The adapter leaves no pre-patch worktree or branch behind, following ENH-2997's teardown contract; a test asserts it.
+- [ ] `cli/harness.py` surfaces the pre-patch evidence by reading the persisted `.ll/history.db` row; a test asserts it does not call `run_prepatch_check()` and does not re-implement the check.
+- [ ] The evidence appears as an additive key set in `_evaluate_and_report()`'s JSON output, and the `--help` epilog mentions it.
+- [ ] `skills/verify-issue-loop/SKILL.md` documents when the deterministic pre-patch check applies, and `scaffold_verify.py` gains a state-template example showing the guard key. (`templates.md` is a redirect stub and is **not** modified.)
 - [ ] `docs/reference/API.md` cross-references the pre-patch worktree variant and lists the FSM executor as a `worktree_utils` consumer.
-- [ ] Existing `ll-harness` behavior is unchanged when no bundle is present (the evidence section is simply absent, not an error).
+- [ ] Existing `ll-harness` behavior is unchanged when no bundle is present (the evidence section is simply absent, not an error) — including the common case where `prepatch_check.enabled` was never turned on.
 
 ## Impact
 
 - **Priority**: P2 — extends coverage to the non-FSM orchestrators and makes the
   evidence auditable without re-running the check.
-- **Effort**: Medium — a thin adapter plus read-only surfacing and documentation.
-- **Risk**: Low — additive keys and an adapter over an existing core; no
-  signature changes.
+- **Effort**: Medium-Large — revised upward 2026-08-12. The harness surfacing and
+  documentation halves are genuinely small, but the adapter half requires a
+  `verify_work_was_done()` signature change plus new `GitLock` plumbing at both
+  orchestrator call sites (see § Design Notes → "The adapter is not thin").
+- **Risk**: Medium — revised upward 2026-08-12. The harness half is additive and
+  low-risk, but `verify_work_was_done()` is a shared entry point for both
+  `ll-auto` and `ll-parallel`, so its signature change touches both
+  orchestrators' verification path. The `enabled: false` default is what keeps
+  the change inert for existing projects.
 - **Breaking Change**: No.
 
 ## Status
