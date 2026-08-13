@@ -1,0 +1,16 @@
+{
+  "id": "0fbfe33f-e55b-4022-ac46-1cba882a10be",
+  "type": "decision",
+  "timestamp": "2026-08-13T01:35:00Z",
+  "category": "architecture",
+  "labels": [
+    "host-compat",
+    "qwen",
+    "portfolio"
+  ],
+  "rationale": "Qwen Code (0.21.6) profiles as the cheapest first-class host yet: Claude-shaped headless surface incl. inline --json-schema (second host ever with structured_output=True), Claude-compatible hook protocol (17 events, same stdin/stdout JSON contract), Markdown-native discovery surfaces accepting ll artifacts near-verbatim, and native Claude-marketplace plugin install. It complements (does not supersede) the Gemini adapter — distinct, larger user base — and touches no open Gemini/omp work, so it is additive to the ARCHITECTURE-048 order rather than a re-litigation of it. Source: thoughts/qwen-code-host-integration-report.md.",
+  "rule": "Admit Qwen Code as a first-class host under EPIC-3154 at P3: host key `qwen` used at every seam (_HOST_RUNNER_REGISTRY, _EMITTER_MAP, HOST_CAPABILITIES, _KNOWN_HOSTS), config dir `.qwen`, extension id `ll`, _PROBE_ORDER appended (never mid-list). Hook adapter uses the ARCHITECTURE-046 Option A managed settings block (project .qwen/settings.json, user-scope fallback if the spike finds the BUG-2921 headless failure mode). EPIC-2257 remains portfolio coordinator via relates_to + tracked-epics prose, not parent:.",
+  "scope": "project",
+  "alternatives_rejected": "Host key `qwen-code` (kimi-code precedent) — rejected: Qwen's own convention aligns key/binary/config-dir on `qwen`; defer until after omp hook adapter — rejected: no conflicts with open Gemini/omp children and Qwen is now the lowest-cost remaining host on pure friction metrics.",
+  "issue": "EPIC-3154"
+}

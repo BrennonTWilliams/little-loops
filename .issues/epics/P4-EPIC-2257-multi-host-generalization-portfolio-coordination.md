@@ -17,6 +17,7 @@ relates_to:
 - EPIC-1463
 - EPIC-2178
 - EPIC-2258
+- EPIC-3154
 - FEAT-2274
 - FEAT-2387
 - FEAT-2391
@@ -111,6 +112,10 @@ portfolio work is in the tracked per-host epics below.
 - **EPIC-1463** — Codex CLI interop (landed; polish remaining)
 - **EPIC-2178** — Gemini CLI host adapter (next full host)
 - **EPIC-2258** — oh-my-pi (omp) host adapter (first-class, after Gemini)
+- **EPIC-2910** — Kimi Code CLI host adapter (landed 2026-07-29; BUG-2921 closed)
+- **EPIC-3154** — Qwen Code host adapter (P3; additive to the
+  ARCHITECTURE-048 order, no conflicts with open Gemini/omp children —
+  tracked per-host epic since 2026-08-12)
 
 ## Acceptance Criteria
 
@@ -147,6 +152,15 @@ portfolio work is in the tracked per-host epics below.
   is fully landed. Remaining portfolio work is entirely in the tracked per-host
   epics (EPIC-1463 / EPIC-2178 / EPIC-2258, all `open`); epic stays `open` as the
   coordination shell until those sequence through.
+
+- **2026-08-12** (Qwen epic capture): EPIC-3154 (Qwen Code host adapter, P3)
+  captured from `thoughts/qwen-code-host-integration-report.md` and added to
+  this epic's `relates_to` + "Tracked per-host epics" prose — not via
+  `parent:`, per the 2026-06-30 normalization. Also backfilled EPIC-2910
+  (Kimi, landed 2026-07-29) into the tracked list, where it was missing.
+  Qwen is additive to the ARCHITECTURE-048 order (no conflicts with open
+  Gemini/omp children); its slot and `qwen` key ratified in a
+  `.ll/decisions.d/` architecture decision (issue: EPIC-3154).
 
 - **2026-06-30** (relationship normalization): The three tracked per-host epics
   were linked inconsistently — EPIC-1463 and EPIC-2178 via `relates_to` only,
