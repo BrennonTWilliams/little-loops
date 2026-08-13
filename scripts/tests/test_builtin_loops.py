@@ -581,6 +581,75 @@ class TestCodeRunGateOptionalParams:
         assert 'BUILD_CMD="make build"' in rendered
 
 
+class TestPrePatchCheckReachability:
+    """ENH-2997: the pre-patch check must actually be reachable from the `rn-*`
+    family's green-suite transitions, and must get there via a *key line* on
+    `oracles/code-run-gate.yaml` -- never via an added state (the placement the
+    2026-07-30 review rejected). Both halves are asserted here because the
+    executor-side tests (test_fsm_executor.py::TestPrePatchCheckExecutorHook)
+    exercise synthetic FSMs and would pass green over a gate no production loop
+    ever reaches.
+    """
+
+    # Frozen at the state set code-run-gate had when `prepatch_check` was added.
+    # A new entry here means someone added a state to the oracle -- re-read
+    # ENH-2997's Scope Boundaries before updating it.
+    CODE_RUN_GATE_STATES = {
+        "aggregate",
+        "done",
+        "failed",
+        "resolve_commands",
+        "run_build",
+        "run_lint",
+        "run_test",
+        "run_typecheck",
+        "service_health",
+    }
+
+    def _gate(self):
+        return load_and_validate(BUILTIN_LOOPS_DIR / "oracles" / "code-run-gate.yaml")[0]
+
+    def test_code_run_gate_state_set_unchanged(self) -> None:
+        """No *state* was added to the oracle -- the opt-in is a key line only."""
+        assert set(self._gate().states) == self.CODE_RUN_GATE_STATES
+
+    def test_gate_gains_exactly_one_prepatch_check_key(self) -> None:
+        """State-level on `run_test` (the cost-preferred placement), and nowhere
+        else -- a loop-level default would pay the worktree-fork cost on every
+        guarded state of every iteration."""
+        fsm = self._gate()
+        guarded = {n: s.prepatch_check for n, s in fsm.states.items() if s.prepatch_check}
+        assert guarded == {"run_test": "fail"}
+        assert fsm.prepatch_check is None
+
+    def test_executor_resolves_a_policy_for_run_test(self) -> None:
+        """The reachability claim, at the resolver: the executor's own policy
+        resolution returns a live policy for the oracle's `run_test` state, so a
+        real run of this loop invokes the check rather than short-circuiting to
+        the absent-key SKIP."""
+        from little_loops.fsm.executor import FSMExecutor
+
+        fsm = self._gate()
+        executor = FSMExecutor.__new__(FSMExecutor)
+        executor.fsm = fsm
+        assert executor._effective_prepatch_check_policy(fsm.states["run_test"]) == "fail"
+
+    def test_rn_family_delegates_to_the_guarded_gate(self) -> None:
+        """The `rn-*` loops reach the guarded state by delegating to the oracle.
+        Asserted on the two loops that declare the delegation directly; the rest
+        of the family reaches it transitively through them."""
+        delegators = {"rn-refine", "rn-remediate"}
+        for name in delegators:
+            data = yaml.safe_load((BUILTIN_LOOPS_DIR / f"{name}.yaml").read_text())
+            loops = {
+                cfg.get("loop") for cfg in data.get("states", {}).values() if isinstance(cfg, dict)
+            }
+            assert "oracles/code-run-gate" in loops, (
+                f"{name}.yaml no longer delegates to oracles/code-run-gate; "
+                f"ENH-2997's reachability claim depends on it."
+            )
+
+
 class TestMR6BuiltinFalsePositives:
     """MR-6 (ENH-2079): verify no false positives on known built-in loops."""
 
@@ -5246,9 +5315,7 @@ class TestAutodevLoop:
     # ENH-3148: explicitly-gated pre-dequeue check
     # ---------------------------------------------------------------
 
-    def test_check_blockers_at_dequeue_routes_to_check_gate_at_dequeue(
-        self, data: dict
-    ) -> None:
+    def test_check_blockers_at_dequeue_routes_to_check_gate_at_dequeue(self, data: dict) -> None:
         """ENH-3148: check_blockers_at_dequeue's on_no/on_error must route to
         the new check_gate_at_dequeue gate (inserted between it and
         refine_current), not directly to refine_current."""

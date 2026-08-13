@@ -11934,6 +11934,379 @@ class TestPrePatchCheckExecutorHook:
         assert index_before == index_after
         assert index_before.strip() == "?? untracked.txt"
 
+    def test_no_entry_snapshot_for_prepatch_only_state(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """Unlike tamper_guard, prepatch_check registers a resolver and an exit
+        hook only. A state guarded by prepatch_check alone must take no entry
+        snapshot -- one would hash every candidate path on every guarded entry
+        for no consumer."""
+        import little_loops.test_tamper_guard as ttg
+
+        repo = self._repo(tmp_path)
+        self._enable_config(repo)
+        self._patch_run_prepatch_check(monkeypatch, self._fake_evidence("clean"))
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+
+        snapshots: list[Any] = []
+        real_snapshot = ttg.snapshot_test_paths
+
+        def _spy(*args: Any, **kwargs: Any) -> Any:
+            snapshots.append(args)
+            return real_snapshot(*args, **kwargs)
+
+        monkeypatch.setattr(ttg, "snapshot_test_paths", _spy)
+
+        runner = self._ActionRunner(exit_code=0)
+        executor = FSMExecutor(self._fsm("fail"), action_runner=runner, working_dir=repo)
+        executor.run()
+
+        assert snapshots == [], (
+            "prepatch_check must not trigger the tamper_guard entry snapshot; "
+            "the entry site stays keyed on _tamper_policy alone."
+        )
+
+    def _host_base_ref(self, executor: Any, monkeypatch: Any) -> list[str]:
+        """Record the base_ref the host computes its step_diff against."""
+        refs: list[str] = []
+        real = executor._prepatch_step_diff
+
+        def _spy(repo_root: Path, base_ref: str) -> str:
+            refs.append(base_ref)
+            return real(repo_root, base_ref)
+
+        monkeypatch.setattr(executor, "_prepatch_step_diff", _spy)
+        return refs
+
+    def test_host_and_core_agree_on_base_ref_merge_base_path(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """The ref the host computes step_diff against must equal the ref the
+        core forks at -- both go through the public resolve_base_ref(), so they
+        agree by construction rather than by parallel maintenance. Unstamped
+        issue_id => merge-base path."""
+        from little_loops.prepatch_check import resolve_base_ref
+
+        repo = self._repo(tmp_path)
+        self._enable_config(repo)
+        calls = self._patch_run_prepatch_check(monkeypatch, self._fake_evidence("clean"))
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+
+        runner = self._ActionRunner(exit_code=0)
+        executor = FSMExecutor(self._fsm("allow"), action_runner=runner, working_dir=repo)
+        refs = self._host_base_ref(executor, monkeypatch)
+        executor.run()
+
+        assert calls[0]["base_sha"] is None
+        core_ref, core_source = resolve_base_ref(
+            repo, calls[0]["base_sha"], calls[0]["base_branch"]
+        )
+        assert core_source == "merge-base"
+        assert refs == [core_ref]
+
+    def test_host_and_core_agree_on_base_ref_dequeue_stamp_path(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """Same equality on the dequeue-stamp path: a stamped base_sha must be
+        the ref both sides use."""
+        from little_loops.prepatch_check import resolve_base_ref
+        from little_loops.session_store import record_orchestration_run
+
+        repo = self._repo(tmp_path)
+        self._enable_config(repo)
+        calls = self._patch_run_prepatch_check(monkeypatch, self._fake_evidence("clean"))
+        db_path = tmp_path / "history.db"
+        monkeypatch.setenv("LL_HISTORY_DB", str(db_path))
+        record_orchestration_run(
+            db_path,
+            run_id="r1",
+            driver="ll-auto",
+            issue_id="ENH-9999",
+            status="running",
+            base_sha="cafed00d",
+            base_dirty=0,
+        )
+
+        runner = self._ActionRunner(exit_code=0)
+        executor = FSMExecutor(self._fsm("allow"), action_runner=runner, working_dir=repo)
+        refs = self._host_base_ref(executor, monkeypatch)
+        executor.run()
+
+        assert calls[0]["base_sha"] == "cafed00d"
+        core_ref, core_source = resolve_base_ref(
+            repo, calls[0]["base_sha"], calls[0]["base_branch"]
+        )
+        assert core_source == "dequeue-stamp"
+        assert refs == [core_ref] == ["cafed00d"]
+
+    def test_absent_run_dir_skips_bundle_write_but_still_writes_row(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """No run_dir means skip the file and rely on the history.db row --
+        never a crash and never a gate failure."""
+        from little_loops.history_reader import read_prepatch_evidence
+
+        repo = self._repo(tmp_path)
+        self._enable_config(repo)
+        self._patch_run_prepatch_check(monkeypatch, self._fake_evidence("clean"))
+        db_path = tmp_path / "history.db"
+        monkeypatch.setenv("LL_HISTORY_DB", str(db_path))
+
+        runner = self._ActionRunner(exit_code=0)
+        fsm = self._fsm("fail")
+        fsm.context["run_dir"] = ""
+        executor = FSMExecutor(fsm, action_runner=runner, working_dir=repo)
+        result = executor.run()
+
+        assert result.final_state == "done"
+        assert list(tmp_path.glob("**/prepatch_evidence_*.json")) == []
+        assert read_prepatch_evidence("ENH-9999", db=db_path) is not None
+
+    def test_base_branch_resolved_from_parallel_config(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """A configured parallel.base_branch reaches the core (the "main"
+        fallback applies only when the nullable field is unset)."""
+        repo = self._repo(tmp_path)
+        (repo / ".ll").mkdir(exist_ok=True)
+        (repo / ".ll" / "ll-config.json").write_text(
+            json.dumps(
+                {"prepatch_check": {"enabled": True}, "parallel": {"base_branch": "develop"}}
+            )
+        )
+        calls = self._patch_run_prepatch_check(monkeypatch, self._fake_evidence("clean"))
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+
+        runner = self._ActionRunner(exit_code=0)
+        executor = FSMExecutor(self._fsm("allow"), action_runner=runner, working_dir=repo)
+        executor.run()
+
+        assert calls[0]["base_branch"] == "develop"
+
+    def test_non_default_worktree_base_is_honored(self, tmp_path: Path, monkeypatch: Any) -> None:
+        """worktree_base comes from BRConfig.get_worktree_base(), not a
+        hardcoded `.worktrees/`, and the fork lands outside run_dir (keeping it
+        out of tamper_guard_changed_files()'s scan scope)."""
+        repo = self._repo(tmp_path)
+        (repo / ".ll").mkdir(exist_ok=True)
+        (repo / ".ll" / "ll-config.json").write_text(
+            json.dumps(
+                {"prepatch_check": {"enabled": True}, "automation": {"worktree_base": "custom-wt"}}
+            )
+        )
+        calls = self._patch_run_prepatch_check(monkeypatch, self._fake_evidence("clean"))
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+
+        runner = self._ActionRunner(exit_code=0)
+        fsm = self._fsm("allow")
+        fsm.context["run_dir"] = str(run_dir)
+        executor = FSMExecutor(fsm, action_runner=runner, working_dir=repo)
+        executor.run()
+
+        worktree_base = Path(calls[0]["worktree_base"])
+        assert worktree_base.name == "custom-wt"
+        assert not worktree_base.is_relative_to(run_dir)
+
+    def test_all_nine_core_kwargs_supplied_explicitly(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """The host supplies every one of the core's keyword-only parameters --
+        the core is never left to discover base_sha/base_dirty itself."""
+        repo = self._repo(tmp_path)
+        self._enable_config(repo)
+        calls = self._patch_run_prepatch_check(monkeypatch, self._fake_evidence("clean"))
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+
+        runner = self._ActionRunner(exit_code=0)
+        executor = FSMExecutor(self._fsm("allow"), action_runner=runner, working_dir=repo)
+        executor.run()
+
+        assert set(calls[0]) == {
+            "step_diff",
+            "repo_root",
+            "worktree_base",
+            "base_sha",
+            "base_dirty",
+            "base_branch",
+            "logger",
+            "git_lock",
+            "config",
+        }
+        # base_sha/base_dirty are legitimately None when unstamped; the rest
+        # must be real objects the host resolved, not defaults the core picked.
+        for key in (
+            "step_diff",
+            "repo_root",
+            "worktree_base",
+            "base_branch",
+            "logger",
+            "git_lock",
+            "config",
+        ):
+            assert calls[0][key] is not None, f"{key} was not supplied by the host"
+
+    def test_enabled_false_records_skip_without_failing_gate(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """Key present + prepatch_check.enabled false (the config default) is a
+        skip carrying the core's skipped_reason, never a gate failure. The real
+        core runs here -- with the feature disabled it short-circuits before
+        forking anything."""
+        repo = self._repo(tmp_path)  # deliberately no _enable_config()
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+
+        runner = self._ActionRunner(exit_code=0)
+        executor = FSMExecutor(self._fsm("fail"), action_runner=runner, working_dir=repo)
+        result = executor.run()
+
+        assert result.final_state == "done"
+        record = executor.fsm.context["_prepatch_check"][0]
+        assert record["verdict"] == "skipped"
+        assert record["skipped_reason"]
+
+    def test_memo_misses_when_base_ref_changes(self, tmp_path: Path, monkeypatch: Any) -> None:
+        """The memo key is the (step_diff hash, base_ref) *pair*: a byte-identical
+        diff evaluated against a different base is a different check and must
+        re-run, or a rebase would be served a stale verdict."""
+        repo = self._repo(tmp_path)
+        self._enable_config(repo)
+        calls = self._patch_run_prepatch_check(monkeypatch, self._fake_evidence("clean"))
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+
+        runner = self._ActionRunner(exit_code=0)
+        fsm = FSMLoop(
+            name="prepatch-memo-miss-test",
+            initial="step1",
+            context={"issue_id": "ENH-9999"},
+            states={
+                "step1": StateConfig(action="run tests", prepatch_check="allow", next="step2"),
+                "step2": StateConfig(
+                    action="run tests", prepatch_check="allow", on_yes="done", on_no="done"
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(fsm, action_runner=runner, working_dir=repo)
+
+        # Same diff both times, but the base_ref moves between the two exits --
+        # exactly what an unstamped issue_id does when HEAD advances.
+        refs = iter(["ref-one", "ref-two"])
+        import little_loops.prepatch_check as pc
+
+        monkeypatch.setattr(pc, "resolve_base_ref", lambda *a, **k: (next(refs), "merge-base"))
+        monkeypatch.setattr(FSMExecutor, "_prepatch_step_diff", lambda self, r, b: "identical")
+
+        executor.run()
+
+        assert len(calls) == 2, "a changed base_ref must not hit the memo"
+        evidence = executor.fsm.context["_prepatch_check"]
+        assert [e["memoized"] for e in evidence] == [False, False]
+
+    def test_fork_torn_down_when_core_raises(self, tmp_path: Path, monkeypatch: Any) -> None:
+        """Exception path: if the core raises *after* forking, no
+        PrePatchEvidence is ever returned, so the fork is identifiable only as a
+        `prepatch-*` directory that appeared during the call. It must still be
+        torn down."""
+        import subprocess
+
+        repo = self._repo(tmp_path)
+        self._enable_config(repo)
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+        fork = repo / ".worktrees" / "prepatch-20260101-000000-000000"
+
+        import little_loops.prepatch_check as pc
+
+        forked: list[bool] = []
+
+        def _fork_then_raise(**kwargs: Any) -> Any:
+            subprocess.run(
+                ["git", "worktree", "add", "-b", fork.name, str(fork)],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+            )
+            forked.append(True)
+            raise RuntimeError("pytest run blew up after the fork")
+
+        monkeypatch.setattr(pc, "run_prepatch_check", _fork_then_raise)
+
+        runner = self._ActionRunner(exit_code=0)
+        executor = FSMExecutor(self._fsm("allow"), action_runner=runner, working_dir=repo)
+        executor.run()
+
+        # Guard against a vacuous pass: the fork must actually have been created
+        # before the raise, or this asserts nothing.
+        assert forked == [True]
+        assert not fork.exists(), "the fork leaked when the core raised"
+        branches = subprocess.run(
+            ["git", "branch", "--list", fork.name],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        assert branches.strip() == ""
+
+    def test_prepatch_runs_before_tamper_guard_and_tamper_wins_the_route(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """Ordering + precedence, at the `next:`-chained call site and the
+        evaluate call site alike: the prepatch checker is called first (so it
+        reads the diff before a `revert` tamper policy can rewrite the tree),
+        both checkers record their finding before either routes, and when both
+        want to route the tamper-guard target wins -- a tampered test file makes
+        the prepatch verdict untrustworthy."""
+        repo = self._repo(tmp_path)
+        self._enable_config(repo)
+        self._patch_run_prepatch_check(monkeypatch, self._fake_evidence("flagged"))
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+
+        order: list[str] = []
+        real_prepatch = FSMExecutor._check_prepatch_check
+
+        def _spy_prepatch(self: Any, *args: Any, **kwargs: Any) -> Any:
+            order.append("prepatch")
+            return real_prepatch(self, *args, **kwargs)
+
+        def _stub_tamper(self: Any, *args: Any, **kwargs: Any) -> str:
+            order.append("tamper")
+            self.fsm.context.setdefault("_tamper_guard", []).append({"verdict": "tampered"})
+            return "tamper_blocked"
+
+        monkeypatch.setattr(FSMExecutor, "_check_prepatch_check", _spy_prepatch)
+        monkeypatch.setattr(FSMExecutor, "_check_tamper_guard", _stub_tamper)
+
+        for label, verify in (
+            ("evaluate site", StateConfig(action="run tests", on_yes="done", on_no="blocked")),
+            ("next-chained site", StateConfig(action="run tests", next="done")),
+        ):
+            order.clear()
+            verify.prepatch_check = "fail"
+            verify.tamper_guard = "fail"
+            fsm = FSMLoop(
+                name="prepatch-order-test",
+                initial="verify",
+                context={"issue_id": "ENH-9999"},
+                states={
+                    "verify": verify,
+                    "done": StateConfig(terminal=True),
+                    "blocked": StateConfig(terminal=True, failure=True),
+                    "tamper_blocked": StateConfig(terminal=True, failure=True),
+                },
+            )
+            runner = self._ActionRunner(exit_code=0)
+            executor = FSMExecutor(fsm, action_runner=runner, working_dir=repo)
+            result = executor.run()
+
+            assert order == ["prepatch", "tamper"], f"{label}: wrong checker order"
+            assert result.final_state == "tamper_blocked", f"{label}: tamper-guard must win"
+            # Both records land before either routes -- a prepatch finding never
+            # suppresses tamper-guard evidence, and vice versa.
+            assert executor.fsm.context["_prepatch_check"][0]["verdict"] == "flagged", label
+            assert executor.fsm.context["_tamper_guard"], label
+
     def test_worktree_and_branch_torn_down_after_guarded_exit(
         self, tmp_path: Path, monkeypatch: Any
     ) -> None:

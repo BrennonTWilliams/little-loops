@@ -3,7 +3,8 @@ id: ENH-2997
 title: Host the pre-patch check on the executor's guarded window
 type: ENH
 priority: P2
-status: open
+status: done
+completed_at: '2026-08-13T01:42:00Z'
 discovered_date: 2026-08-02
 epic: EPIC-2856
 parent: ENH-2853
@@ -909,31 +910,31 @@ keyword list, or threshold — the thresholds live in the ENH-3142 core.
 
 ## Acceptance Criteria
 
-- [ ] The check is hosted on the executor's guarded-window mechanism (the shape ENH-2854 established in `fsm/executor.py`: resolver `:1344-1361`, exit-compare/checker `:1385-1455`, invoked from call sites `:1534-1538` and `:1587-1591`), not as a state inside `oracles/code-run-gate.yaml` and not inside `cli/harness.py`. **A resolver and an exit hook only — no entry snapshot is added for `prepatch_check`**; the entry site (`:1499-1507`) stays keyed on `_tamper_policy` alone, and a test asserts a guarded `prepatch_check` state takes no entry snapshot.
-- [ ] The exit hook invokes the core **only on the green path** (the guarded state's action succeeded / routes to `on_yes`); on a failed action it records a skip and routes nothing. A test asserts a red guarded state forks no worktree.
-- [ ] `prepatch_check.resolve_base_ref(repo_root, base_sha, base_branch)` is public, and **both** `run_prepatch_check()` and the executor host resolve `base_ref` through it; a test asserts the ref the host computes `step_diff` against equals `PrePatchEvidence.base_ref` returned by the same invocation, on both the `dequeue-stamp` and `merge-base` paths.
-- [ ] No *state* is added to `oracles/code-run-gate.yaml`; a test asserts its state set is unchanged. The file gains exactly one `prepatch_check:` key line (loop level, or state level on `run_test`).
-- [ ] A first-class FSM key is settable at loop level and state level, mirroring `tamper_guard`'s declaration in `fsm/schema.py`, with the enum `fail | warn | allow` declared in `fsm-loop-schema.json`.
-- [ ] The check is reachable from the `rn-*` family's green-suite transitions; a test asserts a guarded loop (`rn-implement` / `rn-remediate` / `rn-refine`, transitively via `code-run-gate`) actually runs the check.
-- [ ] `verdict == "flagged"` under `policy: fail` routes to the failure target; a bundle whose outcomes carry only `soft` flags does not route, and neither does `verdict == "skipped"`. Tests cover all three.
-- [ ] The host records its verdict in `ctx.context` following ENH-2854's `_tamper_guard` record shape, accumulating findings across guarded states.
-- [ ] The full `PrePatchEvidence` bundle is written to `${context.run_dir}/prepatch_evidence_<issue_id>.json` (MR-3) **and** persisted to `.ll/history.db` — the latter is the only surface ENH-2998's `run_dir`-less `cli/harness.py` consumer can discover — and is exposed through the existing parent↔sub-loop token channel.
-- [ ] The `step_diff` passed to `run_prepatch_check()` is the cumulative patch diff (`git diff <base_ref>`), not the guarded state's entry→exit delta; a test asserts that for a run whose patch added a test file, the diff reaching the core is non-empty and `collect_candidates()` returns at least one candidate. (Guards against the inert-gate failure mode in § Design Notes.)
-- [ ] `step_diff` includes **untracked** non-ignored files (`git ls-files --others --exclude-standard`, emitted as `git diff --no-index -- /dev/null <path>` fragments), so a newly added, not-yet-committed test file becomes a candidate. **The anti-inert-gate test above must use an untracked added test file** — a committed-file variant passes without this rule and leaves the hole open. A second test asserts the live repository's index is unmodified by diff production (no `git add -N`).
-- [ ] A `prepatch_evidence` table, its writer, and `history_reader.read_prepatch_evidence(issue_id)` exist; a test asserts a guarded-state exit writes a readable row, and that the reader returns `None` (never raises) on a missing DB or unknown issue ID.
-- [ ] When `issue_id` is absent from the FSM context, the check still runs against the merge-base fallback (`base_source == "merge-base"`) rather than skipping; a test covers it.
-- [ ] When `run_dir` is absent or empty, the run-dir bundle write is skipped without crashing and without failing the gate — the `history.db` row is still written; a test covers it.
-- [ ] `base_branch` is resolved from `parallel.base_branch` in `.ll/ll-config.json`, **falling back to `"main"` when the field is null/unset** (matching `config/core.py:674`); tests cover both the configured and the unset case, asserting the resolved value reaches the core.
-- [ ] `worktree_base` is resolved via `BRConfig.get_worktree_base()` rather than a hardcoded `.worktrees/`; a test asserts a non-default `automation.worktree_base` is honored and that the fork lands outside `run_dir`.
-- [ ] The prepatch checker runs before `_check_tamper_guard` at **both** exit call sites, both checkers record their `ctx.context` entry before either routes, and when both want to route the tamper-guard target wins; tests cover the ordering and the precedence rule.
-- [ ] Repeated guarded exits within one run whose **`(step_diff hash, base_ref)` pair** is identical reuse the prior verdict (recorded with `"memoized": true`) instead of re-forking a worktree; a test asserts only one worktree is created across two identical-diff exits, and a second test asserts an identical diff against a *changed* `base_ref` does **not** hit the memo.
-- [ ] The pre-patch worktree and its branch are torn down on both the success and exception paths (`try/finally` + `cleanup_worktree(..., delete_branch=True)`); a test asserts neither survives a guarded-state exit.
-- [ ] `_is_ll_worktree()` / `_is_ll_branch()` accept the `prepatch-<timestamp>` naming via an **anchored** `^prepatch-\d{8}-\d{6}-\d{6}$` so `/ll:cleanup-worktrees` reaps crash leftovers; tests assert both accept a real `setup_prepatch_worktree()` name and both still **reject** a hand-made `prepatch-experiment`.
-- [ ] When the check's key is absent (no state override, no loop default), the guarded window short-circuits to SKIP rather than failing the gate; a test covers it.
-- [ ] When the key is present but `prepatch_check.enabled` is `false` (the config default), the run is recorded as a skip with the core's `skipped_reason` and never fails the gate; a test covers it.
-- [ ] The host resolves the base via `history_reader.read_base_sha(issue_id)` / `read_base_dirty(issue_id)` and passes both in as arguments, along with `repo_root`, the config-resolved `worktree_base`, `base_branch`, a locally constructed `Logger(verbose=False)`, and a locally constructed `GitLock` (per `fsm/executor.py:929-940`); a test asserts every one of the core's nine keyword-only parameters is supplied explicitly by the host — i.e. the core is never left to discover `base_sha`/`base_dirty` itself. (Replaces an earlier, untestable "the core performs no database access" phrasing; the core's DB-free property is ENH-3142's to guarantee, not this issue's to re-assert.)
-- [ ] A `ll-loop validate` lint rule mirroring ENH-2854's catches misuse of the new key.
-- [ ] ENH-2854's tamper-guard `revert` policy runs after this check has read the step's diff when both are active on the same window.
+- [x] The check is hosted on the executor's guarded-window mechanism (the shape ENH-2854 established in `fsm/executor.py`: resolver `:1344-1361`, exit-compare/checker `:1385-1455`, invoked from call sites `:1534-1538` and `:1587-1591`), not as a state inside `oracles/code-run-gate.yaml` and not inside `cli/harness.py`. **A resolver and an exit hook only — no entry snapshot is added for `prepatch_check`**; the entry site (`:1499-1507`) stays keyed on `_tamper_policy` alone, and a test asserts a guarded `prepatch_check` state takes no entry snapshot.
+- [x] The exit hook invokes the core **only on the green path** (the guarded state's action succeeded / routes to `on_yes`); on a failed action it records a skip and routes nothing. A test asserts a red guarded state forks no worktree.
+- [x] `prepatch_check.resolve_base_ref(repo_root, base_sha, base_branch)` is public, and **both** `run_prepatch_check()` and the executor host resolve `base_ref` through it; a test asserts the ref the host computes `step_diff` against equals `PrePatchEvidence.base_ref` returned by the same invocation, on both the `dequeue-stamp` and `merge-base` paths.
+- [x] No *state* is added to `oracles/code-run-gate.yaml`; a test asserts its state set is unchanged. The file gains exactly one `prepatch_check:` key line (loop level, or state level on `run_test`).
+- [x] A first-class FSM key is settable at loop level and state level, mirroring `tamper_guard`'s declaration in `fsm/schema.py`, with the enum `fail | warn | allow` declared in `fsm-loop-schema.json`.
+- [x] The check is reachable from the `rn-*` family's green-suite transitions; a test asserts a guarded loop (`rn-implement` / `rn-remediate` / `rn-refine`, transitively via `code-run-gate`) actually runs the check.
+- [x] `verdict == "flagged"` under `policy: fail` routes to the failure target; a bundle whose outcomes carry only `soft` flags does not route, and neither does `verdict == "skipped"`. Tests cover all three.
+- [x] The host records its verdict in `ctx.context` following ENH-2854's `_tamper_guard` record shape, accumulating findings across guarded states.
+- [x] The full `PrePatchEvidence` bundle is written to `${context.run_dir}/prepatch_evidence_<issue_id>.json` (MR-3) **and** persisted to `.ll/history.db` — the latter is the only surface ENH-2998's `run_dir`-less `cli/harness.py` consumer can discover — and is exposed through the existing parent↔sub-loop token channel.
+- [x] The `step_diff` passed to `run_prepatch_check()` is the cumulative patch diff (`git diff <base_ref>`), not the guarded state's entry→exit delta; a test asserts that for a run whose patch added a test file, the diff reaching the core is non-empty and `collect_candidates()` returns at least one candidate. (Guards against the inert-gate failure mode in § Design Notes.)
+- [x] `step_diff` includes **untracked** non-ignored files (`git ls-files --others --exclude-standard`, emitted as `git diff --no-index -- /dev/null <path>` fragments), so a newly added, not-yet-committed test file becomes a candidate. **The anti-inert-gate test above must use an untracked added test file** — a committed-file variant passes without this rule and leaves the hole open. A second test asserts the live repository's index is unmodified by diff production (no `git add -N`).
+- [x] A `prepatch_evidence` table, its writer, and `history_reader.read_prepatch_evidence(issue_id)` exist; a test asserts a guarded-state exit writes a readable row, and that the reader returns `None` (never raises) on a missing DB or unknown issue ID.
+- [x] When `issue_id` is absent from the FSM context, the check still runs against the merge-base fallback (`base_source == "merge-base"`) rather than skipping; a test covers it.
+- [x] When `run_dir` is absent or empty, the run-dir bundle write is skipped without crashing and without failing the gate — the `history.db` row is still written; a test covers it.
+- [x] `base_branch` is resolved from `parallel.base_branch` in `.ll/ll-config.json`, **falling back to `"main"` when the field is null/unset** (matching `config/core.py:674`); tests cover both the configured and the unset case, asserting the resolved value reaches the core.
+- [x] `worktree_base` is resolved via `BRConfig.get_worktree_base()` rather than a hardcoded `.worktrees/`; a test asserts a non-default `automation.worktree_base` is honored and that the fork lands outside `run_dir`.
+- [x] The prepatch checker runs before `_check_tamper_guard` at **both** exit call sites, both checkers record their `ctx.context` entry before either routes, and when both want to route the tamper-guard target wins; tests cover the ordering and the precedence rule.
+- [x] Repeated guarded exits within one run whose **`(step_diff hash, base_ref)` pair** is identical reuse the prior verdict (recorded with `"memoized": true`) instead of re-forking a worktree; a test asserts only one worktree is created across two identical-diff exits, and a second test asserts an identical diff against a *changed* `base_ref` does **not** hit the memo.
+- [x] The pre-patch worktree and its branch are torn down on both the success and exception paths (`try/finally` + `cleanup_worktree(..., delete_branch=True)`); a test asserts neither survives a guarded-state exit.
+- [x] `_is_ll_worktree()` / `_is_ll_branch()` accept the `prepatch-<timestamp>` naming via an **anchored** `^prepatch-\d{8}-\d{6}-\d{6}$` so `/ll:cleanup-worktrees` reaps crash leftovers; tests assert both accept a real `setup_prepatch_worktree()` name and both still **reject** a hand-made `prepatch-experiment`.
+- [x] When the check's key is absent (no state override, no loop default), the guarded window short-circuits to SKIP rather than failing the gate; a test covers it.
+- [x] When the key is present but `prepatch_check.enabled` is `false` (the config default), the run is recorded as a skip with the core's `skipped_reason` and never fails the gate; a test covers it.
+- [x] The host resolves the base via `history_reader.read_base_sha(issue_id)` / `read_base_dirty(issue_id)` and passes both in as arguments, along with `repo_root`, the config-resolved `worktree_base`, `base_branch`, a locally constructed `Logger(verbose=False)`, and a locally constructed `GitLock` (per `fsm/executor.py:929-940`); a test asserts every one of the core's nine keyword-only parameters is supplied explicitly by the host — i.e. the core is never left to discover `base_sha`/`base_dirty` itself. (Replaces an earlier, untestable "the core performs no database access" phrasing; the core's DB-free property is ENH-3142's to guarantee, not this issue's to re-assert.)
+- [x] A `ll-loop validate` lint rule mirroring ENH-2854's catches misuse of the new key.
+- [x] ENH-2854's tamper-guard `revert` policy runs after this check has read the step's diff when both are active on the same window.
 
 ## Impact
 
@@ -1056,11 +1057,44 @@ All three verified against shipped code before being written up.
   to implementation; a `step_diff`-hash memo is scoped to contain per-iteration
   worktree cost; Effort corrected Medium → Large to match `size: Large`.
 
+## Implementation Notes
+
+_Added 2026-08-13 during the acceptance-criteria verification pass the timed-out
+`ll-auto` run never reached (see ENH-3153 for the timeout diagnosis)._
+
+The implementation landed complete across the ~27-file working tree, but 12 of
+the 25 criteria named tests that were never written; that gap was closed in this
+pass, together with one implementation deviation the tests exposed:
+
+- **Exception-path teardown (AC "worktree torn down on both the success and
+  exception paths").** ENH-3153 had replaced the `try/finally` this AC specifies
+  with `try/except Exception: pass` around `cleanup_worktree` — correct in that a
+  cleanup error must not abort a guarded window that already reached a verdict,
+  but it left the exception path uncovered: when `run_prepatch_check()` itself
+  raises *after* forking, no `PrePatchEvidence` is returned and
+  `evidence.worktree_path` never binds, so nothing identifies the fork. Resolved
+  by keeping both properties: the call is wrapped in `try/finally`, and the
+  `finally` delegates to a new `_prepatch_teardown()` that tears down
+  `evidence.worktree_path` when known **plus** any `prepatch-*` directory that
+  appeared under `worktree_base` during the call (snapshot-diffed by
+  `_prepatch_existing_forks()`), swallowing cleanup errors as before.
+- **Reachability is asserted against the real oracle, not a synthetic FSM.**
+  `TestPrePatchCheckReachability` (`scripts/tests/test_builtin_loops.py`) freezes
+  `code-run-gate.yaml`'s state set, asserts the opt-in is exactly one state-level
+  key on `run_test` with no loop-level default, resolves the policy through the
+  executor's own `_effective_prepatch_check_policy`, and asserts `rn-refine` /
+  `rn-remediate` still declare `loop: oracles/code-run-gate`. The executor-side
+  class alone would have passed green over a gate no production loop reaches.
+  Note `rn-implement` does **not** declare the delegation directly (contrary to
+  the `loops/README.md:64` citation in § Motivation); it reaches the gate
+  transitively through `rn-remediate`.
+
 ## Status
 
-**Open** | Created: 2026-08-02 | Priority: P2
+**Completed** | Created: 2026-08-02 | Completed: 2026-08-13 | Priority: P2
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-12T22:27:27 - `50852885-4bdc-43ed-8568-ace8104f7994.jsonl`
 - `/ll:confidence-check` - 2026-08-12T22:08:52 - `3304c67f-cf7c-43ee-ba8b-38fc793be3db.jsonl`
 - `/ll:refine-issue` - 2026-08-12T21:55:05 - `66afad60-66e8-4e0f-983b-a602e0661547.jsonl`
 - `/ll:refine-issue` - 2026-08-10T20:11:46 - `023c1f3c-d026-451b-8c6a-4b2383d7380c.jsonl`

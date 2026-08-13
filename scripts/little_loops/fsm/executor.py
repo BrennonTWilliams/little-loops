@@ -1528,6 +1528,49 @@ class FSMExecutor:
                 fragments.append(fragment)
         return "\n".join(fragments)
 
+    @staticmethod
+    def _prepatch_existing_forks(worktree_base: Path) -> set[Path]:
+        """Snapshot the ``prepatch-*`` forks already present under *worktree_base*.
+
+        Taken before invoking the core so a fork the core leaves behind on an
+        exception path -- where no ``PrePatchEvidence.worktree_path`` is ever
+        returned -- is still identifiable as a set difference afterwards.
+        """
+        try:
+            return {p for p in worktree_base.iterdir() if p.name.startswith("prepatch-")}
+        except OSError:
+            return set()
+
+    def _prepatch_teardown(
+        self,
+        repo_root: Path,
+        worktree_base: Path,
+        forks_before: set[Path],
+        evidence: Any,
+        logger: Any,
+        git_lock: Any,
+    ) -> None:
+        """Remove the pre-patch fork(s) the core left behind (ENH-2997).
+
+        Best-effort by design: a leaked fork is a disk-space nuisance, but
+        letting a cleanup error escape would abort the guarded window and fail
+        the run over a check that had already reached a verdict. Matches the
+        swallow-and-continue posture of the evidence writes.
+        """
+        from little_loops.worktree_utils import cleanup_worktree
+
+        targets: list[Path] = []
+        if evidence is not None and evidence.worktree_path is not None:
+            targets.append(Path(evidence.worktree_path))
+        targets.extend(
+            sorted(self._prepatch_existing_forks(worktree_base) - forks_before - set(targets))
+        )
+        for target in targets:
+            try:
+                cleanup_worktree(target, repo_root, logger, git_lock, delete_branch=True)
+            except Exception:
+                pass
+
     def _check_prepatch_check(
         self,
         state: StateConfig,
@@ -1567,7 +1610,6 @@ class FSMExecutor:
         from little_loops.parallel.git_lock import GitLock
         from little_loops.prepatch_check import resolve_base_ref, run_prepatch_check
         from little_loops.session_store import resolve_history_db
-        from little_loops.worktree_utils import cleanup_worktree
 
         config = BRConfig(repo_root)
         _history_db = resolve_history_db()
@@ -1586,36 +1628,32 @@ class FSMExecutor:
         else:
             wt_logger = Logger(verbose=False)
             wt_git_lock = GitLock(wt_logger)
+            worktree_base = config.get_worktree_base()
             # run_prepatch_check() does not clean up its own fork on the
             # success path (setup_prepatch_worktree tears down only when
             # setup itself fails) -- worktree lifetime past that point is
-            # the host's, hence the best-effort teardown below.
-            evidence = run_prepatch_check(
-                step_diff=step_diff,
-                repo_root=repo_root,
-                worktree_base=config.get_worktree_base(),
-                base_sha=base_sha,
-                base_dirty=base_dirty,
-                base_branch=base_branch,
-                logger=wt_logger,
-                git_lock=wt_git_lock,
-                config=config,
-            )
-            # Teardown is best-effort: a leaked fork is a disk-space nuisance,
-            # but letting a cleanup error escape would abort the guarded window
-            # and fail the run over a check that had already reached a verdict.
-            # Matches the swallow-and-continue posture of the evidence writes below.
+            # the host's. The `finally` also covers the exception path: if
+            # the core raises *after* forking, `evidence` never binds and the
+            # fork is discoverable only as a `prepatch-*` directory that
+            # appeared under worktree_base during the call.
+            forks_before = self._prepatch_existing_forks(worktree_base)
+            evidence = None
             try:
-                if evidence.worktree_path is not None:
-                    cleanup_worktree(
-                        evidence.worktree_path,
-                        repo_root,
-                        wt_logger,
-                        wt_git_lock,
-                        delete_branch=True,
-                    )
-            except Exception:
-                pass
+                evidence = run_prepatch_check(
+                    step_diff=step_diff,
+                    repo_root=repo_root,
+                    worktree_base=worktree_base,
+                    base_sha=base_sha,
+                    base_dirty=base_dirty,
+                    base_branch=base_branch,
+                    logger=wt_logger,
+                    git_lock=wt_git_lock,
+                    config=config,
+                )
+            finally:
+                self._prepatch_teardown(
+                    repo_root, worktree_base, forks_before, evidence, wt_logger, wt_git_lock
+                )
             self._prepatch_check_memo[memo_key] = evidence
 
         record = {
