@@ -548,6 +548,7 @@ VERDICT_JSON: {"verdict": "fail", "confidence": 80, "target_id": "FEAT-3120", "t
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:05:56 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:confidence-check` - 2026-08-08T19:53:33 - `f538a129-ed8b-4afd-b2c2-959e931d430a.jsonl`
 - `/ll:confidence-check` - 2026-08-08T19:53:29 - `f538a129-ed8b-4afd-b2c2-959e931d430a.jsonl`
 - `/ll:reconcile-issue` - 2026-08-08T19:50:27 - `f8a4aba2-de02-4fa0-b7f5-8cba8a090215.jsonl`

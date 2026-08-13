@@ -3,7 +3,8 @@ id: EPIC-2792
 title: Issue Parsing Performance
 type: EPIC
 priority: P3
-status: open
+status: done
+verify_verdict: NON_VALID
 captured_at: "2026-07-25T02:35:31Z"
 discovered_date: 2026-07-25
 discovered_by: create-epics-from-unparented
@@ -38,6 +39,10 @@ every issue file's frontmatter twice).
 
 2026-08-10 (`/ll:verify-issues`): Verified 2026-08-10: all 3 children (ENH-2780, ENH-2781, ENH-2782) are status: done. Epic is a strong candidate for closure — consider setting status: done in a follow-up pass.
 
+## Resolution
+
+2026-08-12: Re-verified via `ll-issues show EPIC-2792` — all 3 children (ENH-2780, ENH-2781, ENH-2782) confirmed `status: done`. Closing the epic; no outstanding work remains.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:07:48 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:51 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`

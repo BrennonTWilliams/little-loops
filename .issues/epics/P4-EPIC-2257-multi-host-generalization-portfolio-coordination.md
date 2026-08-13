@@ -3,6 +3,7 @@ id: EPIC-2257
 title: "Multi-host generalization \u2014 portfolio coordination"
 type: EPIC
 status: open
+verify_verdict: NON_VALID
 priority: P4
 discovered_date: 2026-06-24
 discovered_by: planning-assessment
@@ -97,6 +98,14 @@ portfolio work is in the tracked per-host epics below.
   **BUG-2266** also done. BUG-2266 is a `relates_to` precursor, not a child of
   this epic. The plan (2026-06-25) referred to this work as "FEAT-2267" — when
   filed it received the real ID 2387.
+- **FEAT-2391** — Core adapter infrastructure and Codex emitter (**done**)
+- **FEAT-2392** — Gemini emitter implementation (**done**)
+- **FEAT-2393** — Documentation migration and alias retirement (**done**)
+- **ENH-2873** — Declarative host capability map for adapter hosts (**done**)
+- **ENH-2874** — Degraded-mode agent fallbacks for hosts without subagent
+  support, with mandatory disclosure (**done**)
+- **ENH-2883** — Collapse per-host adapter emitters onto the capability map
+  (**done**)
 
 ## Tracked sub-epics (sequenced under this epic)
 
@@ -162,6 +171,13 @@ portfolio work is in the tracked per-host epics below.
   Gemini/omp children); its slot and `qwen` key ratified in a
   `.ll/decisions.d/` architecture decision (issue: EPIC-3154).
 
+- **2026-08-12** (`/ll:verify-issues`): Verdict: **NON_VALID (NEEDS_UPDATE)**.
+  The `## Children` section listed only 3 of 9 actual children with
+  `parent: EPIC-2257`. Added the missing 6: FEAT-2391, FEAT-2392, FEAT-2393,
+  ENH-2873, ENH-2874, ENH-2883 (all `status: done`, confirmed via
+  `ll-issues show` and `grep parent: EPIC-2257`). `relates_to` already
+  includes EPIC-3154 (reciprocal backlink confirmed) — no change needed there.
+
 - **2026-06-30** (relationship normalization): The three tracked per-host epics
   were linked inconsistently — EPIC-1463 and EPIC-2178 via `relates_to` only,
   but EPIC-2258 additionally via `parent: EPIC-2257`. Since `ll-issues
@@ -181,3 +197,7 @@ portfolio work is in the tracked per-host epics below.
 ## Status
 
 **Open** | Created: 2026-06-24 | Priority: P4
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:07:50 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`

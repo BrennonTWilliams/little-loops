@@ -12,6 +12,7 @@ depends_on:
 - FEAT-3120
 labels:
 - planning-hub
+verify_verdict: NON_VALID
 ---
 
 # FEAT-3117: Wire confidence_gate consult trigger into the ll-auto readiness gate
@@ -33,7 +34,7 @@ for the full scoping rationale.
 
 ## Current Behavior
 
-`scripts/little_loops/issue_manager.py:788-816` — the ll-auto pre-Phase-1
+`scripts/little_loops/issue_manager.py:808-833` — the ll-auto pre-Phase-1
 confidence gate — prints `CONFIDENCE_GATE_BLOCKED <id>` and
 `PHASE1_NOT_STARTED <id> confidence_gate` on a sub-threshold readiness score,
 then returns `below_readiness_threshold`. No consult happens on this path.
@@ -62,7 +63,7 @@ never blocks the gate — it completes with its original
 
 ## Proposed Solution
 
-In `scripts/little_loops/issue_manager.py`'s sub-threshold branch (`:788-816`):
+In `scripts/little_loops/issue_manager.py`'s sub-threshold branch (`:808-833`):
 call `should_consult("confidence_gate", config)`; if `True`, call
 `consult_for_trigger("confidence_gate", question=..., context=<gap analysis
 from readiness_status()/ReadinessStatus>)` (both from FEAT-3116's
@@ -122,6 +123,13 @@ return value and blocking behavior are unchanged either way.
 **Open** | Created: 2026-08-08 | Priority: P3
 
 
+## Verification Notes
+
+### 2026-08-12 (`/ll:verify-issues`)
+
+The `issue_manager.py` line citation for the pre-Phase-1 confidence gate had drifted from `:788-816` to `:808-833` — confirmed by grep (the sub-threshold branch now starts at the `action = config.get_category_action(...)` guard on `:807`/`:808` and returns at `:833`). Both citations in this issue (Current Behavior, Proposed Solution) were updated. The gate's shape and behavior are unchanged; only the line range moved.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:08:33 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-10T18:51:42 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
 - `/ll:issue-size-review` - 2026-08-08T21:18:49 - `5955cc74-6f18-496f-9ff9-59d7e836977d.jsonl`

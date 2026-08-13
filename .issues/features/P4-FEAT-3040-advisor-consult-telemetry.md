@@ -12,6 +12,7 @@ depends_on:
 - FEAT-3038
 labels:
 - planning-hub
+verify_verdict: VALID
 ---
 
 # FEAT-3040: Advisor consult telemetry in history.db
@@ -165,5 +166,6 @@ action, never automatically.
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:05:58 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:refine-issue` - 2026-08-07T01:37:33 - `43a0ea06-a76f-4e88-9656-365f95bb1daf.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T23:56:02 - `81d59bbb-17b9-42e5-908c-ba7206c84d60.jsonl`

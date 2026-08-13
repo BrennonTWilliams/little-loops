@@ -19,6 +19,7 @@ labels:
   - harness
   - hitl
   - adapter
+verify_verdict: VALID
 ---
 
 # FEAT-1931: Terminal adapter for async HITL communication
@@ -129,7 +130,7 @@ only renders, not resolves, variables.
 ## Proposed Solution
 
 Wrap `input()` in an `_interruptible_sleep()`-style polling loop (see
-`_interruptible_sleep()` at `scripts/little_loops/fsm/executor.py:1955`) that checks the shutdown signal between reads.
+`_interruptible_sleep()` at `scripts/little_loops/fsm/executor.py:3378`) that checks the shutdown signal between reads.
 Use `sys.stdin` directly rather than `input()` for finer control over blocking
 and signal handling.
 
@@ -234,6 +235,7 @@ open
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `API/Interface` shows `TerminalAdapter.await_response(self, timeout)`, but FEAT-1930's base protocol defines `await_response(self, alert_id: str, timeout: float)`. Add `alert_id: str` as the first parameter to match the base protocol.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:08:30 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:44 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`
 - backlog-grooming - 2026-07-03T00:00:00Z - Downgraded P2 -> P3 with parent EPIC-1929 (stalled chain; root FEAT-1930 unstarted).
 - `/ll:verify-issues` - 2026-06-20T00:34:45 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`

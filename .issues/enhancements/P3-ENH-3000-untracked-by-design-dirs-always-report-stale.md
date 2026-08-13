@@ -9,6 +9,7 @@ parent: EPIC-3023
 relates_to: [ENH-2983, ENH-2971, ENH-2999]
 decision_needed: true
 testable: true
+verify_verdict: VALID
 ---
 
 # References into untracked-by-design directories always report `stale`
@@ -183,6 +184,7 @@ Resolve the option with `/ll:decide-issue` before implementation.
 **Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-2966 both modify `check_format_gaps` in `scripts/little_loops/issue_parser.py` for unrelated gap classes (a new `stale_file_ref` verdict branch vs. the testable-keyword scan surface). Coordinate implementation order to avoid a merge collision in the same function.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:04:58 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-10T18:52:52 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:45 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`
 - `/ll:capture-issue` - 2026-08-02

@@ -3,7 +3,8 @@ id: EPIC-2700
 title: 'Intelligent ll-init: evidence-based detection + agentic plan/apply'
 type: EPIC
 priority: P3
-status: open
+status: done
+verify_verdict: NON_VALID
 captured_at: '2026-07-19T00:00:00Z'
 discovered_date: 2026-07-19
 discovered_by: capture-issue
@@ -112,6 +113,11 @@ the core chain.
 
 2026-08-10 (`/ll:verify-issues`): Verified 2026-08-10: all 5 children (ENH-2701, ENH-2702, FEAT-2703, ENH-2704, FEAT-2705) are status: done. Epic is a strong candidate for closure — consider setting status: done in a follow-up pass.
 
+## Resolution
+
+2026-08-12: Re-verified via `ll-issues show EPIC-2700` — all 5 children (ENH-2701, ENH-2702, FEAT-2703, ENH-2704, FEAT-2705) confirmed `status: done`. Closing the epic; no outstanding work remains.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:07:48 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:51 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-05T00:25:08 - `2f3f7bc8-367e-4fba-936b-eaf8049da3c4.jsonl`

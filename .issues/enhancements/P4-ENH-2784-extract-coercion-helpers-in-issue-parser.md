@@ -4,6 +4,7 @@ discovered_branch: main
 discovered_date: 2026-07-24T22:31:44Z
 discovered_by: scan-codebase
 parent: EPIC-2789
+verify_verdict: NON_VALID
 ---
 
 # ENH-2784: Extract `_coerce_tristate_bool` / `_coerce_optional_int` helpers for 12 copy-pasted coercions in `IssueParser.parse_file`
@@ -20,7 +21,8 @@ coercion eight times (`effort`, `impact`, `confidence_score`,
 ## Location
 
 - **File**: `scripts/little_loops/issue_parser.py`
-- **Line(s)**: 756-832 (ints at 756-793, bools at 794-832, at scan commit: fb567390)
+- **Line(s)**: 1881-1950 (ints at 1881-1914, bools at 1920-1950; refreshed
+  2026-08-12, was 756-832 at scan commit fb567390)
 - **Anchor**: `in method IssueParser.parse_file()`
 - **Code**:
 ```python
@@ -69,6 +71,11 @@ tri-state bool coercions) still present, no helpers extracted yet. Cited line
 numbers are stale — code is now around lines 1879-1958, not 756-832 (file has
 grown substantially). Core claim accurate.
 
+**2026-08-12** (`/ll:verify-issues`): Re-verified: core claim unchanged, no
+extraction helper exists yet. Refreshed the Location citation to the precise
+current range (1881-1950) rather than the earlier approximate 1879-1958.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:05:11 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:26:28 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:scan-codebase` - 2026-07-24T22:41:56 - `16c799a6-5ff5-423f-b842-dcdb0fc751f1.jsonl`

@@ -5,8 +5,7 @@ type: feature
 status: open
 priority: P4
 parent: EPIC-2178
-depends_on:
-- FEAT-2179
+verify_verdict: VALID
 captured_at: "2026-06-15T00:00:00Z"
 discovered_date: 2026-06-15
 discovered_by: capture-issue
@@ -81,8 +80,14 @@ loaded automatically on session start.
 
 2026-06-18 (UNSTARTED): `templates/GEMINI.md.j2` does not exist. No `--gemini` branch in `scripts/little_loops/init/`. FEAT-2179 confirmed `GEMINI.md` is Gemini's exact analog of `CLAUDE.md`. Unstarted.
 
+- **2026-08-12** (`/ll:verify-issues`): VALID. `depends_on: [FEAT-2179]` removed — FEAT-2179 is now `status: done`, so the issue is unblocked.
+
 **Open** | Created: 2026-06-15 | Priority: P4
 
 ## Related Key Documentation
 
 - `.claude/CLAUDE.md` — `ll-init` is documented in the CLAUDE.md CLI catalog, and `GEMINI.md` is being generated as this file's own Gemini-host analog (same project-instructions role).
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:05:57 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`

@@ -15,6 +15,7 @@ labels:
 - codex
 - hooks
 - host-compat
+verify_verdict: VALID
 ---
 
 # ENH-1718: Enable `PreToolUse` by default for Codex adapter
@@ -85,6 +86,7 @@ FEAT-1489's resolution explicitly tied the opt-in/default decision to the benchm
 - **2026-06-26** (/ll:verify-issues): Confirmed all substantive moved-file path references (hooks.json, post-tool-use.sh, pre-tool-use.sh) already point at the post-FEAT-2274 in-package location `scripts/little_loops/hooks/adapters/codex/`; the remaining bare `hooks/adapters/codex/README.md` refs are correct since that README legitimately stays at the repo root. PreToolUse-not-default gap remains real and unimplemented — no substantive change needed.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:05:11 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-06-09T18:30:00 - `fffefcf7-6dbd-438c-bdd1-259bea8d77b7.jsonl`
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`
 - `/ll:verify-issues` - 2026-06-02T22:48:35 - `a5f82118-5be7-4fc3-afac-e29effcffd8b.jsonl`

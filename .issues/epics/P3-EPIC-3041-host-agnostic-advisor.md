@@ -4,6 +4,7 @@ title: Host-agnostic advisor
 type: EPIC
 priority: P3
 status: open
+verify_verdict: NON_VALID
 discovered_date: 2026-08-04
 labels:
 - planning-hub
@@ -29,7 +30,7 @@ dissent}`) before the primary model commits to an approach.
     `ll-doctor` check (depends on FEAT-3042, FEAT-3043)
 - **FEAT-3038** — Advisor signal-gated auto-consults and per-task budget:
   wires `confidence_gate`/`pre_done` triggers and `max_consults_per_task`
-  (slice 2)
+  (slice 2) — **done**
 - **FEAT-3039** — Advisor FSM stall escalation and routable verdicts: lets
   FSM loops escalate on stall and route on the verdict (slice 3)
 - **FEAT-3040** — Advisor consult telemetry in `history.db`: persists
@@ -58,8 +59,15 @@ No active required decisions-log rules to check (log has no entries).
 Parent backlinks on all four direct children (FEAT-3037/3038/3039/3040)
 correctly resolve to `EPIC-3041`.
 
+## Verification Notes (2026-08-12)
+
+Verdict: **NON_VALID (OUTDATED)**. FEAT-3038 is now `status: done`, but the
+`## Children` section above still described it as active "slice 2" work
+without a completion marker. Updated the FEAT-3038 bullet to flag it as
+**done**.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:07:49 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-10T18:52:53 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
 - `/ll:verify-issues` - 2026-08-04T21:29:47 - `e72897bf-a708-4dcd-aeaa-907564ef9e34.jsonl`
 

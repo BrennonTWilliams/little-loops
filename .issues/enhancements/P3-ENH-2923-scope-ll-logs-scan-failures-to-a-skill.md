@@ -9,6 +9,7 @@ discovered_by: capture-issue
 relates_to:
 - ENH-2925
 parent: EPIC-1918
+verify_verdict: VALID
 ---
 
 # ENH-2923: Scope `ll-logs scan-failures` to a specific skill
@@ -125,6 +126,7 @@ signatures or `--capture` behavior.
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:04:57 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:capture-issue` - 2026-07-30T02:14:15Z - `b1cb0370-8b55-4a10-a364-649e81045dd0.jsonl`
 
 ---

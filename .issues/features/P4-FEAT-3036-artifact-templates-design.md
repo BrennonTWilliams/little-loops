@@ -10,6 +10,7 @@ labels:
 parent: EPIC-2087
 depends_on:
 - FEAT-2301
+verify_verdict: VALID
 ---
 
 # FEAT-3036: Artifact templates design
@@ -219,4 +220,5 @@ snapshots; free-text fields embeddable only in local mode.
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:05:58 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:47 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`

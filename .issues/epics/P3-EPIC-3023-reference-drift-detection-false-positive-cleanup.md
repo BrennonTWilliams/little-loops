@@ -4,6 +4,7 @@ title: Reference-drift detection false-positive cleanup
 type: EPIC
 priority: P3
 status: open
+verify_verdict: VALID
 discovered_by: capture-issue
 discovered_date: 2026-08-02
 testable: true
@@ -117,3 +118,7 @@ reference resolution.
   documented contract both children touch.
 - `.issues/enhancements/P3-ENH-2971-*.md` § Threshold Validation — the corpus
   measurement ENH-2990 exists to supersede for the live case.
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:07:49 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`

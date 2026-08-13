@@ -4,6 +4,7 @@ title: Leverage ll-logs as a development telemetry layer
 type: EPIC
 priority: P3
 status: open
+verify_verdict: NON_VALID
 captured_at: "2026-06-04T02:27:34Z"
 discovered_date: "2026-06-04"
 discovered_by: capture-issue
@@ -164,7 +165,12 @@ open
 
 - 2026-08-10: Verified 2026-08-10: the epic's 'Implementation Status' section (last updated 2026-06-19/20) predates three later-parented children — ENH-2923, ENH-2926, FEAT-2379 — which are still open. Epic is not closable; Implementation Status section needs a refresh to include these.
 
+## Verification Notes (2026-08-12)
+
+_Added by `/ll:verify-issues`._ Verdict: **NON_VALID (NEEDS_UPDATE)**. Confirmed the "Implementation Status" section is stale (last touched 2026-06-19/20) and predates ENH-2923, ENH-2926, and FEAT-2379, all of which are confirmed `status: open` and correctly not yet reflected there. Flagging the gap for a follow-up refresh pass; the full refresh itself is out of scope for this verification batch.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:04:15 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:07 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:verify-issues` - 2026-06-20T00:34:45 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
 - `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`

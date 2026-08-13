@@ -2,7 +2,8 @@
 id: EPIC-3008
 title: ll-init / config-schema wiring and UX audit
 type: EPIC
-status: open
+status: done
+verify_verdict: NON_VALID
 priority: P3
 discovered_date: 2026-08-02
 discovered_by: multi-agent-audit
@@ -180,6 +181,11 @@ independent and safe to run concurrently.
 
 2026-08-10 (`/ll:verify-issues`): Verified 2026-08-10: all 11 children (BUG-3009/3010/3012, ENH-3011/3013/3014/3015/3016/3017/3018/3021) are status: done. Epic is a strong candidate for closure — consider setting status: done in a follow-up pass.
 
+## Resolution
+
+2026-08-12: Re-verified via `ll-issues show EPIC-3008` — all 11 children (BUG-3009, BUG-3010, BUG-3012, ENH-3011, ENH-3013, ENH-3014, ENH-3015, ENH-3016, ENH-3017, ENH-3018, ENH-3021) confirmed `status: done`. Closing the epic; no outstanding work remains.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:07:48 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:52 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-05T00:25:08 - `2f3f7bc8-367e-4fba-936b-eaf8049da3c4.jsonl`

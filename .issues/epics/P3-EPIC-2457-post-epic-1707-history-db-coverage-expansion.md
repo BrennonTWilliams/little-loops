@@ -42,8 +42,9 @@ labels:
 - epic
 - history-db
 - captured
+verify_verdict: NON_VALID
 depends_on:
-- EPIC-2149
+- EPIC-1707
 ---
 
 # EPIC-2457: Post-EPIC-1707 history.db coverage expansion
@@ -309,6 +310,8 @@ _Audit 2026-07-08:_ 28 children in `relates_to` (was 25; added ENH-2580, ENH-258
 
 _Verified 2026-08-10:_ verification notes were badly stale (previously said '4/24 done'). Current state: of 28 children, 20 done, 5 cancelled (ENH-2494/2496/2508/2510/2582), 3 deferred (ENH-2464/2465/2580, non-terminal). Epic stays open due to the 3 deferred items; consider tracking those separately if the epic should otherwise close.
 
+_Verified 2026-08-12 (`/ll:verify-issues`):_ Verdict **NON_VALID (NEEDS_UPDATE)**. The frontmatter `depends_on: [EPIC-2149]` was a mistyped reference — this epic's own title and its "Dependencies / Sequencing" section both point to EPIC-1707 (post-EPIC-1707 coverage expansion; EPIC-1707 is `status: done`), while EPIC-2149 is an unrelated, still-open epic about context-monitor accuracy with no topical relation and no backlink to this epic. Corrected `depends_on` to `[EPIC-1707]`.
+
 ## Sources
 
 - `thoughts/history-db-expand-wiring.md` — the source findings report this epic is derived from
@@ -326,6 +329,7 @@ _Verified 2026-08-10:_ verification notes were badly stale (previously said '4/2
 - `.claude/CLAUDE.md` — documents the `ll-session` CLI (`search --fts`, `recent --kind`, `backfill`, `rebuild`, `compact`) that surfaces each new event kind this epic's children add.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:04:16 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:08 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:47 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`
 - fourth-pass expansion - 2026-07-08 - Added 3 children (ENH-2580, ENH-2581, ENH-2582) following the raw-events architecture discussion. ENH-2581 is the structural prerequisite; design doc at `thoughts/history-db-raw-events-architecture.md` (mirrors the relationship between `thoughts/history-db-expand-wiring.md` and this epic).

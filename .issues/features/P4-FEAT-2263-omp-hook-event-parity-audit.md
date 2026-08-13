@@ -17,6 +17,7 @@ labels:
 - parity
 relates_to:
 - FEAT-2261
+verify_verdict: NON_VALID
 ---
 
 # FEAT-2263: omp hook-event parity audit
@@ -126,11 +127,12 @@ rather than "impossible".
 
 ### Dependency / Blocker
 
-- `depends_on: FEAT-1850` (OmpRunner) — `OmpRunner` is **not yet registered** in
-  `scripts/little_loops/host_runner.py:_HOST_RUNNER_REGISTRY` (keys today:
-  `claude-code`, `codex`, `opencode`, `pi`) nor in `_PROBE_ORDER`. The audit needs
-  omp's native event names, which FEAT-1850's runner work surfaces. FEAT-2261 (omp
-  adapter) consumes this audit's mapping; do not start until FEAT-1850 lands.
+- `depends_on: FEAT-1850` (OmpRunner) — `OmpRunner` **is now registered** in
+  `scripts/little_loops/host_runner.py:_HOST_RUNNER_REGISTRY` (`host_runner.py:1763`),
+  since FEAT-1850 (`status: done`) landed. The audit needs omp's native event
+  names, which FEAT-1850's runner work surfaces. FEAT-2261 (omp adapter)
+  consumes this audit's mapping; the dependency is satisfied and this audit is
+  unblocked.
 
 ## Implementation Steps
 
@@ -186,7 +188,17 @@ _Added by `/ll:refine-issue` — concrete steps grounded in actual file referenc
 
 Verified 2026-08-10: core claim still true (`HOST_COMPATIBILITY.md`'s hook-intents table has no omp column, `hooks/adapters/omp/README.md` doesn't exist). However the "Dependency/Blocker" section's claim that `OmpRunner` is "not yet registered" in `_HOST_RUNNER_REGISTRY` is now FALSE — `OmpRunner` is registered (`host_runner.py:1561`) since its listed dependency FEAT-1850 landed (`status: done`). The blocker has cleared; update the Dependency/Blocker section to reflect this — issue is otherwise still open/valid.
 
+### 2026-08-12 (`/ll:verify-issues`)
+
+NEEDS_UPDATE. Corrected the body's "Dependency / Blocker" section, which
+still asserted `OmpRunner` was "not yet registered" despite the 2026-08-10
+note above flagging it as stale — `OmpRunner` is registered at
+`host_runner.py:1763` (line drifted from the previously-cited 1561). Core
+gap remains valid: `HOST_COMPATIBILITY.md` still has no omp column and
+`hooks/adapters/omp/README.md` still doesn't exist.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:05:58 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:25 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:44 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`
 - `/ll:refine-issue` - 2026-06-26T23:06:47 - `66288c91-3410-40d5-8af7-af4d0cb1a3f8.jsonl`

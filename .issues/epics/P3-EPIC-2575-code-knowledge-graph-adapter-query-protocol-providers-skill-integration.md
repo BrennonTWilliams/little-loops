@@ -3,7 +3,8 @@ id: EPIC-2575
 title: Code Knowledge Graph Adapter — Query Protocol, Providers & Skill Integration
 type: EPIC
 priority: P3
-status: open
+status: done
+verify_verdict: NON_VALID
 discovered_date: 2026-07-10
 discovered_by: capture-issue
 labels:
@@ -74,6 +75,10 @@ The main risk is staleness, not integration: loops mutate the codebase continuou
 
 - 2026-08-10: Verified 2026-08-10: all 4 children (FEAT-2576, ENH-2577, ENH-2578, ENH-2863) are status: done. Epic is a strong candidate for closure — consider setting status: done in a follow-up pass.
 
+## Resolution
+
+2026-08-12: Re-verified via `ll-issues show EPIC-2575` — all 4 children (FEAT-2576, ENH-2577, ENH-2578, ENH-2863) confirmed `status: done`. Closing the epic; no outstanding work remains.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:07:47 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:08 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`

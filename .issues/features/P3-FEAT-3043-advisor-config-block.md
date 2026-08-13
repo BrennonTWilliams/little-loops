@@ -9,6 +9,7 @@ testable: true
 discovered_date: 2026-08-04
 labels:
 - planning-hub
+verify_verdict: NON_VALID
 ---
 
 # FEAT-3043: Advisor configuration - AdvisorConfig block
@@ -50,7 +51,7 @@ covers the config plumbing concern.
 - `AdvisorConfig` round-trips through `BRConfig` (parse → `to_dict()` →
   reparse) with correct defaults.
 - `advisor.host` validates against the same enum as `orchestration.host_cli`:
-  `claude-code | codex | opencode | pi | gemini | omp | kimi-code`.
+  `claude-code | codex | opencode | pi | gemini | omp | kimi-code | qwen`.
 - `.ll/ll.local.md` overrides merge correctly (arrays replace, nested
   deep-merge, explicit `null` removes) — this is automatic via the existing
   generic `deep_merge()`, verified by a config-round-trip test, not new merge
@@ -73,9 +74,9 @@ covers the config plumbing concern.
 
 - `host` validates against the same enum as `orchestration.host_cli`. Not
   `"claude"` — that is not a registry key. `config-schema.json`'s
-  `orchestration.host_cli` enum (`:1558-1562`) is a bare inline literal array
+  `orchestration.host_cli` enum (`:1637-1640`) is a bare inline literal array
   with no existing `$ref`'able shared definition — `advisor.host`'s enum will
-  need to duplicate the same 7-value array rather than reference it.
+  need to duplicate the same 8-value array rather than reference it.
 - `timeout_seconds` is mandatory-with-a-default: a synchronous in-band consult
   with no timeout can hang a loop indefinitely.
 - `max_consults_per_task` is **deliberately absent** from this schema.
@@ -122,7 +123,7 @@ class AdvisorConfig:
 
 ### Decision Rules
 
-- `advisor.host` — 7-value registry enum (`claude-code | codex | opencode | pi | gemini | omp | kimi-code`); duplicated inline in `config-schema.json` because the schema has no `$ref`/`$defs` support.
+- `advisor.host` — 8-value registry enum (`claude-code | codex | opencode | pi | gemini | omp | kimi-code | qwen`); duplicated inline in `config-schema.json` because the schema has no `$ref`/`$defs` support.
 - `timeout_seconds` — mandatory-with-default `180`; no absent path is valid (a sync in-band consult with no timeout can hang a loop indefinitely).
 - `triggers` — keyword list (`confidence_gate`, `loop_stall`, `pre_done`); membership is the only validation.
 - `min_tier` — capability-floor gate: enforced within a host, warned across hosts.
@@ -137,7 +138,7 @@ class AdvisorConfig:
   add to the `to_dict()` round-trip (near line 786, where the `orchestration`
   key starts).
 - `scripts/little_loops/config-schema.json` — `advisor` block, `host` enum
-  matching `orchestration.host_cli` (line ~1560).
+  matching `orchestration.host_cli` (line ~1637).
 - `scripts/little_loops/config/__init__.py` — add `AdvisorConfig` to the
   `from little_loops.config.orchestration import (...)` block (lines 79-84)
   and to `__all__` (starts line 86); without this, `from little_loops.config
@@ -184,7 +185,7 @@ _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 2. `advisor` merges correctly from `.ll/ll.local.md` (arrays replace, nested
    deep-merge, `null` removes) via the existing generic `deep_merge()`.
 3. `advisor.host` values outside the registry enum
-   (`claude-code | codex | opencode | pi | gemini | omp | kimi-code`) fail
+   (`claude-code | codex | opencode | pi | gemini | omp | kimi-code | qwen`) fail
    schema validation.
 4. `from little_loops.config import AdvisorConfig` succeeds.
 5. `python -m pytest scripts/tests/`, `ruff check scripts/`, and
@@ -218,6 +219,13 @@ _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 **Open** | Created: 2026-08-04 | Priority: P3
 
 
+## Verification Notes
+
+### 2026-08-12 (`/ll:verify-issues`)
+
+The proposed `advisor.host` enum was stale: `orchestration.host_cli` has grown from 7 to 8 values since this issue was written — `qwen` was added by EPIC-3154 (Qwen Code host adapter). Updated every enum listing in this issue (`claude-code | codex | opencode | pi | gemini | omp | kimi-code` → `... | qwen`) and the `orchestration.host_cli` line citation (`config-schema.json:1558-1562` → `:1637-1640`) to match. Rest of the design (config plumbing shape, `AdvisorConfig` dataclass, `deep_merge` reuse) is unaffected.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:08:32 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:refine-issue` - 2026-08-07T01:21:35 - `eb104739-3a43-4761-b465-271da6b9bac2.jsonl`
 - `/ll:issue-size-review` - 2026-08-04T20:47:20 - `b57cebec-46d2-436b-b650-9a1afa94ec18.jsonl`

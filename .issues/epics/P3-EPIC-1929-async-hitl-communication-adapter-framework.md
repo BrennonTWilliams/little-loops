@@ -7,6 +7,7 @@ captured_at: "2026-06-04T00:00:00Z"
 discovered_date: 2026-06-04
 discovered_by: scope-epic
 status: open
+verify_verdict: VALID
 parent: null
 relates_to:
 - FEAT-1794
@@ -216,6 +217,7 @@ EventBus adapter; read "PushNotification" as "EventBus / Hermes-relay" throughou
 open
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:04:15 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:45 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`
 - backlog-grooming - 2026-07-03T00:00:00Z - Downgraded P2 -> P3 with active children (FEAT-1930/1794/1931): root FEAT-1930 unstarted since early June; downgrade keeps the P2 band meaningful. Re-raise when FEAT-1930 is scheduled. See also ENH-2249 (post-Hermes rescope).
 - `/ll:verify-issues` - 2026-06-05T21:00:23 - `current-session.jsonl`

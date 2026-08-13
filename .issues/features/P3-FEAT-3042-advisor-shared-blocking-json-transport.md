@@ -16,6 +16,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
+verify_verdict: NON_VALID
 ---
 
 # FEAT-3042: Advisor transport - shared run_blocking_json helper
@@ -38,12 +39,12 @@ covers the transport concern.
 
 ## Current Behavior
 
-- `resolve_host()` (`host_runner.py:1564`) resolves **one** host per process,
+- `resolve_host()` (`host_runner.py:1811`) resolves **one** host per process,
   from `LL_HOST_CLI` / `LL_HOOK_HOST` / a PATH probe. Every existing call site
   calls it bare — there is no per-call host selection anywhere in the
   codebase.
 - Structured-output handling is inlined in `evaluate_llm_structured`
-  (`fsm/evaluators.py:1083-1268`): builders drop the `json_schema` argument,
+  (`fsm/evaluators.py:1094-1281`): builders drop the `json_schema` argument,
   `_structured_output_args` re-appends `--json-schema`/`--no-session-persistence`
   only for hosts advertising `HostCapabilities.structured_output`, and the
   run-subprocess-and-parse loop (timeout, empty-stdout-with-exit-0 guard, JSON
@@ -54,7 +55,7 @@ covers the transport concern.
 
 _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 
-- `resolve_host()` is at `host_runner.py:1576`, not 1564 as cited above — and it is not memoized: `resolve_host(env)` re-resolves a fresh runner instance on every call (the `env is None` default copies `os.environ`, `:1601-1602`), so "resolves one host per process" overstates the caching. Per-call host selection (`resolve_host_named`) is therefore a genuinely new capability; every production call site today calls `resolve_host()` bare.
+- `resolve_host()` is at `host_runner.py:1811`, not 1564 as cited above — and it is not memoized: `resolve_host(env)` re-resolves a fresh runner instance on every call (the `env is None` default copies `os.environ`, `:1836-1837`), so "resolves one host per process" overstates the caching. Per-call host selection (`resolve_host_named`) is therefore a genuinely new capability; every production call site today calls `resolve_host()` bare.
 
 ## Expected Behavior
 
@@ -100,7 +101,7 @@ signature change to `resolve_host` itself.
 
 ### Check-order preservation (must match exactly)
 
-`evaluate_llm_structured`'s error-handling order (`fsm/evaluators.py:1083-1268`)
+`evaluate_llm_structured`'s error-handling order (`fsm/evaluators.py:1094-1281`)
 is check-order-dependent and must be preserved exactly:
 `subprocess.TimeoutExpired` → `FileNotFoundError` → `proc.returncode != 0`
 (reports stderr) → **then** the empty-stdout-with-exit-0 guard (only reached
@@ -151,7 +152,7 @@ _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 
 **Selected: Option A** — `evaluate_llm_structured` keeps the actual `subprocess.run` call in `fsm/evaluators.py` (module already does `import subprocess`), and `run_blocking_json` in `host_runner.py` receives the already-completed subprocess result rather than executing it internally.
 
-Two parallel codebase-pattern-finder passes confirmed `host_runner.py` has zero `subprocess.run`/`Popen` calls anywhere today — every `build_*` method across all seven host runners only constructs and returns a `HostInvocation` value object (per the explicit contract in its docstring, `host_runner.py:150-153`: "Call sites pass `binary` + `args` to `subprocess`..."). All five other `build_blocking_json` callers (`runner_spec.py:307`, `parallel/worker_pool.py:805`, `cli/issues/decisions.py:797`, `learning_tests/extractor.py:132`, `session_store/lifecycle.py:154`) execute the subprocess themselves in their own module immediately after calling the builder — with no exception found anywhere in the codebase. Option B would introduce the first subprocess execution point ever placed inside `host_runner.py`, requiring it to newly import `subprocess` and duplicate/relocate the timeout, exit-code, empty-stdout-guard, and JSON-envelope-parsing logic currently inlined in `evaluate_llm_structured` (`fsm/evaluators.py:1083-1268`) with no existing single execution point to extend from.
+Two parallel codebase-pattern-finder passes confirmed `host_runner.py` has zero `subprocess.run`/`Popen` calls anywhere today — every `build_*` method across all seven host runners only constructs and returns a `HostInvocation` value object (per the explicit contract in its docstring, `host_runner.py:150-153`: "Call sites pass `binary` + `args` to `subprocess`..."). All five other `build_blocking_json` callers (`runner_spec.py:307`, `parallel/worker_pool.py:805`, `cli/issues/decisions.py:797`, `learning_tests/extractor.py:132`, `session_store/lifecycle.py:154`) execute the subprocess themselves in their own module immediately after calling the builder — with no exception found anywhere in the codebase. Option B would introduce the first subprocess execution point ever placed inside `host_runner.py`, requiring it to newly import `subprocess` and duplicate/relocate the timeout, exit-code, empty-stdout-guard, and JSON-envelope-parsing logic currently inlined in `evaluate_llm_structured` (`fsm/evaluators.py:1094-1281`) with no existing single execution point to extend from.
 
 | Dimension | Option A | Option B |
 |---|---|---|
@@ -340,10 +341,10 @@ _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 - `HostRunner` — `@runtime_checkable` Protocol at `host_runner.py:195-270`; requires `name`, `detect()`, `build_streaming()`, `build_blocking_json()`, `build_version_check()`, `build_detached()`, `describe_capabilities()`.
 
 ### Signatures
-- `def resolve_host(env: dict[str, str] | None = None) -> HostRunner` — defined at `host_runner.py:1576`; reads `LL_HOST_CLI` then `LL_HOOK_HOST` from the passed env (`:1604`), then `_PROBE_ORDER` via `shutil.which`; raises `HostNotConfigured`; never mutates process-global state (the `env is None` default copies `os.environ`, `:1601-1602`).
+- `def resolve_host(env: dict[str, str] | None = None) -> HostRunner` — defined at `host_runner.py:1811`; reads `LL_HOST_CLI` then `LL_HOOK_HOST` from the passed env (`:1839`), then `_PROBE_ORDER` via `shutil.which`; raises `HostNotConfigured`; never mutates process-global state (the `env is None` default copies `os.environ`, `:1836-1837`).
 - `def resolve_host_named(name: str) -> HostRunner` — new helper; body is `return resolve_host({"LL_HOST_CLI": name})`; the env dict short-circuits before any probe.
 - `def run_blocking_json(invocation: HostInvocation, *, schema: dict[str, Any] | None = None, timeout: int = 180) -> dict[str, Any] | None` — new helper; extraction target, signature matches the issue's API/Interface block.
-- `def evaluate_llm_structured(output: str, prompt: str | None = None, schema: dict[str, Any] | None = None, min_confidence: float = 0.5, uncertain_suffix: bool = False, model: str = DEFAULT_LLM_MODEL, max_tokens: int = 256, timeout: int = 1800) -> EvaluationResult` — `fsm/evaluators.py:1083-1092`; migrates onto `run_blocking_json` with unchanged external behavior.
+- `def evaluate_llm_structured(output: str, prompt: str | None = None, schema: dict[str, Any] | None = None, min_confidence: float = 0.5, uncertain_suffix: bool = False, model: str = DEFAULT_LLM_MODEL, max_tokens: int = 256, timeout: int = 1800) -> EvaluationResult` — `fsm/evaluators.py:1094`; migrates onto `run_blocking_json` with unchanged external behavior.
 - `def build_blocking_json(*, prompt: str, model: str | None = None, json_schema: dict | None = None, sandbox_mode: str | None = None) -> HostInvocation` — `CodexRunner` method at `host_runner.py:662-669`; the only builder writing a tempfile (`--output-schema`, `:679-687`) and returning non-empty `cleanup_paths` (`:695`).
 - `def _extract_tagged_structured_output(text: str) -> dict[str, Any] | None` — `fsm/evaluators.py:111-156`; module-private today, unused outside `evaluators.py`.
 - `def _structured_output_args(invocation, schema: dict[str, Any]) -> list[str]` — `fsm/evaluators.py:159-172`; appends `--json-schema`/`--no-session-persistence` only when `getattr(invocation.capabilities, "structured_output", False)`.
@@ -377,7 +378,14 @@ _Added by `/ll:refine-issue` — 2026-08-07 — based on codebase analysis:_
 **Open** | Created: 2026-08-04 | Priority: P3
 
 
+## Verification Notes
+
+### 2026-08-12 (`/ll:verify-issues`)
+
+Line citations had drifted: `resolve_host()` moved from `host_runner.py:1576` to `:1811` (env-default-copy guard now at `:1836-1837`, the `LL_HOST_CLI`/`LL_HOOK_HOST` read at `:1839`), and `evaluate_llm_structured` moved from `fsm/evaluators.py:1083-1268` to `:1094-1281`. All anchors in this file were re-grepped and updated to match. The underlying design (extract `resolve_host_named`/`run_blocking_json`, preserve `evaluate_llm_structured`'s check order, Option A subprocess-ownership decision) is unaffected by the drift and remains sound.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:08:31 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:confidence-check` - 2026-08-10T19:50:59 - `20931a62-9bcb-46af-ab62-ab96842c221d.jsonl`
 - `/ll:wire-issue` - 2026-08-10T18:45:17 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
 - `/ll:decide-issue` - 2026-08-10T18:35:39 - `03ae87f5-7478-45c5-b006-43cc9c6c1023.jsonl`

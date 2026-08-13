@@ -4,6 +4,7 @@ title: FSM sub-loop outcome and budget routing primitives
 type: EPIC
 priority: P3
 status: open
+verify_verdict: VALID
 discovered_by: capture-issue
 discovered_date: 2026-08-02
 testable: true
@@ -121,6 +122,7 @@ branches, and the context/counter plumbing each needs. Out of scope: changing
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:07:48 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-10T18:52:53 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:52 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 

@@ -15,6 +15,7 @@ labels:
 - hooks
 blocked_by:
 - FEAT-2263
+verify_verdict: VALID
 ---
 
 # FEAT-2261: omp hook adapter — hooks/adapters/omp/
@@ -61,4 +62,5 @@ The exact event set is established by FEAT-2263 (hook-event parity audit).
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:05:58 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:46 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`

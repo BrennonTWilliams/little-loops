@@ -3,6 +3,7 @@ id: EPIC-2178
 title: Gemini CLI host adapter — tracking
 type: EPIC
 status: open
+verify_verdict: NON_VALID
 priority: P4
 captured_at: "2026-06-15T17:09:51Z"
 discovered_date: 2026-06-15
@@ -99,7 +100,7 @@ generic tool with `--host gemini` once `GeminiRunner` lands:
 - **ENH-2184** — GeminiRunner stub in host_runner.py — ✅ **done**
 - **ENH-2185** — GeminiRunner full implementation (build_streaming, build_blocking_json, build_detached, build_version_check) — ✅ **done**
 - **FEAT-2186** — Hook adapter — hooks/adapters/gemini/ — open (decision **ratified**: Option A, settings.json injection — ARCHITECTURE-046)
-- **ENH-2187** — Config probe — .gemini/ll-config.json in _config_candidates() — open (XS, independent)
+- **ENH-2187** — Config probe — .gemini/ll-config.json in _config_candidates() — ✅ **done**
 - **FEAT-2190** — GEMINI.md project context file (ll:init --gemini) — open (independent)
 - **ENH-2191** — HOST_COMPATIBILITY.md Gemini column — populate cells as children land — open (final gate)
 
@@ -115,7 +116,7 @@ generic tool with `--host gemini` once `GeminiRunner` lands:
 2. Add `GeminiRunner` stub to `host_runner.py` + `_PROBE_ORDER` entry (ENH-2184). ← **next up**
 3. Implement full `GeminiRunner` — replace stub `HostNotConfigured` raises (ENH-2185).
 4. Wire `hooks/adapters/gemini/` adapter via `.gemini/settings.json` injection (FEAT-2186, Option A).
-5. Add `.gemini/ll-config.json` config probe (ENH-2187).
+5. ✅ Add `.gemini/ll-config.json` config probe (ENH-2187). **done**
 6. Generate `GEMINI.md` from `ll:init --gemini` (FEAT-2190).
 7. Run the generic skill+command adapter (FEAT-2260, `done`) and conformance harness
    (FEAT-2259, `done`) with `--host gemini` to exercise the skill/command/conformance
@@ -180,7 +181,10 @@ generic tool with `--host gemini` once `GeminiRunner` lands:
 
 2026-06-30 (BOOKKEEPING REFRESH): Child roster reconciled. Of 10 children: 1 done (FEAT-2179), 3 cancelled (FEAT-2188, FEAT-2189, FEAT-2192 — superseded 2026-06-25 by EPIC-2257 generic components FEAT-2260 / FEAT-2259, both now `done`), 6 open. Updated `## Children`, `## Scope`, and `## Implementation Steps` to record the supersession (previously described the abandoned bespoke per-host approach). FEAT-2186's settings.json-vs-extension decision is **ratified** (Option A, ARCHITECTURE-046). No Gemini-specific implementation code exists yet: no `GeminiRunner` in `host_runner.py`, no `hooks/adapters/gemini/`, no `.gemini` config probe, no `GEMINI.md` template. Critical path is clean — start at ENH-2184 (stub) → ENH-2185 (full impl) + FEAT-2186 (hook adapter); ENH-2187 and FEAT-2190 are independent; ENH-2191 closes last. Closeout still requires running FEAT-2259/FEAT-2260 with `--host gemini` to satisfy the skill/command/conformance cells — nothing has yet exercised the generic harness against Gemini.
 
+2026-08-12 (`/ll:verify-issues`): Verdict: **NON_VALID (NEEDS_UPDATE)**. ENH-2187 (config probe) is now `status: done`, but the `## Children` list and `## Implementation Steps` still described it as "open (XS, independent)" / pending. Updated both references above to mark ENH-2187 done.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:07:50 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:format-issue` - 2026-06-15T20:17:24 - `7addc9bb-4a3e-4aad-bbbd-6f11fcae2b61.jsonl`
 - `/ll:capture-issue` - 2026-06-15T17:09:51Z - `63a402ce-7d2e-45a1-befc-4392e24ffc82.jsonl`
 

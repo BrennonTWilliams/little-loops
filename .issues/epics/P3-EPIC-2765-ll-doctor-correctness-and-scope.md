@@ -3,7 +3,8 @@ id: EPIC-2765
 title: 'll-doctor: report correctness and install-surface scope'
 type: EPIC
 priority: P3
-status: open
+status: done
+verify_verdict: NON_VALID
 captured_at: '2026-07-24T19:36:28Z'
 discovered_date: 2026-07-24
 discovered_by: capture-issue
@@ -187,7 +188,12 @@ into one invocation and gives `ll-init` a natural post-install verification step
 
 2026-08-10 (`/ll:verify-issues`): Verified 2026-08-10: all children done — the 7 listed in the body (BUG-2759/2760, ENH-2761/2762/2836, FEAT-2763, BUG-2764) plus the 4 frontmatter-only decomposition children (FEAT-2793/2794/2795/2796) are all status: done. Epic is a strong candidate for closure — consider setting status: done in a follow-up pass.
 
+## Resolution
+
+2026-08-12: Re-verified via `ll-issues show EPIC-2765` — all 11 children (BUG-2759, BUG-2760, ENH-2761, ENH-2762, BUG-2764, FEAT-2793, FEAT-2794, FEAT-2795, FEAT-2796, ENH-2836, FEAT-2763) confirmed `status: done`. Closing the epic; no outstanding work remains.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:07:48 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:51 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 <!-- ll-private-ok: pre-existing session-log capture path, not newly introduced -->
 - `/ll:capture-issue` - 2026-07-24T19:36:28Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00041c0b-3526-41ec-b743-a686380c429a.jsonl`

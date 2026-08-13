@@ -2,7 +2,8 @@
 id: EPIC-2910
 title: Kimi Code CLI host adapter — tracking
 type: EPIC
-status: open
+status: done
+verify_verdict: NON_VALID
 priority: P3
 captured_at: "2026-07-29T15:55:00Z"
 discovered_date: 2026-07-29
@@ -248,7 +249,12 @@ inert). Minor drift: Integration Map promises a README under
 
 2026-08-10 (`/ll:verify-issues`): Verified 2026-08-10: all 10 children including BUG-2921 are now status: done. Only remaining item is an untracked manual smoke-test step mentioned in the epic body — not blocked by any open issue. Strong candidate for closure once that manual check is confirmed.
 
+## Resolution
+
+2026-08-12: Re-verified via `ll-issues show EPIC-2910` — all 10 children (FEAT-2911, ENH-2912, ENH-2913, FEAT-2914, FEAT-2974, FEAT-2916, FEAT-2917, ENH-2918, ENH-2919, BUG-2921) confirmed `status: done`. Closing the epic; the manual end-to-end smoke test noted in prior verification passes was untracked by any open child issue and does not block closure.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:07:48 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:52 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:verify-issues` - 2026-07-29T20:51:41 - `7dce485a-c75c-400c-ac56-53fcf2521623.jsonl`
 - `/ll:capture-issue` - 2026-07-29T15:55:00Z - kimi-code host adapter planning session

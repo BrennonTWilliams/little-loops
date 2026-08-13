@@ -15,6 +15,7 @@ labels:
 - ll-auto
 - ergonomics
 testable: true
+verify_verdict: NON_VALID
 ---
 
 # ENH-2977: Add a --timeout CLI flag to ll-auto, matching the existing --idle-timeout
@@ -30,8 +31,9 @@ projects, gitignored — and then remembering to change it back.
 
 FEAT-488 added `--idle-timeout` to `ll-auto` and `ll-parallel` for exactly this
 reason. The sibling flag was not added, and that asymmetry is the core of this
-issue — plus one adjacent defect found while verifying it: `ll-parallel
---timeout 0` does not actually disable the timeout (see Scope Boundaries).
+issue. (An adjacent defect was previously folded in here — `ll-parallel
+--timeout 0` not actually disabling the timeout — but that has since been
+fixed separately as BUG-3034; see Scope Boundaries and Verification Notes.)
 
 ## Motivation
 
@@ -52,7 +54,7 @@ if args.idle_timeout is not None:
 ```
 
 `AutomationConfig` (`scripts/little_loops/config/automation.py`) defines both
-`timeout_seconds: int = 3600` and `idle_timeout_seconds: int = 0`, and
+`timeout_seconds: int = 7200` and `idle_timeout_seconds: int = 0`, and
 `from_dict()` reads both from `.ll/ll-config.json`. Only the idle one has a
 CLI override.
 
@@ -61,7 +63,7 @@ CLI override.
 `ll-auto --timeout N` sets `config.automation.timeout_seconds` for that
 invocation, with the same precedence and shape as `--idle-timeout`:
 
-- Absent (`None`) → the config value, else the `3600` default. Unchanged
+- Absent (`None`) → the config value, else the `7200` default. Unchanged
   behavior for every existing invocation.
 - `--timeout 0` → no wall-clock timeout, consistent with how `0` already
   disables `idle_timeout_seconds` and with `run_claude_command`'s documented
@@ -95,38 +97,19 @@ invocation, with the same precedence and shape as `--idle-timeout`:
    `parser.error()` guard in `cli/auto.py`.
 2. The shared help-text update in `add_timeout_arg` (`cli_args.py:100-122`),
    which necessarily also affects `ll-parallel --help`.
-3. **The `--timeout 0` truthiness fix at `config/core.py:576`.** See "The
-   `ll-parallel --timeout 0` defect" below.
 
 > Resolved by research (see Integration Map → Codebase Research Findings):
 > `ll-parallel` already declares `--timeout` (`cli/parallel.py:172,259`), so no
-> new flag is needed there. But its `0` handling is broken, and that is in
-> scope — see below.
+> new flag is needed there.
 
-### The `ll-parallel --timeout 0` defect
-
-`ll-parallel --timeout 0` **does not disable the timeout today**, despite the
-flag shipping. The value flows:
-
-- `cli/parallel.py:259` → `create_parallel_config(timeout_seconds=args.timeout, ...)`
-- `config/core.py:576` → `timeout_per_issue=timeout_seconds or self._parallel.base.timeout_seconds`
-
-`0 or 3600` evaluates to `3600`. This is exactly the truthiness trap named in
-the Impact → Risk section, already live in the sibling flag this issue is
-mirroring. (Note the line immediately below it, `idle_timeout_per_issue`, uses
-the correct `if ... is not None else 0` form — the two are inconsistent within
-a single call.)
-
-This is folded into scope rather than split out because the entire thesis of
-this issue is symmetry: shipping `ll-auto --timeout 0` that works while
-`ll-parallel --timeout 0` silently ignores it produces precisely the
-half-symmetric result this section says is worse than none. The fix is one
-line — `timeout_seconds if timeout_seconds is not None else
-self._parallel.base.timeout_seconds` — plus a test.
+> ~~The `--timeout 0` truthiness fix at `config/core.py:576`~~ — struck
+> 2026-08-12. This sub-scope (the "`ll-parallel --timeout 0` defect") has
+> already been fixed separately as BUG-3034; `config/core.py` now uses the
+> `is not None` form. See Verification Notes.
 
 **Out of scope:**
 
-- Changing the `3600` default.
+- Changing the `7200` default.
 - Per-phase budgets (splitting implementation from finalization).
 - The timeout *handling* defect — that a breach currently aborts the whole run
   and deletes the resume state — which is BUG-2976. This issue only makes the
@@ -340,5 +323,16 @@ exists.
 > exists — `ll-auto` appears there exactly once, in the Automation/Scratch Pad
 > section, with no flag list. `.claude/CLAUDE.md` needs no edit for this issue.
 
+## Verification Notes
+
+**2026-08-12** (`/ll:verify-issues`): The folded-in `ll-parallel --timeout 0`
+truthiness sub-scope (`config/core.py:576`) was already fixed by a separate
+commit that closed BUG-3034 — `config/core.py` now uses the `is not None`
+form — so that item is struck from Scope Boundaries. The cited
+`AutomationConfig.timeout_seconds` default was also stale (`3600` →
+now `7200`, per commit `1405c21b`) and has been corrected. The core ask —
+adding a `--timeout` CLI flag to `ll-auto` — remains valid and open.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:04:58 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:refine-issue` - 2026-08-01T20:18:53 - `52bc5a67-0032-4383-ae03-a6de98447a01.jsonl`

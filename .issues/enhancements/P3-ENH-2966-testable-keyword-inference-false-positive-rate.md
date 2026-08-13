@@ -14,6 +14,7 @@ decision_needed: true
 labels:
 - issues
 - cli
+verify_verdict: VALID
 ---
 
 # ENH-2966: `testable` keyword inference fires on 62% of active issues
@@ -314,6 +315,7 @@ only; core claim and fix options remain accurate.
 **Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-3000 both modify `check_format_gaps` in `scripts/little_loops/issue_parser.py` for unrelated gap classes (testable-keyword scan surface vs. a new `stale_file_ref` verdict branch). Coordinate implementation order to avoid a merge collision in the same function.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:04:58 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:26:27 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:45 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`
 - `/ll:verify-issues` - 2026-08-03T04:54:47 - `d03f8e53-9873-4f8d-8cfd-bbc50704a66b.jsonl`

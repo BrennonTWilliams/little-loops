@@ -3,12 +3,14 @@ id: EPIC-3154
 title: Qwen Code host adapter — tracking
 type: EPIC
 status: open
+verify_verdict: VALID
 priority: P3
 captured_at: "2026-08-13T01:28:37Z"
 discovered_date: 2026-08-12
 discovered_by: capture-issue
 decision_ref: ARCHITECTURE-046, ARCHITECTURE-047, ARCHITECTURE-048
 relates_to:
+- EPIC-2257
 - FEAT-3155
 - ENH-3156
 - ENH-3157
@@ -279,6 +281,7 @@ normalization).
   mutates issue state. Epic stays open until that smoke passes.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:07:49 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:capture-issue` - 2026-08-13T01:28:37Z - qwen-code host integration report capture
 
 ---

@@ -1,5 +1,5 @@
 ---
-id: 3035
+id: ENH-3035
 title: Factor a shared artifact template kit out of the policy-builder template
 type: ENH
 priority: P3
@@ -9,6 +9,7 @@ labels:
 - artifact
 - ll-artifact
 parent: EPIC-2087
+verify_verdict: NON_VALID
 ---
 
 # ENH-3035: Factor a shared artifact template kit out of the policy-builder template
@@ -68,3 +69,17 @@ currently does inline.
 
 Should land alongside or just before the sql.js dashboard — the first new artifact
 is the forcing function. Does not gate the write-bridge work.
+
+## Verification Notes
+
+**2026-08-12** (`/ll:verify-issues`): Frontmatter `id: 3035` did not match the
+`ENH-NNNN` convention used by sibling issue files and has been corrected to
+`id: ENH-3035`. Separately, this issue's Design Context presents a
+`.llat/`+Jinja2+manifest.yaml packaging layout as settled, but sibling issue
+FEAT-3036 (artifact templates design) still lists that packaging shape as an
+open question — flagged here as needing reconciliation between the two
+issues, not resolved as part of this verification pass.
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:04:59 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`

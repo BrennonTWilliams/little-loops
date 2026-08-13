@@ -4,7 +4,7 @@ title: Advisor core - ll-advise CLI, capability floor, and ll-doctor check
 type: FEAT
 parent: FEAT-3037
 priority: P3
-status: open
+status: done
 testable: true
 discovered_date: 2026-08-04
 reconcile_attempted: true
@@ -13,6 +13,7 @@ depends_on:
 - FEAT-3043
 labels:
 - planning-hub
+verify_verdict: NON_VALID
 ---
 
 # FEAT-3044: Advisor core - ll-advise CLI, capability floor, and ll-doctor check
@@ -416,7 +417,24 @@ Also unresolved and deferred:
 
 Verified 2026-08-10: scope has been re-decomposed since this issue was written. FEAT-3108 (capability floor: `MODEL_RANKS`/`rank_model`/`check_floor`) already shipped as `status: done`, sourced under `scripts/little_loops/advisor.py` (112 lines) instead of this issue. FEAT-3120/3121/3122 (consult core, `/ll:advise` skill, doctor check) now cover the remaining scope as open children. FEAT-3044 itself is still `status: open` with no `depends_on`/parent update reflecting this decomposition. Recommend running `/ll:reconcile-issue` on this issue, or closing it in favor of its children (FEAT-3108 done; FEAT-3120/3121/3122 open) to avoid duplicated acceptance criteria.
 
+### 2026-08-12 (`/ll:verify-issues`)
+
+This issue self-documented its own decomposition on 2026-08-10 (see the note directly above and the Acceptance Criteria section, which already lists FEAT-3108/3120/3121/3122 as the four children carrying the real scope), but `status` was never flipped to reflect it. Following the closure convention set by ENH-3094 (`.issues/enhancements/P3-ENH-3094-collapse-per-call-automation-kwargs-into-automationcontext.md`) for a decomposed-not-superseded issue: `status` set to `done` and a `## Resolution` section added below recording the decomposition. `depends_on: [FEAT-3042, FEAT-3043]` is left unchanged — those are this issue's own real prerequisites, not part of the decomposition record.
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-08-10
+- **Reason**: Scope re-decomposed into four architecturally separable children during a `/ll:verify-issues` pass; this issue carries no independent acceptance criteria beyond their roll-up.
+
+### Decomposed Into
+- FEAT-3108: Advisor capability floor (`MODEL_RANKS`, `rank_model`, `check_floor`) — `status: done`
+- FEAT-3120: `consult()` core and the `ll-advise` CLI — `status: open`
+- FEAT-3121: `/ll:advise` skill wrapping the `ll-advise` CLI — `status: open`
+- FEAT-3122: `ll-doctor` advisor-reachability check — `status: open`
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:08:32 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:reconcile-issue` - 2026-08-10T18:23:28 - `19363ee8-c8d6-48d5-8b4b-21cba59c01cd.jsonl`
 - `/ll:reconcile-issue` - 2026-08-10T16:32:50 - `8f3abfd3-6623-4955-b89f-579e5adefbdd.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:24 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`

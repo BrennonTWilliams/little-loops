@@ -8,11 +8,11 @@ status: open
 testable: true
 discovered_date: 2026-08-08
 depends_on:
-- FEAT-3044
 - FEAT-3120
 - FEAT-3043
 labels:
 - planning-hub
+verify_verdict: VALID
 ---
 
 # FEAT-3116: Advisor consult budget and task-identity infrastructure
@@ -173,6 +173,13 @@ Implement in `scripts/little_loops/advisor.py`:
 **Open** | Created: 2026-08-08 | Priority: P3
 
 
+## Verification Notes
+
+### 2026-08-12 (`/ll:verify-issues`)
+
+Removed `FEAT-3044` from `depends_on`: FEAT-3044 was decomposed into FEAT-3108/3120/3121/3122 on 2026-08-10, and this issue already separately lists its successor `FEAT-3120` in the same field — keeping both was redundant. `depends_on` now reads `[FEAT-3120, FEAT-3043]`.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:08:32 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-10T18:51:42 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
 - `/ll:issue-size-review` - 2026-08-08T21:18:49 - `5955cc74-6f18-496f-9ff9-59d7e836977d.jsonl`

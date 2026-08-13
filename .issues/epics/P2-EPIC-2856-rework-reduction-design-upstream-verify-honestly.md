@@ -4,6 +4,7 @@ title: "Rework reduction \u2014 design upstream, verify honestly"
 type: EPIC
 status: open
 priority: P2
+verify_verdict: NON_VALID
 captured_at: '2026-07-27T00:00:00Z'
 discovered_date: 2026-07-27
 relates_to:
@@ -121,6 +122,17 @@ multi-tenant reporting.
 - **FEAT-2878** — Trace-level assertions in the eval harness, with optional
   multi-host divergence runs
 
+**Done (added post-review, not yet reflected in the lists above)**
+
+- **ENH-2870** — Route program-design gate failures through autodev
+  reconcile-before-defer and arm the cutover stamp
+- **ENH-2871** — manage-issue writes a Deviations note when implementation
+  departs from the program-design section
+- **ENH-2933** — Tamper guard core — snapshot/compare/revert
+- **ENH-2934** — Tamper guard FSM adapter — state-level `tamper_guard` key
+- **ENH-2935** — Tamper guard Python adapter — ll-auto/ll-parallel/ll-sprint
+  coverage
+
 ### Revisions from the 2026-07-27 epic review
 
 - **ENH-2853 was oversized and is split.** It carried eight workstreams; the two
@@ -216,6 +228,7 @@ confidence-per-effort items in the set.
 - 2026-08-10: Verified 2026-08-10: 12/13 children done; only FEAT-2855 (maintainability trend) remains, status deferred (non-terminal). Epic is near-complete but not yet closable.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:04:15 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-10T18:52:51 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:07 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:46 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`
@@ -226,3 +239,7 @@ confidence-per-effort items in the set.
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): This epic's FEAT-2878 ("Trace-level assertions in the eval harness, with optional multi-host divergence runs") and EPIC-2938's FEAT-2948 ("ll-loop scaffold-eval / scaffold-verify") both modify eval-harness templates/scaffolding. Whichever lands second should confirm its changes are additive to the other's, consistent with the coordination already recorded for the EPIC-2412/ENH-2415 overlap.
+
+## Verification Notes (2026-08-12)
+
+_Added by `/ll:verify-issues`._ Verdict: **NON_VALID (NEEDS_UPDATE)**. The `## Children` section listed only 8 issues, but five more carry `parent: EPIC-2856` and are `status: done`: ENH-2870, ENH-2871, ENH-2933, ENH-2934, ENH-2935 (verified via `ll-issues show`/grep for `parent: EPIC-2856`). These have been added to the Children section above.

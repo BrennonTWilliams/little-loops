@@ -12,6 +12,7 @@ labels:
 - ll-auto
 - cli-ux
 - issue-management
+verify_verdict: VALID
 ---
 
 # ENH-3086: ll-auto --only reports bare not_found with no did-you-mean for a wrong type prefix
@@ -65,7 +66,7 @@ currently share one output string.
 ## Proposed Solution
 
 In `_unreachable_reason()`, in the `if not terminal_matches:` branch
-(issue_manager.py:1743), before returning `"not_found"`: if `requested_id`
+(issue_manager.py:1810), before returning `"not_found"`: if `requested_id`
 parses as `<TYPE>-<NNN>`, re-match `all_issues` on the numeric suffix alone. If
 exactly one issue shares the number under a different type, return a suggestion
 string; otherwise fall back to `"not_found"` unchanged.
@@ -101,7 +102,7 @@ equality with `"not_found"` before changing it — prefer `startswith` there.
 
 | File | Anchor | Change |
 |------|--------|--------|
-| `scripts/little_loops/issue_manager.py` | `_unreachable_reason`, ~1730-1748 | Cross-type suggestion |
+| `scripts/little_loops/issue_manager.py` | `_unreachable_reason`, ~1810 | Cross-type suggestion |
 | `scripts/tests/` | `not_found` assertions | Loosen exact-equality assertions if present |
 
 ## Implementation Steps
@@ -127,6 +128,11 @@ confirmed in cli_args.py:380 matching description. `_unreachable_reason()`'s
 not the previously cited :1743/:1730-1748. Logic and shape unchanged, only
 line numbers drifted.
 
+**2026-08-12** (`/ll:verify-issues`): Re-verified VALID; refreshed the
+`_unreachable_reason()` citation to the exact current line (issue_manager.py:1810)
+in the Proposed Solution and Integration Map sections.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:05:12 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:26:28 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:capture-issue` - 2026-08-06T16:20:22 - `ee676905-966c-42aa-ac9d-d7d4aaeea91d.jsonl`

@@ -4,11 +4,14 @@ title: 'll-mcp: MCP server as little-loops'' host-agnostic serving layer'
 type: EPIC
 priority: P3
 status: open
+verify_verdict: NON_VALID
 discovered_date: '2026-08-09'
 labels:
 - multi-host
 - mcp
 relates_to:
+- FEAT-3128
+- FEAT-3132
 - FEAT-3133
 - FEAT-3134
 - FEAT-3135
@@ -247,7 +250,9 @@ Also load-bearing across all tiers:
 
 2026-08-10 (`/ll:verify-issues`): Verified 2026-08-10: Tier-1 (read-only serving) work has essentially shipped — 4 of 5 related FEATs (FEAT-3133, FEAT-3135, FEAT-3136, FEAT-3137) are status: done; only FEAT-3134 remains, status deferred. Document reads as fully speculative but should be updated to reflect landed Tier-1 scope.
 
+2026-08-12 (`/ll:verify-issues`): Verdict: **NON_VALID (NEEDS_UPDATE)**. Two real children, FEAT-3128 and FEAT-3132 (both `status: done`, `parent: EPIC-3127`), were missing from frontmatter `relates_to` — added above. Also corrected the prior note's stated completion: actual status across the full child set (via `ll-issues show EPIC-3127`) is 10 of 12 done (FEAT-3134 and FEAT-3151 are `deferred`), not the "4 of 5" figure previously recorded.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:07:49 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:confidence-check` - 2026-08-12T02:07:06 - `2a82a443-5d46-418f-a842-19472b08c75b.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:52 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`

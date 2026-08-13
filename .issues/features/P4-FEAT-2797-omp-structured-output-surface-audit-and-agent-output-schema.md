@@ -10,6 +10,7 @@ parent: EPIC-2258
 relates_to:
 - FEAT-2787
 - FEAT-2261
+verify_verdict: NON_VALID
 labels:
 - host-compat
 - omp
@@ -27,7 +28,7 @@ default) `False` for `structured_output` on omp. Those cells were never
 researched — `thoughts/research/omp-headless-flags.md`, the FEAT-1850 audit
 artifact the whole omp flag surface was derived from, contains **zero**
 mentions of schema or structured output, and `OmpRunner.capabilities`
-(`host_runner.py:1071-1075`) sets only four flags, letting
+(`host_runner.py:1197-1201`) sets only four flags, letting
 `structured_output` fall through to the `HostCapabilities` default
 (`host_runner.py:106`).
 
@@ -160,6 +161,14 @@ discovery after writing the emitter means rewriting it.
 
 Verified 2026-08-10: this issue's core acceptance criterion (`emit_agent` writing to `.omp/agents/` instead of `.claude/agents`) is ALREADY IMPLEMENTED — see `scripts/little_loops/adapters/omp.py`, commit `efc6a6c0`, part of the now-done FEAT-3104/FEAT-2787 work. Cited line `host_runner.py:1071-1075` is stale (content now at 1196-1201, unchanged). Remaining real gaps: the `[^omp]` footnote still doesn't explain why `json_schema`/`structured_output` show ✗; `omp-headless-flags.md` still has no "Structured output" section; `OmpRunner.capabilities` still omits an explicit `structured_output=False`; and omp's `frontmatter_fields_read` tuple is `('description','name')` which doesn't literally include `'output'`, contradicting the `omp.py` docstring's claim that `output:` is carried through unmodified — worth a follow-up bug/enh split off from this issue's narrower remaining scope.
 
+### 2026-08-12 (`/ll:verify-issues`)
+
+NEEDS_UPDATE. Confirmed the cited `host_runner.py:1071-1075` reference had
+drifted further, to `1197-1201` (same `HostCapabilities(...)` block,
+content unchanged) — corrected in the Summary section above. Remaining
+gaps from the 2026-08-10 pass are unchanged and still outstanding.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:05:58 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:25 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:45 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`

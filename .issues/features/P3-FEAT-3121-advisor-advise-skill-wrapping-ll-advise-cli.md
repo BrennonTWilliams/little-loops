@@ -322,6 +322,7 @@ _Added by `/ll:confidence-check` on 2026-08-08_
 - Landing-order risk: authoring `skills/advise/SKILL.md` with `Bash(ll-advise:*)` today references a CLI entry point that doesn't exist yet, so a real smoke test of the skill is blocked until FEAT-3120 ships — mitigate by writing the skill against the FEAT-3120 spec now but deferring the smoke-test AC to right after FEAT-3120 merges.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:05:57 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:confidence-check` - 2026-08-08T20:31:09 - `f7f77e97-8e98-40b1-b864-f9f127450dd0.jsonl`
 - `/ll:reconcile-issue` - 2026-08-08T20:28:55 - `60022333-35ea-4687-9164-fa8ca5988a9f.jsonl`
 - `/ll:confidence-check` - 2026-08-08T20:25:46 - `d486f611-71e9-4e1b-8a05-24b6be5894fe.jsonl`

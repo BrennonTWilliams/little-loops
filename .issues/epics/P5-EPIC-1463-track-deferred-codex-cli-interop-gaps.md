@@ -3,6 +3,7 @@ id: EPIC-1463
 title: Track deferred Codex CLI interop gaps
 type: EPIC
 status: open
+verify_verdict: NON_VALID
 priority: P5
 captured_at: '2026-05-15T12:15:21Z'
 discovered_date: 2026-05-15
@@ -164,16 +165,16 @@ FEAT-992).
 - **FEAT-1489** — Wire `post_tool_use` fire-and-forget for Codex and OpenCode;
   create benchmark script; wire `pre_tool_use` based on benchmark results.
 - **ENH-1718** — Enable `PreToolUse` by default for Codex adapter (10ms p95 benchmark on record; opt-in was overly conservative)
-- **FEAT-1719** — Wire `PostCompact` intent for Codex adapter (no-op handler + adapter script; gated on consumer)
+- **FEAT-1719** — Wire `PostCompact` intent for Codex adapter (no-op handler + adapter script; gated on consumer) — ❌ **cancelled**
 - **FEAT-1720** — Wire `permission_request` intent for Codex adapter (no-op handler + adapter script; verify payload shape first)
-- **FEAT-1721** — Codex `claude -p` conformance test suite (ll-auto / ll-sprint / ll-loop golden paths)
-- **ENH-1722** — Research and decide per-host state directory redirection for Codex
+- **FEAT-1721** — Codex `claude -p` conformance test suite (ll-auto / ll-sprint / ll-loop golden paths) — ❌ **cancelled**
+- **ENH-1722** — Research and decide per-host state directory redirection for Codex — **deferred**
 - **ENH-1615** — Add `disable-model-invocation: true` to all 28 ll-* Codex bridge skills (skill budget / Codex discoverability cleanup)
 - **ENH-1529** — Expose `sandbox_mode` parameter on CodexRunner build methods (Codex execution constraint gap)
 - **ENH-2121** — Emit rich Codex subagent TOML fields (`model_reasoning_effort`, `sandbox_mode`, `mcp_servers`, `skills.config`) in `ll-adapt-agents-for-codex`; the adapter is currently lossy (only `name`/`description`/`model`/`developer_instructions`).
 - **FEAT-2122** — Exploit Codex's native spawn model (`spawn_agents_on_csv`, `agents.max_threads`) for `ll-parallel`'s per-issue fan-out, or document why worktree-per-issue stays the default.
 - **FEAT-2123** — Surface per-invocation token usage from Codex/OpenCode runners (fixes the orphaned `[^tok]` dead-link that pointed at the unrelated, completed EPIC-1744).
-- **ENH-2124** — Research/track the unverified `permission skip` and `tool allowlist` Codex runner-capability `✗` cells; wire or document as permanent gaps.
+- **ENH-2124** — Research/track the unverified `permission skip` and `tool allowlist` Codex runner-capability `✗` cells; wire or document as permanent gaps. — **deferred**
 
 <!-- Early-wave children (parent: EPIC-1463); listed here so the body matches the
      `parent:`-linked set that `ll-issues epic-progress` counts. -->
@@ -184,7 +185,7 @@ FEAT-992).
 - **ENH-1495** — Add Codex onboarding docs / HOST_COMPATIBILITY guidance (done).
 - **ENH-1497** — Adapt `disable-model-invocation` skills for Codex discovery (done).
 - **ENH-1531** — Research Codex CLI agent-selection gap (spawn-based vs flag-based) (done).
-- **ENH-2105** — Track or close the `Stop`/session-end deferred hook intent for Codex (**open**).
+- **ENH-2105** — Track or close the `Stop`/session-end deferred hook intent for Codex — ❌ **cancelled**.
 
 ### Note (2026-06-13): Codex subagents correction
 
@@ -299,7 +300,10 @@ were filed for the genuine remaining depth gaps.
 
 - **2026-06-26** (/ll:verify-issues): Removed the stale hand-typed progress parenthetical ("as of 2026-06-24: 13/23 done, 10 open, 1 cancelled") from the footer; live `ll-issues epic-progress EPIC-1463` reports 12 done / 8 open / 3 cancelled (15/23 resolved). Footer now points only at the live command.
 
+2026-08-12 (`/ll:verify-issues`): Verdict: **NON_VALID (NEEDS_UPDATE)**. The `## Children` prose still described FEAT-1719, FEAT-1721, and ENH-2105 as active though they are now `status: cancelled`, and ENH-1722, ENH-2124 as active though now `status: deferred`. Updated all five bullets above to reflect current status. Note: this exact drift was already flagged by prior `/ll:verify-issues` passes on 2026-06-18, 2026-06-19, and 2026-06-26 but never fixed until now.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:07:50 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-06-20T00:34:45 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
 - `/ll:verify-issues` - 2026-06-09T09:21:00 - `e40557ae-4da3-4ea7-b023-bf5e57e8b61a.jsonl`

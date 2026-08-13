@@ -607,7 +607,15 @@ _Added by `/ll:confidence-check` on 2026-08-08_
 - Ambiguity risk: 4 disagreeing severity-threading shapes in doctor.py with
   no canonical one chosen; implementer will need to pick one under judgment.
 
+### 2026-08-12 (`/ll:verify-issues`)
+
+Re-confirmed 2026-08-12, no new drift: `verify_verdict: NON_VALID` still
+accurate — no `_advisor_check` in `cli/doctor.py`'s registered checks and
+`scripts/little_loops/advisor.py` is still 112 lines (FEAT-3108's surface
+only).
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:05:57 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:reconcile-issue` - 2026-08-10T18:26:44 - `7405995b-78ac-4bf8-8825-45f100c3421d.jsonl`
 - `/ll:refine-issue` - 2026-08-10T16:35:42 - `8f3abfd3-6623-4955-b89f-579e5adefbdd.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:25 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`

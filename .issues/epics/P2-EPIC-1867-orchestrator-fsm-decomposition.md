@@ -7,6 +7,7 @@ captured_at: '2026-06-02T02:18:04Z'
 discovered_date: 2026-06-02
 discovered_by: capture-issue
 status: open
+verify_verdict: NON_VALID
 relates_to:
 - FEAT-1901
 - FEAT-1899
@@ -104,9 +105,9 @@ When this epic is done:
 - **FEAT-2001** — Convert `ll-auto` CLI shim + A/B parity harness (Layer 1). Scope expanded 2026-06-12: migrate/retire `.auto-manage-state.json` (Open Question 3).
 - **FEAT-2002** — Docs/config migration for the ll-auto FSM conversion (Layer 1)
 - **FEAT-1899** — Implement ll-sprint FSM wave driver and shim (Layer 2)
-- **ENH-1903** — Document ll-parallel as canonical parallel substrate (Layer 3)
+- ✓ **ENH-1903** — Document ll-parallel as canonical parallel substrate (Layer 3) — **done**
 - ✓ **ENH-2106** — Decide: reusable sub-loop composition vs inlined per-issue states for Layers 1+2 (added 2026-06-12; **done 2026-06-13** — decision recorded in `.ll/decisions.yaml`; blocker on FEAT-2000 and FEAT-1899 cleared)
-- **BUG-2323** — ll-parallel/ll-sprint hardcode 'main' as base branch; no default-branch detection
+- ✓ **BUG-2323** — ll-parallel/ll-sprint hardcode 'main' as base branch; no default-branch detection — **done**
 
 ### Critical path (audit note 2026-06-12)
 
@@ -164,6 +165,7 @@ _Added by `/ll:verify-issues` on 2026-06-09_
 2026-06-19 — **NEEDS_UPDATE applied**: ENH-2106 completed 2026-06-13; references to it as a blocking dependency on FEAT-2000/FEAT-1899 were stale and have been corrected above. All other claims verified accurate: `loops/ll-auto.yaml` absent (expected), FEAT-1902 cancelled, all remaining children open/blocked with correct priorities and statuses, decomposition plan doc present.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:04:14 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-10T18:52:51 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
 - `/ll:verify-issues` - 2026-06-19T21:00:32 - `c40a6bfb-b2f9-4c35-89ae-2adc49a46c37.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:57 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`
@@ -204,3 +206,7 @@ The EPIC itself stays `open` as the index of intent; only the children carry the
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): This epic's CLAUDE.md CLI Tools section edits (from ENH-1903/FEAT-2002) target the same catalog section EPIC-2938 also edits when documenting its new `ll-issues`/`ll-loop` subcommands. Whichever epic's edits land second should rebase against the other's changes rather than editing independently.
+
+## Verification Notes (2026-08-12)
+
+_Added by `/ll:verify-issues`._ Verdict: **NON_VALID (NEEDS_UPDATE)**. The `## Children` list marked ENH-1903 and BUG-2323 without any completion indicator even though `ll-issues show` confirms both are `status: done`, making the epic read as if more work were outstanding than actually is. Both entries have been checked off (✓) with a "done" annotation above; no other content was changed.

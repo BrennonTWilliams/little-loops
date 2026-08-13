@@ -4,6 +4,7 @@ title: Offload mechanical work from /ll: skills/commands into ll-* Python CLIs
 type: EPIC
 priority: P2
 status: open
+verify_verdict: NON_VALID
 discovered_by: skill-audit
 discovered_date: 2026-07-31
 relates_to: [FEAT-3048]
@@ -156,6 +157,7 @@ In scope: the 15 children listed above — CLI subcommand additions/extensions i
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-13T03:04:15 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-10T18:52:51 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:07 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 
@@ -168,3 +170,7 @@ In scope: the 15 children listed above — CLI subcommand additions/extensions i
 **Note** (added by `/ll:audit-issue-conflicts`): This epic's `.claude/CLAUDE.md` CLI-catalog edits (new `ll-issues`/`ll-loop` subcommands) target the same CLI Tools section EPIC-1867 also edits (its ENH-1903/FEAT-2002 children). Whichever epic's edits land second should rebase against the other's changes rather than editing independently.
 
 **Note** (added by `/ll:audit-issue-conflicts`): This epic's FEAT-2948 ("ll-loop scaffold-eval / scaffold-verify") and EPIC-2856's FEAT-2878 ("Trace-level assertions in the eval harness, with optional multi-host divergence runs") both modify eval-harness templates/scaffolding. Whichever lands second should confirm its changes are additive to the other's.
+
+## Verification Notes (2026-08-12)
+
+_Added by `/ll:verify-issues`._ Verdict: **NON_VALID (NEEDS_UPDATE)**. The epic body narrates ENH-2952 as resolved/dropped from scope (Option C — leave the 17-site flag-parse duplication as-is), but ENH-2952's own file still shows `status: open` — its frontmatter was never updated to match the narrated resolution. This is a reconciliation gap in ENH-2952 itself, flagged here for a separate follow-up pass; ENH-2952 was not modified as part of this verification (out of scope for this batch).
