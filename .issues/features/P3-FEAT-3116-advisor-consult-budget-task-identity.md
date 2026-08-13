@@ -180,6 +180,34 @@ Implement in `scripts/little_loops/advisor.py`:
 Removed `FEAT-3044` from `depends_on`: FEAT-3044 was decomposed into FEAT-3108/3120/3121/3122 on 2026-08-10, and this issue already separately lists its successor `FEAT-3120` in the same field — keeping both was redundant. `depends_on` now reads `[FEAT-3120, FEAT-3043]`.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-13T22:00:51 - `e21c16b3-391d-4ef2-80c4-decd2dced91f.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:08:32 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-10T18:51:42 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
 - `/ll:issue-size-review` - 2026-08-08T21:18:49 - `5955cc74-6f18-496f-9ff9-59d7e836977d.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`):
+
+- **consult() call-site contract (vs FEAT-3120, FEAT-3039)**: AC #5 asserts no
+  code path other than `consult_for_trigger` calls
+  `little_loops.advisor.consult()` directly, but FEAT-3120's `ll-advise` CLI
+  (`main_advise -> consult`) and FEAT-3039's `advisor_consult` evaluator
+  (`evaluate_advisor_consult -> should_consult -> little_loops.advisor.consult`)
+  both call `consult()` directly. Settle one contract before implementation:
+  either route all consult call sites (the manual `ll-advise` path with signal
+  `user_requested`, the FSM evaluator with its state-derived signal) through
+  `consult_for_trigger`, or qualify AC #5's exclusivity assertion to
+  auto-trigger call sites only, naming the exempted paths.
+- **Telemetry skip instrumentation (vs FEAT-3040)**: FEAT-3040 AC #1 requires
+  `advisor_consults` rows for budget-skipped consults, but budget skips
+  short-circuit in `should_consult`/`consult_for_trigger` here — they never
+  reach `consult()`, which is FEAT-3040's write point. FEAT-3040 must
+  instrument this skip surface; coordinate the skip-recording API when
+  implementing either issue.
+- **Counter storage migration (vs FEAT-3040)**: the counter-persistence
+  mechanism chosen here (AC #3 subprocess-boundary correctness) should be
+  migratable to a history.db-derived count — FEAT-3040 proposes collapsing the
+  two counters into the `advisor_consults` table as one source of truth.

@@ -10,6 +10,8 @@ discovered_date: 2026-08-03
 depends_on:
 - FEAT-3044
 - FEAT-3038
+- FEAT-3120
+- FEAT-3116
 labels:
 - planning-hub
 verify_verdict: VALID
@@ -369,6 +371,7 @@ is a hard blocker for correctness, not just a minor deduction. Re-run this
 check after `FEAT-3044` and `FEAT-3116` (at minimum) reach `done`.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-13T22:00:51 - `e21c16b3-391d-4ef2-80c4-decd2dced91f.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:58 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:confidence-check` - 2026-08-08T21:44:19 - `d7b6c474-eeb6-4901-9ffd-be8f7cc9a06c.jsonl`
 - `/ll:refine-issue` - 2026-08-08T21:37:48 - `3b85ed9c-ef3f-4ce0-b887-f5737d6ea801.jsonl`
@@ -377,3 +380,16 @@ check after `FEAT-3044` and `FEAT-3116` (at minimum) reach `done`.
 - `/ll:refine-issue` - 2026-08-08T21:25:31 - `b38ce9a8-ea1d-4784-ba74-81f9cf6e4c56.jsonl`
 - `/ll:refine-issue` - 2026-08-07T01:35:15 - `0ee091c0-c5a3-41d6-b340-a6539437cf84.jsonl`
 - `/ll:verify-issues` - 2026-08-04T21:29:47 - `e72897bf-a708-4dcd-aeaa-907564ef9e34.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue's Call Path
+invokes `little_loops.advisor.consult` directly (`evaluate_advisor_consult ->
+should_consult -> little_loops.advisor.consult`), but FEAT-3116 AC #5 asserts
+no code path other than `consult_for_trigger` calls `consult()` directly
+(with a static-assertion test). Settle one contract before implementation:
+either route the FSM evaluator through `consult_for_trigger` (carrying the
+state-derived signal), or FEAT-3116 qualifies its exclusivity assertion to
+exempt the evaluator path.

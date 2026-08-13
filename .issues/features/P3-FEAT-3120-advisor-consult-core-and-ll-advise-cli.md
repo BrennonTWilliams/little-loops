@@ -548,6 +548,7 @@ VERDICT_JSON: {"verdict": "fail", "confidence": 80, "target_id": "FEAT-3120", "t
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-13T22:00:51 - `e21c16b3-391d-4ef2-80c4-decd2dced91f.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:56 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:confidence-check` - 2026-08-08T19:53:33 - `f538a129-ed8b-4afd-b2c2-959e931d430a.jsonl`
 - `/ll:confidence-check` - 2026-08-08T19:53:29 - `f538a129-ed8b-4afd-b2c2-959e931d430a.jsonl`
@@ -558,3 +559,24 @@ VERDICT_JSON: {"verdict": "fail", "confidence": 80, "target_id": "FEAT-3120", "t
 - `/ll:wire-issue` - 2026-08-08T19:37:49 - `a1109f8a-707c-4af7-aea2-d0c9704bccbb.jsonl`
 - `/ll:refine-issue` - 2026-08-08T19:33:03 - `bbcfdf05-e78f-406a-9e7c-4702b3f10e64.jsonl`
 - `/ll:issue-size-review` - 2026-08-08T19:27:04 - `a0b28a4d-10ef-4d55-8a0b-7d1cfa69c530.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`):
+
+- **consult() call-site contract (vs FEAT-3116, FEAT-3039)**: this issue's
+  Call Path invokes `consult()` directly (`main_advise -> consult`), but
+  FEAT-3116 AC #5 asserts no code path other than `consult_for_trigger` calls
+  `consult()` directly (with a static-assertion test). Settle one contract
+  before implementation: either route the manual `ll-advise` path through
+  `consult_for_trigger` (signal `user_requested`, budget-counted per
+  FEAT-3116's Expected Behavior), or FEAT-3116 qualifies its exclusivity
+  assertion to auto-trigger call sites only.
+- **Telemetry skip instrumentation (vs FEAT-3040)**: FEAT-3040 AC #1 requires
+  `advisor_consults` rows for capability-floor-refused consults, but floor
+  violations are refused at this issue's CLI layer (`check_floor` → non-zero
+  exit) before `consult()` runs — FEAT-3040's write point. FEAT-3040 must
+  instrument this refusal surface; coordinate the skip-recording API when
+  implementing either issue.

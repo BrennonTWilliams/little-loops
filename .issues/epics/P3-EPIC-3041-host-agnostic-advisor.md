@@ -23,14 +23,22 @@ dissent}`) before the primary model commits to an approach.
 
 - **FEAT-3037** — Host-agnostic advisor: invocation mechanism, config,
   capability floor, and `ll-doctor` check (slice 1). **Decomposed**
-  (scored Very Large) into three grandchildren, all still open:
+  (scored Very Large) into three grandchildren:
   - **FEAT-3042** — Advisor transport: shared `run_blocking_json` helper
   - **FEAT-3043** — Advisor configuration: `AdvisorConfig` block
   - **FEAT-3044** — Advisor core: `ll-advise` CLI, capability floor, and
-    `ll-doctor` check (depends on FEAT-3042, FEAT-3043)
+    `ll-doctor` check (depends on FEAT-3042, FEAT-3043). **Decomposed**
+    (2026-08-10) into four great-grandchildren:
+    - **FEAT-3108** — Capability floor: `MODEL_RANKS`, `rank_model`,
+      `check_floor` — **done**
+    - **FEAT-3120** — Advisor `consult()` core and `ll-advise` CLI
+    - **FEAT-3121** — `/ll:advise` skill wrapping the `ll-advise` CLI
+    - **FEAT-3122** — `ll-doctor` advisor-reachability check
 - **FEAT-3038** — Advisor signal-gated auto-consults and per-task budget:
   wires `confidence_gate`/`pre_done` triggers and `max_consults_per_task`
-  (slice 2) — **done**
+  (slice 2) — **done** (**Decomposed** into FEAT-3116 (budget/task-identity),
+  FEAT-3117 (`confidence_gate` wiring), and FEAT-3118 (`pre_done` wiring),
+  all still open)
 - **FEAT-3039** — Advisor FSM stall escalation and routable verdicts: lets
   FSM loops escalate on stall and route on the verdict (slice 3)
 - **FEAT-3040** — Advisor consult telemetry in `history.db`: persists
@@ -67,6 +75,7 @@ without a completion marker. Updated the FEAT-3038 bullet to flag it as
 **done**.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-13T22:00:52 - `e21c16b3-391d-4ef2-80c4-decd2dced91f.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:07:49 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-10T18:52:53 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
 - `/ll:verify-issues` - 2026-08-04T21:29:47 - `e72897bf-a708-4dcd-aeaa-907564ef9e34.jsonl`
@@ -76,3 +85,15 @@ without a completion marker. Updated the FEAT-3038 bullet to flag it as
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): This epic's FEAT-3039 (advisor FSM stall escalation with routable verdicts) and FEAT-3038 (per-task budget, `max_consults_per_task`) add a budget/stall-triggered FSM routing primitive. EPIC-3022's ENH-3020 independently adds a per-state/iteration token/wall-clock budget config and routing hook to the same `fsm/executor.py` / `fsm-loop-schema.json` surface. Before implementing FEAT-3039, confirm whether its stall-escalation route reuses ENH-3020's budget-hook mechanism/route naming convention or is a genuinely separate FSM extension point.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): FEAT-3044 (advisor core) was
+decomposed on 2026-08-10 into FEAT-3108 (**done**), FEAT-3120, FEAT-3121, and
+FEAT-3122 (related issue: FEAT-3122 carries `parent: FEAT-3044`), and
+FEAT-3038 was decomposed into FEAT-3116, FEAT-3117, and FEAT-3118. The
+Children section above now tracks that generation; any future rollup or
+scoping of this epic should reference the open grandchildren rather than the
+decomposed FEAT-3038/FEAT-3044 shells.

@@ -10,6 +10,8 @@ discovered_date: 2026-08-03
 depends_on:
 - FEAT-3044
 - FEAT-3038
+- FEAT-3120
+- FEAT-3116
 labels:
 - planning-hub
 verify_verdict: VALID
@@ -166,6 +168,28 @@ action, never automatically.
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-13T22:00:51 - `e21c16b3-391d-4ef2-80c4-decd2dced91f.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:58 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:refine-issue` - 2026-08-07T01:37:33 - `43a0ea06-a76f-4e88-9656-365f95bb1daf.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T23:56:02 - `81d59bbb-17b9-42e5-908c-ba7206c84d60.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`):
+
+- **Skip-point instrumentation (vs FEAT-3116, FEAT-3120)**: AC #1 requires
+  `advisor_consults` rows for consults skipped for budget or capability-floor
+  reasons, but this issue's writer is called from inside `consult()` — budget
+  skips short-circuit in FEAT-3116's `should_consult`/`consult_for_trigger`
+  ("skipped with a logged reason, not attempted") and floor refusals happen at
+  FEAT-3120's CLI layer (`check_floor` refuses with a non-zero exit), all
+  before `consult()` runs. As designed, `skipped_budget`/`skipped_floor` rows
+  can never be written. Instrument the actual skip points (FEAT-3116's budget
+  gate, FEAT-3120's `check_floor` refusal) in addition to `consult()`, or
+  narrow AC #1's outcome coverage to what a `consult()`-internal writer can
+  observe.
+- **Counter collapse (vs FEAT-3116)**: the proposed collapse of FEAT-3116's
+  per-task budget counter into the `advisor_consults` table must preserve
+  FEAT-3116 AC #3's subprocess-boundary correctness.

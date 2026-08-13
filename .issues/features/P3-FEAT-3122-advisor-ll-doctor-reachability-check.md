@@ -10,6 +10,8 @@ discovered_date: 2026-08-08
 depends_on:
 - FEAT-3108
 - FEAT-3120
+- FEAT-3043
+- FEAT-3042
 labels:
 - planning-hub
 verify_verdict: NON_VALID
@@ -615,6 +617,7 @@ accurate — no `_advisor_check` in `cli/doctor.py`'s registered checks and
 only).
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-08-13T22:00:51 - `e21c16b3-391d-4ef2-80c4-decd2dced91f.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:57 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:reconcile-issue` - 2026-08-10T18:26:44 - `7405995b-78ac-4bf8-8825-45f100c3421d.jsonl`
 - `/ll:refine-issue` - 2026-08-10T16:35:42 - `8f3abfd3-6623-4955-b89f-579e5adefbdd.jsonl`
