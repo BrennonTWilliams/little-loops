@@ -3,10 +3,11 @@ id: BUG-3163
 type: BUG
 title: ll-adapt --host qwen mirrors omit skill companion files
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-13'
 captured_at: '2026-08-13T21:48:46Z'
+completed_at: '2026-08-13T22:23:30Z'
 parent: EPIC-3154
 ---
 
@@ -95,7 +96,7 @@ Add a shared companion-sync helper to `scripts/little_loops/adapters/core.py` (e
 
 ## Status
 
-**Open** | Created: 2026-08-13 | Priority: P2
+**Completed** | Created: 2026-08-13 | Priority: P2 | Completed: 2026-08-13
 
 ## Steps to Reproduce
 
