@@ -276,6 +276,80 @@ def _emit_degraded_agent(agent_meta: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Skill companion-file sync (BUG-3163)
+# ---------------------------------------------------------------------------
+
+# Subtrees of a source skill dir that are never mirrored: ``agents/`` holds
+# the codex-only ``openai.yaml`` adaptation artifact (FEAT-1857). SKILL.md
+# itself is handled by each emitter's frontmatter policy, not mirrored raw.
+_COMPANION_EXCLUDE_DIRS = frozenset({"agents"})
+
+
+def _iter_skill_companions(skill_dir: Path) -> list[Path]:
+    """Return relative paths of companion files under *skill_dir*.
+
+    Companions are every regular file except ``SKILL.md`` and anything under
+    an excluded subtree (:data:`_COMPANION_EXCLUDE_DIRS`) — the ENH-494
+    flat-companion convention (``templates.md``, ``reference.md``, ...).
+    """
+    companions: list[Path] = []
+    for path in sorted(skill_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(skill_dir)
+        if rel == Path("SKILL.md"):
+            continue
+        if rel.parts and rel.parts[0] in _COMPANION_EXCLUDE_DIRS:
+            continue
+        companions.append(rel)
+    return companions
+
+
+def _sync_skill_companions(
+    skill_dir: Path,
+    out_dir: Path,
+    apply: bool,
+    quiet: bool,
+    label: str,
+) -> bool:
+    """Mirror *skill_dir*'s companion files into *out_dir*.
+
+    Copies every companion (see :func:`_iter_skill_companions`) whose mirror
+    copy is missing or byte-different, and prunes mirror companions the
+    source no longer has. Returns True when anything was copied or pruned
+    (or would be, under dry-run) so callers can defeat their ``skipped``
+    fast path on companion drift alone.
+    """
+    changed = False
+    verb = "APPLY" if apply else "DRY"
+
+    wanted = _iter_skill_companions(skill_dir)
+    for rel in wanted:
+        src = skill_dir / rel
+        dst = out_dir / rel
+        if dst.exists() and dst.read_bytes() == src.read_bytes():
+            continue
+        changed = True
+        if apply:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_bytes(src.read_bytes())
+        if not quiet:
+            print(f"  {verb}  {label}: companion {rel}")
+
+    if out_dir.exists():
+        for rel in _iter_skill_companions(out_dir):
+            if rel in wanted:
+                continue
+            changed = True
+            if apply:
+                (out_dir / rel).unlink()
+            if not quiet:
+                print(f"  {verb}  {label}: prune stale companion {rel}")
+
+    return changed
+
+
+# ---------------------------------------------------------------------------
 # Shared traversal functions
 # ---------------------------------------------------------------------------
 

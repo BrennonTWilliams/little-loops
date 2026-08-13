@@ -8,7 +8,9 @@ source formats with near-zero translation:
 - Skills land in ``.qwen/skills/<name>/SKILL.md`` with ``name:`` injected
   when absent; Claude-only frontmatter keys (``allowed-tools``,
   ``metadata.short-description`` aside) are tolerated — a probe skill
-  carrying them loaded and invoked successfully.
+  carrying them loaded and invoked successfully. Companion files
+  (ENH-494 overflow content) are mirrored alongside SKILL.md so the
+  adapted skill's relative companion references resolve (BUG-3163).
 - Commands land in ``.qwen/commands/ll/<stem>.md`` — Qwen's native
   subdirectory namespacing yields ``/ll:<stem>`` (live-verified), so no
   skill-bridging fallback is needed (better than Codex and Kimi). The body
@@ -31,7 +33,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from little_loops.adapters.capabilities import HOST_CAPABILITIES
-from little_loops.adapters.core import _read_frontmatter, _select_frontmatter_fields
+from little_loops.adapters.core import (
+    _read_frontmatter,
+    _select_frontmatter_fields,
+    _sync_skill_companions,
+)
 
 __all__ = ["QwenEmitter"]
 
@@ -53,7 +59,12 @@ class QwenEmitter:
     name = "qwen"
 
     def emit_skill(self, skill_meta: dict) -> str:
-        """Write adapted SKILL.md to ``.qwen/skills/<name>/SKILL.md``."""
+        """Write adapted SKILL.md to ``.qwen/skills/<name>/SKILL.md``.
+
+        Also mirrors the source skill's companion files alongside it
+        (BUG-3163): adapted SKILL.md bodies reference companions by
+        relative path, so a SKILL.md-only mirror dangles every read.
+        """
         skill_name: str = skill_meta["skill_name"]
         skill_path: Path = skill_meta["skill_path"]
         content: str = skill_meta["content"]
@@ -66,7 +77,13 @@ class QwenEmitter:
 
         new_content, _ = _select_frontmatter_fields(content, skill_name, _fields_read())
 
-        if out_path.exists() and out_path.read_text() == new_content:
+        skill_md_changed = not out_path.exists() or out_path.read_text() != new_content
+        # Sync companions even when SKILL.md is unchanged so drift is repaired.
+        companions_changed = _sync_skill_companions(
+            skill_path.parent, out_path.parent, apply=apply, quiet=quiet, label=skill_name
+        )
+
+        if not skill_md_changed and not companions_changed:
             if not quiet:
                 print(f"  SKIP   {skill_name}: already adapted")
             return "skipped"

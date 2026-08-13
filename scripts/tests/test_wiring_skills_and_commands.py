@@ -394,6 +394,41 @@ def test_skill_mirror_matches_source(project_root: Path, source_rel: str, mirror
     )
 
 
+# BUG-3163: .qwen/skills mirrors are only usable if ENH-494 companion files
+# ride along with SKILL.md — adapted bodies reference companions by relative
+# path, and end-user projects have no skills/ source tree to recover from.
+# Guard every mirrored skill (not a pinned list) so new skills are covered
+# on day one. Reuses the emitter's own companion rule so test and emitter
+# cannot drift apart.
+def test_qwen_skill_mirrors_carry_companions(project_root: Path) -> None:
+    """.qwen/skills/<name>/ must carry source companions, byte-identical."""
+    from little_loops.adapters.core import _iter_skill_companions
+
+    mirror_root = project_root / ".qwen" / "skills"
+    source_root = project_root / "skills"
+    offenders: list[str] = []
+    for mirror_skill_md in sorted(mirror_root.glob("*/SKILL.md")):
+        name = mirror_skill_md.parent.name
+        source_dir = source_root / name
+        if not (source_dir / "SKILL.md").is_file():
+            offenders.append(f"{name}: no source skill directory")
+            continue
+        wanted = set(_iter_skill_companions(source_dir))
+        present = set(_iter_skill_companions(mirror_skill_md.parent))
+        for rel in sorted(wanted - present):
+            offenders.append(f"{name}: missing companion {rel}")
+        for rel in sorted(present - wanted):
+            offenders.append(f"{name}: stale companion {rel}")
+        for rel in sorted(wanted & present):
+            if (mirror_skill_md.parent / rel).read_bytes() != (source_dir / rel).read_bytes():
+                offenders.append(f"{name}: drifted companion {rel}")
+    assert not offenders, (
+        "Companion drift in .qwen/skills mirrors: "
+        + "; ".join(offenders)
+        + ". Regenerate with: ll-adapt --host qwen --apply"
+    )
+
+
 # FEAT-3077 AC7: pin the `run_in_background: true` carve-out inventory so a
 # future skill author can't silently add a new background-launch site without
 # updating the recorded decision (### Decision Rationale in FEAT-3077).

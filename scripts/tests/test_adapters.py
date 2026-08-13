@@ -1719,9 +1719,7 @@ class TestClaudeCodeEmitterEmitMcpConfig:
 
     def test_overwrites_stale_ll_mcp_entry(self, tmp_path: Path) -> None:
         mcp_path = self._mcp_path(tmp_path)
-        mcp_path.write_text(
-            json.dumps({"mcpServers": {"ll-mcp": {"command": "old-ll-mcp-path"}}})
-        )
+        mcp_path.write_text(json.dumps({"mcpServers": {"ll-mcp": {"command": "old-ll-mcp-path"}}}))
         meta = self._meta(tmp_path)
         result = ClaudeCodeEmitter().emit_mcp_config(meta)
         assert result == "adapted"
@@ -1829,6 +1827,73 @@ class TestQwenEmitterEmitSkill:
         meta = self._meta(tmp_path, "my-skill")
         QwenEmitter().emit_skill(meta)
         assert QwenEmitter().emit_skill(meta) == "skipped"
+
+
+class TestQwenEmitterSkillCompanions:
+    """BUG-3163: emit_skill mirrors ENH-494 companion files alongside SKILL.md."""
+
+    def _meta(self, tmp_path: Path, name: str, apply: bool = True) -> dict:
+        skill_md = _make_skill(tmp_path, name)
+        content = skill_md.read_text()
+        return {
+            "skill_name": name,
+            "skill_path": skill_md,
+            "content": content,
+            "fm": _read_frontmatter(content) or {},
+            "apply": apply,
+            "quiet": True,
+        }
+
+    def _mirror_dir(self, tmp_path: Path, name: str) -> Path:
+        return tmp_path / ".qwen" / "skills" / name
+
+    def test_companion_files_are_copied(self, tmp_path: Path) -> None:
+        skill_md = _make_skill(tmp_path, "my-skill")
+        (skill_md.parent / "templates.md").write_text("template body\n")
+        (skill_md.parent / "reference.md").write_text("reference body\n")
+        QwenEmitter().emit_skill(self._meta(tmp_path, "my-skill"))
+        mirror = self._mirror_dir(tmp_path, "my-skill")
+        assert (mirror / "templates.md").read_text() == "template body\n"
+        assert (mirror / "reference.md").read_text() == "reference body\n"
+
+    def test_codex_only_agents_subtree_not_mirrored(self, tmp_path: Path) -> None:
+        skill_md = _make_skill(tmp_path, "my-skill")
+        agents_dir = skill_md.parent / "agents"
+        agents_dir.mkdir()
+        (agents_dir / "openai.yaml").write_text("name: my-skill\n")
+        QwenEmitter().emit_skill(self._meta(tmp_path, "my-skill"))
+        assert not (self._mirror_dir(tmp_path, "my-skill") / "agents").exists()
+
+    def test_companion_drift_is_repaired(self, tmp_path: Path) -> None:
+        skill_md = _make_skill(tmp_path, "my-skill")
+        companion = skill_md.parent / "templates.md"
+        companion.write_text("v1\n")
+        emitter = QwenEmitter()
+        assert emitter.emit_skill(self._meta(tmp_path, "my-skill")) == "adapted"
+        assert emitter.emit_skill(self._meta(tmp_path, "my-skill")) == "skipped"
+        companion.write_text("v2 changed\n")
+        assert emitter.emit_skill(self._meta(tmp_path, "my-skill")) == "adapted"
+        mirror_file = self._mirror_dir(tmp_path, "my-skill") / "templates.md"
+        assert mirror_file.read_text() == "v2 changed\n"
+
+    def test_stale_mirror_companion_is_pruned(self, tmp_path: Path) -> None:
+        skill_md = _make_skill(tmp_path, "my-skill")
+        companion = skill_md.parent / "obsolete.md"
+        companion.write_text("stale\n")
+        emitter = QwenEmitter()
+        emitter.emit_skill(self._meta(tmp_path, "my-skill"))
+        mirror = self._mirror_dir(tmp_path, "my-skill")
+        assert (mirror / "obsolete.md").exists()
+        companion.unlink()
+        assert emitter.emit_skill(self._meta(tmp_path, "my-skill")) == "adapted"
+        assert not (mirror / "obsolete.md").exists()
+
+    def test_dry_run_does_not_write_companions(self, tmp_path: Path) -> None:
+        skill_md = _make_skill(tmp_path, "my-skill")
+        (skill_md.parent / "templates.md").write_text("template body\n")
+        result = QwenEmitter().emit_skill(self._meta(tmp_path, "my-skill", apply=False))
+        assert result == "adapted"
+        assert not (self._mirror_dir(tmp_path, "my-skill") / "templates.md").exists()
 
 
 class TestQwenEmitterEmitCommand:

@@ -160,6 +160,8 @@ succeeded (project `.qwen/settings.json` hooks fire under `qwen -p`), so
 the BUG-2921-analog fallback never became necessary. One narrower finding
 was absorbed into design instead: `SessionEnd` does not fire headless
 (documented in `[^qwenheadless]`; cleanup rides the `Stop` legacy scripts).
+- **BUG-3163** — ll-adapt --host qwen mirrors omit skill companion files (open)
+
 
 ## Implementation Steps
 

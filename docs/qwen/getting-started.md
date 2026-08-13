@@ -65,7 +65,7 @@ ll-adapt --host qwen --apply
 
 This writes:
 
-- **Skills** → `.qwen/skills/<name>/SKILL.md` — Qwen's native skills format, near-1:1 (Claude-only frontmatter keys like `allowed-tools` are tolerated — live-verified); `name:` is injected when absent.
+- **Skills** → `.qwen/skills/<name>/SKILL.md` — Qwen's native skills format, near-1:1 (Claude-only frontmatter keys like `allowed-tools` are tolerated — live-verified); `name:` is injected when absent. Companion files beside SKILL.md (`templates.md`, `reference.md`, ...) are mirrored alongside so relative companion references resolve (BUG-3163).
 - **Commands** → `.qwen/commands/ll/<stem>.md` — Qwen's subdirectory namespacing maps these to `/ll:<stem>` slash commands (live-verified). True command emission: no skill bridging needed (better than Codex/Kimi). `$ARGUMENTS` is rewritten to Qwen's `{{args}}` placeholder.
 - **Agents** → `.qwen/agents/<name>.md` — Qwen documents explicit Claude Code 2.1.168 agent-frontmatter compatibility, and all nine ll agents load verbatim; real subagent spawning, no degraded mode.
 
