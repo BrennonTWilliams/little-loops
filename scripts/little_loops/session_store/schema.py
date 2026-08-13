@@ -82,6 +82,10 @@ _KINDLESS_TABLES = frozenset(
         "summary_spans",
         "raw_events",
         "correction_retirements",
+        # (ENH-2997) keyed by issue_id, not session_id — readers take the most
+        # recent row for an issue, so there is no "recent by kind" concept to
+        # register. See record_prepatch_evidence/read_prepatch_evidence.
+        "prepatch_evidence",
     }
 )
 

@@ -219,6 +219,15 @@ class PromptSizeWarnVariant(DESVariant):
 
 
 @dataclass(frozen=True)
+class PrePatchCheckFlaggedVariant(DESVariant):
+    """FSMExecutor._emit('prepatch_check_flagged') — the pre-patch check returned a
+    ``flagged`` verdict under a ``warn`` policy, so the guarded window recorded the
+    finding without routing to a failure state (ENH-2997)."""
+
+    type: Literal["prepatch_check_flagged"] = "prepatch_check_flagged"
+
+
+@dataclass(frozen=True)
 class SubLoopWorktreeAttachedVariant(DESVariant):
     """FSMExecutor._emit('sub_loop_worktree_attached') — scratch worktree attached for a worktree: sub-loop state (ENH-2609)."""
 
@@ -637,6 +646,7 @@ DES_VARIANTS: Final[tuple[type[DESVariant], ...]] = (
     ThrottleStopVariant,
     StallDetectedVariant,
     PromptSizeWarnVariant,
+    PrePatchCheckFlaggedVariant,
     SubLoopWorktreeAttachedVariant,
     SubLoopWorktreeDetachedVariant,
     SubLoopWorktreeErrorVariant,
