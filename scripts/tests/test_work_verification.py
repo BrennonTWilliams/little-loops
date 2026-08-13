@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -832,3 +833,248 @@ class TestVerifyWorkWasDonePostImplementBracket:
         )
 
         assert result is True
+
+
+class TestVerifyWorkWasDonePrepatchCheck:
+    """ENH-2998: the non-FSM pre-patch check adapter -- the ll-auto/ll-parallel
+    counterpart to fsm/executor.py's guarded-state hook (ENH-2997), reached
+    through the same `verify_work_was_done()` entry point as the tamper guard.
+
+    Patches `little_loops.prepatch_check.run_prepatch_check` directly rather
+    than forking a real worktree + running real pytest, mirroring
+    `test_fsm_executor.py::TestPrePatchCheckExecutorHook` -- this class
+    exercises the adapter's own wiring (base resolution, GitLock sourcing,
+    persistence, teardown), not the core's pytest execution.
+    """
+
+    @pytest.fixture
+    def mock_logger(self) -> MagicMock:
+        return MagicMock()
+
+    def _repo(self, tmp_path: Path) -> Path:
+        from tests.helpers import copy_git_template
+
+        # Nested under tmp_path (not tmp_path itself) so the isolated
+        # LL_HISTORY_DB file lands outside the repo's own working tree --
+        # otherwise it would show up as an untracked file in the adapter's
+        # step-diff computation.
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        copy_git_template(repo)
+        (repo / "src.py").write_text("def add(a, b):\n    return a + b\n")
+        subprocess.run(["git", "add", "src.py"], cwd=repo, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "init"], cwd=repo, check=True, capture_output=True
+        )
+        return repo
+
+    def _enable(self, config: Any) -> None:
+        config._prepatch_check.enabled = True
+
+    def _fake_evidence(self, verdict: str = "clean") -> Any:
+        from little_loops.prepatch_check import PrePatchEvidence
+
+        return PrePatchEvidence(
+            base_ref="deadbeef",
+            base_source="merge-base",
+            base_dirty=None,
+            outcomes=[],
+            verdict=verdict,
+            skipped_reason=None,
+            worktree_path=None,
+        )
+
+    def _patch_run_prepatch_check(self, monkeypatch: Any, evidence: Any) -> list[dict]:
+        import little_loops.prepatch_check as pc
+
+        calls: list[dict] = []
+
+        def _fake(**kwargs: Any) -> Any:
+            calls.append(kwargs)
+            return evidence
+
+        monkeypatch.setattr(pc, "run_prepatch_check", _fake)
+        return calls
+
+    def _patch_record_evidence(self, monkeypatch: Any) -> list[dict]:
+        import little_loops.session_store as ss
+
+        calls: list[dict] = []
+
+        def _fake(db_path: Any, **kwargs: Any) -> bool:
+            calls.append(kwargs)
+            return True
+
+        monkeypatch.setattr(ss, "record_prepatch_evidence", _fake)
+        return calls
+
+    def test_disabled_by_default_skips_without_touching_git_or_db(
+        self, mock_logger: MagicMock, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """config.prepatch_check.enabled defaults to False -- the only
+        off-switch; disabled means a recorded skip (True), not a failure,
+        and the core is never invoked."""
+        from little_loops.config import BRConfig
+
+        repo = self._repo(tmp_path)
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+        config = BRConfig(repo)
+        calls = self._patch_run_prepatch_check(monkeypatch, self._fake_evidence())
+
+        result = verify_work_was_done(
+            mock_logger, changed_files=["src.py"], config=config, issue_id="ENH-9999"
+        )
+
+        assert result is True
+        assert calls == []
+
+    def test_no_issue_id_skips_even_when_enabled(
+        self, mock_logger: MagicMock, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """No second off-switch: omitting issue_id (not a config flag) also
+        skips the check."""
+        from little_loops.config import BRConfig
+
+        repo = self._repo(tmp_path)
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+        config = BRConfig(repo)
+        self._enable(config)
+        calls = self._patch_run_prepatch_check(monkeypatch, self._fake_evidence())
+
+        result = verify_work_was_done(mock_logger, changed_files=["src.py"], config=config)
+
+        assert result is True
+        assert calls == []
+
+    def test_flagged_verdict_fails_verification_and_persists_evidence(
+        self, mock_logger: MagicMock, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        from little_loops.config import BRConfig
+
+        repo = self._repo(tmp_path)
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+        config = BRConfig(repo)
+        self._enable(config)
+        self._patch_run_prepatch_check(monkeypatch, self._fake_evidence("flagged"))
+        record_calls = self._patch_record_evidence(monkeypatch)
+
+        result = verify_work_was_done(
+            mock_logger, changed_files=["src.py"], config=config, issue_id="ENH-9999"
+        )
+
+        assert result is False
+        assert len(record_calls) == 1
+        assert record_calls[0]["issue_id"] == "ENH-9999"
+        assert record_calls[0]["evidence"]["verdict"] == "flagged"
+
+    def test_clean_verdict_passes_verification(
+        self, mock_logger: MagicMock, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        from little_loops.config import BRConfig
+
+        repo = self._repo(tmp_path)
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+        config = BRConfig(repo)
+        self._enable(config)
+        self._patch_run_prepatch_check(monkeypatch, self._fake_evidence("clean"))
+        self._patch_record_evidence(monkeypatch)
+
+        result = verify_work_was_done(
+            mock_logger, changed_files=["src.py"], config=config, issue_id="ENH-9999"
+        )
+
+        assert result is True
+
+    def test_threaded_git_lock_is_reused_not_reconstructed(
+        self, mock_logger: MagicMock, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """worker_pool.py threads its own self._git_lock through; the
+        adapter must reuse it rather than constructing a second one."""
+        from little_loops.config import BRConfig
+        from little_loops.parallel.git_lock import GitLock
+
+        repo = self._repo(tmp_path)
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+        config = BRConfig(repo)
+        self._enable(config)
+        calls = self._patch_run_prepatch_check(monkeypatch, self._fake_evidence("clean"))
+        self._patch_record_evidence(monkeypatch)
+
+        caller_git_lock = GitLock(mock_logger)
+        verify_work_was_done(
+            mock_logger,
+            changed_files=["src.py"],
+            config=config,
+            issue_id="ENH-9999",
+            git_lock=caller_git_lock,
+        )
+
+        assert len(calls) == 1
+        assert calls[0]["git_lock"] is caller_git_lock
+
+    def test_no_git_lock_is_constructed_locally(
+        self, mock_logger: MagicMock, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """issue_manager.py has no GitLock in scope -- the adapter constructs
+        one itself when the caller doesn't supply one."""
+        from little_loops.config import BRConfig
+        from little_loops.parallel.git_lock import GitLock
+
+        repo = self._repo(tmp_path)
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+        config = BRConfig(repo)
+        self._enable(config)
+        calls = self._patch_run_prepatch_check(monkeypatch, self._fake_evidence("clean"))
+        self._patch_record_evidence(monkeypatch)
+
+        verify_work_was_done(
+            mock_logger, changed_files=["src.py"], config=config, issue_id="ENH-9999"
+        )
+
+        assert len(calls) == 1
+        assert isinstance(calls[0]["git_lock"], GitLock)
+
+    def test_worktree_and_branch_torn_down_after_check(
+        self, mock_logger: MagicMock, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """The pre-patch worktree and its branch do not survive the check:
+        cleanup_worktree(delete_branch=True) runs whenever the (mocked) core
+        reports a worktree_path -- mirrors ENH-2997's teardown contract."""
+        from little_loops.config import BRConfig
+
+        repo = self._repo(tmp_path)
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+        config = BRConfig(repo)
+        self._enable(config)
+
+        import little_loops.worktree_utils as wtu
+
+        worktree_base = repo / ".worktrees"
+        fake_worktree = worktree_base / "prepatch-20260101-000000-000000"
+        subprocess.run(
+            ["git", "worktree", "add", "-b", "prepatch-20260101-000000-000000", str(fake_worktree)],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+        )
+        assert wtu._is_ll_worktree(fake_worktree.name)
+        assert wtu._is_ll_branch("prepatch-20260101-000000-000000")
+
+        evidence = self._fake_evidence("clean")
+        evidence.worktree_path = fake_worktree
+        self._patch_run_prepatch_check(monkeypatch, evidence)
+        self._patch_record_evidence(monkeypatch)
+
+        verify_work_was_done(
+            mock_logger, changed_files=["src.py"], config=config, issue_id="ENH-9999"
+        )
+
+        assert not fake_worktree.exists()
+        branches = subprocess.run(
+            ["git", "branch", "--list", "prepatch-20260101-000000-000000"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        assert branches.strip() == ""

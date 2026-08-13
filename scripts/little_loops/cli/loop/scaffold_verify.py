@@ -29,6 +29,31 @@ _ADVERSARIAL_TIMEOUT = 2700
 _STATE_TIMEOUT = 300
 _MAX_STEPS = 20
 
+# ENH-2998: documentation only, not emitted by either template below and not
+# validated as YAML. The deterministic pre-patch check (ENH-3142/ENH-2997) has
+# no generator flag -- unlike `count_probes` (a *mechanical*, always-emitted
+# deterministic gate for adversarial mode), it is an opt-in guard a caller
+# hand-adds to a criteria-mode state's StateConfig when
+# `config.prepatch_check.enabled` is true. It pairs a deterministic verdict
+# alongside the `llm_structured` one this generator always emits -- the same
+# deterministic-alongside-llm_structured shape `count_probes` already
+# demonstrates for the adversarial template. See
+# `skills/verify-issue-loop/SKILL.md` for the full explanation.
+PREPATCH_CHECK_STATE_EXAMPLE = """\
+verify-criterion-1:
+  action: "Verify acceptance criterion 1 for ENH-1234: ..."
+  action_type: prompt
+  evaluate:
+    type: llm_structured
+    prompt: "Does the implementation satisfy criterion 1?"
+  prepatch_check: fail   # fail | warn | allow -- runs run_prepatch_check() on
+                          # green exit (StateConfig field; FSMLoop.prepatch_check
+                          # sets a loop-level default instead)
+  on_yes: verify-criterion-2
+  on_no: failed
+  on_partial: failed
+"""
+
 
 def _criteria_states(criteria: list[CriterionSlot], issue_id: str) -> dict[str, StateConfig]:
     """Build the criteria-mode linear chain of `verify-criterion-N` states."""

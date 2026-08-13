@@ -476,6 +476,77 @@ class TestCmdCmd:
         assert data["result"] == "PASS"
         assert "stdout" in data
 
+    def test_no_issue_id_omits_prepatch_evidence_key(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        """ENH-2998: without --issue-id, output is unchanged -- no key added."""
+        args = _make_namespace(runner="cmd", target="echo hi", output="json")
+        mock_proc = _make_selector_mock_process(["hi\n"])
+        sel = _make_ready_selector()
+
+        with (
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+        ):
+            result = cmd_cmd(args)
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert "prepatch_evidence" not in data
+
+    def test_issue_id_with_no_bundle_omits_key_not_an_error(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        """ENH-2998: --issue-id with no persisted row is a silent absence,
+        never an error -- the common case where prepatch_check was never
+        enabled."""
+        args = _make_namespace(
+            runner="cmd", target="echo hi", output="json", issue_id="ENH-9999"
+        )
+        mock_proc = _make_selector_mock_process(["hi\n"])
+        sel = _make_ready_selector()
+
+        with (
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+            patch(
+                "little_loops.cli.harness._read_prepatch_evidence", return_value=None
+            ),
+        ):
+            result = cmd_cmd(args)
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert "prepatch_evidence" not in data
+
+    def test_issue_id_with_bundle_adds_additive_key(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        """ENH-2998: a persisted bundle is surfaced verbatim, additively --
+        cli/harness.py does not re-implement or re-run the check."""
+        args = _make_namespace(
+            runner="cmd", target="echo hi", output="json", issue_id="ENH-9999"
+        )
+        mock_proc = _make_selector_mock_process(["hi\n"])
+        sel = _make_ready_selector()
+        bundle = {"base_ref": "deadbeef", "verdict": "clean", "outcomes": []}
+
+        with (
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+            patch(
+                "little_loops.cli.harness._read_prepatch_evidence", return_value=bundle
+            ) as mock_read,
+            patch("little_loops.prepatch_check.run_prepatch_check") as mock_run,
+        ):
+            result = cmd_cmd(args)
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["prepatch_evidence"] == bundle
+        mock_read.assert_called_once_with("ENH-9999")
+        mock_run.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # TestCmdMcp

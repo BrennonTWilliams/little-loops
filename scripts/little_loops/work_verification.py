@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from little_loops.config.core import BRConfig
     from little_loops.logger import Logger
+    from little_loops.parallel.git_lock import GitLock
     from little_loops.test_tamper_guard import TamperPolicy, TamperSnapshot
 
 
@@ -155,6 +156,179 @@ def _run_non_fsm_tamper_guard(
     return passed
 
 
+def _prepatch_git(
+    repo_root: Path, args: list[str], ok_codes: tuple[int, ...] = (0,)
+) -> str | None:
+    """Run a git command, returning stdout only when its exit code is in *ok_codes*.
+
+    Mirrors ``fsm/executor.py``'s ``_prepatch_git`` (ENH-2997): ``git diff
+    --no-index`` exits 1 (not 0) when it finds a difference, the expected
+    outcome for every untracked-file fragment ``_prepatch_step_diff`` produces.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", *args],
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode not in ok_codes:
+        return None
+    return proc.stdout
+
+
+def _prepatch_step_diff(repo_root: Path, base_ref: str) -> str:
+    """Cumulative patch diff for the pre-patch check core's ``step_diff``.
+
+    Mirrors ``fsm/executor.py``'s ``_prepatch_step_diff`` (ENH-2997): the whole
+    patch under evaluation, ``git diff <base_ref>`` unioned with a
+    ``--no-index`` fragment per untracked non-ignored path so newly added,
+    not-yet-committed files are visible to the core's diff parser.
+    """
+    fragments: list[str] = []
+    tracked = _prepatch_git(repo_root, ["diff", base_ref])
+    if tracked:
+        fragments.append(tracked)
+    untracked = _prepatch_git(repo_root, ["ls-files", "--others", "--exclude-standard"])
+    for path in (untracked or "").splitlines():
+        if not path:
+            continue
+        fragment = _prepatch_git(
+            repo_root, ["diff", "--no-index", "--", "/dev/null", path], ok_codes=(0, 1)
+        )
+        if fragment:
+            fragments.append(fragment)
+    return "\n".join(fragments)
+
+
+def _prepatch_existing_forks(worktree_base: Path) -> set[Path]:
+    """Snapshot the ``prepatch-*`` forks already present under *worktree_base*."""
+    try:
+        return {p for p in worktree_base.iterdir() if p.name.startswith("prepatch-")}
+    except OSError:
+        return set()
+
+
+def _prepatch_teardown(
+    repo_root: Path,
+    worktree_base: Path,
+    forks_before: set[Path],
+    evidence: Any,
+    logger: Logger,
+    git_lock: GitLock,
+) -> None:
+    """Clean up the fork(s) the core leaves behind, following ENH-2997's teardown contract.
+
+    ``run_prepatch_check()`` does not clean up its own fork on the success
+    path, and an exception path leaves no ``PrePatchEvidence`` bound at all --
+    so any new ``prepatch-*`` directory under *worktree_base* is fair game.
+    """
+    from little_loops.worktree_utils import cleanup_worktree
+
+    targets: list[Path] = []
+    if evidence is not None and getattr(evidence, "worktree_path", None) is not None:
+        targets.append(Path(evidence.worktree_path))
+    targets.extend(sorted(_prepatch_existing_forks(worktree_base) - forks_before - set(targets)))
+    for target in targets:
+        try:
+            cleanup_worktree(target, repo_root, logger, git_lock, delete_branch=True)
+        except Exception:
+            pass
+
+
+def _run_non_fsm_prepatch_check(
+    logger: Logger,
+    repo_root: Path,
+    config: BRConfig,
+    issue_id: str,
+    git_lock: GitLock | None = None,
+) -> bool:
+    """Run the pre-patch check (ENH-3142) against the current diff for *issue_id*.
+
+    Mirrors ``fsm/executor.py``'s ``_check_prepatch_check()`` (ENH-2997): resolves
+    ``(base_sha, base_dirty)`` from ``.ll/history.db`` via ``read_base_sha``/
+    ``read_base_dirty``, forks a pre-patch worktree, runs the candidate tests,
+    persists the resulting ``PrePatchEvidence`` to ``.ll/history.db`` via
+    ``record_prepatch_evidence()`` (the surface ``cli/harness.py`` reads), and
+    tears the fork down in a ``finally`` -- on both the success and exception
+    paths.
+
+    ``config.prepatch_check.enabled`` (default ``False``) is this check's only
+    off-switch, matching the tamper guard's ``config is not None`` gate shape;
+    the adapter adds no second one. When disabled, this returns True without
+    touching git or the database.
+
+    Unlike the tamper guard, there is no per-caller fail/warn/allow policy for
+    the non-FSM path (``PrePatchCheckConfig`` has no ``policy`` field) -- a
+    ``flagged`` verdict fails verification outright, the same way an unresolved
+    tamper-guard finding does under the default "fail" policy.
+
+    Returns True when the check is disabled, skipped (red run guard is the
+    caller's responsibility -- this is only reached after
+    ``_detect_meaningful_changes`` and the tamper guard already passed), or
+    clean; False when the check ran and flagged the diff.
+    """
+    if not config.prepatch_check.enabled:
+        return True
+
+    from little_loops.history_reader import read_base_dirty, read_base_sha
+    from little_loops.parallel.git_lock import GitLock
+    from little_loops.prepatch_check import resolve_base_ref, run_prepatch_check
+    from little_loops.session_store import record_prepatch_evidence, resolve_history_db
+
+    history_db = resolve_history_db()
+    base_sha = read_base_sha(issue_id, db=history_db)
+    base_dirty = read_base_dirty(issue_id, db=history_db)
+    base_branch = config.parallel.base_branch or "main"
+    base_ref, _base_source = resolve_base_ref(repo_root, base_sha, base_branch)
+    step_diff = _prepatch_step_diff(repo_root, base_ref)
+
+    worktree_base = config.get_worktree_base()
+    # Threaded when the caller already owns one (worker_pool.py's
+    # self._git_lock); constructed locally otherwise (issue_manager.py has
+    # no GitLock anywhere in the file) -- mirrors fsm/executor.py's local
+    # construction, the one in-repo precedent for the "state which" choice
+    # ENH-2998's Design Notes call out.
+    wt_git_lock = git_lock or GitLock(logger)
+
+    forks_before = _prepatch_existing_forks(worktree_base)
+    evidence = None
+    try:
+        evidence = run_prepatch_check(
+            step_diff=step_diff,
+            repo_root=repo_root,
+            worktree_base=worktree_base,
+            base_sha=base_sha,
+            base_dirty=base_dirty,
+            base_branch=base_branch,
+            logger=logger,
+            git_lock=wt_git_lock,
+            config=config,
+        )
+    finally:
+        _prepatch_teardown(repo_root, worktree_base, forks_before, evidence, logger, wt_git_lock)
+
+    try:
+        record_prepatch_evidence(
+            history_db,
+            issue_id=issue_id,
+            evidence=evidence.to_dict(),
+        )
+    except Exception:
+        pass
+
+    if evidence.verdict == "flagged":
+        logger.error(
+            f"Pre-patch check flagged {len(evidence.outcomes)} candidate test(s) "
+            f"against {evidence.base_ref}"
+        )
+        return False
+    return True
+
+
 def verify_work_was_done(
     logger: Logger,
     changed_files: list[str] | None = None,
@@ -162,6 +336,8 @@ def verify_work_was_done(
     config: BRConfig | None = None,
     repo_root: Path | None = None,
     pre_step_snapshot: TamperSnapshot | None = None,
+    issue_id: str | None = None,
+    git_lock: GitLock | None = None,
 ) -> bool:
     """Verify that actual work was done (not just issue file moves).
 
@@ -193,10 +369,19 @@ def verify_work_was_done(
             in addition to (not instead of) the git-reconstructed
             implement-window comparison. ``None`` (the default) preserves
             today's behavior unchanged: one git-reconstructed guard run.
+        issue_id: Optional issue ID (ENH-2998) used to resolve the pre-patch
+            check's (ENH-3142/ENH-2997) base SHA/dirty flag from
+            ``.ll/history.db`` and to persist its evidence bundle there. The
+            check only runs when both ``config`` and ``issue_id`` are given
+            and ``config.prepatch_check.enabled`` is true (default false) --
+            its only off-switch. ``None`` preserves prior behavior unchanged.
+        git_lock: Optional caller-owned ``GitLock`` (ENH-2998) the pre-patch
+            check's worktree fork uses; when omitted, one is constructed
+            locally. Unused when the pre-patch check does not run.
 
     Returns:
-        True if meaningful file changes were detected and the tamper guard
-        did not fail them.
+        True if meaningful file changes were detected and neither the tamper
+        guard nor the pre-patch check failed them.
     """
     work_done = _detect_meaningful_changes(logger, changed_files, baseline_sha)
     if not work_done:
@@ -206,6 +391,10 @@ def verify_work_was_done(
     resolved_repo_root = repo_root or config.project_root
     if not _run_non_fsm_tamper_guard(
         logger, resolved_repo_root, config, baseline_sha, pre_step_snapshot
+    ):
+        return False
+    if issue_id and not _run_non_fsm_prepatch_check(
+        logger, resolved_repo_root, config, issue_id, git_lock
     ):
         return False
     return True

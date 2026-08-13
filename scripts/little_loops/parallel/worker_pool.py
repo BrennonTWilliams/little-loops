@@ -1343,6 +1343,8 @@ class WorkerPool:
             config=self.br_config,
             repo_root=worktree_path,
             pre_step_snapshot=pre_step_snapshot,
+            issue_id=issue_id,
+            git_lock=self._git_lock,
         ):
             return True, ""
 

@@ -3229,6 +3229,7 @@ class TestFallbackVerification:
             baseline_sha=test_sha,
             config=mock_config,
             pre_step_snapshot={},
+            issue_id=sample_issue.issue_id,
         )
 
     def test_tamper_guard_trips_end_to_end_no_fsm_involved(

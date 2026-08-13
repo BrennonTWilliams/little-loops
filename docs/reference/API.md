@@ -51,7 +51,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.user_messages` | User message extraction from Claude logs |
 | `little_loops.workflow_sequence` | Workflow sequence analysis for multi-step patterns |
 | `little_loops.goals_parser` | Product goals file parsing |
-| `little_loops.history_reader` | Typed read-only query module for `.ll/history.db`. Exports event dataclasses including `UserCorrection`, `FileEvent`, `SearchResult`, `IssueEvent`, `SessionRef` (ENH-1711), `OrchestrationRun` (ENH-2492), `LoopRun` (ENH-2463), `LearningTestEvent` (ENH-2466), and `LifecycleEvent` (ENH-2495); query functions include `find_user_corrections()`, `recent_file_events()`, `search()`, `related_issue_events()`, `sessions_for_issue()`, effort/velocity/session metadata helpers, conversation and compaction readers, skill/commit/test/usage readers, plus `recent_orchestration_runs()` / `aggregate_orchestration_runs()` (ENH-2492), `read_base_sha()` / `read_base_dirty()` (ENH-2866 / ENH-3142, dequeue-time base-commit and dirty-tree readers), `recent_loop_runs()` / `find_loop_run()` / `aggregate_loop_runs()` (ENH-2463), `waste_attribution()` (ENH-2722, per-loop tokens-wasted rollup joined on `run_id`), `recent_learning_tests()` / `find_learning_test()` (ENH-2466), and `recent_lifecycle_events()` / `handoff_frequency()` (ENH-2495). All functions return empty lists or `None` on missing/corrupt DB. |
+| `little_loops.history_reader` | Typed read-only query module for `.ll/history.db`. Exports event dataclasses including `UserCorrection`, `FileEvent`, `SearchResult`, `IssueEvent`, `SessionRef` (ENH-1711), `OrchestrationRun` (ENH-2492), `LoopRun` (ENH-2463), `LearningTestEvent` (ENH-2466), and `LifecycleEvent` (ENH-2495); query functions include `find_user_corrections()`, `recent_file_events()`, `search()`, `related_issue_events()`, `sessions_for_issue()`, effort/velocity/session metadata helpers, conversation and compaction readers, skill/commit/test/usage readers, plus `recent_orchestration_runs()` / `aggregate_orchestration_runs()` (ENH-2492), `read_base_sha()` / `read_base_dirty()` (ENH-2866 / ENH-3142, dequeue-time base-commit and dirty-tree readers), `read_prepatch_evidence()` (ENH-2997/ENH-2998, most-recent `PrePatchEvidence` bundle for an issue ID), `recent_loop_runs()` / `find_loop_run()` / `aggregate_loop_runs()` (ENH-2463), `waste_attribution()` (ENH-2722, per-loop tokens-wasted rollup joined on `run_id`), `recent_learning_tests()` / `find_learning_test()` (ENH-2466), and `recent_lifecycle_events()` / `handoff_frequency()` (ENH-2495). All functions return empty lists or `None` on missing/corrupt DB. |
 | `little_loops.sync` | GitHub Issues bidirectional sync |
 | `little_loops.session_log` | Session log linking for issue files |
 | `little_loops.file_utils` | Shared file I/O utilities (atomic writes) |
@@ -97,7 +97,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.test_tamper_guard` | Test-weakening detection core (ENH-2933) — `snapshot_test_paths()` / `snapshot_test_paths_at_ref()`, `compare_snapshots()`, `measure_test_strength()`, `is_weakening()`, `filter_weakening_findings()`,
 `extract_test_functions()`, with `TamperFinding` / `TamperReport` / `TestStrength` / `ConfigTarget` dataclasses. |
 | `little_loops.transport` | EventBus transport abstraction (`Transport` Protocol + `send`/`close`) with built-in `JsonlTransport`, `UnixSocketTransport`, and `OTelTransport` sinks. |
-| `little_loops.worktree_utils` | Shared worktree setup/cleanup utilities used by `ll-parallel`, `ll-sprint`, and `ll-loop`. See [WORKTREES.md](WORKTREES.md) for the file-copy contract. |
+| `little_loops.worktree_utils` | Shared worktree setup/cleanup utilities used by `ll-parallel`, `ll-sprint`, `ll-loop`, the FSM executor's pre-patch check hook (ENH-2997), and `work_verification`'s non-FSM pre-patch check adapter (ENH-2998). See [WORKTREES.md](WORKTREES.md) for the file-copy contract. |
 | `little_loops.prepatch_check` | Pre-patch check core (ENH-3142) — `run_prepatch_check()`, `collect_candidates()`, and the `PrePatchCandidate` / `PrePatchTestOutcome` / `PrePatchEvidence` dataclasses. Deterministic, no LLM/FSM/CLI/database access; runs candidate tests from a step diff against the pre-patch worktree ENH-3141's `setup_prepatch_worktree()` produces to flag evidence that passes without the change it claims to demonstrate. |
 | `little_loops.mcp_call` | Thin CLI wrapper for direct MCP tool invocation via JSON-RPC |
 | `little_loops.mcp_server` | `ll-mcp` MCP server (2026-07-28 spec, FEAT-3135) — `main_mcp` entry point plus the five read-only tools (`issues_query`, `issue_get`, `history_search`, `deps_check`, `capabilities`), the `ll://` resource surface (FEAT-3136): issue files, `.ll/ll-goals.md`, and `docs/` served under `ll://issues/<ID>`, `ll://goals`, `ll://docs/<relative-path>`, and the prompts-from-skills surface (FEAT-3137): every discovered `SKILL.md` advertised as an MCP prompt (name/description/args from frontmatter), all resolved against discovery-time enumerations. Serves over stdio by default; `ll-mcp --http` or `LL_MCP_TRANSPORT=http` switches to streamable HTTP on loopback (FEAT-3143), same server, same tool/resource/prompt surfaces. |
@@ -2632,6 +2632,8 @@ def verify_work_was_done(
     config: BRConfig | None = None,
     repo_root: Path | None = None,
     pre_step_snapshot: TamperSnapshot | None = None,
+    issue_id: str | None = None,
+    git_lock: GitLock | None = None,
 ) -> bool
 ```
 
@@ -2670,14 +2672,29 @@ in up to two windows, ANDing the verdicts:
 The guard is skipped entirely when `config` is omitted, preserving pre-ENH-2935 behavior for
 callers with no project config in scope.
 
+When the tamper guard passes and both `config` and `issue_id` are supplied, the non-FSM
+pre-patch check adapter (ENH-2998) runs next — the `ll-auto`/`ll-parallel` counterpart to
+the FSM executor's guarded-state hook (ENH-2997). It resolves `(base_sha, base_dirty)` for
+`issue_id` from `.ll/history.db` via `little_loops.history_reader.read_base_sha`/
+`read_base_dirty`, forks a pre-patch worktree under `config.get_worktree_base()`, reruns
+candidate tests with `little_loops.prepatch_check.run_prepatch_check()`, tears the fork down
+in a `finally` (mirroring `fsm/executor.py`'s teardown contract), and persists the resulting
+`PrePatchEvidence` to `.ll/history.db` via `little_loops.session_store.record_prepatch_evidence()`
+— the same row `ll-harness --issue-id` reads. `config.prepatch_check.enabled` (default `False`)
+is this check's only off-switch, reused rather than duplicated; when disabled, or when `issue_id`
+is omitted, this step is skipped entirely. A `flagged` verdict fails verification the same way
+an unresolved tamper-guard finding does.
+
 **Parameters:**
 - `logger` - Logger for output
 - `changed_files` - Optional pre-computed file list. If `None`, detects via `git diff` and `git diff --cached`
 - `baseline_sha` - Optional git SHA captured before Phase 2 began. When provided and HEAD has advanced beyond this SHA, checks for non-excluded files committed in the range; enables detection of mid-phase commits in `ll-auto`. Also used as the tamper guard's "before" git reference when `config` is supplied.
 - `config` - Optional `BRConfig` used to resolve the tamper guard's default policy (`tamper_guard.policy`, default `"fail"`) and test-file patterns. Both `ll-auto` (`issue_manager.py`) and `ll-parallel`/`ll-sprint` (`worker_pool.py`) always have one in scope and pass it through.
 - `repo_root` - Optional repo root the tamper guard runs against; defaults to `config.project_root` when `config` is given.
+- `issue_id` - Optional issue ID (ENH-2998) that gates and scopes the non-FSM pre-patch check described above. `None` (the default) skips it, preserving pre-ENH-2998 behavior unchanged.
+- `git_lock` - Optional caller-owned `GitLock` (ENH-2998) the pre-patch check's worktree fork uses. `worker_pool.py` threads its own `self._git_lock`; `issue_manager.py` has none in scope, so the adapter constructs one locally when omitted. Unused when the pre-patch check does not run.
 
-**Returns:** `True` if meaningful file changes were detected and the tamper guard did not fail them
+**Returns:** `True` if meaningful file changes were detected and neither the tamper guard nor the pre-patch check failed them
 
 **Example:**
 

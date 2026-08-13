@@ -1400,6 +1400,7 @@ def process_issue_inplace(
                         baseline_sha=_baseline_sha,
                         config=config,
                         pre_step_snapshot=_post_implement_snapshot,
+                        issue_id=info.issue_id,
                     ):
                         logger.info(
                             f"Plan created at {plan_path}, awaiting approval - "
@@ -1510,6 +1511,7 @@ def process_issue_inplace(
                         baseline_sha=_baseline_sha,
                         config=config,
                         pre_step_snapshot=_post_implement_snapshot,
+                        issue_id=info.issue_id,
                     )
                     if work_done:
                         logger.info("Evidence of code changes found - completing lifecycle...")

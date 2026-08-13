@@ -195,6 +195,7 @@ Examples:
   ll-harness cmd "echo hello" --exit-code 0
   ll-harness mcp my-server:my-tool --args '{"key": "val"}' --semantic "tool returned results"
   ll-harness prompt "What is 2+2?" --semantic "response contains a number"
+  ll-harness cmd "echo hello" --issue-id ENH-1234 --output json  # includes prepatch_evidence when a bundle exists
 
 Exit codes:
   0  PASS
@@ -239,6 +240,19 @@ Exit codes:
             "--verbose",
             action="store_true",
             help="Show full captured output even on pass",
+        )
+        p.add_argument(
+            "--issue-id",
+            dest="issue_id",
+            type=str,
+            default=None,
+            metavar="ID",
+            help=(
+                "Issue ID (ENH-2998) to look up a persisted pre-patch check "
+                "evidence bundle for, from .ll/history.db. Read-only: does "
+                "not run the check. Absent when no bundle is found or when "
+                "unset (includes prepatch_evidence key in --output json)."
+            ),
         )
 
     def _add_trace_flags(p: argparse.ArgumentParser) -> None:
@@ -375,6 +389,20 @@ class HarnessEvalOutcome:
     eval_result: EvaluationResult | None
 
 
+def _read_prepatch_evidence(issue_id: str | None) -> dict | None:
+    """Read the persisted pre-patch check bundle (ENH-2998) for *issue_id*, if any.
+
+    Reads-only: does not call `run_prepatch_check()` and does not re-implement
+    the check. `ll-harness` is hand-run and has no `run_dir`, so
+    `.ll/history.db` is the only surface it can discover a bundle by issue ID.
+    """
+    if not issue_id:
+        return None
+    from little_loops.history_reader import read_prepatch_evidence
+
+    return read_prepatch_evidence(issue_id, db=DEFAULT_DB_PATH)
+
+
 def _evaluate_and_report(
     runner_label: str,
     result: RunnerResult,
@@ -407,18 +435,23 @@ def _evaluate_and_report(
     overall = "PASS" if passed else "FAIL"
     show_output = not passed or args.verbose
 
+    # ENH-2998: additive, read-only pre-patch check evidence lookup -- absent
+    # (not an error) when no --issue-id was given or no bundle exists.
+    prepatch_evidence = _read_prepatch_evidence(getattr(args, "issue_id", None))
+
     if args.output == "json":
-        print_json(
-            {
-                "runner": runner_label,
-                "exit_code": result.exit_code,
-                "exit_code_check": exit_code_display,
-                "semantic": semantic_display,
-                "result": overall,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-            }
-        )
+        payload = {
+            "runner": runner_label,
+            "exit_code": result.exit_code,
+            "exit_code_check": exit_code_display,
+            "semantic": semantic_display,
+            "result": overall,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        }
+        if prepatch_evidence is not None:
+            payload["prepatch_evidence"] = prepatch_evidence
+        print_json(payload)
     else:
         print(
             status_block(
@@ -430,6 +463,8 @@ def _evaluate_and_report(
                 }
             )
         )
+        if prepatch_evidence is not None:
+            print(f"Pre-patch check: {prepatch_evidence.get('verdict', 'unknown')}")
         if show_output and result.stdout:
             print("---")
             sys.stdout.write(result.stdout)

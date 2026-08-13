@@ -7,7 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from little_loops.cli.loop.scaffold_verify import scaffold_verify
+from little_loops.cli.loop.scaffold_verify import (
+    PREPATCH_CHECK_STATE_EXAMPLE,
+    scaffold_verify,
+)
 from little_loops.config import BRConfig
 from little_loops.issue_parser import IssueParser
 
@@ -187,3 +190,22 @@ class TestScaffoldVerifyAdversarialMode:
         _write_issue(project, "FEAT-302", ["Criterion"])
         result = scaffold_verify("FEAT-302", adversarial=False)
         assert "timeout: 1800" in result.yaml_text
+
+
+class TestPrepatchCheckStateExample:
+    """ENH-2998: scaffold_verify.py documents the deterministic pre-patch
+    check via a state-template example, since it has no generator flag of
+    its own (unlike count_probes, a mechanical always-emitted gate)."""
+
+    def test_example_shows_prepatch_check_key_alongside_llm_structured(self) -> None:
+        assert "prepatch_check: fail" in PREPATCH_CHECK_STATE_EXAMPLE
+        assert "llm_structured" in PREPATCH_CHECK_STATE_EXAMPLE
+
+    def test_example_is_not_emitted_by_either_generated_template(
+        self, project: Path
+    ) -> None:
+        _write_issue(project, "FEAT-303", ["Criterion"])
+        criteria_result = scaffold_verify("FEAT-303", adversarial=False)
+        adversarial_result = scaffold_verify("FEAT-303", adversarial=True)
+        assert "prepatch_check" not in criteria_result.yaml_text
+        assert "prepatch_check" not in adversarial_result.yaml_text
