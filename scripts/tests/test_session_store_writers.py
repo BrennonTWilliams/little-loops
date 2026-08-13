@@ -467,8 +467,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 39
-        assert int(row[0]) == 39
+        assert SCHEMA_VERSION == 40
+        assert int(row[0]) == 40
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1150,7 +1150,7 @@ class TestOrchestrationRuns:
         return recorder
 
     def test_v21_db_upgrades_gains_orchestration_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 39
+        assert SCHEMA_VERSION == 40
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 21)
         ensure_db(db)
@@ -1274,6 +1274,91 @@ class TestOrchestrationRuns:
             conn.close()
         assert table_rows == 1
         assert fts_rows == 1
+
+
+class TestPrepatchEvidence:
+    """ENH-2997: prepatch_evidence table, writer, and reader round trip."""
+
+    def test_v39_db_upgrades_gains_prepatch_evidence(self, tmp_path: Path) -> None:
+        assert SCHEMA_VERSION == 40
+        db = tmp_path / "history.db"
+        _bootstrap_schema_at(db, 39)
+        ensure_db(db)
+        conn = sqlite3.connect(str(db))
+        try:
+            names = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
+            indexes = {
+                r[0]
+                for r in conn.execute(
+                    "SELECT name FROM sqlite_master "
+                    "WHERE type='index' AND tbl_name='prepatch_evidence'"
+                )
+            }
+        finally:
+            conn.close()
+        assert "prepatch_evidence" in names
+        assert "idx_prepatch_evidence_issue_id" in indexes
+
+    def test_record_and_read_roundtrip(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import read_prepatch_evidence
+        from little_loops.session_store import record_prepatch_evidence
+
+        db = tmp_path / "history.db"
+        evidence = {
+            "base_ref": "deadbeef",
+            "base_source": "merge-base",
+            "base_dirty": None,
+            "outcomes": [],
+            "verdict": "flagged",
+            "skipped_reason": None,
+            "worktree_path": None,
+        }
+        ok = record_prepatch_evidence(
+            db, issue_id="ENH-2997", evidence=evidence, run_id="run-1", state="verify"
+        )
+        assert ok is True
+
+        result = read_prepatch_evidence("ENH-2997", db=db)
+        assert result == evidence
+
+    def test_read_returns_none_for_missing_db_or_unknown_issue(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import read_prepatch_evidence
+
+        assert read_prepatch_evidence("ENH-9999", db=tmp_path / "missing.db") is None
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        assert read_prepatch_evidence("ENH-9999", db=db) is None
+
+    def test_two_rows_never_upserted_reader_takes_most_recent(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import read_prepatch_evidence
+        from little_loops.session_store import record_prepatch_evidence
+
+        db = tmp_path / "history.db"
+        record_prepatch_evidence(
+            db, issue_id="ENH-2997", evidence={"verdict": "clean"}, state="step1"
+        )
+        record_prepatch_evidence(
+            db, issue_id="ENH-2997", evidence={"verdict": "flagged"}, state="step2"
+        )
+
+        conn = connect(db)
+        try:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM prepatch_evidence WHERE issue_id = ?", ("ENH-2997",)
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert count == 2
+        assert read_prepatch_evidence("ENH-2997", db=db) == {"verdict": "flagged"}
+
+    def test_empty_issue_id_returns_false(self, tmp_path: Path) -> None:
+        from little_loops.session_store import record_prepatch_evidence
+
+        db = tmp_path / "history.db"
+        assert record_prepatch_evidence(db, issue_id="", evidence={}) is False
 
 
 class TestOrchestrationRunBaseStamp:
@@ -1452,7 +1537,7 @@ class TestLoopRuns:
         return updater
 
     def test_v22_db_upgrades_gains_loop_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 39
+        assert SCHEMA_VERSION == 40
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 22)
         ensure_db(db)
@@ -1650,7 +1735,7 @@ class TestRecordLearningTestEvent:
         assert recent(db, kind="learning_test") == []
 
     def test_v25_db_upgrades_gains_learning_test_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 39
+        assert SCHEMA_VERSION == 40
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 25)
         ensure_db(db)

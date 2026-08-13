@@ -1372,6 +1372,36 @@ def record_orchestration_run(
         conn.close()
 
 
+def record_prepatch_evidence(
+    db_path: Path | str,
+    *,
+    issue_id: str,
+    evidence: dict,
+    run_id: str | None = None,
+    state: str | None = None,
+) -> bool:
+    """Persist one guarded-state exit's ``PrePatchEvidence`` bundle (ENH-2997).
+
+    Always inserts a new row rather than upserting: a run can guard multiple
+    states, and each exit's bundle is independent evidence that must not
+    overwrite an earlier one. ``evidence`` is ``PrePatchEvidence.to_dict()``
+    verbatim. Returns ``False`` only when ``issue_id`` is empty.
+    """
+    if not issue_id:
+        return False
+    conn = _pkg.connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO prepatch_evidence(issue_id, run_id, state, evidence_json, created_at) "
+            "VALUES(?, ?, ?, ?, ?)",
+            (issue_id, run_id, state, json.dumps(evidence), _now()),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
 def record_loop_run_summary(
     db_path: Path | str,
     *,

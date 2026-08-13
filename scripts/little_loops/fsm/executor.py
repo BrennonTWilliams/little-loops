@@ -10,6 +10,7 @@ This module provides the execution engine that runs FSM loops:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import random
@@ -257,6 +258,10 @@ class FSMExecutor:
         # ENH-2724: per-invocation TokenUsage collected during this run, written to
         # usage_events (run_id-stamped) at _finish(). (state_name, TokenUsage) pairs.
         self._usage_events_collected: list[tuple[str | None, TokenUsage]] = []
+        # ENH-2997: per-run memo of (step_diff hash, base_ref) -> PrePatchEvidence,
+        # so two guarded exits with a byte-identical diff against the same base
+        # reuse the prior verdict instead of re-forking a worktree.
+        self._prepatch_check_memo: dict[tuple[str, str], Any] = {}
         self.elapsed_offset_ms = (
             0  # milliseconds from segments before current run (set by PersistentExecutor on resume)
         )
@@ -1454,6 +1459,217 @@ class FSMExecutor:
         # on_yes) or leave routing to the caller's normal path.
         return state.on_no
 
+    def _effective_prepatch_check_policy(
+        self, state: StateConfig
+    ) -> Literal["fail", "warn", "allow"] | None:
+        """Resolve the effective prepatch_check policy for *state*: state override, then loop default.
+
+        Mirrors `_effective_tamper_guard_policy`'s shape (ENH-2997). Returns
+        None (no guard) when unset, or when the resolved value is not one of
+        {"fail", "warn", "allow"} -- an unrecognized value is already flagged
+        by the `_validate_prepatch_check` lint rule at validation time.
+        """
+        raw_policy = state.prepatch_check or self.fsm.prepatch_check
+        if raw_policy == "fail":
+            return "fail"
+        if raw_policy == "warn":
+            return "warn"
+        if raw_policy == "allow":
+            return "allow"
+        return None
+
+    def _prepatch_git(
+        self, repo_root: Path, args: list[str], ok_codes: tuple[int, ...] = (0,)
+    ) -> str | None:
+        """Run a git command, returning stdout only when its exit code is in *ok_codes*.
+
+        Unlike `test_tamper_guard._git`, the accepted exit codes are
+        caller-specified: `git diff --no-index` mimics diff(1) and exits 1
+        (not 0) when it finds a difference, which is the expected outcome
+        for every untracked-file fragment `_prepatch_step_diff` produces.
+        """
+        try:
+            proc = subprocess.run(
+                ["git", *args],
+                cwd=str(repo_root),
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        if proc.returncode not in ok_codes:
+            return None
+        return proc.stdout
+
+    def _prepatch_step_diff(self, repo_root: Path, base_ref: str) -> str:
+        """Cumulative patch diff for the pre-patch check core's `step_diff` (ENH-2997).
+
+        Unlike the tamper-guard bracket (a name list from entry/exit
+        snapshots), this check's input is the whole patch under evaluation:
+        `git diff <base_ref>`, unioned with a `git diff --no-index --
+        /dev/null <path>` fragment for each untracked non-ignored path -- a
+        newly added, not-yet-committed test file is otherwise invisible to
+        `_parse_diff`'s `+++ b/` header discovery. `--no-index` never
+        mutates the live repository's index, unlike `git add -N`.
+        """
+        fragments: list[str] = []
+        tracked = self._prepatch_git(repo_root, ["diff", base_ref])
+        if tracked:
+            fragments.append(tracked)
+        untracked = self._prepatch_git(repo_root, ["ls-files", "--others", "--exclude-standard"])
+        for path in (untracked or "").splitlines():
+            if not path:
+                continue
+            fragment = self._prepatch_git(
+                repo_root, ["diff", "--no-index", "--", "/dev/null", path], ok_codes=(0, 1)
+            )
+            if fragment:
+                fragments.append(fragment)
+        return "\n".join(fragments)
+
+    def _check_prepatch_check(
+        self,
+        state: StateConfig,
+        ctx: InterpolationContext,
+        prepatch_policy: Literal["fail", "warn", "allow"] | None,
+        repo_root: Path,
+        action_succeeded: bool,
+    ) -> str | None:
+        """Compute-on-green-exit + fail-policy enforcement for the pre-patch check (ENH-2997).
+
+        Unlike `_check_tamper_guard`, there is no entry snapshot -- the
+        check's entire input is `git diff <base_ref>` computed here at exit.
+        Invoked only when the guarded state's action succeeded (a red run
+        forks no worktree, since a failing suite routes to remediation
+        regardless of what the check would find). Called before
+        `_check_tamper_guard` at both call sites so it reads the diff before
+        a `revert` tamper policy can rewrite the working tree out from under
+        it; the caller lets tamper-guard win when both want to route.
+        """
+        if prepatch_policy is None:
+            return None
+
+        if not action_succeeded:
+            record = {
+                "state": self.current_state,
+                "policy": prepatch_policy,
+                "verdict": "skipped",
+                "skipped_reason": "guarded state's action did not succeed (red path)",
+                "memoized": False,
+            }
+            ctx.context.setdefault("_prepatch_check", []).append(record)
+            return None
+
+        from little_loops.config import BRConfig
+        from little_loops.history_reader import read_base_dirty, read_base_sha
+        from little_loops.logger import Logger
+        from little_loops.parallel.git_lock import GitLock
+        from little_loops.prepatch_check import resolve_base_ref, run_prepatch_check
+        from little_loops.session_store import resolve_history_db
+        from little_loops.worktree_utils import cleanup_worktree
+
+        config = BRConfig(repo_root)
+        _history_db = resolve_history_db()
+        issue_id = self.fsm.context.get("issue_id") or None
+        base_sha = read_base_sha(issue_id, db=_history_db) if issue_id else None
+        base_dirty = read_base_dirty(issue_id, db=_history_db) if issue_id else None
+        base_branch = config.parallel.base_branch or "main"
+        base_ref, _base_source = resolve_base_ref(repo_root, base_sha, base_branch)
+        step_diff = self._prepatch_step_diff(repo_root, base_ref)
+        diff_hash = hashlib.sha256(step_diff.encode()).hexdigest()
+        memo_key = (diff_hash, base_ref)
+
+        memoized = memo_key in self._prepatch_check_memo
+        if memoized:
+            evidence = self._prepatch_check_memo[memo_key]
+        else:
+            wt_logger = Logger(verbose=False)
+            wt_git_lock = GitLock(wt_logger)
+            # run_prepatch_check() does not clean up its own fork on the
+            # success path (setup_prepatch_worktree tears down only when
+            # setup itself fails) -- worktree lifetime past that point is
+            # the host's, hence the best-effort teardown below.
+            evidence = run_prepatch_check(
+                step_diff=step_diff,
+                repo_root=repo_root,
+                worktree_base=config.get_worktree_base(),
+                base_sha=base_sha,
+                base_dirty=base_dirty,
+                base_branch=base_branch,
+                logger=wt_logger,
+                git_lock=wt_git_lock,
+                config=config,
+            )
+            # Teardown is best-effort: a leaked fork is a disk-space nuisance,
+            # but letting a cleanup error escape would abort the guarded window
+            # and fail the run over a check that had already reached a verdict.
+            # Matches the swallow-and-continue posture of the evidence writes below.
+            try:
+                if evidence.worktree_path is not None:
+                    cleanup_worktree(
+                        evidence.worktree_path,
+                        repo_root,
+                        wt_logger,
+                        wt_git_lock,
+                        delete_branch=True,
+                    )
+            except Exception:
+                pass
+            self._prepatch_check_memo[memo_key] = evidence
+
+        record = {
+            "state": self.current_state,
+            "policy": prepatch_policy,
+            "verdict": evidence.verdict,
+            "base_ref": evidence.base_ref,
+            "base_source": evidence.base_source,
+            "skipped_reason": evidence.skipped_reason,
+            "memoized": memoized,
+        }
+        ctx.context.setdefault("_prepatch_check", []).append(record)
+
+        run_dir = self.fsm.context.get("run_dir", "")
+        if run_dir and issue_id:
+            try:
+                bundle_path = Path(run_dir) / f"prepatch_evidence_{issue_id}.json"
+                bundle_path.write_text(json.dumps(evidence.to_dict(), indent=2))
+            except OSError:
+                pass
+
+        if issue_id:
+            from little_loops.session_store import record_prepatch_evidence
+
+            try:
+                record_prepatch_evidence(
+                    _history_db,
+                    issue_id=issue_id,
+                    evidence=evidence.to_dict(),
+                    state=self.current_state,
+                )
+            except Exception:
+                pass
+
+        if prepatch_policy == "warn" and evidence.verdict == "flagged":
+            self._emit(
+                "prepatch_check_flagged",
+                {
+                    "state": self.current_state,
+                    "policy": prepatch_policy,
+                    "outcomes": len(evidence.outcomes),
+                },
+            )
+
+        if prepatch_policy != "fail" or evidence.verdict != "flagged":
+            return None
+
+        failure_states = self.fsm.get_failure_states()
+        if state.on_no and state.on_no in failure_states:
+            return state.on_no
+        if failure_states:
+            return sorted(failure_states)[0]
+        return state.on_no
+
     def _execute_state(self, state: StateConfig) -> str | None:
         """Execute a single state and return next state name.
 
@@ -1506,6 +1722,10 @@ class FSMExecutor:
                 self._tamper_guard_candidate_paths(_tamper_repo_root), _tamper_repo_root
             )
 
+        # ENH-2997: pre-patch-check policy resolution. No entry snapshot --
+        # unlike tamper_guard, this check's entire input is computed at exit.
+        _prepatch_policy = self._effective_prepatch_check_policy(state)
+
         # Handle unconditional transition
         if state.next:
             if state.action:
@@ -1528,6 +1748,14 @@ class FSMExecutor:
                     "state": self.current_state,
                     "timeout_kind": result.timeout_kind,
                 }
+                # ENH-2997: pre-patch-check compute-on-green-exit, called
+                # before `_check_tamper_guard` (below) so it reads the diff
+                # before a `revert` tamper policy can rewrite the working
+                # tree out from under it. Both checkers record their finding
+                # before either routes; tamper-guard wins when both want to.
+                _prepatch_next = self._check_prepatch_check(
+                    state, ctx, _prepatch_policy, _tamper_repo_root, result.exit_code == 0
+                )
                 # BUG-2962: compare-on-exit + fail-policy enforcement, same as
                 # the non-`next:` path below — runs regardless of the
                 # action's own exit code, before any exit-code-based routing.
@@ -1536,6 +1764,8 @@ class FSMExecutor:
                 )
                 if _tamper_next is not None:
                     return _tamper_next
+                if _prepatch_next is not None:
+                    return _prepatch_next
                 if result.exit_code is not None and result.exit_code < 0:
                     # Process killed by signal — do not silently advance via next
                     if state.on_error:
@@ -1581,6 +1811,16 @@ class FSMExecutor:
         # Evaluate
         eval_result = self._evaluate(state, action_result, ctx)
 
+        # ENH-2997: pre-patch-check compute-on-green-exit, called before
+        # `_check_tamper_guard` (below) for the same read-before-revert
+        # ordering as the `next:`-chained call site above.
+        _prepatch_next = self._check_prepatch_check(
+            state,
+            ctx,
+            _prepatch_policy,
+            _tamper_repo_root,
+            action_result is None or action_result.exit_code == 0,
+        )
         # ENH-2934: tamper guard compare-on-exit + fail-policy enforcement.
         # Runs regardless of the action's own verdict — a tamper-relevant file
         # change can happen whether or not the action itself succeeded.
@@ -1589,6 +1829,8 @@ class FSMExecutor:
         )
         if _tamper_next is not None:
             return _tamper_next
+        if _prepatch_next is not None:
+            return _prepatch_next
         # ENH-2522: track last action exit_code so the shutdown helper can
         # distinguish a SIGKILL (exit_code=-9) from a clean Ctrl-C.
         if action_result is not None:

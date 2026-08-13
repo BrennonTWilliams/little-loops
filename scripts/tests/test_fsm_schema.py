@@ -4577,3 +4577,12 @@ class TestTamperGuard:
         assert "tamper_guard" in schema["definitions"]["stateConfig"]["properties"]
         assert "tamper_guard" in schema["properties"]
         assert "tamper_guard_ok" in schema["properties"]
+
+    def test_schema_json_declares_state_and_loop_level_prepatch_check(self) -> None:
+        """ENH-2997: prepatch_check is present in fsm-loop-schema.json at both
+        the state level and the loop top-level, mirroring tamper_guard."""
+        schema_path = Path(__file__).parent.parent / "little_loops" / "fsm" / "fsm-loop-schema.json"
+        schema = json.loads(schema_path.read_text())
+        assert "prepatch_check" in schema["definitions"]["stateConfig"]["properties"]
+        assert "prepatch_check" in schema["properties"]
+        assert "prepatch_check_ok" in schema["properties"]

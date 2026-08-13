@@ -232,6 +232,13 @@ states:
       All routing outcomes chain to aggregate.
     action_type: shell
     timeout: 600
+    # ENH-2997: pre-patch-check guard, state-level (not loop-level) per the
+    # Design Notes cost-preferred placement — `run_test` is the only state in
+    # this oracle whose action can plausibly go green over a test file the
+    # patch under evaluation adds or modifies, so this is the sole state
+    # worth paying the worktree-fork cost on. Absent-key-means-SKIP and the
+    # `(step_diff hash, base_ref)` memo apply exactly as for tamper_guard.
+    prepatch_check: fail
     action: |
       case "${context.run_dir}" in
         /*) ABS_DIR="${context.run_dir}" ;;

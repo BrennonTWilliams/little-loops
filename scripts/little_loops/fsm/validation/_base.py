@@ -121,6 +121,8 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "pruning_profile_ok",
         "tamper_guard",
         "tamper_guard_ok",
+        "prepatch_check",
+        "prepatch_check_ok",
         "session_mode",
         "session_mode_ok",
         "haiku_generator_ok",

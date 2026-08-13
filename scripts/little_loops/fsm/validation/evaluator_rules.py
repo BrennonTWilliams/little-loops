@@ -421,6 +421,57 @@ def _validate_tamper_guard(fsm: FSMLoop) -> list[ValidationError]:
     return errors
 
 
+_PREPATCH_CHECK_VALUES: frozenset[str] = frozenset({"fail", "warn", "allow"})
+
+
+def _effective_prepatch_check(fsm: FSMLoop, state: StateConfig) -> str | None:
+    """Resolve the effective prepatch_check policy for a state: state override, then loop default."""
+    if state.prepatch_check is not None:
+        return state.prepatch_check
+    return fsm.prepatch_check
+
+
+def _validate_prepatch_check(fsm: FSMLoop) -> list[ValidationError]:
+    """Validate rule (ENH-2997): unrecognized ``prepatch_check`` values.
+
+    Mirrors ``_validate_tamper_guard``: checks the loop-level default (if
+    set) once, plus each state's own override (if set) — not every state's
+    *inherited* value.
+
+    Suppressed by ``prepatch_check_ok: true`` at the loop top-level.
+    """
+    if fsm.prepatch_check_ok:
+        return []
+    errors: list[ValidationError] = []
+    if fsm.prepatch_check is not None and fsm.prepatch_check not in _PREPATCH_CHECK_VALUES:
+        errors.append(
+            ValidationError(
+                message=(
+                    f"loop-level prepatch_check: {fsm.prepatch_check!r} is not one of "
+                    f"{sorted(_PREPATCH_CHECK_VALUES)!r}. Set a valid value, or "
+                    "`prepatch_check_ok: true` at the loop top-level to suppress. (ENH-2997)"
+                ),
+                path="prepatch_check",
+                severity=ValidationSeverity.WARNING,
+            )
+        )
+    for state_name, state in fsm.states.items():
+        if state.prepatch_check is None or state.prepatch_check in _PREPATCH_CHECK_VALUES:
+            continue
+        errors.append(
+            ValidationError(
+                message=(
+                    f"[state: {state_name}] prepatch_check: {state.prepatch_check!r} is not "
+                    f"one of {sorted(_PREPATCH_CHECK_VALUES)!r}. Set a valid value, or "
+                    "`prepatch_check_ok: true` at the loop top-level to suppress. (ENH-2997)"
+                ),
+                path=f"states.{state_name}.prepatch_check",
+                severity=ValidationSeverity.WARNING,
+            )
+        )
+    return errors
+
+
 _EVIDENCE_CONTRACT_KEYWORDS: frozenset[str] = frozenset({"verbatim", "quote", "evidence"})
 
 

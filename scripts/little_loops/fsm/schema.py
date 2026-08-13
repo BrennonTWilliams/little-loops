@@ -696,6 +696,12 @@ class StateConfig:
     # Presence (state or inherited loop default) is what marks this state as
     # guarded; the executor snapshots test files on entry and compares on exit.
     tamper_guard: str | None = None
+    # ENH-2997: pre-patch-check policy ("fail" | "warn" | "allow") for this
+    # state. State override of the loop-level default (FSMLoop.prepatch_check).
+    # Presence (state or inherited loop default) marks this state as guarded;
+    # the executor computes the cumulative patch diff on the green-path exit
+    # and invokes run_prepatch_check() -- no entry snapshot is taken.
+    prepatch_check: str | None = None
     # FEAT-2711 continuity-chain marker: "fresh" (default) or "continue". State
     # override of the loop-level default (FSMLoop.session_mode). "continue"
     # injects the prior chained state's compact-summary into this state's
@@ -800,6 +806,8 @@ class StateConfig:
             result["pruning_profile"] = self.pruning_profile.to_dict()
         if self.tamper_guard is not None:
             result["tamper_guard"] = self.tamper_guard
+        if self.prepatch_check is not None:
+            result["prepatch_check"] = self.prepatch_check
         if self.session_mode is not None:
             result["session_mode"] = self.session_mode
         if self.effort is not None:
@@ -909,6 +917,7 @@ class StateConfig:
             cost_ceiling=cost_ceiling,
             pruning_profile=pruning_profile,
             tamper_guard=data.get("tamper_guard"),
+            prepatch_check=data.get("prepatch_check"),
             session_mode=data.get("session_mode"),
             effort=data.get("effort"),
             fragment_name=data.get("fragment_name"),
@@ -1323,6 +1332,11 @@ class FSMLoop:
     tamper_guard: str | None = None
     # ENH-2934 suppression flag: silences the unrecognized-tamper_guard-value warning.
     tamper_guard_ok: bool = False
+    # ENH-2997: loop-level default pre-patch-check policy; state-level
+    # StateConfig.prepatch_check overrides it. None (default) = no guard.
+    prepatch_check: str | None = None
+    # ENH-2997 suppression flag: silences the unrecognized-prepatch_check-value warning.
+    prepatch_check_ok: bool = False
     # Loop-level default continuity-chain marker (FEAT-2711); state-level
     # StateConfig.session_mode overrides it. None/"fresh" (default) preserves
     # current fresh-session-per-state behavior exactly.
@@ -1446,6 +1460,11 @@ class FSMLoop:
             result["tamper_guard"] = self.tamper_guard
         if self.tamper_guard_ok:
             result["tamper_guard_ok"] = self.tamper_guard_ok
+
+        if self.prepatch_check is not None:
+            result["prepatch_check"] = self.prepatch_check
+        if self.prepatch_check_ok:
+            result["prepatch_check_ok"] = self.prepatch_check_ok
 
         if self.session_mode is not None:
             result["session_mode"] = self.session_mode
@@ -1576,6 +1595,8 @@ class FSMLoop:
             pruning_profile=pruning_profile,
             tamper_guard=data.get("tamper_guard"),
             tamper_guard_ok=data.get("tamper_guard_ok", False),
+            prepatch_check=data.get("prepatch_check"),
+            prepatch_check_ok=data.get("prepatch_check_ok", False),
             session_mode=data.get("session_mode"),
             session_mode_ok=data.get("session_mode_ok", False),
             meta_self_eval_ok=data.get("meta_self_eval_ok", False),

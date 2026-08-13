@@ -84,6 +84,13 @@ class PrePatchEvidence:
     outcomes: list[PrePatchTestOutcome] = field(default_factory=list)
     verdict: str = "clean"  # clean | flagged | skipped
     skipped_reason: str | None = None
+    # Set only when a worktree was actually forked (candidates were found and
+    # the check is enabled). The core does not clean this up on the success
+    # path (see setup_prepatch_worktree's docstring); a host that needs to
+    # tear it down (ENH-2997's executor hook) reads this field rather than
+    # re-deriving the path, since the timestamp component is not otherwise
+    # recoverable after the fact.
+    worktree_path: Path | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -94,6 +101,7 @@ class PrePatchEvidence:
             "outcomes": [o.to_dict() for o in self.outcomes],
             "verdict": self.verdict,
             "skipped_reason": self.skipped_reason,
+            "worktree_path": str(self.worktree_path) if self.worktree_path else None,
         }
 
 
@@ -235,6 +243,19 @@ def _post_patch_test_files(
         if abs_path.is_file():
             files[path] = abs_path.read_text()
     return files
+
+
+def resolve_base_ref(repo_root: Path, base_sha: str | None, base_branch: str) -> tuple[str, str]:
+    """Resolve the pre-patch base ref: dequeue-stamp SHA, else merge-base fallback.
+
+    Public so a host (e.g. the FSM executor's guarded-window hook) can learn
+    the exact ref the core will fork at *before* calling
+    :func:`run_prepatch_check`, and compute a diff against the same ref --
+    host and core agree by construction rather than by parallel maintenance.
+    """
+    if base_sha:
+        return base_sha, "dequeue-stamp"
+    return _merge_base(repo_root, base_branch) or base_branch, "merge-base"
 
 
 def _merge_base(repo_root: Path, base_branch: str) -> str | None:
@@ -397,12 +418,7 @@ def run_prepatch_check(
         config = BRConfig(repo_root)
     ppc = config.prepatch_check
 
-    if base_sha:
-        base_ref = base_sha
-        base_source = "dequeue-stamp"
-    else:
-        base_ref = _merge_base(repo_root, base_branch) or base_branch
-        base_source = "merge-base"
+    base_ref, base_source = resolve_base_ref(repo_root, base_sha, base_branch)
 
     if not ppc.enabled:
         return PrePatchEvidence(
@@ -499,4 +515,5 @@ def run_prepatch_check(
         outcomes=outcomes,
         verdict=verdict,
         skipped_reason=None,
+        worktree_path=worktree_path,
     )

@@ -21,6 +21,7 @@ from little_loops.fsm.validation import (
     _validate_haiku_pinned_generator,
     _validate_llm_evidence_contract,
     _validate_parse_swallow,
+    _validate_prepatch_check,
     _validate_pruning_profile,
     _validate_session_mode_evaluator_inheritance,
     _validate_tamper_guard,
@@ -1336,5 +1337,108 @@ class TestTamperGuardValidation:
         _, violations = load_and_validate(loop_yaml, raise_on_error=False)
         unknown_key_warnings = [
             v for v in violations if "unknown" in v.message.lower() and "tamper_guard" in v.message
+        ]
+        assert unknown_key_warnings == []
+
+
+class TestPrePatchCheckValidation:
+    """ENH-2997: unrecognized prepatch_check values get a WARN.
+
+    Mirrors TestTamperGuardValidation method-for-method.
+    """
+
+    def _fsm(
+        self,
+        work_state: StateConfig,
+        *,
+        loop_prepatch_check: str | None = None,
+        prepatch_check_ok: bool = False,
+    ) -> FSMLoop:
+        return FSMLoop(
+            name="test-loop",
+            initial="work",
+            states={
+                "work": work_state,
+                "done": make_state(terminal=True),
+            },
+            prepatch_check=loop_prepatch_check,
+            prepatch_check_ok=prepatch_check_ok,
+        )
+
+    def test_fires_for_state_with_unrecognized_value(self) -> None:
+        fsm = self._fsm(
+            make_state(action="run.sh", prepatch_check="bogus", on_yes="done", on_no="work")
+        )
+        errors = _validate_prepatch_check(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+        assert errors[0].path == "states.work.prepatch_check"
+        assert "(ENH-2997)" in errors[0].message
+
+    def test_fires_for_unrecognized_loop_level_default(self) -> None:
+        fsm = self._fsm(
+            make_state(action="run.sh", on_yes="done", on_no="work"),
+            loop_prepatch_check="bogus",
+        )
+        errors = _validate_prepatch_check(fsm)
+        assert len(errors) == 1
+        assert errors[0].path == "prepatch_check"
+
+    def test_does_not_fire_for_recognized_values(self) -> None:
+        for value in ("fail", "warn", "allow"):
+            fsm = self._fsm(
+                make_state(action="run.sh", prepatch_check=value, on_yes="done", on_no="work")
+            )
+            errors = _validate_prepatch_check(fsm)
+            assert errors == [], f"{value!r} should not be flagged"
+
+    def test_does_not_fire_when_unset(self) -> None:
+        fsm = self._fsm(make_state(action="run.sh", on_yes="done", on_no="work"))
+        errors = _validate_prepatch_check(fsm)
+        assert errors == []
+
+    def test_suppressed_by_prepatch_check_ok(self) -> None:
+        fsm = self._fsm(
+            make_state(action="run.sh", prepatch_check="bogus", on_yes="done", on_no="work"),
+            prepatch_check_ok=True,
+        )
+        errors = _validate_prepatch_check(fsm)
+        assert errors == []
+
+    def test_wired_into_validate_fsm(self) -> None:
+        fsm = self._fsm(
+            make_state(action="run.sh", prepatch_check="bogus", on_yes="done", on_no="work")
+        )
+        all_errors = validate_fsm(fsm)
+        matches = [
+            e
+            for e in all_errors
+            if e.severity == ValidationSeverity.WARNING and "(ENH-2997)" in e.message
+        ]
+        assert len(matches) == 1
+
+    def test_prepatch_check_recognized_as_top_level_key(self, tmp_path: Path) -> None:
+        """A YAML with top-level prepatch_check/prepatch_check_ok produces no
+        Unknown-top-level-key warning."""
+        loop_yaml = tmp_path / "loop.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "description: Pre-patch-check smoke test\n"
+            "initial: work\n"
+            "prepatch_check: fail\n"
+            "prepatch_check_ok: true\n"
+            "states:\n"
+            "  work:\n"
+            "    action: run.sh\n"
+            "    on_yes: done\n"
+            "    on_no: work\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        _, violations = load_and_validate(loop_yaml, raise_on_error=False)
+        unknown_key_warnings = [
+            v
+            for v in violations
+            if "unknown" in v.message.lower() and "prepatch_check" in v.message
         ]
         assert unknown_key_warnings == []

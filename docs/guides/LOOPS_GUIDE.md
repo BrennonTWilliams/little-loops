@@ -704,6 +704,34 @@ key here. Since ENH-2958, the non-FSM path's guard also brackets a live post-imp
 completion decision) in addition to its git-reconstructed implement-window check — the same
 snapshot-on-entry/compare-on-exit shape this FSM key uses, minus the dedicated state.
 
+### Pre-Patch Check
+
+A verification state can go green over a test that would have passed *before* the patch under review — a newly added test that never actually exercised the change it claims to demonstrate, or a modified test whose new assertion happens to hold either way. `prepatch_check:` (ENH-2997) opts a state into catching exactly that: on a green exit it computes the cumulative patch diff (`git diff <base_ref>`, unioned with untracked new files) and re-runs the candidate tests against a worktree forked at the pre-patch base — deterministically (no LLM calls; this adapter delegates entirely to the ENH-3142 guard core). It shares the guarded-window mechanism `tamper_guard:` (above) established, but with no entry snapshot — this check's entire input is computed at exit:
+
+```yaml
+name: verify-then-ship
+prepatch_check: fail       # loop-level default for all states
+states:
+  verify:
+    action: python -m pytest scripts/tests/
+    on_yes: done
+    on_no: implement
+  done:
+    terminal: true
+```
+
+| Value | Behavior |
+|-------|----------|
+| `fail` | A `verdict: "flagged"` bundle (at least one candidate test carries a `hard` flag — it passed pre-patch too) routes to the failure target, the same way a `tamper_guard: fail` finding does. `soft`-flag-only and `skipped` verdicts never route. |
+| `warn` | No routing. A flagged verdict is logged (`prepatch_check_flagged` event); findings are still recorded in run evidence. |
+| `allow` | No routing, no extra logging — findings are still recorded in run evidence. |
+
+Unlike `tamper_guard:`, this check only runs on the **green path** — a guarded state whose action failed records a skip and forks no worktree, since a failing suite already routes to remediation regardless of what the check would find. It is invoked *before* `tamper_guard:` at the same exit when both keys are set on the same state, so it reads the diff before a `revert` tamper policy can rewrite the working tree out from under it; when both want to route on the same exit, `tamper_guard:` wins (a tampered test file makes the pre-patch verdict untrustworthy). Two guarded exits within one run whose `(step_diff hash, base_ref)` pair is identical reuse the prior verdict instead of re-forking a worktree.
+
+The check is inert until turned on: `prepatch_check.enabled` in `.ll/ll-config.json` defaults to `false`, so setting the key alone still produces a `skipped` verdict until the project config opts in. The full `PrePatchEvidence` bundle is written to `${context.run_dir}/prepatch_evidence_<issue_id>.json` (when `run_dir` is set) and persisted to `.ll/history.db`'s `prepatch_evidence` table (readable via `history_reader.read_prepatch_evidence(issue_id)`) — the latter is the only surface a `run_dir`-less consumer can discover a verdict by issue ID from.
+
+`ll-loop validate` warns on an unrecognized `prepatch_check` value (anything outside `fail`/`warn`/`allow`) at either the loop or state level — suppress with `prepatch_check_ok: true` at the loop top-level.
+
 ### Handoff Behavior
 
 When a loop detects that Claude's context window is approaching its limit, it triggers a **handoff**. Set `on_handoff` at the loop level (not per state):

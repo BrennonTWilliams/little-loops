@@ -749,6 +749,33 @@ class TestIsLLWorktree:
 
         assert _is_ll_worktree("other-directory") is False
 
+    def test_prepatch_prefix_matches(self) -> None:
+        """ENH-2997: _is_ll_worktree() accepts a real setup_prepatch_worktree()
+        name (the exact `%Y%m%d-%H%M%S-%f` timestamp format)."""
+        from little_loops.worktree_utils import _is_ll_worktree
+
+        assert _is_ll_worktree("prepatch-20260812-101010-123456") is True
+
+    def test_prepatch_prefix_without_microseconds_does_not_match(self) -> None:
+        from little_loops.worktree_utils import _is_ll_worktree
+
+        assert _is_ll_worktree("prepatch-20260812-101010") is False
+
+
+class TestIsLLBranchPrepatch:
+    """ENH-2997: _is_ll_branch() accepts prepatch-<timestamp> but rejects a
+    hand-made prepatch-* name (the reaper-predicate negative test)."""
+
+    def test_real_prepatch_branch_name_accepted(self) -> None:
+        from little_loops.worktree_utils import _is_ll_branch
+
+        assert _is_ll_branch("prepatch-20260812-101010-123456") is True
+
+    def test_hand_made_prepatch_branch_rejected(self) -> None:
+        from little_loops.worktree_utils import _is_ll_branch
+
+        assert _is_ll_branch("prepatch-experiment") is False
+
 
 class TestCmdRunWorktree:
     """Integration tests for the cmd_run(worktree=True) code path (ENH-1254)."""

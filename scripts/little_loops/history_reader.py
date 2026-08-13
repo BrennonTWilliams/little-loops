@@ -1918,6 +1918,49 @@ def read_base_dirty(
     return bool(row["base_dirty"])
 
 
+def read_prepatch_evidence(
+    issue_id: str,
+    *,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> dict | None:
+    """Read the most recently persisted pre-patch-check bundle for *issue_id* (ENH-2997).
+
+    ``prepatch_evidence`` rows are never upserted -- a run can guard multiple
+    states, so this takes the most recent row by insertion order. This is the
+    only surface ENH-2998's run_dir-less ``cli/harness.py`` consumer can
+    discover a verdict by issue ID from.
+
+    Returns:
+        ``PrePatchEvidence.to_dict()`` (parsed from the stored JSON), or
+        ``None`` when the database is missing or unreadable, no matching row
+        exists, or the stored JSON fails to parse. Never raises.
+    """
+    if not issue_id:
+        return None
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return None
+    try:
+        row = conn.execute(
+            "SELECT evidence_json FROM prepatch_evidence "
+            "WHERE issue_id = ? ORDER BY id DESC LIMIT 1",
+            (issue_id,),
+        ).fetchone()
+    except sqlite3.Error:
+        logger.warning("history_reader: read_prepatch_evidence query failed", exc_info=True)
+        return None
+    finally:
+        conn.close()
+    if row is None:
+        return None
+    try:
+        return json.loads(row["evidence_json"])
+    except (TypeError, ValueError):
+        logger.warning("history_reader: read_prepatch_evidence JSON decode failed", exc_info=True)
+        return None
+
+
 _LOOP_RUN_COLUMNS = (
     "run_id, loop_name, started_at, ended_at, final_state, iterations, "
     "terminated_by, error, evaluator_score, diagnostics_path, head_sha, branch"

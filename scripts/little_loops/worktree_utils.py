@@ -417,21 +417,32 @@ def _is_ll_worktree(name: str) -> bool:
     """Return True if the directory name matches an ll-managed worktree naming pattern.
 
     Matches both ll-parallel worker dirs (``worker-<issue>-<timestamp>``) and
-    ll-loop worktree dirs (``<YYYYMMDD>-<HHMMSS>-<safe-name>``).
+    ll-loop worktree dirs (``<YYYYMMDD>-<HHMMSS>-<safe-name>``), plus ENH-2997's
+    pre-patch-check worktrees (``prepatch-<YYYYMMDD>-<HHMMSS>-<microseconds>``).
     """
-    return name.startswith("worker-") or re.match(r"^\d{8}-\d{6}-", name) is not None
+    return (
+        name.startswith("worker-")
+        or re.match(r"^\d{8}-\d{6}-", name) is not None
+        or re.match(r"^prepatch-\d{8}-\d{6}-\d{6}$", name) is not None
+    )
 
 
 def _is_ll_branch(branch_name: str) -> bool:
     """Return True if branch_name is an ll-managed branch safe to auto-delete.
 
-    Accepts ``parallel/*`` (ll-parallel) and ``YYYYMMDD-HHMMSS-<safe-name>`` (ll-loop).
+    Accepts ``parallel/*`` (ll-parallel), ``YYYYMMDD-HHMMSS-<safe-name>`` (ll-loop),
+    and ``prepatch-<YYYYMMDD>-<HHMMSS>-<microseconds>`` (ENH-2997's pre-patch-check
+    worktrees). The anchored microsecond suffix on the last pattern keeps a
+    hand-created branch like ``prepatch-experiment`` unreapable — only the exact
+    ``setup_prepatch_worktree()`` naming shape is auto-deletable.
     Rejects ``main``, ``master``, ``HEAD``, detached state, and any other name.
     """
     if not branch_name or branch_name in ("HEAD", "main", "master"):
         return False
     return (
-        branch_name.startswith("parallel/") or re.match(r"^\d{8}-\d{6}-", branch_name) is not None
+        branch_name.startswith("parallel/")
+        or re.match(r"^\d{8}-\d{6}-", branch_name) is not None
+        or re.match(r"^prepatch-\d{8}-\d{6}-\d{6}$", branch_name) is not None
     )
 
 

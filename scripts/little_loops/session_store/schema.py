@@ -18,7 +18,7 @@ from little_loops.session_store.db import DEFAULT_DB_PATH, _resolve_db_path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 39
+SCHEMA_VERSION = 40
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -958,6 +958,27 @@ _MIGRATIONS: list[str] = [
     ALTER TABLE harness_events ADD COLUMN target_content_hash TEXT;
     ALTER TABLE harness_events ADD COLUMN target_path TEXT;
     ALTER TABLE harness_events ADD COLUMN dirty INTEGER;
+    """,
+    # (ENH-2997): persistence surface for the pre-patch-check bundle the FSM
+    # executor's guarded-window hook produces. This is the only surface
+    # ENH-2998's run_dir-less `cli/harness.py` consumer can discover a
+    # verdict by issue ID from -- the run-dir JSON file (MR-3) is the
+    # sibling surface a delegating parent loop reads directly. One row per
+    # guarded-state exit (never upserted: a run can guard multiple states,
+    # and each exit's bundle is independently evidence); readers take the
+    # most recent row for an issue_id. evidence_json is PrePatchEvidence.to_dict()
+    # verbatim, so the reader needs no separate serializer.
+    """
+    CREATE TABLE IF NOT EXISTS prepatch_evidence (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        issue_id TEXT NOT NULL,
+        run_id TEXT,
+        state TEXT,
+        evidence_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_prepatch_evidence_issue_id
+        ON prepatch_evidence(issue_id, id DESC);
     """,
 ]
 

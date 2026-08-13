@@ -375,6 +375,16 @@
       "default": false,
       "description": "ENH-2934: suppresses the unrecognized-tamper_guard-value (WARN) validation rule."
     },
+    "prepatch_check": {
+      "type": "string",
+      "enum": ["fail", "warn", "allow"],
+      "description": "ENH-2997: loop-level default pre-patch-check policy for verification states; state-level prepatch_check overrides it. Unset (default) = no guard. 'fail' routes to the failure target on a flagged (hard-flag) verdict; 'warn' logs flagged outcomes but proceeds; 'allow' proceeds silently. Findings are always recorded in run evidence."
+    },
+    "prepatch_check_ok": {
+      "type": "boolean",
+      "default": false,
+      "description": "ENH-2997: suppresses the unrecognized-prepatch_check-value (WARN) validation rule."
+    },
     "terminal_action_ok": {
       "type": "boolean",
       "default": false,
@@ -592,6 +602,11 @@
           "type": "string",
           "enum": ["revert", "fail", "allow"],
           "description": "ENH-2934: state-level tamper-guard policy override. Takes precedence over the loop-level default when set. Presence (state or inherited loop default) marks this state as guarded: test files are snapshotted on entry and compared on exit."
+        },
+        "prepatch_check": {
+          "type": "string",
+          "enum": ["fail", "warn", "allow"],
+          "description": "ENH-2997: state-level pre-patch-check policy override. Takes precedence over the loop-level default when set. Presence (state or inherited loop default) marks this state as guarded: on a green-path exit the executor computes the cumulative patch diff and invokes the pre-patch check -- no entry snapshot is taken."
         },
         "model": {
           "type": "string",

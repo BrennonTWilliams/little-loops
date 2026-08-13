@@ -11575,3 +11575,406 @@ class TestTamperGuardExecutorHook:
         result = executor.run()
 
         assert result.final_state == "done"
+
+
+class TestPrePatchCheckExecutorHook:
+    """ENH-2997: state-level prepatch_check executor hook -- green-path-only
+    compute-on-exit around a guarded state's action (no entry snapshot,
+    unlike tamper_guard). Patches `little_loops.prepatch_check.run_prepatch_check`
+    directly rather than forking a real worktree + running real pytest --
+    this class exercises the executor's own wiring (resolver, diff producer,
+    routing, memoization, evidence persistence), not the core's pytest
+    execution, already covered by test_prepatch_check.py.
+    """
+
+    class _ActionRunner:
+        def __init__(self, exit_code: int = 0) -> None:
+            self.exit_code = exit_code
+            self.calls: list[str] = []
+
+        def run(self, action: str, *args: Any, **kwargs: Any) -> ActionResult:
+            self.calls.append(action)
+            return ActionResult(
+                output="",
+                stderr="",
+                exit_code=self.exit_code,
+                duration_ms=10,
+                usage_events=[],
+                result_seen=False,
+            )
+
+    def _repo(self, tmp_path: Path) -> Path:
+        # Git-init a *subdirectory* of tmp_path (unlike TestTamperGuardExecutorHook,
+        # which uses tmp_path itself) so the isolated LL_HISTORY_DB file this
+        # class writes under tmp_path never lands inside the repo's own
+        # working tree -- otherwise it would show up as an untracked file in
+        # `_prepatch_step_diff`'s output and make consecutive calls
+        # non-deterministic (the db file's content changes between calls).
+        import subprocess
+
+        from tests.helpers import copy_git_template
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        copy_git_template(repo)
+        (repo / "README.md").write_text("hello\n")
+        subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "init"], cwd=repo, check=True, capture_output=True
+        )
+        return repo
+
+    def _fsm(self, policy: str | None, *, issue_id: str | None = "ENH-9999") -> FSMLoop:
+        return FSMLoop(
+            name="prepatch-check-test",
+            initial="verify",
+            context={"issue_id": issue_id} if issue_id else {},
+            states={
+                "verify": StateConfig(
+                    action="run tests",
+                    prepatch_check=policy,
+                    on_yes="done",
+                    on_no="blocked",
+                ),
+                "done": StateConfig(terminal=True),
+                "blocked": StateConfig(terminal=True, failure=True),
+            },
+        )
+
+    def _fake_evidence(self, verdict: str = "flagged") -> Any:
+        from little_loops.prepatch_check import PrePatchEvidence, PrePatchTestOutcome
+
+        outcomes = (
+            [
+                PrePatchTestOutcome(
+                    nodeid="tests/test_new.py::test_new",
+                    file="tests/test_new.py",
+                    added=True,
+                    category="pass",
+                    error_kind=None,
+                    flag="hard",
+                    flag_reason="newly added test passed pre-patch",
+                )
+            ]
+            if verdict == "flagged"
+            else []
+        )
+        return PrePatchEvidence(
+            base_ref="deadbeef",
+            base_source="merge-base",
+            base_dirty=None,
+            outcomes=outcomes,
+            verdict=verdict,
+            skipped_reason="no candidate tests identified" if verdict == "skipped" else None,
+            worktree_path=None,
+        )
+
+    def _patch_run_prepatch_check(self, monkeypatch: Any, evidence: Any) -> list[dict]:
+        import little_loops.prepatch_check as pc
+
+        calls: list[dict] = []
+
+        def _fake(**kwargs: Any) -> Any:
+            calls.append(kwargs)
+            return evidence
+
+        monkeypatch.setattr(pc, "run_prepatch_check", _fake)
+        return calls
+
+    def _enable_config(self, repo: Path) -> None:
+        import json
+
+        (repo / ".ll").mkdir(exist_ok=True)
+        (repo / ".ll" / "ll-config.json").write_text(
+            json.dumps({"prepatch_check": {"enabled": True}})
+        )
+
+    def test_no_guard_when_key_absent(self, tmp_path: Path, monkeypatch: Any) -> None:
+        """A state with no prepatch_check key gets no guard at all -- the
+        core is never invoked."""
+        repo = self._repo(tmp_path)
+        self._enable_config(repo)
+        calls = self._patch_run_prepatch_check(monkeypatch, self._fake_evidence())
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+
+        runner = self._ActionRunner(exit_code=0)
+        executor = FSMExecutor(self._fsm(None), action_runner=runner, working_dir=repo)
+        result = executor.run()
+
+        assert result.final_state == "done"
+        assert calls == []
+        assert "_prepatch_check" not in executor.fsm.context
+
+    def test_fail_policy_routes_to_on_no_on_flagged_verdict(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        repo = self._repo(tmp_path)
+        self._enable_config(repo)
+        self._patch_run_prepatch_check(monkeypatch, self._fake_evidence("flagged"))
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+
+        runner = self._ActionRunner(exit_code=0)
+        executor = FSMExecutor(self._fsm("fail"), action_runner=runner, working_dir=repo)
+        result = executor.run()
+
+        assert result.final_state == "blocked"
+        assert result.failure_terminal is True
+        record = executor.fsm.context["_prepatch_check"][0]
+        assert record["verdict"] == "flagged"
+        assert record["policy"] == "fail"
+
+    def test_soft_flag_only_bundle_does_not_route_under_fail(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """verdict == "clean" (no hard-flagged outcome) never routes, even
+        under policy: fail."""
+        repo = self._repo(tmp_path)
+        self._enable_config(repo)
+        self._patch_run_prepatch_check(monkeypatch, self._fake_evidence("clean"))
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+
+        runner = self._ActionRunner(exit_code=0)
+        executor = FSMExecutor(self._fsm("fail"), action_runner=runner, working_dir=repo)
+        result = executor.run()
+
+        assert result.final_state == "done"
+
+    def test_skipped_verdict_does_not_route_under_fail(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        repo = self._repo(tmp_path)
+        self._enable_config(repo)
+        self._patch_run_prepatch_check(monkeypatch, self._fake_evidence("skipped"))
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+
+        runner = self._ActionRunner(exit_code=0)
+        executor = FSMExecutor(self._fsm("fail"), action_runner=runner, working_dir=repo)
+        result = executor.run()
+
+        assert result.final_state == "done"
+
+    def test_allow_policy_does_not_route_despite_flagged(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        repo = self._repo(tmp_path)
+        self._enable_config(repo)
+        self._patch_run_prepatch_check(monkeypatch, self._fake_evidence("flagged"))
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+
+        runner = self._ActionRunner(exit_code=0)
+        executor = FSMExecutor(self._fsm("allow"), action_runner=runner, working_dir=repo)
+        result = executor.run()
+
+        assert result.final_state == "done"
+
+    def test_red_action_forks_no_worktree(self, tmp_path: Path, monkeypatch: Any) -> None:
+        """A guarded state whose action failed records a skip and never
+        invokes the core at all (green-path gating)."""
+        repo = self._repo(tmp_path)
+        self._enable_config(repo)
+        calls = self._patch_run_prepatch_check(monkeypatch, self._fake_evidence("flagged"))
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+
+        runner = self._ActionRunner(exit_code=1)
+        fsm = self._fsm("fail")
+        fsm.states["verify"].on_error = "blocked"
+        executor = FSMExecutor(fsm, action_runner=runner, working_dir=repo)
+        result = executor.run()
+
+        assert calls == []
+        record = executor.fsm.context["_prepatch_check"][0]
+        assert record["verdict"] == "skipped"
+        assert result.final_state == "blocked"
+
+    def test_memoization_reuses_prior_verdict_across_identical_diff(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """Two guarded exits within one run whose (step_diff hash, base_ref)
+        pair is identical reuse the prior verdict rather than re-invoking
+        the core."""
+        repo = self._repo(tmp_path)
+        self._enable_config(repo)
+        calls = self._patch_run_prepatch_check(monkeypatch, self._fake_evidence("clean"))
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+
+        runner = self._ActionRunner(exit_code=0)
+        fsm = FSMLoop(
+            name="prepatch-memo-test",
+            initial="step1",
+            context={"issue_id": "ENH-9999"},
+            states={
+                "step1": StateConfig(action="run tests", prepatch_check="allow", next="step2"),
+                "step2": StateConfig(
+                    action="run tests", prepatch_check="allow", on_yes="done", on_no="done"
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(fsm, action_runner=runner, working_dir=repo)
+        result = executor.run()
+
+        assert result.final_state == "done"
+        assert len(calls) == 1
+        evidence = executor.fsm.context["_prepatch_check"]
+        assert len(evidence) == 2
+        assert evidence[0]["memoized"] is False
+        assert evidence[1]["memoized"] is True
+
+    def test_writes_run_dir_bundle_and_history_db_row(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        from little_loops.history_reader import read_prepatch_evidence
+
+        repo = self._repo(tmp_path)
+        self._enable_config(repo)
+        self._patch_run_prepatch_check(monkeypatch, self._fake_evidence("flagged"))
+        db_path = tmp_path / "history.db"
+        monkeypatch.setenv("LL_HISTORY_DB", str(db_path))
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+
+        runner = self._ActionRunner(exit_code=0)
+        fsm = self._fsm("allow")
+        fsm.context["run_dir"] = str(run_dir)
+        executor = FSMExecutor(fsm, action_runner=runner, working_dir=repo)
+        result = executor.run()
+
+        assert result.final_state == "done"
+        bundle_path = run_dir / "prepatch_evidence_ENH-9999.json"
+        assert bundle_path.is_file()
+        bundle = json.loads(bundle_path.read_text())
+        assert bundle["verdict"] == "flagged"
+
+        db_evidence = read_prepatch_evidence("ENH-9999", db=db_path)
+        assert db_evidence is not None
+        assert db_evidence["verdict"] == "flagged"
+
+    def test_absent_issue_id_still_runs_via_merge_base(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """When issue_id is absent from the FSM context, the check still
+        runs (base_sha=None triggers the core's merge-base fallback) rather
+        than skipping."""
+        repo = self._repo(tmp_path)
+        self._enable_config(repo)
+        calls = self._patch_run_prepatch_check(monkeypatch, self._fake_evidence("clean"))
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+
+        runner = self._ActionRunner(exit_code=0)
+        executor = FSMExecutor(
+            self._fsm("allow", issue_id=None), action_runner=runner, working_dir=repo
+        )
+        result = executor.run()
+
+        assert result.final_state == "done"
+        assert len(calls) == 1
+        assert calls[0]["base_sha"] is None
+        record = executor.fsm.context["_prepatch_check"][0]
+        assert record["base_source"] == "merge-base"
+
+    def test_base_branch_falls_back_to_main_when_unset(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        repo = self._repo(tmp_path)
+        self._enable_config(repo)
+        calls = self._patch_run_prepatch_check(monkeypatch, self._fake_evidence("clean"))
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+
+        runner = self._ActionRunner(exit_code=0)
+        executor = FSMExecutor(self._fsm("allow"), action_runner=runner, working_dir=repo)
+        executor.run()
+
+        assert calls[0]["base_branch"] == "main"
+
+    def test_untracked_added_test_produces_nonempty_diff_and_candidate(
+        self, tmp_path: Path
+    ) -> None:
+        """Anti-inert-gate, host side: `_prepatch_step_diff` on a repo whose
+        working tree gained an *untracked* new test file must produce a
+        non-empty diff from which `collect_candidates()` finds at least one
+        candidate -- otherwise every invocation would silently short-circuit
+        to `verdict="skipped"` (the inert-gate failure mode). Exercises this
+        issue's own diff producer + the core's `collect_candidates`, not the
+        core's pytest-execution/junit-matching internals (test_prepatch_check.py's
+        territory)."""
+        from little_loops.config.core import BRConfig
+        from little_loops.prepatch_check import collect_candidates
+
+        repo = self._repo(tmp_path)
+        tests_dir = repo / "tests"
+        tests_dir.mkdir()
+        (tests_dir / "test_new.py").write_text("def test_new():\n    assert True\n")
+
+        executor = FSMExecutor.__new__(FSMExecutor)
+        diff = executor._prepatch_step_diff(repo, "HEAD")
+
+        assert diff.strip() != ""
+        assert "+++ b/tests/test_new.py" in diff
+        candidates = collect_candidates(diff, repo, "HEAD", config=BRConfig(repo))
+        assert any(c.file == "tests/test_new.py" and c.added for c in candidates)
+
+    def test_step_diff_producer_does_not_mutate_live_repo_index(self, tmp_path: Path) -> None:
+        """`--no-index` (used for untracked-file fragments) must never touch
+        the live repository's index -- a regression to `git add -N` would."""
+        import subprocess
+
+        repo = self._repo(tmp_path)
+        (repo / "untracked.txt").write_text("new\n")
+
+        index_before = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True, check=True
+        ).stdout
+
+        executor = FSMExecutor.__new__(FSMExecutor)
+        executor._prepatch_step_diff(repo, "HEAD")
+
+        index_after = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True, check=True
+        ).stdout
+        assert index_before == index_after
+        assert index_before.strip() == "?? untracked.txt"
+
+    def test_worktree_and_branch_torn_down_after_guarded_exit(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """The pre-patch worktree and its branch do not survive a guarded-state
+        exit: cleanup_worktree(delete_branch=True) runs whenever the (mocked)
+        core reports a worktree_path."""
+        import subprocess
+
+        repo = self._repo(tmp_path)
+        self._enable_config(repo)
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "history.db"))
+        worktree_base = repo / ".worktrees"
+        fake_worktree = worktree_base / "prepatch-20260101-000000-000000"
+
+        import little_loops.worktree_utils as wtu
+
+        subprocess.run(
+            ["git", "worktree", "add", "-b", "prepatch-20260101-000000-000000", str(fake_worktree)],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+        )
+        assert wtu._is_ll_worktree(fake_worktree.name)
+        assert wtu._is_ll_branch("prepatch-20260101-000000-000000")
+        assert not wtu._is_ll_branch("prepatch-experiment")
+
+        evidence = self._fake_evidence("clean")
+        evidence.worktree_path = fake_worktree
+        self._patch_run_prepatch_check(monkeypatch, evidence)
+
+        runner = self._ActionRunner(exit_code=0)
+        executor = FSMExecutor(self._fsm("allow"), action_runner=runner, working_dir=repo)
+        result = executor.run()
+
+        assert result.final_state == "done"
+        assert not fake_worktree.exists()
+        branches = subprocess.run(
+            ["git", "branch", "--list", "prepatch-20260101-000000-000000"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        assert branches.strip() == ""

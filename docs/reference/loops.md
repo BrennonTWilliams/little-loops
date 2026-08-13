@@ -857,7 +857,7 @@ resolve_commands ──(writes commands.json + subloop_outcome_<ID>)──> run_
 ### MR-1 / MR-3 compliance
 
 - **MR-1 (trivial)**: only `exit_code` / `output_numeric` / `classify` evaluators — never `llm_structured` / `comparator` / `contract`. The oracle is not classified as a meta-loop (actions only write under `${context.run_dir}/`, never to harness artifacts), so MR-1 does not fire.
-- **MR-3 (per-run isolation)**: every artifact (`commands.json`, `build.txt`, `test-results.txt`, `pytest.json`, `typecheck.txt`, `lint.txt`, `health.txt`, `service.pid`, `subloop_outcome_<ID>.txt`) lives under `${context.run_dir}/`. No bare `.loops/tmp/` writes.
+- **MR-3 (per-run isolation)**: every artifact (`commands.json`, `build.txt`, `test-results.txt`, `pytest.json`, `typecheck.txt`, `lint.txt`, `health.txt`, `service.pid`, `subloop_outcome_<ID>.txt`, `prepatch_evidence_<issue_id>.json` when `prepatch_check:` is set — ENH-2997) lives under `${context.run_dir}/`. No bare `.loops/tmp/` writes.
 
 ### Invocation (direct, for testing)
 
