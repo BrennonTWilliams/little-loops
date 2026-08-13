@@ -404,6 +404,7 @@ class SimulationActionRunner:
         automation_profile: str | None = None,
         disable_background_tasks: bool = False,
         idle_timeout: int = 0,
+        timeout_kill_grace_seconds: float = 0.0,
     ) -> ActionResult:
         """Prompt user for simulated result instead of executing.
 
@@ -420,6 +421,7 @@ class SimulationActionRunner:
             working_dir: Ignored in simulation
             automation_profile: Ignored in simulation
             disable_background_tasks: Ignored in simulation
+            timeout_kill_grace_seconds: Ignored in simulation
 
         Returns:
             ActionResult with simulated exit code
@@ -436,6 +438,7 @@ class SimulationActionRunner:
             idle_timeout,
             automation_profile,
             disable_background_tasks,
+            timeout_kill_grace_seconds,
         )
         self.calls.append(action)
         self.call_count += 1
