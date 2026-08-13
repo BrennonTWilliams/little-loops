@@ -13,6 +13,7 @@ from __future__ import annotations
 import importlib
 import re
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol, cast, runtime_checkable
 
@@ -347,6 +348,62 @@ def _sync_skill_companions(
                 print(f"  {verb}  {label}: prune stale companion {rel}")
 
     return changed
+
+
+def _emit_mirrored_skill(
+    skill_meta: dict,
+    host_dir: str,
+    prepare: Callable[[str, str], tuple[str, bool]],
+) -> str:
+    """Emit one adapted SKILL.md plus its companions into a host mirror (BUG-3164).
+
+    Shared core for the SKILL.md-mirroring emitters (qwen, kimi-code, gemini,
+    omp): derives ``plugin_root / host_dir / "skills" / <name> / "SKILL.md"``
+    from ``skill_meta["skill_path"]``, prepares content via the injected
+    *prepare* callable (the host's frontmatter policy, returning
+    ``(new_content, changed)``), and mirrors the source skill's companion
+    files alongside it (BUG-3163) — adapted SKILL.md bodies reference
+    companions by relative path, so a SKILL.md-only mirror dangles every
+    read. Companions sync even when SKILL.md is unchanged so drift is
+    repaired on re-runs.
+
+    Returns:
+        ``"skipped"`` only when SKILL.md *and* companions are all in sync;
+        otherwise ``"adapted"`` (written under apply, reported under dry-run).
+    """
+    skill_name: str = skill_meta["skill_name"]
+    skill_path: Path = skill_meta["skill_path"]
+    content: str = skill_meta["content"]
+    apply: bool = skill_meta["apply"]
+    quiet: bool = skill_meta["quiet"]
+
+    # Derive output path: skill_path is skills/<name>/SKILL.md; parent×3 = plugin root
+    plugin_root = skill_path.parent.parent.parent
+    out_path = plugin_root / host_dir / "skills" / skill_name / "SKILL.md"
+
+    new_content, _ = prepare(content, skill_name)
+
+    skill_md_changed = not out_path.exists() or out_path.read_text() != new_content
+    # Sync companions even when SKILL.md is unchanged so drift is repaired.
+    companions_changed = _sync_skill_companions(
+        skill_path.parent, out_path.parent, apply=apply, quiet=quiet, label=skill_name
+    )
+
+    if not skill_md_changed and not companions_changed:
+        if not quiet:
+            print(f"  SKIP   {skill_name}: already adapted")
+        return "skipped"
+
+    if apply:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(new_content)
+        if not quiet:
+            print(f"  APPLY  {skill_name}")
+    else:
+        if not quiet:
+            print(f"  DRY    {skill_name}")
+
+    return "adapted"
 
 
 # ---------------------------------------------------------------------------

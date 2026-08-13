@@ -38,6 +38,18 @@ Generate a ready-to-run FSM verification loop YAML from a single issue ID via
   genuine probe classes is itself a FAIL**, even if every attempted probe passed.
   Expensive: a fixed floor of three open-ended probe states before a verdict.
 
+Both modes emit only `llm_structured` verify/probe states — this skill has no
+generator flag for the deterministic pre-patch check (ENH-3142/ENH-2997/ENH-2998).
+That check is a separate, opt-in guard: a `prepatch_check: fail | warn | allow`
+field on a guarded FSM state (or `FSMLoop.prepatch_check` as its loop-level
+default), gated by `config.prepatch_check.enabled` (default `false`), that reruns
+candidate tests against a pre-patch worktree and produces its own
+`flagged` / `clean` / `skipped` verdict — independent of, and not a substitute
+for, an emitted loop's `llm_structured` acceptance-criteria verdict. The same
+check also runs on the non-FSM `ll-auto`/`ll-parallel` path via
+`work_verification.verify_work_was_done()`. Hand-add `prepatch_check:` to a
+generated loop's guarded states if you want both signals.
+
 This is the verification counterpart to `/ll:create-eval-from-issues`. Where
 `create-eval-from-issues` exercises a feature *as a user would* and judges experience
 quality, `verify-issue-loop` checks that the *implementation* meets each acceptance

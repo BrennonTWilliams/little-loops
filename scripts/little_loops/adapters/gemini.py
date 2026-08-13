@@ -11,6 +11,7 @@ from pathlib import Path
 from little_loops.adapters.capabilities import HOST_CAPABILITIES
 from little_loops.adapters.core import (
     _emit_degraded_agent,
+    _emit_mirrored_skill,
     _extract_body,
     _select_frontmatter_fields,
 )
@@ -78,34 +79,14 @@ class GeminiEmitter:
     name = "gemini"
 
     def emit_skill(self, skill_meta: dict) -> str:
-        """Write adapted SKILL.md to ``.gemini/skills/<name>/SKILL.md``."""
-        skill_name: str = skill_meta["skill_name"]
-        skill_path: Path = skill_meta["skill_path"]
-        content: str = skill_meta["content"]
-        apply: bool = skill_meta["apply"]
-        quiet: bool = skill_meta["quiet"]
+        """Write adapted SKILL.md to ``.gemini/skills/<name>/SKILL.md``.
 
-        # Derive output path: skill_path is skills/<name>/SKILL.md; parent×3 = plugin root
-        plugin_root = skill_path.parent.parent.parent
-        out_path = plugin_root / ".gemini" / "skills" / skill_name / "SKILL.md"
-
-        new_content, _ = _prepare_skill_content(content, skill_name)
-
-        if out_path.exists() and out_path.read_text() == new_content:
-            if not quiet:
-                print(f"  SKIP   {skill_name}: already adapted")
-            return "skipped"
-
-        if apply:
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            out_path.write_text(new_content)
-            if not quiet:
-                print(f"  APPLY  {skill_name}")
-        else:
-            if not quiet:
-                print(f"  DRY    {skill_name}")
-
-        return "adapted"
+        Companion files beside the source SKILL.md are mirrored alongside it
+        (BUG-3164): adapted SKILL.md bodies reference companions by relative
+        path, so a SKILL.md-only mirror dangles every read. Delegates to the
+        shared mirrored-skill core with gemini's content-prep policy.
+        """
+        return _emit_mirrored_skill(skill_meta, ".gemini", _prepare_skill_content)
 
     def emit_command(self, cmd_meta: dict) -> str:
         """Write ``.gemini/commands/<stem>.toml``."""

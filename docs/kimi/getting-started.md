@@ -65,7 +65,7 @@ ll-adapt --host kimi-code --apply
 
 This writes:
 
-- **Skills** → `.kimi-code/skills/<name>/SKILL.md` — a native kimi scan dir. The format is near-1:1 (extra frontmatter keys like `allowed-tools` are tolerated); `name:` is injected when absent. Invoke as `/skill:<name>` or the `/<name>` shorthand.
+- **Skills** → `.kimi-code/skills/<name>/SKILL.md` — a native kimi scan dir. The format is near-1:1 (extra frontmatter keys like `allowed-tools` are tolerated); `name:` is injected when absent. Invoke as `/skill:<name>` or the `/<name>` shorthand. Companion files beside SKILL.md (`templates.md`, `reference.md`, ...) are mirrored alongside so relative companion references resolve (BUG-3164).
 - **Commands** → `.kimi-code/skills/ll-<stem>/SKILL.md` — kimi has no project-local *commands* surface outside plugin manifests, so commands are bridged as skills and invoked as `/ll-<stem>`.
 - **Agents** → `.kimi-code/agents/<name>.md` — kimi natively loads Claude-style agent files (comma-separated `tools`, filename fallback for `name`) and spawns real subagents, so files are written verbatim with no degraded-mode fallback.
 

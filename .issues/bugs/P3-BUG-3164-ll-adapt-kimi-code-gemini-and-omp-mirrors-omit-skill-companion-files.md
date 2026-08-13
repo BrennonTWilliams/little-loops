@@ -3,11 +3,19 @@ id: BUG-3164
 type: BUG
 title: ll-adapt kimi-code, gemini, and omp mirrors omit skill companion files
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-13'
 captured_at: '2026-08-13T22:23:42Z'
+completed_at: '2026-08-13T23:54:38Z'
 parent: EPIC-2257
+testable: true
+confidence_score: 90
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3164: ll-adapt kimi-code, gemini, and omp mirrors omit skill companion files
@@ -80,6 +88,19 @@ Then regenerate mirrors (`ll-adapt --host kimi-code --apply`, `ll-adapt --host g
 ### Configuration
 - N/A
 
+### Behavior Parity
+
+The consolidation replaces four near-identical `emit_skill` bodies with one shared helper; every observable behavior below must survive unchanged.
+
+| Behavior | Artifact | Status |
+|---|---|---|
+| Per-host frontmatter policy via `_select_frontmatter_fields(content, name, HOST_CAPABILITIES[host].frontmatter_fields_read)` | `_emit_mirrored_skill` `prepare` injection | Preserved — each emitter passes its own policy callable (gemini via its existing `_prepare_skill_content` wrapper) |
+| `skipped` only when SKILL.md *and* companions are both in sync; companion drift alone defeats the skip fast path (BUG-3163) | `_emit_mirrored_skill` skip decision | Preserved — lifted verbatim from `QwenEmitter.emit_skill` |
+| Companion copy / drift repair / stale prune / `agents/` exclusion / dry-run semantics | `_sync_skill_companions` call inside the helper | Preserved — same call shape BUG-3163 wired for qwen |
+| `APPLY` / `DRY` / `SKIP` stdout lines and `"adapted"` / `"skipped"` return values consumed by `process_skills()` tallying | `_emit_mirrored_skill` | Preserved — identical format strings and return values |
+| Kimi command-bridged `ll-*` skills (`KimiEmitter.emit_command`) | untouched | Preserved — companion sync wires into `emit_skill` only; bridges have no companion source directory |
+| `codex` (in-place adaptation) and `claude-code` (`emit_skill` no-op) | untouched | Preserved — explicitly out of scope |
+
 ## Implementation Steps
 
 1. Add `_emit_mirrored_skill(skill_meta, host_dir, prepare)` to `core.py`, lifting the body of the current `QwenEmitter.emit_skill` (compute `skill_md_changed`, run `_sync_skill_companions`, fold both into the skip decision) with the host dir and content-prep callable injected.
@@ -96,6 +117,17 @@ Then regenerate mirrors (`ll-adapt --host kimi-code --apply`, `ll-adapt --host g
 - **Effort**: Small code change, large generated diff - one shared helper + four one-line delegations + test parametrization, but mirror regeneration adds ~46 newly git-tracked companion files (23 × 2 hosts)
 - **Risk**: Low - additive copies into existing mirror dirs; SKILL.md content unchanged; helper already proven on the qwen surface. The one new risk is the qwen refactor onto the shared helper, contained by running the existing qwen companion tests before the other emitters adopt it (step 2)
 - **Breaking Change**: No
+
+## Program Design
+
+### Signatures
+
+- `def _emit_mirrored_skill(skill_meta: dict, host_dir: str, prepare: Callable[[str, str], tuple[str, bool]]) -> str` — new shared helper in `scripts/little_loops/adapters/core.py`, placed beside `_sync_skill_companions` in the BUG-3163 section. Reads `skill_name` / `skill_path` / `content` / `apply` / `quiet` from `skill_meta`, derives `plugin_root / host_dir / "skills" / skill_name / "SKILL.md"` from `skill_path`, prepares content via the injected `prepare` callable, calls `_sync_skill_companions` **even when SKILL.md is unchanged**, and returns `"skipped"` only when SKILL.md *and* companions are all in sync (else `"adapted"` after write or dry-run report).
+- `QwenEmitter.emit_skill(self, skill_meta: dict) -> str` (`qwen.py`), `KimiEmitter.emit_skill(self, skill_meta: dict) -> str` (`kimi.py`), `GeminiEmitter.emit_skill(self, skill_meta: dict) -> str` (`gemini.py`), `OmpEmitter.emit_skill(self, skill_meta: dict) -> str` (`omp.py`) — unchanged `HostEmitter` protocol signatures; bodies become delegations to `_emit_mirrored_skill` with the host dir literal (`.qwen` / `.kimi-code` / `.gemini` / `.omp`) and the host's content-prep callable: `lambda content, name: _select_frontmatter_fields(content, name, _fields_read())` for qwen/kimi/omp, the existing `_prepare_skill_content` for gemini.
+
+### Call Path
+
+`process_skills()` (`adapters/core.py`, sole caller of `emit_skill` — no signature change on that edge) → `emitter.emit_skill(skill_meta)` → `_emit_mirrored_skill(skill_meta, host_dir, prepare)` → `prepare(content, skill_name)` (host frontmatter policy) plus `_sync_skill_companions(skill_path.parent, out_path.parent, apply, quiet, label)` → write `<host_dir>/skills/<name>/SKILL.md` and byte-identical companions.
 
 ## Related Key Documentation
 
@@ -114,6 +146,8 @@ Then regenerate mirrors (`ll-adapt --host kimi-code --apply`, `ll-adapt --host g
 1. In a project where `ll-adapt --host kimi-code --apply` (or `--host gemini --apply`) has run, open the Kimi Code CLI (or Gemini CLI)
 2. Invoke any mirrored skill with companions (e.g. `wire-issue`, `audit-issue-conflicts`, `create-loop`)
 3. Observe: the skill's relative companion references resolve against `.kimi-code/skills/<name>/` (or `.gemini/skills/<name>/`) and fail — the companions were never mirrored
+
+Static verification (no host needed): `git ls-files .kimi-code/skills .gemini/skills` shows only SKILL.md entries, while `find skills -mindepth 2 -type f ! -name SKILL.md ! -path '*/agents/*'` lists 23 companions for the same mirrored skill set.
 
 ## Root Cause
 
@@ -150,14 +184,32 @@ if out_path.exists() and out_path.read_text() == new_content:
     return "skipped"
 ```
 
-## Reproduction Steps
+---
 
-Static verification (no host needed): `git ls-files .kimi-code/skills .gemini/skills` shows only SKILL.md entries, while `find skills -mindepth 2 -type f ! -name SKILL.md ! -path '*/agents/*'` lists 23 companions for the same mirrored skill set.
+## Resolution
 
-## Proposed Fix
+- **Action**: fix
+- **Completed**: 2026-08-13
+- **Status**: Completed
 
-See Proposed Solution. Shared `_emit_mirrored_skill` helper in `core.py` (lifted from the `QwenEmitter` wiring BUG-3163 proved), four emitters delegating to it, mirror regeneration, and parametrized emitter + parity tests.
+### Changes Made
+- `scripts/little_loops/adapters/core.py`: added shared `_emit_mirrored_skill(skill_meta, host_dir, prepare)` helper (lifted from the BUG-3163 qwen wiring) wrapping path derivation + `_sync_skill_companions` + skip decision
+- `scripts/little_loops/adapters/qwen.py`: `QwenEmitter.emit_skill` refactored onto the shared helper (behavior unchanged, proven by the parametrized companion tests before the other emitters adopted it)
+- `scripts/little_loops/adapters/kimi.py`: `KimiEmitter.emit_skill` delegates to the helper (`.kimi-code`)
+- `scripts/little_loops/adapters/gemini.py`: `GeminiEmitter.emit_skill` delegates to the helper (`.gemini`, existing `_prepare_skill_content` as the prep callable)
+- `scripts/little_loops/adapters/omp.py`: `OmpEmitter.emit_skill` delegates to the helper (`.omp`)
+- `scripts/tests/test_adapters.py`: `TestQwenEmitterSkillCompanions` → parametrized `TestMirrorEmitterSkillCompanions` over all four mirror emitters (5 cases × 4 hosts)
+- `scripts/tests/test_wiring_skills_and_commands.py`: `test_qwen_skill_mirrors_carry_companions` → parametrized `test_skill_mirrors_carry_companions` over `.qwen`/`.kimi-code`/`.gemini`/`.omp`; source-less mirror dirs skipped (kimi `ll-*` bridges), `mirror_root.exists()` guard (omp vacuous here)
+- `.kimi-code/skills/**`, `.gemini/skills/**`: mirrors regenerated — 23 companion files per host added byte-identical to source; 3 SKILL.md body-drift repairs per host (capture-issue, scope-epic, verify-issue-loop); 28 kimi `ll-*` command bridges untouched
+- `docs/kimi/getting-started.md`: skills bullet gained the companion-mirroring clause matching the qwen wording
 
+### Verification Results
+- Tests: PASS (19191 passed, 43 skipped, 0 failed; TDD red→green honored: 11 assertion failures pre-fix)
+- Lint: PASS (`ruff check scripts/`)
+- Types: PASS (`mypy`, 338 source files, no issues)
+- Run: N/A (no `run_cmd` configured; `ll-adapt --host kimi-code|gemini --apply` re-run idempotent: 0 adapted, 108 skipped)
+- Integration: PASS (companion byte-parity 0 mismatches; private-refs gate clean on all 65 changed files)
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-13T23:54:08 - `0f05ce0f-10aa-462e-b2a8-33561cc02482.jsonl`
 - `/ll:capture-issue` - 2026-08-13T22:25:31 - `9b452ca8-48d5-4632-a2ce-16c7c6276022.jsonl`

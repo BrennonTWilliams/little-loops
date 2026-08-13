@@ -34,9 +34,9 @@ from pathlib import Path
 
 from little_loops.adapters.capabilities import HOST_CAPABILITIES
 from little_loops.adapters.core import (
+    _emit_mirrored_skill,
     _read_frontmatter,
     _select_frontmatter_fields,
-    _sync_skill_companions,
 )
 
 __all__ = ["QwenEmitter"]
@@ -64,40 +64,13 @@ class QwenEmitter:
         Also mirrors the source skill's companion files alongside it
         (BUG-3163): adapted SKILL.md bodies reference companions by
         relative path, so a SKILL.md-only mirror dangles every read.
+        Delegates to the shared mirrored-skill core (BUG-3164).
         """
-        skill_name: str = skill_meta["skill_name"]
-        skill_path: Path = skill_meta["skill_path"]
-        content: str = skill_meta["content"]
-        apply: bool = skill_meta["apply"]
-        quiet: bool = skill_meta["quiet"]
-
-        # Derive output path: skill_path is skills/<name>/SKILL.md; parent×3 = plugin root
-        plugin_root = skill_path.parent.parent.parent
-        out_path = plugin_root / ".qwen" / "skills" / skill_name / "SKILL.md"
-
-        new_content, _ = _select_frontmatter_fields(content, skill_name, _fields_read())
-
-        skill_md_changed = not out_path.exists() or out_path.read_text() != new_content
-        # Sync companions even when SKILL.md is unchanged so drift is repaired.
-        companions_changed = _sync_skill_companions(
-            skill_path.parent, out_path.parent, apply=apply, quiet=quiet, label=skill_name
+        return _emit_mirrored_skill(
+            skill_meta,
+            ".qwen",
+            lambda content, name: _select_frontmatter_fields(content, name, _fields_read()),
         )
-
-        if not skill_md_changed and not companions_changed:
-            if not quiet:
-                print(f"  SKIP   {skill_name}: already adapted")
-            return "skipped"
-
-        if apply:
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            out_path.write_text(new_content)
-            if not quiet:
-                print(f"  APPLY  {skill_name}")
-        else:
-            if not quiet:
-                print(f"  DRY    {skill_name}")
-
-        return "adapted"
 
     def emit_command(self, cmd_meta: dict) -> str:
         """Write ``commands/<stem>.md`` to ``.qwen/commands/ll/<stem>.md``.

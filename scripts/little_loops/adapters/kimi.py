@@ -33,7 +33,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from little_loops.adapters.capabilities import HOST_CAPABILITIES
-from little_loops.adapters.core import _select_frontmatter_fields
+from little_loops.adapters.core import _emit_mirrored_skill, _select_frontmatter_fields
 
 __all__ = ["KimiEmitter"]
 
@@ -55,34 +55,18 @@ class KimiEmitter:
     name = "kimi-code"
 
     def emit_skill(self, skill_meta: dict) -> str:
-        """Write adapted SKILL.md to ``.kimi-code/skills/<name>/SKILL.md``."""
-        skill_name: str = skill_meta["skill_name"]
-        skill_path: Path = skill_meta["skill_path"]
-        content: str = skill_meta["content"]
-        apply: bool = skill_meta["apply"]
-        quiet: bool = skill_meta["quiet"]
+        """Write adapted SKILL.md to ``.kimi-code/skills/<name>/SKILL.md``.
 
-        # Derive output path: skill_path is skills/<name>/SKILL.md; parent×3 = plugin root
-        plugin_root = skill_path.parent.parent.parent
-        out_path = plugin_root / ".kimi-code" / "skills" / skill_name / "SKILL.md"
-
-        new_content, _ = _select_frontmatter_fields(content, skill_name, _fields_read())
-
-        if out_path.exists() and out_path.read_text() == new_content:
-            if not quiet:
-                print(f"  SKIP   {skill_name}: already adapted")
-            return "skipped"
-
-        if apply:
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            out_path.write_text(new_content)
-            if not quiet:
-                print(f"  APPLY  {skill_name}")
-        else:
-            if not quiet:
-                print(f"  DRY    {skill_name}")
-
-        return "adapted"
+        Companion files beside the source SKILL.md are mirrored alongside it
+        (BUG-3164): adapted SKILL.md bodies reference companions by relative
+        path, so a SKILL.md-only mirror dangles every read. Delegates to the
+        shared mirrored-skill core.
+        """
+        return _emit_mirrored_skill(
+            skill_meta,
+            ".kimi-code",
+            lambda content, name: _select_frontmatter_fields(content, name, _fields_read()),
+        )
 
     def emit_command(self, cmd_meta: dict) -> str:
         """Bridge ``commands/<stem>.md`` to ``.kimi-code/skills/ll-<stem>/SKILL.md``.

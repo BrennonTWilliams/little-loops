@@ -1829,8 +1829,25 @@ class TestQwenEmitterEmitSkill:
         assert QwenEmitter().emit_skill(meta) == "skipped"
 
 
-class TestQwenEmitterSkillCompanions:
-    """BUG-3163: emit_skill mirrors ENH-494 companion files alongside SKILL.md."""
+# BUG-3164: all four SKILL.md-mirroring emitters share one companion-mirroring
+# contract (BUG-3163 proved it on the qwen surface). Parametrized so each
+# emitter runs the same cases against its own host mirror dir; omp has no
+# tracked mirror in this repo, so these unit tests are its only coverage.
+MIRROR_SKILL_EMITTERS: list[tuple[type, str]] = [
+    (QwenEmitter, ".qwen"),
+    (KimiEmitter, ".kimi-code"),
+    (GeminiEmitter, ".gemini"),
+    (OmpEmitter, ".omp"),
+]
+
+
+@pytest.mark.parametrize(
+    ("emitter_cls", "host_dir"),
+    MIRROR_SKILL_EMITTERS,
+    ids=["qwen", "kimi-code", "gemini", "omp"],
+)
+class TestMirrorEmitterSkillCompanions:
+    """BUG-3163/BUG-3164: emit_skill mirrors ENH-494 companion files alongside SKILL.md."""
 
     def _meta(self, tmp_path: Path, name: str, apply: bool = True) -> dict:
         skill_md = _make_skill(tmp_path, name)
@@ -1844,56 +1861,66 @@ class TestQwenEmitterSkillCompanions:
             "quiet": True,
         }
 
-    def _mirror_dir(self, tmp_path: Path, name: str) -> Path:
-        return tmp_path / ".qwen" / "skills" / name
+    def _mirror_dir(self, tmp_path: Path, host_dir: str, name: str) -> Path:
+        return tmp_path / host_dir / "skills" / name
 
-    def test_companion_files_are_copied(self, tmp_path: Path) -> None:
+    def test_companion_files_are_copied(
+        self, tmp_path: Path, emitter_cls: type, host_dir: str
+    ) -> None:
         skill_md = _make_skill(tmp_path, "my-skill")
         (skill_md.parent / "templates.md").write_text("template body\n")
         (skill_md.parent / "reference.md").write_text("reference body\n")
-        QwenEmitter().emit_skill(self._meta(tmp_path, "my-skill"))
-        mirror = self._mirror_dir(tmp_path, "my-skill")
+        emitter_cls().emit_skill(self._meta(tmp_path, "my-skill"))
+        mirror = self._mirror_dir(tmp_path, host_dir, "my-skill")
         assert (mirror / "templates.md").read_text() == "template body\n"
         assert (mirror / "reference.md").read_text() == "reference body\n"
 
-    def test_codex_only_agents_subtree_not_mirrored(self, tmp_path: Path) -> None:
+    def test_codex_only_agents_subtree_not_mirrored(
+        self, tmp_path: Path, emitter_cls: type, host_dir: str
+    ) -> None:
         skill_md = _make_skill(tmp_path, "my-skill")
         agents_dir = skill_md.parent / "agents"
         agents_dir.mkdir()
         (agents_dir / "openai.yaml").write_text("name: my-skill\n")
-        QwenEmitter().emit_skill(self._meta(tmp_path, "my-skill"))
-        assert not (self._mirror_dir(tmp_path, "my-skill") / "agents").exists()
+        emitter_cls().emit_skill(self._meta(tmp_path, "my-skill"))
+        assert not (self._mirror_dir(tmp_path, host_dir, "my-skill") / "agents").exists()
 
-    def test_companion_drift_is_repaired(self, tmp_path: Path) -> None:
+    def test_companion_drift_is_repaired(
+        self, tmp_path: Path, emitter_cls: type, host_dir: str
+    ) -> None:
         skill_md = _make_skill(tmp_path, "my-skill")
         companion = skill_md.parent / "templates.md"
         companion.write_text("v1\n")
-        emitter = QwenEmitter()
+        emitter = emitter_cls()
         assert emitter.emit_skill(self._meta(tmp_path, "my-skill")) == "adapted"
         assert emitter.emit_skill(self._meta(tmp_path, "my-skill")) == "skipped"
         companion.write_text("v2 changed\n")
         assert emitter.emit_skill(self._meta(tmp_path, "my-skill")) == "adapted"
-        mirror_file = self._mirror_dir(tmp_path, "my-skill") / "templates.md"
+        mirror_file = self._mirror_dir(tmp_path, host_dir, "my-skill") / "templates.md"
         assert mirror_file.read_text() == "v2 changed\n"
 
-    def test_stale_mirror_companion_is_pruned(self, tmp_path: Path) -> None:
+    def test_stale_mirror_companion_is_pruned(
+        self, tmp_path: Path, emitter_cls: type, host_dir: str
+    ) -> None:
         skill_md = _make_skill(tmp_path, "my-skill")
         companion = skill_md.parent / "obsolete.md"
         companion.write_text("stale\n")
-        emitter = QwenEmitter()
+        emitter = emitter_cls()
         emitter.emit_skill(self._meta(tmp_path, "my-skill"))
-        mirror = self._mirror_dir(tmp_path, "my-skill")
+        mirror = self._mirror_dir(tmp_path, host_dir, "my-skill")
         assert (mirror / "obsolete.md").exists()
         companion.unlink()
         assert emitter.emit_skill(self._meta(tmp_path, "my-skill")) == "adapted"
         assert not (mirror / "obsolete.md").exists()
 
-    def test_dry_run_does_not_write_companions(self, tmp_path: Path) -> None:
+    def test_dry_run_does_not_write_companions(
+        self, tmp_path: Path, emitter_cls: type, host_dir: str
+    ) -> None:
         skill_md = _make_skill(tmp_path, "my-skill")
         (skill_md.parent / "templates.md").write_text("template body\n")
-        result = QwenEmitter().emit_skill(self._meta(tmp_path, "my-skill", apply=False))
+        result = emitter_cls().emit_skill(self._meta(tmp_path, "my-skill", apply=False))
         assert result == "adapted"
-        assert not (self._mirror_dir(tmp_path, "my-skill") / "templates.md").exists()
+        assert not (self._mirror_dir(tmp_path, host_dir, "my-skill") / "templates.md").exists()
 
 
 class TestQwenEmitterEmitCommand:

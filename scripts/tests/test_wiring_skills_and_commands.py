@@ -394,25 +394,35 @@ def test_skill_mirror_matches_source(project_root: Path, source_rel: str, mirror
     )
 
 
-# BUG-3163: .qwen/skills mirrors are only usable if ENH-494 companion files
-# ride along with SKILL.md — adapted bodies reference companions by relative
-# path, and end-user projects have no skills/ source tree to recover from.
-# Guard every mirrored skill (not a pinned list) so new skills are covered
-# on day one. Reuses the emitter's own companion rule so test and emitter
-# cannot drift apart.
-def test_qwen_skill_mirrors_carry_companions(project_root: Path) -> None:
-    """.qwen/skills/<name>/ must carry source companions, byte-identical."""
+# BUG-3163: skill mirrors are only usable if ENH-494 companion files ride
+# along with SKILL.md — adapted bodies reference companions by relative path,
+# and end-user projects have no skills/ source tree to recover from. Guard
+# every mirrored skill (not a pinned list) so new skills are covered on day
+# one. Reuses the emitter's own companion rule so test and emitter cannot
+# drift apart. BUG-3164 extends the guard to every SKILL.md-mirroring host:
+# - .kimi-code/skills/ also holds command-bridged ll-* skills with no skills/
+#   source directory — skip those rather than flagging them as offenders.
+# - .omp/skills/ is not tracked in this repo, so the exists() guard makes its
+#   case vacuous here; omp's real coverage is the emitter unit tests in
+#   test_adapters.py (TestMirrorEmitterSkillCompanions).
+SKILL_MIRROR_ROOTS = [".qwen", ".kimi-code", ".gemini", ".omp"]
+
+
+@pytest.mark.parametrize("mirror_root_name", SKILL_MIRROR_ROOTS)
+def test_skill_mirrors_carry_companions(project_root: Path, mirror_root_name: str) -> None:
+    """<host>/skills/<name>/ must carry source companions, byte-identical."""
     from little_loops.adapters.core import _iter_skill_companions
 
-    mirror_root = project_root / ".qwen" / "skills"
+    mirror_root = project_root / mirror_root_name / "skills"
+    if not mirror_root.exists():
+        return  # no tracked mirror for this host in this repo (e.g. .omp)
     source_root = project_root / "skills"
     offenders: list[str] = []
     for mirror_skill_md in sorted(mirror_root.glob("*/SKILL.md")):
         name = mirror_skill_md.parent.name
         source_dir = source_root / name
         if not (source_dir / "SKILL.md").is_file():
-            offenders.append(f"{name}: no source skill directory")
-            continue
+            continue  # command-bridged skill with no skills/ source (kimi ll-*)
         wanted = set(_iter_skill_companions(source_dir))
         present = set(_iter_skill_companions(mirror_skill_md.parent))
         for rel in sorted(wanted - present):
@@ -423,9 +433,9 @@ def test_qwen_skill_mirrors_carry_companions(project_root: Path) -> None:
             if (mirror_skill_md.parent / rel).read_bytes() != (source_dir / rel).read_bytes():
                 offenders.append(f"{name}: drifted companion {rel}")
     assert not offenders, (
-        "Companion drift in .qwen/skills mirrors: "
+        f"Companion drift in {mirror_root_name}/skills mirrors: "
         + "; ".join(offenders)
-        + ". Regenerate with: ll-adapt --host qwen --apply"
+        + f". Regenerate with: ll-adapt --host {mirror_root_name.lstrip('.')} --apply"
     )
 
 
