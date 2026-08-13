@@ -599,7 +599,7 @@ def write_claude_md(project_root: Path, dry_run: bool = False) -> bool:
 # Hosts whose primary instructions file is AGENTS.md (the cross-tool
 # convention). ll-init writes AGENTS.md only when one of these hosts is
 # selected; Claude-specific content stays in CLAUDE.md (write_claude_md).
-AGENTS_MD_HOSTS: tuple[str, ...] = ("codex", "kimi-code")
+AGENTS_MD_HOSTS: tuple[str, ...] = ("codex", "kimi-code", "qwen")
 
 
 def write_agents_md(project_root: Path, dry_run: bool = False) -> bool:
@@ -839,6 +839,156 @@ def install_kimi_adapter(
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     atomic_write(dest, new_content)
+    return True
+
+
+def _qwen_template_path() -> Path:
+    """Return the in-package path to the Qwen adapter settings-block template."""
+    return Path(__file__).parent.parent / "hooks" / "adapters" / "qwen" / "settings-block.json"
+
+
+# ll-managed hook entries in .qwen/settings.json are identified by their
+# ``ll:``-prefixed ``name`` field; the gen-version stamp lives in the
+# ``description`` as ``ll-gen:<version>``. JSON has no comments, so the
+# kimi-style marker lines are impossible — identity rides on documented
+# hook-entry fields instead (verified accepted by qwen 0.21.6, FEAT-3155).
+_QWEN_MANAGED_NAME_PREFIX = "ll:"
+_QWEN_GEN_MARKER = "ll-gen:"
+
+
+def _qwen_is_managed_group(group: Any) -> bool:
+    """Return True when every hook entry in *group* is ll-managed."""
+    hooks = group.get("hooks") if isinstance(group, dict) else None
+    if not isinstance(hooks, list) or not hooks:
+        return False
+    return all(
+        isinstance(h, dict)
+        and str(h.get("name", "")).startswith(_QWEN_MANAGED_NAME_PREFIX)
+        for h in hooks
+    )
+
+
+def _qwen_managed_gen_version(hooks_obj: dict[str, Any]) -> str | None:
+    """Return the ``ll-gen:<version>`` stamp of the managed entries, or None."""
+    for groups in hooks_obj.values():
+        if not isinstance(groups, list):
+            continue
+        for group in groups:
+            if not _qwen_is_managed_group(group):
+                continue
+            for entry in group["hooks"]:
+                desc = str(entry.get("description", ""))
+                idx = desc.find(_QWEN_GEN_MARKER)
+                if idx != -1:
+                    return desc[idx + len(_QWEN_GEN_MARKER) :].strip().rstrip(")")
+    return None
+
+
+def install_qwen_adapter(
+    project_root: Path,
+    plugin_root: Path,
+    force: bool = False,
+    dry_run: bool = False,
+) -> bool | None:
+    """Install the Qwen hook adapter as managed entries in .qwen/settings.json.
+
+    ARCHITECTURE-046 "Option A" (settings injection) — first implementation,
+    landed for Qwen (EPIC-3154 / FEAT-3158). Unlike the kimi managed block
+    (raw marker lines in TOML), this is a **structured JSON merge**: Qwen's
+    ``.qwen/settings.json`` is a shared settings file, so the writer parses
+    it, removes exactly the ll-managed hook groups (identified by their
+    ``ll:``-prefixed ``name`` fields), appends the freshly rendered groups
+    from ``settings-block.json``, and never touches any other key or any
+    third-party hook entries. Project scope was live-verified to fire under
+    ``qwen -p`` headless (FEAT-3155), so no user-scope fallback is needed.
+
+    Idempotent: when the managed entries already carry the installed
+    package's ``ll-gen:<version>`` stamp, returns False without writing.
+    ``force`` re-merges regardless.
+
+    Args:
+        project_root: Project root directory (destination is
+            ``<project_root>/.qwen/settings.json``).
+        plugin_root: Unused; kept for call-site compatibility.
+        force: If True, re-merge even when the gen version already matches.
+        dry_run: If True, print planned write; do not modify files.
+
+    Returns:
+        True if written (or would be, for dry_run); False if already
+        installed at the same gen version without ``force``; None if the
+        source template is missing OR the existing settings.json is
+        unparseable (never touch a corrupted settings file).
+    """
+    template_path = _qwen_template_path()
+    if not template_path.exists():
+        return None
+
+    from little_loops.init.install_check import installed_package_version
+
+    package_root = str(Path(__file__).parent.parent)
+    gen_version = installed_package_version() or ""
+    rendered = (
+        template_path.read_text(encoding="utf-8")
+        .replace("{{LL_PLUGIN_ROOT}}", package_root)
+        .replace("{{LL_GEN_VERSION}}", gen_version)
+    )
+    try:
+        new_hooks = json.loads(rendered)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(new_hooks, dict):
+        return None
+
+    dest = project_root / ".qwen" / "settings.json"
+    settings: dict[str, Any]
+    if dest.exists():
+        existing_text = dest.read_text(encoding="utf-8")
+        if existing_text.strip():
+            try:
+                loaded = json.loads(existing_text)
+            except json.JSONDecodeError:
+                return None
+            if not isinstance(loaded, dict):
+                return None
+            settings = loaded
+        else:
+            settings = {}
+    else:
+        settings = {}
+
+    hooks_obj = settings.get("hooks")
+    if not isinstance(hooks_obj, dict):
+        hooks_obj = {}
+
+    stamped = _qwen_managed_gen_version(hooks_obj)
+    if not force and gen_version and stamped == gen_version:
+        return False
+
+    if dry_run:
+        action = "refresh" if stamped is not None else "add"
+        info(f"write .qwen/settings.json ({action} little-loops managed hooks)")
+        return True
+
+    # Remove existing ll-managed groups, preserving every other entry.
+    for event in list(hooks_obj.keys()):
+        groups = hooks_obj[event]
+        if not isinstance(groups, list):
+            continue
+        kept = [g for g in groups if not _qwen_is_managed_group(g)]
+        if kept:
+            hooks_obj[event] = kept
+        else:
+            del hooks_obj[event]
+
+    for event, groups in new_hooks.items():
+        existing_groups = hooks_obj.get(event)
+        if not isinstance(existing_groups, list):
+            existing_groups = []
+        hooks_obj[event] = existing_groups + groups
+
+    settings["hooks"] = hooks_obj
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write(dest, json.dumps(settings, indent=2) + "\n")
     return True
 
 

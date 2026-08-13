@@ -55,6 +55,7 @@ _EMITTER_MAP: dict[str, tuple[str, str]] = {
     "omp": ("little_loops.adapters.omp", "OmpEmitter"),
     "kimi-code": ("little_loops.adapters.kimi", "KimiEmitter"),
     "claude-code": ("little_loops.adapters.claude_code", "ClaudeCodeEmitter"),
+    "qwen": ("little_loops.adapters.qwen", "QwenEmitter"),
 }
 
 
@@ -63,7 +64,7 @@ def resolve_emitter(host: str) -> HostEmitter:
 
     Args:
         host: One of ``"codex"``, ``"gemini"``, ``"omp"``, ``"kimi-code"``,
-            ``"claude-code"``.
+            ``"claude-code"``, ``"qwen"``.
 
     Returns:
         A :class:`HostEmitter` ready to emit skills, commands, and agents.

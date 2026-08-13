@@ -2,9 +2,10 @@
 
 One :class:`HostCapabilityEntry` per host in ``adapters/core.py``'s
 ``_EMITTER_MAP`` (``"codex"``, ``"gemini"``, ``"omp"``, ``"kimi-code"``,
-``"claude-code"``). This module is the single place adapter-host knowledge is
+``"claude-code"``, ``"qwen"``). This module is the single place adapter-host knowledge is
 written down as data; today the same knowledge is scattered as code across
-``codex.py``, ``gemini.py``, ``omp.py``, ``kimi.py``, and ``claude_code.py``
+``codex.py``, ``gemini.py``, ``omp.py``, ``kimi.py``, ``claude_code.py``,
+and ``qwen.py``
 (which fields a host reads, whether it takes agents, how tools map to a
 sandbox mode). ``ENH-2883`` will drive ``core.py``'s dispatch from these
 entries; this module is additive only — it does not change emission
@@ -135,6 +136,24 @@ HOST_CAPABILITIES: dict[str, HostCapabilityEntry] = {
         # not needed). Key deliberately suffixed to match the runner registry
         # key so ll-verify-host-map check 2 cross-validates kimi (EPIC-2910).
         agent_output_format="Markdown, native Claude-style agent file (.kimi-code/agents/<name>.md)",
+        frontmatter_fields_read=("description", "name"),
+        agents=True,
+        commands=True,
+        hooks=True,
+        subagents="native",
+    ),
+    "qwen": HostCapabilityEntry(
+        host="qwen",
+        config_dir=".qwen",
+        skill_output_format="SKILL.md (name injected when absent, metadata.short-description stripped)",
+        # FEAT-3155 spike: Qwen's native subdirectory namespacing maps
+        # .qwen/commands/ll/<stem>.md to /ll:<stem> (live-verified) — true
+        # command emission, no skill bridging (better than codex/kimi).
+        command_output_format="Markdown (.qwen/commands/ll/<stem>.md, native /ll:<stem> namespace)",
+        # Qwen documents explicit Claude Code 2.1.168 frontmatter
+        # compatibility and the spike confirmed all nine ll agents load —
+        # native emission, subagents="native" (no ENH-2874 degraded path).
+        agent_output_format="Markdown, native Claude-style agent file (.qwen/agents/<name>.md)",
         frontmatter_fields_read=("description", "name"),
         agents=True,
         commands=True,

@@ -253,7 +253,7 @@ little-loops/
         ├── text_utils.py        # Text processing utilities
         ├── pii.py               # PII detection and redaction utilities
         ├── subprocess_utils.py  # Subprocess handling
-        ├── host_runner.py       # Host CLI abstraction (HostRunner Protocol + ClaudeCodeRunner + CodexRunner + GeminiRunner + OmpRunner + KimiRunner + OpenCodeRunner + PiRunner)
+        ├── host_runner.py       # Host CLI abstraction (HostRunner Protocol + ClaudeCodeRunner + CodexRunner + GeminiRunner + OmpRunner + KimiRunner + QwenRunner + OpenCodeRunner + PiRunner)
         ├── sprint.py            # Sprint definition and management
         ├── sync.py              # GitHub Issues sync
         ├── goals_parser.py      # Goals file parsing
@@ -880,6 +880,7 @@ FSM handoff.
 | `GeminiRunner` | Production runner for the `gemini` CLI (Gemini CLI); auto-detected when `gemini` is on PATH (ENH-2185) |
 | `OmpRunner` | Production runner for the oh-my-pi `omp` CLI; auto-detected when `omp` is on PATH (FEAT-1850) |
 | `KimiRunner` | Production runner for the Kimi Code `kimi` CLI; auto-detected when `kimi` is on PATH (FEAT-2911 flag translation, FEAT-2914 wiring; `thoughts/research/kimi-cli-surface.md`) |
+| `QwenRunner` | Production runner for Qwen Code's `qwen` CLI; auto-detected when `qwen` is on PATH (FEAT-3155 flag translation, ENH-3156 wiring; the second host with `structured_output=True` via inline `--json-schema`; `thoughts/research/qwen-code-surface.md`) |
 | `OpenCodeRunner` | Stub for the `opencode` CLI (FEAT-1472 stub state) |
 | `PiRunner` | Frozen stub for the vanilla pi-mono `pi` CLI (cancelled — ARCHITECTURE-050; superseded by `OmpRunner`) |
 | `resolve_host()` | Discovery entry point — honors `LL_HOST_CLI` / `orchestration.host_cli` overrides, then probes `PATH` for known host binaries |

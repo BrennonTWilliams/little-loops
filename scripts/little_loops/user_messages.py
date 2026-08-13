@@ -375,7 +375,7 @@ def get_project_folder(cwd: Path | None = None, *, host: str | None = None) -> P
     Args:
         cwd: Working directory to map. If None, uses current directory.
         host: Host identifier (``"claude-code"``, ``"codex"``, ``"opencode"``,
-            ``"pi"``, ``"kimi-code"``). If None, auto-detects from
+            ``"pi"``, ``"kimi-code"``, ``"qwen"``). If None, auto-detects from
             ``LL_HOOK_HOST`` env var (default ``"claude-code"``).
 
     Returns:
@@ -405,6 +405,8 @@ def get_project_folder(cwd: Path | None = None, *, host: str | None = None) -> P
         return _get_pi_project_folder(encoded_path)
     elif host == "kimi-code":
         return _get_kimi_project_folder(cwd)
+    elif host == "qwen":
+        return _get_qwen_project_folder(encoded_path)
     return None
 
 
@@ -469,6 +471,23 @@ def _get_kimi_project_folder(cwd: Path) -> Path | None:
     except OSError:
         return None
     return workspace_folder
+
+
+def _get_qwen_project_folder(encoded_path: str) -> Path | None:
+    """Probe the Qwen Code session directory (FEAT-3155 spike, qwen 0.21.6).
+
+    Qwen dash-encodes the **symlink-resolved** cwd the same way Claude Code
+    does (``/private/tmp/x`` → ``-private-tmp-x``), but session JSONL files
+    live one level deeper — ``~/.qwen/projects/<encoded>/chats/<id>.jsonl``.
+    The ``chats/`` subdirectory is what backfill consumers glob, so it is
+    the folder returned.
+
+    Note: qwen chat files use qwen's own message schema, not Claude's —
+    wire-format parsing for backfill extraction is a follow-up, same posture
+    as kimi's ``wire.jsonl`` (ENH-2918).
+    """
+    chats_folder = Path.home() / ".qwen" / "projects" / encoded_path / "chats"
+    return chats_folder if chats_folder.exists() else None
 
 
 def extract_user_messages(

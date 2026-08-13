@@ -159,16 +159,27 @@ def _extract_tagged_structured_output(text: str) -> dict[str, Any] | None:
 def _structured_output_args(invocation: Any, schema: dict[str, Any]) -> list[str]:
     """Build the CLI args, appending inline structured-output flags host-gated.
 
-    ENH-2627: the ``--json-schema`` flag (and the claude-only
-    ``--no-session-persistence``) are honored only by hosts that advertise
-    ``HostCapabilities.structured_output``. For hosts that ignore or reject an
-    inline schema flag we skip both and rely on the prompt-and-parse path (the
-    BUG-2626 ``_extract_tagged_structured_output`` tag fallback stays as the
-    safety net for :func:`evaluate_llm_structured`).
+    ENH-2627: the ``--json-schema`` flag is honored only by hosts that
+    advertise ``HostCapabilities.structured_output`` (claude; qwen since
+    EPIC-3154). For hosts that ignore or reject an inline schema flag we skip
+    it and rely on the prompt-and-parse path (the BUG-2626
+    ``_extract_tagged_structured_output`` tag fallback stays as the safety
+    net for :func:`evaluate_llm_structured`).
+
+    The session-persistence opt-out is host-specific: claude's
+    ``--no-session-persistence`` is rejected by qwen (argv parse error), and
+    qwen's equivalent is ``--chat-recording false`` (verified by the
+    FEAT-3155 spike). Keyed on ``invocation.binary`` because the flag name —
+    unlike ``--json-schema`` itself — is not portable across hosts.
     """
     args = list(invocation.args)
     if getattr(invocation.capabilities, "structured_output", False):
-        args += ["--json-schema", json.dumps(schema), "--no-session-persistence"]
+        args += ["--json-schema", json.dumps(schema)]
+        binary = getattr(invocation, "binary", "")
+        if binary == "claude":
+            args += ["--no-session-persistence"]
+        elif binary == "qwen":
+            args += ["--chat-recording", "false"]
     return args
 
 

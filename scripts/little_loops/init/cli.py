@@ -43,7 +43,9 @@ _TOGGLEABLE_FEATURES: frozenset[str] = frozenset(
 # _dispatch_host_adapters belong here — it does NOT mirror
 # _HOST_RUNNER_REGISTRY keys: gemini/omp are deliberately absent because they
 # have no install wiring and would warn "Unknown host".
-_KNOWN_HOSTS: frozenset[str] = frozenset({"claude-code", "codex", "opencode", "pi", "kimi-code"})
+_KNOWN_HOSTS: frozenset[str] = frozenset(
+    {"claude-code", "codex", "opencode", "pi", "kimi-code", "qwen"}
+)
 
 
 def _plugin_version() -> str:
@@ -81,6 +83,9 @@ def _detect_hosts(project_root: Path) -> list[str]:
     # change resolution for users who happen to install the kimi binary.
     if shutil.which("kimi") or (project_root / ".kimi-code").exists():
         detected.append("kimi-code")
+    # EPIC-3154: appended after kimi-code, same stability rule.
+    if shutil.which("qwen") or (project_root / ".qwen").exists():
+        detected.append("qwen")
     return detected or ["claude-code"]
 
 
@@ -93,7 +98,11 @@ def _dispatch_host_adapters(
 ) -> None:
     """Install adapters for each selected host; print per-host post-install notes."""
     from little_loops.cli.output import error, info, warning
-    from little_loops.init.writers import install_codex_adapter, install_kimi_adapter
+    from little_loops.init.writers import (
+        install_codex_adapter,
+        install_kimi_adapter,
+        install_qwen_adapter,
+    )
 
     for host in hosts:
         if host not in _KNOWN_HOSTS:
@@ -130,6 +139,21 @@ def _dispatch_host_adapters(
                 info(
                     "Kimi: hooks are user-level (kimi has no project-local hook "
                     "file) and take effect in new kimi sessions."
+                )
+        elif host == "qwen":
+            installed = install_qwen_adapter(
+                project_root, plugin_root, force=force, dry_run=dry_run
+            )
+            if installed is None:
+                warning(
+                    "Qwen: adapter template missing or .qwen/settings.json is "
+                    "unparseable; managed hooks were not written."
+                )
+            elif installed and not dry_run:
+                info("Qwen: hook adapter installed to .qwen/settings.json (managed entries)")
+                info(
+                    "Qwen: hooks take effect in new qwen sessions — interactive "
+                    "and `qwen -p` headless alike."
                 )
         elif host == "opencode":
             info("OpenCode: adapter not yet available — opencode orchestration not yet wired.")
@@ -628,7 +652,7 @@ def _run_yes(
 
     write_claude_md(project_root, dry_run=dry_run)
 
-    # AGENTS.md is the cross-tool convention read by codex / kimi-code
+    # AGENTS.md is the cross-tool convention read by codex / kimi-code / qwen
     # (AGENTS_MD_HOSTS); claude-specific content stays in CLAUDE.md.
     if any(h in AGENTS_MD_HOSTS for h in hosts):
         write_agents_md(project_root, dry_run=dry_run)
@@ -730,6 +754,7 @@ def _run_plan(
             "has_opencode": bool(shutil.which("opencode")),
             "has_pi": bool(shutil.which("pi")),
             "has_kimi_code": bool(shutil.which("kimi")),
+            "has_qwen": bool(shutil.which("qwen")),
             "suggested_settings_file": DEFAULT_SETTINGS_FILE,
         },
         "warnings": [{"message": w.message, "install_hint": w.install_hint} for w in warnings],
@@ -835,7 +860,7 @@ def _run_apply(
 
     write_claude_md(project_root, dry_run=dry_run)
 
-    # AGENTS.md is the cross-tool convention read by codex / kimi-code
+    # AGENTS.md is the cross-tool convention read by codex / kimi-code / qwen
     # (AGENTS_MD_HOSTS); claude-specific content stays in CLAUDE.md.
     if any(h in AGENTS_MD_HOSTS for h in hosts):
         write_agents_md(project_root, dry_run=dry_run)
@@ -940,8 +965,8 @@ Exit codes:
             default=None,
             help=(
                 "Host harnesses to install adapters for "
-                "(claude-code, codex, opencode, kimi-code, pi). Repeatable, and "
-                "comma-separated values are accepted (--hosts claude-code,codex). "
+                "(claude-code, codex, opencode, kimi-code, pi, qwen). Repeatable, "
+                "and comma-separated values are accepted (--hosts claude-code,codex). "
                 "Defaults to auto-detected hosts."
             ),
         )

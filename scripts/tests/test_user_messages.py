@@ -275,6 +275,45 @@ class TestGetProjectFolder:
         result = get_project_folder(host="kimi-code")
         assert result is None
 
+    def test_host_qwen_resolves_chats_folder(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """host="qwen" dash-encodes the resolved cwd and returns the chats/ dir (ENH-3161)."""
+        fake_home = tmp_path / "home"
+        encoded = encode_project_path(str(tmp_path.resolve()))
+        chats_dir = fake_home / ".qwen" / "projects" / encoded / "chats"
+        chats_dir.mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_project_folder(host="qwen")
+        assert result == chats_dir
+
+    def test_host_qwen_returns_none_without_chats_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Returns None when qwen has no recorded sessions for the cwd."""
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_project_folder(host="qwen")
+        assert result is None
+
+    def test_host_qwen_requires_chats_subdir_not_just_project_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A bare project dir without chats/ does not resolve (logs live one level deeper)."""
+        fake_home = tmp_path / "home"
+        encoded = encode_project_path(str(tmp_path.resolve()))
+        (fake_home / ".qwen" / "projects" / encoded).mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_project_folder(host="qwen")
+        assert result is None
+
     def test_host_auto_detect_from_env(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

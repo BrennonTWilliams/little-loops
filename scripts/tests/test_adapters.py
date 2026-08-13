@@ -24,6 +24,7 @@ from little_loops.adapters.core import (
 from little_loops.adapters.gemini import GeminiEmitter
 from little_loops.adapters.kimi import KimiEmitter
 from little_loops.adapters.omp import OmpEmitter
+from little_loops.adapters.qwen import QwenEmitter
 
 # =============================================================================
 # Fixture helpers
@@ -1734,3 +1735,242 @@ class TestClaudeCodeEmitterEmitMcpConfig:
         assert ClaudeCodeEmitter().emit_mcp_config(meta) == "adapted"
         data = json.loads(mcp_path.read_text())
         assert data["mcpServers"]["ll-mcp"] == {"command": "ll-mcp"}
+
+
+# =============================================================================
+# QwenEmitter (EPIC-3154, FEAT-3159)
+# =============================================================================
+
+
+class TestQwenEmitterEmitSkill:
+    def _meta(
+        self,
+        tmp_path: Path,
+        name: str,
+        apply: bool = True,
+        include_name: bool = False,
+        include_short_desc: bool = False,
+        description: str = "Use when user asks for tasks.",
+    ) -> dict:
+        skill_path = _make_skill_with_short_desc(
+            tmp_path,
+            name,
+            description=description,
+            include_name=include_name,
+            include_short_desc=include_short_desc,
+        )
+        content = skill_path.read_text()
+        fm = _read_frontmatter(content) or {}
+        return {
+            "skill_name": name,
+            "skill_path": skill_path,
+            "content": content,
+            "fm": fm,
+            "apply": apply,
+            "quiet": True,
+        }
+
+    def _out_path(self, tmp_path: Path, name: str) -> Path:
+        return tmp_path / ".qwen" / "skills" / name / "SKILL.md"
+
+    def test_writes_to_qwen_skills_dir(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill")
+        QwenEmitter().emit_skill(meta)
+        assert self._out_path(tmp_path, "my-skill").exists()
+
+    def test_injects_name_when_absent(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill", include_name=False)
+        QwenEmitter().emit_skill(meta)
+        content = self._out_path(tmp_path, "my-skill").read_text()
+        assert "name: my-skill" in content
+
+    def test_does_not_duplicate_name_when_present(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill", include_name=True)
+        QwenEmitter().emit_skill(meta)
+        content = self._out_path(tmp_path, "my-skill").read_text()
+        assert content.count("name: my-skill") == 1
+
+    def test_strips_metadata_short_description(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill", include_short_desc=True)
+        QwenEmitter().emit_skill(meta)
+        content = self._out_path(tmp_path, "my-skill").read_text()
+        assert "short-description:" not in content
+
+    def test_tolerates_claude_only_frontmatter_keys(self, tmp_path: Path) -> None:
+        """FEAT-3155 R7: allowed-tools etc. pass through; qwen tolerates them."""
+        skill_md = _make_skill(
+            tmp_path,
+            "tolerant-skill",
+            extra_fm="allowed-tools: read_file, glob\ndisable-model-invocation: false\n",
+        )
+        content = skill_md.read_text()
+        meta = {
+            "skill_name": "tolerant-skill",
+            "skill_path": skill_md,
+            "content": content,
+            "fm": _read_frontmatter(content) or {},
+            "apply": True,
+            "quiet": True,
+        }
+        QwenEmitter().emit_skill(meta)
+        out = self._out_path(tmp_path, "tolerant-skill").read_text()
+        assert "allowed-tools: read_file, glob" in out
+
+    def test_returns_adapted_on_first_run(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill")
+        assert QwenEmitter().emit_skill(meta) == "adapted"
+
+    def test_dry_run_does_not_write(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill", apply=False)
+        QwenEmitter().emit_skill(meta)
+        assert not self._out_path(tmp_path, "my-skill").exists()
+
+    def test_already_adapted_returns_skipped(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-skill")
+        QwenEmitter().emit_skill(meta)
+        assert QwenEmitter().emit_skill(meta) == "skipped"
+
+
+class TestQwenEmitterEmitCommand:
+    def _meta(
+        self,
+        tmp_path: Path,
+        stem: str,
+        apply: bool = True,
+        description: str = "Run this command.",
+        body: str = "# My Command\n\nDo the thing with $ARGUMENTS.\n",
+    ) -> dict:
+        commands_dir = tmp_path / "commands"
+        commands_dir.mkdir(exist_ok=True)
+        cmd_md = commands_dir / f"{stem}.md"
+        cmd_md.write_text(f"---\ndescription: {description}\n---\n\n{body}")
+        content = cmd_md.read_text()
+        fm = _read_frontmatter(content) or {}
+        return {
+            "stem": stem,
+            "cmd_path": cmd_md,
+            "content": content,
+            "fm": fm,
+            "output_dir": tmp_path / "skills",  # ignored by QwenEmitter
+            "apply": apply,
+            "quiet": True,
+        }
+
+    def _out_path(self, tmp_path: Path, stem: str) -> Path:
+        return tmp_path / ".qwen" / "commands" / "ll" / f"{stem}.md"
+
+    def test_writes_to_native_namespaced_commands_dir(self, tmp_path: Path) -> None:
+        """FEAT-3155: .qwen/commands/ll/<stem>.md resolves as /ll:<stem>."""
+        meta = self._meta(tmp_path, "my-cmd")
+        QwenEmitter().emit_command(meta)
+        assert self._out_path(tmp_path, "my-cmd").exists()
+
+    def test_rewrites_arguments_to_args_placeholder(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd", body="Do the thing with $ARGUMENTS.\n")
+        QwenEmitter().emit_command(meta)
+        content = self._out_path(tmp_path, "my-cmd").read_text()
+        assert "$ARGUMENTS" not in content
+        assert "{{args}}" in content
+
+    def test_carries_description_frontmatter_only(self, tmp_path: Path) -> None:
+        commands_dir = tmp_path / "commands"
+        commands_dir.mkdir(exist_ok=True)
+        cmd_md = commands_dir / "rich.md"
+        cmd_md.write_text(
+            "---\ndescription: Rich command.\nargument-hint: '[x]'\n"
+            "allowed-tools:\n  - Read\n---\n\nBody.\n"
+        )
+        content = cmd_md.read_text()
+        meta = {
+            "stem": "rich",
+            "cmd_path": cmd_md,
+            "content": content,
+            "fm": _read_frontmatter(content) or {},
+            "output_dir": tmp_path / "skills",
+            "apply": True,
+            "quiet": True,
+        }
+        QwenEmitter().emit_command(meta)
+        out = self._out_path(tmp_path, "rich").read_text()
+        assert "description: Rich command." in out
+        assert "argument-hint" not in out
+        assert "allowed-tools" not in out
+
+    def test_returns_adapted_on_first_run(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd")
+        assert QwenEmitter().emit_command(meta) == "adapted"
+
+    def test_dry_run_does_not_write(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd", apply=False)
+        QwenEmitter().emit_command(meta)
+        assert not self._out_path(tmp_path, "my-cmd").exists()
+
+    def test_already_adapted_returns_skipped(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-cmd")
+        QwenEmitter().emit_command(meta)
+        assert QwenEmitter().emit_command(meta) == "skipped"
+
+
+class TestQwenEmitterEmitAgent:
+    def _meta(self, tmp_path: Path, name: str, apply: bool = True) -> dict:
+        agent_md = _make_agent(tmp_path, name)
+        content = agent_md.read_text()
+        fm = _read_frontmatter(content) or {}
+        return {
+            "agent_name": name,
+            "agent_path": agent_md,
+            "content": content,
+            "fm": fm,
+            "output_dir": tmp_path / ".qwen" / "agents",
+            "apply": apply,
+            "quiet": True,
+        }
+
+    def _out_path(self, tmp_path: Path, name: str) -> Path:
+        return tmp_path / ".qwen" / "agents" / f"{name}.md"
+
+    def test_writes_native_markdown_agent(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-agent")
+        QwenEmitter().emit_agent(meta)
+        assert self._out_path(tmp_path, "my-agent").exists()
+
+    def test_claude_frontmatter_passes_through_verbatim(self, tmp_path: Path) -> None:
+        """Qwen documents CC 2.1.168 frontmatter compat; agents emit verbatim."""
+        meta = self._meta(tmp_path, "my-agent")
+        QwenEmitter().emit_agent(meta)
+        content = self._out_path(tmp_path, "my-agent").read_text()
+        assert "name: my-agent" in content
+        assert "model: sonnet" in content
+        assert "Agent instructions." in content
+
+    def test_returns_adapted_on_first_run(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-agent")
+        assert QwenEmitter().emit_agent(meta) == "adapted"
+
+    def test_dry_run_does_not_write(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-agent", apply=False)
+        QwenEmitter().emit_agent(meta)
+        assert not self._out_path(tmp_path, "my-agent").exists()
+
+    def test_already_adapted_returns_skipped(self, tmp_path: Path) -> None:
+        meta = self._meta(tmp_path, "my-agent")
+        QwenEmitter().emit_agent(meta)
+        assert QwenEmitter().emit_agent(meta) == "skipped"
+
+
+class TestResolveEmitterQwen:
+    def test_qwen_returns_qwen_emitter(self) -> None:
+        assert isinstance(resolve_emitter("qwen"), QwenEmitter)
+
+    def test_qwen_emitter_name_matches_runner_key(self) -> None:
+        """One key at every seam (EPIC-3154 naming decision)."""
+        from little_loops.host_runner import _HOST_RUNNER_REGISTRY
+
+        assert QwenEmitter().name == "qwen"
+        assert "qwen" in _HOST_RUNNER_REGISTRY
+
+
+class TestQwenEmitterEmitMcpConfig:
+    def test_mcp_stub_returns_skipped(self, tmp_path: Path) -> None:
+        meta = {"output_dir": tmp_path, "apply": True, "quiet": True}
+        assert QwenEmitter().emit_mcp_config(meta) == "skipped"

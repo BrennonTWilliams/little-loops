@@ -131,9 +131,10 @@ class HostCapabilities:
     agent_select: bool = False
     tool_allowlist: bool = False
     # ENH-2627: True only when the host's CLI honors the inline ``--json-schema``
-    # flag the FSM evaluators append (Anthropic ``claude`` CLI). Other hosts
-    # ignore or reject it, so evaluators skip the flag and rely on the
-    # prompt-and-parse path (BUG-2626 tag fallback stays as the safety net).
+    # flag the FSM evaluators append (Anthropic ``claude`` CLI; qwen since
+    # EPIC-3154). Other hosts ignore or reject it, so evaluators skip the flag
+    # and rely on the prompt-and-parse path (BUG-2626 tag fallback stays as
+    # the safety net).
     structured_output: bool = False
     # FEAT-2878: True only when build_streaming()'s `workspace_root` parameter
     # actually confines tool/filesystem access to that directory (a real
@@ -1549,6 +1550,207 @@ class KimiRunner:
         )
 
 
+class QwenRunner:
+    """``HostRunner`` for the ``qwen`` CLI (Qwen Code).
+
+    Flag translation verified by the FEAT-3155 research spike
+    (``thoughts/research/qwen-code-surface.md``, qwen 0.21.6); tracked under
+    EPIC-3154 (ENH-3156).
+
+    Key facts (vs. :class:`ClaudeCodeRunner`):
+
+    - ``-p <prompt>`` and ``--output-format stream-json`` are Claude-shaped.
+      ``--output-format json`` exists but buffers a JSON **array** of every
+      message in the run, which breaks single-envelope consumers — so
+      ``build_blocking_json`` streams JSONL and callers consume the final
+      ``{"type":"result"}`` envelope (same posture as
+      :meth:`KimiRunner.build_blocking_json`).
+    - Permission skip is ``--yolo`` (alias of ``--approval-mode yolo``;
+      hidden from ``--help`` but live-verified). The CLI prints a stderr
+      warning unless ``QWEN_CODE_SUPPRESS_YOLO_WARNING=1`` is set — every
+      invocation env sets it to keep stderr clean for error diagnostics.
+    - ``structured_output=True`` — the **second host after Claude Code** to
+      honor the inline ``--json-schema`` flag (Ajv-validated synthetic
+      ``structured_output`` tool; the verdict arrives as a JSON *string* in
+      the final envelope's ``result`` field, no claude-style
+      ``structured_output`` key). The FSM evaluators append the flag via
+      ``_structured_output_args`` and the existing ``json.loads(result)``
+      parse path handles the envelope.
+    - Resume maps to ``--continue`` (requires ``general.chatRecording``,
+      default on).
+    - No ``--agent`` flag (documented upstream as planned) and no tool
+      allowlist (``--exclude-tools`` is denylist-only) — both parameters are
+      dropped with :class:`CapabilityNotSupported` (Gemini posture).
+    - ``workspace_root`` maps to ``--include-directories`` (additive,
+      **not** a jail → ``workspace_sandboxed=False``).
+    """
+
+    name = "qwen"
+
+    capabilities = HostCapabilities(
+        streaming=True,
+        permission_skip=True,
+        agent_select=False,
+        tool_allowlist=False,
+        structured_output=True,  # EPIC-3154: inline --json-schema honored (FEAT-3155)
+    )
+
+    def detect(self) -> bool:
+        return shutil.which("qwen") is not None
+
+    def build_streaming(
+        self,
+        *,
+        prompt: str,
+        working_dir: Path | None = None,
+        resume: bool = False,
+        agent: str | None = None,
+        tools: list[str] | None = None,
+        model: str | None = None,
+        automation_profile: str | None = None,
+        disable_background_tasks: bool = False,
+        workspace_root: Path | None = None,
+    ) -> HostInvocation:
+        del disable_background_tasks  # FEAT-3078: CLAUDE_CODE_* var, no-op on non-Claude hosts
+        if agent:
+            warnings.warn(
+                "qwen has no --agent CLI flag (documented upstream as planned "
+                "future work). The 'agent' parameter will be ignored.",
+                CapabilityNotSupported,
+                stacklevel=2,
+            )
+        if tools:
+            warnings.warn(
+                "qwen has --exclude-tools (denylist) but no tool-allowlist "
+                "flag. The 'tools' parameter will be ignored.",
+                CapabilityNotSupported,
+                stacklevel=2,
+            )
+
+        # Flags first, ``-p <prompt>`` last (Claude/Kimi convention).
+        args: list[str] = ["--yolo", "--output-format", "stream-json"]
+        if resume:
+            args += ["--continue"]
+        if workspace_root is not None:
+            args += ["--include-directories", str(workspace_root)]
+        if model:
+            args += ["--model", model]
+        args += ["-p", prompt]
+
+        env: dict[str, str] = {
+            "LL_NON_INTERACTIVE": "1",
+            "DANGEROUSLY_SKIP_PERMISSIONS": "1",
+            "QWEN_CODE_SUPPRESS_YOLO_WARNING": "1",
+        }
+        _apply_automation_env(env, automation_profile)
+        env.update(GeminiRunner._worktree_env(working_dir))
+
+        return HostInvocation(
+            binary="qwen",
+            args=args,
+            env=env,
+            capabilities=self.capabilities,
+        )
+
+    def build_blocking_json(
+        self,
+        *,
+        prompt: str,
+        model: str | None = None,
+        json_schema: dict | None = None,
+    ) -> HostInvocation:
+        # qwen's ``--output-format json`` buffers a JSON array of all
+        # messages, which breaks single-envelope consumers — stream JSONL and
+        # let the caller consume the final ``{"type":"result"}`` envelope.
+        # json_schema is dropped here (Claude posture): with
+        # structured_output=True the FSM evaluators append ``--json-schema``
+        # at their call site (_structured_output_args); the validated verdict
+        # comes back as a JSON string in the final envelope's "result" field.
+        _ = json_schema
+        args: list[str] = ["--yolo", "--output-format", "stream-json"]
+        if model:
+            args += ["--model", model]
+        args += ["-p", prompt]
+        return HostInvocation(
+            binary="qwen",
+            args=args,
+            env={
+                "LL_NON_INTERACTIVE": "1",
+                "DANGEROUSLY_SKIP_PERMISSIONS": "1",
+                "QWEN_CODE_SUPPRESS_YOLO_WARNING": "1",
+            },
+            capabilities=self.capabilities,
+        )
+
+    def build_version_check(self) -> HostInvocation:
+        return HostInvocation(
+            binary="qwen",
+            args=["--version"],
+            env={},
+            capabilities=self.capabilities,
+        )
+
+    def build_detached(self, *, prompt: str) -> HostInvocation:
+        return HostInvocation(
+            binary="qwen",
+            args=["--yolo", "-p", prompt],
+            env={
+                "LL_NON_INTERACTIVE": "1",
+                "DANGEROUSLY_SKIP_PERMISSIONS": "1",
+                "QWEN_CODE_SUPPRESS_YOLO_WARNING": "1",
+            },
+            capabilities=self.capabilities,
+        )
+
+    def describe_capabilities(self) -> CapabilityReport:
+        return CapabilityReport(
+            host=self.name,
+            binary="qwen",
+            version="",
+            capabilities=[
+                CapabilityEntry("streaming", "full", "--output-format stream-json"),
+                CapabilityEntry(
+                    "permission_skip",
+                    "full",
+                    "--yolo / --approval-mode yolo (hidden flags, live-verified "
+                    "by the FEAT-3155 spike)",
+                ),
+                CapabilityEntry(
+                    "agent_select",
+                    "unsupported",
+                    "qwen has no --agent CLI flag (documented upstream as planned); "
+                    "parameter is dropped with CapabilityNotSupported",
+                ),
+                CapabilityEntry(
+                    "tool_allowlist",
+                    "unsupported",
+                    "--exclude-tools is a denylist, not allowlist semantics; "
+                    "parameter is dropped with CapabilityNotSupported",
+                ),
+                CapabilityEntry(
+                    "json_schema",
+                    "full",
+                    "qwen honors the inline --json-schema flag (Ajv-validated "
+                    "synthetic structured_output tool); session persistence is "
+                    "opted out via --chat-recording false",
+                ),
+                CapabilityEntry(
+                    "structured_output",
+                    "full",
+                    "second host after Claude Code to honor inline --json-schema; "
+                    "FSM evaluators append it and parse the validated JSON string "
+                    "from the final envelope's result field",
+                ),
+                CapabilityEntry(
+                    "workspace_sandboxed",
+                    "unsupported",
+                    "--include-directories is additive, not a jail; workspace_root "
+                    "widens rather than confines access",
+                ),
+            ],
+        )
+
+
 # Built-in host runners keyed by their ``name`` attribute. Extensions may
 # register additional runners but built-ins always win on collision —
 # mirrors ``hooks/__init__.py:_dispatch_table`` (built-ins shadow extensions).
@@ -1560,6 +1762,7 @@ _HOST_RUNNER_REGISTRY: dict[str, type[HostRunner]] = {
     "gemini": GeminiRunner,
     "omp": OmpRunner,
     "kimi-code": KimiRunner,
+    "qwen": QwenRunner,
 }
 
 # Order of probing when no explicit host is configured. Matches the binary
@@ -1574,6 +1777,7 @@ _PROBE_ORDER: list[tuple[str, str]] = [
     ("gemini", "gemini"),
     ("omp", "omp"),
     ("kimi-code", "kimi"),
+    ("qwen", "qwen"),
 ]
 
 
@@ -1598,9 +1802,9 @@ def _apply_automation_env(env: dict[str, str], automation_profile: str | None) -
 def _remediation_hint() -> str:
     return (
         "Set LL_HOST_CLI=<host> (one of: claude-code, codex, opencode, pi, gemini, omp, "
-        "kimi-code), or LL_HOOK_HOST, or configure orchestration.host_cli in "
+        "kimi-code, qwen), or LL_HOOK_HOST, or configure orchestration.host_cli in "
         "ll-config.json, or install a supported host CLI on PATH (claude, codex, pi, "
-        "gemini, omp, or kimi)."
+        "gemini, omp, kimi, or qwen)."
     )
 
 
@@ -1614,7 +1818,7 @@ def resolve_host(env: dict[str, str] | None = None) -> HostRunner:
        host identifier so users with an existing hook config don't need a
        second knob.
     3. Binary probe: ``claude`` → ``codex`` → ``pi`` → ``gemini`` → ``omp``
-       → ``kimi`` (see ``_PROBE_ORDER`).
+       → ``kimi`` → ``qwen`` (see ``_PROBE_ORDER`).
     4. Raise :class:`HostNotConfigured` with a remediation hint.
 
     Args:

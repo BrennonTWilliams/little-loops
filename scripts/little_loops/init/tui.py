@@ -55,6 +55,7 @@ _HOST_CHOICES: list[tuple[str, str]] = [
     ("Claude Code  (global plugin — no adapter file needed)", "claude-code"),
     ("Codex CLI  (writes .codex/hooks.json)", "codex"),
     ("Kimi Code  (managed block in ~/.kimi-code/config.toml)", "kimi-code"),
+    ("Qwen Code  (managed hooks in .qwen/settings.json)", "qwen"),
     ("Pi  (not yet available — EPIC-1622)", "pi"),
 ]
 
@@ -62,6 +63,7 @@ _HOST_LABELS: dict[str, str] = {
     "claude-code": "Claude Code",
     "codex": "Codex CLI",
     "kimi-code": "Kimi Code",
+    "qwen": "Qwen Code",
     "pi": "Pi",
 }
 
@@ -892,7 +894,7 @@ def _apply_config(
     if claude_md_opt_in:
         write_claude_md(project_root)
 
-    # AGENTS.md is the cross-tool convention read by codex / kimi-code
+    # AGENTS.md is the cross-tool convention read by codex / kimi-code / qwen
     # (AGENTS_MD_HOSTS); claude-specific content stays in CLAUDE.md.
     if any(h in AGENTS_MD_HOSTS for h in hosts):
         write_agents_md(project_root)

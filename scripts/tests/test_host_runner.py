@@ -35,6 +35,7 @@ from little_loops.host_runner import (
     OmpRunner,
     OpenCodeRunner,
     PiRunner,
+    QwenRunner,
     apply_host_cli_from_config,
     resolve_host,
 )
@@ -56,12 +57,13 @@ def isolated_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         GeminiRunner,
         OmpRunner,
         KimiRunner,
+        QwenRunner,
     ],
 )
 class TestAutomationProfileEnvAcrossRunners:
     """ENH-3081: automation_profile=None clears an inherited LL_AUTOMATION.
 
-    The five *implemented* runners share one env helper; a table-driven test is
+    The six *implemented* runners share one env helper; a table-driven test is
     what keeps them from drifting apart again (BUG-3058 precedent). The ``None``
     branch was untested tree-wide before this — the only prior assertion was
     ``TestKimiRunner.test_automation_profile_env``, which covers Kimi's non-None
@@ -132,12 +134,13 @@ class TestDisableBackgroundTasksEnv:
         GeminiRunner,
         OmpRunner,
         KimiRunner,
+        QwenRunner,
         OpenCodeRunner,
         PiRunner,
     ],
 )
 class TestDisableBackgroundTasksNoOpOnOtherRunners:
-    """AC3: the five non-Claude runners accept disable_background_tasks and ignore it."""
+    """AC3: the six non-Claude runners accept disable_background_tasks and ignore it."""
 
     def test_no_op_on_other_runners(self, runner_cls: type[HostRunner]) -> None:
         if runner_cls is ClaudeCodeRunner:
@@ -928,10 +931,16 @@ class TestKimiRunner:
         assert hr._HOST_RUNNER_REGISTRY["kimi-code"] is KimiRunner
 
     def test_kimi_in_probe_order_appended_last(self) -> None:
-        """New hosts append to _PROBE_ORDER to keep auto-detection stable."""
+        """New hosts append to _PROBE_ORDER to keep auto-detection stable.
+
+        kimi was appended last by EPIC-2910; EPIC-3154 appended qwen after
+        it, so kimi now sits second-to-last (the append-only invariant is
+        what both placements verify).
+        """
         from little_loops import host_runner as hr
 
-        assert hr._PROBE_ORDER[-1] == ("kimi-code", "kimi")
+        assert hr._PROBE_ORDER[-2] == ("kimi-code", "kimi")
+        assert hr._PROBE_ORDER[-1] == ("qwen", "qwen")
 
     def test_resolve_host_picks_kimi_via_env(self, isolated_env: None) -> None:
         runner = resolve_host(env={"LL_HOST_CLI": "kimi-code"})
@@ -1095,6 +1104,239 @@ class TestKimiRunner:
         assert by_name["streaming"].status == "full"
         assert by_name["agent_select"].status == "partial"
         assert by_name["tool_allowlist"].status == "unsupported"
+
+
+class TestQwenRunner:
+    """QwenRunner builds argv per the FEAT-3155 flag-translation table.
+
+    Source: ``thoughts/research/qwen-code-surface.md`` (EPIC-3154, ENH-3156),
+    verified against qwen 0.21.6.
+    """
+
+    def test_qwen_runner_registered(self) -> None:
+        from little_loops import host_runner as hr
+
+        assert "qwen" in hr._HOST_RUNNER_REGISTRY
+        assert hr._HOST_RUNNER_REGISTRY["qwen"] is QwenRunner
+
+    def test_qwen_in_probe_order_appended_last(self) -> None:
+        """New hosts append to _PROBE_ORDER to keep auto-detection stable."""
+        from little_loops import host_runner as hr
+
+        assert hr._PROBE_ORDER[-1] == ("qwen", "qwen")
+
+    def test_resolve_host_picks_qwen_via_env(self, isolated_env: None) -> None:
+        runner = resolve_host(env={"LL_HOST_CLI": "qwen"})
+        assert isinstance(runner, QwenRunner)
+        assert runner.name == "qwen"
+
+    def test_resolve_host_picks_qwen_via_hook_host(self, isolated_env: None) -> None:
+        runner = resolve_host(env={"LL_HOOK_HOST": "qwen"})
+        assert isinstance(runner, QwenRunner)
+
+    def test_qwen_runner_probed_when_on_path(
+        self, isolated_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """resolve_host() auto-detects QwenRunner when only qwen is on PATH."""
+        monkeypatch.setattr(
+            "little_loops.host_runner.shutil.which",
+            lambda binary: "/usr/local/bin/qwen" if binary == "qwen" else None,
+        )
+        runner = resolve_host(env={})
+        assert isinstance(runner, QwenRunner)
+        invocation = runner.build_streaming(prompt="hi")
+        assert invocation.binary == "qwen"
+
+    def test_qwen_runner_flag_translation(self) -> None:
+        """Snapshot of build_streaming argv against the verified translation table."""
+        runner = QwenRunner()
+        invocation = runner.build_streaming(prompt="/ll:ready-issue BUG-001")
+
+        assert [invocation.binary, *invocation.args] == [
+            "qwen",
+            "--yolo",
+            "--output-format",
+            "stream-json",
+            "-p",
+            "/ll:ready-issue BUG-001",
+        ]
+
+    def test_build_streaming_resume_maps_to_continue(self) -> None:
+        runner = QwenRunner()
+        invocation = runner.build_streaming(prompt="follow up", resume=True)
+        assert "--continue" in invocation.args
+
+    def test_build_streaming_with_model(self) -> None:
+        runner = QwenRunner()
+        invocation = runner.build_streaming(prompt="hi", model="qwen3-coder")
+        idx = invocation.args.index("--model")
+        assert invocation.args[idx + 1] == "qwen3-coder"
+
+    def test_build_streaming_workspace_root_maps_to_include_directories(
+        self, tmp_path: Path
+    ) -> None:
+        runner = QwenRunner()
+        invocation = runner.build_streaming(prompt="hi", workspace_root=tmp_path)
+        idx = invocation.args.index("--include-directories")
+        assert invocation.args[idx + 1] == str(tmp_path)
+        assert invocation.capabilities.workspace_sandboxed is False
+
+    def test_build_streaming_warns_and_drops_agent(self) -> None:
+        """qwen has no --agent flag (planned upstream); warn and drop."""
+        runner = QwenRunner()
+        with pytest.warns(CapabilityNotSupported, match="agent"):
+            invocation = runner.build_streaming(prompt="hi", agent="explore")
+        assert "--agent" not in invocation.args
+
+    def test_build_streaming_warns_and_drops_tools(self) -> None:
+        """--exclude-tools is a denylist; no allowlist semantics exist."""
+        runner = QwenRunner()
+        with pytest.warns(CapabilityNotSupported, match="tool"):
+            runner.build_streaming(prompt="hi", tools=["read_file", "edit"])
+
+    def test_build_streaming_prompt_terminates_argv(self) -> None:
+        runner = QwenRunner()
+        invocation = runner.build_streaming(
+            prompt="hi", model="qwen3-coder", workspace_root=Path("/tmp/x")
+        )
+        assert invocation.args[-2:] == ["-p", "hi"]
+
+    def test_build_blocking_json_streams(self) -> None:
+        """qwen's json mode buffers an array — blocking_json uses stream-json (Kimi posture)."""
+        runner = QwenRunner()
+        invocation = runner.build_blocking_json(prompt="hello")
+        assert [invocation.binary, *invocation.args] == [
+            "qwen",
+            "--yolo",
+            "--output-format",
+            "stream-json",
+            "-p",
+            "hello",
+        ]
+
+    def test_build_blocking_json_drops_schema_silently(self) -> None:
+        """structured_output=True: evaluators append --json-schema at the call site."""
+        runner = QwenRunner()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", CapabilityNotSupported)
+            invocation = runner.build_blocking_json(
+                prompt="hi", json_schema={"type": "object"}
+            )
+        assert "--json-schema" not in invocation.args
+        assert invocation.capabilities.structured_output is True
+
+    def test_build_version_check(self) -> None:
+        runner = QwenRunner()
+        invocation = runner.build_version_check()
+        assert invocation.binary == "qwen"
+        assert invocation.args == ["--version"]
+
+    def test_build_detached(self) -> None:
+        runner = QwenRunner()
+        invocation = runner.build_detached(prompt="hi there")
+        assert invocation.binary == "qwen"
+        assert invocation.args == ["--yolo", "-p", "hi there"]
+
+    def test_build_streaming_worktree_env(self, tmp_path: Path) -> None:
+        """Linked-worktree .git file sets GIT_DIR/GIT_WORK_TREE like ClaudeCodeRunner."""
+        gitdir = tmp_path / "repo-gitdir"
+        gitdir.mkdir()
+        (tmp_path / ".git").write_text(f"gitdir: {gitdir}\n")
+        runner = QwenRunner()
+        invocation = runner.build_streaming(prompt="hi", working_dir=tmp_path)
+        assert invocation.env["GIT_WORK_TREE"] == str(tmp_path)
+        assert invocation.env["GIT_DIR"] == str(gitdir.resolve())
+
+    def test_all_builds_include_non_interactive_env(self) -> None:
+        """All build_* methods set LL_NON_INTERACTIVE + DANGEROUSLY_SKIP_PERMISSIONS (BUG-2110)."""
+        runner = QwenRunner()
+        for invocation in (
+            runner.build_streaming(prompt="hi"),
+            runner.build_blocking_json(prompt="hi"),
+            runner.build_detached(prompt="hi"),
+        ):
+            assert invocation.env.get("LL_NON_INTERACTIVE") == "1"
+            assert invocation.env.get("DANGEROUSLY_SKIP_PERMISSIONS") == "1"
+
+    def test_all_builds_suppress_yolo_warning(self) -> None:
+        """The stderr yolo/no-sandbox warning would pollute error diagnostics."""
+        runner = QwenRunner()
+        for invocation in (
+            runner.build_streaming(prompt="hi"),
+            runner.build_blocking_json(prompt="hi"),
+            runner.build_detached(prompt="hi"),
+        ):
+            assert invocation.env.get("QWEN_CODE_SUPPRESS_YOLO_WARNING") == "1"
+
+    def test_automation_profile_env(self) -> None:
+        runner = QwenRunner()
+        invocation = runner.build_streaming(prompt="hi", automation_profile="autodev")
+        assert invocation.env["LL_AUTOMATION"] == "1"
+        assert invocation.env["LL_AUTOMATION_PROFILE"] == "autodev"
+
+    def test_capabilities_flags(self) -> None:
+        caps = QwenRunner().capabilities
+        assert caps.streaming is True
+        assert caps.permission_skip is True
+        assert caps.agent_select is False
+        assert caps.tool_allowlist is False
+        # Second host ever with structured_output (inline --json-schema, FEAT-3155).
+        assert caps.structured_output is True
+        assert caps.workspace_sandboxed is False
+
+    def test_satisfies_host_runner_protocol(self) -> None:
+        assert isinstance(QwenRunner(), HostRunner)
+
+    def test_qwen_runner_returns_capability_report(self) -> None:
+        report = QwenRunner().describe_capabilities()
+        assert isinstance(report, CapabilityReport)
+        assert report.host == "qwen"
+        assert report.binary == "qwen"
+        by_name = {e.name: e for e in report.capabilities}
+        assert by_name["streaming"].status == "full"
+        assert by_name["permission_skip"].status == "full"
+        assert by_name["agent_select"].status == "unsupported"
+        assert by_name["tool_allowlist"].status == "unsupported"
+        assert by_name["json_schema"].status == "full"
+        assert by_name["structured_output"].status == "full"
+        assert by_name["workspace_sandboxed"].status == "unsupported"
+
+
+class TestQwenStructuredOutputArgs:
+    """_structured_output_args host-specific persistence flag (EPIC-3154).
+
+    qwen rejects claude's ``--no-session-persistence`` (argv parse error);
+    its equivalent is ``--chat-recording false`` (FEAT-3155 spike).
+    """
+
+    def test_qwen_invocation_gets_chat_recording_false(self) -> None:
+        from little_loops.fsm.evaluators import _structured_output_args
+
+        invocation = QwenRunner().build_blocking_json(prompt="hi")
+        args = _structured_output_args(invocation, {"type": "object"})
+        assert "--json-schema" in args
+        assert json.dumps({"type": "object"}) in args
+        idx = args.index("--chat-recording")
+        assert args[idx + 1] == "false"
+        assert "--no-session-persistence" not in args
+
+    def test_claude_invocation_keeps_no_session_persistence(self) -> None:
+        from little_loops.fsm.evaluators import _structured_output_args
+
+        invocation = ClaudeCodeRunner().build_blocking_json(prompt="hi")
+        args = _structured_output_args(invocation, {"type": "object"})
+        assert "--json-schema" in args
+        assert "--no-session-persistence" in args
+        assert "--chat-recording" not in args
+
+    def test_unstructured_host_gets_neither_flag(self) -> None:
+        from little_loops.fsm.evaluators import _structured_output_args
+
+        invocation = KimiRunner().build_blocking_json(prompt="hi")
+        args = _structured_output_args(invocation, {"type": "object"})
+        assert "--json-schema" not in args
+        assert "--no-session-persistence" not in args
+        assert "--chat-recording" not in args
 
 
 class TestOmpRunner:

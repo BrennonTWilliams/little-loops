@@ -1537,6 +1537,55 @@ class TestResolveConfigPath:
 
         assert resolve_config_path(tmp_path) == ll_cfg
 
+    def test_qwen_path_takes_precedence_when_host_qwen(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``LL_HOOK_HOST=qwen`` puts ``.qwen/ll-config.json`` ahead of ``.ll/`` (ENH-3157)."""
+        from little_loops.config.core import resolve_config_path
+
+        monkeypatch.setenv("LL_HOOK_HOST", "qwen")
+        monkeypatch.delenv("LL_STATE_DIR", raising=False)
+        (tmp_path / ".qwen").mkdir()
+        qwen_cfg = tmp_path / ".qwen" / "ll-config.json"
+        qwen_cfg.write_text('{"qwen": true}')
+        (tmp_path / ".ll").mkdir(exist_ok=True)
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"ll": true}')
+        (tmp_path / "ll-config.json").write_text('{"root": true}')
+
+        assert resolve_config_path(tmp_path) == qwen_cfg
+
+    def test_qwen_path_takes_precedence_when_state_dir_qwen(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``LL_STATE_DIR=.qwen`` is an alternate trigger for the qwen probe order (ENH-3157)."""
+        from little_loops.config.core import resolve_config_path
+
+        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
+        monkeypatch.setenv("LL_STATE_DIR", ".qwen")
+        (tmp_path / ".qwen").mkdir()
+        qwen_cfg = tmp_path / ".qwen" / "ll-config.json"
+        qwen_cfg.write_text('{"qwen": true}')
+        (tmp_path / ".ll").mkdir(exist_ok=True)
+        (tmp_path / ".ll" / "ll-config.json").write_text('{"ll": true}')
+
+        assert resolve_config_path(tmp_path) == qwen_cfg
+
+    def test_qwen_path_ignored_without_host_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``.qwen/ll-config.json`` is NOT probed when no host env var is set."""
+        from little_loops.config.core import resolve_config_path
+
+        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
+        monkeypatch.delenv("LL_STATE_DIR", raising=False)
+        (tmp_path / ".qwen").mkdir()
+        (tmp_path / ".qwen" / "ll-config.json").write_text('{"qwen": true}')
+        (tmp_path / ".ll").mkdir(exist_ok=True)
+        ll_cfg = tmp_path / ".ll" / "ll-config.json"
+        ll_cfg.write_text('{"ll": true}')
+
+        assert resolve_config_path(tmp_path) == ll_cfg
+
     def test_opencode_host_uses_default_order(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

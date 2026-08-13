@@ -1,0 +1,155 @@
+{
+  "name": "ll",
+  "version": "1.155.0",
+  "description": "Development workflow toolkit with issue management, code quality commands, and automated processing — Qwen Code edition",
+  "commands": "commands",
+  "skills": "skills",
+  "agents": "agents",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${extensionPath}${/}scripts${/}little_loops${/}hooks${/}adapters${/}qwen${/}session-start.sh",
+            "name": "ll:session-start",
+            "timeout": 30000
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${extensionPath}${/}scripts${/}little_loops${/}hooks${/}adapters${/}qwen${/}drift-check.sh",
+            "name": "ll:drift-check",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "manual|auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${extensionPath}${/}scripts${/}little_loops${/}hooks${/}adapters${/}qwen${/}pre-compact.sh",
+            "name": "ll:pre-compact",
+            "timeout": 30000
+          }
+        ]
+      },
+      {
+        "matcher": "manual|auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${extensionPath}${/}scripts${/}little_loops${/}hooks${/}adapters${/}qwen${/}precompact-handoff.sh",
+            "name": "ll:precompact-handoff",
+            "timeout": 30000
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${extensionPath}${/}scripts${/}little_loops${/}hooks${/}adapters${/}qwen${/}prompt-submit.sh",
+            "name": "ll:prompt-submit",
+            "timeout": 30000
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "write_file|edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${extensionPath}${/}scripts${/}little_loops${/}hooks${/}adapters${/}qwen${/}pre-tool-use.sh",
+            "name": "ll:pre-tool-use",
+            "timeout": 30000
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${extensionPath}${/}scripts${/}little_loops${/}hooks${/}adapters${/}qwen${/}post-tool-use.sh",
+            "name": "ll:post-tool-use",
+            "timeout": 30000
+          }
+        ]
+      },
+      {
+        "matcher": "write_file|edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${extensionPath}${/}scripts${/}little_loops${/}hooks${/}adapters${/}qwen${/}edit-batch-nudge.sh",
+            "name": "ll:edit-batch-nudge",
+            "timeout": 30000
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${extensionPath}${/}scripts${/}little_loops${/}hooks${/}adapters${/}qwen${/}stop.sh",
+            "name": "ll:stop",
+            "timeout": 15000
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${extensionPath}${/}scripts${/}little_loops${/}hooks${/}adapters${/}qwen${/}session-end.sh",
+            "name": "ll:session-end",
+            "timeout": 30000
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${extensionPath}${/}scripts${/}little_loops${/}hooks${/}adapters${/}qwen${/}subagent-start.sh",
+            "name": "ll:subagent-start",
+            "timeout": 30000
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${extensionPath}${/}scripts${/}little_loops${/}hooks${/}adapters${/}qwen${/}subagent-stop.sh",
+            "name": "ll:subagent-stop",
+            "timeout": 30000
+          }
+        ]
+      }
+    ]
+  }
+}

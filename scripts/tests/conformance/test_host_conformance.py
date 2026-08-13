@@ -57,6 +57,7 @@ _HOST_BINARY: dict[str, str] = {
     "gemini": "gemini",
     "omp": "omp",
     "kimi-code": "kimi",
+    "qwen": "qwen",
 }
 
 

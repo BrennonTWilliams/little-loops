@@ -1,0 +1,113 @@
+---
+description: Find and fix issue filenames with missing or duplicate IDs across types (e.g., BUG-007 and FEAT-007)
+---
+
+# Normalize Issues
+
+Filename/ID mechanics (missing IDs, cross-type duplicate IDs, legacy status
+directories) are handled deterministically by `ll-issues normalize`. This
+command wraps that CLI and keeps only the two judgment calls it deliberately
+leaves to an LLM: type-misclassification review, and matching issues to
+relevant project documents.
+
+## Process
+
+### 1. Run the Deterministic Scan
+
+```bash
+ll-issues normalize {{issue_id}} {{flags}}
+```
+
+This detects and reports (and, with `--auto`, fixes) five finding kinds:
+
+| Kind | Auto-fixed by `--auto`? | Gates `--check` (non-strict)? |
+|------|--------------------------|--------------------------------|
+| `missing_id` | yes | yes |
+| `malformed_filename` | yes | yes |
+| `duplicate_id` | yes | yes |
+| `legacy_dir` | no — run `ll-migrate` | only under `--strict` |
+| `type_mismatch` | never — semantic judgment (Step 2 below) | only under `--strict` |
+
+`--check` is the deterministic FSM exit-code gate (0 clean / 1 violations,
+covering the three auto-fixable classes only unless `--strict` is passed).
+`--auto` applies `git mv` renames, syncs frontmatter `id:`, and repoints any
+inbound `blocked_by`/`depends_on`/`parent`/`epic`/`relates_to`/`supersedes`
+edge that named a reassigned ID. In `--auto` mode, apply reclassifications
+without further prompting; otherwise present the CLI's report and confirm
+before re-running with `--auto`.
+
+### 2. Review Type Misclassifications (LLM Judgment)
+
+`ll-issues normalize` reports `type_mismatch` findings but never applies
+them — this is the one class of finding that needs judgment, not just a
+keyword count. For each `type_mismatch` in the report:
+
+**Heuristics** — the CLI counts these signal keywords in Summary,
+Motivation/Current Behavior, and Root Cause sections for each candidate type.
+`type_mismatch` findings are only reported for `open`/`in_progress`/`blocked`
+issues — `done`/`cancelled`/`deferred` issues are excluded since reclassifying
+closed work has no actionable follow-up (ENH-3053):
+
+| Signal keywords | Suggests type |
+|-----------------|---------------|
+| "broken", "regression", "error", "crash", "fails", "wrong behavior", "should not", "defect", "incorrect", "unexpected" | BUG |
+| "new capability", "users can't currently", "add support for", "implement", "missing feature", "not yet possible" | FEAT |
+| "improve", "optimize", "enhance", "refactor", "better UX", "reduce", "increase performance", "simplify" | ENH |
+| "decompose into", "umbrella", "rollup of", "multi-issue initiative", "coordination container", "should be an epic", "milestone" | EPIC |
+
+1. Read the flagged issue file to confirm (or override) the CLI's inferred type
+2. If confirmed, reclassify manually: `git mv` the file into the target
+   category directory (`bugs/` → BUG, `features/` → FEAT, `enhancements/` →
+   ENH, `epics/` → EPIC) with the new type prefix, then re-run
+   `ll-issues normalize --auto` so `id:`/inbound edges stay in sync
+3. If the CLI's signal count is a false positive (ambiguous or ENH-vs-BUG
+   phrasing), leave the file as-is
+
+### 3. Add Missing Document References (if `documents.enabled`)
+
+**Skip this step if** `documents.enabled` is not `true` in `.ll/ll-config.json`,
+or no documents are configured.
+
+For each issue file missing a `## Related Key Documentation` section, or
+carrying only placeholder text (`_No documents linked`, `_No relevant
+documents identified`):
+
+1. Load documents from `{{config.documents.categories}}`
+2. Read each document and extract key concepts
+3. Match against the issue's content; select the top 3 matches
+4. Add or update the `## Related Key Documentation` section (insert before
+   `## Labels` or the final `---` footer if the section is missing; replace
+   the placeholder line if it exists)
+5. Note additions in your summary:
+
+```markdown
+## Document References Added
+
+| Issue | Documents Linked |
+|-------|------------------|
+| BUG-071 | docs/ARCHITECTURE.md, docs/API.md |
+```
+
+## Arguments
+
+{{args}}
+
+- **issue_id** (optional): Scope reported/applied findings to this issue;
+  duplicate-ID detection and next-ID allocation always run corpus-wide
+- **flags** (optional):
+  - `--auto` — apply all auto-fixable findings without prompting
+  - `--check` — FSM-gate mode: exit 0 clean / 1 violations, no fixes applied
+  - `--strict` — widen `--check` to also gate on `legacy_dir`/`type_mismatch`
+
+## Examples
+
+```bash
+/ll:normalize-issues                  # report all findings
+/ll:normalize-issues --check          # FSM check-only gate
+/ll:normalize-issues --auto           # apply all auto-fixable findings
+/ll:normalize-issues ENH-2944 --auto  # scope to one issue
+```
+
+Pairs with `/ll:scan-codebase` (fix non-standard filenames after scanning),
+`/ll:verify-issues` (validate content post-normalize), and
+`/ll:prioritize-issues` (normalizes IDs before priorities are assigned).

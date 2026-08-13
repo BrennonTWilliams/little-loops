@@ -48,7 +48,7 @@ class TestHostCapabilities:
 class TestAdapterSectionHosts:
     def test_finds_documented_hosts(self) -> None:
         hosts = _adapter_section_hosts(_host_compat_md_path())
-        assert hosts == {"codex", "gemini", "omp", "kimi-code", "claude-code"}
+        assert hosts == {"codex", "gemini", "omp", "kimi-code", "claude-code", "qwen"}
 
 
 class TestCheckDocParity:

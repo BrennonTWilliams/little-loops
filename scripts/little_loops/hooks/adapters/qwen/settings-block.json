@@ -1,0 +1,159 @@
+{
+  "SessionStart": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/qwen/session-start.sh",
+          "name": "ll:session-start",
+          "description": "little-loops managed hook (ll-gen:{{LL_GEN_VERSION}})",
+          "timeout": 30000
+        }
+      ]
+    },
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/qwen/drift-check.sh",
+          "name": "ll:drift-check",
+          "description": "little-loops managed hook (ll-gen:{{LL_GEN_VERSION}})",
+          "timeout": 10000
+        }
+      ]
+    }
+  ],
+  "PreCompact": [
+    {
+      "matcher": "manual|auto",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/qwen/pre-compact.sh",
+          "name": "ll:pre-compact",
+          "description": "little-loops managed hook (ll-gen:{{LL_GEN_VERSION}})",
+          "timeout": 30000
+        }
+      ]
+    },
+    {
+      "matcher": "manual|auto",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/qwen/precompact-handoff.sh",
+          "name": "ll:precompact-handoff",
+          "description": "little-loops managed hook (ll-gen:{{LL_GEN_VERSION}})",
+          "timeout": 30000
+        }
+      ]
+    }
+  ],
+  "UserPromptSubmit": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/qwen/prompt-submit.sh",
+          "name": "ll:prompt-submit",
+          "description": "little-loops managed hook (ll-gen:{{LL_GEN_VERSION}})",
+          "timeout": 30000
+        }
+      ]
+    }
+  ],
+  "PreToolUse": [
+    {
+      "matcher": "write_file|edit",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/qwen/pre-tool-use.sh",
+          "name": "ll:pre-tool-use",
+          "description": "little-loops managed hook (ll-gen:{{LL_GEN_VERSION}})",
+          "timeout": 30000
+        }
+      ]
+    }
+  ],
+  "PostToolUse": [
+    {
+      "matcher": ".*",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/qwen/post-tool-use.sh",
+          "name": "ll:post-tool-use",
+          "description": "little-loops managed hook (ll-gen:{{LL_GEN_VERSION}})",
+          "timeout": 30000
+        }
+      ]
+    },
+    {
+      "matcher": "write_file|edit",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/qwen/edit-batch-nudge.sh",
+          "name": "ll:edit-batch-nudge",
+          "description": "little-loops managed hook (ll-gen:{{LL_GEN_VERSION}})",
+          "timeout": 30000
+        }
+      ]
+    }
+  ],
+  "Stop": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/qwen/stop.sh",
+          "name": "ll:stop",
+          "description": "little-loops managed hook (ll-gen:{{LL_GEN_VERSION}})",
+          "timeout": 15000
+        }
+      ]
+    }
+  ],
+  "SessionEnd": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/qwen/session-end.sh",
+          "name": "ll:session-end",
+          "description": "little-loops managed hook (ll-gen:{{LL_GEN_VERSION}})",
+          "timeout": 30000
+        }
+      ]
+    }
+  ],
+  "SubagentStart": [
+    {
+      "matcher": ".*",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/qwen/subagent-start.sh",
+          "name": "ll:subagent-start",
+          "description": "little-loops managed hook (ll-gen:{{LL_GEN_VERSION}})",
+          "timeout": 30000
+        }
+      ]
+    }
+  ],
+  "SubagentStop": [
+    {
+      "matcher": ".*",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/qwen/subagent-stop.sh",
+          "name": "ll:subagent-stop",
+          "description": "little-loops managed hook (ll-gen:{{LL_GEN_VERSION}})",
+          "timeout": 30000
+        }
+      ]
+    }
+  ]
+}

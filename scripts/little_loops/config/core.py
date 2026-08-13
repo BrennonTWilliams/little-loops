@@ -56,6 +56,7 @@ CODEX_CONFIG_DIR = ".codex"
 GEMINI_CONFIG_DIR = ".gemini"
 OMP_CONFIG_DIR = ".omp"
 KIMI_CONFIG_DIR = ".kimi-code"
+QWEN_CONFIG_DIR = ".qwen"
 LOCAL_OVERRIDE_FILENAME = "ll.local.md"
 
 
@@ -129,8 +130,9 @@ def _config_candidates(
     ``.codex/ll-config.json`` is prepended so Codex CLI projects pick up
     their host-specific config before falling through to the default
     candidates. ``host == "gemini"`` / ``state_dir == ".gemini"`` (ENH-2187),
-    ``host == "omp"`` / ``state_dir == ".omp"`` (FEAT-2262), and
-    ``host == "kimi-code"`` / ``state_dir == ".kimi-code"`` (ENH-2913)
+    ``host == "omp"`` / ``state_dir == ".omp"`` (FEAT-2262),
+    ``host == "kimi-code"`` / ``state_dir == ".kimi-code"`` (ENH-2913), and
+    ``host == "qwen"`` / ``state_dir == ".qwen"`` (ENH-3157)
     prepend their host directories the same way.
     Other host values pass through unchanged.
 
@@ -145,6 +147,8 @@ def _config_candidates(
         candidates.append(project_root / OMP_CONFIG_DIR / CONFIG_FILENAME)
     if host == "kimi-code" or state_dir == KIMI_CONFIG_DIR:
         candidates.append(project_root / KIMI_CONFIG_DIR / CONFIG_FILENAME)
+    if host == "qwen" or state_dir == QWEN_CONFIG_DIR:
+        candidates.append(project_root / QWEN_CONFIG_DIR / CONFIG_FILENAME)
     candidates.append(project_root / CONFIG_DIR / CONFIG_FILENAME)
     candidates.append(project_root / CONFIG_FILENAME)
     return candidates
@@ -159,9 +163,9 @@ def resolve_config_path(project_root: Path) -> Path | None:
     with the legacy bash ``ll_resolve_config``); when ``LL_HOOK_HOST=codex``
     or ``LL_STATE_DIR=.codex`` is set on the environment,
     ``<root>/.codex/ll-config.json`` is probed first (FEAT-957). The
-    equivalent gemini (``.gemini``, ENH-2187), omp (``.omp``, FEAT-2262), and
-    kimi-code (``.kimi-code``, ENH-2913) triggers prepend their host
-    directories the same way.
+    equivalent gemini (``.gemini``, ENH-2187), omp (``.omp``, FEAT-2262),
+    kimi-code (``.kimi-code``, ENH-2913), and qwen (``.qwen``, ENH-3157)
+    triggers prepend their host directories the same way.
 
     Pure lookup — does not create directories or mutate global state (the
     bash version's ``mkdir -p .ll`` side effect is intentionally dropped;

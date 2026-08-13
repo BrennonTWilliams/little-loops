@@ -368,13 +368,17 @@ def _body_after_frontmatter(text: str) -> str:
 # No prior test detected drift, so a skipped re-run after editing the source
 # would pass silently. FEAT-3077 extends this to skills/manage-issue/SKILL.md
 # so the carve-out edit's mirror regeneration is test-enforced, not just instructed.
+# EPIC-3154 adds the .qwen/ mirror (FEAT-3159 emitter, same convention).
 SKILL_MIRRORS_MUST_MATCH_SOURCE = [
     ("skills/wire-issue/SKILL.md", ".gemini/skills/wire-issue/SKILL.md"),
     ("skills/wire-issue/SKILL.md", ".kimi-code/skills/wire-issue/SKILL.md"),
+    ("skills/wire-issue/SKILL.md", ".qwen/skills/wire-issue/SKILL.md"),
     ("skills/manage-issue/SKILL.md", ".gemini/skills/manage-issue/SKILL.md"),
     ("skills/manage-issue/SKILL.md", ".kimi-code/skills/manage-issue/SKILL.md"),
+    ("skills/manage-issue/SKILL.md", ".qwen/skills/manage-issue/SKILL.md"),
     ("skills/explore-api/SKILL.md", ".gemini/skills/explore-api/SKILL.md"),
     ("skills/explore-api/SKILL.md", ".kimi-code/skills/explore-api/SKILL.md"),
+    ("skills/explore-api/SKILL.md", ".qwen/skills/explore-api/SKILL.md"),
 ]
 
 
@@ -385,7 +389,8 @@ def test_skill_mirror_matches_source(project_root: Path, source_rel: str, mirror
     mirror_body = _body_after_frontmatter((project_root / mirror_rel).read_text())
     assert source_body == mirror_body, (
         f"{mirror_rel} is stale relative to {source_rel}. Regenerate with: "
-        "ll-adapt --host gemini --apply && ll-adapt --host kimi-code --apply"
+        "ll-adapt --host gemini --apply && ll-adapt --host kimi-code --apply "
+        "&& ll-adapt --host qwen --apply"
     )
 
 

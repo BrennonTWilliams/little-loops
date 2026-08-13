@@ -99,6 +99,10 @@ nav:
     - Getting Started: kimi/getting-started.md
     - Hook Events: kimi/hook-events.md
     - Automation: kimi/automation.md
+  - Qwen Code:
+    - Getting Started: qwen/getting-started.md
+    - Hook Events: qwen/hook-events.md
+    - Automation: qwen/automation.md
   - Development:
     - Testing: development/TESTING.md
     - E2E Testing: development/E2E_TESTING.md
