@@ -1,10 +1,16 @@
 ---
 discovered_commit: 12a6af03c58a3b8f355e265a895b3950db89b66c
 discovered_branch: main
-discovered_date: 2026-03-07T05:53:04Z
+discovered_date: 2026-03-07 05:53:04+00:00
 discovered_by: scan-codebase
 status: done
-completed_at: 2026-03-07T00:00:00Z
+completed_at: 2026-03-07 00:00:00+00:00
+confidence_score: 83
+outcome_confidence: 79
+score_complexity: 18
+score_test_coverage: 20
+score_ambiguity: 23
+score_change_surface: 18
 ---
 
 # ENH-628: YAML-load + paradigm-detect block duplicated three times across `load_loop`, `load_loop_with_spec`, and `cmd_run`
