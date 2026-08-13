@@ -88,7 +88,7 @@ class TestQwenAdapterSentinels:
 
     def test_shims_export_ll_hook_host_and_intent(self) -> None:
         """Every intent shim exports LL_HOOK_HOST=qwen and dispatches its intent."""
-        expected = {shim: intent for shim, intent in EXPECTED_SHIMS.values()}
+        expected = dict(EXPECTED_SHIMS.values())
         expected.update(EXTRA_SHIMS)
         for shim, intent in expected.items():
             body = (ADAPTER_DIR / shim).read_text(encoding="utf-8")
@@ -121,26 +121,18 @@ class TestQwenAdapterSentinels:
         hooks = data
         for event, (shim, _intent) in EXPECTED_SHIMS.items():
             assert event in hooks, f"settings-block.json missing {event}"
-            commands = [
-                h["command"]
-                for group in hooks[event]
-                for h in group["hooks"]
-            ]
-            assert any(
-                c == f"bash /tmp/pkg/hooks/adapters/qwen/{shim}" for c in commands
-            ), f"{event} does not reference {shim}"
+            commands = [h["command"] for group in hooks[event] for h in group["hooks"]]
+            assert any(c == f"bash /tmp/pkg/hooks/adapters/qwen/{shim}" for c in commands), (
+                f"{event} does not reference {shim}"
+            )
         # Extra intents wired to their events.
         session_start_cmds = [
             h["command"] for group in hooks["SessionStart"] for h in group["hooks"]
         ]
         assert any("drift-check.sh" in c for c in session_start_cmds)
-        precompact_cmds = [
-            h["command"] for group in hooks["PreCompact"] for h in group["hooks"]
-        ]
+        precompact_cmds = [h["command"] for group in hooks["PreCompact"] for h in group["hooks"]]
         assert any("precompact-handoff.sh" in c for c in precompact_cmds)
-        post_tool_cmds = [
-            h["command"] for group in hooks["PostToolUse"] for h in group["hooks"]
-        ]
+        post_tool_cmds = [h["command"] for group in hooks["PostToolUse"] for h in group["hooks"]]
         assert any("edit-batch-nudge.sh" in c for c in post_tool_cmds)
         assert "Stop" in hooks and any(
             "stop.sh" in h["command"] for group in hooks["Stop"] for h in group["hooks"]
@@ -347,8 +339,9 @@ class TestQwenAdapterIntegration:
             "cwd": str(tmp_path),
             "stop_hook_active": True,
         }
-        env = {k: v for k, v in os.environ.items()
-               if k not in ("CLAUDE_PLUGIN_ROOT", "LL_PLUGIN_ROOT")}
+        env = {
+            k: v for k, v in os.environ.items() if k not in ("CLAUDE_PLUGIN_ROOT", "LL_PLUGIN_ROOT")
+        }
         result = subprocess.run(
             [BASH, str(ADAPTER_DIR / "stop.sh")],
             input=json.dumps(payload),
@@ -358,9 +351,7 @@ class TestQwenAdapterIntegration:
             cwd=str(tmp_path),
             env=env,
         )
-        assert result.returncode == 0, (
-            f"stop.sh must never fail; stderr={result.stderr!r}"
-        )
+        assert result.returncode == 0, f"stop.sh must never fail; stderr={result.stderr!r}"
 
 
 class TestInstallQwenAdapter:
@@ -378,8 +369,15 @@ class TestInstallQwenAdapter:
         data = json.loads(dest.read_text(encoding="utf-8"))
         hooks = data["hooks"]
         assert set(hooks) == {
-            "SessionStart", "PreCompact", "UserPromptSubmit", "PreToolUse",
-            "PostToolUse", "Stop", "SessionEnd", "SubagentStart", "SubagentStop",
+            "SessionStart",
+            "PreCompact",
+            "UserPromptSubmit",
+            "PreToolUse",
+            "PostToolUse",
+            "Stop",
+            "SessionEnd",
+            "SubagentStart",
+            "SubagentStop",
         }
         # Placeholders substituted — no {{ }} survives.
         assert "{{" not in dest.read_text(encoding="utf-8")
@@ -421,14 +419,10 @@ class TestInstallQwenAdapter:
         assert self._install(tmp_path) is True
         data = json.loads((dest / "settings.json").read_text(encoding="utf-8"))
         groups = data["hooks"]["PreToolUse"]
-        vendor = [
-            g for g in groups
-            if any(h.get("name") == "vendor:guard" for h in g["hooks"])
-        ]
+        vendor = [g for g in groups if any(h.get("name") == "vendor:guard" for h in g["hooks"])]
         assert len(vendor) == 1
         ll_groups = [
-            g for g in groups
-            if any(str(h.get("name", "")).startswith("ll:") for h in g["hooks"])
+            g for g in groups if any(str(h.get("name", "")).startswith("ll:") for h in g["hooks"])
         ]
         assert ll_groups
 
@@ -445,9 +439,7 @@ class TestInstallQwenAdapter:
     def test_reinstall_replaces_managed_entries_without_duplicates(self, tmp_path: Path) -> None:
         assert self._install(tmp_path) is True
         assert self._install(tmp_path, force=True) is True
-        data = json.loads(
-            (tmp_path / ".qwen" / "settings.json").read_text(encoding="utf-8")
-        )
+        data = json.loads((tmp_path / ".qwen" / "settings.json").read_text(encoding="utf-8"))
         names = [
             h.get("name")
             for groups in data["hooks"].values()
