@@ -139,7 +139,7 @@ def timed_phase(
 def run_claude_command(
     command: str,
     logger: Logger,
-    timeout: int = 3600,
+    timeout: int = 7200,
     stream_output: bool = True,
     idle_timeout: int = 0,
     on_model_detected: Callable[[str], None] | None = None,
@@ -260,7 +260,7 @@ def _check_issue_already_done(
 def run_with_continuation(
     initial_command: str,
     logger: Logger,
-    timeout: int = 3600,
+    timeout: int = 7200,
     stream_output: bool = True,
     max_continuations: int = 3,
     repo_path: Path | None = None,

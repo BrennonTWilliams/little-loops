@@ -347,7 +347,7 @@ class TestAutomationConfig:
         """Test creating AutomationConfig with default values."""
         config = AutomationConfig.from_dict({})
 
-        assert config.timeout_seconds == 3600
+        assert config.timeout_seconds == 7200
         assert config.state_file == ".auto-manage-state.json"
         assert config.worktree_base == ".worktrees"
         assert config.max_workers == 2

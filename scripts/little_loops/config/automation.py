@@ -14,7 +14,11 @@ from typing import Any
 class AutomationConfig:
     """Automation script configuration."""
 
-    timeout_seconds: int = 3600
+    # Wall-clock budget for one issue. Raised 3600 -> 7200 (ENH-3153): a
+    # Large issue's verification phase runs the full suite more than once, and
+    # at 3600 the run is killed mid-verification with the implementation
+    # complete but unverified -- the most expensive way to fail.
+    timeout_seconds: int = 7200
     idle_timeout_seconds: int = 0  # Kill if no output for N seconds (0 to disable)
     # Grace period after stdout/stderr streams close before force-killing the
     # process group (BUG-2718). Must accommodate synchronous parallel Agent
@@ -37,7 +41,7 @@ class AutomationConfig:
     def from_dict(cls, data: dict[str, Any]) -> AutomationConfig:
         """Create AutomationConfig from dictionary."""
         return cls(
-            timeout_seconds=data.get("timeout_seconds", 3600),
+            timeout_seconds=data.get("timeout_seconds", 7200),
             idle_timeout_seconds=data.get("idle_timeout_seconds", 0),
             post_stream_close_grace_seconds=data.get("post_stream_close_grace_seconds", 300),
             timeout_kill_grace_seconds=data.get("timeout_kill_grace_seconds", 30),

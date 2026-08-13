@@ -293,11 +293,13 @@ that behavior, you're on a version predating the fix.)
 **Cause**: Complex issues or slow API responses
 
 **Solution**:
-1. Increase timeout in config:
+1. Increase timeout in config (the default is already 7200s — raised from 3600
+   under ENH-3153, after a Large issue was killed mid-verification with its
+   implementation complete but unverified):
    ```json
    {
      "automation": {
-       "timeout_seconds": 7200
+       "timeout_seconds": 10800
      }
    }
    ```

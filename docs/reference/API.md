@@ -502,7 +502,7 @@ Sequential automation configuration.
 ```python
 @dataclass
 class AutomationConfig:
-    timeout_seconds: int = 3600
+    timeout_seconds: int = 7200
     idle_timeout_seconds: int = 0  # Kill if no output for N seconds (0 to disable)
     post_stream_close_grace_seconds: int = 300  # Grace before force-kill after streams close
     timeout_kill_grace_seconds: float = 30  # SIGTERM grace before SIGKILL on timeout (ENH-3130)
