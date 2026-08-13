@@ -106,6 +106,8 @@ portfolio work is in the tracked per-host epics below.
   support, with mandatory disclosure (**done**)
 - **ENH-2883** — Collapse per-host adapter emitters onto the capability map
   (**done**)
+- **BUG-3164** — ll-adapt kimi-code, gemini, and omp mirrors omit skill companion files (open)
+
 
 ## Tracked sub-epics (sequenced under this epic)
 
