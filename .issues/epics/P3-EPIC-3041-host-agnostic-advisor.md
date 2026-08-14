@@ -4,7 +4,7 @@ title: Host-agnostic advisor
 type: EPIC
 priority: P3
 status: open
-verify_verdict: NON_VALID
+verify_verdict: VALID
 discovered_date: 2026-08-04
 labels:
 - planning-hub
@@ -74,7 +74,25 @@ Verdict: **NON_VALID (OUTDATED)**. FEAT-3038 is now `status: done`, but the
 without a completion marker. Updated the FEAT-3038 bullet to flag it as
 **done**.
 
+## Verification Notes (2026-08-14)
+
+Verdict: **VALID**. Cross-checked every entry in `## Children` against current
+issue state: FEAT-3037 `done` (decomposed shell, per convention), FEAT-3042/
+FEAT-3043 `open`, FEAT-3044 `done` (decomposed shell) depending correctly on
+FEAT-3042/FEAT-3043, FEAT-3108 `done`, FEAT-3120/FEAT-3121/FEAT-3122 `open`,
+FEAT-3038 `done` decomposed into FEAT-3116/FEAT-3117/FEAT-3118 (all `open`,
+matching the text), FEAT-3039/FEAT-3040 `open`. `depends_on` repoints noted in
+the 2026-08-04 entry hold: FEAT-3038 and FEAT-3039 both depend on FEAT-3044
+(not the stale FEAT-3037 edge). Parent backlinks on FEAT-3037/3038/3039/3040
+all resolve to `EPIC-3041`. No `## Blocked By`/`## Blocks` sections on the
+epic itself. No active required decisions-log rules (`ll-issues decisions
+list --type rule --enforcement required --active-only` returned none). The
+frontmatter `verify_verdict: NON_VALID` predating this pass appears to be a
+leftover from a prior `--check`-mode run (which persists the verdict field
+without writing Verification Notes) — corrected to `VALID` here.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-14T16:47:56 - `c9c216e7-2d10-4e53-9fc0-c38b57955ad8.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-13T22:00:52 - `e21c16b3-391d-4ef2-80c4-decd2dced91f.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:07:49 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-10T18:52:53 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
