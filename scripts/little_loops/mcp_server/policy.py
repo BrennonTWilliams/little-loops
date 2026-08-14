@@ -61,6 +61,15 @@ MUTATING_TOOLS = frozenset(
     }
 )
 
+#: FEAT-3151 Decision 8: tools that start a run (spawn an agent with the project's full
+#: tool permissions) are a separate registry from `MUTATING_TOOLS` — starting a run is not
+#: a file mutation, and joining `MUTATING_TOOLS` would make `handle_call_tool`'s dry-run
+#: guard refuse to dispatch without `apply: true`, which has no coherent meaning for
+#: "start". Gated by `allows_tasks()`, the same grant FEAT-3145's `tasks/*` poll/stop
+#: surface reuses (Decision 4): an operator who has enabled `tasks/*` over HTTP has
+#: consented to run control.
+TASK_STARTING_TOOLS = frozenset({"loop_start"})
+
 #: JSON-RPC error code for a policy denial. -32001 sits in the -32000..-32099
 #: implementation-defined server-error band, so it cannot collide with a reserved
 #: protocol code (the SDK's own `HEADER_MISMATCH` is -32020).
@@ -94,6 +103,9 @@ def check_tool_call(
       ``allows_tasks()``. This is a *separate* grant from mutations (Decision 6) —
       an operator who allows issue-file writes over HTTP has not thereby consented
       to stopping a running agent.
+    - `tools/call` naming a tool in :data:`TASK_STARTING_TOOLS` (FEAT-3151: `loop_start`)
+      is also gated by ``allows_tasks()`` — starting and stopping a run are the same
+      class of authority over the same resource (Decision 4/8).
 
     Args:
         transport: ``"http"`` or ``"stdio"``.
@@ -107,8 +119,9 @@ def check_tool_call(
     """
     is_mutating_call = method == "tools/call" and tool_name in MUTATING_TOOLS
     is_task_call = method is not None and method.startswith("tasks/")
+    is_task_starting_call = method == "tools/call" and tool_name in TASK_STARTING_TOOLS
 
-    if not is_mutating_call and not is_task_call:
+    if not is_mutating_call and not is_task_call and not is_task_starting_call:
         return PolicyDecision(allowed=True)
 
     if config is None:
@@ -116,13 +129,14 @@ def check_tool_call(
 
         config = BRConfig(Path.cwd())
 
-    if is_task_call:
+    if is_task_call or is_task_starting_call:
         if config.mcp.transport_policy.allows_tasks(transport):
             return PolicyDecision(allowed=True)
+        denied_what = method if is_task_call else f"tools/call/{tool_name}"
         return PolicyDecision(
             allowed=False,
             reason=(
-                f"policy denied {method}: tasks/* requests are disabled on the "
+                f"policy denied {denied_what}: tasks/* requests are disabled on the "
                 f"{transport} transport (set mcp.transport_policy.{transport}.allow_tasks "
                 "to true in .ll/ll-config.json to permit them)"
             ),

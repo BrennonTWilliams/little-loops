@@ -14,9 +14,13 @@ from __future__ import annotations
 
 import importlib.metadata
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    import mcp_types as types
+    from mcp.server.context import ServerRequestContext
     from mcp.server.lowlevel import Server
 
 
@@ -58,6 +62,7 @@ def build_server() -> Server:
     module import time, so they never leak state across servers/tests.
     """
     from mcp.server.caching import CacheHint
+    from mcp.server.extension import compose_tool_call_handler
     from mcp.server.lowlevel import Server
 
     from little_loops.config import BRConfig
@@ -73,6 +78,7 @@ def build_server() -> Server:
     )
     from little_loops.mcp_server.tasks import (
         TasksCancelParams,
+        TasksExtension,
         TasksGetParams,
         handle_tasks_cancel,
         handle_tasks_get,
@@ -84,11 +90,25 @@ def build_server() -> Server:
     resource_index = build_resource_index(config)
     prompt_index = build_prompt_index(_find_plugin_root() / "skills")
 
+    # FEAT-3151: wraps handle_call_tool with the SEP-2663 start-path interceptor.
+    # Additive — TasksExtension passes every call through unchanged except the one tool
+    # name it re-shapes (Decision 2a scoping note) — so this composition preserves
+    # existing tools/call behavior for every other tool (AC 7).
+    # compose_tool_call_handler's RequestHandler is typed against the SDK's broader
+    # HandlerResult (BaseModel | dict | None); Server.on_call_tool's annotation is the
+    # narrower CallToolResult | InputRequiredResult it normally serializes — the same
+    # widening `_dump_result` already accepts at runtime (tools.py's handle_call_tool
+    # docstring).
+    on_call_tool = cast(
+        "Callable[[ServerRequestContext[Any, Any], types.CallToolRequestParams], Awaitable[types.CallToolResult | types.InputRequiredResult]]",
+        compose_tool_call_handler([TasksExtension()], handle_call_tool),
+    )
+
     server = Server(
         "ll-mcp",
         version=_server_version(),
         on_list_tools=handle_list_tools,
-        on_call_tool=handle_call_tool,
+        on_call_tool=on_call_tool,
         on_list_resources=make_list_resources_handler(resource_index),
         on_read_resource=make_read_resource_handler(resource_index, config),
         on_list_prompts=make_list_prompts_handler(prompt_index),

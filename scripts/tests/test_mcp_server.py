@@ -274,16 +274,17 @@ def test_call_unknown_tool_returns_error_not_exception(tmp_path, monkeypatch) ->
 
 
 def test_no_unguarded_mutating_tool_is_advertised(tmp_path, monkeypatch) -> None:
-    """Nothing can write without announcing itself and taking the dry-run guard.
+    """Nothing can write or start a run without announcing itself and taking a guard.
 
     Tier 2 (FEAT-3149) moved this boundary deliberately, so the assertion is no longer
     "the catalog contains only these five names". The invariant that actually mattered
     survives, and is now stronger: any tool outside the tier-1 five must be registered in
-    `policy.MUTATING_TOOLS` — which is what subjects it to the dry-run wrapper and the
-    per-transport policy — and must declare the `apply` opt-in in its schema. A new tool
-    added to `_TOOLS` but forgotten in the registry fails here.
+    `policy.MUTATING_TOOLS` (dry-run wrapper + per-transport policy, `apply` opt-in in its
+    schema) or `policy.TASK_STARTING_TOOLS` (FEAT-3151: per-transport `allows_tasks()`
+    policy, deliberately no `apply` — Decision 4). A new tool added to `_TOOLS` but
+    forgotten in either registry fails here.
     """
-    from little_loops.mcp_server.policy import MUTATING_TOOLS
+    from little_loops.mcp_server.policy import MUTATING_TOOLS, TASK_STARTING_TOOLS
 
     _make_project(tmp_path, monkeypatch)
 
@@ -302,9 +303,13 @@ def test_no_unguarded_mutating_tool_is_advertised(tmp_path, monkeypatch) -> None
             for tool in result.tools:
                 if tool.name in read_only:
                     continue
+                if tool.name in TASK_STARTING_TOOLS:
+                    assert "apply" not in tool.input_schema["properties"]
+                    continue
                 assert tool.name in MUTATING_TOOLS, (
-                    f"{tool.name} is advertised but is neither a tier-1 read tool nor "
-                    "registered in policy.MUTATING_TOOLS — it would bypass both guards"
+                    f"{tool.name} is advertised but is neither a tier-1 read tool, "
+                    "registered in policy.MUTATING_TOOLS, nor registered in "
+                    "policy.TASK_STARTING_TOOLS — it would bypass every guard"
                 )
                 assert tool.input_schema["properties"]["apply"]["default"] is False
 

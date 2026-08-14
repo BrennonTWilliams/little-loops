@@ -4267,19 +4267,19 @@ ll-adapt-agents-for-codex --force --apply  # Regenerate all files (including up-
 ### ll-mcp
 
 MCP server (2026-07-28 spec) — stdio by default, streamable HTTP with `--http` — exposing
-nine coarse tools over the `little_loops` library. Five read: `issues_query`, `issue_get`,
+ten coarse tools over the `little_loops` library. Five read: `issues_query`, `issue_get`,
 `history_search`, `deps_check`, `capabilities`. Four write, dry-run by default:
-`issue_capture`, `issue_set_status`, `issue_link`, `issue_append_log` (FEAT-3149).
-Started by an MCP-capable host (Claude Code, Codex, ...) from the config
-`ll-adapt --host <host> --apply` emits (`.mcp.json`, `ll-mcp.toml`) — not run directly by a
-human. Requires the `mcp` optional extra (`pip install "little-loops[mcp]"`); without it,
-exits `2` with an actionable message instead of an `ImportError`.
+`issue_capture`, `issue_set_status`, `issue_link`, `issue_append_log` (FEAT-3149). One
+starts a run: `loop_start` (FEAT-3151, see below). Started by an MCP-capable host (Claude
+Code, Codex, ...) from the config `ll-adapt --host <host> --apply` emits (`.mcp.json`,
+`ll-mcp.toml`) — not run directly by a human. Requires the `mcp` optional extra
+(`pip install "little-loops[mcp]"`); without it, exits `2` with an actionable message
+instead of an `ImportError`.
 
 Every tool wraps an existing library call directly — no subprocess invocation of the `ll-*`
-CLIs, no orchestration (`ll-auto`/`ll-parallel`/`ll-loop`/`ll-action invoke` are intentionally
-off the tool surface, and no method registered anywhere in this package *starts* one —
-see `tasks/*` below for the one control operation that exists, over an already-running
-`ll-loop` instance). No request handler depends on state from a prior request: each
+CLIs. `ll-auto`, `ll-parallel`, and `ll-action invoke` are intentionally off the tool
+surface; `ll-loop` is the one exception — `loop_start` starts a detached run, and `tasks/*`
+below polls/stops it. No request handler depends on state from a prior request: each
 `tools/call` resolves entirely from its own arguments plus the filesystem/SQLite.
 
 The four mutating tools are guarded twice. **Dry-run by default:** each takes an `apply`
@@ -4335,18 +4335,33 @@ real one.
 | `issue_append_log` | `issue_id` | string | **yes** | Issue to append to |
 | | `command` | string | **yes** | Command name to record, e.g. `/ll:manage-issue` |
 | | `apply` | boolean | no (default `false`) | Set `true` to actually append the entry |
+| `loop_start` | `loop` | string | **yes** | Loop name to run |
+| | `context` | string[] | no | `KEY=VALUE` context overrides, mirrors `ll-loop run --context` |
 
 `issues_query` returns a list of `{id, priority, type, title, path, status, parent, labels}` dicts. `issue_get` returns the same summary-card field set `ll-issues show` uses, or a tool-level error if `issue_id` doesn't resolve. `history_search` returns a list of `SearchResult` dicts. `deps_check` returns `{has_issues, broken_refs, missing_backlinks, cycles, stale_completed_refs, broken_depends_on_refs, broken_relates_to_refs}`. `capabilities` returns `{host, binary, version, capabilities}`. Each mutating tool returns
 `{applied, tool, target, changes}`; `issue_capture`'s `target` is `{type, priority, slug,
 directory}` plus a `rendered_body` on a dry-run and `{issue_id, path}` on apply.
 
+**`loop_start`** (FEAT-3151): starts a detached `ll-loop` run — the same spawn
+`ll-loop run --background` performs — and returns immediately. Ordinary callers get
+`{instance_id, loop}`; a client that declared the SEP-2663 tasks extension in its
+per-request capabilities *and* set `params.task` on that call instead gets a task-shaped
+result, `{resultType: "task", taskId, status: "working"}`, where `taskId` is the same
+`instance_id` verbatim. Either shape, the run started — the envelope is the only thing
+that differs, never whether a run was spawned. A spawn failure (scope conflict, unloadable
+loop) is always an ordinary tool error, never a task id for a run that does not exist. Not
+one of the four mutating tools above — a dry-run "start" has no coherent meaning, so it
+takes no `apply` parameter and is gated by `allow_tasks` (below), not `allow_mutations`.
+
 **`tasks/get` / `tasks/cancel`** (FEAT-3145): not tools — custom JSON-RPC methods,
 registered directly on the server via `Server.add_request_handler`, shaped to track the
 (unshipped) `io.modelcontextprotocol/tasks` extension so a later swap is a registration
-change, not a client-visible one. Poll or stop an `ll-loop` run started by existing means
-(`ll-loop run`); `ll-queue` is out of scope, and neither method spawns a process — starting
-a run over MCP is a separate, more heavily-gated capability. `initialize`'s capabilities
-never advertise the extension itself.
+change, not a client-visible one. Poll or stop an `ll-loop` run — one started via
+`loop_start` above, or by existing means (`ll-loop run` on the workstation); `ll-queue` is
+out of scope. Polling a run immediately after `loop_start` returns (before its child
+process has written a state file) still resolves, via a PID-file fallback that reports
+`{taskId, status: "working", runStatus: "starting"}`. `initialize`'s capabilities never
+advertise the extension itself.
 
 | Method | Param | Type | Required | Description |
 |--------|-------|------|----------|-------------|
@@ -4367,8 +4382,13 @@ alongside (e.g. `{"status": "cancelled", "resumable": true, "runStatus":
 Gated by the same deny-by-default-on-HTTP transport policy as the mutating tools, but as
 an independent grant: `mcp.transport_policy.<http|stdio>.allow_tasks` (default `false` /
 `true`), separate from `allow_mutations` — consenting to issue-file writes over HTTP does
-not imply consenting to stopping a running agent. A denied `tasks/get` reports itself as a
-`tasks/get` denial, not a `tools/call` one.
+not imply consenting to starting or stopping a running agent. `loop_start` shares this same
+grant (starting a run is the same class of authority as stopping one). A denied `tasks/get`
+reports itself as a `tasks/get` denial, and a denied `loop_start` call reports itself as a
+`tools/call/loop_start` denial — not a generic `tools/call` one. stdio's `allow_tasks`
+knob is currently advisory only (the policy check has one call site, the HTTP middleware;
+stdio has none) — stdio defaults open, so this does not change the default posture, but an
+operator setting it to `false` under `stdio` should know it has no effect yet.
 
 Also advertises a `resources` capability (FEAT-3136): issue files, `.ll/ll-goals.md`, and
 `docs/**/*.md` are listed and readable under an `ll://` scheme (`ll://issues/<ID>`,

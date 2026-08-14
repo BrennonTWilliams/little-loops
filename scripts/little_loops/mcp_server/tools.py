@@ -431,6 +431,75 @@ def _tool_issue_append_log(arguments: dict[str, Any], *, apply: bool) -> Any:
     }
 
 
+# ---------------------------------------------------------------------------------------
+# Tier 3 (FEAT-3151): the SEP-2663 start-path tool.
+#
+# Always performs the identical detached spawn regardless of caller (Decision 2a) — the
+# task-shaped vs plain-shaped response is decided entirely by `TasksExtension` in
+# `mcp_server/tasks.py`, composed onto `handle_call_tool` in `server.py`. This handler
+# never sees whether the caller declared the tasks extension or set `params.task`; it
+# just spawns and returns the plain payload, matching the "spawn lives in one place"
+# invariant Decision 2a's implementation note requires.
+#
+# Not in `policy.MUTATING_TOOLS` (Decision 4): a dry-run "start" has no coherent meaning,
+# so this tool takes no `apply` parameter and is gated instead by
+# `policy.TASK_STARTING_TOOLS` / `allows_tasks()` (Decision 8).
+# ---------------------------------------------------------------------------------------
+
+
+def _tool_loop_start(arguments: dict[str, Any]) -> Any:
+    """Start a detached `ll-loop` run (`ll-loop run <loop>`) — SEP-2663 start-path entry.
+
+    Crosses the `argparse` boundary per Decision 7 option (a): builds a `SimpleNamespace`
+    carrying only the fields this tool exposes rather than routing through `cmd_run`'s
+    full flag surface, and calls `run_background()` under `redirect_stdout`/
+    `redirect_stderr` since it prints to stdout on success — corrupting the JSON-RPC frame
+    on the stdio transport — and to stderr on failure.
+
+    Mints its own `instance_id` (Decision 3) rather than delegating to
+    `_make_instance_id()`, whose one-second timestamp resolution can collide under
+    agent-paced calls. A non-zero `run_background()` return means nothing was spawned;
+    this raises so `handle_call_tool`'s except-branch turns it into `is_error=True` with
+    no `structured_content` — never a task id for a run that does not exist (AC 3b).
+    """
+    import argparse
+    import contextlib
+    import io
+    from types import SimpleNamespace
+    from typing import cast
+
+    from little_loops.cli.loop._helpers import run_background
+    from little_loops.mcp_server.tasks import _loops_dir, mint_start_instance_id
+
+    loop_name = str(arguments.get("loop") or "").strip()
+    if not loop_name:
+        raise ValueError("loop_start requires a non-empty 'loop' name")
+
+    context = arguments.get("context") or []
+    if not isinstance(context, list):
+        raise ValueError("loop_start 'context' must be a list of 'KEY=VALUE' strings")
+
+    loops_dir = _loops_dir()
+    instance_id = mint_start_instance_id(loop_name, loops_dir)
+    # Decision 7 option (a): every `run_background()` access is a defensive
+    # `getattr(args, ..., default)`, so a `SimpleNamespace` carrying only the fields this
+    # tool exposes satisfies it at runtime despite the stricter `argparse.Namespace` annotation.
+    args = cast(argparse.Namespace, SimpleNamespace(context=[str(item) for item in context]))
+
+    stdout_buf, stderr_buf = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(stdout_buf), contextlib.redirect_stderr(stderr_buf):
+        rc = run_background(loop_name, args, loops_dir, instance_id=instance_id)
+
+    if rc != 0:
+        message = stderr_buf.getvalue().strip() or f"run_background exited with code {rc}"
+        raise ValueError(message)
+
+    # `instance_id` here is what TasksExtension reads out of structured_content to build
+    # the task-shaped result's `taskId` (Decision 2a extraction note) — and what a
+    # non-tasks caller reads directly off this plain payload (Decision 2a).
+    return {"instance_id": instance_id, "loop": loop_name}
+
+
 _TOOL_HANDLERS: dict[str, Callable[..., Any]] = {
     "issues_query": _tool_issues_query,
     "issue_get": _tool_issue_get,
@@ -445,6 +514,8 @@ _TOOL_HANDLERS: dict[str, Callable[..., Any]] = {
     "issue_set_status": _tool_issue_set_status,
     "issue_link": _tool_issue_link,
     "issue_append_log": _tool_issue_append_log,
+    # Tier 3 (FEAT-3151) — takes no `apply` keyword; see the module comment above.
+    "loop_start": _tool_loop_start,
 }
 
 # Source-order literal: `list_tools` returns this list as-is, and list order is the entirety
@@ -713,6 +784,33 @@ _TOOLS: list[types.Tool] = [
             "additionalProperties": False,
         },
     ),
+    # --- Tier 3: SEP-2663 start path (FEAT-3151) ------------------------------------------
+    # Not in MUTATING_TOOLS, so no `apply` param and no ToolAnnotations `readOnlyHint`
+    # false-vs-mutating distinction — this tool is gated by a separate registry entirely
+    # (`policy.TASK_STARTING_TOOLS` / `allows_tasks()`, Decision 8/4).
+    types.Tool(
+        name="loop_start",
+        description=(
+            "Start a detached ll-loop run. Returns immediately with the run's instance "
+            "id; poll progress with tasks/get and stop it with tasks/cancel. On a client "
+            "that declared the tasks extension and set params.task on this call, the "
+            "response is a SEP-2663 task-shaped result instead of an ordinary tool result "
+            "— see docs/guides/MCP_SERVER_GUIDE.md."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "loop": {"type": "string", "description": "Loop name to run."},
+                "context": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "KEY=VALUE context overrides, mirrors `ll-loop run --context`.",
+                },
+            },
+            "required": ["loop"],
+            "additionalProperties": False,
+        },
+    ),
 ]
 
 
@@ -720,10 +818,11 @@ async def handle_list_tools(
     _ctx: ServerRequestContext[Any],
     _params: types.PaginatedRequestParams | None,
 ) -> types.ListToolsResult:
-    """`tools/list` handler: returns the fixed nine-tool catalog in source order.
+    """`tools/list` handler: returns the fixed ten-tool catalog in source order.
 
-    The five tier-1 read-only tools come first, then the four tier-2 mutating tools; only
-    the latter carry `annotations`, which is how a host tells the two groups apart.
+    The five tier-1 read-only tools come first, then the four tier-2 mutating tools, then
+    FEAT-3151's tier-3 start tool; only the tier-2 four carry `annotations`, which is how a
+    host tells the mutating group apart from the rest.
 
     `ttlMs`/`cacheScope` are left unset here — the `Server(cache_hints=...)` passed in
     `little_loops.mcp_server.server.build_server` fills them, per SEP-2549.

@@ -302,10 +302,10 @@ Four tools write: `issue_capture`, `issue_set_status`, `issue_link`, and
 `issue_append_log`. Each wraps the same library function the equivalent `ll-issues`
 subcommand calls, so a tool call and a CLI invocation produce the same file state.
 
-Orchestration is still off the surface entirely — there is no way to *start* `ll-auto`,
-`ll-parallel`, `ll-loop`, or `ll-action invoke` through this server. That boundary has not
-moved. `tasks/cancel` (below) is a control operation over a run that is already going —
-signalling an existing PID, never spawning one.
+`ll-auto`, `ll-parallel`, and `ll-action invoke` are still off the surface entirely. `ll-loop`
+is the one exception: `loop_start` (below, alongside `tasks/*`) starts a detached run.
+Everything else about the boundary is unchanged — `tasks/cancel` is a control operation over
+a run that is already going, signalling an existing PID, never spawning one.
 
 Two guards sit in front of the four.
 
@@ -383,12 +383,49 @@ prompt, a different icon — off that.
 
 ---
 
-## Polling and Stopping a Run: `tasks/*`
+## Starting, Polling, and Stopping a Run
 
-`tasks/get` and `tasks/cancel` let a host poll or stop an `ll-loop` run started by
-existing means (`ll-loop run` on the workstation) — no start path exists here; kicking a
-run off over MCP is a separate, more heavily-gated capability. `ll-queue` is out of scope:
-only `ll-loop` runs are reachable this way.
+`loop_start` starts a detached `ll-loop` run; `tasks/get` and `tasks/cancel` poll or stop
+it (or a run started by other means, e.g. `ll-loop run` on the workstation). All three
+share one grant (`allow_tasks`, below) and one identifier space (`instance_id`), so a host
+can start a run from a phone-side session and poll/stop it from a workstation session
+without SSH-ing anywhere. `ll-queue` is out of scope: only `ll-loop` runs are reachable
+this way.
+
+### Starting a run: `loop_start`
+
+```
+$ mcp-call ll-mcp tools/call loop_start '{"loop": "rn-refine", "context": ["ISSUE_ID=FEAT-3151"]}'
+{"instance_id": "rn-refine-20260814T160000-a1b2", "loop": "rn-refine"}
+```
+
+`loop_start` always performs the identical detached spawn — the same one `ll-loop run
+--background` does — regardless of caller. What differs is the **response shape**, per
+SEP-2663 (the MCP "tasks" extension): a client that declared the tasks extension in its
+per-request capabilities *and* asked for task-augmented execution on that call gets back a
+task-shaped result instead:
+
+```
+$ # client declares the tasks extension and sets params.task on this call
+{"resultType": "task", "taskId": "rn-refine-20260814T160000-a1b2", "status": "working"}
+```
+
+Any other client — one that never declared the extension, declared it but did not set
+`params.task` on this call, or is on a pre-2026-07-28 protocol version — gets the ordinary
+shape above, `instance_id` and all. Either way the run started; only the envelope changes.
+The task id is the run's `instance_id` verbatim (minted with a short entropy suffix, not
+`ll-loop`'s own one-second-resolution id, to stay unique under agent-paced calls) and is
+what `tasks/get`/`tasks/cancel` accept below.
+
+If the run cannot be spawned — a scope conflict, an unloadable loop — the call returns an
+ordinary tool error (`isError: true`) carrying the reason. It never returns a task id or an
+`instance_id` for a run that does not exist.
+
+`loop_start` is **not** one of the four mutating tools above: a dry-run "start" has no
+coherent meaning, so it takes no `apply` parameter and is gated by `allow_tasks` (below)
+instead of `allow_mutations`.
+
+### Polling and stopping: `tasks/*`
 
 These are not tools — they are custom JSON-RPC methods registered directly on the server,
 shaped to track the (not-yet-shipped) `io.modelcontextprotocol/tasks` extension so a
@@ -432,9 +469,11 @@ $ mcp-call ll-mcp tasks/cancel '{"taskId": "rn-refine-20260811T140000"}'
 {"taskId": "…", "status": "cancelled", "resumable": true, "runStatus": "user_stopped"}
 ```
 
-`tasks/*` gets the same deny-by-default-on-HTTP treatment as the mutating tools (Guard 2
-above), but as its own grant — `allow_tasks`, not `allow_mutations`. Consenting to
-issue-file writes over HTTP does not imply consenting to stopping a running agent:
+`tasks/*` and `loop_start` get the same deny-by-default-on-HTTP treatment as the mutating
+tools (Guard 2 above), but as their own grant — `allow_tasks`, not `allow_mutations`.
+Consenting to issue-file writes over HTTP does not imply consenting to starting or
+stopping a running agent; starting one is the same class of authority as stopping it, so
+both sit behind one grant:
 
 ```json
 {
@@ -448,8 +487,18 @@ issue-file writes over HTTP does not imply consenting to stopping a running agen
 ```
 
 Those are the defaults — both closed on HTTP, both open on stdio. A denied `tasks/get`
-reports itself as a `tasks/get` denial, not a `tools/call` one, since the underlying guard
-is shared with Guard 2 but the two methods are gated independently.
+reports itself as a `tasks/get` denial (not a `tools/call` one), and a denied `loop_start`
+reports itself as a `tools/call/loop_start` denial, since the underlying guard is shared
+with Guard 2 but every method/tool is gated independently.
+
+**stdio's `allow_tasks`/`allow_mutations` knobs are currently advisory, not enforced.**
+The policy check only has one call site: the HTTP transport's ASGI middleware. Over stdio
+there is no middleware and no handler invokes the policy itself, so setting either knob to
+`false` under `stdio` in `.ll/ll-config.json` has no effect today — stdio is a
+same-machine, same-user channel, so the default posture (open) is unaffected, but an
+operator who explicitly tries to lock it down over stdio should know that setting does not
+yet do anything. Enforcing it properly needs transport identity plumbed into
+`build_server()`'s handlers, a cross-cutting change owed equally to all three grants.
 
 ---
 

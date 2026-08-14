@@ -49,3 +49,35 @@ mcp version: 2.0.0  |  protocol: 2026-07-28
 
 ==============================================================================
 11/11 claims passed
+
+======================================================================
+STEP 0 ADDENDUM (2026-08-14) — FEAT-3151 Implementation Step 0
+======================================================================
+Spike source: .loops/tmp/scratch/spike_feat3151_step0.py (run inline, not committed —
+mirrors the pattern of the original spike, which also lived outside the tree).
+Driven over Server.streamable_http_app(json_response=True, stateless_http=True)
+via starlette.testclient.TestClient. compose_tool_call_handler([ProbeExtension()], ...)
+on the lowlevel Server, exactly as build_server() will wrap handle_call_tool.
+
+[PASS] C7 (ctx.meta or {}).get(CLIENT_CAPABILITIES_META_KEY) arrives populated when the
+       client declares the extension in _meta, and is an empty dict (never raises) when not
+       declared/absent
+       declared+task  -> result.resultType == "task"
+       undeclared+task -> result.resultType == "complete" (ordinary CallToolResult)
+
+[PASS] C8 params.task arrives populated (TaskMetadata) on a request that sets it, and is
+       None when omitted — the second, independent gating signal
+       declared+no_task -> result.resultType == "complete" (capability alone does not
+       materialize a task; both conditions are required)
+
+[PASS] C9 call_next(ctx) returns the plain handler's result as a live types.CallToolResult
+       object (BaseModel), not an already-serialized dict — reading
+       result.structured_content inside the interceptor works directly
+       call_next result types observed: ['CallToolResult', 'CallToolResult', 'CallToolResult']
+
+[PASS] C10 a dict substituted for call_next's CallToolResult in the interceptor's return
+       value still passes the spec-method sieve and reaches the wire as resultType: "task"
+       {"jsonrpc": "2.0", "id": 1, "result": {"resultType": "task", "taskId": "run-123", "status": "working", ...}}
+
+==============================================================================
+4/4 addendum claims passed (15/15 cumulative)

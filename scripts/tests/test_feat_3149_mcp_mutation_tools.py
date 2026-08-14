@@ -133,7 +133,14 @@ def test_ac1_mutating_tools_are_listed_and_annotated(tmp_path, monkeypatch) -> N
 
 
 def test_ac1_tier1_tools_keep_their_shape_and_ordering(tmp_path, monkeypatch) -> None:
-    """Anti-goal guard: tier-1 entries are unchanged and still come first, in order."""
+    """Anti-goal guard: tier-1 entries are unchanged and still come first, in order.
+
+    FEAT-3151 added a tier-3 tool (`loop_start`) after the tier-2 four; it is neither
+    tier-1 nor a `MUTATING_NAMES` member, so it is excluded from the tier-2 set comparison
+    rather than silently widening it.
+    """
+    from little_loops.mcp_server.policy import TASK_STARTING_TOOLS
+
     _make_project(tmp_path, monkeypatch)
 
     async def run() -> None:
@@ -141,7 +148,8 @@ def test_ac1_tier1_tools_keep_their_shape_and_ordering(tmp_path, monkeypatch) ->
             tools = (await client.list_tools()).tools
             names = [t.name for t in tools]
             assert names[:5] == TIER1_NAMES
-            assert sorted(names[5:]) == sorted(MUTATING_NAMES)
+            tier2_and_beyond = [n for n in names[5:] if n not in TASK_STARTING_TOOLS]
+            assert sorted(tier2_and_beyond) == sorted(MUTATING_NAMES)
             for tool in tools[:5]:
                 assert tool.annotations is None, (
                     f"{tool.name} gained an annotation — tier-1 output shapes must not change"

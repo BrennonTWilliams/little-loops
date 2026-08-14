@@ -4,10 +4,11 @@ type: FEAT
 title: "ll-mcp: SEP-2663 start path \u2014 tools/call materializes a task and starts\
   \ an ll-loop run (tier-3, evidence-gated)"
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-11'
 captured_at: '2026-08-11T23:07:21Z'
+completed_at: '2026-08-14T21:50:36Z'
 parent: EPIC-3127
 labels:
 - multi-host
@@ -728,4 +729,5 @@ retained only for ID stability.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-14T21:50:07 - `09bae43e-8924-439c-8df4-5b9430e17cc4.jsonl`
 - `/ll:confidence-check` - 2026-08-14T18:35:57 - `933ada91-532f-44ff-8f0f-0b177ad3e4c3.jsonl`

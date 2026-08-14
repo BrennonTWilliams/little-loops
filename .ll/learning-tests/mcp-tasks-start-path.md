@@ -32,6 +32,22 @@ assertions:
     or Server.middleware) - so the additive-only naming rule is not violated by the
     start path, because the start path never registers tools/call
   result: pass
+- claim: "FEAT-3151 Step 0: (ctx.meta or {}).get(CLIENT_CAPABILITIES_META_KEY) arrives\
+    \ populated on a request from a client that declares the extension in _meta, and\
+    \ is an empty dict (never raises AttributeError) on a request that omits it"
+  result: pass
+- claim: "FEAT-3151 Step 0: params.task arrives populated (TaskMetadata) only when the\
+    \ client sets it on that call, independent of the declared-capability signal —\
+    \ capability alone does not materialize a task"
+  result: pass
+- claim: "FEAT-3151 Step 0: call_next(ctx) inside Extension.intercept_tool_call returns\
+    \ the wrapped handler's result as a live types.CallToolResult object, not an already-\
+    \ serialized dict — structured_content is readable directly"
+  result: pass
+- claim: "FEAT-3151 Step 0: a hand-built dict substituted for call_next's CallToolResult\
+    \ inside the interceptor's return value still reaches the wire as resultType: \"\
+    task\", proving the reshape-after-call_next composition Decision 2a assumes"
+  result: pass
 raw_output_path: .ll/learning-tests/raw/mcp-tasks-start-path.txt
 proven_package: mcp
 proven_version: 2.0.0
@@ -66,3 +82,14 @@ forward-incompatible even though it passes today.
 
 See also [[mcp-extension-mechanism]] (the additive-only `MethodBinding` rule and
 the absence of a shipped tasks extension) and [[mcp-header-routing]].
+
+## Step 0 addendum (2026-08-14)
+
+FEAT-3151's Implementation Step 0 resolves the "unproven step" this file originally
+flagged: whether `ctx.meta["io.modelcontextprotocol/clientCapabilities"]` and
+`params.task` actually arrive populated on a real request, and whether the
+reshape-after-`call_next` composition (read the plain result, substitute a hand-shaped
+mapping) works. All four addendum claims pass. See
+`.ll/learning-tests/raw/mcp-tasks-start-path.txt`'s "STEP 0 ADDENDUM" section for the
+raw wire output. Decision 2's gating strategy is confirmed implementable as specified —
+no change to the approach was needed.
