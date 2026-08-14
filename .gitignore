@@ -54,6 +54,7 @@ temp/
 .ll/loop-suggestions/
 .claude/skills/
 .ll/ll-continue-prompt.md
+.ll/ll-continue-prompt*.md
 .mcp.json
 
 # Python
