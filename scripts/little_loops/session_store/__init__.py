@@ -86,6 +86,7 @@ from little_loops.session_store.lifecycle import (
     record_retirement,
 )
 from little_loops.session_store.queries import export_history, fts_phrase, recent, search
+from little_loops.session_store.qwen import normalize_qwen_record, qwen_skip_at_ingest
 from little_loops.session_store.schema import (
     _BUSY_TIMEOUT_MS,
     _KIND_TABLE,
@@ -103,9 +104,9 @@ from little_loops.session_store.schema import (
 )
 from little_loops.session_store.writers import (
     HookEventCompletion,
+    HostLayout,
     SkillEventCompletion,
     SQLiteTransport,
-    SubagentLayout,
     SubagentMeta,
     _backfill_assistant_messages,
     _backfill_messages,
@@ -123,6 +124,7 @@ from little_loops.session_store.writers import (
     canonicalize_issue_id,
     cli_event_context,
     hook_event_context,
+    host_layout_for,
     is_correction,
     mine_corrections_from_messages,
     normalize_issue_id,
@@ -147,7 +149,6 @@ from little_loops.session_store.writers import (
     record_usage_event,
     record_verdict_event,
     skill_event_context,
-    subagent_layout_for,
     update_loop_run_diagnostics,
     write_file_event,
 )
@@ -191,9 +192,11 @@ __all__ = [
     "record_context_pressure_event",
     "record_subagent_run_start",
     "record_subagent_run_stop",
-    "SubagentLayout",
+    "HostLayout",
     "SubagentMeta",
-    "subagent_layout_for",
+    "host_layout_for",
+    "normalize_qwen_record",
+    "qwen_skip_at_ingest",
     "canonicalize_issue_id",
     "write_file_event",
     "cli_event_context",

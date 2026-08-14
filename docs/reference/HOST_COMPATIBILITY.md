@@ -415,17 +415,38 @@ the adapter.
     *extraction* does not parse them yet (ENH-2918 follow-up).
 
 [^qwenwire]: Qwen chat files (`~/.qwen/projects/<cwd>/chats/<id>.jsonl`)
-    use qwen's own message schema, not Claude's — session-folder
+    use qwen's own message schema — Claude-shaped at the envelope level
+    (`sessionId`/`timestamp`/`type`/`cwd` all carry Claude's names, and
+    assistant records keep envelope `type: "assistant"`), divergent in the
+    message body (`message.parts[]`, `functionCall`/`functionResponse`, role
+    `"model"`, a disjoint tool-name vocabulary, `provenance`/subtype fields).
+    Since ENH-3166, `ll-session backfill --host qwen` ingests them stamped
+    `host="qwen"` (regardless of the ambient host), skips `ui_telemetry`
+    records at ingest (~47% of qwen volume, no rebuild consumer until the
+    deferred `usage_events` stretch lands), and normalizes the rest into
+    Claude shape at rebuild time inside `_iter_events` — `parts[]`→`content[]`,
+    `functionCall`→`tool_use` with `id` preserved and tool names
+    canonicalized (`run_shell_command`→`Bash`, `edit`→`Edit`,
+    `read_file`→`Read`, `grep_search`→`Grep`, `write_file`→`Write`,
+    `glob`→`Glob`, `list_directory`→`LS`, `todo_write`→`TodoWrite`;
+    unmapped names pass through), `functionResponse`/`toolCallResult`→
+    `tool_result` blocks (`is_error` from `toolCallResult.status`), and only
+    `provenance: real_user` user records **without a subtype** reaching
+    `message_events` (`notification` and `mid_turn_user_message` excluded —
+    the latter carries `provenance: real_user` too). `ll-logs` discovery
+    recognizes qwen projects via the same descriptor. Session-folder
     *resolution* works (ENH-3161; the cwd is dash-encoded after symlink
     resolution, matching the `transcript_path` layout observed by the
-    FEAT-3155 spike), but `ll-session backfill` message *extraction* does
-    not parse them yet (ENH-3166). Since ENH-3165, `get_project_folder()`
-    returns the project **root** (not the `chats/` leaf) so both `chats/`
-    and `subagents/` are reachable, and `ll-session backfill --host qwen`
+    FEAT-3155 spike). Since ENH-3165, `get_project_folder()` returns the
+    project **root** (not the `chats/` leaf) so both `chats/` and
+    `subagents/` are reachable, and `ll-session backfill --host qwen`
     populates `subagent_runs` from `subagents/<session-id>/agent-*.jsonl`
     transcripts, sourcing `agent_id`/`agent_type`/`started_at`/`ended_at`/
     `status` from each transcript's `.meta.json` sidecar (real statuses
-    like `failed` included; mtime heuristic only as fallback).
+    like `failed` included; mtime heuristic only as fallback). Note: qwen
+    0.21.6 also writes `subtype: "slash_command"` system records
+    (`systemPayload.rawCommand`) — `skill_events` derivation from them was
+    dropped from ENH-3166's scope and remains a follow-up candidate.
 
 [^qwenmarket]: **FEAT-3155 R3 finding** — the marketplace auto-conversion
     (`qwen extensions install BrennonTWilliams/little-loops:ll`) installs

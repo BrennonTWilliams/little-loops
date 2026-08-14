@@ -53,13 +53,13 @@ from little_loops.session_store import (
     compact,
     connect,
     export_history,
+    host_layout_for,
     prune,
     rebuild,
     recent,
     recompress_raw_events,
     record_hook_event,
     search,
-    subagent_layout_for,
 )
 from little_loops.user_messages import get_project_folder
 
@@ -566,7 +566,7 @@ def main_session() -> int:
                 # like qwen (chats/); the subdir is "" for Claude-shaped hosts
                 # so the join is a no-op there (ENH-3165).
                 jsonl_files = list(
-                    (project_folder / subagent_layout_for(_backfill_host).sessions_subdir).glob(
+                    (project_folder / host_layout_for(_backfill_host).sessions_subdir).glob(
                         "*.jsonl"
                     )
                 )
@@ -577,6 +577,7 @@ def main_session() -> int:
                     since_ts=since_ts,
                     config=_config,
                     also_rebuild=also_rebuild,
+                    host=_backfill_host,
                 )
                 inc_total = sum(inc_counts.values())
                 logger.success(
@@ -598,7 +599,7 @@ def main_session() -> int:
             project_folder = get_project_folder(host=args.host)
             full_jsonl_files: list[Path] | None = (
                 list(
-                    (project_folder / subagent_layout_for(_backfill_host).sessions_subdir).glob(
+                    (project_folder / host_layout_for(_backfill_host).sessions_subdir).glob(
                         "*.jsonl"
                     )
                 )

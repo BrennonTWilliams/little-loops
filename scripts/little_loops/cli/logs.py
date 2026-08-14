@@ -23,7 +23,13 @@ from little_loops.cli.output import configure_output, print_json, table, use_col
 from little_loops.cli_args import add_corpus_target_args, add_json_arg, add_window_args
 from little_loops.config import BRConfig
 from little_loops.logger import Logger
-from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context, resolve_history_db
+from little_loops.session_store import (
+    DEFAULT_DB_PATH,
+    HostLayout,
+    cli_event_context,
+    host_layout_for,
+    resolve_history_db,
+)
 from little_loops.user_messages import get_project_folder
 
 _COMMAND_NAME_RE = re.compile(r"<command-name>/ll:")
@@ -85,9 +91,19 @@ def _is_ll_relevant(record: dict) -> bool:
     return False
 
 
-def _has_ll_activity(project_folder: Path) -> bool:
-    """Return True if any non-agent JSONL file in project_folder has ll activity."""
-    jsonl_files = [f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")]
+def _has_ll_activity(project_folder: Path, layout: HostLayout | None = None) -> bool:
+    """Return True if any non-agent JSONL file in project_folder has ll activity.
+
+    *layout* supplies the session glob and the record normalizer (ENH-3166):
+    qwen sessions live under ``chats/`` and their ``functionCall`` records
+    are normalized into Claude shape before the ``_is_ll_relevant`` test, so
+    ``run_shell_command``/``args.command`` reaches the existing
+    ``Bash``/``input.command`` predicate. Defaults to the Claude layout.
+    """
+    effective = layout if layout is not None else host_layout_for("claude-code")
+    jsonl_files = [
+        f for f in project_folder.glob(effective.session_glob) if not f.name.startswith("agent-")
+    ]
 
     for jsonl_file in jsonl_files:
         try:
@@ -100,6 +116,10 @@ def _has_ll_activity(project_folder: Path) -> bool:
                         record = json.loads(line)
                     except json.JSONDecodeError:
                         continue
+                    if effective.normalize is not None:
+                        record = effective.normalize(record)
+                        if record is None:
+                            continue
                     if _is_ll_relevant(record):
                         return True
         except OSError:
@@ -108,14 +128,19 @@ def _has_ll_activity(project_folder: Path) -> bool:
     return False
 
 
-def _extract_cwd_from_project(project_dir: Path) -> Path | None:
+def _extract_cwd_from_project(project_dir: Path, layout: HostLayout | None = None) -> Path | None:
     """Extract the project working directory from cwd fields in JSONL records.
 
     Claude Code encodes project paths by replacing '/' with '-', which is
     lossy for paths containing hyphens. Reading the cwd field from JSONL
-    records gives the canonical path without ambiguity.
+    records gives the canonical path without ambiguity. *layout* supplies the
+    session glob (ENH-3166) — qwen sessions live under ``chats/``; defaults
+    to the Claude layout.
     """
-    jsonl_files = [f for f in project_dir.glob("*.jsonl") if not f.name.startswith("agent-")]
+    effective = layout if layout is not None else host_layout_for("claude-code")
+    jsonl_files = [
+        f for f in project_dir.glob(effective.session_glob) if not f.name.startswith("agent-")
+    ]
     for jsonl_file in jsonl_files:
         try:
             with open(jsonl_file, encoding="utf-8") as f:
@@ -161,15 +186,13 @@ def discover_all_projects(
     if host is None:
         host = _os.environ.get("LL_HOOK_HOST", "claude-code")
 
-    if host == "claude-code":
-        projects_root = Path.home() / ".claude" / "projects"
-    elif host == "codex":
-        projects_root = Path.home() / ".codex" / "projects"
-    elif host == "opencode":
-        projects_root = Path.home() / ".opencode" / "projects"
-    elif host == "pi":
-        projects_root = Path.home() / ".pi" / "projects"
-    else:
+    # Hosts register their projects root in the layout descriptor (ENH-3166);
+    # unregistered hosts (kimi resolves via session_index.jsonl, unknown
+    # hosts have no known root) surface as None rather than a guessed path.
+    layout = host_layout_for(host)
+    projects_root = layout.projects_root
+    if projects_root is None:
+        logger.debug(f"No projects root registered for host: {host}")
         return []
 
     if not projects_root.exists():
@@ -185,7 +208,7 @@ def discover_all_projects(
         # The lossy decode ("-Users-foo-bar" -> "/Users/foo/bar") breaks for
         # paths that contain hyphens (e.g. "little-loops", macOS per-user
         # temp dirs like /tmp/claude-501/).
-        decoded_path = _extract_cwd_from_project(project_dir) or Path(
+        decoded_path = _extract_cwd_from_project(project_dir, layout) or Path(
             project_dir.name.replace("-", "/")
         )
 
@@ -194,7 +217,7 @@ def discover_all_projects(
                 logger.debug(f"Decoded path does not exist: {decoded_path}")
             continue
 
-        if _has_ll_activity(project_dir):
+        if _has_ll_activity(project_dir, layout):
             results.append(decoded_path)
 
     return sorted(results)
@@ -233,16 +256,23 @@ class InvocationEvent:
 
 
 def _extract_ll_event_streams(
-    project_folder: Path, *, cutoff: datetime | None = None, until: datetime | None = None
+    project_folder: Path,
+    *,
+    cutoff: datetime | None = None,
+    until: datetime | None = None,
+    layout: HostLayout | None = None,
 ) -> dict[str, list[InvocationEvent]]:
     """Extract per-session ordered ll-invocation event streams from JSONL files.
 
     Walks JSONL files (skipping ``agent-*``), filters to records with ll activity,
     extracts the tool/skill name, and returns a dict mapping ``sessionId`` to a
-    timestamp-sorted list of ``InvocationEvent``.
+    timestamp-sorted list of ``InvocationEvent``. *layout* supplies the
+    session glob and the record normalizer (ENH-3166) so qwen ``chats/``
+    sessions and ``functionCall`` records are recognized; defaults to the
+    Claude layout.
 
     Args:
-        project_folder: Path to the claude project session directory.
+        project_folder: Path to the host's project session directory.
         cutoff: If set, exclude records with timestamps before this datetime.
         until: If set, exclude records with timestamps after this datetime.
 
@@ -251,7 +281,10 @@ def _extract_ll_event_streams(
     """
     events_by_session: dict[str, list[InvocationEvent]] = {}
 
-    jsonl_files = [f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")]
+    effective = layout if layout is not None else host_layout_for("claude-code")
+    jsonl_files = [
+        f for f in project_folder.glob(effective.session_glob) if not f.name.startswith("agent-")
+    ]
     if not jsonl_files:
         return events_by_session
 
@@ -269,6 +302,10 @@ def _extract_ll_event_streams(
                     except json.JSONDecodeError:
                         continue
 
+                    if effective.normalize is not None:
+                        record = effective.normalize(record)
+                        if record is None:
+                            continue
                     tool_name = _extract_tool_name(record)
                     if tool_name is None:
                         continue
@@ -592,6 +629,9 @@ def _compute_edges(
 
 def _cmd_sequences(args: argparse.Namespace, logger: Logger) -> int:
     """Extract n-grams of ll invocations from JSONL log files."""
+    import os as _os
+
+    layout = host_layout_for(_os.environ.get("LL_HOOK_HOST", "claude-code"))
     if args.project:
         cwd_path: Path = args.project
         project_folder = get_project_folder(cwd_path)
@@ -612,7 +652,9 @@ def _cmd_sequences(args: argparse.Namespace, logger: Logger) -> int:
     # Aggregate events across all projects
     all_events: dict[str, list[InvocationEvent]] = {}
     for _cwd_path, project_folder in project_items:
-        events = _extract_ll_event_streams(project_folder, cutoff=cutoff, until=until)
+        events = _extract_ll_event_streams(
+            project_folder, cutoff=cutoff, until=until, layout=layout
+        )
         for sid, evt_list in events.items():
             all_events.setdefault(sid, []).extend(evt_list)
 

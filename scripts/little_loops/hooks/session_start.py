@@ -156,18 +156,10 @@ def handle(event: LLHookEvent) -> LLHookResult:
             if _transcript and Path(_transcript).is_file():
                 _backfill_path: str | None = _transcript
             else:
+                # The worker resolves the host's session glob itself
+                # (ENH-3166) — pass the project root, not a pre-joined
+                # sessions subdirectory.
                 _pf = get_project_folder(cwd)
-                if _pf is not None:
-                    # Hosts like qwen keep session JSONL in a subdirectory
-                    # (chats/) of the resolved project folder, and the worker
-                    # globs *.jsonl non-recursively (ENH-3165).
-                    from little_loops.session_store import subagent_layout_for
-
-                    _subdir = subagent_layout_for(
-                        _os.environ.get("LL_HOOK_HOST", "claude-code")
-                    ).sessions_subdir
-                    if _subdir:
-                        _pf = _pf / _subdir
                 _backfill_path = str(_pf) if _pf is not None else None
 
             if _backfill_path is not None and not _os.environ.get("LL_NON_INTERACTIVE"):
@@ -181,6 +173,10 @@ def handle(event: LLHookEvent) -> LLHookResult:
                     str(_db_path),
                     _backfill_path,
                 ]
+                # ENH-3166: stamp raw_events with the ingested host from the
+                # adapter envelope, not the worker's ambient host.
+                _backfill_host = event.host or _os.environ.get("LL_HOOK_HOST", "claude-code")
+                _worker_argv.extend(["--host", _backfill_host])
                 with contextlib.suppress(Exception):
                     from little_loops.session_store import SCHEMA_VERSION, connect
 

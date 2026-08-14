@@ -48,8 +48,8 @@ from little_loops.session_store.writers import (
     _iter_events,
     _now,
     _pack_payload,
+    host_layout_for,
     mine_corrections_from_messages,
-    subagent_layout_for,
 )
 
 if TYPE_CHECKING:
@@ -745,7 +745,9 @@ def _mtime(path: Path) -> float:
         return 0.0
 
 
-def _backfill_raw_events(conn: sqlite3.Connection, jsonl_files: list[Path]) -> int:
+def _backfill_raw_events(
+    conn: sqlite3.Connection, jsonl_files: list[Path], *, host: str | None = None
+) -> int:
     """Parse *jsonl_files* and INSERT OR IGNORE one row per line into raw_events.
 
     Idempotent via the ``(source_path, line_no)`` dedup index. ``event_type``
@@ -754,8 +756,16 @@ def _backfill_raw_events(conn: sqlite3.Connection, jsonl_files: list[Path]) -> i
     line yields both an assistant_messages row and zero-or-more tool_events
     rows), so raw_events stores the source line verbatim rather than a
     cache-table kind (ENH-2581).
+
+    *host* overrides the ambient ``resolve_host().name`` for the
+    ``raw_events.host`` column (ENH-3166) — ``ll-session backfill --host
+    qwen`` must stamp qwen, not whatever CLI orchestrates the call. The
+    host's layout ``skip_at_ingest`` guard (when set) drops high-volume
+    record families before they reach ``raw_events``.
     """
-    host = resolve_host().name
+    effective_host = host if host is not None else resolve_host().name
+    layout = host_layout_for(effective_host)
+    skip = layout.skip_at_ingest
     count = 0
     for jsonl_file in jsonl_files:
         try:
@@ -772,6 +782,8 @@ def _backfill_raw_events(conn: sqlite3.Connection, jsonl_files: list[Path]) -> i
                     record = json.loads(line)
                 except json.JSONDecodeError:
                     continue
+                if skip is not None and skip(record):
+                    continue
                 cur = conn.execute(
                     "INSERT OR IGNORE INTO raw_events"
                     "(ts, session_id, host, source_path, line_no, event_type, raw_line, parsed_json)"
@@ -779,7 +791,7 @@ def _backfill_raw_events(conn: sqlite3.Connection, jsonl_files: list[Path]) -> i
                     (
                         str(record.get("timestamp") or ""),
                         record.get("sessionId"),
-                        host,
+                        effective_host,
                         source_path,
                         line_no,
                         str(record.get("type") or "unknown"),
@@ -796,6 +808,7 @@ def backfill_raw_events(
     *,
     jsonl_files: list[Path],
     since_ts: float | None = None,
+    host: str | None = None,
 ) -> int:
     """Parse JSONL files and INSERT OR IGNORE rows into raw_events.
 
@@ -804,7 +817,9 @@ def backfill_raw_events(
     provided file). Updates the ``last_raw_event_ts`` meta key on success —
     the single watermark that replaces ``last_backfill_ts`` /
     ``last_backfill_ts_assistant_messages`` / ``last_backfill_ts_skill_events``
-    (ENH-2581). Returns the count of new rows inserted.
+    (ENH-2581). *host* names the host whose transcripts are ingested for the
+    ``raw_events.host`` column (ENH-3166); omitted, the ambient host is used.
+    Returns the count of new rows inserted.
     """
     conn = _pkg.connect(db)
     try:
@@ -813,7 +828,7 @@ def backfill_raw_events(
             if since_ts is not None
             else jsonl_files
         )
-        count = _backfill_raw_events(conn, filtered)
+        count = _backfill_raw_events(conn, filtered, host=host)
         conn.execute(
             "INSERT INTO meta(key, value) VALUES('last_raw_event_ts', ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -951,7 +966,7 @@ def rebuild(
         )
 
         def _raw_events_cursor() -> sqlite3.Cursor:
-            return conn.execute("SELECT raw_line, source_path FROM raw_events ORDER BY id")
+            return conn.execute("SELECT raw_line, source_path, host FROM raw_events ORDER BY id")
 
         # sessions first: assistant_messages/backfill order elsewhere relies on
         # the sessions table already being populated (ENH-1710).
@@ -1060,11 +1075,11 @@ def backfill(
         if repo_root is not None and (repo_root / ".git").exists():
             counts["commits"] = _backfill_commit_events(conn, repo_root)
         if jsonl_files:
-            counts["raw_events"] = _backfill_raw_events(conn, jsonl_files)
+            counts["raw_events"] = _backfill_raw_events(conn, jsonl_files, host=host)
         if registry_dir.is_dir():
             counts["learning_tests"] = _backfill_learning_test_events(conn, registry_dir)
         if sessions_root is not None and sessions_root.is_dir():
-            layout = subagent_layout_for(host) if host else None
+            layout = host_layout_for(host) if host else None
             counts["subagent_runs"] = _backfill_subagent_runs(conn, sessions_root, layout=layout)
         conn.execute(
             "INSERT INTO meta(key, value) VALUES('last_raw_event_ts', ?) "
@@ -1088,6 +1103,7 @@ def backfill_incremental(
     since_ts: float | None = None,
     config: dict | None = None,
     also_rebuild: bool = False,
+    host: str | None = None,
 ) -> dict[str, int]:
     """Ingest JSONL files modified after *since_ts* into ``raw_events``.
 
@@ -1107,6 +1123,8 @@ def backfill_incremental(
 
     Issues and loop-state JSON are NOT backfilled here; this variant is
     JSONL-only and designed for low-latency background use in session hooks.
+    *host* names the host whose transcripts are ingested for the
+    ``raw_events.host`` column (ENH-3166); omitted, the ambient host is used.
     Errors are not suppressed — the caller (session hook) catches them and
     logs a warning.
     """
@@ -1125,7 +1143,7 @@ def backfill_incremental(
         else:
             since_ts = 0.0
 
-    raw_count = backfill_raw_events(db, jsonl_files=jsonl_files, since_ts=since_ts)
+    raw_count = backfill_raw_events(db, jsonl_files=jsonl_files, since_ts=since_ts, host=host)
     counts: dict[str, int] = {"raw_events": raw_count}
     if also_rebuild:
         counts.update(rebuild(db, config=config))

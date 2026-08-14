@@ -435,9 +435,9 @@ def get_sessions_folder(cwd: Path | None = None, *, host: str | None = None) -> 
     project_folder = get_project_folder(cwd, host=effective_host)
     if project_folder is None:
         return None
-    from little_loops.session_store import subagent_layout_for
+    from little_loops.session_store import host_layout_for
 
-    subdir = subagent_layout_for(effective_host).sessions_subdir
+    subdir = host_layout_for(effective_host).sessions_subdir
     return project_folder / subdir if subdir else project_folder
 
 
@@ -513,10 +513,11 @@ def _get_qwen_project_folder(encoded_path: str) -> Path | None:
     consumers need different children of it: session JSONL lives one level
     deeper under ``chats/`` while subagent transcripts live under
     ``subagents/<session-id>/`` (ENH-3165). Callers pick the child via
-    ``subagent_layout_for(host).sessions_subdir``.
+    ``host_layout_for(host).sessions_subdir``.
 
-    Note: qwen chat files use qwen's own message schema, not Claude's —
-    wire-format parsing for backfill extraction is tracked as ENH-3166.
+    Note: qwen chat files use qwen's own message schema, not Claude's;
+    backfill extraction normalizes them into Claude shape at rebuild time
+    (ENH-3166).
     """
     project_folder = Path.home() / ".qwen" / "projects" / encoded_path
     return project_folder if project_folder.exists() else None

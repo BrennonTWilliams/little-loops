@@ -21,9 +21,9 @@ import subprocess
 import threading
 import time
 import zlib
-from collections.abc import Generator, Sequence
+from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -1895,8 +1895,15 @@ def record_subagent_run_stop(
 
 
 @dataclass(frozen=True)
-class SubagentLayout:
-    """Per-host description of how subagent transcripts nest on disk (ENH-3165).
+class HostLayout:
+    """Per-host description of where session logs live and how to read them.
+
+    Widened from ENH-3165's subagent-only descriptor by ENH-3166: the
+    subagent fields keep their ENH-3165 meaning while the added fields drive
+    session discovery (``projects_root``/``session_glob``), wire-format
+    normalization (``tool_names``/``tool_arg_keys``/``normalize``) and the
+    ingest volume guard (``skip_at_ingest``). One record per host — a second
+    host table would drift from the first.
 
     ``glob`` is evaluated against the host's project folder and yields the
     directories that directly contain ``*.jsonl`` subagent transcripts;
@@ -1908,12 +1915,29 @@ class SubagentLayout:
     session JSONL (``""`` when sessions sit at the project root) — the qwen
     project folder needs both names because its sessions live under ``chats/``
     while its subagent transcripts live under ``subagents/``.
+
+    ``projects_root`` is the host's ``~/.<cli>/projects`` directory, or
+    ``None`` when the host has no static projects root (unregistered hosts,
+    or hosts like kimi that resolve sessions through an index file).
+    ``session_glob`` is the glob, relative to a project folder, that reaches
+    top-level session JSONL (``"chats/*.jsonl"`` for qwen, ``"*.jsonl"`` for
+    Claude-shaped hosts). ``normalize`` maps one raw record into the
+    Claude-shaped form the ``_backfill_*`` extractors consume (``None`` when
+    the host is already Claude-shaped); ``skip_at_ingest`` optionally drops
+    high-volume record families before they reach ``raw_events``.
     """
 
     glob: str
     parent_from: str
     sidecar_suffix: str | None
     sessions_subdir: str
+    name: str = "claude-code"
+    projects_root: Path | None = None
+    session_glob: str = "*.jsonl"
+    tool_names: dict[str, str] = field(default_factory=dict)
+    tool_arg_keys: dict[str, dict[str, str]] = field(default_factory=dict)
+    normalize: Callable[[dict], dict | None] | None = None
+    skip_at_ingest: Callable[[dict], bool] | None = None
 
 
 @dataclass(frozen=True)
@@ -1929,29 +1953,51 @@ class SubagentMeta:
     status: str
 
 
-_CLAUDE_SUBAGENT_LAYOUT = SubagentLayout(
-    glob="*/subagents",
-    parent_from="parent_dir",
-    sidecar_suffix=None,
-    sessions_subdir="",
-)
-_QWEN_SUBAGENT_LAYOUT = SubagentLayout(
-    glob="subagents/*",
-    parent_from="child_dir",
-    sidecar_suffix=".meta.json",
-    sessions_subdir="chats",
-)
+def host_layout_for(host: str) -> HostLayout:
+    """Return the session/subagent layout descriptor for *host* (ENH-3165/3166).
 
-
-def subagent_layout_for(host: str) -> SubagentLayout:
-    """Return the subagent-transcript layout descriptor for *host* (ENH-3165).
-
-    Unknown hosts get the Claude shape — today's ``*/subagents`` behavior —
-    so hosts without a dedicated entry keep backfilling exactly as before.
+    Unknown hosts get the Claude shape for the subagent/session fields —
+    today's ``*/subagents`` behavior — so hosts without a dedicated entry
+    keep backfilling exactly as before. ``projects_root`` is strict: it stays
+    ``None`` for unregistered hosts rather than guessing a root. Layouts are
+    built per call so ``Path.home()`` resolves lazily (tests patch it).
     """
+    home = Path.home()
     if host == "qwen":
-        return _QWEN_SUBAGENT_LAYOUT
-    return _CLAUDE_SUBAGENT_LAYOUT
+        from little_loops.session_store.qwen import (
+            QWEN_TOOL_ARG_KEYS,
+            QWEN_TOOL_NAMES,
+            normalize_qwen_record,
+            qwen_skip_at_ingest,
+        )
+
+        return HostLayout(
+            glob="subagents/*",
+            parent_from="child_dir",
+            sidecar_suffix=".meta.json",
+            sessions_subdir="chats",
+            name="qwen",
+            projects_root=home / ".qwen" / "projects",
+            session_glob="chats/*.jsonl",
+            tool_names=QWEN_TOOL_NAMES,
+            tool_arg_keys=QWEN_TOOL_ARG_KEYS,
+            normalize=normalize_qwen_record,
+            skip_at_ingest=qwen_skip_at_ingest,
+        )
+    projects_root = {
+        "claude-code": home / ".claude" / "projects",
+        "codex": home / ".codex" / "projects",
+        "opencode": home / ".opencode" / "projects",
+        "pi": home / ".pi" / "projects",
+    }.get(host)
+    return HostLayout(
+        glob="*/subagents",
+        parent_from="parent_dir",
+        sidecar_suffix=None,
+        sessions_subdir="",
+        name=host,
+        projects_root=projects_root,
+    )
 
 
 def _read_subagent_meta(transcript: Path, suffix: str) -> SubagentMeta | None:
@@ -2018,7 +2064,7 @@ def _backfill_subagent_runs(
     conn: sqlite3.Connection,
     sessions_root: Path,
     *,
-    layout: SubagentLayout | None = None,
+    layout: HostLayout | None = None,
 ) -> int:
     """Seed ``subagent_runs`` from nested ``subagents/…/agent-<id>.jsonl`` transcripts.
 
@@ -2033,7 +2079,7 @@ def _backfill_subagent_runs(
     Missing or unparseable sidecars degrade to the mtime heuristic. Idempotent
     via the same ``INSERT OR IGNORE`` as the live writer.
     """
-    layout = layout or _CLAUDE_SUBAGENT_LAYOUT
+    layout = layout or host_layout_for("claude-code")
     count = 0
     for container in sessions_root.glob(layout.glob):
         if not container.is_dir():
@@ -2587,10 +2633,36 @@ def _iter_events(source: list[Path] | sqlite3.Cursor) -> Generator[tuple[str, st
     :func:`rebuild` path, replaying previously-ingested lines instead of
     re-reading the filesystem (ENH-2581). Cursor-sourced ``raw_line`` values pass
     through :func:`_unpack_payload` (compressed BLOB → text; legacy TEXT unchanged).
+
+    When the cursor selects a third ``host`` column (ENH-3166), rows whose
+    host layout carries a ``normalize`` callable are parsed, normalized into
+    the Claude-shaped form the extractors consume, and re-serialized; records
+    the normalizer drops (``None``) are skipped. Rows with a missing host
+    (legacy cursors, ``list[Path]`` sources) or a normalizer-free layout pass
+    through untouched — every existing claude-code row bypasses the
+    loads/normalize/dumps round-trip entirely.
     """
     if isinstance(source, sqlite3.Cursor):
+        layouts: dict[str, HostLayout] = {}
         for row in source:
-            yield _unpack_payload(row[0]), row[1]
+            line = _unpack_payload(row[0])
+            source_label = row[1]
+            host = row[2] if len(row) > 2 else None
+            if host:
+                layout = layouts.get(host)
+                if layout is None:
+                    layout = host_layout_for(str(host))
+                    layouts[str(host)] = layout
+                if layout.normalize is not None:
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    normalized = layout.normalize(record)
+                    if normalized is None:
+                        continue
+                    line = json.dumps(normalized)
+            yield line, source_label
         return
     for jsonl_file in source:
         try:

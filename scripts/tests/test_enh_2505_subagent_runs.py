@@ -21,9 +21,9 @@ from little_loops.session_store import (
     _backfill_subagent_runs,
     connect,
     ensure_db,
+    host_layout_for,
     record_subagent_run_start,
     record_subagent_run_stop,
-    subagent_layout_for,
 )
 
 
@@ -536,7 +536,7 @@ class TestQwenSubagentBackfill:
         transcript = _build_qwen_tree(root, sidecar=_qwen_sidecar())
         conn = connect(db)
         try:
-            count = _backfill_subagent_runs(conn, root, layout=subagent_layout_for("qwen"))
+            count = _backfill_subagent_runs(conn, root, layout=host_layout_for("qwen"))
             conn.commit()
         finally:
             conn.close()
@@ -563,7 +563,7 @@ class TestQwenSubagentBackfill:
         _build_qwen_tree(root, sidecar=_qwen_sidecar(status="failed"))
         conn = connect(db)
         try:
-            _backfill_subagent_runs(conn, root, layout=subagent_layout_for("qwen"))
+            _backfill_subagent_runs(conn, root, layout=host_layout_for("qwen"))
             conn.commit()
             row = conn.execute("SELECT * FROM subagent_runs").fetchone()
         finally:
@@ -577,7 +577,7 @@ class TestQwenSubagentBackfill:
         _build_qwen_tree(root)  # no sidecar
         conn = connect(db)
         try:
-            count = _backfill_subagent_runs(conn, root, layout=subagent_layout_for("qwen"))
+            count = _backfill_subagent_runs(conn, root, layout=host_layout_for("qwen"))
             conn.commit()
             row = conn.execute("SELECT * FROM subagent_runs").fetchone()
         finally:
@@ -595,7 +595,7 @@ class TestQwenSubagentBackfill:
         _build_qwen_tree(root, sidecar_text="{not json")
         conn = connect(db)
         try:
-            count = _backfill_subagent_runs(conn, root, layout=subagent_layout_for("qwen"))
+            count = _backfill_subagent_runs(conn, root, layout=host_layout_for("qwen"))
             conn.commit()
             row = conn.execute("SELECT * FROM subagent_runs").fetchone()
         finally:
@@ -617,7 +617,7 @@ class TestQwenSubagentBackfill:
         _build_qwen_tree(root, sidecar=_qwen_sidecar())
         conn = connect(db)
         try:
-            count = _backfill_subagent_runs(conn, root, layout=subagent_layout_for("qwen"))
+            count = _backfill_subagent_runs(conn, root, layout=host_layout_for("qwen"))
             conn.commit()
             total = conn.execute("SELECT COUNT(*) FROM subagent_runs").fetchone()[0]
         finally:
@@ -638,7 +638,7 @@ class TestQwenSubagentBackfill:
         )
         conn = connect(db)
         try:
-            _backfill_subagent_runs(conn, root, layout=subagent_layout_for("qwen"))
+            _backfill_subagent_runs(conn, root, layout=host_layout_for("qwen"))
             conn.commit()
             row = conn.execute("SELECT * FROM subagent_runs").fetchone()
         finally:
@@ -657,7 +657,7 @@ class TestQwenSubagentBackfill:
         )
         conn = connect(db)
         try:
-            count = _backfill_subagent_runs(conn, root, layout=subagent_layout_for("qwen"))
+            count = _backfill_subagent_runs(conn, root, layout=host_layout_for("qwen"))
             conn.commit()
         finally:
             conn.close()
@@ -674,7 +674,7 @@ class TestQwenSubagentBackfill:
         conn = connect(db)
         try:
             count = _backfill_subagent_runs(
-                conn, sessions_root, layout=subagent_layout_for("claude-code")
+                conn, sessions_root, layout=host_layout_for("claude-code")
             )
             conn.commit()
             row = conn.execute(
