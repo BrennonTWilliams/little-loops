@@ -27,6 +27,7 @@ Subcommands:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -58,6 +59,7 @@ from little_loops.session_store import (
     recompress_raw_events,
     record_hook_event,
     search,
+    subagent_layout_for,
 )
 from little_loops.user_messages import get_project_folder
 
@@ -524,6 +526,10 @@ def main_session() -> int:
                 logger.success(f"Backfilled {count} issue snapshots.")
                 return 0
 
+            # Effective host for layout lookups: --host wins, else the same
+            # LL_HOOK_HOST auto-detect that get_project_folder uses (ENH-3165).
+            _backfill_host: str = args.host or os.environ.get("LL_HOOK_HOST", "claude-code")
+
             # Read project config so compaction settings are respected (same
             # pattern as the prune handler).
             import json as _json
@@ -556,7 +562,14 @@ def main_session() -> int:
                 if project_folder is None:
                     logger.error("No session project folder found; cannot discover JSONL files.")
                     return 1
-                jsonl_files = list(project_folder.glob("*.jsonl"))
+                # Session JSONL sits in the layout's sessions subdir for hosts
+                # like qwen (chats/); the subdir is "" for Claude-shaped hosts
+                # so the join is a no-op there (ENH-3165).
+                jsonl_files = list(
+                    (project_folder / subagent_layout_for(_backfill_host).sessions_subdir).glob(
+                        "*.jsonl"
+                    )
+                )
                 also_rebuild = getattr(args, "rebuild", False)
                 inc_counts = backfill_incremental(
                     args.db,
@@ -584,7 +597,13 @@ def main_session() -> int:
             # hosts also get message/tool/session backfill (ENH-1945).
             project_folder = get_project_folder(host=args.host)
             full_jsonl_files: list[Path] | None = (
-                list(project_folder.glob("*.jsonl")) if project_folder else None
+                list(
+                    (project_folder / subagent_layout_for(_backfill_host).sessions_subdir).glob(
+                        "*.jsonl"
+                    )
+                )
+                if project_folder
+                else None
             )
             counts = backfill(
                 args.db,
@@ -593,6 +612,7 @@ def main_session() -> int:
                 max_sessions=max_sessions,
                 repo_root=Path.cwd(),
                 sessions_root=project_folder,
+                host=_backfill_host,
                 also_rebuild=getattr(args, "rebuild", False),
             )
             total = sum(counts.values())

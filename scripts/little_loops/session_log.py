@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from little_loops.file_utils import acquire_lock, atomic_write, issue_lock_path
-from little_loops.user_messages import get_project_folder
+from little_loops.user_messages import get_sessions_folder
 
 # Regex to isolate the ## Session Log section content
 _SESSION_LOG_SECTION_RE = re.compile(
@@ -103,10 +103,13 @@ def last_command_timestamp(content: str, command: str) -> datetime | None:
 
 
 def get_current_session_jsonl(cwd: Path | None = None) -> Path | None:
-    """Resolve the active Claude Code session's JSONL file path.
+    """Resolve the active host session's JSONL file path.
 
-    Finds the most recently modified .jsonl file in the project's
-    Claude Code session directory, excluding agent session files.
+    Finds the most recently modified .jsonl file in the project's session
+    directory (host auto-detected via ``LL_HOOK_HOST``), excluding agent
+    session files. Resolves through ``get_sessions_folder`` so hosts whose
+    session JSONL nests one level deeper — qwen's ``chats/`` (ENH-3165) —
+    are reached too.
 
     Args:
         cwd: Working directory to map. If None, uses current directory.
@@ -114,7 +117,7 @@ def get_current_session_jsonl(cwd: Path | None = None) -> Path | None:
     Returns:
         Path to the most recent JSONL file, or None if not found.
     """
-    project_folder = get_project_folder(cwd)
+    project_folder = get_sessions_folder(cwd)
     if project_folder is None:
         return None
 

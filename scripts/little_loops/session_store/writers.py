@@ -1894,34 +1894,186 @@ def record_subagent_run_stop(
     return bool(cursor.rowcount)
 
 
-def _backfill_subagent_runs(conn: sqlite3.Connection, sessions_root: Path) -> int:
-    """Seed ``subagent_runs`` from nested ``subagents/agent-<id>.jsonl`` transcripts.
+@dataclass(frozen=True)
+class SubagentLayout:
+    """Per-host description of how subagent transcripts nest on disk (ENH-3165).
 
-    Discovers subagent transcripts under each parent session's transcript
-    directory (``<session-dir>/subagents/*.jsonl``) and writes one completed row
-    per nested file found, since a persisted transcript implies the spawn ran to
-    completion (the live ``SubagentStart``/``SubagentStop`` hooks capture
-    ``running``/``failed``/``timeout`` states that backfill cannot reconstruct
-    after the fact). Idempotent via the same ``INSERT OR IGNORE`` as the live
-    writer.
+    ``glob`` is evaluated against the host's project folder and yields the
+    directories that directly contain ``*.jsonl`` subagent transcripts;
+    ``parent_from`` says where the parent session id lives relative to such a
+    directory (``"parent_dir"`` for Claude's ``<session-dir>/subagents``,
+    ``"child_dir"`` for qwen's inverted ``subagents/<session-id>``);
+    ``sidecar_suffix`` names the per-transcript metadata file when the host
+    writes one. ``sessions_subdir`` names the subdirectory holding top-level
+    session JSONL (``""`` when sessions sit at the project root) — the qwen
+    project folder needs both names because its sessions live under ``chats/``
+    while its subagent transcripts live under ``subagents/``.
     """
+
+    glob: str
+    parent_from: str
+    sidecar_suffix: str | None
+    sessions_subdir: str
+
+
+@dataclass(frozen=True)
+class SubagentMeta:
+    """Normalized subagent metadata; optional fields let callers degrade (ENH-3165)."""
+
+    agent_id: str
+    agent_type: str | None
+    parent_session_id: str | None
+    parent_agent_id: str | None
+    started_at: str | None
+    ended_at: str | None
+    status: str
+
+
+_CLAUDE_SUBAGENT_LAYOUT = SubagentLayout(
+    glob="*/subagents",
+    parent_from="parent_dir",
+    sidecar_suffix=None,
+    sessions_subdir="",
+)
+_QWEN_SUBAGENT_LAYOUT = SubagentLayout(
+    glob="subagents/*",
+    parent_from="child_dir",
+    sidecar_suffix=".meta.json",
+    sessions_subdir="chats",
+)
+
+
+def subagent_layout_for(host: str) -> SubagentLayout:
+    """Return the subagent-transcript layout descriptor for *host* (ENH-3165).
+
+    Unknown hosts get the Claude shape — today's ``*/subagents`` behavior —
+    so hosts without a dedicated entry keep backfilling exactly as before.
+    """
+    if host == "qwen":
+        return _QWEN_SUBAGENT_LAYOUT
+    return _CLAUDE_SUBAGENT_LAYOUT
+
+
+def _read_subagent_meta(transcript: Path, suffix: str) -> SubagentMeta | None:
+    """Parse the sidecar beside *transcript* (ENH-3165), or ``None`` to degrade.
+
+    Missing file, ``OSError``, ``JSONDecodeError``, a non-dict payload, or a
+    missing ``agentId`` all return ``None`` so the caller falls back to the
+    mtime heuristic. ``parentAgentId`` is parsed but not yet stored —
+    ``subagent_runs`` has no column for it (nested-tree linkage deferred).
+    """
+    sidecar = transcript.with_suffix(suffix)
+    try:
+        data = json.loads(sidecar.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    agent_id = data.get("agentId")
+    if not isinstance(agent_id, str) or not agent_id:
+        return None
+    status = data.get("status")
+
+    def _str_or_none(key: str) -> str | None:
+        value = data.get(key)
+        return value if isinstance(value, str) else None
+
+    return SubagentMeta(
+        agent_id=agent_id,
+        agent_type=_str_or_none("agentType"),
+        parent_session_id=_str_or_none("parentSessionId"),
+        parent_agent_id=_str_or_none("parentAgentId"),
+        started_at=_str_or_none("createdAt"),
+        ended_at=_str_or_none("lastUpdatedAt"),
+        status=status if isinstance(status, str) and status else "completed",
+    )
+
+
+def _subagent_meta_from_mtime(transcript: Path, parent_session_id: str) -> SubagentMeta | None:
+    """Claude-style fallback: mtime timestamps, ``status="completed"`` (ENH-2505).
+
+    A persisted transcript implies the spawn ran to completion on hosts with
+    no sidecar; the live SubagentStart/SubagentStop hooks are the only tier
+    that can capture ``running``/``failed``/``timeout`` states. ``None`` when
+    the transcript cannot be stat'ed.
+    """
+    try:
+        mtime = datetime.fromtimestamp(transcript.stat().st_mtime, tz=UTC).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+    except OSError:
+        return None
+    return SubagentMeta(
+        agent_id=transcript.stem,
+        agent_type=None,
+        parent_session_id=parent_session_id,
+        parent_agent_id=None,
+        started_at=mtime,
+        ended_at=mtime,
+        status="completed",
+    )
+
+
+def _backfill_subagent_runs(
+    conn: sqlite3.Connection,
+    sessions_root: Path,
+    *,
+    layout: SubagentLayout | None = None,
+) -> int:
+    """Seed ``subagent_runs`` from nested ``subagents/…/agent-<id>.jsonl`` transcripts.
+
+    *layout* describes the host's nesting (ENH-3165): Claude's
+    ``<session-dir>/subagents/*.jsonl`` (the ``None`` default preserves that
+    shape verbatim) or qwen's inverted ``subagents/<session-id>/agent-*.jsonl``
+    with a ``.meta.json`` sidecar per transcript. When a sidecar parses,
+    ``agent_id``/``agent_type``/``started_at``/``ended_at``/``status`` come
+    from it — the sidecar's ``agentId`` matches what the live hooks record,
+    so ``INSERT OR IGNORE`` dedups backfill against live-captured rows (the
+    filename stem would not: qwen stems carry an extra ``agent-`` prefix).
+    Missing or unparseable sidecars degrade to the mtime heuristic. Idempotent
+    via the same ``INSERT OR IGNORE`` as the live writer.
+    """
+    layout = layout or _CLAUDE_SUBAGENT_LAYOUT
     count = 0
-    for subagents_dir in sessions_root.glob("*/subagents"):
-        parent_session_id = subagents_dir.parent.name
-        for transcript in subagents_dir.glob("*.jsonl"):
-            agent_id = transcript.stem
-            try:
-                mtime = datetime.fromtimestamp(transcript.stat().st_mtime, tz=UTC).strftime(
-                    "%Y-%m-%dT%H:%M:%SZ"
-                )
-            except OSError:
+    for container in sessions_root.glob(layout.glob):
+        if not container.is_dir():
+            continue
+        if layout.parent_from == "child_dir":
+            derived_parent = container.name
+        else:
+            derived_parent = container.parent.name
+        for transcript in container.glob("*.jsonl"):
+            meta: SubagentMeta | None = None
+            if layout.sidecar_suffix:
+                meta = _read_subagent_meta(transcript, layout.sidecar_suffix)
+            if meta is None:
+                meta = _subagent_meta_from_mtime(transcript, derived_parent)
+            if meta is None:
                 continue
+            started_at = meta.started_at
+            if started_at is None:
+                # Sidecar without createdAt: keep the ts NOT NULL column populated.
+                try:
+                    started_at = datetime.fromtimestamp(
+                        transcript.stat().st_mtime, tz=UTC
+                    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+                except OSError:
+                    continue
             cursor = conn.execute(
                 "INSERT OR IGNORE INTO subagent_runs("
-                "ts, parent_session_id, agent_id, agent_transcript_path, started_at, "
-                "ended_at, status"
-                ") VALUES(?, ?, ?, ?, ?, ?, ?)",
-                (mtime, parent_session_id, agent_id, str(transcript), mtime, mtime, "completed"),
+                "ts, parent_session_id, agent_id, agent_type, agent_transcript_path, "
+                "started_at, ended_at, status"
+                ") VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    started_at,
+                    meta.parent_session_id or derived_parent,
+                    meta.agent_id,
+                    meta.agent_type,
+                    str(transcript),
+                    started_at,
+                    meta.ended_at,
+                    meta.status,
+                ),
             )
             if cursor.rowcount:
                 count += 1

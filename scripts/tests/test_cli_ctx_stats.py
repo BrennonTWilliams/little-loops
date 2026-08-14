@@ -29,6 +29,7 @@ from little_loops.session_store import (
     record_context_pressure_event,
     record_loop_run_summary,
 )
+from little_loops.user_messages import encode_project_path
 
 
 def _populate_skill_events(
@@ -671,13 +672,13 @@ class TestComputeCacheRateFromJsonl:
                 f.write(json.dumps(entry) + "\n")
 
     def test_returns_none_when_no_project_folder(self, tmp_path: Path) -> None:
-        with patch("little_loops.cli.ctx_stats.get_project_folder", return_value=None):
+        with patch("little_loops.cli.ctx_stats.get_sessions_folder", return_value=None):
             assert _compute_cache_rate_from_jsonl(tmp_path) is None
 
     def test_returns_none_when_no_jsonl_files(self, tmp_path: Path) -> None:
         project_folder = tmp_path / "projects"
         project_folder.mkdir()
-        with patch("little_loops.cli.ctx_stats.get_project_folder", return_value=project_folder):
+        with patch("little_loops.cli.ctx_stats.get_sessions_folder", return_value=project_folder):
             assert _compute_cache_rate_from_jsonl(tmp_path) is None
 
     def test_skips_file_that_vanishes_before_stat(self, tmp_path: Path) -> None:
@@ -714,7 +715,7 @@ class TestComputeCacheRateFromJsonl:
                 raise FileNotFoundError(2, "No such file or directory", str(self))
             return real_stat(self, *args, **kwargs)
 
-        with patch("little_loops.cli.ctx_stats.get_project_folder", return_value=project_folder):
+        with patch("little_loops.cli.ctx_stats.get_sessions_folder", return_value=project_folder):
             with patch.object(Path, "stat", flaky_stat):
                 result = _compute_cache_rate_from_jsonl(tmp_path)
         assert result is not None
@@ -730,7 +731,7 @@ class TestComputeCacheRateFromJsonl:
         def all_gone(self, *args, **kwargs):  # type: ignore[no-untyped-def]
             raise FileNotFoundError(2, "No such file or directory", str(self))
 
-        with patch("little_loops.cli.ctx_stats.get_project_folder", return_value=project_folder):
+        with patch("little_loops.cli.ctx_stats.get_sessions_folder", return_value=project_folder):
             with patch.object(Path, "stat", all_gone):
                 assert _compute_cache_rate_from_jsonl(tmp_path) is None
 
@@ -753,7 +754,7 @@ class TestComputeCacheRateFromJsonl:
                 }
             ],
         )
-        with patch("little_loops.cli.ctx_stats.get_project_folder", return_value=project_folder):
+        with patch("little_loops.cli.ctx_stats.get_sessions_folder", return_value=project_folder):
             result = _compute_cache_rate_from_jsonl(tmp_path)
         assert result is not None
         assert result["cache_read"] == 61559
@@ -792,7 +793,7 @@ class TestComputeCacheRateFromJsonl:
                 },
             ],
         )
-        with patch("little_loops.cli.ctx_stats.get_project_folder", return_value=project_folder):
+        with patch("little_loops.cli.ctx_stats.get_sessions_folder", return_value=project_folder):
             result = _compute_cache_rate_from_jsonl(tmp_path)
         assert result is not None
         assert result["cache_read"] == 300
@@ -829,7 +830,7 @@ class TestComputeCacheRateFromJsonl:
                 },
             ],
         )
-        with patch("little_loops.cli.ctx_stats.get_project_folder", return_value=project_folder):
+        with patch("little_loops.cli.ctx_stats.get_sessions_folder", return_value=project_folder):
             result = _compute_cache_rate_from_jsonl(tmp_path)
         assert result is not None
         assert result["cache_read"] == 100  # counted once only
@@ -855,7 +856,7 @@ class TestComputeCacheRateFromJsonl:
             ],
         )
         (project_folder / "session.jsonl").write_text("")
-        with patch("little_loops.cli.ctx_stats.get_project_folder", return_value=project_folder):
+        with patch("little_loops.cli.ctx_stats.get_sessions_folder", return_value=project_folder):
             assert _compute_cache_rate_from_jsonl(tmp_path) is None
 
     def test_returns_none_when_total_zero(self, tmp_path: Path) -> None:
@@ -877,7 +878,7 @@ class TestComputeCacheRateFromJsonl:
                 }
             ],
         )
-        with patch("little_loops.cli.ctx_stats.get_project_folder", return_value=project_folder):
+        with patch("little_loops.cli.ctx_stats.get_sessions_folder", return_value=project_folder):
             assert _compute_cache_rate_from_jsonl(tmp_path) is None
 
     def test_skips_non_assistant_entries(self, tmp_path: Path) -> None:
@@ -900,10 +901,42 @@ class TestComputeCacheRateFromJsonl:
                 },
             ],
         )
-        with patch("little_loops.cli.ctx_stats.get_project_folder", return_value=project_folder):
+        with patch("little_loops.cli.ctx_stats.get_sessions_folder", return_value=project_folder):
             result = _compute_cache_rate_from_jsonl(tmp_path)
         assert result is not None
         assert result["cache_read"] == 50
+
+    def test_resolves_qwen_chats_transcript(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-3165: under LL_HOOK_HOST=qwen the transcript is read from the
+        project root's ``chats/`` subdir via the real resolution chain."""
+        monkeypatch.setenv("LL_HOOK_HOST", "qwen")
+        fake_home = tmp_path / "home"
+        encoded = encode_project_path(str(tmp_path.resolve()))
+        chats_dir = fake_home / ".qwen" / "projects" / encoded / "chats"
+        chats_dir.mkdir(parents=True)
+        self._write_jsonl(
+            chats_dir / "session.jsonl",
+            [
+                {
+                    "type": "assistant",
+                    "uuid": "a1",
+                    "message": {
+                        "usage": {
+                            "cache_read_input_tokens": 61559,
+                            "cache_creation_input_tokens": 3689,
+                            "input_tokens": 1,
+                        }
+                    },
+                }
+            ],
+        )
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+
+        result = _compute_cache_rate_from_jsonl(tmp_path)
+        assert result is not None
+        assert result["cache_read"] == 61559
 
 
 class TestCacheHitRateInOutput:

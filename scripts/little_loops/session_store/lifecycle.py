@@ -49,6 +49,7 @@ from little_loops.session_store.writers import (
     _now,
     _pack_payload,
     mine_corrections_from_messages,
+    subagent_layout_for,
 )
 
 if TYPE_CHECKING:
@@ -1015,6 +1016,7 @@ def backfill(
     repo_root: Path | None = None,
     registry_dir: Path | None = None,
     sessions_root: Path | None = None,
+    host: str | None = None,
     also_rebuild: bool = False,
 ) -> dict[str, int]:
     """Populate the database from existing on-disk sources.
@@ -1023,9 +1025,12 @@ def backfill(
     (ENH-2458; only when *repo_root* is given and contains ``.git``), the
     Learning Test Registry (ENH-2466; only when *registry_dir* is given and is
     a directory), and nested subagent transcripts (ENH-2505; only when
-    *sessions_root* is given and is a directory) directly. Session JSONL lines
-    are ingested into ``raw_events`` only (ENH-2581) — the JSONL-derived cache
-    tables (``tool_events``, ``message_events``, ``assistant_messages``,
+    *sessions_root* is given and is a directory) directly. When *host* is
+    given, the subagent-transcript walk uses that host's layout descriptor
+    (ENH-3165 — qwen nests ``subagents/<session-id>/`` with ``.meta.json``
+    sidecars); omitted, the Claude shape is preserved verbatim. Session JSONL
+    lines are ingested into ``raw_events`` only (ENH-2581) — the JSONL-derived
+    cache tables (``tool_events``, ``message_events``, ``assistant_messages``,
     ``skill_events``, ``sessions``) are **not** populated here; call
     :func:`rebuild` (or pass ``also_rebuild=True`` to do both in one call) to
     materialize them from ``raw_events``.
@@ -1059,7 +1064,8 @@ def backfill(
         if registry_dir.is_dir():
             counts["learning_tests"] = _backfill_learning_test_events(conn, registry_dir)
         if sessions_root is not None and sessions_root.is_dir():
-            counts["subagent_runs"] = _backfill_subagent_runs(conn, sessions_root)
+            layout = subagent_layout_for(host) if host else None
+            counts["subagent_runs"] = _backfill_subagent_runs(conn, sessions_root, layout=layout)
         conn.execute(
             "INSERT INTO meta(key, value) VALUES('last_raw_event_ts', ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",

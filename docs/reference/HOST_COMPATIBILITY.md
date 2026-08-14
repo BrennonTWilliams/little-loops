@@ -127,8 +127,10 @@ into `LLHookEvent` payloads.
     project `.qwen/settings.json` — ARCHITECTURE-046 Option A's first
     implementation), the `ll-adapt` emitter (FEAT-3159 — native
     `/ll:<stem>` command namespacing, no skill bridging),
-    `qwen-extension.json` packaging (FEAT-3160), and dash-encoded
-    `chats/`-nested session-log resolution (ENH-3161). Qwen's hook payload
+    `qwen-extension.json` packaging (FEAT-3160), dash-encoded
+    `chats/`-nested session-log resolution (ENH-3161), and qwen
+    subagent-transcript backfill into `subagent_runs` with `.meta.json`
+    sidecar sourcing (ENH-3165). Qwen's hook payload
     is Claude-shaped with extra fields (`permission_mode`, `source`,
     `tool_call_id`, Stop telemetry); matchers use Qwen runtime tool ids
     (`write_file|edit`), never Claude display names. `subagent_start`/
@@ -399,7 +401,7 @@ the adapter.
 | Scratch pads (`.loops/tmp/scratch/`) | `.loops/tmp/scratch/` | `.loops/tmp/scratch/` | `.loops/tmp/scratch/` (same path)[^state] | `.loops/tmp/scratch/` (same path)[^state] | `.loops/tmp/scratch/` (same path)[^state] |
 | Continuation prompt                 | `.ll/ll-continue-prompt.md` | `.ll/ll-continue-prompt.md` | `.ll/ll-continue-prompt.md` (same path)[^state] | `.ll/ll-continue-prompt.md` (same path)[^state] | `.ll/ll-continue-prompt.md` (same path)[^state] |
 | Session store (`SQLiteTransport`)   | `.ll/history.db` | `.ll/history.db` | `.ll/history.db` (same path)[^state] | `.ll/history.db` (same path)[^state] | `.ll/history.db` (same path)[^state] |
-| Session logs (`get_project_folder()`) | `~/.claude/projects/<dash-encoded cwd>/` | `~/.opencode/projects/<dash-encoded cwd>/` | `~/.codex/projects/<dash-encoded cwd>/` | ✓ — `~/.kimi-code/sessions/wd_*/` resolved via `~/.kimi-code/session_index.jsonl` (`workDir` → `sessionDir`; FEAT-2918)[^kimiwire] | ✓ — `~/.qwen/projects/<dash-encoded resolved cwd>/chats/` (ENH-3161)[^qwenwire] |
+| Session logs (`get_project_folder()`) | `~/.claude/projects/<dash-encoded cwd>/` | `~/.opencode/projects/<dash-encoded cwd>/` | `~/.codex/projects/<dash-encoded cwd>/` | ✓ — `~/.kimi-code/sessions/wd_*/` resolved via `~/.kimi-code/session_index.jsonl` (`workDir` → `sessionDir`; FEAT-2918)[^kimiwire] | ✓ — `~/.qwen/projects/<dash-encoded resolved cwd>/` project root (ENH-3161, ENH-3165); session JSONL under `chats/`, subagent transcripts under `subagents/<session-id>/`[^qwenwire] |
 
 [^state]: FEAT-957 deliberately scopes `LL_STATE_DIR=.codex` to the
     config probe only. Other state directories remain at their default
@@ -417,7 +419,13 @@ the adapter.
     *resolution* works (ENH-3161; the cwd is dash-encoded after symlink
     resolution, matching the `transcript_path` layout observed by the
     FEAT-3155 spike), but `ll-session backfill` message *extraction* does
-    not parse them yet (same posture as kimi's wire.jsonl).
+    not parse them yet (ENH-3166). Since ENH-3165, `get_project_folder()`
+    returns the project **root** (not the `chats/` leaf) so both `chats/`
+    and `subagents/` are reachable, and `ll-session backfill --host qwen`
+    populates `subagent_runs` from `subagents/<session-id>/agent-*.jsonl`
+    transcripts, sourcing `agent_id`/`agent_type`/`started_at`/`ended_at`/
+    `status` from each transcript's `.meta.json` sidecar (real statuses
+    like `failed` included; mtime heuristic only as fallback).
 
 [^qwenmarket]: **FEAT-3155 R3 finding** — the marketplace auto-conversion
     (`qwen extensions install BrennonTWilliams/little-loops:ll`) installs

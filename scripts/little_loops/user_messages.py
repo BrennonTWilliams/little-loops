@@ -33,6 +33,7 @@ __all__ = [
     "ExampleRecord",
     "encode_project_path",
     "get_project_folder",
+    "get_sessions_folder",
     "extract_user_messages",
     "extract_commands",
     "build_examples",
@@ -410,6 +411,36 @@ def get_project_folder(cwd: Path | None = None, *, host: str | None = None) -> P
     return None
 
 
+def get_sessions_folder(cwd: Path | None = None, *, host: str | None = None) -> Path | None:
+    """Resolve the folder holding the host's top-level session JSONL transcripts.
+
+    Wraps :func:`get_project_folder` and joins the layout's ``sessions_subdir``
+    (ENH-3165): qwen's project root holds both ``chats/`` (session JSONL) and
+    ``subagents/`` (subagent transcripts), so consumers that glob ``*.jsonl``
+    non-recursively need the ``chats/`` child rather than the root. For
+    Claude-shaped hosts ``sessions_subdir`` is ``""`` and the result equals
+    :func:`get_project_folder` exactly.
+
+    Args:
+        cwd: Working directory to map. If None, uses current directory.
+        host: Host identifier, same vocabulary as :func:`get_project_folder`.
+            If None, auto-detects from ``LL_HOOK_HOST`` (default
+            ``"claude-code"``) — the same detection the wrapped call uses.
+
+    Returns:
+        Path to the session-JSONL folder, or None when the host has no
+        recorded sessions for *cwd*.
+    """
+    effective_host = host if host is not None else os.environ.get("LL_HOOK_HOST", "claude-code")
+    project_folder = get_project_folder(cwd, host=effective_host)
+    if project_folder is None:
+        return None
+    from little_loops.session_store import subagent_layout_for
+
+    subdir = subagent_layout_for(effective_host).sessions_subdir
+    return project_folder / subdir if subdir else project_folder
+
+
 def _get_claude_project_folder(encoded_path: str) -> Path | None:
     """Probe the Claude Code session directory."""
     project_folder = Path.home() / ".claude" / "projects" / encoded_path
@@ -474,20 +505,21 @@ def _get_kimi_project_folder(cwd: Path) -> Path | None:
 
 
 def _get_qwen_project_folder(encoded_path: str) -> Path | None:
-    """Probe the Qwen Code session directory (FEAT-3155 spike, qwen 0.21.6).
+    """Probe the Qwen Code project folder (FEAT-3155 spike, qwen 0.21.6).
 
     Qwen dash-encodes the **symlink-resolved** cwd the same way Claude Code
-    does (``/private/tmp/x`` → ``-private-tmp-x``), but session JSONL files
-    live one level deeper — ``~/.qwen/projects/<encoded>/chats/<id>.jsonl``.
-    The ``chats/`` subdirectory is what backfill consumers glob, so it is
-    the folder returned.
+    does (``/private/tmp/x`` → ``-private-tmp-x``). Returns the project root
+    ``~/.qwen/projects/<encoded>`` — NOT a leaf subdirectory — because two
+    consumers need different children of it: session JSONL lives one level
+    deeper under ``chats/`` while subagent transcripts live under
+    ``subagents/<session-id>/`` (ENH-3165). Callers pick the child via
+    ``subagent_layout_for(host).sessions_subdir``.
 
     Note: qwen chat files use qwen's own message schema, not Claude's —
-    wire-format parsing for backfill extraction is a follow-up, same posture
-    as kimi's ``wire.jsonl`` (ENH-2918).
+    wire-format parsing for backfill extraction is tracked as ENH-3166.
     """
-    chats_folder = Path.home() / ".qwen" / "projects" / encoded_path / "chats"
-    return chats_folder if chats_folder.exists() else None
+    project_folder = Path.home() / ".qwen" / "projects" / encoded_path
+    return project_folder if project_folder.exists() else None
 
 
 def extract_user_messages(

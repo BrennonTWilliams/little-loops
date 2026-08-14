@@ -157,6 +157,17 @@ def handle(event: LLHookEvent) -> LLHookResult:
                 _backfill_path: str | None = _transcript
             else:
                 _pf = get_project_folder(cwd)
+                if _pf is not None:
+                    # Hosts like qwen keep session JSONL in a subdirectory
+                    # (chats/) of the resolved project folder, and the worker
+                    # globs *.jsonl non-recursively (ENH-3165).
+                    from little_loops.session_store import subagent_layout_for
+
+                    _subdir = subagent_layout_for(
+                        _os.environ.get("LL_HOOK_HOST", "claude-code")
+                    ).sessions_subdir
+                    if _subdir:
+                        _pf = _pf / _subdir
                 _backfill_path = str(_pf) if _pf is not None else None
 
             if _backfill_path is not None and not _os.environ.get("LL_NON_INTERACTIVE"):

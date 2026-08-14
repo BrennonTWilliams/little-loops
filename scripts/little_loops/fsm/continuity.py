@@ -19,7 +19,7 @@ from little_loops.session_store import (
     connect,
     resolve_history_db,
 )
-from little_loops.user_messages import get_project_folder
+from little_loops.user_messages import get_sessions_folder
 
 
 def summarize_completed_state(
@@ -40,9 +40,11 @@ def summarize_completed_state(
     if it has zero rows in both ``message_events``/``assistant_messages`` once
     backfilled (nothing to summarize).
     """
-    project_folder = get_project_folder(working_dir or Path.cwd())
+    project_folder = get_sessions_folder(working_dir or Path.cwd())
     if project_folder is None:
         return None
+    # Sessions JSONL sits in the layout's sessions subdir for hosts like qwen
+    # (chats/); get_sessions_folder already joined it (ENH-3165).
     jsonl_path = project_folder / f"{session_id}.jsonl"
     if not jsonl_path.exists():
         return None

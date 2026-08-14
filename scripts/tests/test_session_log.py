@@ -22,11 +22,11 @@ class TestGetCurrentSessionJsonl:
     """Tests for get_current_session_jsonl."""
 
     def test_returns_none_when_no_project_folder(self) -> None:
-        with patch("little_loops.session_log.get_project_folder", return_value=None):
+        with patch("little_loops.session_log.get_sessions_folder", return_value=None):
             assert get_current_session_jsonl() is None
 
     def test_returns_none_when_no_jsonl_files(self, tmp_path: Path) -> None:
-        with patch("little_loops.session_log.get_project_folder", return_value=tmp_path):
+        with patch("little_loops.session_log.get_sessions_folder", return_value=tmp_path):
             assert get_current_session_jsonl() is None
 
     def test_returns_most_recent_jsonl(self, tmp_path: Path) -> None:
@@ -36,7 +36,7 @@ class TestGetCurrentSessionJsonl:
         new_file = tmp_path / "new.jsonl"
         new_file.write_text("{}")
 
-        with patch("little_loops.session_log.get_project_folder", return_value=tmp_path):
+        with patch("little_loops.session_log.get_sessions_folder", return_value=tmp_path):
             result = get_current_session_jsonl()
             assert result == new_file
 
@@ -47,14 +47,14 @@ class TestGetCurrentSessionJsonl:
         session_file = tmp_path / "abc123.jsonl"
         session_file.write_text("{}")
 
-        with patch("little_loops.session_log.get_project_folder", return_value=tmp_path):
+        with patch("little_loops.session_log.get_sessions_folder", return_value=tmp_path):
             result = get_current_session_jsonl()
             assert result == session_file
 
     def test_returns_none_when_only_agent_files(self, tmp_path: Path) -> None:
         (tmp_path / "agent-coding.jsonl").write_text("{}")
 
-        with patch("little_loops.session_log.get_project_folder", return_value=tmp_path):
+        with patch("little_loops.session_log.get_sessions_folder", return_value=tmp_path):
             assert get_current_session_jsonl() is None
 
     def test_skips_file_that_vanishes_before_stat(self, tmp_path: Path) -> None:
@@ -76,7 +76,7 @@ class TestGetCurrentSessionJsonl:
                 raise FileNotFoundError(2, "No such file or directory", str(self))
             return real_stat(self, *args, **kwargs)  # type: ignore[arg-type]
 
-        with patch("little_loops.session_log.get_project_folder", return_value=tmp_path):
+        with patch("little_loops.session_log.get_sessions_folder", return_value=tmp_path):
             with patch.object(Path, "stat", flaky_stat):
                 result = get_current_session_jsonl()
         assert result == survivor
@@ -89,7 +89,7 @@ class TestGetCurrentSessionJsonl:
         def all_gone(self: Path, *args: object, **kwargs: object) -> os.stat_result:
             raise FileNotFoundError(2, "No such file or directory", str(self))
 
-        with patch("little_loops.session_log.get_project_folder", return_value=tmp_path):
+        with patch("little_loops.session_log.get_sessions_folder", return_value=tmp_path):
             with patch.object(Path, "stat", all_gone):
                 assert get_current_session_jsonl() is None
 
@@ -360,6 +360,27 @@ class TestSessionLogHostAware:
         monkeypatch.chdir(tmp_path)
 
         # Don't patch get_project_folder — test the real resolution chain
+        result = get_current_session_jsonl()
+        assert result == session_file
+
+    def test_get_current_session_jsonl_auto_detects_qwen_chats(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-3165: under LL_HOOK_HOST=qwen the JSONL is found one level deeper
+        in ``chats/`` — a root-level decoy transcript must NOT win."""
+        monkeypatch.setenv("LL_HOOK_HOST", "qwen")
+        fake_home = tmp_path / "home"
+        encoded = encode_project_path(str(tmp_path.resolve()))
+        project_root = fake_home / ".qwen" / "projects" / encoded
+        chats_dir = project_root / "chats"
+        chats_dir.mkdir(parents=True)
+        # Decoy at the project root: qwen never keeps session JSONL here.
+        (project_root / "root-decoy.jsonl").write_text("{}")
+        session_file = chats_dir / "qwen-session.jsonl"
+        session_file.write_text("{}")
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
         result = get_current_session_jsonl()
         assert result == session_file
 

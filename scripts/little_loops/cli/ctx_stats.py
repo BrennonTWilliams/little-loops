@@ -31,7 +31,7 @@ from little_loops.learning_tests.gate import is_record_stale
 from little_loops.learning_tests.import_scan import get_imported_packages
 from little_loops.logger import Logger
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context, resolve_history_db
-from little_loops.user_messages import get_project_folder
+from little_loops.user_messages import get_sessions_folder
 
 DEFAULT_DB_RELPATH = Path(".ll") / "history.db"
 DEFAULT_STATE_RELPATH = Path(".ll") / "ll-context-state.json"
@@ -343,14 +343,16 @@ def _compute_cache_rate_from_jsonl(cwd: Path) -> dict[str, Any] | None:
     """Compute session-aggregate cache hit rate from the most recent JSONL transcript.
 
     Reads the most recently modified non-agent JSONL file in the project's
-    ~/.claude/projects/<dir>/ folder, sums ``cache_read_input_tokens``,
+    session directory (``~/.claude/projects/<dir>/`` for the default host;
+    ``get_sessions_folder`` joins the per-host sessions subdir such as qwen's
+    ``chats/`` — ENH-3165), sums ``cache_read_input_tokens``,
     ``cache_creation_input_tokens``, and ``input_tokens`` across all unique
     assistant entries (deduplicated by UUID to avoid double-counting), and
     returns the aggregate hit rate.
 
     Formula: hit_rate = cache_read / (cache_read + cache_write + uncached) * 100
     """
-    project_folder = get_project_folder(cwd)
+    project_folder = get_sessions_folder(cwd)
     if project_folder is None:
         return None
 

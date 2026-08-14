@@ -3363,6 +3363,43 @@ collapsed: a cwd segment like ``/.worktrees/`` (slash followed by dot) encodes t
 matters for git worktree checkouts (``ll-parallel`` / ``ll-sprint`` / subloop epics),
 whose paths always contain a dotted ``.worktrees/`` segment.
 
+### get_sessions_folder
+
+```python
+def get_sessions_folder(
+    cwd: Path | None = None, *, host: str | None = None
+) -> Path | None
+```
+
+Resolve the folder holding the host's top-level session JSONL transcripts (ENH-3165).
+Wraps ``get_project_folder()`` and joins ``subagent_layout_for(host).sessions_subdir``:
+for qwen, ``get_project_folder(host="qwen")`` returns the project **root** (so both
+``chats/`` and ``subagents/`` are reachable), while session JSONL lives one level
+deeper under ``chats/`` — this helper performs that join. For Claude-shaped hosts
+``sessions_subdir`` is ``""`` and the result equals ``get_project_folder()`` exactly.
+
+Use this instead of ``get_project_folder()`` whenever you glob ``*.jsonl``
+non-recursively or index a transcript by ``<session-id>.jsonl`` (the
+``get_current_session_jsonl``, ``fsm.continuity``, and ``ll-ctx-stats`` cache-rate
+call sites all resolve through it).
+
+**Parameters:**
+- `cwd` - Working directory to map (default: current directory)
+- `host` - Host identifier, same vocabulary as ``get_project_folder``. If ``None``,
+  auto-detects from the ``LL_HOOK_HOST`` env var (default ``"claude-code"``).
+
+**Returns:** Path to the session-JSONL folder, or ``None`` when the host has no
+recorded sessions for *cwd*.
+
+**Example:**
+```python
+from little_loops.user_messages import get_sessions_folder
+
+sessions_dir = get_sessions_folder()  # host auto-detected from LL_HOOK_HOST
+# qwen host: the project root's "chats" child
+# claude-code host: the project folder itself (sessions_subdir is "")
+```
+
 ### discover_all_projects
 
 ```python
@@ -4701,7 +4738,7 @@ Entry point for `ll-session` command. Query the unified session store (SQLite + 
 **Subcommands:**
 - `search` — FTS5 full-text query with BM25-ranked results; requires `--fts QUERY`, optional `--kind` (choices come from `VALID_KINDS`: `tool,file,issue,loop,correction,message,skill,cli,snapshot,commit,test_run,usage,orchestration_run,loop_run,learning_test,session_lifecycle`), `--limit N` (default 20), `--json`
 - `recent` — Most recent rows for an event kind; requires `--kind` (same `VALID_KINDS` choices as `search`, or `--issue ID` to list sessions for an issue); optional `--limit N` (default 20), `--json`
-- `backfill` — Ingest on-disk sources; issue/loop-state/commit data is written directly, session JSONL lines go into `raw_events` only (ENH-2581). `--rebuild` also materializes the JSONL-derived cache tables in the same call (equivalent to a following `rebuild`). `--since DATE` (ISO 8601 or YYYY-MM-DD) uses incremental JSONL-only mode via `backfill_incremental()` (ENH-1830). `--host {claude-code,codex,opencode,pi}` selects the host for session log discovery (default: auto-detect from ``LL_HOOK_HOST`` env var); full backfill (no ``--since``) also uses ``--host`` for JSONL file discovery (ENH-1945). `--extract-decisions` runs decision mining after backfill (ENH-2152). `--snapshots` hydrates the `issue_snapshots` table from existing `.issues/` files (ENH-2151)
+- `backfill` — Ingest on-disk sources; issue/loop-state/commit data is written directly, session JSONL lines go into `raw_events` only (ENH-2581). `--rebuild` also materializes the JSONL-derived cache tables in the same call (equivalent to a following `rebuild`). `--since DATE` (ISO 8601 or YYYY-MM-DD) uses incremental JSONL-only mode via `backfill_incremental()` (ENH-1830). `--host {claude-code,codex,opencode,pi,kimi-code,qwen}` selects the host for session log discovery (default: auto-detect from ``LL_HOOK_HOST`` env var); full backfill (no ``--since``) also uses ``--host`` for JSONL file discovery (ENH-1945). For `qwen`, session JSONL is discovered under the project folder's `chats/` subdirectory and subagent transcripts under `subagents/<session-id>/` are backfilled into `subagent_runs` with `agent_id`/`agent_type`/timestamps/`status` sourced from each transcript's `.meta.json` sidecar (ENH-3165). `--extract-decisions` runs decision mining after backfill (ENH-2152). `--snapshots` hydrates the `issue_snapshots` table from existing `.issues/` files (ENH-2151)
 - `rebuild` — Wipe+re-derive the JSONL-derived cache tables (and their `search_index` rows) from `raw_events`; optional `--config PATH`, `--json` (ENH-2581)
 - `compact` — Sweep `raw_events` rows past the retention cutoff into per-session `kind='retention'` summary nodes, marking them `compacted=1`; optional `--and-prune` (also runs `prune` afterward), `--config PATH`, `--json` (ENH-2581)
 - `related` — Issue events for a given issue ID; requires `ISSUE_ID` positional arg, optional `--limit N` and `--json`

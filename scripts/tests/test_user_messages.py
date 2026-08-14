@@ -30,6 +30,7 @@ from little_loops.user_messages import (
     extract_commands,
     extract_user_messages,
     get_project_folder,
+    get_sessions_folder,
     print_messages_to_stdout,
     save_messages,
 )
@@ -275,21 +276,21 @@ class TestGetProjectFolder:
         result = get_project_folder(host="kimi-code")
         assert result is None
 
-    def test_host_qwen_resolves_chats_folder(
+    def test_host_qwen_resolves_project_root(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """host="qwen" dash-encodes the resolved cwd and returns the chats/ dir (ENH-3161)."""
+        """host="qwen" resolves the project root reaching chats/ and subagents/ (ENH-3165)."""
         fake_home = tmp_path / "home"
         encoded = encode_project_path(str(tmp_path.resolve()))
-        chats_dir = fake_home / ".qwen" / "projects" / encoded / "chats"
-        chats_dir.mkdir(parents=True)
+        project_root = fake_home / ".qwen" / "projects" / encoded
+        (project_root / "chats").mkdir(parents=True)
         monkeypatch.setattr(Path, "home", lambda: fake_home)
         monkeypatch.chdir(tmp_path)
 
         result = get_project_folder(host="qwen")
-        assert result == chats_dir
+        assert result == project_root
 
-    def test_host_qwen_returns_none_without_chats_dir(
+    def test_host_qwen_returns_none_without_project_dir(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Returns None when qwen has no recorded sessions for the cwd."""
@@ -301,18 +302,20 @@ class TestGetProjectFolder:
         result = get_project_folder(host="qwen")
         assert result is None
 
-    def test_host_qwen_requires_chats_subdir_not_just_project_dir(
+    def test_host_qwen_bare_project_dir_resolves(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A bare project dir without chats/ does not resolve (logs live one level deeper)."""
+        """A project dir without chats/ still resolves — subagents/ transcripts may
+        be its only content, and backfill must reach them (ENH-3165)."""
         fake_home = tmp_path / "home"
         encoded = encode_project_path(str(tmp_path.resolve()))
-        (fake_home / ".qwen" / "projects" / encoded).mkdir(parents=True)
+        project_root = fake_home / ".qwen" / "projects" / encoded
+        project_root.mkdir(parents=True)
         monkeypatch.setattr(Path, "home", lambda: fake_home)
         monkeypatch.chdir(tmp_path)
 
         result = get_project_folder(host="qwen")
-        assert result is None
+        assert result == project_root
 
     def test_host_auto_detect_from_env(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -379,6 +382,91 @@ class TestGetProjectFolder:
         monkeypatch.chdir(tmp_path)
 
         result = get_project_folder()  # No host arg — must still work
+        assert result == project_dir
+
+
+class TestGetSessionsFolder:
+    """ENH-3165 consumer helper: project folder joined with the layout's sessions subdir."""
+
+    def test_claude_code_equals_project_folder(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Claude-shaped hosts have sessions_subdir="" — result is the project folder."""
+        fake_home = tmp_path / "home"
+        encoded = encode_project_path(str(tmp_path.resolve()))
+        project_dir = fake_home / ".claude" / "projects" / encoded
+        project_dir.mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_sessions_folder(host="claude-code")
+        assert result == project_dir
+
+    def test_qwen_joins_chats_subdir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """qwen session JSONL nests under chats/ of the resolved project root."""
+        fake_home = tmp_path / "home"
+        encoded = encode_project_path(str(tmp_path.resolve()))
+        project_root = fake_home / ".qwen" / "projects" / encoded
+        (project_root / "chats").mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_sessions_folder(host="qwen")
+        assert result == project_root / "chats"
+
+    def test_qwen_joins_chats_even_without_chats_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A bare project root (subagents only) still resolves the chats/ child."""
+        fake_home = tmp_path / "home"
+        encoded = encode_project_path(str(tmp_path.resolve()))
+        project_root = fake_home / ".qwen" / "projects" / encoded
+        project_root.mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_sessions_folder(host="qwen")
+        assert result == project_root / "chats"
+
+    def test_qwen_returns_none_without_project_root(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        assert get_sessions_folder(host="qwen") is None
+
+    def test_auto_detects_qwen_from_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """host=None uses the same LL_HOOK_HOST auto-detect as get_project_folder."""
+        monkeypatch.setenv("LL_HOOK_HOST", "qwen")
+        fake_home = tmp_path / "home"
+        encoded = encode_project_path(str(tmp_path.resolve()))
+        project_root = fake_home / ".qwen" / "projects" / encoded
+        (project_root / "chats").mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_sessions_folder()
+        assert result == project_root / "chats"
+
+    def test_explicit_host_wins_over_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LL_HOOK_HOST", "qwen")
+        fake_home = tmp_path / "home"
+        encoded = encode_project_path(str(tmp_path.resolve()))
+        project_dir = fake_home / ".claude" / "projects" / encoded
+        project_dir.mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.chdir(tmp_path)
+
+        result = get_sessions_folder(host="claude-code")
         assert result == project_dir
 
 

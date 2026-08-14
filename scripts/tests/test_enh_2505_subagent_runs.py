@@ -23,6 +23,7 @@ from little_loops.session_store import (
     ensure_db,
     record_subagent_run_start,
     record_subagent_run_stop,
+    subagent_layout_for,
 )
 
 
@@ -474,3 +475,213 @@ class TestKimiSubagentPayloadTolerance:
             conn.close()
         assert row["agent_type"] == "Explore"
         assert row["agent_transcript_path"] == "/tmp/t.jsonl"
+
+
+# Modeled on a real qwen 0.21.6 sidecar (~/.qwen/projects/<encoded>/subagents/
+# <session-id>/agent-*.meta.json): camelCase keys, file stem carries an extra
+# "agent-" prefix the sidecar's agentId does not.
+_QWEN_SESSION_ID = "cd4599f4-e1af-4d50-9b24-da04c4737edb"
+_QWEN_STEM = "agent-Explore-call_2ef9d7cca532405b9e723bb0"
+_QWEN_AGENT_ID = "Explore-call_2ef9d7cca532405b9e723bb0"
+
+
+def _qwen_sidecar(**overrides: object) -> dict:
+    sidecar = {
+        "agentId": _QWEN_AGENT_ID,
+        "agentType": "Explore",
+        "description": "Map figure-to-rig toolchain",
+        "parentSessionId": _QWEN_SESSION_ID,
+        "toolUseId": "call_2ef9d7cca532405b9e723bb0",
+        "parentAgentId": None,
+        "createdAt": "2026-08-13T23:01:41.299Z",
+        "lastUpdatedAt": "2026-08-13T23:05:44.318Z",
+        "status": "completed",
+        "depth": 0,
+    }
+    sidecar.update(overrides)
+    return sidecar
+
+
+def _build_qwen_tree(
+    root: Path,
+    *,
+    session_id: str = _QWEN_SESSION_ID,
+    stem: str = _QWEN_STEM,
+    sidecar: dict | None = None,
+    sidecar_text: str | None = None,
+) -> Path:
+    """Create ``<root>/subagents/<session-id>/<stem>.jsonl`` (+ optional sidecar)."""
+    session_dir = root / "subagents" / session_id
+    session_dir.mkdir(parents=True)
+    transcript = session_dir / f"{stem}.jsonl"
+    transcript.write_text(json.dumps({"type": "model"}) + "\n", encoding="utf-8")
+    if sidecar_text is not None:
+        (session_dir / f"{stem}.meta.json").write_text(sidecar_text, encoding="utf-8")
+    elif sidecar is not None:
+        (session_dir / f"{stem}.meta.json").write_text(
+            json.dumps(sidecar), encoding="utf-8"
+        )
+    return transcript
+
+
+class TestQwenSubagentBackfill:
+    """ENH-3165: qwen inverts the nesting (``subagents/<session-id>/agent-*.jsonl``)
+    and every transcript carries a ``.meta.json`` sidecar that is strictly better
+    than the Claude mtime heuristic — real status and timestamps included."""
+
+    def test_backfill_populates_row_from_sidecar(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        root = tmp_path / "project"
+        transcript = _build_qwen_tree(root, sidecar=_qwen_sidecar())
+        conn = connect(db)
+        try:
+            count = _backfill_subagent_runs(conn, root, layout=subagent_layout_for("qwen"))
+            conn.commit()
+        finally:
+            conn.close()
+        assert count == 1
+        conn = connect(db)
+        try:
+            row = conn.execute("SELECT * FROM subagent_runs").fetchone()
+        finally:
+            conn.close()
+        # agent_id comes from the sidecar verbatim — NOT the filename stem.
+        assert row["agent_id"] == _QWEN_AGENT_ID
+        assert row["agent_type"] == "Explore"
+        assert row["parent_session_id"] == _QWEN_SESSION_ID
+        assert row["started_at"] == "2026-08-13T23:01:41.299Z"
+        assert row["ended_at"] == "2026-08-13T23:05:44.318Z"
+        assert row["status"] == "completed"
+        assert row["agent_transcript_path"] == str(transcript)
+
+    def test_failed_sidecar_status_lands_as_failed(self, tmp_path: Path) -> None:
+        """A persisted transcript does NOT imply completion on qwen."""
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        root = tmp_path / "project"
+        _build_qwen_tree(root, sidecar=_qwen_sidecar(status="failed"))
+        conn = connect(db)
+        try:
+            _backfill_subagent_runs(conn, root, layout=subagent_layout_for("qwen"))
+            conn.commit()
+            row = conn.execute("SELECT * FROM subagent_runs").fetchone()
+        finally:
+            conn.close()
+        assert row["status"] == "failed"
+
+    def test_missing_sidecar_falls_back_to_mtime(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        root = tmp_path / "project"
+        _build_qwen_tree(root)  # no sidecar
+        conn = connect(db)
+        try:
+            count = _backfill_subagent_runs(conn, root, layout=subagent_layout_for("qwen"))
+            conn.commit()
+            row = conn.execute("SELECT * FROM subagent_runs").fetchone()
+        finally:
+            conn.close()
+        assert count == 1
+        assert row["agent_id"] == _QWEN_STEM  # filename stem, Claude-style
+        assert row["status"] == "completed"
+        assert row["started_at"] == row["ended_at"]
+        assert row["started_at"] is not None
+
+    def test_unparseable_sidecar_falls_back_to_mtime(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        root = tmp_path / "project"
+        _build_qwen_tree(root, sidecar_text="{not json")
+        conn = connect(db)
+        try:
+            count = _backfill_subagent_runs(conn, root, layout=subagent_layout_for("qwen"))
+            conn.commit()
+            row = conn.execute("SELECT * FROM subagent_runs").fetchone()
+        finally:
+            conn.close()
+        assert count == 1
+        assert row["agent_id"] == _QWEN_STEM
+        assert row["status"] == "completed"
+
+    def test_live_capture_then_backfill_inserts_no_duplicates(self, tmp_path: Path) -> None:
+        """Backfill must derive the same agent_id the FEAT-3158 live hooks record."""
+        db = tmp_path / "history.db"
+        record_subagent_run_start(
+            db,
+            parent_session_id=_QWEN_SESSION_ID,
+            agent_id=_QWEN_AGENT_ID,
+            agent_type="Explore",
+        )
+        root = tmp_path / "project"
+        _build_qwen_tree(root, sidecar=_qwen_sidecar())
+        conn = connect(db)
+        try:
+            count = _backfill_subagent_runs(conn, root, layout=subagent_layout_for("qwen"))
+            conn.commit()
+            total = conn.execute("SELECT COUNT(*) FROM subagent_runs").fetchone()[0]
+        finally:
+            conn.close()
+        assert count == 0
+        assert total == 1
+
+    def test_sidecar_parent_session_id_preferred_over_dir_name(
+        self, tmp_path: Path
+    ) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        root = tmp_path / "project"
+        _build_qwen_tree(
+            root,
+            session_id="dir-name-session",
+            sidecar=_qwen_sidecar(parentSessionId="sidecar-session"),
+        )
+        conn = connect(db)
+        try:
+            _backfill_subagent_runs(conn, root, layout=subagent_layout_for("qwen"))
+            conn.commit()
+            row = conn.execute("SELECT * FROM subagent_runs").fetchone()
+        finally:
+            conn.close()
+        assert row["parent_session_id"] == "sidecar-session"
+
+    def test_parent_agent_id_in_sidecar_is_tolerated(self, tmp_path: Path) -> None:
+        """Nested spawn trees carry parentAgentId; no subagent_runs column exists
+        for it yet, but it must not break ingestion."""
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        root = tmp_path / "project"
+        _build_qwen_tree(
+            root,
+            sidecar=_qwen_sidecar(parentAgentId="Explore-call_outer", depth=1),
+        )
+        conn = connect(db)
+        try:
+            count = _backfill_subagent_runs(conn, root, layout=subagent_layout_for("qwen"))
+            conn.commit()
+        finally:
+            conn.close()
+        assert count == 1
+
+    def test_claude_layout_explicit_matches_default(self, tmp_path: Path) -> None:
+        """Regression: the explicit claude-code layout is the None-layout behavior."""
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        sessions_root = tmp_path / "sessions"
+        subagents_dir = sessions_root / "parent-1" / "subagents"
+        subagents_dir.mkdir(parents=True)
+        (subagents_dir / "agent-abc.jsonl").write_text("{}\n", encoding="utf-8")
+        conn = connect(db)
+        try:
+            count = _backfill_subagent_runs(
+                conn, sessions_root, layout=subagent_layout_for("claude-code")
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT * FROM subagent_runs WHERE agent_id = 'agent-abc'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert count == 1
+        assert row["parent_session_id"] == "parent-1"
+        assert row["status"] == "completed"
