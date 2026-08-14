@@ -561,7 +561,7 @@ Analyze issue history to understand project health, trends, and progress. Delega
 ## Git & Workflow
 
 ### `/ll:commit`
-Create git commits with user approval (no Claude attribution). Supports `--auto` flag for non-interactive use in automation contexts.
+Create git commits with user approval (no assistant attribution — Claude, Qwen, or any other agent). Supports `--auto` flag for non-interactive use in automation contexts.
 
 ### `/ll:describe-pr`
 Generate comprehensive PR descriptions from branch changes.

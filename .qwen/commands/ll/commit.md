@@ -1,5 +1,5 @@
 ---
-description: Create git commits with user approval and no Claude attribution
+description: Create git commits with user approval and no assistant attribution
 ---
 
 # Commit Changes
@@ -76,10 +76,15 @@ if [[ "{{args}}" == *"--auto"* ]]; then AUTO_MODE=true; fi
    - Show the result with `git log --oneline -n [number]`
 
 ## Important:
-- **NEVER add co-author information or Claude attribution**
+- **NEVER add co-author information or assistant attribution — for ANY assistant**
+  (Claude, Qwen, Gemini, or any other agent)
 - Commits should be authored solely by the user
-- Do not include any "Generated with Claude" messages
-- Do not add "Co-Authored-By" lines
+- Do not include any "Generated with Claude" / "Generated with Qwen" or similar messages
+- Do not add "Co-Authored-By" / "Co-authored-by" trailer lines of any kind, including
+  `Co-authored-by: Claude <noreply@anthropic.com>` and
+  `Co-authored-by: Qwen-Coder <qwen-coder@alibabacloud.com>`
+- Do NOT mimic attribution trailers seen in `git log` history — prior commits may
+  contain them, but they are leakage, not a convention to copy
 - Write commit messages as if the user wrote them
 
 ## Remember:
