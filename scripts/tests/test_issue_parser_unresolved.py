@@ -373,6 +373,123 @@ class TestCountOpenQuestionsWidenedSections:
         content = "## Open Questions\n\n- Config default is worth a decision later.\n"
         assert count_open_questions_in_sections(content) == 1
 
+
+class TestNumberedOpenQuestionCitations:
+    """BUG-3169: a citation of a numbered question is not itself an open question.
+
+    Verbatim shapes from the FEAT-3168 refine-to-ready-issue stall, where
+    /ll:refine-issue --gap-analysis deposited ANSWERS that referenced
+    "Open Question 1" and thereby kept check_hedges permanently red.
+    """
+
+    def test_answer_citing_numbered_question_not_counted(self) -> None:
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = (
+            "## Open Questions\n"
+            "\n"
+            "- On Open Question 1: option (c) is confirmed not free. A grep/import\n"
+            "  sweep of `scripts/little_loops/mcp_server/` found no `ContextVar` usage.\n"
+        )
+        assert count_open_questions_in_sections(content) == 0
+
+    def test_possessive_citation_not_counted(self) -> None:
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = (
+            "## Program Design\n"
+            "\n"
+            "- **Existing factory-closure precedent** (relevant to Open Question 1's\n"
+            "  option (a)): `resource_index = build_resource_index(config)`.\n"
+        )
+        assert count_open_questions_in_sections(content) == 0
+
+    def test_plural_numbered_citation_not_counted(self) -> None:
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = "## Open Questions\n\n- Open Questions 2 and 3 were folded into the plan.\n"
+        assert count_open_questions_in_sections(content) == 0
+
+    def test_hash_prefixed_citation_not_counted(self) -> None:
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = "## Edge Cases\n\n- Superseded by the answer to Open Question #2.\n"
+        assert count_open_questions_in_sections(content) == 0
+
+    def test_unnumbered_prose_hedge_still_counted(self) -> None:
+        """The ENH-2446 case the phrase was added for must survive the narrowing."""
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = "## Open Questions\n\n- Backoff strategy remains an open question.\n"
+        assert count_open_questions_in_sections(content) == 1
+
+    def test_numbered_question_ending_in_question_mark_still_counted(self) -> None:
+        """Safety net 1: the canonical numbered-question shape ends in `?`."""
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = (
+            "## Open Questions\n"
+            "\n"
+            "- **Open Question 1:** Should the policy be enforced at build time?\n"
+        )
+        assert count_open_questions_in_sections(content) == 1
+
+    def test_numbered_question_with_hedge_vocabulary_still_counted(self) -> None:
+        """Safety net 2: hedge vocabulary matches independently of the phrase."""
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = "## Open Questions\n\n- Open Question 2: needs decision on transport.\n"
+        assert count_open_questions_in_sections(content) == 1
+
+    def test_item_leading_declaration_with_wrapped_continuation_counted(self) -> None:
+        """The `\\?\\s*$` safety net cannot carry this shape.
+
+        ``_count_unresolved_items_in_text`` joins continuation lines before
+        matching (ENH-3031), so the `?` is no longer at the end of the item as
+        soon as the question carries any context under it — the ordinary shape
+        refine deposits. Only the item-leading declaration alternative sees it.
+        """
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = (
+            "## Open Questions\n"
+            "\n"
+            "- **Open Question 2:** Should the policy be enforced at build time?\n"
+            "  Context: the builder currently runs at import time.\n"
+        )
+        assert count_open_questions_in_sections(content) == 1
+
+    def test_item_leading_declaration_without_question_mark_counted(self) -> None:
+        """A declaration phrased as an imperative carries no `?` and no hedge vocabulary."""
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = (
+            "## Open Questions\n"
+            "\n"
+            "- **Open Question 3:** Decide the default transport before implementing.\n"
+        )
+        assert count_open_questions_in_sections(content) == 1
+
+    def test_declaration_boundary_variants_counted(self) -> None:
+        """`.` / em-dash / bold-close / numbered-list-marker declaration shapes."""
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        for item in (
+            "- Open Question 4. Should we pin the signature.",
+            "- Open Question 5 — transport default still unpicked.",
+            "- **Open Question 1**: Should we gate at build time.",
+            "1. Open Question 6: pick the default.",
+        ):
+            content = f"## Open Questions\n\n{item}\n"
+            assert count_open_questions_in_sections(content) == 1, item
+
+    def test_item_leading_citation_not_counted(self) -> None:
+        """Item-leading is not sufficient — a citation continues into a verb phrase."""
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = "## Open Questions\n\n- Open Question 2 was answered by the grep sweep.\n"
+        assert count_open_questions_in_sections(content) == 0
+
     def test_hedge_split_across_wrapped_lines_is_detected(self) -> None:
         """The BUG-3025 hedge line wraps 'Worth' / 'confirming' across lines."""
         from little_loops.issue_parser import count_open_questions_in_sections

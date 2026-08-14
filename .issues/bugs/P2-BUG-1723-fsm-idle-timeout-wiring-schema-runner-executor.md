@@ -3,7 +3,7 @@ id: BUG-1723
 title: Wire idle_timeout through FSM schema, Protocol, runner, and executor to kill
   hung subprocesses
 type: BUG
-status: deferred
+status: done
 priority: P2
 parent: BUG-1706
 size: Very Large
@@ -14,6 +14,7 @@ score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 10
+completed_at: '2026-08-14T23:21:05Z'
 ---
 
 # BUG-1723: Wire idle_timeout through FSM schema, Protocol, runner, and executor to kill hung subprocesses

@@ -1441,11 +1441,39 @@ _RESOLVED_QUESTION_MARKER_RE = re.compile(
 # skills/confidence-check/SKILL.md:356-371 and the canonical "Q:" / "?" patterns.
 # ENH-3031: widened with hedge vocabulary that accumulates via --gap-analysis
 # (additive, never removes content) and is never subsequently closed.
+#
+# BUG-3169: `open question` is split into a DECLARATION alternative and a
+# citation-suppressing prose alternative, because a CITATION of a numbered
+# question ("On Open Question 1: option (c) is confirmed not free", "relevant to
+# Open Question 1's option (a)") is exactly the prose /ll:refine-issue
+# --gap-analysis deposits when it ANSWERS a question. Counting those made the
+# tally rise with every refine pass, so refine-to-ready-issue's check_hedges gate
+# became unclearable — burning the refine budget and reaching breakdown_issue
+# without ever running confidence_check.
+#
+# The discriminator is POSITION plus a declaration boundary, not the mere
+# presence of a digit:
+#   - Declaration (counts): the item OPENS with the phrase and the phrase is
+#     followed by `:` / `.` / `—` / `**` / end — "- **Open Question 2:** Should
+#     the policy be enforced at build time?", "- Open Question 3. Decide the
+#     default transport." This must not depend on the `\?\s*$` alternative,
+#     which anchors to the END of the joined item and therefore misses any
+#     question carrying a wrapped continuation line (see
+#     _count_unresolved_items_in_text).
+#   - Citation (suppressed): the phrase appears mid-item after other prose, is
+#     plural ("Open Questions 2 and 3 were folded in"), or continues into a verb
+#     phrase / possessive rather than a declaration boundary.
+# An unnumbered prose hedge ("this remains an open question") — the ENH-2446
+# case the phrase was originally added for — still matches anywhere via the
+# second alternative.
 _OPEN_QUESTION_SIGNAL_RE = re.compile(
     r"\?\s*$"  # ends with question mark
     r"|^\s*-\s*\*\*Q\d*"  # **Q1.** style
     r"|^\s*-\s*Q:"  # Q: prefix
-    r"|\bopen question\b"
+    # BUG-3169: item-leading declaration, numbered or not
+    r"|^\s*(?:[-*]|\d+[.)])\s*[*_]{0,2}open question\b(?:\s*#?\s*\d+)?\s*(?:[:.*_—]|$)"
+    # BUG-3169: prose hedge anywhere, but never a numbered citation
+    r"|\bopen questions?\b(?!\s*[#:]?\s*\d)"
     r"|\bneeds decision\b"
     r"|\bdecision needed\b"
     r"|\bopen decision\b"
