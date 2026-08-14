@@ -575,9 +575,19 @@ def _stdio_call(tmp_path: Path, protocol_version: str, tool: str, arguments: dic
     subprocess and speaks framed JSON-RPC at it. The in-memory `Client` skips result
     serialization entirely, so it cannot observe validation failures that only occur on
     encode — which is how the `structuredContent` regression below reached a release.
+
+    Stdin is held open until the `id: 2` response has been read. Closing it earlier (as
+    `subprocess.run(input=...)` does) races the server's own teardown: on stdin EOF
+    `mcp==2.0.0`'s receive loop cancels in-flight handlers
+    (`mcp/shared/jsonrpc_dispatcher.py`, "Cancel in-flight handlers"), so the `tools/call`
+    response is either dropped outright or replaced with a `-32000 Connection closed`
+    error. The handler normally wins that race, but under heavy CPU load it doesn't —
+    which made this test intermittently fail (BUG-3167). Real clients keep stdin open for
+    the session, so only the harness ever hit it.
     """
     import subprocess
     import sys
+    import threading
 
     requests = [
         {
@@ -598,25 +608,53 @@ def _stdio_call(tmp_path: Path, protocol_version: str, tool: str, arguments: dic
             "params": {"name": tool, "arguments": arguments},
         },
     ]
-    proc = subprocess.run(
+    proc = subprocess.Popen(
         [sys.executable, "-c", "from little_loops.mcp_server import main_mcp; main_mcp()"],
-        input="".join(json.dumps(r) + "\n" for r in requests),
-        capture_output=True,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
         cwd=tmp_path,
-        timeout=60,
     )
-    for line in proc.stdout.splitlines():
-        line = line.strip()
-        if not line:
-            continue
+    assert proc.stdin is not None and proc.stdout is not None
+    # A wedged handler must fail the test, not hang the suite. Killing the child makes the
+    # blocking `readline()` below return '' at EOF, so the loop always terminates.
+    watchdog = threading.Timer(60, proc.kill)
+    watchdog.start()
+    seen: list[str] = []
+    message: dict | None = None
+    stderr = ""
+    try:
+        proc.stdin.write("".join(json.dumps(r) + "\n" for r in requests))
+        proc.stdin.flush()  # deliberately NOT closed — see the docstring
+        while True:
+            line = proc.stdout.readline()
+            if not line:
+                break
+            seen.append(line)
+            try:
+                candidate = json.loads(line.strip())
+            except json.JSONDecodeError:
+                continue
+            if candidate.get("id") == 2:
+                message = candidate
+                break
+    finally:
+        watchdog.cancel()
         try:
-            message = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if message.get("id") == 2:
-            return message
-    raise AssertionError(f"no tools/call response; stdout={proc.stdout!r} stderr={proc.stderr!r}")
+            proc.stdin.close()  # now safe: EOF can only cancel work we no longer need
+        except OSError:  # already dead (watchdog kill / crash)
+            pass
+        proc.stdin = None  # else `communicate()` re-flushes the closed handle and raises
+        proc.terminate()
+        try:
+            _, stderr = proc.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            _, stderr = proc.communicate()
+    if message is None:
+        raise AssertionError(f"no tools/call response; stdout={''.join(seen)!r} stderr={stderr!r}")
+    return message
 
 
 @pytest.mark.parametrize("protocol_version", ["2024-11-05", "2025-06-18", "2026-07-28"])
