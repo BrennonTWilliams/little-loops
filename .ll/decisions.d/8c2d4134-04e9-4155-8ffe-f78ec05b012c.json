@@ -1,0 +1,11 @@
+{
+  "id": "56ce5da9-dedc-4bd6-ad72-b52e6252a6ad",
+  "type": "decision",
+  "timestamp": "2026-08-13T23:28:34Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Qwen session/subagent history is unrecoverable: ll-logs discovery lacks a qwen branch, _backfill_subagent_runs assumes Claude transcript layout, and qwen chat-schema parsing is unimplemented (ENH-2918 posture).",
+  "rule": "Captured: Backfill and ingestion gaps leave history.db blind to qwen sessions and subagent runs",
+  "scope": "issue",
+  "issue": "ENH-3165"
+}
