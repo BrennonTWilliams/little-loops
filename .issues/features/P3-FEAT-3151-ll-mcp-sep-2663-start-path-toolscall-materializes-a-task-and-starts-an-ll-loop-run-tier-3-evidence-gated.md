@@ -217,9 +217,14 @@ duplicating the spawn logic in the interceptor. Two mechanics that note glosses
 over, made explicit:
 
 - **Extraction:** the interceptor reads the `instance_id` from the plain
-  result's `structured_content` — `handle_call_tool` always attaches the
-  payload dict there (`tools.py:786-789`), so no text-JSON parsing of
-  `content[0].text` is needed or acceptable.
+  result's `structured_content` — `handle_call_tool` attaches the payload there
+  whenever it is a dict (`tools.py:786-789`; the attach is conditional,
+  `structured_content=payload if isinstance(payload, dict) else None`, because
+  pre-2026 wire validation rejects list payloads). The start tool's payload is
+  always a dict, so the field is populated in practice — but the interceptor
+  must still guard `structured_content is None` (treat as pass-through, never
+  crash) rather than trust it, and no text-JSON parsing of `content[0].text` is
+  needed or acceptable.
 - **Error pass-through:** a result with `is_error=True` (spawn failure, AC 3b)
   passes through **un-reshaped**. Never wrap a failure in a task envelope —
   that is exactly the "task id for a run that does not exist" Decision 7
@@ -338,7 +343,8 @@ carries what is needed.
 
 **"Modern" is pinned, not vibes:** the check is
 `ctx.protocol_version in mcp.server.runner.MODERN_PROTOCOL_VERSIONS`, which on
-the pinned SDK is exactly `{"2026-07-28"}`. Modern connections are the
+the pinned SDK is exactly `("2026-07-28",)` (a tuple, not a set — immaterial
+for the `in` check). Modern connections are the
 per-request-envelope kind — no `initialize` handshake at all — and only they
 carry the `clientCapabilities` `_meta` envelope Decision 2 reads.
 
@@ -374,6 +380,19 @@ a changed return type.
 spawning* on a scope conflict and on a loop load/parse failure. A non-zero return
 must become a tool error, never a task id for a run that does not exist —
 otherwise the host polls a handle that will never resolve. AC 3b covers this.
+
+**Output capture (not optional either — verified 2026-08-14).**
+`run_background()` is a CLI function and behaves like one: on **success** it
+`print()`s four lines to **stdout** (`_helpers.py:1670-1675` — "Loop X started
+in background…" plus log/status/stop hints), and on failure it prints the
+*reason* (scope conflict details, load error) to **stderr** while returning a
+bare `1`. Over the **stdio transport, stdout is the JSON-RPC channel** — a bare
+`print()` during a handler corrupts protocol framing. The MCP handler must
+therefore wrap the `run_background()` call in
+`contextlib.redirect_stdout`/`redirect_stderr` into buffers. This does double
+duty: it protects the stdio wire, and the captured stderr text is what gives AC
+3b's tool error a meaningful message instead of an information-free "exit code
+1".
 
 ### Decision 8 — `check_tool_call` needs a third branch; FEAT-3145 did not add one
 
@@ -609,10 +628,21 @@ All prerequisites are satisfied as of 2026-08-14.
    `params.task` both arrive populated on a real request from a declaring client.
    ACs 1, 2, and 2b are unimplementable until this is known; if the read is not
    available, the gating strategy — not just the code — has to change.
+   **Also prove the reshape-after-`call_next` flow.** The existing learning
+   test's `TasksExtension` materializes unconditionally and never invokes
+   `call_next`; Decision 2a's chosen composition instead calls `call_next`,
+   reads the plain `CallToolResult`'s `structured_content` inside
+   `intercept_tool_call`, and returns a hand-shaped mapping *in its place*.
+   That flow is now the only unproven mechanism in the composition — add a
+   claim that `call_next`'s return value arrives as the readable
+   `CallToolResult` (not already serialized) and that the substituted mapping
+   still passes the sieve.
 1. Cross the `argparse` boundary per Decision 7 option (a): pre-mint
    `instance_id` with the entropy suffix (Decision 3's minting note), build a
-   `SimpleNamespace`, call `run_background()`, and map a non-zero return to a
-   tool error (AC 3b).
+   `SimpleNamespace`, call `run_background()` under
+   `redirect_stdout`/`redirect_stderr` (Decision 7's output-capture note), and
+   map a non-zero return to a tool error carrying the captured stderr text
+   (AC 3b).
 1b. Add Decision 9's PID-file fallback to `handle_tasks_get` so a
    just-started run is pollable before its child writes state (AC 4's
    immediate-poll assertion).
@@ -638,14 +668,14 @@ All prerequisites are satisfied as of 2026-08-14.
 - `compose_tool_call_handler(extensions: list, handler: Callable) -> Callable` — free function from the `mcp` SDK (2.0.0), proven in [[mcp-tasks-start-path]] to work on the lowlevel `Server` despite that class having no `extensions=` parameter. Zero call sites in `scripts/little_loops/` today.
 - `handle_call_tool(...)` — `scripts/little_loops/mcp_server/tools.py`; the existing shared `on_call_tool` dispatcher, wrapped rather than replaced (Decision 1).
 - `build_server() -> Server` — `scripts/little_loops/mcp_server/server.py:52`; the `on_call_tool=` argument (`:91`) changes from `handle_call_tool` to the composed handler. Zero-parameter signature unchanged, so `test_build_server_signature_unchanged` (`test_feat_3143_mcp_http_transport.py:67-69`) keeps passing.
-- `run_background(loop_name: str, args: argparse.Namespace, loops_dir: Path, subcommand: str = "run", instance_id: str | None = None) -> int` — `scripts/little_loops/cli/loop/_helpers.py:1510`. **Returns an exit code, not a handle** (Decision 7). The handle comes from pre-minting `instance_id` via `_make_instance_id(loop_name)` and passing it in through the existing keyword. A return of `1` means nothing was spawned (scope conflict / load failure) and must surface as a tool error (AC 3b).
+- `run_background(loop_name: str, args: argparse.Namespace, loops_dir: Path, subcommand: str = "run", instance_id: str | None = None) -> int` — `scripts/little_loops/cli/loop/_helpers.py:1510`. **Returns an exit code, not a handle** (Decision 7). The handle comes from pre-minting `instance_id` via `_make_instance_id(loop_name)` and passing it in through the existing keyword. A return of `1` means nothing was spawned (scope conflict / load failure) and must surface as a tool error (AC 3b). **Call only under `redirect_stdout`/`redirect_stderr`** — it prints to stdout on success and to stderr on failure (Decision 7's output-capture note); stdout is the JSON-RPC channel on stdio transport.
 - `_make_instance_id(loop_name: str) -> str` — `cli/loop/_helpers.py`; the id minter `run_background` falls back to. **Not called directly by the MCP layer**: its one-second timestamp resolution can collide under agent-paced calls, so the MCP boundary mints its own id with an entropy suffix (Decision 3's minting note) and passes it through `run_background(instance_id=...)`.
 - `check_tool_call(transport, method, tool_name, *, config=None) -> PolicyDecision` — `mcp_server/policy.py:78`. Signature unchanged, **body changes**: today it gates only `MUTATING_TOOLS` on `tools/call` and any `tasks/*` method. Decision 8 adds a third branch for `tools/call` naming a `TASK_STARTING_TOOLS` member, gated on `allows_tasks(transport)`. FEAT-3145 did not widen this.
 
 ### Call Path
-`MCP host tools/call` -> (HTTP only) `TransportPolicyMiddleware` -> `check_tool_call()` — deny returns `-32001` / 403 before the body is read; requires Decision 8's new branch -> `compose_tool_call_handler([TasksExtension()], handle_call_tool)` (`TasksExtension` = the locally-authored `Extension` subclass, § Types) -> evaluate all three of: declared extension in `(ctx.meta or {})[CLIENT_CAPABILITIES_META_KEY].extensions` (meta is `Optional` — Decision 2's guard note), `params.task` present, modern `ctx.protocol_version`:
-- all three: mint entropy-suffixed `instance_id` (Decision 3's minting note) -> `SimpleNamespace` -> `cli/loop/_helpers.py:1510 run_background(instance_id=...)` (detached spawn, PID file under `<loops_dir>/.running`) -> non-zero return becomes a tool error (AC 3b); zero returns the hand-shaped `{"resultType": "task", "taskId": instance_id, "status": "working", ...}` mapping (AC 4b: literal `"working"`)
-- any missing: fall through to `handle_call_tool` -> the start tool's dispatch-dict handler performs the **same detached spawn** -> ordinary `CallToolResult` carrying the `instance_id` (Decision 2a; shape differs, behavior does not)
+`MCP host tools/call` -> (HTTP only) `TransportPolicyMiddleware` -> `check_tool_call()` — deny returns `-32001` / 403 before the body is read; requires Decision 8's new branch -> `compose_tool_call_handler([TasksExtension()], handle_call_tool)` (`TasksExtension` = the locally-authored `Extension` subclass, § Types) -> **the spawn always lives in one place**: `call_next` -> `handle_call_tool` -> the start tool's dispatch-dict handler mints the entropy-suffixed `instance_id` (Decision 3's minting note), builds a `SimpleNamespace`, and calls `cli/loop/_helpers.py:1510 run_background(instance_id=...)` under `redirect_stdout`/`redirect_stderr` (Decision 7's output-capture note; detached spawn, PID file under `<loops_dir>/.running`) -> non-zero return becomes a tool error carrying the captured stderr text (AC 3b); zero returns the plain payload with `instance_id` in `structured_content`. The interceptor never spawns — per Decision 2a's implementation note it only decides the **result shape**, evaluating all three of: declared extension in `(ctx.meta or {})[CLIENT_CAPABILITIES_META_KEY].extensions` (meta is `Optional` — Decision 2's guard note), `params.task` present, modern `ctx.protocol_version`:
+- all three: re-shape the plain result — extract `instance_id` from `structured_content` (Decision 2a's extraction note; `is_error=True` and `structured_content is None` results pass through un-reshaped) and return the hand-shaped `{"resultType": "task", "taskId": instance_id, "status": "working", ...}` mapping (AC 4b: literal `"working"`)
+- any missing: return `call_next`'s result untouched — ordinary `CallToolResult` carrying the `instance_id` (Decision 2a; shape differs, behavior does not)
 
 The returned `instance_id` is subsequently readable via FEAT-3145's `tasks/get` -> `read_run_status()` (`cli/loop/lifecycle.py:132`) -> `fsm/persistence.py _reconcile_stale_running()`; when `read_run_status()` returns `None` for a just-spawned run whose child has not yet written state, Decision 9's PID-file fallback in `handle_tasks_get` reports `status: "working"` / `runStatus: "starting"` instead of task-not-found.
 
