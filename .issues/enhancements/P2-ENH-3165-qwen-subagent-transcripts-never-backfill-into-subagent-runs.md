@@ -4,10 +4,11 @@ type: ENH
 title: Qwen subagent transcripts never backfill into subagent_runs (inverted nesting,
   unread .meta.json sidecars)
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-13'
 captured_at: '2026-08-13T23:28:23Z'
+completed_at: '2026-08-14T17:00:03Z'
 testable: true
 depends_on: []
 relates_to:
@@ -312,7 +313,7 @@ this issue.
 
 ## Status
 
-**Open** | Created: 2026-08-13 | Priority: P2
+**Completed** | Created: 2026-08-13 | Priority: P2 | Completed: 2026-08-14
 
 ## Session Log
 - `/ll:capture-issue` - 2026-08-13T23:28:34 - `11cec642-cd22-402c-9028-1a36bba4a9e1.jsonl`
