@@ -20,6 +20,12 @@ relates_to:
 - FEAT-3151
 size: Large
 testable: true
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 20
+score_test_coverage: 23
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # FEAT-3168: ll-mcp — enforce stdio transport policy for both grants
