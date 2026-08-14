@@ -9,8 +9,10 @@ per `tools.py:780`'s comment, negotiates the legacy handshake down regardless).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import signal
 from pathlib import Path
 
 import pytest
@@ -274,6 +276,61 @@ def test_ac4_immediate_poll_after_start_resolves_via_pid_fallback(tmp_path, monk
         assert poll_result["taskId"] == task_id == start_result["taskId"]
         assert poll_result["status"] == "working" == start_result["status"]
         assert poll_result["runStatus"] == "starting"
+
+
+def test_immediate_cancel_after_start_stops_the_starting_run(tmp_path, monkeypatch) -> None:
+    """The cancel-side counterpart of AC 4: a run started via `loop_start` is stoppable
+    during its child's startup window, not reported task-not-found.
+
+    Without this, `loop_start` opens a window in which a host can start an agent it cannot
+    stop — the asymmetry Decision 9 closed only on the `tasks/get` side.
+    """
+    import subprocess
+    import sys
+
+    project = _make_project(tmp_path, monkeypatch)
+    _write_loop(project / ".loops")
+
+    # A real, harmless stand-in for a loop child still in startup: alive, in its own
+    # session (as `run_background` spawns), and with no state file written yet.
+    child = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(120)"], start_new_session=True
+    )
+
+    def fake_run_background(loop_name, args, loops_dir, subcommand="run", instance_id=None):
+        running_dir = loops_dir / ".running"
+        running_dir.mkdir(parents=True, exist_ok=True)
+        (running_dir / f"{instance_id}.pid").write_text(str(child.pid))
+        return 0
+
+    monkeypatch.setattr("little_loops.cli.loop._helpers.run_background", fake_run_background)
+
+    try:
+        with TestClient(build_http_app(), base_url="http://127.0.0.1:8765") as client:
+            start_result = _post(
+                client,
+                "tools/call",
+                _start_params(declare_ext=True, want_task=True),
+                tool_name="loop_start",
+            ).json()["result"]
+            task_id = start_result["taskId"]
+
+            cancel_response = _post(
+                client, "tasks/cancel", {"taskId": task_id, "_meta": _meta(declare_ext=False)}
+            )
+            assert cancel_response.status_code == 200, "a starting run must not be not-found"
+            cancel_result = cancel_response.json()["result"]
+
+        assert cancel_result["taskId"] == task_id
+        assert cancel_result["status"] == "cancelled"
+        # Same window vocabulary tasks/get reports, and nothing to resume from.
+        assert cancel_result["runStatus"] == "starting"
+        assert cancel_result["resumable"] is False
+        assert child.wait(timeout=15) is not None, "the starting child must actually be stopped"
+    finally:
+        if child.poll() is None:
+            with contextlib.suppress(OSError):
+                os.killpg(os.getpgid(child.pid), signal.SIGKILL)
 
 
 def test_ac6_capabilities_do_not_advertise_the_tasks_extension(tmp_path, monkeypatch) -> None:

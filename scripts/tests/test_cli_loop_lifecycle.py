@@ -3069,6 +3069,41 @@ class TestFeat3145CancelRun:
         assert outcome == {"run_status": "user_stopped"}
         assert persistence.load_state().status == "user_stopped"
 
+    def test_cancel_run_stops_a_starting_run_with_no_state_file(self, tmp_path: Path) -> None:
+        """FEAT-3151 Decision 9, cancel side: a run whose child has written a PID file but
+        not yet a state file is stoppable, not task-not-found."""
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir(parents=True)
+        (running_dir / "run-11.pid").write_text("99999999")
+        logger = MagicMock()
+
+        with (
+            patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=[True, False]),
+            patch("little_loops.cli.loop.lifecycle.os.getpgid", return_value=77),
+            patch("little_loops.cli.loop.lifecycle.os.killpg") as killpg,
+            patch("little_loops.cli.loop.lifecycle.time.sleep"),
+        ):
+            outcome = cancel_run("run-11", tmp_path, logger)
+
+        assert outcome == {"run_status": "starting"}
+        assert killpg.called, "the starting child must actually be signalled"
+        # No state was invented for a run that never wrote any.
+        assert StatePersistence("run-11", tmp_path, instance_id="run-11").load_state() is None
+        assert not (running_dir / "run-11.pid").exists()
+        # ENH-2522's evidence is left for the runner, same as the state-file path.
+        assert (running_dir / "user-stop.marker").exists()
+
+    def test_cancel_run_dead_pid_without_state_file_is_not_found(self, tmp_path: Path) -> None:
+        """A child that died before writing state has nothing to stop and nothing to
+        report — genuinely not-found, never a default shape (FEAT-3145 Decision 5)."""
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir(parents=True)
+        (running_dir / "run-12.pid").write_text("99999999")
+        logger = MagicMock()
+
+        with patch("little_loops.cli.loop.lifecycle._process_alive", return_value=False):
+            assert cancel_run("run-12", tmp_path, logger) is None
+
     def test_cancel_run_on_non_running_instance_is_a_noop(self, tmp_path: Path) -> None:
         (tmp_path / ".running").mkdir(parents=True, exist_ok=True)
         persistence = StatePersistence("sample-loop", tmp_path, instance_id="run-10")

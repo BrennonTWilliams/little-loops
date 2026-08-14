@@ -158,6 +158,12 @@ async def handle_tasks_cancel(
     Decision 3: never bare `"cancelled"`. `resumable` and the backend's raw `runStatus`
     always ride alongside, so a host cannot mistake a resumable `user_stopped` run for a
     genuinely terminal one.
+
+    FEAT-3151 Decision 9 applies to this half too: `cancel_run` falls back to the PID file
+    when no state file exists yet, so a run started via `loop_start` is stoppable during
+    its child's startup window rather than reporting task-not-found. That path reports
+    `runStatus: "starting"` — the same vocabulary `handle_tasks_get` uses for the window —
+    and `resumable: false`.
     """
     from little_loops.cli.loop.lifecycle import cancel_run
     from little_loops.fsm.persistence import RESUMABLE_STATUSES

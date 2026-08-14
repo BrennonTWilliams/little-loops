@@ -435,6 +435,28 @@ def cmd_stop(
     return 0
 
 
+def _write_user_stop_marker(running_dir: Path, stem: str, logger: Logger) -> None:
+    """ENH-2522: record that the *user* asked for this stop, before any signal is sent.
+
+    Written ahead of signalling so the runner can distinguish a user-initiated stop from
+    a kernel/OOM kill even if SIGKILL races it. Shared by `_stop_instance` (a run with a
+    state file) and `cancel_run`'s starting-run fallback (a run that has a live PID but
+    has not written state yet) so both stop paths leave the same evidence.
+    """
+    try:
+        requested_by = (
+            os.getlogin() if hasattr(os, "getlogin") and os.getlogin() is not None else "unknown"
+        )
+    except OSError:
+        requested_by = "unknown"
+    try:
+        (running_dir / "user-stop.marker").write_text(
+            f"requested_by={requested_by}\nrequested_at={datetime.now(UTC).isoformat()}\n"
+        )
+    except OSError as marker_err:
+        logger.warning(f"Could not write user-stop.marker for {stem}: {marker_err}")
+
+
 def _stop_instance(
     stem: str,
     state: LoopState,
@@ -446,21 +468,7 @@ def _stop_instance(
     pid_file = running_dir / f"{stem}.pid"
     pid = _read_pid_file(pid_file)
 
-    # ENH-2522: write user-stop.marker *before* signalling so the runner can
-    # distinguish user-initiated stop from kernel/OOM kill even if SIGKILL races.
-    marker_path = running_dir / "user-stop.marker"
-    try:
-        requested_by = (
-            os.getlogin() if hasattr(os, "getlogin") and os.getlogin() is not None else "unknown"
-        )
-    except OSError:
-        requested_by = "unknown"
-    try:
-        marker_path.write_text(
-            f"requested_by={requested_by}\nrequested_at={datetime.now(UTC).isoformat()}\n"
-        )
-    except OSError as marker_err:
-        logger.warning(f"Could not write user-stop.marker for {stem}: {marker_err}")
+    _write_user_stop_marker(running_dir, stem, logger)
 
     if pid is not None:
         if _process_alive(pid):
@@ -480,6 +488,32 @@ def _stop_instance(
         logger.success(f"Marked {stem} as user_stopped")
 
 
+def _cancel_starting_run(
+    instance_id: str, running_dir: Path, logger: Logger
+) -> dict[str, Any] | None:
+    """Stop a run that has a live PID file but has not written its state file yet.
+
+    The mirror of FEAT-3151 Decision 9's `tasks/get` fallback. Signals through the same
+    `_kill_with_timeout` process-group path `_stop_instance` uses, but writes no state:
+    there is no `LoopState` to mutate, and inventing one would hand `tasks/get` a status
+    for a run whose child never got far enough to have one.
+
+    Returns ``None`` when there is no PID file or its PID is dead — a child that died
+    before writing state leaves nothing to report and nothing to stop, which is
+    genuinely not-found (FEAT-3145 Decision 5 forbids a default shape here).
+    """
+    pid_file = running_dir / f"{instance_id}.pid"
+    pid = _read_pid_file(pid_file)
+    if pid is None or not _process_alive(pid):
+        return None
+
+    _write_user_stop_marker(running_dir, instance_id, logger)
+    _kill_with_timeout(pid, instance_id, logger)
+    pid_file.unlink(missing_ok=True)
+    logger.success(f"Stopped {instance_id} during startup (PID: {pid})")
+    return {"run_status": "starting"}
+
+
 def cancel_run(instance_id: str, loops_dir: Path, logger: Logger) -> dict[str, Any] | None:
     """FEAT-3145 ``tasks/cancel`` entry point: stop the run named ``instance_id`` directly.
 
@@ -487,16 +521,25 @@ def cancel_run(instance_id: str, loops_dir: Path, logger: Logger) -> dict[str, A
     `taskId` verbatim (Decision 5), so it addresses exactly one run's state file
     regardless of how many other instances share its logical loop name.
 
-    Returns ``None`` when no state file exists for `instance_id` (not-found, same
-    contract as `read_run_status`). Otherwise returns the backend's raw status after the
-    stop attempt — `"user_stopped"` on success, or whatever status the run already had
-    if it was not `"running"` (stopping a non-running run is a no-op, not an error).
+    Returns ``None`` when `instance_id` names neither a state file nor a live PID file
+    (not-found). Otherwise returns the backend's raw status after the stop attempt —
+    `"user_stopped"` on success, or whatever status the run already had if it was not
+    `"running"` (stopping a non-running run is a no-op, not an error).
+
+    FEAT-3151 Decision 9, cancel side: a run started through the MCP `loop_start` tool has
+    a PID file (written by `run_background`'s parent) for the whole of its child's startup,
+    but no state file until that child writes one. Without the fallback below, the window
+    between those two events is one where a host can *start* a run it cannot *stop* — the
+    exact asymmetry Decision 9 closed on the `tasks/get` side. `"starting"` is the same
+    `runStatus` vocabulary the get-side fallback reports for that window, and it is
+    deliberately not in `RESUMABLE_STATUSES`: a run killed before it wrote any state has
+    nothing to resume from.
     """
     running_dir = loops_dir / ".running"
     persistence = StatePersistence(instance_id, loops_dir, instance_id=instance_id)
     state = persistence.load_state()
     if state is None:
-        return None
+        return _cancel_starting_run(instance_id, running_dir, logger)
 
     # Deliberately no PID-liveness reconciliation here, matching `cmd_stop`'s own
     # convention exactly: a "running" status is what gates whether to signal at all, and
