@@ -132,11 +132,18 @@ def check_tool_call(
     if is_task_call or is_task_starting_call:
         if config.mcp.transport_policy.allows_tasks(transport):
             return PolicyDecision(allowed=True)
-        denied_what = method if is_task_call else f"tools/call/{tool_name}"
+        # The subject names what was actually denied — `tasks/*` and `loop_start` share
+        # one grant but are different surfaces, and a `loop_start` denial that says
+        # "tasks/* requests are disabled" reads as a mismatch to whoever hits it. The
+        # remedy clause is shared because the grant genuinely is.
+        if is_task_call:
+            denied_what, disabled_what = method, "tasks/* requests"
+        else:
+            denied_what, disabled_what = f"tools/call/{tool_name}", "run-starting tools"
         return PolicyDecision(
             allowed=False,
             reason=(
-                f"policy denied {denied_what}: tasks/* requests are disabled on the "
+                f"policy denied {denied_what}: {disabled_what} are disabled on the "
                 f"{transport} transport (set mcp.transport_policy.{transport}.allow_tasks "
                 "to true in .ll/ll-config.json to permit them)"
             ),

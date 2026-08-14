@@ -22,6 +22,7 @@ pytest.importorskip("mcp")
 from mcp_types import CLIENT_CAPABILITIES_META_KEY, PROTOCOL_VERSION_META_KEY  # noqa: E402
 from starlette.testclient import TestClient  # noqa: E402
 
+from little_loops.fsm.concurrency import _process_alive  # noqa: E402
 from little_loops.mcp_server.server import build_http_app  # noqa: E402
 
 PROTOCOL_VERSION = "2026-07-28"
@@ -58,6 +59,40 @@ states:
     return loop_path
 
 
+def _write_long_running_loop(loops_dir: Path, name: str = "slow-loop") -> Path:
+    """A loop whose first state outlasts any plausible request, so AC 3 can observe the
+    spawned process still alive after the response comes back."""
+    loop_path = loops_dir / f"{name}.yaml"
+    loop_path.write_text(
+        f"""
+name: {name}
+initial: wait
+states:
+  wait:
+    action_type: shell
+    action: "sleep 120"
+    next: done
+  done:
+    terminal: true
+""".strip(),
+        encoding="utf-8",
+    )
+    return loop_path
+
+
+def _reap(pid_file: Path) -> None:
+    """Kill a spawned run's whole process group. `run_background` uses
+    `start_new_session=True`, so the child is a session leader with PGID == PID."""
+    if not pid_file.exists():
+        return
+    try:
+        pid = int(pid_file.read_text())
+    except ValueError:
+        return
+    with contextlib.suppress(OSError):
+        os.killpg(os.getpgid(pid), signal.SIGKILL)
+
+
 def _meta(*, declare_ext: bool, protocol_version: str = PROTOCOL_VERSION) -> dict:
     caps: dict = {"extensions": {"io.modelcontextprotocol/tasks": {}}} if declare_ext else {}
     return {PROTOCOL_VERSION_META_KEY: protocol_version, CLIENT_CAPABILITIES_META_KEY: caps}
@@ -80,6 +115,34 @@ def _start_params(
     return params
 
 
+@pytest.fixture
+def stub_spawn(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Replace `run_background`'s real detached spawn with the two observable effects the
+    result-shape tests actually depend on: a return code and a PID file.
+
+    The shape tests (ACs 1/2/2b/2c) are about the *envelope* `TasksExtension` puts around
+    an already-successful start — nothing in them is made truer by really forking a Python
+    interpreter, and doing so leaves detached children racing pytest's `tmp_path` teardown.
+    The un-mocked spawn belongs to `test_ac3_*`, which is the AC that asserts something
+    about the real process.
+
+    Returns the list of `instance_id`s the tool asked to spawn.
+    """
+    spawned: list[str] = []
+
+    def fake_run_background(loop_name, args, loops_dir, subcommand="run", instance_id=None):
+        spawned.append(instance_id)
+        running_dir = loops_dir / ".running"
+        running_dir.mkdir(parents=True, exist_ok=True)
+        # Mirrors the real parent: PID file written before returning, state file left to
+        # the child (FEAT-3151 Decision 9's window).
+        (running_dir / f"{instance_id}.pid").write_text(str(os.getpid()))
+        return 0
+
+    monkeypatch.setattr("little_loops.cli.loop._helpers.run_background", fake_run_background)
+    return spawned
+
+
 def _post(
     client: TestClient,
     method: str,
@@ -100,7 +163,9 @@ def _post(
     return client.post("/mcp", json=body, headers=headers)
 
 
-def test_ac1_declared_and_task_returns_task_shaped_result(tmp_path, monkeypatch) -> None:
+def test_ac1_declared_and_task_returns_task_shaped_result(
+    tmp_path, monkeypatch, stub_spawn
+) -> None:
     project = _make_project(tmp_path, monkeypatch)
     _write_loop(project / ".loops")
 
@@ -118,7 +183,9 @@ def test_ac1_declared_and_task_returns_task_shaped_result(tmp_path, monkeypatch)
         assert result["taskId"]
 
 
-def test_ac2_undeclared_client_gets_ordinary_result_with_instance_id(tmp_path, monkeypatch) -> None:
+def test_ac2_undeclared_client_gets_ordinary_result_with_instance_id(
+    tmp_path, monkeypatch, stub_spawn
+) -> None:
     project = _make_project(tmp_path, monkeypatch)
     _write_loop(project / ".loops")
 
@@ -136,7 +203,9 @@ def test_ac2_undeclared_client_gets_ordinary_result_with_instance_id(tmp_path, m
         assert payload["instance_id"]
 
 
-def test_ac2b_declared_but_no_task_param_gets_ordinary_result(tmp_path, monkeypatch) -> None:
+def test_ac2b_declared_but_no_task_param_gets_ordinary_result(
+    tmp_path, monkeypatch, stub_spawn
+) -> None:
     project = _make_project(tmp_path, monkeypatch)
     _write_loop(project / ".loops")
 
@@ -154,7 +223,9 @@ def test_ac2b_declared_but_no_task_param_gets_ordinary_result(tmp_path, monkeypa
         assert payload["instance_id"]
 
 
-def test_ac2c_legacy_protocol_version_gets_ordinary_result(tmp_path, monkeypatch) -> None:
+def test_ac2c_legacy_protocol_version_gets_ordinary_result(
+    tmp_path, monkeypatch, stub_spawn
+) -> None:
     project = _make_project(tmp_path, monkeypatch)
     _write_loop(project / ".loops")
 
@@ -216,46 +287,89 @@ def test_ac5_denied_over_http_when_allow_tasks_false(tmp_path, monkeypatch) -> N
         assert response.status_code == 403
         payload = response.json()
         assert payload["error"]["code"] == -32001
+        # The denial names the surface that was actually denied. `loop_start` and `tasks/*`
+        # share the `allow_tasks` grant, but a `loop_start` denial reporting "tasks/*
+        # requests are disabled" reads as a mismatch to whoever hits it.
+        message = payload["error"]["message"]
+        assert "tools/call/loop_start" in message
+        assert "run-starting tools are disabled" in message
+        assert "tasks/*" not in message
+        # The remedy clause still points at the shared grant.
+        assert "allow_tasks" in message
 
 
-def test_ac3_request_returns_before_run_background_would_block(tmp_path, monkeypatch) -> None:
-    """The call returns immediately; `run_background()`'s detach-and-return contract
-    means the handler never blocks on the spawned process."""
+def test_task_envelope_is_never_emitted_without_a_resolvable_task_id(tmp_path, monkeypatch) -> None:
+    """A task envelope whose `taskId` is null is a handle that resolves to nothing — the
+    failure mode Decision 7 forbids. If the start tool's payload ever stops carrying
+    `instance_id`, the interceptor must fall back to the plain result, not emit a
+    pollable-looking envelope no `tasks/get` can satisfy."""
     project = _make_project(tmp_path, monkeypatch)
     _write_loop(project / ".loops")
 
-    spawn_called = []
+    from little_loops.mcp_server.tools import _TOOL_HANDLERS
 
-    def fake_run_background(loop_name, args, loops_dir, subcommand="run", instance_id=None):
-        spawn_called.append(instance_id)
-        (loops_dir / ".running").mkdir(parents=True, exist_ok=True)
-        (loops_dir / ".running" / f"{instance_id}.pid").write_text("99999999")
-        return 0
-
-    monkeypatch.setattr("little_loops.cli.loop._helpers.run_background", fake_run_background)
+    monkeypatch.setitem(
+        _TOOL_HANDLERS,
+        "loop_start",
+        lambda arguments: {"loop": arguments["loop"]},  # payload without `instance_id`
+    )
 
     with TestClient(build_http_app(), base_url="http://127.0.0.1:8765") as client:
-        response = _post(client, "tools/call", _start_params(), tool_name="loop_start")
+        response = _post(
+            client,
+            "tools/call",
+            _start_params(declare_ext=True, want_task=True),
+            tool_name="loop_start",
+        )
         assert response.status_code == 200
-        assert not response.json()["result"]["isError"]
-    assert len(spawn_called) == 1
+        result = response.json()["result"]
+        assert result.get("resultType") != "task"
+        assert "taskId" not in result
 
 
-def test_ac4_immediate_poll_after_start_resolves_via_pid_fallback(tmp_path, monkeypatch) -> None:
+def test_ac3_request_returns_while_the_spawned_run_is_still_alive(tmp_path, monkeypatch) -> None:
+    """AC 3: the call returns within normal request latency and the `ll-loop` run keeps
+    going after the response is sent.
+
+    Deliberately **not** mocked — mocking `run_background` here would assert only that the
+    handler calls a function, which is not what this AC claims. The loop below occupies its
+    first state for far longer than the request takes, so finding its PID alive after the
+    response proves the response did not wait on the run.
+    """
+    project = _make_project(tmp_path, monkeypatch)
+    _write_long_running_loop(project / ".loops")
+
+    instance_id = None
+    try:
+        with TestClient(build_http_app(), base_url="http://127.0.0.1:8765") as client:
+            response = _post(
+                client,
+                "tools/call",
+                _start_params(loop="slow-loop"),
+                tool_name="loop_start",
+            )
+            assert response.status_code == 200
+            result = response.json()["result"]
+            assert not result["isError"]
+            instance_id = json.loads(result["content"][0]["text"])["instance_id"]
+
+        pid_file = project / ".loops" / ".running" / f"{instance_id}.pid"
+        assert pid_file.exists(), "the parent writes the PID file before returning"
+        pid = int(pid_file.read_text())
+        assert _process_alive(pid), "the run must outlive the request that started it"
+    finally:
+        if instance_id is not None:
+            _reap(project / ".loops" / ".running" / f"{instance_id}.pid")
+
+
+def test_ac4_immediate_poll_after_start_resolves_via_pid_fallback(
+    tmp_path, monkeypatch, stub_spawn
+) -> None:
     """AC 4/4b: polling tasks/get immediately after start (before any state file exists)
     resolves via Decision 9's PID-file fallback, and taskId/status agree with the start
     result's task-core fields."""
     project = _make_project(tmp_path, monkeypatch)
     _write_loop(project / ".loops")
-
-    def fake_run_background(loop_name, args, loops_dir, subcommand="run", instance_id=None):
-        running_dir = loops_dir / ".running"
-        running_dir.mkdir(parents=True, exist_ok=True)
-        # Parent writes only the PID file before returning — no state file yet.
-        (running_dir / f"{instance_id}.pid").write_text(str(os.getpid()))
-        return 0
-
-    monkeypatch.setattr("little_loops.cli.loop._helpers.run_background", fake_run_background)
 
     with TestClient(build_http_app(), base_url="http://127.0.0.1:8765") as client:
         start_response = _post(

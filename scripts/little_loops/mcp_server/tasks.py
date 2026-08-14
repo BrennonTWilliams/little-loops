@@ -255,12 +255,20 @@ class TasksExtension(Extension):
         if structured is None:
             return result
 
+        # Same reasoning one step further in: an envelope whose taskId is null is a task
+        # handle that resolves to nothing, which is the failure mode Decision 7 forbids —
+        # only reachable if the start tool's payload ever stops carrying `instance_id`, so
+        # fall back to the plain result rather than emitting a handle no one can poll.
+        instance_id = structured.get("instance_id")
+        if not instance_id:
+            return result
+
         # SEP-2663 CreateTaskResult mirror (Decision 5): hand-built dict carrying a
         # top-level resultType, not types.CreateTaskResult (which dumps to {"task": {...}}
         # with no resultType and would fail the spec-method sieve). AC 4b: status is the
         # literal "working" — the same value handle_tasks_get maps a running run to.
         return {
             "resultType": "task",  # mirrors CreateTaskResult's discriminator
-            "taskId": structured.get("instance_id"),  # mirrors Task.task_id (Decision 3)
+            "taskId": instance_id,  # mirrors Task.task_id (Decision 3)
             "status": "working",  # mirrors Task.status
         }
