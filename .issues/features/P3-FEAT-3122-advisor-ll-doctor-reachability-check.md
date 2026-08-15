@@ -77,7 +77,8 @@ _Added by `/ll:refine-issue` — 2026-08-08 — based on codebase analysis:_
   `## Resolution` section reads `**Status**: Decomposed` — it was closed by
   splitting into FEAT-3120 and FEAT-3121, not by landing code. Both
   successors carry `status: deferred`. A full read of
-  `scripts/little_loops/advisor.py` (113 lines, current `main`) confirms it
+  `scripts/little_loops/advisor.py` (113 lines, current state on the `main`
+  branch) confirms it
   contains only FEAT-3108's pieces (`MODEL_RANKS`, `FloorResult`,
   `rank_model`, `check_floor`); there is no `consult()` function,
   `AdvisorVerdict` dataclass, `ll-advise` CLI (`cli/advise.py` does not
@@ -113,7 +114,7 @@ _Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
   Verification Notes concern below**: this issue's `depends_on: [FEAT-3108,
   FEAT-3120]` is now confirmed **accurate**, not stale. `FEAT-3120`
   (`.issues/features/P3-FEAT-3120-advisor-consult-core-and-ll-advise-cli.md`)
-  is a real, currently `open` issue titled "Advisor consult() core and
+  is a real, currently open issue titled "Advisor consult() core and
   ll-advise CLI" — it matches the scope this issue's Parent Issue section
   describes (consult(), the ll-advise CLI, the host-resolution-isolation
   convention). `FEAT-3120` itself carries `depends_on: [FEAT-3042, FEAT-3043,
@@ -126,7 +127,7 @@ _Added by `/ll:refine-issue` — 2026-08-10 — based on codebase analysis:_
   them with). `consult()`/`AdvisorVerdict`/the `ll-advise` CLI/`AdvisorConfig`
   still do not exist in `scripts/little_loops/advisor.py` (113 lines,
   unchanged) or `config-schema.json`/`config/core.py`/`config/orchestration.py`
-  — the dependency is real and currently unsatisfied (FEAT-3120 is `open`,
+  — the dependency is real and currently unsatisfied (FEAT-3120 is open,
   not `done`), but the frontmatter `depends_on` edge itself needs **no
   repointing**. The prior "Recommended action: repoint depends_on" notes
   below are now moot.

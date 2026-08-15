@@ -158,15 +158,22 @@ events.socket.max_clients  schema=8  dataclass=32
 Finding 4 has no dataclass, so it needs a different probe — compare the schema against the
 two inline literals directly:
 
+**These probes must run against a config-less directory, not the repo root.** This repo's
+own `.ll/ll-config.json` sets both `analytics.enabled` and `learning_tests.enabled` to
+`true`, so `BRConfig(Path('.'))` here returns the *configured* value and the divergence is
+invisible. Verified 2026-08-15: at the repo root `to_dict()['analytics']['enabled']` is
+`True`, not `False`. Use a temp dir:
+
 ```bash
 python -c "from little_loops.init.core import schema_default; print('schema:', schema_default('analytics.enabled'))"
 # schema: True
 
 python -c "
+import tempfile
 from pathlib import Path
 from little_loops.config import BRConfig
-print('to_dict:', BRConfig(Path('.')).to_dict()['analytics']['enabled'])"
-# to_dict: False   (config/core.py:902)
+print('to_dict:', BRConfig(Path(tempfile.mkdtemp())).to_dict()['analytics']['enabled'])"
+# to_dict: False   (config/core.py:902 — the inline fallback, no config file present)
 
 # and init/cli.py:590's reconfigure fallback, read directly:
 grep -n 'analytics_enabled.*get("enabled"' scripts/little_loops/init/cli.py
@@ -183,6 +190,9 @@ python -c "from little_loops.init.core import schema_default; print(schema_defau
 python -c "from little_loops.config.features import LearningTestsConfig; print(LearningTestsConfig().enabled)"
 # False — what a config omitting the key resolves to at runtime
 ```
+
+This config-masking hazard is not confined to the repro — it is the primary failure mode
+of Guard 1 below, which will pass green against the repo root while catching nothing.
 
 ## Expected Behavior
 
@@ -267,8 +277,17 @@ The two guards to write, both new, in `scripts/tests/test_config_schema.py`:
 1. **Value parity.** Walk `BRConfig(<clean project>).to_dict()` and diff every leaf against
    `schema_default(path)`, skipping the template-derived sections
    (`$schema`, `project`, `issues`, `scan`) the existing init-side test already excludes.
-   Measured against `main` on 2026-08-15, this reports exactly the three value divergences
-   this issue fixes and nothing else:
+
+   **"Clean project" means `tmp_path` with no `.ll/ll-config.json` — this is load-bearing,
+   not a detail.** `BRConfig` merges the on-disk config over the dataclass defaults, and
+   this repo's own config sets `analytics.enabled` and `learning_tests.enabled` to `true`.
+   A guard written against the repo root therefore sees both keys agreeing with the schema,
+   reports zero mismatches, and ships as a permanent no-op that would not have caught any
+   of the three findings it exists to catch. Verified 2026-08-15. Use `tmp_path` and assert
+   the guard actually fails when a schema default is perturbed.
+
+   Measured against `main` on 2026-08-15 from a config-less temp dir, this reports exactly
+   the three value divergences this issue fixes and nothing else:
 
    ```
    MISMATCHES 3
@@ -282,17 +301,37 @@ The two guards to write, both new, in `scripts/tests/test_config_schema.py`:
    `commands.pre_implement`, `commands.post_implement`, `orchestration.host_cli` (declares
    an `enum`, no `default`), and the four `sync.github.label_mapping.*` leaves.
 
-2. **Declared-ness.** Value parity alone still misses `sync.github.pull_limit` — `to_dict()`
-   omits it (verified: `to_dict()["sync"]["github"]` has `repo`, `label_mapping`,
-   `priority_labels`, `sync_completed`, `state_file`, `pull_template`, and no
-   `pull_limit`). A key that no serializer emits cannot be caught by any output-walking
-   sweep. Catching it requires iterating `dataclasses.fields()` over the config dataclasses
-   and asserting each field has a corresponding schema property — the guard that would have
-   caught finding 2 at authoring time.
+2. **Declared-ness.** Value parity alone still misses `sync.github.pull_limit` —
+   `to_dict()` omits it (verified: `to_dict()["sync"]["github"]` has `repo`,
+   `label_mapping`, `priority_labels`, `sync_completed`, `state_file`, `pull_template`, and
+   no `pull_limit`). A key that no serializer emits cannot be caught by any output-walking
+   sweep.
 
-   `to_dict()`'s omission of `pull_limit` is itself arguably a defect (`TestToDictSchemaParity`
-   checks only top-level key presence), but fixing that is not required here — guard 2 is
-   the one that must exist.
+   **Revised approach (2026-08-15 review): fix `to_dict()` first, then keep guard 2
+   narrow.** An earlier draft specified guard 2 as "iterate `dataclasses.fields()` over the
+   config dataclasses and assert each field has a corresponding schema property". Measured,
+   that is 59 config dataclasses / 236 fields across `config/features.py`,
+   `config/automation.py`, and `config/core.py` — and **there is no dataclass→schema-path
+   registry anywhere in the tree**. Written as specified, guard 2 requires a hand-maintained
+   59-entry mapping whose own drift is unguarded: a new config dataclass omitted from the
+   map is silently exempt. That is the same defect class this issue exists to fix, one
+   level up.
+
+   Cheaper and strictly better-covering:
+
+   - **Make `to_dict()` emit `sync.github.pull_limit`.** The omission is a defect on its own
+     terms (`TestToDictSchemaParity` checks only top-level key presence, so nothing caught
+     it), and `pull_limit` is a real, documented, code-read key. Once emitted, **guard 1
+     catches finding 2** with no second sweep — the key appears as a leaf, `schema_default`
+     raises, and the explicit allowlist forces a decision.
+   - **Guard 2 shrinks to a completeness assertion**: every config dataclass appears in the
+     dataclass→section map, so a newly added dataclass cannot silently escape guard 1's
+     walk. That is a one-line-per-dataclass map with a test that fails when it goes stale —
+     bounded work, and it guards the guard.
+
+   This inverts the earlier priority: fixing `to_dict()` was previously declared out of
+   scope with guard 2 as "the one that must exist". It is the reverse — the `to_dict()` fix
+   is small, is independently correct, and subsumes most of guard 2's value.
 
 **Fold in the sibling `API.md` divergence.** `docs/reference/API.md:10025` documents
 `UnixSocketTransport`'s constructor signature as `max_clients: int = 8`; the actual default
@@ -341,11 +380,17 @@ N/A — no new decision logic. This is a value-parity fix between an existing sc
       `schema_default(path)`. Paths with no declared schema `default` are skipped only via
       an **explicit enumerated allowlist** (measured: the seven paths named in Program
       Design), never a silent `KeyError` catch.
-- [ ] **Guard 2 (declared-ness)** — a second test iterates `dataclasses.fields()` over the
-      config dataclasses and fails if a field has no corresponding schema property. This is
-      the only guard that catches `sync.github.pull_limit`; guard 1 cannot, because
-      `to_dict()` does not emit that key. Verify by asserting guard 2 fails on a
-      deliberately-removed schema property.
+- [ ] **Guard 1 uses `tmp_path`, not the repo root**, and is proven non-vacuous: perturb a
+      schema default in the test and assert the guard fails. Against the repo root it
+      passes green while catching nothing, because this project's own `.ll/ll-config.json`
+      sets both divergent keys to `true`.
+- [ ] **`BRConfig.to_dict()` emits `sync.github.pull_limit`**, so guard 1 covers finding 2.
+      A key no serializer emits is invisible to any output-walking sweep.
+- [ ] **Guard 2 (completeness)** — a test asserting every config dataclass is present in
+      the dataclass→schema-section map guard 1 walks, so a newly added dataclass cannot
+      silently escape coverage. Scoped deliberately: the earlier "iterate
+      `dataclasses.fields()` over all config dataclasses" formulation is 59 dataclasses /
+      236 fields with no existing path registry (see Program Design).
 - [ ] Neither guard is implemented by editing
       `test_init_core.py::TestBuildConfigSchemaParity::test_emitted_defaults_match_schema`
       — that test compares `build_config()` literals against the schema, a different
@@ -416,11 +461,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 - **Priority**: P3 — the `learning_tests` divergence is a genuine behavior split across
   install paths, but the affected feature is non-destructive and the other two findings
   are low-severity schema hygiene.
-- **Effort**: Small-to-Medium — four schema/literal edits plus **two** new regression
-      guards. Sized up from "Small" during review: the value-parity guard is cheap
-      (measured, three mismatches and a seven-entry allowlist), but the declared-ness guard
-      requires enumerating the config dataclasses and is the larger half. Four existing
-      tests pin the divergent values and must be updated in the same pass.
+- **Effort**: Small-to-Medium — four schema/literal edits, a one-key `to_dict()` addition,
+      and two new regression guards. Guard 1 is cheap (measured: three mismatches, a
+      seven-entry allowlist); guard 2 was rescoped during review from a 59-dataclass field
+      sweep down to a map-completeness assertion, which is what keeps this out of "Medium".
+      Four existing tests pin the divergent values and must be updated in the same pass.
 - **Risk**: Low — a schema-only change is inert at runtime; the `learning_tests` half
   touches a real default and should land with the recommended (no-op for existing
   projects) option unless deliberately chosen otherwise.

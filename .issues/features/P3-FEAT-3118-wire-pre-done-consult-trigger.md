@@ -36,7 +36,9 @@ shape and hook-intent registration sites.
 
 `hooks/hooks.json:199-230` — the `Stop` event runs three shell scripts
 (context-handoff-sentinel, session-cleanup, record-hook-event); none dispatch
-through `python -m little_loops.hooks`. No `pre_done` intent exists in
+through `python -m little_loops.hooks`.
+<!-- ll-prose-ok: pre_done does not exist yet — this sentence documents its absence, the reason this feature is being proposed -->
+No `pre_done` intent exists in
 `hooks/__init__.py`'s `_INTENT_EVENT_NAME`, `_USAGE`, or `_dispatch_table()`.
 
 **Contested convention to resolve**: existing `Stop` entries have no

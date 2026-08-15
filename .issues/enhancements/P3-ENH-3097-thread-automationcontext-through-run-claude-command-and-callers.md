@@ -33,7 +33,9 @@ Third of three children decomposed from ENH-3094. This child threads the
 `run_claude_command()` in both `subprocess_utils.py` and the
 `issue_manager.py` wrapper, `run_with_continuation()`, `runner_spec.py`'s
 forwarding sites, and the two remaining direct-call sites
-(`fsm/executor.py`'s baseline arm, `worker_pool.py`'s `_run_claude_base`).
+(`fsm/executor.py`'s baseline arm,
+<!-- ll-prose-ok: _run_claude_base is a local import alias (`run_claude_command as _run_claude_base`), not a def-site symbol -->
+`worker_pool.py:_run_claude_base`).
 
 **Blocked by ENH-3095**: this child imports `AutomationContext` from
 `host_runner.py`, which ENH-3095 defines. Can proceed in parallel with
@@ -140,7 +142,8 @@ New:
 ### Call Path
 - `subprocess_utils.py:402-411` — `automation_profile` forwarded to `runner.build_streaming(automation_profile=...)` becomes `build_streaming(automation=automation)`, consuming ENH-3095's boundary.
 - `subprocess_utils.py:478-487` — `idle_timeout` consumed locally by the selector loop (`if idle_timeout and (now - last_output_time) > idle_timeout: raise TimeoutExpired(..., output="idle_timeout")`), never reaches `build_streaming()`; the read becomes `automation.idle_timeout if automation else 0` at this same site, loop logic unchanged.
-- `issue_manager.py` wrapper (`:207-218`) forwards 1:1 to `_run_claude_base` (`subprocess_utils.run_claude_command`, imported alias) — becomes a 1:1 forward of `automation=automation`.
+<!-- ll-prose-ok: _run_claude_base is a local import alias (`run_claude_command as _run_claude_base`), not a def-site symbol -->
+- `issue_manager.py` wrapper (`:207-218`) forwards 1:1 to `issue_manager.py:_run_claude_base` (`subprocess_utils.run_claude_command`, imported alias) — becomes a 1:1 forward of `automation=automation`.
 - `issue_manager.run_with_continuation()` (`:340-350`) forwards to the wrapper on every continuation round — same collapse, same forwarding shape.
 - `runner_spec.py` three forwarding sites: trace mode (`:140-149`, calls `run_claude_command`), stream_callback mode (`:172-177`, calls `run_claude_command`), and blocking/default mode (`:182`, calls `resolve_host().build_streaming()` directly, bypassing `run_claude_command()` entirely) — each currently passes bare `automation_profile=automation_profile`; each becomes `automation=automation`.
 - `fsm/executor.py:2771-2778` baseline arm — currently passes only `idle_timeout=idle_timeout` (no `automation_profile` at all today) — becomes `automation=AutomationContext(idle_timeout=idle_timeout)`.

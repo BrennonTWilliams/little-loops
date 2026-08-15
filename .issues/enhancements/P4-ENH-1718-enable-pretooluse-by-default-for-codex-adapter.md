@@ -30,7 +30,7 @@ FEAT-1489's resolution explicitly tied the opt-in/default decision to the benchm
 
 ## Current Behavior
 
-`scripts/little_loops/hooks/adapters/codex/hooks.json` has no `PreToolUse` entry. The Python handler (`scripts/little_loops/hooks/pre_tool_use.py`) exists and is registered in `_dispatch_table()`, but neither the Codex `hooks.json` nor the OpenCode `index.ts` enables it by default. Codex users who want PreToolUse must manually add the entry to their `.codex/hooks.json`.
+`scripts/little_loops/hooks/adapters/codex/hooks.json` has no `PreToolUse` entry. The Python handler (`scripts/little_loops/hooks/pre_tool_use.py`) exists and is registered in `scripts/little_loops/hooks/__init__.py:_dispatch_table` (line 134), but neither the Codex `hooks.json` nor the OpenCode `index.ts` enables it by default. Codex users who want PreToolUse must manually add the entry to their `.codex/hooks.json`.
 
 ## Expected Behavior
 

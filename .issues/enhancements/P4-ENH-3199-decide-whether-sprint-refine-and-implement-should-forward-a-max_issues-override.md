@@ -3,10 +3,11 @@ id: ENH-3199
 type: ENH
 title: Decide whether sprint-refine-and-implement should forward a max_issues override
 priority: P4
-status: open
+status: cancelled
 testable: true
 discovered_by: ll-issues-create
-relates_to: [BUG-3191]
+relates_to:
+- BUG-3191
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T19:45:21Z'
 ---
@@ -105,11 +106,58 @@ no knob.
 
 ## Acceptance Criteria
 
-- [ ] A decision is recorded: wire it, or close as won't-fix with the rationale.
-- [ ] If wired: `ll-loop run sprint-refine-and-implement --context max_issues=N` demonstrably caps the child's issue set at N, covered by a test.
-- [ ] If wired: the default is `100`, matching `auto-refine-and-implement.yaml`, so an unset knob changes nothing.
-- [ ] If wired: `LOOPS_REFERENCE.md` documents it again; if closed, the doc stays silent.
-- [ ] `ll-loop validate sprint-refine-and-implement` passes.
+- [x] A decision is recorded: wire it, or close as won't-fix with the rationale. — closed as won't-fix; see **Resolution**.
+- [x] ~~If wired: `ll-loop run sprint-refine-and-implement --context max_issues=N` demonstrably caps the child's issue set at N, covered by a test.~~ — N/A, not wired.
+- [x] ~~If wired: the default is `100`, matching `auto-refine-and-implement.yaml`, so an unset knob changes nothing.~~ — N/A, not wired.
+- [x] If wired: `LOOPS_REFERENCE.md` documents it again; if closed, the doc stays silent. — closed; doc stays silent (BUG-3191's deletion stands).
+- [x] `ll-loop validate sprint-refine-and-implement` passes. — verified 2026-08-15, exit 0 (the one WARNING is the child's deliberately-declined `required_inputs`, per `scripts/tests/test_builtin_loops.py:13852`).
+
+## Resolution
+
+**Closed as won't-fix, 2026-08-15.** Decision: do not forward `max_issues`.
+
+The issue's own framing understated the problem — it described the value dying at
+the delegate hop. The real blocker is one level deeper: **on the sprint path the
+child never reads `max_issues` at all**, so forwarding it would still be a no-op.
+
+`auto-refine-and-implement.yaml:127-158` reads `max_issues` in exactly one place,
+the `else` branch of `resolve_set`:
+
+```
+if [ -n "${context.scope}" ]; then
+  LIST=$(... SprintManager.load_or_resolve(arg) ...)   # no cap applied
+else
+  LIST=$(ll-issues next-issues | head -n ${context.max_issues} | ...)
+fi
+```
+
+The sprint alias always takes the `if` branch:
+
+- `sprint-refine-and-implement.yaml:13` — `required_inputs: ["sprint_name"]`
+- `scripts/little_loops/cli/loop/run.py:321-322` enforces that pre-flight —
+  present **and non-empty**, exit 1 otherwise
+- the `delegate` `with:` block passes `scope: "${context.sprint_name}"`
+
+So `scope` is non-empty by construction, the set comes from `SprintManager`
+uncapped, and the `head -n ${context.max_issues}` line is unreachable from this
+loop. Following the Proposed Solution's steps 1–2 would successfully forward the
+value into a variable the active code path never interpolates: `--context
+max_issues=10` would still yield the full sprint. That is the same defect
+BUG-3191 removed from the docs, relocated into YAML — and step 3 would
+re-introduce the identical false promise.
+
+The asymmetry between the two loops is correct design, not a gap. A sprint's
+issue set is defined by `.sprints/<name>.yaml` (or the EPIC's children);
+`max_issues` exists only to bound the *unbounded* case — ranking the open
+backlog. A cap that silently truncated an explicitly named sprint would be
+surprising.
+
+If a concrete need for capping a sprint ever appears, the honest implementation
+is a cap applied **inside** the `if` branch of the child's `resolve_set`, with a
+`truncated N→M` log line so the truncation is visible — a different and larger
+change than context forwarding. File it fresh; do not reopen this.
+
+`LOOPS_REFERENCE.md` stays silent on the knob, per the Scope Boundaries above.
 
 ## Motivation
 
@@ -128,4 +176,4 @@ loop.
 
 ## Status
 
-**Open** | Created: 2026-08-15 | Priority: P4
+**Cancelled** (won't-fix) | Created: 2026-08-15 | Closed: 2026-08-15 | Priority: P4

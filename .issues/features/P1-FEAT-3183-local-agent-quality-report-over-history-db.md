@@ -2,7 +2,7 @@
 id: 3183
 title: Local agent-quality report over history.db
 type: FEAT
-priority: P0
+priority: P1
 status: open
 testable: true
 discovered_date: '2026-08-15'
@@ -96,7 +96,7 @@ draft. It is the wrong foundation on four counts:
 
 1. **Blocked behind a deferred chain.** FEAT-2315 is `status: deferred`, `depends_on: ENH-2317`
    (also deferred), under EPIC-2369 (deferred), alongside FEAT-2316 and ENH-2318 (both deferred).
-   This issue is P0; starting there means unblocking four P3 issues first.
+   This issue is P1; starting there means unblocking four P3 issues first.
 2. **No trend machinery to inherit.** FEAT-2315 is explicitly point-in-time — one
    `--window-days N` lookback rendered as a table. This issue's central requirement (a time series
    per metric) is precisely the part FEAT-2315 does not have.

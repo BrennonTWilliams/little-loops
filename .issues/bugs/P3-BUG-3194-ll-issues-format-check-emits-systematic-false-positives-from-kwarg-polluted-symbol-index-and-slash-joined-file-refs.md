@@ -23,8 +23,8 @@ score_change_surface: 10
 ## Summary
 
 Validating the BUG-3186..3192 issue set surfaced two noisy `ll-issues format-check` gap
-classes; investigating them turned up four distinct findings, three real and one
-working-as-designed:
+classes; investigating them turned up four distinct findings. Three remain here — two real
+and one working-as-designed:
 
 1. **`mislocated_symbol_ref` over-fires on any common word.** The symbol index admits
    keyword arguments and local variables as def-sites, so "exists elsewhere" is satisfied
@@ -32,55 +32,25 @@ working-as-designed:
 2. **`stale_file_ref` misparses a slash-joined pair of filenames** as one path.
 3. **`stale_file_ref` on gitignored-but-present files is correct** — "not git-tracked" is
    the intended predicate. Only the label misleads. No logic change warranted.
-4. **Section lookup is fence-unaware and last-occurrence-wins**, so a `## Section` heading
-   quoted inside a code fence silently overrides the real section. This one inverts the
-   linter's verdict — issues with fully written sections are reported `empty:` and
-   `boilerplate:` — and `format-check` is consumed as a gate by `/ll:confidence-check`,
-   `/ll:ready-issue`, `/ll:refine-issue`, `/ll:wire-issue`, and `/ll:format-issue`.
 
-Findings 1, 2, and 4 are independent fixes in three different modules; they are filed
-together because they were found together and share the `format-check` surface.
+Findings 1 and 2 are independent fixes in two different modules; they are filed together
+because they were found together and share the `format-check` surface. All three are
+noise-level: they add false gaps, none inverts a verdict.
+
+**Finding 4 was split out to BUG-3202** (2026-08-15) — fence-unaware, last-occurrence-wins
+section lookup, which *does* invert `format-check`'s verdict and is what BUG-3193 actually
+depends on. Bundled here it would have been scheduled as noise, and BUG-3193's
+`depends_on` edge would have over-blocked on the three cosmetic findings below. BUG-3193
+now depends on BUG-3202; this issue carries no dependency edge.
 
 ## Implementation Order
 
-**Finding 4 must land first, and should be implemented on its own.** It is the only one
-of the four that inverts a verdict rather than adding noise, and three things depend on
-it:
+**BUG-3202 lands first** — until it does, `format-check`'s verdict on this issue,
+BUG-3192, and BUG-3193 cannot be trusted, because all three quote markdown containing
+`##`-shaped lines. That is a verification prerequisite for confirming Findings 1-3's fixes,
+not a code dependency: nothing in this issue's change sites touches BUG-3202's.
 
-- It gates `/ll:confidence-check`, `/ll:ready-issue`, `/ll:refine-issue`,
-  `/ll:wire-issue`, and `/ll:format-issue`. A false `empty:`/`boilerplate:` points
-  `format-issue` at rewriting sections that are already correct.
-- It removes BUG-3193's downstream harm before BUG-3193 itself is touched (the trailing
-  placeholder scaffold wins the section lookup only because last-occurrence-wins is
-  fence-unaware).
-- Until it lands, `format-check`'s verdict on this issue, BUG-3192, and BUG-3193 cannot
-  be trusted — all three quote markdown containing `##`-shaped lines. BUG-3193 currently
-  escapes a false `empty: Summary` only by luck: the last `## Summary` in its fenced
-  repro happens to be followed by non-boilerplate prose.
-
-Findings 1, 2, and 3 are noise-level and can be batched together afterwards in any order.
-
-**Recommended split**: promote Finding 4 to its own P2 issue and leave 1/2/3 here at P3.
-Bundled under one P3, Finding 4 gets scheduled as noise.
-
-### Split decision (2026-08-15 review)
-
-**The split should happen, and the reason is now concrete rather than stylistic:**
-BUG-3193 carries `depends_on: [BUG-3194]`, but its real dependency is Finding 4 alone. As
-long as all four findings live in one issue, that edge blocks BUG-3193 on three unrelated
-symbol-index and file-ref fixes — the edge over-blocks by construction, and no amount of
-prose in either issue makes the dependency resolver see it.
-
-Two ways to discharge this, in preference order:
-
-1. **Split (preferred).** File Finding 4 as its own P2, repoint BUG-3193's `depends_on` at
-   it, and leave Findings 1/2/3 here at P3 with the `depends_on` edge removed entirely.
-2. **If the split does not happen**, land Finding 4 as the first commit under this issue
-   and treat BUG-3193's edge as satisfied at that commit rather than at issue closure. This
-   is a scheduling convention, not something the tooling enforces — it will read as blocked
-   until this whole issue closes.
-
-Not yet split — this block records the decision so it survives whichever path is taken.
+Findings 1, 2, and 3 are noise-level and can be batched together in any order afterwards.
 
 
 ## Current Behavior
@@ -153,91 +123,24 @@ reads as "this file is missing or outdated", and acting on that reading is what 
 the false claim corrected in BUG-3190 last session. This is a wording fix, not a logic
 fix.
 
-### Finding 4 — section lookup is fence-unaware and last-occurrence-wins (real, highest impact)
+### Finding 4 — moved to BUG-3202
 
-Found while validating this issue and BUG-3193: `_section_body_with_offset`
-(`scripts/little_loops/issue_parser.py:239`) resolves a section with
+Fence-unaware, last-occurrence-wins section lookup in `_section_body_with_offset`
+(`scripts/little_loops/issue_parser.py:239`). Split out on 2026-08-15 because it inverts
+`format-check`'s verdict rather than adding noise, and because BUG-3193 depends on it
+alone. See **BUG-3202** for the full write-up, including the second symptom (fence-blind
+end-boundary scan truncating the *enclosing* section) and the second site
+(`session_log.py:264`).
 
-```
-pattern = rf"^##\s+{re.escape(heading)}\s*$"
-matches = list(re.finditer(pattern, content, re.MULTILINE))
-match = matches[-1]
-```
-
-Three properties combine badly:
-
-- **No fence awareness.** A `## Summary` line inside a fenced code block is
-  indistinguishable from a real heading. Nothing in this function or its callers strips
-  fences first.
-- **Last occurrence wins** — a deliberate contract (docstring at `:245-248`, to support
-  repeatedly-appended `## Confidence Check Notes`).
-- **The end-boundary scan is separately fence-unaware.** `re.search(r"^##\s",
-  content[start:], re.MULTILINE)` (`issue_parser.py:259`) picks the section's terminator
-  by the same fence-blind pattern.
-
-So any issue that *quotes* markdown containing a `## <Section>` line — routine for issues
-about issue formatting, templates, or docs — has that quoted heading silently override its
-real section. Demonstrated on the first draft of BUG-3193, whose Current Behavior section
-quotes a rendered template:
-
-```
-$ ll-issues format-check 3193
-  empty: Summary
-  boilerplate: Current Behavior
-```
-
-Both are false: Summary was written and Current Behavior was several paragraphs. The
-quoted block won. Both issues in this pair had to have their reproduction fences rewritten
-with a `>>` prefix purely to work around this.
-
-#### Finding 4 has a second, wider symptom: the enclosing section is truncated
-
-The fence-blind end-boundary scan is a distinct failure from "the quoted heading wins",
-and it fires more often. Measured against a synthetic body whose `Current Behavior`
-section contains a fenced block quoting a `Summary` heading (headings written with a `>>`
-prefix here so this issue does not reproduce the bug on itself):
-
-```
-content:
-  >> ## Summary            (real)
-  >> Real summary.
-  >> ## Current Behavior   (real)
-  >> Prose before the fence.
-  >> ```
-  >> ## Summary            (quoted, inside the fence)
-  >> placeholder junk
-  >> ```
-  >> More prose after the fence.
-  >> ## Impact             (real)
-
-_section_body(content, "Current Behavior")
-  -> '\nProse before the fence.\n\n```\n'          <-- truncated at the fence
-
-_section_body(content, "Summary")
-  -> '\nplaceholder junk\n```\n\nMore prose after the fence.\n\n'
-```
-
-The second line is the already-documented symptom. The first is new: `Current Behavior`
-is cut off at the opening fence, because the quoted heading terminates it. This fires
-**even when the quoted heading is not itself a checked section** — any fenced
-`##`-shaped line truncates whatever section encloses it, and short-truncated sections are
-what `boilerplate:` and `empty:` actually grade. Both halves are fixed by the same
-fence-aware pass, but a fix that only disambiguates *which* heading match wins, without
-also making the terminator scan fence-aware, leaves this half firing.
-
-The same mechanism is what converts BUG-3193's duplicate scaffold from cosmetic to
-verdict-inverting: the trailing placeholder copy wins the lookup, so format-check grades
-the placeholder instead of the real content. Fixing Finding 4 removes the downstream harm
-of BUG-3193 even before BUG-3193 itself is fixed — the two are independent but
-compounding.
+Relevant here only as a verification prerequisite: this issue's own `format-check` output
+cannot be trusted until BUG-3202 lands.
 
 > **Note for anyone running `format-check` on this issue.** It reports
 > `stale_file_ref` on `ARCHITECTURE.md/CONTRIBUTING.md`, `docs/demo/scenarios.md`, and
 > `.ll/ll-continue-prompt.md` — the three refs quoted above as evidence. Those are the
 > very false positives this issue documents (Findings 2 and 3), so the gaps are expected
 > and must not be "fixed" by removing the evidence. This issue is otherwise structurally
-> compliant. Relatedly, BUG-3193's reproduction block had to be rewritten with a `>>`
-> prefix instead of literal `## ` headings purely to work around Finding 4.
+> compliant.
 
 ## Steps to Reproduce
 
@@ -285,14 +188,11 @@ PY
 
 Baseline is 10. The `\s+=\s+` narrowing takes it to 8 — still resolving, still firing.
 
-**Finding 4** — write any issue whose body quotes a markdown block containing a
-`## Summary` line inside a code fence, then run `ll-issues format-check <id>`. It reports
-`empty: Summary` even though the real Summary is written, because the fenced heading is
-the last match.
+(Finding 4's reproduction moved to BUG-3202.)
 
 ## Program Design
 
-Four independent change sites in three modules. They share only the `format-check`
+Three independent change sites in three modules. They share only the `format-check`
 reporting surface, so they can be implemented and landed separately.
 
 ### Signatures
@@ -301,7 +201,6 @@ reporting surface, so they can be implemented and landed separately.
 def extract_symbol_claims(body: str, ref_index: RefIndex) -> set[SymbolClaim]
 def symbol_resolves_elsewhere(index: SymbolIndex, file: str, symbol: str) -> bool
 def _extract_symbols(path: Path) -> set[str] | None
-def _section_body_with_offset(content: str, heading: str) -> tuple[str, int] | None
 def _print_gaps(gaps: FormatGaps) -> None
 ```
 
@@ -324,9 +223,6 @@ repo-relative path and accepts the slash-joined span as one path.
 loop in `_print_gaps`, so renaming the key means touching `FormatGaps`, both enumerations
 (`:64`, `:193`), and `_print_gaps` together. Rewording is a one-line change.
 
-**Finding 4** is `_section_body_with_offset` (`scripts/little_loops/issue_parser.py:239`).
-Fence-stripping goes there so every section-resolving caller inherits the fix.
-
 ### Types
 
 `FormatGaps` (`scripts/little_loops/issue_parser.py:276`) — the per-class gap lists;
@@ -336,13 +232,10 @@ only Finding 3's optional rename touches it. `SymbolClaim` (`symbol_claims.py:93
 ### Call Path
 
 - `cmd_format_check` — CLI entry; calls `check_format_gaps` then `_print_gaps`.
-- `check_format_gaps` — populates `FormatGaps`; calls `_section_body` for every required
-  section (Finding 4's blast radius) and drives the symbol/file-ref checks.
-- `_section_body` → `_section_body_with_offset` — Finding 4 change site.
+- `check_format_gaps` — populates `FormatGaps`; drives the symbol/file-ref checks.
 - `build_symbol_index` → `_build_reverse_index` → `_extract_symbols` — Finding 1's index
   side.
 - `extract_symbol_claims` → `symbol_resolves_elsewhere` — Finding 1's claim side.
-- `_in_fence` and `_CODE_FENCE` — the existing fence-span helpers to reuse for Finding 4.
 - `_print_gaps` — Finding 3 change site.
 
 Consumers that would inherit any fix: `/ll:confidence-check`, `/ll:ready-issue`,
@@ -352,17 +245,15 @@ Consumers that would inherit any fix: `/ll:confidence-check`, `/ll:ready-issue`,
 
 _Added by `/ll:refine-issue` — 2026-08-15 — based on codebase analysis:_
 
-- **Test coverage gap (all four findings)**: `scripts/tests/test_symbol_claims.py` covers claim-grammar forms, fence exclusion for claims, and `symbol_resolves_elsewhere` against hand-built indices, but no test constructs a kwarg-call-argument-shaped line (e.g. `enabled=data.get("enabled", True)`) and asserts whether `_extract_symbols`/`_MODULE_CONSTANT_RE` admits it (Finding 1). `scripts/tests/test_text_utils.py` has no test of the shape `"A.md/B.md"` against `resolve_ref_path`/`suffix_match_candidates` (Finding 2). No test exercises `_section_body_with_offset` with a fenced code block quoting a `## Heading` line (Finding 4) — `_strip_code_fences` has coverage only for the `IssueParser` methods that already call it, not for `_section_body_with_offset`.
+- **Test coverage gap (both remaining findings)**: `scripts/tests/test_symbol_claims.py` covers claim-grammar forms, fence exclusion for claims, and `symbol_resolves_elsewhere` against hand-built indices, but no test constructs a kwarg-call-argument-shaped line (e.g. `enabled=data.get("enabled", True)`) and asserts whether `_extract_symbols`/`_MODULE_CONSTANT_RE` admits it (Finding 1). `scripts/tests/test_text_utils.py` has no test of the shape `"A.md/B.md"` against `resolve_ref_path`/`suffix_match_candidates` (Finding 2).
 - **Related prior issues on this surface**: BUG-3063 (stale-symbol-ref forward-looking design claims) and ENH-3064 (checked directly — cancelled, addressed `stale_symbol_ref` *scoping* away from forward-looking sections, a different mechanism than this issue's `mislocated_symbol_ref` kwarg-index-pollution; no overlap). BUG-2956 (format-check ignores `program_design_not_applicable` opt-out) touches the same `format_check.py` orchestrator but a different gap class.
-- **Finding 4 downstream blast radius confirmed**: `_symbol_claim_scope_text()` (`issue_parser.py:952-959`, feeds `stale_symbol_ref`/`mislocated_symbol_ref`) and `_behavior_parity_scope_text()` (`:930-940`, feeds `missing_behavior_parity`) both concatenate sections via the same fence-unaware `_section_body`, so Finding 4's fix affects those gap classes too, not only the `empty:`/`boilerplate:` verdicts already cited.
+- **Interaction with BUG-3202**: `_symbol_claim_scope_text()` (`issue_parser.py:952-959`) scopes `stale_symbol_ref`/`mislocated_symbol_ref` claims by concatenating sections via the fence-unaware `_section_body`. BUG-3202's fix therefore changes *which claims Finding 1's filters see* — the two interact through the claim scope even though their change sites are disjoint. Re-measure Finding 1's backlog-wide baseline after BUG-3202 lands, before implementing the filters.
 
 _Wiring pass added by `/ll:wire-issue`:_
-- **`_section_body`/`_section_body_with_offset` consumers beyond `format-check`**: `scripts/little_loops/cli/issues/normalize.py:195,205`, `scripts/little_loops/cli/issues/check_acceptance_criteria.py:59,61`, and `scripts/little_loops/cli/issues/size.py:82,85` all import and call `_section_body` directly — each inherits Finding 4's fence-awareness fix (or lack thereof) for its own section resolution, confirmed by direct grep.
 - **`check_format_gaps` consumers beyond the five named skills**: `scripts/little_loops/cli/issues/check_design.py:31,38` (Program Design specificity gate, "mirroring `check_format_gaps()`'s existing fail-open" per its own docstring) and `scripts/little_loops/cli/issues/sequence.py:18` ("mirrors the drift half of `issue_parser.check_format_gaps()`'s" gap detection) both confirmed by grep to call/reference `check_format_gaps` directly, independent of `cmd_format_check`.
-- **`stale_symbol_ref` is scored, not just reported**: `skills/confidence-check/SKILL.md:196,201` and `skills/confidence-check/rubric.md:247` key on `stale_symbol_ref` (and `stale_cli_flag`) by name and apply a hard scoring cap (row value `10`) regardless of otherwise-higher scores — confirmed by direct grep. Since `stale_symbol_ref` shares the same fence-unaware `_symbol_claim_scope_text()` helper Finding 4 fixes, this fix changes confidence-check's real-world cap-trigger frequency even though no literal string in `rubric.md` needs editing.
-- **`docs/reference/API.md`'s `check_format_gaps` doc block** (`#### check_format_gaps`, prose describing all twenty-one gap classes) — confirmed present and asserts, for `stale_file_ref`: "a `/`-qualified path with no exact or unique-suffix match against tracked files, i.e. genuine drift" (directly contradicted by Finding 3's relabeling) and for `stale_symbol_ref`/`mislocated_symbol_ref`: "matched by H2 span — BUG-3063 A1" with no fence-awareness caveat (incomplete after Finding 4). Needs a parallel update alongside any `docs/reference/CLI.md` change.
+- **`stale_symbol_ref` is scored, not just reported**: `skills/confidence-check/SKILL.md:196,201` and `skills/confidence-check/rubric.md:247` key on `stale_symbol_ref` (and `stale_cli_flag`) by name and apply a hard scoring cap (row value `10`) regardless of otherwise-higher scores — confirmed by direct grep. This is why Finding 1's filters must suppress claims rather than reroute them into `stale_symbol_ref` (see Expected Behavior § "The suppression must happen at the claim layer"): a reroute converts a noisy advisory gap into a confidence-gate failure. Note `stale_symbol_ref`'s scope is also affected by BUG-3202, independently of anything here.
+- **`docs/reference/API.md`'s `check_format_gaps` doc block** (`#### check_format_gaps`, prose describing all twenty-one gap classes) — confirmed present and asserts, for `stale_file_ref`: "a `/`-qualified path with no exact or unique-suffix match against tracked files, i.e. genuine drift" — directly contradicted by Finding 3's relabeling. Needs a parallel update alongside any `docs/reference/CLI.md` change. (The same block's "matched by H2 span — BUG-3063 A1" framing for `stale_symbol_ref`/`mislocated_symbol_ref` goes stale under BUG-3202, not under anything here — coordinate if both land in one pass.)
 - **Second consumer of `resolve_ref_path`/`classify_file_ref` beyond format-check**: `scripts/little_loops/issues/research_triage.py` (backs `/ll:refine-issue` Step 3 axis triage, ENH-2971) — its coverage-fraction computation changes for any issue body containing a slash-joined filename pair, a behavioral side effect of Finding 2's fix independent of `format-check`'s own output.
-- **`_section_body_with_offset` also backs option-locating helpers** not named in the issue: `locate_enumerable_options`/`_locate_directive_alternatives`/`count_enumerable_options` (`issue_parser.py:1251,1319,1328`), consumed by `scripts/little_loops/cli/issues/check_decidable.py`, `scripts/little_loops/cli/issues/locate_options.py`, and `scripts/little_loops/issues/fold_research_findings.py`. Finding 4's fence-stripping changes option-counting/location behavior for any issue whose `## Proposed Solution` (or fallback sections) quotes a fenced block containing `##`-shaped lines.
 
 ## Expected Behavior
 
@@ -522,25 +413,6 @@ comment naming the false-positive class it guards, applied as a guard at the poi
 Reproduce the measurement above after implementing, and confirm the reported `enabled`,
 `ec`, and `codex` hits disappear entirely rather than reappearing under the other gap key.
 
-**Finding 4** — strip fenced code blocks before resolving section headings, for **both**
-the heading match and the end-boundary scan (see the second-symptom subsection above).
-The codebase already has fence-span machinery to reuse: `_CODE_FENCE`
-(`little_loops/text_utils.py`, used by `symbol_claims._in_fence` at `:102`) and the
-fence-blanking pass at `issue_parser.py:2389`. Keep the last-occurrence-wins contract for
-real headings — it is load-bearing for `## Confidence Check Notes` — and only exclude
-fenced matches.
-
-**Implementation constraint — the returned body must be sliced from the original
-content.** `_section_body_with_offset` returns `(body, start_offset)` where *body* is a
-slice of the input. If the fix blanks fences and then slices the *blanked* text, every
-section whose content is predominantly a code block comes back near-empty, and
-`check_format_gaps` reports `empty:` on it — trading one systematic false positive for
-another, on exactly the issue-about-tooling bodies this finding is meant to rescue. Use
-the fence-blanked text **only to locate the heading offset and the terminator offset**,
-then slice `content` (the original) at those offsets. Both offset-preserving idioms
-catalogued below (span-exclusion via `_in_fence`, line-blanking via `_strip_code_fences`)
-support this; `text_utils.strip_code_fences` does not, because it shifts offsets.
-
 **Finding 2** — a backticked span that is not a single well-formed path should not resolve
 as one. Scope this as **"decline on any span containing shell/glob metacharacters"**, not
 as "split on `/`" — the slash-joined pair is one shape of a recurring class, not the whole
@@ -582,46 +454,30 @@ alone is a one-line change. Prefer the reword unless a consumer audit is cheap.
 _Added by `/ll:refine-issue` — 2026-08-15 — based on codebase analysis:_
 
 - **Finding 1 exclusion-constant convention**: every existing false-positive exclusion in `symbol_claims.py` (`_LINE_NUMBER_REF_RE:53-56`, `_EXTENSION_LIKE_RE:59-65`, `_MAX_ATTRIBUTION_DISTANCE:73-78`) is a separately named module-level `re.compile(...)` constant, preceded by a comment naming the false-positive class it guards against, and applied as an early-continue/guard at the point of use rather than folded into the defining regex itself. A new kwarg-exclusion filter should follow this same shape (named constant + comment + guard-site application), matching how `_MODULE_CONSTANT_RE`'s own BUG-3063 D1 comment documents its accepted precision trade-offs.
-- **Two coexisting, non-identical fence idioms** are available for Finding 4, and they are not interchangeable: (1) span-exclusion — `_CODE_FENCE.finditer(body)` once, then a small `_in_fence(start, end, fence_spans)` predicate tests candidate match positions (independently reimplemented in both `symbol_claims.py:102-103` and `issues/prose_deps.py`, imported into `issue_parser.py:709-716` for the `soft_dep_hard_edge` scan); (2) line-based blanking — `IssueParser._strip_code_fences` (`issue_parser.py:2369-2392`) replaces fenced lines with blank lines while preserving line numbers, used ahead of two other extraction methods (`:2291`, `:2333`) but not ahead of `_section_body_with_offset`. A third variant, `text_utils.strip_code_fences` (`:58-65`), collapses fence text to nothing rather than preserving line positions — offsets shift, unlike the other two. `_section_body_with_offset` returns a `(body, start_offset)` tuple consumed positionally by callers, so an offset-preserving approach (span-exclusion or line-blanking) fits its existing contract; `text_utils.strip_code_fences`'s offset-shifting approach would not.
 - **Finding 3 rewording precedent**: `FormatGaps` field names have never been renamed in the codebase's history (only additions, each with a comment citing the introducing issue ID — mirrored in `test_ll_issues_format_check.py`'s pinned expected-JSON fixture). Entry-string wording is added at one of two independent sites depending on whether it needs to appear in JSON output too: baked into the value at construction time (`issue_parser.py:787-791`, e.g. `stale_symbol_ref`/`mislocated_symbol_ref` entries), or appended only at print time as text-only supplementary guidance (`format_check.py:167-183`, e.g. the existing `mislocated_symbol_ref`/`soft_dep_hard_edge` parentheticals). A pure reword (Finding 3's stated preference) fits the print-time-only pattern; a key rename would touch all three synchronized sites (`FormatGaps` field, `to_dict()`, `_print_gaps`) plus the pinned JSON fixture.
 
 ## Impact
 
-- **Priority**: P3 - Driven by Finding 4. `format-check` is not advisory: it gates
+- **Priority**: P3 - All three findings add false gaps; none inverts a verdict (the
+  verdict-inverting finding was split out as BUG-3202, which is P2). Findings 1-2 are
+  noise-level but have already caused one real downstream error — the false claim
+  corrected in BUG-3190 — and `format-check` is consumed as a gate by
   `/ll:confidence-check`, `/ll:ready-issue`, `/ll:refine-issue`, `/ll:wire-issue`, and
-  `/ll:format-issue`, and a false `empty:`/`boilerplate:` verdict points `format-issue` at
-  rewriting sections that are already correct. Findings 1-2 are noise-level on their own
-  (P4-ish) but have already caused one real downstream error — the false claim corrected
-  in BUG-3190. Finding 3 needs a wording change only.
-- **Effort**: Small - Finding 3 is a few lines and Finding 2 a fail-open predicate. Finding
-  4 is a fence-strip reusing `_CODE_FENCE`/`_in_fence`. Finding 1 is a resolves-in-N-files
-  cap plus test cases; the module has an established pattern for exactly this kind of pin.
-  Note Finding 1's effort estimate assumes the cap — the cheaper-looking regex narrowing
-  was measured insufficient (see Expected Behavior) and would be effort spent for no
-  change in the reported output.
-- **Risk**: Low - All four narrow what is reported. The stated risk is losing a true
-  positive: Finding 1's discriminator must keep `install_qwen_adapter`-class hits firing,
-  and Finding 4 must preserve last-occurrence-wins for genuine repeated headings
-  (`## Confidence Check Notes`).
+  `/ll:format-issue`, so noise is not free. Finding 3 needs a wording change only.
+- **Effort**: Small - Finding 3 is a few lines and Finding 2 a fail-open predicate.
+  Finding 1 is three layered claim-drop predicates plus test cases; the module has an
+  established pattern for exactly this kind of pin. Note Finding 1's effort estimate
+  assumes all three predicates — the cheaper-looking regex narrowing was measured
+  insufficient (see Expected Behavior) and would be effort spent for no change in the
+  reported output.
+- **Risk**: Low - All three narrow what is reported. The stated risk is losing a true
+  positive: Finding 1's discriminators must keep `install_qwen_adapter`-class hits firing.
 - **Breaking Change**: No, unless Finding 3 is resolved by renaming the gap key rather
   than rewording the message.
 
 ## Acceptance Criteria
 
 Grouped by finding, since they land separately (see Implementation Order).
-
-**Finding 4 (lands first, on its own):**
-
-- [ ] A `##`-shaped line inside a fenced code block does not win section resolution over a
-      real heading of the same name — `_section_body_with_offset` returns the real one.
-- [ ] A fenced `##`-shaped line does not terminate the section that encloses it: the
-      enclosing section's body extends past the fence to the next *real* heading.
-- [ ] The returned body is sliced from the original content, not from fence-blanked text —
-      a section whose content is entirely a code fence is not reported `empty:`.
-- [ ] Last-occurrence-wins is preserved for genuine repeated headings
-      (`## Confidence Check Notes`).
-- [ ] `ll-issues format-check` on this issue, BUG-3192, and BUG-3193 reports no
-      `empty:`/`boilerplate:` gap for a section that is in fact written.
 
 **Finding 1:**
 
@@ -687,12 +543,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_symbol_claims.py` (`repo`/`build_symbol_index` fixture, lines 30-40, 160-180) — new test to write: a kwarg-call-argument-shaped line (e.g. `enabled=data.get("enabled", True),`), asserting `_extract_symbols`/`symbol_exists_in_file` does not admit it as a symbol (Finding 1). Follow the fixture shape used at lines 160-180.
 - `scripts/tests/test_text_utils.py::TestMirrorTieBreak` (lines 266-382, inline `RefIndex(by_basename={...})` construction) — new test to write: `resolve_ref_path("ARCHITECTURE.md/CONTRIBUTING.md", index)` should not resolve as a single path (Finding 2). Model on `test_genuine_non_mirror_ambiguity_still_declines` (lines 301-312)'s two-assertion pattern. **Add a second case for the brace-expansion shape** — `resolve_ref_path(".gemini/skills/{capture-issue,scope-epic}/SKILL.md", index)` must also decline; a `/`-split-only fix passes the first case and fails this one, so both are needed to pin Finding 2's corrected scope.
-- `scripts/tests/test_issue_parser.py::test_with_offset_returns_start_of_last_match` (~4352-4363) — shows the exact direct-import call shape (`from little_loops.issue_parser import _section_body_with_offset`) to reuse for a new fenced-heading test (Finding 4): construct `content` with a `## Summary` line inside a fenced code block plus a real `## Summary` section, assert the returned body/offset points at the real one. Add a companion test confirming last-occurrence-wins is preserved for genuine (un-fenced) repeats, e.g. `## Confidence Check Notes`.
 - `scripts/tests/test_ll_issues_format_check.py::test_clean_issue_json_output` (lines 302-362) — exact-dict-equality fixture over all `FormatGaps` keys with empty-list values; confirmed **not** sensitive to Finding 3's message-wording reword (only to a key rename, which the issue's stated preference avoids). No edit needed under the print-time-only reword path.
 - `scripts/tests/test_symbol_cli_claim_sweep.py::test_symbol_and_cli_flag_claim_sweep_report_only` (line 72) — repo-wide ceiling assert (`total_symbol_hits <= 18`); Finding 1's fix will lower the real count but won't fail this `<=` ceiling. Its docstring's measured-baseline comment (lines 7-13) becomes a stale number worth updating (not test-enforced).
 - No existing test guards that `install_qwen_adapter`-class true positives keep firing after Finding 1's discriminator narrows kwarg/local noise — new regression test to write alongside `test_feat3048_symbol_cli_claim_gaps.py`'s existing `mislocated_symbol_ref` tests (~144-171, 225-315): a real multi-word snake_case symbol claimed against a file that doesn't define it but resolves via a genuine def-site elsewhere, asserting `gaps.mislocated_symbol_ref` still fires.
 - **Finding 1's suppression test must assert on both gap keys.** `issue_parser.py:785-791` is an if/else, so a discriminator implemented in the wrong place reroutes a suppressed `mislocated_symbol_ref` into `stale_symbol_ref` and a test asserting only `symbol not in gaps.mislocated_symbol_ref` passes on a regression. Assert absence from `gaps.stale_symbol_ref` in the same test.
-- **Finding 4 needs a third test beyond the two above**: a section whose body is entirely a fenced code block must not be reported `empty:` — this is what catches a fix that returns the fence-blanked body instead of slicing the original. Pair it with a test asserting the *enclosing* section is not truncated at a fenced `##`-shaped line (the end-boundary half), which is separate from the which-heading-wins assertion.
 
 ## Status
 

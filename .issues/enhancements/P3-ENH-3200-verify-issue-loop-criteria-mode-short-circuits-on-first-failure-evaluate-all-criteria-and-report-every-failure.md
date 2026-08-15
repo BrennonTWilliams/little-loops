@@ -137,6 +137,7 @@ _Added by `/ll:confidence-check` on 2026-08-15_
 - Open Decision #3 (whether `_adversarial_states()` gets the same no-short-circuit treatment) has no stated default or lean, unlike Decisions #1 and #2 which each carry an explicit recommendation/assumed default — pick one explicitly before implementation to avoid a half-changed adversarial mode.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-15T20:36:25 - `94c0eb90-8c6b-4ad6-ab84-c1a6874ad15f.jsonl`
 - Split from ENH-3185 - 2026-08-15
 - Pre-implementation review - 2026-08-15 - replaced the single-pass multi-check-block framing with the no-short-circuit fix; rationale recorded in History. Effort Small (was Medium), Risk Low (was Medium), no longer a breaking change, hard `depends_on: ENH-3185` removed.
 

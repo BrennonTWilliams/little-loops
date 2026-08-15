@@ -2,7 +2,7 @@
 id: 3182
 title: Deterministic verification-evidence bundle from verify-loop runs
 type: FEAT
-priority: P1
+priority: P2
 status: open
 discovered_date: '2026-08-15'
 labels:

@@ -16,7 +16,7 @@ verify_verdict: NON_VALID
 budget, not a per-issue one. `ll-auto` passes it separately to every
 `run_claude_command` call in an issue's lifecycle, so the real per-issue worst
 case is a multiple of the configured value with no ceiling anywhere. Add an
-`automation.max_issue_wall_clock_time` ceiling mirroring the one `sprints`
+"automation.max_issue_wall_clock_time" ceiling mirroring the one `sprints`
 already has.
 
 **Scope note (2026-08-12):** the "raise the default timeout" half of this ask
@@ -42,8 +42,8 @@ a single issue can legitimately consume 6+ full timeout budgets — roughly 6
 hours at the current default — and nothing tracks or caps the aggregate.
 
 `sprints` already solves this: `sprints.max_issue_wall_clock_time` (default
-2700, `config-schema.json:965-969`) is a hard per-issue ceiling enforced by the
-sequential dispatch loop at `cli/sprint/run.py:91`, which records
+2700, `config-schema.json:1063-1068`) is a hard per-issue ceiling enforced by
+the sequential dispatch loop at `cli/sprint/run.py:91`, which records
 `WALL_CLOCK_TIMEOUT` and moves to the next issue. `automation` has no
 equivalent.
 
@@ -56,7 +56,7 @@ committed.
 1. ~~`automation.timeout_seconds` defaults to **5400**~~ — already done: the
    default was raised to **7200** in commit `c4a6ef10`
    (`config/automation.py:21`), superseding this item's original ask.
-2. A new `automation.max_issue_wall_clock_time` caps the **total** elapsed time
+2. A new "automation.max_issue_wall_clock_time" caps the **total** elapsed time
    across all phases for one issue. When breached, `ll-auto` stops that issue,
    records a distinct failure reason, and proceeds to the next one.
 3. The two interact predictably: the per-invocation timeout bounds a single
@@ -177,7 +177,7 @@ line citations had drifted ~10 lines from file growth and were refreshed
 (848/922/1123/1254/1460 for the direct sites, 215/358/540 for the
 `run_with_continuation` wrappers; `automation.py:114` → `:122` for the
 `ParallelConfig` fallback). The remaining ask — a distinct
-`automation.max_issue_wall_clock_time` hard ceiling — is still open; only
+"automation.max_issue_wall_clock_time" hard ceiling — is still open; only
 `sprints.max_issue_wall_clock_time` (`config/features.py:388`) exists today.
 
 ## Session Log

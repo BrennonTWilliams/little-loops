@@ -32,8 +32,8 @@ whether the run outcome improved after one.
   `EvaluationResult`, and the per-task counter (FEAT-3038) is ephemeral state
   scoped to a run.
 - `.ll/history.db` already records `loop_events`, `issue_events`, `cli_events`,
-  `usage_events`, `orchestration_runs`, and more via
-  `scripts/little_loops/session_store/schema.py` + `writers.py`, and
+  "usage_events" (`schema.py:497`), "orchestration_runs" (`schema.py:527`), and
+  more via `scripts/little_loops/session_store/schema.py` + `writers.py`, and
   `history_reader.py` is the typed read surface — but nothing records escalation
   decisions.
 - There is consequently no way to evaluate the design's central claim: that a
@@ -67,7 +67,8 @@ Follow the existing table-plus-writer-plus-reader pattern rather than inventing
 a parallel store:
 
 1. `CREATE TABLE IF NOT EXISTS advisor_consults` in `session_store/schema.py`,
-   alongside `usage_events` and `orchestration_runs`.
+   alongside "usage_events" (`schema.py:497`) and "orchestration_runs"
+   (`schema.py:527`).
 2. A writer in `session_store/writers.py`, called from
    `little_loops.advisor.consult()` — one write per consult attempt, issued or
    skipped, never on the caller's critical path (a failed write logs and is
@@ -115,8 +116,8 @@ action, never automatically.
 
 ### Similar Patterns
 
-- `usage_events` / `orchestration_runs` — the closest existing shape (a
-  per-invocation row with cost fields).
+- "usage_events" (`schema.py:497`) / "orchestration_runs" (`schema.py:527`) —
+  the closest existing shape (a per-invocation row with cost fields).
 
 ### Tests
 

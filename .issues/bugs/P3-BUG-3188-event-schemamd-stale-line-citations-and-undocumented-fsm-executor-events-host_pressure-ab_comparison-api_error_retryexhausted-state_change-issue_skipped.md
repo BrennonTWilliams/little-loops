@@ -26,7 +26,7 @@ completed_at: '2026-08-15T19:31:32Z'
   - Note: the file is `scripts/little_loops/transport.py`, **not** `scripts/little_loops/events/transport.py` — confirm the doc's path prefix while editing.
 - Line 81: the `pre_compact` per-intent note states unconditionally that it "Returns `LLHookResult(exit_code=2, ...)`" — omits the ENH-2341 SELFCOMPACT rubric gate, where `handle()` returns `exit_code=0` (no state write, no feedback) when `rubric_cfg.enabled` and the trajectory fails the rubric.
 - Line 83: the `session_end` per-intent note says it "reads no payload keys" then in the same breath says it reads `payload.cwd` — self-contradictory. It also doesn't mention this intent is bound to Claude Code's `SessionStart` event (not `SessionEnd`), per `hooks/hooks.json` and the `sweep_stale_refs.py` docstring (re-homed due to upstream `SessionEnd` timeout bug, anthropics/claude-code#32712/#41577).
-- StateManager section (~755-790): missing the `state.issue_skipped` event (`StateManager` mark-skipped path, `scripts/little_loops/state.py:230-232`).
+- StateManager section (~755-790): missing the `"state.issue_skipped"` event (a string literal passed to `self._emit()` inside `StateManager.mark_skipped()`, `scripts/little_loops/state.py:230-232` — line numbers confirmed current).
 - No section or Quick Reference row exists for several FSM executor-emitted events: `host_pressure`, `host_pressure_relieved`, `host_pressure_abort` (`scripts/little_loops/fsm/host_guard.py:33-35`, emitted in `executor.py`), `host_budget_exceeded` (`host_guard.py:38`), `request_path_downgrade` (`executor.py:2829`), `ab_comparison` (`executor.py:3021`), `api_error_retry`/`api_error_exhausted` (`executor.py:3458,3467` — referenced by name elsewhere in the doc's `infra_retry` section but never documented as first-class entries), and `state_change` (emitted by the Unix-socket transport's seed callback, `transport.py:592`).
 
 ## Expected Behavior
@@ -62,7 +62,7 @@ where no enclosing symbol exists.
 ## Acceptance Criteria
 
 - [ ] No `path.py:NNN` line-number citation remains in the sections this issue touches; each is replaced by a symbol anchor per the table above.
-- [ ] `EVENT-SCHEMA.md` documents `host_pressure`, `host_pressure_relieved`, `host_pressure_abort`, `host_budget_exceeded`, `request_path_downgrade`, `ab_comparison`, `api_error_retry`, `api_error_exhausted`, `state_change`, and `state.issue_skipped` — each with a payload shape and a Quick Reference row.
+- [ ] `EVENT-SCHEMA.md` documents `host_pressure`, `host_pressure_relieved`, `host_pressure_abort`, `host_budget_exceeded`, `request_path_downgrade`, `ab_comparison`, `api_error_retry`, `api_error_exhausted`, `state_change`, and `"state.issue_skipped"` — each with a payload shape and a Quick Reference row.
 - [ ] Line 81's `pre_compact` note records the ENH-2341 SELFCOMPACT rubric gate (`exit_code=0` when the trajectory fails the rubric).
 - [ ] Line 83's `session_end` note is internally consistent (it *does* read `payload.cwd`) and states that the intent is bound to Claude Code's `SessionStart` event, with the upstream-bug rationale.
 - [ ] `transport.py` citations use the correct path (`scripts/little_loops/transport.py`).

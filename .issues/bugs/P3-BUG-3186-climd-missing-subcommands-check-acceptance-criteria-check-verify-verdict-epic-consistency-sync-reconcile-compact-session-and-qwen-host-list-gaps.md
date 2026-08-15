@@ -20,10 +20,10 @@ completed_at: '2026-08-15T19:31:32Z'
 
 ## Current Behavior
 
-- `docs/reference/CLI.md` has no `####` entry for `ll-issues check-acceptance-criteria` (`scripts/little_loops/cli/issues/check_acceptance_criteria.py`, ENH-3031), `ll-issues check-verify-verdict` (`scripts/little_loops/cli/issues/check_verify_verdict.py`, ENH-3031), or `ll-issues epic-consistency` / alias `ec` (`scripts/little_loops/cli/issues/epic_consistency.py`).
+- `docs/reference/CLI.md` has no `####` entry for `ll-issues check-acceptance-criteria` (`scripts/little_loops/cli/issues/check_acceptance_criteria.py`, ENH-3031), `ll-issues check-verify-verdict` (`scripts/little_loops/cli/issues/check_verify_verdict.py`, ENH-3031), or `ll-issues epic-consistency` / alias "ec" (`scripts/little_loops/cli/issues/epic_consistency.py`, line 268 — the alias is a string literal in an `aliases=[...]` list, not a def-site symbol).
 - The `ll-sync` section lists subcommands but omits `ll-sync reconcile` ("Promote feature-branch issues to done when their PR is merged", `scripts/little_loops/cli/sync.py:96-99`).
 - `ll-compact-session` is a real installed entry point (`scripts/pyproject.toml`, `little_loops.cli:main_compact_session`) with no `### ll-compact-session` section anywhere in CLI.md.
-- `qwen` is a fully-wired host (`install_qwen_adapter` in `scripts/little_loops/init/cli.py`, identical treatment to `claude-code`/`codex`/`kimi-code`) but is missing from the "fully wired hosts" list in `docs/reference/CLI.md:37,49`, `README.md`, `docs/guides/GETTING_STARTED.md:101`, `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:364` (`--cross-host` probe order), and `docs/reference/CONFIGURATION.md:1234` (`orchestration.host_cli` enum).
+- "qwen" is a fully-wired host (`install_qwen_adapter` in `scripts/little_loops/init/writers.py`, identical treatment to "claude-code"/"codex"/"kimi-code") but is missing from the "fully wired hosts" list in `docs/reference/CLI.md:37,49`, `README.md`, `docs/guides/GETTING_STARTED.md:101`, `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:364` (`--cross-host` probe order), and `docs/reference/CONFIGURATION.md:1234` (`orchestration.host_cli` enum).
 
 ### The host-list problem is broader than a missing `qwen` (amended 2026-08-15)
 
@@ -33,35 +33,35 @@ into one undefined phrase, "fully wired."** Verified 2026-08-15:
 
 | Axis | Source of truth | Members |
 |---|---|---|
-| **Orchestration runners** — valid `orchestration.host_cli` / `LL_HOST_CLI` values | `_HOST_RUNNER_REGISTRY`, `scripts/little_loops/host_runner.py` | `claude-code`, `codex`, `opencode`, `pi`, `gemini`, `omp`, `kimi-code`, `qwen` (8) |
-| **`ll-init --hosts` accepted values** | `_KNOWN_HOSTS`, `scripts/little_loops/init/cli.py` (`--hosts` help at `:962-971`) | `claude-code`, `codex`, `opencode`, `kimi-code`, `pi`, `qwen` (6 — **no `gemini`, no `omp`**) |
-| **Hook-adapter installers that actually write a file** | `install_*_adapter` in `scripts/little_loops/init/writers.py` | `codex`, `kimi-code`, `qwen` (3). `claude-code` needs no installer — plugin hooks fire natively. `opencode`/`pi` hit explicit "adapter not yet available" branches (`init/cli.py`, `opencode` → info branch, `pi` → EPIC-1622). |
+| **Orchestration runners** — valid `orchestration.host_cli` / `LL_HOST_CLI` values | `_HOST_RUNNER_REGISTRY`, `scripts/little_loops/host_runner.py` | "claude-code", "codex", "opencode", "pi", "gemini", "omp", "kimi-code", "qwen" (8) |
+| **`ll-init --hosts` accepted values** | `_KNOWN_HOSTS`, `scripts/little_loops/init/cli.py` (`--hosts` help at `:962-971`) | "claude-code", "codex", "opencode", "kimi-code", "pi", "qwen" (6 — **no "gemini", no "omp"**) |
+| **Hook-adapter installers that actually write a file** | `install_*_adapter` in `scripts/little_loops/init/writers.py` | "codex", "kimi-code", "qwen" (3). "claude-code" needs no installer — plugin hooks fire natively. "opencode"/"pi" hit explicit "adapter not yet available" branches (`init/cli.py`, "opencode" → info branch, "pi" → EPIC-1622). |
 
 Consequences the original bullet missed:
 
 - `docs/reference/CONFIGURATION.md:1234` is an **orchestration-runner** enum, so its
-  only gap is `qwen` — but `gemini` and `omp` are legitimately there and appear in **no**
+  only gap is "qwen" — but "gemini" and "omp" are legitimately there and appear in **no**
   "fully wired" prose list anywhere. An implementer working from the original bullet may
-  read that asymmetry as a second bug and "fix" it by adding `gemini`/`omp` to the
+  read that asymmetry as a second bug and "fix" it by adding "gemini"/"omp" to the
   `--hosts` lists, where they are not valid values.
 - `hooks/adapters/opencode/` exists on disk but contains only `bun.lock` — a stub. The
   prose "recognized, adapter not yet available" is correct; the stub dir is not evidence
-  against it. **Do not** promote `opencode` to fully-wired on the strength of the directory.
+  against it. **Do not** promote "opencode" to fully-wired on the strength of the directory.
 
 ## Expected Behavior
 
-- CLI.md documents `ll-issues check-acceptance-criteria`, `ll-issues check-verify-verdict`, `ll-issues epic-consistency`/`ec`, `ll-sync reconcile`, and `ll-compact-session`.
+- CLI.md documents `ll-issues check-acceptance-criteria`, `ll-issues check-verify-verdict`, `ll-issues epic-consistency`/"ec", `ll-sync reconcile`, and `ll-compact-session`.
 - **Define the three tiers once and point every site at that definition**, rather than
   patching five parallel lists:
-  - **Adapter-wired** (`ll-init --hosts` installs a hook adapter): `codex`, `kimi-code`, `qwen`, plus `claude-code` (native, no adapter file).
-  - **Recognized, adapter pending**: `opencode`, `pi`.
-  - **Orchestration-only** (valid `LL_HOST_CLI`, not an `--hosts` value): `gemini`, `omp`.
+  - **Adapter-wired** (`ll-init --hosts` installs a hook adapter): "codex", "kimi-code", "qwen", plus "claude-code" (native, no adapter file).
+  - **Recognized, adapter pending**: "opencode", "pi".
+  - **Orchestration-only** (valid `LL_HOST_CLI`, not an `--hosts` value): "gemini", "omp".
 - Sites to update: `docs/reference/CLI.md:37,49`, `README.md`, `docs/guides/GETTING_STARTED.md:101`, `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:364`, `docs/reference/CONFIGURATION.md:1234` (add `qwen` only — the enum's other members are correct).
 - The canonical tier table should live in **one** doc (suggest `docs/reference/HOST_COMPATIBILITY.md`, already the host-compat home per CLAUDE.md) with the other five sites linking to it.
 
 ## Acceptance Criteria
 
-- [ ] `docs/reference/CLI.md` has `####` entries for `ll-issues check-acceptance-criteria`, `ll-issues check-verify-verdict`, `ll-issues epic-consistency` (+ `ec` alias), and `ll-sync reconcile`; a `### ll-compact-session` section exists.
+- [ ] `docs/reference/CLI.md` has `####` entries for `ll-issues check-acceptance-criteria`, `ll-issues check-verify-verdict`, `ll-issues epic-consistency` (+ "ec" alias), and `ll-sync reconcile`; a `### ll-compact-session` section exists.
 - [ ] A single canonical three-tier host table exists in `docs/reference/HOST_COMPATIBILITY.md`, its members matching `_HOST_RUNNER_REGISTRY`, `_KNOWN_HOSTS`, and the `install_*_adapter` set respectively.
 - [ ] All five listed sites either include `qwen` at the correct tier or link to the canonical table.
 - [ ] `gemini`/`omp` are **not** added to any `--hosts` list; `opencode` is **not** promoted to adapter-wired.

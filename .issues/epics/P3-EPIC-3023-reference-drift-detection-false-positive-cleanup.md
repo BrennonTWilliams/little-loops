@@ -18,8 +18,10 @@ labels:
 
 ## Summary
 
-`stale_file_ref` detection (`build_ref_index`/`classify_file_ref` in
-`scripts/little_loops/text_utils.py`) and the `research-triage` coverage
+`stale_file_ref` (the gap field defined in
+`scripts/little_loops/issue_parser.py:294`) detection — populated via
+`build_ref_index`/`classify_file_ref` in
+`scripts/little_loops/text_utils.py` — and the `research-triage` coverage
 predicate it feeds both over-report drift for structural reasons unrelated to
 actual staleness. Three narrow fixes already landed and closed
 (**ENH-2971**, **ENH-2983**, **ENH-2999**, all `done`); two related gaps

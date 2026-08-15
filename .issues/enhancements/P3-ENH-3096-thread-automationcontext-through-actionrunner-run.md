@@ -29,8 +29,8 @@ verify_verdict: VALID
 
 Second of three children decomposed from ENH-3094. This child threads the
 `AutomationContext` dataclass (introduced in ENH-3095) through the
-`ActionRunner` Protocol boundary — `DefaultActionRunner`, `SimulationActionRunner`,
-and the `extra_kwargs` assembly in `fsm/executor.py` — and collapses the
+`ActionRunner` Protocol boundary in `fsm/runners.py` — `DefaultActionRunner`,
+`SimulationActionRunner` — and the `extra_kwargs` assembly in `fsm/executor.py` — and collapses the
 largest cluster of hand-written test mocks that currently raise `TypeError`
 on any new kwarg.
 
