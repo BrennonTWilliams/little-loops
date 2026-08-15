@@ -45,12 +45,17 @@ now depends on BUG-3202; this issue carries no dependency edge.
 
 ## Implementation Order
 
-**BUG-3202 lands first** — until it does, `format-check`'s verdict on this issue,
-BUG-3192, and BUG-3193 cannot be trusted, because all three quote markdown containing
-`##`-shaped lines. That is a verification prerequisite for confirming Findings 1-3's fixes,
-not a code dependency: nothing in this issue's change sites touches BUG-3202's.
+**BUG-3202 landed 2026-08-15 — the prerequisite is satisfied.** `format-check`'s verdicts
+on this issue, BUG-3192, and BUG-3193 are now trustworthy (section lookup is fence-aware).
 
-Findings 1, 2, and 3 are noise-level and can be batched together in any order afterwards.
+**One consequence is mandatory before implementing Finding 1**: every measurement in this
+issue (the 264 backlog-wide baseline, the breadth-cap threshold curve, the floor's
+false-negative inspection) was taken **pre-BUG-3202**, and BUG-3202 changed which claims
+the filters see via `_symbol_claim_scope_text()` (see Program Design § Interaction with
+BUG-3202). Re-run the measurements first; the N=8 cap justification in particular must be
+re-confirmed against the post-3202 claim population.
+
+Findings 1, 2, and 3 are noise-level and can be batched together in any order.
 
 
 ## Current Behavior
@@ -499,9 +504,11 @@ Grouped by finding, since they land separately (see Implementation Order).
 - [ ] Each new filter follows the module's exclusion convention: a named module-level
       constant with a comment naming the false-positive class it guards, applied as a guard
       at the point of use (matching `_LINE_NUMBER_REF_RE` / `_EXTENSION_LIKE_RE`).
-- [ ] Backlog-wide mislocated count drops from its measured **264** baseline (re-measured
-      2026-08-15; the earlier 263 predates one issue edit); re-run the measurement and
-      record the new number.
+- [ ] Backlog-wide mislocated count drops from a **freshly re-measured post-BUG-3202
+      baseline** — the recorded 264 (re-measured 2026-08-15; the earlier 263 predates one
+      issue edit) was taken before BUG-3202's fence-aware scope change landed and may no
+      longer hold. Re-measure before implementing, confirm the N=8 cap analysis still
+      holds, then re-run after and record both numbers.
 
 **Finding 2:**
 
@@ -554,6 +561,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 
 ## Session Log
+- Pre-implementation review (batch) - 2026-08-15 - Implementation Order updated: BUG-3202 landed, verification prerequisite satisfied; made the pre-3202 provenance of the 264 baseline / breadth-curve / floor measurements explicit and required a fresh re-measure before implementing Finding 1 (BUG-3202's `_symbol_claim_scope_text` change alters the claim population the filters see).
 - `/ll:confidence-check` - 2026-08-15T20:01:26 - `4eb27027-e6df-4ea9-a6cc-2ca5e6e40c15.jsonl`
 - `/ll:wire-issue` - 2026-08-15T18:50:55 - `fbae9292-fc5e-470b-b261-173e14415c63.jsonl`
 - `/ll:refine-issue` - 2026-08-15T18:31:06 - `705a3268-face-42d3-8ebd-956f7b640ea6.jsonl`

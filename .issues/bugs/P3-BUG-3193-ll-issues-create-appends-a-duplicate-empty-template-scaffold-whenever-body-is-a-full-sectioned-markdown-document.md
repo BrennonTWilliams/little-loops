@@ -33,13 +33,14 @@ sweep actually do — the result is the real body nested under `## Summary`, fol
 full duplicate scaffold of empty placeholder sections. Observed hit rate: 6/6 on the
 BUG-3186..3191 audit sweep.
 
-**Scope of the `depends_on: [BUG-3202]` edge.** BUG-3202 (fence-unaware,
-last-occurrence-wins section lookup) is what makes this bug's trailing scaffold
-verdict-inverting rather than cosmetic, and its fence-span helper is what this issue's
-full-body detector reuses. The edge was originally filed against BUG-3194, which bundled
-that finding with three unrelated symbol-index and file-ref findings; BUG-3202 was split
-out on 2026-08-15 specifically so this edge is exact. Do not drop it — without BUG-3202
-this issue's own `format-check` verdicts cannot be trusted while verifying the fix.
+**Scope of the `depends_on: [BUG-3202]` edge — now satisfied (BUG-3202 completed
+2026-08-15).** BUG-3202's fix landed `text_utils.fence_spans` (line 64) and
+`text_utils.in_fence` (line 97), and made `_section_body_with_offset` fence-aware. Note
+what it deliberately did *not* change: section lookup remains **last-occurrence-wins**
+(documented in `_section_body_with_offset`'s docstring), so this bug's unfenced trailing
+scaffold still wins section resolution and still inverts `format-check` verdicts — the
+premise of this issue is unchanged. The full-body detector below reuses
+`fence_spans`/`in_fence` directly; no duplicate fence idiom is needed.
 
 
 ## Current Behavior
@@ -108,7 +109,7 @@ bug, and it is why the fix belongs upstream in creation rather than being hand-s
 per issue.
 
 Frontmatter `status:` remains the source of truth, so the duplicated `## Status` footer is
-*not* a status-correctness bug. It does leave `session_log.append`'s anchor on
+*not* a status-correctness bug. It does leave `session_log.append_session_log_entry`'s anchor on
 `"\n---\n\n## Status"` (`scripts/little_loops/session_log.py:271`) ambiguous between two
 footers.
 
@@ -152,12 +153,10 @@ placeholder sections (`Current Behavior`, `Expected Behavior`, `Impact`, `Status
 > **Note for anyone running `format-check` on this issue.** The heredoc above contains
 > literal `## Summary`, `## Current Behavior`, and `## Status` lines, so this file has
 > duplicate H2s by construction — that block *is* the reproduction and must not be
-> "cleaned up". Until BUG-3202 lands, section lookup is fence-unaware and
-> last-occurrence-wins, so those quoted headings can override the real sections. This
-> issue currently escapes a false `empty: Summary` only by luck: the fenced `## Summary`
-> happens to be followed by non-boilerplate prose. The three `stale_file_ref` gaps on
-> `.gemini/`, `.kimi-code/`, and `.qwen/` brace-expanded paths are BUG-3194's Finding 2
-> and are likewise expected.
+> "cleaned up". With BUG-3202 landed (2026-08-15), section lookup is fence-aware, so
+> these fenced quoted headings no longer override the real sections. The three
+> `stale_file_ref` gaps on `.gemini/`, `.kimi-code/`, and `.qwen/` brace-expanded paths
+> are BUG-3194's Finding 2 and remain expected until that issue lands.
 
 Expected: the caller's body emitted once, with no placeholder duplicates.
 
@@ -278,8 +277,9 @@ Supplying a complete sectioned body should not produce a duplicate scaffold. Any
 
    Fence-awareness caveat: the detector must ignore `##` lines inside fenced code blocks,
    or a body that merely *quotes* a template will be misrouted as a full body. This is the
-   same fence-unawareness BUG-3202 fixes in `_section_body_with_offset` — reuse
-   whatever fence-span helper that fix settles on rather than adding a third idiom.
+   same fence-unawareness BUG-3202 fixed in `_section_body_with_offset` — reuse the
+   helper that fix exported (`text_utils.fence_spans`/`in_fence`) rather than adding a
+   third idiom.
 
 2. **Explicit flag** — add `--body-mode summary|full` (and a matching MCP property),
    defaulting to `summary` to preserve today's behavior.
@@ -289,7 +289,8 @@ Supplying a complete sectioned body should not produce a duplicate scaffold. Any
 ### Decision (resolved 2026-08-15)
 
 **Option 1b — detect and merge.** Detection uses the variant-section-name trigger stated
-above (fence-aware, reusing the exported fence-span helper BUG-3202 lands). On a full-body match,
+above (fence-aware, reusing `text_utils.fence_spans`/`in_fence`, exported by BUG-3202 —
+landed 2026-08-15). On a full-body match,
 `_render_issue_content` parses the body into sections and:
 
 1. populates `content` so each caller-supplied section replaces its placeholder;
@@ -331,7 +332,7 @@ two counts:
   `refine-issue`-produced issue in `.issues/` follows it. Appending after the variant block
   puts real content below the footer and makes `create`-produced issues structurally
   unlike every other issue.
-- **`session_log.append`'s fallback anchors on the footer.** When an issue has no
+- **`session_log.append_session_log_entry`'s fallback anchors on the footer.** When an issue has no
   `## Session Log` section yet, `session_log.py:271` inserts one by replacing
   `"\n---\n\n## Status"`. With caller sections trailing after Status, the Session Log is
   inserted before a Status that now has several sections below it.
@@ -355,28 +356,28 @@ fail silently.
   explicitly anticipates bodies that "open with prose, a lead paragraph, or a
   `_Added by …_` marker before the first heading" — but 1b's three steps (populate
   `content`, keep placeholders, append non-variant sections) define no destination for that
-  text. It is keyed to no section, so the natural implementation drops it. **Decide and
-  pin**: fold the preamble into the `Summary` section's content ahead of the caller's own
-  Summary text, or emit it verbatim between the title heading and the first section. The
-  first is safer — it cannot produce a document whose leading text sits outside every
-  section, which is what `_section_body` callers assume away.
+  text. It is keyed to no section, so the natural implementation drops it. **Decided
+  (2026-08-15)**: fold the preamble into the `Summary` section's content ahead of the
+  caller's own Summary text. The alternative (emit it verbatim between the title heading
+  and the first section) was rejected because it can produce a document whose leading text
+  sits outside every section, which is what `_section_body` callers assume away.
 
 - **The caller supplies its own `## Status`.** Under 1b the caller's Status replaces the
   placeholder, so the generated `**Open** | Created: <date> | Priority: <P>` footer is
   **lost** — including the creation date, which nothing else regenerates. Both audit-sweep
-  body shapes carry their own `## Status`. **Decide and pin**: either Status is exempt from
-  the merge and always regenerated (recommended — it is machine-written metadata, not
-  authored prose, and frontmatter is already the source of truth for `status:`), or the
-  caller wins and the created issue silently carries whatever date the caller wrote.
+  body shapes carry their own `## Status`. **Decided (2026-08-15)**: Status is exempt from
+  the merge and always regenerated — it is machine-written metadata, not authored prose,
+  and frontmatter is already the source of truth for `status:`. The caller-wins alternative
+  was rejected because it silently carries whatever date the caller wrote.
 
 The other two, already identified:
 
 - **The caller supplies its own `## Session Log`.** Same shape as `## Status` and with the
   same resolution: it is machine-written metadata, appended to by
-  `session_log.append`, not authored prose. Exempt it from the merge and always emit the
+  `session_log.append_session_log_entry`, not authored prose. Exempt it from the merge and always emit the
   generated one, immediately before `## Status`. Without this, a caller body carrying a
   Session Log produces the same duplication this issue is about, on the one section whose
-  duplication also confuses `session_log.append`'s `rfind` anchor.
+  duplication also confuses `session_log.append_session_log_entry`'s `rfind` anchor.
 
 - **The body carries its own `# BUG-NNNN: title` H1.** `assemble_issue_body` emits its own
   title heading unconditionally (`issue_template.py:166`), so a verbatim or appended body
@@ -446,7 +447,7 @@ _Added by `/ll:refine-issue` — 2026-08-15 — based on codebase analysis:_
       the naive "append at end" implementation, which otherwise passes every other
       criterion here.
 - [ ] **A caller-supplied `## Session Log` does not duplicate the generated one**, and
-      `session_log.append` on the resulting file inserts into the real section.
+      `session_log.append_session_log_entry` on the resulting file inserts into the real section.
 - [ ] A body opening with a `---` frontmatter block is rejected with a clear error rather
       than concatenated into a two-frontmatter file.
 - [ ] `render_issue_preview()` and `create_issue()` produce identical bodies for the same
@@ -474,14 +475,12 @@ _Added by `/ll:confidence-check` on 2026-08-15_
 **Outcome Confidence**: 75/100 → MODERATE
 
 ### Concerns
-- `depends_on: [BUG-3202]` is unresolved (BUG-3202 status: open). The prior confidence-check
-  pass on this issue (session log 20:01:26) scored Dependencies Satisfied at full marks
-  because the mechanized Phase 1.7 check only reads `blocked_by`, not `depends_on` — so the
-  self-declared dependency on BUG-3202's exported fence-span helper was not reflected in the
-  score. This run applies "Some dependencies unresolved, workarounds possible" (10/20) to
-  Criterion 5 instead, dropping readiness from 95 to 85. Recommend landing BUG-3202 first per
-  its own Implementation Order note, or accepting a duplicate fence idiom now and refactoring
-  onto BUG-3202's helper once it lands.
+- _Resolved 2026-08-15_: the sole concern was `depends_on: [BUG-3202]` being unresolved,
+  which docked readiness from 95 to 85. BUG-3202 is now **Completed** and its exported
+  helper (`text_utils.fence_spans`/`in_fence`) exists on main, so the dependency is
+  satisfied and the effective readiness is back at the prior pass's 95. Retained for the
+  record: the mechanized Phase 1.7 check only reads `blocked_by`, not `depends_on`, which
+  is why the two passes scored Criterion 5 differently.
 
 ## Status
 
@@ -489,6 +488,7 @@ _Added by `/ll:confidence-check` on 2026-08-15_
 
 
 ## Session Log
+- Pre-implementation review (batch) - 2026-08-15 - BUG-3202 dependency now satisfied (completed; `fence_spans`/`in_fence` verified on main); refreshed stale "until BUG-3202 lands" text; promoted the preamble (fold into Summary) and Status/Session Log (always regenerate) decide-and-pin items to decisions; marked the confidence-check dependency concern resolved.
 - `/ll:confidence-check` - 2026-08-15T20:37:35 - `3bed080b-17e6-4060-904f-398efef7735c.jsonl`
 - `/ll:confidence-check` - 2026-08-15T20:01:26 - `4eb27027-e6df-4ea9-a6cc-2ca5e6e40c15.jsonl`
 - `/ll:wire-issue` - 2026-08-15T18:50:54 - `fbae9292-fc5e-470b-b261-173e14415c63.jsonl`

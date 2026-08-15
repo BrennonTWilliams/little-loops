@@ -66,9 +66,14 @@ Attribution stays structural: states keep their `verify-criterion-N` names, so a
 
 One run tells you everything that is wrong.
 
-## Open Decisions
+## Decisions (resolved 2026-08-15)
 
-Resolve before implementing.
+All three items below were originally open with stated leans; the leans are hereby adopted
+as decisions so the implementer does not re-litigate: **#1 → option (a)** (add `verdict` to
+the capture dict via a post-`_evaluate()` write-back, both capture sites), **#2 → yes**
+(`on_partial` keeps counting as failure; reconsider separately once per-criterion reporting
+makes it visible), **#3 → yes** (`_adversarial_states()` gets the same treatment in the
+same change). The original analyses are retained below for the record.
 
 1. **How does a criterion's verdict reach the aggregate state?** This is the only non-trivial part. `state.capture` populates `self.captured[key]` with `{"output", "stderr", "exit_code", "duration_ms", "failure_type"}` (`fsm/executor.py:2313-2325`) — **the evaluator verdict is not among them**, so `${captured.verify-criterion-3.verdict}` does not resolve today. Options:
    - **(a) Add `verdict` to the capture dict.** Still the recommendation, and generally useful beyond this issue — any loop wanting to branch on a prior state's verdict currently cannot. But it is **not** the one-key edit an earlier draft assumed, because of an ordering problem:
@@ -95,6 +100,7 @@ Resolve before implementing.
 - **AC5.** Attribution remains structural: criterion states keep their `verify-criterion-N` names and one-state-per-criterion shape. No parser is introduced, and no criterion's verdict is derived from another's.
 - **AC6.** Per-criterion investigation depth is unchanged — each criterion keeps its own `action_type="prompt"` action and its own `llm_structured` evaluation. This issue does not merge investigations.
 - **AC7.** Existing generated loop YAMLs on disk keep working. They are self-contained, so only regeneration produces the new shape; a test asserts an old-shape loop (with `on_no: failed`) still validates and runs.
+- **AC8 (added 2026-08-15 review — error/blocked verdicts must not short-circuit either).** The criterion states declare only `on_yes`/`on_no`/`on_partial` today, so an `error` or `blocked` verdict mid-chain hits `_route() → None` and terminates the whole run — the same short-circuit this issue removes, through a different verdict. Generated criterion states route `on_error`/`on_blocked` to the next criterion as well, with the outcome recorded and counted toward `failure=True` (per the unknown-counts-as-failure rule in Decision Rules). Test: a 3-criterion loop where criterion 1's evaluator returns `error` still evaluates criteria 2 and 3 and reports criterion 1 as not-passed.
 
 ## Integration Map
 
@@ -172,6 +178,7 @@ _Both gaps below were addressed in the 2026-08-15 second-pass review — a `## P
 - Open Decision #3 (whether `_adversarial_states()` gets the same no-short-circuit treatment) has no stated default or lean, unlike Decisions #1 and #2 which each carry an explicit recommendation/assumed default — pick one explicitly before implementation to avoid a half-changed adversarial mode.
 
 ## Session Log
+- Pre-implementation review (batch) - 2026-08-15 - formalized the three open decisions as resolved (capture write-back option (a); `on_partial` stays failure; adversarial mode fixed in the same change); added AC8: `error`/`blocked` verdicts must not short-circuit the chain either — criterion states gain `on_error`/`on_blocked` routes to the next criterion, outcome recorded and counted toward `failure=True`.
 - `/ll:decide-issue` - 2026-08-15T22:32:38 - `1722f1f7-02d5-4af2-b8ec-39c8c40ec8ac.jsonl`
 - Pre-implementation review (second pass) - 2026-08-15 - added the missing `## Program Design` section (confidence-check hard-override gap); gave Open Decision #3 an explicit lean (fix `_adversarial_states()` in the same change); documented the capture-ordering problem in Open Decision #1a — `self.captured` is written at `executor.py:2315` *before* `_evaluate()` runs at line 1850, so `verdict` needs a post-evaluation write-back across two capture sites, not a new dict key. Effort re-rated Small-to-Medium.
 - `/ll:confidence-check` - 2026-08-15T20:36:25 - `94c0eb90-8c6b-4ad6-ab84-c1a6874ad15f.jsonl`
