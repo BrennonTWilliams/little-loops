@@ -1298,6 +1298,38 @@ Settings for the `goal-cluster` multi-goal orchestration loop.
 | `enable_dedup` | `true` | When true, deduplicate issues with overlapping goals before batching. |
 | `propagate_context` | `true` | When true, pass accumulated context from completed issues to subsequent batches. |
 
+### `mcp`
+
+`ll-mcp` server configuration (FEAT-3149).
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `transport_policy.http.allow_mutations` | `false` | When false, mutating tool calls (`issue_capture`, `issue_set_status`, `issue_link`, `issue_append_log`) over the HTTP transport are refused with a JSON-RPC error. Deny-by-default because HTTP ships without authentication. |
+| `transport_policy.http.allow_tasks` | `false` | When false, `tasks/*` requests (poll/cancel an `ll-loop` run) over HTTP are refused. Independent of `allow_mutations` (FEAT-3145 Decision 6). |
+| `transport_policy.stdio.allow_mutations` | `true` | stdio is a same-machine, same-user channel, so mutations default open. |
+| `transport_policy.stdio.allow_tasks` | `true` | stdio is a same-machine, same-user channel, so `tasks/*` defaults open. |
+| `http.host` | (loopback) | Interface to bind for the streamable HTTP transport (ENH-3173). A non-loopback value also widens `TransportSecuritySettings`' `allowed_hosts`/`allowed_origins` to include it, since the SDK only auto-fills that allow-list for a loopback bind. |
+| `http.port` | `8765` | Port to bind for the streamable HTTP transport. A `--host`/`--port` flag on the `ll-mcp` console script takes precedence over both of these values. |
+| `resources.issue_statuses` | (all statuses) | When set, only issues whose frontmatter `status` is in this list are enumerated as `ll://issues/<ID>` resources (ENH-3174). |
+| `resources.docs_globs` | (all docs) | When set, only `docs/**` files matching one of these glob patterns are enumerated as `ll://docs/<path>` resources. |
+| `resources.page_size` | `500` | Maximum resources returned per `resources/list` response. A client that sends the returned `nextCursor` back retrieves the next page. All `resources.*` fields default to the pre-ENH-3174 behavior (unbounded, single page) — narrowing is opt-in. |
+
+```json
+{
+  "mcp": {
+    "transport_policy": {
+      "http": { "allow_mutations": false, "allow_tasks": false }
+    },
+    "http": { "host": "127.0.0.1", "port": 8765 },
+    "resources": {
+      "issue_statuses": ["open", "in_progress"],
+      "docs_globs": ["reference/*.md"],
+      "page_size": 200
+    }
+  }
+}
+```
+
 ### `hooks`
 
 Settings for hook adapter selection.
