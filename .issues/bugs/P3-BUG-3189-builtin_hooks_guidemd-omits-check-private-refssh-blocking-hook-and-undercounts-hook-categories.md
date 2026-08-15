@@ -5,6 +5,7 @@ title: BUILTIN_HOOKS_GUIDE.md omits check-private-refs.sh blocking hook and unde
   hook categories
 priority: P3
 status: open
+testable: false
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T17:51:43Z'
@@ -38,21 +39,6 @@ This guide's stated purpose is "these are the only place little-loops can deny a
 - **Risk**: None — doc-only change.
 
 
-## Current Behavior
-
-[If applicable - describe what currently happens]
-
-## Expected Behavior
-
-[What should happen instead]
-
-## Impact
-
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
-
 ## Status
 
-**Open** | Created: [YYYY-MM-DD] | Priority: [P0-P5]
+**Open** | Created: 2026-08-15 | Priority: P3

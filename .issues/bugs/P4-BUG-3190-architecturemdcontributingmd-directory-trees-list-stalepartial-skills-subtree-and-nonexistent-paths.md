@@ -5,6 +5,7 @@ title: ARCHITECTURE.md/CONTRIBUTING.md directory trees list stale/partial skills
   and nonexistent paths
 priority: P4
 status: open
+testable: false
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T17:51:46Z'
@@ -20,12 +21,15 @@ captured_at: '2026-08-15T17:51:46Z'
 
 - `docs/ARCHITECTURE.md:115-183` (Directory Structure tree, skills subtree) lists only ~26 skill entries and omits most `ll-*`-prefixed companion/mirror skills (skill-companion mirroring, see commit e1737bb2 and CLAUDE.md) plus several standalone skills missing entirely: `rename-loop`, `simplify-loop`, `compact-session`/`ll-compact-session`, `review-epic`, `spike`, `decide-issue`, `wire-issue`, `link-epics`, `scope-epic`, `explore-api`, `verify-issue-loop`.
 - `CONTRIBUTING.md:178-214`'s illustrative Project Structure skills subtree has the same gap — lists ~34 of 69 actual entries.
-- `CONTRIBUTING.md:164,242-244`: the tree also lists a root-level `config-schema.json` file (doesn't exist — canonical location is `scripts/little_loops/config-schema.json`) and `docs/claude-code/`, `docs/codex/`... wait `docs/codex/` does exist, but `docs/claude-code/` and `docs/demo/` do not exist under `docs/` today.
+- `CONTRIBUTING.md:164,242-244`: the tree lists a root-level `config-schema.json` file that does not exist — the canonical location is `scripts/little_loops/config-schema.json`. This is the only nonexistent-path finding in this issue.
+  - **Verified 2026-08-15, do not "fix" these**: `docs/claude-code/`, `docs/codex/`, and `docs/demo/` all exist and their tree entries are correct. `docs/claude-code/` is git-tracked (`hooks-reference.md`, `plugins-reference.md`, `cli-reference.md`, …); `docs/demo/` exists on disk but is gitignored (`.gitignore:76`), so a `git ls-files`-based check will report it missing. An earlier draft of this issue claimed `docs/claude-code/` and `docs/demo/` were nonexistent; that claim was wrong and removing those entries would be a regression.
 - `docs/ARCHITECTURE.md:64`: same stale root-level `config-schema.json` tree entry (parenthetical correctly notes the canonical location, but the tree entry itself implies a root copy exists).
 
 ## Expected Behavior
 
-Directory-structure illustrations in both files either enumerate the current skill set accurately or use a representative `...` truncation instead of a stale fixed list, and drop the nonexistent `config-schema.json`/`docs/claude-code/`/`docs/demo/` tree entries.
+Directory-structure illustrations in both files either enumerate the current skill set accurately or use a representative `...` truncation instead of a stale fixed list, and drop the nonexistent root-level `config-schema.json` tree entry. `docs/claude-code/`, `docs/codex/`, and `docs/demo/` stay as-is.
+
+Prefer the truncation option for the skills subtree: the catalog is 69 entries and growing, so any enumerated list re-staleness is a matter of time. A short representative sample that explicitly shows the `ll-*` bridge-skill pattern, followed by `...`, conveys the shape without incurring maintenance.
 
 ## Motivation
 
@@ -38,21 +42,6 @@ A tree that silently omits ~60% of a directory's contents actively misleads a re
 - **Risk**: None — doc-only change.
 
 
-## Current Behavior
-
-[If applicable - describe what currently happens]
-
-## Expected Behavior
-
-[What should happen instead]
-
-## Impact
-
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
-
 ## Status
 
-**Open** | Created: [YYYY-MM-DD] | Priority: [P0-P5]
+**Open** | Created: 2026-08-15 | Priority: P4

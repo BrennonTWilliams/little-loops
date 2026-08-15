@@ -5,6 +5,7 @@ title: HISTORY_SESSION_GUIDE.md describes pre-ENH-2581 backfill/prune behavior, 
   table stops at v33
 priority: P2
 status: open
+testable: false
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T17:51:36Z'
@@ -41,21 +42,6 @@ This is the canonical guide for `ll-session`/history tooling; stale backfill/pru
 - **Risk**: None — doc-only change.
 
 
-## Current Behavior
-
-[If applicable - describe what currently happens]
-
-## Expected Behavior
-
-[What should happen instead]
-
-## Impact
-
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
-
 ## Status
 
-**Open** | Created: [YYYY-MM-DD] | Priority: [P0-P5]
+**Open** | Created: 2026-08-15 | Priority: P2

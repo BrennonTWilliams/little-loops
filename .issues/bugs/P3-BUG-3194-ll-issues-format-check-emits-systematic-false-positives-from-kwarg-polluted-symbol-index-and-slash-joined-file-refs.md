@@ -236,6 +236,14 @@ only Finding 3's optional rename touches it. `SymbolClaim` (`symbol_claims.py:93
 Consumers that would inherit any fix: `/ll:confidence-check`, `/ll:ready-issue`,
 `/ll:refine-issue`, `/ll:wire-issue`, `/ll:format-issue`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-15 — based on codebase analysis:_
+
+- **Test coverage gap (all four findings)**: `scripts/tests/test_symbol_claims.py` covers claim-grammar forms, fence exclusion for claims, and `symbol_resolves_elsewhere` against hand-built indices, but no test constructs a kwarg-call-argument-shaped line (e.g. `enabled=data.get("enabled", True)`) and asserts whether `_extract_symbols`/`_MODULE_CONSTANT_RE` admits it (Finding 1). `scripts/tests/test_text_utils.py` has no test of the shape `"A.md/B.md"` against `resolve_ref_path`/`suffix_match_candidates` (Finding 2). No test exercises `_section_body_with_offset` with a fenced code block quoting a `## Heading` line (Finding 4) — `_strip_code_fences` has coverage only for the `IssueParser` methods that already call it, not for `_section_body_with_offset`.
+- **Related prior issues on this surface**: BUG-3063 (stale-symbol-ref forward-looking design claims) and ENH-3064 (checked directly — cancelled, addressed `stale_symbol_ref` *scoping* away from forward-looking sections, a different mechanism than this issue's `mislocated_symbol_ref` kwarg-index-pollution; no overlap). BUG-2956 (format-check ignores `program_design_not_applicable` opt-out) touches the same `format_check.py` orchestrator but a different gap class.
+- **Finding 4 downstream blast radius confirmed**: `_symbol_claim_scope_text()` (`issue_parser.py:952-959`, feeds `stale_symbol_ref`/`mislocated_symbol_ref`) and `_behavior_parity_scope_text()` (`:930-940`, feeds `missing_behavior_parity`) both concatenate sections via the same fence-unaware `_section_body`, so Finding 4's fix affects those gap classes too, not only the `empty:`/`boilerplate:` verdicts already cited.
+
 ## Expected Behavior
 
 **Finding 1** — a bare backticked token should not produce a `mislocated_symbol_ref` when
@@ -280,6 +288,14 @@ Renaming the key touches `FormatGaps`, the two help/docstring enumerations
 (`format_check.py:64` and `:193`), and any consumer keying on the JSON field; rewording
 alone is a one-line change. Prefer the reword unless a consumer audit is cheap.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-15 — based on codebase analysis:_
+
+- **Finding 1 exclusion-constant convention**: every existing false-positive exclusion in `symbol_claims.py` (`_LINE_NUMBER_REF_RE:53-56`, `_EXTENSION_LIKE_RE:59-65`, `_MAX_ATTRIBUTION_DISTANCE:73-78`) is a separately named module-level `re.compile(...)` constant, preceded by a comment naming the false-positive class it guards against, and applied as an early-continue/guard at the point of use rather than folded into the defining regex itself. A new kwarg-exclusion filter should follow this same shape (named constant + comment + guard-site application), matching how `_MODULE_CONSTANT_RE`'s own BUG-3063 D1 comment documents its accepted precision trade-offs.
+- **Two coexisting, non-identical fence idioms** are available for Finding 4, and they are not interchangeable: (1) span-exclusion — `_CODE_FENCE.finditer(body)` once, then a small `_in_fence(start, end, fence_spans)` predicate tests candidate match positions (independently reimplemented in both `symbol_claims.py:102-103` and `issues/prose_deps.py`, imported into `issue_parser.py:709-716` for the `soft_dep_hard_edge` scan); (2) line-based blanking — `IssueParser._strip_code_fences` (`issue_parser.py:2369-2392`) replaces fenced lines with blank lines while preserving line numbers, used ahead of two other extraction methods (`:2291`, `:2333`) but not ahead of `_section_body_with_offset`. A third variant, `text_utils.strip_code_fences` (`:58-65`), collapses fence text to nothing rather than preserving line positions — offsets shift, unlike the other two. `_section_body_with_offset` returns a `(body, start_offset)` tuple consumed positionally by callers, so an offset-preserving approach (span-exclusion or line-blanking) fits its existing contract; `text_utils.strip_code_fences`'s offset-shifting approach would not.
+- **Finding 3 rewording precedent**: `FormatGaps` field names have never been renamed in the codebase's history (only additions, each with a comment citing the introducing issue ID — mirrored in `test_ll_issues_format_check.py`'s pinned expected-JSON fixture). Entry-string wording is added at one of two independent sites depending on whether it needs to appear in JSON output too: baked into the value at construction time (`issue_parser.py:787-791`, e.g. `stale_symbol_ref`/`mislocated_symbol_ref` entries), or appended only at print time as text-only supplementary guidance (`format_check.py:167-183`, e.g. the existing `mislocated_symbol_ref`/`soft_dep_hard_edge` parentheticals). A pure reword (Finding 3's stated preference) fits the print-time-only pattern; a key rename would touch all three synchronized sites (`FormatGaps` field, `to_dict()`, `_print_gaps`) plus the pinned JSON fixture.
+
 ## Impact
 
 - **Priority**: P3 - Driven by Finding 4. `format-check` is not advisory: it gates
@@ -308,3 +324,7 @@ alone is a one-line change. Prefer the reword unless a consumer audit is cheap.
 ## Status
 
 **Open** | Created: 2026-08-15 | Priority: P4
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-08-15T18:31:06 - `705a3268-face-42d3-8ebd-956f7b640ea6.jsonl`

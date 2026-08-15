@@ -184,6 +184,14 @@ The per-type sections JSON (`scripts/little_loops/templates/bug-sections.json` a
 `feat`/`enh`/`epic` siblings) defines the `creation_template` strings that leak, but needs
 no change — they are correct as scaffold defaults.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-15 — based on codebase analysis:_
+
+- **Test coverage gap**: `scripts/tests/test_ll_issues_create.py::TestCreateIssue.test_body_file_content_becomes_summary` (line 114) and `TestCreateCli.test_create_body_file_stdin` (line 213) only assert substring containment against single-line prose bodies. Neither constructs a body containing embedded `## ` headings, and neither asserts on duplicate-heading counts or on `_section_body`/`_section_body_with_offset` resolution against a `create`-produced file. `scripts/tests/test_issue_template.py` covers `assemble_issue_body()`/`load_issue_sections()` directly but has the same gap. This is the primary uncovered surface for a fix.
+- **Blast radius beyond format-check**: `_section_body`/`_section_body_with_offset` (`scripts/little_loops/issue_parser.py:239-267`) is called from more sites than `format-check` alone — `issue_parser.py:1251`, `:1319` (Proposed Solution lookup), `:1328` — and `scripts/little_loops/issues/fold_research_findings.py` also resolves sections by heading. Any of these inherit the same last-occurrence-wins exposure on a duplicate-scaffold issue, not only `format-check`'s reported gaps.
+- **Confirmed shared render path**: both `render_issue_preview()` (`create.py:200`) and `create_issue()` (`create.py:254`) call the identical `_render_issue_content()` — a fix placed there (or in `assemble_issue_body`) is picked up by both dry-run and apply with no separate branch needed.
+
 ## Expected Behavior
 
 Supplying a complete sectioned body should not produce a duplicate scaffold. Any of:
@@ -200,6 +208,14 @@ Option 1 is the smallest change and fixes existing callers without touching
 
 Whichever is chosen, the doubled `## Summary` heading should go away in the full-body
 case.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-15 — based on codebase analysis:_
+
+- **Option 2 (explicit flag) has an MCP-narrowing precedent to account for**: `_tool_issue_capture`'s `IssueSpec` construction (`scripts/little_loops/mcp_server/tools.py:253-313`) already omits `stage` and `variant` from the MCP tool schema even though both exist as `IssueSpec` fields the CLI exposes — the sibling `issue_set_status` tool documents this narrowing explicitly (`tools.py:319-323`, "tier 2's brief is four coarse tools, not a full mirror of the CLI's flag surface"). A new `--body-mode` flag following Option 2 would need an explicit decision on whether to extend the MCP schema too or accept the same narrowing.
+- **No existing route-decision utility to reuse for Option 1**: the codebase's heading-extraction helpers (`_section_body_with_offset`, `_heading_bodies`, `_iter_h2_sections` in `scripts/little_loops/issues/program_design.py`) are read-only extraction/gap-checking utilities operating on already-written issue files; none of them are invoked from the `create.py` render path, and none decide whether to alter scaffold generation based on the incoming body's own heading structure. Option 1 would be new logic, not a reuse of an existing router.
+- **`--variant` is the closest in-file precedent** for a flag that changes template-assembly behavior (`create.py:287-331` argparse → `IssueSpec.variant` field → `cmd_create` constructor kwarg), if Option 2 is chosen.
 
 ## Impact
 
@@ -222,3 +238,7 @@ case.
 ## Status
 
 **Open** | Created: 2026-08-15 | Priority: P3
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-08-15T18:31:06 - `705a3268-face-42d3-8ebd-956f7b640ea6.jsonl`
