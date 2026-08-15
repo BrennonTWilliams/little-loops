@@ -388,7 +388,7 @@ Tune `policy-refine` to be stricter — require a high security score before dec
 4. **Validate, then run.** Before executing, validate the loop — `ll-loop validate` enforces
    the [MR-4 dead-end rule](HARNESS_OPTIMIZATION_GUIDE.md) and warns on missing catch-alls,
    shadowed rules, and predicates that reference a dimension never scored (the policy-table
-   rule — see the table in [CLAUDE.md](../../.claude/CLAUDE.md)), catching the routing gaps
+   rule — see the `policy-table` row in [HARNESS_OPTIMIZATION_GUIDE.md](HARNESS_OPTIMIZATION_GUIDE.md#the-design-rules-mr-1mr-14)), catching the routing gaps
    the table edit might have introduced:
 
    ```bash

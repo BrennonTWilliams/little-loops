@@ -42,7 +42,7 @@ ll-init --hosts codex --dry-run
 
 ## Trust prompt
 
-The first time you start `codex` after install, it shows a hook-trust dialog for every new hook entry in `.codex/hooks.json`. little-loops registers four hooks: `SessionStart`, `PreCompact`, `UserPromptSubmit`, and `PostToolUse`.
+The first time you start `codex` after install, it shows a hook-trust dialog for every new hook entry in `.codex/hooks.json`. little-loops registers six handler entries across four events: `SessionStart` (×2 — `session-start.sh`, `drift-check.sh`), `PreCompact`, `UserPromptSubmit`, and `PostToolUse` (×2 — `post-tool-use.sh`, plus `edit-batch-nudge.sh` on an `Edit|Write|MultiEdit` matcher).
 
 Each hook has one of four statuses:
 
@@ -53,7 +53,7 @@ Each hook has one of four statuses:
 | `modified` | Hash changed (e.g., path or timeout changed). Codex prompts re-trust on next startup. |
 | `untrusted` | No saved hash. Codex **silently skips** the hook and shows a startup dialog. |
 
-**Choose "Trust All and Continue"** to let all four hooks run. If you choose "Continue Without Trusting", hooks will be skipped silently with no error — little-loops features will not activate.
+**Choose "Trust All and Continue"** to let all six entries run. If you choose "Continue Without Trusting", hooks will be skipped silently with no error — little-loops features will not activate.
 
 ### Trust key format
 
@@ -61,9 +61,11 @@ The trust hash is keyed by command string (not script body), stored in the user-
 
 ```
 file:<project>/.codex/hooks.json:session_start:0:0
+file:<project>/.codex/hooks.json:session_start:1:0
 file:<project>/.codex/hooks.json:pre_compact:0:0
 file:<project>/.codex/hooks.json:user_prompt_submit:0:0
 file:<project>/.codex/hooks.json:post_tool_use:0:0
+file:<project>/.codex/hooks.json:post_tool_use:1:0
 ```
 
 Because the hash covers the **command string** in `hooks.json` (not the script body), updates to the Python package that only change `scripts/little_loops/hooks/adapters/codex/*.sh` internals do **not** invalidate your trust. Only changes to `.codex/hooks.json` itself (paths, timeouts, matcher) prompt re-trust.
@@ -111,7 +113,7 @@ Start a Codex session and confirm hooks are active:
      | bash scripts/little_loops/hooks/adapters/codex/session-start.sh
    ```
 
-   A zero exit code indicates the adapter and Python dispatcher are both reachable. The full integration test in `scripts/tests/test_codex_adapter.py` exercises all four adapter scripts and is run by `python -m pytest scripts/tests/test_codex_adapter.py -v`.
+   A zero exit code indicates the adapter and Python dispatcher are both reachable. The full integration test in `scripts/tests/test_codex_adapter.py` exercises five adapter scripts — `session-start.sh`, `pre-compact.sh`, `prompt-submit.sh`, `post-tool-use.sh`, and `drift-check.sh`. Note `edit-batch-nudge.sh` is registered in `hooks.json` but is not covered by that existence check. Run it with `python -m pytest scripts/tests/test_codex_adapter.py -v`.
 
 ---
 

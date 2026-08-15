@@ -1053,7 +1053,7 @@ Emitted when an issue is closed without being implemented (e.g. invalid, duplica
   "event": "issue.closed",
   "ts": "...",
   "issue_id": "BUG-015",
-  "file_path": "/path/to/.issues/completed/P2-BUG-015-....md",
+  "file_path": "/path/to/.issues/bugs/P2-BUG-015-....md",
   "close_reason": "already_fixed"
 }
 ```
@@ -1077,7 +1077,7 @@ Emitted when an issue successfully completes its full lifecycle and is moved to 
   "event": "issue.completed",
   "ts": "...",
   "issue_id": "ENH-025",
-  "file_path": "/path/to/.issues/completed/P3-ENH-025-....md"
+  "file_path": "/path/to/.issues/enhancements/P3-ENH-025-....md"
 }
 ```
 

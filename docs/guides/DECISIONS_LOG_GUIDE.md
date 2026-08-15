@@ -187,7 +187,7 @@ This is the end-to-end flow when you're running issues through `ll-auto`, `ll-pa
 │      Testability / Risk (0–3 each, max 12)                        │
 │      → inserts > **Selected:** callout into issue                 │
 │      → sets decision_needed: false                                │
-│      → appends DecisionEntry to .ll/decisions.yaml               │
+│      → writes a .ll/decisions.d/<uuid4>.json fragment            │
 │          ↓                                                        │
 │  Automation resumes with the decided issue                        │
 └───────────────────────────────────────────────────────────────────┘
@@ -204,6 +204,8 @@ The `decision_needed` flag is the handshake. `confidence-check` sets it when it 
 - "resolve before implementing"
 - "decision point"
 - "either/or" / "either...or"
+- "resolve before starting"
+- "open question"
 - "Option A or" / "Option A/B"
 
 ---
@@ -444,7 +446,7 @@ ll-issues decisions suggest-rules
     • ARCH-003: Prefer file-poller for callbacks
 ```
 
-The `[high-signal]` tag appears when a category has 3+ decisions sharing common tokens. Without the tag, the cluster was detected via pairwise token overlap in a smaller group.
+The `[high-signal]` tag appears when a category holds 3+ decisions — a bare count, with no token-overlap requirement. Shared tokens are computed separately, and only to populate the "and reference ..." hint; a high-signal cluster with nothing in common is still tagged. Without the tag, the cluster was detected via pairwise token overlap in a smaller group.
 
 > `suggest-rules` requires at least 3 `DecisionEntry` records to run. It exits 1 if fewer exist, or if all decisions are one-off choices (entries whose `rule` text starts with `Option A`, `Option B`, `Option C`, `NO-GO`, or `Captured:`). It operates only on `DecisionEntry` records — existing `RuleEntry` records are not considered for promotion.
 
@@ -520,7 +522,7 @@ The decisions feature has a small config namespace in `.ll/ll-config.json`. Defa
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `decisions.enabled` | `false` | Feature gate; the log still works when false, but automation gating on `decision_needed` requires this to be true |
+| `decisions.enabled` | `false` | Feature gate for the decisions log and its CLI surface. It does **not** gate the automation pause: neither `ll-auto` nor `ll-parallel` reads this key, and an issue with `decision_needed: true` in its frontmatter pauses automation whether or not this is set |
 | `decisions.log_path` | `".ll/decisions.yaml"` | Path to the legacy flat file. The per-entry fragment directory is **derived** from this — always `log_path`'s sibling with a `.d` suffix (`.ll/decisions.d/`) — and is not independently configurable (BUG-2647, Option A) |
 | `decisions.auto_generate` | `[]` | Issue type prefixes to auto-generate entries from when `ll-issues decisions generate` runs (e.g., `["FEAT", "ENH"]` skips BUG entries) |
 
@@ -579,4 +581,4 @@ fixture case against `ll-verify-decisions`).
 ## See Also
 
 - [Issue Management Guide](ISSUE_MANAGEMENT_GUIDE.md) — `decision_needed` in the full refinement pipeline
-- [Loops Guide](LOOPS_GUIDE.md) — how `autodev` and `recursive-refine` handle the decision gate and skip decision-blocked issues
+- [Loops Reference](LOOPS_REFERENCE.md) — how `autodev` and `recursive-refine` handle the decision gate (`check_decision_needed` / `resolve_decision`) and skip decision-blocked issues

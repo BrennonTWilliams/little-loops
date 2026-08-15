@@ -173,9 +173,10 @@ Pass `--parent EPIC-NNN` to auto-wire the new issue as a child of an existing EP
 /ll:capture-issue "Fix log output truncation" --parent EPIC-1626 --quick
 ```
 
-This does two things atomically:
+This does three things atomically:
 1. Sets `parent: EPIC-NNN` in the new issue's frontmatter.
 2. Adds the new issue ID to the EPIC's `## Children` section.
+3. Appends the new issue ID to the EPIC's `relates_to:` frontmatter list.
 
 Use `--quick` alongside `--parent` to create a minimal template when capturing many child tasks at once.
 

@@ -315,7 +315,7 @@ Run these three commands in sequence before declaring a harness optimizer produc
 ```bash
 # Step 1: Check the YAML for rule violations
 ll-loop validate my-optimizer
-# → Enforces MR-1, MR-7, MR-9 (ERROR) and MR-2/MR-3/MR-4/MR-5/MR-6/MR-8/MR-10/MR-11/MR-13/MR-14 (WARNING). Fix all ERRORs before continuing.
+# → Enforces MR-1, MR-7, MR-9, MR-12 Check 1 (ERROR) and MR-2/MR-3/MR-4/MR-5/MR-6/MR-8/MR-10/MR-11/MR-12 Checks 2–3/MR-13/MR-14 (WARNING). Fix all ERRORs before continuing.
 
 # Step 2: Verify the gate actually discriminates
 ll-loop diagnose-evaluators my-optimizer
@@ -328,7 +328,7 @@ ll-loop run my-optimizer --baseline
 #   If the harness doesn't beat baseline by a meaningful margin, the loop isn't worth the overhead.
 ```
 
-- **`ll-loop validate <loop>`** — enforces MR-1, MR-7, MR-9 (ERROR) and MR-2/MR-3/MR-4/MR-5/MR-6/MR-8/MR-10/MR-11/MR-13/MR-14 (WARNING)
+- **`ll-loop validate <loop>`** — enforces MR-1, MR-7, MR-9, MR-12 Check 1 (ERROR) and MR-2/MR-3/MR-4/MR-5/MR-6/MR-8/MR-10/MR-11/MR-12 Checks 2–3/MR-13/MR-14 (WARNING)
   before you run.
 - **`ll-loop diagnose-evaluators <loop>`** — after MR-1 passes, checks that your gate is
   actually *discriminating*. A gate can satisfy MR-1 yet be toothless if its verdict never
@@ -429,7 +429,7 @@ restricted CI environment where specific MCP tools, shell commands, or write pat
 unavailable.
 
 The `check_substrate` state is an optional LLM-judged feasibility gate for planning loops
-that target non-standard execution environments. It sits between the `plan` state and the
+that target non-standard execution environments. It sits between the `review_plan` state and the
 `research` state, validating each proposed action against known environment constraints
 before the loop commits to research and implementation.
 

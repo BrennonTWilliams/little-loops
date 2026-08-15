@@ -417,7 +417,7 @@ Set context variables with `--context key=value` flags or by editing the loop's 
 | `corpus.last_harvested` | `harvest` (incremental `--since` flag) | `publish` (UTC timestamp) | Incremental harvest sentinel |
 | `corpus.json` (or `corpus_state_file`) | `calibrate` (Read tool, optional) | Not written by the miner | Persisted calibration state for freshness decay |
 | `examples.json` (or `examples_file`) | `run_optimizer` inner loop | `write_examples` (intermediate), `publish` (final) | The training corpus for `apo-textgrad` |
-| `.issues/completed/*.md` | `judge` (session log entry count via Bash) | Never | Source of revision distance heuristic |
+| `.issues/**/*.md` (`status: done`) | `judge` (session log entry count via Bash) | Never | Source of revision distance heuristic |
 | Session JSONL files in `~/.claude/projects/` | `ll-messages` in `harvest` | Never | Source of raw harvested candidates |
 
 ---
@@ -526,7 +526,7 @@ judge:
   on_failure: done
 ```
 
-> **Note**: Although `loop:` is interpolated at parse time (`scripts/little_loops/fsm/executor.py:840` runs `interpolate(state.loop, ctx)`), `ll-loop validate` skips dynamic loop names so a `${context.skill_name}` reference is only checkable at runtime. Hardcode the oracle path in production YAML; treat interpolation here as a debugging convenience, not a load-bearing tool.
+> **Note**: Although `loop:` is interpolated at parse time (the executor runs `interpolate(state.loop, ctx)` in `scripts/little_loops/fsm/executor.py`), `ll-loop validate` skips dynamic loop names so a `${context.skill_name}` reference is only checkable at runtime. Hardcode the oracle path in production YAML; treat interpolation here as a debugging convenience, not a load-bearing tool.
 
 ### 4. Calibrate the oracle
 

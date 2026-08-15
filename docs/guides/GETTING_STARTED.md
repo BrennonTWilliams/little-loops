@@ -83,7 +83,9 @@ ll-init
 .ll/ll-config.json
 ```
 
-**What else happens:** `ll-init` also appends little-loops state files to your `.gitignore` (`.auto-manage-state.json`, `.parallel-manage-state.json`, `.ll/ll-context-state.json`, `.ll/ll-sync-state.json`, `.ll/ll-session-events.jsonl`) so runtime state never ends up committed.
+**What else happens:** `ll-init` also appends little-loops state files to your `.gitignore` so runtime state never ends up committed: `.auto-manage-state.json`, `.parallel-manage-state.json`, `.ll/ll-context-state.json`, `.ll/ll-sync-state.json`, `.ll/ll-session-events.jsonl`, `.ll/history.db*`, `.ll/queue.db*`, `.ll/*.lock`, `.ll/ll-continue-prompt.md`, `.ll/private-refs.local.txt`, and the nested-`.ll/` stray guards `**/.ll/` followed by `!/.ll/`.
+
+The `.ll/` handling follows the `.claude/` model: the repo-root directory is tracked (the decisions log, the learning-test registry, `templates/`, `ll-goals.md` — curated artifacts a team shares) with machine-local state ignored file-by-file, while every *nested* `.ll/` is ignored outright as a stray created by running an `ll-*` command from a subdirectory. **Entry order is load-bearing**: git is last-match-wins, so `!/.ll/` must follow `**/.ll/`. `.ll/ll-continue-prompt.md` and `.ll/private-refs.local.txt` are ignored *because* `ll-verify-private-refs` exempts them from the private-reference gate — the ignore rule and the exemption are a matched pair, and exempting a file without also ignoring it would let a real leak reach a commit.
 
 ### Flags
 
@@ -94,7 +96,7 @@ ll-init
 | `--force` | Overwrites an existing `.ll/ll-config.json` (TUI now pre-populates from existing values automatically, so `--force` is rarely needed) | Forcing a full template reset regardless of existing config |
 | `--dry-run` | Previews what would be generated without writing any files | Checking what `ll-init` would produce before committing |
 | `--plan` | Emits a JSON plan `{detected, proposed_config, host_options, warnings, provenance, ambiguities}` without writing anything; `provenance` tags each introspected field `declared`/`inferred`/`default`, and a re-init prints a stderr warning (stdout stays pure JSON) when a `declared` value diverges from the stored config | CI pipelines, inspection before applying, or piping into `ll-init apply --config` |
-| `--enable FEATURE` | Enable an optional feature in the headless config (repeatable). Valid (in argparse order): `product`, `analytics`, `context_monitor`, `learning_tests`, `decisions`, `scratch_pad`, `session_capture`, `session_digest`, `prompt_optimization` | Activating optional features without the TUI |
+| `--enable FEATURE` | Enable an optional feature in the headless config (repeatable). Valid: `product`, `analytics`, `context_monitor`, `learning_tests`, `decisions`, `scratch_pad`, `session_capture`, `session_digest`, `prompt_optimization`, `parallel`, `documents`, `design_tokens`, `sync`, `confidence_gate`, `tdd` (the full `_TOGGLEABLE_FEATURES` set). The last six own sub-config; enabling them headlessly writes their schema-default shape, and the TUI remains the place to fine-tune sub-values | Activating optional features without the TUI |
 | `--disable FEATURE` | Disable a feature (same valid names as `--enable`) | Turning off a feature that was auto-enabled |
 | `--upgrade` | Act on version drift automatically, then refresh every active host's integration surface: upgrade the pip package, force-regenerate adapter files (e.g. `.codex/hooks.json`), and scope-aware-update the claude-code plugin. Default headless mode is warn-only. Passing it alone (no `--yes`/`--dry-run`/`--plan`) implies `--yes` and runs headlessly | CI pipelines or automation where you want hands-free upgrades |
 | `--root / -C` | Set the project root directory (default: current directory) | Running `ll-init` from a different working directory |

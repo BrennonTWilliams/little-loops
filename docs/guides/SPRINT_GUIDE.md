@@ -176,14 +176,16 @@ Before executing a sprint, especially if issues have been refined since the spri
 /ll:review-sprint bug-fixes
 ```
 
-The skill performs a six-phase analysis:
+The skill runs six phases:
 
-1. **Staleness check** — are issue files still current, or have they been superseded?
-2. **Priority drift** — have priorities changed since the sprint was built?
-3. **Dependency cycles** — would execution deadlock?
-4. **File contention warnings** — which issues will serialize and why?
-5. **Backlog scan** — are there related issues not in the sprint that belong?
-6. **Removal proposals** — issues that are completed, invalid, or out of scope
+1. **Load & Health Check** — reads the sprint and its YAML, then surfaces invalid issue references, dependency cycles, the execution-wave structure, file-contention warnings, and any issues already `status: done`.
+2. **Backlog Scan** — looks for related issues not in the sprint that may belong.
+3. **Analysis** — six sub-checks: (a) staleness, (b) **goal coherence** — do the members still serve the sprint's stated goal, (c) priority drift, (d) backlog opportunities, (e) **wave optimization** — is the parallel-execution structure sound, (f) EPIC context.
+4. **Recommendations** — proposals grouped by category, including additions, removals, and EPIC blocker gaps.
+5. **Interactive Approval** — you accept or reject each proposal.
+6. **Apply Changes** — accepted changes are written via `ll-sprint edit`.
+
+Goal coherence (3b) and wave optimization (3e) are easy to miss: they are the two checks that look at the sprint as a whole rather than at individual issues.
 
 **EPIC awareness**: When any sprint member has a `parent:` field referencing an EPIC, the review also produces an **EPIC Context** section. For each touched EPIC, it resolves the full active-children set (via `ll-sprint show EPIC-NNN`, backed by `ll-deps tree EPIC-NNN --json` for blocker edges) and computes the delta — EPIC children not in the sprint. If a delta member is listed in any sprint member's `blocked_by:`, the review flags it as a critical-path blocker gap and offers to add it to the sprint. This prevents the common mid-sprint stall where a manually curated sprint includes the "interesting" children of an EPIC but skips the blocker.
 

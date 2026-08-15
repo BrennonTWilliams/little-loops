@@ -1342,7 +1342,7 @@ auth_failed:
   terminal: true
 ```
 
-The `error_patterns` list on `output_contains` overrides `verdict="no"` to `verdict="error"` *only when* the main pattern did not match but any listed error pattern is found in the output (`scripts/little_loops/fsm/evaluators.py:455-465`, in `evaluate_output_contains`). When the main pattern matches first, `error_patterns` is never consulted. The `verdict="error"` route reaches `on_error` without raising an exception or incrementing the retry counter. Without `on_error:`, the loop terminates with `terminated_by="error"`. `error_patterns` do not trigger a `NON_RECOVERABLE` signal; they are a shorthand for verdict-routing, not an exception path.
+The `error_patterns` list on `output_contains` overrides `verdict="no"` to `verdict="error"` *only when* the main pattern did not match but any listed error pattern is found in the output (the `error_patterns` override branch in `evaluate_output_contains`, `scripts/little_loops/fsm/evaluators.py`). When the main pattern matches first, `error_patterns` is never consulted. The `verdict="error"` route reaches `on_error` without raising an exception or incrementing the retry counter. Without `on_error:`, the loop terminates with `terminated_by="error"`. `error_patterns` do not trigger a `NON_RECOVERABLE` signal; they are a shorthand for verdict-routing, not an exception path.
 
 **"No state found" on resume.** The loop already completed or was never started — completed loops have no resumable state. Check `ll-loop status <name>`.
 

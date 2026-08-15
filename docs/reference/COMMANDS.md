@@ -13,7 +13,7 @@ Commands and skills support optional `--flag` modifiers passed after arguments. 
 | `--deep` | Increase thoroughness, accept longer execution | `scan-codebase`, `audit-architecture`, `handoff`, `ready-issue` |
 | `--focus [area]` | Narrow scope to a specific area | `scan-codebase` |
 | `--dry-run` | Show what would happen without making changes | `manage-issue`, `align-issues`, `refine-issue`, `format-issue`, `manage-release`, `audit-issue-conflicts` |
-| `--auto` | Non-interactive mode (no prompts). Also activated independently by the `LL_NON_INTERACTIVE` or `DANGEROUSLY_SKIP_PERMISSIONS` env var, or by `--dangerously-skip-permissions` | `commit`, `refine-issue`, `prioritize-issues`, `format-issue`, `confidence-check`, `spike`, `verify-issues`, `map-dependencies`, `issue-size-review`, `audit-issue-conflicts`, `link-epics`, `audit-loop-run`, `debug-loop-run`, `explore-api` |
+| `--auto` | Non-interactive mode (no prompts). Also activated independently by the `LL_NON_INTERACTIVE` or `DANGEROUSLY_SKIP_PERMISSIONS` env var, or by `--dangerously-skip-permissions` | `commit`, `refine-issue`, `prioritize-issues`, `format-issue`, `confidence-check`, `spike`, `verify-issues`, `map-dependencies`, `issue-size-review`, `audit-issue-conflicts`, `link-epics`, `audit-loop-run`, `debug-loop-run`, `explore-api`, `decide-issue`, `wire-issue`, `go-no-go`, `scope-epic`, `review-loop`, `simplify-loop` |
 | `--gap-analysis` | Additive-only enrichment: fill gaps, never remove content; exempt from `max_refine_count` | `refine-issue` |
 | `--full-rewrite` | Full-rewrite mode (legacy): overwrites sections with research findings | `refine-issue` |
 | `--check` | Check-only mode for FSM loop evaluators: run scoring/validation without writes, exit 1 if any fail | `ready-issue`, `verify-issues`, `confidence-check`, `issue-size-review`, `go-no-go`, `spike` |
@@ -335,7 +335,7 @@ Pre-implementation confidence check that validates readiness and estimates outco
 **Arguments:**
 - `issue_id` (optional): Specific issue to check
 
-**Flags:** `--auto` (non-interactive), `--all` (batch all active issues), `--sprint <name>` (scope to sprint issues only), `--check` (check-only mode: run scoring without writes, print `[ID] check: score N/100` per issue, exit 1 if any fail)
+**Flags:** `--auto` (non-interactive), `--all` (batch all active issues), `--sprint <name>` (scope to sprint issues only), `--check` (check-only mode: run scoring without writes). Only **failing** issues print a score line — `[ID] check: score N/100 (below threshold)`; issues at or above the threshold print nothing. After all issues, prints either `N issues not ready` and exits 1, or `All issues pass confidence check` and exits 0
 
 **Findings write-back**: When concerns, gaps, or outcome risk factors are found (and `--check` is not set), the skill automatically appends a `## Confidence Check Notes` section to the issue file and stages it with `git add` — no confirmation prompt. This fires in both interactive and `--auto` modes. If all scores are clean, no write occurs.
 
@@ -944,6 +944,7 @@ Find stuck or stale `ll-loop` processes, diagnose root causes from state and eve
 **Arguments:**
 - `--dry-run` (flag): Preview discovered stuck/stale loops without making any changes
 - `--threshold N` (optional): Minutes before a "running" loop's `updated_at` is considered stale (default: 15)
+- `--interrupted-age H` (optional): Hours before an `interrupted` loop's `updated_at` makes it eligible for cleanup (default: 24)
 
 **What it does:**
 1. Runs `ll-loop list --running --json` to enumerate all loops with state files

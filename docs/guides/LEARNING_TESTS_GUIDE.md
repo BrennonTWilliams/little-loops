@@ -294,7 +294,7 @@ For automated detection of stale records across the entire registry — e.g., af
 ll-loop run learning-tests-audit
 ```
 
-The loop enumerates installed packages (pip + npm), uses the LLM to map record targets to canonical package names, queries PyPI and npm registries for newer versions, bulk-marks stale records via `ll-learning-tests mark-stale`, and produces a four-section triage report under `.loops/runs/learning-tests-audit/report-<timestamp>.md`. See [LOOPS_REFERENCE.md → API Adoption](LOOPS_REFERENCE.md#api-adoption) for details.
+The loop enumerates installed packages (pip + npm), uses the LLM to map record targets to canonical package names, queries PyPI and npm registries for newer versions, bulk-marks stale records via `ll-learning-tests mark-stale`, and produces a four-section triage report under the run's own directory — `${context.run_dir}`, which resolves to `.loops/runs/learning-tests-audit-<run-timestamp>/`, one directory per run rather than a shared per-loop directory. See [LOOPS_REFERENCE.md → API Adoption](LOOPS_REFERENCE.md#api-adoption) for details.
 
 **`/ll:explore-api` asks to overwrite a record I want to keep**
 
@@ -409,7 +409,7 @@ Or, to suppress the hint for a specific package without adding it to the skip li
 
 ### Caching
 
-The gate caches each package lookup for the lifetime of the hook process (`_SESSION_CACHE` is module-level in `scripts/little_loops/hooks/learning_tests_gate.py:42`). Re-running `/ll:explore-api "<target>"` while the same hook process is alive will not pick up freshly-proven records; restart the session to clear the cache.
+The gate caches each package lookup for the lifetime of the hook process (`_SESSION_CACHE` is module-level in `scripts/little_loops/hooks/learning_tests_gate.py`). Re-running `/ll:explore-api "<target>"` while the same hook process is alive will not pick up freshly-proven records; restart the session to clear the cache.
 
 ---
 

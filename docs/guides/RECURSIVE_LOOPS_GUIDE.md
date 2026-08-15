@@ -352,7 +352,7 @@ before each silent fail-open exit so `audit-loop-run` and the
 |-------|---------|
 | `UNRESOLVED` | `blocked_by` file exists but no blocker IDs could be resolved (parse failure) |
 | `PARSE_ERROR` | The bash wrapper's `$UNMET` capture itself broke (jq / regex failure) |
-| `DONE_SET_ERROR` | Issue is already `done` in `.issues/completed/` but also appears in the queue (drift) |
+| `DONE_SET_ERROR` | Issue already carries `status: done` but also appears in the queue (drift) |
 
 The tokens are emitted **before** the existing silent `sys.exit(0)` fail-open
 exits — the fail-open semantics are unchanged (the wrapper stdout still sees
