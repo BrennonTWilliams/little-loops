@@ -4288,9 +4288,11 @@ would make (`{"applied": false, "tool": …, "target": …, "changes": […]}`) 
 nothing. The check is fail-closed — only the literal boolean `true` opts in. **Per-transport
 policy:** `mcp.transport_policy.<http|stdio>.allow_mutations` in `.ll/ll-config.json`
 governs whether they may run at all, defaulting to `false` for HTTP (which ships without
-authentication) and `true` for stdio. A denied call is refused in ASGI middleware from the
-SEP-2243 `Mcp-Method`/`Mcp-Name` headers, before the JSON-RPC body is parsed, with a
-JSON-RPC error (`-32001`) and HTTP 403; reads on the same server are unaffected. The four
+authentication) and `true` for stdio. On HTTP, a denied call is refused in ASGI middleware
+from the SEP-2243 `Mcp-Method`/`Mcp-Name` headers, before the JSON-RPC body is parsed, with
+a JSON-RPC error (`-32001`) and HTTP 403; the `tools/call` handler itself also enforces the
+same policy on both transports (FEAT-3168), so the decision is uniform even when the ASGI
+layer is bypassed or the call arrives over stdio. Reads on the same server are unaffected. The four
 carry a `readOnlyHint: false` annotation in `tools/list`; the five read-only tools carry no
 annotations, which is how a host tells the groups apart.
 
@@ -4385,10 +4387,10 @@ an independent grant: `mcp.transport_policy.<http|stdio>.allow_tasks` (default `
 not imply consenting to starting or stopping a running agent. `loop_start` shares this same
 grant (starting a run is the same class of authority as stopping one). A denied `tasks/get`
 reports itself as a `tasks/get` denial, and a denied `loop_start` call reports itself as a
-`tools/call/loop_start` denial — not a generic `tools/call` one. stdio's `allow_tasks`
-knob is currently advisory only (the policy check has one call site, the HTTP middleware;
-stdio has none) — stdio defaults open, so this does not change the default posture, but an
-operator setting it to `false` under `stdio` should know it has no effect yet.
+`tools/call/loop_start` denial — not a generic `tools/call` one. Enforced uniformly on both
+transports (FEAT-3168): the `tasks/get`/`tasks/cancel` handlers and `loop_start`'s
+`tools/call` handler each consult the policy directly, so `stdio.allow_tasks: false` denies
+with `-32001` over stdio exactly as `http.allow_tasks: false` does over HTTP.
 
 Also advertises a `resources` capability (FEAT-3136): issue files, `.ll/ll-goals.md`, and
 `docs/**/*.md` are listed and readable under an `ll://` scheme (`ll://issues/<ID>`,

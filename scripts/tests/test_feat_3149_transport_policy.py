@@ -101,8 +101,13 @@ def _call_tool(client: TestClient, name: str, arguments: dict):
 
 
 def test_build_server_signature_still_unchanged() -> None:
-    """AC 6: the policy hook is additive and must not reach `build_server()`'s signature."""
-    assert inspect.signature(build_server).parameters == {}
+    """FEAT-3168 sanctioned widening: `build_server()` gains one defaulted `transport`
+    parameter (Decision D1) to thread transport identity into the handler layer. This pin
+    re-asserts the widened shape rather than the original zero-parameter one — the pin's
+    intent (no *accidental* further widening) is preserved."""
+    params = inspect.signature(build_server).parameters
+    assert list(params) == ["transport"]
+    assert params["transport"].default == "stdio"
 
 
 def test_ac5_mutating_call_is_refused_while_reads_still_succeed(tmp_path, monkeypatch) -> None:

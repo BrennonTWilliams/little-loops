@@ -491,14 +491,10 @@ reports itself as a `tasks/get` denial (not a `tools/call` one), and a denied `l
 reports itself as a `tools/call/loop_start` denial, since the underlying guard is shared
 with Guard 2 but every method/tool is gated independently.
 
-**stdio's `allow_tasks`/`allow_mutations` knobs are currently advisory, not enforced.**
-The policy check only has one call site: the HTTP transport's ASGI middleware. Over stdio
-there is no middleware and no handler invokes the policy itself, so setting either knob to
-`false` under `stdio` in `.ll/ll-config.json` has no effect today — stdio is a
-same-machine, same-user channel, so the default posture (open) is unaffected, but an
-operator who explicitly tries to lock it down over stdio should know that setting does not
-yet do anything. Enforcing it properly needs transport identity plumbed into
-`build_server()`'s handlers, a cross-cutting change owed equally to all three grants.
+Enforcement is uniform across both transports: the `tools/call` and `tasks/*` handlers
+themselves consult the policy (in addition to the HTTP transport's ASGI middleware, which
+still denies before the JSON-RPC body is parsed on that transport), so a denied call over
+stdio returns the same `-32001` JSON-RPC error the HTTP path returns.
 
 ---
 

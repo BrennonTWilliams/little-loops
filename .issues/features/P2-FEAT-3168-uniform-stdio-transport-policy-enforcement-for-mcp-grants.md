@@ -4,11 +4,12 @@ type: FEAT
 title: 'll-mcp: enforce stdio transport policy for both grants across all three guarded
   surfaces'
 priority: P2
-status: open
+status: done
 verify_verdict: VALID
 discovered_by: issue-review
 discovered_date: '2026-08-14'
 captured_at: '2026-08-14T22:40:00Z'
+completed_at: '2026-08-15T00:17:38Z'
 parent: EPIC-3127
 labels:
 - multi-host
@@ -79,6 +80,18 @@ off when it is not. A knob that silently no-ops is worse than an absent one.
 
 `loop_start` raises the stakes enough to be worth doing now rather than deferring
 indefinitely: it is the only MCP surface that spawns an agent.
+
+## Use Case
+
+An operator runs little-loops' MCP server over stdio on a shared or automation-run
+workstation and sets `mcp.transport_policy.stdio.allow_tasks: false` in
+`.ll/ll-config.json`, intending to prevent any MCP client on that box from starting
+loop runs (`loop_start`) or inspecting/cancelling other users' runs (`tasks/get`,
+`tasks/cancel`). Today that config write is silently ignored — `loop_start` still
+spawns an agent with the project's full tool permissions over stdio. After this issue
+lands, the same `tools/call` for `loop_start` is denied with a `-32001` JSON-RPC error
+before any process is spawned, so the config knob the operator set actually does what
+it says.
 
 ## Integration Map
 
@@ -321,12 +334,53 @@ EPIC-3127 — `ll-mcp`: MCP server as little-loops' host-agnostic serving layer.
 
 - [`docs/guides/MCP_SERVER_GUIDE.md`](../../docs/guides/MCP_SERVER_GUIDE.md)
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-08-15
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/mcp_server/server.py`: `build_server(transport: str = "stdio")` —
+  threads transport identity into the handler factories; `build_http_app()` passes
+  `transport="http"`, `run_stdio()` passes `transport="stdio"` explicitly (D1).
+- `scripts/little_loops/mcp_server/tools.py`: `handle_call_tool` became
+  `make_call_tool_handler(transport)`, a factory whose closure raises `MCPError(code=
+  POLICY_DENIED_CODE, ...)` before the existing dry-run `try:` block (Guard 0, ahead of
+  Guard 1).
+- `scripts/little_loops/mcp_server/tasks.py`: `handle_tasks_get`/`handle_tasks_cancel`
+  became `make_tasks_get_handler(transport)`/`make_tasks_cancel_handler(transport)`
+  factories, each raising the same `MCPError` shape at the top of the handler.
+- `scripts/tests/test_feat_3143_mcp_http_transport.py`,
+  `scripts/tests/test_feat_3149_transport_policy.py`: re-pinned
+  `build_server`'s signature to the widened one-parameter shape (Decision D1).
+- `scripts/tests/test_feat_3168_stdio_policy_enforcement.py` (new): unit assertions
+  against `check_tool_call("stdio", ...)` for all three surfaces, real `_stdio_roundtrip()`
+  wire-level denials for AC 1-3, an in-process spawn-prevention assertion for AC 3, the
+  wrong-transport-closure guard for AC 8, and a both-layers-agree assertion for HTTP
+  (Decision D2).
+- `docs/guides/MCP_SERVER_GUIDE.md`, `docs/reference/CLI.md`,
+  `scripts/little_loops/config-schema.json`: removed the three "stdio is advisory only"
+  passages now that enforcement is uniform.
+- `.ll/learning-tests/mcp-stdio-policy-enforcement.md` (new): records Decision D3's SDK
+  finding — a raised `MCPError` reaches the wire intact from `on_call_tool` on both
+  transports, and the guard-0 raise must sit outside Guard 1's `try:` block.
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 19275 passed, 43 skipped)
+- Lint: PASS (`ruff check`)
+- Format: PASS (`ruff format --check`)
+- Types: PASS (`mypy scripts/little_loops/mcp_server/`)
+- Integration: PASS
+
 ## Status
 
-**Open** — filed as FEAT-3151's owed Decision 8 follow-up | Created: 2026-08-14 | Priority: P2
+**Done** | Created: 2026-08-14 | Completed: 2026-08-15 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-15T00:16:49 - `f2a7b3a1-13a3-4789-a189-b1a33c413ed6.jsonl`
+- `/ll:ready-issue` - 2026-08-14T23:58:16 - `106b1e2a-74ae-4ddb-a907-9236b65f5623.jsonl`
 - `/ll:verify-issues` - 2026-08-14T23:22:40 - `e3ada8fd-7b00-4616-a2b4-3cdb1d665bcc.jsonl`
 - `/ll:refine-issue` - 2026-08-14T23:20:06 - `c7faedd3-027b-4e54-b66d-0a14518cc970.jsonl`
 - `/ll:verify-issues` - 2026-08-14T23:16:32 - `abed8dc6-2249-4b8a-a2a2-60359fde2b55.jsonl`

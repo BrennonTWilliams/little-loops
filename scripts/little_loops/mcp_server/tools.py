@@ -39,8 +39,9 @@ from typing import Any
 
 import mcp_types as types
 from mcp.server.context import ServerRequestContext
+from mcp.shared.exceptions import MCPError
 
-from little_loops.mcp_server.policy import MUTATING_TOOLS
+from little_loops.mcp_server.policy import MUTATING_TOOLS, POLICY_DENIED_CODE, check_tool_call
 
 
 def _project_root() -> Path:
@@ -830,59 +831,86 @@ async def handle_list_tools(
     return types.ListToolsResult(tools=_TOOLS)
 
 
-async def handle_call_tool(
-    _ctx: ServerRequestContext[Any],
-    params: types.CallToolRequestParams,
-) -> types.CallToolResult:
-    """`tools/call` handler: dispatches to the named tool's handler function.
+def make_call_tool_handler(
+    transport: str,
+) -> Callable[
+    [ServerRequestContext[Any], types.CallToolRequestParams],
+    Any,
+]:
+    """Build the `tools/call` handler, bound to the transport it is served over.
 
-    Any exception raised by a tool handler (unknown issue ID, invalid FTS5 query, no host
-    configured, ...) becomes a tool-level error result (`is_error=True`) rather than an
-    uncaught exception reaching the SDK's dispatch loop — MCP's contract for a tool that
-    failed on its own terms, as opposed to a transport/protocol fault.
-
-    Guard 1 of FEAT-3149 lives here, as a wrapper rather than per-handler, so there is one
-    place to audit and no way to forget it on a new tool. It **fails closed**: `apply` opts
-    in only on the literal boolean `True`. A missing key, `null`, `"true"`, `1`, or any
-    other truthy-looking value is a dry-run. That asymmetry is deliberate — the cost of
-    misreading an opt-in is an unintended write to a user's issue tree, and the cost of
-    misreading an opt-out is one wasted round trip.
-
-    The `applied`/`tool` keys are stamped **after** the handler's payload, so the guard's
-    account of whether a write happened always wins over the handler's.
+    FEAT-3168: `transport` is threaded in at `build_server()` construction time (the same
+    factory-closure shape `resources.py`/`prompts.py` already use) so Guard 0 — the
+    per-transport policy check — knows which transport it is deciding for. Neither
+    `handle_call_tool` nor `ServerRequestContext` had access to that identity before.
     """
-    handler = _TOOL_HANDLERS.get(params.name)
-    if handler is None:
+
+    async def handle_call_tool(
+        _ctx: ServerRequestContext[Any],
+        params: types.CallToolRequestParams,
+    ) -> types.CallToolResult:
+        """`tools/call` handler: dispatches to the named tool's handler function.
+
+        Any exception raised by a tool handler (unknown issue ID, invalid FTS5 query, no
+        host configured, ...) becomes a tool-level error result (`is_error=True`) rather
+        than an uncaught exception reaching the SDK's dispatch loop — MCP's contract for a
+        tool that failed on its own terms, as opposed to a transport/protocol fault.
+
+        Guard 0 (FEAT-3168) runs first, ahead of Guard 1 below: it raises `MCPError` rather
+        than returning a tool-result error, so a denied call over stdio or an ASGI-bypassed
+        HTTP call surfaces the same `-32001` JSON-RPC protocol error the HTTP middleware
+        returns — not a tool-level error result. It must stay outside the `try:` block
+        below: that block's catch-all turns any exception into `is_error=True`, which would
+        swallow the denial into a tool-result error instead of a protocol error.
+
+        Guard 1 of FEAT-3149 lives here, as a wrapper rather than per-handler, so there is
+        one place to audit and no way to forget it on a new tool. It **fails closed**:
+        `apply` opts in only on the literal boolean `True`. A missing key, `null`, `"true"`,
+        `1`, or any other truthy-looking value is a dry-run. That asymmetry is deliberate —
+        the cost of misreading an opt-in is an unintended write to a user's issue tree, and
+        the cost of misreading an opt-out is one wasted round trip.
+
+        The `applied`/`tool` keys are stamped **after** the handler's payload, so the
+        guard's account of whether a write happened always wins over the handler's.
+        """
+        decision = check_tool_call(transport, "tools/call", params.name)
+        if not decision.allowed:
+            raise MCPError(code=POLICY_DENIED_CODE, message=decision.reason)
+
+        handler = _TOOL_HANDLERS.get(params.name)
+        if handler is None:
+            return types.CallToolResult(
+                content=[types.TextContent(text=f"Unknown tool: {params.name}")],
+                is_error=True,
+            )
+
+        arguments = dict(params.arguments or {})
+
+        try:
+            if params.name in MUTATING_TOOLS:
+                apply = arguments.pop("apply", False) is True
+                payload = {
+                    **handler(arguments, apply=apply),
+                    "applied": apply,
+                    "tool": params.name,
+                }
+            else:
+                payload = handler(arguments)
+        except Exception as exc:
+            return types.CallToolResult(
+                content=[types.TextContent(text=str(exc))],
+                is_error=True,
+            )
+
+        # `structuredContent` is an arbitrary JSON value only on 2026-07-28; every earlier
+        # protocol version restricts it to a JSON *object*, and `mcp==2.0.0` negotiates down
+        # to 2025-11-25 even when a client asks for 2026-07-28. Attaching a list payload
+        # (the `issues_query`/`history_search` shape) therefore fails wire-level validation
+        # with -32603 for every real client. Send it only when it is a dict; the full
+        # payload — list or dict — always travels in `content[0].text` regardless.
         return types.CallToolResult(
-            content=[types.TextContent(text=f"Unknown tool: {params.name}")],
-            is_error=True,
+            content=[types.TextContent(text=json.dumps(payload))],
+            structured_content=payload if isinstance(payload, dict) else None,
         )
 
-    arguments = dict(params.arguments or {})
-
-    try:
-        if params.name in MUTATING_TOOLS:
-            apply = arguments.pop("apply", False) is True
-            payload = {
-                **handler(arguments, apply=apply),
-                "applied": apply,
-                "tool": params.name,
-            }
-        else:
-            payload = handler(arguments)
-    except Exception as exc:
-        return types.CallToolResult(
-            content=[types.TextContent(text=str(exc))],
-            is_error=True,
-        )
-
-    # `structuredContent` is an arbitrary JSON value only on 2026-07-28; every earlier
-    # protocol version restricts it to a JSON *object*, and `mcp==2.0.0` negotiates down to
-    # 2025-11-25 even when a client asks for 2026-07-28. Attaching a list payload (the
-    # `issues_query`/`history_search` shape) therefore fails wire-level validation with
-    # -32603 for every real client. Send it only when it is a dict; the full payload — list
-    # or dict — always travels in `content[0].text` regardless.
-    return types.CallToolResult(
-        content=[types.TextContent(text=json.dumps(payload))],
-        structured_content=payload if isinstance(payload, dict) else None,
-    )
+    return handle_call_tool

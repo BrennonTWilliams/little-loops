@@ -563,7 +563,7 @@
       "properties": {
         "transport_policy": {
           "type": "object",
-          "description": "Per-transport policy governing whether ll-mcp's mutating tools (issue_capture, issue_set_status, issue_link, issue_append_log) may run. Enforced for HTTP in ASGI middleware, from the Mcp-Method/Mcp-Name routing headers, before the JSON-RPC body is parsed.",
+          "description": "Per-transport policy governing whether ll-mcp's mutating tools (issue_capture, issue_set_status, issue_link, issue_append_log) may run. Enforced on HTTP in ASGI middleware, from the Mcp-Method/Mcp-Name routing headers, before the JSON-RPC body is parsed, and enforced uniformly on both transports by the tools/call and tasks/* handlers themselves (FEAT-3168).",
           "properties": {
             "http": {
               "type": "object",

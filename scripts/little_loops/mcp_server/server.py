@@ -48,18 +48,27 @@ def build_http_app(host: str = "127.0.0.1") -> Any:
     """
     from little_loops.mcp_server.policy import TransportPolicyMiddleware
 
-    server = build_server()
+    server = build_server(transport="http")
     app = server.streamable_http_app(json_response=True, stateless_http=True, host=host)
     return TransportPolicyMiddleware(app, transport="http")
 
 
-def build_server() -> Server:
+def build_server(transport: str = "stdio") -> Server:
     """Construct the `ll-mcp` lowlevel `Server`: the read-only and guarded-mutation tool
     surface, the `ll://` resource surface, and the prompts-from-skills surface.
 
     The resource/prompt enumerations are built fresh here, once per `Server` instance — this
     function is called once per stdio session (`run_stdio`) and once per test — rather than at
     module import time, so they never leak state across servers/tests.
+
+    FEAT-3168: `transport` threads transport identity into the `tools/call` and `tasks/*`
+    handler factories so `policy.check_tool_call` can enforce the same decision on both
+    transports, not just HTTP's ASGI middleware. Defaults to `"stdio"` — fail-safe
+    (over-deny) for a call site that forgets to pass it explicitly, since a forgotten
+    `run_stdio()` call site defaulting to `"http"` would silently regress stdio enforcement
+    back to advisory. Both production call sites (`build_http_app`, `run_stdio`) pass
+    `transport=` explicitly; the default exists only to keep the ~37 zero-arg test call
+    sites (none of which set a `transport_policy` config block) passing unchanged.
     """
     from mcp.server.caching import CacheHint
     from mcp.server.extension import compose_tool_call_handler
@@ -80,10 +89,10 @@ def build_server() -> Server:
         TasksCancelParams,
         TasksExtension,
         TasksGetParams,
-        handle_tasks_cancel,
-        handle_tasks_get,
+        make_tasks_cancel_handler,
+        make_tasks_get_handler,
     )
-    from little_loops.mcp_server.tools import handle_call_tool, handle_list_tools
+    from little_loops.mcp_server.tools import handle_list_tools, make_call_tool_handler
     from little_loops.skill_expander import _find_plugin_root
 
     config = BRConfig(Path.cwd())
@@ -101,7 +110,7 @@ def build_server() -> Server:
     # docstring).
     on_call_tool = cast(
         "Callable[[ServerRequestContext[Any, Any], types.CallToolRequestParams], Awaitable[types.CallToolResult | types.InputRequiredResult]]",
-        compose_tool_call_handler([TasksExtension()], handle_call_tool),
+        compose_tool_call_handler([TasksExtension()], make_call_tool_handler(transport)),
     )
 
     server = Server(
@@ -131,8 +140,10 @@ def build_server() -> Server:
     # collides with a spec method), registered via add_request_handler rather than the
     # SDK's MCPServer(extensions=[...]) API, which the lowlevel Server has no parameter
     # for. Gated by the transport policy in policy.py, not here — see build_http_app().
-    server.add_request_handler("tasks/get", TasksGetParams, handle_tasks_get)
-    server.add_request_handler("tasks/cancel", TasksCancelParams, handle_tasks_cancel)
+    server.add_request_handler("tasks/get", TasksGetParams, make_tasks_get_handler(transport))
+    server.add_request_handler(
+        "tasks/cancel", TasksCancelParams, make_tasks_cancel_handler(transport)
+    )
 
     return server
 
@@ -147,7 +158,7 @@ async def run_stdio() -> None:
     """
     import mcp.server.stdio as stdio_transport
 
-    server = build_server()
+    server = build_server(transport="stdio")
     async with stdio_transport.stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, server.create_initialization_options())
 

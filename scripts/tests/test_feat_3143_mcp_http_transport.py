@@ -65,8 +65,13 @@ def test_run_http_defaults_to_loopback_not_public() -> None:
 
 
 def test_build_server_signature_unchanged() -> None:
-    """Acceptance criterion: `build_server()` is unchanged by this issue."""
-    assert inspect.signature(build_server).parameters == {}
+    """FEAT-3168 sanctioned widening: `build_server()` gains one defaulted `transport`
+    parameter (Decision D1) to thread transport identity into the handler layer. This pin
+    re-asserts the widened shape rather than the original zero-parameter one — the pin's
+    intent (no *accidental* further widening) is preserved."""
+    params = inspect.signature(build_server).parameters
+    assert list(params) == ["transport"]
+    assert params["transport"].default == "stdio"
 
 
 def test_http_tools_list_matches_stdio_path(tmp_path, monkeypatch) -> None:

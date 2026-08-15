@@ -1,0 +1,20 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.10, pytest-9.0.1, pluggy-1.5.0
+rootdir: scripts
+configfile: pyproject.toml
+collecting ... collected 12 items
+
+scripts/tests/test_feat_3168_stdio_policy_enforcement.py::test_ac1_check_tool_call_denies_mutating_tool_over_stdio PASSED [  8%]
+scripts/tests/test_feat_3168_stdio_policy_enforcement.py::test_ac1_mutating_tool_denied_over_stdio_wire PASSED [ 16%]
+scripts/tests/test_feat_3168_stdio_policy_enforcement.py::test_ac2_check_tool_call_denies_tasks_over_stdio PASSED [ 25%]
+scripts/tests/test_feat_3168_stdio_policy_enforcement.py::test_ac2_tasks_get_denied_over_stdio_wire PASSED [ 33%]
+scripts/tests/test_feat_3168_stdio_policy_enforcement.py::test_ac2_tasks_cancel_denied_over_stdio_wire PASSED [ 41%]
+scripts/tests/test_feat_3168_stdio_policy_enforcement.py::test_ac3_check_tool_call_denies_loop_start_over_stdio PASSED [ 50%]
+scripts/tests/test_feat_3168_stdio_policy_enforcement.py::test_ac3_loop_start_denied_over_stdio_and_no_process_spawned PASSED [ 58%]
+scripts/tests/test_feat_3168_stdio_policy_enforcement.py::test_ac3_wire_denial_carries_the_run_starting_tools_message PASSED [ 66%]
+scripts/tests/test_feat_3168_stdio_policy_enforcement.py::test_ac4_stdio_default_open_when_knobs_unset PASSED [ 75%]
+scripts/tests/test_feat_3168_stdio_policy_enforcement.py::test_ac8_stdio_locked_does_not_close_off_http PASSED [ 83%]
+scripts/tests/test_feat_3168_stdio_policy_enforcement.py::test_ac5_transport_policy_http_suite_passes_unmodified PASSED [ 91%]
+scripts/tests/test_feat_3168_stdio_policy_enforcement.py::test_both_enforcement_layers_agree_on_http_denial PASSED [100%]
+
+============================== 12 passed in 2.46s ===============================

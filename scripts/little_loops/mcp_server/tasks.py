@@ -30,12 +30,15 @@ protocol change:
 from __future__ import annotations
 
 import secrets
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import mcp_types as types
 from mcp.server.extension import Extension
 from mcp.shared.exceptions import MCPError
+
+from little_loops.mcp_server.policy import POLICY_DENIED_CODE, check_tool_call
 
 if TYPE_CHECKING:
     from mcp.server.context import CallNext, HandlerResult, ServerRequestContext
@@ -101,87 +104,109 @@ def mint_start_instance_id(loop_name: str, loops_dir: Path) -> str:
             return candidate
 
 
-async def handle_tasks_get(
-    context: ServerRequestContext[Any, Any], params: TasksGetParams
-) -> dict[str, Any]:
-    """`tasks/get` — mirrors SEP-2663's `GetTaskResult`.
+def make_tasks_get_handler(
+    transport: str,
+) -> Callable[[ServerRequestContext[Any, Any], TasksGetParams], Any]:
+    """Build the `tasks/get` handler, bound to the transport it is served over (FEAT-3168)."""
 
-    Pure disk read: `read_run_status()` reconciles PID liveness (Decision 1) before
-    reporting `"running"`, so a host never polls a run whose process died silently.
+    async def handle_tasks_get(
+        context: ServerRequestContext[Any, Any], params: TasksGetParams
+    ) -> dict[str, Any]:
+        """`tasks/get` — mirrors SEP-2663's `GetTaskResult`.
 
-    FEAT-3151 Decision 9: when no state file exists yet (the just-spawned run's child
-    has not written one), falls back to the PID file the parent wrote before returning
-    — closing the start-then-immediately-poll visibility window a bare "not found"
-    would otherwise open.
-    """
-    from little_loops.cli.loop.lifecycle import read_run_status
-    from little_loops.fsm.concurrency import _process_alive
-    from little_loops.fsm.persistence import _read_pid_file
-    from little_loops.fsm.types import ExecutionResult
+        Pure disk read: `read_run_status()` reconciles PID liveness (Decision 1) before
+        reporting `"running"`, so a host never polls a run whose process died silently.
 
-    loops_dir = _loops_dir()
-    disk_status = read_run_status(params.task_id, loops_dir)
-    if disk_status is None:
-        pid = _read_pid_file(loops_dir / ".running" / f"{params.task_id}.pid")
-        if pid is not None and _process_alive(pid):
-            return {"taskId": params.task_id, "status": "working", "runStatus": "starting"}
-        raise _not_found(params.task_id)
+        FEAT-3151 Decision 9: when no state file exists yet (the just-spawned run's child
+        has not written one), falls back to the PID file the parent wrote before returning
+        — closing the start-then-immediately-poll visibility window a bare "not found"
+        would otherwise open.
+        """
+        decision = check_tool_call(transport, "tasks/get", None)
+        if not decision.allowed:
+            raise MCPError(code=POLICY_DENIED_CODE, message=decision.reason)
 
-    run_status = disk_status["status"]
-    result: dict[str, Any] = {"taskId": params.task_id, "runStatus": run_status}
+        from little_loops.cli.loop.lifecycle import read_run_status
+        from little_loops.fsm.concurrency import _process_alive
+        from little_loops.fsm.persistence import _read_pid_file
+        from little_loops.fsm.types import ExecutionResult
 
-    if run_status == "running":
-        result["status"] = "working"
+        loops_dir = _loops_dir()
+        disk_status = read_run_status(params.task_id, loops_dir)
+        if disk_status is None:
+            pid = _read_pid_file(loops_dir / ".running" / f"{params.task_id}.pid")
+            if pid is not None and _process_alive(pid):
+                return {"taskId": params.task_id, "status": "working", "runStatus": "starting"}
+            raise _not_found(params.task_id)
+
+        run_status = disk_status["status"]
+        result: dict[str, Any] = {"taskId": params.task_id, "runStatus": run_status}
+
+        if run_status == "running":
+            result["status"] = "working"
+            return result
+
+        result["status"] = "completed" if run_status == "completed" else "failed"
+        # AC 2: shape the terminal-run fields exactly as ExecutionResult.to_dict() would —
+        # LoopState never stores an ExecutionResult, so this reconstructs the closest
+        # equivalent from what is actually persisted (Integration Map, fsm/persistence.py).
+        result.update(
+            ExecutionResult(
+                final_state=disk_status["current_state"],
+                iterations=disk_status["iteration"],
+                terminated_by=run_status,
+                duration_ms=disk_status.get("accumulated_ms", 0),
+                captured=disk_status.get("captured", {}),
+            ).to_dict()
+        )
         return result
 
-    result["status"] = "completed" if run_status == "completed" else "failed"
-    # AC 2: shape the terminal-run fields exactly as ExecutionResult.to_dict() would —
-    # LoopState never stores an ExecutionResult, so this reconstructs the closest
-    # equivalent from what is actually persisted (Integration Map, fsm/persistence.py).
-    result.update(
-        ExecutionResult(
-            final_state=disk_status["current_state"],
-            iterations=disk_status["iteration"],
-            terminated_by=run_status,
-            duration_ms=disk_status.get("accumulated_ms", 0),
-            captured=disk_status.get("captured", {}),
-        ).to_dict()
-    )
-    return result
+    return handle_tasks_get
 
 
-async def handle_tasks_cancel(
-    context: ServerRequestContext[Any, Any], params: TasksCancelParams
-) -> dict[str, Any]:
-    """`tasks/cancel` — mirrors SEP-2663's `CancelTaskResult`.
+def make_tasks_cancel_handler(
+    transport: str,
+) -> Callable[[ServerRequestContext[Any, Any], TasksCancelParams], Any]:
+    """Build the `tasks/cancel` handler, bound to the transport it is served over (FEAT-3168)."""
 
-    Decision 3: never bare `"cancelled"`. `resumable` and the backend's raw `runStatus`
-    always ride alongside, so a host cannot mistake a resumable `user_stopped` run for a
-    genuinely terminal one.
+    async def handle_tasks_cancel(
+        context: ServerRequestContext[Any, Any], params: TasksCancelParams
+    ) -> dict[str, Any]:
+        """`tasks/cancel` — mirrors SEP-2663's `CancelTaskResult`.
 
-    FEAT-3151 Decision 9 applies to this half too: `cancel_run` falls back to the PID file
-    when no state file exists yet, so a run started via `loop_start` is stoppable during
-    its child's startup window rather than reporting task-not-found. That path reports
-    `runStatus: "starting"` — the same vocabulary `handle_tasks_get` uses for the window —
-    and `resumable: false`.
-    """
-    from little_loops.cli.loop.lifecycle import cancel_run
-    from little_loops.fsm.persistence import RESUMABLE_STATUSES
-    from little_loops.logger import Logger
+        Decision 3: never bare `"cancelled"`. `resumable` and the backend's raw `runStatus`
+        always ride alongside, so a host cannot mistake a resumable `user_stopped` run for a
+        genuinely terminal one.
 
-    # verbose=False: this handler may run under the stdio transport, where anything
-    # printed to stdout corrupts JSON-RPC framing (Logger.info/.success write there).
-    outcome = cancel_run(params.task_id, _loops_dir(), Logger(verbose=False))
-    if outcome is None:
-        raise _not_found(params.task_id)
+        FEAT-3151 Decision 9 applies to this half too: `cancel_run` falls back to the PID
+        file when no state file exists yet, so a run started via `loop_start` is stoppable
+        during its child's startup window rather than reporting task-not-found. That path
+        reports `runStatus: "starting"` — the same vocabulary `handle_tasks_get` uses for
+        the window — and `resumable: false`.
+        """
+        decision = check_tool_call(transport, "tasks/cancel", None)
+        if not decision.allowed:
+            raise MCPError(code=POLICY_DENIED_CODE, message=decision.reason)
 
-    run_status = outcome["run_status"]
-    return {
-        "taskId": params.task_id,
-        "status": "cancelled",
-        "resumable": run_status in RESUMABLE_STATUSES,
-        "runStatus": run_status,
-    }
+        from little_loops.cli.loop.lifecycle import cancel_run
+        from little_loops.fsm.persistence import RESUMABLE_STATUSES
+        from little_loops.logger import Logger
+
+        # verbose=False: this handler may run under the stdio transport, where anything
+        # printed to stdout corrupts JSON-RPC framing (Logger.info/.success write there).
+        outcome = cancel_run(params.task_id, _loops_dir(), Logger(verbose=False))
+        if outcome is None:
+            raise _not_found(params.task_id)
+
+        run_status = outcome["run_status"]
+        return {
+            "taskId": params.task_id,
+            "status": "cancelled",
+            "resumable": run_status in RESUMABLE_STATUSES,
+            "runStatus": run_status,
+        }
+
+    return handle_tasks_cancel
 
 
 class TasksExtension(Extension):
