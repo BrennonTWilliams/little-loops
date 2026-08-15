@@ -120,6 +120,7 @@ _EXPORT_DEFAULT_TABLES = [
     "test_run_event",
     "usage_event",
     "orchestration_run",
+    "loop_run",
     "session_lifecycle_event",
     "harness_event",
     "prompt_opt_event",
@@ -127,6 +128,22 @@ _EXPORT_DEFAULT_TABLES = [
     "context_pressure_event",
     "review_event",
 ]
+
+
+def export_tables_help() -> str:
+    """Build the ``--tables`` help text for ``ll-session export`` (BUG-3197).
+
+    Derived from :data:`_EXPORT_TABLE_MAP` and :data:`_EXPORT_DEFAULT_TABLES` so
+    the advertised choice set cannot drift from the accepted one — adding a key
+    to the map updates ``--help`` with no second edit.  Public despite reading
+    two private lists: ``cli/session.py`` imports it across a package boundary.
+    """
+    choices = ", ".join(_EXPORT_TABLE_MAP)
+    excluded = sorted(set(_EXPORT_TABLE_MAP) - set(_EXPORT_DEFAULT_TABLES))
+    default_note = (
+        f"default: all types except {', '.join(excluded)}" if excluded else "default: all types"
+    )
+    return f"Types to include ({default_note}). Choices: {choices}"
 
 
 def export_history(
@@ -145,11 +162,10 @@ def export_history(
     Args:
         db: Path to the history database (default: ``.ll/history.db``).
         tables: Type names to include.  Defaults to all non-message tables.
-            Valid values: ``session``, ``issue_event``, ``issue_snapshot``,
-            ``skill_event``, ``loop_event``, ``correction``, ``summary_node``,
-            ``message_event``, ``commit_event``, ``test_run_event``,
-            ``usage_event``, ``orchestration_run``, ``harness_event``,
-            ``prompt_opt_event``, ``verdict_event``.
+            The valid values are the keys of :data:`_EXPORT_TABLE_MAP`; they are
+            deliberately not restated here, since a docstring cannot be derived
+            and this list had drifted three entries behind the map (BUG-3197).
+            Unknown names are logged and skipped rather than raising.
         since: ISO 8601 datetime string; only rows at or after this timestamp are
             returned, filtered per-table using the relevant timestamp column.
         include_messages: When ``True`` and *tables* is not given, also include

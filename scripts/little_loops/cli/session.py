@@ -53,6 +53,7 @@ from little_loops.session_store import (
     compact,
     connect,
     export_history,
+    export_tables_help,
     host_layout_for,
     prune,
     rebuild,
@@ -249,13 +250,7 @@ Examples:
         nargs="+",
         metavar="TYPE",
         default=None,
-        help=(
-            "Types to include (default: all non-message tables). "
-            "Choices: session, issue_event, issue_snapshot, skill_event, "
-            "loop_event, correction, summary_node, message_event, commit_event, "
-            "test_run_event, usage_event, orchestration_run, session_lifecycle_event, "
-            "harness_event, prompt_opt_event, verdict_event, context_pressure_event"
-        ),
+        help=export_tables_help(),
     )
     export_parser.add_argument(
         "--since",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import itertools
 import re
 from pathlib import Path
@@ -164,3 +165,54 @@ class TestExportContextPressureEvent:
         rows = list(export_history(db, tables=["context_pressure_event"]))
         assert len(rows) == 1
         assert rows[0]["session_id"] == "s1"
+
+
+class TestExportTableRegistration:
+    """BUG-3197: the advertised table set must not drift from the accepted one."""
+
+    def test_message_event_is_the_only_non_default_table(self) -> None:
+        """Pins the invariant ENH-2463 silently broke by adding loop_run to the
+        map but not the defaults. A new table added to only one list fails here.
+        """
+        from little_loops.session_store.queries import (
+            _EXPORT_DEFAULT_TABLES,
+            _EXPORT_TABLE_MAP,
+        )
+
+        assert set(_EXPORT_TABLE_MAP) - set(_EXPORT_DEFAULT_TABLES) == {"message_event"}
+        # Defaults must not name a type the map cannot resolve.
+        assert set(_EXPORT_DEFAULT_TABLES) <= set(_EXPORT_TABLE_MAP)
+
+    def test_help_text_advertises_every_map_key(self) -> None:
+        from little_loops.session_store import export_tables_help
+        from little_loops.session_store.queries import _EXPORT_TABLE_MAP
+
+        text = export_tables_help()
+        advertised = {t.strip() for t in text.split("Choices:")[1].split(",")}
+        assert advertised == set(_EXPORT_TABLE_MAP)
+
+    def test_help_text_derives_the_excluded_set(self) -> None:
+        from little_loops.session_store import export_tables_help
+
+        assert "default: all types except message_event" in export_tables_help()
+
+    def test_parser_uses_the_derived_help(self) -> None:
+        """Assert on the action's help attribute, not rendered --help output —
+        argparse line-wraps to terminal width, which makes scraping brittle.
+        """
+        from little_loops.cli.session import _build_parser
+        from little_loops.session_store import export_tables_help
+
+        subparsers = next(
+            a for a in _build_parser()._actions if isinstance(a, argparse._SubParsersAction)
+        )
+        tables = next(a for a in subparsers.choices["export"]._actions if a.dest == "tables")
+        assert tables.help == export_tables_help()
+
+    def test_loop_run_included_in_default_export(self, tmp_path: Path) -> None:
+        from little_loops.session_store import export_history, record_loop_run_summary
+
+        db = tmp_path / "history.db"
+        record_loop_run_summary(db, run_id="r1", loop_name="demo", final_state="done")
+        types = {row["type"] for row in export_history(db)}
+        assert "loop_run" in types

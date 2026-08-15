@@ -85,7 +85,13 @@ from little_loops.session_store.lifecycle import (
     recompress_raw_events,
     record_retirement,
 )
-from little_loops.session_store.queries import export_history, fts_phrase, recent, search
+from little_loops.session_store.queries import (
+    export_history,
+    export_tables_help,
+    fts_phrase,
+    recent,
+    search,
+)
 from little_loops.session_store.qwen import normalize_qwen_record, qwen_skip_at_ingest
 from little_loops.session_store.schema import (
     _BUSY_TIMEOUT_MS,
@@ -172,6 +178,7 @@ __all__ = [
     "compact_session",
     "compact_session_with_reasoning",
     "export_history",
+    "export_tables_help",
     "prune",
     "search",
     "recent",

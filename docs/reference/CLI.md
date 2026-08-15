@@ -3412,7 +3412,7 @@ idempotent and byte-lossless — running it twice is a no-op on the second pass.
 
 | Flag | Description |
 |------|-------------|
-| `--tables TYPE [TYPE…]` | Tables to include (default: all non-message tables). Choices: `session`, `issue_event`, `issue_snapshot`, `skill_event`, `loop_event`, `correction`, `summary_node`, `message_event`, `commit_event`, `test_run_event`, `usage_event`, `orchestration_run`, `session_lifecycle_event`, `harness_event`, `prompt_opt_event`, `verdict_event`, `context_pressure_event` |
+| `--tables TYPE [TYPE…]` | Tables to include (default: all types except `message_event`). Choices: `session`, `issue_event`, `issue_snapshot`, `skill_event`, `loop_event`, `correction`, `summary_node`, `message_event`, `commit_event`, `test_run_event`, `usage_event`, `orchestration_run`, `loop_run`, `session_lifecycle_event`, `harness_event`, `prompt_opt_event`, `verdict_event`, `context_pressure_event`, `review_event` — 19 in total. The `--help` text is derived from `_EXPORT_TABLE_MAP` (BUG-3197), so it is authoritative if this table ever falls behind again |
 | `--since DATE` | Only rows at or after this ISO 8601 date/datetime |
 | `--include-messages` | Also include `message_events` (potentially large); ignored when `--tables` is given explicitly |
 | `-o / --output FILE` | Write output to FILE instead of stdout |
