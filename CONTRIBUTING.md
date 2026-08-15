@@ -161,7 +161,6 @@ pre-commit run ll-verify-decisions --files .ll/decisions.yaml .ll/decisions.d/*.
 little-loops/
 ├── .claude-plugin/
 │   └── plugin.json       # Plugin manifest
-├── config-schema.json    # Configuration JSON Schema
 ├── commands/             # Slash command templates (*.md)
 ├── agents/               # 9 agent definitions (*.md)
 │   ├── codebase-analyzer.md
@@ -175,43 +174,21 @@ little-loops/
 │   └── workflow-pattern-analyzer.md
 ├── hooks/                # Lifecycle hooks
 ├── skills/               # 69 skill definitions (user-invocable workflows)
-│   ├── analyze-history/              # Analyze issue history and trends
-│   ├── debug-loop-run/               # Analyze loop execution history
-│   ├── audit-loop-run/               # Audit loop goal achievement
-│   ├── audit-claude-config/          # Audit plugin configuration
-│   ├── audit-docs/                   # Audit documentation accuracy
-│   ├── audit-issue-conflicts/        # Detect conflicts across open issues
+│   │                     # Representative sample — run `ls skills/` for the full set.
 │   ├── capture-issue/                # Capture issues from conversation
-│   ├── cleanup-loops/                # Find and clean stuck loop processes
-│   ├── confidence-check/             # Pre-implementation confidence check
-│   ├── decide-issue/                 # Resolve competing implementation options
-│   ├── distill-traces/               # Extract reusable loop patterns from execution history
-│   ├── explore-api/                  # Guided 4-phase external-API exploration with LearnTestRecord output
-│   ├── go-no-go/                     # Adversarial GO/NO-GO issue assessment
-│   ├── configure/                    # Configure ll-config.json
-│   ├── create-eval-from-issues/      # Generate eval harness YAML from issue IDs
-│   ├── create-loop/                  # Create FSM loop configurations
-│   ├── format-issue/                 # Format issues to template v2.0
-│   ├── improve-claude-md/            # Rewrite CLAUDE.md with <important if> blocks
-│   ├── init/                         # Initialize project configuration
-│   ├── issue-size-review/            # Evaluate issue complexity
-│   ├── issue-workflow/               # Issue lifecycle quick reference
-│   ├── link-epics/                   # Assign orphans to EPICs, or synthesize new EPICs from them
-│   ├── ll-capture-issue/             # Codex bridge: capture issue from conversation
-│   ├── ll-go-no-go/                  # Codex bridge: adversarial GO/NO-GO assessment
 │   ├── manage-issue/                 # Manage issue lifecycle
-│   ├── map-dependencies/             # Discover and map issue dependencies
-│   ├── product-analyzer/             # Analyze codebase against product goals
+│   ├── create-loop/                  # Create FSM loop configurations
 │   ├── review-epic/                  # Audit EPIC health: stalled children, scope drift, missing coverage
 │   ├── scope-epic/                   # Decompose a theme into an EPIC with 3–8 pre-wired child issue stubs
-│   ├── review-loop/                  # Review and improve FSM loop configurations
-│   ├── rename-loop/                  # Rename a loop and update all references
-│   ├── simplify-loop/                # Simplify or decompose FSM loop configurations
-│   ├── update/                       # Update little-loops components
-│   ├── update-docs/                  # Identify stale or missing documentation
+│   ├── explore-api/                  # Guided 4-phase external-API exploration with LearnTestRecord output
 │   ├── verify-issue-loop/            # Generate FSM verification loop (criteria or adversarial mode)
-│   ├── wire-issue/                   # Add integration wiring to implementation plans
-│   └── workflow-automation-proposer/ # Propose automations from patterns
+│   ├── ...                           # ~60 more, one directory per skill
+│   │
+│   │                     # `ll-`-prefixed skills are Codex bridges: thin wrappers
+│   │                     # mirroring an existing skill onto a host that discovers
+│   │                     # skills differently. They are not separate capabilities.
+│   ├── ll-capture-issue/             # Codex bridge → capture-issue
+│   └── ll-go-no-go/                  # Codex bridge → go-no-go
 ├── docs/                 # Documentation
 │   ├── ARCHITECTURE.md                  # System design diagrams
 │   ├── index.md                         # Documentation index

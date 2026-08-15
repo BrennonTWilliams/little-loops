@@ -60,8 +60,7 @@ flowchart TB
 little-loops/
 ├── .claude-plugin/
 │   └── plugin.json          # Plugin manifest
-├── config-schema.json       # JSON Schema for validation (canonical source lives at scripts/little_loops/config-schema.json inside the Python package)
-├── commands/                # 28 slash command templates
+├── commands/                # 29 slash command templates
 │   ├── help.md
 │   ├── check-code.md
 │   ├── run-tests.md
@@ -112,74 +111,33 @@ little-loops/
 ├── skills/                  # 69 skill definitions — force-included into the wheel at
 │                            # little_loops/skills/ for ll-mcp's prompts surface (BUG-3177);
 │                            # stays physically here (host-plugin glue, FEAT-2274/BUG-938)
-│   ├── analyze-history/     # Proactive
-│   │   └── SKILL.md
-│   ├── debug-loop-run/      # User-invoked
-│   │   ├── SKILL.md
-│   │   └── reference.md
-│   ├── audit-loop-run/      # User-invoked
-│   │   └── SKILL.md
-│   ├── audit-claude-config/ # User-invoked
-│   │   ├── SKILL.md
-│   │   ├── report-template.md
-│   │   └── wave1-prompts.md
-│   ├── audit-docs/          # User-invoked
-│   │   ├── SKILL.md
-│   │   └── templates.md
-│   ├── audit-issue-conflicts/ # User-invoked
-│   │   └── SKILL.md
+│                            #
+│                            # Representative sample below — run `ls skills/` for the full
+│                            # set. Each skill is a directory with SKILL.md plus optional
+│                            # companion files (SKILL.md is capped at 500 lines; overflow
+│                            # extracts to a companion — ENH-494).
 │   ├── capture-issue/       # Proactive
 │   │   ├── SKILL.md
 │   │   └── templates.md
-│   ├── cleanup-loops/       # User-invoked
-│   │   └── SKILL.md
-│   ├── confidence-check/    # Proactive
-│   │   ├── SKILL.md
-│   │   └── rubric.md
-│   ├── configure/           # User-invoked
-│   │   ├── SKILL.md
-│   │   ├── areas.md
-│   │   └── show-output.md
-│   ├── create-eval-from-issues/ # User-invoked
-│   │   └── SKILL.md
 │   ├── create-loop/         # User-invoked
 │   │   ├── SKILL.md
 │   │   ├── loop-types.md
 │   │   ├── reference.md
 │   │   └── templates.md
-│   ├── format-issue/        # User-invoked
-│   │   ├── SKILL.md
-│   │   └── templates.md
-│   ├── go-no-go/            # User-invoked
-│   │   └── SKILL.md
-│   ├── improve-claude-md/   # User-invoked
-│   │   ├── SKILL.md
-│   │   └── algorithm.md
-│   ├── init/                # User-invoked
-│   │   ├── SKILL.md
-│   │   ├── interactive.md
-│   │   └── templates.md
-│   ├── issue-size-review/   # Proactive
-│   │   └── SKILL.md
-│   ├── issue-workflow/      # User-invoked
-│   │   └── SKILL.md
 │   ├── manage-issue/        # User-invoked
 │   │   ├── SKILL.md
 │   │   └── templates.md
-│   ├── map-dependencies/    # Proactive
-│   │   └── SKILL.md
-│   ├── product-analyzer/    # User-invoked
-│   │   └── SKILL.md
-│   ├── review-loop/         # User-invoked
+│   ├── confidence-check/    # Proactive
 │   │   ├── SKILL.md
-│   │   └── reference.md
-│   ├── update/              # User-invoked
+│   │   └── rubric.md
+│   ├── ...                  # ~60 more, one directory per skill
+│   │
+│   │                        # `ll-`-prefixed skills are Codex bridges: thin wrappers
+│   │                        # mirroring an existing skill onto a host that discovers
+│   │                        # skills differently — not separate capabilities.
+│   ├── ll-capture-issue/    # Codex bridge → capture-issue
 │   │   └── SKILL.md
-│   ├── update-docs/         # User-invoked
-│   │   └── SKILL.md
-│   ├── workflow-automation-proposer/  # User-invoked
-│   │   └── SKILL.md
-│   └── distill-traces/      # User-invoked
+│   └── ll-go-no-go/         # Codex bridge → go-no-go
 │       └── SKILL.md
 └── scripts/                 # Python package
     └── little_loops/
