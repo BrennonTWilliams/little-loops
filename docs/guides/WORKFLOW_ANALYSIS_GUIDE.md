@@ -99,7 +99,7 @@ ll-messages --stdout
 ll-messages --include-response-context
 ```
 
-The output is a JSONL file (one JSON object per line) at `.ll/user-messages-{timestamp}.jsonl`. Each line has at minimum a `content` field with the message text and a `timestamp` field.
+The output is a JSONL file (one JSON object per line) at `.claude/user-messages-{timestamp}.jsonl`. Each line has at minimum a `content` field with the message text and a `timestamp` field.
 
 Key flags reference:
 
@@ -107,7 +107,7 @@ Key flags reference:
 |------|-------|-------------|
 | `--limit N` | `-n N` | Max messages to extract (default: 100) |
 | `--since DATE` | `-S` | Only messages after this date (YYYY-MM-DD or ISO) |
-| `--output FILE` | `-o FILE` | Output file path (default: `.ll/user-messages-{timestamp}.jsonl`) |
+| `--output FILE` | `-o FILE` | Output file path (default: `.claude/user-messages-{timestamp}.jsonl`) |
 | `--cwd DIR` | | Working directory to use (default: current directory) |
 | `--exclude-agents` | | Exclude agent session files (`agent-*.jsonl`) |
 | `--stdout` | | Print to terminal instead of file |
@@ -127,7 +127,7 @@ Key flags reference:
 The simplest way to run all three steps is the single orchestrating command:
 
 ```bash
-# Auto-detect most recent messages file in .ll/
+# Auto-detect most recent messages file in .claude/
 /ll:analyze-workflows
 
 # Use a specific file
@@ -293,11 +293,12 @@ ll-workflows propose \
   --format json -o step3.json
 ```
 
-`ll-workflows analyze` (Step 2) and `ll-workflows propose` (Step 3) are plain CLIs with no
-LLM dependency. Step 1 is not: it spawns the `workflow-pattern-analyzer` agent via the Task
-tool, which requires a Claude CLI session. The pipeline is only scriptable end-to-end if
-that Claude CLI invocation is itself part of your script (e.g. `claude -p ...`) — Steps 2
-and 3 alone do not remove the dependency.
+`ll-workflows analyze` (Step 2) is a plain CLI with no LLM dependency. Steps 1 and 3 are
+not: Step 1 spawns the `workflow-pattern-analyzer` agent via the Task tool, and
+`ll-workflows propose` (Step 3) internally calls `run_claude_command()` to run
+`/ll:workflow-automation-proposer` — both require a Claude CLI session. The pipeline is
+only scriptable end-to-end if those Claude CLI invocations are themselves part of your
+script (e.g. `claude -p ...`) — only Step 2 alone removes the dependency.
 
 ### What It Looks For
 

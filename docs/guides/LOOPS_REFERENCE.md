@@ -1232,7 +1232,7 @@ The counters reflect cumulative totals at the moment of dequeue: position `N/tot
 |----------|---------|-------------|
 | `scratch_size_kb_warn` | `500` | Scratch dir size (KB) above which pressure is flagged |
 | `log_age_days_warn` | `7` | Age in days above which output files are eligible for archiving |
-| `scratch_dir` | `.loops/tmp` | Directory to monitor and compact |
+| `scratch_dir` | `.loops/tmp` | Directory to monitor and compact (note: `PRESSURE_OUTPUTS` archives are always written to the hardcoded `.loops/archive/`, regardless of this variable) |
 
 **Invocation**:
 ```bash
@@ -1366,9 +1366,9 @@ ll-loop run worktree-health
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `agent_config` | _(required)_ | Path to the agent config file to evaluate |
-| `task_suite` | _(required)_ | Path to the task suite file or directory |
-| `quality_threshold` | `0.85` | Target pass rate (0.0–1.0) to converge and exit |
+| `agent_config` | `"agent.yaml"` | Path to the agent config file to evaluate |
+| `task_suite` | `"evals/"` | Path to the task suite file or directory |
+| `quality_target` | `0.85` | Target pass rate (0.0–1.0) to converge and exit |
 
 **Invocation**:
 ```bash

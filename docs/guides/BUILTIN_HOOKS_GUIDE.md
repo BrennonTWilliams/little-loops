@@ -160,7 +160,7 @@ Collects every `status: done` issue, then scans open issues for prose that still
 
 Runs once, at the start of each session — catching drift left over from the *previous* session's edits. Originally bound to `SessionEnd`, but Claude Code enforces a hard ~1.5s ceiling on `SessionEnd` hooks before killing them on any exit path (Ctrl+C, Ctrl+D, `/exit`), regardless of the configured `timeout` — an unfixed upstream bug (anthropics/claude-code#32712, #41577). The sweep's full-tree issue scan exceeds that ceiling on repos with a few thousand issue files, so it was being silently killed (printing `Hook cancelled`) on nearly every exit. Re-homed to `SessionStart`, where there's no forced-kill deadline, with the same detection value.
 
-The dispatch intent stays `session_end` (host-agnostic) and the adapter file is still named `session-end.sh` — only the Claude Code `hooks.json` event binding changed. On Codex, which has no separate `SessionEnd` event, `session_end` is mapped onto its `Stop` event instead (ENH-2105).
+The dispatch intent stays `session_end` (host-agnostic) and the adapter file is still named `session-end.sh` — only the Claude Code `hooks.json` event binding changed. On Codex, `session_end` currently has no wired handler (ENH-2105, which would have mapped it onto Codex's `Stop` event, was cancelled without landing that wiring) — the stale-ref sweep does not run there today.
 
 Every invocation also writes one best-effort `stale_ref_sweep` row to `.ll/history.db`'s `session_lifecycle_events` table (findings count, fix mode) — including zero findings — so churn is queryable via `ll-session recent --kind session_lifecycle` (ENH-2495).
 

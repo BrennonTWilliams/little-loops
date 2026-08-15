@@ -23,7 +23,7 @@ flowchart TB
     subgraph "Claude Code Plugin"
         CMD[Commands<br/>29 slash commands]
         AGT[Agents<br/>9 specialized agents]
-        SKL[Skills<br/>40 composable skills]
+        SKL[Skills<br/>69 composable skills]
     end
 
     subgraph "Configuration"
@@ -109,7 +109,7 @@ little-loops/
 │       ├── user-prompt-check.sh
 │       └── lib/
 │           └── common.sh    # Shared shell functions
-├── skills/                  # 40 skill definitions — force-included into the wheel at
+├── skills/                  # 69 skill definitions — force-included into the wheel at
 │                            # little_loops/skills/ for ll-mcp's prompts surface (BUG-3177);
 │                            # stays physically here (host-plugin glue, FEAT-2274/BUG-938)
 │   ├── analyze-history/     # Proactive
@@ -1073,13 +1073,13 @@ stateDiagram-v2
     Verifying --> Failed: Tests fail
 
     NotReady --> Discovered: Fix issue file
-    ShouldClose --> Completed: Move to completed/
+    ShouldClose --> Completed: Set status: done
     Failed --> Discovered: Create follow-up issue
     Discovered --> Deferred: Defer issue
     Deferred --> Discovered: Undefer issue
 
-    Completed --> [*]: Move to .issues/completed/
-    Deferred --> [*]: Move to .issues/deferred/
+    Completed --> [*]: status: done (stays in its type dir)
+    Deferred --> [*]: status: deferred (stays in its type dir)
 ```
 
 ---

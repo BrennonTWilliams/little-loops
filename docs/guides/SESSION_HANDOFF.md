@@ -346,7 +346,7 @@ The context monitor estimates the current-turn delta based on tool activity:
 | `.ll/ll-context-handoff-needed` | Sentinel written by `Stop → context-handoff-sentinel.sh` when the session ended context-heavy (≥ ~50% estimated) — consumed by `run_with_continuation` and the next session |
 | `.ll/ll-precompact-state.json` | Idempotency guard written by `precompact.sh`; read by `precompact-handoff.sh` to prevent duplicate continuation-prompt writes |
 
-> **Note**: `.ll/ll-session-state.json` is mentioned in `commands/resume.md` but is not currently produced by any hook or script. Treat it as legacy documentation until `feat-1680` (session-end hook sweeping stale cross-issue status refs) lands.
+> **Note**: `.ll/ll-session-state.json` is mentioned in `commands/resume.md` but is not currently produced by any hook or script. `FEAT-1680` (session-end hook sweeping stale cross-issue status refs) landed, but it only sweeps stale cross-issue status prose — it does not write `.ll/ll-session-state.json`. Treat the `commands/resume.md` reference as legacy documentation.
 
 ### State File Format
 

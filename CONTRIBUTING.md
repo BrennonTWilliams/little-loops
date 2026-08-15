@@ -174,7 +174,7 @@ little-loops/
 │   ├── web-search-researcher.md
 │   └── workflow-pattern-analyzer.md
 ├── hooks/                # Lifecycle hooks
-├── skills/               # 40 skill definitions (user-invocable workflows)
+├── skills/               # 69 skill definitions (user-invocable workflows)
 │   ├── analyze-history/              # Analyze issue history and trends
 │   ├── debug-loop-run/               # Analyze loop execution history
 │   ├── audit-loop-run/               # Audit loop goal achievement
@@ -507,7 +507,7 @@ All issues should pass these checks:
 
 ### Relationship Fields
 
-Issues use six frontmatter fields to express relationships between issues. Use the canonical names — deprecated names (`parent_issue`, `related`) are no longer accepted.
+Issues use six frontmatter fields to express relationships between issues. Use the canonical names — deprecated names (`parent_issue`, `related`) still parse but emit a deprecation warning; prefer the canonical names.
 
 | Field | Type | When to use |
 |-------|------|-------------|

@@ -202,14 +202,19 @@ phases:
 
 ```
 1. Assessment Bridge   /ll:confidence-check → readiness gate
-                       (already ready? short-circuit straight to implement)
+                       (already ready? routes through complexity/wire
+                       pre-checks before implement, not a direct jump)
 2. Dimensional Diagnosis  analyze 5 dimensions → route to one action:
                           IMPLEMENT · DECIDE · WIRE · REFINE · DECOMPOSE
 3. Remediation Actions    run the chosen action (decide / wire / refine /
                           implement) with refine+wire marker gating
-                          Note: the refine action uses two states —
-                          refine_first (REFINE-diagnosis path, uses --full-rewrite)
-                          and refine_followup (all other refine callers, no --full-rewrite)
+                          Note: the refine action uses four states —
+                          refine (REFINE-diagnosis path, uses --full-rewrite),
+                          refine_first (first-pass/policy-gate/wire-failure/
+                          confidence-gap callers, no --full-rewrite),
+                          refine_light (REFINE_LIGHT catch-all, no --full-rewrite),
+                          and refine_followup (re_assess retry, --auto
+                          --gap-analysis, no --full-rewrite)
 4. Re-Assessment & Convergence  re-score → compute deltas → converged?
                           improved? stalled? (bounded by max_remediation_passes: 3)
 ```

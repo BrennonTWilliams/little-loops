@@ -42,7 +42,7 @@ For interactive editing, use `/ll:configure`.
   },
 
   "automation": {
-    "timeout_seconds": 3600,
+    "timeout_seconds": 7200,
     "idle_timeout_seconds": 0,
     "post_stream_close_grace_seconds": 300,
     "timeout_kill_grace_seconds": 30,

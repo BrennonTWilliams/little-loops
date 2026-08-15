@@ -276,7 +276,7 @@ git worktree prune
 2. Check if `--dangerously-skip-permissions` is working
 3. Verify API key/authentication status:
    ```bash
-   claude --auth-status
+   claude auth status
    ```
 
 ### Timeout during issue processing

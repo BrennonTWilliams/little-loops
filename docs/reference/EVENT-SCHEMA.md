@@ -1044,7 +1044,7 @@ This section documents, for every event-emitter surface, what JSON callers can e
 
 ### `SQLiteTransport`
 
-**Source:** `scripts/little_loops/session_store/writers.py:1904` (despite the package name, this transport lives with the session store, not in `transport.py`; ENH-2890 split the former flat `session_store.py` into a `session_store/` package).
+**Source:** `scripts/little_loops/session_store/writers.py:2146` (despite the package name, this transport lives with the session store, not in `transport.py`; ENH-2890 split the former flat `session_store.py` into a `session_store/` package).
 
 - **Connection failure at construction → `send()` is a silent no-op forever.** If the SQLite database cannot be opened, `self._conn` stays `None` and `send()` returns early. **No error is raised to the caller.**
 - **Per-write failures are logged + swallowed** (`writers.py`'s `SQLiteTransport.send()`). Writes are serialized with a `threading.Lock`.
