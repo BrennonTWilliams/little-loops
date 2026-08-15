@@ -2,7 +2,8 @@
 
 Drives the four mutating tools (`issue_capture`, `issue_set_status`, `issue_link`,
 `issue_append_log`) over the SDK's in-memory `Client`, following `test_mcp_server.py`'s
-`build_server()` + `_make_project(tmp_path, monkeypatch)` + `anyio.run(run)` conventions.
+`build_server(transport="stdio")` + `_make_project(tmp_path, monkeypatch)` + `anyio.run(run)`
+conventions.
 
 The AC 2 assertion shape is deliberate: a dry-run must be proven inert by comparing the
 issue file's **bytes** before and after the call, not by re-parsing its frontmatter. A
@@ -118,7 +119,7 @@ def test_ac1_mutating_tools_are_listed_and_annotated(tmp_path, monkeypatch) -> N
     _make_project(tmp_path, monkeypatch)
 
     async def run() -> None:
-        async with Client(build_server()) as client:
+        async with Client(build_server(transport="stdio")) as client:
             tools = {t.name: t for t in (await client.list_tools()).tools}
             for name in MUTATING_NAMES:
                 assert name in tools, f"{name} missing from tools/list"
@@ -144,7 +145,7 @@ def test_ac1_tier1_tools_keep_their_shape_and_ordering(tmp_path, monkeypatch) ->
     _make_project(tmp_path, monkeypatch)
 
     async def run() -> None:
-        async with Client(build_server()) as client:
+        async with Client(build_server(transport="stdio")) as client:
             tools = (await client.list_tools()).tools
             names = [t.name for t in tools]
             assert names[:5] == TIER1_NAMES
@@ -163,7 +164,7 @@ def test_ac1_apply_flag_is_declared_on_every_mutating_tool(tmp_path, monkeypatch
     _make_project(tmp_path, monkeypatch)
 
     async def run() -> None:
-        async with Client(build_server()) as client:
+        async with Client(build_server(transport="stdio")) as client:
             tools = {t.name: t for t in (await client.list_tools()).tools}
             for name in MUTATING_NAMES:
                 schema = tools[name].input_schema
@@ -200,7 +201,7 @@ def test_ac2_omitting_apply_leaves_every_issue_file_byte_identical(
     before = _snapshot(tmp_path)
 
     async def run() -> Any:
-        async with Client(build_server()) as client:
+        async with Client(build_server(transport="stdio")) as client:
             return _payload(await client.call_tool(tool_name, arguments))
 
     payload = anyio.run(run)
@@ -222,7 +223,7 @@ def test_ac2_only_literal_true_opts_in(tmp_path, monkeypatch, apply_value) -> No
     before = _snapshot(tmp_path)
 
     async def run() -> Any:
-        async with Client(build_server()) as client:
+        async with Client(build_server(transport="stdio")) as client:
             return await client.call_tool(
                 "issue_set_status",
                 {"issue_id": "FEAT-501", "status": "deferred", "apply": apply_value},
@@ -247,7 +248,7 @@ def test_ac3_set_status_apply_matches_direct_library_call(tmp_path, monkeypatch)
     _make_project(tmp_path, monkeypatch)
 
     async def run() -> Any:
-        async with Client(build_server()) as client:
+        async with Client(build_server(transport="stdio")) as client:
             return _payload(
                 await client.call_tool(
                     "issue_set_status",
@@ -283,7 +284,7 @@ def test_ac3_link_apply_writes_the_edge(tmp_path, monkeypatch) -> None:
     _make_project(tmp_path, monkeypatch)
 
     async def run() -> Any:
-        async with Client(build_server()) as client:
+        async with Client(build_server(transport="stdio")) as client:
             return _payload(
                 await client.call_tool(
                     "issue_link",
@@ -310,7 +311,7 @@ def test_ac3_append_log_apply_writes_an_entry(tmp_path, monkeypatch) -> None:
     _make_project(tmp_path, monkeypatch)
 
     async def run() -> Any:
-        async with Client(build_server()) as client:
+        async with Client(build_server(transport="stdio")) as client:
             return await client.call_tool(
                 "issue_append_log",
                 {"issue_id": "FEAT-501", "command": "/ll:manage-issue", "apply": True},
@@ -334,7 +335,7 @@ def test_ac3a_capture_dry_run_has_no_issue_id_apply_does(tmp_path, monkeypatch) 
     arguments = {"type": "BUG", "title": "A newly noticed bug", "priority": "P1"}
 
     async def run() -> tuple[Any, Any]:
-        async with Client(build_server()) as client:
+        async with Client(build_server(transport="stdio")) as client:
             dry = _payload(await client.call_tool("issue_capture", dict(arguments)))
             applied = _payload(
                 await client.call_tool("issue_capture", {**arguments, "apply": True})
@@ -388,7 +389,7 @@ def test_ac4_invalid_input_returns_is_error(tmp_path, monkeypatch, tool_name, ar
     _make_project(tmp_path, monkeypatch)
 
     async def run() -> Any:
-        async with Client(build_server()) as client:
+        async with Client(build_server(transport="stdio")) as client:
             return await client.call_tool(tool_name, arguments)
 
     result = anyio.run(run)
@@ -402,7 +403,7 @@ def test_ac4_errors_do_not_write(tmp_path, monkeypatch) -> None:
     before = _snapshot(tmp_path)
 
     async def run() -> Any:
-        async with Client(build_server()) as client:
+        async with Client(build_server(transport="stdio")) as client:
             return await client.call_tool(
                 "issue_set_status",
                 {"issue_id": "FEAT-501", "status": "finished", "apply": True},

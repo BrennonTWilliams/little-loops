@@ -164,7 +164,7 @@ def test_ac4_cancel_reports_cancelled_resumable_and_raw_run_status(tmp_path, mon
 def test_ac10_capabilities_do_not_advertise_the_tasks_extension(tmp_path, monkeypatch) -> None:
     """AC 10: `initialize`'s capabilities never mention io.modelcontextprotocol/tasks."""
     _make_project(tmp_path, monkeypatch)
-    server = build_server()
+    server = build_server(transport="stdio")
 
     async def get_caps() -> str:
         async with Client(server) as client:

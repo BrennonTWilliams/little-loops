@@ -1,0 +1,14 @@
+{
+  "id": "fbfcab45-d2d3-4f4f-a3db-e328c6f23eae",
+  "type": "rule",
+  "timestamp": "2026-08-15T00:53:03Z",
+  "category": "security",
+  "labels": [
+    "extracted",
+    "global"
+  ],
+  "rationale": "FEAT-3168's default transport=\"stdio\" was fail-safe in one direction but fail-open in the other (a forgotten HTTP call site would silently apply stdio grants to an HTTP server). Convenience defaults on parameters that select which policy branch applies tend to outlive their justification and get read as intentional design.",
+  "rule": "Do not give security/policy-selecting parameters a default value, even for test-suite convenience.",
+  "enforcement": "advisory",
+  "issue": "ENH-3175"
+}

@@ -67,7 +67,7 @@ def test_list_tools_returns_the_five_read_tools_first_with_cache_metadata(
     _make_project(tmp_path, monkeypatch)
 
     async def run() -> None:
-        server = build_server()
+        server = build_server(transport="stdio")
         async with Client(server) as client:
             result = await client.list_tools()
             names = [t.name for t in result.tools]
@@ -89,7 +89,7 @@ def test_tools_list_ordering_is_stable_across_calls(tmp_path, monkeypatch) -> No
     _make_project(tmp_path, monkeypatch)
 
     async def run() -> None:
-        server = build_server()
+        server = build_server(transport="stdio")
         async with Client(server) as client:
             first = [t.name for t in (await client.list_tools()).tools]
             second = [t.name for t in (await client.list_tools()).tools]
@@ -112,7 +112,7 @@ def test_discover_advertises_tools_resources_and_prompts_only(tmp_path, monkeypa
     _make_project(tmp_path, monkeypatch)
 
     async def run() -> None:
-        server = build_server()
+        server = build_server(transport="stdio")
         async with Client(server) as client:
             caps = client.session.server_capabilities
             assert caps is not None
@@ -131,7 +131,7 @@ def test_capabilities_tool_returns_report_shape(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("LL_HOST_CLI", "claude-code")
 
     async def run() -> None:
-        server = build_server()
+        server = build_server(transport="stdio")
         async with Client(server) as client:
             result = await client.call_tool("capabilities", {})
             assert not result.is_error
@@ -159,7 +159,7 @@ def test_issues_query_tool_filters_and_sorts(tmp_path, monkeypatch) -> None:
     )
 
     async def run() -> None:
-        server = build_server()
+        server = build_server(transport="stdio")
         async with Client(server) as client:
             result = await client.call_tool("issues_query", {"status": "open"})
             assert not result.is_error
@@ -185,7 +185,7 @@ def test_issue_get_tool_resolves_and_reports_not_found(tmp_path, monkeypatch) ->
     _write_issue(tmp_path, "features", "P2-FEAT-3135-sample.md", ISSUE_BODY)
 
     async def run() -> None:
-        server = build_server()
+        server = build_server(transport="stdio")
         async with Client(server) as client:
             found = await client.call_tool("issue_get", {"issue_id": "FEAT-3135"})
             assert not found.is_error
@@ -204,7 +204,7 @@ def test_deps_check_tool_reports_validation_shape(tmp_path, monkeypatch) -> None
     _write_issue(tmp_path, "features", "P2-FEAT-3135-sample.md", ISSUE_BODY)
 
     async def run() -> None:
-        server = build_server()
+        server = build_server(transport="stdio")
         async with Client(server) as client:
             result = await client.call_tool("deps_check", {})
             assert not result.is_error
@@ -227,7 +227,7 @@ def test_history_search_tool_empty_db_returns_empty_list(tmp_path, monkeypatch) 
     _make_project(tmp_path, monkeypatch)
 
     async def run() -> None:
-        server = build_server()
+        server = build_server(transport="stdio")
         async with Client(server) as client:
             result = await client.call_tool("history_search", {"query": "anything"})
             assert not result.is_error
@@ -247,7 +247,7 @@ def test_history_search_tool_finds_seeded_result(tmp_path, monkeypatch) -> None:
     transport.close()
 
     async def run() -> None:
-        server = build_server()
+        server = build_server(transport="stdio")
         async with Client(server) as client:
             result = await client.call_tool(
                 "history_search", {"query": "ratelimit", "kind": "loop"}
@@ -264,7 +264,7 @@ def test_call_unknown_tool_returns_error_not_exception(tmp_path, monkeypatch) ->
     _make_project(tmp_path, monkeypatch)
 
     async def run() -> None:
-        server = build_server()
+        server = build_server(transport="stdio")
         async with Client(server) as client:
             result = await client.call_tool("does_not_exist", {})
             assert result.is_error
@@ -297,7 +297,7 @@ def test_no_unguarded_mutating_tool_is_advertised(tmp_path, monkeypatch) -> None
     }
 
     async def run() -> None:
-        server = build_server()
+        server = build_server(transport="stdio")
         async with Client(server) as client:
             result = await client.list_tools()
             for tool in result.tools:
@@ -324,7 +324,7 @@ def test_repeated_and_reordered_calls_are_identical(tmp_path, monkeypatch) -> No
     monkeypatch.setenv("LL_HOST_CLI", "claude-code")
 
     async def run() -> None:
-        server = build_server()
+        server = build_server(transport="stdio")
         async with Client(server) as client:
             first_a = await client.call_tool("capabilities", {})
             first_b = await client.call_tool("issue_get", {"issue_id": "FEAT-3135"})
@@ -364,7 +364,7 @@ def test_list_resources_returns_issues_goals_and_docs_with_cache_metadata(
     (tmp_path / "docs" / "ARCHITECTURE.md").write_text("# Architecture\n", encoding="utf-8")
 
     async def run() -> None:
-        server = build_server()
+        server = build_server(transport="stdio")
         async with Client(server) as client:
             result = await client.list_resources()
             uris = {r.uri for r in result.resources}
@@ -387,7 +387,7 @@ def test_read_resource_issue_returns_card_fields(tmp_path, monkeypatch) -> None:
     _write_issue(tmp_path, "features", "P2-FEAT-3135-sample.md", ISSUE_BODY)
 
     async def run() -> None:
-        server = build_server()
+        server = build_server(transport="stdio")
         async with Client(server) as client:
             result = await client.read_resource("ll://issues/FEAT-3135")
             payload = json.loads(result.contents[0].text)
@@ -404,7 +404,7 @@ def test_read_resource_goals_returns_raw_markdown(tmp_path, monkeypatch) -> None
     (tmp_path / ".ll" / "ll-goals.md").write_text(GOALS_BODY, encoding="utf-8")
 
     async def run() -> None:
-        server = build_server()
+        server = build_server(transport="stdio")
         async with Client(server) as client:
             result = await client.read_resource("ll://goals")
             assert result.contents[0].text == GOALS_BODY
@@ -418,7 +418,7 @@ def test_read_resource_docs_returns_file_text(tmp_path, monkeypatch) -> None:
     (tmp_path / "docs" / "ARCHITECTURE.md").write_text("# Architecture\n", encoding="utf-8")
 
     async def run() -> None:
-        server = build_server()
+        server = build_server(transport="stdio")
         async with Client(server) as client:
             result = await client.read_resource("ll://docs/ARCHITECTURE.md")
             assert result.contents[0].text == "# Architecture\n"
@@ -433,7 +433,7 @@ def test_read_resource_outside_enumeration_is_rejected(tmp_path, monkeypatch) ->
     _make_project(tmp_path, monkeypatch)
 
     async def run() -> None:
-        server = build_server()
+        server = build_server(transport="stdio")
         async with Client(server) as client:
             for bad_uri in (
                 "ll://issues/FEAT-999999",
@@ -484,7 +484,7 @@ def test_list_prompts_returns_skills_with_frontmatter_and_cache_metadata(
     _make_skill(plugin_root, "my-skill", description="Do the thing.", args_hint="ID [--force]")
 
     async def run() -> None:
-        server = build_server()
+        server = build_server(transport="stdio")
         async with Client(server) as client:
             result = await client.list_prompts()
             assert len(result.prompts) == 1
@@ -508,7 +508,7 @@ def test_list_prompts_registers_nested_skill_md_as_own_prompt(tmp_path, monkeypa
     _make_skill(plugin_root, "parent-skill/nested-skill", description="Nested.")
 
     async def run() -> None:
-        server = build_server()
+        server = build_server(transport="stdio")
         async with Client(server) as client:
             result = await client.list_prompts()
             names = {p.name for p in result.prompts}
@@ -529,7 +529,7 @@ def test_list_prompts_skips_disable_model_invocation_skills(tmp_path, monkeypatc
     )
 
     async def run() -> None:
-        server = build_server()
+        server = build_server(transport="stdio")
         async with Client(server) as client:
             result = await client.list_prompts()
             names = {p.name for p in result.prompts}
@@ -544,7 +544,7 @@ def test_get_prompt_returns_skill_body_without_frontmatter(tmp_path, monkeypatch
     _make_skill(plugin_root, "my-skill", body="# My Skill\n\nDoes stuff.")
 
     async def run() -> None:
-        server = build_server()
+        server = build_server(transport="stdio")
         async with Client(server) as client:
             result = await client.get_prompt("my-skill")
             assert len(result.messages) == 1
@@ -563,7 +563,7 @@ def test_get_prompt_unknown_name_is_rejected(tmp_path, monkeypatch) -> None:
     _make_skill(tmp_path, "my-skill")
 
     async def run() -> None:
-        server = build_server()
+        server = build_server(transport="stdio")
         async with Client(server) as client:
             with pytest.raises(MCPError):
                 await client.get_prompt("../../etc/passwd")

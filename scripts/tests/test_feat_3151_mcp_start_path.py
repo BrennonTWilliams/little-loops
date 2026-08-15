@@ -456,7 +456,7 @@ def test_ac6_capabilities_do_not_advertise_the_tasks_extension(tmp_path, monkeyp
     _make_project(tmp_path, monkeypatch)
 
     async def get_caps() -> str:
-        async with Client(build_server()) as client:
+        async with Client(build_server(transport="stdio")) as client:
             return client.server_capabilities.model_dump_json()
 
     caps_json = anyio.run(get_caps)

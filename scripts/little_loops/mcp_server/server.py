@@ -53,7 +53,7 @@ def build_http_app(host: str = "127.0.0.1") -> Any:
     return TransportPolicyMiddleware(app, transport="http")
 
 
-def build_server(transport: str = "stdio") -> Server:
+def build_server(transport: str) -> Server:
     """Construct the `ll-mcp` lowlevel `Server`: the read-only and guarded-mutation tool
     surface, the `ll://` resource surface, and the prompts-from-skills surface.
 
@@ -61,14 +61,13 @@ def build_server(transport: str = "stdio") -> Server:
     function is called once per stdio session (`run_stdio`) and once per test — rather than at
     module import time, so they never leak state across servers/tests.
 
-    FEAT-3168: `transport` threads transport identity into the `tools/call` and `tasks/*`
-    handler factories so `policy.check_tool_call` can enforce the same decision on both
-    transports, not just HTTP's ASGI middleware. Defaults to `"stdio"` — fail-safe
-    (over-deny) for a call site that forgets to pass it explicitly, since a forgotten
-    `run_stdio()` call site defaulting to `"http"` would silently regress stdio enforcement
-    back to advisory. Both production call sites (`build_http_app`, `run_stdio`) pass
-    `transport=` explicitly; the default exists only to keep the ~37 zero-arg test call
-    sites (none of which set a `transport_policy` config block) passing unchanged.
+    FEAT-3168: `transport` (``"http"`` or ``"stdio"``) threads transport identity into the
+    `tools/call` and `tasks/*` handler factories so `policy.check_tool_call` can enforce the
+    same decision on both transports, not just HTTP's ASGI middleware. It is **required and
+    has no default**: the value selects which half of `mcp.transport_policy` applies, so a
+    default would let a new call site silently enforce the wrong operator grant. A wrong
+    answer here is a security misconfiguration, not a convenience nit — there is no value
+    that is safe to guess, so the caller must state it.
     """
     from mcp.server.caching import CacheHint
     from mcp.server.extension import compose_tool_call_handler

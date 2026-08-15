@@ -65,21 +65,29 @@ def test_run_http_defaults_to_loopback_not_public() -> None:
 
 
 def test_build_server_signature_unchanged() -> None:
-    """FEAT-3168 sanctioned widening: `build_server()` gains one defaulted `transport`
-    parameter (Decision D1) to thread transport identity into the handler layer. This pin
-    re-asserts the widened shape rather than the original zero-parameter one — the pin's
-    intent (no *accidental* further widening) is preserved."""
+    """FEAT-3168 sanctioned widening: `build_server()` gains one `transport` parameter
+    (Decision D1) to thread transport identity into the handler layer. This pin re-asserts
+    the widened shape rather than the original zero-parameter one — the pin's intent (no
+    *accidental* further widening) is preserved.
+
+    `transport` is required: it selects which half of `mcp.transport_policy` applies, so
+    no default is safe to guess. The absent-default assertion is the load-bearing half —
+    it is what stops a default from being reintroduced for call-site convenience."""
     params = inspect.signature(build_server).parameters
     assert list(params) == ["transport"]
-    assert params["transport"].default == "stdio"
+    assert params["transport"].default is inspect.Parameter.empty
 
 
 def test_http_tools_list_matches_stdio_path(tmp_path, monkeypatch) -> None:
     _make_project(tmp_path, monkeypatch)
-    server = build_server()
+    # One server per transport, each declaring its own identity — `tools/list` is unguarded,
+    # so this is behaviour-identical to the single shared instance this test used before
+    # `transport` became required, and it states the parity claim more directly: a stdio
+    # server and an HTTP server enumerate the same tools.
+    server = build_server(transport="http")
 
     async def stdio_names() -> list[str]:
-        async with Client(server) as stdio_client:
+        async with Client(build_server(transport="stdio")) as stdio_client:
             return [t.name for t in (await stdio_client.list_tools()).tools]
 
     expected_names = anyio.run(stdio_names)
@@ -98,7 +106,7 @@ def test_http_tools_list_matches_stdio_path(tmp_path, monkeypatch) -> None:
 
 def test_http_resources_and_prompts_list_succeed(tmp_path, monkeypatch) -> None:
     _make_project(tmp_path, monkeypatch)
-    server = build_server()
+    server = build_server(transport="http")
     app = server.streamable_http_app(json_response=True, stateless_http=True, host="127.0.0.1")
     with TestClient(app, base_url="http://127.0.0.1:8765") as client:
         resources_response = _post(client, "resources/list", _envelope())
@@ -110,7 +118,7 @@ def test_http_resources_and_prompts_list_succeed(tmp_path, monkeypatch) -> None:
 
 def test_http_missing_mcp_method_header_is_rejected(tmp_path, monkeypatch) -> None:
     _make_project(tmp_path, monkeypatch)
-    server = build_server()
+    server = build_server(transport="http")
     app = server.streamable_http_app(json_response=True, stateless_http=True, host="127.0.0.1")
     with TestClient(app, base_url="http://127.0.0.1:8765") as client:
         response = _post(client, "tools/list", _envelope(), include_mcp_method=False)
