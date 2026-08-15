@@ -77,10 +77,12 @@ Round-trip note: `to_dict()` emits the timestamp under the key `ts`; `from_dict(
 
 #### Per-intent payload notes
 
-- **`pre_compact`** — reads exactly one payload key, `transcript_path` (falls back to `""`). Writes `.ll/ll-precompact-state.json`. Returns `LLHookResult(exit_code=2, feedback="[ll] Task state preserved before context compaction. Check .ll/ll-precompact-state.json if resuming work.")` to surface a state-preservation notice on context compaction.
+- **`pre_compact`** — reads exactly one payload key, `transcript_path` (falls back to `""`). Writes `.ll/ll-precompact-state.json` and returns `LLHookResult(exit_code=2, feedback="[ll] Task state preserved before context compaction. Check .ll/ll-precompact-state.json if resuming work.")` to surface a state-preservation notice on context compaction. **Gated by the SELFCOMPACT rubric (ENH-2341):** when `hooks.pre_compact.rubric.enabled` is set and a `transcript_path` is available, `handle()` first evaluates the recent trajectory against the rubric's four conditions. If the trajectory fails, it returns `exit_code=0` instead — no state file is written and no feedback is surfaced. The rubric is disabled by default, so the unconditional `exit_code=2` path is what most projects see.
 - **`pre_compact_handoff`** — reads `.ll/ll-precompact-state.json` as an idempotency guard, proceeding to write when no state snapshot is present; writes `.ll/ll-continue-prompt.md` atomically. Returns `exit_code=2` on success with `feedback="[ll] Session handoff snapshot written."`, `exit_code=0` on idempotency skip (prompt already fresher than `compacted_at`) or any error. Invoked via `hooks/adapters/claude-code/precompact-handoff.sh`.
 - **`session_start`** — reads `transcript_path` from the payload when available (Codex/OpenCode hosts; ENH-1945), falling back to `Path.cwd()`-based directory probing. Returns `LLHookResult(exit_code=0, feedback=<stderr-lines>, stdout=<merged-config-json-or-None>)`.
-- **`session_end`** — reads no payload keys; operates via `payload.cwd` or `event.cwd`, falling back to `Path.cwd()`. Handler reads done issue IDs via `find_issues(status_filter={"done"})` and the `hooks.stale_ref_fix` key from the raw config; outputs sweep findings in `result.feedback`. Always exits `0`.
+- **`session_end`** — reads one payload key, `cwd` (falling back to `event.cwd`, then `Path.cwd()`). Handler reads done issue IDs via `find_issues(status_filter={"done"})` and the `hooks.stale_ref_fix` key from the raw config; outputs sweep findings in `result.feedback`. Always exits `0`.
+
+  **This intent is bound to Claude Code's `SessionStart` event, not `SessionEnd`.** Claude Code enforces a hard ~1.5s ceiling on `SessionEnd` hooks before killing them on every exit path (Ctrl+C, Ctrl+D, `/exit`), regardless of the configured `timeout` — an unfixed upstream bug (anthropics/claude-code#32712, #41577). The stale-ref sweep's full-tree issue scan exceeds that ceiling on repos with a few thousand issue files, so it was being killed on nearly every exit. It now runs once at the start of the *next* session, with the same detection value and no exit-teardown race. Only the `hooks/hooks.json` event binding moved; the adapter file and intent name (`session-end.sh` → `session_end`) are unchanged.
 
 ---
 
@@ -623,6 +625,192 @@ Emitted when the handoff handler spawns a new child process to continue the loop
 
 ---
 
+### `host_pressure`
+
+Emitted when the host guard observes memory pressure above the configured threshold and decides to act. The event names the decision taken; the matching route or abort follows immediately. Constants for this family live beside the other host-guard event names in `scripts/little_loops/fsm/host_guard.py`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | Name of the state that was executing when pressure was observed |
+| `used_pct` | `float` | Memory used as a percentage, rounded to one decimal place |
+| `action` | `str` | Decision taken: `"route:<target-state>"` when `on_pressure: route`, or `"abort"` when `on_pressure: abort` |
+
+**Example:**
+```json
+{"event": "host_pressure", "ts": "...", "state": "implement", "used_pct": 91.4, "action": "route:cool_down"}
+```
+
+---
+
+### `host_pressure_relieved`
+
+Emitted when memory use falls back below the pressure threshold after a `host_pressure` event, so a consumer can close the pressure interval it opened.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | Name of the state executing when pressure cleared |
+| `used_pct` | `float` | Memory used as a percentage, rounded to one decimal place |
+
+**Example:**
+```json
+{"event": "host_pressure_relieved", "ts": "...", "state": "implement", "used_pct": 62.8}
+```
+
+---
+
+### `host_pressure_abort`
+
+Emitted when `on_pressure: abort` is configured and the guard is tearing the run down. The subsequent `loop_complete` carries `terminated_by="host_pressure_abort"`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | Name of the state that was executing when the abort fired |
+| `used_pct` | `float` | Memory used as a percentage, rounded to one decimal place |
+
+**Example:**
+```json
+{"event": "host_pressure_abort", "ts": "...", "state": "implement", "used_pct": 96.2}
+```
+
+---
+
+### `host_cooldown`
+
+Emitted when `on_pressure: cool_down` is configured and the guard is pausing before continuing, rather than routing or aborting.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | Name of the state that was executing when the cooldown started |
+| `used_pct` | `float` | Memory used as a percentage, rounded to one decimal place |
+| `cooldown_seconds` | `float` | How long the executor will pause before resuming |
+
+**Example:**
+```json
+{"event": "host_cooldown", "ts": "...", "state": "implement", "used_pct": 90.1, "cooldown_seconds": 30.0}
+```
+
+---
+
+### `host_subproc_rss`
+
+Emitted as the executor tracks host-subprocess resident memory against the configured budget. This is the measurement event; `host_budget_exceeded` is the enforcement event.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | Name of the state whose subprocess was measured |
+| `peak_rss_mb` | `float` | Peak resident set size for this subprocess, in MB |
+| `cumulative_mb` | `float` | Running total across subprocesses in this run, in MB |
+| `budget_mb` | `float` | Configured budget the cumulative figure is measured against |
+
+**Example:**
+```json
+{"event": "host_subproc_rss", "ts": "...", "state": "implement", "peak_rss_mb": 812.5, "cumulative_mb": 2410.0, "budget_mb": 4096.0}
+```
+
+---
+
+### `host_budget_exceeded`
+
+Emitted when cumulative subprocess RSS crosses the configured budget. Like `host_pressure`, the `action` field records whether the guard routed or aborted; on abort, `loop_complete` carries `terminated_by="host_budget_exceeded"`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | Name of the state executing when the budget was exceeded |
+| `cumulative_mb` | `float` | Cumulative subprocess RSS across the run, in MB |
+| `budget_mb` | `float` | Configured budget that was exceeded |
+| `action` | `str` | Decision taken: `"route:<target-state>"` or `"abort"` |
+
+**Example:**
+```json
+{"event": "host_budget_exceeded", "ts": "...", "state": "implement", "cumulative_mb": 4210.0, "budget_mb": 4096.0, "action": "abort"}
+```
+
+---
+
+### `request_path_downgrade`
+
+Emitted when a state requested a non-CLI `request_path` (`sdk` or `batch`) that could not be satisfied, and the executor fell back to `cli`. Also printed to stderr as a `Warning:` line.
+
+**Latched — fires at most once per run.** The executor sets a flag on the first downgrade, so a loop whose every state requests `sdk` on a machine without the `anthropic` package emits exactly one of these, not one per state. Consumers must not treat the event count as a downgrade count.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `requested` | `str` | The `request_path` that was asked for (`"sdk"` or `"batch"`) |
+| `reason` | `str` | Why it could not be honored (e.g. `"anthropic package not importable"`) |
+
+**Example:**
+```json
+{"event": "request_path_downgrade", "ts": "...", "requested": "sdk", "reason": "anthropic package not importable"}
+```
+
+---
+
+### `ab_comparison`
+
+Emitted once per compared item during an A/B baseline run (`ll-loop run <loop> --baseline`), carrying the per-item harness-vs-baseline result. A sibling `baseline_complete` event reports the run-level totals.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `index` | `int` | Zero-based index of the compared item |
+| `harness_pass` | `bool` | Whether the harness arm passed for this item |
+| `baseline_pass` | `bool` | Whether the single-shot baseline arm passed |
+| `harness_tokens` | `int` | Tokens consumed by the harness arm |
+| `baseline_tokens` | `int` | Tokens consumed by the baseline arm |
+| `harness_duration_ms` | `int` | Wall-clock duration of the harness arm |
+| `baseline_duration_ms` | `int` | Wall-clock duration of the baseline arm |
+| `confidence` | `float` | Judge confidence in the comparison |
+| `reason` | `str` | Judge rationale for the verdict |
+| `raw` | `object` | Raw comparison payload from the judge |
+
+> **Failed comparisons are not emitted.** When judging an item raises, the executor records an entry carrying an additional `error: "evaluation_error"` key into its in-memory results, but does **not** emit an `ab_comparison` event for it. A consumer counting events will therefore see fewer than the number of items compared, and will never observe an `error` field on the wire.
+
+**Example:**
+```json
+{
+  "event": "ab_comparison", "ts": "...", "index": 3,
+  "harness_pass": true, "baseline_pass": false,
+  "harness_tokens": 18400, "baseline_tokens": 5200,
+  "harness_duration_ms": 42000, "baseline_duration_ms": 9000,
+  "confidence": 0.82, "reason": "harness output satisfied all criteria; baseline missed two",
+  "raw": {}
+}
+```
+
+---
+
+### `api_error_retry`
+
+Emitted each time a state's host call fails with a retryable API error and the executor schedules another attempt. See also the [`infra_retry`](#infra_retry--infra_retry_exhausted) section, which references this event by name.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | Name of the state whose call failed |
+| `attempt` | `int` | Retry count so far for this state |
+| `backoff` | `float` | Seconds the executor will wait before retrying |
+
+**Example:**
+```json
+{"event": "api_error_retry", "ts": "...", "state": "implement", "attempt": 2, "backoff": 4.0}
+```
+
+---
+
+### `api_error_exhausted`
+
+Emitted when a state's retryable API errors exhaust the retry allowance. Terminal for that state's attempt sequence.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `str` | Name of the state whose retries were exhausted |
+| `retries` | `int` | Total retries attempted before giving up |
+
+**Example:**
+```json
+{"event": "api_error_exhausted", "ts": "...", "state": "implement", "retries": 5}
+```
+
+---
+
 ### `loop_complete`
 
 Emitted once when the executor finishes, regardless of how it terminated.
@@ -786,6 +974,29 @@ Emitted when an issue is marked as failed in the sequential run state.
   "issue_id": "BUG-002",
   "reason": "Command exited with code 1",
   "status": "failed"
+}
+```
+
+---
+
+### `state.issue_skipped`
+
+Emitted when an issue is marked as skipped in the sequential run state — the mark-skipped path in `StateManager`. Structurally identical to `state.issue_failed` apart from the `status` literal; a skip is a deliberate pass-over (e.g. a held lock or an unmet precondition), not a failure, so consumers computing failure rates should exclude these.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `issue_id` | `str` | Issue identifier |
+| `reason` | `str` | Human-readable reason the issue was skipped |
+| `status` | `str` | Always `"skipped"` |
+
+**Example:**
+```json
+{
+  "event": "state.issue_skipped",
+  "ts": "...",
+  "issue_id": "BUG-003",
+  "reason": "file lock held by another worker",
+  "status": "skipped"
 }
 ```
 
@@ -988,63 +1199,80 @@ This section documents, for every event-emitter surface, what JSON callers can e
 
 ### EventBus.emit() dispatch contract
 
-**Source:** `scripts/little_loops/events.py:117-138` — `EventBus.emit()`
+**Source:** `EventBus.emit()` in `scripts/little_loops/events.py`
 
 - **Observer and transport exceptions are caught and logged.** `logger.warning("EventBus observer raised an exception", exc_info=True)` and `logger.warning("EventBus transport raised an exception", exc_info=True)` swallow every failure. **No exit-code bump, no error envelope, and no exception is propagated to the caller.** A failing sink never blocks the others.
 - **Filtered observers silently skip non-matching events.** Observers registered with a `filter=...` pattern only see events where `fnmatch.fnmatch(event_type, p)` matches at least one pattern; non-matching events are skipped with no notification.
 - **Dispatch order is deterministic.** Observers are iterated in registration order first, then transports in registration order. There is no priority, preemption, or backpressure.
-- **`close_transports()` exceptions are isolated per transport.** `scripts/little_loops/events.py:110-115` catches and logs exceptions from `transport.close()` so one misbehaving transport cannot prevent others from shutting down.
+- **`close_transports()` exceptions are isolated per transport.** `EventBus.close_transports()` in `scripts/little_loops/events.py` catches and logs exceptions from `transport.close()` so one misbehaving transport cannot prevent others from shutting down.
 
 **Caller implications:** Treat `bus.emit(event)` as fire-and-forget. To assert that an event reached a sink, query the sink itself (e.g. `transport.get_stats()` for the Unix-socket transport) — do not rely on `emit()` return value (it returns `None`).
 
 ### `JsonlTransport`
 
-**Source:** `scripts/little_loops/transport.py:81-98`
+**Source:** `JsonlTransport` in `scripts/little_loops/transport.py`
 
 - **No retry, no buffering, no rotation.** `send()` opens the file, writes `json.dumps(event) + "\n"`, and closes on every event.
-- **Failures bubble to EventBus.** Disk-full, permission-denied, or JSON-encoder exceptions are caught by the `EventBus.emit` except-block (`events.py:137-138`) and become a `logger.warning(...)` line. They never reach the caller.
+- **Failures bubble to EventBus.** Disk-full, permission-denied, or JSON-encoder exceptions are caught by `EventBus.emit()`'s except-block and become a `logger.warning(...)` line. They never reach the caller.
 - **`close()` is a no-op.** The constructor creates the parent directory once; each `send()` is self-contained.
 
 **Caller implications:** A missing or unwritable `path` produces **no events and no error** to the caller — only log lines at `WARNING` level on stderr. Inspect the log or the file directly to confirm delivery.
 
 ### `UnixSocketTransport`
 
-**Source:** `scripts/little_loops/transport.py:115-320` · Constants at `transport.py:47-54`
+**Source:** `UnixSocketTransport` in `scripts/little_loops/transport.py` · module-level queue/timeout constants in the same file
 
 - **Full outbound queue → drop newest.** If a client's outbound queue is full (`_CLIENT_QUEUE_MAXSIZE = 1024`), the event is dropped and `dropped_count` is incremented. A rate-limited `WARNING` is logged at most once per `_DROP_LOG_INTERVAL_SEC = 5.0` seconds.
-- **Connection cap exceeded → reject.** When `max_clients` is reached, new connections are rejected and counted via `get_stats()["client_rejections"]` (`transport.py:281-283`).
+- **Connection cap exceeded → reject.** When `max_clients` is reached, new connections are rejected and counted via `get_stats()["client_rejections"]`.
 - **AF_UNIX unavailable at startup → `RuntimeError` from `wire_transports()`.** This is the **one path** in transport construction that propagates out — silently dropping a requested transport would be confusing. Once `wire_transports()` returns, all subsequent `send()` errors are caught by `EventBus.emit`.
 - **Disconnected clients are removed from the pool.** Per-client `sendall` failures are isolated in a `try/except`; they do not affect other clients or the FSM thread.
 - **Accept-thread shutdown is bounded.** `close()` joins with `_ACCEPT_THREAD_JOIN_TIMEOUT = 2.0` and per-client threads with `_CLIENT_THREAD_JOIN_TIMEOUT = 1.0`; the total close path is bounded by `_CLOSE_TOTAL_TIMEOUT = 10.0`.
 
 **Caller implications:** Under load, expect silent drops. Inspect `get_stats()["dropped_count"]` and `get_stats()["client_rejections"]` after a run to detect backpressure.
 
+#### `state_change` — connection seed event
+
+On accepting a new client, the socket seed callback in `UnixSocketTransport`
+replays one `state_change` record per currently-running loop so the client
+starts with a full picture instead of waiting for the next live event.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `event` | `str` | Always `"state_change"` |
+| *(loop state fields)* | varies | The running loop's serialized state, spread inline — the keys are whatever `LoopState.to_dict()` produces |
+
+**This event does not travel the EventBus.** It is serialized straight onto the
+new client's queue, so unlike every other event in this document it carries **no
+`ts` key**, is not visible to `LLExtension` observers or any other transport, and
+is silently dropped if the client's queue is already full. Treat it as a
+connection-time snapshot, not part of the event stream.
+
 ### `OTelTransport`
 
-**Source:** `scripts/little_loops/transport.py:338-492`
+**Source:** `OTelTransport` in `scripts/little_loops/transport.py`
 
-- **Sub-loop events are no-ops.** Events with `depth > 0` (nested loop spans) are dropped after a one-time per-session warning (`transport.py:385-395`). Nested OTel tracing is intentionally out of scope.
+- **Sub-loop events are no-ops.** Events with `depth > 0` (nested loop spans) are dropped after a one-time per-session warning. Nested OTel tracing is intentionally out of scope.
 - **Out-of-order events log a warning and skip span creation.** A `state_enter` without a prior `loop_start`, or an `action_start` without a prior `state_enter`, emits a warning and returns without creating a span. These warnings are the only signal that the span hierarchy is broken.
 - **`close()` blocks on `force_flush()` + `shutdown()`.** There is no engine-level timeout; rely on the OTel SDK's own deadlines.
-- **Optional SDK import.** The constructor raises `RuntimeError` with install guidance if `opentelemetry-sdk` or `opentelemetry-exporter-otlp-grpc` are missing (`transport.py:358-368`).
+- **Optional SDK import.** The constructor raises `RuntimeError` with install guidance if `opentelemetry-sdk` or `opentelemetry-exporter-otlp-grpc` are missing.
 - **Errors are caught at the EventBus level.** Span-export failures (network, auth, throttling) do not surface to the caller.
 
 **Caller implications:** Run with `OTEL_SDK_DISABLED=true` to skip this transport in environments without a collector. The dropped sub-loop events are expected — do not treat the warning as a bug.
 
 ### `WebhookTransport`
 
-**Source:** `scripts/little_loops/transport.py:495-575` · Constants at `transport.py:56-59`
+**Source:** `WebhookTransport` in `scripts/little_loops/transport.py` · module-level retry/backoff constants in the same file
 
 - **HTTP 5xx and transport exceptions trigger exponential-backoff retry.** Up to `max_retries=3` retries (overridable). Backoff starts at `_WEBHOOK_RETRY_BASE_S = 0.5` and doubles up to a cap of `_WEBHOOK_RETRY_MAX_S = 8.0`. **Non-5xx HTTP responses (`< 500`) are treated as success.**
-- **Retry exhaustion → batch dropped with warning.** `logger.warning("WebhookTransport: giving up after %d retries posting to %r", ...)` (`transport.py:571-575`) and the batch is discarded. **Never raised to the caller.** This is the documented "best-effort" guarantee.
+- **Retry exhaustion → batch dropped with warning.** `logger.warning("WebhookTransport: giving up after %d retries posting to %r", ...)` and the batch is discarded. **Never raised to the caller.** This is the documented "best-effort" guarantee.
 - **Non-blocking `send()`.** Events enqueue on a `Queue`; a daemon thread drains and POSTs in batches every `_WEBHOOK_BATCH_MS_DEFAULT = 1000` ms. Queue overflow is not guarded — relies on consumer thread pacing.
-- **Optional `httpx`.** The constructor raises `RuntimeError` with install guidance if `httpx` is missing (`transport.py:513-518`).
+- **Optional `httpx`.** The constructor raises `RuntimeError` with install guidance if `httpx` is missing.
 
 **Caller implications:** Configure a webhook receiver that returns `2xx` for accepted events and `5xx` (or times out) for retriable failures. There is no caller-visible signal for dropped batches — log scraping is the only failure-detection path.
 
 ### `SQLiteTransport`
 
-**Source:** `scripts/little_loops/session_store/writers.py:2146` (despite the package name, this transport lives with the session store, not in `transport.py`; ENH-2890 split the former flat `session_store.py` into a `session_store/` package).
+**Source:** `SQLiteTransport` in `scripts/little_loops/session_store/writers.py` (despite the package name, this transport lives with the session store, not in `transport.py`; ENH-2890 split the former flat `session_store.py` into a `session_store/` package).
 
 - **Connection failure at construction → `send()` is a silent no-op forever.** If the SQLite database cannot be opened, `self._conn` stays `None` and `send()` returns early. **No error is raised to the caller.**
 - **Per-write failures are logged + swallowed** (`writers.py`'s `SQLiteTransport.send()`). Writes are serialized with a `threading.Lock`.
@@ -1055,7 +1283,7 @@ This section documents, for every event-emitter surface, what JSON callers can e
 
 ### `action_error` event contract
 
-**Source:** `scripts/little_loops/fsm/executor.py:2798-2822`
+**Source:** the `action_error` emit site in `scripts/little_loops/fsm/executor.py`
 
 - **Emitted only when a state config defines `on_error`.** If `on_error` is absent on the failing state, the exception re-raises and the top-level loop handler terminates the loop with `loop_complete.terminated_by="error"` and the message in `loop_complete.error`. **No `action_error` event is emitted in that case** — the loop just ends.
 - **Payload schema:** `{state, error, route: "on_error"}` — same shape as a `route` event plus the original `error` string.
@@ -1242,9 +1470,20 @@ See [`ll-generate-schemas`](CLI.md#ll-generate-schemas) in the CLI reference and
 | `learning_target_refuted` | FSM | `fsm/executor.py` |
 | `learning_complete` | FSM | `fsm/executor.py` |
 | `learning_blocked` | FSM | `fsm/executor.py` |
+| `host_pressure` | FSM | `fsm/host_guard.py + fsm/executor.py` |
+| `host_pressure_relieved` | FSM | `fsm/host_guard.py + fsm/executor.py` |
+| `host_pressure_abort` | FSM | `fsm/host_guard.py + fsm/executor.py` |
+| `host_cooldown` | FSM | `fsm/host_guard.py + fsm/executor.py` |
+| `host_subproc_rss` | FSM | `fsm/host_guard.py + fsm/executor.py` |
+| `host_budget_exceeded` | FSM | `fsm/host_guard.py + fsm/executor.py` |
+| `request_path_downgrade` | FSM | `fsm/executor.py` |
+| `ab_comparison` | FSM | `fsm/executor.py` |
+| `api_error_retry` | FSM | `fsm/executor.py` |
+| `api_error_exhausted` | FSM | `fsm/executor.py` |
 | `loop_resume` | FSM Persistence | `fsm/persistence.py` |
 | `state.issue_completed` | StateManager | `state.py` |
 | `state.issue_failed` | StateManager | `state.py` |
+| `state.issue_skipped` | StateManager | `state.py` |
 | `issue.failure_captured` | Issue Lifecycle | `issue_lifecycle.py` |
 | `issue.closed` | Issue Lifecycle | `issue_lifecycle.py` |
 | `issue.completed` | Issue Lifecycle | `issue_lifecycle.py` |
@@ -1252,6 +1491,7 @@ See [`ll-generate-schemas`](CLI.md#ll-generate-schemas) in the CLI reference and
 | `issue.skipped` | Issue Lifecycle | `issue_lifecycle.py` |
 | `issue.started` | Issue Lifecycle | `issue_lifecycle.py` |
 | `parallel.worker_completed` | Parallel | `parallel/orchestrator.py` |
+| `state_change` | Socket seed (not on the EventBus) | `transport.py` |
 
 ---
 
