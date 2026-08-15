@@ -172,6 +172,7 @@ _Both gaps below were addressed in the 2026-08-15 second-pass review — a `## P
 - Open Decision #3 (whether `_adversarial_states()` gets the same no-short-circuit treatment) has no stated default or lean, unlike Decisions #1 and #2 which each carry an explicit recommendation/assumed default — pick one explicitly before implementation to avoid a half-changed adversarial mode.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-08-15T22:32:38 - `1722f1f7-02d5-4af2-b8ec-39c8c40ec8ac.jsonl`
 - Pre-implementation review (second pass) - 2026-08-15 - added the missing `## Program Design` section (confidence-check hard-override gap); gave Open Decision #3 an explicit lean (fix `_adversarial_states()` in the same change); documented the capture-ordering problem in Open Decision #1a — `self.captured` is written at `executor.py:2315` *before* `_evaluate()` runs at line 1850, so `verdict` needs a post-evaluation write-back across two capture sites, not a new dict key. Effort re-rated Small-to-Medium.
 - `/ll:confidence-check` - 2026-08-15T20:36:25 - `94c0eb90-8c6b-4ad6-ab84-c1a6874ad15f.jsonl`
 - Split from ENH-3185 - 2026-08-15

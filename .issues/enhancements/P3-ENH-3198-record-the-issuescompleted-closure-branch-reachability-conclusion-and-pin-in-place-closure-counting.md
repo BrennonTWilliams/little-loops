@@ -7,9 +7,16 @@ priority: P3
 status: open
 testable: true
 discovered_by: ll-issues-create
-relates_to: [BUG-3191]
+relates_to:
+- BUG-3191
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T19:45:21Z'
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3198: Record the .issues/completed/ closure-branch reachability conclusion and pin in-place closure counting
@@ -277,3 +284,7 @@ verdict regression. This issue exists to settle both once and write them down.
 ## Status
 
 **Open** | Created: 2026-08-15 | Priority: P3
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-15T22:26:48 - `2eee4b08-bf11-4ebc-aed0-11c060d99a74.jsonl`
