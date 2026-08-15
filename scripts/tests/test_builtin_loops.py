@@ -1519,15 +1519,115 @@ class TestRefineToReadyIssueSubLoop:
         )
 
     def test_check_hedges_state_routing(self, data: dict) -> None:
-        """check_hedges force-routes to check_refine_limit regardless of score (ENH-3031)."""
+        """check_hedges routes on_no through the attempt-bounded gate, not check_refine_limit
+        directly (BUG-3170)."""
         state = data["states"].get("check_hedges", {})
         assert state, "State 'check_hedges' not found (ENH-3031)"
         assert state.get("on_yes") == "check_ac_automatable", (
             f"check_hedges.on_yes should be 'check_ac_automatable', got {state.get('on_yes')!r}"
         )
-        assert state.get("on_no") == "check_refine_limit", (
-            f"check_hedges.on_no should be 'check_refine_limit', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "check_hedge_attempts", (
+            f"check_hedges.on_no should be 'check_hedge_attempts', got {state.get('on_no')!r}"
         )
+        assert state.get("on_error") == "check_ac_automatable", (
+            f"check_hedges.on_error should be 'check_ac_automatable', got {state.get('on_error')!r}"
+        )
+        assert state.get("action") == "ll-issues check-open-questions ${captured.issue_id.output}", (
+            f"check_hedges.action should be unchanged, got {state.get('action')!r}"
+        )
+        assert state.get("fragment") == "shell_exit", (
+            f"check_hedges.fragment should be unchanged, got {state.get('fragment')!r}"
+        )
+
+    def test_check_hedge_attempts_state_routing(self, data: dict) -> None:
+        """check_hedge_attempts bounds check_hedges to one forced refine per run (BUG-3170)."""
+        state = data["states"].get("check_hedge_attempts", {})
+        assert state, "State 'check_hedge_attempts' not found (BUG-3170)"
+        assert state.get("action_type") == "shell", (
+            f"check_hedge_attempts.action_type should be 'shell', got {state.get('action_type')!r}"
+        )
+        assert state.get("capture") == "check_hedge_attempts", (
+            f"check_hedge_attempts.capture should be 'check_hedge_attempts', "
+            f"got {state.get('capture')!r}"
+        )
+        evaluate = state.get("evaluate", {})
+        assert evaluate.get("type") == "output_numeric", (
+            f"check_hedge_attempts.evaluate.type should be 'output_numeric', got {evaluate.get('type')!r}"
+        )
+        assert evaluate.get("operator") == "lt", (
+            f"check_hedge_attempts.evaluate.operator should be 'lt', got {evaluate.get('operator')!r}"
+        )
+        assert evaluate.get("target") == 2, (
+            f"check_hedge_attempts.evaluate.target should be 2, got {evaluate.get('target')!r}"
+        )
+        assert state.get("on_yes") == "check_refine_limit", (
+            f"check_hedge_attempts.on_yes should be 'check_refine_limit' (pre-filter, not a "
+            f"private budget), got {state.get('on_yes')!r}"
+        )
+        assert state.get("on_no") == "check_ac_automatable", (
+            f"check_hedge_attempts.on_no should be 'check_ac_automatable', got {state.get('on_no')!r}"
+        )
+        assert state.get("on_error") == "check_ac_automatable", (
+            f"check_hedge_attempts.on_error should be 'check_ac_automatable' (fail-open, "
+            f"matching check_hedges), got {state.get('on_error')!r}"
+        )
+        assert "${context.run_dir}/refine-to-ready-hedge-attempts" in state.get("action", ""), (
+            "check_hedge_attempts.action should target the run-scoped counter file"
+        )
+        assert "2>/dev/null || echo 0" in state.get("action", ""), (
+            "check_hedge_attempts.action should tolerate an absent counter file"
+        )
+
+    def test_resolve_issue_seeds_hedge_attempts_counter(self, data: dict) -> None:
+        """resolve_issue seeds the hedge-attempts counter alongside its siblings (BUG-3170)."""
+        state = data["states"].get("resolve_issue", {})
+        action = state.get("action", "")
+        assert "refine-to-ready-hedge-attempts" in action, (
+            "resolve_issue.action should seed refine-to-ready-hedge-attempts"
+        )
+
+    @staticmethod
+    def _run_check_hedge_attempts(data: dict, run_dir: Path) -> str:
+        """Execute check_hedge_attempts's bash `action` against `run_dir` and return stdout."""
+        action = data["states"].get("check_hedge_attempts", {}).get("action", "")
+        script = action.replace("${context.run_dir}", str(run_dir))
+        assert "${" not in script, f"unsubstituted interpolation token remains: {script}"
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True
+        )
+        assert result.returncode == 0, f"check_hedge_attempts failed: {result.stderr}"
+        return result.stdout.strip()
+
+    def test_check_hedge_attempts_counts_up_and_gates_at_two(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """First entry emits 1 (lt 2 -> yes, spend a refine); second emits 2 (lt 2 -> no,
+        proceed) — exactly one hedge-forced refine per run (BUG-3170)."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        first = self._run_check_hedge_attempts(data, run_dir)
+        assert first == "1", f"first entry should emit '1', got {first!r}"
+        assert int(first) < 2, "first entry (1) should satisfy lt 2 -> on_yes: check_refine_limit"
+
+        second = self._run_check_hedge_attempts(data, run_dir)
+        assert second == "2", f"second entry should emit '2', got {second!r}"
+        assert not (int(second) < 2), (
+            "second entry (2) should fail lt 2 -> on_no: check_ac_automatable"
+        )
+
+    def test_check_hedge_attempts_counter_is_per_run(self, data: dict, tmp_path: Path) -> None:
+        """The counter file lives under run_dir, so two different run dirs each start
+        from 1 independently (BUG-3170)."""
+        run_dir_a = tmp_path / "run-a"
+        run_dir_a.mkdir(parents=True, exist_ok=True)
+        run_dir_b = tmp_path / "run-b"
+        run_dir_b.mkdir(parents=True, exist_ok=True)
+
+        first_a = self._run_check_hedge_attempts(data, run_dir_a)
+        first_b = self._run_check_hedge_attempts(data, run_dir_b)
+        assert first_a == "1", f"run-a first entry should emit '1', got {first_a!r}"
+        assert first_b == "1", f"run-b first entry should emit '1', got {first_b!r}"
 
     def test_check_ac_automatable_state_routing(self, data: dict) -> None:
         """check_ac_automatable force-routes to check_refine_limit regardless of score (ENH-3031)."""

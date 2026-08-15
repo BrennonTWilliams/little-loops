@@ -12,7 +12,9 @@ category: issue-management
 #     check_verify_verdict (reads persisted verify_verdict) → (on_yes) check_hedges
 #                                                            → (on_no)  check_refine_limit
 #     check_hedges (ll-issues check-open-questions)          → (on_yes) check_ac_automatable
-#                                                            → (on_no)  check_refine_limit
+#                                                            → (on_no)  check_hedge_attempts
+#     check_hedge_attempts (BUG-3170: one hedge-forced refine per run) → (on_yes, 1st) check_refine_limit
+#                                                                       → (on_no, 2nd)  check_ac_automatable
 #     check_ac_automatable (ll-issues check-acceptance-criteria) → (on_yes) confidence_check
 #                                                                 → (on_no)  check_refine_limit
 #   confidence_check (oracle: verify-confidence-scores) → (on_success) check_readiness → (on_yes) check_outcome → (on_yes) done
@@ -79,6 +81,7 @@ states:
       printf '0' > ${context.run_dir}/refine-to-ready-refine-count &&
       printf '0' > ${context.run_dir}/refine-to-ready-wire-done &&
       printf '0' > ${context.run_dir}/refine-broke-down &&
+      printf '0' > ${context.run_dir}/refine-to-ready-hedge-attempts &&
       { [ -n ${context.input:shell} ] && printf '%s' ${context.input:shell} ||
       ll-issues next-issue; } | tr -d '\n\r '
     action_type: shell
@@ -302,9 +305,32 @@ states:
     # scanned, not just Edge Cases / Confidence Check Notes / Open Questions.
     action: "ll-issues check-open-questions ${captured.issue_id.output}"
     fragment: shell_exit
-    on_yes: check_ac_automatable  # exit 0 = no hedges
-    on_no: check_refine_limit     # exit 1 = OPEN_QUESTIONS_REMAIN → force refine
+    on_yes: check_ac_automatable    # exit 0 = no hedges
+    on_no: check_hedge_attempts     # exit 1 = OPEN_QUESTIONS_REMAIN → bound the retry
     on_error: check_ac_automatable
+
+  check_hedge_attempts:
+    # BUG-3170: bound how many refine passes the hedge scan may force. The scan
+    # is an absolute-zero probe over vocabulary with no answer/hedge
+    # distinction, so a residual count is the steady state for a well-refined
+    # issue. One forced refine is worth its cost; a second red reading must not
+    # spend the shared budget and decompose the issue.
+    action: |
+      FILE="${context.run_dir}/refine-to-ready-hedge-attempts"
+      N=$(cat "$FILE" 2>/dev/null || echo 0)
+      N=$((N + 1))
+      printf '%s' "$N" > "$FILE"
+      echo "$N"
+    action_type: shell
+    capture: check_hedge_attempts
+    # target: 2 → one hedge-forced refine per run (mirrors check_refine_limit)
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 2
+    on_yes: check_refine_limit      # 1st red reading: allowed to ask for a refine (pre-filter, not a private budget)
+    on_no: check_ac_automatable     # 2nd red reading: proceed rather than exhaust the shared budget
+    on_error: check_ac_automatable  # fail open, matching check_hedges
 
   check_ac_automatable:
     # Score-independent gate: a manual-verification acceptance criterion scores
@@ -607,6 +633,7 @@ states:
       - refine_followup:        ${captured.refine_followup.stderr?}
       - check_outcome:          ${captured.check_outcome.stderr?}
       - check_refine_limit:     ${captured.check_refine_limit.stderr?}
+      - check_hedge_attempts:   ${captured.check_hedge_attempts.stderr?}
       - check_scores_from_file: ${captured.check_scores_from_file.stderr?}
       - breakdown_issue:        ${captured.breakdown_issue.stderr?}
       - confidence_check (sub-loop — no stderr channel; event stream instead):
@@ -652,6 +679,7 @@ states:
         printf 'breakdown_issue: %s\n' '${captured.breakdown_issue.exit_code?}'
         printf 'check_outcome: %s\n' '${captured.check_outcome.exit_code?}'
         printf 'check_refine_limit: %s\n' '${captured.check_refine_limit.exit_code?}'
+        printf 'check_hedge_attempts: %s\n' '${captured.check_hedge_attempts.exit_code?}'
         printf 'check_scores_from_file: %s\n' '${captured.check_scores_from_file.exit_code?}'
         printf 'issue_id: %s\n' '${captured.issue_id.exit_code?}'
         printf 'check_lifetime_limit: %s\n' '${captured.check_lifetime_limit.exit_code?}'
@@ -661,6 +689,7 @@ states:
         printf 'breakdown_issue: %s\n' '${captured.breakdown_issue.failure_type?}'
         printf 'check_outcome: %s\n' '${captured.check_outcome.failure_type?}'
         printf 'check_refine_limit: %s\n' '${captured.check_refine_limit.failure_type?}'
+        printf 'check_hedge_attempts: %s\n' '${captured.check_hedge_attempts.failure_type?}'
         printf 'check_scores_from_file: %s\n' '${captured.check_scores_from_file.failure_type?}'
         printf 'issue_id: %s\n' '${captured.issue_id.failure_type?}'
         printf 'check_lifetime_limit: %s\n' '${captured.check_lifetime_limit.failure_type?}'

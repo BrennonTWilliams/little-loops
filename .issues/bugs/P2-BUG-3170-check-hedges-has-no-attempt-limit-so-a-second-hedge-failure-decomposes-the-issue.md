@@ -4,10 +4,11 @@ type: BUG
 title: check_hedges has no attempt limit, so a second hedge failure decomposes the
   issue
 priority: P2
-status: open
+status: done
 discovered_by: bug-3169-review
 discovered_date: '2026-08-14'
 captured_at: '2026-08-14T00:00:00Z'
+completed_at: '2026-08-15T01:07:42Z'
 relates_to:
 - BUG-3169
 - ENH-3031
@@ -328,40 +329,40 @@ absolute-zero contract for every caller, including
 
 ## Acceptance Criteria
 
-- [ ] `refine-to-ready-issue.yaml` defines `check_hedge_attempts` with
+- [x] `refine-to-ready-issue.yaml` defines `check_hedge_attempts` with
       `action_type: shell`, `capture: check_hedge_attempts`, and
       `evaluate: {type: output_numeric, operator: lt, target: 2}`.
-- [ ] Its counter path is `${context.run_dir}/refine-to-ready-hedge-attempts`
+- [x] Its counter path is `${context.run_dir}/refine-to-ready-hedge-attempts`
       (run-scoped, not a bare `.loops/tmp/` path), and the action tolerates an
       absent file via `2>/dev/null || echo 0`.
-- [ ] `check_hedges.on_no == "check_hedge_attempts"`; its `on_yes`
+- [x] `check_hedges.on_no == "check_hedge_attempts"`; its `on_yes`
       (`check_ac_automatable`), `on_error` (`check_ac_automatable`), `action`,
       and `fragment` are unchanged. The existing
       `test_check_hedges_state_routing` (`test_builtin_loops.py:1521-1531`)
       is updated for the new `on_no` and keeps asserting the other fields.
-- [ ] `check_hedge_attempts.on_yes == "check_refine_limit"` (pre-filter, not a
+- [x] `check_hedge_attempts.on_yes == "check_refine_limit"` (pre-filter, not a
       private budget), `on_no == "check_ac_automatable"`, and
       `on_error == "check_ac_automatable"` (fail-open, matching `check_hedges`).
-- [ ] A test executes the counter action twice against a temp run dir and
+- [x] A test executes the counter action twice against a temp run dir and
       asserts it emits `1` then `2`, and that `output_numeric lt 2` therefore
       yields `yes` then `no` — i.e. exactly one hedge-forced refine per run.
-- [ ] A test asserts the counter file is per-run: two different `run_dir` values
+- [x] A test asserts the counter file is per-run: two different `run_dir` values
       each start from `1`.
-- [ ] `resolve_issue` seeds `refine-to-ready-hedge-attempts` with `printf '0'`
+- [x] `resolve_issue` seeds `refine-to-ready-hedge-attempts` with `printf '0'`
       alongside its three sibling counters.
-- [ ] `check_hedge_attempts` is listed in the `diagnose` prompt's captured-stderr
+- [x] `check_hedge_attempts` is listed in the `diagnose` prompt's captured-stderr
       block (`:604-613`) and its exit-code / failure-type printf blocks
       (`:654`, `:663`), matching the BUG-2726 treatment of `check_refine_limit`.
-- [ ] The file-header routing summary (`:13-15`) shows
+- [x] The file-header routing summary (`:13-15`) shows
       `check_hedges → (on_no) check_hedge_attempts` and the two onward branches.
-- [ ] `docs/guides/LOOPS_REFERENCE.md:142` no longer claims all three
+- [x] `docs/guides/LOOPS_REFERENCE.md:142` no longer claims all three
       claim-verification gates route `on_no` to `check_refine_limit`; it
       describes the hedge gate's one-attempt bound.
-- [ ] **No Python changes**: `check_open_questions.py` and `issue_parser.py` are
+- [x] **No Python changes**: `check_open_questions.py` and `issue_parser.py` are
       untouched, and `test_ll_issues_check_open_questions.py` passes unmodified.
-- [ ] `ll-loop validate refine-to-ready-issue` exits 0 (enforced by
+- [x] `ll-loop validate refine-to-ready-issue` exits 0 (enforced by
       `test_builtin_loops.py::test_all_validate_as_valid_fsm`).
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `python -m pytest scripts/tests/` exits 0.
 
 ## Out of Scope
 
@@ -439,12 +440,26 @@ _Added by `/ll:confidence-check` on 2026-08-14_
   single-file change, existing pattern to mirror, explicit test coverage
   requirements in the AC, no unresolved ambiguity).
 
+## Resolution
+
+Implemented exactly as specified in Program Design: added `check_hedge_attempts`
+to `refine-to-ready-issue.yaml`, retargeted `check_hedges.on_no` to it, seeded
+the counter in `resolve_issue`, added it to the `diagnose`/`write_failure_evidence`
+capture blocks, updated the file-header routing summary and
+`docs/guides/LOOPS_REFERENCE.md`, and updated/added loop-structure tests in
+`test_builtin_loops.py` (state routing, two execution tests proving the
+counter emits 1 then 2 and is per-run-dir). No Python changes.
+`ll-loop validate refine-to-ready-issue` exits 0; full suite passes
+(19289 passed, 43 skipped).
+
 ## Status
 
-**Open** | Created: 2026-08-14 | Priority: P2
+**Done** | Created: 2026-08-14 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-15T01:07:21 - `e460a886-a99a-4ef7-902b-125442c2c060.jsonl`
+- `/ll:ready-issue` - 2026-08-15T00:54:12 - `0d0da3b3-9e88-46de-b1a9-17862b9cfed3.jsonl`
 - `/ll:confidence-check` - 2026-08-15T00:50:48 - `3e7c9d5c-db6b-4056-8147-8c79e66b7bc7.jsonl`
 - `/ll:confidence-check` - 2026-08-15T00:02:16 - `f2a7b3a1-13a3-4789-a189-b1a33c413ed6.jsonl`
 - `/ll:format-issue` - 2026-08-15T00:00:21 - `89d8e25e-eb7d-4616-8513-9b90d6e3e96f.jsonl`
