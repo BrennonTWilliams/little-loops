@@ -20,11 +20,22 @@ renamed after startup — which the server itself can now trigger (`issue_captur
 a fresh enumeration instead of the discovery-time snapshot. Membership in `ResourceIndex.entries`
 remains the sole access-control boundary — `refresh()` only decides *when* to rebuild it,
 never whether a URI is admitted.
+
+ENH-3174: on this repository the enumeration above is 3,000+ entries returned in one
+`resources/list` response. Two independent, opt-in bounds address that: (1) cursor
+pagination — `make_list_resources_handler` always honors an incoming `cursor` and caps a
+response at `config.mcp.resources.page_size` entries, returning `nextCursor` when more
+remain, regardless of config; (2) enumeration scoping — `config.mcp.resources.issue_statuses`
+and `.docs_globs`, both `None` by default, narrow what `build_resource_index` walks in the
+first place. Scoping defaults to `None` (unbounded, matching pre-ENH-3174 behavior) per the
+issue's Breaking Change constraint; only pagination is unconditional, since honoring a
+client-sent cursor and capping page size changes response shape, not which URIs exist.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import fnmatch
 import json
 import re
 from pathlib import Path
@@ -60,11 +71,17 @@ def _issue_entries(config: BRConfig) -> list[_ResourceEntry]:
 
     Walks the type-scoped category dirs plus `config.legacy_issue_dirs()` (BUG-2733) — the
     same search-dir set `_resolve_issue_id` uses — so status (open/done/deferred) doesn't
-    affect discoverability. Name/description come from frontmatter only (`title`), never a
-    full-body parse, per the "list cheaply, read on demand" split this issue calls for.
+    affect discoverability *by default*. Name/description come from frontmatter only
+    (`title`), never a full-body parse, per the "list cheaply, read on demand" split this
+    issue calls for.
+
+    ENH-3174: when `config.mcp.resources.issue_statuses` is set, only issues whose
+    (synonym-canonicalized) `status` is in that list are enumerated — a status read anyway
+    costs nothing extra since the frontmatter is already parsed for `title`.
     """
     from little_loops.frontmatter import parse_frontmatter
 
+    allowed_statuses = config.mcp.resources.issue_statuses
     search_dirs = [config.get_issue_dir(category) for category in config.issue_categories]
     search_dirs.extend(config.legacy_issue_dirs())
 
@@ -84,7 +101,12 @@ def _issue_entries(config: BRConfig) -> list[_ResourceEntry]:
                 content = md_path.read_text()
             except OSError:
                 continue
-            title = parse_frontmatter(content).get("title")
+            frontmatter = parse_frontmatter(content)
+            if allowed_statuses is not None:
+                status = frontmatter.get("status") or "open"
+                if status not in allowed_statuses:
+                    continue
+            title = frontmatter.get("title")
             entries[uri] = _ResourceEntry(
                 uri=uri,
                 name=issue_id,
@@ -116,13 +138,19 @@ def _docs_entries(config: BRConfig) -> list[_ResourceEntry]:
 
     No frontmatter convention exists under `docs/` (170+ files, no shared header shape), so
     entries carry no description — unlike issues, there's no cheap structured field to pull.
+
+    ENH-3174: when `config.mcp.resources.docs_globs` is set, only files whose path relative
+    to `docs/` matches one of those glob patterns are enumerated.
     """
+    docs_globs = config.mcp.resources.docs_globs
     docs_dir = config.project_root / "docs"
     if not docs_dir.is_dir():
         return []
     entries = []
     for md_path in sorted(docs_dir.rglob("*.md")):
         rel = md_path.relative_to(docs_dir).as_posix()
+        if docs_globs is not None and not any(fnmatch.fnmatch(rel, g) for g in docs_globs):
+            continue
         entries.append(
             _ResourceEntry(
                 uri=f"ll://docs/{rel}",
@@ -255,26 +283,51 @@ def make_list_resources_handler(index: ResourceIndex, bus: SubscriptionBus) -> A
     `bus` (delivered to any open `subscriptions/listen` stream) and this particular response
     has `ttl_ms=0` forced on it — the 5-minute public `CacheHint` is a safe default for an
     unchanged list, not for the one response that just proved the list changed.
+
+    ENH-3174: the response is capped at `config.mcp.resources.page_size` entries and honors
+    an incoming `cursor` unconditionally — pagination applies regardless of whether scoping
+    config is set, since a 3,000-entry index is a problem even fully-scoped indices can still
+    hit. Entries are sorted by `uri` for a stable resume order; the cursor is the last `uri`
+    returned on the previous page, so a page starts at the first entry sorting after it. This
+    means an index mutation between pages can only ever skip or duplicate entries adjacent to
+    the cursor, never corrupt pagination outright — an acceptable tradeoff against tracking
+    per-cursor snapshots for a locally-run enumeration.
     """
+    import bisect
+
     from mcp.server.subscriptions import ResourcesListChanged
 
-    def _resources() -> list[types.Resource]:
-        return [
-            types.Resource(
-                uri=entry.uri,
-                name=entry.name,
-                description=entry.description,
-                mime_type=entry.mime_type,
-            )
-            for entry in index.entries.values()
-        ]
+    def _sorted_entries() -> list[_ResourceEntry]:
+        return sorted(index.entries.values(), key=lambda entry: entry.uri)
+
+    def _page(cursor: str | None) -> tuple[list[_ResourceEntry], str | None]:
+        entries = _sorted_entries()
+        page_size = index.config.mcp.resources.page_size
+        start = 0
+        if cursor:
+            start = bisect.bisect_right([entry.uri for entry in entries], cursor)
+        page = entries[start : start + page_size]
+        next_cursor = page[-1].uri if start + page_size < len(entries) else None
+        return page, next_cursor
 
     async def handle_list_resources(
         _ctx: Any,
-        _params: types.PaginatedRequestParams | None,
+        params: types.PaginatedRequestParams | None,
     ) -> types.ListResourcesResult:
         changed = index.refresh()
-        result = types.ListResourcesResult(resources=_resources())
+        page, next_cursor = _page(params.cursor if params is not None else None)
+        result = types.ListResourcesResult(
+            resources=[
+                types.Resource(
+                    uri=entry.uri,
+                    name=entry.name,
+                    description=entry.description,
+                    mime_type=entry.mime_type,
+                )
+                for entry in page
+            ],
+            next_cursor=next_cursor,
+        )
         if changed:
             await bus.publish(ResourcesListChanged())
             result = result.model_copy(update={"ttl_ms": 0})

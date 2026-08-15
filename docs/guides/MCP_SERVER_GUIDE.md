@@ -302,10 +302,29 @@ Two caveats follow from *how* that check works:
 
 Two more practical notes:
 
-- **The resource list is large.** On a mature project it is one entry per issue plus one
-  per file under `docs/` — this repository enumerates over 3,000. Clients that eagerly
-  fetch every resource will be slow; prefer `issues_query` to *find* an issue and
-  `resources/read` (or `issue_get`) to fetch the one you want.
+- **The resource list is bounded and paginated (ENH-3174).** On a mature project it is
+  still one entry per issue plus one per file under `docs/` — this repository enumerates
+  over 3,000 — but `resources/list` now caps each response at
+  `mcp.resources.page_size` entries (default 500) and returns `nextCursor` when more
+  remain; pass that value back as `cursor` on the next call to page through the rest.
+  This is unconditional — it applies whether or not the config below is set. An operator
+  can also *narrow* what gets enumerated at all via `.ll/ll-config.json`:
+  ```json
+  {
+    "mcp": {
+      "resources": {
+        "issue_statuses": ["open", "in_progress"],
+        "docs_globs": ["guides/*.md", "reference/*.md"],
+        "page_size": 200
+      }
+    }
+  }
+  ```
+  `issue_statuses`/`docs_globs` default to `null` (unset), which enumerates every issue
+  status and every `docs/**/*.md` file — identical to pre-ENH-3174 behavior, so an
+  existing client sees no change unless this block is added. Either way, prefer
+  `issues_query` to *find* an issue and `resources/read` (or `issue_get`) to fetch the
+  one you want — the resource list is for browsing/discovery, not the fast path.
 - **Prompts serve the full skill catalog on every install source** (BUG-3177), not only a
   plugin checkout. The skills root is resolved in order: `$LL_MCP_SKILLS_ROOT` if set and
   valid, then `$CLAUDE_PLUGIN_ROOT/skills` if set and valid, then the copy shipped inside

@@ -618,6 +618,33 @@
             }
           },
           "additionalProperties": false
+        },
+        "resources": {
+          "type": "object",
+          "description": "Bounds on the `ll://` resource surface enumerated by `resources/list` (ENH-3174). All fields default to the pre-ENH-3174 behavior (unbounded, single page) so an absent block changes nothing for existing clients; narrowing is opt-in.",
+          "properties": {
+            "issue_statuses": {
+              "type": "array",
+              "description": "When set, only issues whose frontmatter `status` is in this list are enumerated as `ll://issues/<ID>` resources. Unset (default) enumerates issues at every status, matching pre-ENH-3174 behavior.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "docs_globs": {
+              "type": "array",
+              "description": "When set, only `docs/**` files whose path relative to `docs/` matches one of these glob patterns are enumerated as `ll://docs/<path>` resources. Unset (default) enumerates every `docs/**/*.md` file, matching pre-ENH-3174 behavior.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "page_size": {
+              "type": "integer",
+              "description": "Maximum number of resources returned per `resources/list` response. A client that sends the returned `nextCursor` back retrieves the next page.",
+              "default": 500,
+              "minimum": 1
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

@@ -624,11 +624,52 @@ class McpHttpBindConfig:
 
 
 @dataclass
+class McpResourcesConfig:
+    """Bounds on the `ll://` resource surface enumerated by `resources/list` (ENH-3174).
+
+    Every field defaults to the pre-ENH-3174 behavior — unbounded enumeration in a
+    single page — so an absent ``mcp.resources`` block changes nothing for existing
+    clients (Breaking Change constraint in the issue's Impact section). Narrowing is
+    opt-in: set ``issue_statuses``/``docs_globs`` to shrink what gets enumerated, or
+    ``page_size`` to cap entries per `resources/list` response (pagination itself is
+    always honored, regardless of this block, once a client sends a ``cursor``).
+    """
+
+    issue_statuses: list[str] | None = None
+    docs_globs: list[str] | None = None
+    page_size: int = 500
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> McpResourcesConfig:
+        """Create McpResourcesConfig from dictionary. Lenient: ignores unknown keys."""
+        issue_statuses = data.get("issue_statuses")
+        docs_globs = data.get("docs_globs")
+        page_size = data.get("page_size")
+        return cls(
+            issue_statuses=(
+                [str(s) for s in issue_statuses] if issue_statuses is not None else None
+            ),
+            docs_globs=([str(g) for g in docs_globs] if docs_globs is not None else None),
+            page_size=int(page_size) if page_size is not None else 500,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize McpResourcesConfig to dictionary."""
+        result: dict[str, Any] = {"page_size": self.page_size}
+        if self.issue_statuses is not None:
+            result["issue_statuses"] = self.issue_statuses
+        if self.docs_globs is not None:
+            result["docs_globs"] = self.docs_globs
+        return result
+
+
+@dataclass
 class McpConfig:
     """`ll-mcp` server configuration (FEAT-3149)."""
 
     transport_policy: McpTransportPolicyConfig = field(default_factory=McpTransportPolicyConfig)
     http: McpHttpBindConfig = field(default_factory=McpHttpBindConfig)
+    resources: McpResourcesConfig = field(default_factory=McpResourcesConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> McpConfig:
@@ -636,6 +677,7 @@ class McpConfig:
         return cls(
             transport_policy=McpTransportPolicyConfig.from_dict(data.get("transport_policy", {})),
             http=McpHttpBindConfig.from_dict(data.get("http", {})),
+            resources=McpResourcesConfig.from_dict(data.get("resources", {})),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -643,6 +685,7 @@ class McpConfig:
         return {
             "transport_policy": self.transport_policy.to_dict(),
             "http": self.http.to_dict(),
+            "resources": self.resources.to_dict(),
         }
 
 
