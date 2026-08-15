@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from little_loops.issues.symbol_claims import (
     symbol_resolves_elsewhere,
 )
 from little_loops.text_utils import RefIndex
+from tests.helpers import copy_git_template
 
 
 @pytest.fixture
@@ -205,3 +207,222 @@ def test_build_symbol_index_reverse_index_empty_outside_git_repo(tmp_path: Path)
     """Fail-open convention (mirrors build_ref_index): no git repo -> empty reverse index."""
     idx = build_symbol_index(tmp_path)
     assert idx.files_with_symbol("anything") == frozenset()
+
+
+# --------------------------------------------------------------------------
+# BUG-3201 A: SQL object names declared in embedded migration strings
+# --------------------------------------------------------------------------
+
+
+def _write(repo: Path, rel: str, text: str) -> str:
+    """Seed *rel* under *repo* (creating parents) and return the relative path."""
+    target = repo / rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(text)
+    return rel
+
+
+@pytest.fixture
+def git_repo(tmp_path: Path) -> Path:
+    """A tracked git repo, so _build_reverse_index's `git ls-files` sees files."""
+    copy_git_template(tmp_path)
+    return tmp_path
+
+
+def _track(repo: Path) -> None:
+    subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True, check=True)
+
+
+def test_create_table_in_migration_string_resolves(repo: Path) -> None:
+    """BUG-3201 A: a table name declared inside a triple-quoted _MIGRATIONS entry
+    is a citable symbol of the .py file that carries it."""
+    rel = _write(
+        repo,
+        "scripts/little_loops/session_store/schema.py",
+        '_MIGRATIONS = """\n'
+        "    CREATE TABLE IF NOT EXISTS tool_events (\n"
+        "        id INTEGER PRIMARY KEY\n"
+        "    );\n"
+        '"""\n',
+    )
+    idx = build_symbol_index(repo)
+    assert symbol_exists_in_file(idx, rel, "tool_events")
+
+
+def test_create_index_and_view_and_modifiers_resolve(repo: Path) -> None:
+    """INDEX/VIEW and the UNIQUE / VIRTUAL / TEMPORARY modifiers, not just TABLE."""
+    rel = _write(
+        repo,
+        "scripts/little_loops/session_store/schema.py",
+        '_MIGRATIONS = """\n'
+        "    CREATE UNIQUE INDEX IF NOT EXISTS idx_corrections_dedup ON user_corrections(a);\n"
+        "    CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(body);\n"
+        "    CREATE VIEW issue_sessions AS SELECT 1;\n"
+        "    create temporary table lower_case_ddl (x INTEGER);\n"
+        '"""\n',
+    )
+    idx = build_symbol_index(repo)
+    for name in ("idx_corrections_dedup", "search_index", "issue_sessions", "lower_case_ddl"):
+        assert symbol_exists_in_file(idx, rel, name), name
+
+
+def test_sql_object_names_enter_reverse_index(git_repo: Path) -> None:
+    """Deliberate asymmetry vs imports: SQL names are repo-unique, so a table
+    claimed against the wrong file is a mis-attribution, not a stale claim."""
+    _write(
+        git_repo,
+        "schema.py",
+        '_MIGRATIONS = """\n    CREATE TABLE IF NOT EXISTS tool_events (id INTEGER);\n"""\n',
+    )
+    _write(git_repo, "other.py", "def unrelated():\n    pass\n")
+    _track(git_repo)
+    idx = build_symbol_index(git_repo)
+    assert symbol_exists_in_file(idx, "other.py", "tool_events") is False
+    assert symbol_resolves_elsewhere(idx, "other.py", "tool_events")
+
+
+def test_sql_file_extension_still_fails_open(repo: Path) -> None:
+    """.sql is deliberately absent from _SUPPORTED_SYMBOL_EXTENSIONS: it must keep
+    returning None, not start answering False for every column name."""
+    _write(repo, "db/schema.sql", "CREATE TABLE tool_events (id INTEGER);\n")
+    idx = build_symbol_index(repo)
+    assert symbol_exists_in_file(idx, "db/schema.sql", "tool_events") is None
+
+
+# --------------------------------------------------------------------------
+# BUG-3201 B: names bound by import statements
+# --------------------------------------------------------------------------
+
+
+def test_aliased_import_resolves_in_importing_file(repo: Path) -> None:
+    """`from m import x as y` binds y in the importing module, so citing y there
+    is a true claim -- previously a hard stale_symbol_ref (the alias is defined
+    nowhere in the repo, so symbol_resolves_elsewhere could not soften it)."""
+    rel = _write(
+        repo,
+        "scripts/little_loops/cli/adapt.py",
+        "def cmd_adapt():\n"
+        "    from little_loops.skill_expander import _find_plugin_root as _fpr\n"
+        "    return _fpr()\n",
+    )
+    idx = build_symbol_index(repo)
+    assert symbol_exists_in_file(idx, rel, "_fpr")
+
+
+def test_plain_from_import_resolves_in_importing_file(repo: Path) -> None:
+    """The softer half: `from m import x` previously degraded to a false
+    mislocated_symbol_ref, since the reverse index found x at m."""
+    rel = _write(
+        repo,
+        "scripts/little_loops/fsm/executor.py",
+        "from little_loops.host_runner import resolve_host\n",
+    )
+    idx = build_symbol_index(repo)
+    assert symbol_exists_in_file(idx, rel, "resolve_host")
+
+
+def test_parenthesized_multiline_import_resolves(repo: Path) -> None:
+    rel = _write(
+        repo,
+        "scripts/little_loops/cli/loop/info.py",
+        "from little_loops.cli.output import (\n"
+        "    ACRONYMS,\n"
+        "    CATEGORY_COLOR,\n"
+        "    colorize,\n"
+        "    terminal_width,\n"
+        ")\n",
+    )
+    idx = build_symbol_index(repo)
+    for name in ("ACRONYMS", "CATEGORY_COLOR", "colorize", "terminal_width"):
+        assert symbol_exists_in_file(idx, rel, name), name
+
+
+def test_trailing_comment_paren_does_not_close_continuation(repo: Path) -> None:
+    """Regression test for the 6 measured misses: a ")" inside a trailing comment
+    on the opening line closed the continuation early, dropping every binding
+    after it (cli/loop/info.py's `ACRONYMS,  # noqa: F401  (re-exported ...)`)."""
+    rel = _write(
+        repo,
+        "scripts/little_loops/cli/loop/info.py",
+        "from little_loops.cli.output import (\n"
+        "    ACRONYMS,  # noqa: F401  (re-exported for tests/lint)\n"
+        "    late_name,\n"
+        ")\n",
+    )
+    idx = build_symbol_index(repo)
+    assert symbol_exists_in_file(idx, rel, "late_name")
+
+
+def test_plain_import_binds_first_dotted_component(repo: Path) -> None:
+    rel = _write(repo, "scripts/little_loops/cli/doctor.py", "import importlib.metadata\n")
+    idx = build_symbol_index(repo)
+    assert symbol_exists_in_file(idx, rel, "importlib")
+    assert symbol_exists_in_file(idx, rel, "metadata") is False
+
+
+def test_import_star_binds_nothing(repo: Path) -> None:
+    rel = _write(repo, "scripts/little_loops/wildcard.py", "from little_loops.config import *\n")
+    idx = build_symbol_index(repo)
+    assert symbol_exists_in_file(idx, rel, "config") is False
+
+
+def test_def_after_closed_import_block_still_indexed(repo: Path) -> None:
+    """The continuation counter must close, or every def below a multi-line
+    import would be swallowed as a binding line."""
+    rel = _write(
+        repo,
+        "scripts/little_loops/cli/after.py",
+        "from little_loops.cli.output import (\n    colorize,\n)\n\n\ndef cmd_after():\n    pass\n",
+    )
+    idx = build_symbol_index(repo)
+    assert symbol_exists_in_file(idx, rel, "cmd_after")
+
+
+def test_imported_name_excluded_from_reverse_index(git_repo: Path) -> None:
+    """BUG-3201 § Exclude imports from the reverse index: an imported-only name
+    claimed against an unrelated file must stay a stale_symbol_ref, not become a
+    mislocated_symbol_ref whose printed rationale ("exists elsewhere in the
+    repo") would be false."""
+    _write(git_repo, "importer.py", "from little_loops.config import shared_helper\n")
+    _write(git_repo, "unrelated.py", "def other():\n    pass\n")
+    _track(git_repo)
+    idx = build_symbol_index(git_repo)
+    assert symbol_exists_in_file(idx, "importer.py", "shared_helper")
+    assert symbol_exists_in_file(idx, "unrelated.py", "shared_helper") is False
+    assert not symbol_resolves_elsewhere(idx, "unrelated.py", "shared_helper")
+
+
+def test_defined_name_still_in_reverse_index(git_repo: Path) -> None:
+    """Control for the exclusion above: a real def-site still resolves elsewhere."""
+    _write(git_repo, "definer.py", "def shared_helper():\n    pass\n")
+    _write(git_repo, "unrelated.py", "def other():\n    pass\n")
+    _track(git_repo)
+    idx = build_symbol_index(git_repo)
+    assert symbol_resolves_elsewhere(idx, "unrelated.py", "shared_helper")
+
+
+# --------------------------------------------------------------------------
+# BUG-3201: the import scan is gated to .py
+# --------------------------------------------------------------------------
+
+
+def test_java_import_not_indexed(repo: Path) -> None:
+    """Ungated, `import java.util.List;` would index `java` into every Java file."""
+    rel = _write(repo, "src/Main.java", "import java.util.List;\n")
+    idx = build_symbol_index(repo)
+    assert symbol_exists_in_file(idx, rel, "java") is False
+    assert symbol_exists_in_file(idx, rel, "List") is False
+
+
+def test_go_import_block_does_not_suppress_func_indexing(repo: Path) -> None:
+    """Go's `import (` must not open a Python-style continuation and swallow the
+    func declarations below it."""
+    rel = _write(repo, "cmd/main.go", 'import (\n    "fmt"\n)\n\nfunc Handler(w int) {\n}\n')
+    idx = build_symbol_index(repo)
+    assert symbol_exists_in_file(idx, rel, "Handler")
+
+
+def test_ts_import_not_indexed(repo: Path) -> None:
+    rel = _write(repo, "src/app.ts", 'import { foo } from "bar";\n')
+    idx = build_symbol_index(repo)
+    assert symbol_exists_in_file(idx, rel, "foo") is False

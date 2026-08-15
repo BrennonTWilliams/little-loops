@@ -39,6 +39,55 @@ _SYMBOL_DEF_PATTERNS: list[re.Pattern[str]] = [
 # alone.
 _MODULE_CONSTANT_RE = re.compile(r"^[ \t]*([A-Za-z_][A-Za-z0-9_]*)\s*(?::[^=\n]+)?=(?!=)")
 
+# BUG-3201 A: SQL object names declared inside triple-quoted migration strings
+# (session_store/schema.py's _MIGRATIONS, queue_store.py) are real, citable
+# symbols of the .py file that carries them -- 40 table and 64 index names
+# repo-wide -- but no def-site pattern above can see them, so "`tool_events` in
+# `session_store/schema.py`" read as a false stale_symbol_ref. Same shape as
+# the precedent regex in cli/verify_kinds.py, widened past TABLE to INDEX/VIEW
+# and to the UNIQUE / VIRTUAL / TEMPORARY modifiers.
+#
+# Deliberately *not* paired with adding ".sql" to _SUPPORTED_SYMBOL_EXTENSIONS:
+# a .sql file must keep failing open (None), not start answering False for
+# every column, trigger and constraint name these patterns cannot see.
+# Ungated by language -- CREATE TABLE means the same thing in a Go heredoc, and
+# no _ANCHOR_PATTERNS entry can match a line beginning with CREATE.
+_SQL_CREATE_PREFIX_RE = re.compile(r"^[ \t]*CREATE\b", re.IGNORECASE)
+_SQL_OBJECT_DEF_RE = re.compile(
+    r"^[ \t]*CREATE\s+(?:OR\s+REPLACE\s+)?"
+    r"(?:(?:UNIQUE|VIRTUAL|TEMP(?:ORARY)?)\s+)*"
+    r"(?:TABLE|INDEX|VIEW)\s+(?:IF\s+NOT\s+EXISTS\s+)?"
+    r"[\"`\[]?([A-Za-z_][A-Za-z0-9_]*)",
+    re.IGNORECASE,
+)
+
+# BUG-3201 B: a name bound by an import statement resolves in the importing
+# module exactly as a def-site does -- after "from little_loops.skill_expander
+# import _find_plugin_root as _fpr" (cli/adapt.py), `adapt._fpr` is a real
+# attribute -- so an issue citing `_fpr` in `cli/adapt.py` makes a true claim.
+# 10,684 such bindings across 782 tracked .py files (129 `as`-aliased) were
+# invisible to the index, turning every one into a false stale_symbol_ref
+# (aliased, since the alias is defined nowhere) or mislocated_symbol_ref
+# (plain `from m import x`, which the reverse index then found at m).
+#
+# Line-based, not ast.parse: ast.parse over every tracked .py file measured
+# 2.25s, roughly an order of magnitude more than this regex plus a
+# paren-continuation counter at 0.22s, against a whole-index build under a
+# second. Recall is 10,678/10,684 -- the 6 misses were import lines whose
+# *trailing comment* carried a ")" that closed the continuation early, hence
+# _TRAILING_COMMENT_RE is applied before every paren count, never after.
+#
+# Python-only by design (see _extract_symbols' suffix gate): "import
+# java.util.List;" would index `java` into every Java file, Go's "import ("
+# block would open a continuation with nothing findable inside, and TS/JS place
+# the names before `from`, inverted from Python.
+_IMPORT_LINE_RE = re.compile(r"^[ \t]*(?:from\s+[.\w]+\s+)?import\s+(.*)$")
+# One comma-separated clause: "x", "a.b.c", "x as y". The dotted form only
+# occurs in plain `import a.b.c`, where the *first* component is what gets
+# bound, so splitting on "." is correct for both forms.
+_IMPORT_BINDING_RE = re.compile(r"^\(?\s*([A-Za-z_][\w.]*)(?:\s+as\s+([A-Za-z_]\w*))?")
+_TRAILING_COMMENT_RE = re.compile(r"#.*$")
+
 # Languages the def-site patterns above meaningfully cover — a cited file
 # outside this set produces no claim (fail-open), never a gap, per § Claim
 # Grammar's "Language scope" bullet.
@@ -200,14 +249,50 @@ def extract_symbol_claims(body: str, ref_index: RefIndex) -> set[SymbolClaim]:
     return claims
 
 
-def _extract_symbols(path: Path) -> set[str] | None:
-    """Return every def-site symbol name found in *path*, or None if unreadable."""
+def _import_bindings(clause: str) -> set[str]:
+    """Names bound by one comment-stripped import clause or continuation line."""
+    names: set[str] = set()
+    for piece in clause.split(","):
+        bm = _IMPORT_BINDING_RE.match(piece.strip())
+        if not bm:
+            continue
+        names.add(bm.group(2) or bm.group(1).split(".", 1)[0])
+    return names
+
+
+def _extract_symbols(path: Path, *, include_imports: bool = True) -> set[str] | None:
+    """Return every symbol name that resolves in *path*, or None if unreadable.
+
+    Def-sites, module-level constants, SQL objects declared in embedded
+    migration strings (BUG-3201 A), and — for ``.py`` files when
+    *include_imports* — every name bound by an import statement (BUG-3201 B).
+
+    *include_imports* is False for :func:`_build_reverse_index` only. An
+    imported name answers "does this resolve here" (the per-file index) but
+    must never answer "is it defined somewhere else" (the reverse index), or
+    ``json`` / ``Path`` / ``re`` would each map to hundreds of files and
+    downgrade every genuinely stale claim naming a common token into a
+    ``mislocated_symbol_ref`` whose printed rationale ("symbol exists elsewhere
+    in the repo") would be false.
+    """
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return None
+    scan_imports = include_imports and path.suffix == ".py"
     found: set[str] = set()
+    # Depth is consulted before _SYMBOL_DEF_PATTERNS so a continuation line
+    # inside "from x import (\n    field,\n)" is read as the binding it is,
+    # never mistaken for a def-site. max(0, ...) clamps the recovery path: a
+    # stray ")" must not drive the counter negative and permanently disable
+    # continuation handling for the rest of the file.
+    import_paren_depth = 0
     for line in lines:
+        if import_paren_depth > 0:
+            code = _TRAILING_COMMENT_RE.sub("", line)
+            found |= _import_bindings(code)
+            import_paren_depth = max(0, import_paren_depth + code.count("(") - code.count(")"))
+            continue
         matched = False
         for pattern in _SYMBOL_DEF_PATTERNS:
             dm = pattern.match(line)
@@ -217,6 +302,23 @@ def _extract_symbols(path: Path) -> set[str] | None:
                 break
         if matched:
             continue
+        # Cheap prefix guard before the case-insensitive, alternation-heavy SQL
+        # regex: the latter is anchored at ^[ \t]*CREATE, so a line whose first
+        # non-blank token is not "CREATE" can never match it. This runs on
+        # every line of every tracked file in the reverse-index build, and
+        # essentially all of them fail the guard.
+        if _SQL_CREATE_PREFIX_RE.match(line):
+            sm = _SQL_OBJECT_DEF_RE.match(line)
+            if sm:
+                found.add(sm.group(1))
+                continue
+        if scan_imports:
+            im = _IMPORT_LINE_RE.match(line)
+            if im:
+                code = _TRAILING_COMMENT_RE.sub("", im.group(1))
+                found |= _import_bindings(code)
+                import_paren_depth = max(0, code.count("(") - code.count(")"))
+                continue
         cm = _MODULE_CONSTANT_RE.match(line)
         if cm:
             found.add(cm.group(1))
@@ -233,6 +335,14 @@ def _build_reverse_index(root: Path) -> dict[str, frozenset[str]]:
     convention shared with :func:`~little_loops.text_utils.build_ref_index`:
     an unavailable git binary or non-zero exit yields an empty index rather
     than raising.
+
+    Import-bound names are excluded here (``include_imports=False``) while the
+    per-file cache keeps them — see :func:`_extract_symbols` and
+    :func:`symbol_resolves_elsewhere`. Including them would map ``json`` /
+    ``Path`` / ``re`` to hundreds of files apiece and misreport every stale
+    claim naming a common token as a mis-attribution. SQL object names *are*
+    indexed here: they are repo-unique, so a table name claimed against the
+    wrong file correctly resolves to the schema that declares it.
     """
     reverse: dict[str, set[str]] = {}
     try:
@@ -251,7 +361,7 @@ def _build_reverse_index(root: Path) -> dict[str, frozenset[str]]:
     for name in names:
         if not name or Path(name).suffix not in _SUPPORTED_SYMBOL_EXTENSIONS:
             continue
-        symbols = _extract_symbols(root / name)
+        symbols = _extract_symbols(root / name, include_imports=False)
         if not symbols:
             continue
         for symbol in symbols:
@@ -295,7 +405,10 @@ def build_symbol_index(root: Path) -> SymbolIndex:
     The per-file cache stays lazy; the symbol -> files reverse index (C) is
     built eagerly here, once per invocation — measured at 739 tracked Python
     files / 25,388 def-sites / 0.89s on this repo (BUG-3063 § Decision
-    Rationale).
+    Rationale; the file and symbol counts have grown with the repo since).
+
+    BUG-3201 added SQL object names to what that build indexes and kept
+    import bindings out of it — see :func:`_build_reverse_index`.
     """
     return SymbolIndex(root=root, _reverse=_build_reverse_index(root))
 

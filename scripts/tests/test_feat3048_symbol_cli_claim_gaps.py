@@ -313,3 +313,99 @@ class TestMislocatedSymbolRef:
         gaps = check_format_gaps(path, ref_index=ref_index, symbol_index=symbol_index)
         assert any("does_not_exist_symbol" in entry for entry in gaps.stale_symbol_ref)
         assert gaps.mislocated_symbol_ref == []
+
+
+class TestBug3201IndexedClaimClasses:
+    """BUG-3201 — the two claim classes `_extract_symbols` could not see, driven
+    end-to-end through check_format_gaps rather than the resolver alone."""
+
+    @pytest.fixture
+    def bug3201_repo(self, tmp_path: Path) -> Path:
+        store = tmp_path / "scripts" / "little_loops" / "session_store"
+        store.mkdir(parents=True)
+        (store / "schema.py").write_text(
+            '_MIGRATIONS = """\n'
+            "    CREATE TABLE IF NOT EXISTS tool_events (id INTEGER PRIMARY KEY);\n"
+            '"""\n'
+        )
+        cli = tmp_path / "scripts" / "little_loops" / "cli"
+        cli.mkdir(parents=True)
+        (cli / "adapt.py").write_text(
+            "def cmd_adapt():\n"
+            "    from little_loops.skill_expander import _find_plugin_root as _fpr\n"
+            "    return _fpr()\n"
+        )
+        (cli / "logs.py").write_text("from datetime import time as dt_time\n")
+        return tmp_path
+
+    @pytest.fixture
+    def bug3201_ref_index(self) -> RefIndex:
+        return RefIndex(
+            by_basename={
+                "schema.py": ["scripts/little_loops/session_store/schema.py"],
+                "adapt.py": ["scripts/little_loops/cli/adapt.py"],
+                "logs.py": ["scripts/little_loops/cli/logs.py"],
+            }
+        )
+
+    def test_sql_table_claim_in_schema_file_is_not_a_gap(
+        self, tmp_path: Path, bug3201_repo: Path, bug3201_ref_index: RefIndex
+    ) -> None:
+        path = _write_issue(
+            tmp_path,
+            "The `tool_events` table in "
+            "`scripts/little_loops/session_store/schema.py` needs a new column.",
+        )
+        gaps = check_format_gaps(
+            path,
+            ref_index=bug3201_ref_index,
+            symbol_index=build_symbol_index(bug3201_repo),
+        )
+        assert gaps.stale_symbol_ref == []
+        assert gaps.mislocated_symbol_ref == []
+
+    def test_sql_table_claimed_against_wrong_file_is_mislocated(
+        self, tmp_path: Path, bug3201_repo: Path, bug3201_ref_index: RefIndex
+    ) -> None:
+        """SQL names are repo-unique and DO enter the reverse index, so a
+        wrong-file claim is a mis-attribution, not a stale claim."""
+        path = _write_issue(
+            tmp_path,
+            "The `tool_events` table in `scripts/little_loops/cli/logs.py` needs a new column.",
+        )
+        symbol_index = build_symbol_index(bug3201_repo)
+        symbol_index._reverse = {
+            "tool_events": frozenset({"scripts/little_loops/session_store/schema.py"})
+        }
+        gaps = check_format_gaps(path, ref_index=bug3201_ref_index, symbol_index=symbol_index)
+        assert gaps.stale_symbol_ref == []
+        assert any("tool_events" in entry for entry in gaps.mislocated_symbol_ref)
+
+    def test_aliased_import_claim_is_not_a_gap(
+        self, tmp_path: Path, bug3201_repo: Path, bug3201_ref_index: RefIndex
+    ) -> None:
+        path = _write_issue(
+            tmp_path,
+            "The `_fpr` helper in `scripts/little_loops/cli/adapt.py` resolves the plugin root.",
+        )
+        gaps = check_format_gaps(
+            path,
+            ref_index=bug3201_ref_index,
+            symbol_index=build_symbol_index(bug3201_repo),
+        )
+        assert gaps.stale_symbol_ref == []
+        assert gaps.mislocated_symbol_ref == []
+
+    def test_explicit_form_aliased_import_claim_is_not_a_gap(
+        self, tmp_path: Path, bug3201_repo: Path, bug3201_ref_index: RefIndex
+    ) -> None:
+        path = _write_issue(
+            tmp_path, "See `scripts/little_loops/cli/logs.py:dt_time` for the parsing entry point."
+        )
+        gaps = check_format_gaps(
+            path,
+            ref_index=bug3201_ref_index,
+            symbol_index=build_symbol_index(bug3201_repo),
+        )
+        assert gaps.stale_symbol_ref == []
+        assert gaps.mislocated_symbol_ref == []
