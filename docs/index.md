@@ -37,6 +37,7 @@ Documentation for using little-loops in your projects.
 - [Policy Router Guide](guides/POLICY_ROUTER_GUIDE.md) - Score-driven decision-table routing with lib/policy-router and visual editing via ll-loop edit-routes
 - [Learning Tests Guide](guides/LEARNING_TESTS_GUIDE.md) - Verify external APIs and SDKs via the Feathers Learning Test lifecycle and the `.ll/learning-tests/` registry
 - [Automatic Harnessing Guide](guides/AUTOMATIC_HARNESSING_GUIDE.md) - Harness loop quality pipeline: multi-stage evaluation, retries, and wizard setup
+- [Evaluation Guide](guides/EVALUATION_GUIDE.md) - Measuring whether a feature, skill, or agent works: ll-harness runners, generated eval harnesses, and reading the signal
 - [Prompt Optimization Guide](guides/PROMPT_OPTIMIZATION_GUIDE.md) - Choosing an APO technique, building an examples.json corpus, and defending gains with prompt-regression-test
 - [Examples Mining Guide](guides/EXAMPLES_MINING_GUIDE.md) - Co-evolutionary examples mining with apo-textgrad for continuously improving prompts
 - [Workflow Analysis Guide](guides/WORKFLOW_ANALYSIS_GUIDE.md) - Discover automation opportunities from message history using ll-workflows, analyze-workflows, and workflow-automation-proposer

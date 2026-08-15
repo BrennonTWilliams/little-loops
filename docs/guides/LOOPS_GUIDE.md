@@ -91,6 +91,9 @@ What do you need?
 ├─ Improve a prompt or skill automatically ─────→ apo-* loops
 │     see docs/guides/PROMPT_OPTIMIZATION_GUIDE.md to pick one
 │
+├─ Measure whether something actually works ────→ eval-driven-development, agent-eval-improve
+│     see docs/guides/EVALUATION_GUIDE.md to pick an instrument
+│
 └─ Not sure which loop fits ────────────────────→ loop-router
       ll-loop run loop-router "describe your goal"
 ```

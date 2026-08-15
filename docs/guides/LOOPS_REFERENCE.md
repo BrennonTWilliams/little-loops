@@ -1381,7 +1381,7 @@ ll-loop run agent-eval-improve \
 ll-loop run agent-eval-improve \
   --context agent_config=.loops/my-agent.yaml \
   --context task_suite=evals/tasks.json \
-  --context quality_threshold=0.70
+  --context quality_target=0.70
 ```
 
 **FSM flow**:
@@ -1395,7 +1395,7 @@ run_eval → score_results → analyze_failures
 ```
 
 **Exit states**:
-- `done` — Quality converged at or above `quality_threshold`, or no actionable failure patterns were found
+- `done` — Quality converged at or above `quality_target`, the convergence gate returned `stall`, or no actionable failure patterns were found. A `done` terminal alone does not prove the target was reached — read the captured score
 - `failed` — Any state exhausted `max_retries` (2 retries). Check `captured.eval_results` via `ll-loop history agent-eval-improve` to diagnose
 
 **Notes**: Each state has `max_retries: 2` with `on_retry_exhausted: diagnose`. Use `ll-loop install agent-eval-improve` to copy the YAML to `.loops/` and customize scoring logic or add domain-specific evaluation steps.
@@ -3229,6 +3229,12 @@ For `rn-plan` planning prompts specifically, use [`rn-plan-apo`](#rn-plan-apo--p
 ## Evaluation Loops
 
 Loops in this category analyze other loops — auditing their YAML definitions, running them as sub-loops, and producing structured improvement reports.
+
+> For choosing an evaluation instrument, generating an eval harness from an issue, and
+> reading the resulting signal, see the [Evaluation Guide](EVALUATION_GUIDE.md). Note that
+> the `evaluation` category spans more than loop auditing: `eval-driven-development`,
+> `agent-eval-improve`, and `evaluation-quality` are documented alongside their own
+> categories elsewhere in this reference.
 
 ### `outer-loop-eval` — Loop Structure & Execution Auditor
 

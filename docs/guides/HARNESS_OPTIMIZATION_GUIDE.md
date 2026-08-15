@@ -498,6 +498,7 @@ it with a non-LLM evaluator (e.g., `exit_code` or `output_numeric`) to satisfy M
 
 - [AUTOMATIC_HARNESSING_GUIDE.md](AUTOMATIC_HARNESSING_GUIDE.md) — the sibling pattern:
   wrapping a *skill* in a quality pipeline (not optimizing the harness itself)
+- [EVALUATION_GUIDE.md](EVALUATION_GUIDE.md) — where the benchmark comes from: building the measurement this loop hill-climbs against
 - [LOOPS_GUIDE.md](LOOPS_GUIDE.md) — full FSM reference: evaluators, state fields, CLI
 - [`.claude/CLAUDE.md` § Loop Authoring](../../.claude/CLAUDE.md) — the compact pointer; this guide is the normative rule table and rationale
 - *Towards Direct Evaluation of Harness Optimizers* — the empirical study behind these guardrails, with the per-step measurements, error taxonomy, and findings the rules above are distilled from
