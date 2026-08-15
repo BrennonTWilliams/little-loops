@@ -76,7 +76,7 @@ def _resolve_skills_root() -> Path:
     return candidates[-1]
 
 
-def build_http_app(host: str = "127.0.0.1") -> Any:
+def build_http_app(host: str = "127.0.0.1", project_root: Path | None = None) -> Any:
     """Build the streamable-HTTP ASGI app with the FEAT-3149 transport policy wrapped around it.
 
     Split out of :func:`run_http` so tests can drive the composed app through Starlette's
@@ -90,15 +90,22 @@ def build_http_app(host: str = "127.0.0.1") -> Any:
     Note this is the HTTP path only — stdio has no headers to route on. The policy
     *decision* therefore lives in `policy.check_tool_call`, which the middleware invokes;
     encoding the rules inside the middleware would make them silently absent over stdio.
+
+    ENH-3171: `project_root` resolves the same way `build_server` does, and is threaded
+    into :class:`TransportPolicyMiddleware` too — it decides mutation/task grants from
+    `.ll/ll-config.json` before the request body is even parsed, so it is a policy call
+    site in the same sense `build_server`'s own `config` is.
     """
     from little_loops.mcp_server.policy import TransportPolicyMiddleware
+    from little_loops.mcp_server.tools import _project_root
 
-    server = build_server(transport="http")
+    resolved_root = _project_root(project_root)
+    server = build_server(transport="http", project_root=resolved_root)
     app = server.streamable_http_app(json_response=True, stateless_http=True, host=host)
-    return TransportPolicyMiddleware(app, transport="http")
+    return TransportPolicyMiddleware(app, transport="http", project_root=resolved_root)
 
 
-def build_server(transport: str) -> Server:
+def build_server(transport: str, project_root: Path | None = None) -> Server:
     """Construct the `ll-mcp` lowlevel `Server`: the read-only and guarded-mutation tool
     surface, the `ll://` resource surface, and the prompts-from-skills surface.
 
@@ -113,6 +120,11 @@ def build_server(transport: str) -> Server:
     default would let a new call site silently enforce the wrong operator grant. A wrong
     answer here is a security misconfiguration, not a convenience nit — there is no value
     that is safe to guess, so the caller must state it.
+
+    ENH-3171: `project_root` defaults to `None`, resolved via `tools._project_root()`
+    (explicit arg, then `LL_MCP_PROJECT_ROOT`, then `Path.cwd()`) — the same precedence
+    `main_mcp` applies before calling in here, so a caller that already resolved a root
+    (or a test that doesn't care) is never forced to re-derive it.
     """
     from mcp.server.caching import CacheHint
     from mcp.server.extension import compose_tool_call_handler
@@ -136,9 +148,14 @@ def build_server(transport: str) -> Server:
         make_tasks_cancel_handler,
         make_tasks_get_handler,
     )
-    from little_loops.mcp_server.tools import handle_list_tools, make_call_tool_handler
+    from little_loops.mcp_server.tools import (
+        _project_root,
+        handle_list_tools,
+        make_call_tool_handler,
+    )
 
-    config = BRConfig(Path.cwd())
+    resolved_root = _project_root(project_root)
+    config = BRConfig(resolved_root)
     resource_index = build_resource_index(config)
     prompt_index = build_prompt_index(_resolve_skills_root())
 
@@ -153,7 +170,9 @@ def build_server(transport: str) -> Server:
     # docstring).
     on_call_tool = cast(
         "Callable[[ServerRequestContext[Any, Any], types.CallToolRequestParams], Awaitable[types.CallToolResult | types.InputRequiredResult]]",
-        compose_tool_call_handler([TasksExtension()], make_call_tool_handler(transport)),
+        compose_tool_call_handler(
+            [TasksExtension()], make_call_tool_handler(transport, resolved_root)
+        ),
     )
 
     server = Server(
@@ -183,30 +202,37 @@ def build_server(transport: str) -> Server:
     # collides with a spec method), registered via add_request_handler rather than the
     # SDK's MCPServer(extensions=[...]) API, which the lowlevel Server has no parameter
     # for. Gated by the transport policy in policy.py, not here — see build_http_app().
-    server.add_request_handler("tasks/get", TasksGetParams, make_tasks_get_handler(transport))
     server.add_request_handler(
-        "tasks/cancel", TasksCancelParams, make_tasks_cancel_handler(transport)
+        "tasks/get", TasksGetParams, make_tasks_get_handler(transport, resolved_root)
+    )
+    server.add_request_handler(
+        "tasks/cancel", TasksCancelParams, make_tasks_cancel_handler(transport, resolved_root)
     )
 
     return server
 
 
-async def run_stdio() -> None:
+async def run_stdio(project_root: Path | None = None) -> None:
     """Entry coroutine: open the stdio transport and run the server to completion.
 
     `stdio_server()` is an `@asynccontextmanager` yielding `(read_stream, write_stream)`;
     `Server.run()` is `async def`. Both close over the process's real stdin/stdout, so this
     coroutine must run under `anyio.run()` (see `main_mcp`) — nothing here should be called
     from synchronous code.
+
+    ENH-3171: `project_root` threads through to `build_server`, defaulting to `None` so
+    `main_mcp`'s no-flag path is unchanged.
     """
     import mcp.server.stdio as stdio_transport
 
-    server = build_server(transport="stdio")
+    server = build_server(transport="stdio", project_root=project_root)
     async with stdio_transport.stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, server.create_initialization_options())
 
 
-async def run_http(host: str = "127.0.0.1", port: int = 8765) -> None:
+async def run_http(
+    host: str = "127.0.0.1", port: int = 8765, project_root: Path | None = None
+) -> None:
     """Entry coroutine: serve the same `build_server()` `Server` over streamable HTTP.
 
     Built on `Server.streamable_http_app()` (the SDK's own Starlette-app builder for this
@@ -227,5 +253,5 @@ async def run_http(host: str = "127.0.0.1", port: int = 8765) -> None:
     """
     import uvicorn
 
-    config = uvicorn.Config(build_http_app(host), host=host, port=port)
+    config = uvicorn.Config(build_http_app(host, project_root=project_root), host=host, port=port)
     await uvicorn.Server(config).serve()

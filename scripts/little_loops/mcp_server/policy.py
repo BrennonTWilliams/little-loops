@@ -176,9 +176,10 @@ class TransportPolicyMiddleware:
     and refusing it is a deployment policy choice, not a client mistake.
     """
 
-    def __init__(self, app: Any, transport: str = "http") -> None:
+    def __init__(self, app: Any, transport: str = "http", project_root: Path | None = None) -> None:
         self.app = app
         self.transport = transport
+        self.project_root = project_root
 
     async def __call__(
         self,
@@ -194,7 +195,17 @@ class TransportPolicyMiddleware:
         method = _decode(headers.get(MCP_METHOD_HEADER))
         tool_name = _decode(headers.get(MCP_NAME_HEADER))
 
-        decision = check_tool_call(self.transport, method, tool_name)
+        # ENH-3171: `project_root` defaults to `None` (unset by callers that construct this
+        # middleware directly, e.g. tests) — `check_tool_call` falls back to `Path.cwd()`
+        # in that case, same as before this issue. `build_http_app` always passes the
+        # resolved root, so the real server path never hits that fallback.
+        config = None
+        if self.project_root is not None:
+            from little_loops.config import BRConfig
+
+            config = BRConfig(self.project_root)
+
+        decision = check_tool_call(self.transport, method, tool_name, config=config)
         if decision.allowed:
             await self.app(scope, receive, send)
             return

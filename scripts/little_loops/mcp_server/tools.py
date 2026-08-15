@@ -17,10 +17,11 @@ writes nothing. This is a refusal-to-mutate default, not an opt-out flag — see
 `handle_call_tool` for the wrapper that enforces it, and `policy.py` for the registry of
 which tools count as mutating and the per-transport policy that gates them.
 
-Every handler resolves entirely from its own `arguments` dict plus the filesystem/SQLite —
-none reads or writes state established by a prior request or cached across calls (the
-2026-07-28 statelessness invariant): a fresh `BRConfig` is built from `Path.cwd()` on every
-call rather than once at module or server-construction time.
+Every handler resolves entirely from its own `arguments` dict, the `project_root` closed
+over by `make_call_tool_handler` (ENH-3171), plus the filesystem/SQLite — none reads or
+writes state established by a prior request or cached across calls (the 2026-07-28
+statelessness invariant): a fresh `BRConfig` is built from the resolved `project_root` on
+every call rather than the resolution itself being repeated or cached at module scope.
 
 JSON encoding follows existing per-type precedent rather than inventing a fourth convention:
 `dataclasses.asdict()` for `SearchResult` (`history_search`), a hand-rolled dict for
@@ -33,6 +34,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -44,12 +46,34 @@ from mcp.shared.exceptions import MCPError
 from little_loops.mcp_server.policy import MUTATING_TOOLS, POLICY_DENIED_CODE, check_tool_call
 
 
-def _project_root() -> Path:
-    """Resolve the project root fresh on every call — never cached across requests."""
+def _project_root(explicit: Path | None = None) -> Path:
+    """Resolve the project root: ``explicit``, then ``LL_MCP_PROJECT_ROOT``, then cwd (ENH-3171).
+
+    Called once by `main_mcp` at startup; the resolved value is threaded down through the
+    same factory-closure shape `transport` already uses (FEAT-3168) rather than being
+    re-resolved — or cached as a module global — on every call, so two `Server` instances
+    built in the same process (as in tests) can never leak each other's resolved root.
+    """
+    if explicit is not None:
+        return explicit
+    env_root = os.environ.get("LL_MCP_PROJECT_ROOT")
+    if env_root:
+        return Path(env_root)
     return Path.cwd()
 
 
-def _tool_issues_query(arguments: dict[str, Any]) -> Any:
+def _looks_like_project_root(project_root: Path) -> bool:
+    """Whether ``project_root`` has either marker directory a little-loops project has.
+
+    Used both for `capabilities`' `project_root.resolved` field and `main_mcp`'s startup
+    stderr warning (ENH-3171 "Secondary: fail loudly on a non-project root") — a resolved
+    root with neither directory answers every other tool truthfully about a project that
+    does not exist there, with no error and no warning.
+    """
+    return (project_root / ".ll").is_dir() or (project_root / ".issues").is_dir()
+
+
+def _tool_issues_query(arguments: dict[str, Any], *, project_root: Path) -> Any:
     """List issues, tagged with frontmatter status, filtered and sorted.
 
     Wraps `cli.issues.search._load_issues_with_status` — the same non-argparse helper
@@ -59,7 +83,7 @@ def _tool_issues_query(arguments: dict[str, Any]) -> Any:
     from little_loops.cli.issues.search import _load_issues_with_status
     from little_loops.config import BRConfig
 
-    config = BRConfig(_project_root())
+    config = BRConfig(project_root)
 
     status = str(arguments.get("status") or "open")
     include_open = status in ("open", "all")
@@ -99,7 +123,7 @@ def _tool_issues_query(arguments: dict[str, Any]) -> Any:
     ]
 
 
-def _tool_issue_get(arguments: dict[str, Any]) -> Any:
+def _tool_issue_get(arguments: dict[str, Any], *, project_root: Path) -> Any:
     """Return the full summary-card field dict for a single issue.
 
     Wraps `cli.issues.show._parse_card_fields` — the same non-argparse helper `ll-issues
@@ -109,7 +133,7 @@ def _tool_issue_get(arguments: dict[str, Any]) -> Any:
     from little_loops.cli.issues.show import _parse_card_fields, _resolve_issue_id
     from little_loops.config import BRConfig
 
-    config = BRConfig(_project_root())
+    config = BRConfig(project_root)
     issue_id = str(arguments.get("issue_id") or "")
     path = _resolve_issue_id(config, issue_id)
     if path is None:
@@ -117,11 +141,13 @@ def _tool_issue_get(arguments: dict[str, Any]) -> Any:
     return _parse_card_fields(path, config)
 
 
-def _tool_history_search(arguments: dict[str, Any]) -> Any:
+def _tool_history_search(arguments: dict[str, Any], *, project_root: Path) -> Any:
     """FTS5 full-text search over `.ll/history.db`, optionally filtered by kind.
 
     Wraps `history_reader.search()` directly; results marshal via `dataclasses.asdict()`,
-    the existing convention for plain dataclasses elsewhere in the CLI surface.
+    the existing convention for plain dataclasses elsewhere in the CLI surface. `history.db`
+    is process-global, not project-rooted, so `project_root` is accepted (for dispatch
+    uniformity with the other handlers) but unused.
     """
     from little_loops.history_reader import search
 
@@ -135,7 +161,7 @@ def _tool_history_search(arguments: dict[str, Any]) -> Any:
     return [dataclasses.asdict(r) for r in results]
 
 
-def _tool_deps_check(_arguments: dict[str, Any]) -> Any:
+def _tool_deps_check(_arguments: dict[str, Any], *, project_root: Path) -> Any:
     """Validate the cross-issue dependency graph: broken refs, cycles, stale/missing links.
 
     Wraps `cli.deps._load_issues()` (the same assembly function `ll-deps validate` uses) plus
@@ -146,7 +172,7 @@ def _tool_deps_check(_arguments: dict[str, Any]) -> Any:
     from little_loops.config import BRConfig
     from little_loops.dependency_mapper import gather_all_issue_ids, validate_dependencies
 
-    config = BRConfig(_project_root())
+    config = BRConfig(project_root)
     issues_dir = config.project_root / config.issues.base_dir
 
     issues, _issue_contents, completed_ids = _load_issues(issues_dir)
@@ -169,12 +195,16 @@ def _tool_deps_check(_arguments: dict[str, Any]) -> Any:
     }
 
 
-def _tool_capabilities(_arguments: dict[str, Any]) -> Any:
+def _tool_capabilities(_arguments: dict[str, Any], *, project_root: Path) -> Any:
     """Report the resolved host runner's capability surface.
 
     Wraps `host_runner.resolve_host().describe_capabilities()`; the response shape mirrors
     the hand-rolled dict `cli/doctor.py::_print_report` builds from the same `CapabilityReport`
     dataclass (no call site anywhere passes it to `dataclasses.asdict()`).
+
+    Also carries `project_root` (ENH-3171 "Secondary: fail loudly on a non-project root"):
+    the one tool a user runs first when verifying the server, so a client that swallows
+    stderr still gets the misconfiguration signal through here.
     """
     from little_loops.host_runner import resolve_host
 
@@ -186,6 +216,10 @@ def _tool_capabilities(_arguments: dict[str, Any]) -> Any:
         "capabilities": [
             {"name": c.name, "status": c.status, "note": c.note} for c in report.capabilities
         ],
+        "project_root": {
+            "path": str(project_root),
+            "resolved": _looks_like_project_root(project_root),
+        },
     }
 
 
@@ -208,7 +242,7 @@ def _tool_capabilities(_arguments: dict[str, Any]) -> Any:
 # ---------------------------------------------------------------------------------------
 
 
-def _tool_issue_capture(arguments: dict[str, Any], *, apply: bool) -> Any:
+def _tool_issue_capture(arguments: dict[str, Any], *, project_root: Path, apply: bool) -> Any:
     """Create a new issue file (`ll-issues create`).
 
     Wraps `cli.issues.create.create_issue` for apply and `render_issue_preview` for
@@ -221,7 +255,7 @@ def _tool_issue_capture(arguments: dict[str, Any], *, apply: bool) -> Any:
     from little_loops.cli.issues.create import IssueSpec, create_issue, render_issue_preview
     from little_loops.config import BRConfig
 
-    config = BRConfig(_project_root())
+    config = BRConfig(project_root)
 
     title = str(arguments.get("title") or "").strip()
     if not title:
@@ -271,7 +305,7 @@ def _tool_issue_capture(arguments: dict[str, Any], *, apply: bool) -> Any:
     }
 
 
-def _tool_issue_set_status(arguments: dict[str, Any], *, apply: bool) -> Any:
+def _tool_issue_set_status(arguments: dict[str, Any], *, project_root: Path, apply: bool) -> Any:
     """Transition an issue's frontmatter status (`ll-issues set-status`).
 
     Wraps `cli.issues.set_status.apply_status_transition`; the dry-run preview comes from
@@ -289,7 +323,7 @@ def _tool_issue_set_status(arguments: dict[str, Any], *, apply: bool) -> Any:
     from little_loops.frontmatter import parse_frontmatter
     from little_loops.issue_progress import _ALL_STATUSES
 
-    config = BRConfig(_project_root())
+    config = BRConfig(project_root)
 
     issue_id = str(arguments.get("issue_id") or "")
     status = str(arguments.get("status") or "")
@@ -327,7 +361,7 @@ def _tool_issue_set_status(arguments: dict[str, Any], *, apply: bool) -> Any:
     }
 
 
-def _tool_issue_link(arguments: dict[str, Any], *, apply: bool) -> Any:
+def _tool_issue_link(arguments: dict[str, Any], *, project_root: Path, apply: bool) -> Any:
     """Write or remove a cross-issue dependency edge (`ll-issues link`).
 
     Wraps `cli.issues.link.apply_link`, which already had a `dry_run` mode — so here the
@@ -338,7 +372,7 @@ def _tool_issue_link(arguments: dict[str, Any], *, apply: bool) -> Any:
     from little_loops.config import BRConfig
     from little_loops.frontmatter import parse_frontmatter
 
-    config = BRConfig(_project_root())
+    config = BRConfig(project_root)
 
     issue_id = str(arguments.get("issue_id") or "")
     field = str(arguments.get("field") or "")
@@ -377,7 +411,7 @@ def _tool_issue_link(arguments: dict[str, Any], *, apply: bool) -> Any:
     }
 
 
-def _tool_issue_append_log(arguments: dict[str, Any], *, apply: bool) -> Any:
+def _tool_issue_append_log(arguments: dict[str, Any], *, project_root: Path, apply: bool) -> Any:
     """Append a session-log entry to an issue (`ll-issues append-log`).
 
     Wraps `session_log.append_session_log_entry`; the dry-run renders the exact bullet via
@@ -390,7 +424,7 @@ def _tool_issue_append_log(arguments: dict[str, Any], *, apply: bool) -> Any:
     from little_loops.config import BRConfig
     from little_loops.session_log import append_session_log_entry, format_session_log_entry
 
-    config = BRConfig(_project_root())
+    config = BRConfig(project_root)
 
     issue_id = str(arguments.get("issue_id") or "")
     command = str(arguments.get("command") or "").strip()
@@ -448,7 +482,7 @@ def _tool_issue_append_log(arguments: dict[str, Any], *, apply: bool) -> Any:
 # ---------------------------------------------------------------------------------------
 
 
-def _tool_loop_start(arguments: dict[str, Any]) -> Any:
+def _tool_loop_start(arguments: dict[str, Any], *, project_root: Path) -> Any:
     """Start a detached `ll-loop` run (`ll-loop run <loop>`) — SEP-2663 start-path entry.
 
     Crosses the `argparse` boundary per Decision 7 option (a): builds a `SimpleNamespace`
@@ -480,7 +514,7 @@ def _tool_loop_start(arguments: dict[str, Any]) -> Any:
     if not isinstance(context, list):
         raise ValueError("loop_start 'context' must be a list of 'KEY=VALUE' strings")
 
-    loops_dir = _loops_dir()
+    loops_dir = _loops_dir(project_root)
     instance_id = mint_start_instance_id(loop_name, loops_dir)
     # Decision 7 option (a): every `run_background()` access is a defensive
     # `getattr(args, ..., default)`, so a `SimpleNamespace` carrying only the fields this
@@ -833,6 +867,7 @@ async def handle_list_tools(
 
 def make_call_tool_handler(
     transport: str,
+    project_root: Path,
 ) -> Callable[
     [ServerRequestContext[Any], types.CallToolRequestParams],
     Any,
@@ -843,6 +878,11 @@ def make_call_tool_handler(
     factory-closure shape `resources.py`/`prompts.py` already use) so Guard 0 — the
     per-transport policy check — knows which transport it is deciding for. Neither
     `handle_call_tool` nor `ServerRequestContext` had access to that identity before.
+
+    ENH-3171: `project_root` is threaded in the same way — resolved once by `main_mcp`
+    (or defaulted from cwd by `build_server`) and closed over here, rather than each
+    handler resolving `Path.cwd()` for itself or a resolved value being cached at module
+    scope, where it would leak across `Server` instances built in the same process.
     """
 
     async def handle_call_tool(
@@ -873,7 +913,11 @@ def make_call_tool_handler(
         The `applied`/`tool` keys are stamped **after** the handler's payload, so the
         guard's account of whether a write happened always wins over the handler's.
         """
-        decision = check_tool_call(transport, "tools/call", params.name)
+        from little_loops.config import BRConfig
+
+        decision = check_tool_call(
+            transport, "tools/call", params.name, config=BRConfig(project_root)
+        )
         if not decision.allowed:
             raise MCPError(code=POLICY_DENIED_CODE, message=decision.reason)
 
@@ -890,12 +934,12 @@ def make_call_tool_handler(
             if params.name in MUTATING_TOOLS:
                 apply = arguments.pop("apply", False) is True
                 payload = {
-                    **handler(arguments, apply=apply),
+                    **handler(arguments, project_root=project_root, apply=apply),
                     "applied": apply,
                     "tool": params.name,
                 }
             else:
-                payload = handler(arguments)
+                payload = handler(arguments, project_root=project_root)
         except Exception as exc:
             return types.CallToolResult(
                 content=[types.TextContent(text=str(exc))],

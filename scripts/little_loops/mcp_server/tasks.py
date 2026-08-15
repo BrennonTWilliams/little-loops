@@ -70,11 +70,16 @@ class TasksCancelParams(types.RequestParams):
     task_id: str
 
 
-def _loops_dir() -> Path:
-    """Resolve the project's `.loops` directory fresh on every call (statelessness)."""
+def _loops_dir(project_root: Path) -> Path:
+    """Resolve the project's `.loops` directory from the given, already-resolved root.
+
+    ENH-3171: `project_root` is threaded in via the same factory-closure shape `transport`
+    already uses — resolved once by `main_mcp`/`build_server`, not re-resolved from
+    `Path.cwd()` here on every call.
+    """
     from little_loops.config import BRConfig
 
-    config = BRConfig(Path.cwd())
+    config = BRConfig(project_root)
     return Path(config.loops.loops_dir)
 
 
@@ -106,8 +111,12 @@ def mint_start_instance_id(loop_name: str, loops_dir: Path) -> str:
 
 def make_tasks_get_handler(
     transport: str,
+    project_root: Path,
 ) -> Callable[[ServerRequestContext[Any, Any], TasksGetParams], Any]:
-    """Build the `tasks/get` handler, bound to the transport it is served over (FEAT-3168)."""
+    """Build the `tasks/get` handler, bound to the transport it is served over (FEAT-3168)
+
+    and the resolved project root (ENH-3171).
+    """
 
     async def handle_tasks_get(
         context: ServerRequestContext[Any, Any], params: TasksGetParams
@@ -122,7 +131,9 @@ def make_tasks_get_handler(
         — closing the start-then-immediately-poll visibility window a bare "not found"
         would otherwise open.
         """
-        decision = check_tool_call(transport, "tasks/get", None)
+        from little_loops.config import BRConfig
+
+        decision = check_tool_call(transport, "tasks/get", None, config=BRConfig(project_root))
         if not decision.allowed:
             raise MCPError(code=POLICY_DENIED_CODE, message=decision.reason)
 
@@ -131,7 +142,7 @@ def make_tasks_get_handler(
         from little_loops.fsm.persistence import _read_pid_file
         from little_loops.fsm.types import ExecutionResult
 
-        loops_dir = _loops_dir()
+        loops_dir = _loops_dir(project_root)
         disk_status = read_run_status(params.task_id, loops_dir)
         if disk_status is None:
             pid = _read_pid_file(loops_dir / ".running" / f"{params.task_id}.pid")
@@ -166,8 +177,12 @@ def make_tasks_get_handler(
 
 def make_tasks_cancel_handler(
     transport: str,
+    project_root: Path,
 ) -> Callable[[ServerRequestContext[Any, Any], TasksCancelParams], Any]:
-    """Build the `tasks/cancel` handler, bound to the transport it is served over (FEAT-3168)."""
+    """Build the `tasks/cancel` handler, bound to the transport it is served over (FEAT-3168)
+
+    and the resolved project root (ENH-3171).
+    """
 
     async def handle_tasks_cancel(
         context: ServerRequestContext[Any, Any], params: TasksCancelParams
@@ -184,7 +199,9 @@ def make_tasks_cancel_handler(
         reports `runStatus: "starting"` — the same vocabulary `handle_tasks_get` uses for
         the window — and `resumable: false`.
         """
-        decision = check_tool_call(transport, "tasks/cancel", None)
+        from little_loops.config import BRConfig
+
+        decision = check_tool_call(transport, "tasks/cancel", None, config=BRConfig(project_root))
         if not decision.allowed:
             raise MCPError(code=POLICY_DENIED_CODE, message=decision.reason)
 
@@ -194,7 +211,7 @@ def make_tasks_cancel_handler(
 
         # verbose=False: this handler may run under the stdio transport, where anything
         # printed to stdout corrupts JSON-RPC framing (Logger.info/.success write there).
-        outcome = cancel_run(params.task_id, _loops_dir(), Logger(verbose=False))
+        outcome = cancel_run(params.task_id, _loops_dir(project_root), Logger(verbose=False))
         if outcome is None:
             raise _not_found(params.task_id)
 

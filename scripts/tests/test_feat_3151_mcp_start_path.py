@@ -311,7 +311,9 @@ def test_task_envelope_is_never_emitted_without_a_resolvable_task_id(tmp_path, m
     monkeypatch.setitem(
         _TOOL_HANDLERS,
         "loop_start",
-        lambda arguments: {"loop": arguments["loop"]},  # payload without `instance_id`
+        # payload without `instance_id`; **_ absorbs the `project_root` kwarg (ENH-3171)
+        # `handle_call_tool` now passes to every handler.
+        lambda arguments, **_: {"loop": arguments["loop"]},
     )
 
     with TestClient(build_http_app(), base_url="http://127.0.0.1:8765") as client:

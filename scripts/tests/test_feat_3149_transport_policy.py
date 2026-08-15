@@ -102,16 +102,19 @@ def _call_tool(client: TestClient, name: str, arguments: dict):
 
 def test_build_server_signature_still_unchanged() -> None:
     """FEAT-3168 sanctioned widening: `build_server()` gains one `transport` parameter
-    (Decision D1) to thread transport identity into the handler layer. This pin re-asserts
-    the widened shape rather than the original zero-parameter one — the pin's intent (no
+    (Decision D1) to thread transport identity into the handler layer. ENH-3171 sanctions a
+    second: `project_root`, optional and defaulted to `None` (resolved internally via
+    `tools._project_root()`) so the no-flag call path is unchanged. This pin re-asserts the
+    widened shape rather than the original zero-parameter one — the pin's intent (no
     *accidental* further widening) is preserved.
 
     `transport` is required: it selects which half of `mcp.transport_policy` applies, so
     no default is safe to guess. The absent-default assertion is the load-bearing half —
     it is what stops a default from being reintroduced for call-site convenience."""
     params = inspect.signature(build_server).parameters
-    assert list(params) == ["transport"]
+    assert list(params) == ["transport", "project_root"]
     assert params["transport"].default is inspect.Parameter.empty
+    assert params["project_root"].default is None
 
 
 def test_ac5_mutating_call_is_refused_while_reads_still_succeed(tmp_path, monkeypatch) -> None:

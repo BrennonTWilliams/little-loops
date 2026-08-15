@@ -4,10 +4,12 @@ type: ENH
 title: 'll-mcp: resolve project root explicitly (--project-root / LL_MCP_PROJECT_ROOT)
   instead of cwd only'
 priority: P2
-status: open
+status: done
+testable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T00:24:42Z'
+completed_at: '2026-08-15T06:54:40Z'
 parent: EPIC-3127
 labels:
 - mcp
@@ -82,6 +84,65 @@ gets the signal through `capabilities`, which is the one tool a user runs first 
 verifying the server.
 
 
+## Program Design
+
+### Types
+
+- `project_root: Path | None` — the resolved root, `None` only transiently before
+  precedence resolution runs.
+
+### Signatures
+
+- `main_mcp(argv: list[str] | None = None) -> int` — gains a `--project-root PATH` scan
+  alongside the existing bare `--http` check, plus `os.environ.get("LL_MCP_PROJECT_ROOT")`
+  as fallback, mirroring the existing `LL_MCP_TRANSPORT` env pattern.
+- `build_server(transport: str, project_root: Path) -> Server` — new `project_root`
+  parameter, replacing the function's own `BRConfig(Path.cwd())` construction.
+- `_project_root(explicit: Path | None = None) -> Path` — precedence
+  `explicit or env or Path.cwd()`, threaded the same way `transport` already is rather
+  than resolved fresh via `Path.cwd()`.
+- `check_tool_call(transport: str, method: str, tool_name: str | None, config: BRConfig | None = None) -> PolicyDecision` — signature unchanged; its three callers stop omitting `config` and pass `config=BRConfig(project_root)` explicitly.
+
+### Call Path
+
+- `main_mcp` resolves `project_root` once, then calls `run_http`/`run_stdio` in
+  `server.py`, which threads it into `build_server`.
+- `build_server` replaces its own `BRConfig(Path.cwd())` call with the passed-in
+  `project_root` and threads it into the same factory-closure shape `transport` already
+  uses (FEAT-3168) when constructing the tool/task handlers — not a module global, per
+  the per-request statelessness invariant.
+- `tools._project_root` and `tasks._loops_dir` receive `project_root` through that
+  closure instead of calling `Path.cwd()` themselves.
+- `check_tool_call`'s three callers — `handle_tasks_get` (inside
+  `make_tasks_get_handler`), `handle_tasks_cancel` (inside `make_tasks_cancel_handler`),
+  and `handle_call_tool` (inside `make_call_tool_handler`) — pass
+  `config=BRConfig(project_root)` instead of omitting `config`, which today falls through
+  to `check_tool_call`'s own `BRConfig(Path.cwd())`.
+
+### Deviations
+
+- 2026-08-15: `policy.TransportPolicyMiddleware.__call__` — the ASGI pre-parse gate that
+  invokes `check_tool_call` before `handle_call_tool` ever runs on the HTTP path — also
+  omitted `config` and fell through to `BRConfig(Path.cwd())`, the same bug class this
+  issue fixes, but it wasn't one of the three callers named in the Call Path above (only
+  `handle_tasks_get`, `handle_tasks_cancel`, and `handle_call_tool` were). Left unfixed, a
+  wrong pre-parse decision (denying what the project's real config allows) would have
+  persisted on HTTP even after the three named callers were corrected. Threaded
+  `project_root` into `TransportPolicyMiddleware.__init__` (optional, default `None` —
+  callers that construct it directly, e.g. tests, keep today's `Path.cwd()` fallback
+  behavior) and had `build_http_app` pass the resolved root, so it now builds
+  `config=BRConfig(project_root)` the same way the three named callers do.
+
+## Scope Boundaries
+
+- **In scope**: the `--project-root` flag / `LL_MCP_PROJECT_ROOT` env var, threading the
+  resolved root through the four call sites above, and the non-project-root startup
+  signal described in "Secondary: fail loudly on a non-project root".
+- **Out of scope**: BUG-3177's skills-root resolution (`_find_plugin_root()`), which is
+  deliberately a separate resolution from the project root and must not be folded in;
+  ENH-3173's `--host`/`--port` HTTP transport flags, which this issue only coordinates
+  argument-parsing posture with, not implements.
+
 ## Current Behavior
 
 `ll-mcp` (and `ll-mcp --http`) always operates on `Path.cwd()`. Pointing it at a specific
@@ -115,4 +176,6 @@ returns empty successfully.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-15T06:54:22 - `3b700215-e377-45c6-a681-7712906c616f.jsonl`
+- `/ll:ready-issue` - 2026-08-15T06:23:32 - `543bf66e-4713-4227-8003-f6942797c831.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-15T01:18:59 - `6343db1a-2326-4ea0-a5fc-0b0d7d522516.jsonl`

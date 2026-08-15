@@ -56,18 +56,27 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 
 def main_mcp(argv: list[str] | None = None) -> int:
     """Synchronous entry point for the `ll-mcp` console script.
 
     This is a protocol server, not a CLI: `argv` exists for console-script signature parity
-    with every other `ll-*` entry point, and the only thing read from it is a bare `--http`
-    flag (checked directly, not parsed with `argparse` — no help text or subcommands). The
-    `LL_MCP_TRANSPORT=http` env var is the fallback for host configs that invoke `ll-mcp`
-    with no args (FEAT-3143). Default with neither set is unchanged: stdio. `mcp` is imported
-    lazily here, not at module scope, so a checkout without the `mcp` extra installed still
-    imports this module (and every `[project.scripts]` target) cleanly; see
+    with every other `ll-*` entry point. `--http` is a bare flag and `LL_MCP_TRANSPORT=http`
+    its env fallback for host configs that invoke `ll-mcp` with no args (FEAT-3143); default
+    with neither set is stdio. ENH-3171 adds `--project-root PATH` (and its
+    `LL_MCP_PROJECT_ROOT` env fallback) — the first flag here that takes a value, which is
+    the point a real parser starts paying for itself over a bare-literal `in argv` check;
+    `add_help=False` and `parse_known_args` keep this posture otherwise unchanged (no help
+    text, no rejection of unrecognized args). ENH-3173's `--host`/`--port` should extend this
+    same parser rather than introducing its own. `mcp` is imported lazily here, not at module
+    scope, so a checkout without the `mcp` extra installed still imports this module (and
+    every `[project.scripts]` target) cleanly; see
     `test_cli_doctor_install_checks.py::test_real_pyproject_all_entry_points_resolve`.
     """
     argv = list(sys.argv[1:] if argv is None else argv)
@@ -81,14 +90,45 @@ def main_mcp(argv: list[str] | None = None) -> int:
         )
         return 2
 
+    import argparse
+    import functools
+
     import anyio
 
     from little_loops.mcp_server.server import run_http, run_stdio
+    from little_loops.mcp_server.tools import _looks_like_project_root, _project_root
 
-    if "--http" in argv or os.environ.get("LL_MCP_TRANSPORT") == "http":
-        anyio.run(run_http)
+    parser = argparse.ArgumentParser(prog="ll-mcp", add_help=False)
+    parser.add_argument("--http", action="store_true")
+    parser.add_argument("--project-root", type=Path, default=None)
+    args, _unknown = parser.parse_known_args(argv)
+
+    # Whether an explicit override was given, not just what it resolved to — this decides
+    # below whether to thread `project_root` through at all, so the no-override path stays
+    # byte-identical to pre-ENH-3171 behavior (`anyio.run(run_stdio)`/`anyio.run(run_http)`
+    # with no wrapping), which existing tests assert by function identity.
+    has_override = args.project_root is not None or bool(os.environ.get("LL_MCP_PROJECT_ROOT"))
+    project_root = _project_root(args.project_root)
+
+    if not _looks_like_project_root(project_root):
+        print(
+            f"WARNING: ll-mcp project root {project_root} has neither a .ll/ nor an "
+            ".issues/ directory; tool calls will silently return empty/default results. "
+            "Pass --project-root PATH or set LL_MCP_PROJECT_ROOT to point at your "
+            "little-loops project.",
+            file=sys.stderr,
+        )
+
+    want_http = args.http or os.environ.get("LL_MCP_TRANSPORT") == "http"
+    target: Callable[..., Awaitable[None]]
+    if want_http:
+        target = run_http
     else:
-        anyio.run(run_stdio)
+        target = run_stdio
+    if has_override:
+        target = functools.partial(target, project_root=project_root)
+
+    anyio.run(target)
     return 0
 
 
