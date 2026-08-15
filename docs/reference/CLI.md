@@ -4408,9 +4408,11 @@ Also advertises a `prompts` capability (FEAT-3137): every discovered `SKILL.md` 
 recursively so a nested `SKILL.md` registers as its own independent prompt rather than being
 absorbed as a parent skill's supporting file — is listed as an MCP prompt, with name (the
 containing directory name), description, and args read from frontmatter. A skill with
-`disable-model-invocation: true` is skipped. Like the resource surface, prompt names are
-enumerated once at server startup; `prompts/get` only ever serves a `name` already present in
-that enumeration, rejecting anything else without a filesystem read. `prompts/list` returns
+`disable-model-invocation: true` is skipped. Like the resource surface, the prompt
+enumeration is built at startup and then rebuilt on demand whenever the skills root's mtime
+changes (ENH-3172), so a skill added mid-session is served without a restart; `prompts/get`
+only ever serves a `name` present in the current enumeration, rejecting anything else without
+a filesystem read. `prompts/list` returns
 name/description/args from frontmatter only; `prompts/get` returns the skill's full body
 (frontmatter stripped) as a single user-role prompt message. `prompts/list` responses carry
 `ttlMs`/`cacheScope` per SEP-2549.

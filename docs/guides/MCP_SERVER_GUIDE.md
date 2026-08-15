@@ -11,7 +11,7 @@
 
 - [What `ll-mcp` Is](#what-ll-mcp-is)
 - [Install](#install)
-- [The Working-Directory Requirement](#the-working-directory-requirement)
+- [Pointing the Server at a Project](#pointing-the-server-at-a-project)
 - [Registering the Server](#registering-the-server)
 - [Verifying with `mcp-call`](#verifying-with-mcp-call)
 - [Resources and Prompts in Practice](#resources-and-prompts-in-practice)
@@ -58,32 +58,67 @@ extra *is* installed; `Ctrl-D` to exit).
 
 ---
 
-## The Working-Directory Requirement
+## Pointing the Server at a Project
 
-**`ll-mcp` resolves the project root as the process's current working directory.** There
-is no `--project-root` flag, no config key, and no upward search for a `.ll/` marker.
+`ll-mcp` resolves the project it serves in this order:
+
+1. **`--project-root /abs/path`** — an argument on the server command.
+2. **`LL_MCP_PROJECT_ROOT=/abs/path`** — the equivalent for hosts whose server config
+   exposes an `env` block but not `args`.
+3. **The process's current working directory** — the fallback when neither is set.
 
 This matters because MCP hosts vary in what cwd they spawn a server with. A client that
-launches its servers from `$HOME` will start `ll-mcp` against `$HOME`, and every tool will
-answer truthfully about a project that does not exist there — `issues_query` returns `[]`,
-`deps_check` reports a clean graph, `resources/list` is empty. Nothing errors. This is the
-single most common cause of a "working but useless" `ll-mcp`.
+launches its servers from `$HOME` starts `ll-mcp` against `$HOME` unless told otherwise,
+and every tool then answers truthfully about a project that does not exist there —
+`issues_query` returns `[]`, `deps_check` reports a clean graph, `resources/list` is empty,
+`history_search` finds nothing. Setting the root explicitly is the reliable fix:
 
-Two ways to pin it:
-
-1. **A client that supports a `cwd` field** in its server config — set it to the project
-   root (see the Claude Desktop snippet below).
-2. **A client that does not** — wrap the command in a shell:
-
-   ```json
-   {
-     "command": "sh",
-     "args": ["-c", "cd /abs/path/to/project && exec ll-mcp"]
-   }
-   ```
+```json
+{
+  "command": "ll-mcp",
+  "args": ["--project-root", "/abs/path/to/project"]
+}
+```
 
 Claude Code and Codex both launch project-scoped servers from the project root, so the
-`ll-adapt`-generated configs below need no `cwd`.
+`ll-adapt`-generated configs below need no root argument. For other clients, `--project-root`
+is the recommended form; a `cwd` field in the server config, or a shell wrapper
+(`{"command": "sh", "args": ["-c", "cd /abs/path && exec ll-mcp"]}`), also work if you
+prefer them.
+
+**When the root is wrong, the server says so.** A resolved root with neither a `.ll/` nor
+an `.issues/` directory produces a warning on stderr at startup, naming the root it
+resolved. Because hosts commonly swallow a server's stderr, the same signal is also carried
+by the `capabilities` tool — the first thing worth calling when verifying a new
+registration:
+
+```json
+"project_root": { "path": "/Users/you", "resolved": false }
+```
+
+`resolved: false` means the tool surface will answer empty about everything.
+
+### Binding the HTTP transport
+
+The streamable HTTP transport (`--http`, or `LL_MCP_TRANSPORT=http`) binds
+`127.0.0.1:8765` by default. Override it with `--host` / `--port`, or persistently in
+`.ll/ll-config.json`; the flags win over the config block:
+
+```json
+{
+  "mcp": {
+    "http": { "host": "127.0.0.1", "port": 9000 }
+  }
+}
+```
+
+No path here defaults to `0.0.0.0` — a non-loopback bind is always something you asked
+for. When you do ask for one, the server widens `TransportSecuritySettings`'
+`allowed_hosts`/`allowed_origins` to that host (the SDK auto-fills that allow-list only for
+loopback, and would otherwise reject every request's `Host`/`Origin` header). That is
+DNS-rebinding protection, **not authentication** — the HTTP transport ships with none, which
+is why `mcp.transport_policy.http` denies mutations and tasks by default regardless of what
+you bind to. See [Guard 2](#guard-2--per-transport-policy).
 
 ---
 
@@ -136,7 +171,7 @@ write the config by hand. Claude Desktop reads
   "mcpServers": {
     "ll-mcp": {
       "command": "/abs/path/to/venv/bin/ll-mcp",
-      "cwd": "/abs/path/to/project"
+      "args": ["--project-root", "/abs/path/to/project"]
     }
   }
 }
@@ -146,8 +181,8 @@ Use an **absolute path to the `ll-mcp` executable**. A GUI-launched client does 
 inherit your shell's `PATH`, so a bare `"ll-mcp"` that works from a terminal will fail
 there with a spawn error. `which ll-mcp` gives you the path to paste.
 
-One entry per project: the server is scoped to a single working directory, so a second
-project means a second `mcpServers` key (`ll-mcp-otherproject`) with its own `cwd`.
+One entry per project: a server instance serves exactly one root, so a second project
+means a second `mcpServers` key (`ll-mcp-otherproject`) with its own `--project-root`.
 
 ---
 
@@ -550,10 +585,10 @@ stdio returns the same `-32001` JSON-RPC error the HTTP path returns.
 |---------|--------------|-----|
 | Client reports the server failed to start | `mcp` extra not installed | `pip install "little-loops[mcp]"`; run `ll-mcp` in a terminal to see the real stderr |
 | Spawn error / command not found, but `ll-mcp` works in your shell | GUI client does not inherit shell `PATH` | Use the absolute path from `which ll-mcp` in the config |
-| Every tool succeeds but returns empty results | Server spawned with the wrong cwd | Set `cwd`, or wrap in `sh -c 'cd /path && exec ll-mcp'` — see [above](#the-working-directory-requirement) |
+| Every tool succeeds but returns empty results | Server resolved the wrong project root (spawned from `$HOME`, no root given) | Call `capabilities` and check `project_root.resolved`; add `--project-root /abs/path` (or `LL_MCP_PROJECT_ROOT`) — see [above](#pointing-the-server-at-a-project) |
 | A new issue is missing from `resources/list` but `issue_get` finds it | Client is serving its own cached `resources/list` response (5-minute public `CacheHint`) | Call again with cache bypassed, or listen for `notifications/resources/list_changed`; see [Resources and Prompts in Practice](#resources-and-prompts-in-practice) — the server itself self-heals on the next call |
 | `prompts/list` is empty | Skills root failed to resolve (rare — the wheel ships its own copy); check stderr for the `ERROR: no skills directory found` line | Set `LL_MCP_SKILLS_ROOT` to a valid skills directory in the server's `env` |
-| `history_search` always returns `[]` | `.ll/history.db` absent or empty | Confirm the file exists; history accrues over sessions |
+| `history_search` always returns `[]` | `.ll/history.db` absent or empty under the resolved root | Confirm `<project-root>/.ll/history.db` exists (history accrues over sessions); check `capabilities` for the root the server actually resolved |
 | `mcp-call` exits `127` | `.mcp.json` missing from cwd, or no `ll-mcp` key in it | Run `mcp-call` from the project root; `ll-adapt --host claude-code --apply` |
 | `mcp-call` exits `124` | Server started but never answered | Check for a stale install: `pip show little-loops`, then re-run `ll-adapt` |
 
