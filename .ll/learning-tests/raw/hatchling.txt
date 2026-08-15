@@ -1,0 +1,37 @@
+* Creating isolated environment: venv+pip...
+* Installing packages in isolated environment:
+  - hatchling
+* Getting build dependencies for wheel...
+* Building wheel...
+Traceback (most recent call last):
+  File "<redacted>/lib/python3.12/site-packages/pyproject_hooks/_in_process/_in_process.py", line 389, in <module>
+    main()
+  File "<redacted>/lib/python3.12/site-packages/pyproject_hooks/_in_process/_in_process.py", line 373, in main
+    json_out["return_val"] = hook(**hook_input["kwargs"])
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<redacted>/lib/python3.12/site-packages/pyproject_hooks/_in_process/_in_process.py", line 280, in build_wheel
+    return _build_backend().build_wheel(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<redacted-build-env-tmp>/lib/python3.12/site-packages/hatchling/build.py", line 58, in build_wheel
+    return os.path.basename(next(builder.build(directory=wheel_directory, versions=["standard"])))
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<redacted-build-env-tmp>/lib/python3.12/site-packages/hatchling/builders/plugin/interface.py", line 92, in build
+    self.metadata.validate_fields()
+  File "<redacted-build-env-tmp>/lib/python3.12/site-packages/hatchling/metadata/core.py", line 267, in validate_fields
+    self.core.validate_fields()
+  File "<redacted-build-env-tmp>/lib/python3.12/site-packages/hatchling/metadata/core.py", line 1444, in validate_fields
+    getattr(self, attribute)
+  File "<redacted-build-env-tmp>/lib/python3.12/site-packages/hatchling/metadata/core.py", line 534, in readme
+    raise ValueError(message)
+ValueError: Readme path must be within the project directory: ../README.md
+
+ERROR Backend subprocess exited when trying to invoke build_wheel
+* Creating isolated environment: venv+pip...
+* Installing packages in isolated environment:
+  - hatchling
+* Getting build dependencies for wheel...
+* Building wheel...
+Successfully built little_loops-1.155.0-py3-none-any.whl
+--- wheel skills listing ---
+little_loops/skills/testskill/SKILL.md         2020-02-02 00:00:00           16
+little_loops/skills/testskill/reference.md     2020-02-02 00:00:00           10

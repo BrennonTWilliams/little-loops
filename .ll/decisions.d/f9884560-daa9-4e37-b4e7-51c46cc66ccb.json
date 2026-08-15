@@ -1,0 +1,12 @@
+{
+  "id": "4319e682-bafb-4af3-88dd-6b7a485f33db",
+  "type": "decision",
+  "timestamp": "2026-08-15T03:36:46Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Scored 6/12 vs Option B's 3/12: reuses shipped precedent (hooks/prompts, hooks/adapters/codex) and pyproject.toml's existing little_loops/** include with zero config change; Option B depends on unlanded ENH-3171 scope that doesn't cover the skills-root call site and diverges from EPIC-3127's fixed-catalog semantics. Reopens the FEAT-2274/BUG-938 boundary decision on purpose - flag in PR.",
+  "rule": "Option A: ship SKILL.md-bearing skills/ tree as package data under little_loops/skills/, reusing the FEAT-2274 packaging mechanism",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: resolve prompt index from the project's own skills/ directory instead of the plugin's bundled catalog",
+  "issue": "BUG-3177"
+}
