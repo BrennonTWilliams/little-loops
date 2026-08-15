@@ -4,11 +4,12 @@ type: BUG
 title: ARCHITECTURE.md/CONTRIBUTING.md directory trees list stale/partial skills subtree
   and nonexistent paths
 priority: P4
-status: open
+status: done
 testable: false
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T17:51:46Z'
+completed_at: '2026-08-15T19:31:33Z'
 ---
 
 # BUG-3190: ARCHITECTURE.md/CONTRIBUTING.md directory trees list stale/partial skills subtree and nonexistent paths

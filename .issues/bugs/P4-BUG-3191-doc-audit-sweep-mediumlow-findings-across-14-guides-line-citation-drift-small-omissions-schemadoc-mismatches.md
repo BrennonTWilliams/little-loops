@@ -4,11 +4,12 @@ type: BUG
 title: 'Doc audit sweep: medium/low findings across 14 guides (line-citation drift,
   small omissions, schema/doc mismatches)'
 priority: P4
-status: open
+status: done
 testable: false
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T17:51:50Z'
+completed_at: '2026-08-15T19:31:33Z'
 ---
 
 # BUG-3191: Doc audit sweep: medium/low findings across 14 guides (line-citation drift, small omissions, schema/doc mismatches)

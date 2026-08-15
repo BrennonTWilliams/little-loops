@@ -4,11 +4,12 @@ type: BUG
 title: HISTORY_SESSION_GUIDE.md describes pre-ENH-2581 backfill/prune behavior, schema
   table stops at v33
 priority: P2
-status: open
+status: done
 testable: false
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T17:51:36Z'
+completed_at: '2026-08-15T19:31:32Z'
 ---
 
 # BUG-3187: HISTORY_SESSION_GUIDE.md describes pre-ENH-2581 backfill/prune behavior, schema table stops at v33

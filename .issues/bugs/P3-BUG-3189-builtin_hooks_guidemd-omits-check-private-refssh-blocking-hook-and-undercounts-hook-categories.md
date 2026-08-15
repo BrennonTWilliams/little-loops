@@ -4,11 +4,12 @@ type: BUG
 title: BUILTIN_HOOKS_GUIDE.md omits check-private-refs.sh blocking hook and undercounts
   hook categories
 priority: P3
-status: open
+status: done
 testable: false
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T17:51:43Z'
+completed_at: '2026-08-15T19:31:33Z'
 ---
 
 # BUG-3189: BUILTIN_HOOKS_GUIDE.md omits check-private-refs.sh blocking hook and undercounts hook categories

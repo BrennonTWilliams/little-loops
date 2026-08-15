@@ -4,11 +4,12 @@ type: BUG
 title: 'EVENT-SCHEMA.md: stale line citations and undocumented FSM executor events
   (host_pressure*, ab_comparison, api_error_retry/exhausted, state_change, issue_skipped)'
 priority: P3
-status: open
+status: done
 testable: false
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T17:51:39Z'
+completed_at: '2026-08-15T19:31:32Z'
 ---
 
 # BUG-3188: EVENT-SCHEMA.md: stale line citations and undocumented FSM executor events (host_pressure*, ab_comparison, api_error_retry/exhausted, state_change, issue_skipped)
