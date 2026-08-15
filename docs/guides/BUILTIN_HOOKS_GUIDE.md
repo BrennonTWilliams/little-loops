@@ -56,6 +56,7 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **PreToolUse** | check-duplicate-issue-id | Blocks creating an issue file whose ID collides cross-type | **yes** | on |
 | **PreToolUse** | check-decisions-yaml | Blocks writing a corrupt `.ll/decisions.yaml` or `.ll/decisions.d/*.json` fragment from Claude-side Write/Edit | **yes** | on |
 | **PreToolUse** | learning-tests gate | Warns (or blocks) on imports with no Learning Test record | warn/block | off |
+| **PreToolUse** | check-private-refs | Blocks a Write/Edit that would commit a private-codebase reference (gates via `ll-verify-private-refs`) | **yes** | on |
 | **PostToolUse** | install-nudge gate | Nudges `/ll:explore-api` when a package-install Bash command is detected | — | off |
 | **PreToolUse** | scratch-pad-redirect | Redirects oversized Bash output to a scratch file | **yes** | off |
 | **PostToolUse** | post-tool-use | Records tool & file events to `history.db` | — | opt-in |
@@ -67,7 +68,9 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **PostToolUse** | session-capture | Appends structured event record (file/task/git/error) to `.ll/ll-session-events.jsonl` | — | off |
 | **Stop** | context-handoff-sentinel | Drops a sentinel if the session ended context-heavy | — | on |
 | **Stop** | session-cleanup | Removes locks, state, scratch, orphaned worktrees | — | on |
+| **Stop** | record-hook-event | Telemetry shim: records the session-cleanup fire to `hook_events` | — | on |
 | **SessionEnd** | scratch-cleanup | Prunes dead-PID scratch files from `.loops/tmp/scratch` | — | on |
+| **SessionEnd** | record-hook-event | Telemetry shim: records the scratch-cleanup fire to `hook_events` | — | on |
 | **PreCompact** | precompact | Snapshots task state before compaction (rubric-gated when `hooks.pre_compact.rubric.enabled: true`) | exit 2 | on |
 | **PreCompact** | precompact-handoff | Writes session continuation prompt before compaction (passive path for `/ll:resume`) | — | on |
 | **SubagentStart** | subagent-start | Records a subagent (Task/Agent) spawn in `subagent_runs` | — | on |
@@ -91,6 +94,7 @@ You submit a prompt
 You use the Write or Edit tool
   → PreToolUse (duplicate-ID guard): blocks if the issue ID collides with an existing one
   → PreToolUse (learning-tests gate, if enabled): warns if import has no proven record
+  → PreToolUse (private-refs guard): blocks if the write would commit a private-codebase reference
 
 You run a Bash install command (pip install, npm install, etc.)
   → PostToolUse (install-nudge gate, if learning_tests.enabled): suggests /ll:explore-api for the new package
@@ -230,6 +234,23 @@ On `Write`/`Edit`, parses the file for `import`/`require` statements and checks 
 
 In `warn` mode it injects a hint and allows the write; in `block` mode it denies until a Learning Test exists.
 
+### Private-codebase reference guard (blocks)
+
+**Hook:** `check-private-refs.sh` (pure bash, gates via `ll-verify-private-refs`)
+
+On `Write`/`Edit`, rejects content that would commit a reference to a private
+codebase — absolute paths into private checkouts, private project names, and the
+other patterns `ll-verify-private-refs` recognises. Exits **2** on a hit, so the
+write never lands.
+
+This is the fifth PreToolUse hook and one of the guide's blocking gates: if a
+`Write` is denied and the message mentions private references, this is why. Two
+paths are exempt because they are *expected* to hold machine-local content and
+are gitignored for exactly that reason — `.ll/ll-continue-prompt.md` and
+`.ll/private-refs.local.txt`. The ignore rules and the gate exemptions are a
+matched pair; exempting a file from the gate without also gitignoring it would
+let a genuine leak reach a commit.
+
 ### Scratch-pad redirection (redirects oversized Bash output)
 
 **Hook:** `scratch-pad-redirect.sh` (pure bash)
@@ -249,7 +270,7 @@ Keeps large **Bash** output out of the conversation: it rewrites allowlisted com
 
 **Hook:** `post-tool-use.sh` → `little_loops.hooks.post_tool_use.handle` → `little_loops.hooks.install_learning_gate.gate`
 
-After a `Bash` tool call that just installed a package (`pip install`, `pip3 install`, `uv pip install`, `npm install`, `pnpm add`, `yarn add`), this hook emits a one-line nudge suggesting you run `/ll:explore-api` to prove the newly-installed package's API assumptions before writing integration code:
+After a `Bash` tool call that just installed a package (`pip install`, `pip3 install`, `uv add`, `poetry add`, `npm install`, `yarn add`, `pnpm add` — the full set matched by `_INSTALL_RE` in `little_loops.hooks.install_learning_gate`), this hook emits a one-line nudge suggesting you run `/ll:explore-api` to prove the newly-installed package's API assumptions before writing integration code:
 
 > `[ll: new dependency] No learning test for "stripe". Consider: /ll:explore-api "stripe"`
 
@@ -261,7 +282,7 @@ Never blocks (always advisory, exit 0). Gated by `learning_tests.enabled` (defau
 
 ## PostToolUse
 
-Seven hooks run after each tool call.
+Eight hooks run after each tool call.
 
 ### Tool & file analytics
 
@@ -350,6 +371,29 @@ best-effort and degrades to a silent pass-through on failure. Fires for the
 three edit tools only; all other tools pass through. On by default; the matcher
 is host-agnostic and mirrored to Codex. (ENH-2503)
 
+### Session capture
+
+**Hook:** `session-capture.sh` (pure bash)
+
+Appends one structured record per tool call to `.ll/ll-session-events.jsonl`, the
+event log `precompact-handoff.sh` prefers over git/loop reconstruction when
+building a continuation prompt. Matcher is `*`, so it observes every tool, not
+just edits. Never blocks.
+
+- `session_capture.enabled` (default **false**)
+
+Record schema (FEAT-1262):
+
+```json
+{"ts": "ISO8601", "type": "file|task|git|error", "op": "...", "subject": "...", "status": ""}
+```
+
+`subject` is the deduplication key across the whole log: file edits collapse to
+the last event per subject, task state is the last event per subject, and an
+error counts as *unresolved* only when the last event for its subject is still
+`type: error`. That last rule is why a later successful event on the same subject
+silently clears an earlier error — the log records net state, not history.
+
 ---
 
 ## Stop
@@ -368,6 +412,21 @@ If the session ended context-heavy (≥ ~50% estimated) and no handoff was compl
 
 Removes this session's lock and context-state files, and prunes orphaned git worktrees under `parallel.worktree_base` (default `.worktrees`) — while skipping any worktree owned by a **live** parallel worker. This is what keeps interrupted `ll-parallel` runs from leaving debris. Note there is a separate `automation.worktree_base` key (also default `.worktrees`) used by `ll-auto` and FSM sub-loop worktrees (`Config.get_worktree_base()`); this Stop-hook cleanup reads `parallel.worktree_base` specifically, not `automation.worktree_base`. (Scratch cleanup now lives in `scratch-cleanup.sh` on SessionEnd — see BUG-2420.) Always on.
 
+### Hook-event telemetry shim
+
+**Hook:** `record-hook-event.sh <EventName> <shadowed-script>` (pure bash)
+
+Registered on `Stop` and `SessionEnd` only — the two events whose handlers are
+pure bash and therefore never pass through `main_hooks()`, where every
+Python-dispatched intent is already wrapped by `hook_event_context()`. The shim
+takes the event name and the script it shadows as arguments, and records that
+fire's outcome to the `hook_events` table so bash-only hooks are not a blind spot
+in hook telemetry.
+
+Gated by `analytics.enabled` **and** `analytics.capture.hooks` (both default
+`true`, but `analytics.enabled` is off unless you turn it on). Records only —
+never blocks, never alters the shadowed hook's behavior.
+
 ---
 
 ## SessionEnd
@@ -379,6 +438,10 @@ Runs **once, when the session terminates** (Claude Code's `SessionEnd` event) �
 **Hook:** `scratch-cleanup.sh` (pure bash)
 
 Prunes stale files from `.loops/tmp/scratch` whose owning PID is no longer alive, leaving untouched any file a still-running concurrent session/`ll-loop`/`ll-auto` process owns. **Only files matching the `${SAFE_NAME}-<pid>.txt` shape produced by `scratch-pad-redirect.sh` are eligible for removal** — user-typed scratch files (no `-<pid>` suffix) are preserved unconditionally (BUG-2525). Always on.
+
+### Hook-event telemetry shim
+
+`record-hook-event.sh` is registered here too, shadowing `scratch-cleanup.sh`. Same behavior as under [Stop](#stop).
 
 > Keep `SessionEnd` handlers fast — Claude Code enforces a hard ~1.5s ceiling on this event before killing the hook on any exit path (Ctrl+C, Ctrl+D, `/exit`), regardless of the configured `timeout` (unfixed upstream: anthropics/claude-code#32712, #41577). This is why the stale-ref sweep lives under [SessionStart](#sessionstart) instead.
 
@@ -412,7 +475,7 @@ Signal lists are configurable via `hooks.pre_compact.rubric.signals.*`. Disabled
 
 **Hook:** `precompact-handoff.sh` → `little_loops.hooks.pre_compact_handoff.handle`
 
-Fires as a second PreCompact handler, after `precompact.sh`. Reads `.ll/ll-precompact-state.json` as an idempotency guard (skips if no state snapshot was written by `precompact.sh`), then writes `.ll/ll-continue-prompt.md` atomically with a 3s advisory lock, returning **exit 2**:
+Fires as a second PreCompact handler, after `precompact.sh`. Reads `.ll/ll-precompact-state.json` as an idempotency guard — it skips **only** when `.ll/ll-continue-prompt.md` is already newer than the snapshot's `compacted_at`. A missing, unreadable, or unparseable snapshot means freshness cannot be verified, so the hook proceeds with the write rather than skipping. It then writes `.ll/ll-continue-prompt.md` atomically with a 3s advisory lock, returning **exit 2**:
 
 > `[ll] Session continuation prompt written to .ll/ll-continue-prompt.md`
 
