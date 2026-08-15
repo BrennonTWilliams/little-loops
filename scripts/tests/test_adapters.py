@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -655,58 +656,112 @@ class TestCodexEmitterEmitAgent:
 
 
 class TestCodexEmitterEmitMcpConfig:
-    def _meta(self, tmp_path: Path, apply: bool = True) -> dict:
+    """Codex has no project-local MCP config read path (BUG-3178, confirmed by the
+    ``.ll/learning-tests/codex.md`` learning test), so ``emit_mcp_config`` ignores
+    ``meta["output_dir"]`` entirely and merges into ``$CODEX_HOME/config.toml``
+    instead. Tests redirect ``CODEX_HOME`` to ``tmp_path`` rather than passing a
+    project-relative ``output_dir``.
+    """
+
+    def _meta(self, apply: bool = True) -> dict:
+        # output_dir is intentionally unused by CodexEmitter.emit_mcp_config, but
+        # every HostEmitter.emit_mcp_config caller still supplies it.
         return {
-            "output_dir": tmp_path / ".codex",
+            "output_dir": Path("/unused"),
             "apply": apply,
             "quiet": True,
         }
 
-    def test_creates_toml_file(self, tmp_path: Path) -> None:
-        meta = self._meta(tmp_path)
-        CodexEmitter().emit_mcp_config(meta)
-        assert (meta["output_dir"] / "ll-mcp.toml").exists()
+    def _config_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+        return tmp_path / "config.toml"
 
-    def test_toml_starts_with_marker(self, tmp_path: Path) -> None:
-        meta = self._meta(tmp_path)
-        CodexEmitter().emit_mcp_config(meta)
-        assert (meta["output_dir"] / "ll-mcp.toml").read_text().startswith(_MARKER)
+    def test_creates_config_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        config_path = self._config_path(tmp_path, monkeypatch)
+        CodexEmitter().emit_mcp_config(self._meta())
+        assert config_path.exists()
 
-    def test_toml_references_ll_mcp(self, tmp_path: Path) -> None:
-        meta = self._meta(tmp_path)
-        CodexEmitter().emit_mcp_config(meta)
-        content = (meta["output_dir"] / "ll-mcp.toml").read_text()
-        assert 'mcp_servers = ["ll-mcp"]' in content
+    def test_table_starts_with_marker(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config_path = self._config_path(tmp_path, monkeypatch)
+        CodexEmitter().emit_mcp_config(self._meta())
+        assert config_path.read_text().startswith(_MARKER)
 
-    def test_dry_run_does_not_write(self, tmp_path: Path) -> None:
-        meta = self._meta(tmp_path, apply=False)
-        CodexEmitter().emit_mcp_config(meta)
-        assert not (meta["output_dir"] / "ll-mcp.toml").exists()
+    def test_written_table_defines_launchable_server(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config_path = self._config_path(tmp_path, monkeypatch)
+        CodexEmitter().emit_mcp_config(self._meta())
+        parsed = tomllib.loads(config_path.read_text())
+        assert parsed["mcp_servers"]["ll-mcp"]["command"] == "ll-mcp"
 
-    def test_returns_adapted_on_first_run(self, tmp_path: Path) -> None:
-        meta = self._meta(tmp_path)
-        assert CodexEmitter().emit_mcp_config(meta) == "adapted"
+    def test_dry_run_does_not_write(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        config_path = self._config_path(tmp_path, monkeypatch)
+        CodexEmitter().emit_mcp_config(self._meta(apply=False))
+        assert not config_path.exists()
 
-    def test_user_authored_file_not_overwritten(self, tmp_path: Path) -> None:
-        meta = self._meta(tmp_path)
-        out_toml = meta["output_dir"] / "ll-mcp.toml"
-        out_toml.parent.mkdir(parents=True, exist_ok=True)
-        user_content = "# user authored\nmcp_servers = []\n"
-        out_toml.write_text(user_content)
-        assert CodexEmitter().emit_mcp_config(meta) == "skipped"
-        assert out_toml.read_text() == user_content
+    def test_returns_adapted_on_first_run(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._config_path(tmp_path, monkeypatch)
+        assert CodexEmitter().emit_mcp_config(self._meta()) == "adapted"
 
-    def test_up_to_date_returns_skipped(self, tmp_path: Path) -> None:
-        meta = self._meta(tmp_path)
-        CodexEmitter().emit_mcp_config(meta)
-        assert CodexEmitter().emit_mcp_config(meta) == "skipped"
+    def test_user_authored_table_not_overwritten(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config_path = self._config_path(tmp_path, monkeypatch)
+        user_content = '[mcp_servers.ll-mcp]\ncommand = "/hand/rolled/path"\n'
+        config_path.write_text(user_content)
+        assert CodexEmitter().emit_mcp_config(self._meta()) == "skipped"
+        assert config_path.read_text() == user_content
 
-    def test_idempotent(self, tmp_path: Path) -> None:
-        meta = self._meta(tmp_path)
-        CodexEmitter().emit_mcp_config(meta)
-        content1 = (meta["output_dir"] / "ll-mcp.toml").read_text()
-        CodexEmitter().emit_mcp_config(meta)
-        assert (meta["output_dir"] / "ll-mcp.toml").read_text() == content1
+    def test_up_to_date_returns_skipped(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._config_path(tmp_path, monkeypatch)
+        CodexEmitter().emit_mcp_config(self._meta())
+        assert CodexEmitter().emit_mcp_config(self._meta()) == "skipped"
+
+    def test_idempotent(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        config_path = self._config_path(tmp_path, monkeypatch)
+        CodexEmitter().emit_mcp_config(self._meta())
+        content1 = config_path.read_text()
+        CodexEmitter().emit_mcp_config(self._meta())
+        assert config_path.read_text() == content1
+
+    def test_merges_into_existing_sibling_entry(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config_path = self._config_path(tmp_path, monkeypatch)
+        config_path.write_text(
+            '[mcp_servers.RepoPrompt]\ncommand = "/abs/path/repoprompt_cli"\nargs = []\n'
+            "tool_timeout_sec = 10000\nenabled = false\n"
+        )
+        CodexEmitter().emit_mcp_config(self._meta())
+        parsed = tomllib.loads(config_path.read_text())
+        assert parsed["mcp_servers"]["RepoPrompt"]["command"] == "/abs/path/repoprompt_cli"
+        assert parsed["mcp_servers"]["ll-mcp"]["command"] == "ll-mcp"
+
+    def test_preserves_unrelated_projects_section(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config_path = self._config_path(tmp_path, monkeypatch)
+        config_path.write_text('[projects."/some/repo"]\ntrust_level = "trusted"\n')
+        CodexEmitter().emit_mcp_config(self._meta())
+        parsed = tomllib.loads(config_path.read_text())
+        assert parsed["projects"]["/some/repo"]["trust_level"] == "trusted"
+        assert parsed["mcp_servers"]["ll-mcp"]["command"] == "ll-mcp"
+
+    def test_overwrites_stale_ll_mcp_entry(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config_path = self._config_path(tmp_path, monkeypatch)
+        config_path.write_text(f'{_MARKER}\n[mcp_servers.ll-mcp]\ncommand = "old-ll-mcp-path"\n')
+        result = CodexEmitter().emit_mcp_config(self._meta())
+        assert result == "adapted"
+        parsed = tomllib.loads(config_path.read_text())
+        assert parsed["mcp_servers"]["ll-mcp"]["command"] == "ll-mcp"
 
 
 # =============================================================================

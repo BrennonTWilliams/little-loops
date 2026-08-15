@@ -4,10 +4,11 @@ type: BUG
 title: ll-adapt --host codex emits .codex/ll-mcp.toml with no command, so Codex cannot
   launch ll-mcp
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T03:25:37Z'
+completed_at: '2026-08-15T06:18:20Z'
 parent: EPIC-3127
 labels:
 - mcp
@@ -427,6 +428,68 @@ _These touchpoints were identified by wiring analysis and must be included in th
   server that serves zero prompts verifies nothing. Also requires reinstalling Codex
   locally; see the blocker note under Proposed Solution.
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-08-15
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/adapters/codex.py`: `emit_mcp_config` rewritten. It now
+  ignores `meta["output_dir"]` (the project-relative directory every other
+  `HostEmitter` writes under) and merges a real `[mcp_servers.ll-mcp]`
+  table (`command = "ll-mcp"`, `args = []`) into Codex's global
+  `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`) via a targeted
+  marker-gated block replace — added `_codex_home_config_path()` and
+  `_find_ll_mcp_block()` helpers. This is the "balloon" branch flagged in
+  Proposed Solution step 1, confirmed by the `.ll/learning-tests/codex.md`
+  learning test: Codex has no project-local `.codex/*.toml` MCP config read
+  path.
+- `scripts/tests/test_adapters.py`: `TestCodexEmitterEmitMcpConfig` rewritten
+  to redirect `$CODEX_HOME` to `tmp_path` and assert structurally via
+  `tomllib.loads` per the Behavior Parity contract, plus new merge/overwrite/
+  preserve-unrelated-sections coverage paralleling
+  `TestClaudeCodeEmitterEmitMcpConfig`.
+- `docs/codex/README.md`, `docs/codex/usage.md`, `docs/codex/getting-started.md`,
+  `docs/guides/MCP_SERVER_GUIDE.md`, `docs/reference/CLI.md`,
+  `docs/reference/API.md`: corrected to describe the `~/.codex/config.toml`
+  merge instead of the inert `.codex/ll-mcp.toml` array.
+- `.ll/learning-tests/codex.md` (+ `raw/codex.txt`): learning test recording
+  the real-Codex-install evidence for both open questions in Proposed
+  Solution step 1 (table shape confirmed; standalone-file read path
+  disconfirmed).
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 19299 passed, 46 skipped)
+- Lint: PASS (`ruff check`)
+- Types: PASS (`mypy scripts/little_loops/adapters/codex.py`)
+- Run: N/A (no `run_cmd` configured)
+- Integration: PASS — reviewed for shape consistency with
+  `ClaudeCodeEmitter.emit_mcp_config`'s merge-don't-overwrite convention
+
+### Deviations from Program Design
+- 2026-08-15: The Program Design section states the signature/return
+  contract are unchanged and doesn't otherwise constrain internals. As
+  anticipated by the issue's own "Planning implication" note, the
+  implementation ignores the `output_dir` argument passed via `meta` and
+  writes to Codex's global `~/.codex/config.toml` instead — a deliberate
+  interface-contract deviation from every other `HostEmitter.emit_mcp_config`
+  implementation, which write under the passed `output_dir`. This was
+  called out in advance by the Integration Map's "Configuration" section and
+  the wiring pass, not discovered during implementation.
+
+### End-to-End Verification Note
+
+Implementation Step 5 ("start Codex, call an `ll-mcp` tool") was **not**
+performed — the local Codex install remains broken per the blocker noted
+above (`spawn ... codex-darwin-arm64/.../codex ENOENT`), and this issue's
+`--force-implement` flag authorizes proceeding past that blocker for the
+code/test/doc fix rather than requiring a live end-to-end run. The fix is
+verified at the unit-test level (structural TOML assertions matching Codex's
+real config shape, confirmed by the learning test) and via the Behavior
+Parity contract. A live end-to-end check remains open follow-up work once
+Codex is reinstalled locally.
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
@@ -457,6 +520,8 @@ _Added by `/ll:confidence-check` on 2026-08-14_
   drives the Ambiguity score (10/25) and the Complexity/Depth estimate.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-15T06:18:07 - `ecdf1843-b1e6-42c1-91fa-ad3ee636aefe.jsonl`
+- `/ll:ready-issue` - 2026-08-15T05:59:02 - `f535004a-3bf3-4bf9-8593-9618aaf6bc62.jsonl`
 - `/ll:confidence-check` - 2026-08-15T03:45:12 - `5315999c-c138-48bb-9d4c-374df2bedd62.jsonl`
 - `/ll:wire-issue` - 2026-08-15T03:41:53 - `1e28525c-e109-4f5d-a52c-4b13341a9a3f.jsonl`
 - `/ll:refine-issue` - 2026-08-15T03:32:38 - `853934e0-e1b5-4fb1-be76-8bcdf8e57dcb.jsonl`

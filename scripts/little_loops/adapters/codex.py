@@ -6,6 +6,8 @@ Migrated from ``cli/adapt_skills_for_codex.py`` and
 
 from __future__ import annotations
 
+import os
+import re
 from pathlib import Path
 
 import yaml
@@ -226,6 +228,56 @@ def _format_agent_toml(
 
 
 # ---------------------------------------------------------------------------
+# MCP config helpers (BUG-3178)
+# ---------------------------------------------------------------------------
+
+
+def _codex_home_config_path() -> Path:
+    """Return Codex's real global config file path.
+
+    Codex reads MCP server definitions from a single global
+    ``~/.codex/config.toml`` (or ``$CODEX_HOME/config.toml`` when that
+    environment variable is set, mirroring Codex's own override), not a
+    project-local file — confirmed by the ``.ll/learning-tests/codex.md``
+    learning test.
+    """
+    home = os.environ.get("CODEX_HOME")
+    base = Path(home) if home else Path.home() / ".codex"
+    return base / "config.toml"
+
+
+def _find_ll_mcp_block(text: str) -> tuple[int, int, bool] | None:
+    """Locate the ``[mcp_servers.ll-mcp]`` table in *text*, if present.
+
+    Returns ``(block_start, block_end, marker_owned)``:
+
+    - ``block_start``/``block_end`` bound the table, including its leading
+      marker comment line when *marker_owned* is true; the table body runs
+      until the next top-level ``[...]`` header or end of file.
+    - ``marker_owned`` is true only when the line immediately preceding the
+      table header is one of ``_LL_GENERATED_MARKERS`` — i.e. ll-adapt wrote
+      this table itself and may safely rewrite it. A table with no marker is
+      user-authored and must be left untouched.
+
+    Returns ``None`` when no ``[mcp_servers.ll-mcp]`` table exists.
+    """
+    header = re.search(r"^\[mcp_servers\.ll-mcp\]\s*$", text, re.MULTILINE)
+    if header is None:
+        return None
+
+    next_table = re.search(r"^\[", text[header.end() :], re.MULTILINE)
+    block_end = header.end() + next_table.start() if next_table else len(text)
+
+    prefix = text[: header.start()]
+    for marker in _LL_GENERATED_MARKERS:
+        marker_line = marker + "\n"
+        if prefix.endswith(marker_line):
+            return header.start() - len(marker_line), block_end, True
+
+    return header.start(), block_end, False
+
+
+# ---------------------------------------------------------------------------
 # CodexEmitter
 # ---------------------------------------------------------------------------
 
@@ -373,32 +425,54 @@ class CodexEmitter:
         return "adapted"
 
     def emit_mcp_config(self, meta: dict) -> str:
-        """Emit ``<output_dir>/ll-mcp.toml`` registering the ``ll-mcp`` server."""
-        output_dir: Path = meta["output_dir"]
+        """Merge an ``[mcp_servers.ll-mcp]`` definition into Codex's global config.
+
+        Codex has no project-local MCP config read path (see
+        ``_codex_home_config_path``'s docstring), so — unlike every other
+        ``HostEmitter`` — this method deliberately ignores
+        ``meta["output_dir"]`` (the project-relative directory the CLI
+        computes for every host) and targets Codex's real global
+        ``config.toml`` instead. The write is a targeted block replace, not a
+        full-file overwrite or re-serialization, so unrelated tables
+        (other ``[mcp_servers.*]`` entries, ``[projects."..."]`` sections)
+        are preserved byte-for-byte.
+        """
         apply: bool = meta["apply"]
         quiet: bool = meta["quiet"]
 
-        new_content = f'{_MARKER}\nmcp_servers = ["ll-mcp"]\n'
-        out_toml = output_dir / "ll-mcp.toml"
+        config_path = _codex_home_config_path()
+        new_block = f'{_MARKER}\n[mcp_servers.ll-mcp]\ncommand = "ll-mcp"\nargs = []\n'
 
-        if out_toml.exists():
-            existing = out_toml.read_text()
-            if not any(existing.startswith(m) for m in _LL_GENERATED_MARKERS):
+        existing = config_path.read_text() if config_path.exists() else ""
+        found = _find_ll_mcp_block(existing)
+
+        if found is not None:
+            block_start, block_end, marker_owned = found
+            if not marker_owned:
                 if not quiet:
-                    print("  SKIP   mcp-config: user-authored file (no marker)")
+                    print(
+                        "  SKIP   mcp-config: user-authored [mcp_servers.ll-mcp] table (no marker)"
+                    )
                 return "skipped"
-            if existing == new_content:
+            if existing[block_start:block_end] == new_block:
                 if not quiet:
                     print("  SKIP   mcp-config: already up to date")
                 return "skipped"
+            new_text = existing[:block_start] + new_block + existing[block_end:]
+        else:
+            if existing and not existing.endswith("\n"):
+                existing += "\n"
+            if existing and not existing.endswith("\n\n"):
+                existing += "\n"
+            new_text = existing + new_block
 
         if apply:
-            output_dir.mkdir(parents=True, exist_ok=True)
-            out_toml.write_text(new_content)
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config_path.write_text(new_text)
             if not quiet:
-                print("  APPLY  mcp-config: ll-mcp")
+                print(f"  APPLY  mcp-config: ll-mcp ({config_path})")
         else:
             if not quiet:
-                print("  DRY    mcp-config: ll-mcp")
+                print(f"  DRY    mcp-config: ll-mcp ({config_path})")
 
         return "adapted"

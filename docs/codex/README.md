@@ -29,7 +29,8 @@ Hook intents reach the same host-agnostic Python dispatcher (`scripts/little_loo
 
 ### Skill and command discovery
 
-After running `ll-adapt --host codex --apply` once, all `ll` skills and commands appear in Codex as `~/.codex/skills/<name>/SKILL.md` entries, making `/ll:*` slash commands discoverable from the Codex TUI. The same run writes `.codex/ll-mcp.toml`, registering the `ll-mcp` server.
+After running `ll-adapt --host codex --apply` once, all `ll` skills and commands appear in Codex as `~/.codex/skills/<name>/SKILL.md` entries, making `/ll:*` slash commands discoverable from the Codex TUI. The same run merges an `[mcp_servers.ll-mcp]` definition into Codex's global
+`~/.codex/config.toml` (or `$CODEX_HOME/config.toml`), registering the `ll-mcp` server.
 
 ---
 

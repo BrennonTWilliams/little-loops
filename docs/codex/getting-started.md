@@ -91,7 +91,8 @@ Run `ll-adapt --host codex --apply` once after install to bridge all little-loop
 ll-adapt --host codex --apply
 ```
 
-After this step, typing `/ll:` in the Codex TUI will show the full list of available commands (e.g., `/ll:manage-issue`, `/ll:scan-codebase`, `/ll:prioritize-issues`). It also writes `.codex/agents/*.toml` so you can select ll agents via `--agent <name>` (e.g., `--agent codebase-analyzer`), and `.codex/ll-mcp.toml` registering the `ll-mcp` server.
+After this step, typing `/ll:` in the Codex TUI will show the full list of available commands (e.g., `/ll:manage-issue`, `/ll:scan-codebase`, `/ll:prioritize-issues`). It also writes `.codex/agents/*.toml` so you can select ll agents via `--agent <name>` (e.g., `--agent codebase-analyzer`), and merges an `[mcp_servers.ll-mcp]` definition into Codex's global `~/.codex/config.toml`
+registering the `ll-mcp` server.
 
 Re-run this command after upgrading little-loops or adding new skills/agents to pick up any changes.
 

@@ -47,7 +47,9 @@ After running `ll-adapt --host codex --apply` (see [Getting Started](getting-sta
 /ll:create-sprint
 ```
 
-Skills are installed to `~/.codex/skills/<name>/SKILL.md`. Re-run `ll-adapt --host codex --apply` after upgrading little-loops to pick up new or updated skills. The same run also writes `.codex/ll-mcp.toml`, registering the `ll-mcp` server (FEAT-3138).
+Skills are installed to `~/.codex/skills/<name>/SKILL.md`. Re-run `ll-adapt --host codex --apply` after upgrading little-loops to pick up new or updated skills. The same run also merges an `[mcp_servers.ll-mcp]` definition into Codex's global
+`~/.codex/config.toml` (or `$CODEX_HOME/config.toml`), registering the `ll-mcp` server
+(FEAT-3138, corrected under BUG-3178).
 
 ---
 

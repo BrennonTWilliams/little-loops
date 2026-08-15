@@ -4182,7 +4182,7 @@ ll-generate-skill-descriptions --quiet       # Suppress per-skill output
 
 ### ll-adapt
 
-Unified host-parameterized adapter. Dispatches to a host-specific emitter via `--host <host>` and generates all skill, command, agent, and MCP config artefacts for that host in one pass. Codex additionally emits a TOML MCP config snippet (`.codex/ll-mcp.toml`) registering the `ll-mcp` server (FEAT-3138); `--host claude-code` emits a JSON `.mcp.json` snippet at the project root instead, merging into (not overwriting) any existing `mcpServers` content (FEAT-3139); other hosts skip this artefact until their own emitter is implemented.
+Unified host-parameterized adapter. Dispatches to a host-specific emitter via `--host <host>` and generates all skill, command, agent, and MCP config artefacts for that host in one pass. Codex additionally merges an `[mcp_servers.ll-mcp]` TOML table into its global `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`) registering the `ll-mcp` server (FEAT-3138, corrected under BUG-3178 — Codex has no project-local MCP config read path); `--host claude-code` emits a JSON `.mcp.json` snippet at the project root instead, merging into (not overwriting) any existing `mcpServers` content (FEAT-3139); other hosts skip this artefact until their own emitter is implemented.
 
 **Flags:**
 
@@ -4272,7 +4272,7 @@ ten coarse tools over the `little_loops` library. Five read: `issues_query`, `is
 `issue_capture`, `issue_set_status`, `issue_link`, `issue_append_log` (FEAT-3149). One
 starts a run: `loop_start` (FEAT-3151, see below). Started by an MCP-capable host (Claude
 Code, Codex, ...) from the config `ll-adapt --host <host> --apply` emits (`.mcp.json`,
-`ll-mcp.toml`) — not run directly by a human. Requires the `mcp` optional extra
+Codex's `~/.codex/config.toml`) — not run directly by a human. Requires the `mcp` optional extra
 (`pip install "little-loops[mcp]"`); without it, exits `2` with an actionable message
 instead of an `ImportError`.
 

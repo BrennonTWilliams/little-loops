@@ -1,0 +1,18 @@
+=== Claim 1: [mcp_servers.<name>] table with command key ===
+mcp_servers keys: ['RepoPrompt']
+  RepoPrompt: has 'command' key = True, value='<abs-path-to-some-cli-binary>'
+
+=== Claim 2: optional args/tool_timeout_sec/enabled keys present ===
+  RepoPrompt: keys=['args', 'command', 'enabled', 'tool_timeout_sec']
+
+=== Claim 3: MCP config lives in single global ~/.codex/config.toml, not per-project ===
+home_config path: <redacted-home>/.codex/config.toml exists: True
+projects section entries (sample): ['<abs-path-to-a-project-checkout>', '<abs-tmp-path>/test_keyboard_interrupt_return1', '<abs-tmp-path>/test_keyboard_interrupt_return1']
+any [projects.*] table itself carries mcp_servers keys: False
+
+=== Claim 4: no project-local .codex/*.toml MCP file precedent on disk ===
+repo .codex/ contents: ['agents']
+any *mcp* file under repo .codex/: []
+
+=== Claim 5 (contrast): .codex/agents/ IS a known project-local read path ===
+repo .codex/agents/ exists: True entries: [PosixPath('.codex/agents/loop-specialist.toml'), PosixPath('.codex/agents/plugin-config-auditor.toml'), PosixPath('.codex/agents/codebase-pattern-finder.toml'), PosixPath('.codex/agents/workflow-pattern-analyzer.toml'), PosixPath('.codex/agents/consistency-checker.toml'), PosixPath('.codex/agents/web-search-researcher.toml'), PosixPath('.codex/agents/codebase-analyzer.toml'), PosixPath('.codex/agents/codebase-locator.toml'), PosixPath('.codex/agents/prompt-optimizer.toml')]

@@ -9892,7 +9892,7 @@ class AdapterError(Exception): ...
 
 | Class | Host key | Status |
 |-------|----------|--------|
-| `CodexEmitter` | `"codex"` | Implemented (FEAT-2391) — emits `.codex/` skill/command/agent files; `emit_mcp_config` writes `ll-mcp.toml` (`mcp_servers = ["ll-mcp"]`) |
+| `CodexEmitter` | `"codex"` | Implemented (FEAT-2391) — emits `.codex/` skill/command/agent files; `emit_mcp_config` ignores `output_dir` and merges an `[mcp_servers.ll-mcp]` table (`command = "ll-mcp"`) into Codex's global `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`) — corrected under BUG-3178, since Codex has no project-local MCP config read path |
 | `GeminiEmitter` | `"gemini"` | Implemented (FEAT-2392) — emits `.gemini/` skill/command/agent files; `emit_mcp_config` is a stub (no native MCP config yet) |
 | `OmpEmitter` | `"omp"` | Implemented (FEAT-3104/FEAT-3105) — emits `.omp/skills/`, flat `.omp/commands/`, and `.omp/agents/` files; `emit_mcp_config` is a stub |
 | `KimiEmitter` | `"kimi-code"` | Implemented (EPIC-2910) — emits skill/command/agent files for Kimi Code; `emit_mcp_config` is a stub. Host key is `"kimi-code"`, not `"kimi"`, to match its `host_runner` registry key. |

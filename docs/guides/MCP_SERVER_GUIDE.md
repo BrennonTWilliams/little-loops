@@ -114,11 +114,15 @@ existing `mcpServers` content:
 ll-adapt --host codex --apply
 ```
 
-The same run that bridges skills, commands, and agent personas into Codex also writes
-`.codex/ll-mcp.toml`:
+The same run that bridges skills, commands, and agent personas into Codex also merges an
+`[mcp_servers.ll-mcp]` table into Codex's global `~/.codex/config.toml` (or
+`$CODEX_HOME/config.toml`) — Codex has no project-local MCP config read path, so this is
+the one emitter that writes outside the project directory:
 
 ```toml
-mcp_servers = ["ll-mcp"]
+[mcp_servers.ll-mcp]
+command = "ll-mcp"
+args = []
 ```
 
 ### Claude Desktop and other MCP clients
