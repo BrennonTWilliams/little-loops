@@ -12,6 +12,8 @@ parent: EPIC-3127
 labels:
 - mcp
 - multi-host
+relates_to:
+- BUG-3177
 testable: true
 learning_tests_required:
 - codex

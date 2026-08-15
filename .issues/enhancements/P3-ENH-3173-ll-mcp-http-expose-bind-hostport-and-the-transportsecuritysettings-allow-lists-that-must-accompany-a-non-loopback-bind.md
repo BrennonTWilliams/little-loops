@@ -13,6 +13,7 @@ labels:
 - mcp
 relates_to:
 - FEAT-3143
+- ENH-3171
 ---
 
 # ENH-3173: ll-mcp --http: expose bind host/port (and the TransportSecuritySettings allow-lists that must accompany a non-loopback bind)
@@ -43,6 +44,11 @@ Expose `host` and `port` through `--host` / `--port` on `main_mcp` and through a
 config block (`mcp.http.host` / `mcp.http.port`), with the flag winning. The `mcp` block
 already exists in `config-schema.json` for `transport_policy`, so this is a sibling key,
 not a new top-level section.
+
+**Coordinate with ENH-3171** (`--project-root`): both issues add flags to `main_mcp`,
+which today is deliberately not an `argparse` CLI (it checks a bare `--http` literal).
+Whichever lands first should make the argparse decision once; the second builds on it
+rather than accreting another bare-literal check or independently introducing a parser.
 
 Two constraints that must survive:
 

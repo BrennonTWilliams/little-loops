@@ -15,6 +15,12 @@ decision_needed: false
 testable: true
 learning_tests_required:
 - hatchling
+confidence_score: 100
+outcome_confidence: 97
+score_complexity: 25
+score_test_coverage: 22
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3179: python -m build fails on main: hatchling rejects readme = '../README.md'
@@ -258,6 +264,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-15T04:12:51 - `d34d76d8-b52f-41f7-9e1f-0d7994d60986.jsonl`
 - `/ll:refine-issue` - 2026-08-15T04:01:23 - `57b2face-63ba-4158-8d18-dd727b2a0aeb.jsonl`
 - `/ll:capture-issue` - 2026-08-15T03:55:19 - `49e15b7f-91ee-43ed-876b-a654ebdcd023.jsonl`
 

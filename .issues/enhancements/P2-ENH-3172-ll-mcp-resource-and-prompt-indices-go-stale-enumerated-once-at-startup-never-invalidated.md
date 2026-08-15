@@ -14,6 +14,7 @@ labels:
 relates_to:
 - FEAT-3136
 - FEAT-3137
+- BUG-3177
 depends_on:
 - ENH-3171
 ---
@@ -67,6 +68,13 @@ description of a tier-1 read-only server; it is a poor fit now that the same pro
 Option 1 plus 3 is the shape that actually fixes the observable behavior; 2 alone does
 not. The interaction with the existing `CacheHint` values is the real design question and
 should be settled before implementation.
+
+**Coordinate with BUG-3177**: the prompt-index rebuild path re-runs
+`build_prompt_index()`, and BUG-3177 replaces the bare `_find_plugin_root() / "skills"`
+lookup with a multi-step skills-root resolution order. Any rebuild here must reuse
+whatever resolution BUG-3177 lands (thread the resolved root, or the resolver, into the
+rebuild) — re-deriving the path independently would reintroduce the misresolution
+BUG-3177 fixes on every rebuild.
 
 
 ## Current Behavior
