@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "little-loops"
 version = "1.155.0"
 description = "Development workflow toolkit for AI coding-agent CLIs (Claude Code, Codex, Gemini, Kimi Code) with issue management, code quality commands, and automated processing"
-readme = "../README.md"
+readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
@@ -174,7 +174,7 @@ webhooks = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["little_loops"]
-include = ["little_loops/**", "LICENSE"]
+include = ["little_loops/**", "LICENSE", "README.md"]
 
 [tool.ruff]
 line-length = 100

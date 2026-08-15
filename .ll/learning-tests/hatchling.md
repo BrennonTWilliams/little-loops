@@ -13,7 +13,9 @@ assertions:
 - claim: 'building the wheel with the current unpinned `requires = ["hatchling"]`
     (resolves latest hatchling, 1.31.0 observed) succeeds against this project''s
     current pyproject.toml as committed on main'
-  result: fail
+  result: pass
+  note: re-verified 2026-08-15 after BUG-3179 (readme brought inside scripts/,
+    no longer escapes the packaging root via ../)
 - claim: PACKAGE_DATA_ASSETS registration in package_data.py is required for a file
     to be included in the built wheel
   result: fail

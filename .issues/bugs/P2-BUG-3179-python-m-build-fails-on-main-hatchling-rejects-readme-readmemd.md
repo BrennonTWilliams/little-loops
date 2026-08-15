@@ -3,10 +3,11 @@ id: BUG-3179
 type: BUG
 title: 'python -m build fails on main: hatchling rejects readme = ''../README.md'''
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T03:55:13Z'
+completed_at: '2026-08-15T05:02:49Z'
 relates_to:
 - BUG-3177
 blocks:
@@ -254,16 +255,49 @@ _Added by `/ll:refine-issue` — 2026-08-15 — based on codebase analysis:_
   the duplicated README silently diverging, which step 2 guards against.
 - **Breaking Change**: No.
 
+## Resolution
+
+Implemented Option B exactly as scoped:
+
+1. Duplicated `README.md` into `scripts/README.md` (matching the `LICENSE`
+   precedent) and changed `scripts/pyproject.toml:9` from
+   `readme = "../README.md"` to `readme = "README.md"`. Added `"README.md"` to
+   `include` at `scripts/pyproject.toml:177` alongside `LICENSE`.
+2. Added `scripts/tests/test_packaging_duplicate_files.py` — a non-integration-gated
+   drift guard asserting both `README.md` and `LICENSE` stay byte-identical between
+   the repo root and `scripts/`, closing the pre-existing unguarded `LICENSE` gap too.
+3. Left `[build-system].requires = ["hatchling"]` unpinned per the plan (Option A's
+   pin stays in reserve, not applied).
+4. Verified `python -m build --wheel --outdir <tmp> scripts/` exits 0 from a clean
+   isolated build environment and the wheel's `METADATA` carries the full long
+   description (16332 chars).
+5. Verified `PYTEST_INTEGRATION=1 python -m pytest scripts/tests/test_wheel_smoke.py -v`
+   passes end-to-end (7/7). One additional pre-existing failure surfaced once the
+   build unblocked the class: `test_schema_loads_in_wheel_install` asserted
+   `learning_tests.enabled` defaults to `False`, but that default was deliberately
+   flipped to `True` in `7d72f0fd` (ENH-2560, 2026-07-08) — the test was never
+   updated because the wheel build had been broken since before that change, so
+   the assertion never ran. Fixed the stale assertion to `True` to match the
+   schema; this is unrelated to the readme/packaging root cause but was required
+   to satisfy the issue's own acceptance criteria (full-suite pass).
+6. Re-verified `.ll/learning-tests/hatchling.md`'s previously-failing unpinned-build
+   assertion — flipped to `pass` with a dated note, and appended the fresh
+   re-verification build log to `.ll/learning-tests/raw/hatchling.txt`.
+
+Full `python -m pytest scripts/tests/` suite: 19291 passed, 43 skipped. `ruff check`
+and `mypy` clean on all touched files.
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Status
 
-**Open** | Created: 2026-08-15 | Priority: P2 | Blocks: BUG-3177
+**Done** | Created: 2026-08-15 | Priority: P2 | Blocks: BUG-3177
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-15T05:02:43 - `283e8dd6-e2c8-4d5b-b5ab-2fada1a43eec.jsonl`
 - `/ll:confidence-check` - 2026-08-15T04:12:51 - `d34d76d8-b52f-41f7-9e1f-0d7994d60986.jsonl`
 - `/ll:refine-issue` - 2026-08-15T04:01:23 - `57b2face-63ba-4158-8d18-dd727b2a0aeb.jsonl`
 - `/ll:capture-issue` - 2026-08-15T03:55:19 - `49e15b7f-91ee-43ed-876b-a654ebdcd023.jsonl`
