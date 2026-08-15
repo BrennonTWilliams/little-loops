@@ -87,10 +87,18 @@ The database is **additive-only** — backfill is idempotent (dedup indexes prev
 | v28 | ENH-2505 | `subagent_runs` table (subagent Task/Agent spawn tree) |
 | v29 | ENH-2723 | `run_id` column on `usage_events` |
 | v30 | ENH-2506 | `hook_events` table (per-fire hook execution telemetry) |
+| v31 | ENH-2739 | `harness_events` table (ll-harness/eval outcome telemetry; `parent_id` links DSL per-task rows, ENH-2740) |
 | v32 | ENH-2498 | `prompt_opt_events` table (prompt-optimization offer/outcome telemetry) |
 | v33 | ENH-2504 | `verdict_events` table (verifier verdict outcome telemetry) |
+| v34 | ENH-2507 | `context_pressure_events` table (context-window pressure measurements) |
+| v35 | ENH-2512 | `review_events` table (reviewer/audit outcome telemetry) |
+| v36 | ENH-2771 | `issue_num` column on `issue_events`/`issue_snapshots` + collision-merge and type-blind dedup indexes; rebuilt `issue_sessions` view |
+| v37 | ENH-2814 | `loop_runs.failure_terminal` column (NULL on pre-v37 rows — falls back to the legacy name check) |
+| v38 | ENH-2866 | `orchestration_runs.base_sha` / `base_dirty` (dequeue-time base-state stamp) |
+| v39 | ENH-141 | `harness_events.target_content_hash` / `target_path` / `dirty` (content-pinning a harness run) |
+| v40 | ENH-2997 | `prepatch_evidence` table |
 
-v15–v18 and v20–v33 are EPIC-2457 coverage expansions and related observability migrations; all migrations are additive — no user action is required when the schema version advances.
+v15–v18 and v20–v40 are EPIC-2457 coverage expansions and related observability migrations; all migrations are additive — no user action is required when the schema version advances. Migrations v37–v39 add columns without backfilling them, so rows written before those versions carry `NULL` in the new columns.
 
 ---
 
@@ -98,6 +106,7 @@ v15–v18 and v20–v33 are EPIC-2457 coverage expansions and related observabil
 
 | Table | What it stores |
 |-------|---------------|
+| `raw_events` | Verbatim session-JSONL records — the **source of truth** every JSONL-derived cache table is replayed from (`rebuild()`). Carries a `compacted` flag set by `ll-session compact`; only `compacted=1` rows are eligible for `prune` (ENH-2581, v19). |
 | `tool_events` | Every tool call (Bash, Read, Write, etc.) with byte counts (`bytes_in`, `bytes_out`, `result_size`), `cache_hit` flag, and `agent_type` (nullable; populated with the dispatched subagent name for `tool_name="Task"` rows, `NULL` otherwise — ENH-2497) |
 | `file_events` | File reads and writes with path, operation, and associated issue ID |
 | `issue_events` | Issue state transitions: captured, started, completed, deferred. v16 added a `session_id` column (indexed) so the `issue_sessions` view no longer relies on timestamp overlap (ENH-2462). |
@@ -122,6 +131,10 @@ v15–v18 and v20–v33 are EPIC-2457 coverage expansions and related observabil
 | `session_lifecycle_events` | Session-lifecycle/handoff transitions: `session_id`, `event` (`handoff_needed`/`compaction`/`stale_ref_sweep`, open TEXT — no CHECK constraint), `detail` (JSON), `head_sha`, `branch`. Written best-effort by `record_session_lifecycle_event()` from `context-monitor.sh` (80%-threshold crossing), `pre_compact.handle()` (after state persistence), and `sweep_stale_refs.handle()` (once per invocation, including zero findings). First-write-only — no historical backfill. Queryable via `ll-session recent --kind session_lifecycle`, FTS search, and `history_reader.recent_lifecycle_events()`/`handoff_frequency()` (ENH-2495, v27). |
 | `subagent_runs` | Subagent (Task/Agent) spawn tree: `parent_session_id`, `agent_id` (spawn-local — scoped to its parent, not a `sessions.session_id`), `agent_type`, `agent_transcript_path` (nested `<parent-transcript-dir>/subagents/agent-<id>.jsonl`), `started_at`, `ended_at`, `status` (`running`/`completed`/`failed`/`timeout`). Written by the `SubagentStart`/`SubagentStop` lifecycle hooks (`record_subagent_run_start()` INSERT OR IGNORE, `record_subagent_run_stop()` UPDATE, matching on the composite `(parent_session_id, agent_id)` key). Reconciled from disk for out-of-band spawns by `ll-session backfill` (all backfilled rows land as `status="completed"`). Queryable via `ll-session recent --kind subagent_run`, FTS search, and `history_reader.subagent_tree()`/`subagent_retries()`/`subagent_budget()` (ENH-2505, v28). |
 | `hook_events` | Per-fire hook execution telemetry: `event_name`, `matcher`, `script`, `exit_code`, `duration_ms`, `stderr_preview` (truncated to 512 bytes), `session_id`, `head_sha`, `branch`. Live-write-only — no `raw_events` source exists (the host doesn't emit hook execution results into the transcript), so there is no backfill and the table is excluded from `rebuild()`. Written by `hook_event_context()`, wrapped once around every Python-dispatched intent inside `main_hooks()`; `Stop`/`SessionEnd` (bash-only) go through the `hooks/scripts/record-hook-event.sh` shim instead. Queryable via `ll-session recent --kind hook_event`, FTS search, and `history_reader.recent_hook_events()`/`hook_failure_rate()`/`hook_latency_p95()` (ENH-2506, v30). |
+| `harness_events` | `ll-harness` / eval-run outcome telemetry, including `semantic_*` scoring columns and a `parent_id` linking each DSL per-task row to its parent run (ENH-2740). v39 added `target_content_hash`, `target_path`, and `dirty`, which content-pin a run to the artifact it evaluated. Live-write-only — excluded from `rebuild()`. Queryable via `ll-session recent --kind harness` (ENH-2739, v31). |
+| `context_pressure_events` | Context-window pressure measurements emitted by `context-monitor.sh`. Live-write-only. Queryable via `ll-session recent --kind context_pressure` (ENH-2507, v34). |
+| `review_events` | Reviewer/audit outcome telemetry. Live-write-only. Queryable via `ll-session recent --kind review` (ENH-2512, v35). |
+| `prepatch_evidence` | Pre-patch evidence captured during implementation runs: `issue_id`, `run_id`, `state`, `evidence_json`, `created_at`; indexed by `issue_id` (ENH-2997, v40). |
 
 Capture is controlled per-signal via `analytics.capture.*` config (`scripts/little_loops/config-schema.json`):
 - `analytics.capture.file_events` (bool, default `true`) — gate `file_events` recording
@@ -129,6 +142,7 @@ Capture is controlled per-signal via `analytics.capture.*` config (`scripts/litt
 - `analytics.capture.skills` (array of glob patterns, default `["*"]`) — which skill names get recorded to `skill_events`; e.g. `["create-sprint", "manage-issue"]` records only those skills
 - `analytics.capture.cli_commands` (array of glob patterns, default `["*"]`) — which `ll-*` CLI command names get recorded to `cli_events`
 - `analytics.capture.hooks` (bool, default `true`) — gate `hook_events` recording (ENH-2506)
+- `analytics.capture.usage_events` (bool, default `true`) — gate `usage_events` recording (ENH-2461/ENH-2724)
 - `analytics.capture.correction_patterns` (array of regex strings, default `[]`) — additional patterns appended to the built-in correction detector (built-ins always remain active; see [What Gets Recorded](#what-gets-recorded) for the full built-in list)
 
 ---
@@ -143,11 +157,30 @@ The database starts empty. Populate it by backfilling from your existing session
 ll-session backfill
 ```
 
-Reads three sources sequentially:
+Reads these sources sequentially:
 
-1. **Issues directory** (`.issues/*/`) → `issue_events`
+1. **Issues directory** (`.issues/*/`) → `issue_events`, `issue_snapshots`
 2. **Loop state** (`.loops/.running/`, `.loops/.history/`) → `loop_events`
-3. **Session JSONL files** (discovered from your project folder) → `tool_events`, `message_events`, `assistant_messages`, `sessions`, `user_corrections`
+3. **Session JSONL files** (discovered from your project folder) → `raw_events`
+4. **Git history** (when the project has a `.git`) → `commit_events`
+5. **Learning Test Registry** (`.ll/learning-tests/`) → `learning_test_events`
+6. **Subagent transcripts** (under the sessions root) → `subagent_runs`
+
+> **Since ENH-2581, session JSONL lands in `raw_events` and nowhere else.**
+> `raw_events` is the source of truth; the JSONL-derived cache tables
+> (`tool_events`, `message_events`, `assistant_messages`, `sessions`,
+> `user_corrections`, `skill_events`, `summary_nodes`/`summary_spans`,
+> `usage_events`) are **not** populated by a plain `backfill`. To (re)derive
+> them, replay `raw_events`:
+>
+> ```bash
+> ll-session backfill --rebuild   # backfill, then replay raw_events into the cache tables
+> ll-session rebuild              # replay only; idempotent
+> ```
+>
+> `rebuild` wipes and re-derives those tables from `raw_events`, so running it
+> is safe and repeatable. If a query against `tool_events` or `message_events`
+> comes back empty on a freshly-backfilled database, this is why.
 
 Beyond backfill, `issue_events` rows also arrive through two live channels:
 the EventBus-emitted `issue.*` path (`SQLiteTransport.send()`, FSM-loop/
@@ -157,21 +190,19 @@ side-effect block — added by BUG-2770 so a manual/CLI status transition
 produces the same row a bus-emitted one would, keeping `issue_sessions` and
 `issue_effort()` populated regardless of which path closed the issue.
 
-Output shows counts per table:
+Output is a single human-readable summary line (not JSON):
 
 ```
-{
-  "issues": 42,
-  "loops": 8,
-  "tools": 1204,
-  "messages": 389,
-  "assistant_messages": 401,
-  "sessions": 23,
-  "corrections": 17,
-  "summaries": 0,
-  "snapshots": 0
-}
+Backfilled 1687 rows (issues=42, loops=8, raw_events=1204, snapshots=12, commits=389, learning_tests=32)
 ```
+
+With `--rebuild`, the replayed cache-table counts are appended to the same line:
+
+```
+Backfilled 3402 rows (issues=42, loops=8, raw_events=1204, snapshots=12, commits=389, learning_tests=32, tools=1204, messages=389, sessions=23, corrections=17, summaries=0)
+```
+
+`rebuild` and `compact` do support `--json`; `backfill` does not.
 
 ### Incremental backfill
 
@@ -201,7 +232,7 @@ ll-session search --fts "rate limit" --kind correction
 ll-session search --fts "worktree" --kind tool --limit 5
 ```
 
-Returns BM25-ranked results across all event tables. Use `--kind` to restrict to one table type: `tool`, `file`, `issue`, `loop`, `correction`, `message`, `skill`, `cli`, `snapshot`, `commit`, `test_run`, `usage`, `orchestration_run`, `loop_run`, `learning_test`, `session_lifecycle`, `subagent_run`, `hook_event`, `prompt_opt` (the full list is sourced from `VALID_KINDS`).
+Returns BM25-ranked results across all event tables. Use `--kind` to restrict to one table type: `tool`, `file`, `issue`, `loop`, `correction`, `message`, `skill`, `cli`, `snapshot`, `commit`, `test_run`, `usage`, `orchestration_run`, `loop_run`, `learning_test`, `session_lifecycle`, `subagent_run`, `hook_event`, `harness`, `prompt_opt`, `verdict`, `context_pressure`, `review` — 23 kinds in total, sourced from `VALID_KINDS` in `session_store/schema.py`. Note the kind for `harness_events` is `harness`, not `harness_event`.
 
 ### Most recent events
 
@@ -239,7 +270,7 @@ ll-session export --since 2026-06-01 -o export.jsonl  # date-filtered, to a file
 ll-session export --include-messages                  # also include message_events (~46K rows)
 ```
 
-Dumps selected tables as newline-delimited JSON (one record per line, each tagged with a `"type"` field) for visualization or external tooling. `--tables` accepts one or more of: `session`, `issue_event`, `issue_snapshot`, `skill_event`, `loop_event`, `correction`, `summary_node`, `commit_event`, `test_run_event`, `usage_event`, `orchestration_run`, `message_event`. When `--tables` is omitted, the default set is every type except `message_event` (pass `--include-messages` to add it back, or select it explicitly via `--tables`). `--since` filters each table by its own timestamp column (`started_at` for `session`, `created_at` for `summary_node`, `ended_at` for `orchestration_run`, `ts` for the rest) and accepts an ISO 8601 date or datetime. `-o FILE` / `--output FILE` writes to a file instead of stdout and prints a summary count on success; without it, records stream to stdout with no trailing summary (so output stays pipeable).
+Dumps selected tables as newline-delimited JSON (one record per line, each tagged with a `"type"` field) for visualization or external tooling. `--tables` accepts one or more of: `session`, `issue_event`, `issue_snapshot`, `skill_event`, `loop_event`, `correction`, `summary_node`, `message_event`, `commit_event`, `test_run_event`, `usage_event`, `orchestration_run`, `loop_run`, `session_lifecycle_event`, `harness_event`, `prompt_opt_event`, `verdict_event`, `context_pressure_event`, `review_event` — 19 in total, sourced from `_EXPORT_TABLE_MAP` in `session_store/queries.py`. When `--tables` is omitted, the default set is every type except `message_event` **and** `loop_run` (pass `--include-messages` to add messages back, or select either explicitly via `--tables`). `--since` filters each table by its own timestamp column (`started_at` for `session`, `created_at` for `summary_node`, `ended_at` for `orchestration_run`, `ts` for the rest) and accepts an ISO 8601 date or datetime. `-o FILE` / `--output FILE` writes to a file instead of stdout and prints a summary count on success; without it, records stream to stdout with no trailing summary (so output stays pipeable).
 
 ---
 
@@ -484,26 +515,36 @@ ll-session grep "auth" --summary-id 42   # search within a node's scope
 
 ## Retention & Pruning
 
-history.db grows over time. The `prune` command deletes raw events older than a configured age and VACUUMs the database:
+history.db grows over time. `prune` reclaims space — but since ENH-2581 it is the **second** step of a two-step flow, and running it alone deletes nothing.
 
 ```bash
-ll-session prune --dry-run   # show what would be deleted, without deleting
-ll-session prune             # apply
+ll-session compact           # step 1: fold aged raw_events into summary nodes, mark them compacted=1
+ll-session prune --dry-run   # step 2: show what would be deleted, without deleting
+ll-session prune             # step 2: apply
 ll-session prune --json      # machine-readable result
+
+ll-session compact --and-prune   # both steps in one invocation
 ```
 
-`--dry-run` counts eligible rows per table without deleting them (`vacuumed` is always `false` in this mode). `--json` prints the result dict instead of a human-readable summary.
+> **`prune` requires `compact` first.** A row is eligible for deletion only
+> when `compacted = 1`, which `ll-session compact` sets after folding the row
+> into a per-session `retention` summary node. On a database that has never
+> been compacted, `prune` passes its gates, finds nothing eligible, and reports
+> `0` deleted — which reads like a broken command but is the contract working
+> as intended.
 
-**Tables pruned** (age-based, by `ts` column): `tool_events`, `cli_events`, `file_events`, `message_events`. **Never pruned**, regardless of age: `issue_events`, `user_corrections` (and all other tables not in the prunable list) — these are considered high-value and are excluded by design.
+`--dry-run` counts eligible rows without deleting them (`vacuumed` is always `false` in this mode). `--json` prints the result dict instead of a human-readable summary.
+
+**What gets pruned**: `raw_events` rows only, and only those already marked `compacted = 1` and older than `raw_event_max_age_days`. **Nothing else is ever pruned** — the JSONL-derived cache tables (`tool_events`, `cli_events`, `file_events`, `message_events`, …) and the high-value tables (`issue_events`, `user_corrections`, …) are all untouched regardless of age. Pruning `raw_events` does not shrink those tables; it removes the verbatim source records that have already been summarised.
 
 **Gating:** both minimums below must be exceeded before *any* row is deleted (dual-gated, not either/or):
 
 - `analytics.retention.min_project_age_days` (default: 365) — project age is measured as `MIN(started_at)` from the `sessions` table, not wall-clock repo age
 - `analytics.retention.min_db_size_mb` (default: 800) — measured as the `.ll/history.db` file size on disk
 
-If either gate is unmet, `prune` returns a `gate_unmet` list explaining why and deletes nothing. If both gates pass but `raw_event_max_age_days` is `null`, pruning is considered to have "run" but no age cutoff is applied (no rows deleted). Otherwise, rows in the prunable tables older than the cutoff are deleted, the transaction is committed, and a `VACUUM` runs afterward on a separate connection (avoids transaction conflicts) to reclaim disk space.
+If either gate is unmet, `prune` returns a `gate_unmet` list explaining why and deletes nothing. If both gates pass but `raw_event_max_age_days` is `null`, pruning is considered to have "run" but no age cutoff is applied (no rows deleted). Otherwise, compacted `raw_events` rows older than the cutoff are deleted, the transaction is committed, and a `VACUUM` runs afterward on a separate connection (avoids transaction conflicts) to reclaim disk space.
 
-**Result shape** (both human and `--json` output derive from this dict): `pruned` (bool, whether pruning executed), `gate_unmet` (list of human-readable reasons), `project_age_days`, `db_size_mb`, `deleted` (dict of table → row count, actual or dry-run-projected), `vacuumed` (bool).
+**Result shape** (both human and `--json` output derive from this dict): `pruned` (bool, whether pruning executed), `gate_unmet` (list of human-readable reasons), `project_age_days`, `db_size_mb`, `deleted`, `vacuumed` (bool). `deleted` has exactly one key — `{"raw_events": N}` — or is empty `{}` when a gate was unmet or `raw_event_max_age_days` is `null`.
 
 **When to prune:** If your project is under 1 year old, leave the defaults alone — the guards prevent premature pruning. Only lower `raw_event_max_age_days` if `ll-session` commands feel slow (consistently > 500ms), which indicates the database has grown large.
 
@@ -553,6 +594,8 @@ All keys live under `history.*` and `analytics.*` in `.ll/ll-config.json`.
 | `analytics.capture.corrections` | `true` | Record user correction messages |
 | `analytics.capture.skills` | `["*"]` | Glob patterns for skill names to record to `skill_events` |
 | `analytics.capture.cli_commands` | `["*"]` | Glob patterns for CLI command names to record to `cli_events` |
+| `analytics.capture.hooks` | `true` | Record per-fire hook execution telemetry to `hook_events` (ENH-2506) |
+| `analytics.capture.usage_events` | `true` | Record per-invocation LLM token counts and cost to `usage_events` (ENH-2461/ENH-2724) |
 | `analytics.capture.correction_patterns` | `[]` | Additional regex patterns for correction detection |
 
 ---
