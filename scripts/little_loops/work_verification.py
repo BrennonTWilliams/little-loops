@@ -156,9 +156,7 @@ def _run_non_fsm_tamper_guard(
     return passed
 
 
-def _prepatch_git(
-    repo_root: Path, args: list[str], ok_codes: tuple[int, ...] = (0,)
-) -> str | None:
+def _prepatch_git(repo_root: Path, args: list[str], ok_codes: tuple[int, ...] = (0,)) -> str | None:
     """Run a git command, returning stdout only when its exit code is in *ok_codes*.
 
     Mirrors ``fsm/executor.py``'s ``_prepatch_git`` (ENH-2997): ``git diff

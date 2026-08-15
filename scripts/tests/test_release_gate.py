@@ -326,9 +326,7 @@ class TestReleaseGateRemediationText:
         _write_config(tmp_path, enabled=True, release_gate="warn")
         _write_record_file(tmp_path, "requests", "proven", date="2020-01-01")
         _write_record_file(tmp_path, "anthropic", "proven", date="2020-01-01")
-        _write_source_file(
-            tmp_path, "scripts/main.py", "import requests\nimport anthropic\n"
-        )
+        _write_source_file(tmp_path, "scripts/main.py", "import requests\nimport anthropic\n")
         run_release_gate(tmp_path, base_dir=_base_dir(tmp_path))
         out = capsys.readouterr().out
         assert 'll-learning-tests prove "requests"' in out

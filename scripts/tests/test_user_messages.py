@@ -402,9 +402,7 @@ class TestGetSessionsFolder:
         result = get_sessions_folder(host="claude-code")
         assert result == project_dir
 
-    def test_qwen_joins_chats_subdir(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_qwen_joins_chats_subdir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """qwen session JSONL nests under chats/ of the resolved project root."""
         fake_home = tmp_path / "home"
         encoded = encode_project_path(str(tmp_path.resolve()))

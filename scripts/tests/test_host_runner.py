@@ -1219,9 +1219,7 @@ class TestQwenRunner:
         runner = QwenRunner()
         with warnings.catch_warnings():
             warnings.simplefilter("error", CapabilityNotSupported)
-            invocation = runner.build_blocking_json(
-                prompt="hi", json_schema={"type": "object"}
-            )
+            invocation = runner.build_blocking_json(prompt="hi", json_schema={"type": "object"})
         assert "--json-schema" not in invocation.args
         assert invocation.capabilities.structured_output is True
 

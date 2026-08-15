@@ -225,8 +225,16 @@ class TestDecisionClusterDeletedStructural:
         data = _load_loop()
         states = data["states"]
         for name, state in states.items():
-            for edge in ("on_yes", "on_no", "on_partial", "on_error", "on_success", "on_failure",
-                         "next", "on_rate_limit_exhausted"):
+            for edge in (
+                "on_yes",
+                "on_no",
+                "on_partial",
+                "on_error",
+                "on_success",
+                "on_failure",
+                "next",
+                "on_rate_limit_exhausted",
+            ):
                 target = state.get(edge)
                 assert target not in self._DELETED_STATES, (
                     f"{name}.{edge} still references deleted state {target!r} (ENH-3090)"

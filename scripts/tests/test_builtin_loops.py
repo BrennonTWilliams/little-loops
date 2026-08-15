@@ -1532,9 +1532,9 @@ class TestRefineToReadyIssueSubLoop:
         assert state.get("on_error") == "check_ac_automatable", (
             f"check_hedges.on_error should be 'check_ac_automatable', got {state.get('on_error')!r}"
         )
-        assert state.get("action") == "ll-issues check-open-questions ${captured.issue_id.output}", (
-            f"check_hedges.action should be unchanged, got {state.get('action')!r}"
-        )
+        assert (
+            state.get("action") == "ll-issues check-open-questions ${captured.issue_id.output}"
+        ), f"check_hedges.action should be unchanged, got {state.get('action')!r}"
         assert state.get("fragment") == "shell_exit", (
             f"check_hedges.fragment should be unchanged, got {state.get('fragment')!r}"
         )
@@ -1592,9 +1592,7 @@ class TestRefineToReadyIssueSubLoop:
         action = data["states"].get("check_hedge_attempts", {}).get("action", "")
         script = action.replace("${context.run_dir}", str(run_dir))
         assert "${" not in script, f"unsubstituted interpolation token remains: {script}"
-        result = subprocess.run(
-            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True
-        )
+        result = subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
         assert result.returncode == 0, f"check_hedge_attempts failed: {result.stderr}"
         return result.stdout.strip()
 

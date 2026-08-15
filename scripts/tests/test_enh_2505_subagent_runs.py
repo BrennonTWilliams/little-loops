@@ -518,9 +518,7 @@ def _build_qwen_tree(
     if sidecar_text is not None:
         (session_dir / f"{stem}.meta.json").write_text(sidecar_text, encoding="utf-8")
     elif sidecar is not None:
-        (session_dir / f"{stem}.meta.json").write_text(
-            json.dumps(sidecar), encoding="utf-8"
-        )
+        (session_dir / f"{stem}.meta.json").write_text(json.dumps(sidecar), encoding="utf-8")
     return transcript
 
 
@@ -625,9 +623,7 @@ class TestQwenSubagentBackfill:
         assert count == 0
         assert total == 1
 
-    def test_sidecar_parent_session_id_preferred_over_dir_name(
-        self, tmp_path: Path
-    ) -> None:
+    def test_sidecar_parent_session_id_preferred_over_dir_name(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
         ensure_db(db)
         root = tmp_path / "project"

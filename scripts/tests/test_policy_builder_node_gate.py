@@ -88,7 +88,9 @@ def _require_node() -> str:
     """
     node = shutil.which("node")
     if node is None:
-        pytest.skip("node not installed; round-trip validate gate runs wherever Node >= 22 is available")
+        pytest.skip(
+            "node not installed; round-trip validate gate runs wherever Node >= 22 is available"
+        )
     major = _node_major(node)
     if major is None or major < 22:
         pytest.skip(f"Node >= 22 required for node ESM import; found major version {major}")

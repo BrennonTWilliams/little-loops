@@ -862,8 +862,7 @@ def _qwen_is_managed_group(group: Any) -> bool:
     if not isinstance(hooks, list) or not hooks:
         return False
     return all(
-        isinstance(h, dict)
-        and str(h.get("name", "")).startswith(_QWEN_MANAGED_NAME_PREFIX)
+        isinstance(h, dict) and str(h.get("name", "")).startswith(_QWEN_MANAGED_NAME_PREFIX)
         for h in hooks
     )
 

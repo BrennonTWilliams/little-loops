@@ -1999,9 +1999,7 @@ class TestSchemaV39HarnessContentPin:
         conn.row_factory = sqlite3.Row
         try:
             version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
-            row = conn.execute(
-                "SELECT * FROM harness_events WHERE target='echo hi'"
-            ).fetchone()
+            row = conn.execute("SELECT * FROM harness_events WHERE target='echo hi'").fetchone()
         finally:
             conn.close()
         assert int(version[0]) == SCHEMA_VERSION

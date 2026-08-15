@@ -201,9 +201,7 @@ class TestPrepatchCheckStateExample:
         assert "prepatch_check: fail" in PREPATCH_CHECK_STATE_EXAMPLE
         assert "llm_structured" in PREPATCH_CHECK_STATE_EXAMPLE
 
-    def test_example_is_not_emitted_by_either_generated_template(
-        self, project: Path
-    ) -> None:
+    def test_example_is_not_emitted_by_either_generated_template(self, project: Path) -> None:
         _write_issue(project, "FEAT-303", ["Criterion"])
         criteria_result = scaffold_verify("FEAT-303", adversarial=False)
         adversarial_result = scaffold_verify("FEAT-303", adversarial=True)

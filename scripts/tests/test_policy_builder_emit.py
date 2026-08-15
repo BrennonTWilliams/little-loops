@@ -141,7 +141,9 @@ class TestFeat2301UsabilityStructural:
         assert '<input type="text" id="f-fallback"' not in html
         fallback_row = re.search(r'<div class="row fallback-row"[^>]*>.*?</div>', html, re.DOTALL)
         assert fallback_row, "fallback-row element not found"
-        assert "del" not in fallback_row.group(0), "fallback footer must have no delete/remove control"
+        assert "del" not in fallback_row.group(0), (
+            "fallback footer must have no delete/remove control"
+        )
         assert "<input" not in fallback_row.group(0), "fallback footer must have no free-text input"
 
     def test_yaml_is_collapsed_behind_details(self, tmp_path: Path) -> None:
@@ -150,12 +152,16 @@ class TestFeat2301UsabilityStructural:
         assert m, 'expected a <details id="yaml-details"> wrapper around the YAML preview'
         assert "open" not in m.group(0), "YAML <details> must be collapsed by default (no `open`)"
         assert "<summary>" in html
-        details_block = re.search(r'<details[^>]*id="yaml-details"[^>]*>.*?</details>', html, re.DOTALL)
+        details_block = re.search(
+            r'<details[^>]*id="yaml-details"[^>]*>.*?</details>', html, re.DOTALL
+        )
         assert details_block is not None
         assert 'id="yaml-preview"' in details_block.group(0), (
             "the <pre> YAML preview must be nested inside the collapsed <details>"
         )
-        assert 'id="yaml-summary"' in html, "a plain-summary element must exist alongside the details"
+        assert 'id="yaml-summary"' in html, (
+            "a plain-summary element must exist alongside the details"
+        )
 
     def test_theme_resolution_order_is_stored_stamped_os_light(self, tmp_path: Path) -> None:
         html = _emit_html(tmp_path)
