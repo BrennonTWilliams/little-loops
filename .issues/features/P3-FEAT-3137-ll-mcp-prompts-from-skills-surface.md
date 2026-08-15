@@ -15,6 +15,7 @@ learning_tests_required:
 - mcp
 relates_to:
 - FEAT-3132
+- ENH-3172
 verify_verdict: VALID
 confidence_score: 90
 outcome_confidence: 86

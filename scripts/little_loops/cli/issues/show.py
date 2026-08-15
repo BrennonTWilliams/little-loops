@@ -17,6 +17,7 @@ from little_loops.cli.output import (
     terminal_width,
 )
 from little_loops.frontmatter import parse_frontmatter
+from little_loops.issue_parser import parse_issue_filename
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -110,29 +111,63 @@ def _resolve_issue_id(config: BRConfig, user_input: str) -> Path | None:
     if not candidates:
         return None
 
-    def _frontmatter_id(path: Path) -> str | None:
+    # The glob above is a substring match over the whole filename, so a title
+    # slug embedding another issue's number (e.g. "...-correct-epic-3127-..."
+    # in ENH-3144's slug) also lands here. Keep only files whose *anchored*
+    # `P?-TYPE-NNN-` position carries the requested number; fall back to the
+    # raw glob set only when no filename parses (legacy/unnormalized names).
+    anchored = [
+        p
+        for p in candidates
+        if (fid := parse_issue_filename(p.name)) is not None and fid.number == numeric_id
+    ]
+    if anchored:
+        candidates = anchored
+
+    def _frontmatter_identity(path: Path) -> tuple[str | None, str | None]:
+        """Return (type, number) claimed by frontmatter, format-agnostically.
+
+        Both `id: EPIC-3127` and bare `id: 3127` are supported formats; for a
+        bare numeric id the type comes from the `type:` field when present.
+        """
         try:
             content = path.read_text()
         except OSError:
-            return None
-        value = parse_frontmatter(content).get("id")
-        if not value:
-            return None
-        return str(value).strip().upper()
+            return (None, None)
+        fm = parse_frontmatter(content)
+        raw = fm.get("id")
+        if not raw:
+            return (None, None)
+        m = re.match(r"^(?:(BUG|FEAT|ENH|EPIC)-)?(\d+)$", str(raw).strip(), re.IGNORECASE)
+        if not m:
+            return (None, None)
+        fm_type = m.group(1).upper() if m.group(1) else None
+        if fm_type is None:
+            raw_type = fm.get("type")
+            fm_type = str(raw_type).strip().upper() if raw_type else None
+        return (fm_type, m.group(2))
 
-    # Prefer an exact frontmatter `id:` match over filename substring matching
-    # (BUG-2806): when a candidate's own frontmatter says `id: EPIC-2456`, it
-    # wins outright over another candidate whose filename slug merely embeds
-    # "epic-2456" as a substring. A missing `id:` field is "no opinion" and
-    # falls through unchanged to the filename-derived matching below (BUG-2003
-    # tolerance for stale/mismatched type prefixes relies on that fallback).
+    # Prefer a frontmatter `id:` match over filename-derived matching
+    # (BUG-2806): when a candidate's own frontmatter claims the requested
+    # number (and doesn't contradict the requested type), it wins outright. A
+    # missing/unparseable `id:` field is "no opinion" and falls through
+    # unchanged to the filename-derived matching below (BUG-2003 tolerance for
+    # stale/mismatched type prefixes relies on that fallback).
     if type_prefix:
-        expected_id = f"{type_prefix}-{numeric_id}"
-        frontmatter_matches = [p for p in candidates if _frontmatter_id(p) == expected_id]
+        frontmatter_matches = []
+        for p in candidates:
+            fm_type, fm_number = _frontmatter_identity(p)
+            if fm_number == numeric_id and (fm_type is None or fm_type == type_prefix):
+                frontmatter_matches.append(p)
         if frontmatter_matches:
             candidates = frontmatter_matches
 
     def _matches_type(path: Path) -> bool:
+        fid = parse_issue_filename(path.name)
+        if fid is not None:
+            return fid.type_prefix == type_prefix
+        # Legacy/unnormalized filename: fall back to the historical substring
+        # heuristic rather than excluding the file outright.
         upper = path.name.upper()
         return f"-{type_prefix}-" in upper or upper.startswith(f"{type_prefix}-")
 

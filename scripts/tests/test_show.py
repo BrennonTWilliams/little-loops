@@ -196,6 +196,74 @@ class TestResolveIssueId:
         assert result == epic_file
 
 
+class TestResolveIssueIdAnchored:
+    """Anchored TYPE-NNN resolution (BUG: EPIC-3127 resolved to ENH-3144).
+
+    The numeric ID is the true unique identifier; the type prefix is advisory
+    shorthand. Matching must anchor to the canonical ``P?-TYPE-NNN-`` filename
+    position — a title slug that happens to embed ``epic-3127`` (or the bare
+    number) must never make that file a candidate for another issue's ID.
+    """
+
+    def _collision_config(self, tmp_path: Path) -> tuple[Any, Path, Path]:
+        """EPIC-3127 with bare-numeric frontmatter id, plus an ENH whose slug
+        embeds "epic-3127". Enhancements dir enumerates before epics."""
+        categories = {
+            "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "implement"},
+            "epics": {"prefix": "EPIC", "dir": "epics", "action": "coordinate"},
+        }
+        config = _make_config(tmp_path, categories)
+        epic_file = tmp_path / ".issues" / "epics" / "P3-EPIC-3127-ll-mcp-serving-layer.md"
+        enh_file = (
+            tmp_path
+            / ".issues"
+            / "enhancements"
+            / "P3-ENH-3144-correct-epic-3127-tasks-extension-premise.md"
+        )
+        # Bare numeric frontmatter id: a supported format — must not disable
+        # correct resolution.
+        epic_file.write_text("---\nid: 3127\ntype: EPIC\nstatus: open\n---\n# EPIC-3127: T\n")
+        enh_file.write_text("---\nid: ENH-3144\ntype: ENH\nstatus: open\n---\n# ENH-3144: T\n")
+        return config, epic_file, enh_file
+
+    def test_typed_input_ignores_slug_embedded_collision(self, tmp_path: Path) -> None:
+        """EPIC-3127 resolves to the epic even with a bare-numeric frontmatter id."""
+        config, epic_file, _ = self._collision_config(tmp_path)
+        assert _resolve_issue_id(config, "EPIC-3127") == epic_file
+
+    def test_numeric_input_ignores_slug_embedded_collision(self, tmp_path: Path) -> None:
+        """Bare '3127' resolves to the epic, not the ENH whose slug embeds 3127."""
+        config, epic_file, _ = self._collision_config(tmp_path)
+        assert _resolve_issue_id(config, "3127") == epic_file
+
+    def test_collision_file_still_resolves_by_its_own_id(self, tmp_path: Path) -> None:
+        """ENH-3144 (and bare '3144') still resolve to the ENH file."""
+        config, _, enh_file = self._collision_config(tmp_path)
+        assert _resolve_issue_id(config, "ENH-3144") == enh_file
+        assert _resolve_issue_id(config, "3144") == enh_file
+
+    def test_priority_typed_input_ignores_collision(self, tmp_path: Path) -> None:
+        """P3-EPIC-3127 (full form) also resolves to the epic."""
+        config, epic_file, _ = self._collision_config(tmp_path)
+        assert _resolve_issue_id(config, "P3-EPIC-3127") == epic_file
+
+    def test_stale_prefix_tolerance_preserved(self, tmp_path: Path) -> None:
+        """FEAT-3127 (stale prefix) still resolves to the EPIC file (BUG-2003)."""
+        config, epic_file, _ = self._collision_config(tmp_path)
+        assert _resolve_issue_id(config, "FEAT-3127") == epic_file
+
+    def test_unnormalized_legacy_filename_still_resolves(self, tmp_path: Path) -> None:
+        """A legacy filename with no canonical P?-TYPE-NNN- anchor still resolves
+        via the glob fallback."""
+        categories = {
+            "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "implement"},
+        }
+        config = _make_config(tmp_path, categories)
+        legacy = tmp_path / ".issues" / "enhancements" / "notes-2100-old-capture.md"
+        legacy.write_text("---\nstatus: open\n---\n# 2100: legacy\n")
+        assert _resolve_issue_id(config, "2100") == legacy
+
+
 # =============================================================================
 # _parse_card_fields
 # =============================================================================

@@ -103,12 +103,9 @@ it says.
   Q1 below (decided: option (a)). **Both call sites must pass explicitly**:
   `build_http_app()` must change its `build_server()` call (`server.py:51`) to
   `build_server(transport="http")`, and `run_stdio()` (`server.py:150`) to
-  `build_server(transport="stdio")` — the default parameter exists only to keep the ~37
-  zero-arg test call sites green, not as a value either production path relies on.
-  Default `transport="stdio"`, chosen for failure-mode asymmetry: a forgotten HTTP call
-  site then *over*-denies (stdio-locked config wrongly denies HTTP — visible, annoying,
-  not a hole), whereas default `"http"` would let a forgotten `run_stdio` call site
-  silently regress this entire feature back to advisory.
+  `build_server(transport="stdio")`. Per D1a the parameter is **required with no
+  default**, so every call site — production and test — states its transport; a missing
+  argument is a `TypeError` at construction rather than a silently-wrong policy half.
 - `scripts/little_loops/mcp_server/tools.py` — `handle_call_tool` gains the policy check
   (guard 0, ahead of FEAT-3149's dry-run guard 1).
 - `scripts/little_loops/mcp_server/tasks.py` — `handle_tasks_get` / `handle_tasks_cancel`
@@ -153,11 +150,12 @@ _Wiring pass added by `/ll:wire-issue`:_
   gap; AC 3's "no process is spawned" assertion needs either a monkeypatched
   `run_background` (pattern at `test_feat_3151_mcp_start_path.py` around line 260) or an
   equivalent spawn-assertion in the new module.
-- Confirmed non-breaking (informational, no action needed): every existing zero-arg
-  `build_server()` call site — `test_mcp_server.py` (22 sites), `test_feat_3149_mcp_mutation_tools.py`
-  (11 sites), `test_feat_3145_mcp_tasks.py:167`, `test_feat_3151_mcp_start_path.py:459`,
-  `test_feat_3143_mcp_http_transport.py:74,96,108` — none set a `transport_policy` config
-  block, so a defaulted `transport` parameter keeps all of them passing unchanged.
+- Every existing zero-arg `build_server()` call site — `test_mcp_server.py` (22 sites),
+  `test_feat_3149_mcp_mutation_tools.py` (11 sites), `test_feat_3145_mcp_tasks.py:167`,
+  `test_feat_3151_mcp_start_path.py:459`, `test_feat_3143_mcp_http_transport.py:74,96,108`
+  — must pass `transport=` explicitly under D1a. None of them set a `transport_policy`
+  config block, so the rewrite is behaviour-preserving: `"stdio"` everywhere except the
+  three `test_feat_3143` sites that build a `streamable_http_app`, which take `"http"`.
 
 ### Documentation
 - `docs/guides/MCP_SERVER_GUIDE.md` — remove the "stdio knobs are currently advisory"
@@ -225,9 +223,20 @@ _Added by issue review — 2026-08-14 — after direct inspection of the pinned 
   `test_feat_3149_transport_policy.py:103-105`) get a sanctioned edit that re-pins the
   new one-parameter signature — the pins' intent (no *accidental* widening) is
   preserved by pinning the widened shape, not by keeping them frozen. Both production
-  call sites pass `transport=` explicitly (see Files to Modify); the `"stdio"` default
-  exists only for the zero-arg test call sites and fails safe (over-deny) if a future
-  call site forgets.
+  call sites pass `transport=` explicitly (see Files to Modify).
+- **D1a (post-implementation amendment, 2026-08-14): `transport` is required — no
+  default.** As first implemented, D1 shipped `transport: str = "stdio"`, justified as
+  fail-safe (over-deny) and as a way to leave the 43 zero-arg test call sites untouched.
+  Both halves were reconsidered and rejected: the parameter selects *which half of
+  `mcp.transport_policy` applies*, so there is no value that is safe to guess — a default
+  is only "fail-safe" for a forgotten stdio call site and is fail-*open* for a forgotten
+  HTTP one, since it would apply the stdio grants to an HTTP server. A default that
+  exists for test convenience on a security-relevant parameter also tends to outlive its
+  justification. All 43 test call sites now pass `transport=` explicitly (`"http"` for
+  the three that build a `streamable_http_app`, `"stdio"` for the rest, preserving prior
+  behaviour exactly), and both signature pins now assert
+  `params["transport"].default is inspect.Parameter.empty` — which is what keeps a
+  default from being reintroduced for convenience.
 - **D2 (closes Q2): keep the middleware.** Handler-level checks become the uniform
   enforcement layer; `TransportPolicyMiddleware` stays for its pre-parse denial
   property (FEAT-3149's point). On HTTP, a denied request is therefore denied by the

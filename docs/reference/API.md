@@ -844,6 +844,21 @@ Check whether an issue filename conforms to naming conventions.
 
 **Returns:** `True` if filename matches `^P[0-5]-(BUG|FEAT|ENH|EPIC)-[0-9]{3,}-[a-z0-9-]+\.md$`
 
+#### parse_issue_filename
+
+```python
+def parse_issue_filename(filename: str) -> FilenameId | None
+```
+
+Parse the canonical `P?-TYPE-NNN-` anchor at the start of an issue filename into a frozen `FilenameId` dataclass (`priority: str | None`, `type_prefix: str`, `number: str`).
+
+The numeric ID is the true unique identifier (globally unique across types); the type prefix is human-readable shorthand. Resolvers must key on this anchored parse — never on substring matching over the whole filename, which a title slug embedding another issue's ID can accidentally satisfy (e.g. `P3-ENH-3144-correct-epic-3127-...md` contains `epic-3127` in its slug but is issue 3144).
+
+**Parameters:**
+- `filename` - Issue file basename (e.g. `"P2-BUG-010-my-issue.md"`)
+
+**Returns:** `FilenameId`, or `None` when the filename has no canonical anchor (legacy/unnormalized names)
+
 #### is_formatted
 
 ```python

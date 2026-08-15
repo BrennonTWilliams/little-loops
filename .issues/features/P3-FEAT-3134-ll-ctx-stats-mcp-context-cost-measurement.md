@@ -15,6 +15,7 @@ depends_on:
 - FEAT-3137
 relates_to:
 - FEAT-3128
+- ENH-3174
 verify_verdict: VALID
 reconcile_attempted: true
 confidence_score: 60

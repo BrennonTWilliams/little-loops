@@ -436,10 +436,20 @@ class SprintManager:
         """
         if not self.config:
             return None
+        from little_loops.issue_parser import parse_issue_filename
+
+        expected_type, _, expected_number = issue_id.partition("-")
         for category in self.config.issue_categories:
             issue_dir = self.config.get_issue_dir(category)
             for path in issue_dir.glob(f"*-{issue_id}-*.md"):
-                return path
+                fid = parse_issue_filename(path.name)
+                # A slug embedding another issue's TYPE-NNN also satisfies the
+                # glob; require the anchored P?-TYPE-NNN- position to carry the
+                # requested ID. Unanchored legacy names keep the glob's verdict.
+                if fid is None or (
+                    fid.type_prefix == expected_type.upper() and fid.number == expected_number
+                ):
+                    return path
         return None
 
     def validate_issues(self, issues: list[str]) -> dict[str, Path]:

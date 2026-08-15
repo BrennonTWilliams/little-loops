@@ -50,6 +50,43 @@ _NORMALIZED_RE = re.compile(r"^P[0-5]-(BUG|FEAT|ENH|EPIC)-[0-9]{3,}-[a-z0-9-]+\.
 _ISSUE_TYPE_RE = re.compile(r"-(BUG|FEAT|ENH|EPIC)-")
 _FILENAME_ID_RE = re.compile(r"(BUG|FEAT|ENH|EPIC)-(\d+)")
 
+# Anchored at the *start* of the filename: the canonical `P?-TYPE-NNN-` position.
+# Unlike _FILENAME_ID_RE (an unanchored search), this can never be satisfied by a
+# TYPE-NNN string embedded in the title slug (e.g. the "epic-3127" in
+# "P3-ENH-3144-correct-epic-3127-tasks-extension-premise.md").
+_ANCHORED_FILENAME_RE = re.compile(r"^(?:(P[0-5])-)?(BUG|FEAT|ENH|EPIC)-(\d+)-", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class FilenameId:
+    """The identity components parsed from an issue filename's anchor position."""
+
+    priority: str | None
+    type_prefix: str
+    number: str
+
+
+def parse_issue_filename(filename: str) -> FilenameId | None:
+    """Parse the canonical ``P?-TYPE-NNN-`` anchor at the start of an issue filename.
+
+    The numeric ID is the true unique identifier (globally unique across types);
+    the type prefix is human-readable shorthand. Resolvers must key on this
+    anchored parse — never on substring matching over the whole filename, which
+    a title slug embedding another issue's ID can accidentally satisfy.
+
+    Args:
+        filename: Issue file basename (e.g. ``P2-BUG-010-my-issue.md``).
+
+    Returns:
+        The parsed components, or None when the filename has no canonical anchor
+        (legacy/unnormalized names).
+    """
+    m = _ANCHORED_FILENAME_RE.match(filename)
+    if not m:
+        return None
+    priority = m.group(1).upper() if m.group(1) else None
+    return FilenameId(priority=priority, type_prefix=m.group(2).upper(), number=m.group(3))
+
 
 # (resolved path, deprecated key) pairs already warned about this process.
 _WARNED_DEPRECATED_KEYS: set[tuple[str, str]] = set()

@@ -16,6 +16,7 @@ learning_tests_required:
 - mcp HTTP transport
 relates_to:
 - FEAT-3135
+- ENH-3173
 confidence_score: 98
 outcome_confidence: 86
 score_complexity: 21

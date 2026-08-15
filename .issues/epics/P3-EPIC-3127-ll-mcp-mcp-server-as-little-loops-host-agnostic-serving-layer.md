@@ -22,6 +22,14 @@ relates_to:
 - FEAT-3145
 - FEAT-3149
 - FEAT-3151
+- FEAT-3168
+- ENH-3171
+- ENH-3172
+- ENH-3173
+- ENH-3174
+- ENH-3175
+- BUG-3177
+- BUG-3178
 ---
 
 ## Summary
@@ -47,6 +55,91 @@ shifts from "generate per-host skill/agent files" toward "register one server."
 This EPIC exists to keep the tiers landing in dependency order, to keep the
 server a facade over library code, and to hold the job-API tier behind an
 evidence gate.
+
+## Status: what shipped (updated 2026-08-15)
+
+**All three tiers have landed.** Everything below in "The three surfaces" and
+"Tiers and dependency ordering" was written as a plan and is retained as the
+design record; this section is the authority on what the code actually does.
+Implementation lives in `scripts/little_loops/mcp_server/` (`__init__.py`,
+`server.py`, `tools.py`, `resources.py`, `prompts.py`, `policy.py`, `tasks.py`),
+behind the optional `mcp` extra (`mcp==2.0.0`, pinned exactly). User-facing
+documentation is `docs/guides/MCP_SERVER_GUIDE.md`.
+
+**Ten tools**, each wrapping a `little_loops` library function directly — no
+subprocess, no second implementation:
+
+| Group | Tools | Shipped by |
+|---|---|---|
+| Read | `issues_query`, `issue_get`, `history_search`, `deps_check`, `capabilities` | FEAT-3135 |
+| Write | `issue_capture`, `issue_set_status`, `issue_link`, `issue_append_log` | FEAT-3149 |
+| Start | `loop_start` | FEAT-3151 |
+
+**Resources** (FEAT-3136): `ll://issues/<ID>`, `ll://goals`, `ll://docs/<path>`.
+**Prompts** (FEAT-3137): every discovered `SKILL.md`, via recursive `rglob`,
+skipping `disable-model-invocation: true`.
+**Run control** (FEAT-3145): `tasks/get` / `tasks/cancel`, registered via
+`Server.add_request_handler`, sharing `ll-loop`'s `instance_id` space so a run
+started from one host is pollable and stoppable from another.
+**Transports** (FEAT-3143): stdio by default, streamable HTTP via `--http` or
+`LL_MCP_TRANSPORT=http`.
+**Host registration** (FEAT-3133): `ll-adapt --host claude-code|codex --apply`
+emits `.mcp.json` / `.codex/ll-mcp.toml`.
+
+**Guarding**, as specified and then some. Guard 1 is dry-run-by-default on all
+four mutators, fail-closed — only the literal boolean `True` opts in. Guard 2 is
+per-transport policy (`mcp.transport_policy` in `.ll/ll-config.json`) with two
+*independent* grants: `allow_mutations` and `allow_tasks`. HTTP denies both by
+default (that transport ships with no authentication); stdio allows both.
+FEAT-3168 closed the gap where the policy was enforced only in HTTP's ASGI
+middleware — the `tools/call` and `tasks/*` handlers now consult
+`policy.check_tool_call` themselves, so stdio gets identical enforcement and the
+same `-32001` denial.
+
+Deviations from the plan above, all recorded in the qualifying blockquotes in
+their sections: the `route` tool was dropped (no such CLI ever existed);
+`ll-generate-schemas` output was not reusable, so output schemas were
+hand-written; SEP-2243 header routing has no pre-parse SDK hook, so the HTTP
+guard is ASGI middleware and exists on the HTTP path only; the SDK ships no
+`io.modelcontextprotocol/tasks` extension, so `tasks/*` is locally authored,
+SEP-2663-shaped, and deliberately **not** advertised in capabilities.
+
+### Known gaps, captured as children
+
+- **ENH-3171** (P2) — the project root is `Path.cwd()` with no override. A host
+  that spawns from `$HOME` produces a server that answers truthfully about
+  nothing, silently. This is the most common real-world failure.
+- **ENH-3172** (P2) — resource and prompt indices are enumerated once at startup
+  and never invalidated, so the server does not see issues its own
+  `issue_capture` / `loop_start` created.
+- **ENH-3173** (P3) — `--http` cannot be told where to bind; `127.0.0.1:8765` is
+  unreachable from the console script.
+- **ENH-3174** (P3) — `resources/list` returns the whole enumeration (3,000+
+  entries here) with the pagination params accepted and ignored.
+- **FEAT-3134** (deferred) — the context-cost measurement this epic wanted
+  *before* the first tier shipped. It never happened; see Open Question 1.
+- **BUG-3177** (P2) — `prompts/list` returns an empty list on any install where
+  `skills/` is not on disk two directories above the package. `skills/` is not
+  package data (`pyproject.toml` ships `little_loops/**` only) and
+  `_find_plugin_root()`'s fallback encodes the source-checkout layout, so a
+  wheel install without `CLAUDE_PLUGIN_ROOT` serves zero prompts, silently.
+- **BUG-3178** (P2) — `ll-adapt --host codex --apply` writes
+  `mcp_servers = ["ll-mcp"]` into `.codex/ll-mcp.toml`: a name reference, not a
+  server definition, so Codex has no `command` to spawn.
+
+Together, BUG-3177 and BUG-3178 mean **this epic's host-agnostic claim has never
+been exercised end-to-end outside a Claude Code plugin checkout.** Both were
+found by reading the code, not by a failing run — nothing here tests a
+pip-installed `ll-mcp` spawned by a non-Claude-Code host, which is the
+acceptance test the epic is missing. ENH-3171 (cwd-only project root) is the
+third face of the same shape: roots resolved by guessing, answering truthfully
+about nothing when the guess is wrong.
+
+Not gaps, but deliberate boundaries worth restating: `ll-auto`, `ll-parallel`,
+`ll-queue`, and `ll-action invoke` remain off the surface entirely; `ll-loop` is
+the sole orchestration exception. Roots, Sampling, and Logging are not
+advertised. MRTR (`resultType: "input_required"`) is designed for but not
+implemented — no tool currently needs interactive confirmation.
 
 ## The three surfaces
 
@@ -145,6 +238,18 @@ The ordering is strict:
   > gate on task materialization (its own carried-over TODO(L56) caveat), and
   > FEAT-3145's transport-policy gate (Decision 4) still applies regardless of
   > this decision.
+
+  > **Gate closed 2026-08-15 — both cleared issues shipped.** FEAT-3145
+  > (`tasks/get` / `tasks/cancel`) and FEAT-3151 (`loop_start`) are `done`. The
+  > client-capability gate FEAT-3151 owed is implemented: `TasksExtension`
+  > requires three independent signals — the tasks extension declared in the
+  > request's `_meta.clientCapabilities.extensions`, `params.task` set on that
+  > call, and a modern protocol version — before it reshapes the response into a
+  > task envelope. Missing any one yields the ordinary tool result. The detached
+  > spawn is identical either way, so only the envelope varies, never the
+  > behavior. FEAT-3145's Decision 4 transport gate is in force as the
+  > `allow_tasks` grant, and FEAT-3168 extended enforcement from HTTP-only to
+  > both transports. Nothing in this epic is gated any longer.
 
 ## Spec target: MCP 2026-07-28
 
@@ -246,9 +351,48 @@ Also load-bearing across all tiers:
    `Server.add_request_handler`. Revisit this only when a pinned SDK version
    ships the real extension.
 
+### Disposition, 2026-08-15
+
+1. **Context cost measurement — still open, and now out of order.** FEAT-3134 is
+   `deferred` (`readiness_stagnated`); the measurement that was supposed to
+   happen *before* the first tier shipped never happened, and all three tiers
+   shipped anyway. The tool surface was kept coarse (ten tools) on judgment
+   rather than data, which is probably fine — but the resource surface was not,
+   and now returns 3,000+ entries (ENH-3174). The `ttlMs`/`cacheScope` hints are
+   emitted (5 minutes, `public`, on `tools/list`, `resources/list`,
+   `resources/read`, `prompts/list`) but nothing consumes them. Reviving
+   FEAT-3134 is the precondition for deciding ENH-3174 on data.
+2. **SDK dependency posture — resolved: yes, as an optional extra.** `mcp==2.0.0`
+   is pinned exactly under `[project.optional-dependencies].mcp`, not in the
+   base dependency set, so `pip install little-loops` is unaffected. `main_mcp`
+   imports `mcp` lazily and exits `2` with an actionable message when the extra
+   is absent, so every `[project.scripts]` target still resolves in a checkout
+   without it.
+3. **Prompt fidelity — still open, unaddressed.** No capability filter was
+   built. `prompts/list` serves every discovered `SKILL.md` unconditionally
+   (minus `disable-model-invocation: true`), so a host lacking Bash or file
+   editing receives skills it cannot execute. Not yet observed to cause a
+   concrete failure, which is why this has no child issue; capture one if a real
+   host degrades on it.
+4. **Advertising the Tasks extension — resolved: no, and implemented that way.**
+   `build_server()` registers `tasks/*` via `add_request_handler` and never
+   declares `io.modelcontextprotocol/tasks` in capabilities. `TasksExtension`
+   carries that identifier internally only to key off what the *client*
+   declares. Revisit when a pinned SDK ships the real extension.
+
 ## Verification Notes
 
 2026-08-10 (`/ll:verify-issues`): Verified 2026-08-10: Tier-1 (read-only serving) work has essentially shipped — 4 of 5 related FEATs (FEAT-3133, FEAT-3135, FEAT-3136, FEAT-3137) are status: done; only FEAT-3134 remains, status deferred. Document reads as fully speculative but should be updated to reflect landed Tier-1 scope.
+
+2026-08-15 (manual review against `scripts/little_loops/mcp_server/`): Epic body
+updated to reflect landed scope. All three tiers shipped; 12 of the 13 original
+children are `done` and FEAT-3134 alone is `deferred`. FEAT-3168 was missing from
+`relates_to` (added). Added a "Status: what shipped" section as the authority on
+implemented behavior, closed the tier-3 gate note, and dispositioned all four open
+questions (2 and 4 resolved, 1 and 3 still genuinely open). Four gap issues
+captured as children: ENH-3171 (project-root resolution, P2), ENH-3172 (stale
+resource/prompt indices, P2), ENH-3173 (HTTP bind host/port, P3), ENH-3174
+(resource-surface bounding, P3).
 
 2026-08-12 (`/ll:verify-issues`): Verdict: **NON_VALID (NEEDS_UPDATE)**. Two real children, FEAT-3128 and FEAT-3132 (both `status: done`, `parent: EPIC-3127`), were missing from frontmatter `relates_to` — added above. Also corrected the prior note's stated completion: actual status across the full child set (via `ll-issues show EPIC-3127`) is 10 of 12 done (FEAT-3134 and FEAT-3151 are `deferred`), not the "4 of 5" figure previously recorded.
 

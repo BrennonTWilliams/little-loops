@@ -4539,3 +4539,35 @@ class TestBehaviorParityHeadingDetection:
             "### Behavior Parity — skills/link-epics/SKILL.md\n\n| a | b | c | d |\n"
         )
         assert _heading_bodies(content, "Behavior Parity") == []
+
+
+class TestParseIssueFilename:
+    """Tests for parse_issue_filename() — the anchored P?-TYPE-NNN- parser."""
+
+    def test_full_canonical_name(self) -> None:
+        from little_loops.issue_parser import parse_issue_filename
+
+        fid = parse_issue_filename("P3-EPIC-3127-ll-mcp-serving-layer.md")
+        assert fid is not None
+        assert (fid.priority, fid.type_prefix, fid.number) == ("P3", "EPIC", "3127")
+
+    def test_missing_priority_prefix(self) -> None:
+        from little_loops.issue_parser import parse_issue_filename
+
+        fid = parse_issue_filename("BUG-042-crash-on-start.md")
+        assert fid is not None
+        assert (fid.priority, fid.type_prefix, fid.number) == (None, "BUG", "042")
+
+    def test_slug_embedded_id_is_not_the_anchor(self) -> None:
+        """The parsed number comes from the anchor, never the slug."""
+        from little_loops.issue_parser import parse_issue_filename
+
+        fid = parse_issue_filename("P3-ENH-3144-correct-epic-3127-tasks-extension-premise.md")
+        assert fid is not None
+        assert (fid.type_prefix, fid.number) == ("ENH", "3144")
+
+    def test_unanchored_name_returns_none(self) -> None:
+        from little_loops.issue_parser import parse_issue_filename
+
+        assert parse_issue_filename("notes-2100-old-capture.md") is None
+        assert parse_issue_filename("README.md") is None
