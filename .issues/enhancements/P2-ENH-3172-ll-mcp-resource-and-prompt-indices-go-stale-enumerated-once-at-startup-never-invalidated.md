@@ -4,10 +4,11 @@ type: ENH
 title: "ll-mcp: resource and prompt indices go stale \u2014 enumerated once at startup,\
   \ never invalidated"
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T00:26:15Z'
+completed_at: '2026-08-15T07:28:26Z'
 parent: EPIC-3127
 labels:
 - mcp
@@ -103,10 +104,23 @@ are told when the list changed rather than being expected to guess.
   rebuild path must keep "membership in the dict is the rejection mechanism" true.
 - **Breaking Change**: No
 
+## Scope Boundaries
+
+- Does not touch `tools.py`'s existing per-call statelessness — that surface already
+  re-resolves `Path.cwd()` per request and is unaffected by this issue.
+- Does not implement a general-purpose cache invalidation framework; scoped to the
+  resource index (`resources.py::build_resource_index`) and prompt index
+  (`prompts.py::build_prompt_index`) built once in `server.py::build_server()`.
+- Does not change the `tools/list` `CacheHint`, which is unrelated to index staleness.
+- Does not re-implement skills-root resolution — reuses whatever BUG-3177 lands
+  (already merged on `main` as `1700a2e4`) rather than re-deriving the path.
+
 ## Status
 
 **Open** | Created: 2026-08-15 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-15T07:28:03 - `3bc1a4eb-f740-4a8d-b9c8-c241a00c4b74.jsonl`
+- `/ll:ready-issue` - 2026-08-15T06:57:17 - `b2875112-93af-42f3-8ee5-cc67b088e869.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-15T01:18:59 - `6343db1a-2326-4ea0-a5fc-0b0d7d522516.jsonl`

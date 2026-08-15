@@ -7,7 +7,10 @@ is issued or handled: every tool resolves from its own params in a single round 
 auto-derives capabilities from whatever handlers this module registers, so "advertises no
 Roots/Sampling/Logging" is satisfied structurally rather than needing its own assertion target.
 Resources ARE registered (FEAT-3136), so `caps.resources` is non-`None`. Prompts ARE registered
-(FEAT-3137, every discovered `SKILL.md`), so `caps.prompts` is non-`None`.
+(FEAT-3137, every discovered `SKILL.md`), so `caps.prompts` is non-`None`. `subscriptions/listen`
+IS registered (ENH-3172) — unrelated to the deprecated Roots/Sampling/Logging trio above; it is
+how the 2026-07-28 wire delivers `resources`/`prompts` list-changed events once the index behind
+either surface is rebuilt after startup.
 """
 
 from __future__ import annotations
@@ -129,15 +132,16 @@ def build_server(transport: str, project_root: Path | None = None) -> Server:
     from mcp.server.caching import CacheHint
     from mcp.server.extension import compose_tool_call_handler
     from mcp.server.lowlevel import Server
+    from mcp.server.subscriptions import InMemorySubscriptionBus, ListenHandler
 
     from little_loops.config import BRConfig
     from little_loops.mcp_server.prompts import (
-        build_prompt_index,
+        PromptIndex,
         make_get_prompt_handler,
         make_list_prompts_handler,
     )
     from little_loops.mcp_server.resources import (
-        build_resource_index,
+        ResourceIndex,
         make_list_resources_handler,
         make_read_resource_handler,
     )
@@ -156,8 +160,16 @@ def build_server(transport: str, project_root: Path | None = None) -> Server:
 
     resolved_root = _project_root(project_root)
     config = BRConfig(resolved_root)
-    resource_index = build_resource_index(config)
-    prompt_index = build_prompt_index(_resolve_skills_root())
+    resource_index = ResourceIndex(config)
+    prompt_index = PromptIndex(_resolve_skills_root())
+
+    # ENH-3172: SEP-2575's `subscriptions/listen` is how the 2026-07-28 wire delivers
+    # `ResourcesListChanged`/`PromptsListChanged` — registering `on_subscriptions_listen`
+    # also makes `get_capabilities()` derive `resources.listChanged`/`prompts.listChanged`
+    # (and `resources.subscribe`) as `True` for modern clients automatically, with no
+    # separate NotificationOptions wiring needed. `resource_index`/`prompt_index` publish
+    # to this same bus from inside their `*_list` handlers when a refresh rebuilds them.
+    subscription_bus = InMemorySubscriptionBus()
 
     # FEAT-3151: wraps handle_call_tool with the SEP-2663 start-path interceptor.
     # Additive — TasksExtension passes every call through unchanged except the one tool
@@ -180,10 +192,11 @@ def build_server(transport: str, project_root: Path | None = None) -> Server:
         version=_server_version(),
         on_list_tools=handle_list_tools,
         on_call_tool=on_call_tool,
-        on_list_resources=make_list_resources_handler(resource_index),
+        on_list_resources=make_list_resources_handler(resource_index, subscription_bus),
         on_read_resource=make_read_resource_handler(resource_index, config),
-        on_list_prompts=make_list_prompts_handler(prompt_index),
+        on_list_prompts=make_list_prompts_handler(prompt_index, subscription_bus),
         on_get_prompt=make_get_prompt_handler(prompt_index),
+        on_subscriptions_listen=ListenHandler(subscription_bus),
         # tools/list, resources/list, resources/read, and prompts/list are the SEP-2549
         # cacheable methods this tier registers handlers for. The tool catalog, resource
         # enumeration, and skill catalog only change on an `ll-mcp` upgrade or restart, so a

@@ -12,6 +12,14 @@ This is the first stateful construct in `mcp_server/` — a deliberate, scoped d
 `tools.py`'s statelessness invariant (every tool handler resolves fresh from `Path.cwd()` on
 every call). The index is built once per `Server` instance in `build_server()` and closed
 over by the handlers here, not stored at module scope, so it never leaks across servers/tests.
+
+ENH-3172: the once-built index goes stale the moment an issue is created, deleted, or
+renamed after startup — which the server itself can now trigger (`issue_capture`, tier 2;
+`loop_start`, tier 3). `ResourceIndex` wraps the dict in a cheap on-demand refresh
+(`_staleness.dir_signature` over the watched dirs) so every handler call resolves against
+a fresh enumeration instead of the discovery-time snapshot. Membership in `ResourceIndex.entries`
+remains the sole access-control boundary — `refresh()` only decides *when* to rebuild it,
+never whether a URI is admitted.
 """
 
 from __future__ import annotations
@@ -25,7 +33,11 @@ from typing import TYPE_CHECKING, Any
 import mcp_types as types
 from mcp.shared.exceptions import MCPError
 
+from little_loops.mcp_server._staleness import Signature, dir_signature
+
 if TYPE_CHECKING:
+    from mcp.server.subscriptions import SubscriptionBus
+
     from little_loops.config import BRConfig
 
 _ISSUE_ID_RE = re.compile(r"(BUG|FEAT|ENH|EPIC)-(\d+)", re.IGNORECASE)
@@ -140,6 +152,46 @@ def build_resource_index(config: BRConfig) -> dict[str, _ResourceEntry]:
     return index
 
 
+def _watched_paths(config: BRConfig) -> list[Path]:
+    """Top-level dirs/files whose mtime signals the resource index may be stale."""
+    paths = [config.get_issue_dir(category) for category in config.issue_categories]
+    paths.extend(config.legacy_issue_dirs())
+    paths.append(config.project_root / ".ll" / "ll-goals.md")
+    paths.append(config.project_root / "docs")
+    return paths
+
+
+@dataclasses.dataclass
+class ResourceIndex:
+    """Mutable holder for the `ll://` enumeration, refreshed on demand (ENH-3172).
+
+    Built once (`__post_init__`), then re-derived only when `refresh()` observes the
+    watched-path signature has changed — cheap `stat()` calls, not a full re-walk, on
+    every request that doesn't need one.
+    """
+
+    config: BRConfig
+    entries: dict[str, _ResourceEntry] = dataclasses.field(default_factory=dict, init=False)
+    _signature: Signature = dataclasses.field(default=(), init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self.entries = build_resource_index(self.config)
+        self._signature = dir_signature(_watched_paths(self.config))
+
+    def refresh(self) -> bool:
+        """Rebuild `entries` if the watched-path signature changed.
+
+        Returns whether a rebuild happened, so callers can decide whether to notify
+        subscribers and whether this response is safe to let a client cache.
+        """
+        signature = dir_signature(_watched_paths(self.config))
+        if signature == self._signature:
+            return False
+        self.entries = build_resource_index(self.config)
+        self._signature = signature
+        return True
+
+
 def _read_issue_body(entry: _ResourceEntry, config: BRConfig) -> str:
     """Mirror `_tool_issue_get`'s `_parse_card_fields` call, guarding its unguarded read.
 
@@ -194,43 +246,57 @@ def _read_body(entry: _ResourceEntry, config: BRConfig) -> str:
     return _read_docs_body(entry)
 
 
-def make_list_resources_handler(index: dict[str, _ResourceEntry]) -> Any:
-    """Build the `resources/list` handler, closing over the enumeration built once at startup.
+def make_list_resources_handler(index: ResourceIndex, bus: SubscriptionBus) -> Any:
+    """Build the `resources/list` handler, closing over `index` and refreshing it per call.
 
-    `ttlMs`/`cacheScope` are left unset here, same as `handle_list_tools` — the
-    `Server(cache_hints=...)` entry for `"resources/list"` fills them per SEP-2549.
+    `ttlMs`/`cacheScope` are left unset on the common path, same as `handle_list_tools` —
+    the `Server(cache_hints=...)` entry for `"resources/list"` fills them per SEP-2549. When
+    `index.refresh()` rebuilds (ENH-3172), a `ResourcesListChanged` event is published on
+    `bus` (delivered to any open `subscriptions/listen` stream) and this particular response
+    has `ttl_ms=0` forced on it — the 5-minute public `CacheHint` is a safe default for an
+    unchanged list, not for the one response that just proved the list changed.
     """
-    resources = [
-        types.Resource(
-            uri=entry.uri,
-            name=entry.name,
-            description=entry.description,
-            mime_type=entry.mime_type,
-        )
-        for entry in index.values()
-    ]
+    from mcp.server.subscriptions import ResourcesListChanged
+
+    def _resources() -> list[types.Resource]:
+        return [
+            types.Resource(
+                uri=entry.uri,
+                name=entry.name,
+                description=entry.description,
+                mime_type=entry.mime_type,
+            )
+            for entry in index.entries.values()
+        ]
 
     async def handle_list_resources(
         _ctx: Any,
         _params: types.PaginatedRequestParams | None,
     ) -> types.ListResourcesResult:
-        return types.ListResourcesResult(resources=resources)
+        changed = index.refresh()
+        result = types.ListResourcesResult(resources=_resources())
+        if changed:
+            await bus.publish(ResourcesListChanged())
+            result = result.model_copy(update={"ttl_ms": 0})
+        return result
 
     return handle_list_resources
 
 
-def make_read_resource_handler(index: dict[str, _ResourceEntry], config: BRConfig) -> Any:
-    """Build the `resources/read` handler, closing over the same enumeration and `config`.
+def make_read_resource_handler(index: ResourceIndex, config: BRConfig) -> Any:
+    """Build the `resources/read` handler, closing over `index` and refreshing it per call.
 
-    A `uri` absent from `index` is rejected outright — the dict lookup below is the entire
-    access-control boundary, and no filesystem read happens before or instead of it.
+    A `uri` absent from `index.entries` after the refresh is rejected outright — the dict
+    lookup below is the entire access-control boundary, and no filesystem read happens
+    before or instead of it.
     """
 
     async def handle_read_resource(
         _ctx: Any,
         params: types.ReadResourceRequestParams,
     ) -> types.ReadResourceResult:
-        entry = index.get(params.uri)
+        index.refresh()
+        entry = index.entries.get(params.uri)
         if entry is None:
             raise MCPError(
                 code=types.INVALID_PARAMS,

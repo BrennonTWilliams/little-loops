@@ -18,16 +18,29 @@ cached in the index. A skill with `disable-model-invocation: true` is skipped en
 matching `adapters/core.py::process_skills()`'s blanket-skip behavior — the closest existing
 precedent in intent to an external, untrusted MCP client (see this issue's Conventions in
 Force).
+
+ENH-3172: the once-built index goes stale the moment a `SKILL.md` is added, removed, or
+renamed after startup. `PromptIndex` wraps the dict in a cheap on-demand refresh (the
+skills root's own mtime, via `_staleness.dir_signature`) so `prompts/list`/`prompts/get`
+resolve against a fresh enumeration instead of the discovery-time snapshot. Nested
+`SKILL.md` additions two or more levels under the skills root won't retrigger a rebuild
+via this signal alone — see `_staleness.py`'s module docstring for why that's the accepted
+scope, not a gap to close here.
 """
 
 from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import mcp_types as types
 from mcp.shared.exceptions import MCPError
+
+from little_loops.mcp_server._staleness import Signature, dir_signature
+
+if TYPE_CHECKING:
+    from mcp.server.subscriptions import SubscriptionBus
 
 
 @dataclasses.dataclass(frozen=True)
@@ -83,45 +96,89 @@ def build_prompt_index(skills_dir: Path) -> dict[str, _PromptEntry]:
     return index
 
 
-def make_list_prompts_handler(index: dict[str, _PromptEntry]) -> Any:
-    """Build the `prompts/list` handler, closing over the enumeration built once at startup.
+@dataclasses.dataclass
+class PromptIndex:
+    """Mutable holder for the prompts-from-skills enumeration, refreshed on demand (ENH-3172).
 
-    `ttlMs`/`cacheScope` are left unset here, same as `handle_list_resources` — the
-    `Server(cache_hints=...)` entry for `"prompts/list"` fills them per SEP-2549.
+    Built once (`__post_init__`), then re-derived only when `refresh()` observes the
+    skills root's own mtime has changed — a cheap `stat()` call, not a full `rglob`, on
+    every request that doesn't need one.
     """
-    prompts = [
-        types.Prompt(
-            name=entry.name,
-            description=entry.description or None,
-            arguments=(
-                [
-                    types.PromptArgument(
-                        name="args",
-                        description=entry.args_hint,
-                        required=False,
-                    )
-                ]
-                if entry.args_hint
-                else None
-            ),
-        )
-        for entry in index.values()
-    ]
+
+    skills_dir: Path
+    entries: dict[str, _PromptEntry] = dataclasses.field(default_factory=dict, init=False)
+    _signature: Signature = dataclasses.field(default=(), init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self.entries = build_prompt_index(self.skills_dir)
+        self._signature = dir_signature([self.skills_dir])
+
+    def refresh(self) -> bool:
+        """Rebuild `entries` if the skills-root signature changed.
+
+        Returns whether a rebuild happened, so callers can decide whether to notify
+        subscribers and whether this response is safe to let a client cache.
+        """
+        signature = dir_signature([self.skills_dir])
+        if signature == self._signature:
+            return False
+        self.entries = build_prompt_index(self.skills_dir)
+        self._signature = signature
+        return True
+
+
+def make_list_prompts_handler(index: PromptIndex, bus: SubscriptionBus) -> Any:
+    """Build the `prompts/list` handler, closing over `index` and refreshing it per call.
+
+    `ttlMs`/`cacheScope` are left unset on the common path, same as `handle_list_resources` —
+    the `Server(cache_hints=...)` entry for `"prompts/list"` fills them per SEP-2549. When
+    `index.refresh()` rebuilds (ENH-3172), a `PromptsListChanged` event is published on `bus`
+    (delivered to any open `subscriptions/listen` stream) and this particular response has
+    `ttl_ms=0` forced on it, matching `make_list_resources_handler`'s reconciliation with the
+    5-minute public `CacheHint`.
+    """
+    from mcp.server.subscriptions import PromptsListChanged
+
+    def _prompts() -> list[types.Prompt]:
+        return [
+            types.Prompt(
+                name=entry.name,
+                description=entry.description or None,
+                arguments=(
+                    [
+                        types.PromptArgument(
+                            name="args",
+                            description=entry.args_hint,
+                            required=False,
+                        )
+                    ]
+                    if entry.args_hint
+                    else None
+                ),
+            )
+            for entry in index.entries.values()
+        ]
 
     async def handle_list_prompts(
         _ctx: Any,
         _params: types.PaginatedRequestParams | None,
     ) -> types.ListPromptsResult:
-        return types.ListPromptsResult(prompts=prompts)
+        changed = index.refresh()
+        result = types.ListPromptsResult(prompts=_prompts())
+        if changed:
+            await bus.publish(PromptsListChanged())
+            result = result.model_copy(update={"ttl_ms": 0})
+        return result
 
     return handle_list_prompts
 
 
-def make_get_prompt_handler(index: dict[str, _PromptEntry]) -> Any:
-    """Build the `prompts/get` handler, closing over the same enumeration.
+def make_get_prompt_handler(index: PromptIndex) -> Any:
+    """Build the `prompts/get` handler, closing over `index` and refreshing it per call.
 
-    A `name` absent from `index` is rejected outright — the dict lookup below is the entire
-    access-control boundary, matching `handle_read_resource`'s shape exactly.
+    A `name` absent from `index.entries` after the refresh is rejected outright — the dict
+    lookup below is the entire access-control boundary, matching `handle_read_resource`'s
+    shape exactly.
     """
     from little_loops.frontmatter import strip_frontmatter
 
@@ -129,7 +186,8 @@ def make_get_prompt_handler(index: dict[str, _PromptEntry]) -> Any:
         _ctx: Any,
         params: types.GetPromptRequestParams,
     ) -> types.GetPromptResult:
-        entry = index.get(params.name)
+        index.refresh()
+        entry = index.entries.get(params.name)
         if entry is None:
             raise MCPError(
                 code=types.INVALID_PARAMS,

@@ -13,6 +13,7 @@ Skips entirely when the `mcp` extra isn't installed (it's optional — see
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import anyio
@@ -446,6 +447,120 @@ def test_read_resource_outside_enumeration_is_rejected(tmp_path, monkeypatch) ->
     anyio.run(run)
 
 
+def _bump_mtime(path: Path) -> None:
+    """Force a directory's mtime strictly forward so the staleness signature sees a change
+    regardless of the host filesystem's timestamp resolution (ENH-3172)."""
+    current = path.stat().st_mtime
+    os.utime(path, (current + 2, current + 2))
+
+
+def test_list_resources_reflects_issue_created_after_server_build(tmp_path, monkeypatch) -> None:
+    """ENH-3172: an issue created after `build_server()` (e.g. by `issue_capture` mid-session)
+    becomes visible to `resources/list` on the next call, without a server restart."""
+    project = _make_project(tmp_path, monkeypatch)
+
+    async def run() -> None:
+        server = build_server(transport="stdio")
+        async with Client(server) as client:
+            before = await client.list_resources()
+            assert {r.uri for r in before.resources} == set()
+
+            _write_issue(project, "features", "P2-FEAT-3135-sample.md", ISSUE_BODY)
+            _bump_mtime(project / ".issues" / "features")
+
+            # `before`'s response is itself cached under the SDK's public 5-minute CacheHint;
+            # bypass the client-side cache to reach the handler and prove *it* self-heals —
+            # the client's own cache lifetime is exactly the pre-existing tension the issue's
+            # Option 3 (list_changed notifications) exists to address, exercised separately
+            # below in test_resources_list_changed_event_delivered_on_subscription.
+            after = await client.list_resources(cache_mode="bypass")
+            assert {r.uri for r in after.resources} == {"ll://issues/FEAT-3135"}
+            # This particular response is known-fresh right after a rebuild — the 5-minute
+            # public CacheHint would otherwise let a client keep serving `before`'s answer.
+            assert after.ttl_ms == 0
+
+    anyio.run(run)
+
+
+def test_read_resource_reflects_issue_created_after_server_build(tmp_path, monkeypatch) -> None:
+    """Same scenario via `resources/read` directly, matching the issue's example verbatim:
+    the URI must resolve within the same session, not error `Unknown resource`."""
+    project = _make_project(tmp_path, monkeypatch)
+
+    async def run() -> None:
+        server = build_server(transport="stdio")
+        async with Client(server) as client:
+            with pytest.raises(MCPError):
+                await client.read_resource("ll://issues/FEAT-3135")
+
+            _write_issue(project, "features", "P2-FEAT-3135-sample.md", ISSUE_BODY)
+            _bump_mtime(project / ".issues" / "features")
+
+            result = await client.read_resource("ll://issues/FEAT-3135")
+            payload = json.loads(result.contents[0].text)
+            assert payload["issue_id"] == "FEAT-3135"
+
+    anyio.run(run)
+
+
+def test_list_resources_drops_issue_deleted_after_server_build(tmp_path, monkeypatch) -> None:
+    """A deleted issue stops being advertised once the index refreshes."""
+    project = _make_project(tmp_path, monkeypatch)
+    issue_path = _write_issue(project, "features", "P2-FEAT-3135-sample.md", ISSUE_BODY)
+
+    async def run() -> None:
+        server = build_server(transport="stdio")
+        async with Client(server) as client:
+            before = await client.list_resources()
+            assert {r.uri for r in before.resources} == {"ll://issues/FEAT-3135"}
+
+            issue_path.unlink()
+            _bump_mtime(project / ".issues" / "features")
+
+            after = await client.list_resources(cache_mode="bypass")
+            assert {r.uri for r in after.resources} == set()
+
+    anyio.run(run)
+
+
+def test_list_resources_unchanged_response_keeps_cache_hint(tmp_path, monkeypatch) -> None:
+    """A call that observes no staleness leaves the SDK's 5-minute public CacheHint alone —
+    the `ttl_ms=0` override only applies to the response that just proved a rebuild happened."""
+    _make_project(tmp_path, monkeypatch)
+
+    async def run() -> None:
+        server = build_server(transport="stdio")
+        async with Client(server) as client:
+            result = await client.list_resources()
+            assert result.ttl_ms > 0
+            assert result.cache_scope == "public"
+
+    anyio.run(run)
+
+
+def test_resources_list_changed_event_delivered_on_subscription(tmp_path, monkeypatch) -> None:
+    """ENH-3172 Option 3: a client listening via `subscriptions/listen` is told the resource
+    list changed, rather than being expected to poll or guess within the CacheHint window."""
+    from mcp.client.subscriptions import ResourcesListChanged
+
+    project = _make_project(tmp_path, monkeypatch)
+
+    async def run() -> None:
+        server = build_server(transport="stdio")
+        async with Client(server) as client:
+            async with client.listen(resources_list_changed=True) as sub:
+                _write_issue(project, "features", "P2-FEAT-3135-sample.md", ISSUE_BODY)
+                _bump_mtime(project / ".issues" / "features")
+
+                await client.list_resources()
+
+                with anyio.fail_after(5):
+                    event = await sub.__anext__()
+                assert isinstance(event, ResourcesListChanged)
+
+    anyio.run(run)
+
+
 # ---------------------------------------------------------------------------
 # Prompts-from-skills (FEAT-3137)
 # ---------------------------------------------------------------------------
@@ -641,6 +756,77 @@ def test_get_prompt_unknown_name_is_rejected(tmp_path, monkeypatch) -> None:
                 await client.get_prompt("../../etc/passwd")
             with pytest.raises(MCPError):
                 await client.get_prompt("not-a-real-skill")
+
+    anyio.run(run)
+
+
+def test_list_prompts_reflects_skill_added_after_server_build(tmp_path, monkeypatch) -> None:
+    """ENH-3172: a `SKILL.md` added after `build_server()` becomes visible to `prompts/list`
+    on the next call, without a server restart."""
+    plugin_root = _use_plugin_root(tmp_path, monkeypatch)
+    _make_project(tmp_path, monkeypatch)
+    skills_dir = plugin_root / "skills"
+    skills_dir.mkdir(parents=True, exist_ok=True)
+
+    async def run() -> None:
+        server = build_server(transport="stdio")
+        async with Client(server) as client:
+            before = await client.list_prompts()
+            assert {p.name for p in before.prompts} == set()
+
+            _make_skill(plugin_root, "my-skill", description="Do the thing.")
+            _bump_mtime(skills_dir)
+
+            after = await client.list_prompts(cache_mode="bypass")
+            assert {p.name for p in after.prompts} == {"my-skill"}
+            assert after.ttl_ms == 0
+
+    anyio.run(run)
+
+
+def test_get_prompt_reflects_skill_added_after_server_build(tmp_path, monkeypatch) -> None:
+    plugin_root = _use_plugin_root(tmp_path, monkeypatch)
+    _make_project(tmp_path, monkeypatch)
+    skills_dir = plugin_root / "skills"
+    skills_dir.mkdir(parents=True, exist_ok=True)
+
+    async def run() -> None:
+        server = build_server(transport="stdio")
+        async with Client(server) as client:
+            with pytest.raises(MCPError):
+                await client.get_prompt("my-skill")
+
+            _make_skill(plugin_root, "my-skill", body="# My Skill\n\nDoes stuff.")
+            _bump_mtime(skills_dir)
+
+            result = await client.get_prompt("my-skill")
+            assert result.messages[0].content.text.strip() == "# My Skill\n\nDoes stuff."
+
+    anyio.run(run)
+
+
+def test_prompts_list_changed_event_delivered_on_subscription(tmp_path, monkeypatch) -> None:
+    """ENH-3172 Option 3: a client listening via `subscriptions/listen` is told the prompt
+    list changed, rather than being expected to poll or guess within the CacheHint window."""
+    from mcp.client.subscriptions import PromptsListChanged
+
+    plugin_root = _use_plugin_root(tmp_path, monkeypatch)
+    _make_project(tmp_path, monkeypatch)
+    skills_dir = plugin_root / "skills"
+    skills_dir.mkdir(parents=True, exist_ok=True)
+
+    async def run() -> None:
+        server = build_server(transport="stdio")
+        async with Client(server) as client:
+            async with client.listen(prompts_list_changed=True) as sub:
+                _make_skill(plugin_root, "my-skill", description="Do the thing.")
+                _bump_mtime(skills_dir)
+
+                await client.list_prompts()
+
+                with anyio.fail_after(5):
+                    event = await sub.__anext__()
+                assert isinstance(event, PromptsListChanged)
 
     anyio.run(run)
 

@@ -273,15 +273,32 @@ This reports the host **little-loops itself would drive** for automation (per
 
 ## Resources and Prompts in Practice
 
-Both surfaces are enumerated **once, when the server starts**. The tools are not — they
-re-resolve the project root and re-read the filesystem on every call. That difference
-produces the single behaviour that surprises people:
+Both surfaces are enumerated once at startup, but the enumeration self-heals within the
+same session (ENH-3172): every `resources/list`, `resources/read`, `prompts/list`, and
+`prompts/get` call cheaply checks whether the watched directories (issue category dirs,
+`.ll/ll-goals.md`, `docs/`, the skills root) changed since the last build, and rebuilds
+the index first if so. A newly created issue becomes readable as `ll://issues/<ID>` on
+the next call after it's written — no restart needed — and a deleted or renamed one stops
+being advertised the same way. The same applies to a newly added `SKILL.md` and the
+prompts list.
 
-> A newly created issue is immediately visible to `issues_query` and `issue_get`, but does
-> not appear as an `ll://issues/<ID>` resource until the server restarts.
+Two caveats follow from *how* that check works:
 
-Restarting the server means restarting it from the host (reconnect the MCP server, or
-restart the client). The same applies to a newly added skill and the prompts list.
+- The check is a directory mtime, not a recursive walk — a change **directly inside** a
+  watched directory is detected; a change two or more levels down (a new `SKILL.md`
+  nested under an existing skill subdirectory, a new file in an existing `docs/`
+  subdirectory) is not. A subsequent unrelated top-level change will still pick it up.
+- The rebuild happens lazily, on the next call to one of the four methods above — not on
+  a background timer. A client that only ever calls `issues_query`/`issue_get` and never
+  touches the resource/prompt surface won't trigger a rebuild, but it also isn't observing
+  the stale data either.
+- Clients that respect the server's 5-minute `public` `CacheHint` on these methods (and
+  don't listen for change events) may still serve their own cached copy of a pre-rebuild
+  response for up to 5 minutes — a client-side cache the server can't reach into. A client
+  that opens a `subscriptions/listen` stream (`resources_list_changed=true` /
+  `prompts_list_changed=true`) gets a `notifications/resources/list_changed` /
+  `notifications/prompts/list_changed` event the moment a rebuild happens and should
+  evict its cache and re-fetch, rather than waiting out the window.
 
 Two more practical notes:
 
@@ -515,7 +532,7 @@ stdio returns the same `-32001` JSON-RPC error the HTTP path returns.
 | Client reports the server failed to start | `mcp` extra not installed | `pip install "little-loops[mcp]"`; run `ll-mcp` in a terminal to see the real stderr |
 | Spawn error / command not found, but `ll-mcp` works in your shell | GUI client does not inherit shell `PATH` | Use the absolute path from `which ll-mcp` in the config |
 | Every tool succeeds but returns empty results | Server spawned with the wrong cwd | Set `cwd`, or wrap in `sh -c 'cd /path && exec ll-mcp'` — see [above](#the-working-directory-requirement) |
-| A new issue is missing from `resources/list` but `issue_get` finds it | Resources are enumerated at startup | Restart/reconnect the server |
+| A new issue is missing from `resources/list` but `issue_get` finds it | Client is serving its own cached `resources/list` response (5-minute public `CacheHint`) | Call again with cache bypassed, or listen for `notifications/resources/list_changed`; see [Resources and Prompts in Practice](#resources-and-prompts-in-practice) — the server itself self-heals on the next call |
 | `prompts/list` is empty | Skills root failed to resolve (rare — the wheel ships its own copy); check stderr for the `ERROR: no skills directory found` line | Set `LL_MCP_SKILLS_ROOT` to a valid skills directory in the server's `env` |
 | `history_search` always returns `[]` | `.ll/history.db` absent or empty | Confirm the file exists; history accrues over sessions |
 | `mcp-call` exits `127` | `.mcp.json` missing from cwd, or no `ll-mcp` key in it | Run `mcp-call` from the project root; `ll-adapt --host claude-code --apply` |
