@@ -2801,10 +2801,15 @@ load_goals → normalize_goals → plan_batches → (auto=false → approve_plan
 
 > **Advanced** — APO loops tune prompts automatically. Most users won't need these.
 > Start with standard loops and return here when you have a specific prompt quality problem.
+>
+> **New to APO?** Start with the [Prompt Optimization Guide](PROMPT_OPTIMIZATION_GUIDE.md) —
+> it covers choosing between these techniques, building the corpus `apo-textgrad` needs, and
+> the behavioral differences that matter before you run one. This section is per-loop
+> reference.
 
 Automatic Prompt Optimization (APO) loops apply iterative improvement techniques to refine prompts using LLM-driven evaluation. They are a practical alternative to manual prompt engineering: instead of tweaking prompts by hand, you describe your criteria and let the loop drive convergence.
 
-Eight built-in APO loops ship with little-loops:
+This section documents eight loops. Six resolve to `category: apo` — `apo-textgrad`, `apo-beam`, and `apo-opro` declare it directly; `apo-contrastive`, `apo-feedback-refinement`, and `rn-plan-apo` inherit it via `from: lib/apo-base`. The remaining two are grouped here for workflow reasons rather than category: `examples-miner` is `category: data` and `prompt-regression-test` is `category: evaluation`.
 
 ---
 
@@ -2940,7 +2945,7 @@ init_history ──→ propose_candidate ──→ evaluate_candidate ──→ 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `prompt_file` | `system.md` | Path to the prompt file to improve |
-| `eval_criteria` | `"clarity, specificity, and effectiveness"` | Criteria used to score each variant |
+| `eval_criteria` | `""` | Criteria used to score each variant. **Defaults to an empty string** — `apo-beam` inherits from `lib/apo-base`, not `lib/apo-shape-a`, so it does not pick up the populated default that `apo-contrastive` and `apo-feedback-refinement` get. Always pass this explicitly. |
 | `beam_width` | `4` | Number of distinct variants generated per iteration |
 | `target_score` | `90` | Score (0–100) at which the loop emits `CONVERGED` and terminates |
 
@@ -3210,29 +3215,15 @@ ll-loop run prompt-regression-test \
 
 ### Choosing Between APO Loops
 
-| Trigger | Recommended loop |
-|---------|-----------------|
-| Output quality varies run-to-run | `apo-feedback-refinement` |
-| Need to compare two prompt versions | `apo-contrastive` |
-| Optimizing a prompt against a fixed metric | `apo-opro` |
-| Want to explore multiple prompt candidates | `apo-beam` |
-| Have gradient-like feedback signals | `apo-textgrad` |
-| Optimizing the `rn-plan` planning prompt | `rn-plan-apo` |
-| Building a training example corpus | `examples-miner` |
-| Prompt quality has regressed vs. baseline | `prompt-regression-test` |
+Technique selection lives in the [Prompt Optimization Guide → Choose a Technique](PROMPT_OPTIMIZATION_GUIDE.md#choose-a-technique). It covers the decisive question (whether you can supply labeled examples — only `apo-textgrad` uses them; the rest grade prompt text against a rubric) plus the behavioral differences that decide a run: which loops rewrite your prompt file, threshold comparison semantics, and real iteration budgets.
 
-| | `apo-feedback-refinement` | `apo-contrastive` | `apo-opro` | `apo-beam` | `apo-textgrad` | `rn-plan-apo` | `prompt-regression-test` |
-|---|---|---|---|---|---|---|---|
-| Exploration per iteration | Low (single candidate) | Medium (N candidates, comparative) | Low (history-guided single candidate) | High (N parallel candidates, independent) | Low (single targeted refinement) | Low (single targeted refinement over plan-quality scores) | Low (one repair pass via apo-textgrad) |
-| Convergence speed | Fastest when feedback is precise | Moderate | Moderate | Slowest (most LLM calls) | Fast when examples have clear correct answers | Moderate (one `rn-plan` execution per task per iteration) | Fast when regression has concrete failing examples |
-| Local optima risk | High | Moderate | Moderate | Low | Low (example failures provide precise signal) | Low (4-dimension structural signal from plan trees) | Low (triggered only by concrete regressions) |
-| Best for | Targeted improvement with clear criteria | Broad style exploration | Long runs where history improves proposals | Escaping plateaus, high-variance search spaces | Prompts with measurable pass/fail examples (classification, extraction) | The `rn-plan` planning prompt; plans scored on subtask success rate, depth/complexity, redundancy, coverage gaps | CI integration; defending a known-good quality baseline |
+For `rn-plan` planning prompts specifically, use [`rn-plan-apo`](#rn-plan-apo--plan-quality-gradient-optimization). To build or refresh a corpus, use [`examples-miner`](#examples-miner--co-evolutionary-corpus-mining). To defend a known-good baseline in CI, use [`prompt-regression-test`](#prompt-regression-test--prompt-ci--regression-detection).
 
 ### Tips for APO Loops
 
-- **Start with a concrete `eval_criteria`**: vague criteria produce vague scores. Instead of `"good"`, try `"responds only with valid JSON, handles edge cases, and explains its reasoning"`.
-- **Set `quality_threshold` conservatively**: start at 80 and raise once the loop reaches it. Overly strict thresholds burn iterations without improvement.
-- **Check the prompt file after each run**: the loop writes back to the file in-place. Use `git diff` to review the evolution across iterations.
+- **Start with a concrete `eval_criteria`**: vague criteria produce vague scores. Instead of `"good"`, try `"responds only with valid JSON, handles edge cases, and explains its reasoning"`. Note that `apo-beam` defaults this to an empty string — always pass it explicitly there.
+- **Set `quality_threshold` conservatively**: start at 80 and raise once the loop reaches it. Overly strict thresholds burn iterations without improvement. Avoid `100` on `apo-textgrad` and `apo-beam`, which require the score to strictly *exceed* the target and so can never converge at 100.
+- **Check the prompt file after each run**: most APO loops write back to the file in-place, so use `git diff` to review the evolution across iterations — and commit before running, since `apo-beam`, `apo-contrastive`, and `apo-feedback-refinement` rewrite the file on every round, before the convergence check. **`apo-opro` is the exception: it writes nothing.** Its winning candidate appears only in the run transcript and must be copied out by hand.
 - **Install to customize**: run `ll-loop install apo-feedback-refinement` to copy the YAML to `.loops/` and edit state actions or add custom evaluation logic.
 
 ## Evaluation Loops

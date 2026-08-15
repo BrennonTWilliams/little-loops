@@ -180,9 +180,9 @@ ll-loop run harness-optimize -b        # Score-gated hill climbing in the backgr
 
 - **29 slash commands** — issue discovery, refinement, planning, code quality, git, automation
 - **9 specialized agents** — codebase analysis, quality assurance, automation, and research
-- **37 skills** — deterministic harnesses for common workflows (confidence checks, issue wiring, loop creation)
-- **48 typed CLI tools** — `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, and more
-- **102 FSM loops** — recurring automation workflows (backlog triage, sprint building, eval harnesses)
+- **69 skills** — deterministic harnesses for common workflows (confidence checks, issue wiring, loop creation)
+- **52 typed CLI tools** — `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-action`, and more
+- **~103 FSM loops** — recurring automation workflows (backlog triage, sprint building, eval harnesses)
 - **Configuration system** — project-type templates for Python, JS/TS, Go, Rust, Java, .NET, and generic
 - **Design tokens** — WCAG AA palette template set with FSM context injection for artifact-generating loops
 - **Observability** — every run logged, archived, and queryable: `ll-loop history`, `ll-history`, and a per-project `.ll/history.db`
@@ -207,6 +207,7 @@ Every user-facing guide lives in [`docs/guides/`](docs/guides/). Start with [Get
 | [Policy Router](docs/guides/POLICY_ROUTER_GUIDE.md) | A loop must branch on combinations of scored dimensions |
 | [Learning Tests](docs/guides/LEARNING_TESTS_GUIDE.md) | You want external APIs proven before code builds on them |
 | [Decisions Log](docs/guides/DECISIONS_LOG_GUIDE.md) | You want recorded decisions and enforced team rules |
+| [Prompt Optimization](docs/guides/PROMPT_OPTIMIZATION_GUIDE.md) | You want a prompt improved automatically against criteria or labeled examples |
 | [Examples Mining](docs/guides/EXAMPLES_MINING_GUIDE.md) | You want prompts that improve from your own session history |
 | [Workflow Analysis](docs/guides/WORKFLOW_ANALYSIS_GUIDE.md) | You want automation opportunities mined from message history |
 

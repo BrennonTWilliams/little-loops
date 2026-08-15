@@ -89,6 +89,7 @@ What do you need?
 ├─ Build a project from a spec file ────────────→ rn-build
 │
 ├─ Improve a prompt or skill automatically ─────→ apo-* loops
+│     see docs/guides/PROMPT_OPTIMIZATION_GUIDE.md to pick one
 │
 └─ Not sure which loop fits ────────────────────→ loop-router
       ll-loop run loop-router "describe your goal"

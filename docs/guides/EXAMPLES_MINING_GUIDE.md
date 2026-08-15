@@ -4,6 +4,11 @@
 
 Use `examples-miner` when `apo-textgrad` pass rates have plateaued (≥ 90% on your corpus) but the prompt still fails on real inputs, or when your `examples.json` was hand-crafted months ago and the skill has since evolved. **This is a soft recommendation, not an enforced gate: nothing in the loop checks a minimum issue count.** With very few completed issues, `harvest` will simply return few or zero candidates, and `judge`/`calibrate` will pass through what little survives quality-gating and the 40–80% difficulty band. If you're starting fresh, complete a few issues first, then come back for a more useful corpus.
 
+**New to APO?** This guide assumes you already run `apo-textgrad` against a working
+`examples.json`. If you don't yet, start with the
+[Prompt Optimization Guide](PROMPT_OPTIMIZATION_GUIDE.md) — it covers choosing a technique,
+writing a first corpus by hand, and reading the `PASS_RATE` signal.
+
 ---
 
 Static `examples.json` files have a natural expiry date. When `apo-textgrad` is first set up, examples are written for the prompt's current capability — but as the prompt improves, those examples become trivially easy, `PASS_RATE` saturates, the gradient signal disappears, and optimization stalls at a local optimum. Meanwhile, the skill itself evolves: new conventions, new file layouts, new issue formats. The corpus quietly goes stale.
@@ -630,6 +635,7 @@ The `source` field distinguishes harvested real examples from synthesized target
 
 ## See Also
 
+- [Prompt Optimization Guide](PROMPT_OPTIMIZATION_GUIDE.md) — the prerequisite: choosing an APO technique, building a first `examples.json`, and interpreting `PASS_RATE` before you reach the plateau this guide addresses
 - [LOOPS_REFERENCE.md](LOOPS_REFERENCE.md) — quick-reference section for `examples-miner`: context variables table, FSM flow diagram, perturbation taxonomy, basic invocations
 - [`scripts/little_loops/loops/examples-miner.yaml`](../../scripts/little_loops/loops/examples-miner.yaml) — full annotated loop source (11 non-terminal states + a `done` terminal)
 - [`scripts/little_loops/loops/oracles/oracle-capture-issue.yaml`](../../scripts/little_loops/loops/oracles/oracle-capture-issue.yaml) — reference implementation for the v2 oracle sub-loop (two-phase: shell mechanical checks + LLM semantic scoring)

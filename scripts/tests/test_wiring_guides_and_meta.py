@@ -155,6 +155,17 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     # REMOVED (stale/false-positive, count drifted 39->42 via ll-verify-docs --fix
     # during FEAT-2354): ("CONTRIBUTING.md", "# 39 skill definitions", "FEAT-1447"),
     ("docs/guides/LOOPS_GUIDE.md", "distill-traces", "FEAT-2078"),
+    # APO guide — pins the two corrected facts most likely to silently regress.
+    # apo-opro reads prompt_file but no state writes it (apo-opro.yaml:29);
+    # apo-beam's eval_criteria defaults to "" (apo-beam.yaml:14), since beam
+    # inherits lib/apo-base rather than lib/apo-shape-a.
+    ("docs/guides/PROMPT_OPTIMIZATION_GUIDE.md", "advisory only", "DOCS-APO-GUIDE"),
+    (
+        "docs/guides/PROMPT_OPTIMIZATION_GUIDE.md",
+        "`apo-opro` does not write your prompt file",
+        "DOCS-APO-GUIDE",
+    ),
+    ("docs/guides/LOOPS_REFERENCE.md", "`apo-opro` is the exception", "DOCS-APO-GUIDE"),
     # REMOVED (stale/false-positive): ("docs/ARCHITECTURE.md", "/ll:verify-issue-loop", "FEAT-1447"),
     # REMOVED (stale/false-positive): ("docs/ARCHITECTURE.md", "verify-issue-loop", "FEAT-1447"),
     # REMOVED (stale/false-positive): ("docs/ARCHITECTURE.md", "hooks/adapters/claude-code/precompact.sh", "FEAT-1457"),

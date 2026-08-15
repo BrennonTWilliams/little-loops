@@ -74,6 +74,7 @@ nav:
     - Workflow Analysis: guides/WORKFLOW_ANALYSIS_GUIDE.md
     - Automatic Harnessing: guides/AUTOMATIC_HARNESSING_GUIDE.md
     - Harness Optimization: guides/HARNESS_OPTIMIZATION_GUIDE.md
+    - Prompt Optimization: guides/PROMPT_OPTIMIZATION_GUIDE.md
     - Examples Mining: guides/EXAMPLES_MINING_GUIDE.md
     - Decisions Log: guides/DECISIONS_LOG_GUIDE.md
     - Learning Tests: guides/LEARNING_TESTS_GUIDE.md

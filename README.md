@@ -207,6 +207,7 @@ Every user-facing guide lives in [`docs/guides/`](docs/guides/). Start with [Get
 | [Policy Router](docs/guides/POLICY_ROUTER_GUIDE.md) | A loop must branch on combinations of scored dimensions |
 | [Learning Tests](docs/guides/LEARNING_TESTS_GUIDE.md) | You want external APIs proven before code builds on them |
 | [Decisions Log](docs/guides/DECISIONS_LOG_GUIDE.md) | You want recorded decisions and enforced team rules |
+| [Prompt Optimization](docs/guides/PROMPT_OPTIMIZATION_GUIDE.md) | You want a prompt improved automatically against criteria or labeled examples |
 | [Examples Mining](docs/guides/EXAMPLES_MINING_GUIDE.md) | You want prompts that improve from your own session history |
 | [Workflow Analysis](docs/guides/WORKFLOW_ANALYSIS_GUIDE.md) | You want automation opportunities mined from message history |
 
