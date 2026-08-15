@@ -285,11 +285,17 @@ Two more practical notes:
   per file under `docs/` — this repository enumerates over 3,000. Clients that eagerly
   fetch every resource will be slow; prefer `issues_query` to *find* an issue and
   `resources/read` (or `issue_get`) to fetch the one you want.
-- **Prompts come from the plugin checkout, not the pip package.** The skills directory is
-  resolved from `$CLAUDE_PLUGIN_ROOT` if set, otherwise from the installed package's
-  parent directory. A pip-only install with no plugin checkout therefore lists zero
-  prompts; set `CLAUDE_PLUGIN_ROOT` in the server's `env` block to point at a checkout if
-  you want them.
+- **Prompts serve the full skill catalog on every install source** (BUG-3177), not only a
+  plugin checkout. The skills root is resolved in order: `$LL_MCP_SKILLS_ROOT` if set and
+  valid, then `$CLAUDE_PLUGIN_ROOT/skills` if set and valid, then the copy shipped inside
+  the installed `little_loops` package (present on both `pypi` and `local-editable`
+  wheel/sdist builds), then the checkout-relative fallback (editable installs run
+  straight from source). If none of those resolve, the server logs an `ERROR:` line on
+  stderr naming every path it tried and serves an empty prompt list rather than failing
+  silently — check the host's server log for that line if `prompts/list` comes back
+  empty unexpectedly. Set `LL_MCP_SKILLS_ROOT` in the server's `env` block to point at an
+  arbitrary skills directory (e.g. a different checkout) if you need to override the
+  default resolution.
 
 Resource and prompt listings carry `ttlMs`/`cacheScope` cache hints (5 minutes, public),
 so a well-behaved client will not re-enumerate on every request.
@@ -506,7 +512,7 @@ stdio returns the same `-32001` JSON-RPC error the HTTP path returns.
 | Spawn error / command not found, but `ll-mcp` works in your shell | GUI client does not inherit shell `PATH` | Use the absolute path from `which ll-mcp` in the config |
 | Every tool succeeds but returns empty results | Server spawned with the wrong cwd | Set `cwd`, or wrap in `sh -c 'cd /path && exec ll-mcp'` — see [above](#the-working-directory-requirement) |
 | A new issue is missing from `resources/list` but `issue_get` finds it | Resources are enumerated at startup | Restart/reconnect the server |
-| `prompts/list` is empty | No plugin checkout resolvable from the installed package | Set `CLAUDE_PLUGIN_ROOT` to a checkout in the server's `env` |
+| `prompts/list` is empty | Skills root failed to resolve (rare — the wheel ships its own copy); check stderr for the `ERROR: no skills directory found` line | Set `LL_MCP_SKILLS_ROOT` to a valid skills directory in the server's `env` |
 | `history_search` always returns `[]` | `.ll/history.db` absent or empty | Confirm the file exists; history accrues over sessions |
 | `mcp-call` exits `127` | `.mcp.json` missing from cwd, or no `ll-mcp` key in it | Run `mcp-call` from the project root; `ll-adapt --host claude-code --apply` |
 | `mcp-call` exits `124` | Server started but never answered | Check for a stale install: `pip show little-loops`, then re-run `ll-adapt` |

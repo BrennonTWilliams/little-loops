@@ -109,7 +109,9 @@ little-loops/
 │       ├── user-prompt-check.sh
 │       └── lib/
 │           └── common.sh    # Shared shell functions
-├── skills/                  # 40 skill definitions
+├── skills/                  # 40 skill definitions — force-included into the wheel at
+│                            # little_loops/skills/ for ll-mcp's prompts surface (BUG-3177);
+│                            # stays physically here (host-plugin glue, FEAT-2274/BUG-938)
 │   ├── analyze-history/     # Proactive
 │   │   └── SKILL.md
 │   ├── debug-loop-run/      # User-invoked

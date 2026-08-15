@@ -64,7 +64,7 @@ class TestWheelSmoke:
         )
 
         install = subprocess.run(
-            [str(python), "-m", "pip", "install", "--quiet", str(wheel)],
+            [str(python), "-m", "pip", "install", "--quiet", f"{wheel}[mcp]"],
             capture_output=True,
             text=True,
             timeout=120,
@@ -187,4 +187,98 @@ class TestWheelSmoke:
         assert result.returncode == 0, (
             f"schema_default() failed in wheel install (FileNotFoundError means "
             f"the schema did not ship in the wheel):\n{result.stderr}"
+        )
+
+    def test_skills_force_include_accessible(self, installed_venv: Path) -> None:
+        """BUG-3177: skills/ (force-include'd into little_loops/skills/) must ship in the
+        wheel — this is a build config bug (pyproject.toml), unlike every other check
+        above, which is a code-path bug."""
+        result = self._run(
+            installed_venv,
+            """\
+            import importlib.resources
+            t = importlib.resources.files("little_loops")
+            t = t.joinpath("skills").joinpath("manage-issue").joinpath("SKILL.md")
+            assert t.is_file(), "skills/manage-issue/SKILL.md not accessible via importlib.resources"
+            print("OK")
+            """,
+        )
+        assert result.returncode == 0, result.stderr
+
+    def test_mcp_prompts_list_returns_full_catalog_without_plugin_root(
+        self, installed_venv: Path, tmp_path: Path
+    ) -> None:
+        """BUG-3177 acceptance test: prompts/list must serve the full skill catalog on a
+        non-editable install with CLAUDE_PLUGIN_ROOT unset — the exact failure this bug
+        describes (`ll-mcp` serves zero prompts outside an editable checkout)."""
+        result = self._run(
+            installed_venv,
+            """\
+            import anyio
+            from mcp.client import Client
+            from little_loops.mcp_server.server import build_server
+
+            async def run():
+                server = build_server(transport="stdio")
+                async with Client(server) as client:
+                    result = await client.list_prompts()
+                    assert result.prompts, "prompts/list returned zero prompts"
+                    print(len(result.prompts))
+
+            anyio.run(run)
+            """,
+        )
+        assert result.returncode == 0, result.stderr
+        assert int(result.stdout.strip()) > 0, "expected a non-empty prompt catalog"
+
+    def test_sdist_force_include_ships_skills(
+        self, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        """BUG-3177: a wheel built *from the sdist* (the pip-from-PyPI source-install
+        path) must also contain skills/ — force-include's `"../skills"` source only
+        resolves against a repo checkout, so the wheel-direct fixture above cannot
+        catch a missing `[tool.hatch.build.targets.sdist.force-include]` mapping."""
+        if not os.environ.get("PYTEST_INTEGRATION"):
+            pytest.skip("Set PYTEST_INTEGRATION=1 to run wheel smoke tests")
+
+        import tarfile
+        import zipfile
+
+        scripts_dir = Path(__file__).resolve().parents[1]  # scripts/
+        tmp = tmp_path_factory.mktemp("sdist_smoke")
+
+        sdist_dir = tmp / "sdist"
+        build_sdist = subprocess.run(
+            [sys.executable, "-m", "build", "--sdist", "--outdir", str(sdist_dir)],
+            capture_output=True,
+            text=True,
+            cwd=str(scripts_dir),
+            timeout=120,
+        )
+        assert build_sdist.returncode == 0, f"sdist build failed:\n{build_sdist.stderr}"
+        sdists = list(sdist_dir.glob("*.tar.gz"))
+        assert len(sdists) == 1, f"Expected one sdist, got {sdists}"
+
+        extract_dir = tmp / "extracted"
+        with tarfile.open(sdists[0]) as tf:
+            tf.extractall(extract_dir, filter="data")
+        (unpacked,) = list(extract_dir.iterdir())
+
+        wheel_from_sdist_dir = tmp / "wheel_from_sdist"
+        build_wheel = subprocess.run(
+            [sys.executable, "-m", "build", "--wheel", "--outdir", str(wheel_from_sdist_dir)],
+            capture_output=True,
+            text=True,
+            cwd=str(unpacked),
+            timeout=120,
+        )
+        assert build_wheel.returncode == 0, f"wheel-from-sdist build failed:\n{build_wheel.stderr}"
+        wheels = list(wheel_from_sdist_dir.glob("*.whl"))
+        assert len(wheels) == 1, f"Expected one wheel, got {wheels}"
+
+        with zipfile.ZipFile(wheels[0]) as zf:
+            names = zf.namelist()
+        assert any(n.endswith("little_loops/skills/manage-issue/SKILL.md") for n in names), (
+            "skills/ missing from a wheel built from the sdist — the sdist force-include "
+            "mapping is missing or broken"
         )

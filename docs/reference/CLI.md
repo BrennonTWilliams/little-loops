@@ -4415,9 +4415,17 @@ name/description/args from frontmatter only; `prompts/get` returns the skill's f
 (frontmatter stripped) as a single user-role prompt message. `prompts/list` responses carry
 `ttlMs`/`cacheScope` per SEP-2549.
 
+The skills root that surface enumerates is resolved on every install source (BUG-3177), not
+only a plugin checkout: `LL_MCP_SKILLS_ROOT` env var if set and a valid directory, then
+`CLAUDE_PLUGIN_ROOT/skills` if set and valid, then the copy shipped inside the installed
+`little_loops` package, then the checkout-relative fallback. If none resolve, the server logs
+an `ERROR:` line on stderr naming every path it tried and serves an empty prompt list rather
+than failing silently.
+
 **Arguments:** `--http` selects the streamable HTTP transport instead of stdio (the
 `LL_MCP_TRANSPORT=http` env var is the equivalent for hosts that invoke `ll-mcp` with no
-args). There are no other flags; it is a protocol server, not a CLI.
+args). `LL_MCP_SKILLS_ROOT` overrides the prompts-from-skills root (see above). There are no
+other flags; it is a protocol server, not a CLI.
 
 **Exit codes:** `0` = clean EOF/shutdown, `2` = missing the `mcp` extra, or a usage error
 

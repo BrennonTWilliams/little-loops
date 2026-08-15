@@ -176,6 +176,23 @@ webhooks = [
 packages = ["little_loops"]
 include = ["little_loops/**", "LICENSE", "README.md"]
 
+# BUG-3177: skills/ stays physically at the repo root (host-plugin glue,
+# FEAT-2274/BUG-938's deliberate out-of-wheel boundary) but ll-mcp's
+# prompts-from-skills surface (FEAT-3137) is package code that now genuinely
+# reads it, so a build-time copy lands in the wheel without relocating the
+# source tree or touching .claude-plugin/plugin.json's "./skills" reference.
+#
+# This is a custom build hook (hatch_build.py), not a static force-include table,
+# because a static "../skills" mapping is required in both the wheel and sdist
+# targets (a PyPI release also publishes an sdist, and `pip install` from source
+# builds the wheel *from the sdist's contents*) — but building the wheel from an
+# already-unpacked sdist has no "../skills" to find (the sdist already copied it
+# in-place at little_loops/skills/), and hatchling's force-include hard-fails on a
+# missing source rather than skipping it. See hatch_build.py's docstring.
+[tool.hatch.build.targets.wheel.hooks.custom]
+
+[tool.hatch.build.targets.sdist.hooks.custom]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

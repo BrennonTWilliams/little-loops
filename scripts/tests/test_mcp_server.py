@@ -23,7 +23,7 @@ pytest.importorskip("mcp")
 from mcp.client import Client  # noqa: E402
 from mcp.shared.exceptions import MCPError  # noqa: E402
 
-from little_loops.mcp_server.server import build_server  # noqa: E402
+from little_loops.mcp_server.server import _resolve_skills_root, build_server  # noqa: E402
 
 ISSUE_BODY = """---
 id: 3135
@@ -534,6 +534,78 @@ def test_list_prompts_skips_disable_model_invocation_skills(tmp_path, monkeypatc
             result = await client.list_prompts()
             names = {p.name for p in result.prompts}
             assert names == {"visible-skill"}
+
+    anyio.run(run)
+
+
+# ---------------------------------------------------------------------------
+# _resolve_skills_root (BUG-3177) — the CLAUDE_PLUGIN_ROOT fallback wasn't
+# exercised by any test above; all five prompt tests above only ever set the
+# env var, never unset it.
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_skills_root_prefers_explicit_override(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("LL_MCP_SKILLS_ROOT", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "unused-plugin-root"))
+    assert _resolve_skills_root() == tmp_path
+
+
+def test_resolve_skills_root_falls_through_invalid_override(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("LL_MCP_SKILLS_ROOT", str(tmp_path / "does-not-exist"))
+    plugin_root = tmp_path / "plugin"
+    (plugin_root / "skills").mkdir(parents=True)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+    assert _resolve_skills_root() == plugin_root / "skills"
+
+
+def test_resolve_skills_root_falls_back_when_env_var_unset(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("LL_MCP_SKILLS_ROOT", raising=False)
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    monkeypatch.setattr("importlib.resources.files", lambda pkg: tmp_path / "no-package-copy")
+    fallback_root = tmp_path / "checkout"
+    (fallback_root / "skills").mkdir(parents=True)
+    monkeypatch.setattr("little_loops.skill_expander._find_plugin_root", lambda: fallback_root)
+    assert _resolve_skills_root() == fallback_root / "skills"
+
+
+def test_resolve_skills_root_warns_on_stderr_when_nothing_resolves(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    monkeypatch.setenv("LL_MCP_SKILLS_ROOT", str(tmp_path / "missing-override"))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "missing-plugin-root"))
+    monkeypatch.setattr("importlib.resources.files", lambda pkg: tmp_path / "missing-package")
+    monkeypatch.setattr(
+        "little_loops.skill_expander._find_plugin_root", lambda: tmp_path / "missing-fallback"
+    )
+
+    result = _resolve_skills_root()
+
+    assert result == tmp_path / "missing-fallback" / "skills"
+    err = capsys.readouterr().err
+    assert "ERROR" in err
+    assert str(tmp_path / "missing-override") in err
+    assert str(tmp_path / "missing-plugin-root" / "skills") in err
+    assert str(tmp_path / "missing-fallback" / "skills") in err
+
+
+def test_list_prompts_falls_back_when_claude_plugin_root_unset(tmp_path, monkeypatch) -> None:
+    """BUG-3177: build_server()/list_prompts() over the real fallback chain, not just
+    the env-var-set branch every other prompts test above exercises."""
+    _make_project(tmp_path, monkeypatch)
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    monkeypatch.delenv("LL_MCP_SKILLS_ROOT", raising=False)
+    monkeypatch.setattr("importlib.resources.files", lambda pkg: tmp_path / "no-package-copy")
+    checkout_root = tmp_path / "checkout"
+    _make_skill(checkout_root, "fallback-skill", description="Via checkout fallback.")
+    monkeypatch.setattr("little_loops.skill_expander._find_plugin_root", lambda: checkout_root)
+
+    async def run() -> None:
+        server = build_server(transport="stdio")
+        async with Client(server) as client:
+            result = await client.list_prompts()
+            names = {p.name for p in result.prompts}
+            assert names == {"fallback-skill"}
 
     anyio.run(run)
 

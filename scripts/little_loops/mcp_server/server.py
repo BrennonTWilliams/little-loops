@@ -13,6 +13,9 @@ Resources ARE registered (FEAT-3136), so `caps.resources` is non-`None`. Prompts
 from __future__ import annotations
 
 import importlib.metadata
+import importlib.resources
+import os
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -29,6 +32,48 @@ def _server_version() -> str:
         return importlib.metadata.version("little-loops")
     except importlib.metadata.PackageNotFoundError:
         return "0.0.0"
+
+
+def _resolve_skills_root() -> Path:
+    """Resolve the prompts-from-skills root (BUG-3177).
+
+    `_find_plugin_root()`'s bare fallback (three parents above this file) only lands
+    on `skills/` in an editable checkout — a wheel install has no `skills/` there,
+    which silently produced an empty prompt catalog. This adds, in order: an explicit
+    override, the Claude Code plugin root, the in-package copy `pyproject.toml`'s
+    `force-include` ships into the wheel, then the editable-checkout fallback. Each
+    candidate is validated with `.is_dir()` before being trusted — unlike
+    `_find_plugin_root()` itself, which trusts `CLAUDE_PLUGIN_ROOT` unconditionally —
+    so a stale/wrong env var falls through instead of resolving to a directory that
+    doesn't exist. If nothing resolves, warns on stderr naming every path tried;
+    `ll-mcp` is spawned by a host, so stderr is the host's server log.
+    """
+    from little_loops.skill_expander import _find_plugin_root
+
+    candidates: list[Path] = []
+
+    override = os.environ.get("LL_MCP_SKILLS_ROOT")
+    if override:
+        candidates.append(Path(override))
+
+    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if plugin_root:
+        candidates.append(Path(plugin_root) / "skills")
+
+    try:
+        candidates.append(Path(str(importlib.resources.files("little_loops"))) / "skills")
+    except (ModuleNotFoundError, TypeError):
+        pass
+
+    candidates.append(_find_plugin_root() / "skills")
+
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+
+    tried = ", ".join(str(candidate) for candidate in candidates)
+    print(f"ERROR: no skills directory found; tried: {tried}", file=sys.stderr)
+    return candidates[-1]
 
 
 def build_http_app(host: str = "127.0.0.1") -> Any:
@@ -92,11 +137,10 @@ def build_server(transport: str) -> Server:
         make_tasks_get_handler,
     )
     from little_loops.mcp_server.tools import handle_list_tools, make_call_tool_handler
-    from little_loops.skill_expander import _find_plugin_root
 
     config = BRConfig(Path.cwd())
     resource_index = build_resource_index(config)
-    prompt_index = build_prompt_index(_find_plugin_root() / "skills")
+    prompt_index = build_prompt_index(_resolve_skills_root())
 
     # FEAT-3151: wraps handle_call_tool with the SEP-2663 start-path interceptor.
     # Additive — TasksExtension passes every call through unchanged except the one tool
