@@ -28,6 +28,11 @@ from mcp.client import Client  # noqa: E402
 
 from little_loops.mcp_server import main_mcp  # noqa: E402
 from little_loops.mcp_server.server import build_http_app, build_server  # noqa: E402
+from little_loops.mcp_server.tasks import (  # noqa: E402
+    TasksGetParams,
+    _loops_dir,
+    make_tasks_get_handler,
+)
 from little_loops.mcp_server.tools import _looks_like_project_root, _project_root  # noqa: E402
 
 
@@ -103,17 +108,103 @@ def test_loop_start_resolves_loops_dir_from_explicit_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`loop_start` (which reaches `tasks._loops_dir`) fails for a missing loop under the
-    explicit root's `.loops/`, not silently against `cwd`'s (or a nonexistent) `.loops/`."""
+    explicit root's `.loops/`, not silently against `cwd`'s (or a nonexistent) `.loops/`.
+
+    BUG-3180: the `is_error` assertion alone was a false positive — `does-not-exist` is
+    missing under *both* roots, so it held while `_loops_dir` was still returning a
+    cwd-relative `.loops`. The path assertion is what actually pins the root.
+    """
     project = _make_project(tmp_path / "project")
     (project / ".loops").mkdir()
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
 
+    resolved = _loops_dir(project)
+    assert resolved.is_absolute()
+    assert resolved == project / ".loops"
+
     async def run() -> None:
         async with Client(build_server(transport="stdio", project_root=project)) as client:
             result = await client.call_tool("loop_start", {"loop": "does-not-exist"})
             assert result.is_error
+
+    anyio.run(run)
+
+
+def test_tasks_get_reads_run_state_under_explicit_root_from_foreign_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BUG-3180: a run recorded under the explicit root is pollable from any cwd.
+
+    Drives `make_tasks_get_handler` directly rather than through the HTTP app — the point
+    under test is the `.loops` path `_loops_dir` hands the handler, and a chdir-sensitive
+    resolution is invisible through a transport that never leaves the fixture root.
+    """
+    project = _make_project(tmp_path / "project")
+    running_dir = project / ".loops" / ".running"
+    running_dir.mkdir(parents=True)
+    (running_dir / "run-1.state.json").write_text(
+        json.dumps(
+            {
+                "loop_name": "sample-loop",
+                "current_state": "done",
+                "iteration": 3,
+                "captured": {},
+                "prev_result": None,
+                "last_result": None,
+                "started_at": "2026-08-15T10:00:00Z",
+                "updated_at": "2026-08-15T10:05:00Z",
+                "status": "completed",
+                "accumulated_ms": 12345,
+            }
+        ),
+        encoding="utf-8",
+    )
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    handler = make_tasks_get_handler("stdio", project)
+
+    async def run() -> None:
+        result = await handler(None, TasksGetParams(taskId="run-1"))
+        assert result["taskId"] == "run-1"
+        assert result["status"] == "completed"
+        assert result["runStatus"] == "completed"
+
+    anyio.run(run)
+
+
+def test_history_search_reads_db_under_explicit_root_from_foreign_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BUG-3181: `history_search` resolves `.ll/history.db` from the explicit root.
+
+    `LL_HISTORY_DB` is pointed at the fixture DB only while seeding it — `ensure_db` runs
+    even an explicit default-shaped path back through the cwd-anchored chain — then
+    cleared for the call under test, since it outranks the resolved root by design and
+    would otherwise mask exactly the regression being asserted.
+    """
+    from little_loops.session_store import SQLiteTransport
+
+    project = _make_project(tmp_path / "project")
+    db = project / ".ll" / "history.db"
+    monkeypatch.setenv("LL_HISTORY_DB", str(db))
+    transport = SQLiteTransport(db)
+    transport.send({"event": "state_enter", "loop_name": "ratelimit", "state": "execute"})
+    transport.close()
+    monkeypatch.delenv("LL_HISTORY_DB")
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    async def run() -> None:
+        async with Client(build_server(transport="stdio", project_root=project)) as client:
+            results = _payload(await client.call_tool("history_search", {"query": "ratelimit"}))
+            assert results, "history_search found nothing under the explicit project root"
+            assert any("ratelimit" in row["content"] for row in results)
 
     anyio.run(run)
 

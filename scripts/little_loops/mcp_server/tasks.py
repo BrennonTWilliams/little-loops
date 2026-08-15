@@ -76,11 +76,16 @@ def _loops_dir(project_root: Path) -> Path:
     ENH-3171: `project_root` is threaded in via the same factory-closure shape `transport`
     already uses — resolved once by `main_mcp`/`build_server`, not re-resolved from
     `Path.cwd()` here on every call.
+
+    BUG-3180: goes through `get_loops_dir()`, the *joining* accessor, rather than
+    `config.loops.loops_dir`, which is the raw config string (`".loops"`) and therefore
+    relative. Reading the raw field here silently re-anchored every run path on the
+    process cwd, undoing ENH-3171 for `loop_start`/`tasks/get`/`tasks/cancel` even
+    though the resolved root was already in hand.
     """
     from little_loops.config import BRConfig
 
-    config = BRConfig(project_root)
-    return Path(config.loops.loops_dir)
+    return BRConfig(project_root).get_loops_dir()
 
 
 def _not_found(task_id: str) -> MCPError:

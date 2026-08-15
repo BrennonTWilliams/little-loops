@@ -145,11 +145,18 @@ def _tool_history_search(arguments: dict[str, Any], *, project_root: Path) -> An
     """FTS5 full-text search over `.ll/history.db`, optionally filtered by kind.
 
     Wraps `history_reader.search()` directly; results marshal via `dataclasses.asdict()`,
-    the existing convention for plain dataclasses elsewhere in the CLI surface. `history.db`
-    is process-global, not project-rooted, so `project_root` is accepted (for dispatch
-    uniformity with the other handlers) but unused.
+    the existing convention for plain dataclasses elsewhere in the CLI surface.
+
+    BUG-3181: `history.db` is per-project, not process-global — `search()`'s `db` default
+    is the *relative* `.ll/history.db`, which resolves against whatever cwd the host
+    happened to spawn this server with. The DB is resolved here through the shared
+    `resolve_history_db`, anchored at `project_root` (`root=`), so the established
+    precedence — `LL_HISTORY_DB`, then `history.db_path`, then
+    `<project_root>/.ll/history.db` — applies without a second resolution living in this
+    module.
     """
     from little_loops.history_reader import search
+    from little_loops.session_store import DEFAULT_DB_PATH, resolve_history_db
 
     query = str(arguments.get("query") or "")
     kind = arguments.get("kind")
@@ -157,7 +164,8 @@ def _tool_history_search(arguments: dict[str, Any], *, project_root: Path) -> An
     if not isinstance(limit, int) or limit <= 0:
         limit = 10
 
-    results = search(query, kind=kind, limit=limit)
+    db = resolve_history_db(project_root / DEFAULT_DB_PATH, root=project_root)
+    results = search(query, kind=kind, limit=limit, db=db)
     return [dataclasses.asdict(r) for r in results]
 
 

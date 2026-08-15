@@ -32,7 +32,7 @@ def _is_default_shaped(path: Path | str | None) -> bool:
     return p.name == "history.db" and p.parent.name == ".ll"
 
 
-def _config_db_path() -> Path | None:
+def _config_db_path(*, root: Path | None = None) -> Path | None:
     """Best-effort read of ``history.db_path`` from the project config (ENH-2623).
 
     Returns the configured path (relative paths resolved against the
@@ -43,12 +43,16 @@ def _config_db_path() -> Path | None:
     ``resolve_config_path`` + ``json.loads`` pattern the bootstrap hooks
     use — so the hot ``SessionStart`` / ``UserPromptSubmit`` path is never
     blocked by a bad config file.
+
+    BUG-3181: *root* seeds the upward walk that finds the project. Omitted, it
+    starts at ``Path.cwd()`` as before — which is only correct for a process
+    already running inside the project it is answering about.
     """
     try:
         from little_loops.config.core import resolve_config_path
         from little_loops.paths import resolve_ll_dir
 
-        ll_dir = resolve_ll_dir()
+        ll_dir = resolve_ll_dir(start=root)
         if ll_dir is None:
             return None
         root = ll_dir.parent
@@ -65,7 +69,7 @@ def _config_db_path() -> Path | None:
         return None
 
 
-def _resolve_db_path(path: Path | str | None = None) -> Path:
+def _resolve_db_path(path: Path | str | None = None, *, root: Path | None = None) -> Path:
     """Unified DB-path resolution (ENH-2623): env → config → explicit/default.
 
     Precedence for a *default-shaped* *path* (see :func:`_is_default_shaped`):
@@ -90,29 +94,39 @@ def _resolve_db_path(path: Path | str | None = None) -> Path:
     on-disk location as the old bare-relative default, just resolved eagerly
     instead of left for the sqlite layer to interpret relative to whatever
     cwd happens to be at connect-time.
+
+    BUG-3181: "the resolved project root" above means *root*'s project when a
+    caller supplies one, and cwd's otherwise. Passing a default-shaped *path*
+    under some other root does **not** select that root — the path is discarded
+    by design (that is what makes it default-shaped), so a caller that knows its
+    root must say so here. `ll-mcp`, whose root arrives as `--project-root` and
+    may be nowhere near cwd, is the caller that needs it.
     """
     if not _is_default_shaped(path):
         return Path(path)  # type: ignore[arg-type]
     env_val = os.environ.get("LL_HISTORY_DB")
     if env_val:
         return Path(env_val)
-    cfg = _config_db_path()
+    cfg = _config_db_path(root=root)
     if cfg is not None:
         return cfg
     from little_loops.paths import resolve_ll_dir
 
-    ll_dir = resolve_ll_dir()
+    ll_dir = resolve_ll_dir(start=root)
     if ll_dir is not None:
         return ll_dir / "history.db"
-    return Path.cwd() / DEFAULT_DB_PATH
+    return (root or Path.cwd()) / DEFAULT_DB_PATH
 
 
-def resolve_history_db(path: Path | str | None = None) -> Path:
+def resolve_history_db(path: Path | str | None = None, *, root: Path | None = None) -> Path:
     """Return the DB path via the unified env → config → default chain (ENH-2623).
 
     ``LL_HISTORY_DB`` takes precedence, then the ``history.db_path`` config key,
     then the explicit *path* / ``DEFAULT_DB_PATH`` — but only for a default-shaped
     *path*; a deliberate override is returned verbatim. Delegates to
     :func:`_resolve_db_path` so this and :func:`ensure_db` never diverge.
+
+    *root* (BUG-3181) anchors the config lookup and the default at a known project
+    root instead of walking up from ``Path.cwd()``; omitted, behavior is unchanged.
     """
-    return _resolve_db_path(path)
+    return _resolve_db_path(path, root=root)

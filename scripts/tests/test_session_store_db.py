@@ -132,6 +132,57 @@ class TestDbPathResolution:
         monkeypatch.delenv("LL_HISTORY_DB", raising=False)
         assert resolve_history_db(None) == tmp_path / DEFAULT_DB_PATH
 
+    def test_root_anchors_default_away_from_cwd(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BUG-3181: ``root=`` anchors resolution at a project the process is not inside.
+
+        Passing the path alone is not enough and never was: ``<root>/.ll/history.db`` is
+        *default-shaped*, so it is discarded in favor of the chain — which walks up from
+        cwd unless told otherwise. That is the trap `ll-mcp` fell into with an explicit
+        ``--project-root``.
+        """
+        _, resolve_history_db = self._resolvers()
+        project = tmp_path / "project"
+        (project / ".ll").mkdir(parents=True)
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+        monkeypatch.delenv("LL_HISTORY_DB", raising=False)
+
+        assert resolve_history_db(None, root=project) == project / ".ll" / "history.db"
+        assert resolve_history_db(None) != project / ".ll" / "history.db"
+
+    def test_root_anchors_config_lookup(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BUG-3181: ``history.db_path`` is read from *root*'s config, and a relative
+        value resolves against *root* rather than cwd."""
+        _, resolve_history_db = self._resolvers()
+        project = tmp_path / "project"
+        ll_dir = project / ".ll"
+        ll_dir.mkdir(parents=True)
+        (ll_dir / "ll-config.json").write_text(
+            json.dumps({"history": {"db_path": "data/hist.db"}}), encoding="utf-8"
+        )
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+        monkeypatch.delenv("LL_HISTORY_DB", raising=False)
+
+        assert resolve_history_db(None, root=project) == project / "data" / "hist.db"
+
+    def test_env_still_outranks_root(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """BUG-3181: ``root=`` slots into the existing chain, it does not jump the queue —
+        ``LL_HISTORY_DB`` remains the unconditional override."""
+        _, resolve_history_db = self._resolvers()
+        project = tmp_path / "project"
+        (project / ".ll").mkdir(parents=True)
+        env_db = tmp_path / "env" / "hist.db"
+        monkeypatch.setenv("LL_HISTORY_DB", str(env_db))
+
+        assert resolve_history_db(None, root=project) == env_db
+
     def test_malformed_config_falls_back_to_default(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

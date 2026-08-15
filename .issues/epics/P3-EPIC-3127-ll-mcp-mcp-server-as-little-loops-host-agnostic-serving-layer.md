@@ -30,6 +30,8 @@ relates_to:
 - ENH-3175
 - BUG-3177
 - BUG-3178
+- BUG-3180
+- BUG-3181
 ---
 
 ## Summary
@@ -126,6 +128,17 @@ SEP-2663-shaped, and deliberately **not** advertised in capabilities.
 - **BUG-3178** (P2) — `ll-adapt --host codex --apply` writes
   `mcp_servers = ["ll-mcp"]` into `.codex/ll-mcp.toml`: a name reference, not a
   server definition, so Codex has no `command` to spawn.
+- **BUG-3180 / BUG-3181** (P2, both closed 2026-08-15) — found by reviewing ENH-3171's
+  implementation *after* it closed: the resolved root reached only two of the four call
+  sites the issue named. `tasks._loops_dir` read `config.loops.loops_dir` (the raw
+  `".loops"` string) instead of the joining `get_loops_dir()`, so `loop_start` and
+  `tasks/*` stayed on `$CWD/.loops`; `history_search` never used its `project_root` at
+  all, since `search()`'s `db` default is the relative `.ll/history.db`. The second is the
+  more instructive one: `resolve_history_db(<root>/.ll/history.db)` would *not* have fixed
+  it, because a default-shaped path is discarded in favor of a cwd-anchored walk — the
+  root had to become a parameter (`resolve_history_db(..., root=)`), which it now is.
+  Both had ENH-3171's own tests passing over them; the `loop_start` guard asserted an
+  error that occurred under either root.
 
 Together, BUG-3177 and BUG-3178 mean **this epic's host-agnostic claim has never
 been exercised end-to-end outside a Claude Code plugin checkout.** Both were
