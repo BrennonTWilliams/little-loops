@@ -71,11 +71,20 @@ One run tells you everything that is wrong.
 Resolve before implementing.
 
 1. **How does a criterion's verdict reach the aggregate state?** This is the only non-trivial part. `state.capture` populates `self.captured[key]` with `{"output", "stderr", "exit_code", "duration_ms", "failure_type"}` (`fsm/executor.py:2313-2325`) — **the evaluator verdict is not among them**, so `${captured.verify-criterion-3.verdict}` does not resolve today. Options:
-   - **(a) Add `verdict` to the capture dict.** Smallest change, and generally useful beyond this issue — any loop wanting to branch on a prior state's verdict currently cannot. Needs care that it does not collide with the existing `failure_type` key's meaning, and that states with no evaluator write an empty/absent value rather than a misleading one.
+   - **(a) Add `verdict` to the capture dict.** Still the recommendation, and generally useful beyond this issue — any loop wanting to branch on a prior state's verdict currently cannot. But it is **not** the one-key edit an earlier draft assumed, because of an ordering problem:
+     - The capture dict is written at `executor.py:2315`, inside the **action-execution** path (`_run_action_or_route()`, called from `_execute_state()` at lines 1771 and 1840).
+     - Evaluation happens **after**, at `executor.py:1850` (`eval_result = self._evaluate(state, action_result, ctx)`); routing at line 2043.
+
+     So at the moment `self.captured[state.capture]` is built, **no verdict exists yet**. Option (a) therefore requires a *second write-back* that mutates the already-populated dict after `_evaluate()` returns — not a new key in an existing dict literal. Constraints on that write-back:
+     - It must tolerate `state.capture` being unset (most states) and `_evaluate()` returning `None` (states with no evaluator) — writing an empty rather than misleading value, per the `failure_type` precedent.
+     - There is a **second capture site** at `executor.py:1043/1050` (the nested child-executor path, which also writes `failure_terminal` at 1061). It needs the same treatment or `verdict` is silently absent for nested states.
+     - It must not collide with the existing `failure_type` key, which carries a `classify_failure()` value, not an evaluator verdict.
+
+     This does not change the recommendation — (a) is still right and still small — but it moves the executor change from trivial to a real edit with an ordering invariant, and it is why Effort is no longer rated Small.
    - **(b) Have each criterion state write a line to `${context.run_dir}/criteria-results.jsonl`** via a shell action, and have the aggregate state read the file. No executor change, but adds a state per criterion and puts loop-generated artifacts in the run dir (consistent with the meta-loop artifact-isolation rule, but heavier).
    - (a) is the recommendation; (b) is the fallback if adding a capture key proves contentious.
 2. **Does `on_partial` still count as failure?** Today it routes to `failed` alongside `on_no`. Preserving that is the conservative default and is what this issue assumes, but with per-criterion reporting it becomes visible enough to reconsider separately.
-3. **Same treatment for `_adversarial_states()`?** The three probe states have the same short-circuit. Fixing both together is cheap and consistent; fixing only criteria mode is defensible since the probes are fewer and less independent. Pick one explicitly rather than leaving adversarial mode half-changed.
+3. **Same treatment for `_adversarial_states()`? — lean: yes, in the same change.** The three probe states have the same short-circuit. Fix both together. The probes are independent by construction (boundary / malformed / failure-mode are distinct attack classes with no ordering dependency), so the "less independent" argument for deferring does not hold — a malformed-input finding tells you nothing about whether boundary probes would also have found something. Fixing only criteria mode ships adversarial mode with the exact defect criteria mode just lost, in a generator the two modes share. The counter-argument (three states is small enough that K reruns is tolerable) is real but weak against the marginal cost, which is one more application of a routing change already written.
 
 ## Acceptance Criteria
 
@@ -91,12 +100,35 @@ Resolve before implementing.
 
 ### Files to Modify
 - `scripts/little_loops/cli/loop/scaffold_verify.py` — `_criteria_states()` (lines 58-87) is the whole change surface for AC1-AC5: reroute `on_no`/`on_partial` to the next criterion rather than `failed`, add the aggregate terminal state, and add whatever capture declaration Open Decision #1 settles on. The module docstring example (lines ~45-55) shows `on_no: failed` and must be updated to match. `_adversarial_states()` (lines 129-172) per Open Decision #3.
-- `scripts/little_loops/fsm/executor.py` — only if Open Decision #1 resolves to (a): the capture dict at lines 2313-2325 gains a `verdict` key.
+- `scripts/little_loops/fsm/executor.py` — only if Open Decision #1 resolves to (a). **Two** sites, not one, and the change is a post-evaluation write-back rather than a new key in the dict literal (the literal at lines 2313-2325 is built before `_evaluate()` runs at line 1850): the primary capture at line 2315, and the nested child-executor capture at lines 1043/1050/1061.
 - `skills/verify-issue-loop/templates.md` — documents the fixed generated shape (`_PROBES` is annotated "verbatim per skills/verify-issue-loop/templates.md's fixed 3-probe template"), so the template and the generator must not drift.
 
 ### Tests
 - `scripts/tests/test_verify_issue_loop.py` — existing coverage of the generated shape; AC1/AC3/AC7 land here.
 - `scripts/tests/test_fsm_executor.py` — capture-dict coverage if Open Decision #1 resolves to (a).
+
+## Program Design
+
+### Types
+- `CriterionSlot` (`issue_parser.py:1722`) — frozen-shaped dataclass with `index: int`, `source_text: str`, `state_name: str`. Already carries everything the aggregate state needs to name a failing criterion; no new field required. `state_name` is what keeps attribution structural per AC5.
+- `StateConfig` (`fsm/schema.py`) — the per-state config the generator emits. The aggregate state is an ordinary `StateConfig` with `terminal=True` and a computed `failure` value; no new type is introduced.
+- The executor's capture dict is an untyped `dict[str, Any]` written into `self.captured[state.capture]` (`fsm/executor.py:2315`), currently carrying `output`, `stderr`, `exit_code`, `duration_ms`, `failure_type`, `timeout_kind`. Option (a) adds a `verdict` key; there is no dataclass to extend.
+
+### Signatures
+- `_criteria_states(criteria: list[CriterionSlot], issue_id: str) -> dict[str, StateConfig]` — `cli/loop/scaffold_verify.py:58`. Unchanged signature; the body changes what each state's `on_no`/`on_partial` point at and appends the aggregate state.
+- `_adversarial_states(...) -> dict[str, StateConfig]` — `cli/loop/scaffold_verify.py:129`. Same change per Open Decision #3.
+- `FSMExecutor._evaluate(self, state: StateConfig, action_result: ActionResult | None, ctx: InterpolationContext) -> EvaluationResult | None` — `fsm/executor.py:2514`. Not modified, but its return is the value the option-(a) write-back must fold into `self.captured`, and its `None` case is the one that must not write a misleading verdict.
+- `FSMExecutor._run_action_or_route(...)` — `fsm/executor.py:3108`; contains the capture write at line 2315 that runs *before* `_evaluate()`.
+
+### Call Path
+`_criteria_states` -> `StateConfig` -> `_execute_state` -> `_run_action_or_route` (capture write, line 2315) -> `_evaluate` (line 1850) -> verdict write-back -> `_route` (line 2043) -> aggregate state
+
+### Decision Rules
+- **Routing.** Each criterion state's `on_no`/`on_partial` retarget from the `failed` terminal to the *next* criterion state (and the last criterion's to the aggregate state), so the chain always runs to completion. `on_yes` already points at `next_state` and is unchanged.
+- **Aggregate failure derivation (AC4).** The aggregate state terminates `failure=True` if any captured criterion verdict is not `yes`, `failure=False` only if all are `yes`. Deriving from captured verdicts rather than from reaching a particular state is what preserves today's exit semantics while removing the short-circuit.
+- **Unknown vs. failed.** A criterion whose verdict is absent from `captured` (state never ran, evaluator returned `None`) must be reported as unknown and counted toward `failure=True` — never silently as a pass. This is the one place the change could invert today's semantics if written carelessly.
+- **Abstention (post-ENH-3185).** If `cannot_judge` exists when this lands, it is a third reported bucket and counts toward `failure=True` by default — matching ENH-3185's AC3 requirement that consumers handle abstention distinctly from failure without treating it as a pass.
+- **Escape hatch (AC7).** No migration of existing loop YAMLs. They are self-contained, still validate, and still run with `on_no: failed`; only regeneration produces the new shape.
 
 ## Relationship to ENH-3185
 
@@ -121,7 +153,7 @@ Explicitly **out of scope**:
 ## Impact
 
 - **Priority**: P3 — nothing is incorrect today; the verdicts the loop produces are accurate as far as they go. The cost is workflow: K failures take K full runs to discover. Real friction, no correctness defect behind it.
-- **Effort**: Small — a routing change plus an aggregate state in one generator function, and (probably) one key added to the executor's capture dict. Materially smaller than the Medium estimate the previous framing carried, since the parser, the output contract, and the `_criteria_states()` rewrite all disappear.
+- **Effort**: Small-to-Medium — a routing change plus an aggregate state in one generator function (small, and applied twice per Open Decision #3), plus the executor capture change, which is **not** the one-key edit first assumed: the capture dict is populated before evaluation runs, so `verdict` needs a post-`_evaluate()` write-back across two capture sites with `None`-evaluator handling (see Open Decision #1a). Still materially smaller than the Medium estimate the previous framing carried, since the parser, the output contract, and the `_criteria_states()` rewrite all disappear.
 - **Risk**: Low — down from Medium. The previous framing's main risk was misattribution from an off-by-one in block parsing, reporting a confident and specific wrong result; with states staying named and one-per-criterion, that failure mode does not exist. Residual risk is that the aggregate state's `failure=True` derivation is wrong, which AC4 covers directly and which fails loudly rather than silently.
 - **Breaking Change**: No — down from Yes. Existing loop YAMLs on disk are self-contained and keep working (AC7); only newly generated loops have the new shape, and their pass/fail exit semantics are unchanged (AC4).
 
@@ -133,10 +165,14 @@ _Added by `/ll:confidence-check` on 2026-08-15_
 **Outcome Confidence**: 78/100 → MODERATE
 
 ### Gaps to Address
+
+_Both gaps below were addressed in the 2026-08-15 second-pass review — a `## Program Design` section was added, and Open Decision #3 now carries an explicit lean. Retained for the record._
+
 - `## Program Design` section is missing entirely (`ll-issues check-design ENH-3200` fails; `ll-issues format-check` lists `Program Design` under `missing`). The project's Program Design gate is armed (`.ll/program-design-cutover.json`, cutover 2026-07-30, predating this issue's 2026-08-15 filing date, so it is not grandfathered) and the issue carries no `program_design_not_applicable: true`. Add a `## Program Design` section with the concrete types/signatures/call path for the `_criteria_states()` rewrite and the chosen capture-dict change (run `/ll:refine-issue` or `/ll:reconcile-issue`), or mark the issue `program_design_not_applicable: true` if judged genuinely trivial.
 - Open Decision #3 (whether `_adversarial_states()` gets the same no-short-circuit treatment) has no stated default or lean, unlike Decisions #1 and #2 which each carry an explicit recommendation/assumed default — pick one explicitly before implementation to avoid a half-changed adversarial mode.
 
 ## Session Log
+- Pre-implementation review (second pass) - 2026-08-15 - added the missing `## Program Design` section (confidence-check hard-override gap); gave Open Decision #3 an explicit lean (fix `_adversarial_states()` in the same change); documented the capture-ordering problem in Open Decision #1a — `self.captured` is written at `executor.py:2315` *before* `_evaluate()` runs at line 1850, so `verdict` needs a post-evaluation write-back across two capture sites, not a new dict key. Effort re-rated Small-to-Medium.
 - `/ll:confidence-check` - 2026-08-15T20:36:25 - `94c0eb90-8c6b-4ad6-ab84-c1a6874ad15f.jsonl`
 - Split from ENH-3185 - 2026-08-15
 - Pre-implementation review - 2026-08-15 - replaced the single-pass multi-check-block framing with the no-short-circuit fix; rationale recorded in History. Effort Small (was Medium), Risk Low (was Medium), no longer a breaking change, hard `depends_on: ENH-3185` removed.
