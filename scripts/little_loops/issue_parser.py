@@ -18,6 +18,7 @@ from little_loops.frontmatter import (
     DEPRECATED_STATUS_VALUES,
     parse_frontmatter,
 )
+from little_loops.text_utils import fence_spans, in_fence
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -246,15 +247,33 @@ def _section_body_with_offset(content: str, heading: str) -> tuple[str, int] | N
     (e.g. ``## Confidence Check Notes`` appended fresh by every confidence-check
     run), the last occurrence wins — the same "last one wins" contract used by
     :func:`~little_loops.session_log.parse_session_log`.
+
+    Both the heading match and the end-boundary scan exclude matches that fall
+    inside a fenced code block (BUG-3202) via :func:`~little_loops.text_utils.
+    fence_spans`/:func:`~little_loops.text_utils.in_fence` — a quoted ``##``-shaped
+    line in an issue body about markdown tooling no longer wins section
+    resolution or truncates the section that encloses it. The body is always
+    sliced from *content* itself (never from fence-blanked text), so a section
+    whose content is entirely a code fence is not reported empty by callers like
+    :func:`~little_loops.issue_parser.check_format_gaps`. A heading that appears
+    only inside fences resolves as absent, same as a heading that never appears.
     """
+    spans = fence_spans(content)
     pattern = rf"^##\s+{re.escape(heading)}\s*$"
-    matches = list(re.finditer(pattern, content, re.MULTILINE))
+    matches = [
+        m for m in re.finditer(pattern, content, re.MULTILINE) if not in_fence(m.start(), m.end(), spans)
+    ]
     if not matches:
         return None
     match = matches[-1]
     start = match.end()
-    next_match = re.search(r"^##\s", content[start:], re.MULTILINE)
-    end = start + next_match.start() if next_match else len(content)
+
+    terminator_pattern = re.compile(r"^##\s", re.MULTILINE)
+    end = len(content)
+    for term in terminator_pattern.finditer(content, start):
+        if not in_fence(term.start(), term.end(), spans):
+            end = term.start()
+            break
     return content[start:end], start
 
 

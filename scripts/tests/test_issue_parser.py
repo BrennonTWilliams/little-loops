@@ -4363,6 +4363,148 @@ class TestSectionBodyLastMatchWins:
         assert content[start:].strip() == "second"
 
 
+class TestSectionBodyFenceAware:
+    """BUG-3202: a fenced ``##``-shaped line must not win section resolution or
+    truncate the section that encloses it."""
+
+    def test_fenced_heading_does_not_win_over_real_heading(self) -> None:
+        """A real ## Summary must resolve even when a fenced copy sits later."""
+        from little_loops.issue_parser import _section_body
+
+        content = (
+            "# BUG-0001: Example\n\n"
+            "## Summary\n\nReal summary.\n\n"
+            "## Current Behavior\n\n"
+            "Prose before the fence.\n\n"
+            "```\n"
+            "## Summary\n"
+            "placeholder junk\n"
+            "```\n\n"
+            "More prose after the fence.\n\n"
+            "## Impact\n\nSome impact.\n"
+        )
+
+        body = _section_body(content, "Summary")
+
+        assert body is not None
+        assert "Real summary" in body
+        assert "placeholder junk" not in body
+
+    def test_real_repeat_still_wins_last_occurrence(self) -> None:
+        """Fence-awareness must not break last-occurrence-wins for genuine repeats."""
+        from little_loops.issue_parser import _section_body
+
+        content = (
+            "## Confidence Check Notes\n\nStale notes.\n\n"
+            "## Confidence Check Notes\n\nCurrent notes.\n\n"
+            "## Status\n\n**Open**\n"
+        )
+
+        body = _section_body(content, "Confidence Check Notes")
+
+        assert body is not None
+        assert "Current notes" in body
+        assert "Stale notes" not in body
+
+    def test_fenced_heading_does_not_truncate_enclosing_section(self) -> None:
+        """The enclosing section's body must extend past a fenced ## line to the
+        next *real* heading, not stop at the fence."""
+        from little_loops.issue_parser import _section_body
+
+        content = (
+            "## Summary\n\nReal summary.\n\n"
+            "## Current Behavior\n\n"
+            "Prose before the fence.\n\n"
+            "```\n"
+            "## Summary\n"
+            "placeholder junk\n"
+            "```\n\n"
+            "More prose after the fence.\n\n"
+            "## Impact\n\nSome impact.\n"
+        )
+
+        body = _section_body(content, "Current Behavior")
+
+        assert body is not None
+        assert "Prose before the fence" in body
+        assert "More prose after the fence" in body
+        assert "Some impact" not in body
+
+    def test_entirely_fenced_section_is_not_reported_empty(self) -> None:
+        """A section whose body is entirely a code fence must be sliced from the
+        original content, not fence-blanked text, so it is not falsely `empty:`."""
+        from little_loops.issue_parser import _section_body
+
+        content = "## Current Behavior\n\n```\ndef existing_function():\n    pass\n```\n\n## Impact\n\nSome impact.\n"
+
+        body = _section_body(content, "Current Behavior")
+
+        assert body is not None
+        assert "def existing_function" in body
+
+    def test_heading_only_inside_fence_resolves_as_absent(self) -> None:
+        """A heading that appears only inside a fenced block resolves as absent,
+        not as the fenced copy — the caller must grade it `missing:`, not `empty:`."""
+        from little_loops.issue_parser import _section_body
+
+        content = (
+            "## Current Behavior\n\n"
+            "Prose.\n\n"
+            "```\n"
+            "## Summary\n"
+            "placeholder junk\n"
+            "```\n\n"
+            "## Impact\n\nSome impact.\n"
+        )
+
+        body = _section_body(content, "Summary")
+
+        assert body is None
+
+    def test_unterminated_fence_treated_as_unfenced(self) -> None:
+        """An odd number of fence markers leaves the trailing text unfenced
+        (fail-open), not swallowed."""
+        from little_loops.issue_parser import _section_body
+
+        content = "## Current Behavior\n\nProse.\n\n```\n## Summary\nunterminated fence content\n"
+
+        body = _section_body(content, "Summary")
+
+        assert body is not None
+        assert "unterminated fence content" in body
+
+    def test_fence_delimiters_are_line_anchored(self) -> None:
+        """An inline triple-backtick mention in prose must not pair with the next
+        real fence opener and invert fenced/unfenced classification for the rest
+        of the document.
+
+        Unanchored pairing would treat the inline mention as an opener, making the
+        real fence's opener its closer -- which would hide "## Current Behavior"
+        inside an accidental fence and unfence the "## Summary" copy quoted inside
+        the real fenced block, letting it hijack the real Summary section.
+        """
+        from little_loops.issue_parser import _section_body
+
+        content = (
+            "## Summary\n\nReal summary.\n\n"
+            "See the ``` marker convention documented below.\n\n"
+            "## Current Behavior\n\n"
+            "```\n"
+            "## Summary\nfake\n"
+            "```\n\n"
+            "End of Current Behavior.\n\n"
+            "## Impact\n\nImpact text.\n"
+        )
+
+        assert _section_body(content, "Summary") is not None
+        assert "Real summary" in _section_body(content, "Summary")
+        assert "fake" not in _section_body(content, "Summary")
+
+        current_behavior = _section_body(content, "Current Behavior")
+        assert current_behavior is not None
+        assert "End of Current Behavior" in current_behavior
+
+
 class TestSupersededMarkerCount:
     """ENH-2992: public marker-presence surface over the ENH-2995 convention.
 

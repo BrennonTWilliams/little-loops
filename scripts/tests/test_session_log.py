@@ -174,6 +174,42 @@ class TestAppendSessionLogEntry:
         assert "/ll:capture-issue" in content
         assert "/ll:format-issue" in content
 
+    def test_ignores_fenced_session_log_heading_and_h3(self, tmp_path: Path) -> None:
+        """BUG-3202: entry lands after the real H2 heading, not inside a fenced
+        example, and an ### Session Log H3 no longer substring-matches."""
+        issue = tmp_path / "issue.md"
+        issue.write_text(
+            "# Issue\n\n"
+            "## Implementation Steps\n\n"
+            "Append a session log entry:\n\n"
+            "```markdown\n"
+            "## Session Log\n"
+            "- `/ll:fake-command` - 2026-01-01T00:00:00 - `/fake.jsonl`\n"
+            "```\n\n"
+            "### Session Log\n\n"
+            "Some H3 subsection unrelated to the real Session Log.\n\n"
+            "## Session Log\n"
+            "- `/ll:capture-issue` - 2026-01-01T00:00:00 - `/old.jsonl`\n\n"
+            "---\n\n## Status\n\n**Open**\n"
+        )
+
+        jsonl = tmp_path / "new.jsonl"
+        result = append_session_log_entry(issue, "/ll:format-issue", session_jsonl=jsonl)
+
+        assert result is True
+        content = issue.read_text()
+        # The new entry lands right after the real (last, non-fenced) heading,
+        # immediately after the pre-existing entry -- not inside the fenced
+        # example and not confused by the ### Session Log H3.
+        assert "## Session Log\n- `/ll:format-issue`" in content
+        assert content.index("## Session Log\n- `/ll:format-issue`") < content.index(
+            "/ll:capture-issue"
+        )
+        # The fenced example block is untouched.
+        fenced_block = content.split("```markdown\n")[1].split("```")[0]
+        assert fenced_block.count("/ll:fake-command") == 1
+        assert "/ll:format-issue" not in fenced_block
+
     def test_appends_at_end_when_no_status_footer(self, tmp_path: Path) -> None:
         issue = tmp_path / "issue.md"
         issue.write_text("# Issue\n\nContent here.\n")
@@ -320,7 +356,10 @@ class TestParseSessionLog:
 
         Mirrors the FEAT-638 structure: fake heading inside a code block example appears
         early in the issue body, the real section is at the bottom after other ## sections.
-        The last-match strategy (finditer + matches[-1]) selects the real section.
+        Fence-awareness (BUG-3202) excludes the fenced heading from matching at all, so
+        the last-match strategy (finditer + matches[-1]) selects the real section
+        regardless of where in the document the fenced copy sits — not merely because it
+        happens to land after the fake one in this fixture.
         """
         content = (
             "# Issue\n\n"

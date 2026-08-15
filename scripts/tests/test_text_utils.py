@@ -16,10 +16,62 @@ from little_loops.text_utils import (
     classify_file_ref,
     classify_issue_refs,
     extract_words,
+    fence_spans,
+    in_fence,
     resolve_ref_path,
     score_bm25,
     suffix_match_candidates,
 )
+
+
+class TestFenceSpans:
+    """BUG-3202: shared, exported fence-span helper."""
+
+    def test_no_fences_returns_empty(self) -> None:
+        assert fence_spans("plain text with no fences") == []
+
+    def test_single_fence_pair(self) -> None:
+        content = "before\n```\ncode\n```\nafter\n"
+        spans = fence_spans(content)
+        assert len(spans) == 1
+        start, end = spans[0]
+        assert content[start:end] == "```\ncode\n```"
+
+    def test_unterminated_fence_is_dropped_fail_open(self) -> None:
+        content = "before\n```\nunterminated content\n"
+        assert fence_spans(content) == []
+
+    def test_two_fence_pairs(self) -> None:
+        content = "```\nfirst\n```\ntext\n```\nsecond\n```\n"
+        spans = fence_spans(content)
+        assert len(spans) == 2
+
+    def test_delimiters_are_line_anchored(self) -> None:
+        """An inline mid-line ``` must not be treated as a delimiter."""
+        content = "See the ``` marker inline.\n```\nreal fence\n```\n"
+        spans = fence_spans(content)
+        assert len(spans) == 1
+        start, end = spans[0]
+        assert content[start:end] == "```\nreal fence\n```"
+
+
+class TestInFence:
+    """BUG-3202: companion span-containment check for fence_spans()."""
+
+    def test_span_inside_fence_is_true(self) -> None:
+        spans = [(0, 20)]
+        assert in_fence(5, 10, spans) is True
+
+    def test_span_outside_fence_is_false(self) -> None:
+        spans = [(0, 20)]
+        assert in_fence(25, 30, spans) is False
+
+    def test_span_partially_overlapping_fence_is_false(self) -> None:
+        spans = [(0, 20)]
+        assert in_fence(15, 25, spans) is False
+
+    def test_empty_spans_is_always_false(self) -> None:
+        assert in_fence(0, 5, []) is False
 
 
 class TestExtractWords:

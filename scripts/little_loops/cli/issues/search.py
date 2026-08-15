@@ -66,14 +66,13 @@ def _parse_updated_date(content: str, file_path: Path) -> date | None:
     """
     import re as _re
 
-    _SESSION_LOG_RE = _re.compile(
-        r"^## Session Log\s*\n+(.*?)(?:\n##|\n---|\Z)", _re.MULTILINE | _re.DOTALL
-    )
+    from little_loops.session_log import session_log_body
+
     _TIMESTAMP_RE = _re.compile(r"- `[^`]+` - (\d{4}-\d{2}-\d{2})T\d{2}:\d{2}:\d{2}")
 
-    match = _SESSION_LOG_RE.search(content)
-    if match:
-        timestamps = _TIMESTAMP_RE.findall(match.group(1))
+    body = session_log_body(content)
+    if body:
+        timestamps = _TIMESTAMP_RE.findall(body)
         if timestamps:
             try:
                 return date.fromisoformat(timestamps[-1])

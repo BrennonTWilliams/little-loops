@@ -4,12 +4,13 @@ type: BUG
 title: Section lookup is fence-unaware and last-occurrence-wins, inverting format-check
   verdicts
 priority: P2
-status: open
+status: done
 testable: true
 decision_needed: false
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T20:08:15Z'
+completed_at: '2026-08-15T23:19:14Z'
 supersedes: []
 confidence_score: 100
 outcome_confidence: 61
@@ -335,43 +336,43 @@ Same treatment for `append_session_log_entry`'s `rfind`, and correct its comment
 
 ## Acceptance Criteria
 
-- [ ] A `##`-shaped line inside a fenced code block does not win section resolution over a
+- [x] A `##`-shaped line inside a fenced code block does not win section resolution over a
       real heading of the same name — `_section_body_with_offset` returns the real one.
-- [ ] A fenced `##`-shaped line does not terminate the section that encloses it: the
+- [x] A fenced `##`-shaped line does not terminate the section that encloses it: the
       enclosing section's body extends past the fence to the next *real* heading.
-- [ ] The returned body is sliced from the original content, not from fence-blanked text —
+- [x] The returned body is sliced from the original content, not from fence-blanked text —
       a section whose content is entirely a code fence is not reported `empty:`.
-- [ ] A heading that appears **only** inside fences resolves as absent —
+- [x] A heading that appears **only** inside fences resolves as absent —
       `_section_body_with_offset` returns None and `check_format_gaps` reports `missing:`,
       not `empty:` — pinned by a test (a behavior change from today, where the fenced copy
       was graded).
-- [ ] Last-occurrence-wins is preserved for genuine repeated headings
+- [x] Last-occurrence-wins is preserved for genuine repeated headings
       (`## Confidence Check Notes`).
-- [ ] `append_session_log_entry` locates the real `## Session Log` heading — line-anchored,
+- [x] `append_session_log_entry` locates the real `## Session Log` heading — line-anchored,
       so an `### Session Log` H3 no longer substring-matches — not one quoted inside a
       fence, and its inline comment (`session_log.py:265`) matches the shipped behavior.
       `_SESSION_LOG_SECTION_RE`'s read-side terminator is fence-aware too — **both** the
       `\n##` and `\n---` alternatives (fenced YAML frontmatter examples containing `---`
       are routine) — or the issue records explicitly why it is left alone.
-- [ ] A **single named, exported fence-span helper** exists and is called by
+- [x] A **single named, exported fence-span helper** exists and is called by
       `_section_body_with_offset`, `append_session_log_entry`, and (later) BUG-3193's
       detector.
       No new fifth idiom.
-- [ ] Unterminated-fence behavior is pinned by a test: an odd number of fence markers
+- [x] Unterminated-fence behavior is pinned by a test: an odd number of fence markers
       leaves the trailing text treated as unfenced (fail-open), not swallowed. The
       delimiter-anchoring choice (line-start-anchored vs `_CODE_FENCE`'s unanchored
       semantics) is likewise pinned by a test.
-- [ ] `cli/issues/search.py`'s local duplicate of the session-log terminator regex
+- [x] `cli/issues/search.py`'s local duplicate of the session-log terminator regex
       (`:60-87`) is made fence-aware via the shared helper (or replaced with an import of
       the fence-aware `session_log` counterpart) — no surviving fence-blind copy of that
       regex.
-- [ ] A follow-up ENH is filed for `research_triage.py:124-137` `_section_text` (an
+- [x] A follow-up ENH is filed for `research_triage.py:124-137` `_section_text` (an
       independent third reimplementation of the same fence-unaware lookup, deliberately
       out of scope here to contain blast radius) before this issue is closed, and its ID
-      recorded here.
-- [ ] `ll-issues format-check` on BUG-3192, BUG-3193, and BUG-3194 reports no
+      recorded here. Filed as **ENH-3206**.
+- [x] `ll-issues format-check` on BUG-3192, BUG-3193, and BUG-3194 reports no
       `empty:`/`boilerplate:` gap for a section that is in fact written.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `python -m pytest scripts/tests/` exits 0.
 
 ## Integration Map
 
@@ -482,6 +483,8 @@ _Added by `/ll:confidence-check` on 2026-08-15_
 **Open** | Created: 2026-08-15 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-15T23:19:09 - `597b4f54-15c9-4500-8d63-5e4cedc6fe04.jsonl`
+- `/ll:ready-issue` - 2026-08-15T22:57:20 - `df0dff7c-011c-4fa3-b8ae-6ce8a8042354.jsonl`
 - `/ll:confidence-check` - 2026-08-15T22:42:21 - `5b787d7c-ce7f-4c39-846b-91ffb9301e56.jsonl`
 - `/ll:confidence-check` - 2026-08-15T22:28:40 - `bc89bcc0-eb97-47e0-8163-6068b7178c7a.jsonl`
 - `/ll:verify-issues` - 2026-08-15T22:26:09 - `1eb905c7-fbac-4cdc-aee9-c9a14060af93.jsonl`

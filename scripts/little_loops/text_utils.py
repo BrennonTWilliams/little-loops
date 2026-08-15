@@ -24,6 +24,12 @@ _STANDALONE_PATH = re.compile(
 )
 _CODE_FENCE = re.compile(r"```[\s\S]*?```", re.MULTILINE)
 
+# Line-anchored fence delimiter (BUG-3202). Unlike ``_CODE_FENCE``, which has
+# no ``^`` anchor and so lets an inline triple-backtick mention in prose pair
+# with the next real fence opener, this only matches a delimiter that starts
+# its own line — the markdown-correct shape.
+_LINE_FENCE_DELIMITER_RE = re.compile(r"^```[^\n]*$", re.MULTILINE)
+
 # File extensions that indicate real source file paths
 SOURCE_EXTENSIONS = frozenset(
     {
@@ -53,6 +59,50 @@ SOURCE_EXTENSIONS = frozenset(
         ".php",
     }
 )
+
+
+def fence_spans(content: str) -> list[tuple[int, int]]:
+    """Return ``(start, end)`` character-offset spans of fenced code blocks.
+
+    Shared fence-span helper (BUG-3202), exported so every heading-resolution
+    call site excludes fenced ``##``-shaped lines the same way instead of
+    reimplementing its own fence idiom. Offset-preserving by construction: it
+    never rewrites *content*, only locates spans within it, so callers can
+    slice the original string at offsets computed against these spans (unlike
+    :func:`strip_code_fences`, which removes text and shifts every later
+    offset).
+
+    Delimiters are matched via :data:`_LINE_FENCE_DELIMITER_RE`
+    (line-start-anchored), not :data:`_CODE_FENCE`, so an inline triple-
+    backtick mention in prose cannot pair with the next real fence opener and
+    invert fenced/unfenced classification for the rest of the document.
+
+    Markers are paired consecutively (1st+2nd, 3rd+4th, ...). An odd number of
+    markers leaves the trailing, unpaired marker's opener treated as *not*
+    fenced (fail-open) rather than swallowing the remainder of the document —
+    the deliberate choice for hand-authored issue bodies, which routinely have
+    unbalanced fences.
+
+    Args:
+        content: Text to scan for fenced code blocks.
+
+    Returns:
+        A list of ``(start, end)`` spans, each covering from a fence opener's
+        line start through its paired closer's line end.
+    """
+    markers = list(_LINE_FENCE_DELIMITER_RE.finditer(content))
+    return [(markers[i].start(), markers[i + 1].end()) for i in range(0, len(markers) - 1, 2)]
+
+
+def in_fence(start: int, end: int, spans: list[tuple[int, int]]) -> bool:
+    """True when the ``[start, end)`` span is fully contained in a fence span.
+
+    Companion to :func:`fence_spans`. Mirrors the ``_in_fence`` idiom already
+    used by ``issues/symbol_claims.py`` and ``issues/prose_deps.py`` — this is
+    the shared, exported form those (and BUG-3202's other call sites) are
+    meant to converge on.
+    """
+    return any(fs <= start and end <= fe for fs, fe in spans)
 
 
 def strip_code_fences(content: str) -> str:

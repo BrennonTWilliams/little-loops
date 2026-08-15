@@ -11,12 +11,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from little_loops.file_utils import acquire_lock, atomic_write, issue_lock_path
+from little_loops.text_utils import fence_spans, in_fence
 from little_loops.user_messages import get_sessions_folder
 
-# Regex to isolate the ## Session Log section content
-_SESSION_LOG_SECTION_RE = re.compile(
-    r"^## Session Log\s*\n+(.*?)(?:\n##|\n---|\Z)", re.MULTILINE | re.DOTALL
-)
+# Line-anchored ``## Session Log`` heading (BUG-3202): requires the literal
+# two-hash-space prefix at line start, so an ``### Session Log`` H3 no longer
+# substring-matches (the old ``str.rfind("## Session Log\n")`` scan did).
+_SESSION_LOG_HEADING_RE = re.compile(r"^## Session Log\s*$", re.MULTILINE)
+# Fence-blind terminator shape reused by _session_log_body's fence-aware scan
+# below: either the next H2 heading or the next frontmatter-style '---' rule.
+_SESSION_LOG_TERMINATOR_RE = re.compile(r"\n(?:##|---)")
 # Regex to extract backtick-quoted /ll:* command names from session log entries
 _COMMAND_RE = re.compile(r"`(/[\w:-]+)`")
 # Same, but capturing the entry's ISO timestamp (ENH-2971). The time portion is
@@ -24,6 +28,48 @@ _COMMAND_RE = re.compile(r"`(/[\w:-]+)`")
 _TIMESTAMPED_ENTRY_RE = re.compile(
     r"`(/[\w:-]+)`\s*-\s*(\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)?)"
 )
+
+
+def session_log_body(content: str) -> str | None:
+    """Return the last (fence-excluded) ``## Session Log`` section's raw body.
+
+    Shared read-side extraction for :func:`parse_session_log`,
+    :func:`count_session_commands`, and :func:`last_command_timestamp`
+    (BUG-3202) — and exported so other modules (e.g. ``cli/issues/search.py``'s
+    last-activity-date sort) reuse it instead of a fifth fence-blind local
+    regex.
+
+    A ``## Session Log``-shaped line inside a fenced code block is excluded
+    from heading resolution via :func:`~little_loops.text_utils.fence_spans`/
+    :func:`~little_loops.text_utils.in_fence`, and the end-boundary scan (the
+    next ``\\n##`` or ``\\n---``) is fence-aware too, so a fenced example
+    containing either shape no longer truncates the real section early.
+
+    Args:
+        content: Full text of an issue markdown file.
+
+    Returns:
+        The section body, or None when no (non-fenced) ``## Session Log``
+        heading exists.
+    """
+    spans = fence_spans(content)
+    headings = [
+        m for m in _SESSION_LOG_HEADING_RE.finditer(content) if not in_fence(m.start(), m.end(), spans)
+    ]
+    if not headings:
+        return None
+
+    start = headings[-1].end()
+    leading_blank = re.compile(r"\n+").match(content, start)
+    if leading_blank:
+        start = leading_blank.end()
+
+    end = len(content)
+    for term in _SESSION_LOG_TERMINATOR_RE.finditer(content, start):
+        if not in_fence(term.start(), term.end(), spans):
+            end = term.start()
+            break
+    return content[start:end]
 
 
 def parse_session_log(content: str) -> list[str]:
@@ -37,10 +83,10 @@ def parse_session_log(content: str) -> list[str]:
     Returns:
         List of distinct command names (e.g. ["/ll:refine-issue", "/ll:ready-issue"]).
     """
-    matches = list(_SESSION_LOG_SECTION_RE.finditer(content))
-    if not matches:
+    body = session_log_body(content)
+    if body is None:
         return []
-    cmds = _COMMAND_RE.findall(matches[-1].group(1))
+    cmds = _COMMAND_RE.findall(body)
     # Deduplicate while preserving insertion order
     return list(dict.fromkeys(cmds))
 
@@ -56,11 +102,11 @@ def count_session_commands(content: str) -> dict[str, int]:
     Returns:
         Mapping of command name to occurrence count (e.g. {"/ll:refine-issue": 3}).
     """
-    matches = list(_SESSION_LOG_SECTION_RE.finditer(content))
-    if not matches:
+    body = session_log_body(content)
+    if body is None:
         return {}
     counts: dict[str, int] = {}
-    for cmd in _COMMAND_RE.findall(matches[-1].group(1)):
+    for cmd in _COMMAND_RE.findall(body):
         counts[cmd] = counts.get(cmd, 0) + 1
     return counts
 
@@ -87,11 +133,11 @@ def last_command_timestamp(content: str, command: str) -> datetime | None:
         The newest matching timestamp, or None when the command has no dated
         entry (or no Session Log section exists).
     """
-    matches = list(_SESSION_LOG_SECTION_RE.finditer(content))
-    if not matches:
+    body = session_log_body(content)
+    if body is None:
         return None
     stamps: list[datetime] = []
-    for entry in _TIMESTAMPED_ENTRY_RE.finditer(matches[-1].group(1)):
+    for entry in _TIMESTAMPED_ENTRY_RE.finditer(body):
         if entry.group(1) != command:
             continue
         try:
@@ -261,10 +307,20 @@ def append_session_log_entry(
     with acquire_lock(issue_lock_path(issue_path)):
         content = issue_path.read_text()
 
-        if "## Session Log" in content:
-            # Insert entry after the last ## Session Log header (real section, not a fake in code block)
-            idx = content.rfind("## Session Log\n")
-            insert_pos = idx + len("## Session Log\n")
+        spans = fence_spans(content)
+        headings = [
+            m
+            for m in _SESSION_LOG_HEADING_RE.finditer(content)
+            if not in_fence(m.start(), m.end(), spans)
+        ]
+
+        if headings:
+            # Insert entry after the last real (fence-excluded, line-anchored
+            # H2) ## Session Log heading — never one quoted inside a fence,
+            # and never an ### Session Log H3 (BUG-3202).
+            match = headings[-1]
+            newline_pos = content.find("\n", match.end())
+            insert_pos = newline_pos + 1 if newline_pos != -1 else len(content)
             content = content[:insert_pos] + entry + "\n" + content[insert_pos:]
         else:
             # Add new section before --- Status footer if present, else at end
