@@ -1,6 +1,6 @@
 # Host Compatibility Matrix
 
-> **Last Updated: 2026-08-12** — update this date whenever a matrix cell changes status.
+> **Last Updated: 2026-08-15** — update this date whenever a matrix cell changes status.
 
 little-loops integrates with multiple coding-agent host CLIs. This page is
 the authoritative parity matrix — what is wired where, and which gaps are
@@ -12,6 +12,50 @@ Status legend:
 - **✗** — not wired (see footnote for tracking issue)
 - **N/A** — not applicable to this host
 - **(deferred)** — implementable but no current consumer
+
+## Host tiers
+
+**This table is canonical.** Three different host sets exist in the code, and
+"supported host" means a different thing in each. Every other host list in the
+docs links here rather than restating one of them (BUG-3186).
+
+| Host | Orchestration runner | `ll-init --hosts` | Hook adapter | Tier |
+|---|:---:|:---:|:---:|---|
+| `claude-code` | ✓ | ✓ | N/A | Adapter-wired (native — plugin hooks fire without an adapter file) |
+| `codex` | ✓ | ✓ | ✓ | Adapter-wired |
+| `kimi-code` | ✓ | ✓ | ✓ | Adapter-wired |
+| `qwen` | ✓ | ✓ | ✓ | Adapter-wired |
+| `opencode` | ✓ | ✓ | ✗ | Recognized, adapter pending |
+| `pi` | ✓ | ✓ | ✗ | Recognized, adapter pending [^pi-epic] |
+| `gemini` | ✓ | ✗ | ✗ | Orchestration-only |
+| `omp` | ✓ | ✗ | ✗ | Orchestration-only |
+
+
+What each column is derived from — these are the sources of truth, and
+`scripts/tests/test_wiring_guides_and_meta.py` fails the suite if this table
+drifts from any of them:
+
+| Column | Source of truth |
+|---|---|
+| Orchestration runner | `_HOST_RUNNER_REGISTRY` in `scripts/little_loops/host_runner.py` — the valid values for `LL_HOST_CLI` and `orchestration.host_cli` |
+| `ll-init --hosts` | `_KNOWN_HOSTS` in `scripts/little_loops/init/cli.py` — anything else warns and is skipped |
+| Hook adapter | the `install_*_adapter` functions in `scripts/little_loops/init/writers.py` — one per host that actually writes an adapter file |
+
+Reading the tiers:
+
+- **Adapter-wired** — `ll-init --hosts <host>` installs a working hook
+  integration. `claude-code` is in this tier despite having no
+  `install_*_adapter`: its hooks are registered by the plugin itself, so there
+  is no adapter file to write.
+- **Recognized, adapter pending** — a valid `--hosts` value that prints an
+  "adapter not yet available" notice instead of installing anything. Note that
+  `hooks/adapters/opencode/` exists on disk but holds only a `bun.lock`; the
+  directory is a stub and is **not** evidence that `opencode` is wired.
+- **Orchestration-only** — usable as an `LL_HOST_CLI` target, but **not** a
+  valid `--hosts` value. Passing one to `ll-init --hosts` is an error, not a
+  gap to be filled.
+
+[^pi-epic]: `pi` adapter support is tracked in EPIC-1622.
 
 ## Hook intents
 

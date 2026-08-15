@@ -361,7 +361,7 @@ What it does:
 1. Runs the normal baseline A/B on your primary host (whatever `resolve_host()`
    selects — `LL_HOST_CLI` / `orchestration.host_cli` / probe order).
 2. Picks the next available host from the probe order (`claude-code`, `codex`,
-   `pi`, `gemini`, `omp`, `kimi-code` — `opencode` is deliberately absent) whose binary is on
+   `pi`, `gemini`, `omp`, `kimi-code`, `qwen` — `opencode` is deliberately absent) whose binary is on
    `PATH`, and re-runs the identical baseline trial with `LL_HOST_CLI` overridden
    to it. `--baseline-skill` and `--items` are forwarded unchanged.
 3. Prints a **Cross-host Comparison** table: per-host harness pass rate with

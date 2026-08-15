@@ -34,7 +34,7 @@ These flags appear across multiple tools:
 
 ### ll-init
 
-Initialize little-loops for a project. Detects the project root, selects host adapters, generates a `.ll/ll-config.json`, and optionally installs hook adapters for supported host CLIs (`claude-code`, `codex`, `kimi-code` — fully wired; `opencode`, `pi` — recognized, adapter not yet available).
+Initialize little-loops for a project. Detects the project root, selects host adapters, generates a `.ll/ll-config.json`, and optionally installs hook adapters for supported host CLIs. Which hosts accept `--hosts`, which get an adapter installed, and which are orchestration-only are defined by the canonical tier table in [HOST_COMPATIBILITY.md § Host tiers](HOST_COMPATIBILITY.md#host-tiers).
 
 When run on a project that already has a `.ll/ll-config.json`, the interactive wizard pre-populates every field with the existing values so you can review and update without losing previous settings. The headless `--yes` path preserves existing feature toggles and project fields, applying only the overrides supplied via `--enable`/`--disable`.
 
@@ -46,7 +46,7 @@ When run on a project that already has a `.ll/ll-config.json`, the interactive w
 | `--force` | `-f` | Reset to template defaults rather than pre-populating from existing config |
 | `--dry-run` | `-n` | Preview actions without writing files |
 | `--plan` | | Emit a JSON plan `{detected, proposed_config, requested_upgrade, host_options, warnings, provenance, ambiguities}` without writing anything. `provenance` is a list of `{field, value, provenance, evidence}` for each manifest-introspected `project.*`/`scan.focus_dirs` field (`declared`/`inferred`/`default`); `ambiguities` lists any field where multiple equally-valid candidates were found and the template default was kept (FEAT-2703). `requested_upgrade` echoes whether `--upgrade` was also passed — plan mode never executes it (no writes happen in plan mode), it's surfaced purely so the flag isn't silently dropped (BUG-2755). On a re-init (existing `.ll/ll-config.json`), a `declared`-provenance value that diverges from the stored config prints a `Warning: config has ... but ... declares ...` line to stderr — the existing value is always kept; stdout stays pure JSON (ENH-2704) |
-| `--hosts HOST [HOST ...]` | | Host harnesses to install adapters for (`claude-code`, `codex`, `kimi-code` — fully wired; `opencode`, `pi` — recognized, adapter not yet available). Defaults to auto-detected hosts. Unknown values produce a warning and are skipped. |
+| `--hosts HOST [HOST ...]` | | Host harnesses to install adapters for: `claude-code`, `codex`, `kimi-code`, `qwen` (adapter-wired); `opencode`, `pi` (recognized, adapter pending). Defaults to auto-detected hosts. Unknown values produce a warning and are skipped — note `gemini` and `omp` are orchestration-only and are **not** valid here. See [HOST_COMPATIBILITY.md § Host tiers](HOST_COMPATIBILITY.md#host-tiers). |
 | `--enable FEATURE` | | Enable a feature in the headless config (repeatable). Requires `--yes`/`--dry-run`/`--plan`. Valid: `decisions`, `scratch_pad`, `session_capture`, `product`, `analytics`, `context_monitor`, `learning_tests`, `session_digest`, `prompt_optimization`. |
 | `--disable FEATURE` | | Disable a feature in the headless config (repeatable). Same valid names as `--enable`. Use `--enable prompt_optimization` to opt in to the default-off prompt optimizer. |
 | `--upgrade` | | Act on version drift automatically, then run a **host-parameterized surface refresh** for every active host: upgrade the pip package, force-regenerate adapter files (e.g. `.codex/hooks.json`, re-stamping the embedded gen-version), and scope-aware-update the claude-code plugin (auto for project-scoped installs, advise-only for user-scoped). Without this flag, headless mode only warns — including a hint when a generated adapter's gen-version stamp diverges from the installed package. Passing `--upgrade` alone (no `--yes`/`--dry-run`/`--plan`) implies `--yes` and runs headlessly, rather than silently dropping the flag and launching the interactive wizard (BUG-2755). |
@@ -1926,6 +1926,46 @@ ll-issues check-design BUG-9999   # Exit 1 — issue not found
 
 ---
 
+#### `ll-issues check-acceptance-criteria`
+
+Exit 0 if every `## Acceptance Criteria` checkbox item is machine-checkable, 1 if any require manual verification (ENH-3031). Deterministic companion to the readiness gates — lets an FSM `shell` state reject an issue whose ACs can only be confirmed by a human before spending a run on it.
+
+| Argument | Description |
+|----------|-------------|
+| `issue_id` | Issue ID (e.g., `3031`, `ENH-3031`, `P2-ENH-3031`) |
+
+| Flag | Description |
+|------|-------------|
+| `--config` | Path to `ll-config.json` |
+
+**Examples:**
+```bash
+ll-issues check-acceptance-criteria ENH-3031   # Exit 0 — all criteria machine-checkable
+ll-issues check-acceptance-criteria BUG-3186   # Exit 1 — at least one needs manual verification
+```
+
+---
+
+#### `ll-issues check-verify-verdict`
+
+Exit 0 if the issue's persisted `verify_verdict` is `VALID` **or absent** (fail-open), 1 if it is `NON_VALID` (ENH-3031). On failure it writes the token `VERIFY_VERDICT_NON_VALID` to stderr so an FSM evaluator can route on the reason rather than the bare exit code.
+
+| Argument | Description |
+|----------|-------------|
+| `issue_id` | Issue ID (e.g., `3031`, `ENH-3031`, `P2-ENH-3031`) |
+
+| Flag | Description |
+|------|-------------|
+| `--config` | Path to `ll-config.json` |
+
+**Examples:**
+```bash
+ll-issues check-verify-verdict ENH-3031   # Exit 0 — verdict VALID, or never recorded
+ll-issues check-verify-verdict BUG-9999   # Exit 1 — verdict NON_VALID (stderr: VERIFY_VERDICT_NON_VALID)
+```
+
+---
+
 #### `ll-issues locate-options`
 
 Print count/pattern/heading/spans of enumerable options in an issue (ENH-2950). Data frontend over the same `issue_parser.locate_enumerable_options()` precedence chain `check-decidable` gates on — where `check-decidable` only reports an exit code, this exposes the full result so a consumer (notably `/ll:decide-issue` Phase 3/3b) can read option spans instead of re-implementing the same pattern precedence in prose.
@@ -2370,6 +2410,31 @@ The "resolved" count on the Progress line is `done + cancelled` (terminal states
 ll-issues epic-progress EPIC-1773              # Text summary (default)
 ll-issues ep EPIC-1773 --format json           # JSON object with counts and child list
 ll-issues ep EPIC-1773 --format markdown       # Markdown-formatted summary
+```
+
+---
+
+#### `ll-issues epic-consistency [epic_id]` / `ll-issues ec [epic_id]`
+
+Detect and reconcile EPIC body/parent drift — cases where an EPIC's `## Children` section disagrees with the set of issues actually carrying `parent: EPIC-NNN`. Report-only by default; `--fix` rewrites `## Children` for the drift category it can resolve mechanically. Exits 0 when no drift is found (or after a clean `--fix`), 1 on drift or error.
+
+| Argument | Description |
+|----------|-------------|
+| `epic_id` | EPIC ID (e.g., `EPIC-1773`). Optional — omit it when using `--all`. |
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--all` | `-a` | Check every EPIC in the epics directory |
+| `--fix` | | Rewrite `## Children` for category-(a) drift instead of only reporting it |
+| `--format` | `-f` | Output format: `text` (default) or `json` |
+| `--config` | | Path to `ll-config.json` |
+
+**Examples:**
+```bash
+ll-issues epic-consistency EPIC-1773           # Report drift for one EPIC
+ll-issues ec --all                             # Sweep every EPIC
+ll-issues ec EPIC-1773 --fix                   # Rewrite ## Children to match parent: fields
+ll-issues ec --all --format json               # Machine-readable drift report
 ```
 
 ---
@@ -2940,6 +3005,10 @@ Reopen GitHub issues for locally-active issues. After a successful reopen, the i
 |------|-------------|
 | `--all-reopened` | Reopen all GitHub issues whose local counterparts are not closed on GitHub |
 
+#### `ll-sync reconcile`
+
+Promote feature-branch issues to `done` when their PR is merged. Takes no subcommand-specific flags — only the shared `--config` / `--quiet` / `--dry-run` globals apply. Prints `Reconcile complete: N issue(s) promoted to done`.
+
 **Examples:**
 ```bash
 ll-sync status                    # Show sync status
@@ -2954,6 +3023,8 @@ ll-sync close ENH-123             # Close GitHub issue for ENH-123
 ll-sync close --all-completed     # Close all completed issues on GitHub
 ll-sync reopen BUG-042            # Reopen GitHub issue for BUG-042
 ll-sync reopen --all-reopened     # Reopen all issues moved back to active locally
+ll-sync reconcile                 # Promote issues to done whose PR has merged
+ll-sync reconcile --dry-run       # Preview promotions without writing
 ```
 
 Requires `"sync": { "enabled": true }` in `.ll/ll-config.json`.
@@ -3396,6 +3467,31 @@ ll-session recompress --batch 5000              # Rewrite 5000 rows per transact
 | `--json` | Output result summary as JSON |
 
 Pruning is dual-gated by `analytics.retention` config: both `min_project_age_days` and `min_db_size_mb` must be exceeded before any rows are deleted (defaults: 365 days, 800 MB). Only `raw_events` rows already marked `compacted=1` (by `compact`) past `raw_event_max_age_days` are deleted (ENH-2581) — issue/loop/commit/cli/file/test_run tables and uncompacted `raw_events` rows are never pruned. See `analytics.retention` in [CONFIGURATION.md](CONFIGURATION.md).
+
+---
+
+### ll-compact-session
+
+Manually trigger LCM session-memory compaction for **one** session, collapsing its messages into summary nodes.
+
+**Not the same command as [`ll-session compact`](#ll-session).** `ll-session compact` is the retention sweep — it folds aged `raw_events` into per-session `retention` summary nodes across the whole database. `ll-compact-session` is the LCM memory compaction for a single named session, and is the manual equivalent of what the PreCompact hook path runs automatically.
+
+| Argument | Description |
+|----------|-------------|
+| `SESSION_ID` | Session ID to compact |
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--db PATH` | | Path to the session database (default: `.ll/history.db`) |
+| `--json` | `-j` | Output as JSON |
+
+JSON keys: `session_id`, `new_leaves`, `summary_text`, `compacted_messages`, `context_token_estimate`.
+
+**Examples:**
+```bash
+ll-compact-session abc123-session-id           # Compact one session, human-readable output
+ll-compact-session abc123-session-id --json    # Machine-readable result
+```
 
 ---
 

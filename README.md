@@ -74,7 +74,7 @@ ll-init
 /plugin install ll@little-loops
 ```
 
-**Using Codex CLI?** Run `ll-init --hosts codex` and `ll-adapt --host codex --apply` — see [docs/codex/getting-started.md](docs/codex/getting-started.md). OpenCode and Pi adapters aren't wired yet — `ll-init --hosts opencode`/`--hosts pi` currently install nothing.
+**Using Codex CLI?** Run `ll-init --hosts codex` and `ll-adapt --host codex --apply` — see [docs/codex/getting-started.md](docs/codex/getting-started.md). OpenCode and Pi adapters aren't wired yet — `ll-init --hosts opencode`/`--hosts pi` currently install nothing. For which hosts are adapter-wired, recognized-but-pending, or orchestration-only, see the canonical [host tier table](docs/reference/HOST_COMPATIBILITY.md#host-tiers).
 
 **Using Kimi Code CLI?** Run `ll-init --hosts kimi-code` and `ll-adapt --host kimi-code --apply`, then install the plugin for the `/ll:*` slash-command surface and lifecycle hooks (`/plugins install https://github.com/BrennonTWilliams/little-loops` in the kimi TUI — installs are per-user, not per-project). Set `LL_HOST_CLI=kimi-code` to drive `ll-auto`/`ll-loop` with kimi. See [docs/kimi/getting-started.md](docs/kimi/getting-started.md).
 

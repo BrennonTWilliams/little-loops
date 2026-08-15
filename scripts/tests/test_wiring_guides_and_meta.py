@@ -313,3 +313,123 @@ DOC_FILES_MUST_EXIST: list[tuple[str, str]] = [
 def test_file_exists(project_root: Path, doc_rel: str, issue_id: str) -> None:
     """Verify that expected documentation files exist."""
     assert (project_root / doc_rel).exists(), "[{issue_id}] File must exist: {doc_rel}"
+
+
+# -- 3 host-tier derive-and-assert checks (BUG-3186) ---------------
+#
+# Unlike every other assertion in this file, these do not compare a doc against
+# a fixed literal — they derive the expected sets by *importing* the three host
+# registries and compare those to the canonical tier table. Adding a host to any
+# registry without updating the table must red the suite. Deriving by import
+# (never by parsing source text) is deliberate: a text-parsing gate would drift
+# on formatting changes and red the suite for everyone over a non-defect.
+
+_HOST_TIERS_DOC = "docs/reference/HOST_COMPATIBILITY.md"
+_HOST_TIERS_HEADING = "## Host tiers"
+
+# Column index in the tier table for each derived set, and the marker meaning
+# "this host is in that set". The Hook-adapter column uses "N/A" for claude-code
+# (plugin hooks fire natively — there is no install_*_adapter to write a file),
+# so membership is "not ✗" rather than "== ✓".
+_COL_RUNNER = 1
+_COL_KNOWN_HOSTS = 2
+_COL_ADAPTER = 3
+
+
+def _tier_table_rows(project_root: Path) -> list[list[str]]:
+    """Return the canonical host-tier table's data rows as lists of cells.
+
+    Locates `## Host tiers`, walks to the next `##`, and returns each pipe-row
+    that is neither the header nor the alignment separator. Mirrors the
+    find-heading/walk-to-next-section approach `_adapter_section_hosts()` in
+    `little_loops.cli.verify_host_map` already uses against this same file.
+    """
+    text = (project_root / _HOST_TIERS_DOC).read_text(encoding="utf-8")
+    idx = text.find(_HOST_TIERS_HEADING)
+    assert idx != -1, f"{_HOST_TIERS_DOC} must contain a '{_HOST_TIERS_HEADING}' section"
+    rest = text[idx + len(_HOST_TIERS_HEADING) :]
+    end = rest.find("\n## ")
+    section = rest if end == -1 else rest[:end]
+
+    rows: list[list[str]] = []
+    for line in section.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+        cells = [c.strip() for c in stripped.strip("|").split("|")]
+        if not cells or not cells[0]:
+            continue
+        first = cells[0].strip("`")
+        # Skip the header row, the alignment separator, and the second
+        # (source-of-truth) table, whose first column is a column name.
+        if first == "Host" or set(first) <= {"-", ":"} or first == "Column":
+            continue
+        # Tier rows are backticked-host + 3 marker columns + tier prose. The
+        # source-of-truth table below has 2 cells and one row whose first cell
+        # is also backticked (`ll-init --hosts`), so shape is the discriminator.
+        if not cells[0].startswith("`") or len(cells) != 5:
+            continue
+        rows.append(cells)
+    assert rows, f"{_HOST_TIERS_DOC} '{_HOST_TIERS_HEADING}' table has no host rows"
+    return rows
+
+
+def _documented_hosts(project_root: Path, column: int) -> set[str]:
+    """Return hosts the tier table marks as belonging to the set in *column*."""
+    return {
+        row[0].strip("`") for row in _tier_table_rows(project_root) if row[column] not in ("✗",)
+    }
+
+
+def test_host_tier_table_matches_runner_registry(project_root: Path) -> None:
+    """Verify the tier table's orchestration-runner column matches _HOST_RUNNER_REGISTRY."""
+    from little_loops.host_runner import _HOST_RUNNER_REGISTRY
+
+    documented = _documented_hosts(project_root, _COL_RUNNER)
+    actual = set(_HOST_RUNNER_REGISTRY)
+    assert documented == actual, (
+        f"[BUG-3186] {_HOST_TIERS_DOC} orchestration-runner column disagrees with "
+        f"_HOST_RUNNER_REGISTRY (host_runner.py). "
+        f"Missing from doc: {sorted(actual - documented)}. "
+        f"In doc but not registered: {sorted(documented - actual)}."
+    )
+
+
+def test_host_tier_table_matches_known_hosts(project_root: Path) -> None:
+    """Verify the tier table's --hosts column matches _KNOWN_HOSTS."""
+    from little_loops.init.cli import _KNOWN_HOSTS
+
+    documented = _documented_hosts(project_root, _COL_KNOWN_HOSTS)
+    actual = set(_KNOWN_HOSTS)
+    assert documented == actual, (
+        f"[BUG-3186] {_HOST_TIERS_DOC} 'll-init --hosts' column disagrees with "
+        f"_KNOWN_HOSTS (init/cli.py). "
+        f"Missing from doc: {sorted(actual - documented)}. "
+        f"In doc but not a valid --hosts value: {sorted(documented - actual)}."
+    )
+
+
+def test_host_tier_table_matches_adapter_installers(project_root: Path) -> None:
+    """Verify the tier table's hook-adapter column matches the install_*_adapter set."""
+    from little_loops.init import writers
+
+    # install_kimi_adapter serves the `kimi-code` host; every other installer's
+    # infix is the host name verbatim. Derive the set from the module rather
+    # than hard-coding it, so a new installer reds this test until documented.
+    _INFIX_TO_HOST = {"kimi": "kimi-code"}
+    actual = {
+        _INFIX_TO_HOST.get(infix, infix)
+        for name in dir(writers)
+        if name.startswith("install_") and name.endswith("_adapter")
+        for infix in [name[len("install_") : -len("_adapter")]]
+    }
+    # claude-code is adapter-wired with no installer: the plugin registers its
+    # hooks natively, so there is no adapter file to write. It is marked N/A in
+    # the doc column, which _documented_hosts counts as membership.
+    documented = _documented_hosts(project_root, _COL_ADAPTER) - {"claude-code"}
+    assert documented == actual, (
+        f"[BUG-3186] {_HOST_TIERS_DOC} hook-adapter column disagrees with the "
+        f"install_*_adapter functions in init/writers.py. "
+        f"Installers with no doc row: {sorted(actual - documented)}. "
+        f"Documented as adapter-wired with no installer: {sorted(documented - actual)}."
+    )
