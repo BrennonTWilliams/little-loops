@@ -4424,8 +4424,18 @@ than failing silently.
 
 **Arguments:** `--http` selects the streamable HTTP transport instead of stdio (the
 `LL_MCP_TRANSPORT=http` env var is the equivalent for hosts that invoke `ll-mcp` with no
-args). `LL_MCP_SKILLS_ROOT` overrides the prompts-from-skills root (see above). There are no
-other flags; it is a protocol server, not a CLI.
+args). `LL_MCP_SKILLS_ROOT` overrides the prompts-from-skills root (see above).
+`--project-root PATH` (or `LL_MCP_PROJECT_ROOT`) resolves the project the tool surface
+operates on (ENH-3171). `--host HOST` / `--port PORT` (HTTP transport only, ENH-3173) bind
+somewhere other than the `127.0.0.1:8765` default — flags win over `mcp.http.host` /
+`mcp.http.port` in `.ll/ll-config.json`, which is the config-only equivalent. Loopback stays
+the default with neither set: no path here defaults to `0.0.0.0`. Binding a non-loopback
+`--host` also widens `TransportSecuritySettings.allowed_hosts`/`allowed_origins` to that
+host, since the SDK only auto-fills that allow-list for a loopback bind — otherwise the
+server would reject every request's `Host`/`Origin` header. This does not add
+authentication; `mcp.transport_policy` (above) still governs what a connected client may
+do, and remains deny-by-default for HTTP mutations/tasks regardless of bind address. It is
+a protocol server, not a general CLI — these are the only flags.
 
 **Exit codes:** `0` = clean EOF/shutdown, `2` = missing the `mcp` extra, or a usage error
 

@@ -79,6 +79,13 @@ def _resolve_skills_root() -> Path:
     return candidates[-1]
 
 
+#: Hosts the SDK's own `Server.streamable_http_app()` recognizes as loopback and
+#: auto-fills `TransportSecuritySettings` for. Kept in sync with that recognition set
+#: (not derived from it — the SDK does not expose it as a constant) so ENH-3173's
+#: non-loopback branch below activates on exactly the hosts the SDK's own branch does not.
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
 def build_http_app(host: str = "127.0.0.1", project_root: Path | None = None) -> Any:
     """Build the streamable-HTTP ASGI app with the FEAT-3149 transport policy wrapped around it.
 
@@ -98,13 +105,37 @@ def build_http_app(host: str = "127.0.0.1", project_root: Path | None = None) ->
     into :class:`TransportPolicyMiddleware` too — it decides mutation/task grants from
     `.ll/ll-config.json` before the request body is even parsed, so it is a policy call
     site in the same sense `build_server`'s own `config` is.
+
+    ENH-3173: `Server.streamable_http_app()` only auto-fills `TransportSecuritySettings`
+    for a loopback `host` (see `_LOOPBACK_HOSTS`); for any other host it leaves
+    `transport_security=None`, which disables DNS-rebinding protection outright — not the
+    "empty allow-lists reject everything" failure this issue is about, but still the wrong
+    posture for a deliberately-exposed non-loopback bind. So a non-loopback `host` here
+    gets an explicit `TransportSecuritySettings` seeded from that same host, mirroring the
+    SDK's own loopback pattern (`allowed_hosts=["host:*"]`,
+    `allowed_origins=["scheme://host:*"]`) rather than leaving protection off.
     """
     from little_loops.mcp_server.policy import TransportPolicyMiddleware
     from little_loops.mcp_server.tools import _project_root
 
     resolved_root = _project_root(project_root)
     server = build_server(transport="http", project_root=resolved_root)
-    app = server.streamable_http_app(json_response=True, stateless_http=True, host=host)
+
+    transport_security = None
+    if host not in _LOOPBACK_HOSTS:
+        from mcp.server.transport_security import TransportSecuritySettings
+
+        transport_security = TransportSecuritySettings(
+            allowed_hosts=[f"{host}:*"],
+            allowed_origins=[f"http://{host}:*", f"https://{host}:*"],
+        )
+
+    app = server.streamable_http_app(
+        json_response=True,
+        stateless_http=True,
+        host=host,
+        transport_security=transport_security,
+    )
     return TransportPolicyMiddleware(app, transport="http", project_root=resolved_root)
 
 

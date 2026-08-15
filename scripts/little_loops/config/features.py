@@ -591,21 +591,59 @@ class McpTransportPolicyConfig:
 
 
 @dataclass
+class McpHttpBindConfig:
+    """Bind address for the streamable HTTP transport (ENH-3173).
+
+    Both fields default to ``None`` (unset), so an absent ``mcp.http`` block leaves
+    `run_http`'s own ``127.0.0.1``/``8765`` literals as the effective default —
+    matching FEAT-3143 Decision 1 (loopback stays the default; no code path here
+    introduces ``0.0.0.0``).
+    """
+
+    host: str | None = None
+    port: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> McpHttpBindConfig:
+        """Create McpHttpBindConfig from dictionary. Lenient: ignores unknown keys."""
+        host = data.get("host")
+        port = data.get("port")
+        return cls(
+            host=str(host) if host is not None else None,
+            port=int(port) if port is not None else None,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize McpHttpBindConfig to dictionary."""
+        result: dict[str, Any] = {}
+        if self.host is not None:
+            result["host"] = self.host
+        if self.port is not None:
+            result["port"] = self.port
+        return result
+
+
+@dataclass
 class McpConfig:
     """`ll-mcp` server configuration (FEAT-3149)."""
 
     transport_policy: McpTransportPolicyConfig = field(default_factory=McpTransportPolicyConfig)
+    http: McpHttpBindConfig = field(default_factory=McpHttpBindConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> McpConfig:
         """Create McpConfig from dictionary. Lenient: ignores unknown keys."""
         return cls(
             transport_policy=McpTransportPolicyConfig.from_dict(data.get("transport_policy", {})),
+            http=McpHttpBindConfig.from_dict(data.get("http", {})),
         )
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize McpConfig to dictionary."""
-        return {"transport_policy": self.transport_policy.to_dict()}
+        return {
+            "transport_policy": self.transport_policy.to_dict(),
+            "http": self.http.to_dict(),
+        }
 
 
 @dataclass

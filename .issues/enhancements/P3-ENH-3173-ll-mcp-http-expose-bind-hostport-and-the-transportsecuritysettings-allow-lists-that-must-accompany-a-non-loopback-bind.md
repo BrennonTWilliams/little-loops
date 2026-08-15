@@ -4,10 +4,11 @@ type: ENH
 title: 'll-mcp --http: expose bind host/port (and the TransportSecuritySettings allow-lists
   that must accompany a non-loopback bind)'
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T00:26:15Z'
+completed_at: '2026-08-15T07:52:32Z'
 parent: EPIC-3127
 labels:
 - mcp
@@ -67,6 +68,22 @@ the bind address configurable makes that gap easier to reach, so it is worth cap
 authentication as its own issue rather than folding it in here.
 
 
+## Program Design
+
+### Types
+
+- No new dataclasses/models — reuses the SDK's `mcp.server.transport_security.TransportSecuritySettings(enable_dns_rebinding_protection: bool = True, allowed_hosts: list[str], allowed_origins: list[str])`.
+
+### Signatures
+
+- `main_mcp(argv: list[str] | None = None) -> int` — extend the existing `argparse.ArgumentParser` (added by ENH-3171) with `parser.add_argument("--host", default=None)` / `parser.add_argument("--port", type=int, default=None)`, resolved against `mcp.http.host` / `mcp.http.port` from `.ll/ll-config.json` (flag wins), defaulting to the current `127.0.0.1` / `8765` literals.
+- `run_http(host: str = "127.0.0.1", port: int = 8765, project_root: Path | None = None) -> None` (`scripts/little_loops/mcp_server/server.py:245`) — no signature change needed; `main_mcp` already threads `host`/`port` positionally/by keyword into this coroutine.
+- `build_http_app(host: str = "127.0.0.1", project_root: Path | None = None) -> Any` (`scripts/little_loops/mcp_server/server.py:82`) — add the allow-list derivation here (the single App-construction call site), passing `transport_security=TransportSecuritySettings(allowed_hosts=[...], allowed_origins=[...])` into `Server.streamable_http_app(..., host=host)` when `host` is non-loopback, mirroring the loopback auto-fill the SDK already performs for `127.0.0.1`/`localhost`.
+
+### Call Path
+
+`main_mcp` -> `run_http(host, port, project_root)` -> `build_http_app(host, project_root)` -> `Server.streamable_http_app(host=host, transport_security=...)`
+
 ## Current Behavior
 
 `ll-mcp --http` always binds `127.0.0.1:8765`. `main_mcp` calls `anyio.run(run_http)` with
@@ -94,6 +111,30 @@ all of them via DNS-rebinding protection.
   only in docs.
 - **Breaking Change**: No
 
+## Scope Boundaries
+
+- **No authentication.** Making the bind address configurable does not add any auth to
+  the HTTP transport; that gap is tracked as its own future issue (see "Related but
+  deliberately out of scope" above).
+- **No change to `mcp.transport_policy`.** Mutation/task allow-lists for HTTP stay
+  deny-by-default; this issue only affects where the server listens and which
+  `Host`/`Origin` headers it accepts, not what it permits once connected.
+- **No change to stdio transport.** `--host`/`--port` and `mcp.http.*` apply to the
+  HTTP transport only.
+- **No TLS termination.** Binding a non-loopback address does not add HTTPS; operators
+  fronting `ll-mcp --http` with a reverse proxy remain responsible for transport
+  encryption.
+- **No automatic `allowed_hosts`/`allowed_origins` derivation beyond the bind host
+  itself** — e.g. no wildcard/subnet expansion, no DNS lookup to resolve additional
+  aliases. The allow-lists are seeded from the explicit `--host` value (and its
+  loopback aliases, matching the SDK's existing auto-fill behavior); anything broader
+  is a config the operator supplies, not inferred here.
+
 ## Status
 
 **Open** | Created: 2026-08-15 | Priority: P3
+
+
+## Session Log
+- `/ll:manage-issue` - 2026-08-15T07:52:08 - `d32f69ed-4207-401e-9bc5-bf812b8631e2.jsonl`
+- `/ll:ready-issue` - 2026-08-15T07:32:08 - `9796d8d8-2a77-4d62-914f-046c89794a73.jsonl`

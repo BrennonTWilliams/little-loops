@@ -73,8 +73,10 @@ def main_mcp(argv: list[str] | None = None) -> int:
     `LL_MCP_PROJECT_ROOT` env fallback) — the first flag here that takes a value, which is
     the point a real parser starts paying for itself over a bare-literal `in argv` check;
     `add_help=False` and `parse_known_args` keep this posture otherwise unchanged (no help
-    text, no rejection of unrecognized args). ENH-3173's `--host`/`--port` should extend this
-    same parser rather than introducing its own. `mcp` is imported lazily here, not at module
+    text, no rejection of unrecognized args). ENH-3173 adds `--host`/`--port`, resolved
+    against `mcp.http.host`/`mcp.http.port` in `.ll/ll-config.json` (flag wins); neither
+    source overrides `run_http`'s own `127.0.0.1`/`8765` defaults unless set, matching
+    ENH-3171's project-root precedence. `mcp` is imported lazily here, not at module
     scope, so a checkout without the `mcp` extra installed still imports this module (and
     every `[project.scripts]` target) cleanly; see
     `test_cli_doctor_install_checks.py::test_real_pyproject_all_entry_points_resolve`.
@@ -101,6 +103,8 @@ def main_mcp(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ll-mcp", add_help=False)
     parser.add_argument("--http", action="store_true")
     parser.add_argument("--project-root", type=Path, default=None)
+    parser.add_argument("--host", default=None)
+    parser.add_argument("--port", type=int, default=None)
     args, _unknown = parser.parse_known_args(argv)
 
     # Whether an explicit override was given, not just what it resolved to — this decides
@@ -125,8 +129,26 @@ def main_mcp(argv: list[str] | None = None) -> int:
         target = run_http
     else:
         target = run_stdio
+
+    http_kwargs: dict[str, object] = {}
+    if want_http:
+        # ENH-3173: flag wins over `mcp.http.*` in `.ll/ll-config.json`; neither source
+        # is consulted unless `--http` is set, since `run_stdio` has no host/port to bind.
+        from little_loops.config import BRConfig
+
+        http_config = BRConfig(project_root).mcp.http
+        host = args.host if args.host is not None else http_config.host
+        port = args.port if args.port is not None else http_config.port
+        if host is not None:
+            http_kwargs["host"] = host
+        if port is not None:
+            http_kwargs["port"] = port
+
+    partial_kwargs: dict[str, object] = dict(http_kwargs)
     if has_override:
-        target = functools.partial(target, project_root=project_root)
+        partial_kwargs["project_root"] = project_root
+    if partial_kwargs:
+        target = functools.partial(target, **partial_kwargs)
 
     anyio.run(target)
     return 0
