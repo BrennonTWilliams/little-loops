@@ -50,6 +50,8 @@ from little_loops.text_utils import (
     build_ref_index,
     classify_file_ref,
     extract_file_paths,
+    fence_spans,
+    in_fence,
     resolve_ref_path,
     strip_code_fences,
 )
@@ -125,15 +127,33 @@ def _section_text(content: str, heading: str) -> str:
     """Return the fence-stripped body of ``## heading``, or ``""`` when absent.
 
     Uses the same last-occurrence-wins contract as
-    :func:`~little_loops.issue_parser._section_body`.
+    :func:`~little_loops.issue_parser._section_body`. Both the heading match and
+    the end-boundary scan exclude matches that fall inside a fenced code block
+    (ENH-3206, mirroring BUG-3202's :func:`~little_loops.issue_parser.
+    _section_body_with_offset`) via :func:`~little_loops.text_utils.fence_spans`/
+    :func:`~little_loops.text_utils.in_fence` — a quoted ``##``-shaped line no
+    longer wins heading resolution or truncates the section that encloses it.
+    The returned text stays fence-*stripped* (this function's existing
+    contract) since callers like :func:`_has_symbol` scan for prose-level
+    symbol mentions and fence content would inflate matches.
     """
+    spans = fence_spans(content)
     pattern = rf"^##\s+{re.escape(heading)}\s*$"
-    matches = list(re.finditer(pattern, content, re.MULTILINE))
+    matches = [
+        m
+        for m in re.finditer(pattern, content, re.MULTILINE)
+        if not in_fence(m.start(), m.end(), spans)
+    ]
     if not matches:
         return ""
     start = matches[-1].end()
-    following = re.search(r"^##\s", content[start:], re.MULTILINE)
-    end = start + following.start() if following else len(content)
+
+    terminator_pattern = re.compile(r"^##\s", re.MULTILINE)
+    end = len(content)
+    for term in terminator_pattern.finditer(content, start):
+        if not in_fence(term.start(), term.end(), spans):
+            end = term.start()
+            break
     return strip_code_fences(content[start:end])
 
 

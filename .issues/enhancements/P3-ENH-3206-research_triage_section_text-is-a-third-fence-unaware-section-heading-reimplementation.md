@@ -3,11 +3,12 @@ id: ENH-3206
 type: ENH
 title: research_triage._section_text is a third fence-unaware section-heading reimplementation
 priority: P3
-status: open
+status: done
 testable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T23:12:33Z'
+completed_at: '2026-08-16T02:50:07Z'
 confidence_score: 98
 outcome_confidence: 84
 score_complexity: 22
@@ -77,13 +78,13 @@ inherited from BUG-3202.
 
 ## Acceptance Criteria
 
-- [ ] `_section_text` excludes fenced `##`-shaped lines from heading resolution via the
+- [x] `_section_text` excludes fenced `##`-shaped lines from heading resolution via the
       shared `fence_spans`/`in_fence` helper — no new fifth/sixth fence idiom.
-- [ ] The end-boundary scan is fence-aware: a fenced `##`-shaped line does not terminate
+- [x] The end-boundary scan is fence-aware: a fenced `##`-shaped line does not terminate
       the section that encloses it.
-- [ ] A test pins the fenced-heading-does-not-win and fenced-heading-does-not-truncate
+- [x] A test pins the fenced-heading-does-not-win and fenced-heading-does-not-truncate
       behaviors for `_section_text`, mirroring BUG-3202's `TestSectionBodyFenceAware`.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `python -m pytest scripts/tests/` exits 0.
 
 ## Impact
 
@@ -128,4 +129,5 @@ Explicitly **out of scope**:
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-16T02:49:28 - `b3e5e9f8-dedd-44cd-94d8-d1536fb44209.jsonl`
 - `/ll:confidence-check` - 2026-08-16T00:17:33 - `64e9e21e-d2d6-44cd-97cd-d980a3cc037d.jsonl`

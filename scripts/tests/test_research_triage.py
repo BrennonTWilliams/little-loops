@@ -579,3 +579,65 @@ class TestCorpusBaseline:
         assert len(rates) >= 3, "not enough populated size bands to test neutrality"
         spread = (max(rates) - min(rates)) * 100
         assert spread <= 15.0, f"band spread {spread:.1f}pt exceeds the 15pt neutrality gate"
+
+
+class TestSectionTextFenceAware:
+    """ENH-3206: a fenced ``##``-shaped line must not win section resolution or
+    truncate the section that encloses it, mirroring BUG-3202's
+    ``TestSectionBodyFenceAware`` for ``_section_body_with_offset``."""
+
+    def test_fenced_heading_does_not_win_over_real_heading(self) -> None:
+        from little_loops.issues.research_triage import _section_text
+
+        content = (
+            "# ENH-0001: Example\n\n"
+            "## Summary\n\nReal summary.\n\n"
+            "## Current Behavior\n\n"
+            "Prose before the fence.\n\n"
+            "```\n"
+            "## Summary\n"
+            "placeholder junk\n"
+            "```\n\n"
+            "More prose after the fence.\n\n"
+            "## Impact\n\nSome impact.\n"
+        )
+
+        section = _section_text(content, "Summary")
+
+        assert "Real summary" in section
+        assert "placeholder junk" not in section
+
+    def test_fenced_heading_does_not_truncate_enclosing_section(self) -> None:
+        from little_loops.issues.research_triage import _section_text
+
+        content = (
+            "## Summary\n\nReal summary.\n\n"
+            "## Current Behavior\n\n"
+            "Prose before the fence.\n\n"
+            "```\n"
+            "## Summary\n"
+            "placeholder junk\n"
+            "```\n\n"
+            "More prose after the fence.\n\n"
+            "## Impact\n\nSome impact.\n"
+        )
+
+        section = _section_text(content, "Current Behavior")
+
+        assert "Prose before the fence" in section
+        assert "More prose after the fence" in section
+        assert "Some impact" not in section
+
+    def test_real_repeat_still_wins_last_occurrence(self) -> None:
+        from little_loops.issues.research_triage import _section_text
+
+        content = (
+            "## Root Cause\n\nStale root cause.\n\n"
+            "## Root Cause\n\nCurrent root cause.\n\n"
+            "## Status\n\n**Open**\n"
+        )
+
+        section = _section_text(content, "Root Cause")
+
+        assert "Current root cause" in section
+        assert "Stale root cause" not in section
