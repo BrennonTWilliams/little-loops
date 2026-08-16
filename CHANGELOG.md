@@ -5,6 +5,136 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.156.0] - 2026-08-16
+
+A hardening release: `ll-mcp` gains a full **tier-2/tier-3 mutation surface**
+(guarded writes, task polling, HTTP transport), a new **Qwen Code host
+adapter** lands end-to-end, the **pre-patch check** subsystem verifies work
+was actually done before a gate passes, and a sweep of issue-file locking,
+section-parsing, and documentation-drift fixes closes out the backlog. 70
+issues closed (10 features, 29 bug fixes, 31 enhancements). No breaking
+changes.
+
+### Added
+
+**`ll-mcp` — mutation, task-polling, and transport surfaces.** Tier-2 guarded
+mutation tools ship with a dry-run default and per-method transport policy
+(FEAT-3149), a `tasks/get`/`tasks/cancel` poll surface lets clients track
+long-running work (FEAT-3145), and the SEP-2663 start path lets `tools/call`
+materialize a task and kick off an `ll-loop` run (FEAT-3151). A streamable
+HTTP transport now sits alongside stdio (FEAT-3143), with bind host/port
+exposed via `--http` (ENH-3173) and stdio transport policy enforced across
+all three guarded surfaces (FEAT-3168).
+
+**The Qwen Code host adapter.** A live 0.21.6 surface-confirmation spike
+(FEAT-3155) grounded a full adapter build-out: the `hooks/adapters/qwen`
+hook adapter plus `ll-init` wiring and managed settings block (FEAT-3158),
+an `ll-adapt` emitter (FEAT-3159), and `qwen-extension.json` packaging with
+a marketplace install path (FEAT-3160).
+
+**Pre-patch check.** A new subsystem verifies a candidate patch was actually
+applied before a gate passes — candidate identification, tree
+reconstruction, and verdict computation (ENH-2991), hosted on the FSM
+executor's guarded window (ENH-2997), with a non-FSM adapter and evidence
+consumers for harness/skill callers (ENH-2998) and `setup_prepatch_worktree()`
+for content-write test isolation (ENH-3141).
+
+**`host_runner` centralizes child-environment construction.** All call sites
+that spawn a host CLI now build their environment through a single
+`project_child_env()` projection helper instead of ad hoc dict-building
+(ENH-3184). FSM LLM-judged gates also gained a `cannot_judge` abstention
+verdict with a fixed verdict grammar (ENH-3185).
+
+**Advisor core.** `ll-advise` CLI, a capability floor, and an `ll-doctor`
+check ship together (FEAT-3044).
+
+### Fixed
+
+**Issue-file integrity and parsing.** Issue-file mutators (`set-status`,
+`link`, `append-log`) now lock and write atomically instead of racing
+concurrent writers (BUG-3150). Section-heading lookup across three separate
+reimplementations is now fence-aware, fixing inverted `format-check` verdicts
+(BUG-3202) and a duplicate scaffold on `ll-issues create` when the body was
+already a full sectioned document (BUG-3193). The issue-ID resolver no longer
+matches `TYPE-NNN` substrings inside title slugs (BUG-3176), `format-check`
+no longer emits false positives from a kwarg-polluted symbol index or
+slash-joined file refs (BUG-3194), and the `symbol_claims` index now covers
+SQL `CREATE TABLE` names and import-bound aliases (BUG-3201).
+
+**`ll-mcp` correctness.** A non-editable install served zero prompts because
+`skills/` wasn't packaged and `_find_plugin_root` fell back to the
+site-packages parent (BUG-3177), `tasks/*` and `loop_start` resolved
+`.loops/` against `cwd` instead of the resolved project root (BUG-3180), and
+`history_search` had the same `cwd`-vs-project-root bug (BUG-3181). The
+stdio test harness closed stdin early and raced server teardown (BUG-3167).
+
+**Adapter and packaging fixes.** `ll-adapt --host qwen` (BUG-3163) and the
+kimi-code/gemini/omp mirrors (BUG-3164) omitted skill companion files,
+`ll-adapt --host codex` emitted `.codex/ll-mcp.toml` with no launch command
+(BUG-3178), and `python -m build` failed on main because hatchling rejected
+a `readme = "../README.md"` path (BUG-3179).
+
+**Automation and test reliability.** `idle_timeout` is now wired through the
+FSM schema, `Protocol`, runner, and executor to kill hung subprocesses
+(BUG-1723), the automation-skill blocking contract is enforced so headless
+turns can't end with a subagent result still in flight (BUG-3209), an
+uncapped `pytest` pin let `pytest` 9 into a second interpreter and hang the
+suite at 98–99% (BUG-3208), and `ll-harness dsl` now actually compares
+against a task's `expected:` values instead of unconditionally reporting a
+100% pass rate (BUG-3196). `check_hedges` is bounded to one forced refine per
+run (BUG-3170), the `autodev` spike remedy is reachable again when a
+readiness subscore is 0 (BUG-3146), and its `GATE_MARKER` regex catches more
+gated-issue phrasing (BUG-3147).
+
+**Documentation drift.** `CLI.md` (BUG-3186), `HISTORY_SESSION_GUIDE.md`
+(BUG-3187), `EVENT-SCHEMA.md` (BUG-3188), the built-in hooks guide
+(BUG-3189), `ARCHITECTURE.md`/`CONTRIBUTING.md` directory trees (BUG-3190),
+and `config-schema.json` vs. code (BUG-3192) all had stale citations,
+missing subcommands, or drifted defaults corrected, alongside a broader
+medium/low-severity doc-audit sweep across 14 guides (BUG-3191). `ll-session
+export`'s table list, previously hand-maintained in four places, is now
+derived in one (BUG-3197).
+
+### Changed
+
+**Worktree and workflow parity.** Worktrees now inherit machine-local
+`.ll/ll.local.md` overrides and Active Rules instead of starting from
+scratch (ENH-3113), `worktree_copy_files` copies directory entries instead
+of silently skipping them (ENH-3114), and what does and doesn't cross into
+an auto-created worktree is now documented (ENH-3115).
+
+**`ll-mcp` resource and prompt surfaces.** The resource/prompt indices, only
+built once at startup, now refresh on demand (ENH-3172), and the resource
+surface is paginated and scoped instead of dumping a 3000-entry
+`resources/list` (ENH-3174). `build_server`'s `transport` parameter is now
+required with no default (ENH-3175), and project root resolves explicitly
+via `--project-root`/`LL_MCP_PROJECT_ROOT` instead of `cwd` alone (ENH-3171).
+
+**Qwen session ingestion.** The wire-format normalizer correctly rebuilds
+and stamps qwen's chat schema (ENH-3166), qwen subagent transcripts backfill
+into `subagent_runs` instead of being silently dropped by inverted nesting
+(ENH-3165), `QwenRunner` registration and `build_*` implementation land
+(ENH-3156), and conformance plus host-list plumbing (ENH-3161) and a
+`HOST_COMPATIBILITY.md` column (ENH-3162) round out the adapter.
+
+**Gate and loop refinements.** `verify-issue-loop` criteria mode no longer
+short-circuits on the first failure — it evaluates and reports every
+criterion (ENH-3200), `verify-issues`' research agents are seeded from
+`ll-code` graph queries for anchor drift and negative-claim checks
+(ENH-3126), `autodev` skips explicitly gated issues before spending refine
+cycles (ENH-3148), and the automation timeout kill gets a SIGTERM finalize
+grace before SIGKILL (ENH-3130). `orchestration.disable_background_tasks`
+now defaults to `false` — background tasks are allowed unless opted out
+(ENH-3207) — and the default per-issue automation timeout rose from 3600s to
+7200s. `subagent_runs` reconciles stale `running` rows so orphaned spawns are
+distinguishable from live ones (ENH-3210).
+
+**Housekeeping.** `research_triage._section_text`'s third fence-unaware
+section-heading reimplementation was retired in favor of the shared parser
+(ENH-3206), `test_tamper_guard._test_functions()` was promoted to a public
+`extract_test_functions()` (ENH-3152), and API.md gained reference sections
+for the 13 modules that were listed but undocumented (ENH-3067).
+
 ## [1.155.0] - 2026-08-09
 
 An integration-and-isolation release: little-loops now speaks **MCP** as a
@@ -896,6 +1026,7 @@ beside a silently truncated list (BUG-3055).
 - ENH-2655: Standardize a .ll/ artifact directory for /ll:spike plan docs
 - refactor(runners): extract shared RunnerType/ActionSpec dispatch abstraction (c835911a)
 
+[1.156.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.155.0...v1.156.0
 [1.155.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.154.0...v1.155.0
 [1.154.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.153.0...v1.154.0
 [1.153.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.152.0...v1.153.0
