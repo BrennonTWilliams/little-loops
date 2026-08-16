@@ -9618,6 +9618,26 @@ invocation = runner.build_streaming(prompt="Hello, world")
 # subprocess.run([invocation.binary, *invocation.args], env={**os.environ, **invocation.env})
 ```
 
+### project_child_env
+
+Single chokepoint every task-path `subprocess.*` call routes through to build its `env=` mapping (ENH-3184).
+
+```python
+def project_child_env(
+    invocation: HostInvocation | None = None,
+    *,
+    extra: dict[str, str] | None = None,
+) -> dict[str, str]: ...
+```
+
+**Behavior:**
+
+Default behavior is byte-identical to the pre-ENH-3184 status quo: full inheritance of the parent's `os.environ`, with `invocation.env` (when *invocation* is given) merged over it, then *extra* (for one-off keys a call site adds beyond what the `HostInvocation` carries, e.g. `LL_HOST_CLI` at `cli/loop/_helpers.py`) merged over that. Absence of a key at any layer means "inherit the parent's value" — this helper provides no way to clear or deny an inherited variable; that's deliberately out of scope (see ENH-3203).
+
+`invocation` is optional because two `bash -c` task-path spawns (`fsm/runners.py`'s `DefaultActionRunner` shell branch, `runner_spec.py::_run_cmd()`) never construct a `HostInvocation` at all — `project_child_env()` with no arguments is exactly today's implicit inheritance, made explicit and interceptable at this one seam.
+
+An AST-based guard test (`test_enh3184_spawn_site_guard.py`) enumerates every `subprocess.(run|Popen|check_output|call)` site across the task-path modules and fails if a new spawn bypasses this helper; sites intentionally exempt (git plumbing, `gh` auth/PR calls, detection/maintenance probes, pip introspection) carry an inline `# ll-no-project: <reason>` marker.
+
 ### build_anthropic_request / build_batch_request / dispatch_anthropic_request / dispatch_batch_request / poll_batch_result
 
 `orchestration.request_path` opt-in dispatch (FEAT-2673, FEAT-2710, FEAT-2716,
