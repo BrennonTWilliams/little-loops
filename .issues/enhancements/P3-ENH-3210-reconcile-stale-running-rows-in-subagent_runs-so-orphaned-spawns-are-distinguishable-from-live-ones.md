@@ -30,29 +30,44 @@ hook never fires — the common case when the parent `claude -p` turn ends and
 `_kill_process_group` reaps the process group (`subprocess_utils.py:630-645`) — the row
 stays `running` forever.
 
-Live evidence from this repo's `.ll/history.db`:
+Live evidence from this repo's `.ll/history.db` (re-measured 2026-08-15):
 
-    completed | 2699
-    running   |   40      # oldest started 2026-08-02
+    completed | 2717
+    running   |   40      # oldest started 2026-07-21T02:34:49Z
+                          # newest  started 2026-08-15T03:48:55Z
 
 Those 40 rows are indistinguishable from a genuinely in-flight agent, which makes any
-future consumer of this table (see the companion telemetry-surface issue) report a
-false picture.
+future consumer of this table (ENH-3211, FEAT-3183) report a false picture. Note the
+leak is slow, not ongoing at volume: `completed` grew by 18 between two measurements
+while `running` stayed flat at 40 — which is part of why this is P3.
 
 `_backfill_subagent_runs` (`writers.py:2063`) does not help: it is `INSERT OR IGNORE`,
 so it seeds missing rows but never corrects an existing stale one.
 
-Proposed fix: reconcile on read and/or at session end, mirroring the ENH-1669 loop-run
-reconciliation that rewrites a `running` loop state to `interrupted` when its PID is
-provably dead. Here the liveness signal is the parent session: a `running` row whose
-`parent_session_id` has an ended session (or whose `started_at` is older than a
-threshold with no matching live session) becomes `orphaned` with a `reconciled_at`
-stamp. Keep it best-effort per the EPIC-1707 contract — never raise, never block.
+**Liveness signal — corrected.** An earlier draft of this issue proposed "a
+`parent_session_id` whose session has provably ended." **That signal does not exist.**
+Verified against the live DB:
 
-Decide as part of implementation whether `orphaned` is a new status value or whether
-the existing `status` column reuses an established term, and whether reconciliation
-runs in the SessionEnd handler (mind the hard-ceiling bug noted in
-`hooks/subagent_stop.py`'s docstring) or lazily at query time in `history_reader`.
+- `sessions` is `(session_id, jsonl_path, started_at, project_path)` — there is **no
+  `ended_at` column**.
+- `session_lifecycle_events` contains exactly one event kind, `stale_ref_sweep` (4,021
+  rows) — **zero** session-end events.
+
+As written that rule collapses to a bare `started_at` age threshold, the weakest option
+available. Use instead a signal that does exist and carries positive evidence:
+**later activity in the same parent session**. Compare the row's `started_at` against
+`max(ts)` for that `session_id` in `tool_events` — if the parent kept working after the
+spawn but no `SubagentStop` ever landed, the row is provably orphaned rather than
+in-flight. Verified on the newest stale row (`b9fd5a8c…`, started `2026-08-15T03:48:55Z`,
+parent's last tool event `2026-08-15T03:49:22Z`) — 27s of subsequent parent activity.
+
+The join is viable: 39 of the 40 stale rows have a `parent_session_id` present in
+`sessions`; **0** have a null parent.
+
+Proposed fix, mirroring ENH-1669's loop-run reconciliation: a `running` row with
+later-parent-activity evidence (primary) or an old `started_at` with no live parent
+(fallback) becomes `orphaned`; a row with no resolvable evidence is **left alone**.
+Best-effort per the EPIC-1707 contract — never raise, never block.
 
 
 ## Current Behavior
@@ -98,28 +113,45 @@ would otherwise report orphaned spawns as if they were still running.
 
 ## Proposed Solution
 
-Reconcile lazily, on the read path — mirroring `_reconcile_stale_running()`
-(`fsm/persistence.py:243`), which is called from `list_running_loops()` on every read
-rather than from a scheduled sweep, precisely because (per Current Behavior above)
-`subagent_runs` has no reliable session-end-timed hook to hang a write-behind on. Since
-there is no `pid` column here, the liveness signal cannot be `os.kill(pid, 0)`
-(`_process_alive()`, `fsm/concurrency.py:56`) as ENH-1669 uses — it must be
-session-based (a `parent_session_id` with no live session, or a `started_at` age
-threshold) as the issue itself proposes. Because `history_reader.py`'s readers all use
-`_connect_readonly()` (`:420`, `PRAGMA query_only = ON`), a read-time write-back needs a
-second, separate writable connection opened the way `writers.py` opens its own — there
-is no existing precedent in `history_reader.py` for that connection-mode split, so this
-is new plumbing, not a reuse of an existing helper.
+**Decision 1 — where it runs: the existing `SessionStart`-hosted sweep, not the read
+path.** `hooks/sweep_stale_refs.py` already runs on the `session_end` intent (re-homed to
+`SessionStart`, `hooks/__init__.py:72`) and **already writes** to `history.db`. That is a
+real precedent with working plumbing. The read-path alternative requires inventing a
+second, writable connection inside `history_reader.py` — against `_connect_readonly()`'s
+`PRAGMA query_only = ON` (`:420`), for which there is no precedent in that module — and
+puts an UPDATE in the path of every reader call, contending on the same DB with live hook
+writers. The two options are not equal-cost; take the sweep.
+
+**Decision 2 — the status value: the literal `"orphaned"`.** `status` is a bare `TEXT`
+column with no CHECK constraint, matching the `session_lifecycle_events.event`
+open-discriminator convention (schema.py v27 comment), so a new value needs no migration.
+ENH-3211 depends on this vocabulary being fixed, so it is settled here rather than
+deferred to the implementer.
+
+**Decision 3 — `reconciled_at` is a schema change; drop it.** `subagent_runs` has **no**
+`reconciled_at` column, so mirroring `LoopState.reconciled_at` would mean a new v3x
+migration — which contradicts this issue's own Scope Boundaries ("does not change... the
+schema"). The `orphaned` status alone is sufficient to distinguish the state, and
+`ended_at` stays `NULL` (correctly: no end was ever observed). If an audit stamp is later
+judged necessary, raise it as a separate schema issue.
+
+Since there is no `pid` column, the liveness signal cannot be `os.kill(pid, 0)`
+(`_process_alive()`, `fsm/concurrency.py:56`) as ENH-1669 uses — it is the
+later-parent-activity comparison established in the Summary, with an age threshold as
+fallback and "no evidence → leave alone" as the failure mode.
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/history_reader.py` — home for the lazy reconcile-on-read call,
-  alongside `subagent_tree()` (:1573), `subagent_retries()` (:1604), `subagent_budget()` (:1638)
-- `scripts/little_loops/session_store/writers.py` — needs a new reconciliation writer
-  (mirroring `record_subagent_run_start`/`record_subagent_run_stop`'s best-effort shape),
-  since `history_reader.py`'s connections are read-only (`_connect_readonly()`, `:420`,
-  `PRAGMA query_only = ON`) and cannot issue the UPDATE themselves
+- `scripts/little_loops/session_store/writers.py` — new reconciliation writer, mirroring
+  `record_subagent_run_start`/`record_subagent_run_stop`'s best-effort shape
+  (`try/except sqlite3.Error`, log at WARNING, return `bool`, never raise)
+- `scripts/little_loops/hooks/sweep_stale_refs.py` — the chosen host (Decision 1); already
+  runs on the `session_end` intent and already writes, so the reconciliation call is an
+  addition to an existing sweep, not new plumbing
+- `scripts/little_loops/history_reader.py` — **not** modified for the write path (Decision
+  1 rejects read-path write-back). Touch only if `SubagentRun`/reader output needs to
+  surface the new `orphaned` value distinctly for ENH-3211.
 
 ### Dependent Files (Callers/Importers)
 
@@ -224,10 +256,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 ## Program Design
 
 ### Types
-No new dataclass. If `subagent_tree()`'s existing `SubagentRun` dataclass
-(`history_reader.py:289-305`) gains a `reconciled_at` field mirroring
-`LoopState.reconciled_at`, it stays `str | None` and is omitted from any dict
-serialization when `None`, matching the ENH-1669 precedent.
+No new dataclass and no new field. Per Decision 3, `SubagentRun`
+(`history_reader.py:289-305`) does **not** gain a `reconciled_at` field — that would
+require a `subagent_runs` schema migration this issue's Scope Boundaries excludes. The
+`orphaned` value in the existing `status` field carries the whole signal.
 
 ### Signatures
 `_reconcile_stale_running(state: LoopState, persistence: StatePersistence, running_dir: Path, stem: str) -> LoopState`
@@ -236,34 +268,44 @@ The mirror target above already establishes the parameter shape (state object,
 persistence handle, directory, key) this issue's session-liveness variant would adapt.
 
 ### Call Path
-`history_reader.py` reader call (e.g. `subagent_tree()`/`subagent_budget()`) `->` new
-reconciliation check (session-liveness, since no `pid` column exists) `->` new writer in
-`session_store/writers.py` (separate writable connection, `_connect_readonly()`'s
-`PRAGMA query_only = ON` cannot issue the UPDATE) `->` `subagent_runs.status` row update.
+`SessionStart` host event `->` `hooks/__init__.py` dispatch of the `session_end` intent
+(`:72`) `->` `sweep_stale_refs.handle()` (already writes today) `->` new reconciliation
+writer in `session_store/writers.py` `->` `UPDATE subagent_runs SET status='orphaned'`
+for rows passing the later-parent-activity (or age-fallback) test.
 
 ### Decision Rules
 - Gate: a `subagent_runs` row is eligible for reconciliation only when `status ==
   "running"` — mirrors `_reconcile_stale_running()`'s own first guard
   (`if state.status != "running": return state`).
-- Liveness signal (session-based, since there's no `pid` column): a `parent_session_id`
-  with a provably ended session, **or** `started_at` older than a threshold with no
-  matching live session — exact threshold value is an implementation decision, not
-  specified by research.
-- Escape hatch: no PID/session evidence resolvable at all → leave the row untouched,
-  mirroring `_reconcile_stale_running()`'s `if pid is None: return state` ("cannot
-  determine liveness, leave alone" is the established failure mode, not an exception).
-- Open (per Summary, unresolved by research): whether the new state is a literal
-  `"orphaned"` status value or reuses an existing term, and whether the check lives in
-  `history_reader.py` (read-path) or a startup-style sweep — both are structurally
-  available precedents in this codebase, neither is the established default for this
-  table specifically.
+- **Primary signal — later parent activity.** `max(ts)` in `tool_events` for the row's
+  `parent_session_id` is later than the row's `started_at` ⇒ the parent kept working past
+  the spawn and no `SubagentStop` ever landed ⇒ `orphaned`. This is positive evidence, not
+  a timeout, and it is the rule to implement first.
+- Fallback signal — age. `started_at` older than a threshold with no later-activity
+  evidence either way ⇒ `orphaned`. Threshold is an implementation choice; pick
+  generously (days, not minutes) since the primary signal already covers the common case.
+- **Explicitly unavailable:** "parent session has ended." `sessions` has no `ended_at`
+  column and `session_lifecycle_events` emits no session-end event (verified — only
+  `stale_ref_sweep`). Do not design against this signal.
+- Escape hatch: no evidence resolvable at all → leave the row untouched, mirroring
+  `_reconcile_stale_running()`'s `if pid is None: return state`. "Cannot determine
+  liveness, leave alone" is the established failure mode, not an edge case to skip.
+- Settled (see Proposed Solution): status value is the literal `"orphaned"`; the check
+  runs in the `sweep_stale_refs.py` `SessionStart`-hosted sweep, not the read path; no
+  `reconciled_at` column is added.
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 — telemetry accuracy only; nothing in the product reads this table
+  today (ENH-3211 and FEAT-3183 will). The leak is slow: 40 stale rows accumulated since
+  2026-07-21 and did not grow across two measurements while `completed` gained 18.
+- **Effort**: Small — one writer function plus a call from an existing sweep that already
+  writes. No schema migration (Decision 3), no new connection plumbing (Decision 1).
+- **Risk**: Low — additive status value on a CHECK-free TEXT column; the "no evidence →
+  leave alone" rule means the failure mode is under-reconciling, not misclassifying a
+  live spawn. Main risk is a too-aggressive age fallback, covered by a negative test.
+- **Breaking Change**: No — but any reader pattern-matching `status == "running"` as a
+  proxy for "not completed" changes meaning; audited in Backwards Compatibility below.
 
 ## Related Key Documentation
 
@@ -271,12 +313,12 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: [YYYY-MM-DD] | Priority: [P0-P5]
+**Open** | Created: 2026-08-16 | Priority: P3
 
 ## Current Pain Point
 
 40 `subagent_runs` rows in this repo's `.ll/history.db` are stuck `running` (oldest
-since 2026-08-02) because their `SubagentStop` hook never fired — the parent process
+since 2026-07-21T02:34:49Z) because their `SubagentStop` hook never fired — the parent process
 group was reaped by `_kill_process_group()` first. `_backfill_subagent_runs()`
 (`writers.py:2063`) cannot fix this: it is `INSERT OR IGNORE`, so it only seeds rows
 that are missing entirely, never corrects one that already exists.
@@ -312,19 +354,25 @@ statuses without a code change).
 
 ## Implementation Steps
 
-1. A liveness check exists for a `subagent_runs` row's `parent_session_id` (or a
-   `started_at`-age fallback when no session-liveness signal resolves) — there is no
-   existing session-liveness helper in `session_store`/`history_reader.py` to call, so
-   this is new, not reused.
-2. A reconciliation write path exists that can flip a stale `running` row without going
-   through `history_reader.py`'s read-only connections (`_connect_readonly()`), following
-   the two-layer best-effort shape (`try/except sqlite3.Error` in the writer, never
-   raise) every other `subagent_runs` writer already uses.
-3. A row with no resolvable liveness evidence is left untouched, matching
+1. A later-parent-activity check exists: for a `running` row, `max(ts)` in `tool_events`
+   for its `parent_session_id` compared against the row's `started_at`. There is no
+   existing session-liveness helper in `session_store`/`history_reader.py`, so this is
+   new. An `started_at`-age fallback covers rows with no `tool_events` evidence.
+2. A reconciliation writer exists in `session_store/writers.py`, called from
+   `hooks/sweep_stale_refs.py`'s existing `session_end`-intent sweep, following the
+   two-layer best-effort shape (`try/except sqlite3.Error` in the writer, never raise;
+   hook handler returns `LLHookResult(exit_code=0)` regardless) every other
+   `subagent_runs` writer already uses.
+3. A row with no resolvable evidence is left untouched, matching
    `_reconcile_stale_running()`'s own "cannot determine liveness, leave alone" behavior —
    this is a correctness requirement, not an edge case to skip.
-4. `python -m pytest scripts/tests/test_enh_2505_subagent_runs.py scripts/tests/test_fsm_persistence.py -v`
-   passes, including a negative test asserting a live/recent row is never reconciled.
+4. No schema migration is introduced — `status` takes the new `"orphaned"` value on the
+   existing CHECK-free TEXT column, and no `reconciled_at` column is added (Decision 3).
+5. `python -m pytest scripts/tests/test_enh_2505_subagent_runs.py scripts/tests/test_fsm_persistence.py -v`
+   passes, including a negative test asserting a live/recent row is never reconciled and
+   an idempotency test asserting a second sweep is a no-op.
+6. Running the sweep against this repo's own `.ll/history.db` reclassifies the 40 stale
+   rows and leaves `completed` at 2717 — the concrete success check.
 
 ## Confidence Check Notes
 
@@ -338,14 +386,18 @@ _Added by `/ll:confidence-check` on 2026-08-15_
   `subagent_stop.py`), `TEXT` (claimed in `schema.py`), and `subagent_runs` mislocated
   (claimed in `subagent_start.py`) — verify these symbol references before implementing;
   this caps Criterion 4 (Issue Well-Specified) at 10/20 per the Parity/Claim Cap rule.
-- Two design decisions are explicitly deferred by the issue itself: whether the new state
-  is a literal `"orphaned"` status value or reuses an existing term, and whether the
-  reconciliation check lives in `history_reader.py`'s read path or a startup-style sweep.
-  Neither is the established default for this table.
-- The fix requires new plumbing with no direct precedent: a session-liveness check (no
-  `pid` column exists to mirror ENH-1669's `os.kill(pid, 0)` approach) and a second,
-  writable connection alongside `history_reader.py`'s read-only-only connections
-  (`_connect_readonly()`, `PRAGMA query_only = ON`).
+- ~~Two design decisions are explicitly deferred~~ — **resolved 2026-08-15** (see Proposed
+  Solution): status value is `"orphaned"`; the check runs in `sweep_stale_refs.py`'s
+  existing `SessionStart`-hosted sweep; no `reconciled_at` column.
+- ~~The fix requires a second writable connection alongside `history_reader.py`'s
+  read-only connections~~ — **no longer applicable**: Decision 1 moves the write to
+  `sweep_stale_refs.py`, which already holds a writable connection. The remaining new
+  work is the liveness comparison itself.
+- **New concern (2026-08-15, blocking at capture, now corrected):** the issue's original
+  primary liveness signal — "parent session has provably ended" — had no data behind it.
+  `sessions` has no `ended_at` column and `session_lifecycle_events` contains only
+  `stale_ref_sweep` rows. Replaced with the later-parent-activity signal, verified against
+  the live DB. Re-verify this holds before implementing if the schema has moved since.
 
 ## Session Log
 - `/ll:confidence-check` - 2026-08-16T02:38:24 - `b3e5e9f8-dedd-44cd-94d8-d1536fb44209.jsonl`

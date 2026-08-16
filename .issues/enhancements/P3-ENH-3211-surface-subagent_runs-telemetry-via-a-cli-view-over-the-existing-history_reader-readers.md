@@ -1,8 +1,8 @@
 ---
 id: ENH-3211
 type: ENH
-title: Surface subagent_runs telemetry via a CLI view over the existing history_reader
-  readers
+title: Surface subagent_runs telemetry as an ll-session subcommand over the existing
+  history_reader readers
 priority: P3
 status: open
 testable: true
@@ -10,6 +10,9 @@ discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
 captured_at: '2026-08-16T02:10:42Z'
 relates_to:
+- ENH-3210
+- FEAT-3183
+depends_on:
 - ENH-3210
 confidence_score: 95
 outcome_confidence: 89
@@ -19,13 +22,13 @@ score_ambiguity: 18
 score_change_surface: 25
 ---
 
-# ENH-3211: Surface subagent_runs telemetry via a CLI view over the existing history_reader readers
+# ENH-3211: Surface subagent_runs telemetry as an `ll-session` subcommand over the existing history_reader readers
 
 ## Summary
 
 ENH-2505 added `subagent_runs` plus three readers in `history_reader.py` —
-`subagent_tree` (`:1573`), `subagent_retries` (`:1615`), and `subagent_budget`
-(`:1655`) — but nothing consumes them. A repo-wide search finds the only callers in
+`subagent_tree` (`:1573`), `subagent_retries` (`:1604`), and `subagent_budget`
+(`:1638`) — but nothing consumes them. A repo-wide search finds the only callers in
 `scripts/tests/test_enh_2505_subagent_runs.py`; no CLI exposes them, and neither
 `ll-auto` nor the FSM executor reads the table. The data is write-only telemetry.
 
@@ -34,29 +37,46 @@ finish?" requires a manual `sqlite3 .ll/history.db` query. Orphan rate (see the
 companion stale-row reconciliation issue) is invisible, as is per-agent retry churn
 and time budget — all three of which the readers already compute.
 
-Proposed solution: a read-only CLI view over the existing readers, following the
-established `ll-logs` / `ll-history` subcommand patterns rather than adding a new
-entry point. Sketch:
+Proposed solution: a read-only CLI view over the existing readers.
 
-- `ll-logs subagents --session <id>` — the spawn tree for one session
-  (`subagent_tree`), showing agent_type, duration, status
-- `--agent <type>` — repeat-spawn/retry rollup (`subagent_retries`)
-- `--budget` — per-session spawn count and summed duration (`subagent_budget`)
-- `--json` for machine consumption, matching sibling commands
+**Host — settled: `ll-session`, not `ll-logs`/`ll-history`.** The capture-time sketch
+named `ll-logs`/`ll-history`; refinement showed neither fits. `ll-history` is
+issue-analytics domain (`issue_history` functions), unrelated to session telemetry. Every
+existing `ll-logs` subcommand aggregates a JSONL corpus over `--all`/`--project`/
+`--window-days`, so a single-session SQL lookup would break its flag convention. Neither
+imports `history_reader.py` at all. `ll-session` (`cli/session.py`) is the only CLI that
+wraps `history_reader` readers end-to-end, and it already exposes raw rows from this very
+table via `ll-session recent --kind subagent_run` (`docs/reference/CLI.md:3359,3441`).
+Leaving the host open adds review risk with no upside — it is fixed here.
 
-Scope note: this issue is the surface only — it must not change the writers, the
-hooks, or the schema. Which of `ll-logs` vs `ll-history` is the right host, and the
-exact flag names, are implementation decisions to settle against the existing CLI
-surface (`docs/reference/CLI.md`) before writing code.
+**Argument shape — settled: positional, not `--session`/`--agent` flags.** This codebase
+uses a required positional for single-target lookups (`cli/session.py:105`;
+`ll-history sessions ISSUE_ID`). No `--session`/`--agent`/`--budget` flag exists anywhere
+in this CLI surface. Sketch:
+
+- `ll-session subagents <SESSION_ID>` — spawn tree (`subagent_tree`): agent_type,
+  duration, status
+- `ll-session subagents <SESSION_ID> --budget` — spawn count + summed duration
+  (`subagent_budget`)
+- `ll-session subagent-retries <AGENT_TYPE> [--since ...]` — repeat-spawn rollup
+  (`subagent_retries`; its existing `since` kwarg is currently unsurfaced)
+- `--json` via the shared `add_json_arg()` helper, matching sibling subcommands
+
+**Delta vs. what already exists** (state this explicitly so it isn't re-litigated at
+review): `ll-session recent --kind subagent_run` dumps raw recent rows with no session
+scoping, no tree grouping, no duration/count rollup, and no retry aggregation. The three
+readers already compute all four; this issue surfaces them. If the delta is judged too
+thin, the honest alternative is to close this and fold the need into FEAT-3183 — see
+Scope Boundaries.
+
+Scope note: surface only — it must not change the writers, the hooks, or the schema.
 
 
 ## Current Behavior
 
-**Correction — line numbers in the Summary are stale.** The three readers currently
-resolve at `subagent_tree()` (`history_reader.py:1573`, matches Summary),
-`subagent_retries()` (`:1604`, Summary says `:1615`), and `subagent_budget()` (`:1638`,
-Summary says `:1655`) — verify against current line numbers before citing, they've
-drifted since capture.
+Reader line numbers throughout this issue were re-verified 2026-08-15 against
+`history_reader.py` (`subagent_tree` :1573, `subagent_retries` :1604,
+`subagent_budget` :1638) — the capture-time citations had drifted and are corrected.
 
 `subagent_tree(session_id, *, db=DEFAULT_DB_PATH) -> list[SubagentRun]` returns only
 direct-child spawns (no grandchild recursion — a subagent's own spawns live in its
@@ -95,14 +115,21 @@ Wrap the three readers using the pattern `ll-session`'s `related`/`recent` subco
 already establish end-to-end (`cli/session.py`): reader call → `if args.json:
 print_json(...)` (via `dataclasses.asdict` for `SubagentRun` rows; `subagent_retries`/
 `subagent_budget` are already plain dicts, so no `asdict` needed there) → else a
-human-readable fallback, with an explicit "No subagent runs found" message on empty
+human-readable fallback.
+
+**Required display rule (do not omit).** `subagent_budget` sums duration only over rows
+having *both* `started_at` and `ended_at`, but counts every row in `spawn_count`. So any
+`running`/`orphaned` row silently understates the reported duration. The output must show
+the excluded-row count alongside the total — e.g.
+`spawn_count=12  total_duration_s=430.2  (2 rows excluded: no ended_at)`. Post-ENH-3210
+those excluded rows are exactly the `orphaned` ones, which makes this the operationally
+interesting number, not a footnote.
+
+Remaining shape: the fallback carries an explicit "No subagent runs found" message on empty
 results (the established empty-result convention — `cli/session.py`'s `related`
-subcommand, `cli/history.py`'s `sessions` subcommand). Single-target lookups in this
-codebase use a **positional** argument (`session_id`, e.g. `cli/session.py:105`), not a
-`--session <id>` flag — there is no existing `--session`/`--agent`/`--budget` flag
-precedent anywhere in `ll-logs`/`ll-history` to match against, so the issue's own
-`--session`/`--agent`/`--budget` sketch would be a new flag shape for this CLI surface,
-not a continuation of one.
+subcommand, `cli/history.py`'s `sessions` subcommand), in the exact two-part template
+`print(f"No {noun} found for {id}.")` — so `"No subagent runs found for {session_id}."`,
+with the `for …` suffix, not the bare string from the capture-time sketch.
 
 ## Integration Map
 
@@ -110,10 +137,10 @@ not a continuation of one.
 - `scripts/little_loops/cli/session.py` — closest existing end-to-end wrapping
   pattern to extend or model a new subcommand after: `--db` arg (:94-100),
   `related`/`recent` subparsers and dispatch (:158-163/:445-462, :120-156/:464-516)
-- `scripts/little_loops/cli/logs.py` or `scripts/little_loops/cli/history.py` —
-  whichever host is chosen; `_build_parser()` (`logs.py:2065`) and `main_logs()`
-  dispatch chain (`:2295-2351`) show the `_cmd_*`-per-subcommand convention, though
-  neither file currently imports `history_reader.py`
+- `scripts/little_loops/cli/logs.py` / `cli/history.py` — **not modified**; both were
+  rejected as hosts (see Summary). Retained here only as the `_cmd_*`-per-subcommand
+  convention reference (`logs.py:_build_parser()` :2065, `main_logs()` dispatch
+  :2295-2351).
 
 ### Dependent Files (Confirmed Sole Caller)
 
@@ -236,10 +263,14 @@ read-only queries to a CLI surface, it does not introduce new decision logic.
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 — operator convenience over data that already exists and is already
+  partly reachable via `ll-session recent --kind subagent_run`. See the FEAT-3183 overlap
+  question in Scope Boundaries before scheduling.
+- **Effort**: Small — three reader calls wrapped in an existing CLI's established
+  subparser/dispatch pattern; no new queries, no schema, no writers.
+- **Risk**: Low — purely additive read-only subcommand. Sequencing is the real risk:
+  shipped before ENH-3210, it prints 40 orphaned rows as `running`.
+- **Breaking Change**: No.
 
 ## Related Key Documentation
 
@@ -247,7 +278,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: [YYYY-MM-DD] | Priority: [P0-P5]
+**Open** | Created: 2026-08-16 | Priority: P3 | Blocked on: ENH-3210, FEAT-3183 overlap call
 
 ## Current Pain Point
 
@@ -267,6 +298,18 @@ Per the Summary's own scope note: surface only. Does not touch
 `record_subagent_run_start`/`record_subagent_run_stop`, the `SubagentStart`/
 `SubagentStop` hooks, or the `subagent_runs` schema.
 
+**Open question to resolve before scheduling — overlap with FEAT-3183.** FEAT-3183
+(P1, "Local agent quality report over history.db") already plans to consume
+`subagent_runs.status`/`started_at`/`ended_at` as a retry-inflation signal (~line 130 of
+that issue). That is two surfaces over the same table, one P1 and one P3. Decide one of:
+
+1. Ship this as the low-level per-session inspector; FEAT-3183 remains the aggregate
+   quality report. Both survive, with this issue explicitly *not* doing rollup analytics.
+2. Fold this into FEAT-3183 and cancel this issue (`cancelled` + `supersedes: [ENH-3211]`
+   on FEAT-3183), if FEAT-3183's report already answers the operator question.
+
+Do not implement before this is answered — option 2 makes the whole issue wasted work.
+
 ## Backwards Compatibility
 
 No breaking change — this is a new, additive CLI subcommand. No existing `ll-logs` or
@@ -278,20 +321,24 @@ No breaking change — this is a new, additive CLI subcommand. No existing `ll-l
 
 ## Implementation Steps
 
-1. The host CLI (`ll-logs` vs `ll-history`) is chosen against the existing surface in
-   `docs/reference/CLI.md` — neither currently imports `history_reader.py`, so this is a
-   genuine choice, not a continuation of an established wiring.
-2. The new subcommand's session/agent-type lookup argument follows this codebase's
-   positional-argument convention for single-target lookups (`cli/session.py:105`) rather
-   than introducing an unprecedented `--session`/`--agent` flag pair, unless the
-   implementer has a specific reason to deviate.
+0. The FEAT-3183 overlap question in Scope Boundaries is answered. If option 2, stop —
+   cancel this issue rather than implementing it.
+1. ENH-3210 has landed (`depends_on`), so the `orphaned` status exists and the command
+   does not report orphaned spawns as `running`.
+2. The subcommand lands in `ll-session` (`cli/session.py`) — settled, not an implementer
+   choice — and its session/agent-type lookup argument is a **positional**, following
+   `cli/session.py:105`, not a `--session`/`--agent` flag pair.
 3. `--json` output uses `print_json([asdict(r) for r in rows])` for `subagent_tree`
    (dataclass rows) and `print_json(rows)` directly for `subagent_retries`/
    `subagent_budget` (already plain dicts) — matching the asdict-only-for-dataclasses
    convention observed across `cli/session.py`/`cli/history.py`.
-4. `python -m pytest scripts/tests/test_enh_2505_subagent_runs.py -v` and the new
-   CLI test both pass, including an empty-result case that prints the established
-   "No … found" message rather than nothing.
+4. The `--budget` output reports the count of rows excluded from `total_duration_s`
+   (those with no `ended_at`) alongside the total, so the duration is never silently
+   understated — post-ENH-3210 those are exactly the `orphaned` rows.
+5. `python -m pytest scripts/tests/test_enh_2505_subagent_runs.py scripts/tests/test_ll_session.py -v`
+   and the new CLI test all pass, including an empty-result case that prints
+   `"No subagent runs found for {session_id}."` rather than nothing, and a case with an
+   `ended_at IS NULL` row asserting the excluded-count is shown.
 
 
 ## Session Log

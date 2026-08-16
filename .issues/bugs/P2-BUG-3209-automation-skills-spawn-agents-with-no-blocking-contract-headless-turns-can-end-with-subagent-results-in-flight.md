@@ -21,37 +21,61 @@ score_change_surface: 25
 
 ## Summary
 
-Five agent-spawning skills issue Agent/Task tool calls with no `run_in_background`
+**Four** agent-spawning skills issue Agent/Task tool calls with no `run_in_background`
 directive: `skills/audit-docs/SKILL.md`, `skills/audit-claude-config/SKILL.md`,
-`skills/audit-issue-conflicts/SKILL.md`, `skills/confidence-check/SKILL.md`, and
-`skills/wire-issue/SKILL.md`. The Agent tool defaults to background, so under a
-headless `claude -p` turn (ll-auto, ll-parallel, ll-sprint, FSM prompt states) the
-parent turn can end with subagent results still in flight — the completion
-notification never arrives, exactly the failure mode BUG-3058 and the
-manage-issue "Headless-Safe Final Test Run" section (`skills/manage-issue/SKILL.md:381-398`)
-guard against for Bash test runs.
+`skills/audit-issue-conflicts/SKILL.md`, and `skills/wire-issue/SKILL.md`.
+(`skills/confidence-check/SKILL.md` was named at capture but has **no** Agent/Task spawn
+site anywhere in `SKILL.md`, `reference.md`, or `rubric.md`, and omits `Task`/`Agent`
+from its `allowed-tools` frontmatter, lines 6-15 — it is not in scope.)
 
-Nothing below the prompt layer compensates:
+The Agent tool defaults to background, so under a headless `claude -p` turn (ll-auto,
+ll-parallel, ll-sprint, FSM prompt states) the parent turn can end with subagent results
+still in flight — the completion notification never arrives, exactly the failure mode
+BUG-3058 and the manage-issue "Headless-Safe Final Test Run" section
+(`skills/manage-issue/SKILL.md:381-398`) guard against for Bash test runs.
 
-- `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` (`host_runner.py:374`, documented at
-  `host_runner.py:247`) is scoped to Bash `run_in_background`, not Agent-tool
-  backgrounding — it never covered subagents, and ENH-3207 flipped it off by default.
-- The process layer does not join: `subprocess_utils.py:600-645` stops reading on the
-  stream-json `result` event, waits `post_stream_close_grace_seconds` (default 300,
-  `config/automation.py:26`), then `_kill_process_group`. A still-running subagent is
-  killed, not awaited — BUG-2718 raised that grace and BUG-2731 classifies the
-  resulting exit 143 as INFRA_RETRY, but neither is a barrier.
+The process layer does not join: `subprocess_utils.py:600-645` stops reading on the
+stream-json `result` event, waits `post_stream_close_grace_seconds` (default 300,
+`config/automation.py:26`), then `_kill_process_group`. A still-running subagent is
+killed, not awaited — BUG-2718 raised that grace and BUG-2731 classifies the resulting
+exit 143 as INFRA_RETRY, but neither is a barrier.
 
 Only two skills enforce blocking today: `skills/decide-issue/SKILL.md:335`
 (`run_in_background: false`, waits in-turn) and `skills/go-no-go/SKILL.md:174,274`
 (deliberately backgrounds, then relies on prose "wait until both have completed" with
 no mechanical backstop).
 
-Proposed fix: state the blocking contract once in the injected automation context
-(when `LL_AUTOMATION=1`, every Agent spawn must be `run_in_background: false` and be
-awaited in the same turn) rather than per-skill, and add the explicit directive to the
-five silent skills. Consider whether go-no-go's intentional background fan-out should
-be exempted or converted.
+**An operator-level mechanical fix already exists and is switched off.** FEAT-3076
+verified empirically (real `claude -p` invocations, `claude --version` 2.1.219, raw
+transcripts in `postmortems/feat-3076-verify/`) that
+`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` covers **both** Bash `run_in_background` *and*
+Agent-tool spawns: with the flag set, an Agent call returns the subagent's full final
+response synchronously in the same turn. So `orchestration.disable_background_tasks:
+true` fixes all four skills at once, mechanically, with no skill edits. ENH-3207
+(2026-08-15, direct user decision) flipped that default `true → false`, making it
+opt-in. Resolving that tension is Step 1 below — see **Key Decision**.
+
+## Key Decision (settle before implementing)
+
+Two mutually exclusive routes. The issue does **not** default to one; pick explicitly.
+
+**(a) Config route** — automation runs set `orchestration.disable_background_tasks:
+true`. Mechanical, covers all four skills plus any skill added later, zero prose edits.
+Costs: it re-disables Bash backgrounding too (the `project.run_cmd` smoke-test case
+ENH-3207 was flipped to restore), it reverses a decision the user made on 2026-08-15,
+and it is **Claude-Code-only** (the other six runners no-op the flag,
+`docs/reference/HOST_COMPATIBILITY.md:248`). It also only fires when `automation_profile
+is not None` (`host_runner.py:374`), so it never covers an interactive
+`/ll:audit-docs` run.
+
+**(b) Prose route** — the flag stays off; each of the four skills declares
+`run_in_background: false` at its spawn sites (or the contract is centralized in
+`session_start.py`'s `_STAY_IN_TURN_INSTRUCTION`). Costs: prose is **advisory to the
+model, not mechanical** — nothing enforces compliance at the tool layer; it is
+per-skill, so a new skill silently regresses unless the inventory test below catches it.
+
+If (b) is chosen, record here why (a) was rejected — otherwise this ships four skill
+edits that (a) would have made moot.
 
 
 ## Current Behavior
@@ -66,23 +90,10 @@ the parent turn's `result` event, then waits `post_stream_close_grace_seconds` (
 (`subprocess_utils.py:307`) SIGKILLs the whole process group — it waits for the parent
 process only, never joins individual still-running subagents.
 
-**Correction — `confidence-check/SKILL.md` is not actually affected today**:
-codebase-analyzer found no Agent/Task spawn site anywhere in `SKILL.md`, `reference.md`,
-or `rubric.md`; its `allowed-tools` frontmatter (lines 6-15) omits `Task`/`Agent`
-entirely. The issue names it as one of five silent skills, but only four currently spawn
-subagents. Verify before including it in the fix scope.
-
-**Correction — `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` scope claim is stale**: the Summary
-states this flag "is scoped to Bash `run_in_background`... never covered subagents."
-`.issues/features/P3-FEAT-3076-verify-claude-code-disable-background-tasks-scope.md` §
-Findings records a verified `claude -p` test showing the flag *also* coerces Agent-tool
-`run_in_background: true` to synchronous behavior on Claude Code hosts — contradicting
-both the Summary and `host_runner.py`'s own docstring (lines 243-252), which is itself
-stale on this point. This is Claude-Code-only; the other six `HostRunner` implementations
-no-op the flag (`docs/reference/HOST_COMPATIBILITY.md:248`). Practical effect: an
-operator-level flag that already covers this case exists — the gap is that ENH-3207
-flipped its default to `false`, making it opt-in, not that it structurally can't reach
-Agent spawns.
+Six places in the codebase and docs assert the **factually wrong** claim that
+`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` is "scoped to Bash `run_in_background`" and never
+reaches subagents — refuted by FEAT-3076 § Findings. This wrong claim is what mis-framed
+this bug at capture, and correcting it is unconditional scope (see Documentation below).
 
 ## Expected Behavior
 
@@ -173,6 +184,16 @@ issue defers this decision rather than assuming an answer.
 - `scripts/tests/test_enh494_skill_companions.py` — 500-line-per-`SKILL.md` cap; relevant
   if new wording pushes any of the four skills over budget
 
+**Primary test requirement (supersedes the `DOC_STRINGS_PRESENT` approach below).**
+Pinning new wording via `DOC_STRINGS_PRESENT` needles pins *phrasing*, not the
+invariant, and catches nothing for a skill added later. Instead, make
+`test_skill_run_in_background_true_inventory_pinned`
+(`test_wiring_skills_and_commands.py:442`) **two-sided**: every Agent/Task spawn site
+across `skills/**/SKILL.md` must carry an explicit `run_in_background` value, with
+`skills/go-no-go/SKILL.md` the sole entry in the `true` allowlist. A new skill that
+spawns an Agent with no directive then fails the suite. `DOC_STRINGS_PRESENT` tuples
+remain optional belt-and-braces, not the gate.
+
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_wiring_skills_and_commands.py` — `SKILL_MIRRORS_MUST_MATCH_SOURCE`
   (:372-382) is missing three tuples for `skills/audit-issue-conflicts/SKILL.md` against
@@ -192,13 +213,17 @@ _Wiring pass added by `/ll:wire-issue`:_
   `run_in_background: false` text to the four target skills [Agent 3 finding]
 
 ### Documentation
-- N/A — no docs describe per-skill blocking behavior beyond the skills themselves and
-  `manage-issue/SKILL.md`'s guard section
 
-_Wiring pass added by `/ll:wire-issue`:_
+**Unconditional scope** — the six locations below all assert the same claim FEAT-3076
+disproved ("scoped to Bash `run_in_background`", does not reach subagents). This is not
+contingent on which Key Decision route is taken: the claim is wrong either way, and it
+is what caused this bug to be mis-scoped at capture. Correct all six, or split them into
+a standalone P3 docs issue and mark it `blocks:` this one — do not leave them as
+conditional side-scope.
+
+- `scripts/little_loops/host_runner.py:243-252` — the runner docstring itself
 - `docs/reference/HOST_COMPATIBILITY.md:250` — `[^bgtasks]` footnote restates the same
-  stale "scoped to Bash `run_in_background`" claim the issue flags in `host_runner.py`'s
-  docstring [Agent 2 finding]
+  stale "scoped to Bash `run_in_background`" claim [Agent 2 finding]
 - `docs/reference/CONFIGURATION.md:1236` — `orchestration.disable_background_tasks` table
   row, same stale claim [Agent 2 finding]
 - `docs/guides/LOOPS_GUIDE.md:638` — "Automation-Context Pruning" section, second
@@ -208,10 +233,6 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/config-schema.json:1762` — `disable_background_tasks` property's
   schema-embedded `description` string, same stale claim [Agent 2 finding]
 
-  Only in scope if the implementer also corrects `host_runner.py`'s stale docstring as
-  part of this fix; otherwise these five are unaffected. Not independently required by
-  the issue's core fix (per-skill or `session_start.py` blocking directive).
-
 ### Configuration
 - N/A — no config file governs this; `LL_AUTOMATION` (env var) and
   `orchestration.disable_background_tasks` (`.ll/ll-config.json`) are the two related
@@ -219,12 +240,16 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Implementation Steps
 
-1. Each of the four skills that spawn Agent/Task calls with no blocking directive
-   (`audit-docs`, `audit-claude-config`, `audit-issue-conflicts`, `wire-issue` — not
-   `confidence-check`, which has no spawn site today) declares `run_in_background: false`
-   at every spawn site, following the wording at `decide-issue/SKILL.md:335` — or the
-   contract is centralized in `session_start.py`'s injected automation context instead of
-   duplicated per-skill. Either route satisfies the same outcome; pick one.
+0. **The Key Decision above is recorded in this issue** — config route (a) or prose
+   route (b) — with the rejected route's reason stated. Steps 1 and 4 apply only to route
+   (b); step 2 and steps 3/5/6 apply to both. Do not begin skill edits before this is
+   written down.
+1. (Route b) Each of the four skills that spawn Agent/Task calls with no blocking
+   directive (`audit-docs`, `audit-claude-config`, `audit-issue-conflicts`, `wire-issue`
+   — not `confidence-check`, which has no spawn site today) declares
+   `run_in_background: false` at every spawn site, following the wording at
+   `decide-issue/SKILL.md:335` — or the contract is centralized in `session_start.py`'s
+   injected automation context instead of duplicated per-skill.
 2. `go-no-go/SKILL.md`'s intentional background fan-out is either documented as a
    deliberate, explicit carve-out or converted to blocking — a decision this issue
    defers, not a default to assume.
@@ -236,15 +261,25 @@ _Wiring pass added by `/ll:wire-issue`:_
    (`ll-adapt --host gemini --apply && ll-adapt --host kimi-code --apply && ll-adapt --host qwen --apply`)
    — only `wire-issue`'s mirror is currently test-guarded, so drift in the other would go
    uncaught otherwise.
-5. `python -m pytest scripts/tests/test_wiring_skills_and_commands.py -v` passes,
-   including the `run_in_background: true` inventory-pinned test.
+5. `test_skill_run_in_background_true_inventory_pinned` is extended to its two-sided form
+   (every Agent/Task spawn site in `skills/**/SKILL.md` carries an explicit
+   `run_in_background` value; `go-no-go` is the sole `true` entry) — this is the gate,
+   not `DOC_STRINGS_PRESENT` needles.
+6. The six stale `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`-scope claims are corrected (or
+   split to a linked docs issue), and
+   `python -m pytest scripts/tests/test_wiring_skills_and_commands.py -v` passes.
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P2 — silent loss of subagent findings in headless automation; wrong
+  results rather than a crash, but no operator-visible signal when it happens.
+- **Effort**: Small (route a: one config key + doc corrections) / Medium (route b: four
+  skill files + three mirror regenerations + a two-sided inventory test).
+- **Risk**: Medium — route (a) re-disables Bash backgrounding, reversing ENH-3207's
+  user-directed default; route (b) ships an advisory-only contract that nothing enforces
+  at the tool layer. Mirror drift in `audit-issue-conflicts` is currently uncaught.
+- **Breaking Change**: No (route b). Route (a) changes automation-run behavior for Bash
+  backgrounding and would reopen ENH-3207.
 
 ## Related Key Documentation
 
@@ -252,13 +287,20 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: [YYYY-MM-DD] | Priority: [P0-P5]
+**Open** | Created: 2026-08-16 | Priority: P2
 
 ## Steps to Reproduce
 
-1. [Step 1]
-2. [Step 2]
-3. [Observe: description of the bug]
+1. Ensure `orchestration.disable_background_tasks` is `false` (the default since
+   ENH-3207; it is set explicitly to `false` in this repo's `.ll/ll-config.json:134`).
+2. Run one of the four skills under a headless turn — e.g. `ll-auto` or an FSM prompt
+   state that invokes `/ll:audit-docs`, which spawns Task agents at
+   `skills/audit-docs/SKILL.md:120-139` with no `run_in_background` value.
+3. Observe: the Agent tool defaults to background, so the parent turn can emit its
+   stream-json `result` event while a subagent is still running. `subprocess_utils.py`
+   waits `post_stream_close_grace_seconds` (300s) for the parent OS process only, then
+   `_kill_process_group()` SIGKILLs the group — the subagent's findings are never read
+   into the parent turn and no error is surfaced.
 
 ## Root Cause
 
@@ -308,24 +350,20 @@ alternative: the skill body's Agent/Task call takes `run_in_background: false` d
 
 ## Error Messages
 
+None — this failure is silent by construction. The nearest observable symptom is an
+exit-143 (SIGKILL) automation run, which BUG-2731 already classifies as INFRA_RETRY, so
+it is attributed to infrastructure rather than to a dropped subagent result.
+
 ## Environment
+
+Claude Code host only (the other six `HostRunner` implementations no-op
+`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`, `docs/reference/HOST_COMPATIBILITY.md:248`).
+Headless `claude -p` turns: `ll-auto`, `ll-parallel`, `ll-sprint`, FSM prompt states.
 
 ## Frequency
 
-## Location
-
-- **File**: `path/to/file`
-- **Line(s)**: [lines] (at scan commit: [COMMIT_HASH_SHORT])
-- **Anchor**: `in function name()`
-- **Code**:
-```
-# Relevant code snippet
-```
-
-## Reproduction Steps
-
-## Proposed Fix
-
+Every headless invocation of the four named skills is exposed; whether the result is
+actually lost depends on whether the subagent outlives the parent turn's `result` event.
 
 ## Session Log
 - `/ll:wire-issue` - 2026-08-16T02:33:16 - `580ae8b9-3bf3-43a4-90b3-d6f005806398.jsonl`
