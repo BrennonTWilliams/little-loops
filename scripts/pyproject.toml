@@ -130,7 +130,16 @@ ll_history = "little_loops.pytest_history_plugin"
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0",
+    # Upper bound is deliberate. The full suite began hanging at ~98-99%
+    # completion under xdist (`-n logical --dist loadfile` +
+    # `--timeout-method=thread`, see [tool.pytest.ini_options] below) once the
+    # uncapped `>=7.0` pin started resolving to pytest 9.x against
+    # pytest-xdist 3.8.0. Thread-method timeouts leave watchdog threads on
+    # idle workers rather than terminating them (pytest-xdist #1094/#117,
+    # pytest-timeout #72/#137), which is what wedges the run at the tail when
+    # most workers have gone idle. Lift the cap only alongside a verified
+    # clean full-suite run on the newer major.
+    "pytest>=7.0,<9",
     "pytest-cov>=4.0",
     "pytest-xdist>=3.0",
     # psutil moved to [project].dependencies (FEAT-2930) — it now backs both
