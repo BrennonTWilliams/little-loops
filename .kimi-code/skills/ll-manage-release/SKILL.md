@@ -132,7 +132,7 @@ Map user responses to action and version variables:
 
 ### 4. Wave 1: Parallel Information Gathering
 
-**IMPORTANT**: Spawn all 3 agents in a SINGLE message with multiple Task tool calls.
+**IMPORTANT**: Spawn all 3 agents in a SINGLE message with multiple Task tool calls, each with `run_in_background: false`, and wait for all results in this same turn.
 
 #### Agent 1: Git History Analysis
 

@@ -120,8 +120,8 @@ Only continue to Phase 2 after the user confirms.
 ### 2. Audit Each Document (Fan Out to Subagents)
 
 **Do not read the files yourself.** For each discovered file, spawn a
-`codebase-analyzer` subagent via the `Task` tool. For a single-file scope
-(`readme`, `file:`), one subagent is fine.
+`codebase-analyzer` subagent via the `Task` tool with `run_in_background: false`.
+For a single-file scope (`readme`, `file:`), one subagent is fine.
 
 For multi-file scopes, this is a **required sequential batch loop, not
 optional guidance**:

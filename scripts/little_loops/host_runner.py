@@ -245,12 +245,13 @@ class HostRunner(Protocol):
         ``automation_profile`` is set, injects
         ``CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`` into the child environment
         so a spawned Claude Code child cannot silently discard completed work
-        via tool-level backgrounding (``Bash run_in_background: true``) whose
-        result the parent never retrieves. When ``automation_profile`` is
-        ``None``, the variable is explicitly neutralized to ``""`` rather than
-        omitted, for the same leak reason as ``automation_profile`` above.
-        Claude-Code-only: the other five runners accept and ignore this
-        parameter (no-op).
+        via tool-level backgrounding — e.g. ``Bash run_in_background: true``
+        or an ``Agent``/``Task`` tool spawn left to its background-by-default
+        behavior (BUG-3209) — whose result the parent never retrieves. When
+        ``automation_profile`` is ``None``, the variable is explicitly
+        neutralized to ``""`` rather than omitted, for the same leak reason as
+        ``automation_profile`` above. Claude-Code-only: the other seven
+        runners accept and ignore this parameter (no-op).
 
         ``workspace_root`` (FEAT-2878), when set, requests that tool access be
         confined to that directory for a trace-assertion eval run. Only

@@ -139,6 +139,12 @@ task_type: <fill-in-the-blank|transform|correction>
 generated_at: '<ISO-8601-timestamp>'
 ```
 
+`ll-harness dsl` grades each task against its own `expected:` mapping — that's what makes the
+DSL pass rate meaningful (BUG-3196). A task that omits `expected:` is graded only if the run
+is invoked with `--semantic`; with neither, it is excluded from the pass-rate denominator and
+reported as ungraded rather than counted as a pass. Always populate `expected:` for
+`fill-in-the-blank` and `correction` task types.
+
 **Task types to generate:**
 
 For **loop YAML** sources:

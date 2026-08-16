@@ -4,11 +4,12 @@ type: BUG
 title: Automation skills spawn Agents with no blocking contract; headless turns can
   end with subagent results in flight
 priority: P2
-status: open
+status: done
 testable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
 captured_at: '2026-08-16T02:10:18Z'
+completed_at: '2026-08-16T09:16:28Z'
 relates_to:
 - ENH-3210
 decision_needed: false
@@ -1002,6 +1003,7 @@ Every headless invocation of the inventoried sites is exposed; whether the resul
 actually lost depends on whether the subagent outlives the parent turn's `result` event.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-16T09:16:10 - `dea36e5a-c462-4b43-a17f-8f28449e32a6.jsonl`
 - `/ll:confidence-check` - 2026-08-16T05:31:27 - `bb755dcf-6087-41b3-80d2-a79a3aba782e.jsonl`
 - `/ll:confidence-check` - 2026-08-16T04:59:11 - `8af101e8-440c-4dfd-9d90-99c46a875466.jsonl`
 - `/ll:decide-issue` - 2026-08-16T04:47:54 - `d03fba4d-011e-4873-ac13-79314b2ef1a9.jsonl`

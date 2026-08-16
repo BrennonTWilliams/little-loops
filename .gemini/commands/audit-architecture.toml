@@ -48,7 +48,7 @@ tree {{config.project.src_dir}} -d -L 3
 
 ### 2. Analyze by Focus Area
 
-**If `--deep` flag is set**: For each focus area, spawn a Task sub-agent (subagent_type `codebase-analyzer`) with a targeted analysis prompt. Launch applicable agents in parallel for faster results. Collect findings from all agents before generating the report.
+**If `--deep` flag is set**: For each focus area, spawn a Task sub-agent (subagent_type `codebase-analyzer`) with a targeted analysis prompt and `run_in_background: false`. Launch applicable agents in parallel for faster results. Collect findings from all agents before generating the report.
 
 #### Large Files
 - Find files over 500 lines

@@ -73,6 +73,10 @@ When `--deep` flag is specified, use sub-agents for comprehensive validation:
 
 #### Spawn Validation Agents
 
+Spawn both agents in a SINGLE message with multiple Task tool calls, each with
+`run_in_background: false`, and wait for both results in this same turn before
+proceeding.
+
 1. **codebase-locator** - Verify file paths exist
    ```
    Verify the following file paths from issue [ISSUE-ID] exist in the codebase:

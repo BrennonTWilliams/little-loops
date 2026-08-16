@@ -166,7 +166,7 @@ fi
 }
 ```
 
-**Spawn exactly one Task per axis whose `covered` is `false`** — Agent 1 for `locator`, Agent 2 for `analyzer`, Agent 3 for `pattern_finder`. Spawn them in a SINGLE message with multiple Task tool calls, and wait for their results in this same turn before proceeding. Do not spawn an agent for a covered axis, and do not substitute your own judgment for the triage verdict: it is computed from resolving file references and their change times, which you cannot check as cheaply or as reliably by reading.
+**Spawn exactly one Task per axis whose `covered` is `false`** — Agent 1 for `locator`, Agent 2 for `analyzer`, Agent 3 for `pattern_finder`. Spawn them in a SINGLE message with multiple Task tool calls, each with `run_in_background: false`, and wait for their results in this same turn before proceeding. Do not spawn an agent for a covered axis, and do not substitute your own judgment for the triage verdict: it is computed from resolving file references and their change times, which you cannot check as cheaply or as reliably by reading.
 
 A `covered` verdict already accounts for staleness — an axis whose referenced files changed after this issue's most recent `/ll:refine-issue` Session Log entry comes back `covered: false` with an `evidence` string naming the stale path. So a covered axis means "resolving *and* current", not merely "mentioned".
 
@@ -318,7 +318,7 @@ Do not recommend an implementation approach. Report what is true about the
 codebase; the route is the implementer's call.
 ```
 
-#### Wait for ALL spawned agents' results synchronously in this same turn before proceeding.
+#### Every spawned agent uses `run_in_background: false`. Wait for ALL spawned agents' results synchronously in this same turn before proceeding.
 
 ### 4. Identify Knowledge Gaps
 

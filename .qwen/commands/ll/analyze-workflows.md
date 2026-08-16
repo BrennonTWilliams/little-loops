@@ -87,7 +87,7 @@ Create the output directory if it doesn't exist:
 
 Mark "Run Step 1: Pattern Analysis (agent)" as in_progress.
 
-Spawn the workflow-pattern-analyzer agent using the Task tool:
+Spawn the workflow-pattern-analyzer agent using the Task tool with `run_in_background: false`:
 
 ```
 Use Task tool with:

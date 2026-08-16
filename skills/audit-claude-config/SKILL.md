@@ -115,7 +115,8 @@ Use TodoWrite to create:
 
 ### Phase 1: Wave 1 - Individual Component Audits (Parallel)
 
-**IMPORTANT**: Spawn all 3 agents in a SINGLE message with multiple Task tool calls.
+**IMPORTANT**: Spawn all 3 agents in a SINGLE message with multiple Task tool calls,
+each with `run_in_background: false`, and wait for all results in this same turn.
 
 Based on SCOPE, spawn the relevant agents:
 
@@ -219,7 +220,8 @@ Proceed directly to Wave 2 consistency checks.
 
 ### Phase 3: Wave 2 - Cross-Component Consistency (Parallel)
 
-**IMPORTANT**: Spawn both agents in a SINGLE message with multiple Task tool calls.
+**IMPORTANT**: Spawn both agents in a SINGLE message with multiple Task tool calls,
+each with `run_in_background: false`, and wait for all results in this same turn.
 
 #### Task 1: Internal Consistency Checker
 ```

@@ -201,7 +201,7 @@ Then read the file to extract:
 
 ## Phase 2: Conflict Detection
 
-Batch issues **3–5 per Task call**. Spawn all batch Task calls in a **single message** (parallel).
+Batch issues **3–5 per Task call**. Spawn all batch Task calls in a **single message** (parallel), each with `run_in_background: false`.
 
 For each batch, look for four conflict types — `requirement` (Issue A requires X,
 Issue B requires not-X), `objective` (two issues solve the same problem
@@ -248,7 +248,7 @@ Skip pairs already evaluated in Phase 2. Cap at **30 additional pairs** to bound
 
 ### Step 3: Dispatch Pair Agents
 
-For each pair above threshold, spawn one Task agent using the same conflict-detection prompt template as Phase 2, but with exactly those two issues as the batch. Spawn all cross-theme pair agents in a **single message** (parallel).
+For each pair above threshold, spawn one Task agent using the same conflict-detection prompt template as Phase 2, but with exactly those two issues as the batch. Spawn all cross-theme pair agents in a **single message** (parallel), each with `run_in_background: false`.
 
 Handle agent failures: if a pair agent fails, log a warning and skip that pair.
 

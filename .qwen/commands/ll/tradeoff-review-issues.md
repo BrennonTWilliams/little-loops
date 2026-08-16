@@ -63,7 +63,7 @@ If any issue file cannot be parsed (missing content, unreadable), log a warning 
 
 ### Phase 2: Wave-Based Evaluation
 
-Batch issues into waves of 3-5 issues each. For each wave, launch a subagent using the Task tool:
+Batch issues into waves of 3-5 issues each. For each wave, launch a subagent using the Task tool with `run_in_background: false`:
 
 **IMPORTANT**: Spawn all subagents for a wave in a SINGLE message with multiple Task tool calls, and wait for their results in this same turn before proceeding.
 

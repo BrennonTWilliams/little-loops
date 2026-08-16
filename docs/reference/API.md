@@ -9511,7 +9511,7 @@ class HostRunner(Protocol):
 
 `sandbox_mode` is **not** part of the Protocol — it is a `CodexRunner`-only extension parameter on that class's `build_streaming` / `build_blocking_json` / `build_detached`. Code written against `HostRunner` must not pass it. `CodexRunner` likewise accepts `workspace_root` for signature compatibility but warns and ignores it.
 
-`disable_background_tasks` (FEAT-3078) is Claude-Code-only: when `True` and `automation_profile` is set, `ClaudeCodeRunner.build_streaming()` injects `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`; when `automation_profile` is `None`, the variable is explicitly neutralized to `""` (same leak-prevention pattern as `LL_AUTOMATION`, see `_apply_automation_env`). The other five runners accept and silently ignore the parameter — see `docs/reference/HOST_COMPATIBILITY.md`.
+`disable_background_tasks` (FEAT-3078) is Claude-Code-only: when `True` and `automation_profile` is set, `ClaudeCodeRunner.build_streaming()` injects `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, covering both `Bash run_in_background: true` and Agent/Task-tool spawns left to their background-by-default behavior (BUG-3209); when `automation_profile` is `None`, the variable is explicitly neutralized to `""` (same leak-prevention pattern as `LL_AUTOMATION`, see `_apply_automation_env`). The other seven runners accept and silently ignore the parameter — see `docs/reference/HOST_COMPATIBILITY.md`.
 
 **Methods:**
 - `detect()` — return `True` if this host is available in the current environment (typically `shutil.which("<binary>") is not None`).

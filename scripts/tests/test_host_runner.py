@@ -166,7 +166,7 @@ class TestProjectChildEnvStubRunnersRaiseFirst:
 class TestDisableBackgroundTasksEnv:
     """FEAT-3078: CLAUDE_CODE_DISABLE_BACKGROUND_TASKS gating on ClaudeCodeRunner.
 
-    Claude-Code-only (AC3): the other five runners accept and ignore the
+    Claude-Code-only (AC3): the other seven runners accept and ignore the
     parameter, asserted separately in TestDisableBackgroundTasksNoOpOnOtherRunners.
     """
 

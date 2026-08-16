@@ -107,7 +107,7 @@ Before creating an implementation plan, spawn parallel sub-agents to gather comp
 
 ### Research Tasks
 
-Spawn these agents in parallel using the Task tool:
+Spawn these agents in parallel using the Task tool, each with `run_in_background: false`:
 1. **codebase-locator** - Find all related files
 2. **codebase-analyzer** - Understand current implementation
 3. **codebase-pattern-finder** - Find similar patterns and reusable code

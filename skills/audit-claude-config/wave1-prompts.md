@@ -7,7 +7,8 @@ points here so each Task can be issued with its full prompt without inflating
 the main skill file.
 
 Spawn all three Wave-1 agents in a SINGLE message with multiple Task tool
-calls.
+calls, each with `run_in_background: false`, and wait for all results in this
+same turn.
 
 ---
 

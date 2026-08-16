@@ -170,7 +170,7 @@ If `learning_tests_required` is absent or empty, omit this block entirely (do no
 
 ### Step 3b: Launch Adversarial Agents
 
-In a **single message**, launch both agents concurrently using the `Agent` tool with `run_in_background: true`.
+In a **single message**, launch both agents concurrently using the `Agent` tool with `run_in_background: false`, and wait for both results in this same turn before proceeding.
 
 **IMPORTANT**: Both agent calls MUST appear in the same message to run concurrently. Do not send them in separate messages.
 
@@ -268,13 +268,9 @@ Produce a structured argument with these exact sections:
 Be thorough. Cite specific files and line numbers. Argue forcefully against implementation — do not hedge.
 ```
 
-### Step 3c: Wait for Completion
-
-Wait until both background agents have completed and returned their full outputs. Do not proceed until both have finished.
-
 ### Step 3d: Launch Judge Agent
 
-Launch a **foreground** judge agent (no `run_in_background`) using the Agent tool. Inject both argument texts as context in the prompt:
+Launch a **foreground** judge agent (`run_in_background: false`) using the Agent tool, and wait for its result in this same turn. Inject both argument texts as context in the prompt:
 
 ```
 You are an impartial judge evaluating whether issue [ISSUE-ID]: "[ISSUE-TITLE]" should be implemented.

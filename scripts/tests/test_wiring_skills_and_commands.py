@@ -7,6 +7,7 @@ All original assertions from 31 source files preserved as parametrized cases.
 from __future__ import annotations
 
 import importlib.resources
+import re
 from pathlib import Path
 
 import pytest
@@ -439,26 +440,251 @@ def test_skill_mirrors_carry_companions(project_root: Path, mirror_root_name: st
     )
 
 
-# FEAT-3077 AC7: pin the `run_in_background: true` carve-out inventory so a
-# future skill author can't silently add a new background-launch site without
-# updating the recorded decision (### Decision Rationale in FEAT-3077).
-SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST = {
-    "skills/go-no-go/SKILL.md",
-}
+# FEAT-3077 AC7 / BUG-3209: pin the `run_in_background: true` carve-out inventory
+# so a future skill/command author can't silently add a new background-launch
+# site without updating the recorded decision. BUG-3209 Key Decision 2 (Option A)
+# removed the last carve-out (go-no-go/SKILL.md:174) and widened the scanned
+# corpus from skills/ only to skills/**/*.md + commands/*.md, so the allowlist
+# is renamed off its skills-only prefix and is empty until a new carve-out is
+# deliberately recorded (FEAT-3077-style rationale required).
+RUN_IN_BACKGROUND_TRUE_ALLOWLIST: set[str] = set()
+
+# BUG-3209: a "spawn site" is a markdown paragraph containing both a spawn
+# marker and an imperative spawn verb. Markers are deliberately broad — the
+# corpus mixes "Task tool"/"Agent tool" phrasing with looser forms ("Task
+# call", "sub-agent") — because under-matching here silently exempts a real
+# spawn site from the run_in_background check.
+_SPAWN_MARKERS: tuple[str, ...] = (
+    "Agent tool",
+    "Task tool",
+    "`Agent`",
+    "Task call",
+    "Task calls",
+    "Task agent",
+    "subagent_type",
+    "subagent",
+    "sub-agent",
+    "sub-agents",
+)
+_SPAWN_VERB_RE = re.compile(r"\b(Launch|Spawn|Dispatch|Invoke|Run)\b", re.IGNORECASE)
+_AGENT_WORD_RE = re.compile(r"\bagents?\b", re.IGNORECASE)
+
+# (path-relative-to-project-root, line-substring) pairs that match the
+# candidate criteria but are descriptive/flag-documentation prose, not an
+# actual spawn instruction. Each entry is a known false positive, not a
+# catch-all — a new one must be justified the same way these were.
+SPAWN_DETECTOR_EXEMPT: frozenset[tuple[str, str]] = frozenset(
+    {
+        # Checklist prose naming the Task tool as an "established mechanism",
+        # not a spawn — confidence-check has no Agent/Task spawn site at all.
+        (
+            "skills/confidence-check/SKILL.md",
+            "Integration points use established mechanisms",
+        ),
+        # Flag/usage documentation, not the operative spawn instruction
+        # (which is qualified at scan-codebase.md:95/97/101).
+        (
+            "commands/scan-codebase.md",
+            "Spawn a single combined scan agent instead of 3 parallel agents",
+        ),
+        # Frontmatter `description:` string and usage-block flag docs, not
+        # the operative spawn instruction (qualified at audit-architecture.md:68).
+        (
+            "commands/audit-architecture.md",
+            'description: "Optional flags: --deep (spawn sub-agents',
+        ),
+        (
+            "commands/audit-architecture.md",
+            "use the Task tool to launch analysis agents in parallel",
+        ),
+        (
+            "commands/audit-architecture.md",
+            "`--deep` - Spawn sub-agents for thorough analysis",
+        ),
+        # Recovery instruction to the *user* ("Manually run: ..."), not a tool call.
+        (
+            "commands/analyze-workflows.md",
+            "Manually run: spawn workflow-pattern-analyzer agent",
+        ),
+        # Consequence-of-proceeding warning inside a size guard, not an instruction
+        # to spawn — the operative instruction is the qualified spawn at :123.
+        (
+            "skills/audit-docs/SKILL.md",
+            "will spawn many subagent batches",
+        ),
+        # Phase-intro topic sentence restating what the phase does; the operative,
+        # qualified spawn instruction follows a few lines later under "Research Tasks".
+        (
+            "skills/manage-issue/SKILL.md",
+            "Before creating an implementation plan, spawn parallel sub-agents",
+        ),
+        # Section-intro topic sentence; the operative, qualified spawn instruction is
+        # the triage-gated one under "3.0 Triage the research axes first" below it.
+        (
+            "commands/refine-issue.md",
+            "Spawn parallel sub-agents to gather comprehensive context about the issue's subject matter",
+        ),
+        # Flag/usage documentation bullet, not the operative spawn instruction
+        # (which is qualified at ready-issue.md:89-95, "Spawn Validation Agents").
+        (
+            "commands/ready-issue.md",
+            "Use sub-agents for comprehensive validation (verifies file paths",
+        ),
+    }
+)
+
+# Pinned inventory of known spawn sites (BUG-3209 Summary table), as
+# (path-relative-to-project-root, line). The detector's candidate set must
+# remain a superset of this inventory — this is what catches a detector that
+# stops flagging a known site as opposed to one that flags it but finds it
+# satisfied (see test_spawn_detector_candidate_set_is_superset_of_known_inventory).
+SPAWN_SITE_INVENTORY: frozenset[tuple[str, int]] = frozenset(
+    {
+        ("skills/audit-docs/SKILL.md", 122),
+        ("skills/audit-claude-config/SKILL.md", 118),
+        ("skills/audit-claude-config/SKILL.md", 223),
+        ("skills/audit-claude-config/wave1-prompts.md", 9),
+        ("skills/audit-issue-conflicts/SKILL.md", 205),
+        ("skills/audit-issue-conflicts/SKILL.md", 252),
+        ("skills/wire-issue/SKILL.md", 149),
+        ("skills/manage-issue/SKILL.md", 110),
+        ("skills/go-no-go/SKILL.md", 174),
+        ("skills/go-no-go/SKILL.md", 274),
+        ("commands/refine-issue.md", 186),
+        ("commands/tradeoff-review-issues.md", 79),
+        ("commands/manage-release.md", 134),
+        # scan-codebase.md:95 ("Spawn a single combined agent that scans...") carries
+        # no marker token even after widening — pinning it here would force a bare
+        # "agent" marker that overmatches broadly across the corpus, which the
+        # detector's conservative-by-design contract (Tests, BUG-3209) forbids. The
+        # site itself already declares run_in_background: false in the file; only
+        # its *detection* as a candidate is the accepted residual gap.
+        ("commands/scan-codebase.md", 97),
+        ("commands/scan-codebase.md", 101),
+        ("commands/audit-architecture.md", 68),
+        ("commands/analyze-workflows.md", 102),
+    }
+)
+
+
+def _spawn_paragraphs(text: str) -> list[tuple[int, int]]:
+    """Blank-line-delimited paragraphs as 1-indexed (start_line, end_line) ranges."""
+    lines = text.splitlines()
+    paragraphs: list[tuple[int, int]] = []
+    start: int | None = None
+    for i, line in enumerate(lines, start=1):
+        if line.strip():
+            if start is None:
+                start = i
+        elif start is not None:
+            paragraphs.append((start, i - 1))
+            start = None
+    if start is not None:
+        paragraphs.append((start, len(lines)))
+    return paragraphs
+
+
+def _find_spawn_candidates(path: Path, project_root: Path) -> list[tuple[int, int]]:
+    """Candidate (start_line, end_line) paragraphs: spawn marker + imperative verb, unexempted."""
+    text = path.read_text()
+    rel = str(path.relative_to(project_root))
+    lines = text.splitlines()
+    candidates: list[tuple[int, int]] = []
+    for start, end in _spawn_paragraphs(text):
+        para_text = "\n".join(lines[start - 1 : end])
+        # Normalize backticks before marker matching: "`Task` tool" / "`Agent` tool"
+        # must match the same as unquoted "Task tool" / "Agent tool" — the corpus
+        # mixes both stylings for the identical instruction.
+        para_text_no_ticks = para_text.replace("`", "")
+        if not any(marker in para_text_no_ticks for marker in _SPAWN_MARKERS):
+            continue
+        verb_match = _SPAWN_VERB_RE.search(para_text)
+        if not verb_match:
+            continue
+        if verb_match.group(1).lower() == "run" and not _AGENT_WORD_RE.search(para_text):
+            continue
+        if any(
+            rel == exempt_path and exempt_sub in para_text
+            for exempt_path, exempt_sub in SPAWN_DETECTOR_EXEMPT
+        ):
+            continue
+        candidates.append((start, end))
+    return candidates
+
+
+def _spawn_corpus(project_root: Path) -> list[Path]:
+    files = sorted((project_root / "skills").rglob("*.md"))
+    files += sorted((project_root / "commands").glob("*.md"))
+    return files
+
+
+def _run_in_background_satisfied(path: Path, start: int, end: int) -> bool:
+    """Explicit run_in_background: true|false within +/-3 lines or the paragraph, line-oriented.
+
+    Line-oriented (not paragraph-normalized) is deliberate: manage-issue/SKILL.md:389
+    reads a *prohibition* — "no `run_in_background:\\n  true`" — split across a line
+    wrap. Scanning per-line rather than joining wrapped text keeps that negated,
+    line-split mention from being read as a satisfying value.
+    """
+    lines = path.read_text().splitlines()
+    lo = max(1, start - 3)
+    hi = min(len(lines), end + 3)
+    for i in range(lo, hi + 1):
+        line = lines[i - 1]
+        if "run_in_background: true" in line or "run_in_background: false" in line:
+            return True
+    return False
 
 
 def test_skill_run_in_background_true_inventory_pinned(project_root: Path) -> None:
-    """`run_in_background: true` in skills/ must match the recorded carve-out allowlist (FEAT-3077)."""
-    skills_dir = project_root / "skills"
+    """`run_in_background: true` across skills/**/*.md + commands/*.md must match the
+    recorded carve-out allowlist (BUG-3209 Key Decision 2, Option A: empty)."""
     offenders = {
         str(path.relative_to(project_root))
-        for path in sorted(skills_dir.rglob("*.md"))
+        for path in _spawn_corpus(project_root)
         if "run_in_background: true" in path.read_text()
     }
-    assert offenders == SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST, (
-        "skills/ run_in_background: true inventory drifted from the FEAT-3077 carve-out "
+    assert offenders == RUN_IN_BACKGROUND_TRUE_ALLOWLIST, (
+        "run_in_background: true inventory drifted from the recorded carve-out "
         f"decision. Found: {sorted(offenders)}, expected: "
-        f"{sorted(SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST)}. If this is a deliberate new "
+        f"{sorted(RUN_IN_BACKGROUND_TRUE_ALLOWLIST)}. If this is a deliberate new "
         "carve-out, update the allowlist and record the decision per FEAT-3077's "
         "### Decision Rationale precedent."
     )
+
+
+def test_run_in_background_directive_present_at_every_spawn_site(project_root: Path) -> None:
+    """BUG-3209: every Agent/Task spawn site across skills/**/*.md + commands/*.md
+    declares an explicit run_in_background value — nothing relies on the tool's
+    background-by-default behavior, which is what let headless turns end with
+    subagent results still in flight."""
+    missing = []
+    for path in _spawn_corpus(project_root):
+        for start, end in _find_spawn_candidates(path, project_root):
+            if not _run_in_background_satisfied(path, start, end):
+                rel = path.relative_to(project_root)
+                missing.append(f"{rel}:{start}-{end}")
+    assert not missing, (
+        "Agent/Task spawn site(s) with no explicit run_in_background directive "
+        f"(BUG-3209): {missing}"
+    )
+
+
+def test_spawn_detector_candidate_set_is_superset_of_known_inventory(project_root: Path) -> None:
+    """The detector must still *detect* every known spawn site as a candidate, not
+    merely find it satisfied — this is the check that would have caught the five
+    marker/verb misses found while scoping BUG-3209."""
+    detected: set[tuple[str, int]] = set()
+    for path in _spawn_corpus(project_root):
+        rel = str(path.relative_to(project_root))
+        for start, end in _find_spawn_candidates(path, project_root):
+            detected.update((rel, line) for line in range(start, end + 1))
+    missing = {site for site in SPAWN_SITE_INVENTORY if site not in detected}
+    assert not missing, f"Detector no longer flags known spawn site(s) as candidates: {sorted(missing)}"
+
+
+def test_spawn_detector_does_not_flag_confidence_check(project_root: Path) -> None:
+    """confidence-check/SKILL.md has no Agent/Task spawn site; its Task-tool mention is
+    descriptive checklist prose and must stay exempted, not become a false positive."""
+    path = project_root / "skills" / "confidence-check" / "SKILL.md"
+    assert _find_spawn_candidates(path, project_root) == []

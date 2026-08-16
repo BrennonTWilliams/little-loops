@@ -93,13 +93,13 @@ Store these values for use in issue files:
 
 ### 2. Spawn Scan Agents
 
-**If `--quick` flag is set**: Spawn a single combined agent that scans for bugs, enhancements, and features in one pass. Skip the parallel approach below.
+**If `--quick` flag is set**: Spawn a single combined agent that scans for bugs, enhancements, and features in one pass, with `run_in_background: false`. Skip the parallel approach below.
 
-**Default / `--deep`**: Launch 3 sub-agents in parallel to scan different categories concurrently.
+**Default / `--deep`**: Launch 3 sub-agents in parallel to scan different categories concurrently, each with `run_in_background: false`.
 
 **If `--focus [area]` is set**: Add the following instruction to ALL agent prompts: "Focus exclusively on [area]-related findings. Only report issues directly related to [area]. Skip unrelated findings."
 
-**IMPORTANT**: When not using `--quick`, spawn all 3 agents in a SINGLE message with multiple Task tool calls.
+**IMPORTANT**: When not using `--quick`, spawn all 3 agents in a SINGLE message with multiple Task tool calls, each with `run_in_background: false`, and wait for all results in this same turn.
 
 #### Agent 1: Bug Scanner
 ```
