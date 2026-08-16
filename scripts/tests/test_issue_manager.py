@@ -3790,9 +3790,33 @@ class TestAutoManagerRun:
                 db_path=config.project_root / ".ll" / "history.db",
             )
 
-        assert manager._unreachable_reason("BUG-999") == "not_found"
+        assert manager._unreachable_reason("BUG-999").startswith("not_found")
         assert "BUG-006 blocked by: BUG-005" in manager._unreachable_reason("BUG-006")
         assert manager._unreachable_reason("BUG-007") == "BUG-007: already_done"
+
+    def test_unreachable_reason_cross_type_suggestion(self, full_project: Path) -> None:
+        """ENH-3086: a wrong-type-prefix ID suggests the ID under its real type
+        when exactly one other issue shares the numeric suffix."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        issues_dir = full_project / ".issues" / "bugs"
+        (issues_dir / "P1-BUG-042-target.md").write_text(
+            "# BUG-042: Target\n\n## Summary\nExists only as BUG-042"
+        )
+
+        config = BRConfig(full_project)
+        with patch("little_loops.issue_manager.check_git_status", return_value=False):
+            manager = AutoManager(
+                config,
+                dry_run=False,
+                db_path=config.project_root / ".ll" / "history.db",
+            )
+
+        assert manager._unreachable_reason("ENH-042") == "not_found (did you mean BUG-042?)"
+        # Genuinely absent numeric suffix still returns the bare token unchanged.
+        assert manager._unreachable_reason("ENH-999").startswith("not_found")
+        assert manager._unreachable_reason("ENH-999") == "not_found"
 
     def test_unreachable_reason_attempted_and_failed(self, full_project: Path) -> None:
         """BUG-3005: an attempted-and-failed issue reports the real outcome, not

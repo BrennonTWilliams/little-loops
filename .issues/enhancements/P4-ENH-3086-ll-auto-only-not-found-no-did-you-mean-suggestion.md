@@ -4,8 +4,9 @@ type: ENH
 title: ll-auto --only reports bare not_found with no did-you-mean for a wrong type
   prefix
 priority: P4
-status: open
+status: done
 captured_at: '2026-08-06T16:17:02Z'
+completed_at: '2026-08-16T20:33:49Z'
 discovered_date: 2026-08-06
 discovered_by: capture-issue
 labels:
@@ -186,6 +187,7 @@ line numbers drifted.
 in the Proposed Solution and Integration Map sections.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-16T20:33:28 - `4461670e-6ad1-40b8-9a36-bfaee7770c79.jsonl`
 - `/ll:confidence-check` - 2026-08-16T19:41:27 - `a441e649-6a94-4074-a117-b8df44bd2807.jsonl`
 - `/ll:refine-issue` - 2026-08-16T19:37:24 - `0fd7d919-ef7e-411a-97ea-008f8e6eed78.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:12 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`

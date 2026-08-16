@@ -1807,6 +1807,13 @@ class AutoManager:
                 i.issue_id for i in all_issues if _id_matches(i.issue_id, requested_id)
             )
             if not terminal_matches:
+                suffix = requested_id.rsplit("-", 1)[-1]
+                if suffix.isdigit():
+                    cross = sorted(
+                        i.issue_id for i in all_issues if i.issue_id.rsplit("-", 1)[-1] == suffix
+                    )
+                    if cross:
+                        return f"not_found (did you mean {', '.join(cross)}?)"
                 return "not_found"
             status_by_id = {i.issue_id: i.status for i in all_issues}
             return "; ".join(
