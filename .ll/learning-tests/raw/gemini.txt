@@ -1,0 +1,50 @@
+=== claim: --version prints bare semver ===
+rc: 0 stdout: '0.46.0'
+matches semver: True
+
+=== claim: --help lists --approval-mode with yolo choice ===
+['      --approval-mode             Set the approval mode: default (prompt for approval), auto_edit (auto-approve edit tools), yolo (auto-approve all tools), plan (read-only mode)  [string] [choices: "default", "auto_edit", "yolo", "plan"]']
+
+=== claim: --help lists -r/--resume accepting a string ===
+['  -r, --resume                    Resume a previous session. Use "latest" for most recent or index number (e.g. --resume 5)  [string]']
+
+=== claim: hooks subcommand exists ===
+rc: 0
+gemini hooks <command>
+
+Manage Gemini CLI hooks.
+
+Commands:
+  gemini hooks migrate  Migrate hooks from Claude Code to Gemini CLI
+
+Options:
+  -d, --debug  Run in debug mode (open debug console with F12)  [boolean] [default: false]
+  -h, --help   Show help  [boolean]
+
+
+=== claim: -p with --output-format json returns single JSON object with 'response' key ===
+rc: 41
+stdout (first 500): 
+stderr (first 300): YOLO mode is enabled. All tool calls will be automatically approved.
+Approval mode overridden to "default" because the current folder is not trusted.
+{
+  "session_id": "048c2ff8-f82c-41a9-9c1a-bd2710335dfe",
+  "error": {
+    "type": "Error",
+    "message": "When using Vertex AI, you must specify eit
+JSON PARSE FAILED: Expecting value: line 1 column 1 (char 0)
+
+=== claim: -p with --output-format stream-json emits newline-delimited JSON events ===
+rc: 41
+num non-empty lines: 0
+parsed_ok: 0 of 0
+event_types sample: []
+stderr (first 300): YOLO mode is enabled. All tool calls will be automatically approved.
+Approval mode overridden to "default" because the current folder is not trusted.
+When using Vertex AI, you must specify either:
+• GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION environment variables.
+• GOOGLE_API_KEY environment va
+=== auth-failure error envelope location check ===
+rc: 41
+stdout empty: True
+stderr contains json error blob: True

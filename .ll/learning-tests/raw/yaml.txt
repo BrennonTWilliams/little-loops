@@ -1,11 +1,20 @@
-=== DUMPED ===
-relates_to:
-- ENH-693
-- BUG-836 with a very long descriptive suffix that will force PyYAML to wrap this
-  line across multiple physical lines using backslash continuation syntax
+=== sort_keys=False dump ===
+zebra: 1
+apple: 2
+middle: 3
 
-=== has backslash continuation === False
-=== LOADED === {'relates_to': ['ENH-693', 'BUG-836 with a very long descriptive suffix that will force PyYAML to wrap this line across multiple physical lines using backslash continuation syntax']}
+=== first key matches insertion order === True
+=== None dump ===
+field: null
+
+=== contains 'null' === True
+=== '~' loaded === {'field': None}
+=== is None === True
+=== custom class dump raised RepresenterError === True RepresenterError
+=== multi-doc docs === [{'a': 1}, {'b': 2}, {'c': 3}]
+=== multi-doc count == 3 === True
+=== each doc is dict === True
+=== tricky dump ===
+title: 'Fix: the bug happens'
+
 === round trip matches === True
-=== priority type === <class 'int'> 2
-=== bad YAML raised YAMLError === ParserError

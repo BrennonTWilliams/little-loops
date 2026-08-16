@@ -1,15 +1,22 @@
 ---
 target: yaml
-date: '2026-07-14'
+date: '2026-08-16'
 status: proven
 assertions:
-- claim: yaml.safe_dump wraps long block-sequence scalar items across physical lines using indentation continuation when they exceed the default width
+- claim: yaml.safe_dump with sort_keys=False preserves dict insertion order in output
   result: pass
-- claim: yaml.safe_load correctly round-trips a safe_dump'd block sequence with wrapped long items back to the original list
+- claim: yaml.safe_dump renders None as the literal null
   result: pass
-- claim: yaml.safe_load yields a Python int for a bare digit scalar unconditionally, regardless of any coerce_types-style flag
+- claim: yaml.safe_load parses ~ as Python None
   result: pass
-- claim: yaml.safe_load raises yaml.YAMLError on genuinely invalid YAML such as a bare list item line following a scalar-valued key
+- claim: yaml.safe_dump raises yaml.representer.RepresenterError for an arbitrary
+    custom class instance
+  result: pass
+- claim: yaml.safe_load_all correctly parses multiple ---separated documents into
+    a generator yielding one dict per document
+  result: pass
+- claim: 'a string value containing '': '' (colon-space) is auto-quoted by safe_dump
+    so it round-trips correctly through safe_load'
   result: pass
 raw_output_path: .ll/learning-tests/raw/yaml.txt
 ---

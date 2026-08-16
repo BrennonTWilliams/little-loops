@@ -1,22 +1,28 @@
 ---
 target: pytest
-date: '2026-08-08'
+date: '2026-08-16'
 status: proven
 assertions:
-- claim: pytest.raises(ExcType) as a context manager captures the raised exception
-    in .value
+- claim: autouse=True fixtures run automatically without being requested by a test's
+    signature
   result: pass
-- claim: a session-scoped fixture is instantiated only once even when used by multiple
-    test functions in the same file
+- claim: pytest.mark.parametrize with multiple argnames requires each tuple's values
+    to match argnames order positionally
   result: pass
-- claim: tmp_path fixture yields a unique pathlib.Path per test invocation
+- claim: monkeypatch.setenv restores the original environment variable value after
+    the test ends
   result: pass
-- claim: pytest.mark.xfail(strict=True) causes an unexpectedly-passing test to fail
-    the suite (XPASS(strict) counts as failure)
+- claim: pytest.approx treats two floats as equal within a default relative tolerance
+    (~1e-6)
   result: pass
-- claim: capsys.readouterr() captures stdout printed during the test body
+- claim: a fixture that depends on another fixture receives that fixture's fully
+    resolved value before the test body runs
+  result: pass
+- claim: caplog captures log records emitted at WARNING level by default without
+    explicit caplog.set_level
+  result: pass
+- claim: a syntax error in a test file causes a collection error (exit code 2) without
+    running any other tests in the session
   result: pass
 raw_output_path: .ll/learning-tests/raw/pytest.txt
-proven_package: pytest
-proven_version: 9.0.1
 ---

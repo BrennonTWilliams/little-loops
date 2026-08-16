@@ -1,0 +1,22 @@
+=== Claim: gh issue list --json outputs valid JSON array ===
+exit: 0
+parsed OK, type: list len: 0
+
+=== Claim: gh issue create --help has no --json flag ===
+False
+
+=== Claim: gh api repos/{owner}/{repo} has default_branch key ===
+exit: 0
+has default_branch: True value: main
+
+=== Claim: gh auth status exits 0 when authenticated ===
+exit: 0
+
+=== Claim: gh issue edit --help lists --add-label flag ===
+True
+
+=== Claim: gh pr view --help lists --json flag with state in field list ===
+True
+
+=== Follow-up: gh pr view --json field list (verifying 'state' is a valid field) ===
+JSON FIELDS include: state (confirmed via `gh pr view --help`)
