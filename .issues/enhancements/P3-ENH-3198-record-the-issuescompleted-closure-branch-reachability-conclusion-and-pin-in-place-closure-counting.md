@@ -4,13 +4,14 @@ type: ENH
 title: Record the .issues/completed/ closure-branch reachability conclusion and pin
   in-place closure counting
 priority: P3
-status: open
+status: done
 testable: true
 discovered_by: ll-issues-create
 relates_to:
 - BUG-3191
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T19:45:21Z'
+completed_at: '2026-08-16T19:56:52Z'
 confidence_score: 100
 outcome_confidence: 86
 score_complexity: 18
@@ -258,14 +259,14 @@ unreachability.
 
 ## Acceptance Criteria
 
-- [ ] A decision entry exists under `.ll/decisions.d/` recording Findings 1 and 2 with the date.
-- [ ] The `init` comment block no longer claims `enqueue_children` git-mv's decomposed umbrellas into `completed/` (it does not).
-- [ ] The `init` (`ENH-2385:`/`BUG-2403:` block) and `finalize` (state-header `CLOSED is ground truth` block and the `ENH-2385:` block above the `completed-now.txt` snapshot) comments state the reachability conclusion, its date, and the decision-entry pointer; the other five `completed/` comment sites are untouched.
-- [ ] The `finalize` comment distinguishes the two files fed by `$P-completed-now.txt` (the CLOSED diff and `closed-now-union`) and enumerates `closed-now-union`'s three consumers (NOT_CLOSED, ABANDONED, INFLIGHT_UNRESOLVED).
-- [ ] A test asserts `finalize` counts an in-place `status: done` closure with no `.issues/completed/` directory present.
-- [ ] A test asserts a legacy `.issues/completed/` ID appearing in `autodev-passed.txt` yields `not_closed == 0` — and that test fails if the `completed/` snapshot branch is deleted from `init`/`finalize` (verify by deleting it locally before committing).
-- [ ] `ll-loop validate auto-refine-and-implement` passes.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] A decision entry exists under `.ll/decisions.d/` recording Findings 1 and 2 with the date.
+- [x] The `init` comment block no longer claims `enqueue_children` git-mv's decomposed umbrellas into `completed/` (it does not).
+- [x] The `init` (`ENH-2385:`/`BUG-2403:` block) and `finalize` (state-header `CLOSED is ground truth` block and the `ENH-2385:` block above the `completed-now.txt` snapshot) comments state the reachability conclusion, its date, and the decision-entry pointer; the other five `completed/` comment sites are untouched.
+- [x] The `finalize` comment distinguishes the two files fed by `$P-completed-now.txt` (the CLOSED diff and `closed-now-union`) and enumerates `closed-now-union`'s three consumers (NOT_CLOSED, ABANDONED, INFLIGHT_UNRESOLVED).
+- [x] A test asserts `finalize` counts an in-place `status: done` closure with no `.issues/completed/` directory present.
+- [x] A test asserts a legacy `.issues/completed/` ID appearing in `autodev-passed.txt` yields `not_closed == 0` — and that test fails if the `completed/` snapshot branch is deleted from `init`/`finalize` (verify by deleting it locally before committing).
+- [x] `ll-loop validate auto-refine-and-implement` passes.
+- [x] `python -m pytest scripts/tests/` exits 0.
 
 ## Motivation
 
@@ -281,10 +282,29 @@ verdict regression. This issue exists to settle both once and write them down.
 - **Risk**: Low — no production logic changes.
 - **Breaking Change**: No.
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-08-16
+- **Status**: Completed
+
+### Changes Made
+- `.ll/decisions.d/` (id `9b090e87`): decision entry recording the reachability conclusion. Corrected mid-implementation: direct testing showed `ll-issues list --status done` DOES see `.issues/completed/` entries that carry explicit `status: done` frontmatter (via `config.legacy_issue_dirs()`, BUG-2733) — the issue's own Finding 2 citation (`issue_parser.py:2510,2540`) pointed at `find_issues()`, a different code path not used by `ll-issues list`. The branch is load-bearing specifically for completed/ files with no `status:` field at all (true pre-ENH-1418 legacy).
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml`: corrected the false git-mv claim in `init`; updated `init` and `finalize` comment blocks with the corrected reachability conclusion, date, and decision pointer; enumerated `closed-now-union`'s three verdict consumers.
+- `scripts/tests/test_auto_refine_closure_accounting.py` (new): `test_finalize_counts_in_place_done_closure` and `test_finalize_excludes_legacy_completed_ids_from_not_closed`. The second uses a completed/ file with no `status:` field (not `status: done`) — verified by direct mutation that this is the actual failure mode; a `status: done` legacy file would not exercise the gap since `ll-issues list` already finds it.
+
+### Verification Results
+- Tests: PASS (19550 passed, 46 skipped, full `scripts/tests/` suite)
+- Lint: not run (comment/test-only change; no production logic touched)
+- `ll-loop validate auto-refine-and-implement`: PASS (pre-existing unrelated warning: `required_inputs`)
+- Integration: PASS — confirmed via mutation test that the new regression-guard test fails when the `completed/` branch is removed from `finalize`, then restored to the passing state
+
 ## Status
 
 **Open** | Created: 2026-08-15 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-16T19:56:23 - `a441e649-6a94-4074-a117-b8df44bd2807.jsonl`
+- `/ll:ready-issue` - 2026-08-16T19:29:43 - `ac99e866-de95-4ba8-87cc-5e405898dff3.jsonl`
 - `/ll:confidence-check` - 2026-08-15T22:26:48 - `2eee4b08-bf11-4ebc-aed0-11c060d99a74.jsonl`

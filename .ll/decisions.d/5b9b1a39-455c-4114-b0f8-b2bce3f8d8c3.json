@@ -1,0 +1,15 @@
+{
+  "id": "9b090e87-efa3-4c0c-8b0b-454d4b3fbe7e",
+  "type": "decision",
+  "timestamp": "2026-08-16T19:40:31Z",
+  "category": "loop-design",
+  "labels": [
+    "auto-refine-and-implement",
+    "closure-accounting",
+    "completed-dir"
+  ],
+  "rationale": "Six prior closed issues (BUG-2798, BUG-2728, BUG-2732, BUG-2733, BUG-2766, BUG-1485) treated this as a string sweep without settling reachability, so the false 'enqueue_children git-mv's into completed/' claim in the init comment kept resurfacing and risking removal of load-bearing accounting. ENH-3198's own initial drafting also over-claimed that 'll-issues list --status done' cannot see completed/ at all \u2014 verified false by direct testing: legacy_issue_dirs() (BUG-2733) already covers completed/ files with explicit status:done frontmatter. Corrected here so the recorded reasoning matches actual code behavior instead of re-propagating a plausible-but-wrong claim.",
+  "rule": "auto-refine-and-implement.yaml retains the .issues/completed/ closure-branch (completed-baseline/completed-now snapshots in init/finalize) alongside the in-place status:done path. As of 2026-08-15, no in-repo automation invokes 'll-issues finalize-decomposition --move' (autodev.yaml, recursive-refine.yaml, rn-decompose.yaml all call it bare); the branch is unreachable by default automation but remains reachable via the documented opt-in --move flag used by a human. Keep it: (1) it is still a live, documented opt-in path, and (2) $P-completed-now.txt feeds closed-now-union, which has three verdict consumers (NOT_CLOSED exclusion, ABANDONED subtraction, INFLIGHT_UNRESOLVED guard). Note: 'll-issues list --status done' (via config.legacy_issue_dirs(), BUG-2733) DOES already see completed/ entries that carry explicit 'status: done' frontmatter, so completed-now.txt is not the sole route into the union for those. The branch is load-bearing specifically for files parked in completed/ from before status frontmatter existed (pre-ENH-1418, no 'status:' field at all -> defaults to 'open', invisible to --status done) \u2014 dropping the ls-based snapshot would misclassify those as not_closed/abandoned/inflight-unresolved on repos upgraded from that era.",
+  "scope": "project",
+  "issue": "ENH-3198"
+}

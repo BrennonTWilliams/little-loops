@@ -86,9 +86,17 @@ states:
       rm -f "$RUN_DIR/auto-refine-and-implement-errored.txt"
       rm -f "$RUN_DIR/summary.json"
       # ENH-2385: snapshot the closed set so finalize can compute ground-truth
-      # closures (issues that reached .issues/completed/ during THIS run). This
-      # captures autodev decomposition closures (enqueue_children git-mv's
-      # decomposed umbrellas into completed/).
+      # closures (issues that reached .issues/completed/ during THIS run).
+      # ENH-3198 (2026-08-15, decision 9b090e87): no in-repo automation moves
+      # issues into completed/ — every caller of `finalize-decomposition`
+      # invokes it bare, so the branch is unreachable by default automation.
+      # It is kept because --move is still a documented human opt-in AND
+      # because this ls-based snapshot is the only route for completed/
+      # entries with no `status:` field at all (pre-ENH-1418 legacy, defaults
+      # to "open") — `ll-issues list --status done` already sees completed/
+      # entries that DO carry explicit status:done, via
+      # config.legacy_issue_dirs() (BUG-2733). See finalize for
+      # closed-now-union's consumers.
       ls .issues/completed/ 2>/dev/null | grep -oE '(BUG|FEAT|ENH|EPIC)-[0-9]+' \
         | sort -u > "$RUN_DIR/auto-refine-and-implement-completed-baseline.txt"
       # BUG-2403: leaf issues complete IN PLACE (status: done + completed_at,
@@ -709,6 +717,9 @@ states:
     # parents) and a status:done diff (leaf issues, BUG-2403). NOT_CLOSED/
     # SKIPPED are sourced from autodev's ledgers under the shared run_dir;
     # ERRORED from record_error. awk counts non-blank lines and always exits 0.
+    # ENH-3198 (2026-08-15, decision 9b090e87): the completed/ branch is kept
+    # deliberately — see the init state's comment for the reachability
+    # conclusion, and below for closed-now-union's three verdict consumers.
     # ENH-2404: GATE_BLOCKED reads the distinct gate-blocked ledger (ENH-2402)
     # so learning-gate blocks are no longer invisible; SKIPPED_BREAKDOWN
     # aggregates the keyed "ID  REASON" skip ledger by reason; PARKED_RATE is
@@ -726,7 +737,8 @@ states:
       export LL_EPIC_BRANCH="$EPIC_BRANCH"
 
       # ENH-2385: decomposed-parent closures — issues that reached
-      # .issues/completed/ during this run (autodev git-mv on decomposition).
+      # .issues/completed/ during this run (via a human running
+      # `ll-issues fd --move`; no automation reaches this path today, ENH-3198).
       if [ -n "$EPIC_BRANCH" ]; then
         git ls-tree -r --name-only "$EPIC_BRANCH" -- .issues/completed/ 2>/dev/null \
           | grep -oE '(BUG|FEAT|ENH|EPIC)-[0-9]+' \
@@ -787,6 +799,16 @@ states:
       # done-now), not just this run's new closures — an issue closed before
       # the run started that reappears in autodev-passed is still closed, not
       # "not closed" (preserves the pre-BUG-2403 completed-now semantics).
+      # ENH-3198 (decision 9b090e87): closed-now-union has THREE consumers
+      # below, all of which drive the run verdict — NOT_CLOSED exclusion
+      # (this block), ABANDONED subtraction, and the INFLIGHT_UNRESOLVED
+      # guard. This is why the completed/ snapshot is retained even though it
+      # is unreachable by default automation: `ll-issues list --status done`
+      # already covers completed/ entries with explicit status:done
+      # frontmatter (config.legacy_issue_dirs(), BUG-2733), but a file parked
+      # there with NO status field (pre-ENH-1418 legacy, defaults to "open")
+      # is invisible to it — dropping this ls-based snapshot would under-count
+      # all three signals for that case.
       cat "$RUN_DIR/$P-completed-now.txt" "$RUN_DIR/$P-done-now.txt" 2>/dev/null \
         | grep '[^[:space:]]' | sort -u > "$RUN_DIR/$P-closed-now-union.txt"
 
