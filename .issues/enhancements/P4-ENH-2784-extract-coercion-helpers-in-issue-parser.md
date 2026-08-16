@@ -17,6 +17,7 @@ score_complexity: 24
 score_test_coverage: 18
 score_ambiguity: 20
 score_change_surface: 20
+testable: true
 ---
 
 # ENH-2784: Extract `_coerce_tristate_bool` / `_coerce_optional_int` helpers for 12 copy-pasted coercions in `IssueParser.parse_file`
@@ -133,6 +134,24 @@ _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
 - Naming-convention note: `issue_parser.py` has no existing precedent for bare module-level `_coerce_*` functions on `IssueParser` — every other extraction from `parse_file()` (`_parse_priority`, `_parse_type_and_id`, `_read_content`, `_parse_product_impact`) is a bound instance method (`self._parse_*`). Elsewhere in the codebase, `scripts/little_loops/issues/program_design.py:363,375` (`_is_true`, `_coerce_date`) are bare module-level `_coerce_*` functions — one different module's convention, not this file's. The issue's originally proposed module-level-function shape was a valid choice either way; flagging the disagreement so the implementer picks knowingly rather than by accident. **Resolved 2026-08-16 in favor of bound instance methods** — see *Expected Behavior*.
 - Test-coverage note: no existing test exercises the `else: None` fallback branch for a non-digit int string (e.g. `effort: "abc"`) or a non-`"true"/"false"` bool string (e.g. `testable: "maybe"`) at the `parse_file()` integration level. Confirming this branch's behavior is unchanged post-extraction (via existing or new tests) is part of verifying "pure refactor" holds, since it's the one behavior most likely to silently drift under a naive rewrite.
 
+## Scope Boundaries
+
+Out of scope for this refactor (see *Anti-Goals* above for the behavior
+constraints these boundaries protect):
+
+- Changing coercion semantics — e.g. accepting `"yes"/"no"`, allowing
+  negative/float/signed int strings, or normalizing non-bool YAML scalars for
+  the tri-state fields. This issue extracts existing logic verbatim; any rule
+  change is a separate issue.
+- `learning_tests_required` (lines 2046-2054) — a 13th, adjacent coercion with
+  a different shape (comma-string-or-list → `list[str] | None`), explicitly
+  excluded from both new helpers.
+- Delegating to `frontmatter.parse_frontmatter(..., coerce_types=True)`
+  instead of hand-rolled coercion in `parse_file()` — a different, larger
+  refactor than extracting two local helper methods.
+- Any change to `IssueInfo`'s declared field types (`int | None` / `bool |
+  None`) — the helpers must preserve the existing constructor contract.
+
 ## Integration Map
 
 ### Codebase Research Findings
@@ -198,6 +217,7 @@ extraction helper exists yet. Refreshed the Location citation to the precise
 current range (1881-1950) rather than the earlier approximate 1879-1958.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-16T20:08:36 - `4de58327-e619-4af5-acbe-7b3ca951642a.jsonl`
 - `/ll:confidence-check` - 2026-08-16T19:41:27 - `a441e649-6a94-4074-a117-b8df44bd2807.jsonl`
 - `/ll:refine-issue` - 2026-08-16T19:32:45 - `b080f785-a1cd-46f7-b48c-7d2d05c3e170.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:11 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
