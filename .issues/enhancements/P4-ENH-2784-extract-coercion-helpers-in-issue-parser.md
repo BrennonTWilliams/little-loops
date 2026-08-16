@@ -4,11 +4,12 @@ type: ENH
 title: Extract _coerce_tristate_bool / _coerce_optional_int helpers for 12 copy-pasted
   coercions in IssueParser.parse_file
 priority: P4
-status: open
+status: done
 discovered_commit: fb5673902939bbf5a17bc7afe61317982d40bfd2
 discovered_branch: main
 discovered_date: 2026-07-24 22:31:44+00:00
 discovered_by: scan-codebase
+completed_at: '2026-08-16T20:25:20Z'
 parent: EPIC-2789
 verify_verdict: VALID
 confidence_score: 97
@@ -202,7 +203,19 @@ N/A — no new decision logic; this is a pure refactor of existing coercion rule
 
 ## Status
 
-`open` — discovered by `/ll:scan-codebase`.
+`done` — implemented by `/ll:manage-issue` on 2026-08-16.
+
+## Resolution
+
+Added `IssueParser._coerce_optional_int` and `IssueParser._coerce_tristate_bool`
+as bound instance methods (per the closed shape decision) and replaced all 12
+inline call sites (8 int, 4 bool) in `parse_file()` with calls to the new
+helpers, verbatim reproduction of the prior expressions. `learning_tests_required`
+was left untouched as scoped. Added 4 characterization tests
+(`TestCoercionHelperCharacterization` in `test_issue_parser.py`) confirming the
+Red phase against unmodified code, then confirmed unchanged post-extraction.
+Full suite (`python -m pytest scripts/tests/`, 19555 passed) and
+`python -m mypy scripts/little_loops/` both clean.
 
 ## Verification Notes
 
@@ -217,6 +230,7 @@ extraction helper exists yet. Refreshed the Location citation to the precise
 current range (1881-1950) rather than the earlier approximate 1879-1958.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-16T20:24:44 - `d248cfbe-56e1-4696-905c-cee07b4f62f4.jsonl`
 - `/ll:ready-issue` - 2026-08-16T20:08:36 - `4de58327-e619-4af5-acbe-7b3ca951642a.jsonl`
 - `/ll:confidence-check` - 2026-08-16T19:41:27 - `a441e649-6a94-4074-a117-b8df44bd2807.jsonl`
 - `/ll:refine-issue` - 2026-08-16T19:32:45 - `b080f785-a1cd-46f7-b48c-7d2d05c3e170.jsonl`

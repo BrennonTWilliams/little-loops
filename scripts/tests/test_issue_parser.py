@@ -2490,6 +2490,52 @@ class TestIssueInfoTestable:
         assert info.testable is None
 
 
+def _parse_issue_frontmatter(tmp_path: Path, frontmatter_body: str) -> IssueInfo:
+    """Write a minimal issue file with the given frontmatter body and parse it."""
+    config_path = tmp_path / ".ll" / "ll-config.json"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(
+        json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
+    )
+    bugs_dir = tmp_path / ".issues" / "bugs"
+    bugs_dir.mkdir(parents=True, exist_ok=True)
+    issue_file = bugs_dir / "P1-BUG-997-coercion.md"
+    issue_file.write_text(f"---\n{frontmatter_body}\n---\n# BUG-997: Coercion\n")
+
+    config = BRConfig(tmp_path)
+    parser = IssueParser(config)
+    return parser.parse_file(issue_file)
+
+
+class TestCoercionHelperCharacterization:
+    """Characterization tests locking in ENH-2784 coercion edge cases.
+
+    These pin behavior of the inline coercions in ``parse_file()`` before
+    extraction into ``_coerce_optional_int`` / ``_coerce_tristate_bool``, so
+    the refactor can be verified as behavior-preserving.
+    """
+
+    def test_parse_file_effort_non_digit_string_yields_none(self, tmp_path: Path) -> None:
+        """A non-digit int string (effort: "abc") coerces to None."""
+        info = _parse_issue_frontmatter(tmp_path, 'effort: "abc"')
+        assert info.effort is None
+
+    def test_parse_file_effort_negative_int_yields_none(self, tmp_path: Path) -> None:
+        """A negative int (effort: -1) coerces to None (isdigit() rejects '-')."""
+        info = _parse_issue_frontmatter(tmp_path, "effort: -1")
+        assert info.effort is None
+
+    def test_parse_file_testable_invalid_string_yields_none(self, tmp_path: Path) -> None:
+        """A non-true/false bool string (testable: "maybe") coerces to None."""
+        info = _parse_issue_frontmatter(tmp_path, 'testable: "maybe"')
+        assert info.testable is None
+
+    def test_parse_file_testable_native_yaml_bool_passes_through(self, tmp_path: Path) -> None:
+        """A native YAML bool (testable: true) passes through as True."""
+        info = _parse_issue_frontmatter(tmp_path, "testable: true")
+        assert info.testable is True
+
+
 class TestIssueInfoDecisionNeeded:
     """Tests for IssueInfo.decision_needed field."""
 

@@ -1965,83 +1965,20 @@ class IssueParser:
         epic = frontmatter.get("epic")
         size = frontmatter.get("size")
         product_impact = self._parse_product_impact(frontmatter)
-        effort_raw = frontmatter.get("effort")
-        impact_raw = frontmatter.get("impact")
-        effort = int(effort_raw) if effort_raw is not None and str(effort_raw).isdigit() else None
-        impact = int(impact_raw) if impact_raw is not None and str(impact_raw).isdigit() else None
-        confidence_raw = frontmatter.get("confidence_score")
-        outcome_raw = frontmatter.get("outcome_confidence")
-        confidence_score = (
-            int(confidence_raw)
-            if confidence_raw is not None and str(confidence_raw).isdigit()
-            else None
+        effort = self._coerce_optional_int(frontmatter.get("effort"))
+        impact = self._coerce_optional_int(frontmatter.get("impact"))
+        confidence_score = self._coerce_optional_int(frontmatter.get("confidence_score"))
+        outcome_confidence = self._coerce_optional_int(frontmatter.get("outcome_confidence"))
+        score_complexity = self._coerce_optional_int(frontmatter.get("score_complexity"))
+        score_test_coverage = self._coerce_optional_int(frontmatter.get("score_test_coverage"))
+        score_ambiguity = self._coerce_optional_int(frontmatter.get("score_ambiguity"))
+        score_change_surface = self._coerce_optional_int(frontmatter.get("score_change_surface"))
+        testable_value = self._coerce_tristate_bool(frontmatter.get("testable"))
+        decision_needed_value = self._coerce_tristate_bool(frontmatter.get("decision_needed"))
+        missing_artifacts_value = self._coerce_tristate_bool(frontmatter.get("missing_artifacts"))
+        implementation_order_risk_value = self._coerce_tristate_bool(
+            frontmatter.get("implementation_order_risk")
         )
-        outcome_confidence = (
-            int(outcome_raw) if outcome_raw is not None and str(outcome_raw).isdigit() else None
-        )
-        complexity_raw = frontmatter.get("score_complexity")
-        test_coverage_raw = frontmatter.get("score_test_coverage")
-        ambiguity_raw = frontmatter.get("score_ambiguity")
-        change_surface_raw = frontmatter.get("score_change_surface")
-        score_complexity = (
-            int(complexity_raw)
-            if complexity_raw is not None and str(complexity_raw).isdigit()
-            else None
-        )
-        score_test_coverage = (
-            int(test_coverage_raw)
-            if test_coverage_raw is not None and str(test_coverage_raw).isdigit()
-            else None
-        )
-        score_ambiguity = (
-            int(ambiguity_raw)
-            if ambiguity_raw is not None and str(ambiguity_raw).isdigit()
-            else None
-        )
-        score_change_surface = (
-            int(change_surface_raw)
-            if change_surface_raw is not None and str(change_surface_raw).isdigit()
-            else None
-        )
-        testable_raw = frontmatter.get("testable")
-        if isinstance(testable_raw, str):
-            testable_value: bool | None = (
-                testable_raw.lower() == "true"
-                if testable_raw.lower() in ("true", "false")
-                else None
-            )
-        else:
-            testable_value = testable_raw
-
-        decision_needed_raw = frontmatter.get("decision_needed")
-        if isinstance(decision_needed_raw, str):
-            decision_needed_value: bool | None = (
-                decision_needed_raw.lower() == "true"
-                if decision_needed_raw.lower() in ("true", "false")
-                else None
-            )
-        else:
-            decision_needed_value = decision_needed_raw
-
-        missing_artifacts_raw = frontmatter.get("missing_artifacts")
-        if isinstance(missing_artifacts_raw, str):
-            missing_artifacts_value: bool | None = (
-                missing_artifacts_raw.lower() == "true"
-                if missing_artifacts_raw.lower() in ("true", "false")
-                else None
-            )
-        else:
-            missing_artifacts_value = missing_artifacts_raw
-
-        implementation_order_risk_raw = frontmatter.get("implementation_order_risk")
-        if isinstance(implementation_order_risk_raw, str):
-            implementation_order_risk_value: bool | None = (
-                implementation_order_risk_raw.lower() == "true"
-                if implementation_order_risk_raw.lower() in ("true", "false")
-                else None
-            )
-        else:
-            implementation_order_risk_value = implementation_order_risk_raw
 
         learning_tests_raw = frontmatter.get("learning_tests_required")
         if isinstance(learning_tests_raw, str):
@@ -2457,6 +2394,35 @@ class IssueParser:
             business_value=frontmatter.get("business_value"),
             user_benefit=frontmatter.get("user_benefit"),
         )
+
+    def _coerce_optional_int(self, raw: Any) -> int | None:
+        """Coerce a frontmatter value to int, rejecting non-digit strings.
+
+        Args:
+            raw: Raw frontmatter value
+
+        Returns:
+            The coerced int, or None if raw is None or not a digit string.
+            Uses ``str.isdigit()``, so negatives, floats, and signed strings
+            all coerce to None rather than a numeric value.
+        """
+        return int(raw) if raw is not None and str(raw).isdigit() else None
+
+    def _coerce_tristate_bool(self, raw: Any) -> Any:
+        """Coerce a frontmatter value to a tri-state bool.
+
+        Args:
+            raw: Raw frontmatter value
+
+        Returns:
+            For string input: True/False if it lowercases to "true"/"false",
+            else None. Non-string input (including native YAML bool/None) is
+            returned unchanged, so the return type is intentionally not
+            ``bool | None`` — annotated as ``Any`` to reflect that pass-through.
+        """
+        if isinstance(raw, str):
+            return raw.lower() == "true" if raw.lower() in ("true", "false") else None
+        return raw
 
 
 def find_issues(
