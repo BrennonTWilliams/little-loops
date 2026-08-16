@@ -12,11 +12,11 @@ captured_at: '2026-08-16T02:10:18Z'
 relates_to:
 - ENH-3210
 decision_needed: false
-confidence_score: 95
-outcome_confidence: 74
+confidence_score: 100
+outcome_confidence: 88
 score_complexity: 13
-score_test_coverage: 18
-score_ambiguity: 18
+score_test_coverage: 25
+score_ambiguity: 25
 score_change_surface: 25
 ---
 
@@ -76,19 +76,48 @@ Full site inventory:
 
 | File | Sites |
 | --- | --- |
-| `skills/audit-docs/SKILL.md` | :120-139 |
+| `skills/audit-docs/SKILL.md` | :120-139 (operative spawn sentence wraps :122-123) |
 | `skills/audit-claude-config/SKILL.md` | :118, :222 |
 | `skills/audit-claude-config/wave1-prompts.md` | :9 |
 | `skills/audit-issue-conflicts/SKILL.md` | :205, :252 (**not** :218 — that is wait-prose, not a spawn) |
-| `skills/wire-issue/SKILL.md` | :147-190 |
+| `skills/wire-issue/SKILL.md` | :147-190 (`:147` is the phase heading; operative line is **:149**) |
 | `skills/manage-issue/SKILL.md` | :110 (Phase 1.5, 3 agents; wait-prose at :116) |
 | `skills/go-no-go/SKILL.md` | :174, :278 — **both take `false`** (Key Decision 2, Option A) |
 | `commands/refine-issue.md` | :186 |
-| `commands/tradeoff-review-issues.md` | :81 |
+| `commands/tradeoff-review-issues.md` | **:79** (spawn), :81 (single-message rule) |
 | `commands/manage-release.md` | :134 |
 | `commands/scan-codebase.md` | :95, :97, :101 |
 | `commands/audit-architecture.md` | :68 |
 | `commands/analyze-workflows.md` | :102 |
+
+**Anchor granularity — corrected 2026-08-16.** The table is accurate at *file* granularity
+and was, in three rows, one line off at *instruction* granularity. The distinction matters
+because step 1 edits a sentence, not a file, and because the detector's inventory-superset
+test (Tests § part 5) pins these anchors:
+
+- `audit-docs`: `:120` is the section heading `### 2. Audit Each Document (Fan Out to
+  Subagents)`. The operative sentence wraps across `:122-123` — "For each discovered file,
+  spawn a\n`codebase-analyzer` subagent via the `Task` tool."
+- `wire-issue`: `:147` is the heading `## Phase 4: Run Wiring Research (3 Parallel
+  Agents)`; the spawn instruction is at `:149`.
+- `tradeoff-review-issues`: `:79` is the spawn ("For each wave, launch a subagent using the
+  Task tool:"); `:81` is the separate single-message/wait rule. **Both** lines are in the
+  same paragraph-scoped candidate, so one directive attached at `:79` satisfies the
+  detector — but `:79` is the line to edit, not `:81`.
+
+The scalar count is unchanged at **eighteen anchors**: none of the three corrections adds a
+spawn site, they relocate an existing one within its own paragraph. `tradeoff-review-issues`
+`:79`/`:81` are two lines of one spawn instruction, not two spawns.
+
+**Tool-name drift — decided: leave the names alone, widen the detector instead.** Most
+sites say "Task tool"; the tool this host actually exposes is `Agent`, which is what carries
+the `run_in_background` parameter. The names are historical and the model maps them without
+trouble, so renaming eighteen anchors is scope this fix does not need — and it would churn
+two mirror-guarded skills (`wire-issue`, `manage-issue`) plus several `DOC_STRINGS_PRESENT`
+needles for no behavioral gain. The consequence is a hard requirement on the detector: its
+marker set must keep **both** spellings permanently (see Tests § criterion 1), because the
+corpus will keep mixing them. If a future issue does normalize the naming, it must not
+narrow the marker set on the way through.
 
 (`skills/confidence-check/SKILL.md` was named at capture but has **no** Agent/Task spawn
 site anywhere in `SKILL.md`, `reference.md`, or `rubric.md`, and omits `Task`/`Agent`
@@ -317,28 +346,42 @@ The `commands/` half of the scope is the higher-exposure half: `refine-issue`,
 `tradeoff-review-issues`, and `manage-release` are invoked from FSM prompt states and
 `ll-auto` runs far more often than the audit skills are.
 
-**Measured downstream evidence (2026-08-16) — this bug is the generator of ENH-3210's
-stale rows.** When a spawn is backgrounded and the parent turn ends, the process group is
-reaped before `SubagentStop` fires, so the `subagent_runs` row opened by `SubagentStart`
-is never closed and stays `running` forever. ENH-3210 catalogues that leak. The link is
-not theoretical: `.ll/history.db` currently holds 43 `running` rows, and the three newest
-are
+**Downstream link to ENH-3210 — mechanism sound, measurement RETRACTED 2026-08-16.**
+When a spawn is backgrounded and the parent turn ends, the process group is reaped before
+`SubagentStop` fires, so the `subagent_runs` row opened by `SubagentStart` is never closed
+and stays `running`. ENH-3210 catalogues 40 such rows. That mechanism is sound and remains
+the most likely explanation for them.
+
+**The evidence this issue previously offered for the link does not hold.** An earlier draft
+claimed `.ll/history.db` held 43 `running` rows whose three newest were the `/ll:wire-issue`
+fan-out run while wiring this very issue, "orphaned":
 
     2026-08-16T03:57:21Z  ll:codebase-locator
     2026-08-16T03:57:30Z  ll:codebase-analyzer
     2026-08-16T03:57:38Z  ll:codebase-pattern-finder
 
-— the three-agent fan-out `/ll:wire-issue` ran while wiring this very issue, orphaned.
-That is one of the inventoried sites producing an observable artifact of the defect within
-one day, which is a stronger reproduction than the Steps to Reproduce below. Consequences:
+Those three rows were sampled **mid-flight**. All three closed normally roughly two minutes
+later (`ended_at` 03:59:05Z / 03:59:37Z / 03:59:09Z, `status = completed`), verified directly
+against the DB. Re-measured after they closed: 40 `running` / 2,741 `completed`, newest
+`running` row **2026-08-15T03:48:55Z** — nothing from 2026-08-16 is stuck, and the stale
+population is July-heavy with ≤1 new row per day since 2026-08-01.
 
-- `relates_to: ENH-3210` (added to both issues).
-- **Sequence this issue before ENH-3210.** This one cuts the generation rate at the
-  source; ENH-3210 reconciles the existing backlog. Landing ENH-3210 first means it
-  reconciles against a population still growing underneath it.
-- Landing this issue does **not** make ENH-3210 unnecessary — the accumulated rows stay
-  `running` regardless, and backgrounded spawns remain legitimate under whichever
-  carve-outs survive Key Decision 2.
+Consequences:
+
+- **Do not restate "this bug is the generator" as measured fact.** No individual stale
+  `subagent_runs` row has been traced to a specific site in the inventory table. The claim
+  is a well-supported hypothesis, not an observation.
+- The Steps to Reproduce below are the reproduction path for this issue — there is no
+  stronger observed artifact to point at.
+- `relates_to: ENH-3210` (on both issues) stands.
+- **Sequencing this issue before ENH-3210 is still the sensible order** — it plausibly cuts
+  the generation rate at the source while ENH-3210 reconciles the backlog — but it is a
+  preference, not a dependency, and ENH-3210 is explicitly designed to stand alone.
+- Landing this issue does **not** make ENH-3210 unnecessary: the 40 accumulated rows stay
+  `running` regardless.
+- Note the retraction cuts the other way too, in ENH-3210's favour: three *live* subagents
+  presenting exactly the "orphaned" signature is the concrete justification for that issue's
+  minimum-age guard.
 
 ## Proposed Solution
 
@@ -358,7 +401,21 @@ Option A.
 ## Integration Map
 
 ### Files to Modify
-- `skills/audit-docs/SKILL.md:120-139` — Task spawn instruction, no `run_in_background` directive
+- `skills/audit-docs/SKILL.md:120-139` — Task spawn instruction, no `run_in_background`
+  directive. Operative sentence wraps `:122-123`; that is where the directive attaches.
+
+  **This site has an existing concurrency contract the directive must not weaken.**
+  `:126-136` specify a *required sequential batch loop*: split the file list into batches of
+  **at most 6**, send one batch's `Task` calls per message, "**Wait for every result in that
+  batch to return** before sending the next batch's `Task` calls," repeat. The bound exists
+  to keep `full`/`dir:` scopes from exhausting the concurrent-agent API limit (`:138-139`).
+
+  A generic "…and wait for all results in this same turn," appended verbatim from the
+  `decide-issue:335` precedent, reads as license to fan out every file at once — the exact
+  behavior the batch loop forbids. Word it **per batch**: the directive belongs on the
+  batch's spawn (`run_in_background: false` on each `Task` call in the batch), and the
+  existing "wait for every result in that batch" sentence already supplies the barrier, so
+  no second wait sentence is needed here. Leave `:126-136`'s numbered steps untouched.
 - `skills/audit-claude-config/SKILL.md:118,222` — two Task spawn sites, no directive
 - `skills/audit-claude-config/wave1-prompts.md:9` — the **operative** Wave-1 spawn line;
   `SKILL.md:118` delegates the full prompt bodies here by design ("so each Task can be
@@ -366,7 +423,8 @@ Option A.
   without this file leaves the instruction the model actually follows unqualified
 - `skills/audit-issue-conflicts/SKILL.md:205,218,252` — Task spawn sites, no directive
 - `skills/wire-issue/SKILL.md:147-190` — Agent spawn sites (3 agents); has a "wait...in
-  this same turn" prose instruction but no mechanical `run_in_background: false`
+  this same turn" prose instruction but no mechanical `run_in_background: false`. `:147` is
+  the phase heading; the spawn instruction is at **`:149`**
 - `skills/manage-issue/SKILL.md:110` — Phase 1.5 "Deep Research", "Spawn these agents in
   parallel using the Task tool:" (locator / analyzer / pattern-finder). Prose-only
   backstop at `:116` ("**CRITICAL**: Wait for ALL sub-agent tasks' results synchronously
@@ -390,7 +448,9 @@ Option A.
   tool calls, and wait for their results in this same turn"; no directive. Highest-
   exposure site in the set — invoked from FSM prompt states and `ll-auto`. (`:338`
   repeats the wait instruction as a standalone heading; keep both consistent.)
-- `commands/tradeoff-review-issues.md:81` — same verbatim wording, no directive
+- `commands/tradeoff-review-issues.md:79,:81` — `:79` is the spawn ("For each wave, launch
+  a subagent using the Task tool:"), `:81` the single-message/wait rule carrying the same
+  verbatim wording as `refine-issue:186`. Neither has a directive; attach it at `:79`
 - `commands/manage-release.md:134` — "Spawn all 3 agents in a SINGLE message with
   multiple Task tool calls"; no directive
 - `commands/scan-codebase.md:95,97,101` — `--quick` single-agent spawn and the default
@@ -572,10 +632,37 @@ tool-call AST to walk, only English. A naive `grep -l 'Task tool'` over the corp
 config references)") — a skill this issue explicitly rules out of scope. Ship the
 detector as:
 
-1. **Candidate match** — a line containing `Agent tool`, `Task tool`, `subagent_type`,
-   or `` `Agent` `` **and** an imperative spawn verb (`Launch`, `Spawn`, `Dispatch`,
-   `Invoke`, `Run ... agent`). The verb requirement is what excludes `:235`-style
-   descriptive prose.
+1. **Candidate match** — a **markdown paragraph** containing a spawn marker **and** an
+   imperative spawn verb (`Launch`, `Spawn`, `Dispatch`, `Invoke`, `Run ... agent`). The
+   verb requirement is what excludes `:235`-style descriptive prose.
+
+   **Corrected 2026-08-16 — an earlier spec said "a *line* containing `Agent tool`,
+   `Task tool`, `subagent_type`, or `` `Agent` ``", and that detector misses five of this
+   issue's own eighteen anchors.** Measured against the real files:
+
+   | Missed site | Why the line-scoped, four-marker detector misses it |
+   |---|---|
+   | `audit-docs:122-123` | "spawn a\n`codebase-analyzer` subagent via the `Task` tool" — verb and marker split by a line wrap |
+   | `audit-issue-conflicts:205` | markers are "per Task **call**" / "Task **calls**", not "Task tool" |
+   | `audit-issue-conflicts:252` | "spawn one **Task agent**" — not in the marker list |
+   | `scan-codebase:95` | "Spawn a single combined **agent** that scans…" — no marker token on the line at all |
+   | `scan-codebase:97` | "Launch 3 **sub-agents** in parallel" — same |
+
+   Shipping that detector would leave the regression gate — the mechanical half of route
+   (b), and the entire justification for accepting an advisory-only contract — **inert for
+   five anchors**: delete the directive from any of them later and the suite stays green.
+   Two changes close it:
+
+   - **Widen the marker set** to `Agent tool`, `Task tool`, `` `Agent` ``, `Task call`,
+     `Task calls`, `Task agent`, `subagent_type`, `subagent`, `sub-agent`, `sub-agents`.
+   - **Scope candidate detection to the markdown paragraph, not the line**, so a marker
+     and its verb may sit on different wrapped lines of the same sentence.
+
+   **The two scopes are different and both are deliberate.** Paragraph scope applies to
+   *candidate* detection (criterion 1). The `true`-**value** scan stays line-oriented, for
+   the `manage-issue:389` reason given under criterion 2's second caveat — a paragraph-scoped
+   value scan would join that prohibition's wrapped ``run_in_background:\n  true`` and
+   wrongly add the file to the `true` set. Do not unify them.
 2. **Satisfied** — an explicit `run_in_background: true|false` appears within ±3 lines
    of the candidate, or in the same markdown paragraph. **Scoping is load-bearing, not a
    nicety:** `skills/manage-issue/SKILL.md` already contains `run_in_background: false` at
@@ -619,6 +706,15 @@ detector as:
    `true` value equals **`set()`** (Key Decision 2, Option A). The existing one-sided
    check is retained in structure, with `SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST` emptied
    rather than deleted — see Conventions in Force.
+5. **Detector self-validation — the detector must be tested against the inventory, not
+   only used on it.** A detector that flags nothing passes criterion 4 vacuously, which is
+   exactly the failure mode the correction under criterion 1 uncovered. Pin the Summary's
+   inventory table as a module-level constant of `(path, line)` anchors and assert the
+   detector's **candidate set is a superset of it** — i.e. every known spawn site is still
+   *detected* as a candidate after the fix, not merely satisfied. This is a separate test
+   from criterion 4's assertion and is the one that would have caught the five misses.
+   Keeping the constant also gives a future reader the inventory in executable form rather
+   than only in this issue's prose.
 
 The detector is deliberately conservative: it under-detects rather than over-detects, so
 a genuinely novel spawn phrasing can slip through. That is the accepted residual risk of
@@ -760,9 +856,11 @@ sweep is doc-only and breaks no assertion.
    `go-no-go`, `audit-docs`, and `audit-claude-config` are unguarded; the single
    `ll-adapt` invocation above covers whatever mirrors exist.
 5. `test_skill_run_in_background_true_inventory_pinned` is extended to its two-sided form
-   using the four-part detector specified under Tests, scanning `skills/**/*.md` **and**
-   `commands/*.md` for **both** halves (candidate match requires an imperative spawn verb;
-   ±3-line satisfaction window; `SPAWN_DETECTOR_EXEMPT` seeded with the
+   using the **five**-part detector specified under Tests, scanning `skills/**/*.md` **and**
+   `commands/*.md` for **both** halves (candidate match is paragraph-scoped over the widened
+   marker set and requires an imperative spawn verb; the `true`-value scan stays
+   line-oriented; ±3-line satisfaction window; part 5's superset-of-inventory
+   self-validation test lands with it; `SPAWN_DETECTOR_EXEMPT` seeded with the
    `confidence-check/SKILL.md:235` line plus the flag-documentation class listed there,
    including `audit-architecture.md:51`; `true`-set equality retained but now asserting
    `set()`) — this is the gate, not `DOC_STRINGS_PRESENT` needles.
@@ -833,10 +931,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
   `commands/tradeoff-review-issues.md`, `commands/manage-release.md`,
   `commands/scan-codebase.md`, `commands/audit-architecture.md`,
   `commands/analyze-workflows.md`
-- **Anchor**: Agent/Task spawn instructions at audit-docs:120-139,
+- **Anchor**: Agent/Task spawn instructions at audit-docs:122-123 (within :120-139),
   audit-claude-config:118,222, wave1-prompts:9, audit-issue-conflicts:205,252,
-  wire-issue:147-190, manage-issue:110, go-no-go:174,278,
-  refine-issue:186, tradeoff-review-issues:81,
+  wire-issue:149 (within :147-190), manage-issue:110, go-no-go:174,278,
+  refine-issue:186, tradeoff-review-issues:79,
   manage-release:134, scan-codebase:95,97,101, audit-architecture:68,
   analyze-workflows:102. (`go-no-go:174` declares `true` rather than omitting the
   directive — a different defect shape, fixed under the same rule per Key Decision 2.)
@@ -904,6 +1002,7 @@ Every headless invocation of the inventoried sites is exposed; whether the resul
 actually lost depends on whether the subagent outlives the parent turn's `result` event.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-16T05:31:27 - `bb755dcf-6087-41b3-80d2-a79a3aba782e.jsonl`
 - `/ll:confidence-check` - 2026-08-16T04:59:11 - `8af101e8-440c-4dfd-9d90-99c46a875466.jsonl`
 - `/ll:decide-issue` - 2026-08-16T04:47:54 - `d03fba4d-011e-4873-ac13-79314b2ef1a9.jsonl`
 - `/ll:wire-issue` - 2026-08-16T02:33:16 - `580ae8b9-3bf3-43a4-90b3-d6f005806398.jsonl`

@@ -9,8 +9,8 @@ testable: true
 discovered_date: '2026-08-15'
 labels: []
 confidence_score: 100
-outcome_confidence: 84
-score_complexity: 9
+outcome_confidence: 88
+score_complexity: 13
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
@@ -180,6 +180,8 @@ Explicitly **out of scope** (each has a home):
 **SUPERSEDED and removed** — the `/ll:confidence-check` run of 2026-08-15 scored the original four-in-one scope. Its findings no longer describe this issue and contradicted the body in two places (it cited "8 spawn sites" against a verified 12, and three unresolved Open Decisions that have all moved to ENH-3203/3204/3205). The frontmatter scores (`confidence_score: 85`, `outcome_confidence: 48`) are likewise stale. Only one of its findings survives, and it is now this issue's core: *a missed spawn site silently defeats the guarantee* — which is what AC2's guard converts from assumption to assertion. Re-run `/ll:confidence-check` against the current scope before implementing.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-16T06:12:24 - `7c646ce3-f44e-4eef-97cb-1c8c88c8d9d9.jsonl`
+- `/ll:confidence-check` - 2026-08-16T05:31:05 - `bb755dcf-6087-41b3-80d2-a79a3aba782e.jsonl`
 - `/ll:confidence-check` - 2026-08-16T04:58:48 - `3732fd32-810c-4cb4-9095-7a5a9dac49d5.jsonl`
 - `/ll:confidence-check` - 2026-08-16T03:56:39 - `953e8134-a0de-46ec-8da0-03d0781ca4b7.jsonl`
 - Pre-implementation review (fifth pass) - 2026-08-16 - **found a third census miss and removed a false positive.** (1) `host_runner.py:1837` is not a child env at all — it is `resolve_host()`'s snapshot of the *parent's* environment for reading `LL_HOST_CLI`/`LL_HOOK_HOST`; `host_runner.py` contains **zero** `subprocess.*` calls. Explicit sites corrected 12 → **11**, and the "Files to Modify" instruction to convert that line was removed before it could produce a wrong edit. (2) AC3's three line numbers were stale — real spawns are `evaluators.py:1146/1360/1612` (cited 1140/1333/1585, which land on comments and a string literal today); a **fourth** spawn at `:644` (`git diff --stat`) was unaccounted for. (3) **New AC7**: `cli/issues/decisions.py:811` spawns the host CLI with no `env=` and discards `invocation.env` — the exact AC3 defect class, missed by all four prior passes. (4) AC2's task-path rule reaches three host-CLI probe spawns the module list omitted (`cli/action.py:347`, `cli/doctor.py:925`, `init/install_check.py:150`), so the rule-vs-list self-assertion would have failed on day one; added them under markers rather than adding an unstated carve-out. (5) Pinned per-module spawn counts for the whole guard list — `worker_pool.py` has **9** spawns, not the single site at `:812` earlier drafts implied. (6) Cited `# ll-private-ok:` as the existing inline-exemption convention `# ll-no-project:` must mirror. (7) Fixed Impact's "eight runner classes" against AC6's six-plus-two-stubs. **Re-verified independently: 145 total spawns, 11 explicit child-env sites at the exact stated lines, `git_operations.py` 11 / `worktree_utils.py` 4 — exact. AC3's central premise re-confirmed:** `_apply_automation_env()` appears only at `host_runner.py:367/670/1064/1251/1446/1645`, all inside `build_streaming()`, and every implemented `build_blocking_json()` returns the fixed two-key literal.

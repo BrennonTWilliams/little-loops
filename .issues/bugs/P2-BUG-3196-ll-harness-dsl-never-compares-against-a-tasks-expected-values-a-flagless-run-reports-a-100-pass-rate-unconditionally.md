@@ -11,11 +11,12 @@ discovered_date: '2026-08-15'
 captured_at: '2026-08-15T18:44:20Z'
 decision_needed: false
 confidence_score: 95
-outcome_confidence: 89
+outcome_confidence: 82
 score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 25
-score_change_surface: 25
+score_change_surface: 18
+reconcile_attempted: true
 ---
 
 # BUG-3196: ll-harness dsl never compares against a task's expected: values — a flagless run reports a 100% pass rate unconditionally
@@ -286,7 +287,7 @@ already spends `2` on exactly this meaning at the per-task level. Propagating it
 one definition of `2` across both levels.
 
 **`2` is already overloaded at the run level and that stays true.** `cmd_dsl` returns `2`
-today for a missing path (`harness.py:676`) and for an empty task directory (`:680`).
+today for a missing path (`harness.py:675`) and for an empty task directory (`:679`).
 Adding all-ungraded and any-errored to that set is consistent — every `2` means "the run
 could not produce a measurement" — but the meanings must be enumerated together in
 `CLI.md` rather than accreting silently. See Integration Map.
@@ -542,7 +543,13 @@ contract being honoured). Add this as an acceptance criterion — see AC2b.
 
 The aggregate-row update is a direct `UPDATE` inside the existing
 `contextlib.suppress(Exception)` block, matching how `aggregate_id` is already fetched with
-raw SQL at `harness.py:676-681`. Telemetry stays best-effort and never affects the exit code.
+raw SQL at `harness.py:700-706`. Telemetry stays best-effort and never affects the exit code.
+
+**Citation corrected 2026-08-16.** An earlier draft cited `:676-681` for that raw-SQL fetch;
+those lines are the two exit-`2` error returns, not the `aggregate_id` lookup. Verified against
+the current file: the error returns are at `:675` (path not found) and `:679` (empty directory),
+and the `SELECT id FROM harness_events ORDER BY id DESC LIMIT 1` fetch is at `:700-706`, inside
+the existing `contextlib.suppress(Exception)` block.
 
 ### Consequence: the per-task `runner="prompt"` telemetry rows disappear
 
@@ -701,7 +708,7 @@ the prose Expected Behavior does not give those individual pass/fail boundaries.
 - `docs/reference/CLI.md:190,209,220-221` — the `dsl` row, the dsl-specific flag block, and
   the examples need the grading semantics and the new exit-code meanings. **Enumerate all
   meanings of exit `2` in one place** rather than letting them accrete: path not found
-  (`harness.py:676`), empty task directory (`:680`), every task ungradable (new), and ≥1
+  (`harness.py:675`), empty task directory (`:679`), every task ungradable (new), and ≥1
   per-task infra error (new). The unifying statement is "the run could not produce a
   measurement" — write that, then list the four triggers.
 - `.ll/history.db` `harness_events` — row *shape* is unchanged, but both the values and the
@@ -794,6 +801,9 @@ _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-16T06:12:55 - `6fdede19-5616-4773-8866-a77790066587.jsonl`
+- `/ll:confidence-check` - 2026-08-16T05:31:33 - `bb755dcf-6087-41b3-80d2-a79a3aba782e.jsonl`
+- `/ll:reconcile-issue` - 2026-08-16T05:25:32 - `4feb49e0-b3c6-41d3-bd75-18b2a42c9652.jsonl`
 - `/ll:confidence-check` - 2026-08-16T04:59:10 - `8af101e8-440c-4dfd-9d90-99c46a875466.jsonl`
 - `/ll:decide-issue` - 2026-08-16T04:51:40 - `cc7f1236-7d7a-4f5c-962b-052b11db8a39.jsonl`
 - `/ll:refine-issue` - 2026-08-16T04:48:41 - `cc7f1236-7d7a-4f5c-962b-052b11db8a39.jsonl`

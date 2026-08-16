@@ -16,7 +16,7 @@ depends_on:
 - ENH-3210
 blocked_by:
 - FEAT-3183
-confidence_score: 95
+confidence_score: 70
 outcome_confidence: 89
 score_complexity: 21
 score_test_coverage: 25
@@ -403,7 +403,38 @@ No breaking change — this is a new, additive CLI subcommand. No existing `ll-l
    `ended_at IS NULL` row asserting the excluded-count is shown.
 
 
-## Session Log
-- `/ll:wire-issue` - 2026-08-16T02:33:17 - `580ae8b9-3bf3-43a4-90b3-d6f005806398.jsonl`
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-08-16_
+
+**Readiness Score**: 70/100 → STOP — ADDRESS GAPS (hard override; unresolved dependency)
+**Outcome Confidence**: 89/100 → HIGH CONFIDENCE
+
+### Gaps to Address
+- **Dependencies hard override.** `blocked_by: FEAT-3183`, whose current status is `open`
+  (not `done`/`cancelled`) — this does not resolve the dependency, so `DEP_FAIL=yes`. The
+  issue's own Scope Boundaries section states this is deliberate: the FEAT-3183-vs-ENH-3211
+  overlap call ("ship as a low-level inspector" vs. "fold into FEAT-3183 and cancel") is
+  explicitly deferred until FEAT-3183 lands, and implementing before that call is made would
+  risk building surface that gets cancelled outright. Remedy: wait for FEAT-3183 to land (or
+  be scheduled) and resolve the option-1-vs-2 call, or remove/downgrade the `blocked_by` edge
+  if the overlap concern no longer applies.
+- **`CLAIM_GAP` on Criterion 4 (caps well-specified at 10/20).** `ll-issues format-check`
+  flags a `stale_symbol_ref`: `"history_reader (claimed in scripts/little_loops/cli/session.py)"`.
+  Verified against the actual file: `cli/session.py:37` does `from little_loops.history_reader
+  import (...)`, so the import exists — the checker's specific resolution heuristic did not
+  match the multi-line `from ... import (` form, not a real gap in the issue's claim. Advisory
+  only per protocol; not escalated to a STOP condition.
+
+### Outcome Risk Factors
+- None — Outcome Confidence (89) is above the configured `outcome_threshold` (65). Complexity,
+  test coverage, and change-surface are all clean: three unmodified readers wrapped in an
+  already-established `cli/session.py` `related`/`recent` subparser pattern, with an existing
+  sibling test file (`test_ll_session.py`) and enumerated file list to mirror.
+
 - `/ll:refine-issue` - 2026-08-16T02:24:46 - `8d69c317-1f3a-48ba-9c8b-3d56c7aebd08.jsonl`
 - `/ll:capture-issue` - 2026-08-16T02:10:52 - `3b0498bf-ef93-4aa9-88c2-660ecc956b99.jsonl`
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-16T05:32:12 - `bb755dcf-6087-41b3-80d2-a79a3aba782e.jsonl`

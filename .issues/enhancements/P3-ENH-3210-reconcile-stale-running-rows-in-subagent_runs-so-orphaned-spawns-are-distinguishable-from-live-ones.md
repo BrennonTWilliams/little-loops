@@ -40,28 +40,47 @@ Live evidence from this repo's `.ll/history.db` (re-measured 2026-08-15):
 Those rows are indistinguishable from a genuinely in-flight agent, which makes any
 future consumer of this table (ENH-3211, FEAT-3183) report a false picture.
 
-**Correction 2026-08-16 — the "slow leak" premise is false, and the upstream cause is
-BUG-3209.** An earlier draft argued "the leak is slow, not ongoing at volume: `completed`
-grew by 18 between two measurements while `running` stayed flat at 40 — which is part of
-why this is P3." Re-measured 2026-08-16: **43 `running`** against 2,719 `completed`, i.e.
-+3 in roughly one day, and the three newest rows are
+**RETRACTED 2026-08-16 (later same day) — the "+3 in a day" correction was itself wrong;
+the original slow-leak reading stands.** An intermediate draft claimed the "slow leak"
+premise was false, citing **43 `running`** against 2,719 `completed` and three brand-new
+stale rows:
 
     2026-08-16T03:57:21Z  ll:codebase-locator
     2026-08-16T03:57:30Z  ll:codebase-analyzer
     2026-08-16T03:57:38Z  ll:codebase-pattern-finder
 
-— the three-agent fan-out `/ll:wire-issue` ran while wiring *these* issues. "Flat at 40"
-was a two-sample artifact taken across a quiet window, not a rate.
+**Those three rows were sampled mid-flight and completed normally about two minutes
+later.** Verified directly against `.ll/history.db`:
 
-Two consequences:
+    agent_type                  started_at            ended_at              status
+    ll:codebase-locator         2026-08-16T03:57:21Z  2026-08-16T03:59:05Z  completed
+    ll:codebase-analyzer        2026-08-16T03:57:30Z  2026-08-16T03:59:37Z  completed
+    ll:codebase-pattern-finder  2026-08-16T03:57:38Z  2026-08-16T03:59:09Z  completed
 
-- **BUG-3209 is the generator.** A backgrounded spawn whose parent turn ends is reaped by
-  `_kill_process_group()` before `SubagentStop` fires, so the row opened by
-  `SubagentStart` never closes. `relates_to: BUG-3209` added both ways. **Sequence
-  BUG-3209 first** — it cuts the rate at the source; this issue reconciles the backlog.
-  Reconciling against a population still growing underneath is the avoidable ordering.
-- **P3 still holds, but on the impact argument only** (nothing reads this table today),
-  not on the rate argument. Do not re-cite "the leak is slow" as justification.
+Re-measured after they closed: **40 `running`** against **2,741 `completed`**, and the
+newest `running` row is **2026-08-15T03:48:55Z** — *no* row from 2026-08-16 is stuck. The
+per-day distribution of the 40 is July-heavy (6 on 07-21, 6 on 07-25, 7 on 07-28, …) and
+at most one per day since 2026-08-01.
+
+Three consequences:
+
+- **The slow-leak argument is restored.** "Flat at 40" was not a two-sample artifact; it
+  was correct. `running` is at 40 again, unchanged. Cite it freely.
+- **BUG-3209 is a *plausible* generator, not a measured one.** The mechanism is sound — a
+  backgrounded spawn whose parent turn ends is reaped by `_kill_process_group()` before
+  `SubagentStop` fires — but this issue no longer holds direct evidence tying any specific
+  stale row to a specific BUG-3209 spawn site. `relates_to: BUG-3209` stays, and sequencing
+  BUG-3209 first is still the sensible order, but on general grounds rather than on a
+  measured rate. Do not restate "BUG-3209 is the generator" as established fact.
+- **P3 holds on both arguments again** — nothing reads this table today (impact), *and* the
+  leak is slow (rate).
+
+**The measurement error is itself the best evidence for this issue's age guard.** A live
+three-agent fan-out was indistinguishable, at sample time, from three orphans: blocked
+parent, no post-spawn `tool_events`, not the sweeping session. That is exactly the primary
+branch's signature. See § Correction 2026-08-16 (primary branch) below — this incident is
+the concrete case `STALE_SUBAGENT_MIN_AGE_SECONDS` exists to survive, and it happened to
+careful readers of this very table.
 
 `_backfill_subagent_runs` (`writers.py:2063`) does not help: it is `INSERT OR IGNORE`,
 so it seeds missing rows but never corrects an existing stale one.
@@ -131,6 +150,16 @@ waiting on it and has therefore recorded **no `tool_events` after `started_at`**
 recorded nothing after the spawn" is indistinguishable between *the parent died at the spawn*
 and *the parent is right now waiting on a live subagent*. Age is the only thing separating
 them, and the snapshot has age baked in invisibly.
+
+**This is not a hypothetical — it already happened while writing this issue.** The three
+`2026-08-16T03:57` rows quoted (and retracted) in the Summary were read as orphans by a
+human inspecting the table, and were in fact three live subagents mid-fan-out; they closed
+two minutes later. Every element of the primary branch's signature was present: the parent
+had recorded no `tool_events` after the spawn (it was blocked awaiting them), and the rows
+belonged to a session other than the one doing the inspecting. Only age distinguished them
+from the 40 real orphans — by roughly one day at the time of sampling. A sweep without
+condition (iii) would have marked all three `orphaned` while they were still running,
+violating this issue's hard requirement outright.
 
 The "not the currently-executing session" condition does **not** close this. `ll-parallel`
 and `ll-sprint` run multiple concurrent `claude` sessions against one shared
@@ -548,8 +577,27 @@ for rows passing the later-parent-activity (or age-fallback) test.
   row young enough for the current-session check to matter is already excluded by the 6h
   window. Do **not** skip the whole sweep on a `None` session ID; that would silently
   disable reconciliation on any host that omits the field.
+- **Timestamp format is a precondition, not an incidental.** Both sides of every
+  comparison in this design are `TEXT`, so `max(ts) <= started_at` is a *lexicographic*
+  comparison and is only correct because both columns use the same fixed-width UTC format.
+  Verified 2026-08-16 against the live DB: `tool_events.ts` and `subagent_runs.started_at`
+  are both `%Y-%m-%dT%H:%M:%SZ` (e.g. `2026-08-16T05:36:13Z`) — no fractional seconds, no
+  `+00:00` offsets, no naive local timestamps. Two consequences for the implementation:
+  (i) the `now` used for the age guard must be produced by the **same** formatter the
+  writers use (`_now_iso()`), not `datetime.now().isoformat()`, whose microseconds and
+  offset form would sort inconsistently against the stored values and could push every row
+  outside the window; (ii) if a future writer ever changes the stored format, this sweep
+  silently mis-selects rather than erroring — worth a comment at the comparison site.
+- **NULL `started_at` → leave alone.** `started_at` is declared `TEXT` with **no** `NOT
+  NULL` in the v28 DDL (`schema.py:651`), so it is nullable by contract even though 0 of
+  the 40 `running` rows are NULL today (verified 2026-08-16). A NULL makes the minimum-age
+  guard undefined, and an undefined age guard is precisely the condition under which the
+  primary branch misclassifies live spawns. Rule: a row with a NULL `started_at` is never
+  eligible for either branch — it falls under the existing "no resolvable evidence → leave
+  alone" escape hatch. Express it in the SQL (`AND started_at IS NOT NULL`) rather than
+  relying on Python-side comparison semantics.
 - **NULL-safe comparison.** `max(ts) <= started_at` evaluates to NULL — i.e. neither branch
-  matches — when the parent has **no** `tool_events` at all. That is 0 of 43 `running` rows
+  matches — when the parent has **no** `tool_events` at all. That is 0 of 40 `running` rows
   today (though 67 `completed` rows are in that state), so it is latent rather than live,
   but a parent that never recorded a single tool event is the *most* orphaned case, not the
   least. Either `COALESCE` the subquery to `''` so those rows take the primary branch, or
@@ -591,11 +639,12 @@ for rows passing the later-parent-activity (or age-fallback) test.
 
 ## Impact
 
-- **Priority**: P3 — telemetry accuracy only; nothing in the product reads this table
-  today (ENH-3211 and FEAT-3183 will). **The rating rests on that impact argument alone.**
-  The "leak is slow" justification is withdrawn — re-measured 2026-08-16 at 43 `running`
-  (from 40), +3 in a day, all three from a single BUG-3209 spawn site. See Summary
-  § Correction.
+- **Priority**: P3 — telemetry accuracy only (nothing in the product reads this table
+  today; ENH-3211 and FEAT-3183 will) **and** the leak is genuinely slow. The withdrawal of
+  the slow-leak justification is itself withdrawn: the "+3 in a day" measurement counted
+  three live subagents as orphans, and they completed normally minutes later. Re-verified
+  2026-08-16: 40 `running` / 2,741 `completed`, newest `running` row 2026-08-15T03:48:55Z,
+  ≤1 new stale row per day since 2026-08-01. See Summary § RETRACTED.
 - **Effort**: Small — one writer function plus a call from an existing sweep that already
   writes. No schema migration (Decision 3), no new connection plumbing (Decision 1). The
   one non-obvious constraint is the 15s hook budget and the missing
@@ -634,10 +683,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Current Pain Point
 
-43 `subagent_runs` rows in this repo's `.ll/history.db` are stuck `running` (oldest since
-2026-07-21T02:34:49Z, newest 2026-08-16T03:57:38Z) because their `SubagentStop` hook never
-fired — the parent process group was reaped by `_kill_process_group()` first. The spawn
-sites that produce them are catalogued in BUG-3209. `_backfill_subagent_runs()`
+**40** `subagent_runs` rows in this repo's `.ll/history.db` are stuck `running` (oldest
+since 2026-07-21T02:34:49Z, newest 2026-08-15T03:48:55Z) because their `SubagentStop` hook
+never fired — the most likely reason being that the parent process group was reaped by
+`_kill_process_group()` first. Spawn sites that could produce them are catalogued in
+BUG-3209, though no individual stale row has been traced to a specific site (Summary
+§ RETRACTED). The earlier "43, newest 2026-08-16T03:57:38Z" figure counted three
+still-running subagents that subsequently completed. `_backfill_subagent_runs()`
 (`writers.py:2063`) cannot fix this: it is `INSERT OR IGNORE`, so it only seeds rows
 that are missing entirely, never corrects one that already exists.
 
@@ -815,6 +867,8 @@ _Added by `/ll:confidence-check` on 2026-08-16_
   branch per Decision 4, which is explicitly sanctioned).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-16T06:11:59 - `d7780d6d-8cdf-4726-9822-c8f6ac651712.jsonl`
+- `/ll:confidence-check` - 2026-08-16T05:31:42 - `bb755dcf-6087-41b3-80d2-a79a3aba782e.jsonl`
 - `/ll:confidence-check` - 2026-08-16T04:58:36 - `3732fd32-810c-4cb4-9095-7a5a9dac49d5.jsonl`
 - `/ll:decide-issue` - 2026-08-16T04:51:02 - `3da23951-99b8-442f-b7db-c8c9c673c9c0.jsonl`
 - `/ll:refine-issue` - 2026-08-16T04:49:44 - `3da23951-99b8-442f-b7db-c8c9c673c9c0.jsonl`
