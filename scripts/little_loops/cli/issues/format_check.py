@@ -155,7 +155,10 @@ def _print_gaps(gaps: FormatGaps) -> None:
     for entry in gaps.testable:
         print(f"  testable: {entry} (doc-only signals; set an explicit `testable:` key)")
     for entry in gaps.stale_file_ref:
-        print(f"  stale_file_ref: {entry}")
+        print(
+            f"  stale_file_ref: {entry} (not git-tracked; it may exist on disk but "
+            "gitignored — verify before treating as missing)"
+        )
     for entry in gaps.unmarked_superseded_directive:
         print(f"  unmarked_superseded_directive: {entry}")
     for entry in gaps.duplicate_findings_block:

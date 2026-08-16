@@ -2019,13 +2019,18 @@ signal-keyword tuple, 2+ distinct matches) advising that the issue looks
 documentation-only — advisory only, never auto-written; a caller uses it to decide
 whether to add `testable: false`.
 
-Also reports `stale_file_ref` (ENH-2983): a file path reference extracted from
-the body classifies as `stale` — a `/`-qualified path with no exact or unique
-suffix match against tracked files (`little_loops.text_utils.classify_file_ref()`
-against a `RefIndex` built once per invocation from `git ls-files`), i.e. the
-file moved or was deleted since the issue was written. A bare basename, glob,
-or `<placeholder>`-bearing path is `unresolvable_form` and never reported here;
-a path on a line marked `(new)` is `planned_new` and also never reported.
+Also reports `stale_file_ref` (ENH-2983; reworded BUG-3194): a file path
+reference extracted from the body classifies as `stale` — a `/`-qualified
+path that is not git-tracked (`little_loops.text_utils.classify_file_ref()`
+against a `RefIndex` built once per invocation from `git ls-files`). This
+covers both a file that moved/was deleted *and* a file that is present on
+disk but gitignored — the printed line states the actual predicate
+("not git-tracked; it may exist on disk but gitignored") rather than
+implying the file is missing. A bare basename, glob (including brace
+expansion `{a,b}`), `<placeholder>`-bearing path, or a slash-joined pair of
+filenames (`ARCHITECTURE.md/CONTRIBUTING.md` — two filenames joined by
+prose, not one path) is `unresolvable_form` and never reported here; a path
+on a line marked `(new)` is `planned_new` and also never reported.
 Reporting only — a moved file can't be safely re-pointed without knowing
 intent.
 
@@ -2075,7 +2080,13 @@ resolve as a function/class def-site or module-level constant in that file
 `mislocated_symbol_ref` (BUG-3063) is the mis-attribution sibling: the symbol
 does not resolve in the cited file but does resolve in some other tracked
 file — a mismatch between where the claim points and where the symbol
-actually lives, not a stale claim. Both are extracted only from a
+actually lives, not a stale claim. A claim is dropped before either check
+(BUG-3194) — never rerouted between the two — when its symbol fails a
+shape floor (under 3 characters, or all-lowercase with no underscore,
+internal capital, or `()` suffix — kills index-pollution noise like `ec`,
+`codex`, `enabled` while keeping `install_qwen_adapter`, `FSMExecutor`) or
+resolves as a def-site in more than 8 tracked files other than the cited
+one. Both are extracted only from a
 current-state section allowlist (`## Summary`, `## Current Behavior`,
 `## Root Cause`, `## Context`, matched by H2 span) — a symbol named in a
 forward-looking section such as `## Program Design`, `### Files to Modify`,

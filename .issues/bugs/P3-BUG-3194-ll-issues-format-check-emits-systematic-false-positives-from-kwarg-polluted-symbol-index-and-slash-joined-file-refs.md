@@ -216,6 +216,45 @@ Baseline is 10. The `\s+=\s+` narrowing takes it to 8 — still resolving, still
 Three independent change sites in three modules. They share only the `format-check`
 reporting surface, so they can be implemented and landed separately.
 
+### Deviations
+
+**2026-08-15 (implementation).** Finding 1's predicate 1 ("dotted left-side
+predicate — decline a `_DOTTED_RE` claim whose left side is neither a tracked
+module name nor PascalCase") was implemented differently than literally
+specified. Under the current architecture, a dotted claim only ever reaches
+this predicate *after* `_resolve_module_prefix` has already required the left
+side to be a tracked module (matching `state.py`, `config.py`, `parallel.py`,
+`learning_tests.py` — all real tracked modules), and a PascalCase left side
+can never resolve via that same basename lookup (no `.py` file is named
+`FSMExecutor.py`). So the literal predicate is a no-op given today's
+resolution order — it cannot discriminate `state.action`/`config.prompt`
+(false positives) from `prose_deps.extract_prose_deps` (the pinned true
+positive in `test_dotted_form_extracts_claim`), since both resolve as
+"tracked module" claims identically.
+
+**What was implemented instead**: predicate 3's bare-form floor
+(`_passes_bare_form_floor()`) was extended to the dotted claim's attr, not
+just the bare-symbol shape. This clears `state.action` (attr `action`, no
+underscore/capital/parens) and `config.prompt` (attr `prompt`, same) — both
+also independently cleared by predicate 2's breadth cap (`action` resolves in
+117 files, `prompt` in 28) — while preserving `prose_deps.extract_prose_deps`
+(attr has an underscore).
+
+**Known residual**: `parallel.timeout_per_issue` (attr resolves in 7 files)
+and `learning_tests.scan_dirs` (4 files) are **not** cleared — both attrs
+contain an underscore, so they pass the floor, and both resolve under the
+N=8 breadth cap, so they survive that too. No shape-only left-side or
+attr-side discriminator found during implementation separates these from
+genuine `module.function` references (`prose_deps.extract_prose_deps` has
+the identical `snake_case.snake_case` shape) without an index-based check
+beyond what's already applied. Backlog-wide re-measurement (2026-08-15,
+post-implementation): `mislocated_symbol_ref` dropped from the pre-BUG-3201/
+3202 baseline of 264 to **94** across `.issues/` (`stale_symbol_ref` stayed
+at 70, confirming no reroute); the live `ll-issues format-check 3192` no
+longer reports `enabled`, and `ll-issues format-check 3193` no longer
+reports the brace-expansion refs. Left as a fast-follow if the residual
+proves to matter in practice — P3, noise-level, does not invert a verdict.
+
 ### Signatures
 
 ```python
@@ -519,7 +558,7 @@ Grouped by finding, since they land separately (see Implementation Order).
 
 **Finding 1:**
 
-- [ ] `enabled`-, `ec`-, and `codex`-shaped claims produce **no gap of either class** —
+- [x] `enabled`-, `ec`-, and `codex`-shaped claims produce **no gap of either class** —
       verified explicitly against `stale_symbol_ref` as well as `mislocated_symbol_ref`, so
       each predicate suppresses rather than reroutes. All three fall to the **bare-form
       floor** (see the correction in Expected Behavior); do not use them to verify the cap.
@@ -527,56 +566,64 @@ Grouped by finding, since they land separately (see Implementation Order).
       plan): post-BUG-3201 only `enabled` still fires live, so the CLI repro cannot
       exercise `ec`/`codex`. The live check is `ll-issues format-check 3192` no longer
       reporting `enabled` under either key.
-- [ ] A dotted config-path claim (`state.action`, `parallel.timeout_per_issue`) produces no
-      gap — the `_DOTTED_RE` left-side predicate declines it.
-- [ ] The **cap** is verified against a claim the floor does not already catch — e.g.
+- [~] A dotted config-path claim (`state.action`, `parallel.timeout_per_issue`) produces no
+      gap — the `_DOTTED_RE` left-side predicate declines it. **Partial — see Program
+      Design § Deviations.** `state.action`/`config.prompt` are cleared (bare-form floor +
+      breadth cap both kill `action`/`prompt`); `parallel.timeout_per_issue`/
+      `learning_tests.scan_dirs` are not (their attrs contain underscores, clearing the
+      floor, and resolve in ≤8 files, clearing the cap) — no shape-only discriminator
+      found that separates them from the pinned true positive
+      `prose_deps.extract_prose_deps`, which has the identical shape.
+- [x] The **cap** is verified against a claim the floor does not already catch — e.g.
       `completed_at`, `on_error`, `blocked_by`, `issue_id`, or `exit_code` (all snake_case,
       so they clear the floor; all resolve in >8 files). Without this, the cap can be
       omitted entirely and every other Finding 1 criterion still passes.
-- [ ] `build_streaming()` and `build_blocking_json()` (n=4 each) still fire — the cap is at
+- [x] `build_streaming()` and `build_blocking_json()` (n=4 each) still fire — the cap is at
       8, not 3, specifically to preserve them.
-- [ ] An `install_qwen_adapter`-class true positive — a genuine multi-word snake_case
+- [x] An `install_qwen_adapter`-class true positive — a genuine multi-word snake_case
       symbol claimed against a file that does not define it but that resolves at a real
       def-site elsewhere — still fires `mislocated_symbol_ref`. **Unit-level synthetic
       claim only**: the original live example no longer fires post-BUG-3201 (the cited
       file imports the symbol, so `symbol_exists_in_file` is now True), so the fixture's
       cited file must neither define nor import the symbol.
-- [ ] Each new filter follows the module's exclusion convention: a named module-level
+- [x] Each new filter follows the module's exclusion convention: a named module-level
       constant with a comment naming the false-positive class it guards, applied as a guard
       at the point of use (matching `_LINE_NUMBER_REF_RE` / `_EXTENSION_LIKE_RE`).
-- [ ] Backlog-wide mislocated count drops from a **freshly re-measured post-BUG-3201/3202
+- [x] Backlog-wide mislocated count drops from a **freshly re-measured post-BUG-3201/3202
       baseline** — the recorded 264 (re-measured 2026-08-15; the earlier 263 predates one
       issue edit) was taken before BUG-3202's fence-aware scope change **and before
       BUG-3201's import-binding/SQL index changes** landed, and is already known stale
       (the recorded repro no longer reproduces). Re-measure before implementing, confirm
       the N=8 cap analysis still holds, then re-run after and record both numbers.
+      **Re-measured 2026-08-15 post-implementation: 264 -> 94** across `.issues/`
+      (`stale_symbol_ref` held at 70, confirming no reroute).
 
 **Finding 2:**
 
-- [ ] **Primary (format-check-level outcome)**:
+- [x] **Primary (format-check-level outcome)**:
       `classify_file_ref("ARCHITECTURE.md/CONTRIBUTING.md", index)` returns
       `unresolvable_form` (not `stale`), and `ll-issues format-check 3190` no longer
       reports `stale_file_ref` for it.
-- [ ] **Primary**: `classify_file_ref(".gemini/skills/{capture-issue,scope-epic}/SKILL.md",
+- [x] **Primary**: `classify_file_ref(".gemini/skills/{capture-issue,scope-epic}/SKILL.md",
       index)` also returns `unresolvable_form`, and `ll-issues format-check 3193` no longer
       reports the three brace-expansion refs — a `/`-split-only fix passes the first case
       and fails this one.
-- [ ] **Secondary**: `resolve_ref_path` declines both spans too (returns `None`) — holds
+- [x] **Secondary**: `resolve_ref_path` declines both spans too (returns `None`) — holds
       automatically if the check lives in the shared form-check layer, and pins
       `research_triage.py`'s behavior.
 
 **Finding 3:**
 
-- [ ] The printed line for a present-but-gitignored ref states the actual predicate (not
+- [x] The printed line for a present-but-gitignored ref states the actual predicate (not
       git-tracked), rather than implying the file is missing or outdated.
-- [ ] If the reword-only path is taken, `test_ll_issues_format_check.py`'s pinned
+- [x] If the reword-only path is taken, `test_ll_issues_format_check.py`'s pinned
       expected-JSON fixture needs no edit; if the key is renamed instead, `FormatGaps`,
       `to_dict()`, `_print_gaps`, both enumerations (`format_check.py:64`, `:193`), and
-      that fixture are updated together.
+      that fixture are updated together. **Reword-only path taken — fixture unchanged.**
 
 **All findings:**
 
-- [ ] `docs/reference/API.md`'s `check_format_gaps` prose and `docs/reference/CLI.md`'s
+- [x] `docs/reference/API.md`'s `check_format_gaps` prose and `docs/reference/CLI.md`'s
       gap-class list match the shipped behavior.
 - [ ] `python -m pytest scripts/tests/` exits 0.
 
@@ -609,6 +656,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-08-16T01:23:37 - `797152e7-7b99-49a3-8524-a1d3559eb4f6.jsonl`
 - `/ll:confidence-check` - 2026-08-16T00:17:02 - `64e9e21e-d2d6-44cd-97cd-d980a3cc037d.jsonl`
 - Pre-implementation review - 2026-08-15 - Verified all claims against current code and re-ran the repro. Applied four correction sets: (1) refreshed systematically stale line refs (`symbol_claims.py` shifted +49..+113 by BUG-3201/30ccbb7f; `issue_parser.py` shifted ~+19 by BUG-3202/72fb87ea); (2) added a BUG-3201 interaction note (import bindings now satisfy `symbol_exists_in_file`; SQL names entered the reverse index) and folded 3201 into the mandatory re-measure; (3) retargeted Finding 2's change site and ACs from `resolve_ref_path` to `classify_file_ref`'s form checks / `_GLOB_CHARS` (the `stale_file_ref` path never calls `resolve_ref_path`; `*`/`?` already declined — only `{}` and a multi-extension-component check are new; return `unresolvable_form`), keeping `resolve_ref_path` assertions as secondary; (4) reframed the `ec`/`codex`/`install_qwen_adapter` ACs as unit-level synthetic-claim tests and annotated Current Behavior / Steps to Reproduce — live post-3201 output shows only `enabled` still firing, with new hits `to_dict` (3190) and `my-issues/completed/file.py`. Finding 2/3 refs all still reproduce live.
 - Pre-implementation review (batch) - 2026-08-15 - Implementation Order updated: BUG-3202 landed, verification prerequisite satisfied; made the pre-3202 provenance of the 264 baseline / breadth-curve / floor measurements explicit and required a fresh re-measure before implementing Finding 1 (BUG-3202's `_symbol_claim_scope_text` change alters the claim population the filters see).

@@ -11,6 +11,7 @@ from little_loops.issues.symbol_claims import (
     SymbolClaim,
     SymbolIndex,
     build_symbol_index,
+    claim_breadth_exceeds_cap,
     extract_symbol_claims,
     symbol_exists_in_file,
     symbol_resolves_elsewhere,
@@ -426,3 +427,102 @@ def test_ts_import_not_indexed(repo: Path) -> None:
     rel = _write(repo, "src/app.ts", 'import { foo } from "bar";\n')
     idx = build_symbol_index(repo)
     assert symbol_exists_in_file(idx, rel, "foo") is False
+
+
+class TestBareFormFloor:
+    """BUG-3194 Finding 1: a bare/dotted claim below the shape floor is not a
+    claim at all -- a short, all-lowercase, no-underscore, no-parens token is
+    overwhelmingly index-pollution noise (kwargs, locals), not a real symbol
+    reference. Must suppress at the claim layer, not reroute to the other gap
+    key -- callers assert absence from both."""
+
+    def test_two_char_bare_word_produces_no_claim(self, ref_index: RefIndex) -> None:
+        body = "Reuse `ec` in `scripts/little_loops/issues/prose_deps.py` for this."
+        assert extract_symbol_claims(body, ref_index) == set()
+
+    def test_short_common_bare_word_produces_no_claim(self, ref_index: RefIndex) -> None:
+        body = "Reuse `codex` in `scripts/little_loops/issues/prose_deps.py` for this."
+        assert extract_symbol_claims(body, ref_index) == set()
+
+    def test_all_lowercase_no_underscore_bare_word_produces_no_claim(
+        self, ref_index: RefIndex
+    ) -> None:
+        """`enabled` -- ≥3 chars but no underscore/internal capital/parens."""
+        body = "Reuse `enabled` in `scripts/little_loops/issues/prose_deps.py` for this."
+        assert extract_symbol_claims(body, ref_index) == set()
+
+    def test_multiword_snake_case_bare_word_still_a_claim(self, ref_index: RefIndex) -> None:
+        """A genuine multi-word snake_case symbol clears the floor."""
+        body = "Reuse `install_qwen_adapter` in `scripts/little_loops/issues/prose_deps.py`."
+        claims = extract_symbol_claims(body, ref_index)
+        assert claims == {
+            SymbolClaim(
+                symbol="install_qwen_adapter",
+                file="scripts/little_loops/issues/prose_deps.py",
+                raw="install_qwen_adapter",
+            )
+        }
+
+    def test_parens_suffix_clears_the_floor(self, ref_index: RefIndex) -> None:
+        body = "Reuse `run` in `scripts/little_loops/issues/prose_deps.py` for this."
+        assert extract_symbol_claims(body, ref_index) == set()
+        body_with_parens = "Reuse `run()` in `scripts/little_loops/issues/prose_deps.py` for this."
+        claims = extract_symbol_claims(body_with_parens, ref_index)
+        assert claims == {
+            SymbolClaim(
+                symbol="run",
+                file="scripts/little_loops/issues/prose_deps.py",
+                raw="run()",
+            )
+        }
+
+    def test_dotted_claim_attr_below_floor_produces_no_claim(self, ref_index: RefIndex) -> None:
+        """`prose_deps.enabled` -- attr fails the floor even though the module
+        resolves, same as the bare-form shape."""
+        body = "Reuse `prose_deps.enabled` for this."
+        assert extract_symbol_claims(body, ref_index) == set()
+
+    def test_dotted_claim_attr_above_floor_still_a_claim(self, ref_index: RefIndex) -> None:
+        """Existing pinned shape (test_dotted_form_extracts_claim) must survive."""
+        body = "Reuse `prose_deps.extract_prose_deps` for writes."
+        claims = extract_symbol_claims(body, ref_index)
+        assert claims == {
+            SymbolClaim(
+                symbol="extract_prose_deps",
+                file="scripts/little_loops/issues/prose_deps.py",
+                raw="prose_deps.extract_prose_deps",
+            )
+        }
+
+
+class TestClaimBreadthCap:
+    """BUG-3194 Finding 1 predicate 2: a symbol resolving in more than N=8
+    tracked files (other than the cited one) is index-pollution breadth, not a
+    genuine mis-attribution -- dropped as a claim, not rerouted."""
+
+    def test_breadth_above_cap_drops_the_claim(self) -> None:
+        idx = SymbolIndex(
+            root=Path("."),
+            _reverse={
+                "completed_at": frozenset(f"file_{n}.py" for n in range(9)),
+            },
+        )
+        assert claim_breadth_exceeds_cap(idx, "cited.py", "completed_at")
+
+    def test_breadth_at_cap_boundary_survives(self) -> None:
+        """N=8 survivors (e.g. `worktree_copy_files`-shaped) must still fire."""
+        idx = SymbolIndex(
+            root=Path("."),
+            _reverse={
+                "worktree_copy_files": frozenset(f"file_{n}.py" for n in range(8)),
+            },
+        )
+        assert not claim_breadth_exceeds_cap(idx, "cited.py", "worktree_copy_files")
+
+    def test_cap_counts_files_other_than_the_cited_one(self) -> None:
+        """The cited file itself must not count toward the cap."""
+        idx = SymbolIndex(
+            root=Path("."),
+            _reverse={"foo": frozenset({"cited.py", *(f"file_{n}.py" for n in range(8))})},
+        )
+        assert not claim_breadth_exceeds_cap(idx, "cited.py", "foo")

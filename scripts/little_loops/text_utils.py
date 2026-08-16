@@ -161,8 +161,26 @@ def extract_file_paths(content: str) -> set[str]:
 RefStatus = Literal["resolved", "stale", "unresolvable_form", "planned_new", "ambiguous"]
 
 # Characters that mark a reference as a glob pattern rather than a literal
-# path (e.g. `skills/*/SKILL.md`) — always unresolvable_form.
-_GLOB_CHARS = frozenset("*?[]")
+# path (e.g. `skills/*/SKILL.md`) — always unresolvable_form. `{`/`}` added
+# (BUG-3194 Finding 2) for brace expansion (`.gemini/skills/{a,b}/SKILL.md`),
+# a shape /ll:wire-issue itself emits — no character-class check can leave it
+# unresolvable_form-classified without this addition.
+_GLOB_CHARS = frozenset("*?[]{}")
+
+# BUG-3194 Finding 2: a non-final path component that itself looks like a
+# filename (has a short alpha extension) means the span is two filenames
+# joined by prose punctuation ("ARCHITECTURE.md/CONTRIBUTING.md" from a title
+# like "ARCHITECTURE.md/CONTRIBUTING.md directory trees list …"), not one
+# path -- the slash is a conjunction. Hidden dot-directories (`.ll/`,
+# `.gemini/`) are excluded by requiring the component not start with `.`, so
+# a genuine ref like `.ll/ll-continue-prompt.md` keeps resolving.
+_EXTENSION_LIKE_COMPONENT_RE = re.compile(r"^[^.].*\.[A-Za-z0-9]{1,6}$")
+
+
+def _has_extension_like_directory_component(ref: str) -> bool:
+    parts = ref.split("/")
+    return any(_EXTENSION_LIKE_COMPONENT_RE.match(part) for part in parts[:-1])
+
 
 # A line-context marker for a not-yet-created file, e.g.
 # "- `scripts/new_thing.py` (new)". Case-insensitive.
@@ -253,10 +271,13 @@ def classify_file_ref(ref: str, index: RefIndex, *, line: str = "") -> RefStatus
 
     Resolution order (not commutative — see ENH-2983 Program Design):
 
-    1. Form checks first — a glob (``skills/*/SKILL.md``), a
-       ``<placeholder>``-bearing path, an outside-repo path (``~/…`` or a
-       leading ``/``), or a bare basename with no ``/`` all return
-       ``unresolvable_form`` immediately. This must run before any
+    1. Form checks first — a glob (``skills/*/SKILL.md``, or brace expansion
+       ``{a,b}/SKILL.md``), a ``<placeholder>``-bearing path, an outside-repo
+       path (``~/…`` or a leading ``/``), a bare basename with no ``/``, or a
+       non-final path component that is itself extension-shaped
+       (``ARCHITECTURE.md/CONTRIBUTING.md`` — two filenames joined by prose,
+       not one path; BUG-3194) all return ``unresolvable_form`` immediately.
+       This must run before any
        suffix matching, or a bare basename like ``SKILL.md`` would
        spuriously suffix-match dozens of unrelated tracked files. The
        outside-repo check matters for the *verdict*, not just efficiency: a
@@ -294,6 +315,8 @@ def classify_file_ref(ref: str, index: RefIndex, *, line: str = "") -> RefStatus
     if ref.startswith(("~", "/")):
         return "unresolvable_form"
     if "/" not in ref:
+        return "unresolvable_form"
+    if _has_extension_like_directory_component(ref):
         return "unresolvable_form"
 
     if line and _PLANNED_NEW_RE.search(line):

@@ -592,6 +592,31 @@ class TestStaleFileRef:
         assert result == 1
         assert "stale_file_ref: scripts/little_loops/session_store.py" in out
 
+    def test_all_states_not_git_tracked_predicate_not_missing(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """BUG-3194 Finding 3: the printed line must state the actual predicate
+        (not git-tracked) rather than implying the file is missing/outdated —
+        a present-but-gitignored file is a correct `stale_file_ref` verdict
+        whose label alone misleads."""
+        self._write_bug_with_ref(
+            format_check_dir,
+            "BUG-9403",
+            "See `scripts/little_loops/session_store.py` for details.",
+        )
+
+        with patch("little_loops.text_utils.subprocess.run", return_value=_EMPTY_GIT_LS_FILES):
+            result = _invoke(
+                ["ll-issues", "format-check", "--all", "--config", str(temp_project_dir)]
+            )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "not git-tracked" in out
+
     def test_all_does_not_report_for_basenames_and_globs_only(
         self,
         temp_project_dir: Path,

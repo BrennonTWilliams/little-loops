@@ -433,6 +433,31 @@ class TestMirrorTieBreak:
         assert suffix_match_candidates("SKILL.md", index) == ["skills/commit/SKILL.md"]
 
 
+class TestMultiComponentAndBraceFormChecks:
+    """BUG-3194 Finding 2: a slash-joined pair or brace-expanded span is not one path."""
+
+    def test_slash_joined_filename_pair_is_unresolvable_form(self) -> None:
+        """ "ARCHITECTURE.md/CONTRIBUTING.md" is two filenames joined by prose, not a path."""
+        index = RefIndex(by_basename={})
+        assert classify_file_ref("ARCHITECTURE.md/CONTRIBUTING.md", index) == "unresolvable_form"
+        assert resolve_ref_path("ARCHITECTURE.md/CONTRIBUTING.md", index) is None
+
+    def test_brace_expansion_span_is_unresolvable_form(self) -> None:
+        index = RefIndex(by_basename={})
+        ref = ".gemini/skills/{capture-issue,scope-epic}/SKILL.md"
+        assert classify_file_ref(ref, index) == "unresolvable_form"
+        assert resolve_ref_path(ref, index) is None
+
+    def test_hidden_dot_directory_component_still_resolves(self) -> None:
+        """A leading dot-directory (`.ll/…`) must not trip the extension-component check."""
+        index = RefIndex(by_basename={"ll-continue-prompt.md": [".ll/ll-continue-prompt.md"]})
+        assert classify_file_ref(".ll/ll-continue-prompt.md", index) == "resolved"
+
+    def test_ordinary_multi_directory_path_still_resolves(self) -> None:
+        index = RefIndex(by_basename={"parallel.py": ["scripts/little_loops/cli/parallel.py"]})
+        assert classify_file_ref("scripts/little_loops/cli/parallel.py", index) == "resolved"
+
+
 class TestClassifyIssueRefs:
     """Tests for classify_issue_refs() over a whole issue body."""
 

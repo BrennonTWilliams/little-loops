@@ -113,6 +113,21 @@ _FILE_PATH_BACKTICK_RE = re.compile(r"^[\w./-]+\.[A-Za-z0-9]{1,6}$")
 # misparsing as a dotted symbol claim against itself.
 _EXTENSION_LIKE_RE = re.compile(r"^[a-z0-9]{1,4}$")
 
+# BUG-3194 Finding 1, predicate 3 ("bare-form floor"): the symbol index admits
+# keyword arguments and local variables (see _MODULE_CONSTANT_RE's BUG-3063 D1
+# comment above), so "resolves elsewhere" is satisfied for essentially any
+# common English word, collapsing mislocated_symbol_ref to noise. A bare or
+# dotted-attr claim under 3 characters, or all-lowercase with no underscore,
+# no internal capital, and no `()` suffix, is overwhelmingly index pollution
+# (`ec`, `codex`, `enabled`) rather than a genuine symbol (`install_qwen_adapter`,
+# `FSMExecutor`, `check_format_gaps()`) -- measured false-negative check found
+# no true positive in the dropped set (§ Expected Behavior). Applied as a claim
+# drop at extraction time, before the exists/resolves branch, so a suppressed
+# claim disappears rather than rerouting into stale_symbol_ref.
+_BARE_FORM_FLOOR_MIN_LEN = 3
+_INTERNAL_CAPITAL_RE = re.compile(r"^.[A-Za-z0-9_]*[A-Z]")
+_HAS_UNDERSCORE_RE = re.compile(r"_")
+
 # Boundaries that start a new attribution scope for the "bare symbol + file
 # path in the same sentence" grammar form: a sentence terminator, a blank
 # line, or a markdown list-item marker (BUG-3057 precedent in prose_deps.py's
@@ -171,6 +186,15 @@ def _sentence_span(body: str, pos: int) -> tuple[int, int]:
     return start, end
 
 
+def _passes_bare_form_floor(symbol: str, has_parens: bool) -> bool:
+    """BUG-3194 Finding 1 predicate 3 -- see the module-level comment above."""
+    if has_parens:
+        return True
+    if len(symbol) < _BARE_FORM_FLOOR_MIN_LEN:
+        return False
+    return bool(_HAS_UNDERSCORE_RE.search(symbol) or _INTERNAL_CAPITAL_RE.match(symbol))
+
+
 def _resolve_module_prefix(module: str, ref_index: RefIndex) -> str | None:
     """Resolve a bare dotted-prefix module token (no ``/``) to a tracked file."""
     candidates = ref_index.by_basename.get(f"{module}.py", [])
@@ -218,6 +242,8 @@ def extract_symbol_claims(body: str, ref_index: RefIndex) -> set[SymbolClaim]:
             module_prefix, symbol = dotted.group(1), dotted.group(2)
             if _EXTENSION_LIKE_RE.match(symbol):
                 continue
+            if not _passes_bare_form_floor(symbol, has_parens=bool(dotted.group(3))):
+                continue
             resolved = _resolve_module_prefix(module_prefix, ref_index)
             if resolved:
                 claims.add(SymbolClaim(symbol=symbol, file=resolved, raw=text))
@@ -226,6 +252,8 @@ def extract_symbol_claims(body: str, ref_index: RefIndex) -> set[SymbolClaim]:
         bare = _BARE_SYMBOL_RE.match(text)
         if bare and not _LINE_NUMBER_REF_RE.match(text):
             symbol = bare.group(1)
+            if not _passes_bare_form_floor(symbol, has_parens=bool(bare.group(2))):
+                continue
             sent_start, sent_end = _sentence_span(body, m.start())
             sentence = body[sent_start:sent_end]
             rel_pos = m.start() - sent_start
@@ -444,3 +472,26 @@ def symbol_resolves_elsewhere(index: SymbolIndex, file: str, symbol: str) -> boo
     a genuinely stale one.
     """
     return bool(index.files_with_symbol(symbol) - {file})
+
+
+# BUG-3194 Finding 1, predicate 2 ("breadth cap"): a symbol resolving as a
+# def-site in a double-digit number of tracked files (`enabled`: 19) is index
+# noise, not a genuine mis-attribution -- N=8 clears that band while keeping
+# `build_streaming()`/`build_blocking_json()` (n=4, real host_runner methods)
+# and the N=8 survivor `worktree_copy_files` (a genuine symbol). Checked at
+# the call site (issue_parser.py), not inside symbol_resolves_elsewhere,
+# because rerouting the claim there would downgrade it into stale_symbol_ref
+# instead of suppressing it -- see § Expected Behavior "The suppression must
+# happen at the claim layer".
+_MISLOCATION_BREADTH_CAP = 8
+
+
+def claim_breadth_exceeds_cap(
+    index: SymbolIndex, file: str, symbol: str, cap: int = _MISLOCATION_BREADTH_CAP
+) -> bool:
+    """Does *symbol* resolve as a def-site in more than *cap* files other than *file*?
+
+    A claim for which this is ``True`` should be dropped before it reaches
+    :func:`symbol_exists_in_file`/:func:`symbol_resolves_elsewhere` (BUG-3194).
+    """
+    return len(index.files_with_symbol(symbol) - {file}) > cap

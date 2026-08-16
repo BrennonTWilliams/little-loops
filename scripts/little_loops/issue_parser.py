@@ -261,7 +261,9 @@ def _section_body_with_offset(content: str, heading: str) -> tuple[str, int] | N
     spans = fence_spans(content)
     pattern = rf"^##\s+{re.escape(heading)}\s*$"
     matches = [
-        m for m in re.finditer(pattern, content, re.MULTILINE) if not in_fence(m.start(), m.end(), spans)
+        m
+        for m in re.finditer(pattern, content, re.MULTILINE)
+        if not in_fence(m.start(), m.end(), spans)
     ]
     if not matches:
         return None
@@ -792,6 +794,7 @@ def check_format_gaps(
 
         if symbol_index is not None:
             from little_loops.issues.symbol_claims import (
+                claim_breadth_exceeds_cap,
                 extract_symbol_claims,
                 symbol_exists_in_file,
                 symbol_resolves_elsewhere,
@@ -801,6 +804,8 @@ def check_format_gaps(
             for claim in sorted(
                 extract_symbol_claims(scoped_content, ref_index), key=lambda c: (c.file, c.symbol)
             ):
+                if claim_breadth_exceeds_cap(symbol_index, claim.file, claim.symbol):
+                    continue
                 if symbol_exists_in_file(symbol_index, claim.file, claim.symbol) is False:
                     if symbol_resolves_elsewhere(symbol_index, claim.file, claim.symbol):
                         gaps.mislocated_symbol_ref.append(

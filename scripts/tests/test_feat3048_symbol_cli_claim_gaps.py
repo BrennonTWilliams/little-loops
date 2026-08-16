@@ -315,6 +315,55 @@ class TestMislocatedSymbolRef:
         assert gaps.mislocated_symbol_ref == []
 
 
+class TestBug3194SuppressionNoReroute:
+    """BUG-3194 Finding 1: suppressed claims must disappear entirely, not
+    reroute from mislocated_symbol_ref into stale_symbol_ref."""
+
+    def test_bare_form_floor_suppression_hits_neither_gap_key(
+        self, tmp_path: Path, repo: Path, ref_index: RefIndex
+    ) -> None:
+        path = _write_issue(
+            tmp_path,
+            "Reuse `enabled` in `scripts/little_loops/issues/prose_deps.py`.",
+        )
+        symbol_index = build_symbol_index(repo)
+        gaps = check_format_gaps(path, ref_index=ref_index, symbol_index=symbol_index)
+        assert gaps.stale_symbol_ref == []
+        assert gaps.mislocated_symbol_ref == []
+
+    def test_breadth_cap_suppression_hits_neither_gap_key(
+        self, tmp_path: Path, repo: Path, ref_index: RefIndex
+    ) -> None:
+        path = _write_issue(
+            tmp_path,
+            "Reuse `does_not_exist_symbol` in `scripts/little_loops/issues/prose_deps.py`.",
+        )
+        symbol_index = build_symbol_index(repo)
+        symbol_index._reverse = {
+            "does_not_exist_symbol": frozenset(f"file_{n}.py" for n in range(9))
+        }
+        gaps = check_format_gaps(path, ref_index=ref_index, symbol_index=symbol_index)
+        assert gaps.stale_symbol_ref == []
+        assert gaps.mislocated_symbol_ref == []
+
+    def test_true_positive_still_fires_after_breadth_cap(
+        self, tmp_path: Path, repo: Path, ref_index: RefIndex
+    ) -> None:
+        """A genuine mis-attribution resolving in a handful of files (below the
+        N=8 cap) must still fire -- the cap must not blanket-suppress."""
+        path = _write_issue(
+            tmp_path,
+            "Reuse `does_not_exist_symbol` in `scripts/little_loops/issues/prose_deps.py`.",
+        )
+        symbol_index = build_symbol_index(repo)
+        symbol_index._reverse = {
+            "does_not_exist_symbol": frozenset({"scripts/little_loops/issues/other.py"})
+        }
+        gaps = check_format_gaps(path, ref_index=ref_index, symbol_index=symbol_index)
+        assert gaps.stale_symbol_ref == []
+        assert any("does_not_exist_symbol" in entry for entry in gaps.mislocated_symbol_ref)
+
+
 class TestBug3201IndexedClaimClasses:
     """BUG-3201 — the two claim classes `_extract_symbols` could not see, driven
     end-to-end through check_format_gaps rather than the resolver alone."""
