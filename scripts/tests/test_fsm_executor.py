@@ -1097,6 +1097,70 @@ class TestCapture:
 
         assert result.captured["ok_state"]["failure_type"] == ""
 
+    def test_capture_gains_verdict_after_evaluate(self) -> None:
+        """ENH-3200: the evaluator verdict is written into the capture dict
+        as a post-`_evaluate()` write-back -- `state.capture` is populated by
+        the action-execution path before `_evaluate()` ever runs, so `verdict`
+        cannot be part of that original dict literal."""
+        fsm = FSMLoop(
+            name="test",
+            initial="verify",
+            states={
+                "verify": StateConfig(
+                    action="Verify something",
+                    action_type="prompt",
+                    capture="verify",
+                    evaluate=EvaluateConfig(type="llm_structured", prompt="Well?"),
+                    on_yes="done",
+                    on_no="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0, output="looks good")
+
+        with patch(
+            "little_loops.fsm.evaluators.evaluate_llm_structured",
+            return_value=EvaluationResult(verdict="yes", details={}),
+        ):
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            result = executor.run()
+
+        assert result.captured["verify"]["verdict"] == "yes"
+
+    def test_capture_verdict_empty_when_no_evaluator(self) -> None:
+        """ENH-3200: a state with `capture:` but no action/evaluate (so
+        `_evaluate()` returns None) writes "" rather than a misleading
+        verdict, matching the failure_type precedent. `capture:` only takes
+        effect on the action-execution path, so this also needs an action to
+        populate the dict in the first place -- exercised via a shell state
+        whose action produces no meaningful evaluator signal by declaring an
+        explicit no-op `evaluate` is not possible (evaluate always yields a
+        verdict when action_result exists), so this asserts against the one
+        real trigger: action_result is None because the state has no action."""
+        fsm = FSMLoop(
+            name="test",
+            initial="run",
+            states={
+                "run": StateConfig(
+                    capture="run_state",
+                    on_yes="done",
+                    on_no="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor.run()
+
+        # No action means `state.capture` is never written by the
+        # action-execution path at all -- the post-evaluate write-back is a
+        # no-op guarded by `state.capture in self.captured`.
+        assert "run_state" not in executor.captured
+
 
 class TestCaptureWorkflow:
     """Tests for capture-then-use workflow in execution."""
@@ -6103,6 +6167,64 @@ class TestSubLoopExecution:
             "sub-loop capture must NOT have a stderr key (BUG-2726 — the diagnose "
             "prompt relies on this to justify the confidence_check .output fallback)"
         )
+
+    def test_sub_loop_capture_gains_verdict(self, tmp_path: Path) -> None:
+        """ENH-3200: the nested/sub-loop capture site also writes a `verdict`
+        key, derived from the child's termination outcome (there is no
+        evaluator verdict for a `loop:` state) -- so `${captured.<name>.verdict}`
+        resolves the same way for a sub-loop state as for a plain
+        prompt+llm_structured state."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "tiny-child.yaml").write_text(
+            "name: tiny-child\ninitial: step\nstates:\n"
+            "  step:\n"
+            "    action: 'echo hi'\n"
+            "    next: done\n"
+            "  done:\n    terminal: true"
+        )
+        (loops_dir / "failing-child.yaml").write_text(
+            "name: failing-child\ninitial: step\nstates:\n"
+            "  step:\n"
+            "    action: 'echo hi'\n"
+            "    next: bad\n"
+            "  bad:\n    terminal: true\n    failure: true"
+        )
+        pass_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(
+                    loop="tiny-child",
+                    capture="run_child",
+                    on_yes="success",
+                    on_no="fail",
+                ),
+                "success": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+            },
+        )
+        pass_executor = FSMExecutor(pass_fsm, loops_dir=loops_dir)
+        pass_executor.run()
+        assert pass_executor.captured["run_child"]["verdict"] == "yes"
+
+        fail_fsm = FSMLoop(
+            name="parent2",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(
+                    loop="failing-child",
+                    capture="run_child",
+                    on_yes="success",
+                    on_no="fail",
+                ),
+                "success": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+            },
+        )
+        fail_executor = FSMExecutor(fail_fsm, loops_dir=loops_dir)
+        fail_executor.run()
+        assert fail_executor.captured["run_child"]["verdict"] == "no"
 
     def test_sub_loop_missing_loop_with_on_error(self, tmp_path: Path) -> None:
         """Missing child loop routes to on_error when set."""

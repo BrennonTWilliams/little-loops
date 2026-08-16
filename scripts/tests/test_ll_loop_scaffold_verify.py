@@ -3,16 +3,23 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from little_loops.cli.loop.scaffold_verify import (
     PREPATCH_CHECK_STATE_EXAMPLE,
+    _adversarial_states,
+    _criteria_states,
     scaffold_verify,
 )
 from little_loops.config import BRConfig
-from little_loops.issue_parser import IssueParser
+from little_loops.fsm.evaluators import EvaluationResult
+from little_loops.fsm.executor import ActionResult, FSMExecutor
+from little_loops.fsm.schema import FSMLoop
+from little_loops.issue_parser import CriterionSlot, IssueParser
 
 
 def _make_project(tmp_path: Path) -> None:
@@ -215,3 +222,175 @@ class TestPrepatchCheckStateExample:
         adversarial_result = scaffold_verify("FEAT-303", adversarial=True)
         assert "prepatch_check" not in criteria_result.yaml_text
         assert "prepatch_check" not in adversarial_result.yaml_text
+
+
+class TestCriteriaModeNoShortCircuit:
+    """ENH-3200: every criterion routes forward regardless of verdict, ending
+    at an aggregate state that names every criterion that did not pass."""
+
+    def test_no_route_points_at_failed_terminal(self) -> None:
+        """AC1/AC5: on_no/on_partial/on_error/on_blocked never point at the
+        shared `failed` terminal anymore -- only the aggregate state does."""
+        criteria = [
+            CriterionSlot(
+                index=i + 1, source_text=f"C{i + 1}", state_name=f"verify-criterion-{i + 1}"
+            )
+            for i in range(3)
+        ]
+        states = _criteria_states(criteria, "FEAT-400")
+        for i in (1, 2):
+            state = states[f"verify-criterion-{i}"]
+            assert state.on_no == f"verify-criterion-{i + 1}"
+            assert state.on_partial == f"verify-criterion-{i + 1}"
+            assert state.on_error == f"verify-criterion-{i + 1}"
+            assert state.on_blocked == f"verify-criterion-{i + 1}"
+
+    def test_last_criterion_routes_to_aggregate(self, project: Path) -> None:
+        _write_issue(project, "FEAT-401", ["First", "Second"])
+        result = scaffold_verify("FEAT-401", adversarial=False)
+        assert "on_yes: verify-aggregate" in result.yaml_text
+        assert "on_no: verify-aggregate" in result.yaml_text
+
+    def test_aggregate_state_is_shell_output_contains(self, project: Path) -> None:
+        _write_issue(project, "FEAT-402", ["First", "Second"])
+        result = scaffold_verify("FEAT-402", adversarial=False)
+        assert "verify-aggregate" in result.yaml_text
+        assert "output_contains" in result.yaml_text
+
+    def test_criteria_states_declare_capture(self, project: Path) -> None:
+        _write_issue(project, "FEAT-403", ["First", "Second"])
+        result = scaffold_verify("FEAT-403", adversarial=False)
+        assert "capture: verify-criterion-1" in result.yaml_text
+        assert "capture: verify-criterion-2" in result.yaml_text
+
+    def test_old_shape_loop_still_validates(self, project: Path) -> None:
+        """AC7: an old-shape generated loop (on_no/on_partial routed straight
+        to a shared `failed` terminal, no aggregate state) still validates and
+        is runnable -- this issue changes only what NEW generations emit."""
+        from little_loops.fsm.validation import ValidationSeverity, validate_fsm
+
+        old_shape = FSMLoop.from_dict(
+            {
+                "name": "old-shape-verify",
+                "initial": "verify-criterion-1",
+                "states": {
+                    "verify-criterion-1": {
+                        "action": "Verify criterion 1",
+                        "action_type": "prompt",
+                        "evaluate": {"type": "llm_structured", "prompt": "Well?"},
+                        "on_yes": "done",
+                        "on_no": "failed",
+                        "on_partial": "failed",
+                    },
+                    "done": {"terminal": True},
+                    "failed": {"terminal": True, "failure": True},
+                },
+            }
+        )
+        errors = validate_fsm(old_shape)
+        hard_errors = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert hard_errors == []
+
+
+class TestAdversarialModeNoShortCircuit:
+    """ENH-3200 Decision #3: adversarial probes get the same treatment."""
+
+    def test_no_route_points_at_failed_with_finding(self) -> None:
+        states = _adversarial_states("FEAT-410", "Some Title")
+        assert states["probe-boundary"].on_no == "probe-malformed-hostile"
+        assert states["probe-malformed-hostile"].on_no == "probe-failure-mode"
+        assert states["probe-failure-mode"].on_no == "count_probes"
+
+    def test_count_probes_routes_on_yes_to_probe_aggregate(self, project: Path) -> None:
+        _write_issue(project, "FEAT-411", ["Criterion"])
+        result = scaffold_verify("FEAT-411", adversarial=True)
+        assert "probe-aggregate" in result.yaml_text
+
+    def test_probe_states_declare_capture(self, project: Path) -> None:
+        _write_issue(project, "FEAT-412", ["Criterion"])
+        result = scaffold_verify("FEAT-412", adversarial=True)
+        for name in ("probe-boundary", "probe-malformed-hostile", "probe-failure-mode"):
+            assert f"capture: {name}" in result.yaml_text
+
+
+class TestAggregateExecutionEndToEnd:
+    """ENH-3200 AC1/AC3/AC4/AC8: run the generated criteria chain through the
+    real FSMExecutor with a real bash subprocess for the aggregate state's
+    shell action, proving the guarded ${captured...} interpolation and the
+    no-short-circuit routing actually work together at runtime, not just in
+    the generator's static YAML shape."""
+
+    class _Runner:
+        """Runs the aggregate's bash verbatim; no-ops every other action."""
+
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def run(
+            self, action: str, timeout: int, is_slash_command: bool, **kwargs: object
+        ) -> ActionResult:
+            del timeout, is_slash_command, kwargs
+            self.calls.append(action)
+            if action.strip().startswith("FAILURES="):
+                proc = subprocess.run(
+                    ["bash", "-c", action], capture_output=True, text=True, timeout=10
+                )
+                return ActionResult(
+                    output=proc.stdout, stderr=proc.stderr, exit_code=proc.returncode, duration_ms=1
+                )
+            return ActionResult(output="", stderr="", exit_code=0, duration_ms=1)
+
+    def _run_3_criteria(self, verdicts: list[str]) -> tuple[object, list[str]]:
+        criteria = [
+            CriterionSlot(
+                index=i + 1,
+                source_text=f"Criterion {i + 1}",
+                state_name=f"verify-criterion-{i + 1}",
+            )
+            for i in range(3)
+        ]
+        states = _criteria_states(criteria, "FEAT-999")
+        fsm = FSMLoop(name="test-aggregate", initial="verify-criterion-1", states=states)
+        runner = self._Runner()
+        results = [EvaluationResult(verdict=v, details={}) for v in verdicts]
+        with patch("little_loops.fsm.evaluators.evaluate_llm_structured", side_effect=results):
+            executor = FSMExecutor(fsm, action_runner=runner)
+            result = executor.run()
+        return result, runner.calls
+
+    def test_all_criteria_evaluated_despite_early_failure(self) -> None:
+        """AC1: criterion 1 fails but criteria 2 and 3 still run."""
+        result, calls = self._run_3_criteria(["no", "yes", "yes"])
+        criterion_calls = [c for c in calls if c.startswith("Verify acceptance criterion")]
+        assert len(criterion_calls) == 3
+
+    def test_aggregate_names_every_failing_criterion(self) -> None:
+        """AC3: a run with multiple failures reports all of them, not just one."""
+        result, _ = self._run_3_criteria(["no", "yes", "no"])
+        # The aggregate state has no `capture:` of its own; assert against
+        # each criterion's individually captured verdict and the terminal
+        # the run actually reached instead.
+        assert result.captured["verify-criterion-1"]["verdict"] == "no"
+        assert result.captured["verify-criterion-2"]["verdict"] == "yes"
+        assert result.captured["verify-criterion-3"]["verdict"] == "no"
+        assert result.terminated_by == "terminal"
+        assert result.failure_terminal is True
+
+    def test_all_pass_reaches_done_not_failed(self) -> None:
+        """AC4: failure=False only when every criterion passes."""
+        result, _ = self._run_3_criteria(["yes", "yes", "yes"])
+        assert result.failure_terminal is False
+
+    def test_any_fail_reaches_failed(self) -> None:
+        """AC4: failure=True if any criterion did not pass."""
+        result, _ = self._run_3_criteria(["yes", "no", "yes"])
+        assert result.failure_terminal is True
+
+    def test_error_verdict_does_not_short_circuit(self) -> None:
+        """AC8: an `error` verdict on criterion 1 still lets 2 and 3 run, and
+        is counted as not-passed rather than terminating the run."""
+        result, calls = self._run_3_criteria(["error", "yes", "yes"])
+        criterion_calls = [c for c in calls if c.startswith("Verify acceptance criterion")]
+        assert len(criterion_calls) == 3
+        assert result.captured["verify-criterion-1"]["verdict"] == "error"
+        assert result.failure_terminal is True

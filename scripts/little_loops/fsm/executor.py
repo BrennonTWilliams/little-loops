@@ -1066,6 +1066,21 @@ class FSMExecutor:
         if child_result.failure_terminal:
             self.captured[self.current_state]["failure_terminal"] = child_result.failure_terminal
 
+        # ENH-3200: write a verdict into the state.capture dict for nested/sub-loop
+        # states too, so `${captured.<name>.verdict}` resolves the same way it does
+        # for a plain prompt+llm_structured state. There is no evaluator verdict
+        # here -- it is derived from the child's termination outcome. Uses
+        # setdefault so the key exists even when the child_events capture block
+        # above didn't run (empty child_events).
+        if state.capture:
+            if child_result.terminated_by == "terminal":
+                _child_verdict = "no" if child_result.failure_terminal else "yes"
+            elif child_result.terminated_by == "error":
+                _child_verdict = "error"
+            else:
+                _child_verdict = "no"
+            self.captured.setdefault(state.capture, {})["verdict"] = _child_verdict
+
         # Route based on child termination reason and the child's explicit
         # failure flag (ENH-2814) — not a re-derived "is it named done?" check.
         if child_result.terminated_by == "terminal":
@@ -1895,6 +1910,16 @@ class FSMExecutor:
 
         # Route based on verdict
         verdict = eval_result.verdict if eval_result else "yes"
+
+        # ENH-3200: write the evaluator verdict back into the already-populated
+        # capture dict. The capture write above (state.capture block) runs before
+        # _evaluate(), so no verdict exists at that point -- this is a second,
+        # post-evaluation write into the same dict. Tolerates state.capture being
+        # unset (most states) and eval_result being None (no evaluator declared),
+        # writing "" rather than a misleading value, matching the failure_type
+        # empty-string precedent above.
+        if state.capture and state.capture in self.captured:
+            self.captured[state.capture]["verdict"] = eval_result.verdict if eval_result else ""
 
         # Stall detection (FEAT-1637 + ENH-2245). Record this transition's triple and
         # check whether the last `window` triples are identical (consecutive), or
