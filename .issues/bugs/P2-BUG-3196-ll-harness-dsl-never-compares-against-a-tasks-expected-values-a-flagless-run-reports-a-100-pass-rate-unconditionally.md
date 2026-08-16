@@ -9,7 +9,6 @@ testable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T18:44:20Z'
-blocked_by: [ENH-3185]
 ---
 
 # BUG-3196: ll-harness dsl never compares against a task's expected: values — a flagless run reports a 100% pass rate unconditionally
@@ -37,6 +36,10 @@ What ENH-3185 already changed, and what it means here:
   (`:755-761`).
 - `semantic_passed` in the `dsl-task` telemetry row is already abstain-aware
   (`None if rc == 3 else rc == 0`, `:744`).
+
+The `blocked_by: [ENH-3185]` frontmatter edge was **removed 2026-08-16** — ENH-3185 is
+`done`, but the unresolved edge still rendered as "Blocked by: ENH-3185" in
+`ll-issues show` and risked scheduling tools skipping the issue.
 
 Consequences for this issue's scope, resolved below rather than left to the implementer:
 the `wilson_ci` n=0 crash is **already fixed** (Current Behavior corrected), the "ungraded"
@@ -167,6 +170,11 @@ batch runner that is supposed to derive its own per-task verdict.
 - Retrofitting a schema validator onto task YAML files. Malformed `expected` blocks surface
   as grading failures, not as a separate lint.
 
+  **Qualified 2026-08-16.** That statement only holds once the task file *parses*, which it
+  is not guaranteed to do today — see **Decision: a malformed task file must not kill the
+  run**. Making a malformed task grade FAIL-and-continue is in scope; a standalone schema
+  lint is not.
+
 ## Proposed Solution
 
 ### Decision: how the model's answer is compared to `expected`
@@ -229,17 +237,52 @@ specified above.** The discriminator is *who can fix it*:
   meaning, and it is precisely the false-confidence failure this issue exists to remove — so
   it must not be reportable as a soft "inconclusive".
 
-Concretely, `cmd_dsl` maintains **three** exclusion-worthy counters — `ungraded_count`,
-`abstain_count`, `unparseable_count` (the last counts as a failure and stays *in* the
-denominator) — and resolves the run's exit code by this precedence, highest first:
+Concretely, `cmd_dsl` maintains **four** exclusion-worthy counters — `ungraded_count`,
+`abstain_count`, `errored_count` (see the next Decision), `unparseable_count` (the last
+counts as a failure and stays *in* the denominator) — and resolves the run's exit code by
+this precedence, highest first:
 
 | Condition | Exit | Notes |
 |---|---|---|
 | every task ungraded | `2` | configuration error; never calls `wilson_ci` |
+| ≥1 infra-errored task (per-task rc `2`) | `2` | next Decision; never a model-quality signal |
 | ≥1 graded failure (mismatch or unparseable) | `1` | |
 | ≥1 ungraded task | `1` | partial measurement is not a pass |
 | ≥1 abstention, no failure, no ungraded | `3` | **behavior change — see below** |
 | all graded, all passed | `0` | |
+
+### Decision: a per-task infra error (rc `2`) is excluded from the denominator
+
+**Gap found 2026-08-16, pre-implementation review.** Earlier drafts enumerated
+`pass / fail / ungraded / abstain / unparseable` and never said where a task whose *host
+CLI* failed goes. There is a fifth outcome and it is reachable today:
+`_evaluate_and_report` returns `2` from two guards that fire **before** any grading runs
+(`harness.py:415-419`):
+
+```python
+if result.timed_out:  ... return 2, HarnessEvalOutcome(passed=False, ...)
+if result.error is not None: ... return 2, HarnessEvalOutcome(passed=False, ...)
+```
+
+Today `cmd_dsl` handles only `rc == 0` and `rc == 3` (`harness.py:733-738`), so an rc `2`
+task increments neither `pass_count` nor `abstain_count` while still incrementing `total`
+— it lands in the Wilson denominator as a **failure**. A host CLI timeout is therefore
+scored as a wrong model answer. That is the same class of confidently-wrong measurement
+this issue exists to remove, so it is fixed here rather than left as a separate issue.
+
+**Rule.** A per-task rc `2` increments `errored_count`, is excluded from **both** the
+numerator and the denominator (like `ungraded` and `abstained`), is reported on its own
+line, and makes the run exit `2`. Rationale for the exit code: an infra error is neither
+a model failure (`1`) nor an honest non-verdict (`3`); it is the same "this run did not
+measure what you asked" class as the all-ungraded case, and `_evaluate_and_report`
+already spends `2` on exactly this meaning at the per-task level. Propagating it keeps
+one definition of `2` across both levels.
+
+**`2` is already overloaded at the run level and that stays true.** `cmd_dsl` returns `2`
+today for a missing path (`harness.py:676`) and for an empty task directory (`:680`).
+Adding all-ungraded and any-errored to that set is consistent — every `2` means "the run
+could not produce a measurement" — but the meanings must be enumerated together in
+`CLI.md` rather than accreting silently. See Integration Map.
 
 **Correction 2026-08-16: the partial-abstention row is a behavior CHANGE, not a
 preservation.** An earlier draft annotated it "ENH-3185 behavior, preserved verbatim." That
@@ -263,6 +306,32 @@ Only the *all*-abstained case is genuinely preserved verbatim (`ci_total == 0` �
 containing "abstained" → `3`). The new all-ungraded case is a separate branch returning `2`.
 A set that is entirely a mix of abstained and ungraded tasks hits the all-ungraded branch
 only if `ungraded_count == total`; otherwise it falls through to the `≥1 ungraded → 1` row.
+
+### Decision: a malformed task file must not kill the run
+
+**Gap found 2026-08-16, pre-implementation review.** `cmd_dsl`'s per-task loop opens and
+parses each file with no guard (`harness.py:709-712`), and `DslTask.from_dict` indexes
+`data["prompt"]` unconditionally (`harness.py:175`). So any of these raises out of the
+loop and aborts the **whole set** with a traceback, before the aggregate `harness_events`
+row is ever updated:
+
+- unparseable YAML → `yaml.YAMLError`
+- a task file with no `prompt:` key → `KeyError`
+- a top-level scalar/list instead of a mapping → `TypeError`
+
+There is a second, quieter case that reaches the new grading path rather than the loader:
+`expected` is typed `dict[str, str]` but populated by a bare `data.get("expected") or {}`
+(`harness.py:178`), so `expected: [a, b]` or `expected: somestring` yields a list/str that
+`_grade_expected` will iterate wrongly or raise on.
+
+**Rule.** Wrap per-task load in a `_load_task(path) -> DslTask | None` helper. On any
+load/shape error it returns `None`; the task grades **FAIL**, is counted in the
+denominator, is reported distinguishably (`malformed task file`), and the loop
+**continues** to the next file. `_grade_expected` additionally treats a non-mapping
+`expected` as a malformed task rather than raising. This is the same reasoning as the
+`UNPARSEABLE` answer decision: a task the runner cannot grade because of how it was
+authored must be visible as a task-authoring failure, never as a crash and never as a
+silent skip.
 
 ### Normalization
 
@@ -314,6 +383,7 @@ class GradeStatus(Enum):
     FAIL = "fail"                # answer parsed, >=1 key mismatched
     UNPARSEABLE = "unparseable"  # expected declared, no answer object recovered -> counts FAIL
     UNGRADED = "ungraded"        # no expected and no --semantic -> excluded from denominator
+    MALFORMED = "malformed"      # task file unloadable / expected not a mapping -> counts FAIL
 ```
 
 - `@dataclass(frozen=True) class ExpectedGrade` — the result of comparing one response
@@ -349,7 +419,12 @@ class ExpectedGrade:
   answer.
 
 - `_grade_expected(stdout: str, expected: dict[str, str]) -> ExpectedGrade` — pure function
-  over the two inputs; no I/O, directly unit-testable.
+  over the two inputs; no I/O, directly unit-testable. A non-mapping `expected` returns
+  `GradeStatus.MALFORMED` rather than raising (see § Decision: a malformed task file).
+
+- `_load_task(path: Path) -> DslTask | None` — parses one task YAML, returning `None` on
+  `yaml.YAMLError`, a missing `prompt:` key, or a non-mapping document. Exists so a single
+  bad file grades FAIL instead of aborting the set with a traceback.
 
 - `_run_prompt_action(target: str, args: argparse.Namespace) -> tuple[RunnerResult, int]` —
   extracted from `cmd_prompt`'s body (`harness.py:638-647`): builds the `ActionSpec`, calls
@@ -407,35 +482,41 @@ cmd_dsl(args)
   ├─ load task files (unchanged)
   ├─ write aggregate harness_events row -> aggregate_id  (unchanged, harness.py:687-707)
   └─ for each task_file:
-       task = DslTask.from_dict(...)
+       task = _load_task(task_file)          # returns None on malformed YAML -> FAIL, continue
        prompt_text = task.prompt + _answer_contract_suffix(task.blanks, task.expected)
        result, duration_ms = _run_prompt_action(prompt_text, task_args)
        grade = (_grade_expected(result.stdout, task.expected) if task.expected
                 else ExpectedGrade(UNGRADED|None-sentinel per args.semantic))
        rc, outcome = _evaluate_and_report(label, result, task_args, expected_grade=grade)
        tally into graded_pass / graded_total / ungraded_count
-                 / abstain_count (ENH-3185, rc == 3) / unparseable_count
+                 / abstain_count (ENH-3185, rc == 3) / errored_count (rc == 2)
+                 / unparseable_count
        _record_harness_event(runner="dsl-task",
                              exit_code=result.exit_code,      # host rc, not evaluation rc
                              semantic_verdict=outcome.verdict, # no longer hardcoded None
                              semantic_passed=None if outcome.abstained else outcome.passed,
                              timed_out=result.timed_out, ...)
   ├─ if ungraded_count == total: print explanation, return 2   (never reaches wilson_ci)
-  ├─ if graded_total == 0:  # every remaining task abstained — ENH-3185's existing branch
-  │    print "DSL pass-rate: n/a (all N task(s) abstained)"; return 3
+  ├─ if graded_total == 0:      # nothing left to put in a denominator
+  │    if errored_count > 0: print "n/a (N task(s) errored)"; return 2
+  │    print "DSL pass-rate: n/a (all N task(s) abstained)"; return 3  # ENH-3185's branch
   ├─ lo, hi = wilson_ci(graded_pass, graded_total)
   ├─ UPDATE harness_events SET exit_code=?, semantic_passed=? WHERE id=aggregate_id
   └─ resolve exit code per the Decision: exit codes table
-     (failure -> 1, ungraded_count > 0 -> 1, abstain_count > 0 -> 3, else 0)
+     (errored_count > 0 -> 2, failure -> 1, ungraded_count > 0 -> 1,
+      abstain_count > 0 -> 3, else 0)
 ```
 
-`graded_total` counts tasks that a check actually adjudicated: it excludes both
-`ungraded_count` and `abstain_count`, and includes `unparseable_count` (which grades FAIL).
-The two empty-denominator branches are ordered ungraded-first so that a wholly
-mis-configured run reports the actionable `2` rather than the softer `3`. Keep the word
-"abstained" in the abstain branch's message — `test_cmd_dsl_all_abstain_excludes_from_ci_and_exits_3`
-(`test_cli_harness.py:1085-1103`) asserts `"abstained" in out` (substring, not the full
-string).
+`graded_total` counts tasks that a check actually adjudicated: it excludes
+`ungraded_count`, `abstain_count`, and `errored_count`, and includes `unparseable_count`
+(which grades FAIL).
+The empty-denominator branches are ordered ungraded-first, then errored, then abstained,
+so that a wholly mis-configured or wholly-broken run reports the actionable `2` rather
+than the softer `3`. Keep the word "abstained" in the abstain branch's message —
+`test_cmd_dsl_all_abstain_excludes_from_ci_and_exits_3` (`test_cli_harness.py:1085-1103`)
+asserts `"abstained" in out` (substring, not the full string); the errored branch must
+therefore **not** reuse that word, or a set that wholly errored would satisfy the
+abstention test's assertion.
 
 ### Hazard: `_extract_answer_object`'s bare-brace fallback can capture a non-answer object
 
@@ -532,6 +613,16 @@ the prose Expected Behavior does not give those individual pass/fail boundaries.
    the `ci_total == 0` path and would pass either way. The new test must have a non-empty
    denominator (≥1 passing task alongside the abstaining one) to exercise the flip, and the
    CHANGELOG/`CLI.md` exit-code documentation must record it.
+5d. **A per-task infra error (rc `2`) is excluded from numerator and denominator, reported
+   on its own line, and makes the run exit `2`.** Drive a task whose `RunnerResult` has
+   `timed_out=True` (or a non-`None` `error`) and assert it does **not** appear in the
+   Wilson denominator — today it silently counts as a failure. A set in which every task
+   errors exits `2` with a message that does **not** contain the word "abstained".
+5e. **A malformed task file grades FAIL and the run continues.** Three cases, each its own
+   test: unparseable YAML, a file with no `prompt:` key, and `expected:` that is not a
+   mapping. In all three the run completes, reports the task distinguishably as a malformed
+   task, counts it in the denominator, and exits `1` — no traceback escapes `cmd_dsl`, and
+   the remaining tasks in the set still run.
 6. When a task declares `expected` **and** `--semantic` is passed, the per-task outcome
    follows the truth table under Program Design § Interaction with abstention. Specifically:
    an `expected` mismatch is a **hard FAIL that outranks abstention** (mismatch + abstain →
@@ -549,6 +640,10 @@ the prose Expected Behavior does not give those individual pass/fail boundaries.
 10. Each `dsl-task` `harness_events` row records the **host process** exit code
     (`result.exit_code`), not the evaluation rc, and records the real `semantic_verdict` when
     `--semantic` was passed.
+10a. The same row records the real `timed_out` value (`result.timed_out`). It is hardcoded
+    `timed_out=False` today (`harness.py:741`), so a timed-out DSL task is currently
+    indistinguishable from a completed one in telemetry. Pinned by its own assertion —
+    the Call Path change alone is not enough to guarantee it lands.
 10b. A DSL task writes **exactly one** per-task `harness_events` row (`runner="dsl-task"`).
     The `runner="prompt"` row that `cmd_prompt` writes per task today is gone, because
     `cmd_dsl` no longer calls `cmd_prompt` — see Program Design § Consequence. A test asserts
@@ -597,7 +692,11 @@ the prose Expected Behavior does not give those individual pass/fail boundaries.
 - `docs/guides/EVALUATION_GUIDE.md` — `:104-108` (the "read the DSL gotcha" pointer) and the
   DSL gotcha at `:409-414` must be rewritten; the sample output at `:97` gains the new lines.
 - `docs/reference/CLI.md:190,209,220-221` — the `dsl` row, the dsl-specific flag block, and
-  the examples need the grading semantics and the new exit-code meanings.
+  the examples need the grading semantics and the new exit-code meanings. **Enumerate all
+  meanings of exit `2` in one place** rather than letting them accrete: path not found
+  (`harness.py:676`), empty task directory (`:680`), every task ungradable (new), and ≥1
+  per-task infra error (new). The unifying statement is "the run could not produce a
+  measurement" — write that, then list the four triggers.
 - `.ll/history.db` `harness_events` — row *shape* is unchanged, but both the values and the
   row *count* change:
   - the values written for `dsl-task` / `dsl` rows change (AC10, AC11);
@@ -614,9 +713,10 @@ the prose Expected Behavior does not give those individual pass/fail boundaries.
    in § Baseline were verified against that commit; re-verify if other work lands in
    `harness.py` first.
 1. Add `GradeStatus`, `ExpectedGrade`, `_normalize_answer`, `_extract_answer_object`,
-   `_grade_expected`, `_answer_contract_suffix` — pure functions, unit-tested first (TDD is
-   on for this repo). `_extract_answer_object` implements the key-set-intersection
-   constraint on its bare-brace fallback (AC2b).
+   `_grade_expected`, `_answer_contract_suffix`, `_load_task` — pure functions, unit-tested
+   first (TDD is on for this repo). `_extract_answer_object` implements the
+   key-set-intersection constraint on its bare-brace fallback (AC2b); `_load_task` and
+   `_grade_expected` implement the malformed-task rule (AC5e).
 2. Extract `_run_prompt_action` from `cmd_prompt`; assert `cmd_prompt` behavior is unchanged.
 3. Add the keyword-only `expected_grade` parameter to `_evaluate_and_report` and thread it
    into `passed`, the status block, and the JSON payload.
@@ -652,6 +752,13 @@ the prose Expected Behavior does not give those individual pass/fail boundaries.
   flagless runs now exit nonzero instead of reporting a false 100%, which is the point.
 - **Breaking Change**: No - though previously-green DSL runs will start reporting real
   (lower) pass rates, and flagless runs over `expected`-less sets will start exiting `1`.
+- **Measurement discontinuity (noted 2026-08-16)**: pre-fix and post-fix pass rates are not
+  comparable *even for the same model on the same task set*, and not only because grading
+  turns on. `_answer_contract_suffix` changes the **prompt text itself** for every task
+  declaring `expected` — the model is being asked a different question (produce a fenced
+  `json` answer object) than it was before. This is distinct from, and additional to, the
+  telemetry-boundary discontinuity recorded under Integration Map. Any longitudinal DSL
+  tracking must treat the fix as a hard baseline reset rather than a continuation.
 
 ## Related Key Documentation
 
