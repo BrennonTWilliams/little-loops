@@ -10,11 +10,11 @@ discovered_date: '2026-08-15'
 labels:
 - verification
 - fsm
-confidence_score: 95
-outcome_confidence: 78
+confidence_score: 100
+outcome_confidence: 93
 score_complexity: 18
 score_test_coverage: 25
-score_ambiguity: 10
+score_ambiguity: 25
 score_change_surface: 25
 ---
 
@@ -179,6 +179,7 @@ _Both gaps below were addressed in the 2026-08-15 second-pass review — a `## P
 - Open Decision #3 (whether `_adversarial_states()` gets the same no-short-circuit treatment) has no stated default or lean, unlike Decisions #1 and #2 which each carry an explicit recommendation/assumed default — pick one explicitly before implementation to avoid a half-changed adversarial mode.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-16T00:17:33 - `64e9e21e-d2d6-44cd-97cd-d980a3cc037d.jsonl`
 - Pre-implementation review (third pass) - 2026-08-15 - verified all cited executor/generator line refs against current code; corrected the Program Design aggregate-state shape (non-terminal evaluating state routing `on_yes → done` / `on_no → failed` — `failure` is a static YAML bool, so `terminal=True` with a computed value was unimplementable); replaced the stale `templates.md` Integration Map item with the real prose-sync targets inside `scaffold_verify.py` (module docstring 4-8, `PREPATCH_CHECK_STATE_EXAMPLE` 42-55, "fails fast" description string 232-233, `_PROBES` annotation 90-91); updated `CriterionSlot` ref 1722 → 1741 (drifted via 72fb87ea); added the guarded-interpolation Decision Rule (`:default=`/`?` refs, MR-7 trap) and the AC8 infra-error side-effect note (surface `failure_type` in the aggregate). Confirmed no decision remains open and MR-1..MR-6 meta-loop rules do not apply.
 - Pre-implementation review (batch) - 2026-08-15 - formalized the three open decisions as resolved (capture write-back option (a); `on_partial` stays failure; adversarial mode fixed in the same change); added AC8: `error`/`blocked` verdicts must not short-circuit the chain either — criterion states gain `on_error`/`on_blocked` routes to the next criterion, outcome recorded and counted toward `failure=True`.
 - `/ll:decide-issue` - 2026-08-15T22:32:38 - `1722f1f7-02d5-4af2-b8ec-39c8c40ec8ac.jsonl`

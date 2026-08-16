@@ -8,6 +8,12 @@ testable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T23:12:33Z'
+confidence_score: 98
+outcome_confidence: 84
+score_complexity: 22
+score_test_coverage: 22
+score_ambiguity: 15
+score_change_surface: 25
 ---
 
 # ENH-3206: research_triage._section_text is a third fence-unaware section-heading reimplementation
@@ -119,3 +125,7 @@ Explicitly **out of scope**:
 ## Status
 
 **Open** | Created: 2026-08-15 | Priority: P3
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-08-16T00:17:33 - `64e9e21e-d2d6-44cd-97cd-d980a3cc037d.jsonl`

@@ -12,7 +12,7 @@ decision_needed: false
 depends_on:
 - BUG-3202
 captured_at: '2026-08-15T18:16:50Z'
-confidence_score: 85
+confidence_score: 95
 outcome_confidence: 75
 score_complexity: 14
 score_test_coverage: 25
@@ -483,7 +483,7 @@ _Added by `/ll:refine-issue` — 2026-08-15 — based on codebase analysis:_
 
 _Added by `/ll:confidence-check` on 2026-08-15_
 
-**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Readiness Score**: 95/100 → PROCEED
 **Outcome Confidence**: 75/100 → MODERATE
 
 ### Concerns
@@ -500,6 +500,7 @@ _Added by `/ll:confidence-check` on 2026-08-15_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-08-16T00:17:02 - `64e9e21e-d2d6-44cd-97cd-d980a3cc037d.jsonl`
 - Pre-implementation review - 2026-08-15 - Verified all claims against main and reproduced the bug via `render_issue_preview` (dry-run). Refreshed four drifted line cites (issue_parser.py `_section_body_with_offset` now :240-278 with `matches[-1]` at :268; call sites :1270/:1338/:1347; session_log.py footer anchor at :327-330, function def :273; issue_template.py title heading :167). Corrected the false "single ordering table" claim — `Steps to Reproduce`/`Root Cause` live in `type_sections`, not `common_sections` — and pinned the interleaving rule (common order, type/unknown sections inserted before Related Key Documentation/Labels/Session Log/Status), scoped the Status-last AC to the merge output/`minimal` variant, and scoped the Session Log second-to-last assertion to "when present".
 - Pre-implementation review (batch) - 2026-08-15 - BUG-3202 dependency now satisfied (completed; `fence_spans`/`in_fence` verified on main); refreshed stale "until BUG-3202 lands" text; promoted the preamble (fold into Summary) and Status/Session Log (always regenerate) decide-and-pin items to decisions; marked the confidence-check dependency concern resolved.
 - `/ll:confidence-check` - 2026-08-15T20:37:35 - `3bed080b-17e6-4060-904f-398efef7735c.jsonl`
