@@ -900,7 +900,7 @@ class TestConfigSchema:
 
     def test_orchestration_disable_background_tasks_in_schema(self) -> None:
         """FEAT-3078: orchestration.disable_background_tasks must be declared,
-        boolean, and default-on (mirrors test_orchestration_host_cli_in_schema).
+        boolean, and default-off (mirrors test_orchestration_host_cli_in_schema).
         """
         data = json.loads(_load_schema_text())
         orch = data["properties"]["orchestration"]
@@ -909,7 +909,7 @@ class TestConfigSchema:
         )
         flag = orch["properties"]["disable_background_tasks"]
         assert flag["type"] == "boolean"
-        assert flag["default"] is True
+        assert flag["default"] is False
 
     def test_epics_removed_from_schema(self) -> None:
         """ENH-2544 (Option B): `epics` must be absent from config-schema.json.

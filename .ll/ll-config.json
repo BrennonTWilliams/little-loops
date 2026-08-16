@@ -130,6 +130,7 @@
     }
   },
   "orchestration": {
-    "host_cli": "claude-code"
+    "host_cli": "claude-code",
+    "disable_background_tasks": false
   }
 }
