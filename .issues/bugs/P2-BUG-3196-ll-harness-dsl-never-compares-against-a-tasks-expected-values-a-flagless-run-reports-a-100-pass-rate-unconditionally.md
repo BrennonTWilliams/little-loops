@@ -238,14 +238,31 @@ denominator) — and resolves the run's exit code by this precedence, highest fi
 | every task ungraded | `2` | configuration error; never calls `wilson_ci` |
 | ≥1 graded failure (mismatch or unparseable) | `1` | |
 | ≥1 ungraded task | `1` | partial measurement is not a pass |
-| ≥1 abstention, no failure, no ungraded | `3` | ENH-3185 behavior, preserved verbatim |
+| ≥1 abstention, no failure, no ungraded | `3` | **behavior change — see below** |
 | all graded, all passed | `0` | |
 
-The pre-existing all-abstained case (`ci_total == 0` because every task abstained) keeps
-returning `3` with its current message — this issue does not change it. The new all-ungraded
-case is a separate branch returning `2`. A set that is entirely a mix of abstained and
-ungraded tasks hits the all-ungraded branch only if `ungraded_count == total`; otherwise it
-falls through to the `≥1 ungraded → 1` row.
+**Correction 2026-08-16: the partial-abstention row is a behavior CHANGE, not a
+preservation.** An earlier draft annotated it "ENH-3185 behavior, preserved verbatim." That
+is wrong, and the wrong version would have shipped an unannounced exit-code flip. Verified
+against `dea24aac`: `cmd_dsl`'s final statement is
+
+```python
+return 0 if pass_count == ci_total else 1          # harness.py:763
+```
+
+so **today a run with ≥1 abstention and no failure returns `0`**, not `3`. ENH-3185's `3`
+fires only from the *all*-abstained early return at `:762` (`ci_total == 0`). The
+partial-abstention case has never returned `3`.
+
+Adopting the table above is still the right call — an aggregate run that could not grade
+some of its tasks should not report a clean `0`, which is the same false-confidence class
+this whole issue exists to remove. But it must be stated and tested as a deliberate `0 → 3`
+flip, not smuggled in as preservation. See AC5c.
+
+Only the *all*-abstained case is genuinely preserved verbatim (`ci_total == 0` → message
+containing "abstained" → `3`). The new all-ungraded case is a separate branch returning `2`.
+A set that is entirely a mix of abstained and ungraded tasks hits the all-ungraded branch
+only if `ungraded_count == total`; otherwise it falls through to the `≥1 ungraded → 1` row.
 
 ### Normalization
 
@@ -439,6 +456,33 @@ The aggregate-row update is a direct `UPDATE` inside the existing
 `contextlib.suppress(Exception)` block, matching how `aggregate_id` is already fetched with
 raw SQL at `harness.py:676-681`. Telemetry stays best-effort and never affects the exit code.
 
+### Consequence: the per-task `runner="prompt"` telemetry rows disappear
+
+Today `cmd_dsl` delegates to `cmd_prompt`, and `cmd_prompt` writes its own
+`_record_harness_event(runner="prompt", ...)` row (`harness.py:650-661`) before returning.
+So **every DSL task currently writes two `harness_events` rows** — one `prompt`, one
+`dsl-task` — and the `prompt` row is the one that already carries the correct host
+`exit_code` and real `semantic_verdict` (which is why the `dsl-task` row's hardcoded
+`semantic_verdict=None` went unnoticed).
+
+Replacing `cmd_prompt(task_args)` with `_run_prompt_action(...)` + `_evaluate_and_report(...)`
+in the call path above **removes those `prompt` rows**, because `_run_prompt_action` is
+extracted from `:638-647` only and does not include the `_record_harness_event` call at
+`:650-661`.
+
+That is the intended outcome — one row per task, correctly populated, instead of two rows
+with overlapping and partly-wrong fields — but it is a deliberate telemetry change and is
+recorded here rather than discovered at review. Consequences:
+
+- Any historical query counting `runner = 'prompt'` rows changes meaning at the fix
+  boundary: pre-fix it includes one row per DSL task, post-fix it does not.
+- The `dsl-task` row becomes the *sole* per-task record, which raises the stakes on AC10 —
+  if `exit_code`/`semantic_verdict` are not corrected there, the fix loses information
+  rather than de-duplicating it. AC10 and this change must land together.
+
+Do **not** preserve the `prompt` rows by having `_run_prompt_action` write them; that would
+keep the duplication and reintroduce the ambiguity.
+
 `_grade_expected` is only called when `task.expected` is non-empty; the ungraded branch
 constructs an `ExpectedGrade(status=UNGRADED, ...)` only when `args.semantic is None`,
 otherwise it passes `expected_grade=None` so `--semantic` alone grades the task exactly as it
@@ -480,6 +524,14 @@ the prose Expected Behavior does not give those individual pass/fail boundaries.
 5b. ENH-3185's all-abstained behavior is preserved unchanged: a set in which every task
    abstains still exits `3` with a message containing "abstained", and the ungraded branch is
    evaluated **before** the abstain branch so an all-ungraded set reports `2`, not `3`.
+
+5c. **Partial abstention flips `0` → `3`, deliberately.** A set with ≥1 abstention, ≥1
+   graded pass, no failure and no ungraded task exits `3`. This is a *change*: `harness.py:763`
+   returns `0` for that case today (`return 0 if pass_count == ci_total else 1`). It needs its
+   own test — the existing `test_cmd_dsl_all_abstain_excludes_from_ci_and_exits_3` covers only
+   the `ci_total == 0` path and would pass either way. The new test must have a non-empty
+   denominator (≥1 passing task alongside the abstaining one) to exercise the flip, and the
+   CHANGELOG/`CLI.md` exit-code documentation must record it.
 6. When a task declares `expected` **and** `--semantic` is passed, the per-task outcome
    follows the truth table under Program Design § Interaction with abstention. Specifically:
    an `expected` mismatch is a **hard FAIL that outranks abstention** (mismatch + abstain →
@@ -497,6 +549,10 @@ the prose Expected Behavior does not give those individual pass/fail boundaries.
 10. Each `dsl-task` `harness_events` row records the **host process** exit code
     (`result.exit_code`), not the evaluation rc, and records the real `semantic_verdict` when
     `--semantic` was passed.
+10b. A DSL task writes **exactly one** per-task `harness_events` row (`runner="dsl-task"`).
+    The `runner="prompt"` row that `cmd_prompt` writes per task today is gone, because
+    `cmd_dsl` no longer calls `cmd_prompt` — see Program Design § Consequence. A test asserts
+    the post-fix row count per task, so the change is pinned rather than incidental.
 11. The aggregate `runner="dsl"` row carries the run's outcome after the loop completes.
 12. Telemetry remains best-effort: a `harness_events` write failure does not change the
     reported pass rate or the exit code.
@@ -529,6 +585,12 @@ the prose Expected Behavior does not give those individual pass/fail boundaries.
 
   Prefer adding a `expected`-less fixture variant over weakening the shared one, so the
   ENH-3185 abstention tests keep testing abstention rather than grading.
+
+  **Fixture cleanup while in there.** `_make_task_yaml` (`:1025-1027`) emits a duplicated
+  YAML key: `"blanks:\n  - on_yes\nblanks:\n  - on_yes\n"`. `yaml.safe_load` silently takes
+  the last, so it is harmless today, but the fixture is being rewritten anyway and a
+  duplicate-key fixture is a bad base for the new grading tests. Collapse it to one `blanks:`
+  block in the same pass.
 - `skills/create-eval-from-issues/SKILL.md:129-141` — the Option B schema block. The
   generator already emits `expected`; add a note that `expected` is what grades the task and
   that a task omitting it needs `--semantic` at run time.
@@ -536,9 +598,14 @@ the prose Expected Behavior does not give those individual pass/fail boundaries.
   DSL gotcha at `:409-414` must be rewritten; the sample output at `:97` gains the new lines.
 - `docs/reference/CLI.md:190,209,220-221` — the `dsl` row, the dsl-specific flag block, and
   the examples need the grading semantics and the new exit-code meanings.
-- `.ll/history.db` `harness_events` — row *shape* is unchanged; only the values written for
-  `dsl-task` / `dsl` rows change. Pre-fix rows keep their old semantics, so any analysis
-  spanning the fix boundary is mixing two definitions of `exit_code`.
+- `.ll/history.db` `harness_events` — row *shape* is unchanged, but both the values and the
+  row *count* change:
+  - the values written for `dsl-task` / `dsl` rows change (AC10, AC11);
+  - **the per-task `runner="prompt"` rows stop being written** (AC10b) — `cmd_dsl` no longer
+    routes through `cmd_prompt`, which is where that row is emitted (`harness.py:650-661`).
+
+  Pre-fix rows keep their old semantics, so any analysis spanning the fix boundary is mixing
+  two definitions of `exit_code` *and* two row counts per DSL task.
 
 ## Implementation Steps
 

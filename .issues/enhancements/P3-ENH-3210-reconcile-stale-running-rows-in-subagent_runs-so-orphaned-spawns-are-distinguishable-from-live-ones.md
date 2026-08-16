@@ -93,9 +93,43 @@ threshold, because it is not the normal case for a healthy spawn.
 
 **Primary (high precision, 24/40).** A `running` row is reconciled to `orphaned` when
 `max(ts)` in `tool_events` for its `parent_session_id` is **not later** than the row's
-`started_at`, and `parent_session_id` is not the currently-executing session. No
-quiet-period window is required for this branch — a parent that recorded nothing at all
-after the spawn is not "still working alongside a live agent."
+`started_at`, `parent_session_id` is not the currently-executing session, **and the row's
+`started_at` is older than the minimum-age window** (see below).
+
+**Correction 2026-08-16 — the primary branch DOES need an age guard, for a different reason
+than the secondary branch does.** An earlier draft asserted "no quiet-period window is
+required for this branch — a parent that recorded nothing at all after the spawn is not
+'still working alongside a live agent.'" That inference does not survive contact with how
+the sweep actually runs.
+
+The 75× enrichment is real, but it is measured over a **historical snapshot in which every
+stale row is weeks old**. At sweep time the population is different, because a subagent
+spawned *seconds ago* has exactly the primary branch's signature: its parent is blocked
+waiting on it and has therefore recorded **no `tool_events` after `started_at`**. "Parent
+recorded nothing after the spawn" is indistinguishable between *the parent died at the spawn*
+and *the parent is right now waiting on a live subagent*. Age is the only thing separating
+them, and the snapshot has age baked in invisibly.
+
+The "not the currently-executing session" condition does **not** close this. `ll-parallel`
+and `ll-sprint` run multiple concurrent `claude` sessions against one shared
+`.ll/history.db` by design (`sprints.default_max_workers`), and this issue's own Decision 1
+puts the sweep at *another* session's `SessionStart`. So the live in-flight rows the sweep
+sees belong to sibling sessions, not the current one, and sail past that check. A sweep
+firing while a sibling worker is mid-spawn would mark a genuinely running subagent
+`orphaned` — violating this issue's own hard requirement ("0 rows that are genuinely still
+in flight are misclassified", Success Metrics).
+
+**Fix — a minimum row age on the primary branch, sharing the secondary branch's constant.**
+A `running` row is eligible only if `now - started_at` exceeds the same window used by the
+secondary branch (hours, not minutes). Use **one** module-level constant for both branches
+rather than a secondary-only guard; the two branches ask different questions of it (row age
+vs. parent quiet time) but the same value answers both, and a single constant is one thing to
+justify and one thing to tune.
+
+This costs nothing on the measured population: all 24 primary-branch rows date from
+2026-07-21 to 2026-08-15, so coverage is unchanged at 24/40. It converts the branch from
+"high precision on a historical snapshot" to "high precision at sweep time", which is the
+only precision that matters.
 
 **Secondary (low precision, needs the guard, 16/40).** A row whose parent *does* show
 later activity is reconciled only when that `max(ts)` is itself older than a quiet-period
@@ -181,6 +215,25 @@ second, writable connection inside `history_reader.py` — against `_connect_rea
 `PRAGMA query_only = ON` (`:420`), for which there is no precedent in that module — and
 puts an UPDATE in the path of every reader call, contending on the same DB with live hook
 writers. The two options are not equal-cost; take the sweep.
+
+**Placement inside `handle()` is load-bearing — put the call near the TOP of the `try`.**
+`sweep_stale_refs.handle()` (`:141-208`) has **two early returns** before its tail:
+
+- `:173-175` — `if not done_ids: _record_sweep(...); return LLHookResult(exit_code=0)`
+- `:194-196` — `if not all_findings: _record_sweep(...); return LLHookResult(exit_code=0)`
+
+The second is the **normal** case: most sessions find no stale cross-issue references, so
+control never reaches the end of the function. A reconciliation call appended at the tail —
+the intuitive reading of "add it to the existing sweep" — would therefore almost never run,
+and the issue would land looking implemented while reconciling nothing.
+
+Place the call immediately inside the `try`, before the `done_ids` guard, wrapped in its own
+`try/except Exception: pass` so a reconciliation failure cannot suppress the stale-ref sweep
+(and vice versa — the two features share a hook but must not share a failure mode). The
+outer `except Exception` at `:207` is a backstop, not a substitute: it would swallow the
+stale-ref sweep along with the reconciliation.
+
+A test asserting reconciliation runs when `done_ids` is empty is the cheap way to pin this.
 
 **Decision 2 — the status value: the literal `"orphaned"`.** `status` is a bare `TEXT`
 column with no CHECK constraint, matching the `session_lifecycle_events.event`
@@ -351,12 +404,25 @@ for rows passing the later-parent-activity (or age-fallback) test.
 - Gate: a `subagent_runs` row is eligible for reconciliation only when `status ==
   "running"` — mirrors `_reconcile_stale_running()`'s own first guard
   (`if state.status != "running": return state`).
-- **Primary signal — no parent activity after the spawn.** Both must hold: (i) `max(ts)`
-  in `tool_events` for the row's `parent_session_id` is **not later** than the row's
-  `started_at`; (ii) `parent_session_id` is not the currently-executing session. No
-  quiet-period window is needed on this branch. Measured enrichment: 24/40 running (60%)
-  vs 21/2650 joinable completed (0.8%). This is the majority-case rule and the one to
-  ship first.
+- **Primary signal — no parent activity after the spawn, on a row old enough to be dead.**
+  All three must hold: (i) `max(ts)` in `tool_events` for the row's `parent_session_id` is
+  **not later** than the row's `started_at`; (ii) `parent_session_id` is not the
+  currently-executing session; (iii) **`now - started_at` exceeds the minimum-age window**
+  (the shared constant, hours not minutes). Measured enrichment for (i): 24/40 running (60%)
+  vs 21/2650 joinable completed (0.8%). This is the majority-case rule and the one to ship
+  first.
+
+  Condition (iii) is **not optional** and is not the same guard the secondary branch needs.
+  A subagent spawned seconds ago also satisfies (i) — its parent is blocked waiting on it and
+  has recorded nothing since — and satisfies (ii) whenever it belongs to a sibling
+  `ll-parallel`/`ll-sprint` worker rather than the sweeping session. Without (iii) the
+  primary branch marks live in-flight spawns `orphaned` under exactly the concurrency the
+  automation stack is built around. See Summary § Correction 2026-08-16.
+
+- **Shared constant.** The minimum-age window (primary, condition iii) and the quiet-period
+  window (secondary, condition ii) are one module-level constant, not two. Both are asking
+  "has enough time passed that a live spawn is implausible?"; splitting them doubles the
+  tuning surface for no gain.
 - **Secondary signal — later parent activity AND a quiet period.** All three must hold:
   (i) `max(ts)` is later than `started_at`; (ii) that `max(ts)` is itself older than the
   quiet-period window; (iii) `parent_session_id` is not the currently-executing session.
@@ -398,13 +464,27 @@ for rows passing the later-parent-activity (or age-fallback) test.
   2026-07-21 and did not grow across two measurements while `completed` gained 18.
 - **Effort**: Small — one writer function plus a call from an existing sweep that already
   writes. No schema migration (Decision 3), no new connection plumbing (Decision 1).
-- **Risk**: Low. The status value is additive on a CHECK-free TEXT column, and "no
-  evidence → leave alone" means the intended failure mode is under-reconciling. The
-  primary branch (no post-spawn parent activity) is high-precision and carries no
-  misclassification risk worth guarding. The one real hazard is the *secondary* branch:
-  bare later-parent-activity misclassifies live in-flight spawns (Summary § (1)), so its
-  quiet-period guard is mandatory or the branch is dropped. The age-fallback risk noted
-  in earlier drafts no longer applies — no age rule is built (Step 1b).
+- **Risk**: Medium (raised from Low 2026-08-16). The status value is additive on a
+  CHECK-free TEXT column, and "no
+  evidence → leave alone" means the intended failure mode is under-reconciling. **Both**
+  branches carry a live-spawn misclassification hazard, and both are closed by the same
+  shared time window:
+  - the *secondary* branch, because bare later-parent-activity holds for 99.2% of
+    `completed` rows and is not evidence of anything (Summary § (1)) — its quiet-period
+    guard is mandatory or the branch is dropped;
+  - the *primary* branch, because a subagent spawned seconds ago in a sibling
+    `ll-parallel`/`ll-sprint` worker has the identical signature — blocked parent, no
+    post-spawn `tool_events`, not the current session (Summary § Correction 2026-08-16) —
+    so its minimum-age guard is equally mandatory. An earlier draft called this branch
+    risk-free; that was an artifact of measuring a snapshot in which every stale row was
+    already weeks old.
+
+  Get the shared window wrong in the *short* direction and the hard requirement ("0 live
+  rows misclassified") breaks under exactly the concurrency the automation stack uses.
+  Wrong in the long direction, the sweep merely under-reconciles, which is sanctioned.
+  Choose generously. The age-fallback risk noted in earlier drafts no longer applies — no
+  bare age *rule* is built (Step 1b); the window here is a guard on other evidence, not a
+  signal on its own.
 - **Breaking Change**: No — but any reader pattern-matching `status == "running"` as a
   proxy for "not completed" changes meaning; audited in Backwards Compatibility below.
 
@@ -466,11 +546,17 @@ statuses without a code change).
 ## Implementation Steps
 
 1. **Primary branch.** A `running` row whose `parent_session_id` has no `tool_events`
-   later than the row's `started_at`, and which is not the currently-executing session,
-   is reconciled to `orphaned`. No quiet-period window on this branch. There is no
-   existing session-liveness helper in `session_store`/`history_reader.py`, so this is
-   new. This branch alone covers 24 of the 40 known rows and is the minimum shippable
-   unit.
+   later than the row's `started_at`, which is not the currently-executing session, **and
+   whose `started_at` is older than the shared minimum-age window**, is reconciled to
+   `orphaned`. There is no existing session-liveness helper in
+   `session_store`/`history_reader.py`, so this is new. This branch alone covers 24 of the
+   40 known rows (the age guard excludes none of them — all are ≥1 day old) and is the
+   minimum shippable unit.
+
+   The age guard is a correctness requirement, not a refinement: without it the branch
+   misclassifies a subagent spawned seconds ago in a sibling `ll-parallel` worker, whose
+   blocked parent has by definition recorded nothing since the spawn. See Summary
+   § Correction 2026-08-16.
 1a. **Secondary branch (optional scope).** A `running` row whose parent *does* show later
    activity is reconciled only when that `max(ts)` is older than an explicitly chosen and
    documented quiet-period window (hours, not minutes) and the parent is not the
@@ -487,11 +573,25 @@ statuses without a code change).
    two-layer best-effort shape (`try/except sqlite3.Error` in the writer, never raise;
    hook handler returns `LLHookResult(exit_code=0)` regardless) every other
    `subagent_runs` writer already uses.
+
+2a. **The call sits near the top of `handle()`'s `try`, ahead of both early returns**
+   (`:173-175` `if not done_ids`, `:194-196` `if not all_findings`), in its own
+   `try/except Exception: pass` so the two features cannot suppress each other. Appending it
+   at the tail is a silent no-op in the common case — most sessions have no stale refs and
+   return at `:196`. Pinned by the test in step 5.
 3. A row with no resolvable evidence is left untouched, matching
    `_reconcile_stale_running()`'s own "cannot determine liveness, leave alone" behavior —
    this is a correctness requirement, not an edge case to skip.
 4. No schema migration is introduced — `status` takes the new `"orphaned"` value on the
    existing CHECK-free TEXT column, and no `reconciled_at` column is added (Decision 3).
+
+4a. **`docs/guides/HISTORY_SESSION_GUIDE.md:132` is updated** — it is the only doc that
+   enumerates this column's vocabulary
+   (`` status (`running`/`completed`/`failed`/`timeout`) ``), and ENH-3211 is written
+   against that vocabulary being correct. Add `orphaned`, and drop `timeout` in the same
+   edit: no writer produces it (the live values are `running`/`completed`/`failed` via the
+   Qwen sidecar path), so the enumeration is stale in both directions. This is a required
+   step, not the optional doc polish an earlier draft's parenthetical implied.
 5. `python -m pytest scripts/tests/test_enh_2505_subagent_runs.py scripts/tests/test_fsm_persistence.py -v`
    passes, including all of:
    - a positive test for the primary branch: a `running` row whose parent recorded no
@@ -501,6 +601,15 @@ statuses without a code change).
      the quiet-period window) is **not** reconciled — required whenever the secondary
      branch ships;
    - a negative test that a row in the currently-executing session is never reconciled;
+   - **a negative test for the concurrency hazard on the primary branch:** a freshly-created
+     `running` row (`started_at` = now) whose parent has **no** `tool_events` after the
+     spawn and which belongs to a *different, non-current* session is **not** reconciled,
+     because it is inside the minimum-age window. This is the `ll-parallel` sibling-worker
+     case (Summary § Correction 2026-08-16) and is the single most important negative test
+     in the set — without the age guard it fails;
+   - **a placement test:** with `done_ids` empty (so `handle()` returns at `:175`) and with
+     no stale findings (so it returns at `:196`), an eligible row is still reconciled —
+     proving the call is ahead of both early returns (step 2a);
    - an idempotency test asserting a second sweep is a no-op;
    - a test that `completed`/terminal rows are never touched.
 6. Running the sweep against this repo's own `.ll/history.db` reclassifies **at least the

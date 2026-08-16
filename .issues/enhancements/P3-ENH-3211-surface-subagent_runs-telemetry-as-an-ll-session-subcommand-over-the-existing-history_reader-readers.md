@@ -334,6 +334,19 @@ dependency — nothing here needs FEAT-3183's code).
 
 Do not implement before this is answered — option 2 makes the whole issue wasted work.
 
+**Scheduling consequence (reviewed 2026-08-16).** This issue is deliberately *not*
+schedulable right now, and the deferral is correct — do not "unblock" it to get it into a
+sprint. Of the four issues captured together, the implementable set is **BUG-3196,
+BUG-3209, ENH-3210**, in that order of independence (all three are mutually independent;
+ENH-3210 is the only one ENH-3211 technically needs). ENH-3211 enters the queue after
+FEAT-3183 lands and the option-1-vs-2 call is made against its actual output.
+
+Note the two edges are different in kind and must not be collapsed: `blocked_by: FEAT-3183`
+is a **scheduling** block (nothing here needs FEAT-3183's code), while
+`depends_on: ENH-3210` is a **technical** one (the `orphaned` status must exist, and step 4's
+excluded-count display is written against ENH-3210's under-reconciliation semantics). If
+option 1 is chosen, ENH-3210 must still land first.
+
 ## Backwards Compatibility
 
 No breaking change — this is a new, additive CLI subcommand. No existing `ll-logs` or

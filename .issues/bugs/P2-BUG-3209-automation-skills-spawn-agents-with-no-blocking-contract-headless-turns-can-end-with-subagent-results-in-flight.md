@@ -338,8 +338,32 @@ one-member set.
   `test_skill_run_in_background_true_inventory_pinned` (:442), `DOC_STRINGS_PRESENT`
   (Headless-Safe Final Test Run pinned strings, ~:202-203),
   `SKILL_MIRRORS_MUST_MATCH_SOURCE` (:372-394)
-- `scripts/tests/test_enh494_skill_companions.py` — 500-line-per-`SKILL.md` cap; relevant
-  if new wording pushes any of the six skills over budget
+- `scripts/tests/test_enh494_skill_companions.py` —
+  `TestSkillLineLimit::test_all_skills_within_limit` (:74), the 500-line-per-`SKILL.md` cap.
+  **This is a near-certain failure, not a contingency.** Measured 2026-08-16:
+
+  | File | Lines | Headroom | Sites to edit |
+  |---|---|---|---|
+  | `skills/manage-issue/SKILL.md` | **499** | **1** | 1 (`:110`) |
+  | `skills/wire-issue/SKILL.md` | 493 | 7 | 3 (`:147-190`) |
+  | `skills/go-no-go/SKILL.md` | 481 | 19 | 1 (`:278`) |
+  | `skills/audit-claude-config/SKILL.md` | 485 | 15 | 2 (`:118`, `:222`) |
+  | `skills/audit-issue-conflicts/SKILL.md` | 474 | 26 | 3 (`:205`, `:218`, `:252`) |
+  | `skills/audit-docs/SKILL.md` | 433 | 67 | 1 (`:120-139`) |
+
+  `manage-issue` has **one line of headroom** and the highest-exposure site in the inventory.
+  The wording precedent this issue points at (`decide-issue/SKILL.md:335`) is a directive
+  *plus* a "wait for results" sentence — two lines — so a literal copy breaks the cap.
+  `wire-issue` at 493 with three sites is the second risk.
+
+  Budget the wording accordingly: for the tight files, fold the directive into the existing
+  spawn sentence as an inline clause (e.g. append "… using the Task tool with
+  `run_in_background: false`, and wait for all results in this same turn.") rather than adding
+  new lines. `manage-issue:116` already carries the "**CRITICAL**: Wait for ALL sub-agent
+  tasks' results synchronously in this same turn" prose, so only the directive itself is new
+  there — attach it to `:110`'s existing sentence and add no line at all. If any file still
+  cannot fit, extract to a flat companion per the ENH-494 pattern rather than deleting
+  existing content.
 
 **Primary test requirement (supersedes the `DOC_STRINGS_PRESENT` approach below).**
 Pinning new wording via `DOC_STRINGS_PRESENT` needles pins *phrasing*, not the
@@ -362,6 +386,19 @@ Two reasons the narrower glob is wrong:
    cover it, while the `true`-side of the same test already reaches that file.
 
 Use one glob for both halves of the assertion.
+
+**Widening the glob also widens the `true`-side check — verify and rename.** The existing
+one-sided assertion scans `skills_dir.rglob("*.md")` only (`:450`) and its allowlist constant
+is named `SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST` (`:443`). Running the *same* glob for both
+halves means the `true`-set equality is now asserted over `commands/*.md` as well.
+
+That is safe today — verified 2026-08-16, `grep -rn "run_in_background" commands/` returns
+**zero** matches, so the discovered `true` set is unchanged and the allowlist still equals
+`{"skills/go-no-go/SKILL.md"}` with no edit. But it must be stated, because otherwise a
+reviewer reads a skills-scoped allowlist being asserted over a corpus its name excludes.
+Rename the constant to drop the `SKILL_` prefix (e.g. `RUN_IN_BACKGROUND_TRUE_ALLOWLIST`) so
+the name matches the corpus, and update the assertion message, which currently says
+"skills/ run_in_background: true inventory drifted".
 
 **The detector must be specified in this issue, not invented at implementation time.**
 "Agent/Task spawn site" has no reliable syntactic marker in markdown prose — there is no
@@ -516,6 +553,13 @@ sweep is doc-only and breaks no assertion.
    and needs no edit — if the implementer concludes otherwise for any site, that is a new
    carve-out requiring a recorded FEAT-3077-style rationale, not a silent allowlist
    append.
+1c. **The added wording fits the 500-line `SKILL.md` cap** — `python -m pytest
+   scripts/tests/test_enh494_skill_companions.py -v` passes. `skills/manage-issue/SKILL.md`
+   is at 499 of 500 lines and `skills/wire-issue/SKILL.md` at 493 with three sites, so the
+   directive is folded into each existing spawn sentence as an inline clause rather than
+   added as new lines (see the measured table under Tests). Copying
+   `decide-issue/SKILL.md:335`'s two-line directive-plus-wait-sentence verbatim into
+   `manage-issue` breaks the cap.
 2. `go-no-go/SKILL.md:174`'s deliberate `true` fan-out is left unchanged and documented
    in-place as an explicit carve-out. Its sibling at `:278` is **not** part of that
    carve-out — it is fixed under step 1. The file remains the sole member of
@@ -533,12 +577,14 @@ sweep is doc-only and breaks no assertion.
    uncaught otherwise.
 5. `test_skill_run_in_background_true_inventory_pinned` is extended to its two-sided form
    using the four-part detector specified under Tests, scanning `skills/**/*.md` **and**
-   `commands/*.md` (candidate match requires an imperative spawn verb; ±3-line
-   satisfaction window; `SPAWN_DETECTOR_EXEMPT` seeded with the
+   `commands/*.md` for **both** halves (candidate match requires an imperative spawn verb;
+   ±3-line satisfaction window; `SPAWN_DETECTOR_EXEMPT` seeded with the
    `confidence-check/SKILL.md:235` line plus the flag-documentation class listed there;
    `true`-set equality retained) — this is the gate, not `DOC_STRINGS_PRESENT` needles.
    A test asserting the detector does **not** flag `confidence-check` is part of this
-   step, since that false positive is already known.
+   step, since that false positive is already known. The allowlist constant is renamed off
+   its `SKILL_` prefix and its assertion message updated, since the `true`-side is now
+   asserted over `commands/` too (verified empty there today) — see Tests § Widening.
 6. The seven incomplete `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`-scope descriptions are
    corrected to name Agent-tool spawns (or split to a linked docs issue), all five
    runner-count sites are corrected to "**seven**" (not reconciled to five or six — both
