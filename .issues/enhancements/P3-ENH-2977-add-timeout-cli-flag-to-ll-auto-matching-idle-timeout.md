@@ -4,6 +4,8 @@ title: Add a --timeout CLI flag to ll-auto, matching the existing --idle-timeout
 type: ENH
 priority: P3
 status: open
+parent: EPIC-3213
+epic: EPIC-3213
 discovered_date: 2026-08-01
 discovered_by: human
 relates_to:

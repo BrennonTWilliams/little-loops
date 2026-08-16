@@ -5,6 +5,8 @@ title: Surface subagent_runs telemetry as an ll-session subcommand over the exis
   history_reader readers
 priority: P3
 status: blocked
+parent: EPIC-3214
+epic: EPIC-3214
 testable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-08-16'

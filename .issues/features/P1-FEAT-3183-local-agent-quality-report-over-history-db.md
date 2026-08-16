@@ -4,6 +4,8 @@ title: Local agent-quality report over history.db
 type: FEAT
 priority: P1
 status: open
+parent: EPIC-3214
+epic: EPIC-3214
 testable: true
 discovered_date: '2026-08-15'
 labels:

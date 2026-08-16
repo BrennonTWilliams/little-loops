@@ -4,6 +4,8 @@ type: ENH
 title: Declare and enforce per-task credential scope via deny-by-default env projection
 priority: P2
 status: open
+parent: EPIC-3212
+epic: EPIC-3212
 blocked_by: [ENH-3184]
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'

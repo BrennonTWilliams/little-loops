@@ -4,6 +4,8 @@ type: ENH
 title: Record the credential scope a run was granted for after-the-fact audit
 priority: P3
 status: blocked
+parent: EPIC-3212
+epic: EPIC-3212
 blocked_by: [ENH-3203]
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'

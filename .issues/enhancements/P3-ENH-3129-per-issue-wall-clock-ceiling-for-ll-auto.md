@@ -2,6 +2,8 @@
 id: ENH-3129
 status: open
 priority: P3
+parent: EPIC-3213
+epic: EPIC-3213
 captured_at: "2026-08-09T05:58:12Z"
 discovered_date: 2026-08-09
 discovered_by: capture-issue
