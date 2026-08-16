@@ -64,6 +64,7 @@ from little_loops.fsm.signal_detector import DetectedSignal, SignalDetector
 from little_loops.fsm.stall_detector import Stall, StallDetector
 from little_loops.fsm.types import ActionResult, Evaluator, EventCallback, ExecutionResult
 from little_loops.fsm.validation import _SKILL_INVOKE_RE, _effective_session_mode
+from little_loops.fsm.verdicts import is_abstention_verdict
 from little_loops.issue_lifecycle import FailureType, classify_failure
 from little_loops.prompts import FragmentStore, fragment_key
 from little_loops.session_log import (
@@ -364,6 +365,11 @@ class FSMExecutor:
         # same shape as _api_error_retries. Reset when the state completes without
         # an infra-teardown kill, or after exhaustion.
         self._infra_retry_retries: dict[str, dict[str, Any]] = {}
+
+        # Per-state consecutive-abstention hold counter (ENH-3185 AC7).
+        # _abstention_holds[state_name] = count of consecutive undeclared
+        # cannot_judge verdicts. Reset whenever the state resolves any other way.
+        self._abstention_holds: dict[str, int] = {}
 
         # Per-state tool-call throttle counter. Counts successive action executions within
         # a single continuous state visit. Reset on state exit; NOT serialized to LoopState
@@ -2040,7 +2046,19 @@ class FSMExecutor:
                     if decision.next_state is None:
                         return None  # veto
                     return decision.next_state  # redirect — bypass _route()
-        next_state = self._route(state, verdict, ctx)
+
+        # ENH-3185 AC7: an undeclared cannot_judge (or cannot_judge_uncertain,
+        # AC12) verdict holds — re-enters the same state — up to a consecutive
+        # cap before escalating, rather than taking on_error/on_no (or
+        # route.default — AC6) on the very first abstention. A *declared*
+        # on_cannot_judge / route: {cannot_judge: ...} routes immediately below
+        # via the normal _route() path, with no hold.
+        if is_abstention_verdict(verdict) and not self._abstention_declared(state, verdict):
+            next_state = self._route_abstention_hold(state, route_ctx.state_name, ctx)
+        else:
+            self._abstention_holds.pop(route_ctx.state_name, None)
+            next_state = self._route(state, verdict, ctx)
+
         for interceptor in self._interceptors:
             if hasattr(interceptor, "after_route"):
                 interceptor.after_route(route_ctx)
@@ -2605,6 +2623,53 @@ class FSMExecutor:
         )
 
         return result
+
+    # ENH-3185 AC7: an undeclared abstention is retried up to this many
+    # consecutive times before escalating to the on_error-equivalent fallback.
+    _ABSTENTION_HOLD_CAP = 2
+
+    def _abstention_declared(self, state: StateConfig, verdict: str) -> bool:
+        """True when *state* has an explicit route for this exact verdict string.
+
+        Matches the literal verdict (``cannot_judge`` or the ``_uncertain``-suffixed
+        form independently, per AC12) against ``route.routes`` or the ``on_<verdict>``
+        shorthand (``extra_routes``) — the same lookups ``_route()`` itself uses, so
+        "declared" here means exactly what would make ``_route()`` resolve it without
+        falling through to ``default``/``error``.
+        """
+        if state.route is not None and verdict in state.route.routes:
+            return True
+        return verdict in state.extra_routes
+
+    def _abstention_fallback(self, state: StateConfig, ctx: InterpolationContext) -> str | None:
+        """Resolve the on_error-equivalent fallback for an undeclared abstention.
+
+        Never falls back to ``route.default`` or an implicit ``on_no`` — either
+        would reintroduce the pass/fail coin-flip ENH-3185 exists to remove.
+        """
+        if state.route is not None:
+            if state.route.error:
+                return self._resolve_route(state.route.error, ctx)
+            return None
+        if state.on_error:
+            return self._resolve_route(state.on_error, ctx)
+        return None
+
+    def _route_abstention_hold(
+        self, state: StateConfig, state_name: str, ctx: InterpolationContext
+    ) -> str | None:
+        """Bound an undeclared ``cannot_judge`` verdict with a consecutive-hold cap.
+
+        Re-enters *state_name* (a hold, not a transition) so a transient
+        abstention can retry; once the cap is exhausted, escalates to the
+        on_error-equivalent fallback instead of holding forever.
+        """
+        count = self._abstention_holds.get(state_name, 0) + 1
+        if count <= self._ABSTENTION_HOLD_CAP:
+            self._abstention_holds[state_name] = count
+            return state_name
+        self._abstention_holds.pop(state_name, None)
+        return self._abstention_fallback(state, ctx)
 
     def _route(
         self,

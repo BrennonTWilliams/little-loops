@@ -18,6 +18,7 @@ import yaml
 
 from little_loops.cli.output import configure_output, print_json, status_block, use_color_enabled
 from little_loops.fsm.evaluators import EvaluationResult, evaluate_llm_structured
+from little_loops.fsm.verdicts import is_abstention_verdict
 from little_loops.logger import Logger
 from little_loops.runner_spec import ActionSpec, RunnerResult, RunnerType, run_action
 from little_loops.session_store import (
@@ -201,6 +202,7 @@ Exit codes:
   0  PASS
   1  FAIL
   2  Internal error / timeout
+  3  ABSTAIN (no failure, but the semantic judge could not evaluate the check)
 """,
     )
 
@@ -387,6 +389,7 @@ class HarnessEvalOutcome:
     passed: bool
     verdict: str | None
     eval_result: EvaluationResult | None
+    abstained: bool = False
 
 
 def _read_prepatch_evidence(issue_id: str | None) -> dict | None:
@@ -417,6 +420,7 @@ def _evaluate_and_report(
         return 2, HarnessEvalOutcome(passed=False, verdict=None, eval_result=None)
 
     passed = True
+    abstained = False
     exit_code_display = str(result.exit_code)
     semantic_display = "[not checked]"
     eval_result: EvaluationResult | None = None
@@ -429,10 +433,21 @@ def _evaluate_and_report(
     if args.semantic is not None:
         eval_result = evaluate_llm_structured(output=result.stdout, prompt=args.semantic)
         semantic_display = eval_result.verdict
-        if eval_result.verdict != "yes":
+        # ENH-3185 AC9: an abstention is neither a pass nor a failure — report
+        # it separately rather than folding it into `passed = False`. Precedence
+        # is fail > abstain > pass, so a mixed exit_code-fail + semantic-abstain
+        # run still reports FAIL/exit 1.
+        if is_abstention_verdict(eval_result.verdict):
+            abstained = True
+        elif eval_result.verdict != "yes":
             passed = False
 
-    overall = "PASS" if passed else "FAIL"
+    if not passed:
+        overall = "FAIL"
+    elif abstained:
+        overall = "ABSTAIN"
+    else:
+        overall = "PASS"
     show_output = not passed or args.verbose
 
     # ENH-2998: additive, read-only pre-patch check evidence lookup -- absent
@@ -475,8 +490,17 @@ def _evaluate_and_report(
         passed=passed,
         verdict=eval_result.verdict if eval_result is not None else None,
         eval_result=eval_result,
+        abstained=abstained,
     )
-    return (0 if passed else 1), outcome
+    # ENH-3185 AC9: 0=pass, 1=fail (unchanged), 2=harness/infra error (already
+    # taken above, never reused here), 3=inconclusive (no failure, >=1 abstention).
+    if not passed:
+        exit_code = 1
+    elif abstained:
+        exit_code = 3
+    else:
+        exit_code = 0
+    return exit_code, outcome
 
 
 def _report(
@@ -526,7 +550,7 @@ def cmd_skill(args: argparse.Namespace) -> int:
         target=args.target,
         exit_code=result.exit_code,
         semantic_verdict=outcome.verdict,
-        semantic_passed=outcome.passed,
+        semantic_passed=None if outcome.abstained else outcome.passed,
         timed_out=result.timed_out,
         duration_ms=duration_ms,
         target_content_hash=target_hash,
@@ -556,7 +580,7 @@ def cmd_cmd(args: argparse.Namespace) -> int:
         target=args.target,
         exit_code=result.exit_code,
         semantic_verdict=outcome.verdict,
-        semantic_passed=outcome.passed,
+        semantic_passed=None if outcome.abstained else outcome.passed,
         timed_out=result.timed_out,
         duration_ms=duration_ms,
         dirty=dirty_int,
@@ -599,7 +623,7 @@ def cmd_mcp(args: argparse.Namespace) -> int:
         target=args.target,
         exit_code=result.exit_code,
         semantic_verdict=outcome.verdict,
-        semantic_passed=outcome.passed,
+        semantic_passed=None if outcome.abstained else outcome.passed,
         timed_out=result.timed_out,
         duration_ms=duration_ms,
         dirty=dirty_int,
@@ -629,7 +653,7 @@ def cmd_prompt(args: argparse.Namespace) -> int:
         target=args.target,
         exit_code=result.exit_code,
         semantic_verdict=outcome.verdict,
-        semantic_passed=outcome.passed,
+        semantic_passed=None if outcome.abstained else outcome.passed,
         timed_out=result.timed_out,
         duration_ms=duration_ms,
         target_content_hash=_hash_bytes(args.target.encode("utf-8")),
@@ -656,6 +680,7 @@ def cmd_dsl(args: argparse.Namespace) -> int:
         return 2
 
     pass_count = 0
+    abstain_count = 0
     total = 0
 
     aggregate_ts = _now_iso()
@@ -703,15 +728,20 @@ def cmd_dsl(args: argparse.Namespace) -> int:
         rc = cmd_prompt(task_args)
         duration_ms = int((time.monotonic() - start) * 1000)
         total += 1
+        # ENH-3185 AC9: rc==3 is the single-check "inconclusive" exit code
+        # (no failure, >=1 abstention) — exclude it from the pass-rate
+        # denominator rather than counting it as a failure.
         if rc == 0:
             pass_count += 1
+        elif rc == 3:
+            abstain_count += 1
 
         _record_harness_event(
             runner="dsl-task",
             target=task_file.name,
             exit_code=rc,
             semantic_verdict=None,
-            semantic_passed=rc == 0,
+            semantic_passed=None if rc == 3 else rc == 0,
             timed_out=False,
             duration_ms=duration_ms,
             parent_id=aggregate_id,
@@ -720,9 +750,17 @@ def cmd_dsl(args: argparse.Namespace) -> int:
             dirty=dirty_int,
         )
 
-    lo, hi = wilson_ci(pass_count, total)
-    print(f"\nDSL pass-rate: {pass_count}/{total}  [{lo:.2f}, {hi:.2f}] (95% CI)")
-    return 0 if pass_count == total else 1
+    ci_total = total - abstain_count
+    abstain_note = f"  ({abstain_count} abstained, excluded)" if abstain_count else ""
+    if ci_total > 0:
+        lo, hi = wilson_ci(pass_count, ci_total)
+        print(
+            f"\nDSL pass-rate: {pass_count}/{ci_total}  [{lo:.2f}, {hi:.2f}] (95% CI){abstain_note}"
+        )
+    else:
+        print(f"\nDSL pass-rate: n/a (all {total} task(s) abstained){abstain_note}")
+        return 3
+    return 0 if pass_count == ci_total else 1
 
 
 def main_harness(argv: list[str] | None = None) -> int:

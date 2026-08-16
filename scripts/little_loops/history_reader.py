@@ -67,6 +67,7 @@ Public API:
     HarnessEvent:     dataclass for harness_events rows (ENH-2741)
     recent_harness_events(runner, target, since, ...) -> list[HarnessEvent]
     harness_eval_pass_rate(target, since, ...) -> float | None
+    harness_eval_abstention_rate(target, since, ...) -> dict | None (ENH-3185 AC4)
     PromptOptEvent:   dataclass for prompt_opt_events rows (ENH-2498)
     recent_prompt_opt_events(mode, since, ...) -> list[PromptOptEvent]
     prompt_opt_offer_rate(since, ...) -> float | None
@@ -87,6 +88,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
+from little_loops.fsm.verdicts import CANNOT_JUDGE
 from little_loops.session_store import (
     DEFAULT_DB_PATH,
     ensure_db,
@@ -3059,6 +3061,55 @@ def harness_eval_pass_rate(
     if row is None or not row["scored"]:
         return None
     return row["successes"] / row["scored"]
+
+
+def harness_eval_abstention_rate(
+    target: str,
+    *,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> dict | None:
+    """Return the `cannot_judge` abstention rate for *target*, or None if no scored rows.
+
+    ENH-3185 AC4: sits alongside :func:`harness_eval_pass_rate`, whose
+    ``COUNT(semantic_passed)`` denominator already excludes abstained rows
+    (callers write ``semantic_passed = NULL`` for a ``cannot_judge`` verdict)
+    -- this function reports that excluded slice as its own rate rather than
+    letting it silently deflate the pass rate. ``scored`` here counts every
+    row with a non-NULL ``semantic_verdict`` (pass, fail, and abstain), unlike
+    ``harness_eval_pass_rate()``'s ``scored`` which only counts non-abstained
+    rows -- the two denominators are deliberately different questions.
+    """
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return None
+    try:
+        # `_` is a SQL LIKE wildcard; escape it so the pattern only matches the
+        # literal `_uncertain` suffix (ENH-3185 AC12), not an arbitrary char.
+        sql = (
+            "SELECT SUM(CASE WHEN semantic_verdict = ? OR semantic_verdict LIKE ? ESCAPE '\\' "
+            "THEN 1 ELSE 0 END) AS abstentions, "
+            "COUNT(semantic_verdict) AS scored "
+            "FROM harness_events WHERE target = ?"
+        )
+        params: list[Any] = [CANNOT_JUDGE, f"{CANNOT_JUDGE}\\_%", target]
+        if since is not None:
+            sql += " AND ts >= ?"
+            params.append(since)
+        row = conn.execute(sql, params).fetchone()
+    except sqlite3.Error:
+        logger.warning("history_reader: harness_eval_abstention_rate query failed", exc_info=True)
+        return None
+    finally:
+        conn.close()
+    if row is None or not row["scored"]:
+        return None
+    return {
+        "abstentions": row["abstentions"] or 0,
+        "scored": row["scored"],
+        "abstention_rate": (row["abstentions"] or 0) / row["scored"],
+    }
 
 
 @dataclass

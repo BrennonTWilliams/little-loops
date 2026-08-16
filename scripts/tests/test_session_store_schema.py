@@ -647,7 +647,7 @@ class TestSchemaV6:
         finally:
             conn.close()
         assert int(row[0]) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 40
+        assert SCHEMA_VERSION == 41
 
 
 class TestSchemaV9:
@@ -661,8 +661,8 @@ class TestSchemaV9:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 40
-        assert int(row[0]) == 40
+        assert SCHEMA_VERSION == 41
+        assert int(row[0]) == 41
 
     def test_idx_corrections_dedup_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -713,8 +713,8 @@ class TestSchemaV10:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 40
-        assert int(row[0]) == 40
+        assert SCHEMA_VERSION == 41
+        assert int(row[0]) == 41
 
     def test_summary_nodes_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -792,7 +792,7 @@ class TestSchemaV10:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 40
+        assert int(version[0]) == 41
         assert "summary_nodes" in names
         assert "summary_spans" in names
         assert "assistant_messages" in names
@@ -809,8 +809,8 @@ class TestSchemaV12:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 40
-        assert int(row[0]) == 40
+        assert SCHEMA_VERSION == 41
+        assert int(row[0]) == 41
 
     def test_summary_nodes_has_level_column(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1031,8 +1031,8 @@ class TestSchemaV13:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 40
-        assert int(row[0]) == 40
+        assert SCHEMA_VERSION == 41
+        assert int(row[0]) == 41
 
     def test_correction_retirements_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1072,8 +1072,8 @@ class TestSchemaV14:
             row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         finally:
             conn.close()
-        assert SCHEMA_VERSION == 40
-        assert int(row[0]) == 40
+        assert SCHEMA_VERSION == 41
+        assert int(row[0]) == 41
 
     def test_issue_snapshots_table_exists(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -1127,7 +1127,7 @@ class TestSchemaV14:
             }
         finally:
             conn.close()
-        assert int(version[0]) == 40
+        assert int(version[0]) == 41
         assert "issue_snapshots" in names
 
 
@@ -1410,7 +1410,7 @@ class TestSchemaV27:
         assert cols == {"id", "ts", "session_id", "event", "detail", "head_sha", "branch"}
 
     def test_v26_db_upgrades_gains_session_lifecycle_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 40
+        assert SCHEMA_VERSION == 41
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 26)
         ensure_db(db)
@@ -1450,7 +1450,7 @@ class TestSchemaV28:
         }
 
     def test_v27_db_upgrades_gains_subagent_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 40
+        assert SCHEMA_VERSION == 41
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 27)
         ensure_db(db)
@@ -1494,7 +1494,7 @@ class TestSchemaV29:
         assert "idx_usage_events_run_id" in names
 
     def test_v28_db_upgrades_gains_run_id_column(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 40
+        assert SCHEMA_VERSION == 41
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 28)
         ensure_db(db)
@@ -1544,7 +1544,7 @@ class TestSchemaV30HookEvents:
         assert {"idx_hook_event_name", "idx_hook_session", "idx_hook_exit"} <= names
 
     def test_v29_db_upgrades_gains_hook_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 40
+        assert SCHEMA_VERSION == 41
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 29)
         ensure_db(db)
@@ -1619,7 +1619,7 @@ class TestSchemaV31HarnessEvents:
         } <= names
 
     def test_v30_db_upgrades_gains_harness_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 40
+        assert SCHEMA_VERSION == 41
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 30)
         ensure_db(db)
@@ -1679,7 +1679,7 @@ class TestSchemaV32PromptOptEvents:
         assert {"idx_prompt_opt_events_session", "idx_prompt_opt_events_mode"} <= names
 
     def test_v31_db_upgrades_gains_prompt_opt_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 40
+        assert SCHEMA_VERSION == 41
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 31)
         ensure_db(db)
@@ -1747,7 +1747,7 @@ class TestSchemaV33VerdictEvents:
         assert {"idx_verdict_kind", "idx_verdict_target", "idx_verdict_session"} <= names
 
     def test_v32_db_upgrades_gains_verdict_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 40
+        assert SCHEMA_VERSION == 41
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 32)
         ensure_db(db)
@@ -1812,7 +1812,7 @@ class TestSchemaV34ContextPressureEvents:
         assert {"idx_pressure_session", "idx_pressure_ts", "idx_pressure_crossed"} <= names
 
     def test_v33_db_upgrade_gains_context_pressure_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 40
+        assert SCHEMA_VERSION == 41
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 33)
         ensure_db(db)
@@ -1880,7 +1880,7 @@ class TestSchemaV35ReviewEvents:
         assert {"idx_review_skill", "idx_review_target", "idx_review_session"} <= names
 
     def test_v34_db_upgrade_gains_review_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 40
+        assert SCHEMA_VERSION == 41
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 34)
         ensure_db(db)
@@ -1925,7 +1925,7 @@ class TestSchemaV38BaseShaColumns:
 
     def test_v37_db_upgrades_preserving_unstamped_rows(self, tmp_path: Path) -> None:
         """Pre-migration orchestration rows survive with NULL stamp columns."""
-        assert SCHEMA_VERSION == 40
+        assert SCHEMA_VERSION == 41
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 37)
         conn = sqlite3.connect(str(db))
@@ -1980,7 +1980,7 @@ class TestSchemaV39HarnessContentPin:
 
     def test_v38_db_upgrades_preserving_unpinned_rows(self, tmp_path: Path) -> None:
         """Pre-v39 harness rows survive with NULL content-pin columns."""
-        assert SCHEMA_VERSION == 40
+        assert SCHEMA_VERSION == 41
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 38)
         conn = sqlite3.connect(str(db))

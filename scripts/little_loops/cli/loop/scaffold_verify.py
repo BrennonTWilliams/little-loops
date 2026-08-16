@@ -70,7 +70,8 @@ def _criteria_states(criteria: list[CriterionSlot], issue_id: str) -> dict[str, 
             f"Does the implementation satisfy criterion {slot.index} of {issue_id}?\n\n"
             f"Criterion: {slot.source_text}\n\n"
             "Answer YES only if the evidence clearly shows the criterion is met.\n"
-            "Answer NO if the criterion is not met or evidence is missing/ambiguous.\n"
+            "Answer NO if the evidence clearly shows the criterion is not met.\n"
+            "Answer CANNOT JUDGE if the evidence is missing or ambiguous — do not guess.\n"
             "Provide a one-sentence reason citing the observed evidence."
         )
         states[slot.state_name] = StateConfig(

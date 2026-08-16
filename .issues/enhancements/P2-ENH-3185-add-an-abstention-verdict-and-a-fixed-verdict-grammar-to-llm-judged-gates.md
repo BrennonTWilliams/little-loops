@@ -3,9 +3,10 @@ id: ENH-3185
 title: Add an abstention verdict and a fixed verdict grammar to LLM-judged gates
 type: ENH
 priority: P2
-status: open
+status: done
 testable: true
 discovered_date: '2026-08-15'
+completed_at: '2026-08-16T03:36:21Z'
 labels:
 - verification
 - fsm
@@ -182,6 +183,11 @@ _Added by `/ll:refine-issue` — 2026-08-15 — based on codebase analysis:_
 - Escape hatch (AC5): "a judge that emits a verdict outside the grammar fails loudly rather than being coerced to pass or fail." The codebase's existing precedent for the *opposite* polarity is `_extract_verdict_from_text()` (`output_parsing.py`), which silently defaults to `"UNKNOWN"` on parse failure — AC5 requires abandoning that coercion-on-failure convention for this grammar specifically, in favor of the `(value, error)`-tuple "never swallow" convention (`extract_tagged_json()`, BUG-2383).
 
 
+### Deviations
+
+- 2026-08-15 — **AC4 persistence target**: the Program Design's Integration Map noted `loop_events` as "the closest existing per-check ledger for `llm_structured` states, but with no abstention flag or rate query." Implementation lands AC4 on `harness_events` instead, via a new `harness_eval_abstention_rate()` (`history_reader.py`, sitting alongside `harness_eval_pass_rate()`) and a v41 migration adding an index on `harness_events.semantic_verdict`. Reason: `loop_events` (`loop_name`, `state`, `transition`, `retries`) persists no verdict at all for *any* evaluator today — adding one would be a new capability orthogonal to this issue, not an abstention-specific gap. `harness_events` already carries `semantic_verdict TEXT` / `semantic_passed INTEGER` per check; no new column was needed — `semantic_passed` is written as `NULL` for an abstained row (already-nullable), which both keeps `harness_eval_pass_rate()`'s `COUNT(semantic_passed)` denominator abstention-free for free and gives the new query something to select on.
+- 2026-08-15 — **AC7 hold cap is a fixed constant**, not a new YAML-configurable `StateConfig` field. The issue only specifies "default small, e.g. 2" with no explicit ask for per-loop tuning; `FSMExecutor._ABSTENTION_HOLD_CAP = 2` keeps the change minimal. Revisit if a real loop needs a different cap.
+
 ## Scope Boundaries
 
 Explicitly **out of scope**:
@@ -204,7 +210,24 @@ Explicitly **out of scope**:
   - Secondary: an unbounded hold (AC7) turns an always-abstaining judge into a non-terminating loop.
 - **Breaking Change**: No, given AC6. Without AC6 it would be a silent breaking change to every existing loop.
 
+## Resolution
+
+Implemented all in-scope acceptance criteria (AC1, AC3-AC12; AC2 withdrawn):
+
+- **AC8** — new `scripts/little_loops/fsm/verdicts.py` (`CANNOT_JUDGE`, `DEFAULT_VERDICT_ENUM`, `BINARY_VERDICT_ENUM`, `is_abstention_verdict()`) as the single source of truth. `DEFAULT_LLM_SCHEMA` consumes the full enum; `BLIND_COMPARATOR_SCHEMA` and the `contract` evaluator's inline schema consume the binary subset unchanged.
+- **AC1/AC10/AC11** — `cannot_judge` added to `DEFAULT_LLM_SCHEMA`; evidence-coercion exemption added to `evaluate_llm_structured()`; all three prompt-contract sites (`CHECK_SEMANTIC_EVIDENCE_CONTRACT`, the schema's `evidence` description, and `scaffold_verify.py`'s generated per-criterion prompt) rewritten to route missing evidence to `CANNOT JUDGE` instead of coercing to `no`.
+- **AC5** — an out-of-grammar verdict on the default-schema path now short-circuits to `verdict="error"` with `invalid_verdict`/`raw_verdict` details, before it can reach routing.
+- **AC6/AC7/AC12** — `FSMExecutor` gained `_abstention_declared()`, `_abstention_fallback()`, and `_route_abstention_hold()`: a declared `on_cannot_judge`/`route: {cannot_judge: ...}` routes immediately; an undeclared abstention (base or `_uncertain`-suffixed) holds up to `_ABSTENTION_HOLD_CAP = 2` consecutive re-entries of the same state before escalating to the `on_error`/`route.error` fallback — never `route.default`, never `on_no`. Neither-declared exhaustion terminates via the existing "No valid transition" path.
+- **AC9** — `ll-harness` reports `ABSTAIN` distinctly from `PASS`/`FAIL`, exit code `3` (0=pass, 1=fail, 2=infra error unchanged, 3=inconclusive), precedence fail > abstain > pass. `cmd_dsl`'s Wilson-CI summary excludes abstained tasks from the denominator and reports them separately; an all-abstain run exits `3`.
+- **AC4** — `.ll/history.db` v41 adds an index on `harness_events.semantic_verdict`; abstained rows persist with `semantic_passed = NULL` (already-nullable), keeping `harness_eval_pass_rate()`'s denominator abstention-free automatically. New `harness_eval_abstention_rate()` in `history_reader.py` reports the rate separately. See `## Program Design § Deviations` for why this landed on `harness_events` rather than `loop_events`/`verdict_events`.
+- **AC3** — verified: the `contract` evaluator's fold-to-`no` aggregator and the blind comparator's promote/compare logic are structurally unreachable by `cannot_judge` per AC8's binary-subset schemas — no code change needed there.
+
+Also updated `docs/generalized-fsm-loop.md` with an `on_cannot_judge` note alongside the existing `on_blocked` documentation.
+
+Verification: `python -m pytest scripts/tests/` — 19454 passed, 46 skipped, 0 failed (full suite). `ruff check`/`ruff format --check`/`mypy` clean on all touched files.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-08-16T03:36:21 - `868e2f2f-3e22-459a-b9d2-e107eea54055.jsonl`
 - `/ll:confidence-check` - 2026-08-16T00:17:33 - `64e9e21e-d2d6-44cd-97cd-d980a3cc037d.jsonl`
 - Pre-implementation review (fourth pass) - 2026-08-15 - resolved the AC8/Program-Design contradiction: only `DEFAULT_LLM_SCHEMA` gains `cannot_judge`; `BLIND_COMPARATOR_SCHEMA` and the `contract` evaluator's schema consume the shared module's binary subset, keeping the contract aggregator (`evaluators.py:1712-1717`, folds non-yes to "no") and comparator out of abstention scope (AC3/AC8, new Scope Boundaries bullet). Noted in AC6 that `route.default` also absorbs `error` today, so the `cannot_judge` asymmetry is a deliberate divergence in both directions. Noted adversarial probe states (`scaffold_verify.py:149`) also receive `cannot_judge` and rely on the AC6 fallback. Corrected `wilson_ci()` citation to its definition site (`stats.py:13`). All other file:line citations re-verified against the working tree.
 - Pre-implementation review (third pass) - 2026-08-15 - pinned the hold-vs-fallback semantics (declared route → immediate, no hold; undeclared → cap-bounded retry then `on_error`; neither declared → loud "No valid transition" terminal, now test-required in AC6/AC7); AC4's migration number restated as current-head+1 rather than a hard-coded v41; AC11.3 now notes existing generated loops keep the old prompt until regenerated (generator-only fix, matching ENH-3200 AC7's stance). Verified exit code 3 is unused in `cli/harness.py`.

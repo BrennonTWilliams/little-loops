@@ -1248,6 +1248,139 @@ class TestLLMStructuredEvaluator:
         assert result.details["confidence"] == 0.8
 
 
+class TestAbstentionVerdict:
+    """Tests for the `cannot_judge` abstention verdict (ENH-3185)."""
+
+    @staticmethod
+    def _cli_stdout(
+        verdict: str, confidence: float, reason: str, evidence: str = "Found in output"
+    ) -> str:
+        return json.dumps(
+            {
+                "type": "result",
+                "subtype": "success",
+                "structured_output": {
+                    "verdict": verdict,
+                    "confidence": confidence,
+                    "reason": reason,
+                    "evidence": evidence,
+                },
+            }
+        )
+
+    @pytest.fixture
+    def mock_cli(self):
+        with patch("little_loops.fsm.evaluators.subprocess.run") as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stderr = ""
+            mock_run.return_value = mock_result
+            yield mock_run, mock_result
+
+    def test_cannot_judge_is_in_default_schema_enum(self) -> None:
+        """AC1: cannot_judge is a member of DEFAULT_LLM_SCHEMA's verdict enum."""
+        assert "cannot_judge" in DEFAULT_LLM_SCHEMA["properties"]["verdict"]["enum"]
+
+    def test_cannot_judge_verdict(self, mock_cli) -> None:
+        """AC1: a judge that cannot evaluate reports cannot_judge, not a coin-flip yes/no."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("cannot_judge", 0.9, "No artifact to inspect", "")
+
+        result = evaluate_llm_structured("nothing relevant in output")
+
+        assert result.verdict == "cannot_judge"
+
+    def test_cannot_judge_survives_empty_evidence_coercion(self, mock_cli) -> None:
+        """AC10: cannot_judge is exempt from the empty-evidence -> 'no' coercion —
+        an abstention has no verbatim quote by definition."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("cannot_judge", 0.9, "Cannot tell", "")
+
+        result = evaluate_llm_structured("ambiguous output")
+
+        assert result.verdict == "cannot_judge"
+        assert result.details["evidence_coerced"] is False
+
+    def test_yes_no_partial_still_coerced_on_empty_evidence(self, mock_cli) -> None:
+        """AC10 exemption is narrow: yes/no/partial are still coerced (ENH-2342 unchanged)."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("yes", 0.9, "Looks done", "")
+
+        result = evaluate_llm_structured("output")
+
+        assert result.verdict == "no"
+        assert result.details["evidence_coerced"] is True
+
+    def test_cannot_judge_uncertain_suffix(self, mock_cli) -> None:
+        """AC12: low confidence + uncertain_suffix produces cannot_judge_uncertain,
+        distinct from a plain cannot_judge abstention."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("cannot_judge", 0.2, "Unsure", "")
+
+        result = evaluate_llm_structured("output", min_confidence=0.7, uncertain_suffix=True)
+
+        assert result.verdict == "cannot_judge_uncertain"
+
+    def test_verdict_outside_grammar_fails_loudly(self, mock_cli) -> None:
+        """AC5: an out-of-grammar verdict on the default schema becomes verdict="error"
+        rather than silently flowing through to routing as if it were a real verdict."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("maybe", 0.9, "unsure", "some evidence")
+
+        result = evaluate_llm_structured("output")
+
+        assert result.verdict == "error"
+        assert result.details.get("invalid_verdict") is True
+        assert result.details.get("raw_verdict") == "maybe"
+
+    def test_verdict_outside_grammar_allowed_for_custom_schema(self, mock_cli) -> None:
+        """AC5's grammar check is scoped to the default schema; a caller-supplied
+        schema controls its own vocabulary (mirrors test_custom_schema)."""
+        custom_schema = {
+            "type": "object",
+            "properties": {"verdict": {"type": "string", "enum": ["found", "not_found"]}},
+            "required": ["verdict"],
+        }
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = json.dumps(
+            {
+                "type": "result",
+                "subtype": "success",
+                "structured_output": {"verdict": "found", "confidence": 0.9},
+            }
+        )
+
+        result = evaluate_llm_structured("output", schema=custom_schema)
+
+        assert result.verdict == "found"
+
+    def test_evidence_contract_does_not_instruct_missing_evidence_to_no(self) -> None:
+        """AC11.1: the evidence contract no longer forces missing evidence to No —
+        a fourth coercion site added later should fail this assertion loudly."""
+        from little_loops.fsm.evaluators import CHECK_SEMANTIC_EVIDENCE_CONTRACT
+
+        assert "automatically No" not in CHECK_SEMANTIC_EVIDENCE_CONTRACT
+        assert "cannot_judge" in CHECK_SEMANTIC_EVIDENCE_CONTRACT.lower() or (
+            "cannot judge" in CHECK_SEMANTIC_EVIDENCE_CONTRACT.lower()
+        )
+
+    def test_schema_evidence_description_does_not_instruct_missing_evidence_to_no(self) -> None:
+        """AC11.2: DEFAULT_LLM_SCHEMA's evidence field ships inside the structured-output
+        schema itself, so it must not contradict the new grammar at generation time."""
+        evidence_desc = DEFAULT_LLM_SCHEMA["properties"]["evidence"]["description"]
+        assert "verdict will be coerced to 'no'" not in evidence_desc or "yes/no/partial" in (
+            evidence_desc
+        )
+
+    def test_blind_comparator_and_contract_schemas_stay_binary(self) -> None:
+        """AC8: only DEFAULT_LLM_SCHEMA gains cannot_judge; the two binary consumers
+        (blind comparator, contract evaluator) are not abstention consumers."""
+        from little_loops.fsm.evaluators import BLIND_COMPARATOR_SCHEMA
+
+        assert BLIND_COMPARATOR_SCHEMA["properties"]["verdict_a"]["enum"] == ["yes", "no"]
+        assert BLIND_COMPARATOR_SCHEMA["properties"]["verdict_b"]["enum"] == ["yes", "no"]
+
+
 class TestTaggedStructuredOutputFallback:
     """Non-Anthropic hosts (e.g. MiniMax via the claude CLI) ignore --json-schema
     and emit the verdict as <StructuredOutput> tags in the envelope's "result"

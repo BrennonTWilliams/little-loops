@@ -2482,6 +2482,80 @@ class TestHarnessEventReaders:
         db = tmp_path / "history.db"
         assert harness_eval_pass_rate("foo", db=db) is None
 
+    def test_harness_eval_pass_rate_excludes_abstained_rows(self, tmp_path: Path) -> None:
+        """ENH-3185 AC4: an abstained row (semantic_passed=None) does not deflate
+        the pass rate the way a coerced failure would."""
+        from little_loops.history_reader import harness_eval_pass_rate
+        from little_loops.session_store import record_harness_event
+
+        db = tmp_path / "history.db"
+        record_harness_event(
+            db,
+            ts="2026-07-01T10:00:00Z",
+            target="foo",
+            semantic_verdict="yes",
+            semantic_passed=True,
+        )
+        record_harness_event(
+            db,
+            ts="2026-07-01T10:01:00Z",
+            target="foo",
+            semantic_verdict="cannot_judge",
+            semantic_passed=None,
+        )
+
+        rate = harness_eval_pass_rate("foo", db=db)
+        assert rate == 1.0
+
+    def test_harness_eval_abstention_rate(self, tmp_path: Path) -> None:
+        """ENH-3185 AC4: abstention is queryable as its own rate, separate from pass rate."""
+        from little_loops.history_reader import harness_eval_abstention_rate
+        from little_loops.session_store import record_harness_event
+
+        db = tmp_path / "history.db"
+        for verdict, passed in [
+            ("yes", True),
+            ("no", False),
+            ("cannot_judge", None),
+            ("cannot_judge_uncertain", None),
+        ]:
+            record_harness_event(
+                db,
+                ts="2026-07-01T10:00:00Z",
+                target="foo",
+                semantic_verdict=verdict,
+                semantic_passed=passed,
+            )
+
+        result = harness_eval_abstention_rate("foo", db=db)
+        assert result is not None
+        assert result["abstentions"] == 2
+        assert result["scored"] == 4
+        assert abs(result["abstention_rate"] - 0.5) < 1e-9
+
+    def test_harness_eval_abstention_rate_does_not_match_unrelated_verdict(
+        self, tmp_path: Path
+    ) -> None:
+        """The LIKE-based suffix match must not catch an unrelated verdict that
+        merely starts with a similar prefix."""
+        from little_loops.history_reader import harness_eval_abstention_rate
+        from little_loops.session_store import record_harness_event
+
+        db = tmp_path / "history.db"
+        record_harness_event(
+            db, ts="2026-07-01T10:00:00Z", target="foo", semantic_verdict="cannot_judgex"
+        )
+
+        result = harness_eval_abstention_rate("foo", db=db)
+        assert result is not None
+        assert result["abstentions"] == 0
+
+    def test_harness_eval_abstention_rate_none_when_no_rows(self, tmp_path: Path) -> None:
+        from little_loops.history_reader import harness_eval_abstention_rate
+
+        db = tmp_path / "history.db"
+        assert harness_eval_abstention_rate("foo", db=db) is None
+
 
 class TestRecentLifecycleEvents:
     """ENH-2495: recent_lifecycle_events() over session_lifecycle_events."""

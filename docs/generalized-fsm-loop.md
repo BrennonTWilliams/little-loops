@@ -544,6 +544,8 @@ states:
 
 > **`on_no` → `on_error` fallthrough**: When a `no` verdict is returned and the state defines `on_error` but not `on_no`, the executor routes to `on_error`. This applies to both shorthand (`on_no`/`on_error` keys) and full `route` tables (`no:`/`error:` keys). Use this to share a single error-recovery branch for both evaluator failures and hard-`no` verdicts when they require the same remediation.
 
+> **`cannot_judge` abstention (ENH-3185)**: `llm_structured` states can also produce `cannot_judge` — the judge could not evaluate the check from the evidence available, as distinct from a genuine `no`. Declare `on_cannot_judge: <target>` (or a `cannot_judge:` key in a `route` table) to route it explicitly, same as `on_blocked`. Left undeclared, an abstention **holds** — the state re-enters itself, giving the judge a bounded number of retries — before escalating to `on_error` (never to `on_no`, and never absorbed by a `route` table's `default:`). A state with neither `on_cannot_judge` nor `on_error` terminates the run loudly on hold exhaustion rather than silently passing or failing.
+
 This is equivalent to:
 
 ```yaml

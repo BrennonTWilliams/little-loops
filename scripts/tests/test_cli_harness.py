@@ -793,6 +793,62 @@ class TestSemanticEvaluator:
 
 
 # ---------------------------------------------------------------------------
+# TestAbstentionVerdict (ENH-3185 AC9)
+# ---------------------------------------------------------------------------
+
+
+class TestAbstentionVerdict:
+    """Tests for `cannot_judge` exit-code/reporting semantics (ENH-3185 AC9)."""
+
+    @pytest.mark.parametrize("verdict", ["cannot_judge", "cannot_judge_uncertain"])
+    def test_semantic_abstain_exits_3(self, verdict: str, capsys: pytest.CaptureFixture) -> None:
+        """No failure but >=1 abstention → exit 3, distinct from PASS(0)/FAIL(1)/ERROR(2)."""
+        from little_loops.fsm.evaluators import EvaluationResult
+
+        args = _make_namespace(runner="cmd", target="echo hi", semantic="some criterion")
+        mock_proc = _make_selector_mock_process(["hi\n"])
+        sel = _make_ready_selector()
+
+        with (
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+            patch(
+                "little_loops.cli.harness.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict=verdict, details={}),
+            ),
+        ):
+            result = cmd_cmd(args)
+
+        assert result == 3
+        out = capsys.readouterr().out
+        assert "ABSTAIN" in out
+
+    def test_exit_code_fail_dominates_semantic_abstain(self, capsys: pytest.CaptureFixture) -> None:
+        """Precedence is fail > abstain > pass: a mixed run reports FAIL/exit 1."""
+        from little_loops.fsm.evaluators import EvaluationResult
+
+        args = _make_namespace(
+            runner="cmd", target="echo hi", exit_code=99, semantic="some criterion"
+        )
+        mock_proc = _make_selector_mock_process(["hi\n"])
+        sel = _make_ready_selector()
+
+        with (
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+            patch(
+                "little_loops.cli.harness.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="cannot_judge", details={}),
+            ),
+        ):
+            result = cmd_cmd(args)
+
+        assert result == 1
+        out = capsys.readouterr().out
+        assert "FAIL" in out
+
+
+# ---------------------------------------------------------------------------
 # TestMainHarness
 # ---------------------------------------------------------------------------
 
@@ -1025,6 +1081,26 @@ class TestCmdDsl:
         assert result == 0
         out = capsys.readouterr().out
         assert "3/3" in out
+
+    def test_cmd_dsl_all_abstain_excludes_from_ci_and_exits_3(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """ENH-3185 AC9: an all-abstain DSL run excludes the denominator and exits 3."""
+        task_file = self._make_task_yaml(tmp_path)
+        args = _make_namespace(runner="dsl", path=str(task_file), semantic="some criterion")
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch(
+                "subprocess.run",
+                return_value=_make_completed(returncode=0, stdout=_llm_verdict("cannot_judge")),
+            ),
+        ):
+            result = cmd_dsl(args)
+
+        assert result == 3
+        out = capsys.readouterr().out
+        assert "abstained" in out
 
     def test_cmd_dsl_path_not_found(self, capsys: pytest.CaptureFixture) -> None:
         """Missing path returns 2."""

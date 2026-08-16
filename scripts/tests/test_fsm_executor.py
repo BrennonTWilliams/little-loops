@@ -1814,6 +1814,197 @@ class TestRouting:
                 f"token={token!r} routed to {result.final_state!r}, expected {expected!r}"
             )
 
+
+class TestAbstentionRouting:
+    """Tests for `cannot_judge` FSM routing (ENH-3185 AC6/AC7/AC12)."""
+
+    @staticmethod
+    def _cannot_judge_eval(verdict: str = "cannot_judge"):
+        from little_loops.fsm.evaluators import EvaluationResult
+
+        m = MagicMock()
+        m.return_value = EvaluationResult(
+            verdict=verdict, details={"confidence": 0.9, "confident": True}
+        )
+        return m
+
+    def test_declared_on_cannot_judge_routes_immediately_no_hold(self) -> None:
+        """A declared on_cannot_judge routes on the first abstention — no retry."""
+        fsm = FSMLoop(
+            name="test",
+            initial="evaluate",
+            states={
+                "evaluate": StateConfig(
+                    action="/some-slash-command",
+                    action_type="slash_command",
+                    on_yes="done",
+                    on_no="done",
+                    extra_routes={"cannot_judge": "abstained"},
+                ),
+                "abstained": StateConfig(terminal=True),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("/some-slash-command", output="unclear", exit_code=0)
+
+        with patch("little_loops.fsm.executor.evaluate_llm_structured", self._cannot_judge_eval()):
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            result = executor.run()
+
+        assert result.final_state == "abstained"
+        # No hold: only one iteration (no self-loop retries).
+        assert result.iterations == 1
+
+    def test_undeclared_cannot_judge_shorthand_holds_then_falls_to_on_error(self) -> None:
+        """AC6/AC7: with only on_yes/on_no declared, an undeclared abstention holds
+        (re-enters the state) up to the cap, then escalates to on_error — never on_no."""
+        fsm = FSMLoop(
+            name="test",
+            initial="evaluate",
+            states={
+                "evaluate": StateConfig(
+                    action="/some-slash-command",
+                    action_type="slash_command",
+                    on_yes="done",
+                    on_no="done",
+                    on_error="errored",
+                ),
+                "errored": StateConfig(terminal=True, failure=True),
+                "done": StateConfig(terminal=True),
+            },
+            max_steps=20,
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("/some-slash-command", output="unclear", exit_code=0)
+
+        with patch("little_loops.fsm.executor.evaluate_llm_structured", self._cannot_judge_eval()):
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            result = executor.run()
+
+        assert result.final_state == "errored"
+        # cap (2) holds + the escalation step = 3 iterations before landing.
+        assert result.iterations == 3
+
+    def test_undeclared_cannot_judge_shorthand_no_on_error_terminates_loud(self) -> None:
+        """AC6/AC7 neither-declared case: no on_cannot_judge and no on_error —
+        cap exhaustion terminates via 'No valid transition', never a coerced no."""
+        fsm = FSMLoop(
+            name="test",
+            initial="evaluate",
+            states={
+                "evaluate": StateConfig(
+                    action="/some-slash-command",
+                    action_type="slash_command",
+                    on_yes="done",
+                    on_no="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("/some-slash-command", output="unclear", exit_code=0)
+
+        with patch("little_loops.fsm.executor.evaluate_llm_structured", self._cannot_judge_eval()):
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            result = executor.run()
+
+        assert result.terminated_by == "error"
+        assert result.error == "No valid transition"
+
+    def test_undeclared_cannot_judge_route_table_ignores_default(self) -> None:
+        """AC6: a route: table with a default: must NOT absorb an undeclared
+        abstention — that would reintroduce the coin-flip this issue removes."""
+        fsm = FSMLoop(
+            name="test",
+            initial="evaluate",
+            states={
+                "evaluate": StateConfig(
+                    action="/some-slash-command",
+                    action_type="slash_command",
+                    route=RouteConfig(
+                        routes={"yes": "done", "no": "failed"},
+                        default="failed",
+                        error="errored",
+                    ),
+                ),
+                "done": StateConfig(terminal=True),
+                "failed": StateConfig(terminal=True, failure=True),
+                "errored": StateConfig(terminal=True, failure=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("/some-slash-command", output="unclear", exit_code=0)
+
+        with patch("little_loops.fsm.executor.evaluate_llm_structured", self._cannot_judge_eval()):
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            result = executor.run()
+
+        # Must land on route.error ("errored") after the hold cap, never on
+        # route.default ("failed") — the asymmetry AC6 requires.
+        assert result.final_state == "errored"
+
+    def test_declared_route_table_cannot_judge_routes_immediately(self) -> None:
+        """A route: table with an explicit cannot_judge key routes on the first
+        abstention, same as the shorthand case."""
+        fsm = FSMLoop(
+            name="test",
+            initial="evaluate",
+            states={
+                "evaluate": StateConfig(
+                    action="/some-slash-command",
+                    action_type="slash_command",
+                    route=RouteConfig(
+                        routes={"yes": "done", "no": "failed", "cannot_judge": "abstained"},
+                        default="failed",
+                    ),
+                ),
+                "done": StateConfig(terminal=True),
+                "failed": StateConfig(terminal=True, failure=True),
+                "abstained": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("/some-slash-command", output="unclear", exit_code=0)
+
+        with patch("little_loops.fsm.executor.evaluate_llm_structured", self._cannot_judge_eval()):
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            result = executor.run()
+
+        assert result.final_state == "abstained"
+        assert result.iterations == 1
+
+    def test_cannot_judge_uncertain_undeclared_also_holds_then_falls_to_on_error(self) -> None:
+        """AC12: the _uncertain-suffixed abstention form is subject to the same
+        undeclared hold/fallback semantics as the base cannot_judge verdict."""
+        fsm = FSMLoop(
+            name="test",
+            initial="evaluate",
+            states={
+                "evaluate": StateConfig(
+                    action="/some-slash-command",
+                    action_type="slash_command",
+                    on_yes="done",
+                    on_no="done",
+                    on_error="errored",
+                ),
+                "errored": StateConfig(terminal=True, failure=True),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("/some-slash-command", output="unclear", exit_code=0)
+
+        with patch(
+            "little_loops.fsm.executor.evaluate_llm_structured",
+            self._cannot_judge_eval("cannot_judge_uncertain"),
+        ):
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            result = executor.run()
+
+        assert result.final_state == "errored"
+        assert result.iterations == 3
+
     def test_classify_route_default_catches_unknown_token(self) -> None:
         """classify route: table default: catches any unlisted token."""
         fsm = FSMLoop(

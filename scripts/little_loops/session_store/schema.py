@@ -18,7 +18,7 @@ from little_loops.session_store.db import DEFAULT_DB_PATH, _resolve_db_path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 40
+SCHEMA_VERSION = 41
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -983,6 +983,17 @@ _MIGRATIONS: list[str] = [
     );
     CREATE INDEX IF NOT EXISTS idx_prepatch_evidence_issue_id
         ON prepatch_evidence(issue_id, id DESC);
+    """,
+    # v41 (ENH-3185): the `cannot_judge` abstention verdict is a value of the
+    # existing `semantic_verdict` TEXT column, not a new column -- callers now
+    # write `semantic_passed = NULL` for an abstained row (nullable already;
+    # see `harness_eval_pass_rate()`'s `COUNT(semantic_passed)` denominator,
+    # which already excludes NULLs). This migration only adds the index the
+    # new abstention-rate query (`harness_eval_abstention_rate()`,
+    # history_reader.py) needs to scan by verdict efficiently.
+    """
+    CREATE INDEX IF NOT EXISTS idx_harness_semantic_verdict
+        ON harness_events(semantic_verdict);
     """,
 ]
 

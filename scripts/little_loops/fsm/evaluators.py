@@ -42,6 +42,7 @@ from little_loops.fsm.interpolation import (
     interpolate,
 )
 from little_loops.fsm.schema import DEFAULT_LLM_MODEL, EvaluateConfig
+from little_loops.fsm.verdicts import BINARY_VERDICT_ENUM, CANNOT_JUDGE, DEFAULT_VERDICT_ENUM
 from little_loops.host_runner import resolve_host
 
 
@@ -58,16 +59,19 @@ class EvaluationResult:
     details: dict[str, Any]
 
 
-# Evidence contract injected into every LLM evaluator prompt (ENH-2342).
-# Requires the model to cite verbatim output text for each verdict; absent evidence
-# is coerced to "no" at the parsing layer so self-grade optimism can't slip through.
+# Evidence contract injected into every LLM evaluator prompt (ENH-2342, ENH-3185).
+# Requires the model to cite verbatim output text for a yes/no/partial verdict;
+# absent evidence is coerced to "no" at the parsing layer so self-grade optimism
+# can't slip through. A verdict the judge cannot support with evidence either way
+# is CANNOT JUDGE, not a coerced No — see AC10/AC11.
 CHECK_SEMANTIC_EVIDENCE_CONTRACT = """
 IMPORTANT: For each condition you evaluate:
-1. State your verdict: Yes / No / Partial
-2. Provide a VERBATIM quote from the output that supports your verdict (exact text, in quotes)
-3. If you cannot quote specific text, your verdict is automatically No (or Partial if context suggests partial progress)
+1. State your verdict: Yes / No / Partial / Cannot Judge
+2. For Yes / No / Partial, provide a VERBATIM quote from the output that supports your verdict (exact text, in quotes)
+3. If you cannot quote specific text to support Yes, No, or Partial, your verdict is Cannot Judge — do not guess
 
-Do not assert a verdict without evidence. "The task appears complete" is not evidence.
+Do not assert a Yes/No/Partial verdict without evidence. "The task appears complete" is not evidence.
+Cannot Judge means the check could not be evaluated from what is available — it is not a failure.
 """
 
 # Default schema for LLM structured evaluation
@@ -76,12 +80,14 @@ DEFAULT_LLM_SCHEMA: dict[str, Any] = {
     "properties": {
         "verdict": {
             "type": "string",
-            "enum": ["yes", "no", "blocked", "partial"],
+            "enum": list(DEFAULT_VERDICT_ENUM),
             "description": (
                 "- yes: The condition/check evaluated to true\n"
                 "- no: The condition/check evaluated to false\n"
                 "- blocked: Cannot proceed without external help\n"
-                "- partial: Made progress but not complete"
+                "- partial: Made progress but not complete\n"
+                "- cannot_judge: The check could not be evaluated from the evidence "
+                "available — use this instead of guessing"
             ),
         },
         "confidence": {
@@ -98,7 +104,8 @@ DEFAULT_LLM_SCHEMA: dict[str, Any] = {
             "type": "string",
             "description": (
                 "Verbatim quote from the action output that supports the verdict. "
-                "Empty string means no evidence was found; verdict will be coerced to 'no'."
+                "Required for yes/no/partial — empty string means no evidence was found "
+                "and the verdict will be coerced to 'no'. Not required for cannot_judge."
             ),
         },
     },
@@ -189,12 +196,12 @@ BLIND_COMPARATOR_SCHEMA: dict[str, Any] = {
     "properties": {
         "verdict_a": {
             "type": "string",
-            "enum": ["yes", "no"],
+            "enum": list(BINARY_VERDICT_ENUM),
             "description": "Whether Output A meets the evaluation criteria",
         },
         "verdict_b": {
             "type": "string",
-            "enum": ["yes", "no"],
+            "enum": list(BINARY_VERDICT_ENUM),
             "description": "Whether Output B meets the evaluation criteria",
         },
         "confidence": {
@@ -1250,11 +1257,32 @@ def evaluate_llm_structured(
     confidence = float(llm_result.get("confidence", 1.0))
     confident = confidence >= min_confidence
 
+    # ENH-3185 AC5: on the default-schema path, a verdict outside the fixed
+    # grammar fails loudly (verdict="error") instead of silently flowing into
+    # routing, where an unrecognized string could be absorbed by a
+    # `route.default` catch-all and read as a coerced pass/fail. Structured
+    # output normally keeps the model inside `enum`, but the tag-fallback
+    # parse path (_extract_tagged_structured_output) has no such enforcement.
+    if schema is None and verdict not in DEFAULT_VERDICT_ENUM and verdict != "error":
+        return EvaluationResult(
+            verdict="error",
+            details={
+                "error": f"LLM judge emitted a verdict outside the grammar: {verdict!r}",
+                "invalid_verdict": True,
+                "raw_verdict": verdict,
+            },
+        )
+
     # Evidence coercion (ENH-2342): when using the default schema, a verdict without
     # verbatim evidence is treated as "no" — prevents LLM optimism from passing silently.
     # Custom schemas bypass this; callers that supply their own schema control the contract.
+    # cannot_judge is exempt (ENH-3185 AC10): it has no verbatim quote by definition —
+    # that is what abstaining means — so coercing it to "no" would silently defeat the
+    # entire feature on this (the default-schema, FSM-predicate) path.
     evidence = llm_result.get("evidence", "")
-    evidence_coerced = schema is None and not evidence.strip() and verdict not in ("error",)
+    evidence_coerced = (
+        schema is None and not evidence.strip() and verdict not in ("error", CANNOT_JUDGE)
+    )
     if evidence_coerced:
         verdict = "no"
 
@@ -1483,7 +1511,7 @@ def evaluate_contract(
     contract_schema = {
         "type": "object",
         "properties": {
-            "verdict": {"type": "string", "enum": ["yes", "no"]},
+            "verdict": {"type": "string", "enum": list(BINARY_VERDICT_ENUM)},
             "confidence": {"type": "number"},
             "reason": {"type": "string"},
         },

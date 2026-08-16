@@ -165,6 +165,14 @@ class TestScaffoldVerifyCriteriaMode:
         assert result.yaml_text == ""
         assert "not found" in result.errors[0]
 
+    def test_eval_prompt_directs_missing_evidence_to_cannot_judge(self, project: Path) -> None:
+        """ENH-3185 AC11.3: the generated eval prompt no longer tells the judge to
+        answer NO when evidence is missing/ambiguous — it must answer CANNOT JUDGE."""
+        _write_issue(project, "FEAT-204", ["Some criterion"])
+        result = scaffold_verify("FEAT-204", adversarial=False)
+        assert "evidence is missing/ambiguous" not in result.yaml_text
+        assert "CANNOT JUDGE" in result.yaml_text
+
 
 class TestScaffoldVerifyAdversarialMode:
     def test_emits_fixed_three_probe_template(self, project: Path) -> None:
