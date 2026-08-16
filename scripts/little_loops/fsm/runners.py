@@ -19,6 +19,7 @@ from typing import Protocol
 
 from little_loops.fsm.host_guard import RssSampler
 from little_loops.fsm.types import ActionResult
+from little_loops.host_runner import project_child_env
 from little_loops.subprocess_utils import (
     DetailedUsageCallback,
     TokenUsage,
@@ -270,6 +271,7 @@ class DefaultActionRunner:
             text=True,
             cwd=working_dir,
             start_new_session=True,
+            env=project_child_env(),
         )
         self._current_process = process
         # FEAT-3033: timeout=0 means "no wall-clock cap" (matches

@@ -25,7 +25,6 @@ it intercepts them beforehand and drives each through a subprocess
 from __future__ import annotations
 
 import json
-import os
 import selectors
 import subprocess
 import time
@@ -35,7 +34,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from little_loops.host_runner import resolve_host
+from little_loops.host_runner import project_child_env, resolve_host
 from little_loops.mcp_call import call_mcp_tool
 from little_loops.subprocess_utils import _kill_process_group
 
@@ -203,7 +202,7 @@ def _run_skill(spec: ActionSpec) -> RunnerResult:
             capture_output=True,
             text=True,
             timeout=spec.timeout,
-            env={**os.environ, **inv.env},
+            env=project_child_env(inv),
         )
         return RunnerResult(stdout=proc.stdout, stderr=proc.stderr, exit_code=proc.returncode)
     except subprocess.TimeoutExpired:
@@ -229,6 +228,7 @@ def _run_cmd(spec: ActionSpec) -> RunnerResult:
         stderr=subprocess.PIPE,
         text=True,
         start_new_session=True,
+        env=project_child_env(),
     )
     deadline = time.time() + spec.timeout
 
@@ -312,6 +312,7 @@ def _run_prompt(spec: ActionSpec) -> RunnerResult:
             capture_output=True,
             text=True,
             timeout=spec.timeout,
+            env=project_child_env(inv),
         )
         return RunnerResult(stdout=proc.stdout, stderr=proc.stderr, exit_code=proc.returncode)
     except subprocess.TimeoutExpired:

@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import sqlite3
 import subprocess
 import threading
@@ -29,7 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import little_loops.session_store as _pkg
-from little_loops.host_runner import resolve_host
+from little_loops.host_runner import project_child_env, resolve_host
 from little_loops.session_store.db import DEFAULT_DB_PATH
 from little_loops.session_store.schema import SCHEMA_VERSION, _configure_connection
 from little_loops.session_store.writers import (
@@ -155,7 +154,7 @@ def _call_llm_for_summary(
         inv = resolve_host().build_blocking_json(prompt=prompt, model=model)
         proc = subprocess.run(
             [inv.binary, *inv.args],
-            env={**os.environ, **inv.env},
+            env=project_child_env(inv),
             capture_output=True,
             text=True,
             timeout=timeout,

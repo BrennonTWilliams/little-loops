@@ -62,6 +62,7 @@ __all__ = [
     "dispatch_anthropic_request",
     "dispatch_batch_request",
     "poll_batch_result",
+    "project_child_env",
     "resolve_host",
     "resolve_model_alias",
 ]
@@ -1779,6 +1780,39 @@ _PROBE_ORDER: list[tuple[str, str]] = [
     ("kimi-code", "kimi"),
     ("qwen", "qwen"),
 ]
+
+
+def project_child_env(
+    invocation: HostInvocation | None = None,
+    *,
+    extra: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Build the ``env=`` mapping for a task-path child process spawn (ENH-3184).
+
+    The single chokepoint every task-path ``subprocess.*`` call routes through.
+    Default behaviour is **byte-identical to the pre-ENH-3184 status quo**:
+    full inheritance of the parent's ``os.environ``, with ``invocation.env``
+    (when *invocation* is given) merged over it, then *extra* (for one-off
+    keys a call site adds beyond what the ``HostInvocation`` carries, e.g.
+    ``LL_HOST_CLI`` at ``cli/loop/_helpers.py``) merged over that. Absence of
+    a key at any layer means "inherit the parent's value" — this helper
+    provides no way to clear or deny an inherited variable; that is
+    deliberately out of scope (see ENH-3203).
+
+    ``invocation`` is optional because the two ``bash -c`` task-path spawns
+    (``fsm/runners.py``'s ``DefaultActionRunner`` shell branch,
+    ``runner_spec.py::_run_cmd()``) never construct a ``HostInvocation`` at
+    all — ``project_child_env()`` with no arguments is exactly today's
+    implicit inheritance, made explicit and interceptable at this one seam.
+    """
+    import os
+
+    env = os.environ.copy()
+    if invocation is not None:
+        env.update(invocation.env)
+    if extra:
+        env.update(extra)
+    return env
 
 
 def _apply_automation_env(env: dict[str, str], automation_profile: str | None) -> None:

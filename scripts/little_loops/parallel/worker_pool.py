@@ -7,7 +7,6 @@ processing without file conflicts.
 from __future__ import annotations
 
 import json
-import os
 import re
 import subprocess
 import sys
@@ -21,7 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from little_loops.context_window import context_window_for
-from little_loops.host_runner import resolve_host
+from little_loops.host_runner import project_child_env, resolve_host
 from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.types import ParallelConfig, WorkerResult, WorkerStage
 from little_loops.ready_issue import run_ready_issue_with_retry
@@ -103,6 +102,7 @@ def _run_per_worktree_proof_first_gate(
         capture_output=True,
         text=True,
         cwd=worktree_path,
+        env=project_child_env(),
     )
 
     # Function-local import: little_loops.fsm's package __init__ pulls in the
@@ -809,9 +809,9 @@ class WorkerPool:
             # Set environment to keep Claude in the project working directory (BUG-007)
             # This ensures the first Claude CLI invocation in the worktree has the same
             # project root behavior as subsequent invocations via run_claude_command()
-            env = os.environ.copy()
-            env["CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR"] = "1"
-            env.update(invocation.env)
+            env = project_child_env(
+                invocation, extra={"CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "1"}
+            )
 
             result = subprocess.run(
                 [invocation.binary, *args],
@@ -851,6 +851,7 @@ class WorkerPool:
         # Delete ll-managed branches (parallel/* and loop YYYYMMDD-HHMMSS-* shapes)
         from little_loops.worktree_utils import _is_ll_branch
 
+        # ll-no-project: local git plumbing, no host CLI/credentials in play (ENH-3184 AC2)
         branch_result = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             cwd=worktree_path,
@@ -1223,6 +1224,7 @@ class WorkerPool:
             epic_branch = self._worker_epic_branches.get(issue_id)
             if epic_branch:
                 diff_base = epic_branch
+        # ll-no-project: local git plumbing, no host CLI/credentials in play (ENH-3184 AC2)
         result = subprocess.run(
             ["git", "diff", "--name-only", diff_base, "HEAD"],
             cwd=worktree_path,
@@ -1262,6 +1264,7 @@ class WorkerPool:
             # local if fetch fails)
             base = self.parallel_config.base_branch
             remote = self.parallel_config.remote_name
+            # ll-no-project: local git plumbing (fetch), no host CLI/credentials in play (ENH-3184 AC2)
             fetch_result = subprocess.run(
                 ["git", "fetch", remote, base],
                 cwd=worktree_path,
@@ -1273,6 +1276,7 @@ class WorkerPool:
             rebase_target = f"{remote}/{base}" if fetch_result.returncode == 0 else base
 
         # Rebase current branch onto base (remote or local fallback)
+        # ll-no-project: local git plumbing (rebase), no host CLI/credentials in play (ENH-3184 AC2)
         rebase_result = subprocess.run(
             ["git", "rebase", rebase_target],
             cwd=worktree_path,
@@ -1283,6 +1287,7 @@ class WorkerPool:
 
         if rebase_result.returncode != 0:
             # Abort the failed rebase
+            # ll-no-project: local git plumbing (rebase --abort), no host CLI/credentials in play (ENH-3184 AC2)
             subprocess.run(
                 ["git", "rebase", "--abort"],
                 cwd=worktree_path,
@@ -1736,6 +1741,7 @@ class WorkerPool:
 
         # Cherry-pick in chronological order (oldest first = reverse of log output)
         for sha in reversed(leaked_commits):
+            # ll-no-project: local git plumbing (cherry-pick), no host CLI/credentials in play (ENH-3184 AC2)
             result = subprocess.run(
                 ["git", "cherry-pick", sha],
                 cwd=worktree_path,
@@ -1744,6 +1750,7 @@ class WorkerPool:
                 timeout=60,
             )
             if result.returncode != 0:
+                # ll-no-project: local git plumbing (cherry-pick --abort), no host CLI/credentials in play (ENH-3184 AC2)
                 subprocess.run(
                     ["git", "cherry-pick", "--abort"],
                     cwd=worktree_path,

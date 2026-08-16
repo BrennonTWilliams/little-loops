@@ -721,7 +721,7 @@ def _cmd_extract_from_completed(config, args, path) -> int:
     from pathlib import Path
 
     from little_loops.decisions import RuleEntry, add_entry, list_entries
-    from little_loops.host_runner import resolve_host
+    from little_loops.host_runner import project_child_env, resolve_host
     from little_loops.issue_history.parsing import scan_completed_issues
 
     project_root = Path(config.project_root)
@@ -812,6 +812,7 @@ def _cmd_extract_from_completed(config, args, path) -> int:
                 capture_output=True,
                 text=True,
                 timeout=120,
+                env=project_child_env(invocation),
             )
         except subprocess.TimeoutExpired:
             print(f"Warning: LLM call timed out for {issue.issue_id}", file=sys.stderr)

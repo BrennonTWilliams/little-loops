@@ -9,12 +9,11 @@ via the Claude CLI.
 
 from __future__ import annotations
 
-import os
 import subprocess
 from dataclasses import dataclass
 from enum import Enum
 
-from little_loops.host_runner import resolve_host
+from little_loops.host_runner import project_child_env, resolve_host
 
 
 class HandoffBehavior(Enum):
@@ -128,5 +127,5 @@ class HandoffHandler:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
-            env={**os.environ, **invocation.env},
+            env=project_child_env(invocation),
         )

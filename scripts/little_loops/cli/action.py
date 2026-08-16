@@ -343,6 +343,7 @@ def cmd_capabilities(args: argparse.Namespace) -> int:
     if available:
         try:
             invocation = runner.build_version_check()
+            # ll-no-project: detection probe, no task payload (ENH-3184 AC2)
             version_result = subprocess.run(
                 [invocation.binary, *invocation.args],
                 capture_output=True,

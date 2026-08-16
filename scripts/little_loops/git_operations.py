@@ -7,7 +7,6 @@ for excluded directories, and .gitignore pattern suggestions.
 from __future__ import annotations
 
 import fnmatch
-import os
 import re
 import subprocess
 import tempfile
@@ -15,6 +14,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from little_loops.host_runner import project_child_env
 from little_loops.logger import Logger
 from little_loops.work_verification import (  # noqa: F401
     EXCLUDED_DIRECTORIES,
@@ -195,6 +195,7 @@ def check_git_status(logger: Logger) -> bool:
         True if there are uncommitted changes
     """
     try:
+        # ll-no-project: local git plumbing, no host CLI/credentials in play (ENH-3184 AC2)
         result = subprocess.run(
             ["git", "diff", "--quiet"],
             capture_output=True,
@@ -204,6 +205,7 @@ def check_git_status(logger: Logger) -> bool:
             logger.warning("Uncommitted changes detected in working directory")
             return True
 
+        # ll-no-project: local git plumbing, no host CLI/credentials in play (ENH-3184 AC2)
         result = subprocess.run(
             ["git", "diff", "--cached", "--quiet"],
             capture_output=True,
@@ -231,6 +233,7 @@ def get_untracked_files(repo_root: Path | str = ".") -> list[str]:
     repo_root = Path(repo_root).resolve()
 
     try:
+        # ll-no-project: local git plumbing, no host CLI/credentials in play (ENH-3184 AC2)
         result = subprocess.run(
             ["git", "status", "--porcelain"],
             cwd=repo_root,
@@ -618,6 +621,7 @@ def snapshot_dirty_paths(repo_path: Path) -> frozenset[str]:
         wider and so preserves more, never less.
     """
     try:
+        # ll-no-project: local git plumbing, no host CLI/credentials in play (ENH-3184 AC2)
         result = subprocess.run(
             ["git", "status", "--porcelain", "-z"],
             cwd=repo_path,
@@ -681,6 +685,7 @@ def preserve_dirty_tree(
         (clean tree) or an error occurred (logged at ``error`` level).
     """
     try:
+        # ll-no-project: local git plumbing, no host CLI/credentials in play (ENH-3184 AC2)
         status = subprocess.run(
             ["git", "status", "--porcelain"],
             cwd=repo_path,
@@ -696,6 +701,7 @@ def preserve_dirty_tree(
         return None
 
     try:
+        # ll-no-project: local git plumbing, no host CLI/credentials in play (ENH-3184 AC2)
         head = subprocess.run(
             ["git", "rev-parse", "HEAD"],
             cwd=repo_path,
@@ -719,8 +725,7 @@ def preserve_dirty_tree(
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_index = str(Path(tmpdir) / "ll-preserve-index")
-            env = dict(os.environ)
-            env["GIT_INDEX_FILE"] = tmp_index
+            env = project_child_env(extra={"GIT_INDEX_FILE": tmp_index})
 
             add_result = subprocess.run(
                 ["git", "add", "-A"],
@@ -759,6 +764,7 @@ def preserve_dirty_tree(
         return None
 
     try:
+        # ll-no-project: local git plumbing (commit-tree needs no throwaway-index env) (ENH-3184 AC2)
         commit_tree = subprocess.run(
             [
                 "git",
@@ -787,6 +793,7 @@ def preserve_dirty_tree(
     commit_sha = commit_tree.stdout.strip()
 
     try:
+        # ll-no-project: local git plumbing (update-ref needs no throwaway-index env) (ENH-3184 AC2)
         update_ref = subprocess.run(
             ["git", "update-ref", ref_name, commit_sha],
             cwd=repo_path,
@@ -824,6 +831,7 @@ def has_non_noise_dirty_paths(repo_path: Path) -> tuple[bool, list[str]]:
         ``(has_non_noise_dirt, non_noise_paths)``
     """
     try:
+        # ll-no-project: local git plumbing, no host CLI/credentials in play (ENH-3184 AC2)
         status = subprocess.run(
             ["git", "status", "--porcelain", "-z"],
             cwd=repo_path,

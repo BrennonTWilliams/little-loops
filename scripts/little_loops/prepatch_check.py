@@ -260,6 +260,7 @@ def resolve_base_ref(repo_root: Path, base_sha: str | None, base_branch: str) ->
 
 def _merge_base(repo_root: Path, base_branch: str) -> str | None:
     try:
+        # ll-no-project: local git plumbing (merge-base), no host CLI/credentials in play (ENH-3184 AC2)
         proc = subprocess.run(
             ["git", "merge-base", "HEAD", base_branch],
             cwd=str(repo_root),
@@ -284,7 +285,9 @@ def _run_pytest(
     logger: Logger,
 ) -> bool:
     """Run pytest against *targets* in the worktree. Returns True if it timed out."""
-    env = dict(os.environ)
+    from little_loops.host_runner import project_child_env
+
+    env = project_child_env()
     prepend = str(worktree_path / src_dir)
     existing = env.get("PYTHONPATH")
     env["PYTHONPATH"] = f"{prepend}{os.pathsep}{existing}" if existing else prepend

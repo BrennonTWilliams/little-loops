@@ -4,9 +4,10 @@ title: Centralize child-environment construction behind a single projection help
   in host_runner
 type: ENH
 priority: P2
-status: open
+status: done
 testable: true
 discovered_date: '2026-08-15'
+completed_at: '2026-08-16T07:13:19Z'
 labels: []
 confidence_score: 100
 outcome_confidence: 88
@@ -180,6 +181,7 @@ Explicitly **out of scope** (each has a home):
 **SUPERSEDED and removed** — the `/ll:confidence-check` run of 2026-08-15 scored the original four-in-one scope. Its findings no longer describe this issue and contradicted the body in two places (it cited "8 spawn sites" against a verified 12, and three unresolved Open Decisions that have all moved to ENH-3203/3204/3205). The frontmatter scores (`confidence_score: 85`, `outcome_confidence: 48`) are likewise stale. Only one of its findings survives, and it is now this issue's core: *a missed spawn site silently defeats the guarantee* — which is what AC2's guard converts from assumption to assertion. Re-run `/ll:confidence-check` against the current scope before implementing.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-16T07:12:14 - `5d0b518d-16a0-47de-b0cf-8f665fe2546a.jsonl`
 - `/ll:confidence-check` - 2026-08-16T06:12:24 - `7c646ce3-f44e-4eef-97cb-1c8c88c8d9d9.jsonl`
 - `/ll:confidence-check` - 2026-08-16T05:31:05 - `bb755dcf-6087-41b3-80d2-a79a3aba782e.jsonl`
 - `/ll:confidence-check` - 2026-08-16T04:58:48 - `3732fd32-810c-4cb4-9095-7a5a9dac49d5.jsonl`
@@ -191,6 +193,45 @@ Explicitly **out of scope** (each has a home):
 - `/ll:confidence-check` - 2026-08-15T20:37:09 - `418ba343-3272-4147-b043-1745e73ae713.jsonl`
 - `/ll:refine-issue` - 2026-08-15T19:46:44 - `ccda3253-f4ab-44ac-a167-7fd374e66499.jsonl`
 - Pre-implementation review - 2026-08-15 - corrected the `build_streaming` signature (9 kwargs, not 3) and ruled out threading scope through `build_*()`; scoped projection to declared specs only; replaced the guessed baseline with an empirically-derived one; named the disk-backed-credential limitation.
+
+## Resolution
+
+Implemented `project_child_env()` in `host_runner.py` exactly per the Program
+Design signature and routed every task-path spawn through it (AC1). Re-verified
+the census against the tree at implementation time and found one further drift
+beyond the five prior passes: `init/install_check.py` carries **5** spawn sites
+(2 `pip` introspection calls plus the 3 already-known host-CLI probes), not the
+single site the body's per-module table implied — corrected in the AC2 guard's
+pinned table, all 5 exempted by marker (none need projection).
+
+- AC1: `project_child_env(invocation=None, *, extra=None)` lands in
+  `host_runner.py` adjacent to `_apply_automation_env()`.
+- AC2: `scripts/tests/test_enh3184_spawn_site_guard.py` — an AST-based guard
+  (not a `subprocess.run`-regex or `os.environ.copy()`-shaped one) enumerating
+  every `subprocess.(run|Popen|check_output|call)` site across the 18-module
+  task-path list, asserting each is either routed through the helper or
+  carries a `# ll-no-project: <reason>` marker, with an exact pinned
+  (spawn-count, marker-count) table per module. 49 spawns total, 21 routed, 28
+  exempted.
+- AC3: `fsm/evaluators.py:1146/1360/1612` now merge `invocation.env`;
+  `evaluators.py:644` (`git diff --stat`) is exempted by marker. Delta test in
+  `test_fsm_evaluators.py` asserts the two `build_blocking_json()` keys land
+  and `LL_AUTOMATION` is untouched.
+- AC4: `runner_spec.py::_run_prompt()` now merges `invocation.env` (previously
+  discarded it entirely), matching `_run_skill()`. Delta test in
+  `test_runner_spec.py`.
+- AC5: `cli/loop/_helpers.py:1659,2101` route through the helper; a code
+  comment states the no-cross-`execve`-guarantee decision inline.
+- AC6: `TestProjectChildEnvCrossRunnerParity` (6 implemented runners) +
+  `TestProjectChildEnvStubRunnersRaiseFirst` (OpenCodeRunner/PiRunner) in
+  `test_host_runner.py`. Full suite: 19517 passed, 46 skipped, 0 failed.
+- AC7: `cli/issues/decisions.py:811` now merges `invocation.env` (previously
+  passed no `env=` at all). Delta test in `test_cli_decisions.py`.
+
+One addition beyond the pinned census: `parallel/worker_pool.py`'s
+`ll-loop run proof-first-task` self-spawn (a declared-action launch, not git
+plumbing) was routed through the helper rather than exempted, since it fits
+the task-path rule cleanly.
 
 ## Status
 

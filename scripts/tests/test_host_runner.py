@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
 import warnings
 from collections.abc import Iterator
 from pathlib import Path
@@ -37,6 +38,7 @@ from little_loops.host_runner import (
     PiRunner,
     QwenRunner,
     apply_host_cli_from_config,
+    project_child_env,
     resolve_host,
 )
 
@@ -82,6 +84,83 @@ class TestAutomationProfileEnvAcrossRunners:
         invocation = runner.build_streaming(prompt="hi", automation_profile="autodev")
         assert invocation.env["LL_AUTOMATION"] == "1"
         assert invocation.env["LL_AUTOMATION_PROFILE"] == "autodev"
+
+
+class TestProjectChildEnv:
+    """ENH-3184 AC1: project_child_env() default behaviour is byte-identical
+    to the pre-ENH-3184 hand-rolled ``os.environ.copy()``-plus-overrides shape.
+    """
+
+    def test_no_args_is_full_inherit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LL_TEST_PROBE", "parent-value")
+        env = project_child_env()
+        assert env["LL_TEST_PROBE"] == "parent-value"
+        assert env == dict(os.environ)
+
+    def test_invocation_env_overrides_inherited(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LL_TEST_PROBE", "parent-value")
+        invocation = HostInvocation(
+            binary="claude",
+            args=[],
+            env={"LL_TEST_PROBE": "invocation-value"},
+            capabilities=HostCapabilities(),
+        )
+        env = project_child_env(invocation)
+        assert env["LL_TEST_PROBE"] == "invocation-value"
+
+    def test_absent_invocation_key_means_inherit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LL_TEST_PROBE", "parent-value")
+        invocation = HostInvocation(
+            binary="claude", args=[], env={}, capabilities=HostCapabilities()
+        )
+        env = project_child_env(invocation)
+        assert env["LL_TEST_PROBE"] == "parent-value"
+
+    def test_extra_overrides_invocation_env(self) -> None:
+        invocation = HostInvocation(
+            binary="claude",
+            args=[],
+            env={"LL_HOST_CLI": "from-invocation"},
+            capabilities=HostCapabilities(),
+        )
+        env = project_child_env(invocation, extra={"LL_HOST_CLI": "from-extra"})
+        assert env["LL_HOST_CLI"] == "from-extra"
+
+    def test_no_invocation_covers_bash_c_paths(self) -> None:
+        """The two bash -c task-path spawns never build a HostInvocation at
+        all — invocation must be optional so they can still route (AC1)."""
+        assert project_child_env(extra={"FOO": "bar"})["FOO"] == "bar"
+
+
+@pytest.mark.parametrize(
+    "runner_cls",
+    [ClaudeCodeRunner, CodexRunner, GeminiRunner, OmpRunner, KimiRunner, QwenRunner],
+)
+class TestProjectChildEnvCrossRunnerParity:
+    """ENH-3184 AC6: project_child_env(invocation) reproduces exactly what the
+    hand-rolled ``{**os.environ, **invocation.env}`` call sites produced,
+    across every implemented runner. Zero behaviour change outside AC3/AC4/AC7.
+    """
+
+    def test_matches_hand_rolled_merge(
+        self, runner_cls: type[HostRunner], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LL_TEST_PROBE", "parent-value")
+        runner = runner_cls()
+        invocation = runner.build_blocking_json(prompt="hi")
+        expected = {**os.environ, **invocation.env}
+        assert project_child_env(invocation) == expected
+
+
+class TestProjectChildEnvStubRunnersRaiseFirst:
+    """ENH-3184 AC6: the two unimplemented stubs raise HostNotConfigured before
+    any HostInvocation (and therefore any env) is constructed — there is
+    nothing for project_child_env() to project for them."""
+
+    @pytest.mark.parametrize("runner_cls", [OpenCodeRunner, PiRunner])
+    def test_build_blocking_json_raises_before_env(self, runner_cls: type[HostRunner]) -> None:
+        with pytest.raises(HostNotConfigured):
+            runner_cls().build_blocking_json(prompt="hi")
 
 
 class TestDisableBackgroundTasksEnv:

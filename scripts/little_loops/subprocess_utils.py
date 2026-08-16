@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from little_loops.context_window import context_window_for
-from little_loops.host_runner import resolve_host
+from little_loops.host_runner import project_child_env, resolve_host
 
 if TYPE_CHECKING:
     from little_loops.parallel.types import SprintWorkerContext
@@ -447,8 +447,7 @@ def run_claude_command(
     )
     cmd_args = [invocation.binary, *invocation.args]
 
-    env = os.environ.copy()
-    env.update(invocation.env)
+    env = project_child_env(invocation)
     if "GIT_DIR" in invocation.env:
         logger.debug("Worktree detected: GIT_DIR=%s", invocation.env["GIT_DIR"])
 

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from little_loops.git_operations import preserve_before_teardown
+from little_loops.host_runner import project_child_env
 
 if TYPE_CHECKING:
     from little_loops.logger import Logger
@@ -45,6 +46,7 @@ def detect_default_branch(repo_path: Path, git_lock: GitLock | None = None) -> s
     def _git(args: list[str]) -> subprocess.CompletedProcess[str]:
         if git_lock is not None:
             return git_lock.run(args, cwd=repo_path, timeout=10)
+        # ll-no-project: local git plumbing, no host CLI/credentials in play (ENH-3184 AC2)
         return subprocess.run(
             ["git", *args],
             cwd=repo_path,
@@ -565,8 +567,7 @@ def verify_epic_branch_before_merge(
     # ``os.environ.get("LL_VERIFY_GATE") == "1"`` and quarantine themselves,
     # instead of sniffing PYTHONPATH. Mirrors the ``LL_NON_INTERACTIVE`` marker
     # idiom (host_runner.py / session_start.py).
-    env: dict[str, str] = os.environ.copy()
-    env["LL_VERIFY_GATE"] = "1"
+    env: dict[str, str] = project_child_env(extra={"LL_VERIFY_GATE": "1"})
     # Global worker budget for nested pytest-xdist runs: ll-parallel/ll-sprint
     # can trigger several verify gates concurrently, each of which would
     # otherwise spawn its own cpus//2-worker suite (the conftest cap is
@@ -710,6 +711,7 @@ def open_pr_for_epic_branch(
         logger: Logger instance.
     """
     try:
+        # ll-no-project: gh auth status; gh credential scoping is ENH-3205, not this issue
         auth_result = subprocess.run(
             ["gh", "auth", "status"],
             capture_output=True,
@@ -719,6 +721,7 @@ def open_pr_for_epic_branch(
         if auth_result.returncode != 0:
             logger.warning(f"EPIC {epic_id}: gh not authenticated, skipping integration PR")
             return
+        # ll-no-project: gh pr create; gh credential scoping is ENH-3205, not this issue
         pr_result = subprocess.run(
             [
                 "gh",

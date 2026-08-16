@@ -1723,6 +1723,10 @@ class TestExtractFromCompleted:
         assert "atomic_write" in captured.out
         # File must NOT be created
         assert not decisions_path.exists()
+        # ENH-3184 AC7: this spawn previously discarded invocation.env entirely
+        # (no env= kwarg at all); it must now merge it via project_child_env().
+        assert mock_run.call_args.kwargs["env"]["LL_NON_INTERACTIVE"] == "1"
+        assert mock_run.call_args.kwargs["env"]["DANGEROUSLY_SKIP_PERMISSIONS"] == "1"
 
     def test_writes_rules_for_completed_issues(
         self,

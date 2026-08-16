@@ -192,10 +192,9 @@ def call_mcp_tool(
     args = server_config.get("args", [])
     env_overrides = server_config.get("env", {})
 
-    import os
+    from little_loops.host_runner import project_child_env
 
-    env = os.environ.copy()
-    env.update({k: str(v) for k, v in env_overrides.items()})
+    env = project_child_env(extra={k: str(v) for k, v in env_overrides.items()})
 
     cmd = [command] + args
 

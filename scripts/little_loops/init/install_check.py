@@ -42,6 +42,7 @@ def installed_package_version(pkg_name: str = "little-loops") -> str | None:
 def _is_editable_install() -> bool:
     """Return True if little-loops is installed as an editable (dev) install."""
     try:
+        # ll-no-project: pip introspection probe, not a host CLI/task spawn (ENH-3184 AC2)
         result = subprocess.run(
             [sys.executable, "-m", "pip", "show", "little-loops"],
             capture_output=True,
@@ -84,6 +85,7 @@ def detect_installation(
         binary = None
     if binary:
         try:
+            # ll-no-project: detection probe, no task payload (ENH-3184 AC2)
             result = subprocess.run(
                 [binary, "plugin", "list", "--json"],
                 capture_output=True,
@@ -121,6 +123,7 @@ def fetch_latest_pypi(timeout: float = 10.0) -> str | None:
         Latest version string, or None on any failure (offline, timeout, etc.).
     """
     try:
+        # ll-no-project: pip introspection probe, not a host CLI/task spawn (ENH-3184 AC2)
         result = subprocess.run(
             [sys.executable, "-m", "pip", "index", "versions", "little-loops"],
             capture_output=True,
@@ -153,6 +156,7 @@ def fetch_latest_plugin(timeout: float = 10.0) -> str | None:
 
     try:
         # Update marketplace index (best-effort — ignore failure).
+        # ll-no-project: maintenance probe (marketplace index update), no task payload (ENH-3184 AC2)
         subprocess.run(
             [binary, "plugin", "marketplace", "update", "little-loops"],
             capture_output=True,
@@ -163,6 +167,7 @@ def fetch_latest_plugin(timeout: float = 10.0) -> str | None:
         pass
 
     try:
+        # ll-no-project: detection probe, no task payload (ENH-3184 AC2)
         result = subprocess.run(
             [binary, "plugin", "list", "--available", "--json"],
             capture_output=True,

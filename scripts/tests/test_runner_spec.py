@@ -131,6 +131,28 @@ class TestRunActionDispatch:
 
         assert result == RunnerResult(stdout="4", stderr="", exit_code=0)
 
+    def test_prompt_dispatch_merges_invocation_env(self) -> None:
+        """ENH-3184 AC4: _run_prompt() previously dropped invocation.env
+        entirely; it must now merge it via project_child_env(), matching
+        _run_skill()'s existing behaviour."""
+        spec = ActionSpec(
+            name="p", runner=RunnerType.PROMPT, target="What is 2+2?", args={"model": None}
+        )
+
+        class EnvRunner:
+            def build_blocking_json(self, *, prompt: str, model: str | None = None):
+                return HostInvocation(binary="claude", args=["-p", prompt], env={"FOO": "bar"})
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=EnvRunner()),
+            patch(
+                "subprocess.run", return_value=_make_completed(returncode=0, stdout="4")
+            ) as mock_run,
+        ):
+            run_action(spec)
+
+        assert mock_run.call_args.kwargs["env"]["FOO"] == "bar"
+
     def test_mcp_dispatch_matches_legacy_shape(self) -> None:
         spec = ActionSpec(
             name="mcp",

@@ -26,6 +26,7 @@ from little_loops.cli.output import colorize, strip_ansi, terminal_size, termina
 from little_loops.fsm.concurrency import LockManager, _process_alive, resolve_scope
 from little_loops.fsm.loop_paths import get_builtin_loops_dir, resolve_loop_path
 from little_loops.fsm.types import FAILURE_TERMINAL_EXIT_CODE
+from little_loops.host_runner import project_child_env
 from little_loops.logger import Logger
 
 if TYPE_CHECKING:
@@ -1654,6 +1655,10 @@ def run_background(
     if cost_output_json is not None:
         cmd.extend(["--cost-output-json", str(cost_output_json)])
 
+    # ENH-3184 AC5: this re-exec'd `ll-loop` child re-derives its own environment
+    # from scratch at each of its own spawn sites — projecting here carries no
+    # guarantee across the execve boundary. Fine for today's full-inheritance
+    # default; ENH-3203's deny-by-default must carry policy across explicitly.
     log_file.parent.mkdir(parents=True, exist_ok=True)
     with open(log_file, "w") as log_fh:
         process = subprocess.Popen(
@@ -1662,6 +1667,7 @@ def run_background(
             stdout=log_fh,
             stderr=log_fh,
             stdin=subprocess.DEVNULL,
+            env=project_child_env(),
         )
 
     pid_file.write_text(str(process.pid))
@@ -2062,7 +2068,6 @@ def _run_cross_host_validation(
     LL_HOST_CLI overridden, then calls _print_cross_host_table if both ab.json
     files are available.
     """
-    import os
     import shutil
 
     from little_loops.host_runner import _PROBE_ORDER, HostNotConfigured, resolve_host
@@ -2098,8 +2103,7 @@ def _run_cross_host_validation(
         cmd.extend(["--items", str(items)])
     cmd.append(loop_name)
 
-    env = dict(os.environ)
-    env["LL_HOST_CLI"] = second_host
+    env = project_child_env(extra={"LL_HOST_CLI": second_host})
 
     before = time.time()
     result = subprocess.run(cmd, env=env)

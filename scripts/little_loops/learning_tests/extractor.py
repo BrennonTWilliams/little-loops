@@ -16,13 +16,12 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 import subprocess
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from little_loops.host_runner import resolve_host
+from little_loops.host_runner import project_child_env, resolve_host
 from little_loops.issue_parser import slugify
 
 if TYPE_CHECKING:
@@ -132,7 +131,7 @@ def _default_llm_call(prompt: str) -> str:
         inv = resolve_host().build_blocking_json(prompt=prompt, model=None)
         proc = subprocess.run(
             [inv.binary, *inv.args],
-            env={**os.environ, **inv.env},
+            env=project_child_env(inv),
             capture_output=True,
             text=True,
             timeout=_LLM_TIMEOUT_S,

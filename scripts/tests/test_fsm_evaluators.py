@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -899,6 +900,23 @@ class TestLLMStructuredEvaluator:
         assert result.details["confidence"] == 0.9
         assert result.details["confident"] is True
         assert result.details["reason"] == "Action completed successfully"
+
+    def test_env_carries_only_the_two_build_blocking_json_keys(self, mock_cli) -> None:
+        """ENH-3184 AC3: this spawn newly receives LL_NON_INTERACTIVE and
+        DANGEROUSLY_SKIP_PERMISSIONS (build_blocking_json()'s fixed literal),
+        merged via project_child_env(). LL_AUTOMATION must NOT move — no
+        build_blocking_json() implementation supplies it to any caller."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("yes", 0.9, "done")
+
+        evaluate_llm_structured("output")
+
+        env = mock_run.call_args.kwargs["env"]
+        assert env["LL_NON_INTERACTIVE"] == "1"
+        assert env["DANGEROUSLY_SKIP_PERMISSIONS"] == "1"
+        # Untouched: build_blocking_json() never sets LL_AUTOMATION, so the
+        # merge leaves whatever (if anything) the parent process inherited.
+        assert env.get("LL_AUTOMATION") == os.environ.get("LL_AUTOMATION")
 
     def test_json_schema_present_when_host_supports_structured_output(self, mock_cli) -> None:
         """ENH-2627: the flag is appended for a structured-output-capable host.

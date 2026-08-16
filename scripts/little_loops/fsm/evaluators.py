@@ -43,7 +43,7 @@ from little_loops.fsm.interpolation import (
 )
 from little_loops.fsm.schema import DEFAULT_LLM_MODEL, EvaluateConfig
 from little_loops.fsm.verdicts import BINARY_VERDICT_ENUM, CANNOT_JUDGE, DEFAULT_VERDICT_ENUM
-from little_loops.host_runner import resolve_host
+from little_loops.host_runner import project_child_env, resolve_host
 
 
 @dataclass
@@ -641,6 +641,7 @@ def evaluate_diff_stall(
         cmd += ["--"] + scope
 
     try:
+        # ll-no-project: local git plumbing, no host CLI/credentials in play (ENH-3184 AC2/AC3)
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
     except subprocess.TimeoutExpired:
         return EvaluationResult(verdict="error", details={"error": "git diff timed out"})
@@ -1144,7 +1145,11 @@ def evaluate_llm_structured(
     t0 = time.monotonic()
     try:
         proc = subprocess.run(
-            [invocation.binary, *args], capture_output=True, text=True, timeout=timeout
+            [invocation.binary, *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=project_child_env(invocation),
         )
     except subprocess.TimeoutExpired:
         return EvaluationResult(
@@ -1358,7 +1363,11 @@ def evaluate_blind_comparator(
 
     try:
         proc = subprocess.run(
-            [invocation.binary, *args], capture_output=True, text=True, timeout=timeout
+            [invocation.binary, *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=project_child_env(invocation),
         )
     except subprocess.TimeoutExpired:
         # On timeout, both fail — conservative default
@@ -1610,7 +1619,11 @@ def evaluate_contract(
         t0 = time.monotonic()
         try:
             proc = subprocess.run(
-                [invocation.binary, *args], capture_output=True, text=True, timeout=timeout
+                [invocation.binary, *args],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env=project_child_env(invocation),
             )
         except subprocess.TimeoutExpired:
             pair_results.append(
