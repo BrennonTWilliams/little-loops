@@ -617,7 +617,10 @@ accurate — no `_advisor_check` in `cli/doctor.py`'s registered checks and
 `scripts/little_loops/advisor.py` is still 112 lines (FEAT-3108's surface
 only).
 
+- 2026-08-16: Core claim still solid — no `_advisor_check` in `cli/doctor.py`; `depends_on` IDs are all valid and correctly reflect current status. The file body contains multiple stale/superseded Verification Notes blocks about a since-resolved ID-confusion incident (FEAT-3120 provenance mix-up) that now read as contradictory to a reader; flagging for a future pruning/consolidation pass rather than deleting here. Verdict: NEEDS_UPDATE.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-16T16:40:24 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-13T22:00:51 - `e21c16b3-391d-4ef2-80c4-decd2dced91f.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:57 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:reconcile-issue` - 2026-08-10T18:26:44 - `7405995b-78ac-4bf8-8825-45f100c3421d.jsonl`

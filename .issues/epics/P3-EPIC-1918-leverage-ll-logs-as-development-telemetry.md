@@ -169,7 +169,10 @@ open
 
 _Added by `/ll:verify-issues`._ Verdict: **NON_VALID (NEEDS_UPDATE)**. Confirmed the "Implementation Status" section is stale (last touched 2026-06-19/20) and predates ENH-2923, ENH-2926, and FEAT-2379, all of which are confirmed `status: open` and correctly not yet reflected there. Flagging the gap for a follow-up refresh pass; the full refresh itself is out of scope for this verification batch.
 
+- 2026-08-16: Primary 9 children's Completed statuses match; ENH-2070/2071/2072 correctly Deferred. ENH-2923, ENH-2926, and FEAT-2379 remain open children not reflected in the Implementation Status section (stale since 2026-06-19/20) — these three were separately verified in this same pass: ENH-2923 VALID, ENH-2926 OUTDATED, FEAT-2379 VALID per those issues' own files. Verdict: NEEDS_UPDATE.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-16T16:40:25 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:04:15 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:07 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:verify-issues` - 2026-06-20T00:34:45 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`

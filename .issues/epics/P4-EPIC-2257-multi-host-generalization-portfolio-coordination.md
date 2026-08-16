@@ -106,7 +106,7 @@ portfolio work is in the tracked per-host epics below.
   support, with mandatory disclosure (**done**)
 - **ENH-2883** — Collapse per-host adapter emitters onto the capability map
   (**done**)
-- **BUG-3164** — ll-adapt kimi-code, gemini, and omp mirrors omit skill companion files (open)
+- **BUG-3164** — ll-adapt kimi-code, gemini, and omp mirrors omit skill companion files (done)
 
 
 ## Tracked sub-epics (sequenced under this epic)
@@ -191,6 +191,10 @@ portfolio work is in the tracked per-host epics below.
   per-host epics" prose section, not `parent:`. `epic-progress` now reports 6/6
   (100%) on the directly-owned generic children.
 
+- **2026-08-16**: 10/10 tracked items resolved but BUG-3164 was listed as
+  "(open)" in the body when it's actually `status: done` — corrected above.
+  Verdict: NEEDS_UPDATE.
+
 ## Related Key Documentation
 
 - `.claude/CLAUDE.md` — the § Host CLI Abstraction section (`resolve_host()`, `LL_HOST_CLI`) is the exact shared infrastructure this coordination epic's generic-adapter decision (ARCHITECTURE-049) governs.
@@ -202,4 +206,5 @@ portfolio work is in the tracked per-host epics below.
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-16T16:40:25 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:07:50 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`

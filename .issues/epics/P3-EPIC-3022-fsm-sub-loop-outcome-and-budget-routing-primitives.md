@@ -55,7 +55,8 @@ them.
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/fsm/executor.py` — `_execute_loop_state` (ENH-3019);
+- `scripts/little_loops/fsm/executor.py` — `_execute_sub_loop` (renamed from
+  `_execute_loop_state`, now at `fsm/executor.py:831`) (ENH-3019);
   new per-state/iteration accounting check (ENH-3020)
 - `scripts/little_loops/fsm/fsm-loop-schema.json` — `on_timeout` route
   (ENH-3019); `max_tokens_per_iteration`/`max_seconds_per_state` config keys
@@ -120,8 +121,10 @@ branches, and the context/counter plumbing each needs. Out of scope: changing
 
 2026-08-10 (`/ll:verify-issues`): Verified 2026-08-10: body previously listed ENH-3019 as an open child — it is actually status: done. Only ENH-3020 remains open. Epic correctly stays open; update any body prose that still lists ENH-3019 as pending.
 
+- 2026-08-16: ENH-3019 done, ENH-3020 open (statuses correct), but the Integration Map's citation `executor.py — _execute_loop_state` was stale — that function was renamed to `_execute_sub_loop` (now at `fsm/executor.py:831`); corrected above. Verdict: NEEDS_UPDATE.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-16T16:40:25 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:07:48 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-10T18:52:53 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:52 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`

@@ -124,7 +124,10 @@ This issue should be updated incrementally as children land. Final pass:
   notes — needs reconciliation, but underlying tracking work
   (HOST_COMPATIBILITY.md Gemini column state) is still accurately gapped.
 
+- 2026-08-16: Tracking issue substance is accurate — Gemini column still has open deferred cells pending FEAT-2186/FEAT-2190, both still open. The Cell Update Map table remains stale relative to since-landed dependencies and needs a reconciliation pass; not attempted here. Verdict: NEEDS_UPDATE.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-16T16:40:23 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:11 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:26:28 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:verify-issues` - 2026-06-20T00:34:45 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`

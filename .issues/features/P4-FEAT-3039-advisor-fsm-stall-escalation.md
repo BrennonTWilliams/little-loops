@@ -9,9 +9,10 @@ testable: true
 discovered_date: 2026-08-03
 depends_on:
 - FEAT-3044
-- FEAT-3038
 - FEAT-3120
 - FEAT-3116
+- FEAT-3117
+- FEAT-3118
 labels:
 - planning-hub
 verify_verdict: VALID
@@ -370,7 +371,10 @@ CAUTION" band — the aggregate score doesn't capture that one criterion (5)
 is a hard blocker for correctness, not just a minor deduction. Re-run this
 check after `FEAT-3044` and `FEAT-3116` (at minimum) reach `done`.
 
+- 2026-08-16: `depends_on` lists FEAT-3044 (done), FEAT-3038 (done), FEAT-3120 (open), FEAT-3116 (open). FEAT-3038 was decomposed into FEAT-3116/FEAT-3117/FEAT-3118, all of which are still `status: open` — so despite FEAT-3038 itself showing `status: done` in frontmatter, the real successor work it was split into is NOT done, meaning this issue's actual blockers (FEAT-3120, FEAT-3116, and transitively FEAT-3117/FEAT-3118) remain unresolved. Verdict: DEP_ISSUES.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-16T16:40:26 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-13T22:00:51 - `e21c16b3-391d-4ef2-80c4-decd2dced91f.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:58 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:confidence-check` - 2026-08-08T21:44:19 - `d7b6c474-eeb6-4901-9ffd-be8f7cc9a06c.jsonl`

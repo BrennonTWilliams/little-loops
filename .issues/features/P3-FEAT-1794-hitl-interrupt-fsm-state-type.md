@@ -340,7 +340,10 @@ _Added by `/ll:verify-issues` on 2026-06-03_
 
 2026-08-12 (`/ll:verify-issues`): `fsm/validation.py` no longer exists — commit `9a4977a1` split it into a `fsm/validation/` subpackage; `_validate_state_action` now lives at `fsm/validation/structural_rules.py:406` and `NON_LLM_EVALUATOR_TYPES` at `fsm/validation/_base.py:65`. All `executor.py` anchors have drifted again and were re-grepped and updated: `_execute_state` :1711, `_run_action` :2049, `_action_mode` :2706, `_emit` :3178, `_interruptible_sleep` :3378 (learning-state dispatch pattern now at :1735). The core architectural gap this issue tracks — no `human_approval` action type, no `interactive` bool on `HostCapabilities` — remains unimplemented and the issue stays valid, hence `verify_verdict: NON_VALID` (NEEDS_UPDATE) rather than a clean VALID.
 
+- 2026-08-16: Core gap confirmed still real — no `human_approval` action_type anywhere in `fsm/executor.py`/`fsm/schema.py`. This file's line-number citations have now drifted across at least four prior verification passes; recommend future updates cite functions by name (e.g. `_execute_state`, `_run_action`) rather than line numbers, since line numbers churn too fast to stay accurate between passes. Verdict: OUTDATED.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-16T16:40:23 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:08:30 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - backlog-grooming - 2026-07-03T00:00:00Z - Downgraded P2 -> P3 with parent EPIC-1929 (stalled chain; root FEAT-1930 unstarted).
 - `/ll:audit-issue-conflicts` - 2026-06-25T21:24:02 - `91915c5b-d793-486c-a140-be4dd3d8ca1f.jsonl`

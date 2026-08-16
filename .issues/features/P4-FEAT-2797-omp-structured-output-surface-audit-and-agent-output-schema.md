@@ -168,7 +168,10 @@ drifted further, to `1197-1201` (same `HostCapabilities(...)` block,
 content unchanged) — corrected in the Summary section above. Remaining
 gaps from the 2026-08-10 pass are unchanged and still outstanding.
 
+- 2026-08-16: Remaining gaps still live (no explanation of why `json_schema`/`structured_output` are ✗ for omp in HOST_COMPATIBILITY.md, no structured-output mention in `thoughts/research/omp-headless-flags.md`). Per this issue's own 2026-08-10 note, the `emit_agent` → `.omp/agents/` acceptance criterion is already implemented (`scripts/little_loops/adapters/omp.py`) — that AC should be checked off and the issue's scope trimmed to the remaining unimplemented ACs. Verdict: NEEDS_UPDATE.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-16T16:40:24 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:58 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:25 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:45 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`

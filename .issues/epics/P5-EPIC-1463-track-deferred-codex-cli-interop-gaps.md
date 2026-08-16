@@ -171,7 +171,7 @@ FEAT-992).
 - **ENH-1722** — Research and decide per-host state directory redirection for Codex — **deferred**
 - **ENH-1615** — Add `disable-model-invocation: true` to all 28 ll-* Codex bridge skills (skill budget / Codex discoverability cleanup)
 - **ENH-1529** — Expose `sandbox_mode` parameter on CodexRunner build methods (Codex execution constraint gap)
-- **ENH-2121** — Emit rich Codex subagent TOML fields (`model_reasoning_effort`, `sandbox_mode`, `mcp_servers`, `skills.config`) in `ll-adapt-agents-for-codex`; the adapter is currently lossy (only `name`/`description`/`model`/`developer_instructions`).
+- **ENH-2121** — Emit rich Codex subagent TOML fields (`model_reasoning_effort`, `sandbox_mode`, `mcp_servers`, `skills.config`) in `ll-adapt-agents-for-codex`; the adapter is currently lossy (only `name`/`description`/`model`/`developer_instructions`). — ❌ **cancelled**
 - **FEAT-2122** — Exploit Codex's native spawn model (`spawn_agents_on_csv`, `agents.max_threads`) for `ll-parallel`'s per-issue fan-out, or document why worktree-per-issue stays the default.
 - **FEAT-2123** — Surface per-invocation token usage from Codex/OpenCode runners (fixes the orphaned `[^tok]` dead-link that pointed at the unrelated, completed EPIC-1744).
 - **ENH-2124** — Research/track the unverified `permission skip` and `tool allowlist` Codex runner-capability `✗` cells; wire or document as permanent gaps. — **deferred**
@@ -302,7 +302,10 @@ were filed for the genuine remaining depth gaps.
 
 2026-08-12 (`/ll:verify-issues`): Verdict: **NON_VALID (NEEDS_UPDATE)**. The `## Children` prose still described FEAT-1719, FEAT-1721, and ENH-2105 as active though they are now `status: cancelled`, and ENH-1722, ENH-2124 as active though now `status: deferred`. Updated all five bullets above to reflect current status. Note: this exact drift was already flagged by prior `/ll:verify-issues` passes on 2026-06-18, 2026-06-19, and 2026-06-26 but never fixed until now.
 
+2026-08-16 (`/ll:verify-issues`): Verdict: **NON_VALID (NEEDS_UPDATE)**. `ll-issues epic-progress EPIC-1463` matches the open-items list, but ENH-2121 in the Children list lacked a status marker and is actually `status: cancelled` — this repeats a pattern already flagged in this file's own prior Verification Notes. Added the `cancelled` marker above.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-16T16:40:26 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:07:50 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-06-20T00:34:45 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
 - `/ll:verify-issues` - 2026-06-13T21:13:58 - `cfa3cf65-c671-4bf6-a513-92cc448d76e6.jsonl`

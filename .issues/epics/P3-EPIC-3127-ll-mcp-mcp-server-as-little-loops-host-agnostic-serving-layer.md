@@ -108,26 +108,26 @@ SEP-2663-shaped, and deliberately **not** advertised in capabilities.
 
 ### Known gaps, captured as children
 
-- **ENH-3171** (P2) — the project root is `Path.cwd()` with no override. A host
+- ~~**ENH-3171** (P2) — the project root is `Path.cwd()` with no override. A host
   that spawns from `$HOME` produces a server that answers truthfully about
-  nothing, silently. This is the most common real-world failure.
-- **ENH-3172** (P2) — resource and prompt indices are enumerated once at startup
+  nothing, silently. This is the most common real-world failure.~~ **done**
+- ~~**ENH-3172** (P2) — resource and prompt indices are enumerated once at startup
   and never invalidated, so the server does not see issues its own
-  `issue_capture` / `loop_start` created.
-- **ENH-3173** (P3) — `--http` cannot be told where to bind; `127.0.0.1:8765` is
-  unreachable from the console script.
-- **ENH-3174** (P3) — `resources/list` returns the whole enumeration (3,000+
-  entries here) with the pagination params accepted and ignored.
+  `issue_capture` / `loop_start` created.~~ **done**
+- ~~**ENH-3173** (P3) — `--http` cannot be told where to bind; `127.0.0.1:8765` is
+  unreachable from the console script.~~ **done**
+- ~~**ENH-3174** (P3) — `resources/list` returns the whole enumeration (3,000+
+  entries here) with the pagination params accepted and ignored.~~ **done**
 - **FEAT-3134** (deferred) — the context-cost measurement this epic wanted
   *before* the first tier shipped. It never happened; see Open Question 1.
-- **BUG-3177** (P2) — `prompts/list` returns an empty list on any install where
+- ~~**BUG-3177** (P2) — `prompts/list` returns an empty list on any install where
   `skills/` is not on disk two directories above the package. `skills/` is not
   package data (`pyproject.toml` ships `little_loops/**` only) and
   `_find_plugin_root()`'s fallback encodes the source-checkout layout, so a
-  wheel install without `CLAUDE_PLUGIN_ROOT` serves zero prompts, silently.
-- **BUG-3178** (P2) — `ll-adapt --host codex --apply` writes
+  wheel install without `CLAUDE_PLUGIN_ROOT` serves zero prompts, silently.~~ **done**
+- ~~**BUG-3178** (P2) — `ll-adapt --host codex --apply` writes
   `mcp_servers = ["ll-mcp"]` into `.codex/ll-mcp.toml`: a name reference, not a
-  server definition, so Codex has no `command` to spawn.
+  server definition, so Codex has no `command` to spawn.~~ **done**
 - **BUG-3180 / BUG-3181** (P2, both closed 2026-08-15) — found by reviewing ENH-3171's
   implementation *after* it closed: the resolved root reached only two of the four call
   sites the issue named. `tasks._loops_dir` read `config.loops.loops_dir` (the raw
@@ -409,7 +409,10 @@ resource/prompt indices, P2), ENH-3173 (HTTP bind host/port, P3), ENH-3174
 
 2026-08-12 (`/ll:verify-issues`): Verdict: **NON_VALID (NEEDS_UPDATE)**. Two real children, FEAT-3128 and FEAT-3132 (both `status: done`, `parent: EPIC-3127`), were missing from frontmatter `relates_to` — added above. Also corrected the prior note's stated completion: actual status across the full child set (via `ll-issues show EPIC-3127`) is 10 of 12 done (FEAT-3134 and FEAT-3151 are `deferred`), not the "4 of 5" figure previously recorded.
 
+2026-08-16 (`/ll:verify-issues`): `mcp_server/` exists, 23/24 items resolved, but the "Known gaps" section still listed ENH-3171, ENH-3172, ENH-3173, ENH-3174, BUG-3177, and BUG-3178 as unresolved even though they are now all `status: done` — updated the Known gaps section above to mark them done. Verdict: NEEDS_UPDATE.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-16T16:40:25 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:07:49 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:confidence-check` - 2026-08-12T02:07:06 - `2a82a443-5d46-418f-a842-19472b08c75b.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:52 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`

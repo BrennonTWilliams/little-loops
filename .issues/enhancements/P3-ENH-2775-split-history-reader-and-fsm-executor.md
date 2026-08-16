@@ -26,8 +26,8 @@ concerns.
 
 ## Location
 
-- **File**: `scripts/little_loops/history_reader.py` — 3,099 lines, 88 defs
-- **File**: `scripts/little_loops/fsm/executor.py` — 2,915 lines
+- **File**: `scripts/little_loops/history_reader.py` — 3,351 lines (was 3,099)
+- **File**: `scripts/little_loops/fsm/executor.py` — 3,758 lines (was 2,915)
 - **Modules**: `little_loops.history_reader`, `little_loops.fsm.executor`
 
 ## Finding
@@ -75,7 +75,15 @@ re-exports.
 - `docs/reference/API.md` — documents `history_reader` and `fsm/executor` module-by-module; splitting either file requires updating those entries to match the new package/module layout.
 - `docs/ARCHITECTURE.md` — describes the FSM loop engine and Sequential Mode (`ll-auto`) internals that `fsm/executor.py` and `history_reader.py` implement; a structural split of either is exactly the kind of architecture change this doc covers.
 
+## Verification Notes
+
+- 2026-08-16: Core issue still real; both files have grown further since capture
+  rather than shrunk — `history_reader.py` is now 3,351 lines (was 3,099) and
+  `fsm/executor.py` is now 3,758 lines (was 2,915). Verdict: OUTDATED (line
+  counts updated above).
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-16T16:40:49 - `6160b806-1147-4cb9-be05-f6b3edf1653b.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:04:57 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 
 ---

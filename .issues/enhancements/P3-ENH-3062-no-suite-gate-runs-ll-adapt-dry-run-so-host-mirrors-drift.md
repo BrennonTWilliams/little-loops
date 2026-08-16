@@ -141,7 +141,7 @@ should be confirmed rather than assumed to be a bug.
 
 ### Call Path
 
-`test_wire_issue_skill_mirror_matches_source` (`scripts/tests/test_wiring_skills_and_commands.py:362`) is the gate being replaced. The new test drives `main()` (`ll-adapt`) -> per-host adapter -> `adapt_skill` (`adapters/gemini.py:88`) / the codex equivalents (`adapters/codex.py:262`, `:309`), asserting the adapted count is zero. `_body_after_frontmatter` (`scripts/tests/test_wiring_skills_and_commands.py:345`) becomes unused if the hardcoded pair is fully removed.
+`test_wire_issue_skill_mirror_matches_source` (`scripts/tests/test_wiring_skills_and_commands.py:362`) is the gate being replaced. The new test drives `main()` (`ll-adapt`) -> per-host adapter -> `GeminiEmitter.emit_skill` (`adapters/gemini.py:81`) / `emit_command` (`adapters/gemini.py:117`) / the codex equivalents (`CodexEmitter.emit_skill`/`emit_command`, `adapters/codex.py:~294`/`~333`), asserting the adapted count is zero. `_body_after_frontmatter` (`scripts/tests/test_wiring_skills_and_commands.py:345`) becomes unused if the hardcoded pair is fully removed.
 
 ## Impact
 
@@ -176,7 +176,7 @@ but the fix is small and the detection machinery already exists unused.
 
 **Source**: Merged from [ENH-2968] during `/ll:audit-issue-conflicts` conflict resolution.
 
-ENH-2968 independently found the same gap (no test asserts committed `.gemini`/`.kimi-code`/`.codex` mirrors match `ll-adapt` output) and additionally documented a real defect: `CodexEmitter.emit_command`'s skip check (`adapters/codex.py:307`) and `emit_skill`'s sidecar check (`codex.py:260`) are presence-only, not content comparisons, unlike Gemini/Kimi's `out_path.exists() and out_path.read_text() == new_content` pattern. Fix these two content-comparison checks as part of implementing this issue's gate, so a fully-drifted Codex tree can't report false success.
+ENH-2968 independently found the same gap (no test asserts committed `.gemini`/`.kimi-code`/`.codex` mirrors match `ll-adapt` output) and additionally documented a real defect: `CodexEmitter`'s presence-only `.exists()` checks (now around `codex.py:310`, `:359`, `:405`) are not content comparisons, unlike Gemini/Kimi's `out_path.exists() and out_path.read_text() == new_content` pattern. Fix these content-comparison checks as part of implementing this issue's gate, so a fully-drifted Codex tree can't report false success.
 
 ## Verification Notes
 
@@ -190,7 +190,10 @@ a BROKEN/MISLINKED reference — ENH-2996 actually resolves to an unrelated P4
 issue about wire-issue phase numbering. Removed that `relates_to` entry from
 the frontmatter.
 
+- 2026-08-16: Core gap still real (no test invokes `ll-adapt --dry-run`); cited code has been refactored to class-based emitters — `adapt_skill(skill_path, apply, quiet)` no longer exists. Updated citations above to `GeminiEmitter.emit_skill`/`emit_command` (`gemini.py:81`/`:117`) and `CodexEmitter.emit_skill`/`emit_command` (`codex.py:~294`/`~333`); presence-only `.exists()` checks in codex.py now sit around lines 310, 359, 405. Verdict: OUTDATED.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-16T16:40:23 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:10 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:26:28 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-06T05:57:00 - `b806aadf-1033-4656-b34d-bd948c43350c.jsonl`

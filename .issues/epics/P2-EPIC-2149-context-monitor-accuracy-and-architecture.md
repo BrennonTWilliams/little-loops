@@ -73,14 +73,17 @@ transcript format (we see real values, not placeholder ~9s).
   longer ties their resolution to the still-`deferred` ENH-2148. Implementation
   Status left unchanged (accurate).
 
+- 2026-08-16: Implementation Status already correctly marks BUG-2145/BUG-2146 done; the Children section's ENH-2341 entry lacked a status marker and is actually `status: done` — added below. ENH-2148 remains correctly Deferred throughout. Verdict: NEEDS_UPDATE.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-16T16:40:24 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:04:14 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-06-20T00:34:45 - `fe5ace5b-6f94-43ca-9f1d-09a0705f08c4.jsonl`
 - `/ll:verify-issues` - 2026-06-17T00:00:00 - `7473c42a-1313-4587-925f-e177ac5fcc85.jsonl`
 
 ## Children
 
-- **ENH-2341** — Add Rubric-Gated Compaction Timing to pre_compact Hook
+- ~~**ENH-2341** — Add Rubric-Gated Compaction Timing to pre_compact Hook~~ **done**
 
 ## Success Criteria
 

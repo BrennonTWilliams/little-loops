@@ -9,7 +9,7 @@ labels:
 - artifact
 - ll-artifact
 parent: EPIC-2087
-verify_verdict: NON_VALID
+verify_verdict: VALID
 ---
 
 # ENH-3035: Factor a shared artifact template kit out of the policy-builder template
@@ -80,6 +80,8 @@ FEAT-3036 (artifact templates design) still lists that packaging shape as an
 open question — flagged here as needing reconciliation between the two
 issues, not resolved as part of this verification pass.
 
+- 2026-08-16: Issue body content is accurate and current; frontmatter carried a stale `verify_verdict: NON_VALID` left over from a prior --check run that contradicted the accurate body — corrected to `VALID` above. Verdict: NEEDS_UPDATE.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-16T16:40:23 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:04:59 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`

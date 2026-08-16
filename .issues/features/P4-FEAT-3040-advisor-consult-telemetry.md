@@ -9,9 +9,10 @@ testable: true
 discovered_date: 2026-08-03
 depends_on:
 - FEAT-3044
-- FEAT-3038
 - FEAT-3120
 - FEAT-3116
+- FEAT-3117
+- FEAT-3118
 labels:
 - planning-hub
 verify_verdict: VALID
@@ -167,8 +168,12 @@ action, never automatically.
 
 **Open** | Created: 2026-08-03 | Priority: P4
 
+## Verification Notes
+
+- 2026-08-16: Same situation as FEAT-3039: depends on FEAT-3120 and FEAT-3116 (both still open), and `advisor.py` still only has `FloorResult`/`rank_model`/`check_floor` (no `consult()` function yet), confirming these are real unresolved blockers, not stale bookkeeping. Verdict: DEP_ISSUES.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-16T16:40:26 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-13T22:00:51 - `e21c16b3-391d-4ef2-80c4-decd2dced91f.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:05:58 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:refine-issue` - 2026-08-07T01:37:33 - `43a0ea06-a76f-4e88-9656-365f95bb1daf.jsonl`

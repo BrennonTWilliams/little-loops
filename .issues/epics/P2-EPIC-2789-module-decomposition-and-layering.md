@@ -31,11 +31,12 @@ cli/loop/_helpers.py grab-bag into named modules).
 
 ## Children
 
-- **ENH-2772** — Split session_store.py god module into a subpackage
-- **ENH-2773** — Fix fsm→cli layering inversion (move resolve_loop_path out of cli/loop/_helpers)
-- **ENH-2774** — Split fsm/validation.py by rule family
+- ~~**ENH-2772** — Split session_store.py god module into a subpackage~~ **done**
+- ~~**ENH-2773** — Fix fsm→cli layering inversion (move resolve_loop_path out of cli/loop/_helpers)~~ **done**
+- ~~**ENH-2774** — Split fsm/validation.py by rule family~~ **done**
 - **ENH-2775** — Split history_reader.py and fsm/executor.py along concern boundaries
 - **ENH-2776** — Dissolve cli/loop/_helpers.py grab-bag into named modules
+- **ENH-2784** — Extract coercion helpers in issue_parser.py (open)
 
 ## Related Key Documentation
 
@@ -52,6 +53,7 @@ cli/loop/_helpers.py grab-bag into named modules).
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-16T16:40:24 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:04:15 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-10T18:52:50 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-05T00:25:07 - `2f3f7bc8-367e-4fba-936b-eaf8049da3c4.jsonl`
@@ -66,3 +68,5 @@ cli/loop/_helpers.py grab-bag into named modules).
 ## Verification Notes (2026-08-12)
 
 _Added by `/ll:verify-issues`._ Verdict: **NON_VALID (NEEDS_UPDATE)**. The frontmatter `blocked_by: [EPIC-2616, EPIC-2791]` was stale — both epics are now `status: done`, so this epic is unblocked. The `blocked_by` field has been removed.
+
+- 2026-08-16: ENH-2772/2773/2774 are now done but the Children list above didn't reflect that — updated below. ENH-2775/2776 are still correctly open. Also ENH-2784 (`parent: EPIC-2789`, status open) was missing from the Children list entirely — added it below. Verdict: NEEDS_UPDATE.

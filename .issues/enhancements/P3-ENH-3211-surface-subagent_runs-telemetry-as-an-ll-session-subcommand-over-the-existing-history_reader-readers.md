@@ -435,6 +435,10 @@ _Added by `/ll:confidence-check` on 2026-08-16_
 - `/ll:refine-issue` - 2026-08-16T02:24:46 - `8d69c317-1f3a-48ba-9c8b-3d56c7aebd08.jsonl`
 - `/ll:capture-issue` - 2026-08-16T02:10:52 - `3b0498bf-ef93-4aa9-88c2-660ecc956b99.jsonl`
 
+## Verification Notes
+
+- 2026-08-16: `blocked_by: [FEAT-3183]` is still open (real scheduling blocker), but `depends_on: [ENH-3210]` — ENH-3210 has now landed (status: done), so that technical dependency is satisfied; the issue remains correctly `status: blocked` on FEAT-3183 alone. Verdict: NEEDS_UPDATE.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-16T16:40:23 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:confidence-check` - 2026-08-16T05:32:12 - `bb755dcf-6087-41b3-80d2-a79a3aba782e.jsonl`

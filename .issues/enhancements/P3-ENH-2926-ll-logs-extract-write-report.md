@@ -19,7 +19,7 @@ verify_verdict: NON_VALID
 
 ## Summary
 
-`_cmd_extract` (`scripts/little_loops/cli/logs.py:698`) walks every discovered
+`_cmd_extract` (`scripts/little_loops/cli/logs.py:740`) walks every discovered
 project's JSONL, buckets ll-relevant records by session, writes one file per
 session under `logs/<slug>/`, regenerates `logs/index.md`, and returns 0 —
 printing **nothing** on the success path. Only errors reach stdout/stderr
@@ -27,7 +27,7 @@ printing **nothing** on the success path. Only errors reach stdout/stderr
 
 A user cannot tell from the output whether extract wrote 3 files or 300, which
 projects it covered, whether a `--cmd` filter matched anything at all, or which
-JSONL files it skipped on `OSError` (silently swallowed at logs.py:734).
+JSONL files it skipped on `OSError` (silently swallowed at logs.py:776).
 
 ## Current Behavior
 
@@ -144,7 +144,10 @@ to `:734`; both citations updated. `blocked_by: ENH-2925` is stale — ENH-2925
 shipped (`done`, completed 2026-07-31) — so that blocker was cleared; the
 issue is unblocked and its core ask is unchanged.
 
+- 2026-08-16: Core ask (extract prints nothing on success, `OSError` silently swallowed, no `--json`) still accurate and unimplemented; `_cmd_extract` has drifted further to `logs.py:740` and the swallowed `OSError` to `logs.py:776` — both citations corrected above. Verdict: OUTDATED.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-08-16T16:40:22 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:04:57 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 
 ---

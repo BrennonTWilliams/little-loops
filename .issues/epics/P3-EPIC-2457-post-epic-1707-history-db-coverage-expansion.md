@@ -312,10 +312,12 @@ _Verified 2026-08-10:_ verification notes were badly stale (previously said '4/2
 
 _Verified 2026-08-12 (`/ll:verify-issues`):_ Verdict **NON_VALID (NEEDS_UPDATE)**. The frontmatter `depends_on: [EPIC-2149]` was a mistyped reference — this epic's own title and its "Dependencies / Sequencing" section both point to EPIC-1707 (post-EPIC-1707 coverage expansion; EPIC-1707 is `status: done`), while EPIC-2149 is an unrelated, still-open epic about context-monitor accuracy with no topical relation and no backlink to this epic. Corrected `depends_on` to `[EPIC-1707]`.
 
+- 2026-08-16: Content/status is accurate; the `scripts/little_loops/session_store.py` file citation under Sources was stale — it's now a package directory `scripts/little_loops/session_store/`, corrected above. Verdict: NEEDS_UPDATE.
+
 ## Sources
 
 - `thoughts/history-db-expand-wiring.md` — the source findings report this epic is derived from
-- `scripts/little_loops/session_store.py` — schema v14 at capture time (v18 as of 2026-07-06), write paths, FTS5 index
+- `scripts/little_loops/session_store/` — schema v14 at capture time (v18 as of 2026-07-06), write paths, FTS5 index (now a package directory, not a single file)
 - `scripts/little_loops/history_reader.py` — read API from ENH-1752
 - EPIC-1707 — closed parent epic; 34 children all done; this epic captures the post-closure gaps
 
@@ -329,6 +331,7 @@ _Verified 2026-08-12 (`/ll:verify-issues`):_ Verdict **NON_VALID (NEEDS_UPDATE)*
 - `.claude/CLAUDE.md` — documents the `ll-session` CLI (`search --fts`, `recent --kind`, `backfill`, `rebuild`, `compact`) that surfaces each new event kind this epic's children add.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-16T16:40:25 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:04:16 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:verify-issues` - 2026-08-10T16:25:08 - `50b69f30-8ca9-4ab9-8b06-6ee21c203b10.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:47 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`
