@@ -1,0 +1,11 @@
+{
+  "id": "3935969c-37c6-4079-99e3-a530df7d2224",
+  "type": "decision",
+  "timestamp": "2026-08-16T02:11:08Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "SubagentStop hooks do not fire when the parent turn's process group is reaped, leaving rows permanently 'running' (40 of 2739 in this repo); reconcile against parent-session liveness like ENH-1669 does for loop runs.",
+  "rule": "Captured: Reconcile stale running rows in subagent_runs",
+  "scope": "issue",
+  "issue": "ENH-3210"
+}

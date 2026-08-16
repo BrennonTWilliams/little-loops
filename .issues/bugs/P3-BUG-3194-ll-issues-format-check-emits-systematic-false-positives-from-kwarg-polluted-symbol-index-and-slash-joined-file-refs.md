@@ -4,12 +4,13 @@ type: BUG
 title: ll-issues format-check emits systematic false positives from kwarg-polluted
   symbol index and slash-joined file refs
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 testable: true
 decision_needed: false
 captured_at: '2026-08-15T18:17:37Z'
+completed_at: '2026-08-16T02:13:40Z'
 confidence_score: 100
 outcome_confidence: 70
 score_complexity: 10
@@ -656,6 +657,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-16T02:13:23 - `26fe1620-f790-49f2-b23f-8c5e88ff96e9.jsonl`
 - `/ll:ready-issue` - 2026-08-16T01:23:37 - `797152e7-7b99-49a3-8524-a1d3559eb4f6.jsonl`
 - `/ll:confidence-check` - 2026-08-16T00:17:02 - `64e9e21e-d2d6-44cd-97cd-d980a3cc037d.jsonl`
 - Pre-implementation review - 2026-08-15 - Verified all claims against current code and re-ran the repro. Applied four correction sets: (1) refreshed systematically stale line refs (`symbol_claims.py` shifted +49..+113 by BUG-3201/30ccbb7f; `issue_parser.py` shifted ~+19 by BUG-3202/72fb87ea); (2) added a BUG-3201 interaction note (import bindings now satisfy `symbol_exists_in_file`; SQL names entered the reverse index) and folded 3201 into the mandatory re-measure; (3) retargeted Finding 2's change site and ACs from `resolve_ref_path` to `classify_file_ref`'s form checks / `_GLOB_CHARS` (the `stale_file_ref` path never calls `resolve_ref_path`; `*`/`?` already declined — only `{}` and a multi-extension-component check are new; return `unresolvable_form`), keeping `resolve_ref_path` assertions as secondary; (4) reframed the `ec`/`codex`/`install_qwen_adapter` ACs as unit-level synthetic-claim tests and annotated Current Behavior / Steps to Reproduce — live post-3201 output shows only `enabled` still firing, with new hits `to_dict` (3190) and `my-issues/completed/file.py`. Finding 2/3 refs all still reproduce live.

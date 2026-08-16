@@ -1,0 +1,11 @@
+{
+  "id": "17e35603-f104-4871-95bb-7d97f3ca6a7a",
+  "type": "decision",
+  "timestamp": "2026-08-16T02:11:09Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "ENH-2505's subagent_tree/retries/budget readers have no non-test callers; expose them read-only through the existing ll-logs/ll-history surface without touching writers, hooks, or schema.",
+  "rule": "Captured: Surface subagent_runs telemetry via a CLI view",
+  "scope": "issue",
+  "issue": "ENH-3211"
+}
