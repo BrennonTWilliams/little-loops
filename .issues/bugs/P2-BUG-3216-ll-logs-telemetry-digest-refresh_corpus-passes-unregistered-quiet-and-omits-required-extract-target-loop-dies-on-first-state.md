@@ -1,8 +1,8 @@
 ---
 id: BUG-3216
 type: BUG
-title: ll-logs-telemetry-digest refresh_corpus passes unregistered --quiet and omits
-  required extract target; loop dies on first state
+title: ll-logs-telemetry-digest omits the required --project/--all target on all five
+  corpus states and reports failures as empty results
 priority: P2
 status: open
 testable: true
@@ -15,17 +15,24 @@ labels:
 - cli-consistency
 ---
 
-# BUG-3216: ll-logs-telemetry-digest refresh_corpus passes unregistered --quiet and omits required extract target; loop dies on first state
+# BUG-3216: ll-logs-telemetry-digest omits the required --project/--all target on all five corpus states and reports failures as empty results
 
 ## Summary
 
-`.loops/ll-logs-telemetry-digest.yaml`'s `refresh_corpus` state has never
-succeeded. Its two commands are both malformed against the actual `ll-logs`
-argument surface, so the state always echoes `REFRESH_FAILED`, its
-`output_contains: "REFRESHED"` gate always evaluates false, and `on_no: done`
-terminates the loop on its first state. Every downstream state (`run_stats`,
-`run_sequences`, `scan_failures`, dead-skill detection, triage, digest) is
-unreachable.
+`.loops/ll-logs-telemetry-digest.yaml` has never produced a usable run, and the
+defect is not confined to one state. **Five states invoke `ll-logs` corpus
+subcommands without the required `--project`/`--all` target**; every one of them
+exits 2 at argparse before any command body runs.
+
+`refresh_corpus` is merely the first and loudest: its two commands are both
+malformed (unregistered `--quiet` *and* missing target), so the state always
+echoes `REFRESH_FAILED`, its `output_contains: "REFRESHED"` gate always
+evaluates false, and `on_no: done` terminates the loop on its first state.
+
+Fixing `refresh_corpus` alone does not restore the loop — it converts a loud
+failure into a **silent false negative**. See
+[Post-Partial-Fix Failure Mode](#post-partial-fix-failure-mode) below; that
+degradation, not the first-state death, is the main reason to fix this whole.
 
 ## Current Behavior
 
@@ -74,6 +81,89 @@ the `extract` line's failure short-circuits the `&&` and drives the loop to
 There is no run history for this loop under `.loops/.history/`, consistent with
 it never having produced a usable run.
 
+### The same missing-target defect affects four more states
+
+Defect 2 above is **not specific to `refresh_corpus`**. Every corpus-scoped
+`ll-logs` subcommand takes the same `required=True` target group, and four
+downstream states omit it exactly as `extract` does:
+
+| State | Line | Invocation | Bare exit |
+|---|---|---|---|
+| `run_stats` | :29 | `ll-logs stats` | 2 |
+| `scan_failures` | :41 | `ll-logs scan-failures --json` | 2 |
+| `run_sequences` | :86 | `ll-logs sequences --top 20 --min-count 3` | 2 |
+| `check_dead_skills` | :99 | `ll-logs dead-skills --json` | 2 |
+
+Verified directly:
+
+```
+$ for c in stats scan-failures sequences dead-skills; do
+    printf "%-14s --help exit=" "$c"; ll-logs $c --help >/dev/null 2>&1; echo -n "$?  "
+    printf "bare exit="; ll-logs $c >/dev/null 2>&1; echo "$?"
+  done
+stats          --help exit=0  bare exit=2
+scan-failures  --help exit=0  bare exit=2
+sequences      --help exit=0  bare exit=2
+dead-skills    --help exit=0  bare exit=2
+```
+
+Note the `--help` column: each of those four states gates its call behind an
+`ll-logs <sub> --help >/dev/null 2>&1` capability probe, and **the probe passes
+while the real invocation fails**. argparse services `-h` and exits 0 before it
+validates required groups, so a `--help` probe structurally cannot detect a
+missing required argument. The probe pattern is part of the root cause, not a
+mitigation.
+
+### Post-Partial-Fix Failure Mode
+
+Repairing only `refresh_corpus` makes the loop strictly harder to diagnose,
+because the four states above swallow their own failures into plausible
+success values:
+
+- `ll-logs scan-failures --json > "$OUT" 2>&1` writes argparse's **usage text**
+  into `failures.json` (stderr is merged into the file, not discarded).
+- The inline `python3 -c` `json.load` raises on that text, hits its bare
+  `except: print(0)`, so `COUNT=0`.
+- `[ "$COUNT" -eq 0 ] && echo "NO_FAILURES"` → the evaluator takes `on_yes`,
+  and `triage_failures` never runs.
+- `check_dead_skills` follows the identical path to `NO_DEAD_SKILLS`.
+- `run_stats` / `run_sequences` write usage text to `stats.txt` /
+  `sequences.txt` and echo `STATS_ERR` / `SEQUENCES_ERR`, which nothing
+  evaluates — both states are plain `next:` transitions.
+- `synthesize_digest` then reads four artifacts containing argparse usage
+  messages and writes a digest reporting **zero failures and zero dead
+  skills**, printing `DIGEST_WRITTEN`. The run "succeeds."
+
+So the current behavior fails loudly on state one; the partially-fixed
+behavior emits a confident, wrong clean bill of health. That is a regression in
+diagnosability, and it is why the four downstream states are in scope.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
+
+- Exact current `scan_failures` block (`.loops/ll-logs-telemetry-digest.yaml:37-63`, python at :42-50):
+  ```
+  OUT="${context.run_dir}/failures.json"
+  if ll-logs scan-failures --help >/dev/null 2>&1; then
+    ll-logs scan-failures --json > "$OUT" 2>&1
+    COUNT=$(python3 -c "
+  import json
+  try:
+      d = json.load(open('$OUT'))
+      items = d.get('failures', d) if isinstance(d, dict) else d
+      print(len(items) if isinstance(items, list) else 0)
+  except Exception:
+      print(0)
+  " 2>/dev/null || echo 0)
+    [ "$COUNT" -eq 0 ] && echo "NO_FAILURES" || echo "FAILURES_FOUND:$COUNT"
+  else
+    echo "NO_FAILURES"
+  fi
+  ```
+  `check_dead_skills` (:95-121, python at :100-108) is structurally identical, differing only in the `OUT` path (`dead-skills.json`), the probed dict key (`d.get('dead', d)`), and the literals (`NO_DEAD_SKILLS`/`DEAD_SKILLS_FOUND:$COUNT`).
+- The line `ll-logs scan-failures --json > "$OUT" 2>&1` (:41) and its `dead-skills` counterpart (:99) have **no** `$?`/`&&`/`||` check at all before the Python parse runs — unlike `run_stats` (:29: `... > "$OUT" 2>&1 && echo "STATS_OK" || echo "STATS_ERR"`) and `run_sequences` (:86-87), which do react to exit status (though neither persists the numeric code). So in `scan_failures`/`check_dead_skills` the bare `except Exception: print(0)` is the *only* place a non-zero `ll-logs` exit is observed, and it maps that failure to the same `print(0)` output as a legitimate empty result.
+
 ## Steps to Reproduce
 
 Reproduce the two argument-surface errors directly (no loop run needed):
@@ -106,8 +196,11 @@ ll-logs-telemetry-digest` terminates after one state with no digest produced.
 
 ## Expected Behavior
 
-`refresh_corpus` refreshes the corpus and proceeds to `run_stats`. Both
-invocations use flags that exist and supply the required target:
+Every `ll-logs` invocation in the file parses against the built argument
+surface and supplies an explicit target. `refresh_corpus` refreshes the corpus
+and proceeds to `run_stats`; the four downstream states produce real artifacts
+rather than argparse usage text; and a failed invocation is reported as a
+failure rather than as an empty result.
 
 ```yaml
 ll-logs discover 2>/dev/null || true
@@ -120,32 +213,59 @@ than dropped — see Proposed Solution for the two-part choice.
 
 ## Proposed Solution
 
-Two separable parts; the first is required, the second is a judgment call.
+Three parts. The first two are required; the third is a judgment call.
 
-**Required — fix the loop.** Add `--all` to the `extract` invocation and drop
-`--quiet` from both lines (or keep it only if part 2 ships first). This alone
-restores the loop.
+**Required (1) — supply a target on all five states.** Add an explicit
+`--project`/`--all` to `extract` (`refresh_corpus`), `stats`, `scan-failures`,
+`sequences`, and `dead-skills`, and drop `--quiet` from `refresh_corpus`'s two
+lines (or keep it only if part 3 ships first). See Decision Rules for which
+target each state should get — it is not uniform.
 
-**Optional — wire `--quiet` on `ll-logs`.** `add_quiet_arg` already exists and
-is used by the sprint/parallel parsers (`cli_args.py:531`, `:554`). Wiring it
-on `ll-logs` subcommands would honor the original FEAT-1002 spec. Note this
+**Required (2) — make failure distinguishable from emptiness.** Fixing the
+arguments without this leaves the loop one drift away from the false-clean
+digest described above. Two changes:
+
+- `scan_failures` and `check_dead_skills` must check the invocation's exit
+  status *separately* from the parsed count, and must not report
+  `NO_FAILURES`/`NO_DEAD_SKILLS` when the command exited non-zero. The current
+  `except: print(0)` idiom makes an unparseable artifact look like an empty
+  one.
+- Replace `2>/dev/null` (and the stderr-into-artifact `2>&1` redirects) with
+  capture to a distinct file under `${context.run_dir}`, so the next
+  argument-surface drift leaves a diagnosable artifact. This was previously
+  listed as optional; the post-partial-fix failure mode makes it required.
+
+Do **not** extend the `ll-logs <sub> --help` capability probe to
+`refresh_corpus`. The probe exits 0 for all four subcommands that then fail
+(evidence above), so it provides false confidence rather than capability
+detection. Either replace it with a probe that exercises the real argument
+surface, or leave the real invocation's exit code as the signal.
+
+**Optional (3) — wire `--quiet` on `ll-logs`.** `add_quiet_arg` already exists
+and is used by the sprint/parallel parsers (`cli_args.py:531`, `:554`). Wiring
+it on `ll-logs` subcommands would honor the original FEAT-1002 spec. Note this
 interacts with ENH-2926, which adds success-path summary output to
 `_cmd_extract` — a `--quiet` flag is most useful *after* extract has output to
 suppress, so sequencing it after ENH-2926 is reasonable. Not a blocker in
 either direction.
 
-**Also consider** replacing the `2>/dev/null` on the `extract` line with
-capture-to-`${context.run_dir}`, so the next argument-surface drift produces a
-diagnosable artifact instead of a silent `REFRESH_FAILED`.
-
 ## Impact
 
-- **Priority**: P2 — a shipped loop in the corpus is 100% non-functional and
-  fails silently. Low blast radius (one loop, no library code), but total
-  within that radius, and the silence is what makes it worth fixing promptly.
-- **Effort**: Small — a two-line YAML fix restores function.
-- **Risk**: Low. Repairing the state exposes downstream states that have never
-  executed; expect follow-up issues from their first real run.
+- **Priority**: P2 — the loop is 100% non-functional and fails silently.
+  **Blast radius is this repo only**: there is no copy of this loop under
+  `scripts/little_loops/loops/` (`find . -name "*telemetry-digest*"` returns
+  only the repo-root `.loops/` file and two issue files), so it is not a
+  built-in shipped to consuming projects. It *is* git-tracked, so it is real
+  committed content, not local scratch. Within that radius the failure is
+  total, and the silence is what makes it worth fixing promptly.
+- **Effort**: Small-to-moderate — the argument fixes are five one-line YAML
+  edits, but the failure-vs-emptiness work (Required part 2) touches the two
+  inline `python3 -c` count blocks.
+- **Risk**: Low for the change itself. The notable risk is *under*-fixing:
+  repairing only `refresh_corpus` yields a loop that completes and reports a
+  false clean corpus (see Post-Partial-Fix Failure Mode), which is worse than
+  today's fail-fast. Repairing all five states exposes downstream states that
+  have never executed; expect follow-up issues from their first real run.
 - **Breaking Change**: No
 
 ## Root Cause
@@ -159,19 +279,112 @@ surface rather than the built one, and nothing gated the mismatch:
 
 - Loop `action` strings are opaque shell to `ll-loop validate` — it checks FSM
   structure (MR-1..MR-14), not whether the commands inside an action parse.
-- The `output_contains: "REFRESHED"` gate matches the wrapper's own `echo`
-  text, so a total command failure is indistinguishable from a clean
-  no-op-but-ran. The gate cannot detect its own subject failing.
+- `add_corpus_target_args(..., required=True)` (`cli_args.py:260-286`) is the
+  shared factory for all six corpus subcommands, so a single authoring
+  assumption ("these commands default to the current project") produced the
+  same defect five times.
+
+Beyond the mismatch itself, the loop contains **three independent
+error-swallowing constructs**, each of which converts a hard failure into a
+plausible success. This is one pattern, not three coincidences: *the loop never
+observes the exit status of the thing it is gating on.*
+
+1. **Echo-wrapper gates** — `... 2>/dev/null && echo "REFRESHED" || echo
+   "REFRESH_FAILED"` with `output_contains: "REFRESHED"`. The gate matches the
+   wrapper's own `echo` text, so a total command failure is indistinguishable
+   from a clean no-op-but-ran. The gate cannot detect its own subject failing.
+2. **Count-defaulting JSON parses** — the inline `python3 -c` blocks in
+   `scan_failures` and `check_dead_skills` wrap `json.load` in a bare
+   `except: print(0)`, so an artifact containing an argparse usage message
+   yields `COUNT=0`, which the state reports as `NO_FAILURES` /
+   `NO_DEAD_SKILLS`.
+3. **`--help` capability probes** — `if ll-logs <sub> --help >/dev/null 2>&1`
+   is used by four states to decide whether a subcommand is implemented.
+   argparse services `-h` and exits 0 *before* validating required argument
+   groups, so the probe returns 0 for all four subcommands whose real
+   invocation exits 2 (verified above). The probe proves the subcommand exists;
+   it proves nothing about whether the loop's actual invocation parses.
+
+Construct 3 is worth calling out specifically because a prior reading of this
+file treated the probe pattern as the good convention that `refresh_corpus`
+failed to follow. It is not — copying it into `refresh_corpus` would add false
+confidence without detecting anything.
 
 ## Scope Boundaries
 
-**In scope:** `.loops/ll-logs-telemetry-digest.yaml`'s `refresh_corpus` state;
-optionally wiring `add_quiet_arg` onto `ll-logs` parsers.
+**In scope:** all five states in `.loops/ll-logs-telemetry-digest.yaml` that
+invoke a corpus-scoped `ll-logs` subcommand — `refresh_corpus`, `run_stats`,
+`scan_failures`, `run_sequences`, `check_dead_skills` — covering both the
+missing `--project`/`--all` target and the failure-vs-emptiness reporting in
+the latter two; the unregistered `--quiet` in `refresh_corpus`; optionally
+wiring `add_quiet_arg` onto `ll-logs` parsers.
 
 **Out of scope:** `_cmd_extract`'s success-path reporting and `-j/--json`
-(ENH-2926); the rest of the digest loop's states, which are unverified only
-because they have been unreachable — they may hold their own defects, and
-reaching them for the first time is expected to surface some.
+(ENH-2926); the loop's `action_type: prompt` states (`triage_failures`,
+`file_dead_skill_issues`, `synthesize_digest`, `commit`) and the
+`commit_if_needed` shell state, which contain no `ll-logs` invocation. Those
+prompt states have still never executed and may hold their own defects;
+reaching them for the first time is expected to surface some, and those belong
+in follow-up issues.
+
+> **Note — earlier scoping was self-contradictory.** A prior revision listed
+> the four downstream states as out of scope on the grounds that they were
+> merely "unverified because unreachable," while simultaneously requiring (in
+> Acceptance Criteria) that *every* command in the file parse. They are not
+> unverified: `ll-logs stats|scan-failures|sequences|dead-skills` were each run
+> directly and each exits 2. They are verifiably broken by the same defect, and
+> are now in scope.
+
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
+
+_Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
+
+- `scripts/little_loops/loops/oracles/code-run-gate.yaml` (states `run_build`:192-222, `run_typecheck`:284-312, `run_lint`:314-339, `service_health`:341-397) is an existing in-repo precedent for capturing exit status alongside redirected output under a run-scoped dir: `bash -c "$CMD" > "$${ABS_DIR}/out.txt" 2>&1; RC=$?; echo "exit_code=$RC" >> "$${ABS_DIR}/out.txt"; echo "exit_code=$RC"` paired with `evaluate: {type: exit_code}` — the RC is appended into the same output file the command wrote to.
+- `scripts/little_loops/loops/cli-anything-bootstrap.yaml` (lines 271-278, 291-329) is a second precedent, differing in shape: it captures `$?` into a named variable immediately after each redirected command (`INSTALL_RC`, `ROOT_RC`, `PYTEST_RC`) and, on non-zero, writes a distinct report file separate from the raw log (e.g. `$RUN_DIR/verify-cli.txt` vs `$RUN_DIR/install.log`) before an early `exit 1`.
+- The two precedents agree that command output must land in a `${run_dir}`-scoped file (never `/dev/null`, never silently merged) and that `$?` must be captured on the line immediately following the redirected command; they disagree on whether the RC is appended into the same file the evaluator reads or drives a distinct report file via an early-exit branch.
+- Within `.loops/ll-logs-telemetry-digest.yaml` itself, `${context.run_dir}` is already used for every state's output artifact — `run_stats` (`stats.txt`, :27), `scan_failures` (`failures.json`, :39), `run_sequences` (`sequences.txt`, :84), `check_dead_skills` (`dead-skills.json`, :97) — so routing stderr/diagnostics there follows an in-file precedent, not new syntax.
+- `run_stats` (:29) and `run_sequences` (:86-87) already gate on exit status via `&&`/`||` immediately after the redirected command, but neither persists the numeric `$?` anywhere; `scan_failures` (:41) and `check_dead_skills` (:99) have no `$?` capture at all — success/failure is inferred purely from the downstream JSON parse.
+
+### Files to Modify
+All edits are in the single file `.loops/ll-logs-telemetry-digest.yaml`
+(git-tracked; confirmed via `git ls-files .loops/`), plus an optional CLI change
+and a new test:
+
+- `:15-16` — `refresh_corpus`: drop the unregistered `--quiet` from both `discover` and `extract`; add a target to `extract`; capture stderr to `${context.run_dir}` instead of `/dev/null`
+- `:29` — `run_stats`: add a target to `ll-logs stats`
+- `:41` — `scan_failures`: add a target to `ll-logs scan-failures --json`; separate exit-status checking from the JSON count so a failed call cannot report `NO_FAILURES`
+- `:86` — `run_sequences`: add a target to `ll-logs sequences --top 20 --min-count 3`
+- `:99` — `check_dead_skills`: add a target to `ll-logs dead-skills --json`; same exit-status/count separation as `scan_failures`
+- `scripts/little_loops/cli/logs.py` — **optional only** (Proposed Solution part 3): `add_quiet_arg` on the relevant subcommand parsers in `_build_parser()` (`:2065`)
+- `scripts/tests/` — new regression test guarding the loop's `ll-logs` invocations (see Tests below for why it cannot join `TestBuiltinLoopFiles`)
+
+### Dependent Files (Callers/Importers of `cli/logs.py`)
+- `scripts/tests/test_ll_logs.py:16` — imports `logs.py` symbols directly (`ChainResult`, `Edge`, ...)
+- `scripts/little_loops/cli/ctx_stats.py:20` — imports `_aggregate_skill_stats` from `logs.py`
+- `scripts/little_loops/cli/__init__.py:73` — imports `main_logs` for top-level dispatch
+- `scripts/little_loops/cli/loop/_helpers.py:19` — loop-running helper module that imports `logs.py`
+- `scripts/tests/test_cli_ctx_stats.py:13`, `scripts/tests/test_enh_3166_qwen_normalizer.py:32` — transitive impact set via `ctx_stats.py`/`__init__.py`
+
+### Conventions in Force
+- `add_corpus_target_args(parser, *, required=True, ...)` (`cli_args.py:260-286`) is the shared factory for every corpus-scoped `ll-logs` subcommand; it is called identically by `extract_parser` (`logs.py:2107`), `sequences_parser` (`:2118`), `stats_parser` (`:2147`), `scan_failures_parser` (`:2161`), `dead_skills_parser` (`:2186`), and `loop_fleet_parser` (`:2257`) — all six require an explicit `--project`/`--all` selector by default.
+- `add_quiet_arg(parser)` (`cli_args.py:209-215`) is a shared flag helper, but its only callers anywhere in the codebase are `add_common_auto_args` (`cli_args.py:531`) and `add_common_parallel_args` (`cli_args.py:554`) — confirming it has never been wired onto any `ll-logs` subcommand parser (`_build_parser()`, `logs.py:2065`).
+- Elsewhere in this same loop file, `run_stats` (`:28`), `scan_failures` (`:40`), `run_sequences` (`:85`), and `check_dead_skills` (`:98`) each gate their `ll-logs` invocation behind a `ll-logs <sub> --help` capability probe first — a pattern `refresh_corpus` does not follow before calling `discover`/`extract`. **This is an anti-pattern to fix, not a convention to adopt:** the probe exits 0 for all four subcommands while their real invocation exits 2 (verified in Current Behavior), because argparse services `-h` before validating required groups. None of these four states pass `--all`/`--project` either, so there is no in-loop example of a correctly-targeted corpus-subcommand call to copy from within `.loops/` — the only correct examples are in `docs/reference/CLI.md` (see Documentation below).
+- CLI-testing convention (evidence, not a template to copy verbatim): every test that exercises `ll-logs` subcommands drives the real `main_logs()` entry point via `patch.object(sys, "argv", ["ll-logs", ...])` then asserts on exit code/output — e.g. `TestMainLogsIntegration` (`scripts/tests/test_cli.py:2940`) and `TestEvalExport.test_no_regression_extract` (`scripts/tests/test_ll_logs.py:3885-3893`, which asserts `SystemExit(0)` and `"--project" in` help output). No test in the codebase parses a shell string with `shlex` and feeds it into an imported parser object's `parse_known_args` directly — the established convention is to drive `main_logs()` under a patched `sys.argv`, not to introspect `_build_parser()` (`logs.py:2065`, module-private) as an object.
+
+### Tests
+- `scripts/tests/test_ll_logs.py` — main `ll-logs` CLI test suite; `TestEvalExport.test_no_regression_extract` (`:3885-3893`) is the closest existing precedent for a regression guard on subcommand argument surface.
+- `scripts/tests/test_cli.py:2940` — `TestMainLogsIntegration`, exercises `discover`/`stats`/etc. through `main_logs()`.
+- `scripts/tests/test_cli_args.py:562-600` — `TestAddCorpusTargetArgs`, covers `add_corpus_target_args`'s required-group behavior directly.
+- `scripts/tests/test_builtin_loops.py:28-31` — `TestBuiltinLoopFiles` runs structural checks (`test_all_parse_as_yaml`, `test_all_validate_as_valid_fsm`, etc.) over every loop under `BUILTIN_LOOPS_DIR` (`scripts/little_loops/loops/`). **`.loops/ll-logs-telemetry-digest.yaml` lives at the repo-root `.loops/` directory, not under `BUILTIN_LOOPS_DIR`, so it is not covered by this suite** — a new regression test for this file needs its own explicit path reference; no existing test class in the codebase targets a repo-root `.loops/` file this way.
+- **Referencing it by path is safe.** `git ls-files .loops/` lists `.loops/ll-logs-telemetry-digest.yaml`, so the file is committed content available to any checkout, and `.gitignore` excludes only runtime subdirectories under `.loops/` (`.running/`, `.history/`, `.queue/`, `tmp/`, `runs/`, …), not the loop YAMLs themselves. A test may therefore assert on it directly. Because it is a source-repo file rather than packaged data, the test belongs to this repo's suite only and should skip cleanly if the path is absent, per the existing convention for source-repo-only artifacts.
+- No existing test in `scripts/tests/` parses a loop YAML's `action:` shell strings and validates the embedded CLI invocations against argparse — this is the gap Acceptance Criteria's last bullet asks to fill, not a pattern already present elsewhere.
+
+### Documentation
+- `docs/reference/CLI.md:3263-3265` — documents `ll-logs extract --all`, `ll-logs extract --project /path/to/proj`, `ll-logs extract --all --cmd ll-history`; the only existing examples of a correctly-targeted `extract` invocation.
 
 ## Program Design
 
@@ -206,9 +419,52 @@ is why no partial extraction or diagnostic appears.
 - Whether to keep `--quiet` in the loop: keep only if the optional CLI part
   ships in the same change; otherwise remove it. Do not leave a flag in the
   loop that the CLI does not define.
-- Which target to pass `extract`: `--all`, matching the state's intent to
-  refresh the whole corpus (the `discover` line on the preceding row is
-  likewise corpus-wide). No threshold or heuristic involved.
+- **Which target each state gets — not uniform.** The rule is whether the
+  state's output feeds issue *filing* in this project or read-only aggregate
+  reporting:
+  - `refresh_corpus` (`extract`), `run_stats`, `run_sequences` → **`--all`**.
+    These are corpus-wide reads whose output lands in the digest; the
+    `discover` line on `refresh_corpus`'s preceding row is likewise
+    corpus-wide.
+  - `scan_failures`, `check_dead_skills` → **`--project .`** by default. Both
+    feed `action_type: prompt` states (`triage_failures`,
+    `file_dead_skill_issues`) that run `/ll:capture-issue`, which files issue
+    files **into this repo's `.issues/`**. Under `--all`, this repo's backlog
+    accumulates issues describing *other projects'* failures and unused
+    skills. The CLI already treats this as a hazard worth an explicit opt-in:
+    `scan-failures` ships `--capture-foreign` (`logs.py:2166`) precisely to
+    gate cross-project capture. Note `dead-skills`' `--all` help text
+    ("catalog loaded from current directory") means `--all` there compares a
+    *local* catalog against corpus-wide counts — coherent, but it makes
+    locally-defined skills look used because another project invoked them.
+  - If corpus-wide triage is actually wanted, that is a deliberate design
+    change: pass `--all` *and* narrow the prompt states' capture instructions,
+    rather than letting `--all` reach issue-filing implicitly.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
+
+### Additional Call Path Detail (confirmed via codebase-analyzer)
+- `discover_parser` (`logs.py:2082-2092`) is wired with only `add_json_arg(discover_parser)` (`:2086`)
+  and a locally-defined `--existing-only` (`:2087-2092`) — no `add_quiet_arg` call, confirming
+  `--quiet` is unregistered on `discover` specifically, not just `extract`.
+- `main_logs()` (`logs.py:2295`) calls `parser.parse_args()` (`:2306`) with no
+  `parse_known_args` fallback — an unrecognized token or an unsatisfied required
+  mutually-exclusive group triggers argparse's `error()` (usage message + exit
+  code 2) before any of `main_logs()`'s own dispatch body (`:2308-2351`) executes.
+- FSM side: `_run_action()` (`fsm/executor.py:2092`) executes the state's shell
+  block via `self.action_runner.run(...)` (`:2274`); `_evaluate()`
+  (`fsm/executor.py:2557`) routes to `evaluate_output_contains()`
+  (`fsm/evaluators.py:436-490`), which does `re.search("REFRESHED", "REFRESH_FAILED\n")`
+  → `None` → `verdict="no"` (`evaluators.py:471`) → executor resolves
+  `state.on_no` = `"done"` and transitions straight to the terminal `done:` state
+  (`.loops/ll-logs-telemetry-digest.yaml` line 195).
+- No `error_patterns` are configured on `refresh_corpus`, so the evaluator's
+  `verdict == "error"` branch (`evaluators.py:474-485`) is never reached — the
+  argparse failure is indistinguishable from a clean "ran but found nothing" no,
+  confirming the Root Cause section's claim that the gate cannot detect its own
+  subject failing.
 
 ## Acceptance Criteria
 
@@ -216,14 +472,50 @@ is why no partial extraction or diagnostic appears.
 - [ ] Every command in `.loops/ll-logs-telemetry-digest.yaml` parses against
       the current `ll-logs` argument surface — no unregistered flags, no
       missing required arguments.
-- [ ] `extract` is invoked with an explicit `--project`/`--all` target.
+- [ ] **All five states invoking corpus subcommands — `refresh_corpus`
+      (`extract`), `run_stats`, `scan_failures`, `run_sequences`,
+      `check_dead_skills` — pass an explicit `--project`/`--all` target**,
+      chosen per Decision Rules rather than uniformly.
+- [ ] **A failed `ll-logs` call is distinguishable from an empty result.**
+      `scan_failures` and `check_dead_skills` check the invocation's exit
+      status separately from the parsed count, and do not report
+      `NO_FAILURES` / `NO_DEAD_SKILLS` when the command exited non-zero. A
+      forced failure of either command must not yield a digest claiming a
+      clean corpus.
+- [ ] **`--help` capability probes are not treated as proof that the real
+      invocation parses.** Either the probe is replaced with one that
+      exercises the actual argument surface, or the real invocation's exit
+      code is the signal — and the probe is not copied into `refresh_corpus`.
+- [ ] **Command output and stderr are captured under `${context.run_dir}`**
+      rather than discarded to `/dev/null` or merged into an artifact that a
+      JSON parser will then choke on, so the next drift leaves a diagnosable
+      file.
 - [ ] If `--quiet` remains in the loop, it is registered via `add_quiet_arg`
       and covered by a test; otherwise it is removed.
 - [ ] A test guards against recurrence: assert the loop's `ll-logs`
       invocations parse (e.g. via the subcommand parsers with
-      `parse_known_args`), so spec/implementation drift fails the suite rather
-      than silently disabling the loop.
+      `parse_known_args`), covering all five states rather than
+      `refresh_corpus` alone, so spec/implementation drift fails the suite
+      rather than silently disabling the loop.
 - [ ] `python -m pytest scripts/tests/` exits 0.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
+
+- The regression test in the last criterion above cannot piggyback on `TestBuiltinLoopFiles`
+  (`scripts/tests/test_builtin_loops.py:28-31`) — that suite only walks
+  `BUILTIN_LOOPS_DIR` (`scripts/little_loops/loops/`), and `.loops/ll-logs-telemetry-digest.yaml`
+  lives at the repo-root `.loops/` directory instead, so it needs its own explicit
+  path reference.
+- No prior test in this codebase parses a loop's `action:` shell string with `shlex`
+  and feeds tokens into an imported parser object's `parse_known_args` — the
+  established convention for exercising `ll-logs` argument surfaces is instead to
+  drive the real `main_logs()` entry point under `patch.object(sys, "argv", [...])`
+  and assert on exit code/output (`TestMainLogsIntegration`,
+  `scripts/tests/test_cli.py:2940`; `TestEvalExport.test_no_regression_extract`,
+  `scripts/tests/test_ll_logs.py:3885-3893`) — evidence for which approach fits this
+  codebase's existing test shape, not a mandated implementation.
 
 ## Related Key Documentation
 
@@ -237,3 +529,8 @@ is why no partial extraction or diagnostic appears.
 ## Status
 
 **Open** | Created: 2026-08-16 | Priority: P2
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-08-16T23:21:46 - `f105a63f-bfd2-4442-8228-f308dc8f7f01.jsonl`
+- `/ll:refine-issue` - 2026-08-16T23:08:11 - `09f214c5-efef-498d-8c5a-346f6f1baa05.jsonl`

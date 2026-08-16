@@ -83,9 +83,9 @@ Consider adding automation to detect count mismatches.
 
 ### Changes Made
 - README.md:13: Updated "24 slash commands" to "25 slash commands"
-- README.md:526: Updated "24 commands" to "25 commands"
-- docs/ARCHITECTURE.md:24: Updated Mermaid diagram from "21 slash commands" to "25 slash commands"
-- docs/ARCHITECTURE.md:64: Updated directory structure comment from "24" to "25"
+- `README.md` (under section "License"): Updated "24 commands" to "25 commands"
+- `docs/ARCHITECTURE.md` (under section "High-Level Architecture"): Updated Mermaid diagram from "21 slash commands" to "25 slash commands"
+- `docs/ARCHITECTURE.md` (under section "Directory Structure"): Updated directory structure comment from "24" to "25"
 
 ### Verification Results
 - All 4 locations updated to reflect actual count of 25 command files in commands/

@@ -166,7 +166,7 @@ No public API changes. The `--show-diagrams` flag behavior is extended, not alte
 | Category | Document | Relevance |
 |----------|----------|-----------|
 | architecture | docs/ARCHITECTURE.md | FSM loop execution and nesting model |
-| guide | docs/guides/LOOPS_GUIDE.md:1214 | Explicitly states depth-1 only limit — **must update** |
+| guide | `docs/guides/LOOPS_GUIDE.md` (under section "your loop") | Explicitly states depth-1 only limit — **must update** |
 | cli-ref | docs/reference/CLI.md:252–253,292–293 | `--show-diagrams` flag documentation |
 | history | .issues/completed/P3-ENH-846-show-sub-loop-fsm-diagram-alongside-parent.md | Original depth-1 sub-loop diagram feature this extends |
 

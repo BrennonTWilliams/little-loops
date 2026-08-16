@@ -17,7 +17,7 @@ completed_at: '2026-07-24T03:31:14Z'
 ---
 
 README.md presents `pip install little-loops` (README.md:32, 64, 228; also
-docs/guides/GETTING_STARTED.md:29) as the primary install path, and the PyPI
+`docs/guides/GETTING_STARTED.md` (under section "Step 1: Install the Python CLI Tools")) as the primary install path, and the PyPI
 badge (README.md:15-17) links to `https://pypi.org/project/little-loops/`.
 A web search during a docs audit could not confirm a published release under
 that name. `ENH-2256` (done) implies PyPI publishing is a real, intended

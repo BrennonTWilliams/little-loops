@@ -47,7 +47,7 @@ All documentation, help surfaces, skill allow-lists, and the doc-wiring test ref
 
 - `ll-session` row added to `commands/help.md` CLI TOOLS table
 - `ll-session` entry added to `.claude/CLAUDE.md` CLI Tools section
-- `README.md` tool count incremented `27` → `28` (both occurrences — README.md:46 `"27 typed CLI tools"` and README.md:166 `"27 CLI tools"`; the unrelated `"28 slash commands"` at README.md:163 must NOT be touched)
+- `README.md` tool count incremented `27` → `28` (both occurrences — `README.md` (under section "2. Smart tools create smart processes") `"27 typed CLI tools"` and `README.md` (under section "Fan out a parallel sprint") `"27 CLI tools"`; the unrelated `"28 slash commands"` at `README.md` (under section "Ship an issue end-to-end") must NOT be touched)
 - `CONTRIBUTING.md` package tree adds `session.py` to the `cli/` listing (CONTRIBUTING.md:186–203)
 - `docs/reference/CLI.md` adds `### ll-session` section documenting all three subcommands — `search --fts QUERY [--limit N]`, `recent --kind {tool,file,issue,loop,correction} [--limit N]`, and `backfill` (place after `### ll-logs` at CLI.md:1179)
 - `docs/reference/API.md` adds an `ll-session` / `main_session` CLI reference (model on the `main_logs` entry, API.md:3361)
@@ -95,7 +95,7 @@ grep -n "Authorize all 25" scripts/tests/test_feat1504_doc_wiring.py
 ### Files to Modify
 - `commands/help.md` — add `ll-session` row to the CLI TOOLS table (help.md:239–267; table is roughly alphabetical — insert near `ll-logs`)
 - `.claude/CLAUDE.md` — add `ll-session` bullet to the CLI Tools section (no `ll-session` mention currently)
-- `README.md` — increment tool count `27` → `28` at README.md:46 and README.md:166 (leave `"28 slash commands"` at README.md:163 untouched)
+- `README.md` — increment tool count `27` → `28` at `README.md` (under section "2. Smart tools create smart processes") and `README.md` (under section "Fan out a parallel sprint") (leave `"28 slash commands"` at `README.md` (under section "Ship an issue end-to-end") untouched)
 - `CONTRIBUTING.md` — add `session.py` to `cli/` package tree (CONTRIBUTING.md:186–203)
 - `docs/reference/CLI.md` — add `### ll-session` section after `### ll-logs` (CLI.md:1179)
 - `docs/reference/API.md` — add `main_session` / `ll-session` CLI reference (model on `main_logs`, API.md:3361)
@@ -139,7 +139,7 @@ _Added by `/ll:refine-issue` — every surface verified against the working tree
 
 - **FEAT-1112 functional deps confirmed present**: `cli/session.py` (entry point `ll-session = "little_loops.cli:main_session"`, `pyproject.toml:72`), `SQLiteTransport` (`session_store.py:256`), `"sqlite"` transport registered (`transport.py` registry + `wire_transports`), `events.sqlite`→`"sqlite"` config block (`config-schema.json:1176–1188`).
 - **`ll-session` CLI surface** (`cli/session.py:23–65`): three subcommands — `search --fts QUERY [--limit N]`, `recent --kind {tool,file,issue,loop,correction} [--limit N]`, `backfill`; global `--db PATH` (default `.ll/session.db`). The original CLI.md AC named only `search`/`recent` — `backfill` was added.
-- **Verified counts/anchors**: README.md:46 + :166 say `"27 ... CLI tools"` (→ 28); `"28 slash commands"` at README.md:163 is unrelated and must be left alone. `areas.md:823` says `"Authorize all 24"`. `test_feat1504_doc_wiring.py:49` asserts `"Authorize all 24"` in method `test_authorize_all_count_is_24`.
+- **Verified counts/anchors**: `README.md` (under section "2. Smart tools create smart processes") + :166 say `"27 ... CLI tools"` (→ 28); `"28 slash commands"` at `README.md` (under section "Ship an issue end-to-end") is unrelated and must be left alone. `areas.md:823` says `"Authorize all 24"`. `test_feat1504_doc_wiring.py:49` asserts `"Authorize all 24"` in method `test_authorize_all_count_is_24`.
 - **`skills/init/SKILL.md` correction**: the issue said "both Bash allow-list blocks" — there is only **one** block (`SKILL.md:502–521`).
 - **`docs/ARCHITECTURE.md` correction**: the EventBus component row (:489), CLI Entry Points table (:511–516), and "Built-in transports" prose (:518) all exist (a `grep "built-in transport"` misses them — the prose uses capital "Built-in"). `SQLiteTransport` belongs in the :489 row and :518 prose; the :511 entry-points table lists *loop runners* only and needs no row for the read-only `ll-session` CLI.
 - **Three ACs removed → ENH-1621**: `WORKFLOW_ANALYSIS_GUIDE.md`, `update-docs/SKILL.md`, and `analyze-workflows.md` describe `ll-workflows`/`ll-history` as JSONL-consuming today. FEAT-1112's management plan (`P4-FEAT-1112-...md:320`) explicitly defers migrating `analyze_workflows()`/`main_history()` to the DB to ENH-1621. ENH-1621 has no issue file yet — it exists only as a planned carve-out referenced in FEAT-1112.

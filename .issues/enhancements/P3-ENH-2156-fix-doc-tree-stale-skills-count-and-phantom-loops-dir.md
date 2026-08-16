@@ -42,7 +42,7 @@ The mermaid diagram (line 26) also shows `SKL[Skills<br/>37 composable skills]`.
 
 ## Acceptance Criteria
 
-- [ ] Remove the phantom top-level `├── loops/` line from CONTRIBUTING.md:122 (loop YAMLs live at `scripts/little_loops/loops/`, not project root)
+- [ ] Remove the phantom top-level `├── loops/` line from `CONTRIBUTING.md` (under section "Secret Scanning (gitleaks)") (loop YAMLs live at `scripts/little_loops/loops/`, not project root)
 - [ ] Add the 6 missing native skill entries to the CONTRIBUTING.md tree listing: `adversarial-verify-loop`, `distill-traces`, `link-epics`, `rename-loop`, `simplify-loop`, `wire-issue` (the "38 skill definitions" comment is already correct — do NOT change the count)
 - [ ] Remove the phantom `├── loops/` from ARCHITECTURE.md:113 (skills count comment on line 114 is already "38" — do NOT change it)
 - [ ] Update ARCHITECTURE.md mermaid diagram (line 26): `37 composable skills` → `38 composable skills`
@@ -86,9 +86,9 @@ _Added by `/ll:verify-issues` on 2026-06-15_
 The issue's proposed canonical count of "36 native skills" is incorrect. `ll-verify-docs` counts native skills by excluding dirs whose SKILL.md contains `BRIDGE_MARKER = "Bridged from \`commands/"`. Two `ll-`-prefixed skills (`ll-capture-issue`, `ll-go-no-go`) do NOT contain this marker and are counted as native. Actual: 66 total − 28 bridge = **38 native**.
 
 Current doc state:
-- CONTRIBUTING.md:123 already says "38 skill definitions" ✓ (no change needed for count)
+- `CONTRIBUTING.md` (under section "Secret Scanning (gitleaks)") already says "38 skill definitions" ✓ (no change needed for count)
 - ARCHITECTURE.md:114 already says "38 skill definitions" ✓ (no change needed for count)
-- README.md:161 already says "38 skills" ✓ (no change needed)
+- `README.md` (under section "Ship an issue end-to-end") already says "38 skills" ✓ (no change needed)
 - ARCHITECTURE.md:26 mermaid says "37 composable skills" ✗ → should be 38 (flagged by `ll-verify-docs`)
 
 The acceptance criteria need correction before implementation:

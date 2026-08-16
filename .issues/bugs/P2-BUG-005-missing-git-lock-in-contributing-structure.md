@@ -23,7 +23,7 @@ Multiple project structure diagrams are missing files from the parallel director
 
 Two files exist but are not listed in structure diagrams:
 
-1. `scripts/little_loops/parallel/git_lock.py` - Git locking utilities (missing from CONTRIBUTING.md and scripts/README.md; already present in docs/ARCHITECTURE.md:116)
+1. `scripts/little_loops/parallel/git_lock.py` - Git locking utilities (missing from CONTRIBUTING.md and scripts/README.md; already present in `docs/ARCHITECTURE.md` (under section "Directory Structure"))
 2. `scripts/little_loops/issue_discovery.py` - Issue discovery module (missing from all documentation)
 
 ## Current Content (CONTRIBUTING.md example)

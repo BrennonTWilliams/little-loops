@@ -95,7 +95,7 @@ Based on `config-schema.json`, the configuration setting `parallel.p0_sequential
 - **Status**: Completed
 
 ### Changes Made
-- README.md:607: Replaced non-existent `--include-p0` flag with correct `--priority P0,P1,P2` documentation and clarifying comment about P0 sequential processing
+- `README.md` (under section "License"): Replaced non-existent `--include-p0` flag with correct `--priority P0,P1,P2` documentation and clarifying comment about P0 sequential processing
 
 ### Verification Results
 - Documentation fix verified: Incorrect flag removed from README.md

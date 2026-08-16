@@ -96,7 +96,7 @@ Decided by `/ll:decide-issue` on 2026-05-11.
 | Option B — close/defer | 3/3 | 3/3 | 3/3 | 3/3 | 12/12 |
 
 **Key evidence**:
-- **Option A**: `_write_description_to_frontmatter` regex (`^description:.*$`) unconditionally overwrites the full description line on `--apply`, silently stripping prefixes (`generate_skill_descriptions.py:80–85`); no existing prefix convention in any `skills/*/SKILL.md`; conflicts with CONTRIBUTING.md:508 description convention.
+- **Option A**: `_write_description_to_frontmatter` regex (`^description:.*$`) unconditionally overwrites the full description line on `--apply`, silently stripping prefixes (`generate_skill_descriptions.py:80–85`); no existing prefix convention in any `skills/*/SKILL.md`; conflicts with `CONTRIBUTING.md` (under section "Adding Commands") description convention.
 - **Option B**: Budget confirmed at 283/2000 (14%) by ENH-1396 smoke test; 16/25 skills excluded via `disable-model-invocation: true` (ENH-1394 complete 2026-05-11); `ll-verify-skill-budget` live in release toolchain; established defer precedent in `.issues/deferred/` (FEAT-1117, ENH-1122).
 
 ## Implementation Steps

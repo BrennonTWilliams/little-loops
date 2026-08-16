@@ -398,7 +398,7 @@ issue's `## Parent Issue` section) — none of `ENH-3095`/`3096`/`3097` carries
 would stop an automation pipeline that only respects `blocked_by`/`depends_on`
 edges from picking up `ENH-3095` before this issue lands.
 
-### Documentation edit contention — docs/ARCHITECTURE.md:777
+### Documentation edit contention — `docs/ARCHITECTURE.md` (under section "Decisions Log: `.ll/decisions.yaml` + `.ll/decisions.d/`")
 
 Both this issue (AC5/AC6, adding a `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` note)
 and `ENH-3095` (renaming the cited kwarg form from `automation_profile=...` to

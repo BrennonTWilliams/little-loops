@@ -97,7 +97,7 @@ README count remains at 15; `mcp-call` treated as internal debug tool not counte
 
 Re-audited by `/ll:audit-docs`. State has changed since this issue was created:
 
-- README.md:92 now claims **"15 CLI tools"** (was "14 CLI tools" when issue was filed)
+- `README.md` (under section "Install") now claims **"15 CLI tools"** (was "14 CLI tools" when issue was filed)
 - `pyproject.toml` still registers **16 entry points** (unchanged)
 - The count bump from 14→15 likely reflects `ll-create-extension` being added and counted; it does NOT resolve the two undocumented tools
 - **`ll-generate-schemas`** — still undocumented in README CLI section; still uncounted (or silently absorbed into the 15 count)

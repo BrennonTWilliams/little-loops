@@ -26,7 +26,7 @@ isn't just premature, it points at work that will not land.
 
 ## Steps to Reproduce
 
-1. Read README.md:37 and README.md:77.
+1. Read `README.md` (under section "little-loops") and README.md:77.
 2. Run `ll-init --hosts opencode` or `ll-init --hosts pi`.
 3. Observe the dispatch in `scripts/little_loops/init/cli.py:107,109` prints
    "Adapter not yet available" for both hosts and installs nothing, contradicting
@@ -34,9 +34,9 @@ isn't just premature, it points at work that will not land.
 
 ## Current Behavior
 
-- README.md:37 — "Built for Claude Code, with host adapters for Codex,
+- `README.md` (under section "little-loops") — "Built for Claude Code, with host adapters for Codex,
   OpenCode, and Pi."
-- README.md:77 — "OpenCode and Pi wire up the same way via `ll-init --hosts`."
+- `README.md` (under section "Install") — "OpenCode and Pi wire up the same way via `ll-init --hosts`."
 
 Both statements read as though OpenCode and Pi are supported today via the
 same mechanism as Codex. Running `ll-init --hosts opencode` or `--hosts pi`
@@ -50,9 +50,9 @@ reader doesn't attempt an unsupported `--hosts` value expecting it to work.
 
 ## Acceptance Criteria
 
-- [ ] README.md:37 no longer implies OpenCode and Pi have working adapters
+- [ ] `README.md` (under section "little-loops") no longer implies OpenCode and Pi have working adapters
       equivalent to Codex's.
-- [ ] README.md:77 no longer claims "OpenCode and Pi wire up the same way";
+- [ ] `README.md` (under section "Install") no longer claims "OpenCode and Pi wire up the same way";
       either removed or replaced with accurate status.
 - [ ] Wording decision accounts for EPIC-1622 being cancelled (Pi adapter is
       not just "not yet" but currently unplanned).
@@ -76,9 +76,9 @@ Found by `/ll:audit-docs readme` (2026-07-23).
 
 Reworded both README.md locations to distinguish adapter support accurately:
 
-- README.md:37 — "Built for Claude Code, with a host adapter for Codex;
+- `README.md` (under section "little-loops") — "Built for Claude Code, with a host adapter for Codex;
   OpenCode and Pi adapters are not yet available."
-- README.md:77 — replaced "OpenCode and Pi wire up the same way via
+- `README.md` (under section "Install") — replaced "OpenCode and Pi wire up the same way via
   `ll-init --hosts`" with "OpenCode and Pi adapters aren't wired yet —
   `ll-init --hosts opencode`/`--hosts pi` currently install nothing."
 

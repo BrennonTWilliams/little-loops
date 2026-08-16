@@ -180,7 +180,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Notes
 
-Found during `/ll:audit-docs` (2026-05-23). Manually fixed README.md:167 (51 → 52); this issue prevents the regression from reappearing.
+Found during `/ll:audit-docs` (2026-05-23). Manually fixed `README.md` (under section "Fan out a parallel sprint") (51 → 52); this issue prevents the regression from reappearing.
 
 Related: `ll-loop list` also omits nested runnable loops — same root cause but in CLI enumeration, not doc verification. See [[BUG-1634]] (sibling issue).
 

@@ -26,7 +26,7 @@ skills: documented=0, actual=30
   at CONTRIBUTING.md:540
 ```
 
-The line at CONTRIBUTING.md:540 reads:
+The line at `CONTRIBUTING.md` (under section "Flag Conventions") reads:
 
 ```
 Then run `/doctor` and verify "0 skill descriptions dropped".
@@ -36,7 +36,7 @@ The phrase `"0 skill descriptions dropped"` is quoting `/doctor` output, not doc
 
 ## Current Behavior
 
-`ll-verify-docs` exits with a skills mismatch error: `skills: documented=0, actual=30 at CONTRIBUTING.md:540`. The line at CONTRIBUTING.md:540 reads `verify "0 skill descriptions dropped"` — a quoted `/doctor` output string, not a skill count.
+`ll-verify-docs` exits with a skills mismatch error: `skills: documented=0, actual=30 at CONTRIBUTING.md:540`. The line at `CONTRIBUTING.md` (under section "Flag Conventions") reads `verify "0 skill descriptions dropped"` — a quoted `/doctor` output string, not a skill count.
 
 ## Expected Behavior
 
@@ -45,8 +45,8 @@ The phrase `"0 skill descriptions dropped"` is quoting `/doctor` output, not doc
 ## Steps to Reproduce
 
 1. Run `ll-verify-docs` on the repository
-2. Observe: `skills: documented=0, actual=30` mismatch reported at CONTRIBUTING.md:540
-3. Note: CONTRIBUTING.md:540 contains `verify "0 skill descriptions dropped"` — this is quoting CLI output, not documenting a skill count
+2. Observe: `skills: documented=0, actual=30` mismatch reported at `CONTRIBUTING.md` (under section "Flag Conventions")
+3. Note: `CONTRIBUTING.md` (under section "Flag Conventions") contains `verify "0 skill descriptions dropped"` — this is quoting CLI output, not documenting a skill count
 
 ## Root Cause
 

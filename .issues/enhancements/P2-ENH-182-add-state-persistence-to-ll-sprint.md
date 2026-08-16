@@ -72,8 +72,8 @@ class SprintState:
 
 | Category | Document | Relevance |
 |----------|----------|-----------|
-| reference | scripts/little_loops/state.py:76 | StateManager pattern to follow |
-| reference | scripts/little_loops/parallel/types.py:176 | OrchestratorState pattern |
+| reference | `scripts/little_loops/state.py` (near function `from_dict`) | StateManager pattern to follow |
+| reference | `scripts/little_loops/parallel/types.py` (near class `MergeStatus`) | OrchestratorState pattern |
 | audit | docs/CLI-TOOLS-AUDIT.md | Source of this issue |
 
 ## Labels
