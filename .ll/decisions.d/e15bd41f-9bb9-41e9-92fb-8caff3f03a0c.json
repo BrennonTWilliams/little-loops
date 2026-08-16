@@ -1,0 +1,12 @@
+{
+  "id": "edde5cb1-9add-4f19-bd0d-0ee9549b8a46",
+  "type": "decision",
+  "timestamp": "2026-08-16T19:52:51Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "No existing git ls-files call site (11 surveyed) layers a filesystem stat on an index miss; verify_private_refs.py:36-38 is direct prior art rejecting exactly this filesystem-state-dependence tradeoff for the same four directories. Option B's verdict-wiring mechanics match the RefStatus Literal precedent (ambiguous, planned_new) exactly.",
+  "rule": "Option B \u2014 untracked-by-design prefix allowlist, config-driven",
+  "scope": "issue",
+  "alternatives_rejected": "Option A (filesystem-existence fallback via stat()) \u2014 scored 0/3 consistency, working-tree-dependent verdicts flagged Medium risk for research_triage's coverage gate",
+  "issue": "ENH-3000"
+}

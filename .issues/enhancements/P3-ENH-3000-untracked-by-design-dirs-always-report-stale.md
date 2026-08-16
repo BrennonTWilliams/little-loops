@@ -7,7 +7,7 @@ discovered_date: 2026-08-02
 discovered_by: capture-issue
 parent: EPIC-3023
 relates_to: [ENH-2983, ENH-2971, ENH-2999]
-decision_needed: true
+decision_needed: false
 testable: true
 verify_verdict: VALID
 ---
@@ -65,6 +65,8 @@ trade against each other and the choice is not obvious.
 **Option A — filesystem-existence fallback.** When the index misses, stat the
 path relative to the project root; if it exists, resolve.
 
+> **Selected:** Option B — untracked-by-design prefix allowlist, config-driven. Option A scored 0/3 on codebase consistency: no existing `git ls-files` call site (11 surveyed) layers a filesystem stat on an index miss, and `verify_private_refs.py:36-38` is a direct prior-art rejection of exactly this tradeoff ("structural rules are deterministic across machines... local name rules are not, which is why they are excluded"). See Decision Rationale below.
+
 - *For*: accurate for every case, including directories nobody thought to list.
 - *Against*: weakens the tracked-files-only contract `build_ref_index` is built
   on, and makes the verdict depend on local working-tree state — a ref could
@@ -87,6 +89,71 @@ known set of prefixes as `unresolvable_form` (or a new `untracked_by_design`).
 weigh it properly rather than treating this as settled. Note that Option A's
 working-tree dependence is a real hazard for `research_triage`, whose ≥80%
 coverage gate would then vary by machine.
+
+### Decision Rationale
+
+**Selected**: Option B — untracked-by-design prefix allowlist, config-driven.
+
+**Reasoning**: Option A introduces a failure mode this codebase has explicitly
+rejected once already for the identical set of directories. `verify_private_refs.py:34-38`
+articulates the only prior statement of a determinism-across-machines principle
+in this codebase and resolves it by *excluding* the non-deterministic source
+(local, gitignored state) from portable comparison — not by falling back to it.
+An 11-site survey of every `git ls-files` call in the codebase found zero
+precedent for layering a filesystem `stat()` on an index miss; the one call
+site that unions tracked and untracked files (`work_verification.py:193`)
+still does so via a second git call, not a raw filesystem check. Option B's
+verdict-wiring half (new `RefStatus` literal, ordered form-check ahead of
+lookup) matches the established pattern for `ambiguous`/`planned_new` exactly.
+Its weaker half — config-sourcing the prefix list — has no existing wired
+precedent (`scan.exclude_patterns` is unwired to `text_utils.py` today, and a
+shape-incompatible hardcoded list `_EXCLUDED_DIRS` already covers the same
+four directories in `verify_private_refs.py:75-90`) but this is new plumbing
+to add, not a principle to violate, and it is explicitly named in the issue's
+own Integration Map (`config-schema.json — if Option B is config-driven`).
+
+**Scoring summary**:
+
+| Dimension | Option A | Option B |
+|---|---|---|
+| Consistency | 0 | 2 |
+| Simplicity | 2 | 2 |
+| Testability | 1 | 3 |
+| Risk | 1 | 2 |
+| **Total** | **4/12** | **9/12** |
+
+**Key evidence**:
+- No `git ls-files` call site (11 surveyed) combines a tracked-file index with
+  a filesystem `stat()` fallback (`text_utils.py`, `verify_private_refs.py`,
+  `codequery/fallback.py:38-43`, `symbol_claims.py:356-381`,
+  `work_verification.py:193`, and 6 others).
+- `verify_private_refs.py:36-38` — direct prior resolution of the same
+  determinism tradeoff, decided against filesystem-state dependence.
+- `verify_private_refs.py:75-90` (`_EXCLUDED_DIRS`) already covers exactly
+  these four directories with a static list, evidencing exclusion (Option B's
+  shape) as the existing resolution, not disk-presence checking (Option A's
+  shape).
+- `text_utils.py:161, 272-299` — `RefStatus` `Literal` + ordered
+  "Resolution order" docstring is the clean precedent Option B's verdict
+  mechanics slot into, matching `ambiguous` (ENH-2999) and `planned_new`.
+- Issue's own risk assessment (lines 176-177) independently flags Option A as
+  "Medium risk" (working-tree-dependent verdicts leaking into
+  `research_triage`'s ≥80% coverage gate) vs. "Low" under Option B.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
+
+- **Verdict wiring precedent**: new `classify_file_ref()` verdicts are added as a member of the `RefStatus` `Literal` (`scripts/little_loops/text_utils.py:161`), slotted into the explicitly non-commutative "Resolution order" checks documented in the function's docstring (`text_utils.py:272-299`). The most recent additions (`ambiguous` for ENH-2999, `planned_new`) both followed this shape.
+- **Two wiring depths exist, and precedent does not settle which ENH-3000's new verdict needs**: `check_format_gaps()` only branches on verdicts it wants reported as drift — `resolved`/`planned_new`/`unresolvable_form` pass through with no `FormatGaps` field, no `has_gaps` change, no `to_dict()` change (`scripts/little_loops/issue_parser.py:766-774`). A verdict meant to be *reported* (e.g. `ambiguous_file_ref` for ENH-2999) instead gets 5 coordinated sites: new `FormatGaps` field, OR'd into `has_gaps`, added to `to_dict()`, a docstring "Gap classes:" bullet, and rendering in `_print_gaps()`/CLI help (`issue_parser.py:315-559`; `scripts/little_loops/cli/issues/format_check.py:61-199`). Whether `untracked_by_design` is a suppressing verdict (shallow) or a reported one (all 5 sites) is an open call the design doesn't currently pin down.
+- **A hardcoded, name-based directory-exclusion list already exists for these exact four directories**, and it disagrees with `scan.exclude_patterns`' shape — directly relevant to Option B's "config-driven" framing:
+  ```python
+  _EXCLUDED_DIRS = frozenset({..., "postmortems", ".loops", "thoughts", "logs"})
+  ```
+  (`scripts/little_loops/cli/verify_private_refs.py:75-90`, rationale comment at :71-74). This is a plain Python constant, not sourced from config.
+  By contrast, `scan.exclude_patterns` is glob-syntax (`**/node_modules/**`), schema-declared with `additionalProperties: false` on `scan` (`config-schema.json:739-763`), mirrored in `ScanConfig.exclude_patterns` (`config/features.py:304-324`), and matched via the gitignore-style `file_matches_pattern()` (`scripts/little_loops/git_operations.py:296-351`) — used for scan/touch relevance, not reference-resolution classification. Neither list is currently wired to `classify_file_ref`/`build_ref_index`, and no shared "is this ref under an untracked-by-design directory" helper exists that both could delegate to.
+- **The filesystem-state-vs-git-tracked-state tradeoff Option A introduces has one prior resolution in this codebase**: `ll-verify-private-refs` keeps its two rule families deliberately separate on exactly this axis — "structural rules are deterministic across machines, so the baseline is portable; local name rules are not, which is why they are excluded from [full-scan] mode" (`verify_private_refs.py:36-38`). Structural rules compare against a tracked baseline file; name rules source from a gitignored local file, excluded from portable comparison (`verify_private_refs.py:22-38, 156`). No prior code path mixes a `git ls-files`-only index with a `stat()` fallback the way Option A proposes.
+- **Test structure precedent**: verdict unit tests live in `class TestClassifyFileRef` (`scripts/tests/test_text_utils.py:210-315`), one method per case constructing `RefIndex(by_basename={...})` inline. Marker/corpus-driven verdicts get a `@pytest.mark.parametrize` sweep plus a paired negative-control test proving a near-miss still returns the old verdict (`test_planned_new_marker_variants` / `test_does_not_exist_marker_stays_stale`, :295-315). `build_ref_index()` itself is tested against a real throwaway git repo built via `subprocess.run(["git","init",...])` in `tmp_path` (:516-529), plus a mocked-subprocess test for the fail-empty path (:539-542).
 
 ## Program Design
 
@@ -184,6 +251,8 @@ Resolve the option with `/ll:decide-issue` before implementation.
 **Note** (added by `/ll:audit-issue-conflicts`): This issue and ENH-2966 both modify `check_format_gaps` in `scripts/little_loops/issue_parser.py` for unrelated gap classes (a new `stale_file_ref` verdict branch vs. the testable-keyword scan surface). Coordinate implementation order to avoid a merge collision in the same function.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-08-16T19:52:58 - `a441e649-6a94-4074-a117-b8df44bd2807.jsonl`
+- `/ll:refine-issue` - 2026-08-16T19:42:17 - `658492bc-e02e-4d03-829a-fae819b3a566.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:04:58 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-10T18:52:52 - `ffa08fd4-dce7-4108-91f7-6bb57e5df4c8.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-04T20:31:45 - `ec47aff0-f647-498d-ad44-7606e8c8054f.jsonl`
