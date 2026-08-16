@@ -123,9 +123,15 @@ human-readable fallback.
 having *both* `started_at` and `ended_at`, but counts every row in `spawn_count`. So any
 `running`/`orphaned` row silently understates the reported duration. The output must show
 the excluded-row count alongside the total — e.g.
-`spawn_count=12  total_duration_s=430.2  (2 rows excluded: no ended_at)`. Post-ENH-3210
-those excluded rows are exactly the `orphaned` ones, which makes this the operationally
-interesting number, not a footnote.
+`spawn_count=12  total_duration_s=430.2  (2 rows excluded: no ended_at)`.
+
+**Corrected 2026-08-15:** an earlier draft claimed that post-ENH-3210 the excluded rows
+are "exactly the `orphaned` ones." They are not. ENH-3210's designed failure mode is
+*under*-reconciliation — a row with no resolvable evidence is deliberately left `running`
+with `ended_at IS NULL` — and a genuinely in-flight spawn is excluded too. So excluded =
+`running` + `orphaned`, both before and after ENH-3210. Either break the excluded count
+out by status (`1 running, 1 orphaned`) or state it as a bare count without attributing
+it to orphaning.
 
 Remaining shape: the fallback carries an explicit "No subagent runs found" message on empty
 results (the established empty-result convention — `cli/session.py`'s `related`
@@ -352,7 +358,9 @@ No breaking change — this is a new, additive CLI subcommand. No existing `ll-l
    convention observed across `cli/session.py`/`cli/history.py`.
 4. The `--budget` output reports the count of rows excluded from `total_duration_s`
    (those with no `ended_at`) alongside the total, so the duration is never silently
-   understated — post-ENH-3210 those are exactly the `orphaned` rows.
+   understated. Excluded rows are `running` **and** `orphaned` — ENH-3210 leaves
+   unresolvable rows `running` by design, and live in-flight spawns are excluded too — so
+   the output must not label the excluded count as "orphaned."
 5. `python -m pytest scripts/tests/test_enh_2505_subagent_runs.py scripts/tests/test_ll_session.py -v`
    and the new CLI test all pass, including an empty-result case that prints
    `"No subagent runs found for {session_id}."` rather than nothing, and a case with an
