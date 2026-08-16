@@ -87,6 +87,7 @@ def _record_verdict(
     severity_counts: dict | None = None
     findings_count: int | None = None
     confidence: int | None = None
+    abstention_reason: str | None = None
 
     match = _TARGET_ID_RE.search(" ".join(skill_args))
     if match:
@@ -99,6 +100,7 @@ def _record_verdict(
         severity_counts = tagged.get("severity_counts")
         findings_count = tagged.get("findings_count")
         confidence = tagged.get("confidence")
+        abstention_reason = tagged.get("abstention_reason")
         target_id = tagged.get("target_id", target_id)
         target_kind = tagged.get("target_kind", target_kind)
 
@@ -113,6 +115,7 @@ def _record_verdict(
         severity_counts=severity_counts,
         findings_count=findings_count,
         confidence=confidence,
+        abstention_reason=abstention_reason,
     )
 
 

@@ -3114,7 +3114,14 @@ def harness_eval_abstention_rate(
 
 @dataclass
 class VerdictEvent:
-    """A ``verdict_events`` row — one verifier invocation's structured outcome (ENH-2504)."""
+    """A ``verdict_events`` row — one verifier invocation's structured outcome (ENH-2504).
+
+    ``abstention_reason`` (ENH-230) carries the closed-enum tag from the
+    producer when ``verdict`` is ``cannot_judge`` or ``refused``. None for the
+    pass/fail/implement outcomes. The SQL NULL vs Python ``None`` distinction
+    is preserved end-to-end — readers MUST treat None distinctly from 0 when
+    computing on ``findings_count`` or ``severity_counts``.
+    """
 
     ts: str
     session_id: str | None
@@ -3125,13 +3132,15 @@ class VerdictEvent:
     severity_counts: str | None
     findings_count: int | None
     confidence: int | None
+    abstention_reason: str | None
     head_sha: str | None
     branch: str | None
 
 
 _VERDICT_EVENT_COLUMNS = (
     "ts, session_id, verdict_kind, target_kind, target_id, verdict, "
-    "severity_counts, findings_count, confidence, head_sha, branch"
+    "severity_counts, findings_count, confidence, abstention_reason, "
+    "head_sha, branch"
 )
 
 
@@ -3186,6 +3195,23 @@ def verdict_pass_rate(
     ``pass`` counts rows whose ``verdict`` is ``pass`` or ``implement`` (the two
     "proceed" outcomes across the nine verifiers). Sorted by invocation count,
     descending.
+
+    ENH-230 extends the rollup with explicit abstention buckets so operators
+    can see abstention volume without conflating it with pass/fail:
+
+    * ``cannot_judge_count`` — rows where the gate's epistemic limit fired
+      (criteria/context missing). Routing signal: fix the criteria or
+      evaluation context.
+    * ``refused_count`` — rows where the gate refused to evaluate (rubric
+      unreadable, pipeline broken). Routing signal: fix the rubric /
+      pipeline.
+
+    ``success_rate`` keeps its existing definition (``successes /
+    invocations``); a follow-up may add a decision-rate variant that excludes
+    abstentions from the denominator, but the current contract is unchanged
+    to avoid silent UI shifts. NULL ``findings_count`` is intentionally NOT
+    coalesced to 0 in any bucket — abstention rows simply do not contribute
+    to the success/failure count.
     """
     db_path = Path(db)
     conn = _connect_readonly(db_path)
@@ -3194,7 +3220,9 @@ def verdict_pass_rate(
     try:
         sql = (
             "SELECT verdict_kind, COUNT(*) AS invocations, "
-            "SUM(CASE WHEN verdict IN ('pass', 'implement') THEN 1 ELSE 0 END) AS successes "
+            "SUM(CASE WHEN verdict IN ('pass', 'implement') THEN 1 ELSE 0 END) AS successes, "
+            "SUM(CASE WHEN verdict = 'cannot_judge' THEN 1 ELSE 0 END) AS cannot_judge_count, "
+            "SUM(CASE WHEN verdict = 'refused' THEN 1 ELSE 0 END) AS refused_count "
             "FROM verdict_events "
         )
         clauses: list[str] = []
@@ -3221,13 +3249,88 @@ def verdict_pass_rate(
     for row in rows:
         invocations = row["invocations"] or 0
         successes = row["successes"] or 0
+        cannot_judge_count = row["cannot_judge_count"] or 0
+        refused_count = row["refused_count"] or 0
         result.append(
             {
                 "verdict_kind": row["verdict_kind"],
                 "invocations": invocations,
                 "successes": successes,
+                "cannot_judge_count": cannot_judge_count,
+                "refused_count": refused_count,
                 "success_rate": (successes / invocations) if invocations else None,
             }
+        )
+    return result
+
+
+@dataclass
+class HighConfidenceAbstention:
+    """A ``cannot_judge`` row whose ``confidence`` exceeds the manual-review threshold (ENH-230).
+
+    A high-confidence abstention is a producer-side regression signal: if
+    the gate is confident enough to score >= threshold, it should be able
+    to render a real verdict. Catching these in a manual-review queue is
+    the loud-failure point for the LLM-gaming path where a producer uses
+    ``cannot_judge`` as a defensive fallback on borderline inputs.
+    """
+
+    ts: str
+    session_id: str | None
+    verdict_kind: str
+    target_id: str | None
+    abstention_reason: str | None
+    confidence: int
+
+
+def check_high_confidence_abstention(
+    *,
+    threshold: int = 90,
+    verdict_kind: str | None = None,
+    since: str | None = None,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[HighConfidenceAbstention]:
+    """Return ``cannot_judge`` rows whose ``confidence`` is implausibly high.
+
+    ENH-230 emits a ``logging.warning`` per row (logger name
+    ``little_loops.history_reader``) and returns the row list. Threshold
+    defaults to 90; callers may tighten or loosen. The check is best-effort
+    and never raises — a missing or locked DB returns ``[]``.
+    """
+    db_path = Path(db)
+    conn = _connect_readonly(db_path)
+    if conn is None:
+        return []
+    try:
+        sql = (
+            "SELECT ts, session_id, verdict_kind, target_id, abstention_reason, confidence "
+            "FROM verdict_events WHERE verdict = 'cannot_judge' "
+            "AND confidence IS NOT NULL AND confidence >= ? "
+        )
+        params: list[Any] = [threshold]
+        if verdict_kind is not None:
+            sql += "AND verdict_kind = ? "
+            params.append(verdict_kind)
+        if since is not None:
+            sql += "AND ts >= ? "
+            params.append(since)
+        sql += "ORDER BY ts DESC, id DESC"
+        rows = conn.execute(sql, params).fetchall()
+    except sqlite3.Error:
+        logger.warning(
+            "history_reader: check_high_confidence_abstention query failed",
+            exc_info=True,
+        )
+        return []
+    finally:
+        conn.close()
+    result = [_row_to_dataclass(row, HighConfidenceAbstention) for row in rows]
+    for row in result:
+        logger.warning(
+            "high-confidence abstention: %s confidence=%d abstention_reason=%s",
+            row.target_id,
+            row.confidence,
+            row.abstention_reason,
         )
     return result
 
