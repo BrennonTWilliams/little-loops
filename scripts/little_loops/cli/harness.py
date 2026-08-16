@@ -6,11 +6,13 @@ import argparse
 import contextlib
 import hashlib
 import json
+import re
 import subprocess
 import sys
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -182,6 +184,175 @@ class DslTask:
             source_file=data.get("source_file", ""),
             generated_at=data.get("generated_at", ""),
         )
+
+
+class GradeStatus(Enum):
+    """Per-task `expected:` grading outcome (BUG-3196)."""
+
+    PASS = "pass"  # every expected key matched
+    FAIL = "fail"  # answer parsed, >=1 key mismatched
+    UNPARSEABLE = "unparseable"  # expected declared, no answer object recovered -> counts FAIL
+    UNGRADED = "ungraded"  # no expected and no --semantic -> excluded from denominator
+    MALFORMED = "malformed"  # task file unloadable / expected not a mapping -> counts FAIL
+
+
+@dataclass(frozen=True)
+class ExpectedGrade:
+    """Result of comparing one response against one task's `expected:` mapping."""
+
+    status: GradeStatus
+    matched: dict[str, str]
+    mismatched: dict[str, tuple[str, str | None]]
+    raw_answer: str | None
+
+    @property
+    def passed(self) -> bool:
+        return self.status is GradeStatus.PASS
+
+
+_FENCED_JSON_RE = re.compile(r"```json\s*(.*?)```", re.DOTALL | re.IGNORECASE)
+
+
+def _try_parse_answer_object(text: str) -> dict[str, object] | None:
+    """Parse *text* as a flat JSON object (scalar values only), or return None."""
+    try:
+        obj = json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(obj, dict):
+        return None
+    for value in obj.values():
+        if isinstance(value, (dict, list)):
+            return None
+    return obj
+
+
+def _iter_balanced_brace_spans(text: str) -> list[str]:
+    """Return every top-level balanced ``{...}`` substring of *text*, in order."""
+    spans: list[str] = []
+    depth = 0
+    start: int | None = None
+    for i, ch in enumerate(text):
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            if depth > 0:
+                depth -= 1
+                if depth == 0 and start is not None:
+                    spans.append(text[start : i + 1])
+                    start = None
+    return spans
+
+
+def _extract_answer_object(
+    stdout: str, expected_keys: set[str] | None = None
+) -> dict[str, object] | None:
+    """Recover the model's answer object from *stdout*.
+
+    Tries the last fenced ```json block first (accepted unconditionally), then
+    falls back to the last balanced ``{...}`` span. The bare-brace fallback is
+    accepted only if its key set intersects *expected_keys* — otherwise an
+    unrelated JSON payload already in the response (e.g. a `--semantic` judge
+    verdict) would be misread as the answer (BUG-3196 AC2b).
+    """
+    fenced_matches = _FENCED_JSON_RE.findall(stdout)
+    if fenced_matches:
+        candidate = _try_parse_answer_object(fenced_matches[-1])
+        if candidate is not None:
+            return candidate
+
+    spans = _iter_balanced_brace_spans(stdout)
+    if not spans:
+        return None
+    candidate = _try_parse_answer_object(spans[-1])
+    if candidate is None:
+        return None
+    if expected_keys is not None and not (set(candidate.keys()) & expected_keys):
+        return None
+    return candidate
+
+
+def _normalize_answer(value: object) -> str:
+    """Normalize one answer-object value for exact comparison.
+
+    Strips surrounding whitespace and one layer of matching outer quotes or
+    backticks. `bool` is the one documented case-significance exception: it
+    lower-cases to `"true"`/`"false"` so a JSON `true` matches a YAML `true`
+    (both are the same value with different Python reprs).
+    """
+    if isinstance(value, bool):
+        text = "true" if value else "false"
+    else:
+        text = str(value).strip()
+    if len(text) >= 2:
+        for quote in ('"', "'", "`"):
+            if text.startswith(quote) and text.endswith(quote):
+                text = text[1:-1]
+                break
+    return text
+
+
+def _grade_expected(stdout: str, expected: object) -> ExpectedGrade:
+    """Grade *stdout* against a task's `expected` mapping (BUG-3196)."""
+    if not isinstance(expected, dict):
+        return ExpectedGrade(
+            status=GradeStatus.MALFORMED, matched={}, mismatched={}, raw_answer=None
+        )
+
+    expected_keys = set(expected.keys())
+    answer = _extract_answer_object(stdout, expected_keys)
+    if answer is None:
+        return ExpectedGrade(
+            status=GradeStatus.UNPARSEABLE, matched={}, mismatched={}, raw_answer=None
+        )
+
+    matched: dict[str, str] = {}
+    mismatched: dict[str, tuple[str, str | None]] = {}
+    for key, expected_value in expected.items():
+        expected_norm = _normalize_answer(expected_value)
+        if key in answer:
+            actual_norm = _normalize_answer(answer[key])
+            if actual_norm == expected_norm:
+                matched[key] = actual_norm
+            else:
+                mismatched[key] = (expected_norm, actual_norm)
+        else:
+            mismatched[key] = (expected_norm, None)
+
+    status = GradeStatus.PASS if not mismatched else GradeStatus.FAIL
+    return ExpectedGrade(
+        status=status, matched=matched, mismatched=mismatched, raw_answer=json.dumps(answer)
+    )
+
+
+def _answer_contract_suffix(blanks: list[str], expected: object) -> str:
+    """Build the text appended to a DSL task's prompt (replaces the list-repr hint)."""
+    if isinstance(expected, dict) and expected:
+        keys = ", ".join(sorted(expected.keys()))
+        return (
+            "\n\nAnswer contract: end your response with a single fenced "
+            f"```json code block containing an object with exactly these keys: {keys}."
+        )
+    if blanks:
+        return f"\n\nBlanks to fill: {', '.join(blanks)}"
+    return ""
+
+
+def _load_task(path: Path) -> DslTask | None:
+    """Load one DSL task YAML, returning None on any load/shape error (BUG-3196 AC5e)."""
+    try:
+        with open(path) as f:
+            data = yaml.safe_load(f)
+    except yaml.YAMLError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    try:
+        return DslTask.from_dict(data)
+    except (KeyError, TypeError):
+        return None
 
 
 def _build_harness_parser() -> argparse.ArgumentParser:
@@ -410,6 +581,8 @@ def _evaluate_and_report(
     runner_label: str,
     result: RunnerResult,
     args: argparse.Namespace,
+    *,
+    expected_grade: ExpectedGrade | None = None,
 ) -> tuple[int, HarnessEvalOutcome]:
     """Evaluate result against criteria and print the report. Returns (exit_code, outcome)."""
     if result.timed_out:
@@ -429,6 +602,18 @@ def _evaluate_and_report(
         if result.exit_code != args.exit_code:
             passed = False
         exit_code_display = f"{result.exit_code} (expected {args.exit_code})"
+
+    # BUG-3196: an `expected:` mismatch is a hard failure that outranks
+    # abstention (folded before the --semantic block, same as --exit-code).
+    # UNGRADED is deliberately excluded here — it carries no verdict of its
+    # own and must not force `passed = False`; cmd_dsl reads its status
+    # directly to exclude the task from the denominator instead.
+    if (
+        expected_grade is not None
+        and expected_grade.status is not GradeStatus.UNGRADED
+        and not expected_grade.passed
+    ):
+        passed = False
 
     if args.semantic is not None:
         eval_result = evaluate_llm_structured(output=result.stdout, prompt=args.semantic)
@@ -454,6 +639,23 @@ def _evaluate_and_report(
     # (not an error) when no --issue-id was given or no bundle exists.
     prepatch_evidence = _read_prepatch_evidence(getattr(args, "issue_id", None))
 
+    expected_display: str | None = None
+    if expected_grade is not None:
+        if expected_grade.status is GradeStatus.PASS:
+            expected_display = "match"
+        elif expected_grade.status is GradeStatus.UNPARSEABLE:
+            expected_display = "unparseable answer"
+        elif expected_grade.status is GradeStatus.MALFORMED:
+            expected_display = "malformed task"
+        elif expected_grade.status is GradeStatus.UNGRADED:
+            expected_display = "ungraded"
+        else:
+            mismatches = ", ".join(
+                f"{k}: expected {ev!r} got {av!r}"
+                for k, (ev, av) in expected_grade.mismatched.items()
+            )
+            expected_display = f"mismatch ({mismatches})"
+
     if args.output == "json":
         payload = {
             "runner": runner_label,
@@ -464,20 +666,21 @@ def _evaluate_and_report(
             "stdout": result.stdout,
             "stderr": result.stderr,
         }
+        if expected_display is not None:
+            payload["expected"] = expected_display
         if prepatch_evidence is not None:
             payload["prepatch_evidence"] = prepatch_evidence
         print_json(payload)
     else:
-        print(
-            status_block(
-                {
-                    "Runner": runner_label,
-                    "Exit": exit_code_display,
-                    "Semantic": semantic_display,
-                    "Result": overall,
-                }
-            )
-        )
+        status_fields = {
+            "Runner": runner_label,
+            "Exit": exit_code_display,
+            "Semantic": semantic_display,
+        }
+        if expected_display is not None:
+            status_fields["Expected"] = expected_display
+        status_fields["Result"] = overall
+        print(status_block(status_fields))
         if prepatch_evidence is not None:
             print(f"Pre-patch check: {prepatch_evidence.get('verdict', 'unknown')}")
         if show_output and result.stdout:
@@ -631,20 +834,31 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     return rc
 
 
-def cmd_prompt(args: argparse.Namespace) -> int:
-    """Send a raw prompt to Claude and evaluate the response."""
-    label_text = args.target[:40] + ("..." if len(args.target) > 40 else "")
-    runner_label = f"prompt {label_text}"
+def _run_prompt_action(target: str, args: argparse.Namespace) -> tuple[RunnerResult, int]:
+    """Run a PROMPT action and return (result, duration_ms).
+
+    Extracted from `cmd_prompt` (BUG-3196) so `cmd_dsl` can grade `result.stdout`
+    against a task's `expected:` mapping — `cmd_prompt` itself returns only `int`.
+    """
+    label_text = target[:40] + ("..." if len(target) > 40 else "")
     spec = ActionSpec(
         name=label_text,
         runner=RunnerType.PROMPT,
-        target=args.target,
+        target=target,
         args={"model": args.model},
         timeout=args.timeout,
     )
     start = time.monotonic()
     result = run_action(spec)
     duration_ms = int((time.monotonic() - start) * 1000)
+    return result, duration_ms
+
+
+def cmd_prompt(args: argparse.Namespace) -> int:
+    """Send a raw prompt to Claude and evaluate the response."""
+    label_text = args.target[:40] + ("..." if len(args.target) > 40 else "")
+    runner_label = f"prompt {label_text}"
+    result, duration_ms = _run_prompt_action(args.target, args)
     rc, outcome = _evaluate_and_report(runner_label, result, args)
     dirty_val = _git_dirty()
     dirty_int: int | None = None if dirty_val is None else int(dirty_val)
@@ -662,8 +876,12 @@ def cmd_prompt(args: argparse.Namespace) -> int:
     return rc
 
 
-def cmd_dsl(args: argparse.Namespace) -> int:
-    """Run a DSL task set and report pass rates with Wilson CI."""
+def cmd_dsl(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915 — grading state machine
+    """Run a DSL task set, grading each task against its own `expected:` mapping.
+
+    BUG-3196: a flagless run previously reported a 100% pass rate unconditionally.
+    See the issue's "Decision: exit codes" table for the full precedence.
+    """
     from little_loops.stats import wilson_ci
 
     path = Path(args.path)
@@ -679,9 +897,13 @@ def cmd_dsl(args: argparse.Namespace) -> int:
         print(f"Error: no .yaml task files found in {path}", file=sys.stderr)
         return 2
 
-    pass_count = 0
-    abstain_count = 0
     total = 0
+    graded_pass = 0
+    graded_total = 0
+    ungraded_count = 0
+    abstain_count = 0
+    errored_count = 0
+    failures: list[str] = []
 
     aggregate_ts = _now_iso()
     aggregate_id: int | None = None
@@ -707,13 +929,29 @@ def cmd_dsl(args: argparse.Namespace) -> int:
             conn.close()
 
     for task_file in task_files:
-        with open(task_file) as f:
-            data = yaml.safe_load(f)
-        task = DslTask.from_dict(data)
+        total += 1
+        task = _load_task(task_file)
 
-        prompt_text = task.prompt
-        if task.blanks:
-            prompt_text += f"\n\nBlanks to fill: {task.blanks}"
+        if task is None:
+            failures.append(f"{task_file.name} (malformed task file)")
+            graded_total += 1
+            _record_harness_event(
+                runner="dsl-task",
+                target=task_file.name,
+                exit_code=1,
+                semantic_verdict=None,
+                semantic_passed=False,
+                timed_out=False,
+                duration_ms=0,
+                parent_id=aggregate_id,
+                target_path=str(task_file),
+                target_content_hash=_hash_file(task_file),
+                dirty=dirty_int,
+            )
+            continue
+
+        has_expected = bool(task.expected)
+        prompt_text = task.prompt + _answer_contract_suffix(task.blanks, task.expected)
 
         task_args = argparse.Namespace(
             target=prompt_text,
@@ -723,26 +961,58 @@ def cmd_dsl(args: argparse.Namespace) -> int:
             output=args.output,
             verbose=args.verbose,
             model=args.model,
+            issue_id=None,
         )
-        start = time.monotonic()
-        rc = cmd_prompt(task_args)
-        duration_ms = int((time.monotonic() - start) * 1000)
-        total += 1
-        # ENH-3185 AC9: rc==3 is the single-check "inconclusive" exit code
-        # (no failure, >=1 abstention) — exclude it from the pass-rate
-        # denominator rather than counting it as a failure.
-        if rc == 0:
-            pass_count += 1
+        result, duration_ms = _run_prompt_action(prompt_text, task_args)
+
+        expected_grade: ExpectedGrade | None
+        if has_expected:
+            expected_grade = _grade_expected(result.stdout, task.expected)
+        elif args.semantic is None:
+            # BUG-3196: no `expected:` and no `--semantic` — nothing can grade
+            # this task. Ungraded, not the false pass the bug reported.
+            expected_grade = ExpectedGrade(
+                status=GradeStatus.UNGRADED, matched={}, mismatched={}, raw_answer=None
+            )
+        else:
+            expected_grade = None
+
+        label_text = prompt_text[:40] + ("..." if len(prompt_text) > 40 else "")
+        runner_label = f"prompt {label_text}"
+        rc, outcome = _evaluate_and_report(
+            runner_label, result, task_args, expected_grade=expected_grade
+        )
+
+        if expected_grade is not None and expected_grade.status is GradeStatus.UNGRADED:
+            ungraded_count += 1
+        elif rc == 2:
+            errored_count += 1
         elif rc == 3:
             abstain_count += 1
+        else:
+            graded_total += 1
+            if rc == 0:
+                graded_pass += 1
+            else:
+                detail = ""
+                if expected_grade is not None:
+                    if expected_grade.status is GradeStatus.UNPARSEABLE:
+                        detail = " (unparseable answer — no JSON object in response)"
+                    elif expected_grade.status is GradeStatus.FAIL:
+                        mismatches = ", ".join(
+                            f"{k}: expected {ev!r} got {av!r}"
+                            for k, (ev, av) in expected_grade.mismatched.items()
+                        )
+                        detail = f" ({mismatches})"
+                failures.append(f"{task_file.name}{detail}")
 
         _record_harness_event(
             runner="dsl-task",
             target=task_file.name,
-            exit_code=rc,
-            semantic_verdict=None,
-            semantic_passed=None if rc == 3 else rc == 0,
-            timed_out=False,
+            exit_code=result.exit_code,
+            semantic_verdict=outcome.verdict,
+            semantic_passed=None if outcome.abstained else outcome.passed,
+            timed_out=result.timed_out,
             duration_ms=duration_ms,
             parent_id=aggregate_id,
             target_path=str(task_file),
@@ -750,17 +1020,64 @@ def cmd_dsl(args: argparse.Namespace) -> int:
             dirty=dirty_int,
         )
 
-    ci_total = total - abstain_count
-    abstain_note = f"  ({abstain_count} abstained, excluded)" if abstain_count else ""
-    if ci_total > 0:
-        lo, hi = wilson_ci(pass_count, ci_total)
+    def _update_aggregate(exit_code: int, semantic_passed: bool) -> None:
+        with contextlib.suppress(Exception):
+            conn = connect(DEFAULT_DB_PATH)
+            try:
+                conn.execute(
+                    "UPDATE harness_events SET exit_code = ?, semantic_passed = ? WHERE id = ?",
+                    (exit_code, int(semantic_passed), aggregate_id),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+    # BUG-3196 "Decision: exit codes" — ungraded-first, then errored, then
+    # abstained, so a wholly mis-configured or wholly-broken run reports the
+    # actionable `2` rather than the softer `3`.
+    if ungraded_count == total:
         print(
-            f"\nDSL pass-rate: {pass_count}/{ci_total}  [{lo:.2f}, {hi:.2f}] (95% CI){abstain_note}"
+            f"\nDSL pass-rate: n/a (all {total} task(s) ungraded — "
+            "no `expected:` and no --semantic)"
         )
-    else:
-        print(f"\nDSL pass-rate: n/a (all {total} task(s) abstained){abstain_note}")
+        _update_aggregate(2, False)
+        return 2
+
+    if graded_total == 0:
+        if errored_count > 0:
+            print(f"\nDSL pass-rate: n/a (all {total} task(s) errored)")
+            _update_aggregate(2, False)
+            return 2
+        print(f"\nDSL pass-rate: n/a (all {total} task(s) abstained)")
+        _update_aggregate(3, False)
         return 3
-    return 0 if pass_count == ci_total else 1
+
+    lo, hi = wilson_ci(graded_pass, graded_total)
+    lines = [f"\nDSL pass-rate: {graded_pass}/{graded_total}  [{lo:.2f}, {hi:.2f}] (95% CI)"]
+    if ungraded_count:
+        lines.append(
+            f"  graded {graded_total} of {total} tasks — {ungraded_count} ungradable "
+            "(no `expected:` and no --semantic)"
+        )
+    if failures:
+        lines.append("  failed: " + "\n          ".join(failures))
+    print("\n".join(lines))
+
+    all_graded_passed = graded_pass == graded_total
+    _update_aggregate(
+        0 if (all_graded_passed and ungraded_count == 0 and abstain_count == 0) else 1,
+        all_graded_passed,
+    )
+
+    if errored_count > 0:
+        return 2
+    if not all_graded_passed:
+        return 1
+    if ungraded_count > 0:
+        return 1
+    if abstain_count > 0:
+        return 3
+    return 0
 
 
 def main_harness(argv: list[str] | None = None) -> int:

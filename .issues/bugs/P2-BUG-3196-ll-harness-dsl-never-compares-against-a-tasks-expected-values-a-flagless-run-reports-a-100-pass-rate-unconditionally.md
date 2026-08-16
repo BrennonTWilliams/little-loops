@@ -4,11 +4,12 @@ type: BUG
 title: "ll-harness dsl never compares against a task's expected: values \u2014 a flagless\
   \ run reports a 100% pass rate unconditionally"
 priority: P2
-status: open
+status: done
 testable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T18:44:20Z'
+completed_at: '2026-08-16T08:02:56Z'
 decision_needed: false
 confidence_score: 95
 outcome_confidence: 82
@@ -376,6 +377,25 @@ object containing extra keys is not penalized, a missing key is a mismatch with 
 `None`.
 
 ## Program Design
+
+### Deviations
+
+**2026-08-16, during implementation:**
+
+- `_extract_answer_object(stdout: str) -> dict[str, str] | None` gained a second
+  parameter, `expected_keys: set[str] | None = None`. The spec's AC2b key-set-intersection
+  constraint on the bare-brace fallback needs the expected keys at extraction time — the
+  literal one-arg signature has no way to apply it. `_grade_expected` passes `set(expected)`;
+  callers that don't care about the constraint can omit it.
+- `_evaluate_and_report`'s fold line is `if expected_grade is not None and
+  expected_grade.status is not GradeStatus.UNGRADED and not expected_grade.passed: passed =
+  False` — the spec's one-line version (`if expected_grade is not None and not
+  expected_grade.passed: passed = False`) would also fire for `GradeStatus.UNGRADED`
+  (`.passed` is `False` for every non-PASS status), forcing the per-task status block to
+  print `FAIL` for a task `cmd_dsl` is about to exclude from the denominator entirely. The
+  `UNGRADED` sentinel is deliberately excluded from the fold; `cmd_dsl` reads
+  `expected_grade.status` directly rather than relying on the returned `passed`/rc for that
+  case.
 
 ### Signatures
 
@@ -801,6 +821,8 @@ _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-16T08:02:43 - `900baf02-d68b-4548-92c4-b7b7ee9de3b6.jsonl`
+- `/ll:ready-issue` - 2026-08-16T07:15:16 - `c87c00cc-9015-4616-b774-5d5bc5482911.jsonl`
 - `/ll:confidence-check` - 2026-08-16T06:12:55 - `6fdede19-5616-4773-8866-a77790066587.jsonl`
 - `/ll:confidence-check` - 2026-08-16T05:31:33 - `bb755dcf-6087-41b3-80d2-a79a3aba782e.jsonl`
 - `/ll:reconcile-issue` - 2026-08-16T05:25:32 - `4feb49e0-b3c6-41d3-bd75-18b2a42c9652.jsonl`

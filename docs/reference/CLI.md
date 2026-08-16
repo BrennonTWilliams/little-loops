@@ -208,7 +208,23 @@ One-shot runner evaluation CLI that invokes a skill, shell command, MCP tool, or
 **dsl-specific flag:**
 `--model MODEL` — Override the Claude model for all task invocations. Run `ll-harness dsl` once per model to compare pass rates across models.
 
-**Exit codes:** `0` = PASS, `1` = FAIL, `2` = internal error / timeout
+`dsl` grades each task against its own `expected:` mapping when the task declares one (a
+structured `json`-fenced answer contract is appended to the prompt and compared key-by-key,
+no extra LLM call); `--semantic` remains available as a fallback for tasks with no
+`expected`, and as an additional gate when both are present (an `expected` mismatch outranks
+a `--semantic` abstention — see `docs/guides/EVALUATION_GUIDE.md`). A task with neither is
+**ungraded**: excluded from the pass-rate denominator and reported on its own line, not
+counted as a pass (BUG-3196).
+
+**Exit codes:** `0` = PASS, `1` = FAIL, `2` = internal error / timeout, `3` = ABSTAIN (no
+failure, but the semantic judge could not evaluate the check).
+
+For `ll-harness dsl` specifically, exit `2` covers four distinct "the run could not produce
+a measurement" triggers: the given path does not exist, the task directory has no `.yaml`
+files, every task in the set is ungraded, or ≥1 task hit a per-task infra error (host
+timeout or crash). Exit `1` also covers a run where some tasks were ungraded even if no
+graded task failed. Exit `3` fires only when ≥1 task abstained and nothing failed or was
+ungraded.
 
 **Examples:**
 ```bash

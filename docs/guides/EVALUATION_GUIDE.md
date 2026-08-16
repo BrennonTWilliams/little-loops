@@ -90,11 +90,15 @@ must-all-be-true conditions.
 
 ### `ll-harness dsl` — the batch task set
 
-Runs every `*.yaml` task file in a directory as a prompt, then reports a pass rate with a
-Wilson 95% confidence interval (`harness.py:723-725`):
+Runs every `*.yaml` task file in a directory as a prompt, grades each task against its own
+`expected:` mapping (a structured answer contract appended to the prompt), and reports a
+pass rate with a Wilson 95% confidence interval:
 
 ```
-DSL pass-rate: 17/20  [0.66, 0.94] (95% CI)
+DSL pass-rate: 12/14  [0.57, 0.94] (95% CI)
+  graded 14 of 16 tasks — 2 ungradable (no `expected:` and no --semantic)
+  failed: task-03.yaml (on_yes: expected 'done' got 'finish')
+          task-09.yaml (unparseable answer — no JSON object in response)
 ```
 
 The interval is the point. A 17/20 run and a 170/200 run have the same ratio and very
@@ -102,10 +106,17 @@ different meaning; the CI is what stops you from acting on the first one. `--mod
 run the same task set across models for comparison.
 
 Task files use the Option B schema (`prompt`, `blanks`, `expected`, `source_dsl`,
-`task_type`). Generate them with `/ll:create-eval-from-issues --dsl <loop-yaml-or-issue>`.
+`task_type`). Generate them with `/ll:create-eval-from-issues --dsl <loop-yaml-or-issue>`. A
+task that declares `expected` is graded deterministically, key-by-key, against a fenced
+```json``` answer object the model is asked to produce — no extra LLM call. A task that
+declares no `expected` needs `--semantic` to be graded at all; without either, it is
+**ungraded**: excluded from the pass-rate denominator, reported on its own line, and the run
+exits nonzero rather than silently reporting a perfect score. See exit codes below.
 
-> **Read the DSL gotcha before you trust a DSL pass rate** — `expected:` is parsed but never
-> compared against. See [Gotchas](#gotchas).
+**Exit codes:** `0` all graded tasks passed; `1` a graded task failed, or ≥1 task was
+ungraded; `2` every task was ungraded, or ≥1 task hit a per-task infra error (host timeout
+or crash); `3` ≥1 task abstained (the `--semantic` judge could not decide) and nothing
+failed or was ungraded.
 
 ---
 
@@ -405,13 +416,6 @@ the outer invocation.
 - **`ll-harness` with no `--exit-code` and no `--semantic` always passes.** `passed` starts
   `True` and only a requested check can flip it (`harness.py:419-433`). `ll-harness skill
   check-code` alone reports PASS whatever the skill did.
-
-- **`ll-harness dsl` never compares against `expected:`.** The field is parsed into `DslTask`
-  (`harness.py:167`) and never read again. `cmd_dsl` builds the prompt, appends the `blanks`
-  list, and delegates to `cmd_prompt` (`harness.py:689-703`) — so grading comes entirely from
-  `--semantic`/`--exit-code`, which apply uniformly to every task in the set. Run a DSL set
-  without `--semantic` and you get a 100% pass rate that means nothing. A per-task check
-  against `expected` does not exist today.
 
 - **A generated eval harness declares no `scope:`.** It will validate, run, and take a
   repo-root lock that false-conflicts with every other concurrent loop. Add `scope:` before

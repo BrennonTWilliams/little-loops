@@ -1023,7 +1023,7 @@ class TestCmdDsl:
         p = tmp_path / name
         p.write_text(
             "prompt: Complete this FSM transition.\n"
-            "blanks:\n  - on_yes\nblanks:\n  - on_yes\n"
+            "blanks:\n  - on_yes\n"
             "expected:\n  on_yes: done\n"
             "source_dsl: loop\n"
             "task_type: fill-in-the-blank\n"
@@ -1032,14 +1032,30 @@ class TestCmdDsl:
         )
         return p
 
+    def _make_task_yaml_no_expected(self, tmp_path: Path, name: str = "task.yaml") -> Path:
+        """BUG-3196: a task declaring no `expected:` — for tests not about grading."""
+        p = tmp_path / name
+        p.write_text(
+            "prompt: Complete this FSM transition.\n"
+            "blanks:\n  - on_yes\n"
+            "source_dsl: loop\n"
+            "task_type: fill-in-the-blank\n"
+        )
+        return p
+
+    _ANSWER_JSON = '```json\n{"on_yes": "done"}\n```'
+
     def test_cmd_dsl_single_file_pass(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
-        """Single task file with passing prompt → exits 0 and prints pass-rate."""
+        """Single task file with a matching answer object → exits 0 and prints pass-rate."""
         task_file = self._make_task_yaml(tmp_path)
         args = _make_namespace(runner="dsl", path=str(task_file))
 
         with (
             patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
-            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="done")),
+            patch(
+                "subprocess.run",
+                return_value=_make_completed(returncode=0, stdout=self._ANSWER_JSON),
+            ),
         ):
             result = cmd_dsl(args)
 
@@ -1074,7 +1090,10 @@ class TestCmdDsl:
 
         with (
             patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
-            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="done")),
+            patch(
+                "subprocess.run",
+                return_value=_make_completed(returncode=0, stdout=self._ANSWER_JSON),
+            ),
         ):
             result = cmd_dsl(args)
 
@@ -1085,8 +1104,14 @@ class TestCmdDsl:
     def test_cmd_dsl_all_abstain_excludes_from_ci_and_exits_3(
         self, tmp_path: Path, capsys: pytest.CaptureFixture
     ) -> None:
-        """ENH-3185 AC9: an all-abstain DSL run excludes the denominator and exits 3."""
-        task_file = self._make_task_yaml(tmp_path)
+        """ENH-3185 AC9: an all-abstain DSL run excludes the denominator and exits 3.
+
+        BUG-3196: uses the no-`expected:` fixture so this test keeps testing
+        abstention (via --semantic alone), not `expected:` grading — the
+        verdict payload's JSON object shares no keys with an `expected:`
+        mapping and would otherwise grade UNPARSEABLE (AC2b).
+        """
+        task_file = self._make_task_yaml_no_expected(tmp_path)
         args = _make_namespace(runner="dsl", path=str(task_file), semantic="some criterion")
 
         with (
@@ -1101,6 +1126,357 @@ class TestCmdDsl:
         assert result == 3
         out = capsys.readouterr().out
         assert "abstained" in out
+
+    def test_cmd_dsl_partial_abstain_flips_pass_to_inconclusive(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """AC5c: >=1 abstention + >=1 graded pass + no failure/ungraded exits 3, not 0."""
+        self._make_task_yaml_no_expected(tmp_path, "task-pass.yaml")
+        self._make_task_yaml_no_expected(tmp_path, "task-abstain.yaml")
+        args = _make_namespace(runner="dsl", path=str(tmp_path), semantic="some criterion")
+
+        from little_loops.fsm.evaluators import EvaluationResult
+
+        verdicts = iter(
+            [
+                EvaluationResult(verdict="yes", details={}),
+                EvaluationResult(verdict="cannot_judge", details={}),
+            ]
+        )
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="anything")),
+            patch(
+                "little_loops.cli.harness.evaluate_llm_structured",
+                side_effect=lambda **_kwargs: next(verdicts),
+            ),
+        ):
+            result = cmd_dsl(args)
+
+        assert result == 3
+        out = capsys.readouterr().out
+        assert "1/1" in out
+
+    def test_cmd_dsl_expected_mismatch_fails_and_reports_detail(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """AC1: a mismatched `expected` value fails and exits 1, reported distinguishably."""
+        task_file = self._make_task_yaml(tmp_path)
+        args = _make_namespace(runner="dsl", path=str(task_file))
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch(
+                "subprocess.run",
+                return_value=_make_completed(
+                    returncode=0, stdout='```json\n{"on_yes": "finish"}\n```'
+                ),
+            ),
+        ):
+            result = cmd_dsl(args)
+
+        assert result == 1
+        out = capsys.readouterr().out
+        assert "0/1" in out
+        assert "on_yes" in out
+
+    def test_cmd_dsl_unparseable_answer_counts_as_failure_in_denominator(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """AC2: no recoverable JSON object grades UNPARSEABLE, a failure in the denominator."""
+        task_file = self._make_task_yaml(tmp_path)
+        args = _make_namespace(runner="dsl", path=str(task_file))
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch(
+                "subprocess.run",
+                return_value=_make_completed(returncode=0, stdout="the answer is done"),
+            ),
+        ):
+            result = cmd_dsl(args)
+
+        assert result == 1
+        out = capsys.readouterr().out
+        assert "0/1" in out
+        assert "unparseable" in out
+
+    def test_cmd_dsl_bare_brace_unrelated_json_grades_unparseable_not_mismatch(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """AC2b: a bare-brace object sharing no keys with `expected` is discarded, not read."""
+        task_file = self._make_task_yaml(tmp_path)
+        args = _make_namespace(runner="dsl", path=str(task_file))
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch(
+                "subprocess.run",
+                return_value=_make_completed(returncode=0, stdout=_llm_verdict("yes")),
+            ),
+        ):
+            result = cmd_dsl(args)
+
+        out = capsys.readouterr().out
+        assert result == 1
+        assert "unparseable" in out
+        assert "mismatch" not in out
+
+    def test_cmd_dsl_all_ungraded_exits_2(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """AC3/AC5: a set with no `expected:` and no --semantic is wholly ungraded → exit 2."""
+        task_file = self._make_task_yaml_no_expected(tmp_path)
+        args = _make_namespace(runner="dsl", path=str(task_file))
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="done")),
+        ):
+            result = cmd_dsl(args)
+
+        assert result == 2
+        out = capsys.readouterr().out
+        assert "ungraded" in out
+
+    def test_cmd_dsl_exit_code_flag_does_not_grade_ungraded_task(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """AC4: --exit-code alone does not make an `expected`-less task graded."""
+        task_file = self._make_task_yaml_no_expected(tmp_path)
+        args = _make_namespace(runner="dsl", path=str(task_file), exit_code=0)
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="done")),
+        ):
+            result = cmd_dsl(args)
+
+        assert result == 2
+        out = capsys.readouterr().out
+        assert "ungraded" in out
+
+    def test_cmd_dsl_ungraded_ordered_before_abstain(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """AC5b: a mix of ungraded + abstained tasks reports the ungraded `2`, not `3`."""
+        ungraded_file = self._make_task_yaml_no_expected(tmp_path, "task-ungraded.yaml")
+        self._make_task_yaml_no_expected(tmp_path, "task-ungraded2.yaml")
+        args = _make_namespace(runner="dsl", path=str(tmp_path))
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="x")),
+        ):
+            result = cmd_dsl(args)
+
+        assert result == 2
+        assert ungraded_file.exists()
+
+    def test_cmd_dsl_infra_error_excluded_and_exits_2(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """AC5d: a per-task timeout is excluded from the denominator and exits 2, not 'abstained'."""
+        task_file = self._make_task_yaml_no_expected(tmp_path)
+        args = _make_namespace(runner="dsl", path=str(task_file))
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch(
+                "subprocess.run",
+                side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=120),
+            ),
+        ):
+            result = cmd_dsl(args)
+
+        assert result == 2
+        out = capsys.readouterr().out
+        assert "abstained" not in out
+
+    def test_cmd_dsl_malformed_yaml_grades_fail_and_run_continues(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """AC5e: unparseable task YAML grades FAIL; the remaining tasks in the set still run."""
+        bad = tmp_path / "task-bad.yaml"
+        bad.write_text("prompt: [unterminated\n")
+        self._make_task_yaml(tmp_path, "task-good.yaml")
+        args = _make_namespace(runner="dsl", path=str(tmp_path))
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch(
+                "subprocess.run",
+                return_value=_make_completed(returncode=0, stdout=self._ANSWER_JSON),
+            ),
+        ):
+            result = cmd_dsl(args)
+
+        assert result == 1
+        out = capsys.readouterr().out
+        assert "1/2" in out
+        assert "malformed task file" in out
+
+    def test_cmd_dsl_missing_prompt_key_grades_fail(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """AC5e: a task file with no `prompt:` key grades FAIL rather than raising."""
+        bad = tmp_path / "task-bad.yaml"
+        bad.write_text("expected:\n  on_yes: done\n")
+        args = _make_namespace(runner="dsl", path=str(bad))
+
+        result = cmd_dsl(args)
+
+        assert result == 1
+        out = capsys.readouterr().out
+        assert "malformed task file" in out
+
+    def test_cmd_dsl_non_mapping_expected_grades_malformed(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """AC5e: `expected:` that is not a mapping grades malformed rather than raising."""
+        p = tmp_path / "task.yaml"
+        p.write_text("prompt: Do a thing.\nexpected:\n  - a\n  - b\n")
+        args = _make_namespace(runner="dsl", path=str(p))
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="a")),
+        ):
+            result = cmd_dsl(args)
+
+        assert result == 1
+        out = capsys.readouterr().out
+        assert "malformed" in out
+
+    def test_cmd_dsl_mismatch_outranks_abstain(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """AC6: an `expected` mismatch is a hard FAIL even when --semantic abstains."""
+        task_file = self._make_task_yaml(tmp_path)
+        args = _make_namespace(runner="dsl", path=str(task_file), semantic="some criterion")
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch(
+                "subprocess.run",
+                return_value=_make_completed(
+                    returncode=0, stdout='```json\n{"on_yes": "finish"}\n```'
+                ),
+            ),
+        ):
+            result = cmd_dsl(args)
+
+        assert result == 1
+        out = capsys.readouterr().out
+        assert "0/1" in out
+
+    def test_cmd_dsl_expected_normalizes_whitespace_and_quotes(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """AC7: normalization strips whitespace and one layer of matching quotes."""
+        task_file = self._make_task_yaml(tmp_path)
+        args = _make_namespace(runner="dsl", path=str(task_file))
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch(
+                "subprocess.run",
+                return_value=_make_completed(
+                    returncode=0, stdout='```json\n{"on_yes": "  \\"done\\"  "}\n```'
+                ),
+            ),
+        ):
+            result = cmd_dsl(args)
+
+        assert result == 0
+
+    def test_cmd_dsl_missing_key_is_mismatch_extra_key_ignored(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """AC8: a missing expected key is a mismatch; an extra answer key is not penalized."""
+        task_file = self._make_task_yaml(tmp_path)
+        args = _make_namespace(runner="dsl", path=str(task_file))
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch(
+                "subprocess.run",
+                return_value=_make_completed(returncode=0, stdout='```json\n{"extra": "x"}\n```'),
+            ),
+        ):
+            result = cmd_dsl(args)
+
+        assert result == 1
+
+    def test_cmd_dsl_prompt_contains_no_python_list_repr(self, tmp_path: Path) -> None:
+        """AC9: the generated prompt never contains a Python list repr like ['on_yes']."""
+        task_file = self._make_task_yaml(tmp_path)
+        args = _make_namespace(runner="dsl", path=str(task_file))
+        captured: dict[str, object] = {}
+
+        def fake_build_blocking_json(*, prompt: str, **_: object) -> HostInvocation:
+            captured["prompt"] = prompt
+            return HostInvocation(binary="claude", args=[])
+
+        fake_runner = FakeRunner()
+        fake_runner.build_blocking_json = fake_build_blocking_json  # type: ignore[method-assign]
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=fake_runner),
+            patch(
+                "subprocess.run",
+                return_value=_make_completed(returncode=0, stdout=self._ANSWER_JSON),
+            ),
+        ):
+            cmd_dsl(args)
+
+        assert "['on_yes']" not in str(captured["prompt"])
+
+    def test_cmd_dsl_task_row_records_host_exit_code_and_verdict(self, tmp_path: Path) -> None:
+        """AC10/10a/10b: exactly one dsl-task row, with the host rc/timed_out/verdict."""
+        from little_loops.session_store import recent
+
+        task_file = self._make_task_yaml(tmp_path)
+        args = _make_namespace(runner="dsl", path=str(task_file), semantic="some criterion")
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch(
+                "subprocess.run",
+                return_value=_make_completed(returncode=5, stdout=self._ANSWER_JSON),
+            ),
+        ):
+            cmd_dsl(args)
+
+        rows = recent(kind="harness", limit=20)
+        dsl_task_rows = [r for r in rows if r["runner"] == "dsl-task"]
+        prompt_rows = [r for r in rows if r["runner"] == "prompt"]
+        assert len(dsl_task_rows) == 1
+        assert dsl_task_rows[0]["exit_code"] == 5
+        assert dsl_task_rows[0]["timed_out"] == 0
+        assert not prompt_rows
+
+    def test_cmd_dsl_aggregate_row_carries_run_outcome(self, tmp_path: Path) -> None:
+        """AC11: the aggregate `dsl` row is updated with the run's outcome after the loop."""
+        from little_loops.session_store import recent
+
+        task_file = self._make_task_yaml(tmp_path)
+        args = _make_namespace(runner="dsl", path=str(task_file))
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch(
+                "subprocess.run",
+                return_value=_make_completed(returncode=0, stdout=self._ANSWER_JSON),
+            ),
+        ):
+            cmd_dsl(args)
+
+        rows = recent(kind="harness", limit=20)
+        aggregate = next(r for r in rows if r["runner"] == "dsl")
+        assert aggregate["exit_code"] == 0
+        assert aggregate["semantic_passed"] == 1
 
     def test_cmd_dsl_path_not_found(self, capsys: pytest.CaptureFixture) -> None:
         """Missing path returns 2."""
