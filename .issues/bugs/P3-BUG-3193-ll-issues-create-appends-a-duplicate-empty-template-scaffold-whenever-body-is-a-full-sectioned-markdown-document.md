@@ -97,8 +97,8 @@ Two secondary consequences:
   heading *and* the body carries its own.
 - **The placeholder sections land last**, after the caller's real ones — and section
   lookup is last-occurrence-wins by explicit contract:
-  `_section_body_with_offset` (`scripts/little_loops/issue_parser.py:254`) takes
-  `matches[-1]`.
+  `_section_body_with_offset` (`scripts/little_loops/issue_parser.py:240`) takes
+  `matches[-1]` (`:268`).
 
 That second point makes this more than cosmetic. Because the placeholder copy wins,
 `ll-issues format-check` reads the *scaffold* as the issue's real content and reports
@@ -110,8 +110,8 @@ per issue.
 
 Frontmatter `status:` remains the source of truth, so the duplicated `## Status` footer is
 *not* a status-correctness bug. It does leave `session_log.append_session_log_entry`'s anchor on
-`"\n---\n\n## Status"` (`scripts/little_loops/session_log.py:271`) ambiguous between two
-footers.
+`"\n---\n\n## Status"` (`scripts/little_loops/session_log.py:327-330`; the function is
+defined at `:273`) ambiguous between two footers.
 
 Both `--body-file` (`docs/reference/CLI.md:1584`, "contents become the `## Summary` body")
 and the MCP `body` property (`mcp_server/tools.py:686`, "Summary section body") document
@@ -234,7 +234,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Added by `/ll:refine-issue` — 2026-08-15 — based on codebase analysis:_
 
 - **Test coverage gap**: `scripts/tests/test_ll_issues_create.py::TestCreateIssue.test_body_file_content_becomes_summary` (line 114) and `TestCreateCli.test_create_body_file_stdin` (line 213) only assert substring containment against single-line prose bodies. Neither constructs a body containing embedded `## ` headings, and neither asserts on duplicate-heading counts or on `_section_body`/`_section_body_with_offset` resolution against a `create`-produced file. `scripts/tests/test_issue_template.py` covers `assemble_issue_body()`/`load_issue_sections()` directly but has the same gap. This is the primary uncovered surface for a fix.
-- **Blast radius beyond format-check**: `_section_body`/`_section_body_with_offset` (`scripts/little_loops/issue_parser.py:239-267`) is called from more sites than `format-check` alone — `issue_parser.py:1251`, `:1319` (Proposed Solution lookup), `:1328` — and `scripts/little_loops/issues/fold_research_findings.py` also resolves sections by heading. Any of these inherit the same last-occurrence-wins exposure on a duplicate-scaffold issue, not only `format-check`'s reported gaps.
+- **Blast radius beyond format-check**: `_section_body`/`_section_body_with_offset` (`scripts/little_loops/issue_parser.py:240-278`) is called from more sites than `format-check` alone — `issue_parser.py:1270`, `:1338` (Proposed Solution lookup), `:1347` — and `scripts/little_loops/issues/fold_research_findings.py` also resolves sections by heading. Any of these inherit the same last-occurrence-wins exposure on a duplicate-scaffold issue, not only `format-check`'s reported gaps.
 - **Confirmed shared render path**: both `render_issue_preview()` (`create.py:200`) and `create_issue()` (`create.py:254`) call the identical `_render_issue_content()` — a fix placed there (or in `assemble_issue_body`) is picked up by both dry-run and apply with no separate branch needed.
 
 ## Expected Behavior
@@ -333,18 +333,27 @@ two counts:
   puts real content below the footer and makes `create`-produced issues structurally
   unlike every other issue.
 - **`session_log.append_session_log_entry`'s fallback anchors on the footer.** When an issue has no
-  `## Session Log` section yet, `session_log.py:271` inserts one by replacing
+  `## Session Log` section yet, `session_log.py:327-330` inserts one by replacing
   `"\n---\n\n## Status"`. With caller sections trailing after Status, the Session Log is
   inserted before a Status that now has several sections below it.
 
-**The sections the caller supplies are not unknown headings** — `Steps to Reproduce`,
-`Program Design`, `Root Cause`, and `Related Key Documentation` are all present in the
-ordering table already. They are merely absent from `minimal`'s `include_common` list.
+**The sections the caller supplies are not unknown headings** — but they do not all live
+in one table. `Program Design` and `Related Key Documentation` are in `common_sections`;
+`Steps to Reproduce` and `Root Cause` are in `type_sections` (BUG). There is **no single
+ordering table containing all four**, so "canonical position" needs an explicit
+interleaving rule. Note also that today's `assemble_issue_body` emits type sections
+*after* the common loop — i.e. after `## Status` — under any `include_type_sections`
+variant (`full`), so the footer-last invariant below is a property of the new merge
+output, not of every existing scaffold shape.
 
-Corrected step 3: **place each caller section at its canonical position in the
-sections-data ordering table**, appending only genuinely unknown headings (in their
-original relative order) before the footer. `## Status` is always emitted last, and
-`## Session Log` immediately before it.
+Corrected step 3 (pinned interleaving rule): order the merge output by the
+`common_sections` table, **inserting caller-supplied type sections (and any genuinely
+unknown headings, in their original relative order) immediately before
+`Related Key Documentation`/`Labels`/`Session Log`/`Status`** — never after the footer.
+In the merge output, `## Status` is always emitted last, and `## Session Log` (when
+present) immediately before it. This rule governs full-body merge output for the
+`minimal` default; the `full` variant's existing type-sections-after-Status scaffold
+placement is out of scope here and unchanged.
 
 #### Four shapes 1b must define, not three
 
@@ -380,7 +389,7 @@ The other two, already identified:
   duplication also confuses `session_log.append_session_log_entry`'s `rfind` anchor.
 
 - **The body carries its own `# BUG-NNNN: title` H1.** `assemble_issue_body` emits its own
-  title heading unconditionally (`issue_template.py:166`), so a verbatim or appended body
+  title heading unconditionally (`issue_template.py:167`), so a verbatim or appended body
   doubles it. Strip a leading H1 from the incoming body, or emit no title heading in
   full-body mode — pick one and pin it.
 - **The body carries its own frontmatter block.** `_render_issue_content` prepends
@@ -440,12 +449,15 @@ _Added by `/ll:refine-issue` — 2026-08-15 — based on codebase analysis:_
       rendered output carries a regenerated `**Open** | Created: <today> | Priority: <P>`
       line, or the chosen caller-wins behavior is documented explicitly in the
       `--body-file` help text.
-- [ ] **Section order matches the canonical table.** Caller-supplied sections outside the
-      variant's `include_common` list appear at their position in the sections-data
-      ordering table, not appended after the footer. Assert `## Status` is the last H2 in
-      the rendered output and `## Session Log` is the second-to-last — this is what catches
-      the naive "append at end" implementation, which otherwise passes every other
-      criterion here.
+- [ ] **Section order follows the pinned interleaving rule** (see the Correction above):
+      `common_sections` order, with caller-supplied type sections and unknown headings
+      inserted before `Related Key Documentation`/`Labels`/`Session Log`/`Status` — not
+      appended after the footer. Scoped to full-body merge output (the `minimal` default
+      variant); the `full` variant's existing scaffold placement is unchanged. Assert
+      `## Status` is the last H2 in the merge output, and `## Session Log` is the
+      second-to-last **when a Session Log section is present** — this is what catches the
+      naive "append at end" implementation, which otherwise passes every other criterion
+      here.
 - [ ] **A caller-supplied `## Session Log` does not duplicate the generated one**, and
       `session_log.append_session_log_entry` on the resulting file inserts into the real section.
 - [ ] A body opening with a `---` frontmatter block is rejected with a clear error rather
@@ -488,6 +500,7 @@ _Added by `/ll:confidence-check` on 2026-08-15_
 
 
 ## Session Log
+- Pre-implementation review - 2026-08-15 - Verified all claims against main and reproduced the bug via `render_issue_preview` (dry-run). Refreshed four drifted line cites (issue_parser.py `_section_body_with_offset` now :240-278 with `matches[-1]` at :268; call sites :1270/:1338/:1347; session_log.py footer anchor at :327-330, function def :273; issue_template.py title heading :167). Corrected the false "single ordering table" claim — `Steps to Reproduce`/`Root Cause` live in `type_sections`, not `common_sections` — and pinned the interleaving rule (common order, type/unknown sections inserted before Related Key Documentation/Labels/Session Log/Status), scoped the Status-last AC to the merge output/`minimal` variant, and scoped the Session Log second-to-last assertion to "when present".
 - Pre-implementation review (batch) - 2026-08-15 - BUG-3202 dependency now satisfied (completed; `fence_spans`/`in_fence` verified on main); refreshed stale "until BUG-3202 lands" text; promoted the preamble (fold into Summary) and Status/Session Log (always regenerate) decide-and-pin items to decisions; marked the confidence-check dependency concern resolved.
 - `/ll:confidence-check` - 2026-08-15T20:37:35 - `3bed080b-17e6-4060-904f-398efef7735c.jsonl`
 - `/ll:confidence-check` - 2026-08-15T20:01:26 - `4eb27027-e6df-4ea9-a6cc-2ca5e6e40c15.jsonl`

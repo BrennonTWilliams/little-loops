@@ -40,7 +40,7 @@ Net: an under-specified or unobservable criterion resolves to whichever way the 
 
 ## Expected Behavior
 
-`cannot_judge` is a first-class verdict alongside `yes`/`no`/`blocked`/`partial`, drawn from one shared vocabulary all three schemas consume. A judge that cannot evaluate a check from the evidence available says so instead of guessing.
+`cannot_judge` is a first-class verdict alongside `yes`/`no`/`blocked`/`partial`, drawn from one shared vocabulary module all three schemas consume — `DEFAULT_LLM_SCHEMA` gains `cannot_judge`; the two binary schemas deliberately consume a binary subset (see AC8). A judge that cannot evaluate a check from the evidence available says so instead of guessing.
 
 Each consumer handles it distinctly. An FSM predicate holds rather than taking the false branch, bounded by a consecutive-abstention cap that escalates to `on_error` on exhaustion; loops that don't declare `on_cannot_judge` fall back to `on_error` and keep running. `ll-harness` reports abstentions separately from failures, and an all-abstention run is distinguishable from all-pass and all-fail in both the summary and the exit code. `.ll/history.db` persists abstention per check, excluded from the pass-rate denominator and queryable as its own rate — so a criterion that is abstained on repeatedly becomes visible as a badly written criterion rather than disappearing into a pass/fail number.
 
@@ -78,6 +78,8 @@ Earlier drafts stated both "an FSM predicate holds, bounded by a cap" and "undec
 
 A criterion that is abstained on repeatedly is a badly written criterion. That is information the current binary shape destroys.
 
+Note that adversarial probe states (`scaffold_verify.py:149`, `_adversarial_states()`) will also start receiving `cannot_judge` under the new schema and rely on this same AC6 `on_error` fallback — noted here so it isn't mistaken for uncovered scope; their eval prompts carry no missing-evidence coercion and need no AC11 rewrite.
+
 ## Relationship to adjacent work
 
 This is the LLM-judge counterpart to the deterministic question of what exit code 124 means — timeout is ignorance, not a verdict. It is distinct from requiring a gate to declare its scope at authoring time: that is a statement about the gate, this is a statement about one run of one check.
@@ -88,7 +90,7 @@ Where a check is abstained on because the judge lacked the artifact rather than 
 
 - **AC1.** `cannot_judge` is a first-class verdict in the grammar (display token `CANNOT JUDGE`), not a parse failure.
 - **AC2.** _Withdrawn — the fixed multi-check output block. Split to ENH-3200, then dropped when that issue was re-reviewed (see `## Design`). Unowned; not in scope here._
-- **AC3.** Each of the three consumers handles abstention distinctly from failure, with the behaviour tested.
+- **AC3.** Each of the three abstention consumers — the FSM predicate path, `ll-harness`, and `.ll/history.db` — handles abstention distinctly from failure, with the behaviour tested. The `contract` evaluator and blind comparator are **not** abstention consumers: per AC8 their schemas stay binary, so no abstention ever reaches the contract aggregator (`fsm/evaluators.py:1712-1717`, which folds any non-`yes`/non-`error` pair verdict into `overall = "no"`) or the comparator's promote/compare logic — no fourth coercion door exists.
 - **AC10 (blocker — evidence coercion must exempt abstention).** `evaluate_llm_structured()` rewrites the verdict before returning it (`fsm/evaluators.py:1256-1258`):
 
   ```python
@@ -116,9 +118,9 @@ Where a check is abstained on because the judge lacked the artifact rather than 
     if state.route.default: return self._resolve_route(state.route.default, ctx)
     ```
 
-    So a loop written as `route: {yes: X, no: Y, default: Y}` routes an abstention silently into the fail branch — reintroducing precisely the coin flip this issue exists to remove, through a door AC6 left open. **Abstention must not be absorbed by `route.default`**: unless `cannot_judge` is an explicit key in `routes`, it resolves to `route.error`/`on_error`. This is a deliberate asymmetry with `default`'s normal catch-all semantics and is documented as such. Test: a loop YAML with a `route:` table carrying a `default:` receives an abstention and does **not** take the default branch.
+    So a loop written as `route: {yes: X, no: Y, default: Y}` routes an abstention silently into the fail branch — reintroducing precisely the coin flip this issue exists to remove, through a door AC6 left open. **Abstention must not be absorbed by `route.default`**: unless `cannot_judge` is an explicit key in `routes`, it resolves to `route.error`/`on_error`. This is a deliberate asymmetry with `default`'s normal catch-all semantics and is documented as such. Note that `route.default` also absorbs the `error` verdict today (`_route()` consults `route.default` before `route.error`), so the `cannot_judge` asymmetry is a deliberate divergence from `error`'s route-table behaviour too — the implementer should not "fix" `error` routing to match, nor vice versa. Test: a loop YAML with a `route:` table carrying a `default:` receives an abstention and does **not** take the default branch.
 - **AC7.** An abstention hold is bounded by a consecutive-abstention cap per state, escalating to `on_error` on exhaustion; a test proves an always-abstaining judge terminates. Per the pinned hold-vs-fallback semantics (see Design): the hold applies **only** when no `cannot_judge` route is declared — a declared `on_cannot_judge`/route key routes immediately with no retry — and a state with neither `on_cannot_judge` nor `on_error` terminates loudly via "No valid transition" after cap exhaustion, with a test covering that neither-declared case.
-- **AC8.** The verdict vocabulary has a single importable source of truth — a new module under `scripts/little_loops/fsm/` (suggested name: `verdicts`, to be created) — that `DEFAULT_LLM_SCHEMA`, `BLIND_COMPARATOR_SCHEMA`, and the `contract` evaluator's inline schema all consume. These three already declare independent enums that disagree on how many values exist; without one source the grammar drifts again as soon as a fourth site appears.
+- **AC8.** The verdict vocabulary has a single importable source of truth — a new module under `scripts/little_loops/fsm/` (suggested name: `verdicts`, to be created) — that `DEFAULT_LLM_SCHEMA`, `BLIND_COMPARATOR_SCHEMA`, and the `contract` evaluator's inline schema all consume. These three already declare independent enums that disagree on how many values exist; without one source the grammar drifts again as soon as a fourth site appears. **Only `DEFAULT_LLM_SCHEMA` gains `cannot_judge`.** `BLIND_COMPARATOR_SCHEMA` and the `contract` evaluator's inline schema deliberately consume a **binary subset** exported by the same module (`yes`/`no`) — they do NOT gain `cannot_judge`. This is what keeps the contract aggregator (`fsm/evaluators.py:1712-1717`, which folds any non-`yes`/non-`error` verdict into `"no"`) and the blind comparator's promote/compare logic out of abstention scope: an abstention can never reach them, so their fold-to-`no` behaviour is not a coercion door and needs no change here.
 - **AC9.** `ll-harness` exit-code semantics for abstention are specified with concrete numbers and tested. "Distinguishable" is not a testable criterion; the mapping is:
 
   | Outcome | Exit | Notes |
@@ -128,7 +130,7 @@ Where a check is abstained on because the judge lacked the artifact rather than 
   | No failures, ≥1 abstention | `3` | new — inconclusive, not a pass and not a failure |
   | Harness/infra error | `2` | unchanged and **already taken** (`harness.py:414,417,574,582,652,656,747`) — abstention must not reuse it, or an inconclusive verdict becomes indistinguishable from a crashed run |
 
-  Precedence is fail > abstain > pass, so a mixed run reports `1`. The summary reports abstentions as their own count alongside `pass_count`, and `wilson_ci()` (lines 658-725) excludes them from its denominator rather than counting them as failures. Tests cover all-pass, all-fail, all-abstain, and mixed. Today `if eval_result.verdict != "yes": passed = False` (`cli/harness.py:432`) collapses the first three into two.
+  Precedence is fail > abstain > pass, so a mixed run reports `1`. The summary reports abstentions as their own count alongside `pass_count`, and `wilson_ci()` (defined `scripts/little_loops/stats.py:13`, called at `cli/harness.py:723`) excludes them from its denominator rather than counting them as failures. Tests cover all-pass, all-fail, all-abstain, and mixed. Today `if eval_result.verdict != "yes": passed = False` (`cli/harness.py:432`) collapses the first three into two.
 
 ## Integration Map
 
@@ -164,7 +166,7 @@ _Added by `/ll:refine-issue` — 2026-08-15 — based on codebase analysis:_
 
 ### Types
 - `EvaluationResult` (`fsm/evaluators.py`) — `verdict: str`, `details: dict[str, Any]` — the return shape every evaluator function produces; a `CANNOT JUDGE` verdict is a new member of `verdict`'s value space, not a new field.
-- `verdict: Literal["yes", "no", "blocked", "partial"]` — the current `DEFAULT_LLM_SCHEMA` enum (`fsm/evaluators.py:74-106`); AC1 adds `cannot_judge` (this exact spelling — not "or equivalent", see Design) as a fifth member here, and to the two other inline schemas (`BLIND_COMPARATOR_SCHEMA`, the `contract` evaluator's schema) that independently enumerate only `["yes", "no"]`. Per AC8 all three consume one shared constant rather than re-declaring the enum.
+- `verdict: Literal["yes", "no", "blocked", "partial"]` — the current `DEFAULT_LLM_SCHEMA` enum (`fsm/evaluators.py:74-106`); AC1 adds `cannot_judge` (this exact spelling — not "or equivalent", see Design) as a fifth member **here only**. The two other inline schemas (`BLIND_COMPARATOR_SCHEMA`, the `contract` evaluator's schema, both `["yes", "no"]` today) stay binary: per AC8 they consume the shared module's binary subset and do NOT gain `cannot_judge`, keeping the contract aggregator and comparator out of abstention scope. All three consume the one shared constant rather than re-declaring their enums.
 
 ### Signatures
 - `evaluate_llm_structured(output: str, prompt: str | None = None, schema: dict | None = None) -> EvaluationResult` — the FSM LLM-predicate entry point (`fsm/evaluators.py:1094`) whose default schema and evidence contract (`CHECK_SEMANTIC_EVIDENCE_CONTRACT`) this issue extends from two-way (Yes/No/Partial) to three-way.
@@ -190,6 +192,7 @@ Explicitly **out of scope**:
 - **Acting on the abstention rate.** No auto-flagging, auto-rewriting, or gating on abstention-heavy criteria. AC4 makes the rate queryable; consuming it is a separate issue.
 - **The other multi-way verdict vocabulary.** `VALID_VERDICTS` in `output_parsing.py:24` (`READY`/`CORRECTED`/`NOT_READY`/…) is a prose-parsed, non-structured-output path for a different set of consumers. It is not unified with the structured grammar here, and its silent `"UNKNOWN"` default is left alone outside this grammar's scope.
 - **Retrofitting `on_cannot_judge` into existing loop YAMLs.** AC6's `on_error` fallback is what keeps them working; declaring explicit handlers per loop is optional follow-on.
+- **Abstention in the `contract` evaluator and blind comparator.** Their schemas stay binary (AC8's subset), so their aggregation/promote logic (`fsm/evaluators.py:1712-1717` for the contract fold) is untouched; teaching those judges to abstain is follow-on work with its own aggregation semantics.
 
 ## Impact
 
@@ -202,6 +205,7 @@ Explicitly **out of scope**:
 - **Breaking Change**: No, given AC6. Without AC6 it would be a silent breaking change to every existing loop.
 
 ## Session Log
+- Pre-implementation review (fourth pass) - 2026-08-15 - resolved the AC8/Program-Design contradiction: only `DEFAULT_LLM_SCHEMA` gains `cannot_judge`; `BLIND_COMPARATOR_SCHEMA` and the `contract` evaluator's schema consume the shared module's binary subset, keeping the contract aggregator (`evaluators.py:1712-1717`, folds non-yes to "no") and comparator out of abstention scope (AC3/AC8, new Scope Boundaries bullet). Noted in AC6 that `route.default` also absorbs `error` today, so the `cannot_judge` asymmetry is a deliberate divergence in both directions. Noted adversarial probe states (`scaffold_verify.py:149`) also receive `cannot_judge` and rely on the AC6 fallback. Corrected `wilson_ci()` citation to its definition site (`stats.py:13`). All other file:line citations re-verified against the working tree.
 - Pre-implementation review (third pass) - 2026-08-15 - pinned the hold-vs-fallback semantics (declared route → immediate, no hold; undeclared → cap-bounded retry then `on_error`; neither declared → loud "No valid transition" terminal, now test-required in AC6/AC7); AC4's migration number restated as current-head+1 rather than a hard-coded v41; AC11.3 now notes existing generated loops keep the old prompt until regenerated (generator-only fix, matching ENH-3200 AC7's stance). Verified exit code 3 is unused in `cli/harness.py`.
 - Pre-implementation review (second pass) - 2026-08-15 - expanded AC11 from one coercion site to three: added `DEFAULT_LLM_SCHEMA`'s `evidence` field description (`evaluators.py:96-99`, ships inside the schema the judge is given) and `scaffold_verify.py:73`'s generated eval prompt (kills the feature in verify-issue-loop specifically). Added a test requirement so a fourth site fails loudly. Restated the Risk section's silent-no-op mode as partial-by-path.
 - `/ll:confidence-check` - 2026-08-15T20:36:42 - `4eb27027-e6df-4ea9-a6cc-2ca5e6e40c15.jsonl`

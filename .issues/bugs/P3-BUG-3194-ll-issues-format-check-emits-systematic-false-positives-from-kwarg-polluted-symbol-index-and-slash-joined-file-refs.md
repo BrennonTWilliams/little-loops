@@ -50,10 +50,14 @@ on this issue, BUG-3192, and BUG-3193 are now trustworthy (section lookup is fen
 
 **One consequence is mandatory before implementing Finding 1**: every measurement in this
 issue (the 264 backlog-wide baseline, the breadth-cap threshold curve, the floor's
-false-negative inspection) was taken **pre-BUG-3202**, and BUG-3202 changed which claims
-the filters see via `_symbol_claim_scope_text()` (see Program Design § Interaction with
-BUG-3202). Re-run the measurements first; the N=8 cap justification in particular must be
-re-confirmed against the post-3202 claim population.
+false-negative inspection) was taken **pre-BUG-3202 and pre-BUG-3201**. BUG-3202 changed
+which claims the filters see via `_symbol_claim_scope_text()` (see Program Design §
+Interaction with BUG-3202). BUG-3201 (landed 30ccbb7f) changed **both index sides**: SQL
+object names entered the reverse index (A), and import-bound names now satisfy
+`symbol_exists_in_file` in the per-file cache (B) — so far fewer claims even reach the
+exists/resolves branch (see § Interaction with BUG-3201; the issue's own recorded repro
+output already no longer holds). Re-run the measurements first; the N=8 cap justification
+in particular must be re-confirmed against the post-3201/3202 claim population.
 
 Findings 1, 2, and 3 are noise-level and can be batched together in any order.
 
@@ -72,6 +76,16 @@ $ for i in 3186 3190 3191 3192; do ll-issues format-check $i; done
   stale_file_ref: docs/demo/scenarios.md
   mislocated_symbol_ref: enabled (claimed in scripts/little_loops/cli/learning_tests.py)
 ```
+
+> **Baseline shifted post-BUG-3201 (verified 2026-08-15).** The output above was recorded
+> before BUG-3201 (30ccbb7f) made the per-file symbol cache index import bindings. Re-run
+> today, `ec`, `codex`, and `install_qwen_adapter` no longer fire at all —
+> `symbol_exists_in_file` now returns True for symbols the cited file merely imports —
+> while `enabled` (3192) and all Finding 2/3 `stale_file_ref` hits still reproduce, and
+> new hits appeared (`to_dict` on 3190, `stale_file_ref: my-issues/completed/file.py`).
+> Finding 1's mechanism is unchanged (the kwarg-polluted **reverse** index still excludes
+> imports), but the named live examples other than `enabled` must be exercised as
+> unit-level synthetic claims, not via this CLI repro.
 
 ### Finding 1 — `mislocated_symbol_ref`: the symbol index admits kwargs and locals (real)
 
@@ -100,9 +114,9 @@ Note `install_qwen_adapter` in the same output is a *legitimate* hit — the cla
 not worthless, so blanket suppression would lose real signal.
 
 This module already treats systematic false-positive classes as defects worth pinning
-(`_LINE_NUMBER_REF_RE` at `:56` for `L519`-style citations, `_EXTENSION_LIKE_RE` at `:65`
+(`_LINE_NUMBER_REF_RE` at `:105` for `L519`-style citations, `_EXTENSION_LIKE_RE` at `:114`
 for backticked filenames misparsing as dotted claims, `_MAX_ATTRIBUTION_DISTANCE` at
-`:78`). This is the next one in that series.
+`:127`). This is the next one in that series.
 
 ### Finding 2 — `stale_file_ref` on a slash-joined pair (real)
 
@@ -131,7 +145,7 @@ fix.
 ### Finding 4 — moved to BUG-3202
 
 Fence-unaware, last-occurrence-wins section lookup in `_section_body_with_offset`
-(`scripts/little_loops/issue_parser.py:239`). Split out on 2026-08-15 because it inverts
+(`scripts/little_loops/issue_parser.py:240`). Split out on 2026-08-15 because it inverts
 `format-check`'s verdict rather than adding noise, and because BUG-3193 depends on it
 alone. See **BUG-3202** for the full write-up, including the second symptom (fence-blind
 end-boundary scan truncating the *enclosing* section) and the second site
@@ -155,9 +169,11 @@ cannot be trusted until BUG-3202 lands.
 for i in 3186 3190 3191 3192; do ll-issues format-check $i; done
 ```
 
-Expect `mislocated_symbol_ref` on `ec`, `codex`, `enabled` (Finding 1 — false),
-`install_qwen_adapter` (a true positive, must keep firing), `stale_file_ref` on
-`ARCHITECTURE.md/CONTRIBUTING.md` (Finding 2 — false), and on `docs/demo/scenarios.md` /
+Expect (post-BUG-3201, verified 2026-08-15) `mislocated_symbol_ref` on `enabled`
+(Finding 1 — false; `ec`, `codex`, and `install_qwen_adapter` no longer fire live —
+import bindings now satisfy `symbol_exists_in_file`, so those shapes are exercised as
+unit-level synthetic claims instead), `stale_file_ref` on
+`ARCHITECTURE.md/CONTRIBUTING.md` (Finding 2 — false), and on
 `.ll/ll-continue-prompt.md` (Finding 3 — correct verdict, misleading label).
 
 Confirm Finding 3's files are present-but-ignored rather than missing:
@@ -210,17 +226,25 @@ def _print_gaps(gaps: FormatGaps) -> None
 ```
 
 **Finding 1** has two candidate homes, and the choice is a blast-radius trade:
-`extract_symbol_claims` (`scripts/little_loops/issues/symbol_claims.py:131`) parses
-backticked spans into `SymbolClaim`s via three pinned grammar forms (`_EXPLICIT_RE:50`,
-`_DOTTED_RE:51`, `_BARE_SYMBOL_RE:52`), and a claim-shaped filter belongs there beside the
+`extract_symbol_claims` (`scripts/little_loops/issues/symbol_claims.py:180`) parses
+backticked spans into `SymbolClaim`s via three pinned grammar forms (`_EXPLICIT_RE:99`,
+`_DOTTED_RE:100`, `_BARE_SYMBOL_RE:101`), and a claim-shaped filter belongs there beside the
 existing `_LINE_NUMBER_REF_RE` / `_EXTENSION_LIKE_RE` exclusions. A definition-shaped
-filter instead goes in `_MODULE_CONSTANT_RE` (`:40`) / `_extract_symbols` (`:203`), which
-narrows the index for every consumer. `symbol_resolves_elsewhere` (`:325`) is the third
+filter instead goes in `_MODULE_CONSTANT_RE` (`:40`) / `_extract_symbols` (`:263`), which
+narrows the index for every consumer. `symbol_resolves_elsewhere` (`:438`) is the third
 option — a resolves-in-N-files cap.
 
-**Finding 2** is admitted by `resolve_ref_path` / `RefIndex`
-(`scripts/little_loops/text_utils.py`), which resolves a cited path token to a tracked
-repo-relative path and accepts the slash-joined span as one path.
+**Finding 2**'s change site is `classify_file_ref`'s form checks
+(`scripts/little_loops/text_utils.py:290-297`), **not** `resolve_ref_path`. The
+`stale_file_ref` gap flows `classify_issue_refs` → `classify_file_ref` →
+`suffix_match_candidates` (`issue_parser.py:764-766`); `classify_file_ref` never calls
+`resolve_ref_path`, so a fix landed only there would fix `research_triage.py` while
+leaving `format-check` firing. `*`/`?` are already declined by `_GLOB_CHARS`
+(`text_utils.py:165`) as `unresolvable_form`; the fix adds `{`/`}` to that set plus a
+multi-extension-component form check (declining the slash-joined pair, which contains no
+metacharacters at all), both returning `unresolvable_form`. `resolve_ref_path` callers
+inherit the same behavior only if the check lives in the shared form-check layer — assert
+it there as a secondary criterion.
 
 **Finding 3** is the `stale_file_ref` branch of `_print_gaps`
 (`scripts/little_loops/cli/issues/format_check.py:157`). Note the invariant recorded in
@@ -230,9 +254,9 @@ loop in `_print_gaps`, so renaming the key means touching `FormatGaps`, both enu
 
 ### Types
 
-`FormatGaps` (`scripts/little_loops/issue_parser.py:276`) — the per-class gap lists;
-only Finding 3's optional rename touches it. `SymbolClaim` (`symbol_claims.py:93`) and
-`SymbolIndex` (`:283`) carry Finding 1's claim and index sides respectively.
+`FormatGaps` (`scripts/little_loops/issue_parser.py:295`) — the per-class gap lists;
+only Finding 3's optional rename touches it. `SymbolClaim` (`symbol_claims.py:143`) and
+`SymbolIndex` (`:373`) carry Finding 1's claim and index sides respectively.
 
 ### Call Path
 
@@ -252,7 +276,8 @@ _Added by `/ll:refine-issue` — 2026-08-15 — based on codebase analysis:_
 
 - **Test coverage gap (both remaining findings)**: `scripts/tests/test_symbol_claims.py` covers claim-grammar forms, fence exclusion for claims, and `symbol_resolves_elsewhere` against hand-built indices, but no test constructs a kwarg-call-argument-shaped line (e.g. `enabled=data.get("enabled", True)`) and asserts whether `_extract_symbols`/`_MODULE_CONSTANT_RE` admits it (Finding 1). `scripts/tests/test_text_utils.py` has no test of the shape `"A.md/B.md"` against `resolve_ref_path`/`suffix_match_candidates` (Finding 2).
 - **Related prior issues on this surface**: BUG-3063 (stale-symbol-ref forward-looking design claims) and ENH-3064 (checked directly — cancelled, addressed `stale_symbol_ref` *scoping* away from forward-looking sections, a different mechanism than this issue's `mislocated_symbol_ref` kwarg-index-pollution; no overlap). BUG-2956 (format-check ignores `program_design_not_applicable` opt-out) touches the same `format_check.py` orchestrator but a different gap class.
-- **Interaction with BUG-3202**: `_symbol_claim_scope_text()` (`issue_parser.py:952-959`) scopes `stale_symbol_ref`/`mislocated_symbol_ref` claims by concatenating sections via the fence-unaware `_section_body`. BUG-3202's fix therefore changes *which claims Finding 1's filters see* — the two interact through the claim scope even though their change sites are disjoint. Re-measure Finding 1's backlog-wide baseline after BUG-3202 lands, before implementing the filters.
+- **Interaction with BUG-3202**: `_symbol_claim_scope_text()` (`issue_parser.py:971-981`) scopes `stale_symbol_ref`/`mislocated_symbol_ref` claims by concatenating sections via `_section_body` (fence-aware since BUG-3202 landed). BUG-3202's fix therefore changed *which claims Finding 1's filters see* — the two interact through the claim scope even though their change sites are disjoint. Re-measure Finding 1's backlog-wide baseline before implementing the filters.
+- **Interaction with BUG-3201** (added 2026-08-15 pre-implementation review): BUG-3201 (30ccbb7f) changed both index sides after this issue's measurements were taken. Side A indexes SQL `CREATE TABLE/INDEX/VIEW` names into the reverse index (`_SQL_OBJECT_DEF_RE`, `symbol_claims.py:56`), shifting breadth counts. Side B makes the **per-file** cache index import-bound names (`_extract_symbols(include_imports=True)`, `:263`), so a symbol claimed against a file that merely imports it now passes `symbol_exists_in_file` and never reaches the exists/resolves branch — this is why `ec`, `codex`, and `install_qwen_adapter` no longer fire live. The reverse index still excludes imports (`_build_reverse_index`, `:328`, `include_imports=False`), so the breadth cap still counts def-sites only and the cap's *design* survives 3201; only the measured numbers moved. Fold 3201 into the mandatory re-measure alongside 3202.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - **`check_format_gaps` consumers beyond the five named skills**: `scripts/little_loops/cli/issues/check_design.py:31,38` (Program Design specificity gate, "mirroring `check_format_gaps()`'s existing fail-open" per its own docstring) and `scripts/little_loops/cli/issues/sequence.py:18` ("mirrors the drift half of `issue_parser.check_format_gaps()`'s" gap detection) both confirmed by grep to call/reference `check_format_gaps` directly, independent of `cmd_format_check`.
@@ -292,7 +317,7 @@ reasoning that a token appearing at "def-sites" in 8-15 files is index noise. Th
 signal is right; the change site is wrong, and applying it there makes the reported output
 strictly worse.
 
-The gap-emitting call site (`issue_parser.py:785-791`) is an if/else with no third arm:
+The gap-emitting call site (`issue_parser.py:804-810`) is an if/else with no third arm:
 
 ```python
 if symbol_exists_in_file(symbol_index, claim.file, claim.symbol) is False:
@@ -374,7 +399,7 @@ known true positives — `build_streaming()` and `build_blocking_json()`, both n
 **Third pollution source, not previously named: `_DOTTED_RE` admits config paths.** The
 107 dotted claims are dominated by FSM/YAML config keys parsed as `module.attr` symbol
 claims — `state.action` (n=117), `config.prompt` (n=28), `parallel.timeout_per_issue`
-(n=7), `learning_tests.scan_dirs` (n=4). `_DOTTED_RE` (`:51`) never checks that the left
+(n=7), `learning_tests.scan_dirs` (n=4). `_DOTTED_RE` (`:100`) never checks that the left
 side is a real module or a PascalCase class, so any `namespace.key` in prose becomes a
 symbol claim. This is the single largest class, and it is what fills the cap's boundary
 band.
@@ -415,8 +440,11 @@ comment naming the false-positive class it guards, applied as a guard at the poi
 (matching `_LINE_NUMBER_REF_RE` / `_EXTENSION_LIKE_RE`). None touches
 `_MODULE_CONSTANT_RE`, so BUG-3063 D1's deliberate widening stays intact.
 
-Reproduce the measurement above after implementing, and confirm the reported `enabled`,
-`ec`, and `codex` hits disappear entirely rather than reappearing under the other gap key.
+Reproduce the measurement above after implementing (against a fresh post-3201/3202
+baseline). Live, only `enabled` still fires — `ec` and `codex` are suppressed upstream by
+BUG-3201's import-binding indexing — so confirm the no-reroute property (disappear
+entirely, not reappear under the other gap key) via unit-level synthetic claims for all
+three shapes, plus the live `enabled` hit.
 
 **Finding 2** — a backticked span that is not a single well-formed path should not resolve
 as one. Scope this as **"decline on any span containing shell/glob metacharacters"**, not
@@ -434,12 +462,17 @@ Those three came from `/ll:wire-issue`'s own output on BUG-3193, which means the
 generated by tooling on a recurring basis rather than being a one-off authoring slip — the
 same reason Finding 1's class is worth pinning. A `/`-only fix leaves all three firing.
 
-Recommended predicate: if the span contains `{`, `}`, `*`, `?`, or resolves to more than
-one extension-bearing component, decline to claim (fail-open), consistent with the
-module's fail-open stance for unsupported languages (`_SUPPORTED_SYMBOL_EXTENSIONS`,
-`:45`). Splitting and checking each side is acceptable for the slash case but does not
-generalize to brace expansion without implementing expansion itself, which is not
-warranted here.
+Recommended predicate (corrected 2026-08-15 review): `*` and `?` are **already declined**
+by `_GLOB_CHARS` (`text_utils.py:165`) in `classify_file_ref`'s form checks (`:290-297`)
+— only two additions are new: add `{`/`}` to `_GLOB_CHARS`, and add a form check
+declining a span with more than one extension-bearing component (the slash-joined pair
+carries no metacharacters at all, so no character-class check can catch it). Both return
+`unresolvable_form` — fail-open, consistent with the module's fail-open stance for
+unsupported languages (`_SUPPORTED_SYMBOL_EXTENSIONS`, `symbol_claims.py:94`). The check
+must live in `classify_file_ref`'s form-check layer, not in `resolve_ref_path` — see
+Program Design; the `stale_file_ref` path never calls `resolve_ref_path`. Splitting and
+checking each side is acceptable for the slash case but does not generalize to brace
+expansion without implementing expansion itself, which is not warranted here.
 
 **Finding 3** — rename the class or reword the message so it states the actual predicate.
 `untracked_file_ref`, or keep the key and change the printed line
@@ -458,8 +491,8 @@ alone is a one-line change. Prefer the reword unless a consumer audit is cheap.
 
 _Added by `/ll:refine-issue` — 2026-08-15 — based on codebase analysis:_
 
-- **Finding 1 exclusion-constant convention**: every existing false-positive exclusion in `symbol_claims.py` (`_LINE_NUMBER_REF_RE:53-56`, `_EXTENSION_LIKE_RE:59-65`, `_MAX_ATTRIBUTION_DISTANCE:73-78`) is a separately named module-level `re.compile(...)` constant, preceded by a comment naming the false-positive class it guards against, and applied as an early-continue/guard at the point of use rather than folded into the defining regex itself. A new kwarg-exclusion filter should follow this same shape (named constant + comment + guard-site application), matching how `_MODULE_CONSTANT_RE`'s own BUG-3063 D1 comment documents its accepted precision trade-offs.
-- **Finding 3 rewording precedent**: `FormatGaps` field names have never been renamed in the codebase's history (only additions, each with a comment citing the introducing issue ID — mirrored in `test_ll_issues_format_check.py`'s pinned expected-JSON fixture). Entry-string wording is added at one of two independent sites depending on whether it needs to appear in JSON output too: baked into the value at construction time (`issue_parser.py:787-791`, e.g. `stale_symbol_ref`/`mislocated_symbol_ref` entries), or appended only at print time as text-only supplementary guidance (`format_check.py:167-183`, e.g. the existing `mislocated_symbol_ref`/`soft_dep_hard_edge` parentheticals). A pure reword (Finding 3's stated preference) fits the print-time-only pattern; a key rename would touch all three synchronized sites (`FormatGaps` field, `to_dict()`, `_print_gaps`) plus the pinned JSON fixture.
+- **Finding 1 exclusion-constant convention**: every existing false-positive exclusion in `symbol_claims.py` (`_LINE_NUMBER_REF_RE:102-105`, `_EXTENSION_LIKE_RE:108-114`, `_MAX_ATTRIBUTION_DISTANCE:116-127`) is a separately named module-level `re.compile(...)` constant, preceded by a comment naming the false-positive class it guards against, and applied as an early-continue/guard at the point of use rather than folded into the defining regex itself. A new kwarg-exclusion filter should follow this same shape (named constant + comment + guard-site application), matching how `_MODULE_CONSTANT_RE`'s own BUG-3063 D1 comment documents its accepted precision trade-offs.
+- **Finding 3 rewording precedent**: `FormatGaps` field names have never been renamed in the codebase's history (only additions, each with a comment citing the introducing issue ID — mirrored in `test_ll_issues_format_check.py`'s pinned expected-JSON fixture). Entry-string wording is added at one of two independent sites depending on whether it needs to appear in JSON output too: baked into the value at construction time (`issue_parser.py:806-810`, e.g. `stale_symbol_ref`/`mislocated_symbol_ref` entries), or appended only at print time as text-only supplementary guidance (`format_check.py:167-183`, e.g. the existing `mislocated_symbol_ref`/`soft_dep_hard_edge` parentheticals). A pure reword (Finding 3's stated preference) fits the print-time-only pattern; a key rename would touch all three synchronized sites (`FormatGaps` field, `to_dict()`, `_print_gaps`) plus the pinned JSON fixture.
 
 ## Impact
 
@@ -486,10 +519,14 @@ Grouped by finding, since they land separately (see Implementation Order).
 
 **Finding 1:**
 
-- [ ] The reported `enabled`, `ec`, and `codex` claims produce **no gap of either class** —
+- [ ] `enabled`-, `ec`-, and `codex`-shaped claims produce **no gap of either class** —
       verified explicitly against `stale_symbol_ref` as well as `mislocated_symbol_ref`, so
       each predicate suppresses rather than reroutes. All three fall to the **bare-form
       floor** (see the correction in Expected Behavior); do not use them to verify the cap.
+      **Verify via unit-level synthetic claims** (hand-built index + claim, per the Tests
+      plan): post-BUG-3201 only `enabled` still fires live, so the CLI repro cannot
+      exercise `ec`/`codex`. The live check is `ll-issues format-check 3192` no longer
+      reporting `enabled` under either key.
 - [ ] A dotted config-path claim (`state.action`, `parallel.timeout_per_issue`) produces no
       gap — the `_DOTTED_RE` left-side predicate declines it.
 - [ ] The **cap** is verified against a claim the floor does not already catch — e.g.
@@ -500,22 +537,33 @@ Grouped by finding, since they land separately (see Implementation Order).
       8, not 3, specifically to preserve them.
 - [ ] An `install_qwen_adapter`-class true positive — a genuine multi-word snake_case
       symbol claimed against a file that does not define it but that resolves at a real
-      def-site elsewhere — still fires `mislocated_symbol_ref`.
+      def-site elsewhere — still fires `mislocated_symbol_ref`. **Unit-level synthetic
+      claim only**: the original live example no longer fires post-BUG-3201 (the cited
+      file imports the symbol, so `symbol_exists_in_file` is now True), so the fixture's
+      cited file must neither define nor import the symbol.
 - [ ] Each new filter follows the module's exclusion convention: a named module-level
       constant with a comment naming the false-positive class it guards, applied as a guard
       at the point of use (matching `_LINE_NUMBER_REF_RE` / `_EXTENSION_LIKE_RE`).
-- [ ] Backlog-wide mislocated count drops from a **freshly re-measured post-BUG-3202
+- [ ] Backlog-wide mislocated count drops from a **freshly re-measured post-BUG-3201/3202
       baseline** — the recorded 264 (re-measured 2026-08-15; the earlier 263 predates one
-      issue edit) was taken before BUG-3202's fence-aware scope change landed and may no
-      longer hold. Re-measure before implementing, confirm the N=8 cap analysis still
-      holds, then re-run after and record both numbers.
+      issue edit) was taken before BUG-3202's fence-aware scope change **and before
+      BUG-3201's import-binding/SQL index changes** landed, and is already known stale
+      (the recorded repro no longer reproduces). Re-measure before implementing, confirm
+      the N=8 cap analysis still holds, then re-run after and record both numbers.
 
 **Finding 2:**
 
-- [ ] `resolve_ref_path("ARCHITECTURE.md/CONTRIBUTING.md", index)` declines rather than
-      resolving as one path.
-- [ ] `resolve_ref_path(".gemini/skills/{capture-issue,scope-epic}/SKILL.md", index)` also
-      declines — a `/`-split-only fix passes the first case and fails this one.
+- [ ] **Primary (format-check-level outcome)**:
+      `classify_file_ref("ARCHITECTURE.md/CONTRIBUTING.md", index)` returns
+      `unresolvable_form` (not `stale`), and `ll-issues format-check 3190` no longer
+      reports `stale_file_ref` for it.
+- [ ] **Primary**: `classify_file_ref(".gemini/skills/{capture-issue,scope-epic}/SKILL.md",
+      index)` also returns `unresolvable_form`, and `ll-issues format-check 3193` no longer
+      reports the three brace-expansion refs — a `/`-split-only fix passes the first case
+      and fails this one.
+- [ ] **Secondary**: `resolve_ref_path` declines both spans too (returns `None`) — holds
+      automatically if the check lives in the shared form-check layer, and pins
+      `research_triage.py`'s behavior.
 
 **Finding 3:**
 
@@ -535,7 +583,7 @@ Grouped by finding, since they land separately (see Implementation Order).
 ## Related Key Documentation
 
 - `docs/reference/CLI.md` — `ll-issues format-check` gap-class list, if a key is renamed.
-- `scripts/little_loops/issues/symbol_claims.py:25-90` — the existing false-positive pins
+- `scripts/little_loops/issues/symbol_claims.py:98-127` — the existing false-positive pins
   and their rationale comments; a new filter belongs alongside them, documented the same
   way.
 
@@ -543,17 +591,17 @@ Grouped by finding, since they land separately (see Implementation Order).
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/API.md` (`#### check_format_gaps` prose block) — the `stale_file_ref` bullet's "genuine drift" framing and the `stale_symbol_ref`/`mislocated_symbol_ref` bullets' "matched by H2 span" framing both go stale under Findings 3 and 4 respectively; update alongside `docs/reference/CLI.md`.
-- `scripts/little_loops/issue_parser.py:943-949` — the `_STALE_SYMBOL_SCOPE_H2_SECTIONS` allowlist comment ("only claims inside their H2 span... matching the behavior-parity helper's H2 branch") asserts the pre-Finding-4, fence-unaware framing; update alongside the fence-stripping fix so the in-code comment doesn't contradict the new behavior.
+- `scripts/little_loops/issue_parser.py:962-968` — the `_STALE_SYMBOL_SCOPE_H2_SECTIONS` allowlist comment ("only claims inside their H2 span... matching the behavior-parity helper's H2 branch"); BUG-3202's fence-stripping fix has landed — confirm the in-code comment no longer contradicts the fence-aware behavior before touching this area.
 
 ### Tests
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_symbol_claims.py` (`repo`/`build_symbol_index` fixture, lines 30-40, 160-180) — new test to write: a kwarg-call-argument-shaped line (e.g. `enabled=data.get("enabled", True),`), asserting `_extract_symbols`/`symbol_exists_in_file` does not admit it as a symbol (Finding 1). Follow the fixture shape used at lines 160-180.
-- `scripts/tests/test_text_utils.py::TestMirrorTieBreak` (lines 266-382, inline `RefIndex(by_basename={...})` construction) — new test to write: `resolve_ref_path("ARCHITECTURE.md/CONTRIBUTING.md", index)` should not resolve as a single path (Finding 2). Model on `test_genuine_non_mirror_ambiguity_still_declines` (lines 301-312)'s two-assertion pattern. **Add a second case for the brace-expansion shape** — `resolve_ref_path(".gemini/skills/{capture-issue,scope-epic}/SKILL.md", index)` must also decline; a `/`-split-only fix passes the first case and fails this one, so both are needed to pin Finding 2's corrected scope.
+- `scripts/tests/test_text_utils.py::TestMirrorTieBreak` (lines 266-382, inline `RefIndex(by_basename={...})` construction) — new tests to write, **asserting on `classify_file_ref` first** (the gap's actual path — it must return `unresolvable_form`, not `stale`, for both spans), with `resolve_ref_path` returning `None` as the secondary assertion: `"ARCHITECTURE.md/CONTRIBUTING.md"` (Finding 2, slash-joined pair). Model on `test_genuine_non_mirror_ambiguity_still_declines` (lines 301-312)'s two-assertion pattern. **Add a second case for the brace-expansion shape** — `".gemini/skills/{capture-issue,scope-epic}/SKILL.md"` must also decline; a `/`-split-only fix passes the first case and fails this one, so both are needed to pin Finding 2's corrected scope.
 - `scripts/tests/test_ll_issues_format_check.py::test_clean_issue_json_output` (lines 302-362) — exact-dict-equality fixture over all `FormatGaps` keys with empty-list values; confirmed **not** sensitive to Finding 3's message-wording reword (only to a key rename, which the issue's stated preference avoids). No edit needed under the print-time-only reword path.
 - `scripts/tests/test_symbol_cli_claim_sweep.py::test_symbol_and_cli_flag_claim_sweep_report_only` (line 72) — repo-wide ceiling assert (`total_symbol_hits <= 18`); Finding 1's fix will lower the real count but won't fail this `<=` ceiling. Its docstring's measured-baseline comment (lines 7-13) becomes a stale number worth updating (not test-enforced).
 - No existing test guards that `install_qwen_adapter`-class true positives keep firing after Finding 1's discriminator narrows kwarg/local noise — new regression test to write alongside `test_feat3048_symbol_cli_claim_gaps.py`'s existing `mislocated_symbol_ref` tests (~144-171, 225-315): a real multi-word snake_case symbol claimed against a file that doesn't define it but resolves via a genuine def-site elsewhere, asserting `gaps.mislocated_symbol_ref` still fires.
-- **Finding 1's suppression test must assert on both gap keys.** `issue_parser.py:785-791` is an if/else, so a discriminator implemented in the wrong place reroutes a suppressed `mislocated_symbol_ref` into `stale_symbol_ref` and a test asserting only `symbol not in gaps.mislocated_symbol_ref` passes on a regression. Assert absence from `gaps.stale_symbol_ref` in the same test.
+- **Finding 1's suppression test must assert on both gap keys.** `issue_parser.py:804-810` is an if/else, so a discriminator implemented in the wrong place reroutes a suppressed `mislocated_symbol_ref` into `stale_symbol_ref` and a test asserting only `symbol not in gaps.mislocated_symbol_ref` passes on a regression. Assert absence from `gaps.stale_symbol_ref` in the same test.
 
 ## Status
 
@@ -561,6 +609,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 
 ## Session Log
+- Pre-implementation review - 2026-08-15 - Verified all claims against current code and re-ran the repro. Applied four correction sets: (1) refreshed systematically stale line refs (`symbol_claims.py` shifted +49..+113 by BUG-3201/30ccbb7f; `issue_parser.py` shifted ~+19 by BUG-3202/72fb87ea); (2) added a BUG-3201 interaction note (import bindings now satisfy `symbol_exists_in_file`; SQL names entered the reverse index) and folded 3201 into the mandatory re-measure; (3) retargeted Finding 2's change site and ACs from `resolve_ref_path` to `classify_file_ref`'s form checks / `_GLOB_CHARS` (the `stale_file_ref` path never calls `resolve_ref_path`; `*`/`?` already declined — only `{}` and a multi-extension-component check are new; return `unresolvable_form`), keeping `resolve_ref_path` assertions as secondary; (4) reframed the `ec`/`codex`/`install_qwen_adapter` ACs as unit-level synthetic-claim tests and annotated Current Behavior / Steps to Reproduce — live post-3201 output shows only `enabled` still firing, with new hits `to_dict` (3190) and `my-issues/completed/file.py`. Finding 2/3 refs all still reproduce live.
 - Pre-implementation review (batch) - 2026-08-15 - Implementation Order updated: BUG-3202 landed, verification prerequisite satisfied; made the pre-3202 provenance of the 264 baseline / breadth-curve / floor measurements explicit and required a fresh re-measure before implementing Finding 1 (BUG-3202's `_symbol_claim_scope_text` change alters the claim population the filters see).
 - `/ll:confidence-check` - 2026-08-15T20:01:26 - `4eb27027-e6df-4ea9-a6cc-2ca5e6e40c15.jsonl`
 - `/ll:wire-issue` - 2026-08-15T18:50:55 - `fbae9292-fc5e-470b-b261-173e14415c63.jsonl`
