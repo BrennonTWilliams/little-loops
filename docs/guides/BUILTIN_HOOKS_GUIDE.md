@@ -495,6 +495,8 @@ Fire when the `Agent`/`Task` tool spawns a subagent (`SubagentStart`) and when t
 
 Query the tree with `ll-session recent --kind subagent_run`, or via `history_reader.subagent_tree(session_id)` / `subagent_retries(agent_type)` / `subagent_budget(session_id)` for the "which parent burns the most subagent budget" / "which agent type oscillates" questions. See [HISTORY_SESSION_GUIDE.md](HISTORY_SESSION_GUIDE.md).
 
+A third status mutation, `orphaned`, is applied by `reconcile_stale_subagent_runs()` (ENH-3210) from the `session_end`-intent sweep (`sweep_stale_refs.py`, see below) for `running` rows whose `SubagentStop` never fired.
+
 ---
 
 ## Turning Hooks Off

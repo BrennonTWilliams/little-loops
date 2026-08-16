@@ -8,12 +8,15 @@ references to done issue IDs.  Every path through ``handle()`` must return
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 from little_loops.hooks.sweep_stale_refs import _auto_fix_file, _scan_file, handle
 from little_loops.hooks.types import LLHookEvent
+from little_loops.session_store import connect, record_subagent_run_start
+from little_loops.session_store.writers import STALE_SUBAGENT_MIN_AGE_SECONDS
 
 # ---------------------------------------------------------------------------
 # Fixtures & helpers
@@ -291,6 +294,66 @@ class TestSweepStaleRefsGracefulDegradation:
         result = handle(_event(cwd=str(in_tmp)))
         assert result.exit_code == 0
         assert not (self_setup_dir / "session_lifecycle_events").exists()
+
+
+# ---------------------------------------------------------------------------
+# TestSweepStaleRefsReconciliation — ENH-3210 wiring into handle()
+# ---------------------------------------------------------------------------
+
+
+class TestSweepStaleRefsReconciliation:
+    def test_reconciles_even_when_done_ids_is_empty(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Reconciliation must run ahead of the `if not done_ids` early return
+        (:173) — with no `.issues/` dir at all, done_ids is empty and handle()
+        returns before ever reaching the stale-ref scan. If reconciliation were
+        appended at the tail instead, this row would stay `running`."""
+        _write_config(in_tmp)
+        db = in_tmp / ".ll" / "history.db"
+        old_started = (
+            datetime.now(UTC) - timedelta(seconds=STALE_SUBAGENT_MIN_AGE_SECONDS + 3600)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        record_subagent_run_start(
+            db,
+            parent_session_id="dead-parent",
+            agent_id="agent-orphan",
+            agent_type="Explore",
+            started_at=old_started,
+        )
+        result = handle(_event(cwd=str(in_tmp)))
+        assert result.exit_code == 0
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT status FROM subagent_runs WHERE agent_id = 'agent-orphan'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row["status"] == "orphaned"
+
+    def test_reconciliation_failure_does_not_suppress_stale_ref_sweep(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A broken history.db must not stop the stale-ref feedback path —
+        the two features are isolated in separate try/except blocks."""
+        ll_dir = in_tmp / ".ll"
+        ll_dir.mkdir(parents=True, exist_ok=True)
+        (ll_dir / "history.db").mkdir()  # a directory, not a file -> sqlite3.Error
+        _write_config(in_tmp)
+        _write_issues(
+            in_tmp,
+            {
+                "features/P1-FEAT-1.md": _minimal_issue("FEAT-1", "done"),
+                "bugs/P2-BUG-2.md": _minimal_issue(
+                    "BUG-2", "open", "FEAT-1 is still open, blocked on it."
+                ),
+            },
+        )
+        result = handle(_event(cwd=str(in_tmp)))
+        assert result.exit_code == 0
+        assert result.feedback is not None
+        assert "FEAT-1" in result.feedback
 
 
 # ---------------------------------------------------------------------------

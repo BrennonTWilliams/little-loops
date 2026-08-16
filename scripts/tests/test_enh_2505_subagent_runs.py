@@ -9,7 +9,10 @@ from nested subagent transcripts.
 from __future__ import annotations
 
 import json
+import sqlite3
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -22,9 +25,37 @@ from little_loops.session_store import (
     connect,
     ensure_db,
     host_layout_for,
+    reconcile_stale_subagent_runs,
     record_subagent_run_start,
     record_subagent_run_stop,
+    writers,
 )
+from little_loops.session_store.writers import STALE_SUBAGENT_MIN_AGE_SECONDS
+
+
+def _ts(offset_seconds: float) -> str:
+    """A ``_now()``-formatted timestamp *offset_seconds* from the real current time."""
+    return (datetime.now(UTC) + timedelta(seconds=offset_seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _insert_tool_event(db: Path, session_id: str, ts: str) -> None:
+    conn = connect(db)
+    try:
+        conn.execute("INSERT INTO tool_events(ts, session_id) VALUES (?, ?)", (ts, session_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _row_status(db: Path, agent_id: str) -> str | None:
+    conn = connect(db)
+    try:
+        row = conn.execute(
+            "SELECT status FROM subagent_runs WHERE agent_id = ?", (agent_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+    return row["status"] if row else None
 
 
 class TestSubagentRunLifecycle:
@@ -681,3 +712,176 @@ class TestQwenSubagentBackfill:
         assert count == 1
         assert row["parent_session_id"] == "parent-1"
         assert row["status"] == "completed"
+
+
+class TestReconcileStaleSubagentRuns:
+    """ENH-3210: reconciling orphaned ``running`` rows to ``orphaned``."""
+
+    def test_primary_branch_reconciles_old_row_with_no_post_spawn_activity(
+        self, tmp_path: Path
+    ) -> None:
+        db = tmp_path / "history.db"
+        old_started = _ts(-(STALE_SUBAGENT_MIN_AGE_SECONDS + 3600))
+        record_subagent_run_start(
+            db,
+            parent_session_id="dead-parent",
+            agent_id="agent-orphan",
+            agent_type="Explore",
+            started_at=old_started,
+        )
+        count = reconcile_stale_subagent_runs(db, current_session_id=None)
+        assert count == 1
+        assert _row_status(db, "agent-orphan") == "orphaned"
+
+    def test_secondary_branch_within_quiet_period_is_not_reconciled(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        old_started = _ts(-(STALE_SUBAGENT_MIN_AGE_SECONDS + 3600))
+        record_subagent_run_start(
+            db,
+            parent_session_id="active-parent",
+            agent_id="agent-active",
+            agent_type="Explore",
+            started_at=old_started,
+        )
+        # Parent shows later activity, but within the last hour — still quiet
+        # for less than the shared window, so this must NOT be reconciled.
+        _insert_tool_event(db, "active-parent", _ts(-1800))
+        count = reconcile_stale_subagent_runs(db, current_session_id=None, include_secondary=True)
+        assert count == 0
+        assert _row_status(db, "agent-active") == "running"
+
+    def test_current_session_is_never_reconciled(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        old_started = _ts(-(STALE_SUBAGENT_MIN_AGE_SECONDS + 3600))
+        record_subagent_run_start(
+            db,
+            parent_session_id="me",
+            agent_id="agent-mine",
+            agent_type="Explore",
+            started_at=old_started,
+        )
+        count = reconcile_stale_subagent_runs(db, current_session_id="me")
+        assert count == 0
+        assert _row_status(db, "agent-mine") == "running"
+
+    def test_fresh_sibling_worker_row_is_not_reconciled(self, tmp_path: Path) -> None:
+        """The ll-parallel/ll-sprint concurrency hazard: a subagent spawned
+        seconds ago in a sibling session has the primary branch's exact
+        signature (blocked parent, no post-spawn activity, not the current
+        session) — the age guard is what keeps it from being misclassified.
+        """
+        db = tmp_path / "history.db"
+        fresh_started = _ts(0)
+        record_subagent_run_start(
+            db,
+            parent_session_id="sibling-worker",
+            agent_id="agent-fresh",
+            agent_type="Explore",
+            started_at=fresh_started,
+        )
+        count = reconcile_stale_subagent_runs(db, current_session_id="current-worker")
+        assert count == 0
+        assert _row_status(db, "agent-fresh") == "running"
+
+    def test_none_current_session_id_only_drops_the_exclusion(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        old_started = _ts(-(STALE_SUBAGENT_MIN_AGE_SECONDS + 3600))
+        record_subagent_run_start(
+            db,
+            parent_session_id="some-session",
+            agent_id="agent-null-session",
+            agent_type="Explore",
+            started_at=old_started,
+        )
+        count = reconcile_stale_subagent_runs(db, current_session_id=None)
+        assert count == 1
+        assert _row_status(db, "agent-null-session") == "orphaned"
+
+    def test_second_sweep_is_idempotent_noop(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        old_started = _ts(-(STALE_SUBAGENT_MIN_AGE_SECONDS + 3600))
+        record_subagent_run_start(
+            db,
+            parent_session_id="dead-parent",
+            agent_id="agent-orphan",
+            agent_type="Explore",
+            started_at=old_started,
+        )
+        first = reconcile_stale_subagent_runs(db, current_session_id=None)
+        second = reconcile_stale_subagent_runs(db, current_session_id=None)
+        assert first == 1
+        assert second == 0
+        assert _row_status(db, "agent-orphan") == "orphaned"
+
+    def test_completed_row_is_never_touched(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        old_started = _ts(-(STALE_SUBAGENT_MIN_AGE_SECONDS + 3600))
+        record_subagent_run_start(
+            db,
+            parent_session_id="dead-parent",
+            agent_id="agent-done",
+            agent_type="Explore",
+            started_at=old_started,
+        )
+        record_subagent_run_stop(db, parent_session_id="dead-parent", agent_id="agent-done")
+        count = reconcile_stale_subagent_runs(db, current_session_id=None)
+        assert count == 0
+        assert _row_status(db, "agent-done") == "completed"
+
+    def test_zero_running_rows_short_circuits_before_tool_events_query(
+        self, tmp_path: Path
+    ) -> None:
+        # sqlite3.Connection is a C type — its methods can't be patched
+        # directly, so trace calls through a thin wrapper around the real
+        # connection instead.
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        _insert_tool_event(db, "some-session", _ts(0))
+
+        executed_sql: list[str] = []
+        real_connect = writers._pkg.connect
+
+        class _TracingConnection:
+            def __init__(self, conn: sqlite3.Connection) -> None:
+                self._conn = conn
+
+            def execute(self, sql: str, *args: object, **kwargs: object):
+                executed_sql.append(sql)
+                return self._conn.execute(sql, *args, **kwargs)
+
+            def commit(self) -> None:
+                self._conn.commit()
+
+            def close(self) -> None:
+                self._conn.close()
+
+        def fake_connect(path: Path | str) -> _TracingConnection:
+            return _TracingConnection(real_connect(path))
+
+        with patch.object(writers._pkg, "connect", fake_connect):
+            count = reconcile_stale_subagent_runs(db, current_session_id=None)
+
+        assert count == 0
+        assert not any("tool_events" in sql for sql in executed_sql)
+
+    def test_dry_run_selects_without_mutating(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        old_started = _ts(-(STALE_SUBAGENT_MIN_AGE_SECONDS + 3600))
+        record_subagent_run_start(
+            db,
+            parent_session_id="dead-parent",
+            agent_id="agent-orphan",
+            agent_type="Explore",
+            started_at=old_started,
+        )
+        count = reconcile_stale_subagent_runs(db, current_session_id=None, dry_run=True)
+        assert count == 1
+        assert _row_status(db, "agent-orphan") == "running"
+
+        # A negative case with dry_run=False exercises the real UPDATE path
+        # against a row that must not match.
+        real_count = reconcile_stale_subagent_runs(
+            db, current_session_id="dead-parent", dry_run=False
+        )
+        assert real_count == 0
+        assert _row_status(db, "agent-orphan") == "running"

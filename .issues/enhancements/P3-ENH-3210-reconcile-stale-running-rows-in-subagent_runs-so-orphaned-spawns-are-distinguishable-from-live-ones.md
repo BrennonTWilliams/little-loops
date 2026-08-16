@@ -4,7 +4,7 @@ type: ENH
 title: Reconcile stale running rows in subagent_runs so orphaned spawns are distinguishable
   from live ones
 priority: P3
-status: open
+status: done
 testable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
@@ -18,6 +18,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 25
+completed_at: '2026-08-16T08:39:47Z'
 ---
 
 # ENH-3210: Reconcile stale running rows in subagent_runs so orphaned spawns are distinguishable from live ones
@@ -867,6 +868,7 @@ _Added by `/ll:confidence-check` on 2026-08-16_
   branch per Decision 4, which is explicitly sanctioned).
 
 ## Session Log
+- `ll-auto` - 2026-08-16T08:39:47 - `c2910fc8-ef51-4cef-90c8-8859f72ec0fb.jsonl`
 - `/ll:confidence-check` - 2026-08-16T06:11:59 - `d7780d6d-8cdf-4726-9822-c8f6ac651712.jsonl`
 - `/ll:confidence-check` - 2026-08-16T05:31:42 - `bb755dcf-6087-41b3-80d2-a79a3aba782e.jsonl`
 - `/ll:confidence-check` - 2026-08-16T04:58:36 - `3732fd32-810c-4cb4-9095-7a5a9dac49d5.jsonl`
@@ -876,3 +878,23 @@ _Added by `/ll:confidence-check` on 2026-08-16_
 - `/ll:wire-issue` - 2026-08-16T02:33:16 - `580ae8b9-3bf3-43a4-90b3-d6f005806398.jsonl`
 - `/ll:refine-issue` - 2026-08-16T02:22:53 - `8d69c317-1f3a-48ba-9c8b-3d56c7aebd08.jsonl`
 - `/ll:capture-issue` - 2026-08-16T02:10:52 - `3b0498bf-ef93-4aa9-88c2-660ecc956b99.jsonl`
+
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-08-16
+- **Status**: Completed (automated fallback)
+- **Implementation**: Command exited early but issue was addressed
+
+
+### Files Changed
+- See git history for details
+
+### Verification Results
+- Automated verification passed
+
+### Commits
+- See git log for details

@@ -129,6 +129,16 @@ def _now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+_ISO_TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def _seconds_between(earlier: str, later: str) -> float:
+    """Return ``later - earlier`` in seconds for two ``_now()``-formatted timestamps."""
+    return (
+        datetime.strptime(later, _ISO_TS_FMT) - datetime.strptime(earlier, _ISO_TS_FMT)
+    ).total_seconds()
+
+
 _ISSUE_NUM_RE = re.compile(r"(?:BUG|ENH|FEAT|EPIC)-(\d+)", re.IGNORECASE)
 
 
@@ -1892,6 +1902,111 @@ def record_subagent_run_stop(
         if conn is not None:
             conn.close()
     return bool(cursor.rowcount)
+
+
+# ENH-3210: the ceiling on a plausible live subagent is the host's own kill
+# path (``post_stream_close_grace_seconds`` defaults to 300s,
+# ``config/automation.py:26``); 6h is ~72x that ceiling. Shared by both the
+# primary branch's minimum-age guard and the secondary branch's quiet-period
+# guard in reconcile_stale_subagent_runs() — one constant, one thing to tune.
+STALE_SUBAGENT_MIN_AGE_SECONDS = 6 * 3600
+
+
+def reconcile_stale_subagent_runs(
+    db_path: Path | str,
+    *,
+    current_session_id: str | None,
+    min_age_seconds: int = STALE_SUBAGENT_MIN_AGE_SECONDS,
+    include_secondary: bool = False,
+    dry_run: bool = False,
+) -> int:
+    """Mark orphaned ``running`` rows in ``subagent_runs`` as ``orphaned``.
+
+    A row's ``SubagentStop`` hook can fail to fire (e.g. the parent process
+    group is reaped before it runs), leaving it ``running`` forever even
+    though the spawn is long dead. Reconciles two evidence branches:
+
+    - Primary (majority case): the parent recorded no ``tool_events`` after
+      the spawn, and the row is older than ``min_age_seconds`` — the age
+      guard is required because a subagent spawned seconds ago in a sibling
+      ``ll-parallel``/``ll-sprint`` worker has the identical signature
+      (blocked parent, no post-spawn activity).
+    - Secondary (optional, ``include_secondary=True``): the parent shows
+      later activity, but that activity is itself older than
+      ``min_age_seconds`` (a quiet period). Bare later-activity alone is not
+      evidence of orphaning — it holds for ~99% of completed rows too.
+
+    A row with no resolvable evidence (e.g. `started_at` is NULL) is left
+    untouched — "cannot determine liveness, leave alone" mirrors
+    ``_reconcile_stale_running()`` (``fsm/persistence.py``).
+
+    Best-effort per the EPIC-1707 contract: catches ``sqlite3.Error``, logs at
+    WARNING, never raises — returns ``0`` on failure. ``current_session_id=None``
+    disables the current-session exclusion rather than skipping the sweep; a
+    row young enough for that check to matter is already excluded by
+    ``min_age_seconds``. ``dry_run=True`` runs the full selection and returns
+    the count that *would* be updated without issuing the UPDATE.
+    """
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = _pkg.connect(db_path)
+
+        # Short-circuit before touching tool_events at all when there is
+        # nothing running (uses idx_subagent_status; Decision 1b).
+        has_running = conn.execute(
+            "SELECT 1 FROM subagent_runs WHERE status = 'running' LIMIT 1"
+        ).fetchone()
+        if has_running is None:
+            return 0
+
+        now = _now()
+        candidates = conn.execute(
+            "SELECT id, parent_session_id, started_at FROM subagent_runs "
+            "WHERE status = 'running' AND started_at IS NOT NULL"
+        ).fetchall()
+
+        # One GROUP BY pass over tool_events rather than a per-row correlated
+        # subquery — there is no index on tool_events(session_id), so the
+        # per-row form full-scans the table for every candidate row.
+        last_activity: dict[str, str] = dict(
+            conn.execute(
+                "SELECT session_id, MAX(ts) FROM tool_events "
+                "WHERE session_id IS NOT NULL GROUP BY session_id"
+            ).fetchall()
+        )
+
+        to_orphan: list[int] = []
+        for row_id, parent_session_id, started_at in candidates:
+            if current_session_id is not None and parent_session_id == current_session_id:
+                continue
+
+            # COALESCE-equivalent: no tool_events for this parent at all
+            # takes the primary branch rather than matching neither.
+            max_ts = last_activity.get(parent_session_id, "") if parent_session_id else ""
+
+            if max_ts <= started_at:
+                if _seconds_between(started_at, now) >= min_age_seconds:
+                    to_orphan.append(row_id)
+            elif include_secondary:
+                if _seconds_between(max_ts, now) >= min_age_seconds:
+                    to_orphan.append(row_id)
+
+        if dry_run or not to_orphan:
+            return len(to_orphan)
+
+        placeholders = ",".join("?" for _ in to_orphan)
+        conn.execute(
+            f"UPDATE subagent_runs SET status = 'orphaned' WHERE id IN ({placeholders})",
+            to_orphan,
+        )
+        conn.commit()
+        return len(to_orphan)
+    except sqlite3.Error:
+        logger.warning("reconcile_stale_subagent_runs: sweep failed", exc_info=True)
+        return 0
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 @dataclass(frozen=True)

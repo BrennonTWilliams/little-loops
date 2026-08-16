@@ -151,6 +151,21 @@ def handle(event: LLHookEvent) -> LLHookResult:
         raw_cwd = payload.get("cwd") or (event.cwd or "")
         cwd = Path(raw_cwd) if raw_cwd else Path.cwd()
 
+        # ENH-3210: reconcile orphaned subagent_runs rows. Placed ahead of both
+        # early returns below (`if not done_ids` / `if not all_findings`) — the
+        # second is the normal case, so appending this at the tail would almost
+        # never run. Isolated in its own try/except so a reconciliation failure
+        # can't suppress the stale-ref sweep, and vice versa.
+        try:
+            from little_loops.session_store import reconcile_stale_subagent_runs, resolve_history_db
+
+            reconcile_stale_subagent_runs(
+                resolve_history_db(cwd / ".ll" / "history.db"),
+                current_session_id=event.session_id,
+            )
+        except Exception:
+            pass
+
         # Load raw hooks config to read stale_ref_fix mode
         config_path = resolve_config_path(cwd)
         fix_mode = "report"
