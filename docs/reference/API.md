@@ -10022,7 +10022,7 @@ transport.close()
 #### Constructor
 
 ```python
-UnixSocketTransport(path: Path, max_clients: int = 8, on_connect: Callable[[_SocketClient], None] | None = None)
+UnixSocketTransport(path: Path, max_clients: int = 32, on_connect: Callable[[_SocketClient], None] | None = None)
 ```
 
 **Parameters:**

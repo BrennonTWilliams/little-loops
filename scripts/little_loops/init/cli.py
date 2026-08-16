@@ -587,7 +587,7 @@ def _run_yes(
         choices.update(
             {
                 "product_enabled": existing_config.get("product", {}).get("enabled", True),
-                "analytics_enabled": existing_config.get("analytics", {}).get("enabled", True),
+                "analytics_enabled": existing_config.get("analytics", {}).get("enabled", False),
                 "context_monitor_enabled": existing_config.get("context_monitor", {}).get(
                     "enabled", True
                 ),

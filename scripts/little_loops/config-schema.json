@@ -1148,7 +1148,7 @@
         "enabled": {
           "type": "boolean",
           "description": "Master switch for the Learning Test Registry. When false, all LT-related surfaces (discoverability hook, gate-loop hints) are silenced. Set via ll-init or /ll:configure.",
-          "default": true
+          "default": false
         },
         "auto_prove": {
           "type": "boolean",
@@ -1353,6 +1353,12 @@
               "enum": ["full", "minimal", "legacy"],
               "description": "Creation variant for issues pulled from GitHub (determines section structure)",
               "default": "minimal"
+            },
+            "pull_limit": {
+              "type": "integer",
+              "description": "Maximum number of GitHub issues fetched per `gh issue list` pull; truncation is warned on.",
+              "default": 500,
+              "minimum": 1
             }
           },
           "additionalProperties": false
@@ -1582,7 +1588,7 @@
             },
             "max_clients": {
               "type": "integer",
-              "default": 8,
+              "default": 32,
               "description": "Maximum simultaneous client connections; further connects are rejected at accept time."
             }
           },
@@ -1834,7 +1840,7 @@
       "properties": {
         "enabled": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Enable per-tool byte tracking and file-event recording in post_tool_use hook."
         },
         "capture": {

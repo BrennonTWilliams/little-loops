@@ -266,7 +266,7 @@ class TestConfigSchema:
             "FEAT-1743 requires a boolean master switch"
         )
         assert lt_props["enabled"]["type"] == "boolean"
-        assert lt_props["enabled"].get("default") is True
+        assert lt_props["enabled"].get("default") is False
 
         # ENH-2487: auto_prove gate for config-driven rn-implement auto-prove
         assert "auto_prove" in lt_props, (
@@ -509,7 +509,7 @@ class TestConfigSchema:
         assert "enabled" in analytics["properties"]
         enabled = analytics["properties"]["enabled"]
         assert enabled["type"] == "boolean"
-        assert enabled["default"] is True
+        assert enabled["default"] is False
 
     def test_code_query_in_schema(self) -> None:
         """code_query block must be declared in config-schema.json (ENH-2612).
@@ -759,7 +759,7 @@ class TestConfigSchema:
         assert socket_props["path"]["type"] == "string"
         assert socket_props["path"]["default"] == ".ll/events.sock"
         assert socket_props["max_clients"]["type"] == "integer"
-        assert socket_props["max_clients"]["default"] == 8
+        assert socket_props["max_clients"]["default"] == 32
 
         assert "otel" in events_props, (
             "events.otel is not declared; configs using events.otel will be "
@@ -1171,3 +1171,236 @@ class TestToDictSchemaParity:
 
         extra = emitted - schema_keys
         assert not extra, f"to_dict() emits keys absent from config-schema.json: {sorted(extra)}"
+
+
+# BUG-3192 Guard 1 — value parity. Paths with no declared schema `default` are
+# skipped only via this explicit enumerated allowlist, never a silent KeyError
+# catch (measured 2026-08-15: exactly these seven).
+_SCHEMA_DEFAULT_ALLOWLIST = {
+    "commands.pre_implement",
+    "commands.post_implement",
+    "orchestration.host_cli",
+    "sync.github.label_mapping.BUG",
+    "sync.github.label_mapping.FEAT",
+    "sync.github.label_mapping.ENH",
+    "sync.github.label_mapping.EPIC",
+}
+
+# Sections that are template-derived (seeded from project scaffolding, not
+# schema defaults) or otherwise out of scope for schema-vs-code value parity.
+_SCHEMA_PARITY_EXCLUDED_SECTIONS = {"$schema", "project", "issues", "scan"}
+
+
+def _flatten_leaves(node: object, prefix: str = "") -> list[tuple[str, object]]:
+    """Flatten a nested dict into (dotted_path, leaf_value) pairs.
+
+    A non-empty dict recurses; an empty dict yields no leaves (nothing to
+    compare); any other value (including lists) is a leaf.
+    """
+    if isinstance(node, dict) and node:
+        leaves: list[tuple[str, object]] = []
+        for key, value in node.items():
+            path = f"{prefix}.{key}" if prefix else str(key)
+            leaves.extend(_flatten_leaves(value, path))
+        return leaves
+    if isinstance(node, dict):
+        return []
+    return [(prefix, node)]
+
+
+class TestSchemaValueParity:
+    """Guard 1 (BUG-3192): every to_dict() leaf must agree with schema_default().
+
+    Walks a config-less project's BRConfig(...).to_dict() output (NOT the repo
+    root — this repo's own .ll/ll-config.json sets analytics.enabled and
+    learning_tests.enabled to true, which would mask exactly the divergences
+    this guard exists to catch) and diffs every leaf against
+    config-schema.json's declared default for the same dotted path.
+    """
+
+    def test_to_dict_values_match_schema_defaults(self, temp_project_dir: Path) -> None:
+        from little_loops.init import core as core_mod
+
+        config = BRConfig(temp_project_dir).to_dict()
+        mismatches: list[str] = []
+        for section, value in config.items():
+            if section in _SCHEMA_PARITY_EXCLUDED_SECTIONS:
+                continue
+            for path, leaf in _flatten_leaves(value, section):
+                if path in _SCHEMA_DEFAULT_ALLOWLIST:
+                    continue
+                try:
+                    default = core_mod.schema_default(path)
+                except KeyError as exc:
+                    raise AssertionError(
+                        f"{path!r} has no schema default and is not in "
+                        f"_SCHEMA_DEFAULT_ALLOWLIST — add the property's default to "
+                        f"config-schema.json or add the path to the allowlist "
+                        f"(with justification): {exc}"
+                    ) from exc
+                if default != leaf:
+                    mismatches.append(f"{path}: to_dict={leaf!r} schema={default!r}")
+        assert not mismatches, "config-schema.json diverges from code:\n" + "\n".join(mismatches)
+
+    def test_guard_is_non_vacuous(self, temp_project_dir: Path, monkeypatch: object) -> None:
+        """Perturbing a schema default must make the guard fail (BUG-3192).
+
+        Proves this guard actually exercises schema_default() rather than
+        passing vacuously — e.g. from being run against a config that already
+        agrees with the schema on every path.
+        """
+        from little_loops.init import core as core_mod
+
+        original = core_mod.schema_default
+
+        def _perturbed(dotted_path: str) -> object:
+            if dotted_path == "events.socket.max_clients":
+                return -1
+            return original(dotted_path)
+
+        monkeypatch.setattr(core_mod, "schema_default", _perturbed)  # type: ignore[attr-defined]
+
+        config = BRConfig(temp_project_dir).to_dict()
+        mismatches: list[str] = []
+        for section, value in config.items():
+            if section in _SCHEMA_PARITY_EXCLUDED_SECTIONS:
+                continue
+            for path, leaf in _flatten_leaves(value, section):
+                if path in _SCHEMA_DEFAULT_ALLOWLIST:
+                    continue
+                default = core_mod.schema_default(path)
+                if default != leaf:
+                    mismatches.append(f"{path}: to_dict={leaf!r} schema={default!r}")
+        assert mismatches, "guard did not detect a deliberately perturbed schema default"
+
+
+# BUG-3192 Guard 2 — completeness. Maps every @dataclass config type in
+# config/features.py, config/automation.py, and config/core.py to the
+# top-level to_dict() section it feeds, or to None with a documented reason
+# when it is intentionally read outside BRConfig (so guard 1's to_dict() walk
+# can never see it). A dataclass missing from this map is the failure mode
+# guard 2 exists to catch: a newly added config dataclass silently escaping
+# guard 1's coverage.
+_DATACLASS_SECTION_MAP: dict[str, str | None] = {
+    "ProjectConfig": "project",
+    "CategoryConfig": "issues",
+    "DuplicateDetectionConfig": "issues",
+    "LinkEpicsConfig": "issues",
+    "NextIssueSortKey": "issues",
+    "NextIssueConfig": "issues",
+    "IssuesConfig": "issues",
+    "ScanConfig": "scan",
+    "DesignTokensConfig": "design_tokens",
+    "ArtifactsConfig": "artifacts",
+    "SprintsConfig": "sprints",
+    # Loaded directly by hooks/pre_compact.py from raw project config, not
+    # wired through BRConfig/to_dict() — intentionally outside guard 1's walk.
+    "RubricSignalsConfig": None,
+    "PreCompactRubricConfig": None,
+    "DiscoverabilityConfig": "learning_tests",
+    "LearningTestsConfig": "learning_tests",
+    "McpTransportPolicyConfig": "mcp",
+    "McpHttpBindConfig": "mcp",
+    "McpResourcesConfig": "mcp",
+    "McpConfig": "mcp",
+    "DecisionsConfig": "decisions",
+    "CompressionConfig": "compression",
+    "CacheConfig": "cache",
+    "DeferredToolsConfig": "deferred_tools",
+    "AnalyticsCaptureConfig": "analytics",
+    "LoopsGlyphsConfig": "loops",
+    "LoopRunDefaults": "loops",
+    "LoopsConfig": "loops",
+    "GitHubSyncConfig": "sync",
+    "SyncConfig": "sync",
+    "CodeQueryCodegraphConfig": "code_query",
+    "CodeQueryConfig": "code_query",
+    "TamperGuardConfig": "tamper_guard",
+    "SocketEventsConfig": "events",
+    "OTelEventsConfig": "events",
+    "OTelAttributesConfig": "observability",
+    "StreamingParityConfig": "observability",
+    "ObservabilityConfig": "observability",
+    "PrePatchCheckConfig": "prepatch_check",
+    "WebhookEventsConfig": "events",
+    "SqliteEventsConfig": "events",
+    "EventsConfig": "events",
+    "SessionDigestConfig": "history",
+    "AutomationPruningConfig": "history",
+    "EvolutionConfig": "history",
+    "GoNoGoConfig": "history",
+    "CaptureIssueConfig": "history",
+    "CompactionConfig": "history",
+    # Loaded directly by session_store/lifecycle.py from raw project config,
+    # not wired through BRConfig/to_dict() — intentionally outside guard 1's walk.
+    "RetentionConfig": None,
+    "HistoryConfig": "history",
+    "QueueConfig": "queue",
+    "AutomationConfig": "automation",
+    "EpicBranchesConfig": "parallel",
+    "ParallelAutomationConfig": "parallel",
+    "ConfidenceGateConfig": "commands",
+    "RateLimitsConfig": "commands",
+    "RecursiveRefineConfig": "commands",
+    "CommandsConfig": "commands",
+    "ScoringWeightsConfig": "dependency_mapping",
+    "DependencyMappingConfig": "dependency_mapping",
+}
+
+
+class TestDataclassSectionMapCompleteness:
+    """Guard 2 (BUG-3192): every config dataclass must appear in the map guard 1 walks.
+
+    Discovers @dataclass-decorated classes in the three config modules via
+    ast.walk (not import + inspect, so it also catches classes that never get
+    instantiated on any live code path) and asserts each has an entry in
+    _DATACLASS_SECTION_MAP above.
+    """
+
+    def _discover_dataclasses(self) -> set[str]:
+        import ast
+
+        names: set[str] = set()
+        for rel_path in (
+            "config/features.py",
+            "config/automation.py",
+            "config/core.py",
+        ):
+            path = PROJECT_ROOT / "scripts" / "little_loops" / rel_path
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.ClassDef):
+                    continue
+                for decorator in node.decorator_list:
+                    is_dataclass = (
+                        isinstance(decorator, ast.Name) and decorator.id == "dataclass"
+                    ) or (
+                        isinstance(decorator, ast.Call)
+                        and isinstance(decorator.func, ast.Name)
+                        and decorator.func.id == "dataclass"
+                    )
+                    if is_dataclass:
+                        names.add(node.name)
+                        break
+        return names
+
+    def test_every_dataclass_is_mapped(self) -> None:
+        discovered = self._discover_dataclasses()
+        unmapped = discovered - set(_DATACLASS_SECTION_MAP)
+        assert not unmapped, (
+            f"config dataclasses {sorted(unmapped)} are missing from "
+            f"_DATACLASS_SECTION_MAP in test_config_schema.py — add an entry mapping "
+            f"each to the to_dict() section it feeds, or to None with a comment "
+            f"explaining why it's read outside BRConfig"
+        )
+
+    def test_mapped_sections_are_real_schema_sections(self) -> None:
+        schema = json.loads(_load_schema_text())
+        schema_keys = set(schema["properties"].keys())
+        for dataclass_name, section in _DATACLASS_SECTION_MAP.items():
+            if section is None:
+                continue
+            assert section in schema_keys, (
+                f"_DATACLASS_SECTION_MAP maps {dataclass_name!r} to {section!r}, "
+                f"which is not a top-level config-schema.json section"
+            )

@@ -969,6 +969,7 @@ class BRConfig:
                     "sync_completed": self._sync.github.sync_completed,
                     "state_file": self._sync.github.state_file,
                     "pull_template": self._sync.github.pull_template,
+                    "pull_limit": self._sync.github.pull_limit,
                 },
             },
             "dependency_mapping": {

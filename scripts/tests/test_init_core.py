@@ -525,14 +525,14 @@ class TestBuildConfig:
         config = build_config(match, {"project_name": "my-app"})
         assert config["project"]["name"] == "my-app"
 
-    def test_learning_tests_enabled_by_default(
+    def test_learning_tests_disabled_by_default(
         self, fake_templates: Path, tmp_project: Path
     ) -> None:
         (tmp_project / "pyproject.toml").touch()
         match = detect_project_type(tmp_project, fake_templates)
         config = build_config(match)
         assert "learning_tests" in config
-        assert config["learning_tests"]["enabled"] is True
+        assert config["learning_tests"]["enabled"] is False
 
     def test_learning_tests_enabled_via_choice(
         self, fake_templates: Path, tmp_project: Path
@@ -542,12 +542,11 @@ class TestBuildConfig:
         config = build_config(match, {"learning_tests_enabled": True})
         assert config["learning_tests"]["enabled"] is True
 
-    def test_analytics_enabled_by_default(self, fake_templates: Path, tmp_project: Path) -> None:
+    def test_analytics_disabled_by_default(self, fake_templates: Path, tmp_project: Path) -> None:
         (tmp_project / "pyproject.toml").touch()
         match = detect_project_type(tmp_project, fake_templates)
         config = build_config(match)
-        assert config["analytics"]["enabled"] is True
-        assert "capture" in config["analytics"]
+        assert config["analytics"]["enabled"] is False
 
     def test_analytics_enabled_via_choice(self, fake_templates: Path, tmp_project: Path) -> None:
         (tmp_project / "pyproject.toml").touch()
@@ -3451,9 +3450,9 @@ class TestSchemaLoaderInWheelInstall:
             value = core_mod.schema_default("learning_tests.enabled")
         finally:
             core_mod._load_schema.cache_clear()
-        assert value is True, (
+        assert value is False, (
             f"schema_default('learning_tests.enabled') returned {value!r}; "
-            f"bundled schema default is True"
+            f"bundled schema default is False"
         )
 
     def test_schema_enum_returns_real_enum(self) -> None:

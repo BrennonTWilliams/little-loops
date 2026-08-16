@@ -180,7 +180,7 @@ class TestWheelSmoke:
             from little_loops.init import core as core_mod
             core_mod._load_schema.cache_clear()
             value = core_mod.schema_default("learning_tests.enabled")
-            assert value is True, f"unexpected default: {value!r}"
+            assert value is False, f"unexpected default: {value!r}"
             print("OK")
             """,
         )
