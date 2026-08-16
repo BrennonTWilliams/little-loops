@@ -45,6 +45,7 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -297,11 +298,23 @@ def git_grep_resolver(symbol: str, root: Path | None = None) -> bool:
     finding the issue's own text. It is also the bulk of the cost: the tracked
     markdown corpus dwarfs the source tree, and a definition can never live in
     it.
+
+    Results are memoized per ``(symbol, root)`` — a corpus sweep re-asks the
+    same hot symbols dozens of times (``run``, ``check_format_gaps``: 26 greps
+    apiece across ``.issues/``). Call :func:`reset_resolver_cache` in a
+    long-lived process that writes code between gate evaluations, where a
+    symbol answered ``False`` before it was implemented would otherwise stay
+    ``False``.
     """
     short = _short_symbol(symbol)
     if not short or not _IDENT.match(short):
         return False
-    cwd = root or Path.cwd()
+    return _resolve_short_symbol(short, root or Path.cwd())
+
+
+@lru_cache(maxsize=4096)
+def _resolve_short_symbol(short: str, cwd: Path) -> bool:
+    """Memoized body of :func:`git_grep_resolver`, keyed on the normalized symbol."""
     try:
         proc = subprocess.run(
             ["git", "grep", "-n", "-w", "--", short, "--", ":!*.md"],
@@ -321,6 +334,15 @@ def git_grep_resolver(symbol: str, root: Path | None = None) -> bool:
         if text.strip().startswith(openers):
             return True
     return False
+
+
+def reset_resolver_cache() -> None:
+    """Drop memoized :func:`git_grep_resolver` answers.
+
+    For processes that write source between gate evaluations; a read-only
+    analysis pass never needs it.
+    """
+    _resolve_short_symbol.cache_clear()
 
 
 def grade_program_design(body: str, resolver: Resolver) -> DesignVerdict:

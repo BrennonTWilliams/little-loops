@@ -10,7 +10,9 @@ from __future__ import annotations
 import os
 import subprocess
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -486,12 +488,53 @@ def _corpus_issues() -> list[Path]:
     return sorted(p for p in _CORPUS.rglob("*.md") if p.name[0].isupper() or "-" in p.name)
 
 
+@lru_cache(maxsize=1)
+def _corpus_ref_index() -> Any:
+    from little_loops.text_utils import build_ref_index
+
+    return build_ref_index(_REPO_ROOT)
+
+
+@lru_cache(maxsize=2)
+def _corpus_sweep(check_staleness: bool) -> tuple[tuple[Path, tuple[AxisCoverage, ...]], ...]:
+    """Triage every corpus issue once per predicate mode, memoized for the class.
+
+    All three gates below sweep the same corpus and differ only in what they
+    tally, so without this the identical ~1800 `git grep` subprocesses ran three
+    times over. `--dist loadfile` keeps the class on one xdist worker, so the
+    cache hits and the other workers stop waiting on it.
+    """
+    from little_loops.issues.research_triage import build_change_time_index
+
+    index = _corpus_ref_index()
+    # Floor-free (`since=None`) so one index answers every issue's refine
+    # timestamp; a floored index newer than an issue's own timestamp gets
+    # rebuilt per-issue inside `triage_research_axes`, which is the fan-out
+    # this shared build exists to avoid.
+    changes = build_change_time_index(_REPO_ROOT) if check_staleness else None
+    return tuple(
+        (
+            issue,
+            triage_research_axes(
+                issue,
+                _REPO_ROOT,
+                index=index,
+                change_times=changes,
+                check_staleness=check_staleness,
+            ),
+        )
+        for issue in _corpus_issues()
+    )
+
+
 # BUG-3056: each of these sweeps the whole .issues/ corpus, spawning a
-# `git grep` per Program Design symbol anchor -- ~121s apiece today, against
-# the suite-wide --timeout=120 in pyproject.toml. They were already crossing
-# that line intermittently (serial runs failed, parallel squeaked through),
-# and corpus growth only widens the gap. The work is legitimately slow, not
-# hung, so raise the ceiling for this class rather than lower the coverage.
+# `git grep` per Program Design symbol anchor. The suite-wide --timeout=120 in
+# pyproject.toml was already being crossed intermittently (serial runs failed,
+# parallel squeaked through), and corpus growth only widens the gap. Two
+# amortizations since brought it well under that -- `_corpus_sweep` collapses
+# three identical sweeps into one per mode, and `git_grep_resolver` memoizes
+# per symbol -- but the ceiling stays raised: the cost is proportional to a
+# corpus that only grows, and the work is legitimately slow rather than hung.
 @pytest.mark.timeout(600)
 @pytest.mark.slow
 class TestCorpusBaseline:
@@ -508,18 +551,12 @@ class TestCorpusBaseline:
     """
 
     def test_skips_at_least_twenty_percent_of_axis_spawns(self) -> None:
-        from little_loops.text_utils import build_ref_index
-
-        issues = _corpus_issues()
-        if len(issues) < 100:
+        if len(_corpus_issues()) < 100:
             pytest.skip("issue corpus not available in this checkout")
 
-        index = build_ref_index(_REPO_ROOT)
         covered = total = 0
-        for issue in issues:
-            for coverage in triage_research_axes(
-                issue, _REPO_ROOT, index=index, check_staleness=False
-            ):
+        for _issue, coverages in _corpus_sweep(check_staleness=False):
+            for coverage in coverages:
                 total += 1
                 covered += bool(coverage.covered)
 
@@ -533,46 +570,34 @@ class TestCorpusBaseline:
         reference form the corpus barely uses, which passed every unit test and
         would have skipped ~0.2% of spawns in production.
         """
-        from little_loops.issues.research_triage import build_change_time_index
-        from little_loops.text_utils import build_ref_index
-
-        issues = _corpus_issues()
-        if len(issues) < 100:
+        if len(_corpus_issues()) < 100:
             pytest.skip("issue corpus not available in this checkout")
 
-        index = build_ref_index(_REPO_ROOT)
-        changes = build_change_time_index(_REPO_ROOT)
         covered = total = 0
-        for issue in issues:
-            for coverage in triage_research_axes(
-                issue, _REPO_ROOT, index=index, change_times=changes
-            ):
+        for _issue, coverages in _corpus_sweep(check_staleness=True):
+            for coverage in coverages:
                 total += 1
                 covered += bool(coverage.covered)
 
+        assert total > 0
         assert covered / total >= 0.05, f"predicate near-inert at {covered / total:.1%}"
 
     def test_locator_coverage_is_length_neutral(self) -> None:
         """Locator coverage must not encode Integration Map size (≤15pt spread)."""
         from little_loops.issues.research_triage import qualified_ref_count
-        from little_loops.text_utils import build_ref_index
 
-        issues = _corpus_issues()
-        if len(issues) < 100:
+        if len(_corpus_issues()) < 100:
             pytest.skip("issue corpus not available in this checkout")
 
-        index = build_ref_index(_REPO_ROOT)
+        index = _corpus_ref_index()
         bands = ((1, 2), (3, 5), (6, 10), (11, 20), (21, 10**6))
         tallies: dict[tuple[int, int], list[int]] = {b: [0, 0] for b in bands}
-        for issue in issues:
+        for issue, coverages in _corpus_sweep(check_staleness=False):
             count = qualified_ref_count(issue, "locator", index=index)
             if count < 1:
                 continue
             band = next(b for b in bands if b[0] <= count <= b[1])
-            locator = _by_axis(
-                triage_research_axes(issue, _REPO_ROOT, index=index, check_staleness=False)
-            )["locator"]
-            tallies[band][0] += bool(locator.covered)
+            tallies[band][0] += bool(_by_axis(coverages)["locator"].covered)
             tallies[band][1] += 1
 
         rates = [hits / n for hits, n in tallies.values() if n >= 20]
