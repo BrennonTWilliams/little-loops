@@ -9,6 +9,9 @@ testable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-08-16'
 captured_at: '2026-08-16T02:10:18Z'
+relates_to:
+- ENH-3210
+decision_needed: false
 confidence_score: 95
 outcome_confidence: 82
 score_complexity: 22
@@ -70,7 +73,7 @@ Full site inventory:
 | `skills/audit-issue-conflicts/SKILL.md` | :205, :218, :252 |
 | `skills/wire-issue/SKILL.md` | :147-190 |
 | `skills/manage-issue/SKILL.md` | :110 (Phase 1.5, 3 agents; wait-prose at :116) |
-| `skills/go-no-go/SKILL.md` | :278 (**not** :174 — see below) |
+| `skills/go-no-go/SKILL.md` | :278 (:174 pending Key Decision 2 — see below) |
 | `commands/refine-issue.md` | :186 |
 | `commands/tradeoff-review-issues.md` | :81 |
 | `commands/manage-release.md` | :134 |
@@ -88,16 +91,20 @@ caveat under Tests.)
 precedent.** `go-no-go/SKILL.md` has *two* spawn sites, not one, and they are different
 cases:
 
-- `:174` — `run_in_background: true`, deliberate parallel fan-out. Genuinely exempt; the
-  sole entry in `SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST`.
+- `:174` — `run_in_background: true`, stated as a deliberate parallel fan-out; currently
+  the sole entry in `SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST`. Earlier drafts called this
+  "genuinely exempt". **That is now the open question in Key Decision 2** — the exemption
+  rests on backgrounding being required for a parallel fan-out, which step 1b denies.
 - `:278` — "Launch a **foreground** judge agent (no `run_in_background`) using the Agent
   tool." The stated intent is foreground, but the Agent tool **defaults to background**,
   so omitting the directive produces exactly the opposite of what the prose says. This
   is the bug verbatim, in the file cited as the precedent for exempting it.
 
-That partly settles the question Step 2 defers: `:174` stays `true`; `:278` takes an
-explicit `run_in_background: false`. Neither change touches the `true` allowlist
-(`go-no-go/SKILL.md` remains its sole member).
+That partly settles the question Step 2 defers: `:278` takes an explicit
+`run_in_background: false`. **Whether `:174` stays `true` is now an open blocking
+decision** — see **Key Decision 2**, which found that the "deliberate fan-out" exemption
+contradicts step 1b's own premise that a single-message fan-out is already concurrent
+under `false`. `:278`'s fix is unaffected either way.
 
 The Agent tool defaults to background, so under a headless `claude -p` turn (ll-auto,
 ll-parallel, ll-sprint, FSM prompt states) the parent turn can end with subagent results
@@ -161,6 +168,99 @@ test under Tests exists to close; it is the mechanical half of this route and is
 optional.
 
 
+## Key Decision 2 — UNRESOLVED (blocking): does `go-no-go:174` keep its `true`?
+
+**Contradiction found 2026-08-16, pre-implementation review. This issue currently asserts
+both halves and never reconciles them; the implementer has no basis to choose.**
+
+- **Step 1b's premise:** "'Parallel fan-out' is not a reason to background: multiple Agent
+  calls issued in a *single message* already run concurrently while still blocking the
+  turn," citing `decide-issue/SKILL.md:335` as the settling precedent. The issue applies
+  this to force `false` on five command-level fan-outs
+  (`scan-codebase`/`audit-architecture`/`manage-release`/`refine-issue`).
+- **The exemption:** `go-no-go/SKILL.md:174` keeps `run_in_background: true` as a
+  "deliberate parallel fan-out."
+
+But `:174` is *itself* a single-message multi-Agent fan-out — verbatim: "In a **single
+message**, launch both agents concurrently using the `Agent` tool with
+`run_in_background: true`." If step 1b's premise is true, the `true` there buys nothing
+that `false` would not also give, **and `:174` is a live instance of the exact defect this
+issue exists to fix**: two backgrounded agents whose only barrier is prose at `:274`
+("Wait until both background agents have completed and returned their full outputs"), in a
+skill driven headlessly by `ll-auto`. The issue names that prose-only pattern as "a weaker
+guarantee, not an enforcement" in the Summary, then exempts the site that has it.
+
+Two coherent resolutions; pick one before implementing (Option A recommended):
+
+> **Selected:** Option A — flip `:174` to `false`; the `true` allowlist becomes empty.
+
+**Option A: flip `:174` to `false`; the `true` allowlist becomes empty — RECOMMENDED.**
+Consistent with step 1b, removes the last prose-only barrier, and collapses the two-sided
+detector's assertion to the much stronger and simpler "every spawn site declares
+`run_in_background: false`" with no allowlist to maintain. Costs: it reverses a deliberate
+existing choice, so it needs a recorded rationale; `test_skill_run_in_background_true_inventory_pinned`
+changes from a set-equality check against `{"skills/go-no-go/SKILL.md"}` to an
+empty-set assertion (the constant and its message still get renamed per Tests § Widening);
+and `go-no-go`'s Step 3c wait-prose at `:274` should be folded into the `:174` sentence
+since it becomes redundant. If concurrency measurably regresses, that falsifies step 1b —
+in which case the five command fan-outs are also mis-specified and **(b)** is the correct
+answer for all of them.
+
+**Option B: keep `:174` at `true`.** Then step 1b's premise must be qualified rather than
+asserted flatly, and this issue must state the property `:174` gets from `true` that a
+single-message `false` fan-out does not — measured, not assumed. It must also state why
+the prose-only barrier at `:274` is acceptable there when the Summary rejects that same
+pattern everywhere else, and pair the carve-out with a mechanical backstop or an explicit
+accepted-risk note.
+
+Whichever is chosen, record it here the way Key Decision records route (a)/(b) — with the
+rejected option's reason — because the two-sided detector's allowlist shape depends on it.
+
+### Decision Rationale
+
+**Selected: Option A** — flip `go-no-go/SKILL.md:174` to `run_in_background: false`; the
+`true` allowlist becomes empty.
+
+Two independent codebase-evidence passes (`ll:codebase-pattern-finder`, one per option)
+converged on Option A:
+
+- **Pattern precedent (`decide-issue/SKILL.md:335`)** is structurally identical to
+  `go-no-go:174` — a single-message, multi-Agent fan-out — and already uses
+  `run_in_background: false` with an in-turn wait, not a separated prose-only barrier
+  like `go-no-go`'s `:174`/`:274` split. Option A brings the sole outlier into
+  conformance with the only other multi-agent fan-out site in the codebase.
+- **FEAT-3077 (done, 2026-08-08) is the prior decision on this exact line**, and its own
+  rationale undercuts Option B: it kept `true` because the carve-out was "latent, not
+  live" (unreachable under automation today, `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` never
+  reaches `/ll:go-no-go` via its CLI invocation path), and it explicitly states that under
+  the flag, `run_in_background: true` "would lose *concurrency*... not correctness" — i.e.
+  `true` was never claimed to provide a property `false` lacks, only that leaving it alone
+  cost nothing at the time. BUG-3209's Key Decision 2 reopens exactly this: step 1b's
+  premise (single-message fan-out is already concurrent under `false`) applies here as much
+  as it does to the five command fan-outs, and no functional-necessity evidence (timeout
+  avoidance, streaming/progress requirement, auth/isolation fix) was found tied to `true`
+  specifically at `:174` (BUG-1514's fix at this same file addressed `isolation: "worktree"`,
+  unrelated to backgrounding).
+- **Simplicity/testability**: Option A collapses
+  `test_skill_run_in_background_true_inventory_pinned`'s `SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST`
+  from a one-member set to an empty-set assertion — no allowlist to maintain, no per-site
+  exemption to justify to future readers.
+
+**Scoring summary** (Consistency / Simplicity / Testability / Risk, 0–3 each):
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+| --- | --- | --- | --- | --- | --- |
+| A (flip to `false`) | 3 | 3 | 3 | 2 | 11/12 |
+| B (keep `true`) | 1 | 2 | 2 | 1 | 6/12 |
+
+**Rejected: Option B** — keep `:174` at `true`. Rejected because its only supporting
+evidence (FEAT-3077) is a reachability argument, not a functional-necessity argument, and
+it is the sole precedent for itself in the codebase — the one structurally identical
+pattern elsewhere (`decide-issue:335`) already uses `false`. Per Implementation Step 2,
+`go-no-go`'s Step 3c wait-prose at `:274` is folded into the `:174` sentence since it
+becomes redundant once `:174` states `run_in_background: false` and waits in-turn like
+`decide-issue:335`/`:340`.
+
 ## Current Behavior
 
 Thirteen sites (inventory table in the Summary) — across `skills/**/*.md` and
@@ -202,6 +302,29 @@ guard against for Bash test runs; none of the thirteen sites has an equivalent g
 The `commands/` half of the scope is the higher-exposure half: `refine-issue`,
 `tradeoff-review-issues`, and `manage-release` are invoked from FSM prompt states and
 `ll-auto` runs far more often than the audit skills are.
+
+**Measured downstream evidence (2026-08-16) — this bug is the generator of ENH-3210's
+stale rows.** When a spawn is backgrounded and the parent turn ends, the process group is
+reaped before `SubagentStop` fires, so the `subagent_runs` row opened by `SubagentStart`
+is never closed and stays `running` forever. ENH-3210 catalogues that leak. The link is
+not theoretical: `.ll/history.db` currently holds 43 `running` rows, and the three newest
+are
+
+    2026-08-16T03:57:21Z  ll:codebase-locator
+    2026-08-16T03:57:30Z  ll:codebase-analyzer
+    2026-08-16T03:57:38Z  ll:codebase-pattern-finder
+
+— the three-agent fan-out `/ll:wire-issue` ran while wiring this very issue, orphaned.
+That is one of the thirteen sites producing an observable artifact of the defect within
+one day, which is a stronger reproduction than the Steps to Reproduce below. Consequences:
+
+- `relates_to: ENH-3210` (added to both issues).
+- **Sequence this issue before ENH-3210.** This one cuts the generation rate at the
+  source; ENH-3210 reconciles the existing backlog. Landing ENH-3210 first means it
+  reconciles against a population still growing underneath it.
+- Landing this issue does **not** make ENH-3210 unnecessary — the accumulated rows stay
+  `running` regardless, and backgrounded spawns remain legitimate under whichever
+  carve-outs survive Key Decision 2.
 
 ## Proposed Solution
 
@@ -322,11 +445,19 @@ one-member set.
   into a headless session's context is hook stdout (`session_start.py`'s
   `LLHookResult.stdout`) — there is no in-skill-markdown conditional-branching mechanism
   for this.
-- `test_skill_run_in_background_true_inventory_pinned`
-  (`scripts/tests/test_wiring_skills_and_commands.py:442`) enforces a set-equality
-  allowlist for `run_in_background: true` occurrences across `skills/*.md`, currently
+- `test_skill_run_in_background_true_inventory_pinned` enforces a set-equality allowlist
+  for `run_in_background: true` occurrences across `skills/*.md`, currently
   `{"skills/go-no-go/SKILL.md"}`. Adding `run_in_background: false` to the other named
-  files doesn't touch this test; changing go-no-go's carve-out status would.
+  files doesn't touch this test; changing go-no-go's carve-out status would — which
+  **Key Decision 2's resolution (a) does**.
+
+  **Line citations re-verified 2026-08-16 and drifted by 2-3 lines.** Actual anchors:
+  `SKILL_MIRRORS_MUST_MATCH_SOURCE` `:372`, `SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST`
+  **`:445`** (this issue cites `:442`/`:443` in several places),
+  `def test_skill_run_in_background_true_inventory_pinned` `:450`, the set-equality
+  assertion `:458`, the assertion message `:461`. All are named symbols, so the risk is
+  low — but re-anchor by symbol name at implementation rather than trusting any line
+  number in this issue.
 - Mirror-file drift: `skills/wire-issue/SKILL.md` has a test-guarded mirror
   (`SKILL_MIRRORS_MUST_MATCH_SOURCE`, same test file :372-394);
   `skills/audit-issue-conflicts` and `skills/confidence-check` have mirror files on disk
@@ -548,11 +679,15 @@ sweep is doc-only and breaks no assertion.
    Not `confidence-check`, which has no spawn site today.
 1b. The parallel fan-out sites take `false`, not `true`. `decide-issue/SKILL.md:335`
    establishes that a single-message multi-Agent spawn is already concurrent while
-   blocking; backgrounding is not required for parallelism.
-   `SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST` therefore stays `{"skills/go-no-go/SKILL.md"}`
-   and needs no edit — if the implementer concludes otherwise for any site, that is a new
-   carve-out requiring a recorded FEAT-3077-style rationale, not a silent allowlist
-   append.
+   blocking; backgrounding is not required for parallelism. If the implementer concludes
+   otherwise for any site, that is a new carve-out requiring a recorded FEAT-3077-style
+   rationale, not a silent allowlist append.
+
+   **This premise is exactly what Key Decision 2 turns on.** `go-no-go:174` is also a
+   single-message fan-out, so the allowlist's final contents follow from that decision:
+   empty under resolution (a), `{"skills/go-no-go/SKILL.md"}` under (b). Do not start
+   step 5 (the two-sided test) until Key Decision 2 is recorded — the allowlist shape is
+   its direct output.
 1c. **The added wording fits the 500-line `SKILL.md` cap** — `python -m pytest
    scripts/tests/test_enh494_skill_companions.py -v` passes. `skills/manage-issue/SKILL.md`
    is at 499 of 500 lines and `skills/wire-issue/SKILL.md` at 493 with three sites, so the
@@ -560,10 +695,12 @@ sweep is doc-only and breaks no assertion.
    added as new lines (see the measured table under Tests). Copying
    `decide-issue/SKILL.md:335`'s two-line directive-plus-wait-sentence verbatim into
    `manage-issue` breaks the cap.
-2. `go-no-go/SKILL.md:174`'s deliberate `true` fan-out is left unchanged and documented
-   in-place as an explicit carve-out. Its sibling at `:278` is **not** part of that
-   carve-out — it is fixed under step 1. The file remains the sole member of
-   `SKILL_RUN_IN_BACKGROUND_TRUE_ALLOWLIST`, so that test needs no edit.
+2. **Key Decision 2 is recorded** (with the rejected option's reason) before any edit to
+   `go-no-go/SKILL.md:174`. Under resolution (a) it flips to `false`, the allowlist becomes
+   empty, and the now-redundant Step 3c wait-prose at `:274` is folded into the `:174`
+   sentence. Under (b) it is left unchanged and documented in-place as an explicit
+   carve-out with the stated property `true` buys. Its sibling at `:278` is **not** part of
+   that carve-out under either resolution — it is fixed under step 1.
 3. Any wording reused from `skills/manage-issue/SKILL.md`'s "Headless-Safe Final Test
    Run" section preserves the exact strings pinned in `DOC_STRINGS_PRESENT`
    (`test_wiring_skills_and_commands.py` ~:202-203). When fixing `:110` in that same
@@ -713,6 +850,7 @@ Every headless invocation of the thirteen named sites is exposed; whether the re
 actually lost depends on whether the subagent outlives the parent turn's `result` event.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-08-16T04:47:54 - `d03fba4d-011e-4873-ac13-79314b2ef1a9.jsonl`
 - `/ll:wire-issue` - 2026-08-16T02:33:16 - `580ae8b9-3bf3-43a4-90b3-d6f005806398.jsonl`
 - `/ll:refine-issue` - 2026-08-16T02:20:15 - `8d69c317-1f3a-48ba-9c8b-3d56c7aebd08.jsonl`
 - `/ll:capture-issue` - 2026-08-16T02:10:51 - `3b0498bf-ef93-4aa9-88c2-660ecc956b99.jsonl`

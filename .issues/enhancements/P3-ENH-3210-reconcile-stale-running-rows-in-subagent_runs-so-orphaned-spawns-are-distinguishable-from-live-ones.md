@@ -11,6 +11,7 @@ discovered_date: '2026-08-16'
 captured_at: '2026-08-16T02:10:41Z'
 relates_to:
 - ENH-3211
+- BUG-3209
 confidence_score: 85
 outcome_confidence: 70
 score_complexity: 17
@@ -36,10 +37,31 @@ Live evidence from this repo's `.ll/history.db` (re-measured 2026-08-15):
     running   |   40      # oldest started 2026-07-21T02:34:49Z
                           # newest  started 2026-08-15T03:48:55Z
 
-Those 40 rows are indistinguishable from a genuinely in-flight agent, which makes any
-future consumer of this table (ENH-3211, FEAT-3183) report a false picture. Note the
-leak is slow, not ongoing at volume: `completed` grew by 18 between two measurements
-while `running` stayed flat at 40 — which is part of why this is P3.
+Those rows are indistinguishable from a genuinely in-flight agent, which makes any
+future consumer of this table (ENH-3211, FEAT-3183) report a false picture.
+
+**Correction 2026-08-16 — the "slow leak" premise is false, and the upstream cause is
+BUG-3209.** An earlier draft argued "the leak is slow, not ongoing at volume: `completed`
+grew by 18 between two measurements while `running` stayed flat at 40 — which is part of
+why this is P3." Re-measured 2026-08-16: **43 `running`** against 2,719 `completed`, i.e.
++3 in roughly one day, and the three newest rows are
+
+    2026-08-16T03:57:21Z  ll:codebase-locator
+    2026-08-16T03:57:30Z  ll:codebase-analyzer
+    2026-08-16T03:57:38Z  ll:codebase-pattern-finder
+
+— the three-agent fan-out `/ll:wire-issue` ran while wiring *these* issues. "Flat at 40"
+was a two-sample artifact taken across a quiet window, not a rate.
+
+Two consequences:
+
+- **BUG-3209 is the generator.** A backgrounded spawn whose parent turn ends is reaped by
+  `_kill_process_group()` before `SubagentStop` fires, so the row opened by
+  `SubagentStart` never closes. `relates_to: BUG-3209` added both ways. **Sequence
+  BUG-3209 first** — it cuts the rate at the source; this issue reconciles the backlog.
+  Reconciling against a population still growing underneath is the avoidable ordering.
+- **P3 still holds, but on the impact argument only** (nothing reads this table today),
+  not on the rate argument. Do not re-cite "the leak is slow" as justification.
 
 `_backfill_subagent_runs` (`writers.py:2063`) does not help: it is `INSERT OR IGNORE`,
 so it seeds missing rows but never corrects an existing stale one.
@@ -121,10 +143,21 @@ in flight are misclassified", Success Metrics).
 
 **Fix — a minimum row age on the primary branch, sharing the secondary branch's constant.**
 A `running` row is eligible only if `now - started_at` exceeds the same window used by the
-secondary branch (hours, not minutes). Use **one** module-level constant for both branches
-rather than a secondary-only guard; the two branches ask different questions of it (row age
-vs. parent quiet time) but the same value answers both, and a single constant is one thing to
-justify and one thing to tune.
+secondary branch. Use **one** module-level constant for both branches rather than a
+secondary-only guard; the two branches ask different questions of it (row age vs. parent
+quiet time) but the same value answers both, and a single constant is one thing to justify
+and one thing to tune.
+
+**The value is `6` hours — settled here, not left to the implementer.** Earlier drafts said
+only "hours, not minutes", which is not a number the step-5 tests can be written against.
+`STALE_SUBAGENT_MIN_AGE_SECONDS = 6 * 3600`. Justification: the ceiling on a plausible live
+subagent is the host's own kill path — `post_stream_close_grace_seconds` defaults to 300s
+(`config/automation.py:26`), so any spawn still genuinely in flight 6 hours later is
+already impossible under the process model. 6h is ~72× that ceiling, well past any
+`ll-parallel` worker's runtime, and costs nothing on the measured population: every one of
+the 24 primary-branch rows is ≥1 day old. Erring long is the sanctioned direction
+(under-reconciling is acceptable, misclassifying a live spawn is not), so a later tuning
+change should move it up, not down.
 
 This costs nothing on the measured population: all 24 primary-branch rows date from
 2026-07-21 to 2026-08-15, so coverage is unchanged at 24/40. It converts the branch from
@@ -189,6 +222,12 @@ crashed one. `sweep_stale_refs.handle()`'s own telemetry write confirms this
 (`trigger: "session_start"`). Any reconciliation hung off this intent inherits the same
 timing, not true session-end timing.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
+
+- Re-verified 2026-08-16 (codebase-analyzer): `subagent_runs` DDL (schema.py v28), `SubagentRun` dataclass (`history_reader.py:291`), `record_subagent_run_start`/`record_subagent_run_stop` (`writers.py:1800`/`:1855`), `_backfill_subagent_runs` (`writers.py:2063`), `sweep_stale_refs.handle()`'s two early returns (`:173-175`, `:194-196`), `hooks/__init__.py:72`'s `session_end`→`SessionStart` mapping, and `tool_events`'s index set (`idx_tool_events_agent`/`idx_tool_events_mcp_server`/`idx_tool_events_mcp_outcome`, still no `session_id` index) all match this issue's current draft exactly — zero drift despite `schema.py`/`history_reader.py` mtimes postdating the prior refine pass.
+
 ## Expected Behavior
 
 A `subagent_runs` row whose parent has demonstrably moved on and gone quiet (or whose
@@ -234,6 +273,43 @@ outer `except Exception` at `:207` is a backstop, not a substitute: it would swa
 stale-ref sweep along with the reconciliation.
 
 A test asserting reconciliation runs when `done_ids` is empty is the cheap way to pin this.
+
+**Decision 1b — the query runs inside a 15-second hook budget and must not be a
+per-row correlated subquery.** Found 2026-08-16, pre-implementation review; Decision 1
+picks the host but never states its cost ceiling.
+
+`hooks/hooks.json` runs the `session_end` intent as
+`bash ${CLAUDE_PLUGIN_ROOT}/hooks/adapters/claude-code/session-end.sh` under the
+`SessionStart` matcher with **`"timeout": 15`**. That budget is already shared with the
+full stale-ref sweep, which walks every open issue file — and step 2a deliberately puts
+reconciliation at the *front* of it, ahead of both early returns. Anything slow here
+delays session start on every session and risks the sweep being killed.
+
+Measured on this repo's live DB (2026-08-16):
+
+- the natural formulation — `WHERE (SELECT max(t.ts) FROM tool_events t WHERE
+  t.session_id = r.parent_session_id) <= r.started_at` — costs **0.32s** over 160,247
+  `tool_events` rows;
+- there is **no index on `tool_events(session_id)`**. The indexes that exist are
+  `idx_tool_events_agent`, `idx_tool_events_mcp_server`, `idx_tool_events_mcp_outcome`.
+  So each candidate row drives a full scan of the fastest-growing table in the DB.
+
+0.32s fits today and will not fit indefinitely. Two options; pick one and state it:
+
+- **(i) One `GROUP BY` pass, no index — preferred, and needs no schema change.** Compute
+  `SELECT session_id, max(ts) FROM tool_events GROUP BY session_id` once (or restricted to
+  the parent session IDs of `running` rows), join it against the candidate rows in Python,
+  and issue a single `UPDATE ... WHERE id IN (...)`. One scan per sweep instead of one per
+  row.
+- **(ii) Add `idx_tool_events_session`.** Faster and simpler to write, but it is a
+  `CREATE INDEX` migration. Scope Boundaries excludes "the schema" — that was written
+  about *columns*, so decide explicitly whether an index counts, rather than letting the
+  implementer read it either way.
+
+Either way, add a bound: if the candidate set is empty (the common case once the backlog
+is cleared), the sweep must do **no** `tool_events` work at all — check
+`SELECT 1 FROM subagent_runs WHERE status='running' LIMIT 1` first, using the existing
+`idx_subagent_status`.
 
 **Decision 2 — the status value: the literal `"orphaned"`.** `status` is a bare `TEXT`
 column with no CHECK constraint, matching the `session_lifecycle_events.event`
@@ -389,10 +465,36 @@ require a `subagent_runs` schema migration this issue's Scope Boundaries exclude
 `orphaned` value in the existing `status` field carries the whole signal.
 
 ### Signatures
-`_reconcile_stale_running(state: LoopState, persistence: StatePersistence, running_dir: Path, stem: str) -> LoopState`
 
-The mirror target above already establishes the parameter shape (state object,
-persistence handle, directory, key) this issue's session-liveness variant would adapt.
+**Corrected 2026-08-16.** This section previously gave only
+`_reconcile_stale_running(state: LoopState, persistence: StatePersistence, running_dir: Path, stem: str) -> LoopState`
+— which is the **FSM mirror target being copied from**, not anything this issue
+introduces. Its parameter shape (state object, persistence handle, directory, key) does
+not adapt to a SQL sweep and should not be read as a template. The signature this issue
+actually adds, in `session_store/writers.py`:
+
+```python
+STALE_SUBAGENT_MIN_AGE_SECONDS = 6 * 3600
+
+def reconcile_stale_subagent_runs(
+    db: Path | str,
+    *,
+    current_session_id: str | None,
+    min_age_seconds: int = STALE_SUBAGENT_MIN_AGE_SECONDS,
+    include_secondary: bool = False,
+) -> int:
+    """Mark orphaned `running` rows as `orphaned`. Returns rows updated.
+
+    Best-effort per the EPIC-1707 contract: catches `sqlite3.Error`, logs at
+    WARNING, never raises. `current_session_id=None` disables the
+    current-session exclusion (see Decision Rules § Nullable current-session ID).
+    `include_secondary` gates the optional later-activity branch.
+    """
+```
+
+`_reconcile_stale_running` (`fsm/persistence.py:243`) remains the **precedent for the
+guard structure** — first-guard on non-`running` status, "no signal → leave alone" — and
+is listed under Dependent Files (Precedent to Mirror) for that reason only.
 
 ### Call Path
 `SessionStart` host event `->` `hooks/__init__.py` dispatch of the `session_end` intent
@@ -420,9 +522,24 @@ for rows passing the later-parent-activity (or age-fallback) test.
   automation stack is built around. See Summary § Correction 2026-08-16.
 
 - **Shared constant.** The minimum-age window (primary, condition iii) and the quiet-period
-  window (secondary, condition ii) are one module-level constant, not two. Both are asking
-  "has enough time passed that a live spawn is implausible?"; splitting them doubles the
-  tuning surface for no gain.
+  window (secondary, condition ii) are one module-level constant, not two — value settled
+  at **6 hours** (`STALE_SUBAGENT_MIN_AGE_SECONDS = 6 * 3600`, see Summary § Fix). Both are
+  asking "has enough time passed that a live spawn is implausible?"; splitting them doubles
+  the tuning surface for no gain.
+- **Nullable current-session ID.** `event.session_id` is `str | None`
+  (`hooks/types.py:44`; the host does not always supply it). The "not the
+  currently-executing session" condition therefore has an undefined case. Rule: when it is
+  `None`, apply **no** exclusion and rely on the age guard alone — which is safe, because a
+  row young enough for the current-session check to matter is already excluded by the 6h
+  window. Do **not** skip the whole sweep on a `None` session ID; that would silently
+  disable reconciliation on any host that omits the field.
+- **NULL-safe comparison.** `max(ts) <= started_at` evaluates to NULL — i.e. neither branch
+  matches — when the parent has **no** `tool_events` at all. That is 0 of 43 `running` rows
+  today (though 67 `completed` rows are in that state), so it is latent rather than live,
+  but a parent that never recorded a single tool event is the *most* orphaned case, not the
+  least. Either `COALESCE` the subquery to `''` so those rows take the primary branch, or
+  state deliberately that no-`tool_events` rows are left alone. Do not leave it to SQL's
+  NULL semantics by accident.
 - **Secondary signal — later parent activity AND a quiet period.** All three must hold:
   (i) `max(ts)` is later than `started_at`; (ii) that `max(ts)` is itself older than the
   quiet-period window; (iii) `parent_session_id` is not the currently-executing session.
@@ -460,10 +577,14 @@ for rows passing the later-parent-activity (or age-fallback) test.
 ## Impact
 
 - **Priority**: P3 — telemetry accuracy only; nothing in the product reads this table
-  today (ENH-3211 and FEAT-3183 will). The leak is slow: 40 stale rows accumulated since
-  2026-07-21 and did not grow across two measurements while `completed` gained 18.
+  today (ENH-3211 and FEAT-3183 will). **The rating rests on that impact argument alone.**
+  The "leak is slow" justification is withdrawn — re-measured 2026-08-16 at 43 `running`
+  (from 40), +3 in a day, all three from a single BUG-3209 spawn site. See Summary
+  § Correction.
 - **Effort**: Small — one writer function plus a call from an existing sweep that already
-  writes. No schema migration (Decision 3), no new connection plumbing (Decision 1).
+  writes. No schema migration (Decision 3), no new connection plumbing (Decision 1). The
+  one non-obvious constraint is the 15s hook budget and the missing
+  `tool_events(session_id)` index (Decision 1b), which shapes how the query is written.
 - **Risk**: Medium (raised from Low 2026-08-16). The status value is additive on a
   CHECK-free TEXT column, and "no
   evidence → leave alone" means the intended failure mode is under-reconciling. **Both**
@@ -498,9 +619,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Current Pain Point
 
-40 `subagent_runs` rows in this repo's `.ll/history.db` are stuck `running` (oldest
-since 2026-07-21T02:34:49Z) because their `SubagentStop` hook never fired — the parent process
-group was reaped by `_kill_process_group()` first. `_backfill_subagent_runs()`
+43 `subagent_runs` rows in this repo's `.ll/history.db` are stuck `running` (oldest since
+2026-07-21T02:34:49Z, newest 2026-08-16T03:57:38Z) because their `SubagentStop` hook never
+fired — the parent process group was reaped by `_kill_process_group()` first. The spawn
+sites that produce them are catalogued in BUG-3209. `_backfill_subagent_runs()`
 (`writers.py:2063`) cannot fix this: it is `INSERT OR IGNORE`, so it only seeds rows
 that are missing entirely, never corrects one that already exists.
 
@@ -568,11 +690,28 @@ statuses without a code change).
    investigated and closed 2026-08-15: 0 of 40 rows lack `tool_events` (so nothing falls
    through to age), and `agent_transcript_path` is a pure Stop-hook proxy carrying no
    information beyond `status`. See Summary § Third signal.
-2. A reconciliation writer exists in `session_store/writers.py`, called from
+1c. **The shared window is 6 hours** (`STALE_SUBAGENT_MIN_AGE_SECONDS = 6 * 3600`), not an
+   implementer choice — the step-5 negative tests are written against this number. See
+   Summary § Fix for the derivation from `post_stream_close_grace_seconds`.
+2. A reconciliation writer exists in `session_store/writers.py`
+   (`reconcile_stale_subagent_runs`, signature under Program Design), called from
    `hooks/sweep_stale_refs.py`'s existing `session_end`-intent sweep, following the
    two-layer best-effort shape (`try/except sqlite3.Error` in the writer, never raise;
    hook handler returns `LLHookResult(exit_code=0)` regardless) every other
    `subagent_runs` writer already uses.
+
+2b. **It fits the 15-second hook budget.** The `session_end` intent runs under
+   `hooks/hooks.json`'s `SessionStart` matcher with `"timeout": 15`, shared with the full
+   stale-ref sweep. Per Decision 1b: short-circuit on an empty candidate set before
+   touching `tool_events` (using `idx_subagent_status`), and use a single `GROUP BY
+   session_id` pass rather than a per-row correlated subquery — there is **no index on
+   `tool_events(session_id)`**, so the natural formulation full-scans 160k+ rows per
+   candidate (measured 0.32s today, growing). If option (ii) is chosen instead, the
+   `CREATE INDEX` must be reconciled against Scope Boundaries explicitly.
+
+2c. `event.session_id` may be `None`; that disables the current-session exclusion and
+   nothing else (Decision Rules). The NULL-vs-no-`tool_events` case is resolved explicitly
+   rather than left to SQL's NULL semantics.
 
 2a. **The call sits near the top of `handle()`'s `try`, ahead of both early returns**
    (`:173-175` `if not done_ids`, `:194-196` `if not all_findings`), in its own
@@ -610,8 +749,12 @@ statuses without a code change).
    - **a placement test:** with `done_ids` empty (so `handle()` returns at `:175`) and with
      no stale findings (so it returns at `:196`), an eligible row is still reconciled —
      proving the call is ahead of both early returns (step 2a);
+   - a test that `current_session_id=None` does not disable reconciliation (it only drops
+     the current-session exclusion) — the nullable-`event.session_id` case;
    - an idempotency test asserting a second sweep is a no-op;
-   - a test that `completed`/terminal rows are never touched.
+   - a test that `completed`/terminal rows are never touched;
+   - a test that with **zero** `running` rows the sweep issues no `tool_events` query at
+     all (step 2b's short-circuit) — the cheap guard on the 15s hook budget.
 6. Running the sweep against this repo's own `.ll/history.db` reclassifies **at least the
    primary-branch rows** and leaves `completed` unchanged — the concrete success check.
    Recompute both branch counts at implementation time rather than asserting the
@@ -663,6 +806,8 @@ _Added by `/ll:confidence-check` on 2026-08-15_
   design, and the DB moves (17/23 → 16/24 in under a day).
 
 ## Session Log
+- `/ll:decide-issue` - 2026-08-16T04:51:02 - `3da23951-99b8-442f-b7db-c8c9c673c9c0.jsonl`
+- `/ll:refine-issue` - 2026-08-16T04:49:44 - `3da23951-99b8-442f-b7db-c8c9c673c9c0.jsonl`
 - `/ll:confidence-check` - 2026-08-16T02:38:24 - `b3e5e9f8-dedd-44cd-94d8-d1536fb44209.jsonl`
 - `/ll:wire-issue` - 2026-08-16T02:33:16 - `580ae8b9-3bf3-43a4-90b3-d6f005806398.jsonl`
 - `/ll:refine-issue` - 2026-08-16T02:22:53 - `8d69c317-1f3a-48ba-9c8b-3d56c7aebd08.jsonl`

@@ -9,6 +9,7 @@ testable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 captured_at: '2026-08-15T18:44:20Z'
+decision_needed: false
 ---
 
 # BUG-3196: ll-harness dsl never compares against a task's expected: values — a flagless run reports a 100% pass rate unconditionally
@@ -706,6 +707,18 @@ the prose Expected Behavior does not give those individual pass/fail boundaries.
   Pre-fix rows keep their old semantics, so any analysis spanning the fix boundary is mixing
   two definitions of `exit_code` *and* two row counts per DSL task.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
+
+### Conventions in Force (codebase-pattern-finder, ll:refine-issue --auto)
+
+- **JSON recovery from LLM stdout is not a solved primitive in this codebase** — two existing extractors handle adjacent but different shapes, neither is "fenced ```json block OR balanced-brace span, recovering an arbitrary object." `extract_tagged_json(raw, tag)` (`scripts/little_loops/output_parsing.py:27`) expects a `TAG:`-prefixed line and does bounded bracket/brace repair; `_extract_tagged_structured_output(text)` (`scripts/little_loops/fsm/evaluators.py:118`) strips a fenced ```` ```json ```` block then mines `<verdict>`/`<confidence>`/`<reason>`/`<evidence>` XML-style tags. `_extract_answer_object` is a genuinely new third shape — there is no existing helper to consolidate onto.
+- **Small outcome-classification enums are plain `Enum` with string values** — precedented directly in `scripts/little_loops/issue_lifecycle.py`: `DeferBy` (`:58`), `DeferReason` (`:65`), `ClosureReason` (`:96`), `CompletionResult` (`:121`), `FailureType` (`:141`). `CompletionResult`'s docstring (`:124`) states the house rule explicitly: plain `Enum`, not `StrEnum` — a repo-wide grep found zero `StrEnum` usages in `scripts/little_loops/`. `GradeStatus` as specified already matches this.
+- **Contested**: whether the paired result dataclass should be `frozen=True`. The closest local precedents are both mutable: `issue_lifecycle.py`'s `_PreflightResult` (`:477`, paired with the enums above) and `harness.py`'s own `DslTask` (`:162`) are plain `@dataclass`, not frozen. There is no existing frozen-dataclass-paired-with-outcome-enum example in this codebase to point to either way — `ExpectedGrade`'s `frozen=True` is a deviation from, not a continuation of, the two closest local precedents.
+- **Optional/None-returning safe YAML loading on parse failure is a strong, repeated house convention** — `try: yaml.safe_load(...) except yaml.YAMLError: <None/{}/fallback>` then an `isinstance(..., dict)` type-gate recurs at `frontmatter.py:394-397` and `:150-157`, `doc_counts.py:312-315`, `cli/logs.py:929-932,957-960`, `cli/verify_triggers.py:270-273,339-342`, `adapters/core.py:96-100` (closest shape match: `except yaml.YAMLError: return None` then `return fm if isinstance(fm, dict) else None`), `adapters/codex.py:51-54,134-137,213-215`, `config/core.py:83-87`, `goals_parser.py:133-136`, `cli/history_context.py:117-120`. `cmd_dsl`'s current task-loading (`harness.py:711`, `data = yaml.safe_load(f)`) is unguarded and does not follow this convention — that gap is exactly what `_load_task` closes.
+- **Testing convention**: pure helper functions get direct unit tests in a `TestXxx` class per function/feature area with hand-built input strings, no CLI/subprocess mocking — see `class TestExtractTaggedJson` (`test_output_parsing.py:1027`), including edge-case tests like `test_repairs_missing_closing_bracket`/`test_repairs_missing_closing_brace` (`:1042`, `:1052`). CLI-level plumbing (`cmd_dsl` calling `_evaluate_and_report` with `expected_grade`) is tested by mocking `subprocess.run`/`resolve_host` and asserting on return code + `capsys` output, per the existing `TestCmdDsl` class (`test_cli_harness.py:1019`) this issue's tests extend. Both layers apply here: new pure functions get `TestXxx`-per-function unit tests; the `cmd_dsl` rewrite extends the existing mocked-subprocess integration tests.
+
 ## Implementation Steps
 
 0. **DONE** — ENH-3185 committed as `dea24aac` (issue status `done`), so the
@@ -721,14 +734,17 @@ the prose Expected Behavior does not give those individual pass/fail boundaries.
 3. Add the keyword-only `expected_grade` parameter to `_evaluate_and_report` and thread it
    into `passed`, the status block, and the JSON payload.
 4. Rewrite `cmd_dsl`'s per-task loop per the call path above, including the corrected
-   `_record_harness_event` arguments (keeping ENH-3185's abstain-aware `semantic_passed`)
-   and the graded / ungraded / abstained / unparseable tallies.
+   `_record_harness_event` arguments (keeping ENH-3185's abstain-aware `semantic_passed`,
+   and passing the real `result.timed_out` per AC10a) and the graded / ungraded /
+   abstained / errored / unparseable / malformed tallies.
 5. Add the `ungraded_count == total` guard **ahead of** ENH-3185's existing
-   `ci_total == 0` abstain branch, wire the exit-code precedence table, and add the
-   aggregate-row `UPDATE`.
+   `ci_total == 0` abstain branch, split that branch so `errored_count > 0` reports `2`
+   before the abstain message is reached (and without using the word "abstained", which
+   `test_cmd_dsl_all_abstain_excludes_from_ci_and_exits_3` asserts on), wire the exit-code
+   precedence table, and add the aggregate-row `UPDATE`.
 6. Update the existing `TestCmdDsl` tests for the shared-fixture regression noted in the
-   Integration Map, then extend the class to cover acceptance criteria 1-13 (including 2b
-   and 5b).
+   Integration Map, then extend the class to cover acceptance criteria 1-13 (including 2b,
+   5b, 5c, 5d, 5e, and 10a).
 7. Update `EVALUATION_GUIDE.md` (remove the gotcha, refresh the sample output), `CLI.md`, and
    the `create-eval-from-issues` SKILL schema note.
 8. `python -m pytest scripts/tests/`, `ruff check scripts/`, `python -m mypy
@@ -769,3 +785,8 @@ the prose Expected Behavior does not give those individual pass/fail boundaries.
 ## Status
 
 **Open** | Created: 2026-08-15 | Priority: P2
+
+
+## Session Log
+- `/ll:decide-issue` - 2026-08-16T04:51:40 - `cc7f1236-7d7a-4f5c-962b-052b11db8a39.jsonl`
+- `/ll:refine-issue` - 2026-08-16T04:48:41 - `cc7f1236-7d7a-4f5c-962b-052b11db8a39.jsonl`
