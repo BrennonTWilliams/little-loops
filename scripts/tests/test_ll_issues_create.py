@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import re
 import sys
 import threading
 from pathlib import Path
@@ -13,7 +14,7 @@ from unittest.mock import patch
 
 import pytest
 
-from little_loops.cli.issues.create import IssueSpec, create_issue
+from little_loops.cli.issues.create import IssueSpec, create_issue, render_issue_preview
 from little_loops.config import BRConfig
 from little_loops.frontmatter import parse_frontmatter
 
@@ -140,6 +141,141 @@ class TestCreateIssue:
         config = _config(project)
         with pytest.raises(ValueError):
             create_issue(config, IssueSpec(type="TASK", title="Bad type"))
+
+
+class TestFullBodyMerge:
+    """BUG-3193: a sectioned body must merge, not duplicate the scaffold."""
+
+    def _headings(self, body: str) -> list[str]:
+        return re.findall(r"^##\s+(.+)$", body, re.MULTILINE)
+
+    def test_no_duplicate_headings_for_sectioned_body(self, project: Path) -> None:
+        config = _config(project)
+        body = (
+            "## Summary\n\nReal summary text.\n\n"
+            "## Current Behavior\n\nActual current behavior.\n\n"
+            "## Status\n\n**Open** | Created: 2020-01-01 | Priority: P1\n"
+        )
+        created = create_issue(config, IssueSpec(type="BUG", title="Sectioned", body=body))
+        content = created.path.read_text(encoding="utf-8")
+        headings = self._headings(content)
+        assert headings.count("Summary") == 1
+        assert "Real summary text." in content
+        assert "Actual current behavior." in content
+
+    def test_plain_prose_body_unaffected(self, project: Path) -> None:
+        config = _config(project)
+        created = create_issue(
+            config, IssueSpec(type="BUG", title="Plain prose", body="Just some prose text.")
+        )
+        content = created.path.read_text(encoding="utf-8")
+        assert "Just some prose text." in content
+        # Still the old Summary-only scaffold shape.
+        assert content.count("## Summary") == 1
+        assert "## Current Behavior" in content
+
+    def test_fenced_heading_quote_not_misrouted(self, project: Path) -> None:
+        config = _config(project)
+        body = (
+            "Some prose quoting the template:\n\n"
+            "```\n## Current Behavior\n## Status\n```\n\nno real sections here.\n"
+        )
+        created = create_issue(config, IssueSpec(type="BUG", title="Fence quote", body=body))
+        content = created.path.read_text(encoding="utf-8")
+        # Falls through to the plain-prose scaffold path: the placeholder text still
+        # fires (proving no merge occurred), and the fenced quote is preserved verbatim
+        # as part of the caller's Summary text, not treated as a real heading.
+        assert "[If applicable" in content
+        assert "no real sections here." in content
+        assert content.count("## Summary") == 1
+
+    def test_no_section_dropped_outside_variant(self, project: Path) -> None:
+        config = _config(project)
+        body = (
+            "## Summary\n\nSummary text.\n\n"
+            "## Steps to Reproduce\n\nStep one.\n\n"
+            "## Program Design\n\nDesign notes.\n\n"
+            "## Related Key Documentation\n\n- some doc\n\n"
+            "## Status\n\n**Open** | Created: 2020-01-01 | Priority: P1\n"
+        )
+        created = create_issue(config, IssueSpec(type="BUG", title="No drop", body=body))
+        content = created.path.read_text(encoding="utf-8")
+        for heading in ("Steps to Reproduce", "Program Design", "Related Key Documentation"):
+            assert f"## {heading}" in content
+        assert "Step one." in content
+        assert "Design notes." in content
+        assert "- some doc" in content
+
+    def test_unsupplied_variant_sections_keep_placeholder(self, project: Path) -> None:
+        config = _config(project)
+        body = "## Summary\n\nSummary text.\n\n## Current Behavior\n\nBehavior text.\n"
+        created = create_issue(config, IssueSpec(type="BUG", title="Placeholders", body=body))
+        content = created.path.read_text(encoding="utf-8")
+        assert "[What should happen instead]" in content  # Expected Behavior placeholder
+        assert "**Priority**: [P0-P5]" in content  # Impact placeholder
+
+    def test_leading_h1_not_doubled(self, project: Path) -> None:
+        config = _config(project)
+        body = "# Some caller title\n\n## Summary\n\nSummary text.\n\n## Status\n\n**Open**\n"
+        created = create_issue(config, IssueSpec(type="BUG", title="H1 test", body=body))
+        content = created.path.read_text(encoding="utf-8")
+        assert content.count("Some caller title") == 0
+        assert re.search(r"^# BUG-\d+: H1 test$", content, re.MULTILINE)
+
+    def test_preamble_folded_into_summary(self, project: Path) -> None:
+        config = _config(project)
+        body = "Leading prose before the first heading.\n\n## Summary\n\nReal summary.\n"
+        created = create_issue(config, IssueSpec(type="BUG", title="Preamble", body=body))
+        content = created.path.read_text(encoding="utf-8")
+        assert "Leading prose before the first heading." in content
+        assert "Real summary." in content
+
+    def test_caller_status_does_not_lose_generated_footer(self, project: Path) -> None:
+        config = _config(project)
+        body = "## Summary\n\nText.\n\n## Status\n\n**Open** | Created: 2019-01-01 | Priority: P5\n"
+        created = create_issue(config, IssueSpec(type="BUG", title="Status regen", body=body))
+        content = created.path.read_text(encoding="utf-8")
+        assert "2019-01-01" not in content
+        assert re.search(r"\*\*Open\*\* \| Created: \d{4}-\d{2}-\d{2} \| Priority: P2", content)
+
+    def test_status_is_last_heading(self, project: Path) -> None:
+        config = _config(project)
+        body = (
+            "## Summary\n\nText.\n\n## Steps to Reproduce\n\nStep.\n\n"
+            "## Related Key Documentation\n\n- doc\n\n## Status\n\n**Open**\n"
+        )
+        created = create_issue(config, IssueSpec(type="BUG", title="Status last", body=body))
+        headings = self._headings(created.path.read_text(encoding="utf-8"))
+        assert headings[-1] == "Status"
+
+    def test_caller_session_log_not_duplicated(self, project: Path) -> None:
+        config = _config(project)
+        body = "## Summary\n\nText.\n\n## Session Log\n\n- caller entry\n\n## Status\n\n**Open**\n"
+        created = create_issue(config, IssueSpec(type="BUG", title="Session log", body=body))
+        content = created.path.read_text(encoding="utf-8")
+        assert content.count("## Session Log") == 0
+        assert "caller entry" not in content
+
+    def test_body_opening_with_frontmatter_rejected(self, project: Path) -> None:
+        config = _config(project)
+        body = "---\nid: BUG-1\n---\n\nbody text\n"
+        with pytest.raises(ValueError, match="frontmatter"):
+            create_issue(config, IssueSpec(type="BUG", title="Bad body", body=body))
+
+    def test_preview_and_apply_produce_identical_bodies(self, project: Path) -> None:
+        from datetime import UTC, datetime
+
+        config = _config(project)
+        body = "## Summary\n\nText.\n\n## Current Behavior\n\nBehavior.\n\n## Status\n\n**Open**\n"
+        spec = IssueSpec(type="BUG", title="Parity", body=body)
+        now = datetime(2026, 1, 1, tzinfo=UTC)
+
+        preview = render_issue_preview(config, spec, now=now)["rendered_body"]
+        created = create_issue(config, spec, now=now)
+        applied = created.path.read_text(encoding="utf-8")
+
+        # Only the allocated id (vs. ID_PLACEHOLDER) legitimately differs.
+        assert applied == preview.replace("<assigned-at-apply>", created.id)
 
 
 class TestConcurrentCreate:

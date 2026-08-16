@@ -4,7 +4,7 @@ type: BUG
 title: ll-issues create appends a duplicate empty template scaffold whenever body
   is a full sectioned markdown document
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
 testable: true
@@ -12,6 +12,7 @@ decision_needed: false
 depends_on:
 - BUG-3202
 captured_at: '2026-08-15T18:16:50Z'
+completed_at: '2026-08-16T02:35:44Z'
 confidence_score: 95
 outcome_confidence: 75
 score_complexity: 14
@@ -423,33 +424,33 @@ _Added by `/ll:refine-issue` — 2026-08-15 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] A sectioned body passed through `--body-file` produces exactly one copy of each
+- [x] A sectioned body passed through `--body-file` produces exactly one copy of each
       section — no placeholder scaffold appended after the caller's real sections.
-- [ ] The caller's `## Summary` heading is not doubled in the full-body case.
-- [ ] A plain-prose body (no `##` lines) still produces today's scaffold, unchanged. Pin
+- [x] The caller's `## Summary` heading is not doubled in the full-body case.
+- [x] A plain-prose body (no `##` lines) still produces today's scaffold, unchanged. Pin
       this explicitly — it is `scaffold_epic`'s child path and the `--body-file` contract
       documented at `docs/reference/CLI.md:1584`.
-- [ ] A body that merely *quotes* a fenced block containing `##`-shaped lines is treated
+- [x] A body that merely *quotes* a fenced block containing `##`-shaped lines is treated
       as prose, not misrouted as a full body.
-- [ ] **No section is dropped.** A body carrying sections outside the resolved variant's
+- [x] **No section is dropped.** A body carrying sections outside the resolved variant's
       `include_common` list (`Steps to Reproduce`, `Program Design`, `Root Cause`,
       `Related Key Documentation`) has all of them present in the rendered output. This is
       the failure mode of the naive `content`-map fill — pin it with a test that counts
       the caller's H2s in the output, not just a substring check.
-- [ ] Variant sections the caller did *not* supply still get their `creation_template`
+- [x] Variant sections the caller did *not* supply still get their `creation_template`
       placeholder, so a full-body issue does not immediately trip `format-check`'s
       `missing:` gaps.
-- [ ] A body carrying its own `# <ID>: <title>` H1 does not produce a doubled title
+- [x] A body carrying its own `# <ID>: <title>` H1 does not produce a doubled title
       heading.
-- [ ] **Preamble is preserved.** A body whose first `##` heading is preceded by prose (a
+- [x] **Preamble is preserved.** A body whose first `##` heading is preceded by prose (a
       lead paragraph or an `_Added by …_` marker) retains that text in the rendered output.
       Pin the chosen destination — folded into `Summary`, or emitted between the title and
       the first section.
-- [ ] **A caller-supplied `## Status` does not lose the generated footer.** Either the
+- [x] **A caller-supplied `## Status` does not lose the generated footer.** Either the
       rendered output carries a regenerated `**Open** | Created: <today> | Priority: <P>`
       line, or the chosen caller-wins behavior is documented explicitly in the
       `--body-file` help text.
-- [ ] **Section order follows the pinned interleaving rule** (see the Correction above):
+- [x] **Section order follows the pinned interleaving rule** (see the Correction above):
       `common_sections` order, with caller-supplied type sections and unknown headings
       inserted before `Related Key Documentation`/`Labels`/`Session Log`/`Status` — not
       appended after the footer. Scoped to full-body merge output (the `minimal` default
@@ -458,19 +459,52 @@ _Added by `/ll:refine-issue` — 2026-08-15 — based on codebase analysis:_
       second-to-last **when a Session Log section is present** — this is what catches the
       naive "append at end" implementation, which otherwise passes every other criterion
       here.
-- [ ] **A caller-supplied `## Session Log` does not duplicate the generated one**, and
+- [x] **A caller-supplied `## Session Log` does not duplicate the generated one**, and
       `session_log.append_session_log_entry` on the resulting file inserts into the real section.
-- [ ] A body opening with a `---` frontmatter block is rejected with a clear error rather
+- [x] A body opening with a `---` frontmatter block is rejected with a clear error rather
       than concatenated into a two-frontmatter file.
-- [ ] `render_issue_preview()` and `create_issue()` produce identical bodies for the same
+- [x] `render_issue_preview()` and `create_issue()` produce identical bodies for the same
       `IssueSpec` — the dry-run and apply paths must not diverge.
-- [ ] `ll-issues format-check` on an issue created from a full sectioned body reports no
+- [x] `ll-issues format-check` on an issue created from a full sectioned body reports no
       `empty:`/`boilerplate:` gaps for sections the caller actually wrote.
-- [ ] `--body-file`'s argparse help string (`cli/issues/create.py:306-309`) and
+- [x] `--body-file`'s argparse help string (`cli/issues/create.py:306-309`) and
       `docs/reference/CLI.md:1584` describe the chosen contract; if Option 2 is taken,
       `IssueSpec`'s field list in `docs/reference/API.md` gains `body_mode` and the
       generated skill mirrors (`.gemini/`, `.kimi-code/`, `.qwen/`) are regenerated.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `python -m pytest scripts/tests/` exits 0.
+
+## Resolution
+
+Implemented Option 1b (detect and merge) exactly as pinned in the Decision section.
+`_render_issue_content` (`scripts/little_loops/cli/issues/create.py`) now detects a
+full-body via `_is_full_body` (fence-aware, matches against the resolved variant's
+`include_common` names) and, on a match, routes through `_parse_full_body` →
+`_merge_full_body_content` → `_assemble_full_body` instead of the old
+`content = {"Summary": spec.body}` single-slot mapping. Plain-prose bodies (the common
+case, and `scaffold_epic`'s child path) are untouched — same code path as before.
+
+Key implementation notes:
+- `## Status` and `## Session Log` are exempted from the merge (machine-generated) and
+  handled specially: Status is always regenerated and always emitted last; a
+  caller-supplied Session Log is dropped outright (neither creation variant scaffolds one
+  today, so there is nothing to merge it into — this satisfies the "no duplicate" AC
+  without needing a new Session Log placeholder).
+- Ordering walks `common_sections`' table order (which already places `Program Design`
+  correctly, before the footer group) and inserts caller-supplied type sections /
+  genuinely unknown headings immediately before the first footer section
+  (`Related Key Documentation`), never after `## Status`.
+- A leading `# ...` H1 is stripped before parsing; a body opening with `---` raises
+  `ValueError` rather than producing a two-frontmatter file.
+- `render_issue_preview()` and `create_issue()` share `_render_issue_content()` unchanged,
+  so dry-run/apply parity holds automatically.
+
+Added `TestFullBodyMerge` (12 tests) to `scripts/tests/test_ll_issues_create.py` covering
+every acceptance criterion. Updated the `--body-file` argparse help string and
+`docs/reference/CLI.md`'s argument table to describe the new merge contract. Option 2
+(`--body-mode` flag) was not taken, so `IssueSpec`/`docs/reference/API.md` and the
+generated skill mirrors are unaffected. Verified `ll-issues format-check` on a
+full-body-created issue reports gaps only for genuinely unsupplied sections, not for the
+caller's real content.
 
 ## Related Key Documentation
 
@@ -500,6 +534,8 @@ _Added by `/ll:confidence-check` on 2026-08-15_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-08-16T02:35:44 - `9eab3ee6-a857-4f84-9573-68ef2632ffdb.jsonl`
+- `/ll:ready-issue` - 2026-08-16T02:17:28 - `3d0cd36b-3c7d-4f5c-a4fa-7e1a7d09422c.jsonl`
 - `/ll:confidence-check` - 2026-08-16T00:17:02 - `64e9e21e-d2d6-44cd-97cd-d980a3cc037d.jsonl`
 - Pre-implementation review - 2026-08-15 - Verified all claims against main and reproduced the bug via `render_issue_preview` (dry-run). Refreshed four drifted line cites (issue_parser.py `_section_body_with_offset` now :240-278 with `matches[-1]` at :268; call sites :1270/:1338/:1347; session_log.py footer anchor at :327-330, function def :273; issue_template.py title heading :167). Corrected the false "single ordering table" claim — `Steps to Reproduce`/`Root Cause` live in `type_sections`, not `common_sections` — and pinned the interleaving rule (common order, type/unknown sections inserted before Related Key Documentation/Labels/Session Log/Status), scoped the Status-last AC to the merge output/`minimal` variant, and scoped the Session Log second-to-last assertion to "when present".
 - Pre-implementation review (batch) - 2026-08-15 - BUG-3202 dependency now satisfied (completed; `fence_spans`/`in_fence` verified on main); refreshed stale "until BUG-3202 lands" text; promoted the preamble (fold into Summary) and Status/Session Log (always regenerate) decide-and-pin items to decisions; marked the confidence-check dependency concern resolved.

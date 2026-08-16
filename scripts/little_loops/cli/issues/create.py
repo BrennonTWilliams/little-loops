@@ -11,12 +11,13 @@ restated. See ``.issues/features/P2-FEAT-2947-*.md`` for design rationale
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from little_loops.cli.output import print_json
 
@@ -27,6 +28,22 @@ _VALID_TYPES = ("BUG", "FEAT", "ENH", "EPIC")
 
 # Matches the "## Children" heading in an EPIC's body (Program Design).
 _CHILDREN_HEADING = "## Children"
+
+# BUG-3193: full-body detection/merge. A caller-supplied body is routed
+# through the merge path (Option 1b) instead of being nested wholesale under
+# a single "## Summary" placeholder when it contains a heading matching a
+# section name the resolved variant would otherwise scaffold — see the
+# issue's "Expected Behavior" decision for why this trigger (rather than
+# "opens with a heading") is the correct one.
+_HEADING_RE = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
+
+# Machine-generated footer sections: never carried over from the caller's
+# body verbatim. Status is always regenerated (frontmatter `status:` is the
+# real source of truth); Session Log is dropped outright — neither creation
+# variant scaffolds one today, so there is nothing to merge it into.
+_STATUS_SECTION = "Status"
+_SESSION_LOG_SECTION = "Session Log"
+_FOOTER_SECTIONS = ("Related Key Documentation", "Labels", _SESSION_LOG_SECTION, _STATUS_SECTION)
 
 
 @dataclass
@@ -118,6 +135,166 @@ def _append_child_to_epic_children(content: str, child_id: str, child_title: str
     return "\n".join(new_lines)
 
 
+def _is_full_body(body: str, include_common: list[str]) -> bool:
+    """True when *body* contains a variant section heading (BUG-3193 trigger).
+
+    Fence-aware: a ``##``-shaped line only quoted inside a fenced code block
+    does not count, so a body that merely *documents* the scaffold shape is
+    not misrouted as a full body.
+    """
+    from little_loops.text_utils import fence_spans, in_fence
+
+    spans = fence_spans(body)
+    names = set(include_common)
+    for m in _HEADING_RE.finditer(body):
+        if in_fence(m.start(), m.end(), spans):
+            continue
+        if m.group(1).strip() in names:
+            return True
+    return False
+
+
+def _reject_frontmatter_body(body: str) -> None:
+    """Reject a body opening with its own ``---`` frontmatter block.
+
+    Concatenating it verbatim would produce a two-frontmatter file; fail
+    loudly instead (BUG-3193).
+    """
+    if body.lstrip().startswith("---"):
+        raise ValueError(
+            "Issue body must not begin with a '---' frontmatter block "
+            "(frontmatter is generated separately) — strip it before passing --body-file."
+        )
+
+
+def _strip_leading_h1(body: str) -> str:
+    """Drop a leading ``# ...`` heading line so it doesn't double the title (BUG-3193)."""
+    lines = body.splitlines()
+    idx = 0
+    while idx < len(lines) and lines[idx].strip() == "":
+        idx += 1
+    if idx < len(lines) and lines[idx].startswith("# "):
+        idx += 1
+        while idx < len(lines) and lines[idx].strip() == "":
+            idx += 1
+        return "\n".join(lines[idx:])
+    return body
+
+
+def _parse_full_body(body: str) -> tuple[str, list[tuple[str, str]]]:
+    """Fence-aware split into ``(preamble, [(heading, content), ...])`` (BUG-3193)."""
+    from little_loops.text_utils import fence_spans, in_fence
+
+    spans = fence_spans(body)
+    matches = [m for m in _HEADING_RE.finditer(body) if not in_fence(m.start(), m.end(), spans)]
+    if not matches:
+        return body.strip(), []
+
+    preamble = body[: matches[0].start()].strip()
+    sections: list[tuple[str, str]] = []
+    for i, m in enumerate(matches):
+        name = m.group(1).strip()
+        start = m.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(body)
+        sections.append((name, body[start:end].strip()))
+    return preamble, sections
+
+
+def _merge_full_body_content(
+    include_common: list[str],
+    preamble: str,
+    parsed_sections: list[tuple[str, str]],
+) -> tuple[dict[str, str], list[str]]:
+    """Build the merge ``content`` map and the caller's non-variant section order (BUG-3193).
+
+    ``## Status`` and ``## Session Log`` are exempt (machine-generated, never
+    carried over — see :data:`_FOOTER_SECTIONS`). The preamble (any prose
+    before the first heading) is folded into ``Summary`` ahead of the
+    caller's own Summary text.
+    """
+    content_map: dict[str, str] = {}
+    extra_order: list[str] = []
+
+    for name, text in parsed_sections:
+        if name in (_STATUS_SECTION, _SESSION_LOG_SECTION):
+            continue
+        content_map[name] = text  # last-occurrence-wins, matching issue_parser's contract
+        if name not in include_common and name not in extra_order:
+            extra_order.append(name)
+
+    if preamble:
+        summary = content_map.get("Summary", "")
+        content_map["Summary"] = f"{preamble}\n\n{summary}".strip() if summary else preamble
+
+    return content_map, extra_order
+
+
+def _assemble_full_body(
+    sections_data: dict[str, Any],
+    variant_config: dict[str, Any],
+    issue_id: str,
+    title: str,
+    content_map: dict[str, str],
+    extra_order: list[str],
+    now: datetime,
+    priority: str,
+) -> str:
+    """Render the merged full-body document (BUG-3193 Option 1b).
+
+    Ordering follows ``common_sections``' table order (which already places
+    ``Program Design`` before the footer group). Caller-supplied type
+    sections and genuinely unknown headings — which have no slot in that
+    table — are inserted immediately before the first footer section
+    (``Related Key Documentation``/``Labels``/``Session Log``/``Status``),
+    never after it, so ``## Status`` is always the last heading emitted.
+    """
+    common_sections = sections_data.get("common_sections", {})
+    include_common = variant_config.get("include_common", [])
+
+    parts: list[str] = [f"# {issue_id}: {title}", ""]
+
+    def emit(name: str, body_text: str) -> None:
+        parts.append(f"## {name}")
+        parts.append("")
+        if body_text:
+            parts.append(body_text)
+            parts.append("")
+
+    def emit_extras() -> None:
+        for extra_name in extra_order:
+            if extra_name in common_sections:
+                continue  # placed at its natural common_sections table position instead
+            emit(extra_name, content_map.get(extra_name, ""))
+
+    footer_inserted = False
+    for name in common_sections:
+        if name in _FOOTER_SECTIONS:
+            if not footer_inserted:
+                footer_inserted = True
+                emit_extras()
+            if name == _SESSION_LOG_SECTION:
+                continue
+            if name == _STATUS_SECTION:
+                emit(name, f"**Open** | Created: {now.strftime('%Y-%m-%d')} | Priority: {priority}")
+                continue
+            if name in include_common or name in content_map:
+                emit(
+                    name, content_map.get(name, common_sections[name].get("creation_template", ""))
+                )
+            continue
+        if name in include_common or name in content_map:
+            emit(name, content_map.get(name, common_sections[name].get("creation_template", "")))
+
+    if not footer_inserted:
+        emit_extras()
+        emit(
+            _STATUS_SECTION,
+            f"**Open** | Created: {now.strftime('%Y-%m-%d')} | Priority: {priority}",
+        )
+
+    return "\n".join(parts)
+
+
 def _render_issue_content(
     config: BRConfig,
     spec: IssueSpec,
@@ -143,15 +320,40 @@ def _render_issue_content(
         frontmatter["labels"] = list(spec.labels)
 
     sections_data = load_issue_sections(spec.type)
-    content = {"Summary": spec.body} if spec.body else {}
-    body = assemble_issue_body(
-        sections_data=sections_data,
-        issue_type=spec.type,
-        variant=spec.variant,
-        issue_id=issue_id,
-        title=spec.title,
-        content=content,
-    )
+
+    if spec.body:
+        _reject_frontmatter_body(spec.body)
+
+    variant_config = sections_data.get("creation_variants", {}).get(spec.variant)
+    if variant_config is None:
+        raise ValueError(f"Unknown creation variant: {spec.variant!r}")
+    include_common = variant_config.get("include_common", [])
+
+    if spec.body and _is_full_body(spec.body, include_common):
+        preamble, parsed_sections = _parse_full_body(_strip_leading_h1(spec.body))
+        content_map, extra_order = _merge_full_body_content(
+            include_common, preamble, parsed_sections
+        )
+        body = _assemble_full_body(
+            sections_data,
+            variant_config,
+            issue_id,
+            spec.title,
+            content_map,
+            extra_order,
+            now,
+            spec.priority,
+        )
+    else:
+        content = {"Summary": spec.body} if spec.body else {}
+        body = assemble_issue_body(
+            sections_data=sections_data,
+            issue_type=spec.type,
+            variant=spec.variant,
+            issue_id=issue_id,
+            title=spec.title,
+            content=content,
+        )
     return update_frontmatter("", frontmatter) + "\n" + body
 
 
@@ -307,7 +509,11 @@ def add_create_parser(subs: argparse._SubParsersAction) -> None:
         metavar="PATH",
         default=None,
         dest="body_file",
-        help="Path to file with Summary body content, or '-' for stdin",
+        help=(
+            "Path to file with body content, or '-' for stdin. Plain prose becomes the "
+            "Summary body; a body containing headings that match the variant's sections "
+            "(e.g. '## Current Behavior') is merged section-by-section instead (BUG-3193)"
+        ),
     )
     cr.add_argument("--parent", default=None, help="Parent EPIC ID to wire (both directions)")
     cr.add_argument(

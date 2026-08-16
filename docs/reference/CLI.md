@@ -1581,7 +1581,7 @@ only) — appends a wired bullet there too.
 | `--type` / `-T` | *(required)* | `BUG`, `FEAT`, `ENH`, or `EPIC` |
 | `--title` | *(required)* | Issue title |
 | `--priority` / `-p` | `P2` | `P0`-`P5` |
-| `--body-file PATH\|-` | — | File (or `-` for stdin) whose contents become the `## Summary` body |
+| `--body-file PATH\|-` | — | File (or `-` for stdin). Plain prose becomes the `## Summary` body; a body containing headings that match the variant's sections is merged section-by-section instead of nested under a duplicate scaffold (BUG-3193) |
 | `--parent EPIC-N` | — | Parent to wire both directions |
 | `--labels a,b` | — | Comma-separated labels |
 | `--variant` | `minimal` | Template variant: `minimal`, `full`, or `legacy` |
