@@ -3,7 +3,7 @@ id: ENH-3203
 type: ENH
 title: Declare and enforce per-task credential scope via deny-by-default env projection
 priority: P2
-status: blocked
+status: open
 blocked_by: [ENH-3184]
 discovered_by: ll-issues-create
 discovered_date: '2026-08-15'
@@ -22,7 +22,7 @@ Today a scheduled docs-sweep agent and a scheduled release agent run with identi
 
 **Mechanism is env projection, not token minting.** The child receives only the credential variables its declaration names, plus a fixed baseline. Purely local, no provider integration. Exchanging a broad credential for a genuinely narrower provider-side one (GitHub App installation tokens, AWS STS `AssumeRole`) is separate work with no foothold in this codebase — `_active_oauth_token()` (`host_runner.py:2064-2076`) only *selects* among ambient vars, it does not mint. Prose in this issue that reads as minting ("scoped token") means projection unless stated otherwise.
 
-**Blocked by ENH-3184.** This issue switches on deny-by-default across the spawn-site map. Attempting it before the chokepoint exists and is guarded means a missed spawn site silently makes the guarantee false — which is worse than the status quo, because it looks like protection that isn't there. The census has already been re-derived wrong twice.
+**ENH-3184 is done, so this issue is unblocked.** It switches on deny-by-default across the spawn-site map that ENH-3184 centralized; attempting it before that chokepoint existed and was guarded would have meant a missed spawn site silently making the guarantee false — which is worse than the status quo, because it looks like protection that isn't there. The census has already been re-derived wrong twice, which is why ENH-3184 landed the guard first.
 
 ## Current Behavior
 
@@ -117,7 +117,7 @@ AC2's "an undeclared credential variable is *absent from the child process*" is 
 
 Explicitly **out of scope**:
 
-- **Spawn-site centralization** — ENH-3184, which blocks this issue.
+- **Spawn-site centralization** — ENH-3184 (done).
 - **Audit persistence of the granted scope** — ENH-3204.
 - **`gh`/`sync.py` scoping** — ENH-3205. Env projection alone does not de-scope `gh`: its credential lives in the OS keyring / `~/.config/gh/hosts.yml`, not in `GITHUB_TOKEN`, so removing that variable leaves the broad session fully usable.
 - **Disk-backed and keyring-backed credentials.** No `HOME` redirection, no per-task config directories, no keychain scoping.
@@ -136,4 +136,4 @@ Explicitly **out of scope**:
 
 ## Status
 
-**Open** | Created: 2026-08-15 | Priority: P2
+**Open** | Created: 2026-08-15 | Priority: P2 | Unblocked: 2026-08-16 (ENH-3184 done)
