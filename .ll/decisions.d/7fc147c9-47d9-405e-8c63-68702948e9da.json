@@ -1,0 +1,11 @@
+{
+  "id": "2b8b58e6-2c57-4a52-8f24-ccd96328bf53",
+  "type": "decision",
+  "timestamp": "2026-08-16T23:30:50Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Abstention data accumulates in history.db v41 with zero readers; reporting surface first, then meta-loop consumer as a non-LLM external evaluator.",
+  "rule": "Captured: Surface harness_eval_abstention_rate as a criterion-quality signal",
+  "scope": "issue",
+  "issue": "ENH-3223"
+}

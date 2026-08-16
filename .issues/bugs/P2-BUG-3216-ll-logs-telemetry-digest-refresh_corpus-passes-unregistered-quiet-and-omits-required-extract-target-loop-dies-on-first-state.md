@@ -13,6 +13,13 @@ labels:
 - ll-logs
 - loops
 - cli-consistency
+verify_verdict: VALID
+confidence_score: 98
+outcome_confidence: 87
+score_complexity: 22
+score_test_coverage: 20
+score_ambiguity: 23
+score_change_surface: 22
 ---
 
 # BUG-3216: ll-logs-telemetry-digest omits the required --project/--all target on all five corpus states and reports failures as empty results
@@ -24,7 +31,7 @@ defect is not confined to one state. **Five states invoke `ll-logs` corpus
 subcommands without the required `--project`/`--all` target**; every one of them
 exits 2 at argparse before any command body runs.
 
-`refresh_corpus` is merely the first and loudest: its two commands are both
+`refresh_corpus` is the first and loudest: its two commands are both
 malformed (unregistered `--quiet` *and* missing target), so the state always
 echoes `REFRESH_FAILED`, its `output_contains: "REFRESHED"` gate always
 evaluates false, and `on_no: done` terminates the loop on its first state.
@@ -33,6 +40,13 @@ Fixing `refresh_corpus` alone does not restore the loop — it converts a loud
 failure into a **silent false negative**. See
 [Post-Partial-Fix Failure Mode](#post-partial-fix-failure-mode) below; that
 degradation, not the first-state death, is the main reason to fix this whole.
+
+`refresh_corpus` is also **structurally different from the other four**, not
+merely the loudest instance of one defect: no downstream state reads what
+`extract` writes, and `extract --all` cannot return non-zero. Repairing its
+arguments therefore yields a gate that is both vacuous and gating work the
+digest never consumes. See
+[refresh_corpus gates work nothing consumes](#refresh_corpus-gates-work-nothing-consumes).
 
 ## Current Behavior
 
@@ -113,6 +127,48 @@ while the real invocation fails**. argparse services `-h` and exits 0 before it
 validates required groups, so a `--help` probe structurally cannot detect a
 missing required argument. The probe pattern is part of the root cause, not a
 mitigation.
+
+### refresh_corpus gates work nothing consumes
+
+Three facts about `refresh_corpus` that do not apply to the other four states,
+each verified against `cli/logs.py`:
+
+**(a) No downstream state reads the corpus `extract` writes.** `_cmd_extract`
+(`logs.py:740-796`) writes `Path.cwd() / "logs" / <slug> / <session-id>.jsonl`
+(`:787-793`) and then `generate_index(Path.cwd() / "logs")` (`:795`). Nothing
+in this loop opens `logs/`. The four analysis subcommands read their own
+sources directly:
+
+| State | Subcommand | Reads | Source |
+|---|---|---|---|
+| `run_stats` | `stats` | `<project>/.ll/history.db` | `logs.py:1336-1342` |
+| `scan_failures` | `scan-failures` | `~/.claude/projects/<folder>/*.jsonl` | `logs.py:1112-1131` |
+| `run_sequences` | `sequences` | `~/.claude/projects/<folder>/*.jsonl` | `logs.py:630-648` |
+| `check_dead_skills` | `dead-skills` | `<project>/.ll/history.db` | `logs.py:972-978` |
+
+`scan-failures` and `sequences` resolve session JSONL through
+`get_project_folder(cwd_path)` — the same `~/.claude/projects/` tree `extract`
+reads *from* — so they are independent of whether `extract` ever ran. The loop's
+description ("refresh the ll-logs corpus, run all available analysis
+subcommands") asserts a data dependency that does not exist in the code.
+
+**(b) `extract --all` cannot fail.** `_cmd_extract` returns `1` only inside the
+`args.project` branch, when `get_project_folder` yields `None` (`:745-747`).
+The `--all` branch (`:749-755`) has no failure path and falls through to
+`return 0` (`:796`) regardless of how many projects were found or how many
+records were extracted. So once `--all` is supplied per Decision Rules, the
+state's `&& echo "REFRESHED" || echo "REFRESH_FAILED"` wrapper always takes the
+success arm, `output_contains: "REFRESHED"` is always true, and the `on_no:
+done` edge becomes unreachable. **The gate is vacuous after the argument fix** —
+Required part 2's failure-vs-emptiness work buys nothing on this state.
+
+**(c) `--all` is a write, not a read.** `out_base = Path.cwd() / "logs" / slug`
+(`:787`) means `extract --all` materializes one subdirectory *per discovered
+project on the machine* under this repo's `logs/`. That directory already
+exists here with 40+ project subdirectories. `logs/` is gitignored
+(`.gitignore:21`), so this is not a correctness problem — but Decision Rules
+should not justify `--all` on `refresh_corpus` as a "corpus-wide read," because
+it is corpus-wide write amplification into the working repo.
 
 ### Post-Partial-Fix Failure Mode
 
@@ -383,8 +439,15 @@ and a new test:
 - **Referencing it by path is safe.** `git ls-files .loops/` lists `.loops/ll-logs-telemetry-digest.yaml`, so the file is committed content available to any checkout, and `.gitignore` excludes only runtime subdirectories under `.loops/` (`.running/`, `.history/`, `.queue/`, `tmp/`, `runs/`, …), not the loop YAMLs themselves. A test may therefore assert on it directly. Because it is a source-repo file rather than packaged data, the test belongs to this repo's suite only and should skip cleanly if the path is absent, per the existing convention for source-repo-only artifacts.
 - No existing test in `scripts/tests/` parses a loop YAML's `action:` shell strings and validates the embedded CLI invocations against argparse — this is the gap Acceptance Criteria's last bullet asks to fill, not a pattern already present elsewhere.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_bug_2816_cli_invocations.py` — exact precedent pattern for the new regression test: it guards `BUILTIN_LOOPS_DIR` loop YAMLs (not repo-root `.loops/`) against broken embedded CLI/skill invocations from the same defect class (BUG-2816). Its `_text()`/`yaml.safe_load()` helper plus string-membership assertions on an extracted `action` block (e.g. `TestApplyResearchFix`, `TestLoopInputFlagSweep:106-122`) is the template to adapt with a `REPO_ROOT_LOOPS_DIR` pointed at `.loops/` instead of `BUILTIN_LOOPS_DIR`; none of it round-trips through real `argparse.parse_args()`, so the acceptance criterion's "parses against the current argument surface" bar still needs `main_logs()` (`TestEvalExport.test_no_regression_extract`, `test_ll_logs.py:3885-3893`) or a direct parser call layered on top.
+
 ### Documentation
 - `docs/reference/CLI.md:3263-3265` — documents `ll-logs extract --all`, `ll-logs extract --project /path/to/proj`, `ll-logs extract --all --cmd ll-history`; the only existing examples of a correctly-targeted `extract` invocation.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md:3294-3306` — the `## ll-logs` section's "Companion loop" prose narratively describes this loop's pipeline and shows `ll-loop run ll-logs-telemetry-digest`; a second reference site (beyond :3263-3265) worth rechecking for staleness once the fix lands, though it makes no claim the loop currently works.
+- `docs/reference/CLI.md:20` — the "Common Flags" table's `--quiet` row lists `Used by: ll-auto, ll-parallel, ll-sprint run, ll-sync`; `ll-logs` is absent. **Only needs an edit if optional Part 3 ships** (wiring `add_quiet_arg` onto `ll-logs` subcommand parsers) — otherwise no action.
 
 ## Program Design
 
@@ -526,11 +589,24 @@ _Added by `/ll:refine-issue` — 2026-08-16 — based on codebase analysis:_
   `${context.run_dir}` is the convention the diagnostic-capture suggestion
   above follows.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `.issues/enhancements/P3-ENH-2317-ll-logs-cwd-defaults-all-opt-in-host-audit.md`
+  (status `deferred`) and
+  `.issues/enhancements/P3-ENH-2318-retarget-scan-failures-at-user-own-failures-with-ll-tools-flag.md`
+  — both open issues build their back-compat rationale on this loop's
+  *current, pre-fix* call shape ("`scan-failures`/`dead-skills` invoked with
+  no scope flag"). ENH-2318 lists resolving that gap as one of its own open
+  items (option "(c) add `--all` to the loop YAML"). Once this issue lands,
+  both need a follow-up note: the "no scope flag" premise their designs
+  protect against no longer holds.
+
 ## Status
 
 **Open** | Created: 2026-08-16 | Priority: P2
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-08-16T23:31:17 - `595e4216-652b-4848-8dd6-c7dffee1e3bc.jsonl`
+- `/ll:wire-issue` - 2026-08-16T23:29:41 - `501abea1-df2c-4fca-aa0c-5bb8bbb6d4ba.jsonl`
 - `/ll:refine-issue` - 2026-08-16T23:21:46 - `f105a63f-bfd2-4442-8228-f308dc8f7f01.jsonl`
 - `/ll:refine-issue` - 2026-08-16T23:08:11 - `09f214c5-efef-498d-8c5a-346f6f1baa05.jsonl`

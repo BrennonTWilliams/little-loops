@@ -1,0 +1,11 @@
+{
+  "id": "d8912e26-fb13-4782-9f03-3f09285c9905",
+  "type": "decision",
+  "timestamp": "2026-08-16T23:30:49Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Statically detectable condition that terminates runs; WARNING severity to avoid failing 13 shipped loops and consuming projects on upgrade.",
+  "rule": "Captured: Validator rule for judged gates with no abstention route and no error route",
+  "scope": "issue",
+  "issue": "ENH-3222"
+}

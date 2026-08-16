@@ -1,0 +1,11 @@
+{
+  "id": "36a8a259-cd9d-40e2-8d6f-ac9b98e05439",
+  "type": "decision",
+  "timestamp": "2026-08-16T23:30:49Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "ENH-3185 shipped the abstention mechanism but no built-in loop declares on_cannot_judge and neither telemetry surface has a consumer; EPIC coordinates route repairs, static checks, and telemetry wiring.",
+  "rule": "Captured: Retrofit cannot_judge abstention handling across built-in FSM loops and tooling",
+  "scope": "issue",
+  "issue": "EPIC-3217"
+}

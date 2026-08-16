@@ -1,0 +1,11 @@
+{
+  "id": "892c5351-470a-4ca2-a233-e7b87a79b4c1",
+  "type": "decision",
+  "timestamp": "2026-08-16T23:30:50Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "exit_code evaluator maps 2+ to error, flattening abstention back into the binary-plus-error shape ENH-3185 replaced; three candidate designs, implementer picks one.",
+  "rule": "Captured: Bridge ll-harness ABSTAIN exit 3 across the FSM process boundary",
+  "scope": "issue",
+  "issue": "ENH-3224"
+}
